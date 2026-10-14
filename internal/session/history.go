@@ -2,6 +2,9 @@ package session
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
@@ -83,4 +86,38 @@ func withNotices(rows []core.ChatMessage, notices []transcript.NoticeRecord) []c
 		out = append(out, after[row.ID]...)
 	}
 	return out
+}
+
+// ChatRows reads attachments for display without changing the native conversation.
+func (s *Store) ChatRows(history *History) []core.ChatMessage {
+	rows := history.ChatRows()
+	if transcript.ValidateID(history.Metadata.ID) != nil {
+		return rows
+	}
+	marker := "\n\n[Full output persisted to blobs/tool-result/" + history.Metadata.ID + "/"
+	for i := range rows {
+		result := rows[i].ToolResult
+		if result == nil {
+			continue
+		}
+		result.Content = slices.Clone(result.Content)
+		for j := range result.Content {
+			block := &result.Content[j]
+			if block.Type != ai.BlockText {
+				continue
+			}
+			_, after, ok := strings.Cut(block.Text, marker)
+			if !ok {
+				continue
+			}
+			id, _, ok := strings.Cut(after, "]")
+			if !ok || transcript.ValidateID(id) != nil {
+				continue
+			}
+			if data, err := os.ReadFile(filepath.Join(s.toolResultsDir(history.Metadata.ID), id)); err == nil {
+				block.Text = string(data)
+			}
+		}
+	}
+	return rows
 }

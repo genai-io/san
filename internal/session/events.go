@@ -222,3 +222,16 @@ func (r *Session) recordToolDetails(e sdkagent.ToolEnd) {
 	}
 	_ = r.appendLocked(context.Background(), transcript.Record{Type: transcript.ToolCompleted, ToolDetails: &details})
 }
+
+// messageIDs is the active chain in send order — what the next inference
+// referenced, so replay can check it referenced what the transcript holds.
+func messageIDs(msgs []core.Message) []string {
+	if len(msgs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.ID)
+	}
+	return out
+}

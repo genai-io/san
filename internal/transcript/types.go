@@ -17,27 +17,15 @@ type Transcript struct {
 	Provider string
 	Model    string
 
-	Messages    []MessageNode
+	Messages    []ai.Message
 	Notices     []NoticeRecord
 	ToolDetails map[string]ToolDetailsRecord
 	State       State
 }
 
-// MessageNode adds transcript position to the unmodified SDK message.
-type MessageNode struct {
-	ai.Message
-	ParentMessageID string
-	Time            time.Time
-	Cwd             string
-	GitBranch       string
-	AgentID         string
-	IsSidechain     bool
-}
-
 type State struct {
 	Title      string
 	LastPrompt string
-	Tag        string
 	Mode       string
 	// AutoPilot is the session's autopilot config as a JSON blob (empty when
 	// unset). Stored opaque here so the transcript package stays free of an
@@ -47,8 +35,7 @@ type State struct {
 	// in a group), opaque here for the same reason as AutoPilot.
 	Group string
 
-	Tasks    []todo.Item
-	Worktree *WorktreeState
+	Tasks []todo.Item
 }
 
 type Summary struct {

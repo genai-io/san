@@ -2,7 +2,11 @@ package app
 
 import (
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
@@ -26,6 +30,9 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	history := []ai.Message{{ID: "old-message", Role: ai.RoleUser, Content: ai.TextContent("old text")}}
 	old.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
 	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewService(), Hook: hook.NewEngine(nil, "old", "", old.TranscriptPath())}, conv: conv.NewModel(80)}
+	m.services.Setting = setting.New(setting.NewData())
+	m.services.LLM = &llm.Conn{}
+	m.autopilot = new(atomic.Pointer[autopilotRuntime])
 	m.services.Agent.SetMessages(history)
 	m.env.SessionName = "old title"
 	if err := m.clearSession(); err != nil {

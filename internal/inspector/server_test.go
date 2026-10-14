@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/transcript"
 )
 
 // End-to-end smoke: write a transcript file under projectDir/transcripts, hit
@@ -19,7 +21,7 @@ func TestServerListAndRecords(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"2","start":{"provider":"p","model":"m"}}`,
+		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
 		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
@@ -103,11 +105,11 @@ func TestServerStateReplaysContextAtRecord(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"2","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:system:1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"system.section.added","version":"2","system":{"name":"identity","slot":0,"content":"You are precise.","caller":"system:init"}}`,
-		`{"id":"sess-1:tool:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"tool.added","version":"2","tool":{"schema":{"name":"Read","description":"read","definition":{"type":"object"}},"caller":"tools:init"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"2","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"2","inference":{"sequence":1,"systemDigest":"bad","toolsDigest":"bad","messageIds":["m1"]}}`,
+		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
+		`{"id":"sess-1:system:1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"system.section.added","version":"` + transcript.SchemaVersion + `","system":{"name":"identity","slot":0,"content":"You are precise.","caller":"system:init"}}`,
+		`{"id":"sess-1:tool:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"tool.added","version":"` + transcript.SchemaVersion + `","tool":{"schema":{"name":"Read","description":"read","definition":{"type":"object"}},"caller":"tools:init"}}`,
+		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
+		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"systemDigest":"bad","toolsDigest":"bad","messageIds":["m1"]}}`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
@@ -152,11 +154,11 @@ func TestServerStateUsesActiveMessageChain(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"2","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"2","message":{"id":"m1","role":"user","content":[{"type":"text","text":"root"}]}}`,
-		`{"id":"sess-1:m2","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"message.appended","version":"2","parentMessageId":"m1","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"old branch"}]}}`,
-		`{"id":"sess-1:m3","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"2","parentMessageId":"m1","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"active branch"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"2","inference":{"sequence":1,"messageIds":["m1","m3"]}}`,
+		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
+		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"root"}]}}`,
+		`{"id":"sess-1:m2","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","parentMessageId":"m1","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"old branch"}]}}`,
+		`{"id":"sess-1:m3","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","parentMessageId":"m1","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"active branch"}]}}`,
+		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"messageIds":["m1","m3"]}}`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
@@ -195,9 +197,9 @@ func TestServerStateReportsMessageIDMismatch(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"2","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"2","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"inference.requested","version":"2","inference":{"sequence":1,"messageIds":["missing"]}}`,
+		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
+		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
+		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"messageIds":["missing"]}}`,
 	}, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write: %v", err)

@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -97,10 +96,7 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	if err := store.importHistory(&History{Metadata: Metadata{ID: "source", CreatedAt: time.Unix(100, 0)}, Messages: []ai.Message{message}}); err != nil {
 		t.Fatal(err)
 	}
-	before, err := store.transcriptStore.Load(context.Background(), "source")
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := readAllRecords(t, store.projectDir, "source")
 	forkSession, fork, err := store.Fork("source")
 	if err != nil {
 		t.Fatal(err)
@@ -113,15 +109,14 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed.Messages[0].ToolResults()[0].Text() != "FULL OUTPUT" {
+	if store.ChatRows(resumed)[0].ToolResult.Text() != "FULL OUTPUT" {
 		t.Fatal("fork lost its full output after the source was deleted")
 	}
-	after, err := store.transcriptStore.Load(context.Background(), fork.Metadata.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !before.Messages[0].Time.Equal(after.Messages[0].Time) {
-		t.Fatal("fork changed historical message time")
+	after := readAllRecords(t, store.projectDir, fork.Metadata.ID)
+	for i, r := range before {
+		if r.Type == transcript.ConversationReplaced && !r.Time.Equal(after[i].Time) {
+			t.Fatal("fork changed historical message time")
+		}
 	}
 }
 

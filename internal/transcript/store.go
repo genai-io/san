@@ -3,6 +3,7 @@ package transcript
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -53,6 +54,9 @@ func NewStore(baseDir, projectID string) (*Store, error) {
 }
 
 func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
+	if err := ValidateID(cmd.SessionID); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -97,8 +101,8 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if rec.SessionID == "" {
-		return fmt.Errorf("session ID is required")
+	if err := ValidateID(rec.SessionID); err != nil {
+		return err
 	}
 	if rec.Time.IsZero() {
 		rec.Time = time.Now()
@@ -127,8 +131,7 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 		if err := validateMessages(rec.Messages); err != nil {
 			return err
 		}
-		// A resumed chain can hydrate blob-backed outputs for display. Message
-		// identities, not those derived contents, determine whether it changed.
+		// Message IDs name immutable content; replaying the same chain is a no-op.
 		if sameMessageIDs(c.messageIDs, rec.Messages) {
 			return nil
 		}
@@ -136,13 +139,19 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 		if rec.State == nil {
 			return fmt.Errorf("state payload is required")
 		}
-		if err := applyStatePatch(&nextState, rec.State); err != nil {
+		patch, err := rec.State.changes(c.latestState)
+		if err != nil {
 			return err
 		}
-		rec.State = &StateRecord{Ops: StateOpsDiff(c.latestState, nextState)}
-		if len(rec.State.Ops) == 0 && (rec.GitBranch == "" || rec.GitBranch == c.lastGitBranch) {
-			return nil
+		if patch == nil {
+			if rec.GitBranch == "" || rec.GitBranch == c.lastGitBranch {
+				return nil
+			}
+			patch = &StateRecord{}
 		}
+		rec.State = patch
+		patch.apply(&nextState)
+
 	case InferenceRequested, InferenceResponded, InferenceFailed:
 		if rec.Inference == nil {
 			return fmt.Errorf("inference payload is required")
@@ -230,6 +239,12 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 }
 
 func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error {
+	if err := ValidateID(cmd.SourceSessionID); err != nil {
+		return err
+	}
+	if err := ValidateID(cmd.NewSessionID); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -325,6 +340,9 @@ func rewriteRecordSessionID(id, oldSessionID, newSessionID string) string {
 }
 
 func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, error) {
+	if err := ValidateID(transcriptID); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -346,6 +364,9 @@ func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, err
 
 // LoadHistory reads the selected chain across compaction boundaries without changing writer state.
 func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error) {
+	if err := ValidateID(id); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -395,7 +416,12 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 	return items, nil
 }
 
-func (s *Store) Delete(ctx context.Context, transcriptID string) error {
+func (s *Store) Delete(ctx context.Context, transcriptID string) (err error) {
+	release, err := s.Claim(transcriptID)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, release()) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -525,10 +551,6 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 		task.Blocks = slices.Clone(task.Blocks)
 		task.BlockedBy = slices.Clone(task.BlockedBy)
 	}
-	if tx.State.Worktree != nil {
-		worktree := *tx.State.Worktree
-		c.latestState.Worktree = &worktree
-	}
 	c.messageIDs = make([]string, len(tx.Messages))
 	c.leafMessageID = ""
 	for i, n := range tx.Messages {
@@ -544,6 +566,9 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 // write lock to run warmupCachesLocked. One O(N) scan per session per
 // process, then O(1).
 func (s *Store) LastMessageID(ctx context.Context, transcriptID string) (string, error) {
+	if err := ValidateID(transcriptID); err != nil {
+		return "", err
+	}
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -607,7 +632,7 @@ func (s *Store) buildSummaryLocked(transcriptID string) (Summary, error) {
 	}, nil
 }
 
-func firstUserText(messages []MessageNode) string {
+func firstUserText(messages []ai.Message) string {
 	for _, msg := range messages {
 		if msg.Role != "user" {
 			continue
@@ -619,7 +644,7 @@ func firstUserText(messages []MessageNode) string {
 	return ""
 }
 
-func lastUserText(messages []MessageNode) string {
+func lastUserText(messages []ai.Message) string {
 	for _, message := range slices.Backward(messages) {
 		if message.Role != "user" {
 			continue

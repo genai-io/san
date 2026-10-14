@@ -40,7 +40,7 @@ and application boundaries.
 
 ## Entrypoints and core packages
 
-- `store.go`: `NewStore`, `Create`, `Open`, `Read`, `ReadChatHistory`, `List`, `Latest`,
+- `store.go`: `NewStore`, `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
 - `events.go`: `RecordEvent`, inference spans, compaction and native event
@@ -73,7 +73,9 @@ quit   -> Runtime.Stop -> Session.Close
 ```
 
 Application state writes contain title, prompt preview, mode, autopilot, group,
-and tasks. The transcript computes their actual differences atomically and skips
+and tasks. `StateRecord` has typed optional fields: nil leaves a field unchanged;
+an explicit empty value clears it. Unused tag/worktree fields and generic JSON
+patch operations are removed. The transcript computes their actual differences atomically and skips
 unchanged fields. State records contain application data; native conversation
 records contain messages. State appends happen in order on the application loop.
 Git branch annotations are recorded with inference requests on the agent goroutine,
@@ -83,7 +85,10 @@ returning. Listing refreshes derived summaries lazily.
 Native messages seed Runtime directly. UI rows never become the persistence
 source. Thinking signatures, encrypted reasoning, tool signatures, images, and
 content ordering survive. Request-time capability filtering does not mutate the
-native history. Runtime retains it through stops and errors.
+native history. Runtime retains it through stops and errors. Inputs rejected before
+agent acceptance remain in a native pending queue; rebuilding never reads UI rows.
+`Store.ChatRows` expands persisted tool output only for display. Runtime receives
+the original preview and attachment reference, keeping resumed context bounded.
 
 Completed subagents write native conversation replacement and title records
 through their own opened Session.
@@ -99,11 +104,13 @@ through their own opened Session.
 ```
 
 Paths do not encode ancestry. Session parents and message parents are distinct
-fields. Transcripts use schema version `2` and SDK-native payloads. Metadata files
-are disposable derived summaries.
+fields. Transcripts use schema version `3` and SDK-native payloads. Metadata files
+are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
 ## Lifecycle and failure handling
 
+- IDs must be single path components; deletion claims the writer lease and rejects
+  active sessions. Resume and clear reset session-specific autopilot state.
 - A writer lease is held from Open/Create until Close, including idle resume.
   Every new lease refreshes cached state after another process's writes.
 - Failed opens release their candidate lease and do not redirect the selected

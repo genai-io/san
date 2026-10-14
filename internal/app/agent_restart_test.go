@@ -74,13 +74,13 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 	// SubmitToAgent asks for a replacement. It is sent through the inbox after
 	// Start, so it must not displace the preserved seed.
 	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
-	got := m.seedAgentMessages("ui-completion")
+	got := m.services.Agent.Messages()
 	if len(got) != len(live) {
-		t.Fatalf("seedAgentMessages() len = %d, want %d: %+v", len(got), len(live), got)
+		t.Fatalf("Agent.Messages() len = %d, want %d: %+v", len(got), len(live), got)
 	}
 	for i := range live {
 		if got[i].ID != live[i].ID {
-			t.Fatalf("seedAgentMessages()[%d].ID = %q, want %q", i, got[i].ID, live[i].ID)
+			t.Fatalf("Agent.Messages()[%d].ID = %q, want %q", i, got[i].ID, live[i].ID)
 		}
 	}
 
@@ -155,8 +155,8 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m.ResetAgentRuntime()
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
-	if got := m.seedAgentMessages("new-u1"); len(got) != 0 {
-		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
+	if got := m.services.Agent.Messages(); len(got) != 0 {
+		t.Fatalf("Agent.Messages() after reset = %+v, want no old seed", got)
 	}
 }
 
@@ -202,15 +202,15 @@ func chainWithImage() []core.Message {
 // A conversation that began on a vision-capable model carries its images in the
 // chain. Handing them to a text-only model replays image parts the provider
 // rejects on every later turn. Only inference input should drop them.
-func TestSeedAgentMessagesKeepsNativeImagesForTextOnlyModel(t *testing.T) {
+func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
 	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
-	seeded := m.seedAgentMessages("")
+	seeded := m.services.Agent.Messages()
 	if len(seeded) != len(original) {
-		t.Fatalf("seedAgentMessages() length = %d, want %d", len(seeded), len(original))
+		t.Fatalf("Agent.Messages() length = %d, want %d", len(seeded), len(original))
 	}
 	if n := imageBlocks(seeded[0]); n != 1 {
 		t.Errorf("native seed has %d image(s), want one", n)
@@ -226,12 +226,12 @@ func TestSeedAgentMessagesKeepsNativeImagesForTextOnlyModel(t *testing.T) {
 }
 
 // Vision-capable providers are the common case and must see the chain untouched.
-func TestSeedAgentMessagesKeepsImagesForVisionModel(t *testing.T) {
+func TestRuntimeMessagesKeepImagesForVisionModel(t *testing.T) {
 	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
-	seeded := m.seedAgentMessages("")
+	seeded := m.services.Agent.Messages()
 	if imageBlocks(seeded[0]) != 1 {
 		t.Errorf("seeded user message has %d image(s), want the original 1", imageBlocks(seeded[0]))
 	}

@@ -43,15 +43,6 @@ func TestRecordJSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPatchPathConstantsAreStable(t *testing.T) {
-	if PatchPathTitle != "title" {
-		t.Fatalf("PatchPathTitle = %q", PatchPathTitle)
-	}
-	if PatchPathWorktree != "worktree" {
-		t.Fatalf("PatchPathWorktree = %q", PatchPathWorktree)
-	}
-}
-
 func TestToolSchemaUsesSDKShape(t *testing.T) {
 	rec := Record{
 		ID:        "rec-1",

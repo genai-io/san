@@ -100,7 +100,7 @@ func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchTitle("late")}}}); !errors.Is(err, ErrClosed) {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new("late")}}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed state append: %v", err)
 	}
 	opened.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("late")})
@@ -138,8 +138,14 @@ func TestHydratedResumeDoesNotRewriteNativeHistory(t *testing.T) {
 	}
 	opened, resumed, err := store.Open("s")
 	defer func() { _ = opened.Close() }()
-	if err != nil || resumed.Messages[1].ToolResults()[0].Content.Text() != "full output" {
-		t.Fatalf("resume did not hydrate the blob: %+v, %v", resumed, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.ChatRows(resumed)[1].ToolResult.Text(); got != "full output" {
+		t.Fatalf("display did not hydrate the blob: %q", got)
+	}
+	if got := resumed.Messages[1].ToolResults()[0].Text(); got != preview {
+		t.Fatalf("resume changed native preview: %q", got)
 	}
 	before := readTranscript(t, store, "s")
 	opened.RecordEvent(sdkagent.MessagesReplaced{Messages: resumed.Messages})
@@ -170,11 +176,7 @@ func (s *Store) importHistory(history *History) error {
 		return err
 	}
 	return opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		GitBranch: getGitBranch(s.cwd), State: &transcript.StateRecord{Ops: []transcript.PatchOp{
-			transcript.PatchTitle(meta.Title), transcript.PatchLastPrompt(meta.LastPrompt), transcript.PatchTag(meta.Tag),
-			transcript.PatchMode(meta.Mode), transcript.PatchAutoPilot(meta.AutoPilot), transcript.PatchGroup(meta.Group),
-			transcript.PatchTasks(history.Tasks),
-		}}})
+		GitBranch: getGitBranch(s.cwd), State: &transcript.StateRecord{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
 }
 
 func normalizeMetadata(meta *Metadata, msgs []core.Message, defaultCwd string, now time.Time) {
@@ -242,9 +244,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	record := transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{
-		transcript.PatchTitle("title"), transcript.PatchGroup("group"), transcript.PatchTasks([]todo.Item{{ID: "1", Subject: "work", Metadata: map[string]any{"worker": "original"}}}),
-	}}}
+	record := transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new("title"), Group: new("group"), Tasks: new([]todo.Item{{ID: "1", Subject: "work", Metadata: map[string]any{"worker": "original"}}})}}
 	for range 3 {
 		if err := opened.Append(context.Background(), record); err != nil {
 			t.Fatal(err)
@@ -262,7 +262,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 	if got := len(readAllRecords(t, store.projectDir, "s")); got != before {
 		t.Fatalf("unchanged state duplicated: %d -> %d", before, got)
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchTasks(nil), transcript.PatchGroup("")}}}); err != nil {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Tasks: new([]todo.Item{}), Group: new("")}}); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := store.Read("s")

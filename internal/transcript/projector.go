@@ -1,12 +1,16 @@
 package transcript
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 
-	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+type messageNode struct {
+	ai.Message
+	ParentMessageID string
+}
 
 func Project(records []Record) (*Transcript, error) {
 	return project(records, true)
@@ -16,7 +20,7 @@ func Project(records []Record) (*Transcript, error) {
 // stops at the latest compaction boundary.
 func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 	t := &Transcript{}
-	messageMap := make(map[string]MessageNode, len(records))
+	messageMap := make(map[string]messageNode, len(records))
 	order := make([]string, 0, len(records))
 	var compactBoundary string
 
@@ -30,12 +34,12 @@ func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 			if err := validateMessages(r.Messages); err != nil {
 				return nil, err
 			}
-			messageMap = make(map[string]MessageNode, len(r.Messages))
+			messageMap = make(map[string]messageNode, len(r.Messages))
 			order = nil
 			compactBoundary = ""
 			parent := ""
 			for _, m := range r.Messages {
-				messageMap[m.ID] = MessageNode{Message: m, ParentMessageID: parent, Time: r.Time}
+				messageMap[m.ID] = messageNode{Message: m, ParentMessageID: parent}
 				order = append(order, m.ID)
 				parent = m.ID
 			}
@@ -71,9 +75,10 @@ func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 				}
 			}
 		case SessionStatePatched:
-			if err := applyStatePatch(&t.State, r.State); err != nil {
-				return nil, err
+			if r.State == nil {
+				return nil, fmt.Errorf("state payload is required")
 			}
+			r.State.apply(&t.State)
 			if t.ID == "" {
 				t.ID = r.SessionID
 			}
@@ -140,79 +145,14 @@ func applyForked(t *Transcript, r Record) {
 	}
 }
 
-func buildNode(r Record) (MessageNode, error) {
+func buildNode(r Record) (messageNode, error) {
 	if r.Message == nil {
-		return MessageNode{}, fmt.Errorf("message.appended missing payload")
+		return messageNode{}, fmt.Errorf("message.appended missing payload")
 	}
-	return MessageNode{Message: *r.Message, ParentMessageID: r.ParentMessageID, Time: r.Time, Cwd: r.Cwd, GitBranch: r.GitBranch, AgentID: r.AgentID, IsSidechain: r.IsSidechain}, nil
+	return messageNode{Message: *r.Message, ParentMessageID: r.ParentMessageID}, nil
 }
 
-func applyStatePatch(state *State, patch *StateRecord) error {
-	if patch == nil {
-		return nil
-	}
-	for _, op := range patch.Ops {
-		switch op.Path {
-		case PatchPathTitle:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Title = v
-		case PatchPathLastPrompt:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.LastPrompt = v
-		case PatchPathTag:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Tag = v
-		case PatchPathMode:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Mode = v
-		case PatchPathAutoPilot:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.AutoPilot = v
-		case PatchPathGroup:
-			var v string
-			if err := json.Unmarshal(op.Value, &v); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Group = v
-		case PatchPathTasks:
-			var tasks []todo.Item
-			if err := json.Unmarshal(op.Value, &tasks); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Tasks = tasks
-		case PatchPathWorktree:
-			if string(op.Value) == "null" {
-				state.Worktree = nil
-				continue
-			}
-			var wt WorktreeState
-			if err := json.Unmarshal(op.Value, &wt); err != nil {
-				return fmt.Errorf("patch %s: %w", op.Path, err)
-			}
-			state.Worktree = &wt
-		default:
-			return fmt.Errorf("unknown state path %q", op.Path)
-		}
-	}
-	return nil
-}
-
-func materializeActiveChain(messageMap map[string]MessageNode, order []string, boundary string) []MessageNode {
+func materializeActiveChain(messageMap map[string]messageNode, order []string, boundary string) []ai.Message {
 	if len(order) == 0 {
 		return nil
 	}
@@ -239,7 +179,7 @@ func materializeActiveChain(messageMap map[string]MessageNode, order []string, b
 		leafID = order[len(order)-1]
 	}
 
-	reversed := make([]MessageNode, 0, len(order))
+	reversed := make([]ai.Message, 0, len(order))
 	cur := leafID
 	seen := make(map[string]bool, len(order))
 	for cur != "" {
@@ -252,7 +192,7 @@ func materializeActiveChain(messageMap map[string]MessageNode, order []string, b
 		if !ok {
 			break
 		}
-		reversed = append(reversed, n)
+		reversed = append(reversed, n.Message)
 
 		if boundary != "" && cur == boundary {
 			break
@@ -260,9 +200,6 @@ func materializeActiveChain(messageMap map[string]MessageNode, order []string, b
 		cur = n.ParentMessageID
 	}
 
-	out := make([]MessageNode, 0, len(reversed))
-	for _, r := range slices.Backward(reversed) {
-		out = append(out, r)
-	}
-	return out
+	slices.Reverse(reversed)
+	return reversed
 }

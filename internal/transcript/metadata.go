@@ -6,7 +6,6 @@ type Metadata struct {
 	ID              string
 	Title           string
 	LastPrompt      string
-	Tag             string
 	Mode            string
 	AutoPilot       string
 	Group           string
@@ -27,7 +26,6 @@ func MetadataFromTranscript(t *Transcript) Metadata {
 		ID:              t.ID,
 		Title:           t.State.Title,
 		LastPrompt:      t.State.LastPrompt,
-		Tag:             t.State.Tag,
 		Mode:            t.State.Mode,
 		AutoPilot:       t.State.AutoPilot,
 		Group:           t.State.Group,

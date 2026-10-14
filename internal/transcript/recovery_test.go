@@ -163,7 +163,7 @@ func TestWriterLeaseRefreshesExternalHistoryAndCounters(t *testing.T) {
 	if err := a.Append(ctx, Record{SessionID: "s", Type: InferenceRequested, Inference: &InferenceRecord{Sequence: 2, Exchange: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Append(ctx, Record{SessionID: "s", Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("updated by A")}}}); err != nil {
+	if err := a.Append(ctx, Record{SessionID: "s", Type: SessionStatePatched, State: &StateRecord{Title: new("updated by A")}}); err != nil {
 		t.Fatal(err)
 	}
 	release()

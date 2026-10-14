@@ -1,7 +1,6 @@
 package transcript
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -45,7 +44,7 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 	if len(transcript.Messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(transcript.Messages))
 	}
-	if transcript.Messages[1].ParentMessageID != "msg-1" {
+	if transcript.Messages[0].ID != "msg-1" || transcript.Messages[1].ID != "msg-2" {
 		t.Fatalf("unexpected parent chain: %+v", transcript.Messages)
 	}
 }
@@ -53,8 +52,8 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 func TestProjectStatePatchLastWins(t *testing.T) {
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("A"), PatchMode("normal")}}},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("B"), PatchMode("plan")}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Title: new("A"), Mode: new("normal")}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Title: new("B"), Mode: new("plan")}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -66,10 +65,9 @@ func TestProjectStatePatchLastWins(t *testing.T) {
 
 func TestProjectAutoPilotRoundTrip(t *testing.T) {
 	blob := `{"mission":"ship it","steers":{"turnEnd":true}}`
-	ops := StateOpsDiff(State{}, State{AutoPilot: blob})
 	tr, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: ops}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{AutoPilot: new(blob)}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -82,7 +80,7 @@ func TestProjectAutoPilotRoundTrip(t *testing.T) {
 	}
 }
 
-func TestProjectTasksAndWorktreePatches(t *testing.T) {
+func TestProjectTasksPatch(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 14, 10, 0, 0, time.UTC)
 	task := todo.Item{
 		ID:              "1",
@@ -93,10 +91,9 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 		UpdatedAt:       taskTime,
 		StatusChangedAt: taskTime,
 	}
-	wt := &WorktreeState{OriginalCwd: "/repo", WorktreePath: "/repo/.wt/1", WorktreeName: "fix-1"}
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]todo.Item{task}), PatchWorktree(wt)}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Tasks: new([]todo.Item{task})}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -106,23 +103,6 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	}
 	if transcript.State.Tasks[0].Metadata["task_id"] != "bg-1" {
 		t.Fatalf("task metadata was not projected: %+v", transcript.State.Tasks[0].Metadata)
-	}
-	if transcript.State.Worktree == nil || transcript.State.Worktree.WorktreeName != "fix-1" {
-		t.Fatalf("unexpected worktree: %+v", transcript.State.Worktree)
-	}
-}
-
-func TestProjectWorktreeNullClears(t *testing.T) {
-	transcript, err := Project([]Record{
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchWorktree(&WorktreeState{WorktreeName: "a"})}}},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchWorktree(nil)}}},
-	})
-	if err != nil {
-		t.Fatalf("Project(): %v", err)
-	}
-	if transcript.State.Worktree != nil {
-		t.Fatalf("expected cleared worktree, got %+v", transcript.State.Worktree)
 	}
 }
 
@@ -140,13 +120,6 @@ func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
 	}
 	if len(transcript.Messages) != 2 || transcript.Messages[0].ID != "m2" || transcript.Messages[1].ID != "m3" {
 		t.Fatalf("unexpected active chain: %+v", transcript.Messages)
-	}
-}
-
-func TestProjectUnknownPatchPathIsRejected(t *testing.T) {
-	_, err := Project([]Record{{SessionID: "tx-1", Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{{Path: "bad.path", Value: json.RawMessage(`"x"`)}}}}})
-	if err == nil {
-		t.Fatal("unknown state path accepted")
 	}
 }
 

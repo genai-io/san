@@ -506,12 +506,8 @@ func (m *model) disabledToolsSignature() string {
 	return strings.Join(names, "\x00")
 }
 
-// ensureAgentRuntime lazily starts the agent goroutine, preloading the
-// existing conversation. If pendingMessageID is non-empty and matches the
-// trailing user message in m.conv, it is dropped from the preload — the
-// caller is about to re-deliver it via sendToAgent and we'd otherwise see
-// the input twice. Pass "" when the caller has not appended the message.
-func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
+// ensureAgentRuntime starts the agent with its retained native conversation.
+func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	if m.services.Agent.Active() {
 		// The toolset is fixed at agent-build time. If the enabled Evolve
 		// capabilities or the disabled-tool set drifted since the build (a
@@ -536,7 +532,7 @@ func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 	if w := m.services.Session; w != nil && w.Err() != nil {
 		return nil, w.Err()
 	}
-	coreMessages := m.seedAgentMessages(pendingMessageID)
+	coreMessages := m.services.Agent.Messages()
 
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
@@ -557,35 +553,26 @@ func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 	return tea.Batch(cmds...), nil
 }
 
-// seedAgentMessages returns the authoritative chain for a newly-built main
-// agent. Runtime retains native messages across stops and errors; UI rows are
-// only a fallback before any native conversation exists.
-func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
-	coreMessages := m.services.Agent.Messages()
-	if len(coreMessages) == 0 {
-		coreMessages = m.conv.ConvertToProvider()
-	}
-	if pendingMessageID != "" && len(coreMessages) > 0 {
-		last := coreMessages[len(coreMessages)-1]
-		if last.Role == ai.RoleUser && last.ID == pendingMessageID {
-			coreMessages = coreMessages[:len(coreMessages)-1]
-		}
-	}
-	return coreMessages
-}
-
 // agentSendFailedMsg reports a message the agent never accepted; a delivered
 // message needs no round trip.
 type agentSendFailedMsg struct{ err error }
 
 func (m *model) sendToAgent(msg core.Message) tea.Cmd {
+	m.pendingMessages = append(m.pendingMessages, msg)
+	return m.sendPendingMessages()
+}
+
+func (m *model) sendPendingMessages() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	msg = m.attachPendingReminders(msg)
-	// Send is nonblocking; enqueue before Esc can cancel this submission.
-	if err := m.services.Agent.Send(msg); err != nil {
-		return func() tea.Msg { return agentSendFailedMsg{err: err} }
+	for len(m.pendingMessages) > 0 {
+		m.pendingMessages[0] = m.attachPendingReminders(m.pendingMessages[0])
+		// Keep rejected input in native form so the next submission can retry it.
+		if err := m.services.Agent.Send(m.pendingMessages[0]); err != nil {
+			return func() tea.Msg { return agentSendFailedMsg{err: err} }
+		}
+		m.pendingMessages = m.pendingMessages[1:]
 	}
 	if !m.conv.Stream.Active {
 		m.conv.Stream = conv.StreamState{Active: true, Waiting: true}

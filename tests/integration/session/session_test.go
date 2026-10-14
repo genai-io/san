@@ -119,35 +119,6 @@ func TestSession_List(t *testing.T) {
 	}
 }
 
-func TestSession_GetLatest(t *testing.T) {
-	store := newTestStore(t)
-
-	sess1 := &session.History{
-		Metadata: session.Metadata{ID: "old", Title: "Old"},
-	}
-	if err := testutil.ImportSession(store, sess1); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	sess2 := &session.History{
-		Metadata: session.Metadata{ID: "new", Title: "New"},
-	}
-	if err := testutil.ImportSession(store, sess2); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	latest, err := store.Latest()
-	if err != nil {
-		t.Fatalf("GetLatest() error: %v", err)
-	}
-
-	if latest.Metadata.Title != "New" {
-		t.Errorf("expected latest 'New', got %q", latest.Metadata.Title)
-	}
-}
-
 func TestSession_Delete(t *testing.T) {
 	store := newTestStore(t)
 
@@ -346,7 +317,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	got := loaded.Messages[0].ToolResults()[0].Content.Text()
+	got := store.ChatRows(loaded)[0].ToolResult.Text()
 	if got != content {
 		t.Fatalf("hydrated tool result len = %d, want %d", len(got), len(content))
 	}
@@ -523,11 +494,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	}
 }
 
-// Regression: after a process restart the lastEmittedState cache is empty.
-// If a user clears a previously-set field (Tag "urgent" → "") on the first
-// save after restart, StateOpsDiff(zero, {Tag:""}) would see "" == "" and
-// emit no op — leaving the stale value on disk forever. The store must
-// rehydrate prev from disk on cold cache so the clear actually lands.
+// Clearing a field after restart must compare against the persisted state.
 func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sessions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -539,7 +506,7 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 	first := &session.History{
-		Metadata: session.Metadata{ID: "restart-tag", Tag: "urgent"},
+		Metadata: session.Metadata{ID: "restart-group", Group: "urgent"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := testutil.ImportSession(store1, first); err != nil {
@@ -552,26 +519,23 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("NewStoreWithDir #2: %v", err)
 	}
 	cleared := &session.History{
-		Metadata: session.Metadata{ID: "restart-tag", Tag: ""},
+		Metadata: session.Metadata{ID: "restart-group", Group: ""},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := testutil.ImportSession(store2, cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store2.Read("restart-tag")
+	loaded, err := store2.Read("restart-group")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.Metadata.Tag != "" {
-		t.Fatalf("Tag = %q, want empty (clear did not survive cold cache)", loaded.Metadata.Tag)
+	if loaded.Metadata.Group != "" {
+		t.Fatalf("Group = %q, want empty (clear did not survive cold cache)", loaded.Metadata.Group)
 	}
 }
 
-// Regression: clearing tasks (or worktree) on a subsequent Save must clear
-// them on reload. Under append-only last-wins projection, StateOpsDiff
-// must emit an empty-array tasks op when the previous snapshot had tasks
-// and the new one doesn't, so absence-of-op doesn't resurrect stale state.
+// An explicit empty task list clears the previous persisted tasks.
 func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	store := newTestStore(t)
 

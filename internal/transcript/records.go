@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -11,7 +12,7 @@ import (
 // Record type values follow <entity>.<verb> (past tense), lowercase,
 // dot-separated. See docs/inspector.md for the full taxonomy.
 const (
-	SchemaVersion = "2"
+	SchemaVersion = "3"
 
 	SessionStarted       = "session.started"
 	SessionForked        = "session.forked"
@@ -32,17 +33,6 @@ const (
 	SkillStateChanged    = "skill.state.changed"
 	NoticeAdded          = "notice.added"
 	ToolCompleted        = "tool.completed"
-)
-
-const (
-	PatchPathTitle      = "title"
-	PatchPathLastPrompt = "lastPrompt"
-	PatchPathTag        = "tag"
-	PatchPathMode       = "mode"
-	PatchPathAutoPilot  = "autoPilot"
-	PatchPathGroup      = "group"
-	PatchPathTasks      = "tasks"
-	PatchPathWorktree   = "worktree"
 )
 
 // Audit-record enum values. Centralized so producers and consumers (viewer,
@@ -100,13 +90,15 @@ type Record struct {
 	Notice      *NoticeRecord        `json:"notice,omitempty"`
 }
 
+// StateRecord contains only changed fields; nil leaves a field unchanged.
+// A non-nil pointer to an empty value explicitly clears it.
 type StateRecord struct {
-	Ops []PatchOp `json:"ops"`
-}
-
-type PatchOp struct {
-	Path  string          `json:"path"`
-	Value json.RawMessage `json:"value"`
+	Title      *string      `json:"title,omitempty"`
+	LastPrompt *string      `json:"lastPrompt,omitempty"`
+	Mode       *string      `json:"mode,omitempty"`
+	AutoPilot  *string      `json:"autoPilot,omitempty"`
+	Group      *string      `json:"group,omitempty"`
+	Tasks      *[]todo.Item `json:"tasks,omitempty"`
 }
 
 // SessionStart describes a new identity and its initial runtime configuration.
@@ -250,15 +242,6 @@ type SkillRecord struct {
 	Previous string `json:"previous,omitempty"` // disable | enable | active | "" (first observation)
 	Current  string `json:"current"`            // disable | enable | active
 	Caller   string `json:"caller,omitempty"`   // "user:/skills" | "boot" | etc.
-}
-
-type WorktreeState struct {
-	OriginalCwd    string `json:"originalCwd"`
-	WorktreePath   string `json:"worktreePath"`
-	WorktreeName   string `json:"worktreeName"`
-	WorktreeBranch string `json:"worktreeBranch,omitempty"`
-	OriginalBranch string `json:"originalBranch,omitempty"`
-	Exited         bool   `json:"exited,omitempty"`
 }
 
 // ToolDetailsRecord keeps presentation data beside the unmodified model result.
