@@ -204,20 +204,20 @@ func (b *replayBuilder) checkInference(inf *transcript.InferenceRecord) {
 	messageIDs := replayMessageIDs(b.activeMessages())
 	sysDigest := transcript.DigestSystem(renderSections(system))
 	toolsDigest := transcript.DigestTools(tools)
-	b.integrity = append(b.integrity,
-		replayIntegrityCheck{
+	b.integrity = []replayIntegrityCheck{
+		{
 			Field: "systemDigest", Expected: jsonRaw(inf.SystemDigest), Got: jsonRaw(sysDigest),
 			OK: inf.SystemDigest == "" || inf.SystemDigest == sysDigest,
 		},
-		replayIntegrityCheck{
+		{
 			Field: "toolsDigest", Expected: jsonRaw(inf.ToolsDigest), Got: jsonRaw(toolsDigest),
 			OK: inf.ToolsDigest == "" || inf.ToolsDigest == toolsDigest,
 		},
-		replayIntegrityCheck{
+		{
 			Field: "messageIds", Expected: jsonRaw(inf.MessageIDs), Got: jsonRaw(messageIDs),
 			OK: len(inf.MessageIDs) == 0 || reflect.DeepEqual(inf.MessageIDs, messageIDs),
 		},
-	)
+	}
 }
 
 func (b *replayBuilder) snapshot() replayState {

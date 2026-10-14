@@ -98,8 +98,12 @@ cover:
 # `make ci` before pushing to catch format / vet / layercheck / test
 # failures locally instead of round-tripping through Actions. `cover` already
 # runs the integration tests (with coverage), so they need no separate step.
-ci: format-check build-all lint
+ci: format-check build-all lint test-inspector-ui
 	$(MAKE) cover
+
+.PHONY: test-inspector-ui
+test-inspector-ui:
+	node --test internal/inspector/ui/app.test.cjs
 
 clean:
 	rm -rf $(BINDIR)

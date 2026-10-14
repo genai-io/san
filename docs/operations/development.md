@@ -7,7 +7,13 @@ make build
 make test
 make lint
 make format
+make test-inspector-ui
+make ci
 ```
+
+The inspector UI regression tests use Node's built-in test runner (Node 18+),
+with no npm dependencies or browser installation. `make ci` runs them as well as
+the Go build, lint, and unit/integration tests with race detection and coverage.
 
 Build targets do not rewrite source files. `make format` is the explicit
 mutating command; `make release` runs `format-check` and fails when the tree

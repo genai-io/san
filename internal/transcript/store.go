@@ -240,18 +240,29 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 	return nil
 }
 
-func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error {
+func (s *Store) Fork(ctx context.Context, cmd ForkCommand) (err error) {
 	if err := ValidateStorageID(cmd.SourceSessionID); err != nil {
 		return err
 	}
 	if err := ValidateStorageID(cmd.NewSessionID); err != nil {
 		return err
 	}
+	release, err := s.Claim(cmd.NewSessionID)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, release()) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	destPath := s.transcriptPath(cmd.NewSessionID)
+	if exists, err := fileExists(destPath); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("fork destination %s already exists", cmd.NewSessionID)
 	}
 
 	sourcePath := s.transcriptPath(cmd.SourceSessionID)
@@ -263,7 +274,6 @@ func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error {
 		return fmt.Errorf("source transcript not found: %s", cmd.SourceSessionID)
 	}
 
-	destPath := s.transcriptPath(cmd.NewSessionID)
 	tmpPath := destPath + ".tmp"
 	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
@@ -300,6 +310,11 @@ func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error {
 		_ = f.Close()
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write fork marker: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("sync fork transcript: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmpPath)

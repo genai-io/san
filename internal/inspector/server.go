@@ -8,8 +8,8 @@ package inspector
 import (
 	"bytes"
 	"container/list"
-	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -38,8 +38,6 @@ type Server struct {
 	mux        *http.ServeMux
 	store      *transcript.Store // reads logs and derived summaries
 
-	mu          sync.Mutex
-	watchers    map[string]*tailer // sessionID -> active tailer
 	replayCache *replayLRU
 }
 
@@ -47,7 +45,6 @@ func New(projectDir string) *Server {
 	s := &Server{
 		projectDir:  projectDir,
 		mux:         http.NewServeMux(),
-		watchers:    make(map[string]*tailer),
 		replayCache: newReplayLRU(replayCacheCapacity),
 	}
 	// Best-effort: the viewer falls back to a directory walk if the store
@@ -87,15 +84,11 @@ type sessionListItem struct {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	var summaries []transcript.Summary
 	if s.store != nil {
-		items, err := s.listFromSummaries(r.Context())
-		if err == nil {
-			writeJSON(w, items)
-			return
-		}
-		// Fall back to the directory when a transcript cannot be projected.
+		summaries, _ = s.store.List(r.Context(), "", transcript.ListOptions{IncludeSidechain: true})
 	}
-	items, err := s.listFromDir()
+	items, err := s.listFromDir(summaries)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -103,30 +96,12 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, items)
 }
 
-// listFromSummaries reads derived per-transcript previews.
-func (s *Server) listFromSummaries(ctx context.Context) ([]sessionListItem, error) {
-	entries, err := s.store.List(ctx, "", transcript.ListOptions{IncludeSidechain: true})
-	if err != nil {
-		return nil, err
+// The inspector keeps raw file access even when a transcript cannot be restored.
+func (s *Server) listFromDir(summaries []transcript.Summary) ([]sessionListItem, error) {
+	byID := make(map[string]transcript.Summary, len(summaries))
+	for _, summary := range summaries {
+		byID[summary.ID] = summary
 	}
-	items := make([]sessionListItem, 0, len(entries))
-	for _, e := range entries {
-		var size int64
-		if info, err := os.Stat(e.FullPath); err == nil {
-			size = info.Size()
-		}
-		items = append(items, sessionListItem{
-			ID:        e.ID,
-			Title:     e.Title,
-			UpdatedAt: e.UpdatedAt,
-			Size:      size,
-		})
-	}
-	return items, nil
-}
-
-// listFromDir provides file access when the store cannot project a transcript.
-func (s *Server) listFromDir() ([]sessionListItem, error) {
 	entries, err := os.ReadDir(s.transcriptsDir())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -145,12 +120,17 @@ func (s *Server) listFromDir() ([]sessionListItem, error) {
 			continue
 		}
 		path := filepath.Join(s.transcriptsDir(), e.Name())
-		items = append(items, sessionListItem{
+		item := sessionListItem{
 			ID:        id,
 			UpdatedAt: info.ModTime(),
 			Size:      info.Size(),
-			Title:     previewTitle(path),
-		})
+		}
+		if summary, ok := byID[id]; ok {
+			item.Title, item.UpdatedAt = summary.Title, summary.UpdatedAt
+		} else {
+			item.Title = previewTitle(path)
+		}
+		items = append(items, item)
 	}
 	slices.SortStableFunc(items, func(a, b sessionListItem) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
 	return items, nil
@@ -189,7 +169,16 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request, sessionID, 
 		http.NotFound(w, r)
 		return
 	}
-	key := sessionID + "\x00" + recordID
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", sessionID, recordID, info.Size(), info.ModTime().UnixNano())
 	if cached, ok := s.replayCache.get(key); ok {
 		writeJSON(w, cached)
 		return
@@ -212,8 +201,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request, sessionID, 
 }
 
 // replayLRU caches the results of replayFile by (sessionID, recordID).
-// Replay is deterministic for append-only transcripts, so a (sessionID,
-// recordID) result never changes for the life of the file. Bounded to keep
+// The key includes file size and modification time so replacement invalidates it. Bounded to keep
 // peak memory in check on long-running viewers; eviction is plain LRU.
 type replayLRU struct {
 	mu       sync.Mutex
@@ -302,9 +290,8 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// readFromOffset reads bytes from the file starting at offset. Returns the
-// bytes plus the new end-of-file offset. Always returns at line boundaries —
-// trailing partial line is left for the next read.
+// readFromOffset returns complete JSONL lines and the consumed file offset.
+// A complete EOF record gets a synthetic newline; partial JSON waits for more bytes.
 func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -329,8 +316,13 @@ func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 		return nil, 0, err
 	}
 	buf = buf[:n]
+	i := bytes.LastIndexByte(buf, '\n')
+	// A crash can leave a complete final record without the encoder's newline.
+	if json.Valid(buf[i+1:]) {
+		return append(buf, '\n'), offset + int64(n), nil
+	}
 	// Trim trailing partial line.
-	if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
+	if i >= 0 {
 		return buf[:i+1], offset + int64(i+1), nil
 	}
 	// No newline yet — leave the bytes for next poll.
