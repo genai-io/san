@@ -3,8 +3,10 @@ package todo
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -357,7 +359,11 @@ func (s *Store) Export() []Item {
 
 	items := make([]Item, 0, len(s.items))
 	for _, t := range s.items {
-		items = append(items, *t)
+		item := *t
+		item.Metadata = maps.Clone(t.Metadata)
+		item.Blocks = slices.Clone(t.Blocks)
+		item.BlockedBy = slices.Clone(t.BlockedBy)
+		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return compareNumericIDs(items[i].ID, items[j].ID)

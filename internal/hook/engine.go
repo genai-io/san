@@ -233,7 +233,7 @@ func outcomeOf(r HookOutcome) string {
 
 // Package-local mirrors of transcript.HookOutcome* so the hook package
 // doesn't import the transcript package. The two sides are joined by an
-// audit consumer (session.Writer) that does the final mapping.
+// audit consumer (session.Session) that does the final mapping.
 const (
 	outcomeRan     = "ran"
 	outcomeBlocked = "blocked"

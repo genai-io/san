@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -36,12 +35,12 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 
 	m := &model{
 		services: services{
-			Agent:    sess,
-			LLM:      &llm.Conn{},
-			Tracker:  todo.NewStore(),
-			Subagent: subagent.NewRegistry(),
-			Reminder: reminder.NewService(),
-			Session:  session.NewActive(nil, "sess-1"),
+			Agent:     sess,
+			LLM:       &llm.Conn{},
+			Tracker:   todo.NewStore(),
+			Subagent:  subagent.NewRegistry(),
+			Reminder:  reminder.NewService(),
+			sessionID: "sess-1",
 		},
 		conv: conv.NewModel(80),
 	}
@@ -260,7 +259,7 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 	pasted := core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}}
 
 	content := m.describeImages("what does this show", []core.Attachment{pasted})
-	store := m.services.Session.Store()
+	store := m.services.SessionStore
 	entries, err := os.ReadDir(store.ImagesDir("sess-1"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("session image dir holds %v, %v; want the one pasted file", entries, err)

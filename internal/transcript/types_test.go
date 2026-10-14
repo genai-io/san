@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -26,7 +27,7 @@ func TestTranscriptTypesCarryProjectedState(t *testing.T) {
 		State: State{
 			Title:      "Fix persistence",
 			LastPrompt: "continue",
-			Tasks: []TodoItemSnapshot{{
+			Tasks: []todo.Item{{
 				ID:      "1",
 				Subject: "Refactor store",
 				Status:  "in_progress",

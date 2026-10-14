@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/todo"
 )
 
 type StartCommand struct {
@@ -37,7 +38,7 @@ func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
 func PatchAutoPilot(v string) PatchOp       { return mustPatch(PatchPathAutoPilot, v) }
 func PatchGroup(v string) PatchOp           { return mustPatch(PatchPathGroup, v) }
-func PatchTasks(tasks []TodoItemSnapshot) PatchOp {
+func PatchTasks(tasks []todo.Item) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }
 func PatchWorktree(worktree *WorktreeState) PatchOp { return mustPatch(PatchPathWorktree, worktree) }
@@ -75,7 +76,7 @@ func StateOpsDiff(prev, next State) []PatchOp {
 	return ops
 }
 
-func tasksEqual(a, b []TodoItemSnapshot) bool {
+func tasksEqual(a, b []todo.Item) bool {
 	if len(a) != len(b) {
 		return false
 	}

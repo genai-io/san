@@ -16,11 +16,13 @@ compaction boundaries, writer leases, crash recovery, and per-session summaries.
 ## Contract
 
 The package exposes a concrete `*Store`, plus `Record`, `Transcript`, and
-`Summary` values. SDK `ai.Message` and `ai.Schema` payloads stay native.
+`Summary` values. SDK `ai.Message` and `ai.Schema`, and domain `todo.Item` payloads stay native.
+State patches are reduced to actual changes under the append mutex; unchanged
+fields produce no redundant record.
 
 ```go
 func NewStore(baseDir, projectID string) (*Store, error)
-func (s *Store) Claim(id string) (func(), error)
+func (s *Store) Claim(id string) (func() error, error)
 func (s *Store) Start(ctx context.Context, cmd StartCommand) error
 func (s *Store) Append(ctx context.Context, rec Record) error
 func (s *Store) Position(ctx context.Context, id string) (string, int, int, error)
@@ -29,7 +31,6 @@ func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error)
 func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([]Summary, error)
 func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error
 func (s *Store) Delete(ctx context.Context, transcriptID string) error
-func (s *Store) Flush() error
 func Project(records []Record) (*Transcript, error)
 ```
 
@@ -56,10 +57,10 @@ func Project(records []Record) (*Transcript, error)
 ## Lifecycle
 
 `NewStore` binds a project directory. Methods serialize cache access with the
-store mutex. `Claim` takes a cross-process file lock; its returned release
-function ends the writer lease. Callers must hold that lease while writing a
-conversation. `Flush` refreshes derived summaries; it is not a durability barrier
-for message records, which are already synced on append.
+store mutex. `Claim` takes a cross-process file lock; its returned idempotent release
+function ends the writer lease and reports close errors. Callers must hold that lease while writing a
+conversation. Listing refreshes derived summaries lazily. Message/state records are synced on
+append; no Flush lifecycle or separate save barrier is needed.
 
 ## Tests
 

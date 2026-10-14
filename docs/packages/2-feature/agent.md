@@ -58,7 +58,9 @@ func Default() *Runtime
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
-- No persistence here — session/transcript state lives in
+- Runtime owns live native messages; the opened Session owns persistence and its
+writer lease. Stopping a runtime retains history and does not close that Session.
+Persistence lives in
   [`packages/session.md`](session.md).
 
 ## Lifecycle

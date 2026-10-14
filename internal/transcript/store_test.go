@@ -474,7 +474,7 @@ func mapKeys(obj map[string]any) []string {
 
 // The transcript summary defers per-message writes to a flush boundary: appends
 // stay authoritative in the in-process cache, while the on-disk file another
-// process reads only catches up on Flush. Start still writes a new
+// process reads only catches up on List. Start still writes a new
 // session's entry eagerly so the picker never loses it.
 func TestStoreSummaryAlwaysReflectsTheLog(t *testing.T) {
 	dir := t.TempDir()
@@ -511,8 +511,8 @@ func TestStoreSummaryAlwaysReflectsTheLog(t *testing.T) {
 		t.Fatalf("before flush, fresh MessageCount = %d, want 3", got)
 	}
 
-	if err := store.Flush(); err != nil {
-		t.Fatalf("Flush(): %v", err)
+	if _, err := store.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
+		t.Fatalf("List(): %v", err)
 	}
 	if got := freshSummaryMessageCount(t, dir, "tx-1"); got != 3 {
 		t.Fatalf("after flush, on-disk MessageCount = %d, want 3", got)
@@ -568,8 +568,8 @@ func TestStoreSummaryCapsPreviewText(t *testing.T) {
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock(full)}}}); err != nil {
 		t.Fatalf("AppendMessage(): %v", err)
 	}
-	if err := store.Flush(); err != nil {
-		t.Fatalf("Flush(): %v", err)
+	if _, err := store.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
+		t.Fatalf("List(): %v", err)
 	}
 
 	raw, err := os.ReadFile(store.summaryPath("tx-1"))

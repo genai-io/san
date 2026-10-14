@@ -5,6 +5,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -87,8 +88,8 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	// runtime callbacks as soon as its gate resumes.
 	permRecord := permDecisionRecord(req, decision, reason, pending.Source.PermissionMode)
 	permRecord.Detail = interactionPermissionDetail(pending, decision.Request)
-	if rec := m.services.Session.Writer(); rec != nil {
-		rec.RecordPermissionDecided(permRecord)
+	if rec := m.services.Session; rec != nil {
+		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &permRecord})
 	}
 	select {
 	case req.Response <- agent.PermGateResponse{Allow: decision.Approved, Reason: reason}:

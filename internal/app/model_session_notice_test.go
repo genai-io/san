@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/session"
 )
 
 // Before the first message there is no writer; notices wait for it.
 func TestNoticesBeforeTheWriterWaitForIt(t *testing.T) {
-	m := &model{services: services{Session: &session.Active{}}, conv: conv.NewModel(80)}
+	m := &model{services: services{Session: nil}, conv: conv.NewModel(80)}
 	m.conv.OnNotice = m.recordNotice
 	m.conv.AddNotice("Joined shop as @api")
 	if len(m.earlyNotices) != 1 {

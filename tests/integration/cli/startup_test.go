@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/tests/integration/testutil"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
@@ -194,7 +196,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 1. Create and save the original session.
-	original := &session.Snapshot{
+	original := &session.History{
 		Metadata: session.Metadata{
 			ID:       "source-session",
 			Title:    "Source",
@@ -204,12 +206,17 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 		},
 		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("original message")}, ai.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("original reply")}},
 	}
-	if err := store.Save(original); err != nil {
+	if err := testutil.ImportSession(store, original); err != nil {
 		t.Fatalf("Save(original): %v", err)
 	}
 
 	// 2. Fork the session.
-	forked, err := store.Fork("source-session")
+	forkSession, forked, err := store.Fork("source-session")
+	if forkSession != nil {
+		if err := forkSession.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err != nil {
 		t.Fatalf("Fork(): %v", err)
 	}
@@ -234,13 +241,13 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 
 	// 3. Append a new entry to the fork and save it.
 	forked.Messages = append(forked.Messages, core.Message{ID: "u2", Role: ai.RoleUser, Content: ai.TextContent("fork-only message")})
-	if err := store.Save(forked); err != nil {
+	if err := testutil.ImportSession(store, forked); err != nil {
 		t.Fatalf("Save(forked): %v", err)
 	}
 
 	// 4. Reload the original and confirm it is unchanged.
 	time.Sleep(10 * time.Millisecond) // ensure timestamps differ
-	reloaded, err := store.Load("source-session")
+	reloaded, err := store.Read("source-session")
 	if err != nil {
 		t.Fatalf("Load(source-session): %v", err)
 	}
@@ -249,7 +256,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 5. Reload the fork and confirm it has the extra entry.
-	reloadedFork, err := store.Load(forked.Metadata.ID)
+	reloadedFork, err := store.Read(forked.Metadata.ID)
 	if err != nil {
 		t.Fatalf("Load(forked): %v", err)
 	}

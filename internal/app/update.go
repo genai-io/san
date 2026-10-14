@@ -295,7 +295,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ensureAgentRuntime rebuilds on capability drift (agentEvolveCaps),
 		// which covers external settings edits the same way.
 		if m.services.Agent.Active() {
-			m.wireSelfLearn(m.buildAgentParams())
+			params, err := m.buildAgentParams()
+			if err != nil {
+				log.Logger().Warn("could not configure self-learning", zap.Error(err))
+			} else {
+				m.wireSelfLearn(params)
+			}
 		}
 		return m, nil
 	case input.ThemeSavedMsg:
@@ -415,12 +420,6 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// store the next time it actually rebuilds.
 		if m.services.Agent.Active() && !m.conv.Stream.Active {
 			m.StopAgentRuntime()
-		}
-		return m, nil
-	case persistSessionDoneMsg:
-		if msg.err != nil {
-			log.Logger().Warn("async session persist failed", zap.Error(msg.err))
-			m.conv.AddNotice("Session was not saved: " + msg.err.Error())
 		}
 		return m, nil
 	case agentSendFailedMsg:

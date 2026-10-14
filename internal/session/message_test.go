@@ -29,18 +29,18 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 				t.Fatal(err)
 			}
 			if live {
-				w := NewActive(store, "s").NewWriter("main", "test", "model", 100)
+				w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 				defer w.Close()
 				for _, m := range messages {
-					w.OnAgentEvent(sdkagent.MessageAdded{Message: m})
+					w.RecordAgentEvent(sdkagent.MessageAdded{Message: m})
 				}
 				if err := w.Err(); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := store.Save(&Snapshot{Metadata: Metadata{ID: "s"}, Messages: messages}); err != nil {
+			} else if err := store.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: messages}); err != nil {
 				t.Fatal(err)
 			}
-			loaded, err := store.Load("s")
+			loaded, err := store.Read("s")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,16 +51,16 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 	}
 }
 
-func TestWriterFailureKeepsAReplayablePrefix(t *testing.T) {
+func TestSessionFailureKeepsAReplayablePrefix(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := NewActive(store, "s").NewWriter("main", "test", "model", 100)
+	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	defer w.Close()
 	emit := func(id string) {
-		w.OnAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}})
+		w.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}})
 	}
 	emit("saved")
 	path := filepath.Join(dir, "transcripts")
@@ -76,7 +76,7 @@ func TestWriterFailureKeepsAReplayablePrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	emit("later")
-	loaded, err := store.Load("s")
+	loaded, err := store.Read("s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,21 +94,22 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := ai.Message{ID: "m", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "call", Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/source/call]")})}}
-	if err := store.Save(&Snapshot{Metadata: Metadata{ID: "source", CreatedAt: time.Unix(100, 0)}, Messages: []ai.Message{message}}); err != nil {
+	if err := store.importHistory(&History{Metadata: Metadata{ID: "source", CreatedAt: time.Unix(100, 0)}, Messages: []ai.Message{message}}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := store.transcriptStore.Load(context.Background(), "source")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fork, err := store.Fork("source")
+	forkSession, fork, err := store.Fork("source")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = forkSession.Close() })
 	if err := store.Delete("source"); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Load(fork.Metadata.ID)
+	resumed, err := store.Read(fork.Metadata.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,17 +125,17 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	}
 }
 
-func TestWriterRecordsActualModelAndMonotonicInferences(t *testing.T) {
+func TestSessionRecordsActualModelAndMonotonicInferences(t *testing.T) {
 	store, err := NewStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := NewActive(store, "s").NewWriter("main", "initial", "initial", 100)
-	w.OnAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
+	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
+	w.RecordAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
 	w.Close()
-	w = NewActive(store, "s").NewWriter("main", "initial", "initial", 100)
+	w = mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
 	defer w.Close()
-	w.OnAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
+	w.RecordAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
 	records := readAllRecords(t, store.projectDir, "s")
 	var requests []*transcript.InferenceRecord
 	for _, r := range records {
@@ -164,20 +165,19 @@ func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *tes
 		t.Fatal(err)
 	}
 	history := []ai.Message{{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old")}}
-	active := NewActive(store, "s")
-	w := active.NewWriter("main", "test", "model", 100)
-	defer active.Close()
-	w.OnAgentEvent(sdkagent.MessageAdded{Message: history[0]})
+	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	defer w.Close()
+	w.RecordAgentEvent(sdkagent.MessageAdded{Message: history[0]})
 	before := len(readAllRecords(t, store.projectDir, "s"))
 	for range 3 {
-		w.OnAgentEvent(sdkagent.MessagesReplaced{Messages: history})
+		w.RecordAgentEvent(sdkagent.MessagesReplaced{Messages: history})
 	}
 	if got := len(readAllRecords(t, store.projectDir, "s")); got != before {
 		t.Fatalf("resume duplicated history: %d -> %d", before, got)
 	}
-	w.OnAgentEvent(sdkagent.MessagesReplaced{})
-	w.OnAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
-	loaded, err := store.Load("s")
+	w.RecordAgentEvent(sdkagent.MessagesReplaced{})
+	w.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
+	loaded, err := store.Read("s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,18 +191,17 @@ func TestForkPreservesToolPresentationAndNativeResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := NewActive(store, "source")
-	defer active.Close()
-	w := active.NewWriter("main", "test", "model", 100)
-	w.OnAgentEvent(sdkagent.ToolEnd{ID: "call", Result: sdkagent.Result{Details: toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "diff"}}})
+	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "source", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	w.RecordAgentEvent(sdkagent.ToolEnd{ID: "call", Result: sdkagent.Result{Details: toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "diff"}}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Edit", Content: ai.TextContent("edited")})
 	result.ID = "result"
-	w.OnAgentEvent(sdkagent.MessageAdded{Message: result})
+	w.RecordAgentEvent(sdkagent.MessageAdded{Message: result})
 	w.Close()
-	fork, err := store.Fork("source")
+	forkSession, fork, err := store.Fork("source")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = forkSession.Close() })
 	rows := fork.ChatRows()
 	if len(rows) != 1 {
 		t.Fatal(rows)
@@ -231,13 +230,14 @@ func TestForkOwnsPathsUsedByTextOnlyImageInput(t *testing.T) {
 	}
 	msg := core.UserMessage("read "+imagePath, nil)
 	msg.ID = "image"
-	if err := store.Save(&Snapshot{Metadata: Metadata{ID: "source"}, Messages: []core.Message{msg}}); err != nil {
+	if err := store.importHistory(&History{Metadata: Metadata{ID: "source"}, Messages: []core.Message{msg}}); err != nil {
 		t.Fatal(err)
 	}
-	fork, err := store.Fork("source")
+	forkSession, fork, err := store.Fork("source")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = forkSession.Close() })
 	if err := store.Delete("source"); err != nil {
 		t.Fatal(err)
 	}
@@ -250,24 +250,22 @@ func TestForkOwnsPathsUsedByTextOnlyImageInput(t *testing.T) {
 	}
 }
 
-func TestSnapshotImportCannotWriteIntoAnotherActiveSession(t *testing.T) {
+func TestHistoryImportCannotWriteIntoAnotherActiveSession(t *testing.T) {
 	dir := t.TempDir()
 	first, err := NewStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	active := NewActive(first, "s")
-	defer active.Close()
-	w := active.NewWriter("main", "test", "model", 100)
-	w.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "saved", Role: ai.RoleUser, Content: ai.TextContent("saved")}})
+	w := mustSession(t, first.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	w.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "saved", Role: ai.RoleUser, Content: ai.TextContent("saved")}})
 	second, err := NewStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := second.Save(&Snapshot{Metadata: Metadata{ID: "s"}, Messages: []core.Message{{ID: "other", Role: ai.RoleUser, Content: ai.TextContent("other")}}}); err == nil {
+	if err := second.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: []core.Message{{ID: "other", Role: ai.RoleUser, Content: ai.TextContent("other")}}}); err == nil {
 		t.Fatal("snapshot bypassed writer ownership")
 	}
-	got, err := first.Load("s")
+	got, err := first.Read("s")
 	if err != nil {
 		t.Fatal(err)
 	}

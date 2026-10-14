@@ -30,6 +30,8 @@ import (
 )
 
 var appCwd string
+var appSessionStore *session.Store
+var appSessionID string
 
 func initInfrastructure() error {
 	appCwd, _ = os.Getwd()
@@ -63,16 +65,21 @@ func initInfrastructure() error {
 	})
 
 	// Phase 4: session
-	session.Initialize(session.Options{CWD: appCwd})
+	var err error
+	appSessionStore, err = session.NewStore(appCwd)
+	if err != nil {
+		return err
+	}
+	appSessionID = session.NewSessionID()
 
 	// Phase 5: hooks — depends on setting, session, llm, plugin
 	hookSettings := setting.Default().Snapshot()
 	plugin.MergePluginHooksIntoSettings(hookSettings)
 	hook.Initialize(hook.Options{
 		Settings:       hookSettings,
-		SessionID:      session.Default().ID(),
+		SessionID:      appSessionID,
 		CWD:            appCwd,
-		TranscriptPath: session.Default().TranscriptPath(),
+		TranscriptPath: appSessionStore.TranscriptPath(appSessionID),
 		Completer:      buildHookCompleter(llm.Default().Provider()),
 		ModelID:        llm.Default().ModelID(),
 		EnvProvider:    plugin.PluginEnv,

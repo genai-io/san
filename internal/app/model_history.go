@@ -24,10 +24,10 @@ func (m *model) openHistory() tea.Cmd {
 	m.userInput.Transcript.Enter("History · Loading…", nil, m.env.Width, m.env.Height)
 	msg := historyLoadedMsg{generation: m.userInput.Transcript.Generation(), messages: slices.Clone(m.conv.Messages)}
 	var load func(string) ([]core.ChatMessage, error)
-	if m.services.Session != nil {
-		msg.sessionID = m.services.Session.ID()
-		if store := m.services.Session.Store(); store != nil && msg.sessionID != "" {
-			load = store.LoadHistory
+	if m.sessionID() != "" {
+		msg.sessionID = m.sessionID()
+		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
+			load = store.ReadChatHistory
 		}
 	}
 	return func() tea.Msg {
@@ -48,7 +48,7 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 	if !viewer.IsActive() || viewer.Generation() != msg.generation {
 		return
 	}
-	if m.services.Session != nil && m.services.Session.ID() != msg.sessionID {
+	if m.sessionID() != msg.sessionID {
 		return
 	}
 	if msg.err != nil {

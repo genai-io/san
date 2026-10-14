@@ -3,6 +3,7 @@ package transcript
 import (
 	"time"
 
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -46,26 +47,8 @@ type State struct {
 	// in a group), opaque here for the same reason as AutoPilot.
 	Group string
 
-	Tasks    []TodoItemSnapshot
+	Tasks    []todo.Item
 	Worktree *WorktreeState
-}
-
-// TodoItemSnapshot is the persisted shape of a todo.Item. It mirrors that struct
-// field for field so the session layer converts by plain struct conversion,
-// and carries the same JSON tags so PatchTasks payloads keep their wire form.
-type TodoItemSnapshot struct {
-	ID              string         `json:"id"`
-	Subject         string         `json:"subject"`
-	Description     string         `json:"description"`
-	ActiveForm      string         `json:"activeForm,omitempty"`
-	Status          string         `json:"status"`
-	Owner           string         `json:"owner,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
-	Blocks          []string       `json:"blocks"`
-	BlockedBy       []string       `json:"blockedBy"`
-	CreatedAt       time.Time      `json:"createdAt"`
-	UpdatedAt       time.Time      `json:"updatedAt"`
-	StatusChangedAt time.Time      `json:"statusChangedAt"`
 }
 
 type Summary struct {

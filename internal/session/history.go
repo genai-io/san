@@ -10,10 +10,11 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// Snapshot is the durable conversation and its application state.
-type Snapshot struct {
+// History is the selected native conversation, application state, and display
+// information read from a transcript. It owns no runtime or writer resources.
+type History struct {
 	Metadata    Metadata
-	Messages    []core.Message
+	Messages    []ai.Message
 	Tasks       []todo.Item
 	Notices     []transcript.NoticeRecord
 	ToolDetails map[string]transcript.ToolDetailsRecord
@@ -45,7 +46,7 @@ func ChatRows(messages []core.Message) []core.ChatMessage {
 }
 
 // ChatRows builds the display from native messages and separate presentation events.
-func (s *Snapshot) ChatRows() []core.ChatMessage {
+func (s *History) ChatRows() []core.ChatMessage {
 	rows := ChatRows(s.Messages)
 	for i := range rows {
 		if rows[i].ToolResult == nil {

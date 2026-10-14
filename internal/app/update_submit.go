@@ -186,8 +186,8 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 	// inlined into content conv persists and replays, so the file has to keep
 	// resolving for as long as the transcript can be resumed.
 	imagesDir := ""
-	if err := m.services.Session.EnsureStore(m.env.CWD); err == nil {
-		imagesDir = m.services.Session.Store().ImagesDir(m.services.Session.ID())
+	if err := m.ensureSessionStore(); err == nil {
+		imagesDir = m.services.SessionStore.ImagesDir(m.sessionID())
 	}
 	for i, img := range images {
 		path, err := image.EnsureFilePath(img, imagesDir)

@@ -19,12 +19,11 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 	const sessionID = "sess-parallel"
-	rec := NewWriter(WriterOptions{
-		Store: store.transcriptStore, SessionID: sessionID, AgentID: "main",
+	rec := mustSession(t, store.transcriptStore, CreateOptions{ID: sessionID, AgentID: "main",
 		Provider: "p", Model: "m", Cwd: "/tmp",
 	})
 
-	defer rec.Close()
+	defer func() { _ = rec.Close() }()
 
 	calls := core.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.Content{
 		ai.ToolCallBlock(core.ToolCall{ID: "c1", Name: "Read", Input: `{}`}),
@@ -38,10 +37,10 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 	for _, msg := range []core.Message{
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("go")}, calls, results,
 	} {
-		rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+		rec.RecordAgentEvent(sdkagent.MessageAdded{Message: msg})
 	}
 
-	loaded, err := store.Load(sessionID)
+	loaded, err := store.Read(sessionID)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -57,11 +56,11 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 	}
 
 	// Retire the live writer before importing a cold native snapshot.
-	rec.Close()
-	if err := store.Save(&Snapshot{Metadata: Metadata{ID: sessionID}, Messages: loaded.Messages}); err != nil {
+	_ = rec.Close()
+	if err := store.importHistory(&History{Metadata: Metadata{ID: sessionID}, Messages: loaded.Messages}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	again, err := store.Load(sessionID)
+	again, err := store.Read(sessionID)
 	if err != nil {
 		t.Fatalf("Load again: %v", err)
 	}

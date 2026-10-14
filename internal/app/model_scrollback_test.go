@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -447,7 +446,7 @@ func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 // prompt until the final Println completes, then open it on the clean live frame.
 func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	m.services.Session = &session.Active{}
+	m.services.Session = nil
 	m.userInput.Approval.Hide()
 	view := &perm.PermissionRequest{
 		ToolName: "Bash",

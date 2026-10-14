@@ -15,13 +15,13 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}, ai.Message{Role: ai.RoleAssistant, Content: ai.TextContent("world")}}
 
 	// Save with a custom title
-	sess := &Snapshot{
+	sess := &History{
 		Metadata: Metadata{
 			Title: "My Custom Session",
 		},
 		Messages: msgs,
 	}
-	if err := store.Save(sess); err != nil {
+	if err := store.importHistory(sess); err != nil {
 		t.Fatalf("Save(): %v", err)
 	}
 
@@ -31,7 +31,7 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 	}
 
 	// Load and verify title
-	loaded, err := store.Load(id)
+	loaded, err := store.Read(id)
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
@@ -49,13 +49,13 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}}
 
 	// Save with initial title
-	sess := &Snapshot{
+	sess := &History{
 		Metadata: Metadata{
 			Title: "Initial Title",
 		},
 		Messages: msgs,
 	}
-	if err := store.Save(sess); err != nil {
+	if err := store.importHistory(sess); err != nil {
 		t.Fatalf("Save() initial: %v", err)
 	}
 
@@ -63,12 +63,12 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 
 	// Rename: change the title and save again
 	sess.Metadata.Title = "Renamed Title"
-	if err := store.Save(sess); err != nil {
+	if err := store.importHistory(sess); err != nil {
 		t.Fatalf("Save() rename: %v", err)
 	}
 
 	// Load and verify new title
-	loaded, err := store.Load(id)
+	loaded, err := store.Read(id)
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
@@ -85,13 +85,13 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("first message")}}
 
-	sess := &Snapshot{
+	sess := &History{
 		Metadata: Metadata{
 			Title: "Session From Listing",
 		},
 		Messages: msgs,
 	}
-	if err := store.Save(sess); err != nil {
+	if err := store.importHistory(sess); err != nil {
 		t.Fatalf("Save(): %v", err)
 	}
 

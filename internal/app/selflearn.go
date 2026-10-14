@@ -25,6 +25,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/selflearn"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
 )
@@ -102,6 +103,8 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// (the same *atomic.Bool).
 	live := &atomic.Bool{}
 	live.Store(true)
+	parentSessionID := m.sessionID()
+	sessionStore := m.services.SessionStore
 
 	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars, cfg.MemoryPath)
 
@@ -161,9 +164,15 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// calls in isolation. The recap row surfaces this fork ID.
 		var forkOnEvent func(core.Event)
 		var forkSessionID string
-		if rec := m.services.Session.NewChildWriter("selflearn-review", params.Provider.Name(), params.ModelID, params.MaxTokens); rec != nil {
-			forkOnEvent = rec.OnAgentEvent
-			forkSessionID = rec.SessionID()
+		rec, err := sessionStore.Create(session.CreateOptions{AgentID: "selflearn-review", Provider: params.Provider.Name(), Model: params.ModelID, MaxTokens: params.MaxTokens, ParentSessionID: parentSessionID, Sidechain: true})
+		if err != nil {
+			log.Logger().Warn("could not open self-learning session", zap.Error(err))
+			return
+		}
+		defer func() { _ = rec.Close() }()
+		if rec != nil {
+			forkOnEvent = rec.RecordAgentEvent
+			forkSessionID = rec.ID()
 		}
 		fc := selflearn.ForkConfig{
 			Client:      client.TurnClient,

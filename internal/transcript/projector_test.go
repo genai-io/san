@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -83,7 +84,7 @@ func TestProjectAutoPilotRoundTrip(t *testing.T) {
 
 func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 14, 10, 0, 0, time.UTC)
-	task := TodoItemSnapshot{
+	task := todo.Item{
 		ID:              "1",
 		Subject:         "Refactor",
 		Status:          "in_progress",
@@ -95,7 +96,7 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	wt := &WorktreeState{OriginalCwd: "/repo", WorktreePath: "/repo/.wt/1", WorktreeName: "fix-1"}
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]TodoItemSnapshot{task}), PatchWorktree(wt)}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]todo.Item{task}), PatchWorktree(wt)}}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)

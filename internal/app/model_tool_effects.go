@@ -76,10 +76,10 @@ func (m *model) filterOversizedResult(_ context.Context, c sdkagent.PostToolCont
 	// one the model still gets the preview; it just cannot be pointed at the
 	// rest.
 	out := c.Result
-	if sess := m.services.Session; sess != nil && sess.EnsureStore(m.env.CWD) == nil && sess.ID() != "" {
-		if err := sess.Store().PersistToolResult(sess.ID(), c.Call.ID, full); err == nil {
+	if m.ensureSessionStore() == nil && m.sessionID() != "" {
+		if err := m.services.SessionStore.PersistToolResult(m.sessionID(), c.Call.ID, full); err == nil {
 			out.Content = ai.TextContent(fmt.Sprintf("%s\n\n[Full output persisted to blobs/tool-result/%s/%s]",
-				preview, sess.ID(), c.Call.ID))
+				preview, m.sessionID(), c.Call.ID))
 			return &out, nil
 		}
 	}

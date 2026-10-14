@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // repairTailLocked removes only an incomplete final JSON record before continuing.
@@ -65,7 +66,7 @@ func (s *Store) Position(ctx context.Context, id string) (string, int, int, erro
 type writerLock struct{ file *os.File }
 
 // Claim permits one live writer per session, including across processes.
-func (s *Store) Claim(id string) (func(), error) {
+func (s *Store) Claim(id string) (func() error, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.writers == nil {
@@ -82,10 +83,15 @@ func (s *Store) Claim(id string) (func(), error) {
 	// Another process may have appended since our previous lease or Load.
 	// Rebuild the leaf, counters, state, and tail-repair status from the log.
 	delete(s.sessions, id)
-	return func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		_ = f.Close()
-		delete(s.writers, id)
+	var once sync.Once
+	var closeErr error
+	return func() error {
+		once.Do(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			closeErr = f.Close()
+			delete(s.writers, id)
+		})
+		return closeErr
 	}, nil
 }

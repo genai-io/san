@@ -18,7 +18,6 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -602,7 +601,7 @@ func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 	m.services.Agent = &agent.Runtime{}
-	m.services.Session = &session.Active{}
+	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 	m.conv.Tool.ClearAwaitingApproval()
@@ -628,7 +627,7 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 	m.services.Agent = &agent.Runtime{}
-	m.services.Session = &session.Active{}
+	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
 	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())

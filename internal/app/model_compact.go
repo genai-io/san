@@ -152,25 +152,21 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	}
 	// A resumed conversation may not have a runtime yet. Record the same
 	// native summary and boundary as live compaction before replacing the UI.
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
+	if err := m.ensureSessionStore(); err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
-	provider := ""
-	if m.env.LLMProvider != nil {
-		provider = m.env.LLMProvider.Name()
-	}
-	w := m.services.Session.NewWriter("main", provider, m.env.GetModelID(), 0)
-	if w == nil || w.Err() != nil {
-		m.conv.Compact.Complete("Compaction could not be saved: session writer unavailable", true)
+	opened, err := m.openCurrentSession()
+	if err != nil {
+		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
 	summary := core.UserMessage(core.FormatCompactSummary(msg.Summary), nil)
 	summary.ID = core.NewMessageID()
 	info := core.Compacted{Summary: msg.Summary, OriginalCount: msg.OriginalCount, SummaryMessageID: summary.ID, Trigger: "manual"}
-	w.OnAgentEvent(sdkagent.MessageAdded{Message: summary})
-	w.OnAgentEvent(info)
-	if err := w.Err(); err != nil {
+	opened.RecordAgentEvent(sdkagent.MessageAdded{Message: summary})
+	opened.RecordAgentEvent(info)
+	if err := opened.Err(); err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}

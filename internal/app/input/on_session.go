@@ -185,7 +185,7 @@ func (s *SessionSelector) getLastMessage(sess session.Summary) string {
 		return ""
 	}
 
-	fullSession, err := s.store.Load(sess.ID)
+	fullSession, err := s.store.Read(sess.ID)
 	if err != nil {
 		return ""
 	}
@@ -229,7 +229,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess session.Summary) strin
 		return ""
 	}
 
-	fullSession, err := s.store.Load(sess.ID)
+	fullSession, err := s.store.Read(sess.ID)
 	if err != nil {
 		return ""
 	}

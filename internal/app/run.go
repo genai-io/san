@@ -117,8 +117,8 @@ func (m *model) fireStartupHooks() {
 }
 
 func printExitMessage(m *model) {
-	sessionID := m.services.Session.ID()
-	command := resumeCommandForSession(sessionID, m.services.Session.TranscriptPath())
+	sessionID := m.sessionID()
+	command := resumeCommandForSession(sessionID, m.sessionTranscriptPath())
 	if command != "" {
 		dim := kit.DimStyle()
 		fmt.Println()

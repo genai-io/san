@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/tests/integration/testutil"
+
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
@@ -34,22 +36,21 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save(&session.Snapshot{Metadata: session.Metadata{ID: "s"}, Messages: messages}); err != nil {
+	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "s"}, Messages: messages}); err != nil {
 		t.Fatal(err)
 	}
-	active := session.NewActive(store, "s")
-	snapshot, err := active.Resume("s")
+	opened, snapshot, err := store.Open("s")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = active.Close() })
+	t.Cleanup(func() { _ = opened.Close() })
 	m := &model{
 		services: services{
-			Agent: &agent.Runtime{}, Session: active, LLM: &llm.Conn{},
+			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			Tracker: todo.NewStore(), Reminder: reminder.NewService(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
-			Hook:     hook.NewEngine(nil, "s", "", active.TranscriptPath()),
+			Hook:     hook.NewEngine(nil, "s", "", opened.TranscriptPath()),
 		},
 		conv: conv.NewModel(80),
 	}
@@ -80,10 +81,10 @@ func parallelResultChain() []core.Message {
 func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 	history := parallelResultChain()
 	m, store := resumedModel(t, history)
-	w := m.services.Session.NewWriter("main", "test", "m", 100)
+	w := m.services.Session
 	stopped := make(chan error, 1)
 	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", OnEvent: func(event core.Event) {
-		w.OnAgentEvent(event)
+		w.RecordAgentEvent(event)
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -108,7 +109,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.OnAgentEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, seed); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
@@ -123,7 +124,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("retry never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Load("s")
+	loaded, err := store.Read("s")
 	if err != nil || len(loaded.Messages) < 5 || !reflect.DeepEqual(loaded.Messages[:3], history) {
 		t.Fatalf("retry corrupted the durable history: %+v, %v", loaded, err)
 	}
@@ -140,17 +141,17 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	if len(m.conv.Messages) != 1 || m.conv.Messages[0].ID != seed[0].ID {
 		t.Fatal("UI and native summary have different identities")
 	}
-	loaded, err := store.Load("s")
+	loaded, err := store.Read("s")
 	if err != nil || !reflect.DeepEqual(loaded.Messages, seed) {
 		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
 	}
-	w := m.services.Session.Writer()
+	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.OnAgentEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, seed); err != nil {
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
-	rows, err := store.LoadHistory("s")
+	rows, err := store.ReadChatHistory("s")
 	if err != nil || len(rows) != len(session.ChatRows(history))+1 {
 		t.Fatalf("starting after compaction erased browsable history: %+v, %v", rows, err)
 	}
@@ -161,8 +162,8 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	m, store := resumedModel(t, history)
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
-	w := m.services.Session.NewWriter("main", provider.Name(), "m", 100)
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.OnAgentEvent}, m.seedAgentMessages("")); err != nil {
+	w := m.services.Session
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, m.seedAgentMessages("")); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
@@ -177,7 +178,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 		t.Fatal("text-only turn never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Load("s")
+	loaded, err := store.Read("s")
 	if err != nil || len(loaded.Messages) < 3 || !reflect.DeepEqual(loaded.Messages[:2], history) {
 		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
 	}
@@ -188,16 +189,16 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	}
 }
 
-func TestRenameKeepsTheLiveWriterForFollowingMessages(t *testing.T) {
+func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 	m, store := resumedModel(t, []core.Message{
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("first prompt")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("first response")},
 	})
-	w := m.services.Session.Writer()
+	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	stopped := make(chan error, 1)
 	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(event core.Event) {
-		w.OnAgentEvent(event)
+		w.RecordAgentEvent(event)
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -207,7 +208,7 @@ func TestRenameKeepsTheLiveWriterForFollowingMessages(t *testing.T) {
 	if err := m.renameSession("renamed"); err != nil {
 		t.Fatal(err)
 	}
-	if !m.services.Agent.Active() || m.services.Session.Writer() != w {
+	if !m.services.Agent.Active() || m.services.Session != w {
 		t.Fatal("renaming retired the live runtime or its writer")
 	}
 	if err := m.services.Agent.Send(withID("after-name", core.UserMessage("continue", nil))); err != nil {
@@ -221,7 +222,7 @@ func TestRenameKeepsTheLiveWriterForFollowingMessages(t *testing.T) {
 		t.Fatal("turn after rename never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Load("s")
+	loaded, err := store.Read("s")
 	if err != nil || loaded.Metadata.Title != "renamed" || len(loaded.Messages) < 3 || loaded.Messages[2].ID != "after-name" {
 		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
 	}
@@ -231,7 +232,7 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 	for _, action := range []string{"clear", "fork"} {
 		t.Run(action, func(t *testing.T) {
 			m, store := resumedModel(t, parallelResultChain())
-			group.BindSession(m.services.Session.ID)
+			group.BindSession(m.sessionID)
 			t.Cleanup(group.Forget)
 			if _, err := group.Join("shop", group.Member{Name: "me", Hold: true}); err != nil {
 				t.Fatal(err)
@@ -247,18 +248,18 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 				t.Fatal(err)
 			}
 			if g, self := group.Current(); g != "" {
-				t.Fatalf("new session %s retained group %s under old identity %s before polling", m.services.Session.ID(), g, self.SessionID)
+				t.Fatalf("new session %s retained group %s under old identity %s before polling", m.sessionID(), g, self.SessionID)
 			}
 			members := group.Members("shop")
 			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
 				t.Fatalf("session switch changed the source membership: %+v", members)
 			}
-			source, err := store.Load("s")
+			source, err := store.Read("s")
 			if err != nil || source.Metadata.Group == "" {
 				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
 			}
 			if action == "fork" {
-				forked, err := store.Load(m.services.Session.ID())
+				forked, err := store.Read(m.sessionID())
 				if err != nil || forked.Metadata.Group != "" {
 					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
 				}

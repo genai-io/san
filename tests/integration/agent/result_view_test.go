@@ -40,16 +40,16 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if strings.Contains(text, "Tokens:") || !strings.Contains(text, "Transcript:") {
 		t.Fatalf("model result must contain findings and inspection pointers: %q", text)
 	}
-	rec := session.NewActive(store, "parent-1").NewWriter("main", "p", "m", 1000)
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "parent-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
 		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
 	}}}}
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: owner})
-	rec.OnAgentEvent(sdkagent.ToolEnd{ID: "worker-1", Name: "Agent", Result: result})
+	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: owner})
+	rec.RecordAgentEvent(sdkagent.ToolEnd{ID: "worker-1", Name: "Agent", Result: result})
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", Content: ai.TextContent(text)})
 	msg.ID = "result-1"
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
-	loaded, err := store.Load("parent-1")
+	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: msg})
+	loaded, err := store.Read("parent-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,4 +70,14 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if expanded := conv.RenderToolResultInline(data, nil); !strings.Contains(expanded, "Verified finding") || !strings.Contains(expanded, "Transcript:") {
 		t.Fatalf("expanded UI lost findings or evidence: %q", expanded)
 	}
+}
+
+func mustCreateSession(t *testing.T, store *session.Store, opts session.CreateOptions) *session.Session {
+	t.Helper()
+	opened, err := store.Create(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = opened.Close() })
+	return opened
 }

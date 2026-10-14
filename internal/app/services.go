@@ -27,22 +27,24 @@ import (
 // model at construction time. Model methods access services through this
 // struct instead of calling Default() package-level accessors directly.
 type services struct {
-	Setting  *setting.Settings
-	LLM      *llm.Conn
-	Tool     *tool.Registry
-	Hook     *hook.Engine
-	Session  *session.Active
-	Skill    *skill.Registry
-	Subagent *subagent.Registry
-	Command  *command.Registry
-	Task     *task.Manager
-	Tracker  *todo.Store
-	Cron     *cron.Scheduler
-	MCP      *mcp.Manager
-	Plugin   *plugin.Registry
-	Agent    *agent.Runtime
-	Persona  *persona.Registry
-	Reminder *reminder.Service
+	Setting      *setting.Settings
+	LLM          *llm.Conn
+	Tool         *tool.Registry
+	Hook         *hook.Engine
+	Session      *session.Session
+	SessionStore *session.Store
+	sessionID    string
+	Skill        *skill.Registry
+	Subagent     *subagent.Registry
+	Command      *command.Registry
+	Task         *task.Manager
+	Tracker      *todo.Store
+	Cron         *cron.Scheduler
+	MCP          *mcp.Manager
+	Plugin       *plugin.Registry
+	Agent        *agent.Runtime
+	Persona      *persona.Registry
+	Reminder     *reminder.Service
 
 	// SelfLearn groups the L1 self-learning state: the live per-session
 	// reviewer (nil when no arm is enabled — §3.1 zero-overhead guarantee)
@@ -94,22 +96,23 @@ type selfLearnSession struct {
 
 func newServices() services {
 	return services{
-		Setting:   setting.Default(),
-		LLM:       llm.Default(),
-		Tool:      tool.Default(),
-		Hook:      hook.DefaultEngine(),
-		Session:   session.Default(),
-		Skill:     skill.Default(),
-		Subagent:  subagent.Default(),
-		Command:   command.Default(),
-		Task:      task.Default(),
-		Tracker:   todo.Default(),
-		Cron:      cron.Default(),
-		MCP:       mcp.DefaultManager(),
-		Plugin:    plugin.Default(),
-		Agent:     agent.Default(),
-		Persona:   persona.Default(),
-		Reminder:  reminder.NewService(),
-		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator(), Recent: NewRecentLearnLog()},
+		Setting:      setting.Default(),
+		LLM:          llm.Default(),
+		Tool:         tool.Default(),
+		Hook:         hook.DefaultEngine(),
+		SessionStore: appSessionStore,
+		sessionID:    appSessionID,
+		Skill:        skill.Default(),
+		Subagent:     subagent.Default(),
+		Command:      command.Default(),
+		Task:         task.Default(),
+		Tracker:      todo.Default(),
+		Cron:         cron.Default(),
+		MCP:          mcp.DefaultManager(),
+		Plugin:       plugin.Default(),
+		Agent:        agent.Default(),
+		Persona:      persona.Default(),
+		Reminder:     reminder.NewService(),
+		SelfLearn:    SelfLearnServices{Indicator: NewSelfLearnIndicator(), Recent: NewRecentLearnLog()},
 	}
 }

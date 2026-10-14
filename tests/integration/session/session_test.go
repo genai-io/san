@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/tests/integration/testutil"
+
 	"github.com/genai-io/san/internal/core"
 	session "github.com/genai-io/san/internal/session"
 	taskTracker "github.com/genai-io/san/internal/todo"
@@ -47,7 +49,7 @@ func getEntryText(m core.Message) string {
 func TestSession_SaveAndLoad(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:       "test-1",
 			Title:    "Test Session",
@@ -61,11 +63,11 @@ func TestSession_SaveAndLoad(t *testing.T) {
 		},
 	}
 
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Load("test-1")
+	loaded, err := store.Read("test-1")
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -88,14 +90,14 @@ func TestSession_List(t *testing.T) {
 	store := newTestStore(t)
 
 	for i, title := range []string{"First", "Second", "Third"} {
-		sess := &session.Snapshot{
+		sess := &session.History{
 			Metadata: session.Metadata{
 				ID:        title,
 				Title:     title,
 				UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
 			},
 		}
-		if err := store.Save(sess); err != nil {
+		if err := testutil.ImportSession(store, sess); err != nil {
 			t.Fatalf("Save(%s) error: %v", title, err)
 		}
 		// Small sleep so timestamps differ
@@ -120,19 +122,19 @@ func TestSession_List(t *testing.T) {
 func TestSession_GetLatest(t *testing.T) {
 	store := newTestStore(t)
 
-	sess1 := &session.Snapshot{
+	sess1 := &session.History{
 		Metadata: session.Metadata{ID: "old", Title: "Old"},
 	}
-	if err := store.Save(sess1); err != nil {
+	if err := testutil.ImportSession(store, sess1); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
-	sess2 := &session.Snapshot{
+	sess2 := &session.History{
 		Metadata: session.Metadata{ID: "new", Title: "New"},
 	}
-	if err := store.Save(sess2); err != nil {
+	if err := testutil.ImportSession(store, sess2); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
@@ -149,10 +151,10 @@ func TestSession_GetLatest(t *testing.T) {
 func TestSession_Delete(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{ID: "to-delete", Title: "Delete Me"},
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
@@ -160,7 +162,7 @@ func TestSession_Delete(t *testing.T) {
 		t.Fatalf("Delete() error: %v", err)
 	}
 
-	_, err := store.Load("to-delete")
+	_, err := store.Read("to-delete")
 	if err == nil {
 		t.Error("expected error loading deleted session")
 	}
@@ -170,7 +172,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 	store := newTestStore(t)
 
 	// First save with 1 entry
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:    "append-test",
 			Title: "Append Test",
@@ -179,7 +181,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 			makeUserEntry("u1", "hello"),
 		},
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("first Save() error: %v", err)
 	}
 
@@ -188,12 +190,12 @@ func TestSession_AppendBehavior(t *testing.T) {
 		makeAssistantEntry("a1", "hi there"),
 		makeUserEntry("u2", "how are you?"),
 	)
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("second Save() error: %v", err)
 	}
 
 	// Load and verify all 3 entries are present
-	loaded, err := store.Load("append-test")
+	loaded, err := store.Read("append-test")
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -208,7 +210,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:    "metadata-update-test",
 			Title: "Metadata Update Test",
@@ -217,11 +219,11 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 			makeUserEntry("u1", "hello"),
 		},
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("first Save() error: %v", err)
 	}
 
-	first, err := store.Load("metadata-update-test")
+	first, err := store.Read("metadata-update-test")
 	if err != nil {
 		t.Fatalf("first Load() error: %v", err)
 	}
@@ -232,11 +234,11 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	sess.Messages = append(sess.Messages, makeAssistantEntry("a1", "hi there"))
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("second Save() error: %v", err)
 	}
 
-	second, err := store.Load("metadata-update-test")
+	second, err := store.Read("metadata-update-test")
 	if err != nil {
 		t.Fatalf("second Load() error: %v", err)
 	}
@@ -251,7 +253,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:       "message-types-roundtrip",
 			Title:    "Message Types Roundtrip",
@@ -265,11 +267,11 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 		},
 	}
 
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Load("message-types-roundtrip")
+	loaded, err := store.Read("message-types-roundtrip")
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -329,18 +331,18 @@ func TestSession_PersistToolResult(t *testing.T) {
 		t.Errorf("persisted content size = %d, want 200000", len(data))
 	}
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:    sessionID,
 			Title: "Overflow",
 		},
 		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: toolCallID, Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]")})}}},
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Load(sessionID)
+	loaded, err := store.Read(sessionID)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -360,7 +362,7 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:       "jsonl-integrity-test",
 			Title:    "JSONL Integrity Test",
@@ -376,12 +378,12 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 		},
 	}
 
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
 	// Read the raw JSONL file and verify every non-empty line is valid JSON.
-	filePath := store.SessionPath(sess.Metadata.ID)
+	filePath := store.TranscriptPath(sess.Metadata.ID)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
@@ -434,7 +436,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		}
 	}
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{
 			ID:       "continue-test",
 			Title:    "Continue Test",
@@ -445,12 +447,12 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		Messages: entries,
 	}
 
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
 
 	// Simulate "-c": load the session and verify messages are in order.
-	loaded, err := store.Load("continue-test")
+	loaded, err := store.Read("continue-test")
 	if err != nil {
 		t.Fatalf("Load() (continue) error: %v", err)
 	}
@@ -482,21 +484,21 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.Snapshot{
+	sess := &session.History{
 		Metadata: session.Metadata{ID: "save-twice"},
 		Messages: []ai.Message{
 			makeUserEntry("m1", "hello"),
 			makeAssistantEntry("m2", "hi"),
 		},
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save #1: %v", err)
 	}
-	if err := store.Save(sess); err != nil {
+	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save #2: %v", err)
 	}
 
-	loaded, err := store.Load("save-twice")
+	loaded, err := store.Read("save-twice")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -506,7 +508,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 
 	// Count raw message records on disk too — projection only shows the
 	// active chain, so a duplicated history could pass the entry count check.
-	raw, err := os.ReadFile(store.SessionPath("save-twice"))
+	raw, err := os.ReadFile(store.TranscriptPath("save-twice"))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -536,11 +538,11 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
-	first := &session.Snapshot{
+	first := &session.History{
 		Metadata: session.Metadata{ID: "restart-tag", Tag: "urgent"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
-	if err := store1.Save(first); err != nil {
+	if err := testutil.ImportSession(store1, first); err != nil {
 		t.Fatalf("Save first: %v", err)
 	}
 
@@ -549,15 +551,15 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreWithDir #2: %v", err)
 	}
-	cleared := &session.Snapshot{
+	cleared := &session.History{
 		Metadata: session.Metadata{ID: "restart-tag", Tag: ""},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
-	if err := store2.Save(cleared); err != nil {
+	if err := testutil.ImportSession(store2, cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store2.Load("restart-tag")
+	loaded, err := store2.Read("restart-tag")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -573,7 +575,7 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	store := newTestStore(t)
 
-	withTasks := &session.Snapshot{
+	withTasks := &session.History{
 		Metadata: session.Metadata{ID: "clear-tasks"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks: []taskTracker.Item{{
@@ -581,20 +583,20 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 			CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		}},
 	}
-	if err := store.Save(withTasks); err != nil {
+	if err := testutil.ImportSession(store, withTasks); err != nil {
 		t.Fatalf("Save with tasks: %v", err)
 	}
 
-	cleared := &session.Snapshot{
+	cleared := &session.History{
 		Metadata: session.Metadata{ID: "clear-tasks"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks:    nil,
 	}
-	if err := store.Save(cleared); err != nil {
+	if err := testutil.ImportSession(store, cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store.Load("clear-tasks")
+	loaded, err := store.Read("clear-tasks")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

@@ -145,9 +145,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// re-arm prompt suggestions for the now-idle textarea.
 	if result.StopReason == core.StopCanceled {
 		log.Logger().Sugar().Debugf("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
-		if cmd := m.persistAfterTurn(); cmd != nil {
-			commitCmds = append(commitCmds, cmd)
-		}
+		m.appendTurnState()
 		if cmd := m.startPromptSuggestion(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}

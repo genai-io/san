@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/transcript"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -36,14 +38,16 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := session.NewActive(store, "notice-1").NewWriter("main", "p", "m", 1000)
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "notice-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	m := &model{conv: conv.NewModel(80)}
-	m.conv.OnNotice = func(msg core.ChatMessage) { rec.RecordNotice(msg.Content, msg.AgentNotice) }
+	m.conv.OnNotice = func(msg core.ChatMessage) {
+		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: msg.Content, Agent: msg.AgentNotice}})
+	}
 	n := taskNotice()
 	message := m.showNoticeLine(n)
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: message})
-	for _, load := range []func(string) ([]core.ChatMessage, error){store.LoadHistory, func(id string) ([]core.ChatMessage, error) {
-		snapshot, err := store.Load(id)
+	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: message})
+	for _, load := range []func(string) ([]core.ChatMessage, error){store.ReadChatHistory, func(id string) ([]core.ChatMessage, error) {
+		snapshot, err := store.Read(id)
 		if err != nil {
 			return nil, err
 		}

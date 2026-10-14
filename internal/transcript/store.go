@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -135,11 +136,12 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 		if rec.State == nil {
 			return fmt.Errorf("state payload is required")
 		}
-		if len(rec.State.Ops) == 0 && (rec.GitBranch == "" || rec.GitBranch == c.lastGitBranch) {
-			return nil
-		}
 		if err := applyStatePatch(&nextState, rec.State); err != nil {
 			return err
+		}
+		rec.State = &StateRecord{Ops: StateOpsDiff(c.latestState, nextState)}
+		if len(rec.State.Ops) == 0 && (rec.GitBranch == "" || rec.GitBranch == c.lastGitBranch) {
+			return nil
 		}
 	case InferenceRequested, InferenceResponded, InferenceFailed:
 		if rec.Inference == nil {
@@ -516,6 +518,17 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 		}
 	}
 	c.latestState = tx.State
+	c.latestState.Tasks = slices.Clone(tx.State.Tasks)
+	for i := range c.latestState.Tasks {
+		task := &c.latestState.Tasks[i]
+		task.Metadata = maps.Clone(task.Metadata)
+		task.Blocks = slices.Clone(task.Blocks)
+		task.BlockedBy = slices.Clone(task.BlockedBy)
+	}
+	if tx.State.Worktree != nil {
+		worktree := *tx.State.Worktree
+		c.latestState.Worktree = &worktree
+	}
 	c.messageIDs = make([]string, len(tx.Messages))
 	c.leafMessageID = ""
 	for i, n := range tx.Messages {
@@ -547,28 +560,6 @@ func (s *Store) LastMessageID(ctx context.Context, transcriptID string) (string,
 		return "", err
 	}
 	return s.sessions[transcriptID].leafMessageID, nil
-}
-
-// LoadState returns the projected session State (Title, LastPrompt, Tag,
-// Mode, Tasks, Worktree) without materializing the active message chain.
-// Used by Save's first-write cold path to seed the diff base.
-func (s *Store) LoadState(ctx context.Context, transcriptID string) (State, error) {
-	if err := ctx.Err(); err != nil {
-		return State{}, err
-	}
-	s.mu.RLock()
-	if c, ok := s.sessions[transcriptID]; ok && c.warmed {
-		state := c.latestState
-		s.mu.RUnlock()
-		return state, nil
-	}
-	s.mu.RUnlock()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.warmupCachesLocked(transcriptID); err != nil {
-		return State{}, err
-	}
-	return s.sessions[transcriptID].latestState, nil
 }
 
 func (s *Store) loadRecordsLocked(path string) ([]Record, error) {

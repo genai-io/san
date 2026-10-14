@@ -33,11 +33,11 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		{From: "web", Subject: "UI ready", Content: "second finding"},
 	})
 	live := m.conv.Messages[0]
-	rec := session.NewActive(store, "group-batch").NewWriter("main", "p", "m", 1000)
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "group-batch", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: message})
-	saved, err := store.LoadHistory("group-batch")
+	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: message})
+	saved, err := store.ReadChatHistory("group-batch")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Session: &session.Active{}}}
+	m := model{services: services{Session: nil}}
 	m.exitGroup()
 	if members := group.Members("shop"); len(members) != 0 {
 		t.Errorf("members after exit = %+v, want none", members)
@@ -192,7 +192,7 @@ func TestMemberColorsGoInOrderOfArrivalAndStay(t *testing.T) {
 // ends with the tick that finds the session gone from its group.
 func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	m := &model{services: services{Session: &session.Active{}}}
+	m := &model{services: services{Session: nil}}
 	if m.startGroupPolling() != nil {
 		t.Fatal("a loop started outside any group")
 	}

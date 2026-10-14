@@ -27,7 +27,7 @@ func TestWindowsMergeOnlyTheirOwnIndexEntries(t *testing.T) {
 	if err := a.Append(context.Background(), Record{SessionID: "A", ParentMessageID: "A-m1", Time: time.Now(), Type: MessageAppended, Message: &ai.Message{ID: "A2", Role: ai.RoleUser}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Flush(); err != nil {
+	if _, err := a.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
 		t.Fatal(err)
 	}
 	for _, store := range []*Store{a, b} {
@@ -86,8 +86,8 @@ func startSession(t *testing.T, fs *Store, id string) {
 	if err := fs.Append(context.Background(), Record{SessionID: id, Time: time.Now(), Type: MessageAppended, Message: &ai.Message{ID: id + "-m1", Role: "user", Content: ai.Content{ai.TextBlock("hello from " + id)}}}); err != nil {
 		t.Fatalf("AppendMessage(%s): %v", id, err)
 	}
-	if err := fs.Flush(); err != nil {
-		t.Fatalf("Flush: %v", err)
+	if _, err := fs.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
+		t.Fatalf("List: %v", err)
 	}
 }
 

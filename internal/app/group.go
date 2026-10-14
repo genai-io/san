@@ -181,7 +181,7 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 		}
 		cmds = append(cmds, m.deliverGroupReminder(line, line+group.NoSendMessage))
 	case group.Joined:
-		if self.SessionID != m.services.Session.ID() {
+		if self.SessionID != m.sessionID() {
 			// Another session took over this process (/fork): the membership
 			// stays with the session that joined.
 			group.Release()
@@ -399,13 +399,13 @@ func (m *model) reconcileMembership() {
 		m.grp.roster, m.grp.announced = nil, nil
 	}
 	m.grp.blob, m.grp.name = blob, g
-	_ = m.PersistSession()
+	_ = m.appendSessionState()
 }
 
 // exitGroup takes the member offline at exit. A session that was never saved
 // can't be resumed, so its member would stay offline for good: it leaves.
 func (m *model) exitGroup() {
-	if path := m.services.Session.TranscriptPath(); path != "" {
+	if path := m.sessionTranscriptPath(); path != "" {
 		if _, err := os.Stat(path); err == nil {
 			group.Release()
 			return
