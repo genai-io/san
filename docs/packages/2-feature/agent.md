@@ -5,14 +5,14 @@ layer: feature
 
 # agent
 
-Owns the **main agent session lifecycle** — construction, start, stop, and
+Owns the **foreground agent execution lifecycle** — construction, start, stop, and
 TUI-facing send/permission/outbox plumbing for the single foreground agent.
 
 ## Purpose
 
-`internal/app` runs exactly one foreground agent session at a time. This
+`internal/app` runs exactly one foreground agent at a time. This
 package is the seam between that TUI shell and the underlying agent loop in
-[`packages/core.md`](../3-core/core.md). The shell starts a session, hands user input
+[`packages/core.md`](../3-core/core.md). The shell starts a run, hands user input
 to it, observes its outbox, and routes permission requests back to the user.
 
 Subagents (parallel background agents) are owned separately by
@@ -59,15 +59,14 @@ func Default() *Runtime
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
 - Runtime owns live native messages; the opened Session owns persistence and its
-writer lease. Stopping a runtime retains history and does not close that Session.
-Persistence lives in
-  [`packages/session.md`](session.md).
+  writer lease. Stopping Runtime retains history. The Session remains open until
+  it is explicitly closed; see [session](session.md).
 
 ## Lifecycle
 
 - Construction: `Initialize(Options{})` runs at app startup, registering the
   singleton.
-- Per-session: `Start(params, messages)` builds a `core.Agent` and launches
+- Per-run: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
 - Termination: `StopContext` cancels and waits for the exact run generation;
   `Stop` applies a bounded default deadline and logs a run that outlives it.

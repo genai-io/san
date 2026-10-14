@@ -5,7 +5,7 @@ layer: feature
 
 # session
 
-Owns durable conversation identity and the opened handle that writes its transcript.
+Owns durable conversation identity and the opened Session that writes its transcript.
 The application owns which session is selected. `agent.Runtime` owns execution.
 
 ## Responsibilities and names
@@ -28,18 +28,15 @@ The application owns which session is selected. `agent.Runtime` owns execution.
   or writer leases. Several runtime generations can use the same opened Session.
 - **History** is the selected native conversation and application/display data
   read from a transcript: metadata, messages, todo items, notices, and tool
-  presentation details. It is a return value, not an independently managed
-  object. It holds no locks, agent, save method, or lifecycle. Grouping the read
-  result keeps restoration to one pass without parallel return values drifting.
-  Daily persistence never builds or saves History.
+  presentation details. This read result supplies Runtime and the UI during
+  restoration. Session owns the resources and writes; History owns only data.
 - **Transcript** is the append-only log of what happened. It is authoritative.
   Its `Record` payloads keep SDK-native messages and schemas, and native todo
   items. `transcript.Store` implements log storage, replay, recovery, and derived
   summaries beneath the product-facing Store and Session.
 
-`Active`, `Writer`, `Snapshot`, `Handle`, `Save`, `SaveState`, callback factories,
-mirrored todo DTOs, and compatibility aliases are absent. There is one append
-implementation, with typed adaptation at the SDK and application boundaries.
+All writes share one append implementation, with typed adaptation at the SDK
+and application boundaries.
 
 ## Entrypoints and core packages
 
@@ -50,8 +47,7 @@ implementation, with typed adaptation at the SDK and application boundaries.
   adaptation. Internal method names describe the event being persisted.
 - `history.go`: `History` and its one-way `ChatRows` display projection.
 - `internal/app/model_session.go`: current selection, application state records,
-  restore, clear, and fork. `services` holds Store and the opened Session directly;
-  there is no intermediate session manager.
+  restore, clear, and fork. `services` holds Store and the opened Session directly.
 - `internal/agent/runtime.go`: live execution and native message retention.
 
 ## Flow
@@ -66,17 +62,19 @@ Store.Open(id) -> claim writer lease -> read/project once -> Session + History
                                                            |          +-> ChatRows -> dialogue UI
                                                            +-> later appends
 
-switch/quit -> Runtime.Stop -> Session.Close
-switch      -> open replacement -> publish identity/hooks/group/task bindings
+switch -> Runtime.Stop -> open replacement -> close previous Session
+       -> restore history and bind identity/hooks/group/tasks
+clear  -> Runtime.Reset -> Session.Close -> select fresh identity
+quit   -> Runtime.Stop -> Session.Close
 ```
 
 Application state writes contain title, prompt preview, mode, autopilot, group,
 and tasks. The transcript computes their actual differences atomically and skips
-unchanged fields. They never carry the conversation. State appends happen in
-order on the application loop, so a delayed save cannot overwrite a new session.
+unchanged fields. State records contain application data; native conversation
+records contain messages. State appends happen in order on the application loop.
 Git branch annotations are recorded with inference requests on the agent goroutine,
-so saving application state starts no Git subprocess on the UI loop.
-Summary refresh is lazy on listing; there is no extra Flush or save barrier.
+keeping Git subprocesses off the UI loop. Appends sync durable records before
+returning. Listing refreshes derived summaries lazily.
 
 Native messages seed Runtime directly. UI rows never become the persistence
 source. Thinking signatures, encrypted reasoning, tool signatures, images, and
@@ -84,7 +82,7 @@ content ordering survive. Request-time capability filtering does not mutate the
 native history. Runtime retains it through stops and errors.
 
 Completed subagents write native conversation replacement and title records
-through their own opened Session. They do not build a History object to save.
+through their own opened Session.
 
 ## Storage and configuration
 
@@ -97,8 +95,8 @@ through their own opened Session. They do not build a History object to save.
 ```
 
 Paths do not encode ancestry. Session parents and message parents are distinct
-fields. Schema version `2` and SDK-native payloads are required; old formats and
-migration paths are unsupported. Metadata files are disposable derived summaries.
+fields. Transcripts use schema version `2` and SDK-native payloads. Metadata files
+are disposable derived summaries.
 
 ## Lifecycle and failure handling
 
@@ -127,9 +125,8 @@ writer. SDK `session.Create` creates a new identity and `session.Open` restores 
 one. SDK returns native `[]ai.Message`; it does not know San's titles, tasks,
 groups, or UI projections. These remain application records in San.
 
-A conversation replacement is named `EntryConversationReplaced`, with native
-`Messages`, rather than a generic Snapshot. There is no Handle/Record compatibility
-surface. Storage implementations may vary; message structs do not.
+`EntryConversationReplaced` records a complete native conversation in `Messages`.
+Storage implementations share the same native message structs.
 
 ## Tests and pitfalls
 
