@@ -22,7 +22,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 	}
 	rec := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main"})
 	add := func(id string, role ai.Role, text string) {
-		rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
+		rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
 	}
 	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "Joined shop as @api", Agent: false}})
 	add("m1", ai.RoleUser, "hi")

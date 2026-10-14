@@ -164,8 +164,8 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	summary := core.UserMessage(core.FormatCompactSummary(msg.Summary), nil)
 	summary.ID = core.NewMessageID()
 	info := core.Compacted{Summary: msg.Summary, OriginalCount: msg.OriginalCount, SummaryMessageID: summary.ID, Trigger: "manual"}
-	opened.RecordAgentEvent(sdkagent.MessageAdded{Message: summary})
-	opened.RecordAgentEvent(info)
+	opened.RecordEvent(sdkagent.MessageAdded{Message: summary})
+	opened.RecordEvent(info)
 	if err := opened.Err(); err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)

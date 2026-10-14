@@ -37,7 +37,7 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 	for _, msg := range []core.Message{
 		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("go")}, calls, results,
 	} {
-		rec.RecordAgentEvent(sdkagent.MessageAdded{Message: msg})
+		rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 	}
 
 	loaded, err := store.Read(sessionID)

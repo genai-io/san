@@ -18,7 +18,7 @@ The application owns which session is selected. `agent.Runtime` owns execution.
   for display. `Fork` returns an opened child and its restored history.
 - **Session** is one opened identity, fixed until `Close`. It owns the writer
   lease, ordered appends, inference/exchange positions, and persistence failures.
-  `Append` accepts a typed transcript record. `RecordAgentEvent` adapts native
+  `Append` accepts a typed transcript record. `RecordEvent` adapts native
   agent events to the same append implementation; application state and audit
   producers use `Append` directly. `Err` reports a failed or closed handle.
   `Close` waits for in-flight appends and releases the lease exactly once.
@@ -43,17 +43,21 @@ and application boundaries.
 - `store.go`: `NewStore`, `Create`, `Open`, `Read`, `ReadChatHistory`, `List`, `Latest`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
-- `events.go`: `RecordAgentEvent`, inference spans, compaction and native event
+- `events.go`: `RecordEvent`, inference spans, compaction and native event
   adaptation. Internal method names describe the event being persisted.
 - `history.go`: `History` and its one-way `ChatRows` display projection.
 - `internal/app/model_session.go`: current selection, application state records,
   restore, clear, and fork. `services` holds Store and the opened Session directly.
 - `internal/agent/runtime.go`: live execution and native message retention.
 
+The application creates Store at startup and injects it into slash commands.
+`/resume` lists that Store and opens the session selector. Selecting a session
+asks the application to stop Runtime and restore the selected identity.
+
 ## Flow
 
 ```text
-SDK native event -> Session.RecordAgentEvent -> shared append -> transcript
+SDK native event -> Session.RecordEvent -> shared append -> transcript
 application change -> Session.Append --------------------------> transcript
 
 Store.Open(id) -> claim writer lease -> read/project once -> Session + History
@@ -119,7 +123,7 @@ are disposable derived summaries.
 ## SDK Go responsibilities
 
 SDK `session.Session` follows the same resource and naming rules: typed `Append`,
-`RecordAgentEvent` adaptation, `Err`, and `Close`; its Store contract supplies a
+`RecordEvent` adaptation, `Err`, and `Close`; its Store contract supplies a
 writer claim before restore. SDK `session.Read` is a query without an opened
 writer. SDK `session.Create` creates a new identity and `session.Open` restores an existing
 one. SDK returns native `[]ai.Message`; it does not know San's titles, tasks,

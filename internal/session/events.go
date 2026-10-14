@@ -11,9 +11,9 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// RecordAgentEvent adapts native agent events into the same Append path as
+// RecordEvent adapts native agent events into the same Append path as
 // application records. The runtime captures this opened session, never a mutable ID.
-func (r *Session) RecordAgentEvent(ev core.Event) {
+func (r *Session) RecordEvent(ev core.Event) {
 	if r == nil || r.store == nil || r.sessionID == "" {
 		return
 	}

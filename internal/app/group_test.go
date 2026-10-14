@@ -36,7 +36,7 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 	rec := mustCreateSession(t, store, session.CreateOptions{ID: "group-batch", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: message})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
 	saved, err := store.ReadChatHistory("group-batch")
 	if err != nil {
 		t.Fatal(err)

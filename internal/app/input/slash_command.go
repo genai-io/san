@@ -51,19 +51,18 @@ type SlashCommandEnv struct {
 	// Domain services. Commands read live state from these — never snapshot
 	// at deps construction time, since /something might mutate state that a
 	// later command reads (e.g. /disabled-tools then /tools).
-	Setting            *setting.Settings
-	LLM                *llm.Conn
-	SessionStore       *session.Store
-	SessionID          func() string
-	EnsureSessionStore func() error
-	Skill              *skill.Registry
-	Plugin             *plugin.Registry
-	MCP                *mcp.Manager
-	Tracker            *todo.Store
-	Cron               *cron.Scheduler
-	ToolSvc            *tool.Registry
-	TaskSvc            *task.Manager
-	Command            *command.Registry
+	Setting      *setting.Settings
+	LLM          *llm.Conn
+	SessionStore *session.Store
+	SessionID    func() string
+	Skill        *skill.Registry
+	Plugin       *plugin.Registry
+	MCP          *mcp.Manager
+	Tracker      *todo.Store
+	Cron         *cron.Scheduler
+	ToolSvc      *tool.Registry
+	TaskSvc      *task.Manager
+	Command      *command.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and
 	// can't be imported here without a cycle, so its reads/writes are
@@ -358,9 +357,6 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 }
 
 func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if err := c.env.EnsureSessionStore(); err != nil {
-		return "", nil, fmt.Errorf("failed to initialize session store: %w", err)
-	}
 	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.SessionStore, c.env.Cwd); err != nil {
 		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
 	}

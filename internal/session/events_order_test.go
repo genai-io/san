@@ -39,19 +39,19 @@ func TestSessionWritesMessageBeforeInference(t *testing.T) {
 	// Simulate one turn: the user message appends, then the call that references
 	// it goes out.
 	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: userMsg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: userMsg})
 
-	rec.RecordAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{userMsg},
 	}})
 
 	// Assistant reply appends after PostInfer.
-	rec.RecordAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 10, Output: 5},
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: assistantMsg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: assistantMsg})
 
 	records := readAllRecords(t, dir, "sess-order")
 
@@ -122,10 +122,10 @@ func TestSessionAndSaveDoNotDoubleWrite(t *testing.T) {
 	rec := mustSession(t, fs, CreateOptions{ID: "sess-dup", AgentID: "main", Cwd: dir})
 
 	// Session writes the two messages (agent-side path).
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m1", Role: ai.RoleUser, Content: ai.TextContent("hi"),
 	}})
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m2", Role: ai.RoleAssistant, Content: ai.TextContent("hello"),
 	}})
 
@@ -210,10 +210,10 @@ func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	// Seed the file with two pre-existing messages, simulating a session
 	// the user is now resuming.
 	rec0 := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
-	rec0.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec0.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m1", Role: ai.RoleUser, Content: ai.TextContent("first turn"),
 	}})
-	rec0.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec0.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m2", Role: ai.RoleAssistant, Content: ai.TextContent("first reply"),
 	}})
 
@@ -223,7 +223,7 @@ func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	// would write the next message with parentId="" and break the chain.
 	rec := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
 
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
 	}})
 
@@ -306,7 +306,7 @@ func TestSessionSkipsEmptyMessages(t *testing.T) {
 	}
 	rec := mustSession(t, fs, CreateOptions{ID: "sess-skip", AgentID: "main"})
 
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "empty-1", Role: ai.RoleUser, // no content, no tool result, no images
 	}})
 

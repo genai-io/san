@@ -34,7 +34,7 @@ func TestSession_WritesSessionStartedBeforeTelemetry(t *testing.T) {
 
 	// Fire a SystemChange right after — mirroring what SetObserver replay
 	// does inside core.NewAgent.
-	rec.RecordAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
 	})
 

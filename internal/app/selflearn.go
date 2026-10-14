@@ -171,7 +171,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		defer func() { _ = rec.Close() }()
 		if rec != nil {
-			forkOnEvent = rec.RecordAgentEvent
+			forkOnEvent = rec.RecordEvent
 			forkSessionID = rec.ID()
 		}
 		fc := selflearn.ForkConfig{

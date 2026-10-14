@@ -65,7 +65,7 @@ func TestOpenHoldsTheLeaseBeforeRestoringHistory(t *testing.T) {
 		_ = competing.Close()
 		t.Fatal("idle opened session released its lease")
 	}
-	opened.RecordAgentEvent(sdkagent.MessagesReplaced{Messages: history.Messages})
+	opened.RecordEvent(sdkagent.MessagesReplaced{Messages: history.Messages})
 	appendMessage(opened, "m3")
 	got, err := b.Read("s")
 	if err != nil || len(got.Messages) != 3 {
@@ -103,7 +103,7 @@ func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchTitle("late")}}}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed state append: %v", err)
 	}
-	opened.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.UserMessage("late")})
+	opened.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("late")})
 	if after := readTranscript(t, store, "s"); after != before {
 		t.Fatal("closed observer wrote a record")
 	}
@@ -142,7 +142,7 @@ func TestHydratedResumeDoesNotRewriteNativeHistory(t *testing.T) {
 		t.Fatalf("resume did not hydrate the blob: %+v, %v", resumed, err)
 	}
 	before := readTranscript(t, store, "s")
-	opened.RecordAgentEvent(sdkagent.MessagesReplaced{Messages: resumed.Messages})
+	opened.RecordEvent(sdkagent.MessagesReplaced{Messages: resumed.Messages})
 	if after := readTranscript(t, store, "s"); before != after {
 		t.Fatal("hydrated resume copied or replaced the canonical transcript")
 	}
@@ -214,7 +214,7 @@ func TestRepeatedMessageDoesNotMoveTheParentPosition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	opened.RecordAgentEvent(sdkagent.MessageAdded{Message: first})
+	opened.RecordEvent(sdkagent.MessageAdded{Message: first})
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "notice"}}); err != nil {
 		t.Fatal(err)
 	}

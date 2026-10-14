@@ -24,7 +24,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	}
 	old := mustCreateSession(t, store, session.CreateOptions{ID: "old", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	history := []ai.Message{{ID: "old-message", Role: ai.RoleUser, Content: ai.TextContent("old text")}}
-	old.RecordAgentEvent(sdkagent.MessageAdded{Message: history[0]})
+	old.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
 	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewService(), Hook: hook.NewEngine(nil, "old", "", old.TranscriptPath())}, conv: conv.NewModel(80)}
 	m.services.Agent.SetMessages(history)
 	m.env.SessionName = "old title"
@@ -42,12 +42,12 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 		t.Fatal("task storage kept old identity")
 	}
 	// Delayed events from the retired runtime must not write into either log.
-	old.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "late", Role: ai.RoleUser, Content: ai.TextContent("late")}})
+	old.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "late", Role: ai.RoleUser, Content: ai.TextContent("late")}})
 	w, err := m.openCurrentSession()
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new-message", Role: ai.RoleUser, Content: ai.TextContent("new text")}})
+	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new-message", Role: ai.RoleUser, Content: ai.TextContent("new text")}})
 	for sessionID, want := range map[string]string{"old": "old-message", id: "new-message"} {
 		got, err := store.Read(sessionID)
 		if err != nil {

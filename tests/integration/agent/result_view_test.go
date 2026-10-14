@@ -44,11 +44,11 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
 		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
 	}}}}
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: owner})
-	rec.RecordAgentEvent(sdkagent.ToolEnd{ID: "worker-1", Name: "Agent", Result: result})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: owner})
+	rec.RecordEvent(sdkagent.ToolEnd{ID: "worker-1", Name: "Agent", Result: result})
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", Content: ai.TextContent(text)})
 	msg.ID = "result-1"
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: msg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 	loaded, err := store.Read("parent-1")
 	if err != nil {
 		t.Fatal(err)

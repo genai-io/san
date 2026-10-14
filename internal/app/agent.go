@@ -166,7 +166,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return params, err
 	}
 	if rec != nil {
-		onEvent = rec.RecordAgentEvent
+		onEvent = rec.RecordEvent
 		for _, n := range m.earlyNotices {
 			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice}})
 		}

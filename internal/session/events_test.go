@@ -40,11 +40,11 @@ func TestSessionWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.RecordAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{{ID: "m1"}, {ID: "m2"}},
 	}})
-	rec.RecordAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 42, Output: 8, CacheRead: 10},
 	}})
 
@@ -130,13 +130,13 @@ func TestSessionWritesSystemSectionEvents(t *testing.T) {
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.RecordAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
 	})
-	rec.RecordAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are Y", Caller: "command:/identity",
 	})
-	rec.RecordAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "policy", Removed: true, Caller: "test:teardown",
 	})
 
@@ -182,15 +182,15 @@ func TestSessionWritesToolsChangeEvents(t *testing.T) {
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.RecordAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Read", Description: "read a file"},
 		Caller: "tools:init",
 	})
-	rec.RecordAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Bash", Description: "run shell"},
 		Caller: "mcp:Bash",
 	})
-	rec.RecordAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Name: "Bash", Removed: true, Caller: "mode:plan",
 	})
 
@@ -238,9 +238,9 @@ func TestSessionWritesCompactionBoundary(t *testing.T) {
 	})
 
 	// A pre-compaction message, then the summary append + compaction boundary.
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
-	rec.RecordAgentEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
+	rec.RecordEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
 
 	records := readAllRecords(t, dir, "sess-c")
 	var summaryAppended bool
@@ -264,10 +264,10 @@ func TestSessionWritesCompactionBoundary(t *testing.T) {
 // A nil-safe writer (no Store) must accept events without panicking.
 func TestSessionNilSafe(t *testing.T) {
 	var rec *Session
-	rec.RecordAgentEvent(sdkagent.MessageStart{})
+	rec.RecordEvent(sdkagent.MessageStart{})
 
 	empty := &Session{}
-	empty.RecordAgentEvent(sdkagent.MessageStart{})
+	empty.RecordEvent(sdkagent.MessageStart{})
 }
 
 func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record {
@@ -321,16 +321,16 @@ func TestSessionWritesInferenceFailed(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.RecordAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System: "you are san", Messages: []core.Message{{ID: "m1"}},
 	}})
-	rec.RecordAgentEvent(sdkagent.MessageEnd{
+	rec.RecordEvent(sdkagent.MessageEnd{
 		Attempt: 2,
 		Err:     &ai.Error{Kind: ai.KindOverloaded, Status: 529, Message: "overloaded"},
 	})
 	// Second failure with no request open: the first one consumed it, so this
 	// must not claim the same turn.
-	rec.RecordAgentEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
+	rec.RecordEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
 
 	var failed []*transcript.InferenceRecord
 	for _, r := range readAllRecords(t, dir, "sess-f") {
@@ -372,10 +372,10 @@ func TestSessionKeepsToolDetailsWithTheResult(t *testing.T) {
 	rec := mustSession(t, fs, CreateOptions{ID: "sess-d", AgentID: "main"})
 
 	diff := toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "@@ -1 +1 @@\n-old\n+new\n", AddedLines: 1, RemovedLines: 1}
-	rec.RecordAgentEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
+	rec.RecordEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "call-1", ToolName: "Edit", Content: ai.TextContent("Edited a.go")})
 	msg.ID = "m-result"
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: msg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 
 	got, err := fs.Load(context.Background(), "sess-d")
 	if err != nil {
@@ -410,7 +410,7 @@ func TestInferenceRecordsTheWorkspaceGitBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	opened.RecordAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{}})
+	opened.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{}})
 	items, err := store.List()
 	if err != nil || len(items) != 1 || items[0].GitBranch != "session-test-branch" {
 		t.Fatalf("branch annotation: %+v, %v", items, err)

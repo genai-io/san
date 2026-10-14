@@ -45,7 +45,7 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	}
 	n := taskNotice()
 	message := m.showNoticeLine(n)
-	rec.RecordAgentEvent(sdkagent.MessageAdded{Message: message})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
 	for _, load := range []func(string) ([]core.ChatMessage, error){store.ReadChatHistory, func(id string) ([]core.ChatMessage, error) {
 		snapshot, err := store.Read(id)
 		if err != nil {

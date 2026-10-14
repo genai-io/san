@@ -17,7 +17,7 @@ func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := mustSession(t, store.transcriptStore, CreateOptions{ID: "original"})
-	original.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old conversation")}})
+	original.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old conversation")}})
 	if err := original.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
 	if len(history.Messages) != 1 {
 		t.Fatal(history)
 	}
-	reopened.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new turn")}})
+	reopened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new turn")}})
 	got, err := store.Read("original")
 	if err != nil || len(got.Messages) != 2 || got.Messages[1].ID != "new" {
 		t.Fatalf("history: %+v, %v", got, err)
@@ -60,7 +60,7 @@ func TestForkSessionWritesToItsOwnTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	opened.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "after", Role: ai.RoleUser, Content: ai.TextContent("after")}})
+	opened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "after", Role: ai.RoleUser, Content: ai.TextContent("after")}})
 	parent, err := store.Read("parent")
 	if err != nil {
 		t.Fatal(err)

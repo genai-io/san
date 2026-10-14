@@ -32,7 +32,7 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 				w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 				defer w.Close()
 				for _, m := range messages {
-					w.RecordAgentEvent(sdkagent.MessageAdded{Message: m})
+					w.RecordEvent(sdkagent.MessageAdded{Message: m})
 				}
 				if err := w.Err(); err != nil {
 					t.Fatal(err)
@@ -60,7 +60,7 @@ func TestSessionFailureKeepsAReplayablePrefix(t *testing.T) {
 	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	defer w.Close()
 	emit := func(id string) {
-		w.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}})
+		w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}})
 	}
 	emit("saved")
 	path := filepath.Join(dir, "transcripts")
@@ -131,11 +131,11 @@ func TestSessionRecordsActualModelAndMonotonicInferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
-	w.RecordAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
+	w.RecordEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
 	w.Close()
 	w = mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
 	defer w.Close()
-	w.RecordAgentEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
+	w.RecordEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
 	records := readAllRecords(t, store.projectDir, "s")
 	var requests []*transcript.InferenceRecord
 	for _, r := range records {
@@ -167,16 +167,16 @@ func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *tes
 	history := []ai.Message{{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old")}}
 	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	defer w.Close()
-	w.RecordAgentEvent(sdkagent.MessageAdded{Message: history[0]})
+	w.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
 	before := len(readAllRecords(t, store.projectDir, "s"))
 	for range 3 {
-		w.RecordAgentEvent(sdkagent.MessagesReplaced{Messages: history})
+		w.RecordEvent(sdkagent.MessagesReplaced{Messages: history})
 	}
 	if got := len(readAllRecords(t, store.projectDir, "s")); got != before {
 		t.Fatalf("resume duplicated history: %d -> %d", before, got)
 	}
-	w.RecordAgentEvent(sdkagent.MessagesReplaced{})
-	w.RecordAgentEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
+	w.RecordEvent(sdkagent.MessagesReplaced{})
+	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
 	loaded, err := store.Read("s")
 	if err != nil {
 		t.Fatal(err)
@@ -192,10 +192,10 @@ func TestForkPreservesToolPresentationAndNativeResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "source", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
-	w.RecordAgentEvent(sdkagent.ToolEnd{ID: "call", Result: sdkagent.Result{Details: toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "diff"}}})
+	w.RecordEvent(sdkagent.ToolEnd{ID: "call", Result: sdkagent.Result{Details: toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "diff"}}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Edit", Content: ai.TextContent("edited")})
 	result.ID = "result"
-	w.RecordAgentEvent(sdkagent.MessageAdded{Message: result})
+	w.RecordEvent(sdkagent.MessageAdded{Message: result})
 	w.Close()
 	forkSession, fork, err := store.Fork("source")
 	if err != nil {
@@ -257,7 +257,7 @@ func TestHistoryImportCannotWriteIntoAnotherActiveSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := mustSession(t, first.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
-	w.RecordAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "saved", Role: ai.RoleUser, Content: ai.TextContent("saved")}})
+	w.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "saved", Role: ai.RoleUser, Content: ai.TextContent("saved")}})
 	second, err := NewStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)

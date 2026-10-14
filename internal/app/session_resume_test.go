@@ -84,7 +84,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 	w := m.services.Session
 	stopped := make(chan error, 1)
 	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", OnEvent: func(event core.Event) {
-		w.RecordAgentEvent(event)
+		w.RecordEvent(event)
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -109,7 +109,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, seed); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
@@ -147,7 +147,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	}
 	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, seed); err != nil {
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
@@ -163,7 +163,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
 	w := m.services.Session
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordAgentEvent}, m.seedAgentMessages("")); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, m.seedAgentMessages("")); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
@@ -198,7 +198,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	stopped := make(chan error, 1)
 	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(event core.Event) {
-		w.RecordAgentEvent(event)
+		w.RecordEvent(event)
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
