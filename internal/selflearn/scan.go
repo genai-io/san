@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Memory entries and skill bodies are injected verbatim into a future system
+// Skill bodies are injected verbatim into a future system
 // prompt, so a poisoned one is a stored prompt-injection / exfiltration vector.
 // Content that trips a pattern is rejected at write time. This is a coarse
 // guard, not a sandbox — it catches the obvious payloads.
@@ -21,7 +21,7 @@ var threatPatterns = []struct {
 	// "you are now an admin / root / unrestricted / in developer mode".
 	// The unanchored `(?i)you are now ` matched benign English (e.g.
 	// "you are now in the repo root, run make ci"), rejecting legitimate
-	// memory entries. The role keyword anchor keeps the spirit (catch
+	// content. The role keyword anchor keeps the spirit (catch
 	// classic prompt-injection role swaps) without the false positives.
 	{regexp.MustCompile(`(?i)you\s+are\s+now\s+(an?\s+|the\s+)?(admin|administrator|root|superuser|developer|operator|assistant|jailbroken|unrestricted|free\s+from|in\s+(debug|developer|admin|god|safe)\s+mode)`), "role_hijack"},
 	{regexp.MustCompile(`(?i)do\s+not\s+tell\s+the\s+user`), "deception_hide"},
@@ -32,7 +32,7 @@ var threatPatterns = []struct {
 }
 
 // invisibleRunes are zero-width / bidi-control code points that have no business
-// in a durable memory entry and are a classic injection-hiding trick. Listed by
+// in a durable skill and are a classic injection-hiding trick. Listed by
 // code point so the source file stays free of literal invisible characters.
 var invisibleRunes = map[rune]struct{}{
 	0x200B: {}, // zero-width space
@@ -48,7 +48,7 @@ var invisibleRunes = map[rune]struct{}{
 }
 
 // scanContent rejects empty input and then applies the threat scan. Use it for
-// required, non-empty content (memory entries, skill bodies).
+// required, non-empty content (skill bodies).
 func scanContent(content string) error {
 	if strings.TrimSpace(content) == "" {
 		return fmt.Errorf("content cannot be empty")

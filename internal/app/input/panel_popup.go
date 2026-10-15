@@ -5,7 +5,7 @@
 //
 // Two popups are built on this shell today:
 //   - /config  → Appearance + Permissions panels (Provider planned).
-//   - /evolve  → one self-learning panel covering both arms (skills + memory).
+//   - /evolve  → the skill self-learning panel.
 //
 // To add a panel to either, implement Panel and append it in the popup's
 // constructor (NewSettingsSelector / NewEvolveSelector).

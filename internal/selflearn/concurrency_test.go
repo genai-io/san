@@ -23,11 +23,11 @@ import (
 func TestSnapshotIsCopiedBeforeGoroutine(t *testing.T) {
 	release := make(chan struct{})
 	done := make(chan int)
-	review := func(_ ReviewKind, _ SkillPermissions, snapshot []core.Message) {
+	review := func(_ SkillPermissions, snapshot []core.Message) {
 		<-release
 		done <- len(snapshot)
 	}
-	r := New(Config{MemoryEnabled: true}, review)
+	r := New(Config{Skills: AllowAllSkillActions()}, review)
 
 	original := []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("a")}}
 	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original}, false, true)
@@ -58,7 +58,7 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 	var fired atomic.Int64
 	hold := make(chan struct{})
 	fireSignal := make(chan struct{}, 1)
-	review := func(_ ReviewKind, _ SkillPermissions, _ []core.Message) {
+	review := func(_ SkillPermissions, _ []core.Message) {
 		fired.Add(1)
 		select {
 		case fireSignal <- struct{}{}: // announce the first fire
@@ -66,10 +66,7 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 		}
 		<-hold // block until the test releases — keeps inFlight=true
 	}
-	r := New(Config{
-		MemoryEnabled: true,
-		Skills:        SkillPermissions{AllowCreate: true},
-	}, review)
+	r := New(Config{Skills: SkillPermissions{AllowCreate: true}}, review)
 
 	const goroutines, perG = 8, 20
 	var wg sync.WaitGroup

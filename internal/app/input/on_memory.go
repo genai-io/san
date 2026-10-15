@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // ── State ───────────────────────────────────────────────────────────────
@@ -52,6 +53,8 @@ type MemorySelector struct {
 	width       int
 	height      int
 	cwd         string
+	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
+	toggleErr   error
 }
 
 // memorySelectedMsg is sent when a memory file is selected for editing.
@@ -70,13 +73,19 @@ func NewMemorySelector() MemorySelector {
 }
 
 // EnterSelect enters memory selection mode.
-func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
+func (m *MemorySelector) EnterSelect(cwd string, settings *setting.Settings, width, height int) {
 	m.cwd = cwd
+	m.settings = settings
 	m.width = width
 	m.height = height
 	m.active = true
 	m.selectedIdx = 0
+	m.toggleErr = nil
+	m.loadItems()
+}
 
+func (m *MemorySelector) loadItems() {
+	cwd := m.cwd
 	paths := system.GetAllMemoryPaths(cwd)
 	m.items = []memoryItem{
 		m.buildMemoryItem("Global", "global", []string{paths.Global}, cwd,
@@ -91,6 +100,59 @@ func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
 			"Not committed (git-ignored)",
 			"Use /init local to create"),
 	}
+	if m.settings != nil {
+		m.items = append(m.items, autoMemoryItem(cwd, m.settings.AutoMemory()))
+	}
+}
+
+// autoMemoryItem describes the agent-written memory store. Enter opens its
+// MEMORY.md index; t toggles auto memory.
+func autoMemoryItem(cwd string, on bool) memoryItem {
+	dir := system.AutoMemoryDir(cwd)
+	index := filepath.Join(dir, system.AutoMemoryIndexName)
+	state := "off"
+	if on {
+		state = "on"
+	}
+	entries, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+	count := len(entries)
+	if _, err := os.Stat(index); err == nil {
+		count--
+	}
+	return memoryItem{
+		Label:       "Auto memory",
+		Description: fmt.Sprintf("%s · %d memories · %s", state, count, kit.ShortenPath(dir)),
+		Path:        index,
+		Exists:      on,
+		Level:       "auto",
+		CreateHint:  "Off — press t to turn on",
+	}
+}
+
+// toggleAutoMemory flips the auto-memory setting at the user level and
+// reloads settings so the change applies from the next turn.
+func (m *MemorySelector) toggleAutoMemory() {
+	if m.settings == nil {
+		return
+	}
+	m.toggleErr = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory())
+	m.loadItems()
+}
+
+// setAutoMemory saves the auto-memory switch to user settings and reloads
+// them. A project setting or SAN_DISABLE_AUTO_MEMORY can still win; the
+// error says so.
+func setAutoMemory(settings *setting.Settings, cwd string, on bool) error {
+	if err := setting.SaveAutoMemory(on); err != nil {
+		return err
+	}
+	if err := settings.Reload(cwd); err != nil {
+		return err
+	}
+	if settings.AutoMemory() != on {
+		return fmt.Errorf("saved, but a project setting or SAN_DISABLE_AUTO_MEMORY overrides it")
+	}
+	return nil
 }
 
 // buildMemoryItem describes one memory level. searchPaths is a root-first
@@ -148,9 +210,11 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		}
 	case "enter", "right", "l":
 		return m.selectMemoryItem()
+	case "t", " ":
+		m.toggleAutoMemory()
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
-	case "1", "2", "3":
+	case "1", "2", "3", "4":
 		idx := int(keyStr[0] - '1')
 		if idx < len(m.items) {
 			m.selectedIdx = idx
@@ -229,7 +293,15 @@ func (m *MemorySelector) Render() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(kit.SelectorHintStyle().Render("↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"))
+	if m.toggleErr != nil {
+		sb.WriteString(kit.SelectorHintStyle().Render("  ⚠ " + m.toggleErr.Error()))
+		sb.WriteString("\n")
+	}
+	hint := "↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"
+	if m.settings != nil {
+		hint = "↑/↓ navigate · Enter edit · t auto memory on/off · Esc cancel"
+	}
+	sb.WriteString(kit.SelectorHintStyle().Render(hint))
 
 	content := sb.String()
 	box := kit.SelectorBorderStyle().Width(kit.CalculateBoxWidth(m.width)).Render(content)
@@ -404,16 +476,25 @@ func memoryAddToGitignore(cwd, entry string) {
 // selector is the memory selector model. cwd, width, height are from the app model.
 // Returns (result string, editFilePath string, error).
 // When editFilePath is non-empty, the caller should open an external editor for that file.
-func HandleMemoryCommand(selector *MemorySelector, cwd string, width, height int, args string) (string, string, error) {
+func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, cwd string, width, height int, args string) (string, string, error) {
 	args = strings.TrimSpace(args)
 	parts := strings.Fields(args)
 
 	if len(parts) == 0 {
-		selector.EnterSelect(cwd, width, height)
+		selector.EnterSelect(cwd, settings, width, height)
 		return "", "", nil
 	}
 
 	subCmd := strings.ToLower(parts[0])
+	if subCmd == "on" || subCmd == "off" {
+		if settings == nil {
+			return "", "", fmt.Errorf("settings unavailable")
+		}
+		if err := setAutoMemory(settings, cwd, subCmd == "on"); err != nil {
+			return "", "", err
+		}
+		return "Auto memory " + subCmd + " (from the next turn)", "", nil
+	}
 
 	scope := "project"
 	if len(parts) > 1 {
@@ -437,7 +518,7 @@ func HandleMemoryCommand(selector *MemorySelector, cwd string, width, height int
 		}
 		return "", editPath, nil
 	default:
-		return "Usage: /memory [list|show|edit] [global|project|local]", "", nil
+		return "Usage: /memory [on|off] | [list|show|edit] [global|project|local]", "", nil
 	}
 }
 

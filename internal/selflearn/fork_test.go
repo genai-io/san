@@ -59,53 +59,43 @@ func TestTrimTrailingPendingMessages(t *testing.T) {
 }
 
 func TestAllowOnlyPolicy(t *testing.T) {
-	store := newTestStore(t)
-	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp", AllowAllSkillActions())))
+	tools := core.NewTools(newSkillManageTool(NewSkillManager("/tmp", AllowAllSkillActions())))
 	policy := allowOnly(tools)
 
-	for _, name := range []string{"memory_write", "skill_manage"} {
-		if ok, _ := policy(context.Background(), name, nil); !ok {
-			t.Fatalf("%s should be allowed", name)
-		}
+	if ok, _ := policy(context.Background(), "skill_manage", nil); !ok {
+		t.Fatal("skill_manage should be allowed")
 	}
-	for _, name := range []string{"Bash", "Edit", "Agent", "Read"} {
+	for _, name := range []string{"memory_write", "Bash", "Edit", "Agent", "Read"} {
 		if ok, _ := policy(context.Background(), name, nil); ok {
 			t.Fatalf("%s must be denied for the reviewer", name)
 		}
 	}
 }
 
-func TestBuildReviewPromptSelectsArms(t *testing.T) {
-	store := newTestStore(t)
-	mustAdd(t, store, "existing fact about the build")
+func TestBuildReviewPromptIncludesSkillSection(t *testing.T) {
 	mgr := NewSkillManager("/work/project-x", SkillPermissions{AllowCreate: true, AllowUpdate: true})
 
-	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", store, mgr, "")
-	if !strings.Contains(memOnly, "existing fact about the build") {
-		t.Fatal("memory prompt should embed the current store")
+	prompt := buildReviewPrompt(mgr, "")
+	if !strings.Contains(prompt, "skill_manage tool") {
+		t.Fatal("prompt should include the skill section")
 	}
-	if strings.Contains(memOnly, "skill_manage tool") {
-		t.Fatal("memory-only prompt should not include the skill section")
-	}
-
-	skillOnly := buildReviewPrompt(KindSkills, "/work/project-x", store, mgr, "")
-	if !strings.Contains(skillOnly, "skill_manage tool") {
-		t.Fatal("skill prompt should include the skill section")
-	}
-
-	combined := buildReviewPrompt(KindMemory|KindSkills, "/work/project-x", store, mgr, "")
-	if !strings.Contains(combined, "memory_write tool") || !strings.Contains(combined, "skill_manage tool") {
-		t.Fatal("combined prompt should include both sections")
+	if strings.Contains(prompt, "memory_write") {
+		t.Fatal("prompt must not mention the removed memory tool")
 	}
 }
 
-func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
-	store := newTestStore(t)
-	mgr := NewSkillManager("/work/project-x", AllowAllSkillActions())
+func TestRunReviewWritesSkillAndInheritsSystem(t *testing.T) {
+	mgr, _ := newTestSkillManager(t)
 
 	llm := aitest.New(
-		aitest.Asks(core.ToolCall{ID: "call-1", Name: "memory_write", Input: `{"action":"add","content":"the user prefers tabs"}`}),
-		aitest.Says("Saved 1 memory entry."),
+		aitest.Asks(core.ToolCall{ID: "call-1", Name: "skill_manage", Input: mustJSON(map[string]any{
+			"action":      "create",
+			"name":        "tabs-formatting",
+			"description": "switch files to tab indentation",
+			"content":     "Use tabs.",
+			"note":        "created tabs skill",
+		})}),
+		aitest.Says("created tabs-formatting skill"),
 	)
 
 	parentSys := core.NewSystem()
@@ -120,7 +110,6 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 		Client: stubClient(llm),
 		System: parentSys,
 		CWD:    "/work/project-x",
-		Memory: store,
 		Skills: mgr,
 	}
 	snapshot := []core.Message{
@@ -128,33 +117,21 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 		core.AssistantMessage("done", "", nil),
 	}
 
-	summary, err := RunReview(context.Background(), fc, KindMemory, snapshot)
+	summary, err := RunReview(context.Background(), fc, snapshot)
 	if err != nil {
 		t.Fatalf("RunReview: %v", err)
 	}
-	if !strings.Contains(summary, "Saved") {
+	if !strings.Contains(summary, "tabs-formatting") {
 		t.Fatalf("summary = %q", summary)
 	}
-	if got, ok := readBackMemory(t); !ok || !strings.Contains(got, "prefers tabs") {
-		t.Fatalf("memory not written: got=%q ok=%v", got, ok)
+	if body, err := mgr.Read("tabs-formatting"); err != nil || !strings.Contains(body, "Use tabs.") {
+		t.Fatalf("skill not written: body=%q err=%v", body, err)
 	}
 	if !strings.Contains(llm.Last().System, "PARENT-SYSTEM-MARKER") {
 		t.Fatalf("fork did not inherit the parent system prompt; system=%q", llm.Last().System)
 	}
-	// The fork must only ever be offered its two write tools.
-	if len(llm.Last().Tools) != 2 {
-		t.Fatalf("fork tool count = %d, want 2", len(llm.Last().Tools))
+	// The fork must only ever be offered its single write tool.
+	if len(llm.Last().Tools) != 1 {
+		t.Fatalf("fork tool count = %d, want 1", len(llm.Last().Tools))
 	}
-}
-
-// readBackMemory reads back the store written during the test (HOME is
-// already pointed at the temp dir by newTestStore).
-func readBackMemory(t *testing.T) (string, bool) {
-	t.Helper()
-	store := NewMemoryStore("/work/project-x", 0, "")
-	entries := readEntries(store.Dir() + "/MEMORY.md")
-	if len(entries) == 0 {
-		return "", false
-	}
-	return strings.Join(entries, "\n"), true
 }

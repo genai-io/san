@@ -40,7 +40,7 @@ func builtinCommands() []Info {
 		{Name: "context", Description: "Show what fills the context window · /context limit <window> <output> | reset to override it"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
 		{Name: "init", Description: "Initialize instruction files (AGENTS.md, local, rules)"},
-		{Name: "memory", Description: "View and manage memory files (list/show/edit) with @import support"},
+		{Name: "memory", Description: "Manage memory files and turn auto memory on/off"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
 		{Name: "plugin", Description: "Manage plugins (list/install/marketplace/enable/disable/info)"},
 		{Name: "reload-plugins", Description: "Reload plugins and refresh plugin-backed skills, agents, MCP, and hooks"},

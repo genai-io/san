@@ -12,7 +12,7 @@ func TestCapabilitiesActive(t *testing.T) {
 		t.Fatal("zero capabilities must be inactive")
 	}
 	for _, c := range []Capabilities{
-		{CreateSkills: true}, {UpdateSkills: true}, {DeleteSkills: true}, {WriteMemory: true},
+		{CreateSkills: true}, {UpdateSkills: true}, {DeleteSkills: true},
 	} {
 		if !c.Active() {
 			t.Fatalf("%+v should be active", c)
@@ -21,14 +21,9 @@ func TestCapabilitiesActive(t *testing.T) {
 }
 
 // TestSchemaDescriptionIsDynamic confirms the description only advertises the
-// enabled capabilities — memory-off never mentions memory, and skill-off never
-// invites capturing/refining a skill.
+// enabled capabilities — it never invites remembering facts, and without
+// create it never invites capturing a new skill.
 func TestSchemaDescriptionIsDynamic(t *testing.T) {
-	memOnly := Schema(Capabilities{WriteMemory: true}).Description
-	if !strings.Contains(memOnly, "remembering") || strings.Contains(memOnly, "skill") {
-		t.Fatalf("memory-only description should mention memory, not skills:\n%s", memOnly)
-	}
-
 	skillOnly := Schema(Capabilities{CreateSkills: true, UpdateSkills: true, DeleteSkills: true}).Description
 	if strings.Contains(skillOnly, "remember") {
 		t.Fatalf("skill-only description must not mention memory:\n%s", skillOnly)

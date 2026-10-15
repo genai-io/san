@@ -16,6 +16,7 @@ func TestAsyncHookContinuationKeepsContextInDeliveredTurn(t *testing.T) {
 	m.services.Setting = setting.New(setting.NewData())
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
+	m.agentAutoMemoryDir = m.autoMemoryDir()
 	cmd := m.injectAsyncHookContinuation(trigger.AsyncHookRewake{
 		Context:            []string{"policy finding", "tool detail"},
 		ContinuationPrompt: "Re-evaluate the plan",

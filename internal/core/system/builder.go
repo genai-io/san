@@ -28,10 +28,11 @@ type Persona struct {
 // Options populate it; Build then constructs each part once from the resolved
 // values.
 type buildConfig struct {
-	scope    core.Scope
-	env      *Environment   // volatile footer; nil when not supplied
-	persona  Persona        // per-part overrides; empty fields use the default
-	subagent *SubagentBrief // non-nil for a subagent charter
+	scope     core.Scope
+	env       *Environment   // volatile footer; nil when not supplied
+	persona   Persona        // per-part overrides; empty fields use the default
+	subagent  *SubagentBrief // non-nil for a subagent charter
+	memoryDir string         // auto-memory store; "" when auto memory is off
 }
 
 // Build constructs a System for the given Scope and applies the options.
@@ -66,6 +67,9 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	// lives in tool schemas, so the rules part does not vary by scope or tool
 	// availability.
 	sys.Use(rulesSection(cfg.persona.Rules), caller)
+	if scope == core.ScopeMain && cfg.memoryDir != "" {
+		sys.Use(memorySection(cfg.memoryDir), caller)
+	}
 
 	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {

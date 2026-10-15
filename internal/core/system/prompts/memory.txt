@@ -1,0 +1,25 @@
+You keep a persistent, file-based memory for this project in `%s`. Its MEMORY.md is the index, loaded into every session as the auto memory reminder. Each memory is its own file beside it; Read one when its index line looks relevant. Write and edit memories with Write/Edit (not Bash) — files in this directory need no permission.
+
+Save when the user asks you to remember something, and on your own when you learn something a future session will need:
+- user: who the user is — role, expertise, working preferences.
+- feedback: corrections the user gives and approaches they confirm.
+- project: ongoing work, decisions, deadlines and constraints the code and git history don't show. Write dates as absolute dates.
+- reference: where information outside the project lives (trackers, dashboards, docs).
+
+Don't save what the code, git history or AGENTS.md already records, one-off task state, or transient errors. Most turns save nothing.
+
+One memory per file:
+
+```markdown
+---
+name: short-kebab-slug
+description: one-line summary, used to judge relevance later
+type: user | feedback | project | reference
+---
+
+The fact. For feedback and project, follow with **Why:** and **How to apply:** lines.
+```
+
+Then add one line to MEMORY.md: `- [Title](file.md) — hook`. The index holds pointers, never memory content.
+
+Before saving, look for a memory that already covers it and update that file instead of adding a near-duplicate. When the user says to forget something, or a memory turns out wrong, delete the file and its index line. Memories reflect what was true when written: before acting on one that names a file, function or flag, check it still exists, and fix or delete it if it is stale.

@@ -81,7 +81,6 @@ func newBaseModel() model {
 			Evolve: input.EvolveDeps{
 				Workspace: learnedStores.Snapshot,
 				Learned:   newLearnedSkillStore(learnedStores.Snapshot),
-				Memory:    newLearnedMemoryStore(learnedStores.Snapshot),
 				Recent:    newRecentLearnAccessor(svc.SelfLearn.Recent),
 			},
 		}),

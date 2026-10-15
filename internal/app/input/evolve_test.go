@@ -78,24 +78,6 @@ func TestSkillPanelTogglesBool(t *testing.T) {
 	}
 }
 
-// TestPanelHasBothArms confirms the unified panel exposes the Skills permission
-// gates and the Memory settings in one form (Create/Enable memory present).
-func TestPanelHasBothArms(t *testing.T) {
-	_, p := newTestEvolve()
-	var haveCreate, haveMemory bool
-	for _, r := range p.form.rowsFn() {
-		switch r.label {
-		case "Create new skills":
-			haveCreate = true
-		case "Enable memory":
-			haveMemory = true
-		}
-	}
-	if !haveCreate || !haveMemory {
-		t.Fatalf("unified panel should show both arms; create=%v memory=%v", haveCreate, haveMemory)
-	}
-}
-
 // TestSkillPanelRenderShowsValidationError confirms an invalid combination
 // (create allowed but update denied) surfaces the inline error.
 func TestSkillPanelRenderShowsValidationError(t *testing.T) {
@@ -108,14 +90,18 @@ func TestSkillPanelRenderShowsValidationError(t *testing.T) {
 }
 
 // TestEvolveSelectorRenderShowsSections confirms the "/evolve" header plus the
-// SKILLS and MEMORY section sub-headers make it into the single-panel output.
+// SKILLS section sub-header make it into the panel output, and no MEMORY
+// section remains (memory lives in /memory now).
 func TestEvolveSelectorRenderShowsSections(t *testing.T) {
 	c, _ := newTestEvolve()
 	out := c.Render()
-	for _, want := range []string{"Self-Learning", "SKILLS", "MEMORY"} {
+	for _, want := range []string{"Self-Learning", "SKILLS"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("render missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "MEMORY") {
+		t.Fatalf("render should not show a MEMORY section:\n%s", out)
 	}
 }
 
@@ -135,13 +121,12 @@ func TestSkillPanelScopeFlips(t *testing.T) {
 	}
 }
 
-// TestSkillPanelRecentZone confirms the RECENT zone renders activity from both
-// arms (one panel covers memory and skills now).
+// TestSkillPanelRecentZone confirms the RECENT zone renders skill activity.
 func TestSkillPanelRecentZone(t *testing.T) {
 	recent := func() []LearnEvent {
 		return []LearnEvent{
-			{Kind: "skill", Verb: "patched", Target: "go-table-tests", Note: "trimmed examples", Ago: "2m ago"},
-			{Kind: "memory", Verb: "added", Target: "user-prefs", Note: "x", Ago: "1h ago"},
+			{Verb: "patched", Target: "go-table-tests", Note: "trimmed examples", Ago: "2m ago"},
+			{Verb: "created", Target: "pr-triage", Note: "x", Ago: "1h ago"},
 		}
 	}
 	c := NewEvolveSelector(EvolveDeps{Recent: recent})
@@ -149,7 +134,7 @@ func TestSkillPanelRecentZone(t *testing.T) {
 	p := c.ActivePanel().(*evolvePanel)
 	openLearnedView(&c, p) // RECENT lives in the learned-skills drill-in
 	out := c.Render()
-	for _, want := range []string{"RECENT", "go-table-tests", "2m ago", "user-prefs"} {
+	for _, want := range []string{"RECENT", "go-table-tests", "2m ago", "pr-triage"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("RECENT zone missing %q:\n%s", want, out)
 		}
@@ -207,34 +192,6 @@ func TestSkillPanelStrategyEditorFlow(t *testing.T) {
 	}
 }
 
-// TestMemoryPathEdit drives the inline free-text edit of the Memory storage path
-// in the unified panel: navigate to it, enter to begin, type, enter to commit.
-func TestMemoryPathEdit(t *testing.T) {
-	c, p := newTestEvolve()
-
-	// Walk down to the "Storage path" row.
-	for range len(p.form.rowsFn()) {
-		if p.form.rowsFn()[p.form.cursor].label == "Storage path" {
-			break
-		}
-		c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) // begin edit
-	if !p.form.editing {
-		t.Fatal("enter on Storage path should begin inline editing")
-	}
-	for _, ch := range "/tmp/mem" {
-		c.HandleKeypress(tea.KeyPressMsg{Code: ch, Text: string(ch)})
-	}
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit
-	if got := p.form.snap.Memory.Path; got != "/tmp/mem" {
-		t.Fatalf("storage path = %q, want /tmp/mem", got)
-	}
-	if !p.form.Dirty() {
-		t.Fatal("a set storage path should mark the form dirty")
-	}
-}
-
 // ── Phase 2: learned-skills inventory ────────────────────────────────────
 
 // fakeLearnedStore is a stateful in-memory LearnedSkillStore for tests: List
@@ -265,65 +222,6 @@ func newTestEvolveWith(store LearnedSkillStore) (*PanelPopup, *evolvePanel) {
 	c := NewEvolveSelector(EvolveDeps{Learned: store})
 	c.Enter(120, 40)
 	return &c, c.ActivePanel().(*evolvePanel)
-}
-
-// fakeMemoryStore is a stateful in-memory LearnedMemoryStore for tests.
-func fakeMemoryStore(topics ...string) LearnedMemoryStore {
-	mem := make([]LearnedMemory, len(topics))
-	for i, t := range topics {
-		mem[i] = LearnedMemory{Topic: t, File: t + ".md", Summary: "3 lines"}
-	}
-	return LearnedMemoryStore{
-		List: func() []LearnedMemory { return append([]LearnedMemory(nil), mem...) },
-		Read: func(file string) (string, error) { return "memory: " + file + "\nline two\n", nil },
-		Delete: func(file string) error {
-			for i, m := range mem {
-				if m.File == file {
-					mem = append(mem[:i], mem[i+1:]...)
-					return nil
-				}
-			}
-			return errors.New("no such memory file")
-		},
-	}
-}
-
-// TestLearnedDrillInCoversMemory confirms the "Learned" drill-in lists both
-// skills and memory (grouped), and that memory items view + delete via the
-// memory store.
-func TestLearnedDrillInCoversMemory(t *testing.T) {
-	c := NewEvolveSelector(EvolveDeps{
-		Learned: fakeLearnedStore("go-table-tests"),
-		Memory:  fakeMemoryStore("debugging", "user-prefs"),
-	})
-	c.Enter(120, 40)
-	p := c.ActivePanel().(*evolvePanel)
-	openLearnedView(&c, p)
-
-	if len(p.items) != 3 {
-		t.Fatalf("drill-in should list 1 skill + 2 memory = 3 items, got %d: %+v", len(p.items), p.items)
-	}
-	// Skills come first, then memory.
-	if p.items[0].kind != "skill" || p.items[1].kind != "memory" {
-		t.Fatalf("expected skill then memory, got %q, %q", p.items[0].kind, p.items[1].kind)
-	}
-	// The render groups them under SKILLS / MEMORY sub-headers.
-	if out := c.Render(); !strings.Contains(out, "SKILLS") || !strings.Contains(out, "MEMORY") || !strings.Contains(out, "debugging") {
-		t.Fatalf("drill-in should render both groups + memory topics:\n%s", out)
-	}
-
-	// Move onto a memory item and delete it via the memory store.
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown}) // skill → first memory
-	c.HandleKeypress(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	c.HandleKeypress(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if len(p.items) != 2 {
-		t.Fatalf("deleting a memory item should leave 2, got %d", len(p.items))
-	}
-	for _, it := range p.items {
-		if it.kind == "memory" && it.storeKey == "debugging.md" {
-			t.Fatal("debugging memory should have been deleted")
-		}
-	}
 }
 
 // openLearnedView navigates from the config to the "Learned skills" entry and

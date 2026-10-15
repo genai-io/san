@@ -54,7 +54,8 @@ slot 1   behavior        how you communicate and work: tone and updates
                          (main agent only — a subagent carries its
                          working style in its charter)
 slot 2   rules           safety contract plus the tool / task / git
-                         protocols
+                         protocols; then the auto-memory instructions
+                         (main agent, when auto memory is on)
 slot 3   environment     date, cwd, git branch, platform — volatile,
                          placed last so daily/cwd changes don't bust
                          the cache prefix above
@@ -128,6 +129,26 @@ session."*) before the `<memory scope="…">` envelope. The raw memory text
 alone carries no instruction to follow it; the preamble supplies that
 framing, mirroring how the skills directory self-introduces.
 `reminder.WrapMemory` owns this shape.
+
+## Auto memory
+
+Besides the user-authored AGENTS.md, the main agent keeps its own memory per
+repository at `~/.san/projects/<repo-root>/memory/` (subdirectories and linked
+worktrees share it). The layout follows Claude Code:
+
+- `MEMORY.md` is an index, one line per memory. Its first 200 lines / 25 KB
+  ride the `memory-auto` reminder, framed as context rather than user
+  instructions. Index problems (over the cap, unindexed topic files, links to
+  missing files) are appended so the agent repairs them.
+- Each memory is its own file with `name` / `description` / `type`
+  (user, feedback, project, reference) frontmatter, read on demand.
+- The agent writes during the turn with Write/Edit; the `memory` rules section
+  tells it what to save and where. Writes to `*.md` inside the store skip the
+  permission prompt; deny rules still apply.
+
+On by default. `/memory` toggles it (`t`), as do `/memory on|off`, the
+`autoMemory` setting, and `SAN_DISABLE_AUTO_MEMORY=1`. Subagents don't load it.
+Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,
 project instruction memory.** Read-only workers omit project memory; user memory

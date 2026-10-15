@@ -8,6 +8,7 @@
 package setting
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/genai-io/san/internal/tool/perm"
@@ -65,6 +66,17 @@ func (s *Settings) AutoUpdate() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.data == nil || s.data.AutoUpdate == nil || *s.data.AutoUpdate
+}
+
+// AutoMemory reports whether agent-written memory is on. Opt-out: on unless
+// "autoMemory": false is set. SAN_DISABLE_AUTO_MEMORY=1 turns it off.
+func (s *Settings) AutoMemory() bool {
+	if v := Getenv("DISABLE_AUTO_MEMORY"); v == "1" || strings.EqualFold(v, "true") {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data == nil || s.data.AutoMemory == nil || *s.data.AutoMemory
 }
 
 // AllowBypass reports whether Bypass Permissions mode is reachable (in the

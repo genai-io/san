@@ -299,7 +299,7 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, scope Scope) error {
 		if d.DisabledTools == nil {
 			d.DisabledTools = make(map[string]bool)
 		}
-		d.DisabledTools["Evolve"] = !cfg.Memory.Enabled && !cfg.Skills.Active()
+		d.DisabledTools["Evolve"] = !cfg.Skills.Active()
 	})
 }
 
@@ -540,6 +540,11 @@ func SaveThinkingDisplay(mode string) error {
 // ~/.san/settings.json, as an explicit value so turning it off sticks.
 func SaveAutoUpdate(on bool) error {
 	return updateSettingsFile(ScopeUser, func(d *Data) { d.AutoUpdate = &on })
+}
+
+// SaveAutoMemory persists the auto-memory switch to ~/.san/settings.json.
+func SaveAutoMemory(on bool) error {
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.AutoMemory = &on })
 }
 
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable

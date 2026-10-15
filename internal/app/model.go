@@ -146,6 +146,10 @@ type model struct {
 	// /evolve saves and external settings edits with one mechanism.
 	agentEvolveCaps evolve.Capabilities
 
+	// agentAutoMemoryDir is the autoMemoryDir() the live agent's prompt was
+	// built with; ensureAgentRuntime rebuilds when auto memory is toggled.
+	agentAutoMemoryDir string
+
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no
 	// longer matches the current one, so a /tool enable/disable takes effect on

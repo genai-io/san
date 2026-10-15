@@ -6,54 +6,53 @@ layer: feature
 # selflearn
 
 Runs San's background self-learning pass: after a turn, a restricted fork
-reviews the just-completed conversation and writes durable memory or
-agent-created skills. Triggering is model-decided — the main agent calls the
+reviews the just-completed conversation and creates, refines or retires
+agent-created skills. Memory is not part of it — the main agent keeps its own
+auto memory (see [harness channels](../../concepts/harness-channels.md#auto-memory)).
+Triggering is model-decided — the main agent calls the
 `Evolve` tool when a turn is worth learning from.
 
 ## Purpose
 
-`selflearn` owns the trigger logic, fork prompt, writable memory store, and
-restricted skill-management surface for the L1 background review loop. The app
+`selflearn` owns the trigger logic, fork prompt, and restricted
+skill-management surface for the L1 background review loop. The app
 wires it per session after resolving settings; the package itself stays outside
 the Bubble Tea model and exposes concrete types for the pieces the app needs.
 
-This package deliberately writes only to San-managed durable state: project
-memory under the encoded project configuration directory and skills marked with
-agent-created provenance. User-created skills are read-only to the reviewer at
+This package deliberately writes only to skills marked with agent-created
+provenance. User-created skills are read-only to the reviewer at
 every setting.
 
 ## Triggers & flow
 
 Triggering is entirely model-decided — there is no cadence. `Evolve` ships
-disabled. Saving `/evolve` enables its tool when memory or any skill action is
-allowed, and disables it when every capability is off, at the selected settings
+disabled. Saving `/evolve` enables its tool when any skill action is allowed, and disables it when every capability is off, at the selected settings
 level. Opening the panel alone changes nothing. `/tools` can also toggle the
-trigger independently; project and persona overrides still apply. The per-arm
-settings bound what a review may save (skill create/update/delete gates, memory
-enable + cap + path, a shared strategy override).
+trigger independently; project and persona overrides still apply. The settings
+bound what a review may do (skill create/update/delete gates, a strategy
+override).
 
 End-to-end when the model calls `Evolve`:
 
 1. The call is auto-permitted (`Evolve` is a safe tool) and returns an ack; the
    model keeps working. `model.OnToolResult` sets `evolveRequestedThisTurn`.
 2. At `OnTurnEnd`, `Reviewer.Observe(result, skillUsed, evolveRequested)` fires a
-   review over every enabled arm — memory if enabled, and skills scoped by skill
-   use (skill-used → update/delete, skill-free → create) — bounded by the
-   permission gates.
+   review scoped by skill use (skill-used → update/delete, skill-free → create),
+   bounded by the permission gates.
 3. A background fork (`RunReview`) reflects on the turn snapshot with only
-   `skill_manage` + `memory_write`, then writes memory and/or a skill, or does
-   nothing. The status bar shows `evolving… → evolved · N changes`.
+   `skill_manage`, then writes a skill or does nothing. The status bar shows `evolving… → evolved · N changes`.
 
 The `Evolve` tool's schema is built by `tool/evolve.Schema` from the enabled
 capabilities (`evolve.Capabilities`) so the model is only invited to flag
-learnings the review can act on — memory off never mentions memory — and is
+learnings the review can act on, and is
 injected through the toolset's generic `ExtraTools` hook. The writes affect
 future sessions, not the current turn; at most one review runs at a time.
 Capability and tool-toggle changes are reconciled at the next turn start:
 `ensureAgentRuntime` records what the toolset was built with and rebuilds the
 agent on drift — covering /evolve saves, /tools toggles, and external settings
 edits with one mechanism. `SAN_DISABLE_SELF_LEARN=1` is a hard runtime switch:
-it suppresses both the reviewer and the `Evolve` tool regardless of layered settings.
+it suppresses both the reviewer and the `Evolve` tool regardless of layered settings
+(auto memory has its own switch, `SAN_DISABLE_AUTO_MEMORY`).
 
 The skills JSON retains an explicit `enabled` compatibility marker. Legacy
 empty `skills` objects came from `enabled:false` being omitted and migrate to
@@ -70,11 +69,8 @@ need.
 package selflearn
 
 type Config struct {
-    MemoryEnabled  bool
-    MemoryMaxChars int
-    MemoryPath     string
-    Skills         SkillPermissions
-    Strategy       string // learning-strategy override (empty ⇒ built-in)
+    Skills   SkillPermissions
+    Strategy string // learning-strategy override (empty ⇒ built-in)
 }
 
 func (c Config) Enabled() bool
@@ -90,17 +86,7 @@ type SkillPermissions struct {
 func (p SkillPermissions) Any() bool
 func AllowAllSkillActions() SkillPermissions
 
-type ReviewKind uint8
-
-const (
-    KindMemory ReviewKind = 1 << iota
-    KindSkills
-)
-
-func (k ReviewKind) Has(x ReviewKind) bool
-func (k ReviewKind) String() string
-
-type ReviewFunc func(kinds ReviewKind, skillPerms SkillPermissions, snapshot []core.Message)
+type ReviewFunc func(skillPerms SkillPermissions, snapshot []core.Message)
 
 type Reviewer struct { /* unexported */ }
 
@@ -114,23 +100,12 @@ type ForkConfig struct {
     CallOptions func() []ai.Option
     System      *system.System
     CWD         string
-    Memory      *MemoryStore
     Skills      *SkillManager // its Perms() also scope the review prompt
     Strategy    string
     OnEvent     func(core.Event)
 }
 
-func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error)
-
-type MemoryStore struct { /* unexported */ }
-
-func NewMemoryStore(cwd string, maxCharsPerFile int, dirOverride string) *MemoryStore
-func (s *MemoryStore) MaxKB() int
-func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver)
-func (s *MemoryStore) Dir() string
-func (s *MemoryStore) Add(file, content, note string) (string, error)
-func (s *MemoryStore) Replace(file, oldText, newContent, note string) (string, error)
-func (s *MemoryStore) Remove(file, oldText, note string) (string, error)
+func RunReview(ctx context.Context, fc ForkConfig, snapshot []core.Message) (string, error)
 
 type SkillManager struct { /* unexported */ }
 
@@ -152,12 +127,8 @@ func (m *SkillManager) Delete(name, note string) (string, error)
 - `Reviewer` owns the at-most-one-in-flight gate. It
   observes completed `core.Result` values and launches the injected
   `ReviewFunc` on a background goroutine.
-- `RunReview` builds a restricted review agent with only `memory_write` and
-  `skill_manage`, trims trailing pending messages, and runs with a fixed step
+- `RunReview` builds a restricted review agent with only `skill_manage`, trims trailing pending messages, and runs with a fixed step
   and wall-clock budget.
-- `MemoryStore` writes delimited markdown entries under
-  `system.AutoMemoryDir(cwd)`, with traversal checks, prompt-injection scans,
-  and per-file size caps.
 - `SkillManager` reads and writes San skill directories directly so the review
   sees its own mid-session writes without relying on the startup skill
   registry cache.
@@ -167,13 +138,13 @@ func (m *SkillManager) Delete(name, note string) (string, error)
 ## Lifecycle
 
 - Construction: `internal/app` resolves `setting.SelfLearnSettings`, creates a
-  session-scoped `Reviewer`, `MemoryStore`, and `SkillManager`, and injects the
+  session-scoped `Reviewer` and per-pass `SkillManager`, and injects the
   actual fork function.
 - Runtime: `Reviewer.Observe` is called after cleanly completed turns only.
   Interrupted, cancelled, and max-step turns are ignored.
 - Shutdown: app teardown cancels the review context and flips a liveness flag
   so late write notifications do not mutate stale UI state.
-- Concurrency: `Reviewer`, `MemoryStore`, and `SkillManager` guard mutable
+- Concurrency: `Reviewer` and `SkillManager` guard mutable
   state with mutexes. Cross-process disk writes are best-effort via atomic
   rename, not a distributed lock.
 
@@ -185,8 +156,6 @@ internal/selflearn/reviewer_test.go       — model-request trigger, single-flig
 internal/selflearn/concurrency_test.go    — snapshot copying and race safety.
 internal/selflearn/fork_test.go           — fork prompt/tool restrictions and
                                              inherited system state.
-internal/selflearn/memory_test.go         — memory add/replace/remove, limits,
-                                             traversal, and threat scanning.
 internal/selflearn/skill_test.go          — skill create/update/delete,
                                              provenance, and permissions.
 internal/selflearn/config_test.go         — settings resolution and defaults.
@@ -199,11 +168,10 @@ internal/app/selflearn_review_fixes_test.go — runtime gates, layered overrides
 
 ### Testing the trigger manually
 
-1. `/evolve` → keep at least one skill permission on (or enable memory), then
-   **Save**. This also enables the `Evolve` tool at the selected settings level;
+1. `/evolve` → keep at least one skill permission on, then **Save**. This also enables the `Evolve` tool at the selected settings level;
    the updated toolset takes effect on the next turn without a restart.
 2. Confirm injection: ask the agent to list its tools — `Evolve` appears only
-   when its tool is enabled and at least one learning capability is allowed.
+   when its tool is enabled and at least one skill action is allowed.
 3. Do skill-worthy work, then have the agent call `Evolve` (e.g. reason
    "testing the trigger").
 4. Watch: the status-bar indicator (`evolving… → evolved` / `nothing`), the

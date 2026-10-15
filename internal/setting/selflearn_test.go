@@ -24,13 +24,6 @@ func TestSelfLearnValidate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "explicit defaults",
-			cfg: SelfLearnSettings{
-				Memory: SelfLearnMemory{Enabled: true, MaxKB: 25},
-			},
-			wantErr: "",
-		},
-		{
 			name: "freeze mode (deny create; update + delete default-allow)",
 			cfg: SelfLearnSettings{
 				Skills: SelfLearnSkills{DenyCreate: true},
@@ -55,27 +48,6 @@ func TestSelfLearnValidate(t *testing.T) {
 			name: "ok: create + update allowed but delete denied (no-auto-delete mode)",
 			cfg: SelfLearnSettings{
 				Skills: SelfLearnSkills{DenyDelete: true},
-			},
-			wantErr: "",
-		},
-		{
-			name: "rejected: maxKB above injection cap",
-			cfg: SelfLearnSettings{
-				Memory: SelfLearnMemory{MaxKB: 26},
-			},
-			wantErr: "memory size must be between",
-		},
-		{
-			name: "rejected: maxKB negative",
-			cfg: SelfLearnSettings{
-				Memory: SelfLearnMemory{MaxKB: -5},
-			},
-			wantErr: "memory size must be between",
-		},
-		{
-			name: "ok: maxKB at lower-than-default",
-			cfg: SelfLearnSettings{
-				Memory: SelfLearnMemory{MaxKB: 10},
 			},
 			wantErr: "",
 		},
@@ -169,16 +141,5 @@ func TestSelfLearnSkillsMigratesLegacyEnabledJSON(t *testing.T) {
 	want := SelfLearnSkills{DenyDelete: true}
 	if got != want {
 		t.Fatalf("legacy enabled config = %+v, want %+v", got, want)
-	}
-}
-
-// TestSelfLearnMemoryResolvedMaxKB confirms the default fallback for MaxKB when
-// unset (zero) and identity for non-zero values.
-func TestSelfLearnMemoryResolvedMaxKB(t *testing.T) {
-	if got := (SelfLearnMemory{}).ResolvedMaxKB(); got != SelfLearnMaxMemoryKB {
-		t.Fatalf("default MaxKB: got %d, want %d", got, SelfLearnMaxMemoryKB)
-	}
-	if got := (SelfLearnMemory{MaxKB: 10}).ResolvedMaxKB(); got != 10 {
-		t.Fatalf("explicit MaxKB: got %d, want 10", got)
 	}
 }

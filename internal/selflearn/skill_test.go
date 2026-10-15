@@ -1,6 +1,8 @@
 package selflearn
 
 import (
+	"encoding/json"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -363,4 +365,12 @@ func parseSkill(t *testing.T, mgr *SkillManager, name string) (origin, body stri
 		body = strings.TrimSpace(parts[2])
 	}
 	return origin, body, p
+}
+
+func mustJSON(v map[string]any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

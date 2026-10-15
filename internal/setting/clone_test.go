@@ -7,15 +7,15 @@ import "testing"
 // Data must round-trip through Clone. New fields should be added here at the
 // same time they are added to Clone().
 func TestClonePreservesAllScalarFields(t *testing.T) {
-	yes := true
+	yes, no := true, false
 	src := &Data{
 		Model:          "claude-opus-4-7",
 		Theme:          "dark",
 		SearchProvider: "exa",
 		AllowBypass:    &yes,
+		AutoMemory:     &no,
 		Persona:        "ml-researcher",
 		SelfLearn: SelfLearnSettings{
-			Memory:   SelfLearnMemory{Enabled: true, MaxKB: 15},
 			Skills:   SelfLearnSkills{DenyCreate: true},
 			Strategy: "custom",
 		},
@@ -35,11 +35,14 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 	if dst.AllowBypass == nil || *dst.AllowBypass != *src.AllowBypass {
 		t.Errorf("AllowBypass: got %v, want %v", dst.AllowBypass, src.AllowBypass)
 	}
+	if dst.AutoMemory == nil || *dst.AutoMemory != *src.AutoMemory {
+		t.Errorf("AutoMemory: got %v, want %v", dst.AutoMemory, src.AutoMemory)
+	}
 	if dst.Persona != src.Persona {
 		t.Errorf("Persona: got %q, want %q", dst.Persona, src.Persona)
 	}
-	// SelfLearn is value-typed; the whole struct (incl. nested Memory /
-	// Skills) must survive. Skipping this row caused /config to silently
+	// SelfLearn is value-typed; the whole struct (incl. nested Skills) must
+	// survive. Skipping this row caused /config to silently
 	// show stale defaults until the bug was caught.
 	if dst.SelfLearn != src.SelfLearn {
 		t.Errorf("SelfLearn: got %+v, want %+v", dst.SelfLearn, src.SelfLearn)
@@ -52,7 +55,6 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
 	base := &Data{
 		SelfLearn: SelfLearnSettings{
-			Memory: SelfLearnMemory{Enabled: true, MaxKB: 15},
 			Skills: SelfLearnSkills{DenyUpdate: true},
 		},
 	}
@@ -64,10 +66,6 @@ func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
 	}
 	got := mergeSettings(base, overlay)
 
-	// Memory comes entirely from base since overlay didn't touch it.
-	if !got.SelfLearn.Memory.Enabled || got.SelfLearn.Memory.MaxKB != 15 {
-		t.Errorf("Memory: got %+v, want base passthrough", got.SelfLearn.Memory)
-	}
 	// Skills field-merges: Deny* OR across levels (overlay's DenyCreate + base's
 	// DenyUpdate both survive); the shared Strategy coalesces from the overlay.
 	if !got.SelfLearn.Skills.DenyCreate || !got.SelfLearn.Skills.DenyUpdate || got.SelfLearn.Strategy != "overlay strategy" {
@@ -75,10 +73,10 @@ func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
 	}
 
 	// Symmetric: a base-only field survives an overlay that doesn't mention it.
-	baseOnly := &Data{SelfLearn: SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}}
+	baseOnly := &Data{SelfLearn: SelfLearnSettings{Skills: SelfLearnSkills{DenyDelete: true}}}
 	emptyOverlay := &Data{}
 	got = mergeSettings(baseOnly, emptyOverlay)
-	if !got.SelfLearn.Memory.Enabled {
+	if !got.SelfLearn.Skills.DenyDelete {
 		t.Errorf("base-only SelfLearn must survive empty overlay; got %+v", got.SelfLearn)
 	}
 }

@@ -1,6 +1,6 @@
 // Package selflearn implements the self-learning loop. Layer 1 (Reviewer
 // in this file) is a background reviewer that, when the model requests it, forks
-// a restricted agent to capture durable memory and skill updates.
+// a restricted agent to capture skill updates.
 // See notes/active/l1-background-review.md.
 //
 // The trigger core (model request, StopEndTurn gate, ≤1-in-flight cap) lives
@@ -9,7 +9,6 @@
 package selflearn
 
 import (
-	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -18,46 +17,17 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// ReviewKind is a bitmask of the arms that fired on a given turn.
-type ReviewKind uint8
-
-const (
-	KindMemory ReviewKind = 1 << iota
-	KindSkills
-)
-
-// Has reports whether k includes x.
-func (k ReviewKind) Has(x ReviewKind) bool { return k&x != 0 }
-
-// String renders the active arms as a stable, log-friendly label. Used by the
-// wire-up's review-summary log line.
-func (k ReviewKind) String() string {
-	var parts []string
-	if k.Has(KindMemory) {
-		parts = append(parts, "memory")
-	}
-	if k.Has(KindSkills) {
-		parts = append(parts, "skill")
-	}
-	if len(parts) == 0 {
-		return "none"
-	}
-	return strings.Join(parts, "+")
-}
-
-// ReviewFunc performs the actual fork+review for the fired arms, given the
-// skill actions this pass may take and the snapshot of the just-completed
-// turn's conversation. It runs on a background goroutine and must be
+// ReviewFunc performs the actual fork+review, given the skill actions this
+// pass may take and the snapshot of the just-completed turn's conversation. It runs on a background goroutine and must be
 // best-effort (never panic out / never block the user). Injected so trigger
 // logic is unit-testable without an LLM.
-type ReviewFunc func(kinds ReviewKind, skillPerms SkillPermissions, snapshot []core.Message)
+type ReviewFunc func(skillPerms SkillPermissions, snapshot []core.Message)
 
 // Reviewer fires a self-learning review when the model requests one. Safe for
 // concurrent use; Observe is the only entry point.
 type Reviewer struct {
-	memoryEnabled bool
-	skillPerms    SkillPermissions
-	review        ReviewFunc
+	skillPerms SkillPermissions
+	review     ReviewFunc
 
 	mu       sync.Mutex
 	inFlight bool
@@ -68,16 +38,14 @@ type Reviewer struct {
 // arms never fire.
 func New(cfg Config, review ReviewFunc) *Reviewer {
 	return &Reviewer{
-		memoryEnabled: cfg.MemoryEnabled,
-		skillPerms:    cfg.Skills,
-		review:        review,
+		skillPerms: cfg.Skills,
+		review:     review,
 	}
 }
 
 // Observe processes one completed turn. Triggering is model-decided: a review
 // fires only when the main agent called the Evolve tool this turn
-// (evolveRequested). It then covers every enabled arm — memory if enabled, and
-// skills scoped by skillUsed (a skill-use turn weighs update/delete of that
+// (evolveRequested). The pass is scoped by skillUsed (a skill-use turn weighs update/delete of that
 // skill, a skill-free turn weighs create), bounded by the permission gates.
 //
 // Only cleanly-ended turns count; cancelled / interrupted / max-steps turns are
@@ -99,14 +67,7 @@ func (r *Reviewer) Observe(result core.Result, skillUsed, evolveRequested bool) 
 		skillPerms.AllowCreate = r.skillPerms.AllowCreate
 	}
 
-	var kinds ReviewKind
-	if r.memoryEnabled {
-		kinds |= KindMemory
-	}
-	if skillPerms.Any() {
-		kinds |= KindSkills
-	}
-	if kinds == 0 {
+	if !skillPerms.Any() {
 		return
 	}
 
@@ -129,7 +90,6 @@ func (r *Reviewer) Observe(result core.Result, skillUsed, evolveRequested bool) 
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Logger().Warn("selflearn: review panicked (recovered)",
-					zap.String("kinds", kinds.String()),
 					zap.Any("panic", rec),
 					zap.Stack("stack"),
 				)
@@ -139,7 +99,7 @@ func (r *Reviewer) Observe(result core.Result, skillUsed, evolveRequested bool) 
 			r.mu.Unlock()
 		}()
 		if r.review != nil {
-			r.review(kinds, skillPerms, snapshot)
+			r.review(skillPerms, snapshot)
 		}
 	}()
 }

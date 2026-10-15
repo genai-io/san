@@ -292,7 +292,7 @@ func (m *SkillManager) Create(name, description, body, level, note string) (stri
 		return "", fmt.Errorf("skill description cannot be empty")
 	}
 	// Skill bodies and descriptions are loaded into a future system prompt, so
-	// they carry the same stored-injection risk as memory entries.
+	// they carry a stored-injection risk.
 	if err := scanContent(body); err != nil {
 		return "", err
 	}

@@ -65,7 +65,6 @@ func newRecentLearnAccessor(log *RecentLearnLog) func() []input.LearnEvent {
 		out := make([]input.LearnEvent, 0, len(evs))
 		for _, e := range evs {
 			out = append(out, input.LearnEvent{
-				Kind:   e.Kind,
 				Verb:   e.Verb,
 				Target: e.Target,
 				Note:   e.Note,
