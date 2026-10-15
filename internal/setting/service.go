@@ -71,12 +71,19 @@ func (s *Settings) AutoUpdate() bool {
 // AutoMemory reports whether agent-written memory is on. Opt-out: on unless
 // "autoMemory": false is set. SAN_DISABLE_AUTO_MEMORY=1 turns it off.
 func (s *Settings) AutoMemory() bool {
-	if v := Getenv("DISABLE_AUTO_MEMORY"); v == "1" || strings.EqualFold(v, "true") {
+	if AutoMemoryDisabledByEnv() {
 		return false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.data == nil || s.data.AutoMemory == nil || *s.data.AutoMemory
+}
+
+// AutoMemoryDisabledByEnv reports whether SAN_DISABLE_AUTO_MEMORY forces auto
+// memory off.
+func AutoMemoryDisabledByEnv() bool {
+	v := Getenv("DISABLE_AUTO_MEMORY")
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // AllowBypass reports whether Bypass Permissions mode is reachable (in the

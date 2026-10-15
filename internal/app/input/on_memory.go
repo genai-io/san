@@ -121,36 +121,54 @@ func autoMemoryItem(cwd string, on bool) memoryItem {
 	}
 	return memoryItem{
 		Label:       "Auto memory",
-		Description: fmt.Sprintf("%s · %d memories · %s", state, count, kit.ShortenPath(dir)),
+		Description: fmt.Sprintf("%s (%s) · %d memories · %s", state, autoMemorySource(), count, kit.ShortenPath(dir)),
 		Path:        index,
 		Exists:      on,
 		Level:       "auto",
-		CreateHint:  "Off — press t to turn on",
+		CreateHint:  "Off — t turns it on everywhere, p for this project",
 	}
 }
 
-// toggleAutoMemory flips the auto-memory setting at the user level and
-// reloads settings so the change applies from the next turn.
-func (m *MemorySelector) toggleAutoMemory() {
+// autoMemorySource names what decides the effective auto-memory state, in
+// precedence order.
+func autoMemorySource() string {
+	switch {
+	case setting.AutoMemoryDisabledByEnv():
+		return "SAN_DISABLE_AUTO_MEMORY"
+	case setting.AutoMemoryAt(setting.ScopeProject) != nil:
+		return "this project"
+	case setting.AutoMemoryAt(setting.ScopeUser) != nil:
+		return "all projects"
+	default:
+		return "default"
+	}
+}
+
+// toggleAutoMemory flips the effective auto-memory state at scope and
+// reloads settings so it applies from the next turn.
+func (m *MemorySelector) toggleAutoMemory(scope setting.Scope) {
 	if m.settings == nil {
 		return
 	}
-	m.toggleErr = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory())
+	m.toggleErr = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
 	m.loadItems()
 }
 
-// setAutoMemory saves the auto-memory switch to user settings and reloads
-// them. A project setting or SAN_DISABLE_AUTO_MEMORY can still win; the
-// error says so.
-func setAutoMemory(settings *setting.Settings, cwd string, on bool) error {
-	if err := setting.SaveAutoMemory(on); err != nil {
+// setAutoMemory saves the auto-memory switch at scope and reloads settings.
+// When a higher-precedence source still wins, the error names it.
+func setAutoMemory(settings *setting.Settings, cwd string, on bool, scope setting.Scope) error {
+	if err := setting.SaveAutoMemory(on, scope); err != nil {
 		return err
 	}
 	if err := settings.Reload(cwd); err != nil {
 		return err
 	}
 	if settings.AutoMemory() != on {
-		return fmt.Errorf("saved, but a project setting or SAN_DISABLE_AUTO_MEMORY overrides it")
+		state := "off"
+		if !on {
+			state = "on"
+		}
+		return fmt.Errorf("saved, but %s keeps it %s", autoMemorySource(), state)
 	}
 	return nil
 }
@@ -211,7 +229,9 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "enter", "right", "l":
 		return m.selectMemoryItem()
 	case "t", " ":
-		m.toggleAutoMemory()
+		m.toggleAutoMemory(setting.ScopeUser)
+	case "p":
+		m.toggleAutoMemory(setting.ScopeProject)
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
 	case "1", "2", "3", "4":
@@ -299,7 +319,7 @@ func (m *MemorySelector) Render() string {
 	}
 	hint := "↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"
 	if m.settings != nil {
-		hint = "↑/↓ navigate · Enter edit · t auto memory on/off · Esc cancel"
+		hint = "↑/↓ navigate · Enter edit · auto memory: t all projects, p this project · Esc cancel"
 	}
 	sb.WriteString(kit.SelectorHintStyle().Render(hint))
 
@@ -490,10 +510,14 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		if settings == nil {
 			return "", "", fmt.Errorf("settings unavailable")
 		}
-		if err := setAutoMemory(settings, cwd, subCmd == "on"); err != nil {
+		scope, where := setting.ScopeUser, "for all projects"
+		if len(parts) > 1 && strings.EqualFold(parts[1], "project") {
+			scope, where = setting.ScopeProject, "for this project"
+		}
+		if err := setAutoMemory(settings, cwd, subCmd == "on", scope); err != nil {
 			return "", "", err
 		}
-		return "Auto memory " + subCmd + " (from the next turn)", "", nil
+		return "Auto memory " + subCmd + " " + where + " (from the next turn)", "", nil
 	}
 
 	scope := "project"
@@ -518,7 +542,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		}
 		return "", editPath, nil
 	default:
-		return "Usage: /memory [on|off] | [list|show|edit] [global|project|local]", "", nil
+		return "Usage: /memory [on|off] [project] | [list|show|edit] [global|project|local]", "", nil
 	}
 }
 

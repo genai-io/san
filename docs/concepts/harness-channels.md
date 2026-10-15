@@ -146,8 +146,10 @@ worktrees share it). The layout follows Claude Code:
   tells it what to save and where. Writes to `*.md` inside the store skip the
   permission prompt; deny rules still apply.
 
-On by default. `/memory` toggles it (`t`), as do `/memory on|off`, the
-`autoMemory` setting, and `SAN_DISABLE_AUTO_MEMORY=1`. Subagents don't load it.
+On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
+or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
+the user or project settings; the project value wins, and
+`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn. Subagents don't load it.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,
