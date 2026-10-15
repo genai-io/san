@@ -490,25 +490,23 @@ func TestLoadAutoMemoryAtCapsAndReportsIndexProblems(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "m0.md"), "kept")
 	writeFile(t, filepath.Join(dir, "orphan.md"), "never indexed")
 
-	got, ok := LoadAutoMemoryAt(dir)
-	if !ok {
-		t.Fatal("expected content")
-	}
-	if strings.Contains(got, fmt.Sprintf("[m%d]", autoMemoryLineCap)) {
+	index, problems := LoadAutoMemoryAt(dir)
+	if strings.Contains(index, fmt.Sprintf("[m%d]", autoMemoryLineCap)) {
 		t.Error("lines past the cap must not be injected")
 	}
+	all := strings.Join(problems, "\n")
 	for _, want := range []string{"load limit", "orphan.md", "m1.md", "more"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in:\n%s", want, got[len(got)-400:])
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in problems:\n%s", want, all)
 		}
 	}
-	if strings.Contains(got, "m0.md, ") || strings.Contains(got, "missing files (drop the line): m0.md") {
+	if strings.Contains(all, "drop the line): m0.md") {
 		t.Error("an existing linked file must not be reported missing")
 	}
 }
 
 func TestLoadAutoMemoryAtEmpty(t *testing.T) {
-	if _, ok := LoadAutoMemoryAt(t.TempDir()); ok {
+	if index, problems := LoadAutoMemoryAt(t.TempDir()); index != "" || len(problems) > 0 {
 		t.Error("empty store should load nothing")
 	}
 }

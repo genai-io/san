@@ -87,28 +87,22 @@ func encodeProjectPath(path string) string {
 }
 
 // LoadAutoMemoryAt reads the auto-memory index from dir, capped at
-// autoMemoryLineCap lines and autoMemoryByteCap bytes, and appends index
+// autoMemoryLineCap lines and autoMemoryByteCap bytes, and lists index
 // problems (over the cap, topic files missing from the index, index links to
-// missing files) so the agent repairs them. ("", false) when there is nothing.
-func LoadAutoMemoryAt(dir string) (string, bool) {
+// missing files) for the agent to repair. Both are empty when there is nothing.
+func LoadAutoMemoryAt(dir string) (index string, problems []string) {
 	data, _ := os.ReadFile(filepath.Join(dir, AutoMemoryIndexName))
-	index := strings.TrimSpace(string(data))
+	full := strings.TrimSpace(string(data))
 
-	content := index
-	var problems []string
-	if lines := strings.Split(content, "\n"); len(lines) > autoMemoryLineCap {
-		content = strings.Join(lines[:autoMemoryLineCap], "\n")
+	index = full
+	if lines := strings.Split(index, "\n"); len(lines) > autoMemoryLineCap {
+		index = strings.Join(lines[:autoMemoryLineCap], "\n")
 	}
-	content = truncateOnLineBoundary(content, autoMemoryByteCap)
-	if len(content) < len(index) {
+	index = truncateOnLineBoundary(index, autoMemoryByteCap)
+	if len(index) < len(full) {
 		problems = append(problems, fmt.Sprintf("MEMORY.md is over the %d-line / %d KB load limit and was cut; condense it to one short line per memory.", autoMemoryLineCap, autoMemoryByteCap/1024))
 	}
-	problems = append(problems, autoMemoryIndexProblems(dir, index)...)
-
-	if len(problems) > 0 {
-		content = strings.TrimSpace(content + "\n\n" + "Index problems to fix:\n- " + strings.Join(problems, "\n- "))
-	}
-	return content, content != ""
+	return index, append(problems, autoMemoryIndexProblems(dir, full)...)
 }
 
 var markdownLinkTarget = regexp.MustCompile(`\]\(([^)\s]+\.md)\)`)

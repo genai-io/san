@@ -119,9 +119,13 @@ func autoMemoryItem(cwd string, on bool) memoryItem {
 	if _, err := os.Stat(index); err == nil {
 		count--
 	}
+	noun := "memories"
+	if count == 1 {
+		noun = "memory"
+	}
 	return memoryItem{
 		Label:       "Auto memory",
-		Description: fmt.Sprintf("%s (%s) · %d memories · %s", state, autoMemorySource(), count, kit.ShortenPath(dir)),
+		Description: fmt.Sprintf("%s (%s) · %d %s", state, autoMemorySource(), count, noun),
 		Path:        index,
 		Exists:      on,
 		Level:       "auto",
@@ -319,7 +323,7 @@ func (m *MemorySelector) Render() string {
 	}
 	hint := "↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"
 	if m.settings != nil {
-		hint = "↑/↓ navigate · Enter edit · auto memory: t all projects, p this project · Esc cancel"
+		hint = "Enter edit · t auto memory · p this project only · Esc"
 	}
 	sb.WriteString(kit.SelectorHintStyle().Render(hint))
 

@@ -642,11 +642,14 @@ func (m *model) wireReminderProviders() {
 		if dir == "" {
 			return ""
 		}
-		body, ok := system.LoadAutoMemoryAt(dir)
-		if !ok {
-			return ""
+		// Index problems come from the harness, so they sit outside the memory
+		// block, whose framing tells the model not to act on what is inside.
+		index, problems := system.LoadAutoMemoryAt(dir)
+		out := reminder.WrapMemory("auto", index)
+		if len(problems) > 0 {
+			out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
 		}
-		return reminder.WrapMemory("auto", body)
+		return out
 	})
 }
 
