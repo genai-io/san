@@ -480,7 +480,7 @@ scrollback 插入内容。San 的本地 Bubble Tea 补丁会在 `insertAbove`
 `CommittedCount` 可能已经在逻辑 View 中隐藏内容，而缩短后的 frame
 还没有真正写到终端，旧 live frame 的行就可能被永久焊进原生
 scrollback。`go.mod` 中的替代依赖固定到
-[`yanmxa/bubbletea@81ba608`](https://github.com/yanmxa/bubbletea/commit/81ba608a2d90bacdc115d6b3acc6b1c12cb44e5d)；
+[`genai-io/bubbletea`](https://github.com/genai-io/bubbletea/tree/san)（`san` 分支）；
 等[上游 issue #1736](https://github.com/charmbracelet/bubbletea/issues/1736)
 发布等价屏障后即可移除。
 

@@ -512,7 +512,7 @@ its scroll geometry. Without that barrier, `CommittedCount` can hide content
 in the logical view before the shorter frame reaches the terminal, allowing
 rows from the previous live frame to become permanently embedded in native
 scrollback. The replacement in `go.mod` is pinned to
-[`yanmxa/bubbletea@81ba608`](https://github.com/yanmxa/bubbletea/commit/81ba608a2d90bacdc115d6b3acc6b1c12cb44e5d);
+[`genai-io/bubbletea`](https://github.com/genai-io/bubbletea/tree/san) (branch `san`);
 remove it once [upstream issue #1736](https://github.com/charmbracelet/bubbletea/issues/1736)
 ships an equivalent barrier.
 

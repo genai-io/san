@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbletea/v2 v2.1.0
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/ActiveState/vt10x v1.3.1
@@ -43,15 +43,12 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 )
 
-// Bubble Tea v2 has no flush barrier between View updates and Println
-// (charmbracelet/bubbletea#1736), and its resize redraw erases from where the
-// frame's top row would be had the terminal not rewrapped the frame, which
-// strands a copy of the frame's head on screen every time the window narrows.
-// Leaving the alternate screen (every approval or question prompt) also homed
-// the cursor, so the redraw wiped the visible conversation on terminals that
-// do not push a clear into history, such as Windows Terminal. Keep this
-// replacement until these are fixed upstream.
-replace charm.land/bubbletea/v2 => github.com/yanmxa/bubbletea/v2 v2.0.8-0.20260927122512-78014e52431d
+// genai-io/bubbletea (branch `san`) is upstream v2.1.0 plus renderer patches for
+// inline scrollback: flush the queued frame before Println (bubbletea#1736),
+// and erase a narrowed frame through the rows the terminal rewrapped
+// (bubbletea#1867). Without them, prints duplicate or drop rows of native
+// history. Drop this once upstream ships equivalents.
+replace charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062
 
 require (
 	cloud.google.com/go/auth v0.18.2 // indirect
@@ -63,7 +60,7 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260811164956-006e29f97886
+	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
@@ -87,7 +84,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	github.com/xo/terminfo v1.0.0 // indirect
 	github.com/yuin/goldmark v1.7.17 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
