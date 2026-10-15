@@ -28,7 +28,7 @@ func toModelInfo(m ai.Model) ModelInfo {
 			labels[i] = string(effort)
 		}
 		var fallback string
-		if level, ok := m.DefaultLevel(); ok {
+		if level, ok := defaultLevel(m); ok {
 			fallback = string(level.Effort)
 		}
 		info.Reasoning = NewReasoningCapability(labels, fallback)
@@ -47,4 +47,15 @@ func toModelLifecycle(stage ai.Stage) ModelLifecycle {
 	default:
 		return ModelStable
 	}
+}
+
+// defaultLevel is the rung a request that names no effort is sent with, and
+// whether the model states one.
+func defaultLevel(m ai.Model) (ai.ReasoningLevel, bool) {
+	for _, level := range m.Reasoning {
+		if level.Default {
+			return level, true
+		}
+	}
+	return ai.ReasoningLevel{}, false
 }

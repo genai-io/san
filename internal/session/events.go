@@ -104,7 +104,7 @@ func (r *Session) recordInferenceStarted(e sdkagent.MessageStart) {
 	}
 	ic.MaxTokens = request.MaxTokens
 	if e.Inference.Client != nil {
-		ic.Provider = e.Inference.Client.Driver().Name()
+		ic.Provider = string(e.Inference.Client.Model().API)
 		ic.Model = e.Inference.Client.Model().ID
 	}
 
