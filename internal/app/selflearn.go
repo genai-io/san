@@ -7,8 +7,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,7 +19,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/selflearn"
@@ -106,28 +103,20 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	parentSessionID := m.sessionID()
 	sessionStore := m.services.SessionStore
 
-	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars, cfg.MemoryPath)
-
-	// Write observers feed the live spinner-tail and the post-pass recap. They
-	// run on the fork goroutine and check `live` so a write landing after
-	// teardown drops silently instead of racing on UI state. recordAction is
-	// the shared gate + indicator hop; the memory and skill paths each adapt it
-	// with their own verb/target naming.
-	recordAction := func(kind, verb, target, note string) {
+	// The write observer feeds the live spinner-tail and the post-pass recap.
+	// It runs on the fork goroutine and checks `live` so a write landing after
+	// teardown drops silently instead of racing on UI state.
+	recordAction := func(verb, target, note string) {
 		if !live.Load() {
 			return
 		}
-		act := ReviewAction{Verb: verb, Kind: kind, Target: target, Note: note}
+		act := ReviewAction{Verb: verb, Kind: "skill", Target: target, Note: note}
 		m.services.SelfLearn.Indicator.RecordAction(act)
 		// Also feed the persistent recent-activity log behind the /evolve
 		// RECENT zones (the indicator's copy is drained after each pass).
 		m.services.SelfLearn.Recent.Add(act, time.Now())
 	}
-	memStore.SetWriteObserver(func(action, topic, note string) {
-		recordAction("memory", memoryVerb(action), memoryTopicName(topic), note)
-	})
-
-	review := func(kinds selflearn.ReviewKind, skillPerms selflearn.SkillPermissions, snapshot []core.Message) {
+	review := func(skillPerms selflearn.SkillPermissions, snapshot []core.Message) {
 		// Liveness checks before any UI mutation — a teardown race must
 		// not flash "evolving → evolved" on a session the user just killed.
 		// Active() guards the macro window; the per-phase live.Load() checks
@@ -150,7 +139,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// actions remain agent-created only.
 		skillMgr := selflearn.NewSkillManager(m.env.CWD, skillPerms)
 		skillMgr.SetWriteObserver(func(action, skillName, note string) {
-			recordAction("skill", skillVerb(action), skillName, note)
+			recordAction(skillVerb(action), skillName, note)
 		})
 
 		m.services.SelfLearn.Indicator.BeginReview()
@@ -179,12 +168,11 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			CallOptions: client.CallOptions,
 			System:      sys,
 			CWD:         m.env.CWD,
-			Memory:      memStore,
 			Skills:      skillMgr,
 			Strategy:    cfg.Strategy,
 			OnEvent:     forkOnEvent,
 		}
-		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
+		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, snapshot)
 		// Re-check live AFTER the RunReview return. This is the macro
 		// window — RunReview can sit on the LLM for up to forkDeadline
 		// and teardown is most likely to have landed by now.
@@ -193,17 +181,16 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		if runErr != nil {
 			m.services.SelfLearn.Indicator.Fail()
-			// Drain even on failure so a partial pass (e.g. two memory
-			// writes that succeeded before the LLM timed out) still
+			// Drain even on failure so a partial pass (e.g. a skill write
+			// that succeeded before the LLM timed out) still
 			// reaches the recap — otherwise the user sees "review
 			// failed" with no record of what was actually persisted.
 			actions := m.services.SelfLearn.Indicator.DrainActions()
 			log.Logger().Warn("self-learning review failed",
-				zap.String("kinds", kinds.String()),
 				zap.Int("partial-changes", len(actions)),
 				zap.Error(runErr),
 			)
-			m.publishSelfLearnFailure(kinds, runErr)
+			m.publishSelfLearnFailure(runErr)
 			if len(actions) > 0 {
 				m.publishSelfLearnSummary(actions, forkSessionID)
 			}
@@ -220,7 +207,6 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			return
 		}
 		log.Logger().Info("self-learning review",
-			zap.String("kinds", kinds.String()),
 			zap.Int("changes", len(actions)),
 			zap.String("fork-session", forkSessionID),
 		)
@@ -244,7 +230,6 @@ func (m *model) runSelfLearnDemo() {
 	if ind == nil {
 		return
 	}
-	const kinds = selflearn.KindMemory | selflearn.KindSkills
 	go func() {
 		ind.BeginReview()
 		m.publishSelfLearnStarted()
@@ -253,14 +238,6 @@ func (m *model) runSelfLearnDemo() {
 			wait   time.Duration
 			action ReviewAction
 		}{
-			{800 * time.Millisecond, ReviewAction{
-				Verb: "saved", Kind: "memory", Target: "",
-				Note: "noted that lint runs via make ci, not go vet",
-			}},
-			{1200 * time.Millisecond, ReviewAction{
-				Verb: "saved", Kind: "memory", Target: "debugging",
-				Note: "added 3 race-condition repro tips",
-			}},
 			{1200 * time.Millisecond, ReviewAction{
 				Verb: "updated", Kind: "skill", Target: "go-testing",
 				Note: "trimmed verbose examples, kept the table-test snippet",
@@ -275,7 +252,7 @@ func (m *model) runSelfLearnDemo() {
 			ind.RecordAction(s.action)
 		}
 		time.Sleep(800 * time.Millisecond)
-		ind.Complete("trimmed go-testing SKILL.md by 1.8KB · saved 2 notes")
+		ind.Complete("trimmed go-testing SKILL.md by 1.8KB · created python-typing")
 		actions := ind.DrainActions()
 		// Demo: fabricate a plausible-looking fork session ID so the
 		// recap footer is identical in shape to the real path.
@@ -285,8 +262,8 @@ func (m *model) runSelfLearnDemo() {
 }
 
 // notifySelfLearnOverride detects when a /evolve save was overridden by the
-// other settings level. Memory enablement and each skill action are compared
-// separately because the merger combines their safety gates independently.
+// other settings level. Each skill action is compared separately because the
+// merger combines their safety gates independently.
 // Surfaces a notice instead of leaving the user with only a misleading saved
 // confirmation while the requested behavior stays unchanged.
 func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
@@ -295,9 +272,6 @@ func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 		return
 	}
 	var arms []string
-	if msg.SavedSelfLearn.Memory.Enabled != snap.SelfLearn.Memory.Enabled {
-		arms = append(arms, "Memory")
-	}
 	if msg.SavedSelfLearn.Skills.AllowCreate() != snap.SelfLearn.Skills.AllowCreate() {
 		arms = append(arms, "Skill create")
 	}
@@ -365,84 +339,9 @@ func (m *model) teardownSelfLearn() {
 	m.services.SelfLearn.session = nil
 }
 
-// newLearnedMemoryStore builds the /evolve "Learned" memory accessors over the
-// resolved auto-memory dir (honoring a configured memory path, read live from
-// settings): list the agent-written .md files, read one, delete one. Read/Delete
-// are guarded against path traversal.
-func newLearnedMemoryStore(source func() (string, *setting.Settings)) input.LearnedMemoryStore {
-	dir := func() string {
-		cwd, settings := source()
-		var path string
-		if settings != nil {
-			if snap := settings.Snapshot(); snap != nil {
-				path = snap.SelfLearn.Memory.Path
-			}
-		}
-		return system.ResolveAutoMemoryDir(cwd, path)
-	}
-	return input.LearnedMemoryStore{
-		List: func() []input.LearnedMemory {
-			d := dir()
-			entries, err := os.ReadDir(d)
-			if err != nil {
-				return nil
-			}
-			var out []input.LearnedMemory
-			for _, e := range entries {
-				name := e.Name()
-				if e.IsDir() || !strings.HasSuffix(name, ".md") {
-					continue
-				}
-				topic := name
-				if name != system.AutoMemoryIndexName {
-					topic = strings.TrimSuffix(name, ".md")
-				}
-				out = append(out, input.LearnedMemory{
-					Topic:   topic,
-					File:    name,
-					Summary: memoryFileSummary(filepath.Join(d, name)),
-				})
-			}
-			return out
-		},
-		Read: func(file string) (string, error) {
-			if !safeMemoryFile(file) {
-				return "", fmt.Errorf("invalid memory file: %q", file)
-			}
-			b, err := os.ReadFile(filepath.Join(dir(), file))
-			return string(b), err
-		},
-		Delete: func(file string) error {
-			if !safeMemoryFile(file) {
-				return fmt.Errorf("invalid memory file: %q", file)
-			}
-			return os.Remove(filepath.Join(dir(), file))
-		},
-	}
-}
-
-// safeMemoryFile guards Read/Delete against path traversal: the file must be a
-// plain .md base name inside the memory dir.
-func safeMemoryFile(file string) bool {
-	return file != "" && filepath.Base(file) == file && strings.HasSuffix(file, ".md")
-}
-
-// memoryFileSummary returns a short "N lines" summary for an inventory row.
-func memoryFileSummary(path string) string {
-	b, err := os.ReadFile(path)
-	if err != nil || len(b) == 0 {
-		return "empty"
-	}
-	n := strings.Count(string(b), "\n")
-	if !strings.HasSuffix(string(b), "\n") {
-		n++
-	}
-	return fmt.Sprintf("%d lines", n)
-}
-
 // selfLearnCapabilities returns the enabled self-learning capabilities, used
 // to build (and gate) the Evolve trigger tool. The zero value — every skill
-// action denied and memory off — means "self-learning off", so no tool is
+// action denied — means "self-learning off", so no tool is
 // injected. Shares resolveSelfLearnConfig with wireSelfLearn so the advertised
 // tool and the wired reviewer can never disagree (env kill switch, invalid
 // settings).
@@ -455,7 +354,6 @@ func (m *model) selfLearnCapabilities() evolve.Capabilities {
 		CreateSkills: cfg.Skills.AllowCreate,
 		UpdateSkills: cfg.Skills.AllowUpdate,
 		DeleteSkills: cfg.Skills.AllowDelete,
-		WriteMemory:  cfg.MemoryEnabled,
 	}
 }
 
@@ -484,16 +382,6 @@ func (m *model) handleSelflearnTick() tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg { return selflearnTickMsg{} })
 }
 
-// memoryTopicName returns the bare topic name (e.g. "debugging") for a
-// memory file, or "" for the index. The indicator renderer adds the
-// "memory" / "memory · " prefix at display time.
-func memoryTopicName(file string) string {
-	if file == "" || strings.EqualFold(file, system.AutoMemoryIndexName) {
-		return ""
-	}
-	return strings.TrimSuffix(file, ".md")
-}
-
 // publishSelfLearnSummary posts the post-pass recap into the conversation
 // flow. Recap goes in Subject (display-only Notice); routing it through
 // Data would re-submit it to the LLM and break the §6 out-of-band promise.
@@ -512,10 +400,6 @@ func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID st
 // Layout:
 //
 //	╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
-//	┊  memory                                       ┊
-//	┊    · index — noted that lint runs via make ci ┊
-//	┊    · debugging — added 3 race-condition tips  ┊
-//	┊                                               ┊
 //	┊  skill                                        ┊
 //	┊    · go-testing — trimmed verbose examples    ┊
 //	┊    · python-typing — new skill, typing-hints  ┊
@@ -569,23 +453,17 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 // directly under the kind sub-header without dragging the column
 // further right.
 func recapRowLine(a ReviewAction) string {
-	target := a.Target
-	if target == "" && a.Kind == "memory" {
-		target = "index"
-	}
-	row := " · " + target
+	row := " · " + a.Target
 	if note := strings.TrimSpace(a.Note); note != "" {
 		row += " — " + note
 	}
 	return selflearnRecapRowStyle.Render(row)
 }
 
-// recapKindStyle returns the per-kind sub-header style: blue for
-// memory, purple for skill, dim for anything else.
+// recapKindStyle returns the per-kind sub-header style: purple for skill,
+// dim for anything else.
 func recapKindStyle(kind string) lipgloss.Style {
 	switch kind {
-	case "memory":
-		return selflearnRecapMemoryStyle
 	case "skill":
 		return selflearnRecapSkillStyle
 	default:
@@ -595,18 +473,14 @@ func recapKindStyle(kind string) lipgloss.Style {
 
 // selflearnRecap*Style — the recap sits inside a thin rounded box
 // drawn in TextDim so the frame stays soft chrome. Inside, kind
-// sub-headers carry the only color (memory blue, skill purple) and
+// sub-headers carry the only color (skill purple) and
 // rows stay italic + TextDim.
 var (
 	selflearnRecapKindStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
-	// Memory blue / skill purple — desaturated ~15-20% vs the previous
-	// values so they blend with the overall muted/italic aesthetic
-	// instead of pulling focus from chat content.
-	selflearnRecapMemoryStyle = lipgloss.NewStyle().
-					Foreground(kit.AdaptiveColor{Dark: "#82A0BA", Light: "#487192"}).
-					Italic(true)
+	// Skill purple — desaturated so it blends with the muted/italic
+	// aesthetic instead of pulling focus from chat content.
 	selflearnRecapSkillStyle = lipgloss.NewStyle().
 					Foreground(kit.AdaptiveColor{Dark: "#A89AC4", Light: "#745783"}).
 					Italic(true)
@@ -641,20 +515,6 @@ var (
 	// pulling focus from real messages.
 	selflearnLiveStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Italic(true)
 )
-
-// memoryVerb maps a memory_write action to the recap-line verb.
-func memoryVerb(action string) string {
-	switch action {
-	case "add":
-		return "saved"
-	case "replace":
-		return "replaced"
-	case "remove":
-		return "removed"
-	default:
-		return action
-	}
-}
 
 // skillVerb maps a skill_manage action to its recap verb. patch/edit
 // collapse to "updated"; write_file/remove_file are support-file edits.
@@ -710,10 +570,10 @@ func (m *model) onSelfLearnStarted() tea.Cmd {
 
 // publishSelfLearnFailure surfaces a terse failure notice; full details
 // land in the log. Notice only — never re-submitted to the LLM.
-func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
+func (m *model) publishSelfLearnFailure(err error) {
 	msg := strings.TrimSpace(err.Error())
 	if msg == "" {
 		msg = "review failed (see log)"
 	}
-	m.notifyMain(mainNotice{Display: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg)})
+	m.notifyMain(mainNotice{Display: "Self-improvement review failed: " + msg})
 }

@@ -75,6 +75,10 @@ type Data struct {
 	// background at startup. Opt-out: nil/absent means on. Read via
 	// Settings.AutoUpdate(); SAN_DISABLE_AUTOUPDATE overrides it.
 	AutoUpdate *bool `json:"autoUpdate,omitempty"`
+	// AutoMemory lets the agent keep its own per-project memory. Opt-out:
+	// nil/absent means on. Read via Settings.AutoMemory();
+	// SAN_DISABLE_AUTO_MEMORY overrides it.
+	AutoMemory *bool `json:"autoMemory,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
 	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
 	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`
@@ -110,7 +114,7 @@ type Data struct {
 	// ApplyPersonaOverlay).
 	Persona string `json:"persona,omitempty"`
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
-	// review of memory and skills). Both arms are off by default (opt-in).
+	// review of skills). Off by default (opt-in).
 	SelfLearn SelfLearnSettings `json:"selfLearn"`
 	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
@@ -289,36 +293,14 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.Steers.TurnEnd == b.Steers.TurnEnd
 }
 
-// SelfLearnSettings configures self-learning. Both arms are triggered together
-// by the model (the Evolve tool); the per-arm fields are permission / store
-// settings only. See notes/active/l1-background-review.md §3.1.
+// SelfLearnSettings configures skill self-learning, triggered by the model
+// through the Evolve tool. Memory is separate: see Data.AutoMemory.
 type SelfLearnSettings struct {
-	Memory SelfLearnMemory `json:"memory"`
 	Skills SelfLearnSkills `json:"skills"`
 
 	// Strategy, when non-empty, replaces the built-in learning strategy in the
-	// reviewer prompt (edited via the /evolve Strategy entry) — it steers both
-	// the memory and skill sections. Empty ⇒ built-in.
+	// reviewer prompt (edited via the /evolve Strategy entry). Empty ⇒ built-in.
 	Strategy string `json:"strategy,omitempty"`
-}
-
-// SelfLearnMaxMemoryKB is the upper bound on memory.maxKB and the default
-// when the config field is zero. It matches the injection cap
-// (autoMemoryByteCap = 25 KB) so the on-disk per-file cap can never exceed
-// what the loader would have to truncate — see §4.2 invariant.
-const SelfLearnMaxMemoryKB = 25
-
-// SelfLearnMemory controls memory-evolving. MaxKB is the on-disk cap per memory
-// file; lower values force more aggressive pruning. May not exceed
-// SelfLearnMaxMemoryKB.
-type SelfLearnMemory struct {
-	Enabled bool `json:"enabled,omitempty"`
-	MaxKB   int  `json:"maxKB,omitempty"` // 0 = SelfLearnMaxMemoryKB
-
-	// Path, when non-empty, overrides where the auto-memory store lives (the
-	// /evolve Memory storage-path editor). "~" expands to home; a relative path
-	// resolves against cwd. Empty ⇒ the project-partitioned default.
-	Path string `json:"path,omitempty"`
 }
 
 // SelfLearnSkills controls skill-evolving. Triggering is model-decided (the
@@ -401,16 +383,8 @@ func (s SelfLearnSkills) Active() bool {
 	return s.AllowCreate() || s.AllowUpdate() || s.AllowDelete()
 }
 
-// ResolvedMaxKB returns the resolved MaxKB (default SelfLearnMaxMemoryKB if zero).
-func (m SelfLearnMemory) ResolvedMaxKB() int {
-	if m.MaxKB <= 0 {
-		return SelfLearnMaxMemoryKB
-	}
-	return m.MaxKB
-}
-
 // Validate enforces the cross-field invariants of §3.1: two illegal skill
-// boolean combinations are rejected, and memory.maxKB must lie in [0, 25].
+// boolean combinations are rejected.
 // Returns nil when the configuration is acceptable (including the all-zero
 // "feature off" case).
 //
@@ -419,12 +393,6 @@ func (m SelfLearnMemory) ResolvedMaxKB() int {
 // conservative config. Delete is already restricted to agent-created skills,
 // so opting out of it removes no safety.
 func (s SelfLearnSettings) Validate() error {
-	if s.Memory.MaxKB < 0 || s.Memory.MaxKB > SelfLearnMaxMemoryKB {
-		return fmt.Errorf(
-			"memory size must be between 1 and %d KB (got %d)",
-			SelfLearnMaxMemoryKB, s.Memory.MaxKB,
-		)
-	}
 	if s.Skills.AllowCreate() && !s.Skills.AllowUpdate() {
 		return fmt.Errorf(
 			"\"Create new skills\" needs \"Update a skill\" — otherwise created skills could never be refined",
@@ -848,6 +816,10 @@ func (s *Data) Clone() *Data {
 	if s.AutoUpdate != nil {
 		v := *s.AutoUpdate
 		dst.AutoUpdate = &v
+	}
+	if s.AutoMemory != nil {
+		v := *s.AutoMemory
+		dst.AutoMemory = &v
 	}
 	if s.ContextBar != nil {
 		v := *s.ContextBar

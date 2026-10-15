@@ -1,5 +1,5 @@
-// Rendering for the /evolve panel: the config zone, the LEARNED inventory
-// (skills + memory), and the full scrollable preview in modeView. Kept beside
+// Rendering for the /evolve panel: the config zone, the LEARNED skill
+// inventory, and the full scrollable preview in modeView. Kept beside
 // the panel's state/navigation (evolve_skills.go) so that file stays focused
 // on the mode machine.
 package input
@@ -81,9 +81,8 @@ func renderRecentRow(e LearnEvent, width int) string {
 	return left + strings.Repeat(" ", gap) + ago
 }
 
-// renderInventory draws the learned list: agent-created skills then agent-written
-// memory files, grouped by a SKILLS / MEMORY sub-header, windowed and
-// cursor-aware, or an empty-state line when there's nothing. The "learned"
+// renderInventory draws the learned list: agent-created skills under a SKILLS
+// sub-header, windowed and cursor-aware, or an empty-state line when there's nothing. The "learned"
 // header comes from the sub-view breadcrumb, so it isn't repeated here.
 func (p *evolvePanel) renderInventory(width, budget int) string {
 	var b strings.Builder
@@ -97,9 +96,9 @@ func (p *evolvePanel) renderInventory(width, budget int) string {
 
 	// Window the list around the cursor so a long inventory scrolls in place.
 	// Reserve rows for everything that renders besides the items themselves:
-	// one group sub-header per kind present, a possible error line, and the
-	// ↑/↓ overflow markers once the list scrolls.
-	reserved := 1 + countKindHeaders(p.items)
+	// the sub-header, a possible error line, and the ↑/↓ overflow markers once
+	// the list scrolls.
+	reserved := 2
 	if len(p.items)+reserved > budget {
 		reserved += 2
 	}
@@ -109,16 +108,13 @@ func (p *evolvePanel) renderInventory(width, budget int) string {
 		start = p.invCursor - rows + 1
 	}
 	end := min(start+rows, len(p.items))
+	b.WriteString("  " + selflearnSubHeaderStyle.Render("SKILLS"))
+	b.WriteString("\n")
 	if start > 0 {
 		b.WriteString(selflearnMutedStyle.Render(fmt.Sprintf("  ↑ %d more", start)))
 		b.WriteString("\n")
 	}
 	for i := start; i < end; i++ {
-		// A group sub-header opens each kind's block (skills, then memory).
-		if i == 0 || p.items[i].kind != p.items[i-1].kind {
-			b.WriteString("  " + selflearnSubHeaderStyle.Render(kindHeader(p.items[i].kind)))
-			b.WriteString("\n")
-		}
 		b.WriteString(p.renderItemRow(i, width))
 		b.WriteString("\n")
 	}
@@ -136,26 +132,6 @@ func (p *evolvePanel) renderInventory(width, budget int) string {
 	return b.String()
 }
 
-// kindHeader maps an item kind to its group sub-header label.
-func kindHeader(kind string) string {
-	if kind == "memory" {
-		return "MEMORY"
-	}
-	return "SKILLS"
-}
-
-// countKindHeaders returns how many group sub-headers the inventory renders —
-// one per run of same-kind items (skills first, then memory, so at most two).
-func countKindHeaders(items []learnedItem) int {
-	n := 0
-	for i, it := range items {
-		if i == 0 || it.kind != items[i-1].kind {
-			n++
-		}
-	}
-	return n
-}
-
 func (p *evolvePanel) inventoryError() string {
 	if p.actionErr == nil {
 		return ""
@@ -163,9 +139,8 @@ func (p *evolvePanel) inventoryError() string {
 	return selflearnErrorStyle.Render("  ⚠ "+p.actionErr.Error()) + "\n"
 }
 
-// renderItemRow formats one inventory row (skill or memory): cursor caret, name,
-// a subtitle column (skill scope / memory summary), and — for skills — a truncated
-// description, with an inline action hint on the focused row.
+// renderItemRow formats one inventory row: cursor caret, name, the skill scope,
+// and a truncated description, with an inline action hint on the focused row.
 func (p *evolvePanel) renderItemRow(i, width int) string {
 	it := p.items[i]
 	// Reachable only from the modeList/modeConfirm render path.
@@ -182,7 +157,7 @@ func (p *evolvePanel) renderItemRow(i, width int) string {
 	subtitle := padRight(it.subtitle, 9)
 	line := caret + nameStyle.Render(name) + selflearnMutedStyle.Render(subtitle)
 
-	// Skills carry a description; it fills the rest of the row, leaving room for
+	// The description fills the rest of the row, leaving room for
 	// the focused-row action hint on the right.
 	if it.desc != "" {
 		used := cursorWidth + 22 + 9
@@ -204,9 +179,6 @@ func (p *evolvePanel) renderItemRow(i, width int) string {
 func (p *evolvePanel) renderView(width, height int) string {
 	var b strings.Builder
 	title := "SKILL.md · " + p.viewName
-	if p.viewKind == "memory" {
-		title = "MEMORY · " + p.viewName
-	}
 	b.WriteString(skillViewTitleStyle.Render(kit.TruncateText(title, width)))
 	b.WriteString("\n\n")
 

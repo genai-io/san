@@ -52,16 +52,15 @@ const (
 // write changed (e.g. "removed vague tooling guidance"). It surfaces
 // in the per-action recap row so the user sees what was done.
 type ReviewAction struct {
-	Verb   string // "saved" | "replaced" | "removed" | "updated" | "extended" | "retired" | "created" | "trimmed"
-	Kind   string // "memory" or "skill"
-	Target string // skill name, memory topic, or "" for the memory index file
+	Verb   string // "updated" | "extended" | "retired" | "created" | "trimmed"
+	Kind   string // display label, "skill"
+	Target string // skill name
 	Note   string // LLM-supplied "what changed" clause
 }
 
 // actionLabel formats a single action's "kind · target" for the
 // spinner-tail display and the one-line done summary. The separator
-// is elided when the target is empty (memory index file, or a skill
-// recorded without a name).
+// is elided when the target is empty (a skill recorded without a name).
 func actionLabel(a ReviewAction) string {
 	if a.Target == "" {
 		return a.Kind
@@ -71,10 +70,9 @@ func actionLabel(a ReviewAction) string {
 
 // buildDoneSummary turns the per-pass action log into a one-line phrase
 // for the done-phase status bar. Rules:
-//   - 1 action: full "<verb> <kind · target>", e.g. "saved memory · debugging"
+//   - 1 action: full "<verb> <kind · target>", e.g. "created skill · go-testing"
 //   - 2-3 distinct actions, fits ~60 chars: list them, comma-separated
-//   - otherwise: per-kind grouped counts, e.g. "saved 2 memory entries,
-//     updated 1 skill, created 1 skill"
+//   - otherwise: per-kind grouped counts, e.g. "updated 2 skills, created 1 skill"
 //
 // Falls back to "" when actions is empty; the caller's render path uses
 // the "N changes" plural form as a final backstop.
@@ -121,14 +119,9 @@ func buildDoneSummary(actions []ReviewAction) string {
 }
 
 // pluralKind returns the noun for a count of N items of the given kind.
-// memory → "memory entry"/"memory entries"; skill → "skill"/"skills".
+// skill → "skill"/"skills".
 func pluralKind(kind string, n int) string {
 	switch kind {
-	case "memory":
-		if n == 1 {
-			return "memory entry"
-		}
-		return "memory entries"
 	case "skill":
 		if n == 1 {
 			return "skill"

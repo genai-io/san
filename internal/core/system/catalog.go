@@ -49,6 +49,7 @@ var (
 	cachedBehavior = loadEmbed("prompts/behavior.txt")
 	cachedRules    = loadEmbed("prompts/rules.txt")
 	cachedCompact  = loadEmbed("prompts/compact.txt")
+	cachedMemory   = loadEmbed("prompts/memory.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -150,7 +151,21 @@ func rulesSection(override string) core.Section {
 	}
 }
 
+// memorySection tells the main agent how to keep its auto memory in dir.
+func memorySection(dir string) core.Section {
+	return core.Section{
+		Slot: core.SlotRules, Name: "memory", Source: core.Predefined,
+		Render: func() string { return wrap("memory", nil, fmt.Sprintf(cachedMemory, dir)) },
+	}
+}
+
 // Options
+
+// WithAutoMemory turns on the auto-memory instructions for the store at dir.
+// Empty dir leaves them out (auto memory off).
+func WithAutoMemory(dir string) Option {
+	return func(cfg *buildConfig) { cfg.memoryDir = dir }
+}
 
 // WithPersona overrides any of the identity / behavior / rules parts at build
 // time from a persona. Empty fields keep San's built-in default for that part.

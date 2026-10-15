@@ -316,3 +316,18 @@ func TestConfig_UserLevelOverriddenByProject(t *testing.T) {
 		t.Errorf("Expected FROM='project' to override user env, got %q", settings.Env["FROM"])
 	}
 }
+
+func TestAutoMemory(t *testing.T) {
+	off := false
+	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
+	if !New(NewData()).AutoMemory() {
+		t.Fatal("unset autoMemory must default on")
+	}
+	if New(&Data{AutoMemory: &off}).AutoMemory() {
+		t.Fatal(`"autoMemory": false must turn it off`)
+	}
+	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "1")
+	if New(NewData()).AutoMemory() {
+		t.Fatal("SAN_DISABLE_AUTO_MEMORY=1 must override the default")
+	}
+}

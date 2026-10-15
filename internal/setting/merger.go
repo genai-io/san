@@ -24,6 +24,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalescePtr(overlay.AllowBypass, base.AllowBypass)
 	result.AutoUpdate = coalescePtr(overlay.AutoUpdate, base.AutoUpdate)
+	result.AutoMemory = coalescePtr(overlay.AutoMemory, base.AutoMemory)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.GitBar = coalescePtr(overlay.GitBar, base.GitBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
@@ -83,11 +84,6 @@ func ApplyPersonaOverlay(base, overlay *Data) *Data {
 // entire selfLearn block is dropped on every Load and every save.
 func mergeSelfLearn(base, overlay SelfLearnSettings) SelfLearnSettings {
 	return SelfLearnSettings{
-		Memory: SelfLearnMemory{
-			Enabled: overlay.Memory.Enabled || base.Memory.Enabled,
-			MaxKB:   coalesceInt(overlay.Memory.MaxKB, base.Memory.MaxKB),
-			Path:    coalesce(overlay.Memory.Path, base.Memory.Path),
-		},
 		Skills: SelfLearnSkills{
 			DenyCreate: overlay.Skills.DenyCreate || base.Skills.DenyCreate,
 			DenyUpdate: overlay.Skills.DenyUpdate || base.Skills.DenyUpdate,

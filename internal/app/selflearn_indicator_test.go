@@ -29,7 +29,7 @@ func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
 
 	// Complete → done with LLM summary; the closing line lands verbatim.
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
-	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "debugging"})
+	s.RecordAction(ReviewAction{Verb: "created", Kind: "skill", Target: "debugging"})
 	s.Complete("trimmed go-testing by 1.8KB")
 	snap = s.Snapshot()
 	if snap.Phase != selflearnDone || snap.Changes != 2 {
@@ -106,34 +106,27 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 	}
 }
 
-// TestFormatRecapBlock locks the post-review recap shape: per-kind
-// sub-headers ("memory", "skill") with their action rows indented
-// under them, no top "Self-improvement" header, no card frame. Memory
-// index writes render as "index" so the column stays aligned;
-// created actions get a "new ·" inline marker. Empty input ⇒ "" so
-// the wire-up's "skip publish on no writes" branch keeps working.
+// TestFormatRecapBlock locks the post-review recap shape: a "skill"
+// sub-header with its action rows indented under it inside a dashed box,
+// plus the resume footer. Empty input ⇒ "" so the wire-up's "skip publish
+// on no writes" branch keeps working.
 func TestFormatRecapBlock(t *testing.T) {
 	if got := formatRecapBlock(nil, ""); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
 	}
 	got := formatRecapBlock([]ReviewAction{
-		{Verb: "saved", Kind: "memory", Target: "", Note: "noted make ci"},
-		{Verb: "saved", Kind: "memory", Target: "debugging", Note: "added 3 entries"},
 		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
 		{Verb: "created", Kind: "skill", Target: "python-typing", Note: "typing-hints"},
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	}, "sess-2026-06-02T12-34-56-abc1234")
 	for _, want := range []string{
-		"╭",                       // top-left rounded corner
-		"╮",                       // top-right
-		"╰",                       // bottom-left
-		"╯",                       // bottom-right
-		"┊",                       // vertical sides
-		"┄",                       // dashed border (top/bottom)
-		"memory",                  // kind sub-header
-		"· index — noted make ci", // memory index → "index"
-		"· debugging — added 3 entries",
-		"skill",
+		"╭",     // top-left rounded corner
+		"╮",     // top-right
+		"╰",     // bottom-left
+		"╯",     // bottom-right
+		"┊",     // vertical sides
+		"┄",     // dashed border (top/bottom)
+		"skill", // kind sub-header
 		"· go-testing — trimmed examples",
 		"· python-typing — typing-hints",
 		"· outdated-thing", // note absent → no trailing " — "
@@ -148,16 +141,10 @@ func TestFormatRecapBlock(t *testing.T) {
 	}
 }
 
-// TestVerbMapping covers the memory_write / skill_manage → recap verb maps
+// TestVerbMapping covers the skill_manage → recap verb map
 // so a future action surface stays consistent with the §"User-visible
 // surface" example.
 func TestVerbMapping(t *testing.T) {
-	memCases := map[string]string{"add": "saved", "replace": "replaced", "remove": "removed", "unknown": "unknown"}
-	for in, want := range memCases {
-		if got := memoryVerb(in); got != want {
-			t.Fatalf("memoryVerb(%q): got %q, want %q", in, got, want)
-		}
-	}
 	skillCases := map[string]string{
 		"create": "created", "patch": "updated", "edit": "updated",
 		"write_file": "extended", "remove_file": "trimmed",
@@ -191,7 +178,7 @@ func TestCompleteSilentOnEmptyActions(t *testing.T) {
 func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
 	s := NewSelfLearnIndicator()
 	s.BeginReview()
-	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory"})
+	s.RecordAction(ReviewAction{Verb: "created", Kind: "skill", Target: "python-typing"})
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
 	s.Complete("")
 	if got := s.Snapshot().Changes; got != 2 {
@@ -200,23 +187,5 @@ func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
 	_ = s.DrainActions() // wire-up runs Drain after Complete
 	if got := s.Snapshot().Changes; got != 2 {
 		t.Fatalf("post-Drain Changes during done-hold: got %d, want 2", got)
-	}
-}
-
-// TestMemoryTopicName checks the helper that strips the .md suffix and
-// returns the bare topic name (or "" for the index file). The indicator
-// renderer adds the "memory" / "memory · " prefix at display time.
-func TestMemoryTopicName(t *testing.T) {
-	cases := map[string]string{
-		"":             "",
-		"MEMORY.md":    "",
-		"memory.md":    "",
-		"debugging.md": "debugging",
-		"perf.md":      "perf",
-	}
-	for in, want := range cases {
-		if got := memoryTopicName(in); got != want {
-			t.Fatalf("memoryTopicName(%q): got %q, want %q", in, got, want)
-		}
 	}
 }

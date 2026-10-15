@@ -122,3 +122,20 @@ func TestIsSubpath(t *testing.T) {
 		})
 	}
 }
+
+func TestWithinDirectoryRejectsSymlinkOut(t *testing.T) {
+	dir, outside := t.TempDir(), t.TempDir()
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if !WithinDirectory(filepath.Join(dir, "MEMORY.md"), dir) {
+		t.Fatal("plain file inside dir rejected")
+	}
+	if WithinDirectory(filepath.Join(link, "MEMORY.md"), dir) {
+		t.Fatal("symlink pointing outside dir was accepted")
+	}
+	if WithinDirectory(filepath.Join(dir, "x"), "") {
+		t.Fatal("empty dir must reject")
+	}
+}

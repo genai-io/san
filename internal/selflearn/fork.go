@@ -22,7 +22,7 @@ const forkDeadline = 5 * time.Minute
 
 // ForkConfig carries everything RunReview needs to fork a restricted reviewer
 // agent. LLM and System come from the parent so the fork inherits its provider
-// and (verbatim) system prompt; Memory and Skills are the write surfaces. The
+// and (verbatim) system prompt; Skills is the write surface. The
 // skill actions this pass may take are read from Skills.Perms() — the prompt is
 // tailored to them and the manager enforces them at dispatch.
 type ForkConfig struct {
@@ -30,10 +30,9 @@ type ForkConfig struct {
 	CallOptions func() []ai.Option
 	System      core.System // parent's system — read for its prompt only
 	CWD         string
-	Memory      *MemoryStore
 	Skills      *SkillManager
 	// Strategy is the user's optional learning-strategy override; non-empty
-	// replaces the built-in guidance for both arms.
+	// replaces the built-in guidance.
 	Strategy string
 	// OnEvent receives the fork agent's lifecycle events (PreInfer /
 	// PostInfer / OnAppend / …). Wire a sidechain writer here to land
@@ -42,12 +41,12 @@ type ForkConfig struct {
 	OnEvent func(core.Event)
 }
 
-// RunReview forks a restricted agent over the snapshot, runs the kind-
-// selected review prompt, and returns the fork's final text (a one-line
+// RunReview forks a restricted agent over the snapshot, runs the review
+// prompt, and returns the fork's final text (a one-line
 // summary, or "nothing to save"). Bounded by forkDeadline. Best-effort:
 // the caller must run it on a background goroutine.
-func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error) {
-	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Memory, fc.Skills, fc.Strategy)
+func RunReview(ctx context.Context, fc ForkConfig, snapshot []core.Message) (string, error) {
+	prompt := buildReviewPrompt(fc.Skills, fc.Strategy)
 
 	ctx, cancel := context.WithTimeout(ctx, forkDeadline)
 	defer cancel()
@@ -67,7 +66,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		Render: func() string { return parentPrompt },
 	}, "selflearn")
 
-	tools := core.NewTools(newMemoryWriteTool(fc.Memory), newSkillManageTool(fc.Skills))
+	tools := core.NewTools(newSkillManageTool(fc.Skills))
 
 	ag := core.NewAgent(core.Config{
 		Client:      fc.Client,

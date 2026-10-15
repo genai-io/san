@@ -45,6 +45,10 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
+	// AutoMemoryDir is the auto-memory store the main agent maintains; ""
+	// when auto memory is off.
+	AutoMemoryDir string
+
 	// ExtraTools are caller-built conditional tool schemas appended to the
 	// toolset (e.g. the self-learning Evolve trigger, injected only when
 	// self-learning is active). Nil ⇒ no extra tools.
@@ -90,6 +94,7 @@ func (p BuildParams) System() core.System {
 	return system.Build(core.ScopeMain,
 		system.WithPersona(p.Persona),
 		system.WithEnvironment(system.Environment{Cwd: p.CWD, Shell: proc.DefaultShellName()}),
+		system.WithAutoMemory(p.AutoMemoryDir),
 	)
 }
 

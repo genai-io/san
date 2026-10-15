@@ -1,13 +1,13 @@
-// The /evolve panel: configures both self-learning arms (skill permissions +
-// memory) and manages what the reviewer has learned.
+// The /evolve panel: configures skill self-learning permissions and manages
+// the skills the reviewer has learned.
 //
 // The panel is a small mode machine layered over the config form:
 //
 //	modeForm     the config zone (selfLearnForm) — edit + save the settings.
 //	modeStrategy the Strategy editor — a full-text learning-strategy override.
-//	modeList     the LEARNED inventory — agent-created skills and agent-written
-//	             memory files; esc returns to the form.
-//	modeView     a full, scrollable read-only SKILL.md / memory preview.
+//	modeList     the LEARNED inventory — agent-created skills; esc returns to
+//	             the form.
+//	modeView     a full, scrollable read-only SKILL.md preview.
 //	modeConfirm  a "delete <name>?" y/n prompt.
 //
 // Every mode except modeForm is modal (see modalPanel): while in one the panel
@@ -20,7 +20,6 @@
 package input
 
 import (
-	"fmt"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -37,14 +36,12 @@ type EvolveDeps struct {
 	// learned stores read through it so a project reload is picked up.
 	Workspace func() (string, *setting.Settings)
 	Learned   LearnedSkillStore
-	Memory    LearnedMemoryStore
 	// Recent returns the rolling self-learning activity log for the RECENT
 	// zone of the Learned drill-in.
 	Recent func() []LearnEvent
 }
 
-// NewEvolveSelector builds the /evolve popup: one self-learning panel covering
-// both arms (skills + memory).
+// NewEvolveSelector builds the /evolve popup: the skill self-learning panel.
 func NewEvolveSelector(d EvolveDeps) PanelPopup {
 	return newPanelPopup("✦", "Self-Learning", "learns as you work",
 		newEvolvePanel(d))
@@ -60,40 +57,19 @@ type LearnedSkillStore struct {
 	Delete func(name string) error
 }
 
-// LearnedMemory is a one-line summary of an agent-written memory file, surfaced
-// alongside skills in the LEARNED drill-in.
-type LearnedMemory struct {
-	Topic   string // display name ("MEMORY.md" for the index, else the topic)
-	File    string // the .md filename backing Read / Delete
-	Summary string // e.g. "12 lines"
-}
-
-// LearnedMemoryStore is the app-injected accessor bundle backing the memory half
-// of the inventory: List the agent-written memory files, Read one, Delete one.
-// Any func may be nil, in which case that capability is inert.
-type LearnedMemoryStore struct {
-	List   func() []LearnedMemory
-	Read   func(file string) (string, error)
-	Delete func(file string) error
-}
-
-// learnedItem is one row of the LEARNED drill-in — an agent-created skill or an
-// agent-written memory file. kind selects which store backs view / delete.
+// learnedItem is one row of the LEARNED drill-in — an agent-created skill.
 type learnedItem struct {
-	kind     string // "skill" | "memory"
-	name     string // skill name / memory topic
-	subtitle string // skill scope / memory summary
-	desc     string // skill description / "" for memory
-	storeKey string // Read+Delete key: skill name / memory filename
+	name     string // skill name, also the Read+Delete key
+	subtitle string // skill scope
+	desc     string // skill description
 }
 
 // LearnEvent is one row of the RECENT self-learning activity recap: a write the
 // reviewer made, humanized for display. Sourced from the app's rolling activity
-// log; Kind is "memory" or "skill", naming the arm that wrote it.
+// log.
 type LearnEvent struct {
-	Kind   string // "memory" | "skill"
 	Verb   string // "created" | "patched" | "removed" | …
-	Target string // skill name / memory topic
+	Target string // skill name
 	Note   string // one-line "what changed"
 	Ago    string // humanized age, e.g. "2m ago"
 }
@@ -109,26 +85,24 @@ const (
 )
 
 type evolvePanel struct {
-	form     selfLearnForm
-	store    LearnedSkillStore
-	memStore LearnedMemoryStore
-	recent   func() []LearnEvent // nil = no RECENT zone
+	form   selfLearnForm
+	store  LearnedSkillStore
+	recent func() []LearnEvent // nil = no RECENT zone
 
 	strategy strategyEditor
 
 	mode  skillMode
-	items []learnedItem // skills + memory, loaded at Enter / drill-in
+	items []learnedItem // loaded at Enter / drill-in
 	// rows is the cached config-row list; rebuilt only when items changes
 	// (its one input), so per-keypress/per-frame rowsFn calls don't rebuild
 	// ~20 closures each time.
 	rows      []configRow
-	events    []LearnEvent // RECENT snapshot (both arms), loaded at Enter
+	events    []LearnEvent // RECENT snapshot, loaded at Enter
 	invCursor int
 	actionErr error // last delete/preview failure, surfaced inline; cleared on nav
 
 	// view (modeView) sub-state.
 	viewName   string
-	viewKind   string // "skill" | "memory" — selects the preview title
 	viewLines  []string
 	viewOffset int
 }
@@ -136,7 +110,6 @@ type evolvePanel struct {
 func newEvolvePanel(d EvolveDeps) *evolvePanel {
 	p := &evolvePanel{
 		store:    d.Learned,
-		memStore: d.Memory,
 		recent:   d.Recent,
 		strategy: newStrategyEditor(selflearn.DefaultStrategy()),
 		rows:     evolveRows(0),
@@ -195,21 +168,14 @@ func (p *evolvePanel) Enter() {
 	p.reloadRecent()
 }
 
-// reloadItems re-reads the on-disk inventory — agent-created skills first, then
-// agent-written memory files — and keeps the cursor in range.
+// reloadItems re-reads the on-disk agent-created skills and keeps the cursor
+// in range.
 func (p *evolvePanel) reloadItems() {
 	p.items = nil
 	if p.store.List != nil {
 		for _, s := range p.store.List() {
 			p.items = append(p.items, learnedItem{
-				kind: "skill", name: s.Name, subtitle: s.Level, desc: s.Description, storeKey: s.Name,
-			})
-		}
-	}
-	if p.memStore.List != nil {
-		for _, m := range p.memStore.List() {
-			p.items = append(p.items, learnedItem{
-				kind: "memory", name: m.Topic, subtitle: m.Summary, storeKey: m.File,
+				name: s.Name, subtitle: s.Level, desc: s.Description,
 			})
 		}
 	}
@@ -220,8 +186,7 @@ func (p *evolvePanel) reloadItems() {
 	p.rows = evolveRows(len(p.items))
 }
 
-// reloadRecent snapshots the recent activity log (both memory and skill events —
-// one panel now covers both arms).
+// reloadRecent snapshots the recent activity log.
 func (p *evolvePanel) reloadRecent() {
 	if p.recent == nil {
 		p.events = nil
@@ -334,7 +299,7 @@ func (p *evolvePanel) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// deleteSelected removes the focused item (skill or memory file) from disk,
+// deleteSelected removes the focused skill from disk,
 // reloads the inventory, and returns to the list (or the form when it empties).
 func (p *evolvePanel) deleteSelected() {
 	if p.invCursor >= len(p.items) {
@@ -342,12 +307,8 @@ func (p *evolvePanel) deleteSelected() {
 		return
 	}
 	it := p.items[p.invCursor]
-	del := p.store.Delete
-	if it.kind == "memory" {
-		del = p.memStore.Delete
-	}
-	if del != nil {
-		if err := del(it.storeKey); err != nil {
+	if del := p.store.Delete; del != nil {
+		if err := del(it.name); err != nil {
 			p.actionErr = err
 			p.mode = modeList
 			return
@@ -367,11 +328,7 @@ func (p *evolvePanel) openView() {
 	}
 	it := p.items[p.invCursor]
 	read := p.store.Read
-	if it.kind == "memory" {
-		read = p.memStore.Read
-	}
 	p.viewName = it.name
-	p.viewKind = it.kind
 	p.viewOffset = 0
 	p.actionErr = nil
 	p.viewLines = nil
@@ -379,7 +336,7 @@ func (p *evolvePanel) openView() {
 		p.actionErr = errPreviewUnavailable
 		return // stay in list; the inline error explains why
 	}
-	content, err := read(it.storeKey)
+	content, err := read(it.name)
 	if err != nil {
 		p.actionErr = err
 		return
@@ -445,41 +402,11 @@ func evolveRows(learnedCount int) []configRow {
 		skillPerm("Delete a skill", setting.SelfLearnSkills.AllowDelete,
 			func(s *setting.SelfLearnSkills) { s.DenyDelete = !s.DenyDelete }),
 		{kind: rowSpacer},
-		{kind: rowSubHeader, label: "Memory", indent: 1},
-		{
-			kind:       rowBool,
-			label:      "Enable memory",
-			indent:     2,
-			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Memory.Enabled },
-			toggle:     func(s *setting.SelfLearnSettings) { s.Memory.Enabled = !s.Memory.Enabled },
-		},
-		{
-			kind:      rowInt,
-			label:     "Max size",
-			unit:      "KB",
-			indent:    2,
-			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.ResolvedMaxKB() },
-			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
-			intMin:    1,
-			intMax:    setting.SelfLearnMaxMemoryKB,
-			footnote: func(v int) string {
-				return fmt.Sprintf("%d EN words / %d 中文字 (UTF-8)", v*180, v*340)
-			},
-		},
-		{
-			kind:        rowText,
-			label:       "Storage path",
-			indent:      2,
-			placeholder: "default (per-project store)",
-			strGetter:   func(s *setting.SelfLearnSettings) string { return s.Memory.Path },
-			strSetter:   func(s *setting.SelfLearnSettings, v string) { s.Memory.Path = v },
-		},
-		{kind: rowSpacer},
 		{
 			kind:    rowEntry,
 			entryID: "learned",
 			label:   "Learned",
-			desc:    "skills & memory — browse & prune",
+			desc:    "skills — browse & prune",
 			indent:  1,
 			summary: func(*setting.SelfLearnSettings) string {
 				if learnedCount == 0 {

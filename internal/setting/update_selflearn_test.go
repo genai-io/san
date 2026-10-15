@@ -38,22 +38,20 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	}
 
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Memory: SelfLearnMemory{Enabled: true},
 		Skills: SelfLearnSkills{}, // all actions allowed → skills active
 	}, ScopeUser); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
-	if sl := read(); !sl.Memory.Enabled || !sl.Skills.Active() {
-		t.Fatalf("after enable, want both on, got %+v", sl)
+	if sl := read(); !sl.Skills.Active() {
+		t.Fatalf("after enable, want skills on, got %+v", sl)
 	}
 
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Memory: SelfLearnMemory{Enabled: false},
 		Skills: SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}, // all denied → off
 	}, ScopeUser); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
-	if sl := read(); sl.Memory.Enabled || sl.Skills.Active() {
+	if sl := read(); sl.Skills.Active() {
 		t.Fatalf("disable was dropped (OR-merge regression): %+v", sl)
 	}
 }
@@ -75,7 +73,6 @@ func TestUpdateSelfLearnAtSyncsEvolveTool(t *testing.T) {
 		cfg      SelfLearnSettings
 		disabled bool
 	}{
-		{"memory", SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}, Skills: denied}, false},
 		{"off", SelfLearnSettings{Skills: denied}, true},
 		{"skills", SelfLearnSettings{}, false},
 		{"off again", SelfLearnSettings{Skills: denied}, true},
@@ -147,7 +144,7 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := UpdateSelfLearnAt(SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}, ScopeUser); err != nil {
+	if err := UpdateSelfLearnAt(SelfLearnSettings{Strategy: "custom"}, ScopeUser); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -162,7 +159,7 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 	if d.Model != "claude-x" || d.Theme != "dark" {
 		t.Fatalf("unrelated settings clobbered: model=%q theme=%q", d.Model, d.Theme)
 	}
-	if !d.SelfLearn.Memory.Enabled {
+	if d.SelfLearn.Strategy != "custom" {
 		t.Fatalf("selfLearn not written: %+v", d.SelfLearn)
 	}
 	if d.DisabledTools["Evolve"] || !d.DisabledTools["Bash"] {

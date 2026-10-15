@@ -120,6 +120,8 @@ func (m *model) promptParams() agent.BuildParams {
 		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.selfLearnExtraTools(),
+
+		AutoMemoryDir: m.autoMemoryDir(),
 	}
 }
 
@@ -235,6 +237,10 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params.ResultFilter = m.filterOversizedResult
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
 		decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
+		// The agent keeps its own memory without asking; deny rules still win.
+		if decision.Behavior == perm.Prompt && isAutoMemoryWrite(m.autoMemoryDir(), name, args) {
+			decision = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
+		}
 		mode := m.env.SessionMode()
 		input := marshalPermInput(args)
 		switch decision.Behavior {
@@ -517,7 +523,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		// the one choke point every turn passes through, so all drift sources
 		// are covered uniformly.
 		if m.selfLearnCapabilities() == m.agentEvolveCaps &&
-			m.disabledToolsSignature() == m.agentDisabledToolsSignature {
+			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
+			m.autoMemoryDir() == m.agentAutoMemoryDir {
 			return nil, nil
 		}
 		m.StopAgentRuntime()
@@ -541,10 +548,11 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
+	m.agentAutoMemoryDir = m.autoMemoryDir()
 
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
-	// the live Agent + System for its fork. Builds nothing if both arms are
-	// off (§3.1 zero-overhead guarantee).
+	// the live Agent + System for its fork. Builds nothing if every skill action is
+	// denied (§3.1 zero-overhead guarantee).
 	m.wireSelfLearn(params)
 
 	cmds := []tea.Cmd{
@@ -626,23 +634,22 @@ func (m *model) wireReminderProviders() {
 		return reminder.WrapMemory("project", m.env.CachedProjectInstructions)
 	})
 	m.services.Reminder.Register(reminder.ProviderGroup, group.Roster)
-	// Agent-written auto-memory (L1 reviewer's store). Read at render time so
-	// PostCompact / cwd change picks up the latest written entries without a
-	// separate refresh hook (see notes/active/l1-background-review.md §4.5).
-	// Kept as its own scope so agent-written entries never mix with the
-	// user-authored memory above.
+	// Agent-written auto memory, read at render time so a PostCompact or cwd
+	// change picks up the latest index. Kept as its own scope so agent-written
+	// entries never mix with the user-authored memory above.
 	m.services.Reminder.Register(reminder.ProviderMemoryAuto, func() string {
-		// Honor a configured memory storage path so the injected memory matches
-		// where the reviewer writes.
-		override := ""
-		if snap := m.services.Setting.Snapshot(); snap != nil {
-			override = snap.SelfLearn.Memory.Path
-		}
-		body, ok := system.LoadAutoMemoryAt(system.ResolveAutoMemoryDir(m.env.CWD, override))
-		if !ok {
+		dir := m.autoMemoryDir()
+		if dir == "" {
 			return ""
 		}
-		return reminder.WrapMemory("auto", body)
+		// Index problems come from the harness, so they sit outside the memory
+		// block, whose framing tells the model not to act on what is inside.
+		index, problems := system.LoadAutoMemoryAt(dir)
+		out := reminder.WrapMemory("auto", index)
+		if len(problems) > 0 {
+			out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
+		}
+		return out
 	})
 }
 

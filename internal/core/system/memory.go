@@ -31,32 +31,52 @@ const (
 	instructionsByteCap = 32 * 1024
 
 	// AutoMemoryIndexName is the index file of the agent-written auto-memory
-	// store. Topic files (loaded on demand by the agent) live beside it.
+	// store: one line per memory, each pointing at a topic file beside it.
 	AutoMemoryIndexName = "MEMORY.md"
 
-	// autoMemoryByteCap bounds how much of the auto-memory index is injected at
-	// session start, mirroring Claude Code's index cap. Topic files are never
-	// injected — the agent reads them on demand.
+	// autoMemoryLineCap and autoMemoryByteCap bound how much of the index is
+	// injected, matching Claude Code. Topic files are read on demand.
+	autoMemoryLineCap = 200
 	autoMemoryByteCap = 25 * 1024
 )
 
-// AutoMemoryDir is the project-partitioned directory backing the agent-written
-// auto-memory store: ~/.san/projects/<encoded-cwd>/memory/. It shares the
-// project partitioning used by the session transcript store, so worktrees and
-// subdirectories of one repo resolve to the same store.
+// AutoMemoryDir is the agent-written memory store for cwd's repository:
+// ~/.san/projects/<encoded-repo-root>/memory/. Subdirectories and linked
+// worktrees of one repository share it.
 func AutoMemoryDir(cwd string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
-	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(cwd), "memory")
+	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(mainWorktreeRoot(cwd)), "memory")
 }
 
-// encodeProjectPath mirrors internal/session.EncodePath: replaces path
-// separators with "-" so the cwd can stand alone as a subdirectory name.
-// Duplicated (5 lines) to keep core layer-pure rather than importing the
-// session feature package; the two functions must stay in lockstep so
-// memory and transcript stores resolve to the same project partition.
+// mainWorktreeRoot returns the repository root for cwd, mapping a linked
+// worktree (whose .git is a "gitdir: <main>/.git/worktrees/<name>" file) back
+// to the main checkout.
+func mainWorktreeRoot(cwd string) string {
+	root := ProjectRoot(cwd)
+	data, err := os.ReadFile(filepath.Join(root, ".git"))
+	if err != nil {
+		return root // a directory (main checkout) or no repository
+	}
+	gitdir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+	if !ok {
+		return root
+	}
+	gitdir = filepath.Clean(strings.TrimSpace(gitdir))
+	if !filepath.IsAbs(gitdir) {
+		gitdir = filepath.Join(root, gitdir)
+	}
+	// <main>/.git/worktrees/<name> → <main>
+	if filepath.Base(filepath.Dir(gitdir)) == "worktrees" {
+		return filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
+	}
+	return root
+}
+
+// encodeProjectPath replaces path separators with "-" so a path can stand
+// alone as a subdirectory name (same scheme as internal/session.EncodePath).
 func encodeProjectPath(path string) string {
 	path = strings.TrimRight(path, "/")
 	if runtime.GOOS == "windows" {
@@ -66,49 +86,65 @@ func encodeProjectPath(path string) string {
 	return strings.ReplaceAll(path, "/", "-")
 }
 
-// ResolveAutoMemoryDir returns the directory backing the auto-memory store,
-// honoring a user override (the /evolve Memory storage path). An empty override
-// falls back to the project-partitioned default; a "~" prefix expands to the
-// home dir; a relative override resolves against cwd.
-func ResolveAutoMemoryDir(cwd, override string) string {
-	override = strings.TrimSpace(override)
-	if override == "" {
-		return AutoMemoryDir(cwd)
+// LoadAutoMemoryAt reads the auto-memory index from dir, capped at
+// autoMemoryLineCap lines and autoMemoryByteCap bytes, and lists index
+// problems (over the cap, topic files missing from the index, index links to
+// missing files) for the agent to repair. Both are empty when there is nothing.
+func LoadAutoMemoryAt(dir string) (index string, problems []string) {
+	data, _ := os.ReadFile(filepath.Join(dir, AutoMemoryIndexName))
+	full := strings.TrimSpace(string(data))
+
+	index = full
+	if lines := strings.Split(index, "\n"); len(lines) > autoMemoryLineCap {
+		index = strings.Join(lines[:autoMemoryLineCap], "\n")
 	}
-	if override == "~" || strings.HasPrefix(override, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			override = filepath.Join(home, strings.TrimPrefix(override, "~"))
-		}
+	index = truncateOnLineBoundary(index, autoMemoryByteCap)
+	if len(index) < len(full) {
+		problems = append(problems, fmt.Sprintf("MEMORY.md is over the %d-line / %d KB load limit and was cut; condense it to one short line per memory.", autoMemoryLineCap, autoMemoryByteCap/1024))
 	}
-	if !filepath.IsAbs(override) {
-		override = filepath.Join(cwd, override)
-	}
-	return override
+	return index, append(problems, autoMemoryIndexProblems(dir, full)...)
 }
 
-// LoadAutoMemoryAt reads the agent-written auto-memory index from dir —
-// resolve it with ResolveAutoMemoryDir so a user-configured memory path is
-// honored (the reviewer prompt and the main-agent memory reminder both do).
-// Capped at autoMemoryByteCap. It is a distinct source from LoadMemoryFiles:
-// agent-written memory and user-authored AGENTS.md instructions are
-// injected as separate blocks and never mixed. Returns ("", false) when the
-// store is empty or absent. When the index exceeds the cap it is truncated on
-// a line boundary with a marker — topic files are read on demand and never
-// injected.
-func LoadAutoMemoryAt(dir string) (string, bool) {
-	data, err := os.ReadFile(filepath.Join(dir, AutoMemoryIndexName))
+var markdownLinkTarget = regexp.MustCompile(`\]\(([^)\s]+\.md)\)`)
+
+// autoMemoryIndexProblems reports topic files the index never mentions (the
+// agent cannot find them) and index links whose file is gone.
+func autoMemoryIndexProblems(dir, index string) []string {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", false
+		return nil
 	}
-	content := strings.TrimSpace(string(data))
-	if content == "" {
-		return "", false
+	var orphans, dangling []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || name == AutoMemoryIndexName || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		if !strings.Contains(index, name) {
+			orphans = append(orphans, name)
+		}
 	}
-	if len(content) > autoMemoryByteCap {
-		content = truncateOnLineBoundary(content, autoMemoryByteCap) +
-			"\n\n<!-- auto-memory truncated; read topic files on demand -->"
+	for _, m := range markdownLinkTarget.FindAllStringSubmatch(index, -1) {
+		if _, err := os.Stat(filepath.Join(dir, m[1])); err != nil {
+			dangling = append(dangling, m[1])
+		}
 	}
-	return content, true
+	var problems []string
+	if len(orphans) > 0 {
+		problems = append(problems, "not listed in MEMORY.md (add a line or delete): "+listNames(orphans))
+	}
+	if len(dangling) > 0 {
+		problems = append(problems, "MEMORY.md links to missing files (drop the line): "+listNames(dangling))
+	}
+	return problems
+}
+
+// listNames joins names, eliding past the first ten.
+func listNames(names []string) string {
+	if len(names) <= 10 {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:10], ", ") + fmt.Sprintf(" and %d more", len(names)-10)
 }
 
 // truncateOnLineBoundary trims s to at most max bytes, cutting at the last

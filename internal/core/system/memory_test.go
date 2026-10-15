@@ -1,6 +1,7 @@
 package system
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -461,24 +462,51 @@ func findProjectFile(t *testing.T, files []MemoryFile) MemoryFile {
 	return MemoryFile{}
 }
 
-func TestResolveAutoMemoryDir(t *testing.T) {
-	cwd := "/work/project-x"
-	// Empty override → the project-partitioned default.
-	if got := ResolveAutoMemoryDir(cwd, ""); got != AutoMemoryDir(cwd) {
-		t.Fatalf("empty override: got %q, want default %q", got, AutoMemoryDir(cwd))
+func TestAutoMemoryDirSharedAcrossWorktrees(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	main := t.TempDir()
+	if err := os.Mkdir(filepath.Join(main, ".git"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	// Absolute override is used verbatim.
-	if got := ResolveAutoMemoryDir(cwd, "/srv/mem"); got != "/srv/mem" {
-		t.Fatalf("absolute override: got %q", got)
-	}
-	// Relative override resolves against cwd.
-	if got := ResolveAutoMemoryDir(cwd, "notes/mem"); got != filepath.Join(cwd, "notes/mem") {
-		t.Fatalf("relative override: got %q", got)
-	}
-	// "~" expands to the home dir.
-	if home, err := os.UserHomeDir(); err == nil {
-		if got := ResolveAutoMemoryDir(cwd, "~/mem"); got != filepath.Join(home, "mem") {
-			t.Fatalf("tilde override: got %q, want %q", got, filepath.Join(home, "mem"))
+	wt := t.TempDir()
+	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "feature")+"\n")
+	sub := filepath.Join(main, "internal", "pkg")
+
+	want := AutoMemoryDir(main)
+	for _, cwd := range []string{wt, sub} {
+		if got := AutoMemoryDir(cwd); got != want {
+			t.Errorf("AutoMemoryDir(%s) = %q, want the main checkout's %q", cwd, got, want)
 		}
+	}
+}
+
+func TestLoadAutoMemoryAtCapsAndReportsIndexProblems(t *testing.T) {
+	dir := t.TempDir()
+	var lines []string
+	for i := range autoMemoryLineCap + 5 {
+		lines = append(lines, fmt.Sprintf("- [m%d](m%d.md) — hook", i, i))
+	}
+	writeFile(t, filepath.Join(dir, AutoMemoryIndexName), strings.Join(lines, "\n"))
+	writeFile(t, filepath.Join(dir, "m0.md"), "kept")
+	writeFile(t, filepath.Join(dir, "orphan.md"), "never indexed")
+
+	index, problems := LoadAutoMemoryAt(dir)
+	if strings.Contains(index, fmt.Sprintf("[m%d]", autoMemoryLineCap)) {
+		t.Error("lines past the cap must not be injected")
+	}
+	all := strings.Join(problems, "\n")
+	for _, want := range []string{"load limit", "orphan.md", "m1.md", "more"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q in problems:\n%s", want, all)
+		}
+	}
+	if strings.Contains(all, "drop the line): m0.md") {
+		t.Error("an existing linked file must not be reported missing")
+	}
+}
+
+func TestLoadAutoMemoryAtEmpty(t *testing.T) {
+	if index, problems := LoadAutoMemoryAt(t.TempDir()); index != "" || len(problems) > 0 {
+		t.Error("empty store should load nothing")
 	}
 }

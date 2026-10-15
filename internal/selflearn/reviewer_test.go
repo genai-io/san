@@ -12,15 +12,14 @@ func endTurn(toolUses int) core.Result {
 }
 
 type fireRec struct {
-	kind       ReviewKind
 	skillPerms SkillPermissions
 }
 
 // newTestReviewer wires a Reviewer whose review callback records the fired
-// (kind, skill permissions) into a buffered channel.
+// skill permissions into a buffered channel.
 func newTestReviewer(cfg Config) (*Reviewer, chan fireRec) {
 	fired := make(chan fireRec, 8)
-	r := New(cfg, func(k ReviewKind, p SkillPermissions, _ []core.Message) { fired <- fireRec{k, p} })
+	r := New(cfg, func(p SkillPermissions, _ []core.Message) { fired <- fireRec{p} })
 	return r, fired
 }
 
@@ -41,7 +40,7 @@ func assertNoFire(t *testing.T, fired <-chan fireRec) {
 	t.Helper()
 	select {
 	case f := <-fired:
-		t.Fatalf("expected no review, but %v fired", f.kind)
+		t.Fatalf("expected no review, but %+v fired", f.skillPerms)
 	case <-time.After(80 * time.Millisecond):
 	}
 }
@@ -80,36 +79,6 @@ func waitInFlightClear(t *testing.T, r *Reviewer) {
 	}
 }
 
-// TestReviewKindString covers the log-friendly labels surfaced to the
-// wire-up's review-summary log entry.
-func TestReviewKindString(t *testing.T) {
-	cases := map[ReviewKind]string{
-		0:                       "none",
-		KindMemory:              "memory",
-		KindSkills:              "skill",
-		KindMemory | KindSkills: "memory+skill",
-	}
-	for k, want := range cases {
-		if got := k.String(); got != want {
-			t.Fatalf("kind %b: got %q, want %q", k, got, want)
-		}
-	}
-}
-
-// TestMemoryFiresOnRequest: memory fires only when the model requests a review
-// (evolveRequested) and memory is enabled — there is no cadence fallback.
-func TestMemoryFiresOnRequest(t *testing.T) {
-	r, fired := newTestReviewer(Config{MemoryEnabled: true})
-
-	r.Observe(endTurn(0), false, false) // no request
-	r.Observe(endTurn(0), true, false)  // still no request
-	assertNoFire(t, fired)
-	r.Observe(endTurn(0), false, true) // requested
-	if f := waitFire(t, fired); !f.kind.Has(KindMemory) || f.kind.Has(KindSkills) {
-		t.Fatalf("want memory-only, got %v", f.kind)
-	}
-}
-
 // TestSkillsScopedByUse: on a requested turn the skills pass is scoped by the
 // objective fact of skill use — skill-free → create, skill-use → update+delete.
 func TestSkillsScopedByUse(t *testing.T) {
@@ -134,10 +103,7 @@ func TestSkillsScopedByUse(t *testing.T) {
 // TestNoRequestNeverFires: without evolveRequested nothing fires, however much
 // work happened — the model's call is the only trigger.
 func TestNoRequestNeverFires(t *testing.T) {
-	r, fired := newTestReviewer(Config{
-		MemoryEnabled: true,
-		Skills:        AllowAllSkillActions(),
-	})
+	r, fired := newTestReviewer(Config{Skills: AllowAllSkillActions()})
 	for range 10 {
 		r.Observe(endTurn(5), false, false)
 		r.Observe(endTurn(1), true, false)
@@ -157,35 +123,18 @@ func TestRequestBoundedByPermissions(t *testing.T) {
 	}
 }
 
-// TestCombinedFiresBothArms: a requested turn with memory on and skills active
-// fires both arms.
-func TestCombinedFiresBothArms(t *testing.T) {
-	r, fired := newTestReviewer(Config{
-		MemoryEnabled: true,
-		Skills:        SkillPermissions{AllowCreate: true, AllowUpdate: true},
-	})
-	r.Observe(endTurn(1), false, true)
-	f := waitFire(t, fired)
-	if !f.kind.Has(KindMemory) || !f.kind.Has(KindSkills) {
-		t.Fatalf("want combined, got %v", f.kind)
-	}
-	if !f.skillPerms.AllowCreate {
-		t.Fatalf("skill-free turn should be a create pass, got %+v", f.skillPerms)
-	}
-}
-
 // TestSkipsNonEndTurn: cancelled / max-steps turns never fire, even when the
 // model requested a review.
 func TestSkipsNonEndTurn(t *testing.T) {
-	r, fired := newTestReviewer(Config{MemoryEnabled: true})
+	r, fired := newTestReviewer(Config{Skills: AllowAllSkillActions()})
 
 	r.Observe(core.Result{StopReason: core.StopCanceled}, false, true)
 	r.Observe(core.Result{StopReason: core.StopMaxSteps}, false, true)
 	assertNoFire(t, fired)
 
 	r.Observe(endTurn(0), false, true)
-	if f := waitFire(t, fired); !f.kind.Has(KindMemory) {
-		t.Fatalf("want memory, got %v", f.kind)
+	if f := waitFire(t, fired); !f.skillPerms.AllowCreate {
+		t.Fatalf("want create pass, got %+v", f.skillPerms)
 	}
 }
 
@@ -195,10 +144,10 @@ func TestSingleFlightDropsConcurrent(t *testing.T) {
 	fired := make(chan fireRec, 4)
 	release := make(chan struct{})
 	started := make(chan struct{}, 4)
-	r := New(Config{MemoryEnabled: true}, func(k ReviewKind, p SkillPermissions, _ []core.Message) {
+	r := New(Config{Skills: AllowAllSkillActions()}, func(p SkillPermissions, _ []core.Message) {
 		started <- struct{}{}
 		<-release // block until released → keeps the review in-flight
-		fired <- fireRec{k, p}
+		fired <- fireRec{p}
 	})
 
 	r.Observe(endTurn(0), false, true) // fires review #1 (now in-flight, blocked)
@@ -212,17 +161,13 @@ func TestSingleFlightDropsConcurrent(t *testing.T) {
 	}
 
 	close(release) // let #1 finish
-	if f := waitFire(t, fired); !f.kind.Has(KindMemory) {
-		t.Fatalf("want memory, got %v", f.kind)
-	}
+	waitFire(t, fired)
 	waitInFlightClear(t, r)
 
 	// A fresh request after the prior clears fires normally.
 	r.Observe(endTurn(0), false, true)
 	mustStart(t, started)
-	if f := waitFire(t, fired); !f.kind.Has(KindMemory) {
-		t.Fatalf("retry: want memory, got %v", f.kind)
-	}
+	waitFire(t, fired)
 }
 
 func TestConfigEnabled(t *testing.T) {
