@@ -118,7 +118,7 @@ func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.
 		}
 		maps.Copy(cfg.Headers, headers)
 	}
-	client, err := ai.NewClient(cfg)
+	client, err := ai.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (p *vendorProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, err
 	}
 
-	listed := ai.Available(p.endpoint.Models())
+	listed := slices.DeleteFunc(p.endpoint.Models(), func(m ai.Model) bool { return !m.Stage.Available() })
 	out := make([]ModelInfo, 0, len(listed))
 	for _, m := range listed {
 		out = append(out, toModelInfo(p.models.resolve(m)))
@@ -228,7 +228,7 @@ func (p *vendorProvider) ThinkingEfforts(model string) []string {
 
 // DefaultThinkingEffort returns the rung used when none is chosen.
 func (p *vendorProvider) DefaultThinkingEffort(model string) string {
-	if level, ok := p.model(model).DefaultLevel(); ok {
+	if level, ok := defaultLevel(p.model(model)); ok {
 		return string(level.Effort)
 	}
 	return ""

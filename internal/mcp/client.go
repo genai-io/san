@@ -65,10 +65,11 @@ func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 			SSE:     config.GetType() == TransportSSE,
 			// San is full-screen, so this cannot go to the terminal.
 			Stderr: serverLog{name: config.Name},
+			// The SDK hands the callback its own client; San's re-read goes
+			// through this one, which is the same session under San's cache.
+			OnToolsChanged: func(*sdkmcp.Client) { onToolsChanged() },
 		}
-		// The SDK hands the callback its own client; San's re-read goes through
-		// this one, which is the same session under San's cache.
-		return sdkmcp.Connect(ctx, server, sdkmcp.OnToolsChanged(func(*sdkmcp.Client) { onToolsChanged() }))
+		return sdkmcp.Connect(ctx, server)
 	}
 }
 

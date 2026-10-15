@@ -132,7 +132,7 @@ func requestID() string {
 type authenticator struct{ vendorID string }
 
 func (a authenticator) Login(ctx context.Context, onPrompt func(LoginPrompt)) error {
-	interaction := oauth.InteractionFunc(func(_ context.Context, p oauth.Prompt) error {
+	interaction := oauth.Interaction(func(_ context.Context, p oauth.Prompt) error {
 		_ = proc.OpenURL(p.URL)
 		if onPrompt != nil {
 			onPrompt(LoginPrompt{URL: p.URL, UserCode: p.UserCode})

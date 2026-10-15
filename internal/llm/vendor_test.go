@@ -528,8 +528,8 @@ func TestEveryModelInTheDataStatesItsWindow(t *testing.T) {
 			t.Errorf("%s: no catalog vendor %q", providerName(e.meta), e.vendorID)
 			continue
 		}
-		for _, m := range ai.Available(newVendorModels(vendor).list()) {
-			if m.ContextWindow == 0 {
+		for _, m := range newVendorModels(vendor).list() {
+			if m.Stage.Available() && m.ContextWindow == 0 {
 				t.Errorf("%s: model %q states no context window", e.vendorID, m.ID)
 			}
 		}
