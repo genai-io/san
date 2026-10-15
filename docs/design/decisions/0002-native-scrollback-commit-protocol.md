@@ -77,11 +77,12 @@ chunking, resize — keeps all of them or it is wrong.
    a zero-row frame puts the block one row low and leaks a blank row into
    history.
 
-4. **A shrinking inline frame is erased from its top row.** The fork's
-   `flush` parks the cursor on row 0 before `Erase()` whenever the inline
-   frame gets shorter, while the old height is still known. Invariant 3
-   makes shrinking a routine step of every full-screen print, so this is
-   load-bearing, not a corner.
+4. **A shrinking inline frame is erased from its top row.** Invariant 3
+   makes shrinking a routine step of every full-screen print. The fork once
+   parked the cursor on row 0 before `Erase()` for this; on bubbletea v2.1.0
+   with invariants 1 and 3 in place the park measured no difference (tmux,
+   9/9 clean runs without it), so it was dropped. A stale frame copy after a
+   shrink means one of those two broke first.
 
 5. **Overlay prompts never enter a history handoff.**
    Full-screen panels render in the alternate screen (#517), where a print
@@ -138,9 +139,9 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   `insert above` must reach the frame's top — `CR ESC[<k>A ESC[J`. A bare
   `CR ESC[J` means the erase started at the cursor, and the rows above it
   are about to become history.
-- The renderer half lives in the `yanmxa/bubbletea` fork that `go.mod`
-  replaces `charm.land/bubbletea/v2` with. Bumping upstream means carrying
-  the `agent/*` patches forward; dropping one reopens its round of this
+- The renderer half lives on the `san` branch of the `genai-io/bubbletea`
+  fork that `go.mod` replaces `charm.land/bubbletea/v2` with. Bumping
+  upstream means rebasing that branch; dropping one reopens its round of this
   family.
 - The normal frame fills the screen to keep the composer stable. A short
   completed reply stays in the retained display buffer; only its oldest
@@ -166,8 +167,7 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   — the print queue, chunking, and the frozen frame.
 - [`internal/app/model_scrollback_renderer_test.go`](../../../internal/app/model_scrollback_renderer_test.go)
   — the native-history gate.
-- bubbletea fork branches `agent/flush-before-insert-above`,
-  `agent/reflow-aware-resize-erase`, `agent/erase-from-frame-top-on-shrink`.
+- `genai-io/bubbletea` branch `san`: the renderer patches on top of upstream.
 - xterm.js `Buffer._reflowSmaller`: the cursor bump per split and the
   cursor-line exemption behind the known limit in invariant 6.
 - charmbracelet/bubbletea#1736; genai-io/san#314, #497, #517.
