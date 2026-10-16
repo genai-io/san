@@ -13,7 +13,7 @@
 //	vendor_convert.go      San's conversation types and the SDK's, in both directions
 //	vendor_signin.go       the vendors that authenticate a person, not a service
 //	vendor_credentials.go  those credentials, kept in San's own secret store
-//	vendor_models.go       the two endpoints that answer about their models their own way
+//	vendor_models.go       the one endpoint that answers about its models its own way
 //	vendor_data.go         what the models are: lineups, limits, prices, reasoning efforts
 //	vendor_data_refresh.go keeping that data current from models.dev
 package llm
@@ -24,10 +24,11 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -41,7 +42,7 @@ type vendorProvider struct {
 	// models says what each model is; the vendor row only how to reach it.
 	models vendorModels
 	// endpoint carries the credential, the host and the live model listing.
-	endpoint *sdkprovider.Provider
+	endpoint *endpoint.Endpoint
 	// turnHeaders are the headers whose value depends on what a turn sends,
 	// for the one endpoint that has any. Nil everywhere else.
 	turnHeaders func([]core.Message) map[string]string
@@ -52,7 +53,7 @@ type vendorProvider struct {
 }
 
 // newVendorProvider builds the adapter for one vendor endpoint.
-func newVendorProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Config) *vendorProvider {
+func newVendorProvider(name string, vendor catalog.Vendor, cfg endpoint.Config) *vendorProvider {
 	models := newVendorModels(vendor)
 	if cfg.Models == nil {
 		cfg.Models = models.list()
@@ -62,7 +63,7 @@ func newVendorProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Confi
 		name:        name,
 		vendor:      vendor,
 		models:      models,
-		endpoint:    vendor.Provider(cfg),
+		endpoint:    vendor.Endpoint(cfg),
 		turnHeaders: turnHeadersFor(vendor.ID),
 		clients:     make(map[string]*ai.Client),
 	}
@@ -101,9 +102,7 @@ func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.
 
 	// The listing can move a model off the vendor's protocol — Copilot serves
 	// its newest GPT models over Responses only — so read it before building.
-	ctx, cancel := context.WithTimeout(context.Background(), modelDetailTimeout)
-	_ = p.refresh(ctx)
-	cancel()
+	_ = p.refresh(context.Background())
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -188,6 +187,9 @@ func (p *vendorProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	return out, nil
 }
 
+// listTimeout bounds one fetch of an endpoint's model listing.
+const listTimeout = 8 * time.Second
+
 // refresh fetches the endpoint's live listing once. A failure is reported but
 // not remembered, so the next call tries again rather than sticking with a
 // catalog that a passing outage froze.
@@ -199,6 +201,10 @@ func (p *vendorProvider) refresh(ctx context.Context) error {
 		return nil
 	}
 
+	// The SDK puts no bound on a listing, and a slow endpoint must delay the
+	// picker rather than wedge it.
+	ctx, cancel := context.WithTimeout(ctx, listTimeout)
+	defer cancel()
 	if err := p.endpoint.Refresh(ctx); err != nil {
 		return err
 	}

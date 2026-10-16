@@ -13,7 +13,7 @@ import (
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -23,9 +23,9 @@ import (
 // things a translation layer can get wrong: the body that reached the wire,
 // and the value that came back.
 
-// endpoint is a stub server that records the last request it was given and
+// stubServer is a stub server that records the last request it was given and
 // replays a scripted server-sent-event stream.
-type endpoint struct {
+type stubServer struct {
 	server  *httptest.Server
 	body    map[string]any
 	headers http.Header
@@ -33,9 +33,9 @@ type endpoint struct {
 	error   string
 }
 
-func serve(t *testing.T, events ...[2]string) *endpoint {
+func serve(t *testing.T, events ...[2]string) *stubServer {
 	t.Helper()
-	e := &endpoint{}
+	e := &stubServer{}
 	e.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		e.headers = r.Header.Clone()
@@ -62,14 +62,14 @@ func serve(t *testing.T, events ...[2]string) *endpoint {
 
 // claude builds an adapter pointed at the stub, speaking Anthropic Messages —
 // the protocol that carries every content kind San uses.
-func claude(t *testing.T, e *endpoint) *vendorProvider {
+func claude(t *testing.T, e *stubServer) *vendorProvider {
 	t.Helper()
 	vendor, ok := catalog.Find("anthropic")
 	if !ok {
 		t.Fatal("the catalog has no anthropic vendor")
 	}
 	return newVendorProvider("anthropic:api_key", vendor,
-		sdkprovider.Config{APIKey: "test-key", BaseURL: e.server.URL})
+		endpoint.Config{APIKey: "test-key", BaseURL: e.server.URL})
 }
 
 // collect drains a turn the way the agent loop now does: over the SDK's own
@@ -109,7 +109,7 @@ func legacyStream(ctx context.Context, p Provider, opts CompletionOptions) <-cha
 		}
 		callOpts := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
 		if len(opts.Tools) > 0 {
-			callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
+			callOpts = append(callOpts, ai.WithTools(opts.Tools...))
 		}
 		callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 		for event, err := range client.Stream(ctx, opts.Messages, callOpts...) {
@@ -443,7 +443,7 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no bigmodel vendor")
 	}
-	p := newVendorProvider("bigmodel:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("bigmodel:api_key", vendor, endpoint.Config{APIKey: "k", BaseURL: server.URL})
 
 	models, err := p.ListModels(context.Background())
 	if err != nil {
@@ -491,7 +491,7 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no alibaba vendor")
 	}
-	p := newVendorProvider("alibaba:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("alibaba:api_key", vendor, endpoint.Config{APIKey: "k", BaseURL: server.URL})
 
 	in, out, err := p.FetchModelLimits(context.Background(), "qwen3.8-max")
 	if err != nil {
@@ -506,7 +506,7 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 
 	// Every other vendor says so rather than spending a round trip to find out.
 	deepseek, _ := catalog.Find("deepseek")
-	other := newVendorProvider("deepseek:api_key", deepseek, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	other := newVendorProvider("deepseek:api_key", deepseek, endpoint.Config{APIKey: "k", BaseURL: server.URL})
 	if _, _, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err == nil {
 		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
 	}
@@ -553,7 +553,7 @@ func TestAnOverloadedEndpointReachesTheLoopAsRetryable(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no anthropic vendor")
 	}
-	p := newVendorProvider("anthropic:api_key", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("anthropic:api_key", vendor, endpoint.Config{APIKey: "k", BaseURL: server.URL})
 
 	var streamErr error
 	for chunk := range legacyStream(context.Background(), p, CompletionOptions{
@@ -638,7 +638,7 @@ func TestCopilotResponsesOnlyModelOpensOnResponses(t *testing.T) {
 	if !ok {
 		t.Fatal("the catalog has no copilot vendor")
 	}
-	p := newVendorProvider("copilot:subscription", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	p := newVendorProvider("copilot:subscription", vendor, endpoint.Config{APIKey: "k", BaseURL: server.URL})
 
 	for id, want := range map[string]ai.API{
 		"gpt-6-luna":        ai.APIOpenAIResponses,

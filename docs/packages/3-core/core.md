@@ -102,8 +102,7 @@ ContextBudget func() int
 
 There is nothing left to translate: a message, a tool, a tool result and a
 response are all the SDK's types, and `ai.IsRetryable` / `ai.IsContextExceeded`
-answer about a failure directly. What core still converts is one thing —
-`ToAITools`, in `tool.go`, because San holds a schema without a Run.
+answer about a failure directly.
 
 ### Known Violations
 

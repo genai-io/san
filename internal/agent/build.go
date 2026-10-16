@@ -219,7 +219,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if onText != nil {
 		caller := p.OnEvent
 		p.OnEvent = func(ev core.Event) {
-			if u, ok := ev.(sdkagent.MessageUpdate); ok {
+			if u, ok := ev.(sdkagent.InferenceUpdate); ok {
 				if text := u.Text(); text != "" {
 					onText(text)
 				}

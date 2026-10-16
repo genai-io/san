@@ -17,7 +17,7 @@ func TestStreamMetadataSkipsNotices(t *testing.T) {
 	}
 	m.AppendStream("text", "reasoning")
 	m.SetStreamToolCalls([]core.ToolCall{{ID: "read-1", Name: "Read"}})
-	m.Stream.Active = false // Done arrives before MessageEnd supplies the signature.
+	m.Stream.Active = false // Done arrives before InferenceEnd supplies the signature.
 	m.SetStreamThinkingSignature("signature")
 	got := m.Messages[0]
 	if got.Content != "text" || got.Thinking != "reasoning" || len(got.ToolCalls) != 1 || got.ThinkingSignature != "signature" {

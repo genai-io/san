@@ -14,7 +14,7 @@ import (
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
@@ -274,7 +274,7 @@ func (v vendorModels) resolve(live ai.Model) ai.Model {
 	// Start from the listed protocol: the ladder depends on it.
 	spec, known := v.lineup.find(live.ID)
 	base := v.vendor.Resolve(ai.Model{ID: live.ID, API: live.API, Compat: live.Compat})
-	return sdkprovider.MergeListing(v.lineup.apply(base, spec, known), live)
+	return endpoint.MergeListing(v.lineup.apply(base, spec, known), live)
 }
 
 // list is the vendor's lineup as a picker baseline, newest first: the models

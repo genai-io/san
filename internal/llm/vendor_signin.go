@@ -2,17 +2,14 @@ package llm
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	"maps"
 	"net/http"
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
-	"github.com/genai-io/sdk-go/pkg/ai/auth/oauth"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/proc"
@@ -46,7 +43,7 @@ var signIns = map[string]Meta{
 // configureSignIn points an endpoint at a stored interactive credential. The
 // token itself is minted per request by the SDK's transport, so nothing here
 // goes stale mid-session.
-func configureSignIn(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
+func configureSignIn(vendor catalog.Vendor, cfg *endpoint.Config) error {
 	credential, found, err := credentials{}.Load(vendor.ID)
 	if err != nil {
 		return err
@@ -64,66 +61,10 @@ func configureSignIn(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
 	cfg.HTTPClient = client
 	// Copilot reveals the host the account actually talks to only at sign-in,
 	// and an enterprise account's is not the published one.
-	if credential.Endpoint != "" {
-		cfg.BaseURL = credential.Endpoint
-	}
-
-	// The subscription backend publishes its lineup at its own catalog
-	// endpoint, not through the protocol's model listing.
-	if vendor.ID == codexVendor {
-		cfg.Fetch = codexModels
-	}
-
-	cfg.Headers = maps.Clone(vendor.Headers)
-	if cfg.Headers == nil {
-		cfg.Headers = map[string]string{}
-	}
-	maps.Copy(cfg.Headers, identityHeaders(vendor.ID))
-	return nil
-}
-
-// identityHeaders are what each backend requires beyond a token: both serve an
-// editor integration rather than the public API, and refuse a caller that does
-// not present itself as one.
-func identityHeaders(vendorID string) map[string]string {
-	switch vendorID {
-	case copilotVendor:
-		return map[string]string{
-			"Openai-Intent":        "conversation-panel",
-			"X-GitHub-Api-Version": "2025-04-01",
-			"X-Request-Id":         requestID(),
-			"User-Agent":           "GitHubCopilotChat/0.26.7",
-		}
-	case codexVendor:
-		headers := map[string]string{
-			"OpenAI-Beta": "responses=experimental",
-			"originator":  codexOriginator,
-			"User-Agent":  codexOriginator,
-			"session_id":  requestID(),
-		}
-		// The account the subscription belongs to. The backend rejects a
-		// request that does not name it.
-		if account := codexAccountID(); account != "" {
-			headers["chatgpt-account-id"] = account
-		}
-		return headers
+	if credential.BaseURL != "" {
+		cfg.BaseURL = credential.BaseURL
 	}
 	return nil
-}
-
-// codexOriginator identifies the caller to the ChatGPT backend, which serves
-// the Codex lineup only to the Codex CLI.
-const codexOriginator = "codex_cli_rs"
-
-// requestID returns a random UUIDv4 for the per-request and per-session
-// identifiers these two backends expect in a header — Copilot's X-Request-Id,
-// the ChatGPT backend's session_id.
-func requestID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // Interactive sign-in, as the registry above expects it.
@@ -132,7 +73,7 @@ func requestID() string {
 type authenticator struct{ vendorID string }
 
 func (a authenticator) Login(ctx context.Context, onPrompt func(LoginPrompt)) error {
-	interaction := oauth.Interaction(func(_ context.Context, p oauth.Prompt) error {
+	interaction := auth.Interaction(func(_ context.Context, p auth.Prompt) error {
 		_ = proc.OpenURL(p.URL)
 		if onPrompt != nil {
 			onPrompt(LoginPrompt{URL: p.URL, UserCode: p.UserCode})

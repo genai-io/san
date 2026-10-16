@@ -104,7 +104,7 @@ func TestOldOutboxCannotRestartStreamingAfterSwitch(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
 	oldOutbox := make(chan core.Event, 1)
-	oldOutbox <- sdkagent.MessageStart{}
+	oldOutbox <- sdkagent.InferenceStart{}
 	delayed := conv.DrainAgentOutbox(oldOutbox)()
 	switchToOtherSession(t, m, store)
 	before := len(m.conv.Messages)

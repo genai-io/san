@@ -280,16 +280,16 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 			for _, turn := range []struct{ user, reply string }{{"嗨", "你好。"}, {"再见", "下次见。"}} {
 				m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: turn.user})
 				userRow := messageRow(turn.user)
-				deliver(sdkagent.MessageStart{})
+				deliver(sdkagent.InferenceStart{})
 				if got := messageRow(turn.user); got != userRow {
 					t.Errorf("inference moved %q from row %d to %d", turn.user, userRow, got)
 				}
-				deliver(sdkagent.MessageUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: turn.reply}}})
+				deliver(sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: turn.reply}}})
 				replyRow := messageRow(turn.reply)
 				if gap := replyRow - messageRow(turn.user) - 1; gap != 1 {
 					t.Errorf("user/reply gap = %d blank rows, want 1", gap)
 				}
-				deliver(sdkagent.MessageEnd{Response: &ai.Response{Content: ai.TextContent(turn.reply)}})
+				deliver(sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.TextContent(turn.reply)}})
 				deliver(core.TurnEnded{Result: core.Result{StopReason: core.StopEndTurn}})
 				if got := messageRow(turn.reply); got != replyRow {
 					t.Errorf("settling reply moved it from row %d to %d", replyRow, got)
@@ -331,7 +331,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	if m.userInput.Queue.Len() != 1 || len(m.conv.Messages) != 1 {
 		t.Fatal("input during submission waiting should queue until the turn ends")
 	}
-	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.MessageStart{}})
+	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
 	if m.conv.Stream.Waiting || m.conv.Stream.MessageID == "" || len(m.conv.Messages) != 2 {
 		t.Fatal("first inference did not replace the waiting indicator with one assistant message")
 	}

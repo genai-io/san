@@ -41,13 +41,13 @@ func TestSessionWritesMessageBeforeInference(t *testing.T) {
 	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
 	rec.RecordEvent(sdkagent.MessageAdded{Message: userMsg})
 
-	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.InferenceStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{userMsg},
 	}})
 
 	// Assistant reply appends after PostInfer.
-	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.InferenceEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 10, Output: 5},
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}

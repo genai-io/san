@@ -6,7 +6,7 @@ import (
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/secret"
 
@@ -35,7 +35,7 @@ type vendorEntry struct {
 	// configure fills in what the catalog cannot: a credential from San's
 	// secret store, an endpoint the user set, a deployment. Nil means the
 	// common case — the vendor's first key variable and its default host.
-	configure func(catalog.Vendor, *sdkprovider.Config) error
+	configure func(catalog.Vendor, *endpoint.Config) error
 }
 
 // displays are the provider-level UI rows, one per San provider.
@@ -71,8 +71,7 @@ var vendorEntries = []vendorEntry{
 			OptionalEnvVars: []string{"CLOUD_ML_REGION"},
 			Hint:            vertexHint,
 		},
-		vendorID:  "anthropic-vertex",
-		configure: configureVertex,
+		vendorID: "anthropic-vertex",
 	},
 	{
 		meta:     Meta{Provider: OpenAI, AuthMethod: AuthAPIKey, EnvVars: []string{"OPENAI_API_KEY"}, DisplayName: "Direct API"},
@@ -99,8 +98,7 @@ var vendorEntries = []vendorEntry{
 			OptionalEnvVars: []string{"GOOGLE_CLOUD_LOCATION"},
 			Hint:            vertexHint,
 		},
-		vendorID:  "google-vertex",
-		configure: configureVertex,
+		vendorID: "google-vertex",
 	},
 	{
 		meta:     Meta{Provider: DeepSeek, AuthMethod: AuthAPIKey, EnvVars: []string{"DEEPSEEK_API_KEY"}, DisplayName: "Direct API"},
@@ -181,7 +179,21 @@ func (e vendorEntry) factory() Factory {
 			return nil, err
 		}
 
-		cfg := sdkprovider.Config{APIKey: vendorAPIKey(vendor), BaseURL: vendor.ResolveBaseURL(secret.Resolve(vendor.BaseURLEnv))}
+		// A missing key is not fatal: the custom host may take none, and the
+		// vendor refuses the first request otherwise.
+		key, _ := vendor.KeyFromEnv(secret.Resolve)
+		baseURL, err := vendor.BaseURLFromEnv(secret.Resolve)
+		if err != nil {
+			return nil, fmt.Errorf("llm: %w", err)
+		}
+		// A Vertex row has no key: the driver signs in with Google
+		// Application Default Credentials, and the project and region are
+		// read through San's secret store. Nil for every other row.
+		vertex, err := vendor.VertexFromEnv(secret.Resolve)
+		if err != nil {
+			return nil, fmt.Errorf("llm: %w", err)
+		}
+		cfg := endpoint.Config{APIKey: key, BaseURL: baseURL, Vertex: vertex}
 		if e.configure != nil {
 			if err := e.configure(vendor, &cfg); err != nil {
 				return nil, err
@@ -210,17 +222,6 @@ func providerName(meta Meta) string {
 	return string(meta.Provider) + ":" + string(meta.AuthMethod)
 }
 
-// vendorAPIKey reads the vendor's credential from San's secret store, which resolves
-// the environment first and its own file second.
-func vendorAPIKey(vendor catalog.Vendor) string {
-	for _, name := range vendor.KeyEnv {
-		if value := secret.Resolve(name); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 // ---------------------------------------------------------------------------
 // The entries that need more than a key and a host
 // ---------------------------------------------------------------------------
@@ -229,24 +230,9 @@ func vendorAPIKey(vendor catalog.Vendor) string {
 // rows name a project and a region, and the credential comes from elsewhere.
 const vertexHint = "Signs in with Google Application Default Credentials — run `gcloud auth application-default login` first. Region defaults to global."
 
-// configureVertex points a protocol at a Vertex AI deployment — Claude and
-// Gemini alike. There is no key: the driver authenticates with Google
-// Application Default Credentials, and the row's own Deployment reads the
-// project and region, through San's secret store rather than the environment
-// alone.
-func configureVertex(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
-	deployment, err := vendor.Deployment(vendor.DeploymentEnv, secret.Resolve)
-	if err != nil {
-		return fmt.Errorf("llm: %w", err)
-	}
-	cfg.APIKey = ""
-	cfg.ProtocolConfig = deployment
-	return nil
-}
-
 // configureBigModelCoding points Z.ai's GLM models at the Coding Plan path,
 // which is the same endpoint under a different prefix.
-func configureBigModelCoding(_ catalog.Vendor, cfg *sdkprovider.Config) error {
+func configureBigModelCoding(_ catalog.Vendor, cfg *endpoint.Config) error {
 	cfg.BaseURL = secret.Resolve("BIGMODEL_CODING_BASE_URL")
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
@@ -263,7 +249,7 @@ const VolcengineModelEnvVar = "VOLCENGINE_MODEL"
 
 // configureVolcengine seeds the endpoint with the model this account names, so
 // the picker has something to show even when Ark's listing says nothing.
-func configureVolcengine(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
+func configureVolcengine(vendor catalog.Vendor, cfg *endpoint.Config) error {
 	modelID := secret.Resolve(VolcengineModelEnvVar)
 	if modelID == "" {
 		return nil
@@ -296,7 +282,7 @@ func customVendor() (catalog.Vendor, error) {
 
 // configureCustom is a no-op beyond what the vendor row already carries: the
 // host came from the store and the key from the secret store.
-func configureCustom(catalog.Vendor, *sdkprovider.Config) error { return nil }
+func configureCustom(catalog.Vendor, *endpoint.Config) error { return nil }
 
 // costEstimator prices a turn from the model's rate card in San's data. A
 // model with no card reports unknown, which San renders as "--" rather than as

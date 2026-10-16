@@ -31,7 +31,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 					t.Fatalf("event %T was not handled", event)
 				}
 			}
-			deliver(sdkagent.MessageStart{})
+			deliver(sdkagent.InferenceStart{})
 			owner := m.conv.Stream.MessageID
 			m.showNoticeLine(mainNotice{FromAgent: true, Display: "background completed"})
 			for _, event := range []ai.Event{
@@ -39,7 +39,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "Original assistant reply"}},
 				{Type: ai.EventBlockEnd, Block: ai.Block{Type: ai.BlockText}},
 			} {
-				deliver(sdkagent.MessageUpdate{Delta: event})
+				deliver(sdkagent.InferenceUpdate{Delta: event})
 			}
 			m.showNoticeLine(mainNotice{Display: "background failure"})
 			if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 0 {
@@ -51,14 +51,14 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 					ID: "read-1", Name: tool.ToolRead, Input: `{"file_path":"example.go"}`,
 				}})
 			}
-			// sdk-go forwards MessageEnd, not the EventDone it consumes internally.
-			deliver(sdkagent.MessageEnd{Response: response})
+			// sdk-go forwards InferenceEnd, not the EventDone it consumes internally.
+			deliver(sdkagent.InferenceEnd{Response: response})
 			assistant := m.conv.Messages[0]
 			if assistant.ID != owner || assistant.Content != "Original assistant reply" || assistant.ThinkingSignature != "final-signature" {
 				t.Fatalf("inference metadata attached to the wrong row: %+v", assistant)
 			}
 			if !m.conv.Stream.Active || m.conv.Stream.MessageID != "" {
-				t.Fatalf("MessageEnd should release identity, not end the turn: %+v", m.conv.Stream)
+				t.Fatalf("InferenceEnd should release identity, not end the turn: %+v", m.conv.Stream)
 			}
 			if withTools {
 				if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "read-1" || len(m.conv.Tool.PendingCalls) != 1 {
@@ -73,9 +73,9 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 					t.Fatal("successful tool result did not complete its batch")
 				}
 				// The SDK continues with another inference before a successful turn ends.
-				deliver(sdkagent.MessageStart{})
-				deliver(sdkagent.MessageUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "Review finished"}}})
-				deliver(sdkagent.MessageEnd{Response: &ai.Response{Content: ai.TextContent("Review finished")}})
+				deliver(sdkagent.InferenceStart{})
+				deliver(sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "Review finished"}}})
+				deliver(sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.TextContent("Review finished")}})
 			} else if len(assistant.ToolCalls) != 0 || len(m.conv.Tool.PendingCalls) != 0 {
 				t.Fatal("text-only inference installed tools")
 			}

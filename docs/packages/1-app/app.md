@@ -169,7 +169,7 @@ moves the first user message upward when the first inference commits it.
 
 Submitting an idle turn immediately shows the response spinner while waiting
 for the first inference event. This waiting state is display-only; the agent's
-`MessageStart` creates the actual assistant message. Input during the wait is
+`InferenceStart` creates the actual assistant message. Input during the wait is
 queued, and cancellation or a failed send clears the spinner.
 `Session.Send` is nonblocking and runs before the submit handler returns, so an
 Esc cannot be followed by a delayed command sending the cancelled request.
@@ -211,9 +211,9 @@ executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
 exception status. Successful background tasks leave the tracker after their
 completion notice enters the conversation. Notices appear immediately during
-inference. Each inference binds to a message ID at `MessageStart`; stream
+inference. Each inference binds to a message ID at `InferenceStart`; stream
 updates, rendering, and scrollback commits use that identity regardless of
-display order. `MessageEnd` releases the identity after final metadata arrives;
+display order. `InferenceEnd` releases the identity after final metadata arrives;
 cancellation clears it immediately, and retries bind a new message. Turn end
 cannot reset a worker before its notice arrives.
 Completion notices and output records remain available. Resumed completed

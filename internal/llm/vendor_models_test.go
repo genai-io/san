@@ -8,19 +8,13 @@ import (
 	"slices"
 	"testing"
 
-	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
+	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 )
 
-func TestCodexCatalogUsesClientVersionAndLiveCapabilities(t *testing.T) {
+func TestCodexCatalogKeepsLiveCapabilities(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/models" {
 			t.Errorf("catalog request = %s %s, want GET /models", r.Method, r.URL.Path)
-		}
-		if got := r.URL.Query().Get("client_version"); got != codexClientVersion {
-			t.Errorf("client_version = %q, want %q", got, codexClientVersion)
-		}
-		if r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("Accept") != "application/json" {
-			t.Errorf("catalog request missing authentication or JSON Accept header")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		// A model absent from the built-in snapshot must still reach the picker
@@ -34,11 +28,10 @@ func TestCodexCatalogUsesClientVersionAndLiveCapabilities(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p := newVendorProvider("openai:subscription", vendorFor(t, codexVendor), sdkprovider.Config{
+	p := newVendorProvider("openai:subscription", vendorFor(t, codexVendor), endpoint.Config{
 		BaseURL:    server.URL,
 		HTTPClient: server.Client(),
 		Headers:    map[string]string{"Authorization": "Bearer test-token"},
-		Fetch:      codexModels,
 	})
 	models, err := p.ListModels(context.Background())
 	if err != nil {

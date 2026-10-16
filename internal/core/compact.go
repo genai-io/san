@@ -42,7 +42,7 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 // called too long. Replaying it unchanged fails the same way, so the
 // conversation is shortened and the step taken again. Two goes — a summary
 // that is still too long is a summarizer problem.
-func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Retry, error) {
+func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Recovery, error) {
 	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
 	}
@@ -55,7 +55,7 @@ func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) 
 		// own failure rather than on anything invented here.
 		return nil, nil
 	}
-	return &sdkagent.Retry{Messages: shorter}, nil
+	return &sdkagent.Recovery{Messages: shorter}, nil
 }
 
 // shorten is the compaction both hooks share: announce the wait, call the
