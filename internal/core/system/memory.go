@@ -49,7 +49,7 @@ func AutoMemoryDir(cwd string) string {
 	if err != nil {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
-	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(mainWorktreeRoot(cwd)), "memory")
+	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
 }
 
 // IsAutoMemoryPath reports whether path is a markdown file in some
@@ -65,30 +65,6 @@ func IsAutoMemoryPath(path string) bool {
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	return len(parts) == 3 && parts[0] != ".." && parts[1] == "memory"
-}
-
-// mainWorktreeRoot returns the repository root for cwd, mapping a linked
-// worktree (whose .git is a "gitdir: <main>/.git/worktrees/<name>" file) back
-// to the main checkout.
-func mainWorktreeRoot(cwd string) string {
-	root := ProjectRoot(cwd)
-	data, err := os.ReadFile(filepath.Join(root, ".git"))
-	if err != nil {
-		return root // a directory (main checkout) or no repository
-	}
-	gitdir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
-	if !ok {
-		return root
-	}
-	gitdir = filepath.Clean(strings.TrimSpace(gitdir))
-	if !filepath.IsAbs(gitdir) {
-		gitdir = filepath.Join(root, gitdir)
-	}
-	// <main>/.git/worktrees/<name> → <main>
-	if filepath.Base(filepath.Dir(gitdir)) == "worktrees" {
-		return filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
-	}
-	return root
 }
 
 // encodeProjectPath replaces path separators with "-" so a path can stand
@@ -246,17 +222,7 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 // ProjectRoot returns the repository root at or above cwd, falling back to cwd
 // when cwd is not inside a repository. Instruction discovery starts here.
 func ProjectRoot(cwd string) string {
-	dir := cwd
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return cwd
-		}
-		dir = parent
-	}
+	return confdir.RepoRoot(cwd)
 }
 
 // ProjectInstructionChain returns the AGENTS.md path for every directory from

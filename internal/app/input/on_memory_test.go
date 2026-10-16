@@ -8,6 +8,7 @@ import (
 )
 
 func TestSetAutoMemoryScopes(t *testing.T) {
+	t.Setenv("SAN_TRUST_WORKSPACE", "1") // project settings apply in a trusted folder
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

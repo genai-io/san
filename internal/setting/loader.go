@@ -24,6 +24,9 @@ type Loader struct {
 	projectDir   string
 	projectRoot  string
 	claudeCompat bool
+	// untrusted keeps only the restrictive parts of project settings; see
+	// IsWorkspaceTrusted.
+	untrusted bool
 }
 
 // Scope selects which settings file a single-file read or write targets.
@@ -57,6 +60,7 @@ func NewLoader() *Loader {
 		projectDir:   confdir.Dir("."),
 		projectRoot:  ".",
 		claudeCompat: true,
+		untrusted:    !IsWorkspaceTrusted("."),
 	}
 }
 
@@ -85,6 +89,7 @@ func NewLoaderForCwd(cwd string) *Loader {
 		projectDir:   confdir.Dir(cwd),
 		projectRoot:  cwd,
 		claudeCompat: true,
+		untrusted:    !IsWorkspaceTrusted(cwd),
 	}
 }
 
@@ -103,26 +108,14 @@ func (l *Loader) Load() (*Data, error) {
 	// to prevent incompatible hooks (e.g., Claude Code's interactive protocol)
 	// from blocking San's own hooks.
 
-	type source struct {
-		path         string
-		claudeCompat bool
-	}
-
-	var sources []source
+	var sources []settingsSource
 	if l.claudeCompat && homeDir != "" {
-		sources = append(sources, source{filepath.Join(homeDir, ".claude", "settings.json"), true})
+		sources = append(sources, settingsSource{path: filepath.Join(homeDir, ".claude", "settings.json"), claudeCompat: true})
 	}
 	if l.userDir != "" {
-		sources = append(sources, source{filepath.Join(l.userDir, "settings.json"), false})
+		sources = append(sources, settingsSource{path: filepath.Join(l.userDir, "settings.json")})
 	}
-	if l.claudeCompat {
-		sources = append(sources, source{filepath.Join(l.projectRoot, ".claude", "settings.json"), true})
-	}
-	sources = append(sources, source{filepath.Join(l.projectDir, "settings.json"), false})
-	if l.claudeCompat {
-		sources = append(sources, source{filepath.Join(l.projectRoot, ".claude", "settings.local.json"), true})
-	}
-	sources = append(sources, source{filepath.Join(l.projectDir, "settings.local.json"), false})
+	sources = append(sources, l.projectSettingsFiles()...)
 
 	// Collect hooks separately: Claude-compat hooks and San-native hooks.
 	// For native hooks, higher-priority sources REPLACE lower-priority sources
@@ -140,6 +133,9 @@ func (l *Loader) Load() (*Data, error) {
 		if err := json.Unmarshal(data, &s); err != nil {
 			log.Logger().Warn("failed to parse config file", zap.String("path", src.path), zap.Error(err))
 			continue
+		}
+		if src.project && l.untrusted && !(src.local && UntrackedInRepo(src.path)) {
+			s = Data{Permissions: PermissionSettings{Deny: s.Permissions.Deny, Ask: s.Permissions.Ask}}
 		}
 
 		// Extract hooks before merging — we'll merge hooks manually
@@ -182,6 +178,30 @@ func (l *Loader) Load() (*Data, error) {
 	settings.Hooks = merged
 
 	return settings, nil
+}
+
+type settingsSource struct {
+	path         string
+	claudeCompat bool
+	project      bool // from the working directory, not the user's home
+	local        bool // a settings.local.json
+}
+
+// projectSettingsFiles lists the project's settings files, lowest priority
+// first: .claude/settings.json, .san/settings.json and their .local twins.
+func (l *Loader) projectSettingsFiles() []settingsSource {
+	var files []settingsSource
+	for _, local := range []bool{false, true} {
+		name := "settings.json"
+		if local {
+			name = "settings.local.json"
+		}
+		if l.claudeCompat {
+			files = append(files, settingsSource{path: filepath.Join(l.projectRoot, ".claude", name), claudeCompat: true, project: true, local: local})
+		}
+		files = append(files, settingsSource{path: filepath.Join(l.projectDir, name), project: true, local: local})
+	}
+	return files
 }
 
 // LoadFile loads settings from a specific file.
