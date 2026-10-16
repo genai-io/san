@@ -52,6 +52,21 @@ func AutoMemoryDir(cwd string) string {
 	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(mainWorktreeRoot(cwd)), "memory")
 }
 
+// IsAutoMemoryPath reports whether path is a markdown file in some
+// repository's auto-memory store, so the interface can show it as memory.
+func IsAutoMemoryPath(path string) bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || !strings.HasSuffix(path, ".md") {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	return len(parts) == 3 && parts[0] != ".." && parts[1] == "memory"
+}
+
 // mainWorktreeRoot returns the repository root for cwd, mapping a linked
 // worktree (whose .git is a "gitdir: <main>/.git/worktrees/<name>" file) back
 // to the main checkout.
