@@ -17,14 +17,3 @@ type Tool = sdkagent.Tool
 // same three things — a name, a description, and the JSON Schema itself —
 // which is what the SDK sends and what it validates arguments against.
 type ToolSchema = ai.Schema
-
-// ToAITools is what an inference is told it may call. Run stays nil: San
-// executes tools itself and hands the results back as history, so the SDK is
-// never asked to run one.
-func ToAITools(schemas []ToolSchema) []ai.Tool {
-	out := make([]ai.Tool, len(schemas))
-	for i, schema := range schemas {
-		out[i] = ai.Tool{Schema: schema}
-	}
-	return out
-}

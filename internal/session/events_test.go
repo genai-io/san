@@ -40,11 +40,11 @@ func TestSessionWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.InferenceStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{{ID: "m1"}, {ID: "m2"}},
 	}})
-	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.InferenceEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 42, Output: 8, CacheRead: 10},
 	}})
 
@@ -264,10 +264,10 @@ func TestSessionWritesCompactionBoundary(t *testing.T) {
 // A nil-safe writer (no Store) must accept events without panicking.
 func TestSessionNilSafe(t *testing.T) {
 	var rec *Session
-	rec.RecordEvent(sdkagent.MessageStart{})
+	rec.RecordEvent(sdkagent.InferenceStart{})
 
 	empty := &Session{}
-	empty.RecordEvent(sdkagent.MessageStart{})
+	empty.RecordEvent(sdkagent.InferenceStart{})
 }
 
 func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record {
@@ -321,16 +321,16 @@ func TestSessionWritesInferenceFailed(t *testing.T) {
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.InferenceStart{Inference: &sdkagent.Inference{
 		System: "you are san", Messages: []core.Message{{ID: "m1"}},
 	}})
-	rec.RecordEvent(sdkagent.MessageEnd{
+	rec.RecordEvent(sdkagent.InferenceEnd{
 		Attempt: 2,
 		Err:     &ai.Error{Kind: ai.KindOverloaded, Status: 529, Message: "overloaded"},
 	})
 	// Second failure with no request open: the first one consumed it, so this
 	// must not claim the same turn.
-	rec.RecordEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
+	rec.RecordEvent(sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("orphan")})
 
 	var failed []*transcript.InferenceRecord
 	for _, r := range readAllRecords(t, dir, "sess-f") {
@@ -410,7 +410,7 @@ func TestInferenceRecordsTheWorkspaceGitBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	opened.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{}})
+	opened.RecordEvent(sdkagent.InferenceStart{Inference: &sdkagent.Inference{}})
 	items, err := store.List()
 	if err != nil || len(items) != 1 || items[0].GitBranch != "session-test-branch" {
 		t.Fatalf("branch annotation: %+v, %v", items, err)

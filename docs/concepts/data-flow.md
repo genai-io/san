@@ -288,9 +288,9 @@ Update                                     update.go
 ```
 
 A notice has two halves with different constraints. The display line appears
-immediately, even during inference: `MessageStart` binds stream updates,
+immediately, even during inference: `InferenceStart` binds stream updates,
 rendering, and scrollback commits to a message ID, independent of display order.
-`MessageEnd` releases the identity after final metadata; cancellation clears it,
+`InferenceEnd` releases the identity after final metadata; cancellation clears it,
 and retries bind a new message. Non-empty content is queued on arrival and enters the agent's context
 before its next inference; an in-flight request cannot consume it. A turn does
 not end with that queued content unread. Subagent tool errors use display-only

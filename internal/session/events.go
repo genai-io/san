@@ -32,9 +32,9 @@ func (r *Session) RecordEvent(ev core.Event) {
 	case sdkagent.MessagesReplaced:
 		_ = r.appendLocked(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: e.Messages})
 
-	case sdkagent.MessageStart:
+	case sdkagent.InferenceStart:
 		r.recordInferenceStarted(e)
-	case sdkagent.MessageEnd:
+	case sdkagent.InferenceEnd:
 		r.recordInferenceEnded(e)
 	case core.SystemChange:
 		r.recordSystemChange(e)
@@ -93,7 +93,7 @@ func (r *Session) recordSystemChange(c core.SystemChange) {
 // recordInferenceStarted records the call as digests rather than content, so the
 // transcript can reference what went out without copying it on every turn. The
 // digesting lives here because this is the only thing that ever wanted it.
-func (r *Session) recordInferenceStarted(e sdkagent.MessageStart) {
+func (r *Session) recordInferenceStarted(e sdkagent.InferenceStart) {
 	if e.Inference == nil {
 		return
 	}
@@ -133,7 +133,7 @@ func (r *Session) recordInferenceStarted(e sdkagent.MessageStart) {
 // recordInferenceEnded closes out the open request. A call that failed ends the
 // span just as a response does, and says why: without inference.failed the
 // attempt leaves an inference.requested no record ever answers.
-func (r *Session) recordInferenceEnded(e sdkagent.MessageEnd) {
+func (r *Session) recordInferenceEnded(e sdkagent.InferenceEnd) {
 	now := time.Now()
 
 	if e.Err != nil {
@@ -197,13 +197,9 @@ func (r *Session) appendInference(now time.Time, typ string, rec transcript.Infe
 // either. It moved here from core when the loop's events stopped being
 // translated — nothing else ever read it.
 func inferenceDigest(inf *sdkagent.Inference) transcript.InferenceRecord {
-	schemas := make([]core.ToolSchema, 0, len(inf.Tools))
-	for _, t := range inf.Tools {
-		schemas = append(schemas, t.Schema)
-	}
 	return transcript.InferenceRecord{
 		SystemDigest: transcript.DigestSystem(inf.System),
-		ToolsDigest:  transcript.DigestTools(schemas),
+		ToolsDigest:  transcript.DigestTools(inf.Tools),
 		MessageIDs:   messageIDs(inf.Messages),
 	}
 }

@@ -146,7 +146,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		return rt.OnCompactStart(len(e.Messages))
 	case sdkagent.CompactionEnd:
 		return rt.OnCompactEnd(e)
-	case sdkagent.MessageStart:
+	case sdkagent.InferenceStart:
 		// A retry announces itself by the attempt number, not by an event of
 		// its own: what was drawn for the previous attempt is void, and the
 		// next one re-streams from scratch.
@@ -155,9 +155,9 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			m.Stream.Stop()
 		}
 		return applyPreInfer(rt, m)
-	case sdkagent.MessageUpdate:
+	case sdkagent.InferenceUpdate:
 		return applyChunk(rt, m, e.Delta)
-	case sdkagent.MessageEnd:
+	case sdkagent.InferenceEnd:
 		if e.Err != nil {
 			rt.OnInference(e.Response)
 			if !errors.Is(e.Err, context.Canceled) {
@@ -219,7 +219,7 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
-		// MessageEnd still needs the identity to attach final metadata.
+		// InferenceEnd still needs the identity to attach final metadata.
 		m.Stream.Active = false
 		m.Stream.ThinkingActive = false
 		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
@@ -241,7 +241,7 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	}
 	rt.OnInference(resp)
 	m.Compact.WarningSuppressed = false
-	// Done closes text streaming before MessageEnd attaches metadata; cancellation
+	// Done closes text streaming before InferenceEnd attaches metadata; cancellation
 	// clears the identity instead, so late metadata cannot revive a cancelled call.
 	if m.StreamMessageIndex() < 0 {
 		return nil

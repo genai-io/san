@@ -79,14 +79,14 @@ func TestPreparedRunErrorsStayWithWorker(t *testing.T) {
 	if output != "partial diagnostics" || gotErr != wantErr || len(activity) != 0 || len(run.activity) != 1 || run.activity[0] != "Read failed: permission denied · Read(main.go)" {
 		t.Fatalf("local tool failure lost its reason or output: activity=%v, output=%q, err=%v", activity, output, gotErr)
 	}
-	run.forwardEvent(context.Background(), sdkagent.MessageEnd{Attempt: 1, Err: errors.New("provider unavailable")})
+	run.forwardEvent(context.Background(), sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("provider unavailable")})
 	if len(activity) != 1 || !strings.Contains(activity[0], "inference attempt 1 failed") {
 		t.Fatalf("retry failure missing from worker progress: %v", activity)
 	}
 	// A later successful attempt must not turn these intermediate failures into
 	// independent parent failures. Details retain them for inspection.
 	run.forwardEvent(context.Background(), sdkagent.ToolEnd{Name: "Read", Result: sdkagent.TextResult("recovered")})
-	run.forwardEvent(context.Background(), sdkagent.MessageEnd{})
+	run.forwardEvent(context.Background(), sdkagent.InferenceEnd{})
 	if gotErr != nil || len(notices) != 0 || len(activity) != 1 || len(run.activity) != 2 || callbacks != 4 {
 		t.Fatalf("recovered worker polluted the parent: notices=%v, activity=%v, callbacks=%d", notices, activity, callbacks)
 	}
@@ -110,7 +110,7 @@ func TestPreparedRunCancellationStillReachesCallbacks(t *testing.T) {
 			OnTextEnd:    func(err error) { callbacks++; gotErr = err },
 		}}
 		run.forwardEvent(ctx, sdkagent.ToolEnd{Name: "Bash", Err: cancelErr})
-		run.forwardEvent(ctx, sdkagent.MessageEnd{Err: cancelErr})
+		run.forwardEvent(ctx, sdkagent.InferenceEnd{Err: cancelErr})
 		cancel()
 		if gotErr != cancelErr || callbacks != 2 || len(activity) != 0 {
 			t.Fatalf("cancellation must finish callbacks without failure noise: activity=%v, callbacks=%d, err=%v", activity, callbacks, gotErr)
@@ -127,7 +127,7 @@ func TestPreparedRunDeadlineStillReportsErrors(t *testing.T) {
 		OnActivity: func(line string) { activity = append(activity, line) },
 	}}
 	run.forwardEvent(ctx, sdkagent.ToolEnd{Name: "Bash", Err: errors.New("exit code -1")})
-	run.forwardEvent(ctx, sdkagent.MessageEnd{Err: context.DeadlineExceeded})
+	run.forwardEvent(ctx, sdkagent.InferenceEnd{Err: context.DeadlineExceeded})
 	if len(activity) != 2 {
 		t.Fatalf("run deadlines must not be hidden as deliberate cancellation: %v", activity)
 	}

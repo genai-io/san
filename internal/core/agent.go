@@ -250,10 +250,7 @@ func NewAgent(cfg Config) Agent {
 		// Two budgets that used to be one. WithRetry replays a call the loop
 		// knows how to replay; WithContinuation asks a model cut off by the
 		// output cap to carry on, in San's own words.
-		//
-		// The +1 is the difference between the two words: San's setting counts
-		// retries, the SDK's counts attempts, and two retries is three goes.
-		sdkagent.WithRetry(cfg.MaxTurnRetries+1, backoffBase),
+		sdkagent.WithRetry(cfg.MaxTurnRetries, backoffBase),
 		sdkagent.WithContinuation(cfg.MaxContinuations, TruncatedResumePrompt),
 		sdkagent.WithStreamTimeout(cfg.StreamFirstChunkTimeout, cfg.StreamIdleTimeout),
 		// Every message in the conversation gets a name, which is what the
@@ -294,11 +291,11 @@ type Result struct {
 // below. San adds only what the loop has no concept of, because it is about
 // the mailbox and the registries rather than one exchange.
 //
-//	sdkagent.MessageAdded   MessagesReplaced                 the conversation changing
-//	sdkagent.MessageStart   MessageUpdate     MessageEnd     one inference
-//	sdkagent.ToolStart      ToolUpdate        ToolEnd        one tool call
-//	sdkagent.CompactionStart                  CompactionEnd  the shortening span
-//	sdkagent.TurnStart                        TurnEnd        one exchange
+//	sdkagent.MessageAdded     MessagesReplaced                     the conversation changing
+//	sdkagent.InferenceStart   InferenceUpdate     InferenceEnd     one inference
+//	sdkagent.ToolStart        ToolUpdate          ToolEnd          one tool call
+//	sdkagent.CompactionStart                      CompactionEnd    the shortening span
+//	sdkagent.TurnStart                            TurnEnd          one exchange
 type Event any
 
 // AgentStarted and AgentStopped bracket Run — the agent's life, however many

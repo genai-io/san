@@ -172,7 +172,7 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 	}
 	callOpts := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
 	if len(opts.Tools) > 0 {
-		callOpts = append(callOpts, ai.WithTools(core.ToAITools(opts.Tools)...))
+		callOpts = append(callOpts, ai.WithTools(opts.Tools...))
 	}
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 	resp, err := client.Complete(ctx, opts.Messages, callOpts...)

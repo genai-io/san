@@ -126,11 +126,11 @@ func TestSessionRecordsActualModelAndMonotonicInferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
-	w.RecordEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
+	w.RecordEvent(sdkagent.InferenceStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
 	w.Close()
 	w = mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
 	defer w.Close()
-	w.RecordEvent(sdkagent.MessageStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
+	w.RecordEvent(sdkagent.InferenceStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
 	records := readAllRecords(t, store.projectDir, "s")
 	var requests []*transcript.InferenceRecord
 	for _, r := range records {

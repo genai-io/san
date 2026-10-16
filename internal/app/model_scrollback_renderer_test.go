@@ -847,16 +847,16 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 				}
 			}
 			waitFor("❭ hi")
-			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageStart{}})
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
 			waitFor("Thinking...")
 			const reply = "Hi! What can I help you with?"
 			var streamed string
 			for _, delta := range []string{"Hi!", " What", " can I", " help", " you with?"} {
 				streamed += delta
-				program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: delta}}}})
+				program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: delta}}}})
 				waitFor(streamed)
 			}
-			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageEnd{Response: &ai.Response{Content: ai.TextContent(reply)}}})
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.TextContent(reply)}}})
 			waitFor("● " + reply)
 			terminal.mu.Lock()
 			defer terminal.mu.Unlock()
@@ -937,7 +937,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			if synchronized {
 				program.Send(tea.ModeReportMsg{Mode: ansi.ModeSynchronizedOutput, Value: ansi.ModeReset})
 			}
-			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageUpdate{Delta: ai.Event{
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 				Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "\n\n" + continuation},
 			}}})
 			select {

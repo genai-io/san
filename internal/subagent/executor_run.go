@@ -108,13 +108,13 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 	// worker context too, without hiding tool-local timeouts or run deadlines.
 	canceled := ctx.Err() == context.Canceled
 	switch event := ev.(type) {
-	case sdkagent.MessageUpdate:
+	case sdkagent.InferenceUpdate:
 		if r.req.OnTextDelta != nil {
 			if fragment := event.Text(); fragment != "" {
 				r.req.OnTextDelta(fragment)
 			}
 		}
-	case sdkagent.MessageEnd:
+	case sdkagent.InferenceEnd:
 		if !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled) {
 			r.recordActivity(fmt.Sprintf("inference attempt %d failed: %v", event.Attempt, event.Err))
 		}

@@ -45,7 +45,7 @@ func TestRunOnceStreamsPastDefaultOutboxCapacity(t *testing.T) {
 			params := BuildParams{
 				Provider: provider, ModelID: "fake", MaxTokens: 1024, CWD: t.TempDir(),
 				OnEvent: func(ev core.Event) {
-					if update, ok := ev.(sdkagent.MessageUpdate); ok {
+					if update, ok := ev.(sdkagent.InferenceUpdate); ok {
 						observed.WriteString(update.Text())
 					}
 				},

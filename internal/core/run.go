@@ -345,7 +345,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 // the outcome.
 func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 	switch e := event.(type) {
-	case sdkagent.MessageEnd:
+	case sdkagent.InferenceEnd:
 		if e.Err == nil && e.Response != nil {
 			out.Steps++
 			out.Usage.Add(e.Response.Usage)

@@ -88,7 +88,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 		Provider: provider,
 		ModelID:  "m",
 		OnEvent: func(event core.Event) {
-			if start, ok := event.(sdkagent.MessageStart); ok && start.Inference != nil {
+			if start, ok := event.(sdkagent.InferenceStart); ok && start.Inference != nil {
 				ids := make([]string, 0, len(start.Inference.Messages))
 				for _, m := range start.Inference.Messages {
 					ids = append(ids, m.ID)

@@ -233,7 +233,7 @@ Enter handler).
 ### Step 1 — PreInfer: open an empty assistant stub
 
 ```
-event:           sdkagent.MessageStart
+event:           sdkagent.InferenceStart
 applyPreInfer:   m.Stream.Stop(); rt.CommitMessages()
                  msg := m.Append({Role: assistant, Content: ""})
                  m.Stream = {Active: true, MessageID: msg.ID}
@@ -267,7 +267,7 @@ Repaint zone shows `● ▮ ⋯`. Scrollback unchanged.
 ### Step 2 — OnChunk (text): grow the message
 
 ```
-event:           sdkagent.MessageUpdate{Delta: {Block: {Type: text, Text: "I'll list them with ls."}}}
+event:           sdkagent.InferenceUpdate{Delta: {Block: {Type: text, Text: "I'll list them with ls."}}}
 applyChunk:      m.AppendStream(text, "")
 
 conv.Messages:   [user, assistant{Content:"I'll list them with ls."}]
@@ -282,7 +282,7 @@ non-empty content and `MDRenderer.Render` styles it. Repaint zone:
 ### Step 3 — PostInfer: tool calls land on the assistant message
 
 ```
-event:           sdkagent.MessageEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
+event:           sdkagent.InferenceEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
 applyPostInfer:  rt.OnInference(resp)
                  m.SetStreamToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
@@ -361,7 +361,7 @@ Repaint zone:
 ### Step 5 — OnChunk(Done): promote the block to scrollback
 
 ```
-event:           sdkagent.MessageEnd{Response: {...}}
+event:           sdkagent.InferenceEnd{Response: {...}}
 applyChunk:      m.AppendStream(...)       (possibly a final text chunk)
                  if chunk.Done && no tool calls remaining:
                      m.Stream.Active = false

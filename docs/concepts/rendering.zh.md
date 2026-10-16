@@ -214,7 +214,7 @@ InlinedResults.IsResultInlined(idx)      // 这条 result 是否会被
 ### Step 1 — PreInfer：开一个空的 assistant 桩位
 
 ```
-event:           sdkagent.MessageStart
+event:           sdkagent.InferenceStart
 applyPreInfer:   m.Stream.Stop(); rt.CommitMessages()
                  msg := m.Append({Role: assistant, Content: ""})
                  m.Stream = {Active: true, MessageID: msg.ID}
@@ -248,7 +248,7 @@ View → renderNormalView
 ### Step 2 — OnChunk（文字）：消息变长
 
 ```
-event:           sdkagent.MessageUpdate{Delta: {Block: {Type: text, Text: "我用 ls 列一下。"}}}
+event:           sdkagent.InferenceUpdate{Delta: {Block: {Type: text, Text: "我用 ls 列一下。"}}}
 applyChunk:      m.AppendStream(text, "")
 
 conv.Messages:   [user, assistant{Content:"我用 ls 列一下。"}]
@@ -262,7 +262,7 @@ Stream.Active:   仍然 true（Done=false）
 ### Step 3 — PostInfer：工具调用挂到 assistant 消息上
 
 ```
-event:           sdkagent.MessageEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
+event:           sdkagent.InferenceEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
 applyPostInfer:  rt.OnInference(resp)
                  m.SetStreamToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
@@ -341,7 +341,7 @@ RenderMessageRange(ctx, 1, 3, includeSpinner=true):
 ### Step 5 — OnChunk(Done)：把整块送进 scrollback
 
 ```
-event:           sdkagent.MessageEnd{Response: {...}}
+event:           sdkagent.InferenceEnd{Response: {...}}
 applyChunk:      m.AppendStream(...)       （可能还有最后一段文字 chunk）
                  if chunk.Done && 没有未完成的工具调用:
                      m.Stream.Active = false
