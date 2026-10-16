@@ -47,6 +47,17 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 //  8. Mode default
 //  9. Headless / DontAsk coercion: Ask → Deny
 
+// DenyRule returns the deny rule that matches the call, or "".
+func (s *Data) DenyRule(toolName string, args map[string]any) string {
+	rule := BuildRule(toolName, args)
+	for _, pattern := range s.Permissions.Deny {
+		if MatchesToolPattern(toolName, args, rule, pattern) {
+			return pattern
+		}
+	}
+	return ""
+}
+
 // HasPermissionToUseTool is the central permission gate that determines
 // whether a tool invocation should be allowed, denied, or prompted.
 func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision {
@@ -60,10 +71,8 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	rule := BuildRule(toolName, args)
 
 	// ── Step 1: Deny rules ──
-	for _, pattern := range s.Permissions.Deny {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return decide(perm.Reject, "deny rule: "+pattern)
-		}
+	if pattern := s.DenyRule(toolName, args); pattern != "" {
+		return decide(perm.Reject, "deny rule: "+pattern)
 	}
 
 	// ── Step 2: Circuit breaker ──

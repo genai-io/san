@@ -102,7 +102,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err := atomicfile.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
-	recordFileWritten(filePath)
+	RecordFileWritten(filePath)
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
 	storedDiff, truncatedDiffLines := perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines)

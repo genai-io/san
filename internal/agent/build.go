@@ -214,7 +214,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the
 	// one thing a headless run must not do.
-	message = withInstructions(p.CWD, message)
+	message = withInstructions(p.CWD, p.AutoMemoryDir, message)
 
 	if onText != nil {
 		caller := p.OnEvent
@@ -245,8 +245,12 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 // headless run, as a reminder rather than a prompt section — the same shape
 // and the same scopes the interactive path uses, so what the model is told
 // does not depend on which one asked.
-func withInstructions(cwd string, msg core.Message) core.Message {
-	text := reminder.AttachToContent(msg.Text(), instructionReminders(cwd))
+func withInstructions(cwd, memoryDir string, msg core.Message) core.Message {
+	reminders := instructionReminders(cwd)
+	if memoryDir != "" {
+		reminders = append(reminders, reminder.WrapWithSource(AutoMemoryReminder(memoryDir), reminder.ProviderMemoryAuto))
+	}
+	text := reminder.AttachToContent(msg.Text(), reminders)
 	if text == msg.Text() {
 		return msg
 	}
@@ -268,6 +272,18 @@ func instructionReminders(cwd string) []string {
 		reminder.WrapWithSource(reminder.WrapMemory("user", strings.Join(user, "\n\n")), reminder.ProviderMemoryUser),
 		reminder.WrapWithSource(reminder.WrapMemory("project", strings.Join(project, "\n\n")), reminder.ProviderMemoryProject),
 	}
+}
+
+// AutoMemoryReminder is the agent's memory index as a reminder, with any
+// index problems after it. Those come from the harness, so they sit outside
+// the memory block, whose framing tells the model not to act on its contents.
+func AutoMemoryReminder(dir string) string {
+	index, problems := system.LoadAutoMemoryAt(dir)
+	out := reminder.WrapMemory("auto", index)
+	if len(problems) > 0 {
+		out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
+	}
+	return out
 }
 
 // postCompactReminders is what an automatic compaction re-attaches: the

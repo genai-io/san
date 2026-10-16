@@ -138,13 +138,16 @@ worktrees share it). The layout follows Claude Code:
 
 - `MEMORY.md` is an index, one line per memory. Its first 200 lines / 25 KB
   ride the `memory-auto` reminder, framed as context rather than user
-  instructions. Index problems (over the cap, unindexed topic files, links to
-  missing files) are appended so the agent repairs them.
+  instructions. Index problems (near or over the cap, unindexed topic files,
+  links to missing files) are appended so the agent repairs them, and are also
+  returned on the tool result of every write to `MEMORY.md`.
 - Each memory is its own file with `name` / `description` / `type`
-  (user, feedback, project, reference) frontmatter, read on demand.
+  (user, feedback, project, reference) frontmatter, read on demand. Each
+  write stamps a `modified` time into that frontmatter.
 - The agent writes during the turn with Write/Edit; the `memory` rules section
-  tells it what to save and where. Writes to `*.md` inside the store skip the
-  permission prompt; deny rules still apply.
+  tells it what to save and where. Writes to `*.md` inside the store need no
+  approval in any mode, headless (`san -p`) and don't-ask included; deny rules
+  still apply.
 
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to

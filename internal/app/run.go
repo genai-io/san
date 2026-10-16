@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
 	agentpkg "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
@@ -19,6 +20,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // Run routes to either print mode or interactive TUI.
@@ -215,7 +217,12 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		parts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
 	}
 	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
+	var memoryDir string
+	if setting.New(settings).AutoMemory() {
+		memoryDir = system.AutoMemoryDir(cwd)
+	}
 	return agentpkg.BuildParams{
+		AutoMemoryDir: memoryDir,
 		ModelID:       settings.Model,
 		MaxTokens:     setting.DefaultMaxTokens,
 		CWD:           cwd,
@@ -223,8 +230,14 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		DisabledTools: setting.WithDefaultDisabledTools(settings.DisabledTools),
 		// Headless uses the same effective policy; prompts become refusals.
 		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
+			if permitAutoMemoryWrite(memoryDir, name, args, settings.DenyRule) {
+				return agentpkg.PermDecisionResult{Decision: perm.Permit, Reason: "auto memory", ToolName: name}
+			}
 			d := settings.HasPermissionToUseTool(name, args, headless)
 			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
+		},
+		ResultFilter: func(_ context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
+			return afterMemoryWrite(memoryDir, c), nil
 		},
 	}, nil
 }

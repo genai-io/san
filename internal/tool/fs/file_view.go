@@ -36,9 +36,9 @@ func recordFileRead(filePath string, info os.FileInfo) {
 	fileViews[fileViewKey(filePath)] = fileStamp{modTime: info.ModTime(), size: info.Size()}
 }
 
-// recordFileWritten refreshes the view right after Edit or Write changed the
-// file, so the tool's own change doesn't read as an external modification.
-func recordFileWritten(filePath string) {
+// RecordFileWritten refreshes the view right after Edit, Write or the app
+// changed the file, so that change doesn't read as an external modification.
+func RecordFileWritten(filePath string) {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return

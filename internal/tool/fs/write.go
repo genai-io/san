@@ -131,7 +131,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	if err := atomicfile.WriteFile(filePath, []byte(content), mode); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
-	recordFileWritten(filePath)
+	RecordFileWritten(filePath)
 
 	duration := time.Since(start)
 
