@@ -142,8 +142,18 @@ worktrees share it). The layout follows Claude Code:
   links to missing files) are appended so the agent repairs them, and are also
   returned on the tool result of every write to `MEMORY.md`.
 - Each memory is its own file with `name` / `description` / `type`
-  (user, feedback, project, reference) frontmatter, read on demand. Each
-  write stamps a `modified` time into that frontmatter.
+  frontmatter, read on demand. Each write stamps a `modified` time into that
+  frontmatter. The category lives in `type`, not the file name: two feedback
+  memories are two files, each named for its content (`concise-comments.md`).
+
+  | `type` | Holds | Notes |
+  |---|---|---|
+  | `user` | who the user is: role, expertise, preferences | changes slowly |
+  | `feedback` | corrections and confirmed approaches | body adds **Why:** / **How to apply:** |
+  | `project` | ongoing work, decisions, deadlines not in code or git | absolute dates; goes stale fastest |
+  | `reference` | where outside information lives | trackers, dashboards, docs |
+
+  Only the model reads `type`; the harness treats all four alike.
 - The agent writes during the turn with Write/Edit; the `memory` rules section
   tells it what to save and where. Writes to `*.md` inside the store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
