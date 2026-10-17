@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	sdksession "github.com/genai-io/sdk-go/pkg/session"
+
 	"github.com/genai-io/san/internal/transcript"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -190,7 +192,7 @@ func TestDeleteRejectsLiveWriterAcrossStores(t *testing.T) {
 	if err := other.Delete("s"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Read("s"); !errors.Is(err, os.ErrNotExist) {
+	if _, err := store.Read("s"); !errors.Is(err, sdksession.ErrNotFound) {
 		t.Fatalf("deleted transcript remains: %v", err)
 	}
 }

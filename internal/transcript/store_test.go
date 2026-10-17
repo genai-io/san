@@ -33,7 +33,7 @@ func TestStoreStartAppendListLoad(t *testing.T) {
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock("hello")}}}); err != nil {
 		t.Fatalf("AppendMessage(user): %v", err)
 	}
-	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(2 * time.Second), ParentMessageID: "m1", GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}}}); err != nil {
+	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(2 * time.Second), GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}}}); err != nil {
 		t.Fatalf("AppendMessage(assistant): %v", err)
 	}
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hello")}}); err != nil {
@@ -114,7 +114,7 @@ func TestStoreCompactAndFork(t *testing.T) {
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock("hello")}}}); err != nil {
 		t.Fatalf("AppendMessage(): %v", err)
 	}
-	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(2 * time.Second), ParentMessageID: "m1", Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}}}); err != nil {
+	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}}}); err != nil {
 		t.Fatalf("AppendMessage(m2): %v", err)
 	}
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: SessionCompacted, Compaction: &Compaction{MessageID: "m1"}}); err != nil {
@@ -143,18 +143,13 @@ func TestStoreCompactAndFork(t *testing.T) {
 	if forked.ParentSessionID != "tx-1" {
 		t.Fatalf("fork ParentMessageID = %q, want %q", forked.ParentSessionID, "tx-1")
 	}
-	store.mu.RLock()
-	forkRecords, err := store.loadRecordsLocked(store.transcriptPath("tx-2"))
-	store.mu.RUnlock()
+	forkRecords, err := store.loadRecords(context.Background(), "tx-2")
 	if err != nil {
 		t.Fatalf("load fork records: %v", err)
 	}
 	for _, rec := range forkRecords {
-		if rec.SessionID != "tx-2" {
+		if rec.Type != MessageAppended && rec.Type != ConversationReplaced && rec.SessionID != "tx-2" {
 			t.Fatalf("fork record SessionID = %q, want tx-2", rec.SessionID)
-		}
-		if rec.ID != "" && !strings.HasPrefix(rec.ID, "tx-2:") {
-			t.Fatalf("fork record ID = %q, want tx-2 prefix", rec.ID)
 		}
 		if rec.Type == SessionStarted && rec.Version != SchemaVersion {
 			t.Fatalf("fork record Version = %q, want %q", rec.Version, SchemaVersion)
@@ -243,7 +238,7 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(5 * time.Second), GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock("hello")}}}); err != nil {
 		t.Fatalf("AppendMessage(user): %v", err)
 	}
-	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(6 * time.Second), ParentMessageID: "m1", AgentID: "subagent-1", IsSidechain: true, Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "toolu-1", Name: "Read", Input: string(json.RawMessage(`{"path":"README.md"}`))})}}}); err != nil {
+	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(6 * time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "toolu-1", Name: "Read", Input: string(json.RawMessage(`{"path":"README.md"}`))})}}}); err != nil {
 		t.Fatalf("AppendMessage(assistant): %v", err)
 	}
 	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(7 * time.Second), Type: InferenceRequested, Inference: &InferenceRecord{
@@ -278,18 +273,20 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 		SystemSectionRemoved,
 		ToolAdded,
 		ToolRemoved,
-		MessageAppended,
-		MessageAppended,
+		"message",
+		"message",
 		InferenceRequested,
 		InferenceResponded,
 		SessionStatePatched,
 		SessionCompacted,
+		"truncate",
+		"message",
 	}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("record types = %v, want %v", got, want)
 	}
 
 	start := records[0]
-	assertTopLevel(t, start, "id", "sessionId", "time", "type", "cwd", "version", "start")
+	assertTopLevel(t, start, "sessionId", "time", "type", "cwd", "version", "start")
 	assertNoTopLevel(t, start, "provider", "model", "maxTokens", "message", "system", "tool", "inference", "state")
 	assertString(t, start, "cwd", "/repo")
 	session := objectAt(t, start, "start")
@@ -300,7 +297,7 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	assertString(t, session, "parentSessionId", "parent-session")
 
 	sysAdd := records[1]
-	assertTopLevel(t, sysAdd, "id", "sessionId", "time", "type", "system")
+	assertTopLevel(t, sysAdd, "sessionId", "time", "type", "system")
 	system := objectAt(t, sysAdd, "system")
 	assertString(t, system, "name", "identity")
 	assertString(t, system, "content", "You are precise.")
@@ -313,7 +310,7 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	assertNoTopLevel(t, system, "content")
 
 	toolAdd := records[3]
-	assertTopLevel(t, toolAdd, "id", "sessionId", "time", "type", "tool")
+	assertTopLevel(t, toolAdd, "sessionId", "time", "type", "tool")
 	tool := objectAt(t, toolAdd, "tool")
 	schema := objectAt(t, tool, "schema")
 	assertString(t, schema, "name", "Read")
@@ -327,25 +324,20 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	assertNoTopLevel(t, tool, "schema")
 
 	userMsg := records[5]
-	assertTopLevel(t, userMsg, "id", "sessionId", "time", "type", "gitBranch", "message")
-	assertString(t, userMsg, "gitBranch", "main")
+	assertTopLevel(t, userMsg, "time", "type", "message")
+	assertNoTopLevel(t, userMsg, "sessionId", "gitBranch")
 	message := objectAt(t, userMsg, "message")
 	assertString(t, message, "id", "m1")
 	assertString(t, message, "role", "user")
 	assertNoTopLevel(t, message, "parentId")
 
 	assistantMsg := records[6]
-	assertString(t, assistantMsg, "parentMessageId", "m1")
-	assertString(t, assistantMsg, "agentId", "subagent-1")
-	if got, ok := assistantMsg["isSidechain"].(bool); !ok || !got {
-		t.Fatalf("isSidechain = %#v, want true", assistantMsg["isSidechain"])
-	}
 	message = objectAt(t, assistantMsg, "message")
 	assertString(t, message, "id", "m2")
 	assertNoTopLevel(t, message, "parentId")
 
 	request := records[7]
-	assertTopLevel(t, request, "id", "sessionId", "time", "type", "inference")
+	assertTopLevel(t, request, "sessionId", "time", "type", "inference")
 	assertNoTopLevel(t, request, "provider", "model", "maxTokens", "message", "system", "tool", "state")
 	inference := objectAt(t, request, "inference")
 	assertNumber(t, inference, "sequence", 1)
@@ -374,6 +366,9 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	session = objectAt(t, compact, "compaction")
 	assertString(t, session, "messageId", "m2")
 	assertNoTopLevel(t, session, "provider", "model", "maxTokens", "agentId")
+	// The summary is where the conversation starts over.
+	message = objectAt(t, records[12], "message")
+	assertString(t, message, "id", "m2")
 }
 
 func readRawRecordMaps(t *testing.T, baseDir, sessionID string) []map[string]any {
@@ -388,6 +383,9 @@ func readRawRecordMaps(t *testing.T, baseDir, sessionID string) []map[string]any
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			t.Fatalf("line %d json decode: %v\n%s", i+1, err, line)
+		}
+		if data, ok := rec["data"].(map[string]any); ok {
+			rec = data // san's own record, inside the log's
 		}
 		out = append(out, rec)
 	}

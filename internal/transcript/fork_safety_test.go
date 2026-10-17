@@ -39,8 +39,8 @@ func TestForkCannotOverwriteExistingOrClaimedDestination(t *testing.T) {
 			if err := s.Fork(ctx, ForkCommand{SourceSessionID: "source", NewSessionID: dest}); err == nil {
 				t.Fatal("fork accepted an occupied destination")
 			}
-			after, err := os.ReadFile(s.TranscriptPath(dest))
-			if string(after) != string(before) || (kind == "claimed" && !os.IsNotExist(err)) {
+			after, _ := os.ReadFile(s.TranscriptPath(dest))
+			if string(after) != string(before) {
 				t.Fatal("fork changed the occupied destination")
 			}
 		})

@@ -14,8 +14,9 @@ small HTTP API + SSE live-tail to an embedded single-page UI.
 When the user runs `san inspector`, this package serves a localhost-only
 viewer over the project's transcripts. It is **read-only**, single-process,
 and intended for debugging an agent run after the fact or watching one
-live. The wire format is the JSONL on disk — the inspector adds no
-schema of its own.
+live. The wire format is the JSONL on disk — sdk-go `pkg/session` lines, with
+san's own records in `data` — and the inspector adds no schema of its own. A
+record's ID is its line number.
 
 ## Contract
 
@@ -42,14 +43,14 @@ call.
   - `GET /api/sessions/{id}/records?after={offset}` — complete JSONL records
     from a byte offset, with `X-Next-Offset` for the next read.
   - `GET /api/sessions/{id}/state/{recordID}` — materialized replay state
-    at a record (system prompt + tool schemas + active message chain).
+    at a record (system prompt + tool schemas + conversation).
   - `GET /api/sessions/{id}/stream` — SSE live-tail of new records.
   - `GET /` — embedded SPA from `ui/assets/`.
 - `replay.go` projects state; `server.go` caches 64 snapshots, keyed by record
   and file revision. Deleted or replaced files cannot return stale snapshots.
   Integrity checks belong to the selected inference, not earlier failures.
-- `stream.go` polls per SSE client. Complete final records without a newline
-  are emitted; incomplete JSON waits for the next poll.
+- `stream.go` polls per SSE client. A line without its newline is still being
+  written and waits for the next poll.
 - `ui/embed.go` + `ui/assets/` embed the static SPA. Request generations and
   stream identity prevent old responses from changing a new selection. Markdown
   links allow HTTP, HTTPS, mailto, and relative URLs, excluding executable schemes.

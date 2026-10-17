@@ -61,7 +61,7 @@ func newSession(store *transcript.Store, opts CreateOptions) (*Session, error) {
 	if err := store.Start(context.Background(), transcript.StartCommand{
 		SessionID: opts.ID, AgentID: opts.AgentID, Provider: opts.Provider,
 		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd,
-		ParentSessionID: opts.ParentSessionID, Time: opts.CreatedAt,
+		ParentSessionID: opts.ParentSessionID, Sidechain: opts.Sidechain, Time: opts.CreatedAt,
 	}); err != nil {
 		return nil, errors.Join(err, release())
 	}
@@ -113,12 +113,6 @@ func (s *Session) appendLocked(ctx context.Context, rec transcript.Record) error
 		return fmt.Errorf("record belongs to session %s, want %s", rec.SessionID, s.sessionID)
 	}
 	rec.SessionID = s.sessionID
-	if rec.Type == transcript.MessageAppended {
-		if rec.AgentID == "" {
-			rec.AgentID = s.agentID
-		}
-		rec.IsSidechain = rec.IsSidechain || s.isSidechain
-	}
 	if rec.Time.IsZero() {
 		rec.Time = time.Now()
 	}

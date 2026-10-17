@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -27,12 +28,11 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 			Message:   &ai.Message{ID: "msg-1", Role: "user", Content: ai.Content{ai.TextBlock("hello")}},
 		},
 		{
-			ID:              "rec-2",
-			SessionID:       "tx-1",
-			Time:            now.Add(2 * time.Second),
-			Type:            MessageAppended,
-			ParentMessageID: "msg-1",
-			Message:         &ai.Message{ID: "msg-2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}},
+			ID:        "rec-2",
+			SessionID: "tx-1",
+			Time:      now.Add(2 * time.Second),
+			Type:      MessageAppended,
+			Message:   &ai.Message{ID: "msg-2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}},
 		},
 	})
 	if err != nil {
@@ -106,64 +106,28 @@ func TestProjectTasksPatch(t *testing.T) {
 	}
 }
 
-func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
-	now := time.Date(2026, 4, 6, 14, 20, 0, 0, time.UTC)
-	transcript, err := Project([]Record{
-		{SessionID: "tx-1", Time: now, Type: SessionStarted},
-		{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user"}},
-		{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, ParentMessageID: "m1", Message: &ai.Message{ID: "m2", Role: "assistant"}},
-		{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: MessageAppended, ParentMessageID: "m2", Message: &ai.Message{ID: "m3", Role: "user"}},
-		{SessionID: "tx-1", Time: now.Add(4 * time.Second), Type: SessionCompacted, Compaction: &Compaction{MessageID: "m2"}},
-	})
-	if err != nil {
-		t.Fatalf("Project(): %v", err)
+func TestResumeStartsOverAtAResetAndHistoryKeepsEveryMessageOnce(t *testing.T) {
+	msg := func(id string) Record {
+		return Record{Type: MessageAppended, Message: &ai.Message{ID: id, Role: "user"}}
 	}
-	if len(transcript.Messages) != 2 || transcript.Messages[0].ID != "m2" || transcript.Messages[1].ID != "m3" {
-		t.Fatalf("unexpected active chain: %+v", transcript.Messages)
-	}
-}
-
-func TestProjectLatestLeafWins(t *testing.T) {
-	now := time.Date(2026, 4, 6, 14, 30, 0, 0, time.UTC)
-	transcript, err := Project([]Record{
-		{SessionID: "tx-1", Time: now, Type: SessionStarted},
-		{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user"}},
-		{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, ParentMessageID: "m1", Message: &ai.Message{ID: "m2", Role: "assistant"}},
-		{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: MessageAppended, ParentMessageID: "m1", Message: &ai.Message{ID: "m3", Role: "assistant"}},
-	})
-	if err != nil {
-		t.Fatalf("Project(): %v", err)
-	}
-	if len(transcript.Messages) != 2 || transcript.Messages[1].ID != "m3" {
-		t.Fatalf("expected latest leaf m3, got %+v", transcript.Messages)
-	}
-}
-
-func TestHistoryFollowsSelectedBranchAcrossCompactions(t *testing.T) {
 	records := []Record{
-		{Type: MessageAppended, Message: &ai.Message{ID: "start", Role: "user"}},
-		{Type: MessageAppended, ParentMessageID: "start", Message: &ai.Message{ID: "abandoned", Role: "assistant"}},
-		{Type: MessageAppended, ParentMessageID: "start", Message: &ai.Message{ID: "selected", Role: "assistant"}},
-		{Type: SessionCompacted, Compaction: &Compaction{MessageID: "selected"}},
-		{Type: MessageAppended, ParentMessageID: "selected", Message: &ai.Message{ID: "summary2", Role: "user"}},
-		{Type: SessionCompacted, Compaction: &Compaction{MessageID: "summary2"}},
-		{Type: MessageAppended, ParentMessageID: "summary2", Message: &ai.Message{ID: "last", Role: "assistant"}},
+		msg("start"), msg("reply"), msg("summary"),
+		{Type: SessionCompacted, Compaction: &Compaction{MessageID: "summary"}},
+		{Type: ConversationReplaced}, msg("summary"), msg("last"),
+	}
+	ids := func(tx *Transcript) []string {
+		var out []string
+		for _, m := range tx.Messages {
+			out = append(out, m.ID)
+		}
+		return out
 	}
 	history, err := project(records, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"start", "selected", "summary2", "last"}
-	if len(history.Messages) != len(want) {
-		t.Fatalf("history has %d messages, want %d", len(history.Messages), len(want))
-	}
-	for i, node := range history.Messages {
-		if node.ID != want[i] {
-			t.Fatalf("history followed the wrong branch: %+v", history.Messages)
-		}
+	if err != nil || !slices.Equal(ids(history), []string{"start", "reply", "summary", "last"}) {
+		t.Fatalf("history = %v, %v", ids(history), err)
 	}
 	resumed, err := Project(records)
-	if err != nil || len(resumed.Messages) != 2 || resumed.Messages[0].ID != "summary2" {
-		t.Fatalf("resume boundary changed: %+v, %v", resumed, err)
+	if err != nil || !slices.Equal(ids(resumed), []string{"summary", "last"}) {
+		t.Fatalf("resume = %v, %v", ids(resumed), err)
 	}
 }

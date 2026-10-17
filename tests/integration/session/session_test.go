@@ -374,9 +374,9 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 		}
 	}
 
-	// A snapshot import writes one header, one native conversation, and one state patch.
-	if validLines != 3 {
-		t.Errorf("expected 3 JSON lines, got %d", validLines)
+	// A snapshot import writes one header, a line per message, and one state patch.
+	if validLines != 6 {
+		t.Errorf("expected 6 JSON lines, got %d", validLines)
 	}
 }
 
@@ -485,12 +485,12 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	}
 	count := 0
 	for line := range strings.SplitSeq(string(raw), "\n") {
-		if strings.Contains(line, `"type":"conversation.replaced"`) {
+		if strings.Contains(line, `"type":"message"`) {
 			count++
 		}
 	}
-	if count != 1 {
-		t.Fatalf("on-disk conversation records = %d, want 1 (dedup leaked duplicates)", count)
+	if count != 2 {
+		t.Fatalf("on-disk message records = %d, want 2 (dedup leaked duplicates)", count)
 	}
 }
 

@@ -1,10 +1,6 @@
 package session
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
@@ -38,28 +34,14 @@ func TestSession_WritesSessionStartedBeforeTelemetry(t *testing.T) {
 		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
 	})
 
-	data, err := os.ReadFile(filepath.Join(dir, "transcripts", "sess.jsonl"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	records := readAllRecords(t, dir, "sess")
+	if len(records) == 0 {
+		t.Fatal("no records")
 	}
-	var firstType, foundProvider, foundModel string
-	for i, line := range strings.Split(string(data), "\n") {
-		if line == "" {
-			continue
-		}
-		var raw map[string]any
-		if err := json.Unmarshal([]byte(line), &raw); err != nil {
-			t.Fatalf("line %d not JSON: %v", i, err)
-		}
-		if i == 0 {
-			firstType, _ = raw["type"].(string)
-		}
-		if t, _ := raw["type"].(string); t == "session.started" {
-			if sess, ok := raw["start"].(map[string]any); ok {
-				foundProvider, _ = sess["provider"].(string)
-				foundModel, _ = sess["model"].(string)
-			}
-		}
+	firstType := records[0].Type
+	var foundProvider, foundModel string
+	if start := records[0].Start; start != nil {
+		foundProvider, foundModel = start.Provider, start.Model
 	}
 	if firstType != "session.started" {
 		t.Fatalf("first record type = %q, want session.started", firstType)

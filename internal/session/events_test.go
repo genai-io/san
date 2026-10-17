@@ -6,11 +6,8 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -276,29 +273,12 @@ func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record
 	if err != nil {
 		t.Fatalf("NewStore (reread): %v", err)
 	}
-	path := fs.TranscriptPath(sessionID)
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("open transcript: %v", err)
-	}
-	defer f.Close()
-
 	var out []transcript.Record
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var r transcript.Record
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			t.Fatalf("decode record: %v", err)
+	for r, err := range fs.Records(context.Background(), sessionID) {
+		if err != nil {
+			t.Fatalf("read records: %v", err)
 		}
 		out = append(out, r)
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatalf("scan transcript: %v", err)
 	}
 	return out
 }

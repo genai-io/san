@@ -258,26 +258,52 @@ function openSession(id, li) {
   state.eventSource = es;
   setStatus("connecting");
 
-  es.onopen = () => { if (state.eventSource === es) setStatus("recording", true); };
+  let line = 0;
+  let conv = []; // the conversation so far, which a truncate cuts
+  es.onopen = () => {
+    line = 0; // every (re)connection replays the file from its first line
+    conv = [];
+    if (state.eventSource === es) setStatus("recording", true);
+  };
   es.onerror = () => { if (state.eventSource === es) setStatus("offline"); };
   es.onmessage = (ev) => {
     if (state.eventSource !== es) return;
     let rec;
     try {
-      rec = JSON.parse(ev.data);
+      rec = fromLog(JSON.parse(ev.data), line++, conv);
     } catch (e) {
       return;
     }
     // Browsers transparently reconnect EventSource on transient drops
     // (laptop sleep, localhost blip). The server starts each stream from
     // offset 0 and replays the whole file, so without dedup the timeline
-    // would balloon across reconnects. Each record's id is unique on disk.
+    // would balloon across reconnects. A record's id is its line number.
     if (rec.id && state.seenIDs.has(rec.id)) return;
     if (rec.id) state.seenIDs.add(rec.id);
     state.records.push(rec);
     ingestForChain(rec);
     appendRow(rec, state.records.length - 1);
   };
+}
+
+// fromLog reads one line of the session log as a transcript record, the way
+// the server's transcript.Records does: a message is message.appended, a
+// truncate a conversation.replaced carrying the messages it keeps, and an
+// app line carries its record, named name, in data. Its id is its line number, which the
+// replay API takes. conv is the conversation so far.
+function fromLog(line, n, conv) {
+  const rec = Object.assign({}, line.data, {id: String(n), type: line.name, time: line.time});
+  if (line.type === "message") {
+    rec.type = "message.appended";
+    rec.message = line.message;
+    rec.parentMessageId = state.activeLeaf;
+    conv.push(line.message);
+  } else if (line.type === "truncate") {
+    rec.type = "conversation.replaced";
+    conv.length = Math.min(conv.length, line.keep || 0);
+    rec.messages = conv.slice();
+  }
+  return rec;
 }
 
 // ingestForChain keeps the active-chain set incremental. Each new

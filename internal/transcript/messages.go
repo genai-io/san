@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -22,14 +23,6 @@ func validateMessages(messages []ai.Message) error {
 	return nil
 }
 
-func sameMessageIDs(ids []string, messages []ai.Message) bool {
-	if len(ids) != len(messages) {
-		return false
-	}
-	for i := range ids {
-		if ids[i] != messages[i].ID {
-			return false
-		}
-	}
-	return true
+func sameMessageIDs(a, b []ai.Message) bool {
+	return slices.EqualFunc(a, b, func(x, y ai.Message) bool { return x.ID == y.ID })
 }

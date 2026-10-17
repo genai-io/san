@@ -2,7 +2,6 @@ package transcript
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -15,13 +14,18 @@ import (
 
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/session"
 	"go.uber.org/zap"
 )
 
+// Store keeps san's transcripts in a pkg/session store: messages as its
+// conversation, every other record as an application record whose data is
+// the Record itself.
 type Store struct {
 	mu        sync.RWMutex
 	baseDir   string
 	projectID string
+	log       *session.Store
 
 	// sessions holds per-transcript caches keyed by session ID. Populated
 	// lazily on first access via warmupCachesLocked, which does one forward
@@ -30,7 +34,7 @@ type Store struct {
 	// at once.
 	sessions map[string]*sessionCache
 
-	writers   map[string]*writerLock
+	writers   map[string]*session.Writer
 	summaries map[string]summaryCache
 }
 
@@ -40,43 +44,38 @@ type sessionCache struct {
 	warmed        bool                // forward scan completed
 	persistedIDs  map[string]struct{} // committed message IDs
 	lastGitBranch string              // sparse-emit base
-	leafMessageID string              // parent pointer for next message
-	repaired      bool
 	inference     int
 	exchange      int
-	messageIDs    []string // active immutable message identities
-	latestState   State    // projected state (cold-Save diff base)
+	messages      []ai.Message // the conversation a resume reads
+	latestState   State        // projected state (cold-Save diff base)
 }
 
 func NewStore(baseDir, projectID string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Join(baseDir, "transcripts"), 0o755); err != nil {
+	sessions, err := session.Open(filepath.Join(baseDir, "transcripts"))
+	if err != nil {
 		return nil, fmt.Errorf("create transcripts dir: %w", err)
 	}
-	return &Store{baseDir: baseDir, projectID: projectID}, nil
+	return &Store{baseDir: baseDir, projectID: projectID, log: sessions}, nil
 }
 
+// Start writes a new session's first record.
 func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 	if err := ValidateStorageID(cmd.SessionID); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
-	path := s.transcriptPath(cmd.SessionID)
-	exists, err := fileExists(path)
+	if info, err := os.Stat(s.transcriptPath(cmd.SessionID)); err == nil && info.Size() > 0 {
+		return nil // already started
+	}
+	w, done, err := s.writerLocked(cmd.SessionID)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
-	}
-
-	rec := Record{
-		ID:        cmd.SessionID + ":start",
+	_, err = writeRecord(w, nil, Record{
 		SessionID: cmd.SessionID,
 		Time:      cmd.Time,
 		Type:      SessionStarted,
@@ -88,12 +87,37 @@ func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 			MaxTokens:       cmd.MaxTokens,
 			AgentID:         cmd.AgentID,
 			ParentSessionID: cmd.ParentSessionID,
+			Sidechain:       cmd.Sidechain,
 		},
+	})
+	return errors.Join(err, done())
+}
+
+// writerLocked is the claimed session's writer, or, outside a claim, one
+// taken for a single write; done gives that one back.
+func (s *Store) writerLocked(id string) (w *session.Writer, done func() error, err error) {
+	if w := s.writers[id]; w != nil {
+		return w, func() error { return nil }, nil
 	}
-	if err := s.appendRecord(path, rec, true); err != nil {
-		return err
+	w, err = s.log.Writer(context.Background(), id)
+	if err != nil {
+		return nil, nil, err
 	}
-	return nil
+	return w, w.Close, nil
+}
+
+// writeRecord writes rec onto conversation conv and returns the conversation
+// it leaves. Messages are the log's conversation; every other record is an
+// application record carrying itself.
+func writeRecord(w *session.Writer, conv []ai.Message, rec Record) ([]ai.Message, error) {
+	switch rec.Type {
+	case MessageAppended:
+		conv = append(slices.Clip(conv), *rec.Message)
+		return conv, w.Save(conv)
+	case ConversationReplaced:
+		return rec.Messages, w.Save(rec.Messages)
+	}
+	return conv, w.Append(rec.Type, rec)
 }
 
 // Append commits one event and advances derived state only after the write succeeds.
@@ -122,19 +146,12 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 		if _, ok := c.persistedIDs[rec.Message.ID]; ok {
 			return nil
 		}
-		if rec.ParentMessageID == "" {
-			rec.ParentMessageID = c.leafMessageID
-		}
-		rec.ID = rec.SessionID + ":" + rec.Message.ID
-		if rec.GitBranch == c.lastGitBranch {
-			rec.GitBranch = ""
-		}
 	case ConversationReplaced:
 		if err := validateMessages(rec.Messages); err != nil {
 			return err
 		}
 		// Message IDs name immutable content; replaying the same chain is a no-op.
-		if sameMessageIDs(c.messageIDs, rec.Messages) {
+		if sameMessageIDs(c.messages, rec.Messages) {
 			return nil
 		}
 	case SessionStatePatched:
@@ -196,50 +213,48 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 	if rec.GitBranch == c.lastGitBranch {
 		rec.GitBranch = ""
 	}
-	if rec.ID == "" {
-		rec.ID = fmt.Sprintf("%s:%s:%d", rec.SessionID, rec.Type, rec.Time.UnixNano())
-	}
-	durable := rec.Type == MessageAppended || rec.Type == ConversationReplaced || rec.Type == SessionCompacted || rec.Type == SessionStatePatched || rec.Type == InferenceResponded || rec.Type == InferenceFailed
-	if err := s.appendRecord(s.transcriptPath(rec.SessionID), rec, durable); err != nil {
+	w, done, err := s.writerLocked(rec.SessionID)
+	if err != nil {
 		return err
 	}
+	defer func() { _ = done() }()
+	messages, err := writeRecord(w, c.messages, rec)
+	if err != nil {
+		return err
+	}
+	if rec.Type == SessionCompacted {
+		// The summary named by the boundary is where the conversation now
+		// starts; the log says so with a reset.
+		if i := slices.IndexFunc(messages, func(m ai.Message) bool { return m.ID == rec.Compaction.MessageID }); i > 0 {
+			messages = messages[i:]
+			if err := w.Save(messages); err != nil {
+				return err
+			}
+		}
+	}
+	c.messages = messages
 	if rec.GitBranch != "" {
 		c.lastGitBranch = rec.GitBranch
 	}
 	if rec.Message != nil {
 		c.persistedIDs[rec.Message.ID] = struct{}{}
-		c.leafMessageID = rec.Message.ID
-		c.messageIDs = append(c.messageIDs, rec.Message.ID)
 	}
-	if rec.Type == ConversationReplaced {
-		c.messageIDs = make([]string, 0, len(rec.Messages))
-		c.leafMessageID = ""
-		for _, m := range rec.Messages {
-			c.messageIDs = append(c.messageIDs, m.ID)
-			c.persistedIDs[m.ID] = struct{}{}
-			c.leafMessageID = m.ID
-		}
+	for _, m := range rec.Messages {
+		c.persistedIDs[m.ID] = struct{}{}
 	}
 	c.latestState = nextState
 	if rec.Inference != nil {
 		c.inference = max(c.inference, rec.Inference.Sequence)
 		c.exchange = max(c.exchange, rec.Inference.Exchange)
 	}
-	if rec.Type == SessionCompacted {
-		records, err := s.loadRecordsLocked(s.transcriptPath(rec.SessionID))
-		if err != nil {
-			return err
-		}
-		tx, err := Project(records)
-		if err != nil {
-			return err
-		}
-		s.seedCacheLocked(rec.SessionID, records, tx)
-		return nil
-	}
 	return nil
 }
 
+// Fork writes the source's records into a new session, with its attachment
+// paths rewritten to the new session's.
+//
+// TODO(sdk-go): use session.Store.Fork once attachment paths no longer name
+// the session; a byte copy cannot rewrite them.
 func (s *Store) Fork(ctx context.Context, cmd ForkCommand) (err error) {
 	if err := ValidateStorageID(cmd.SourceSessionID); err != nil {
 		return err
@@ -247,84 +262,48 @@ func (s *Store) Fork(ctx context.Context, cmd ForkCommand) (err error) {
 	if err := ValidateStorageID(cmd.NewSessionID); err != nil {
 		return err
 	}
-	release, err := s.Claim(cmd.NewSessionID)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, release()) }()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	destPath := s.transcriptPath(cmd.NewSessionID)
-	if exists, err := fileExists(destPath); err != nil {
+	if exists, err := fileExists(s.transcriptPath(cmd.NewSessionID)); err != nil {
 		return err
 	} else if exists {
 		return fmt.Errorf("fork destination %s already exists", cmd.NewSessionID)
 	}
-
-	sourcePath := s.transcriptPath(cmd.SourceSessionID)
-	records, err := s.loadRecordsLocked(sourcePath)
+	records, err := s.loadRecords(ctx, cmd.SourceSessionID)
 	if err != nil {
 		return err
 	}
-	if len(records) == 0 {
-		return fmt.Errorf("source transcript not found: %s", cmd.SourceSessionID)
-	}
-
-	tmpPath := destPath + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	release, err := s.Claim(cmd.NewSessionID)
 	if err != nil {
-		return fmt.Errorf("open fork transcript: %w", err)
+		return err
 	}
-	enc := json.NewEncoder(f)
-	enc.SetEscapeHTML(false)
+	defer func() {
+		err = errors.Join(err, release())
+		if err != nil {
+			_ = s.log.Delete(context.Background(), cmd.NewSessionID)
+		}
+	}()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w := s.writers[cmd.NewSessionID]
+	var conv []ai.Message
 	for _, rec := range records {
 		if rec.Message != nil {
-			s.rewriteAttachments(rec.Message.Content, cmd.SourceSessionID, cmd.NewSessionID)
+			msg := *rec.Message
+			msg.Content = msg.Content.Clone()
+			s.rewriteAttachments(msg.Content, cmd.SourceSessionID, cmd.NewSessionID)
+			rec.Message = &msg
 		}
-		for i := range rec.Messages {
-			s.rewriteAttachments(rec.Messages[i].Content, cmd.SourceSessionID, cmd.NewSessionID)
-		}
-
 		rec.SessionID = cmd.NewSessionID
-		rec.ID = rewriteRecordSessionID(rec.ID, cmd.SourceSessionID, cmd.NewSessionID)
-		if err := enc.Encode(rec); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmpPath)
+		if conv, err = writeRecord(w, conv, rec); err != nil {
 			return fmt.Errorf("write fork record: %w", err)
 		}
 	}
-	forkRec := Record{
-		ID:        fmt.Sprintf("%s:fork:%d", cmd.NewSessionID, cmd.Time.UnixNano()),
+	_, err = writeRecord(w, conv, Record{
 		SessionID: cmd.NewSessionID,
 		Time:      cmd.Time,
 		Type:      SessionForked,
-		Fork: &SessionFork{
-			ParentSessionID: cmd.SourceSessionID,
-		},
-	}
-	if err := enc.Encode(forkRec); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("write fork marker: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("sync fork transcript: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("close fork transcript: %w", err)
-	}
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("rename fork transcript: %w", err)
-	}
-	return nil
+		Fork:      &SessionFork{ParentSessionID: cmd.SourceSessionID},
+	})
+	return err
 }
 
 func (s *Store) rewriteAttachments(content ai.Content, beforeID, afterID string) {
@@ -348,14 +327,6 @@ func (s *Store) rewriteAttachments(content ai.Content, beforeID, afterID string)
 	}
 }
 
-func rewriteRecordSessionID(id, oldSessionID, newSessionID string) string {
-	prefix := oldSessionID + ":"
-	if after, ok := strings.CutPrefix(id, prefix); ok {
-		return newSessionID + ":" + after
-	}
-	return id
-}
-
 func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, error) {
 	if err := ValidateStorageID(transcriptID); err != nil {
 		return nil, err
@@ -367,7 +338,7 @@ func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, err
 		return nil, err
 	}
 
-	records, err := s.loadRecordsLocked(s.transcriptPath(transcriptID))
+	records, err := s.loadRecords(ctx, transcriptID)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +360,7 @@ func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	records, err := s.loadRecordsLocked(s.transcriptPath(id))
+	records, err := s.loadRecords(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -405,19 +376,16 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	files, err := os.ReadDir(filepath.Join(s.baseDir, "transcripts"))
+	infos, err := s.log.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]Summary, 0, len(files))
-	for _, file := range files {
+	items := make([]Summary, 0, len(infos))
+	for _, info := range infos {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if file.IsDir() || filepath.Ext(file.Name()) != ".jsonl" {
-			continue
-		}
-		id := strings.TrimSuffix(file.Name(), ".jsonl")
+		id := info.ID
 		item, err := s.summaryLocked(id)
 		if err != nil {
 			log.Logger().Warn("skipping unreadable session", zap.String("session", id), zap.Error(err))
@@ -434,23 +402,19 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 	return items, nil
 }
 
-func (s *Store) Delete(ctx context.Context, transcriptID string) (err error) {
-	release, err := s.Claim(transcriptID)
-	if err != nil {
+func (s *Store) Delete(ctx context.Context, transcriptID string) error {
+	if err := ValidateStorageID(transcriptID); err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, release()) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err := ctx.Err(); err != nil {
-		return err
+	if s.writers[transcriptID] != nil {
+		return fmt.Errorf("session %s already has a writer", transcriptID)
 	}
-	if err := os.Remove(s.transcriptPath(transcriptID)); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("delete transcript file: %w", err)
+	if err := s.log.Delete(ctx, transcriptID); err != nil && !errors.Is(err, session.ErrNotFound) {
+		return fmt.Errorf("delete transcript: %w", err)
 	}
 	delete(s.sessions, transcriptID)
-
 	delete(s.summaries, transcriptID)
 	return os.RemoveAll(s.summaryPath(transcriptID))
 }
@@ -461,48 +425,6 @@ func (s *Store) transcriptPath(transcriptID string) string {
 
 func (s *Store) TranscriptPath(transcriptID string) string {
 	return s.transcriptPath(transcriptID)
-}
-
-// appendRecord writes one record to the JSONL. fsync is gated by sync so
-// hot-path telemetry (system.section.*, tools.*, inference.requested) can be
-// buffered in the OS page cache and rolled up to disk at turn boundaries.
-//
-// Durability classes:
-//   - sync=true: user input (message.appended), turn-completion
-//     (inference.responded), lifecycle events (session.started, session.compacted).
-//     A crash after these must not lose them.
-//   - sync=false: pure telemetry. Worst case on crash: the in-flight turn's
-//     telemetry is lost, but the message/state of preceding turns is intact
-//     because their write fsynced.
-//
-// Single-process per file: the append+close pair preserves order regardless
-// of fsync; durability is the only thing the flag toggles.
-func (s *Store) appendRecord(path string, rec Record, sync bool) error {
-	// NewStore creates transcripts/ at construction; no per-record MkdirAll.
-	if err := s.repairTailLocked(path); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return fmt.Errorf("open transcript file: %w", err)
-	}
-
-	enc := json.NewEncoder(f)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(rec); err != nil {
-		f.Close()
-		return fmt.Errorf("append transcript record: %w", err)
-	}
-	if sync {
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return fmt.Errorf("sync transcript file: %w", err)
-		}
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("close transcript file: %w", err)
-	}
-	return nil
 }
 
 // cacheLocked returns the per-session cache, creating an empty (unwarmed)
@@ -528,8 +450,8 @@ func (s *Store) warmupCachesLocked(id string) error {
 	if c.warmed {
 		return nil
 	}
-	records, err := s.loadRecordsLocked(s.transcriptPath(id))
-	if os.IsNotExist(err) {
+	records, err := s.loadRecords(context.Background(), id)
+	if errors.Is(err, session.ErrNotFound) {
 		c.warmed = true
 		return nil
 	}
@@ -569,12 +491,7 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 		task.Blocks = slices.Clone(task.Blocks)
 		task.BlockedBy = slices.Clone(task.BlockedBy)
 	}
-	c.messageIDs = make([]string, len(tx.Messages))
-	c.leafMessageID = ""
-	for i, n := range tx.Messages {
-		c.messageIDs[i] = n.ID
-		c.leafMessageID = n.ID
-	}
+	c.messages = tx.Messages
 	c.warmed = true
 }
 
@@ -592,7 +509,7 @@ func (s *Store) LastMessageID(ctx context.Context, transcriptID string) (string,
 	}
 	s.mu.RLock()
 	if c, ok := s.sessions[transcriptID]; ok && c.warmed {
-		leaf := c.leafMessageID
+		leaf := lastID(c.messages)
 		s.mu.RUnlock()
 		return leaf, nil
 	}
@@ -602,17 +519,19 @@ func (s *Store) LastMessageID(ctx context.Context, transcriptID string) (string,
 	if err := s.warmupCachesLocked(transcriptID); err != nil {
 		return "", err
 	}
-	return s.sessions[transcriptID].leafMessageID, nil
+	return lastID(s.sessions[transcriptID].messages), nil
 }
 
-func (s *Store) loadRecordsLocked(path string) ([]Record, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open transcript: %w", err)
+func lastID(messages []ai.Message) string {
+	if len(messages) == 0 {
+		return ""
 	}
-	defer f.Close()
+	return messages[len(messages)-1].ID
+}
+
+func (s *Store) loadRecords(ctx context.Context, id string) ([]Record, error) {
 	var records []Record
-	for rec, err := range Read(f) {
+	for rec, err := range s.Records(ctx, id) {
 		if err != nil {
 			return nil, err
 		}
@@ -622,7 +541,7 @@ func (s *Store) loadRecordsLocked(path string) ([]Record, error) {
 }
 
 func (s *Store) buildSummaryLocked(transcriptID string) (Summary, error) {
-	records, err := s.loadRecordsLocked(s.transcriptPath(transcriptID))
+	records, err := s.loadRecords(context.Background(), transcriptID)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -696,7 +615,7 @@ func recordGitBranch(records []Record) string {
 }
 func anySidechain(records []Record) bool {
 	for _, rec := range records {
-		if rec.IsSidechain || rec.Start != nil && rec.Start.ParentSessionID != "" {
+		if rec.Start != nil && (rec.Start.Sidechain || rec.Start.ParentSessionID != "") {
 			return true
 		}
 	}

@@ -1,31 +1,50 @@
 package inspector
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+// writeSession writes records after a session.started into projectDir's
+// session "sess-1". Record IDs are positions in the log, start being "0".
+func writeSession(t *testing.T, projectDir string, records ...transcript.Record) {
+	t.Helper()
+	store, err := transcript.NewStore(projectDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := store.Start(ctx, transcript.StartCommand{SessionID: "sess-1", Provider: "p", Model: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range records {
+		rec.SessionID = "sess-1"
+		if err := store.Append(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func user(id, text string) transcript.Record {
+	return transcript.Record{Type: transcript.MessageAppended, Message: &ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(text)}}
+}
 
 // End-to-end smoke: write a transcript file under projectDir/transcripts, hit
 // the public API, and verify the listing + records endpoints reflect what's
 // on disk. Also catches the path-traversal guard.
 func TestServerListAndRecords(t *testing.T) {
 	projectDir := t.TempDir()
-	txDir := filepath.Join(projectDir, "transcripts")
-	if err := os.MkdirAll(txDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
+	writeSession(t, projectDir, user("m1", "hello"))
+	body, err := os.ReadFile(filepath.Join(projectDir, "transcripts", "sess-1.jsonl"))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	srv := httptest.NewServer(New(projectDir).Handler())
@@ -100,25 +119,17 @@ func TestServerListNoTranscripts(t *testing.T) {
 
 func TestServerStateReplaysContextAtRecord(t *testing.T) {
 	projectDir := t.TempDir()
-	txDir := filepath.Join(projectDir, "transcripts")
-	if err := os.MkdirAll(txDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:system:1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"system.section.added","version":"` + transcript.SchemaVersion + `","system":{"name":"identity","slot":0,"content":"You are precise.","caller":"system:init"}}`,
-		`{"id":"sess-1:tool:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"tool.added","version":"` + transcript.SchemaVersion + `","tool":{"schema":{"name":"Read","description":"read","definition":{"type":"object"}},"caller":"tools:init"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"systemDigest":"bad","toolsDigest":"bad","messageIds":["m1"]}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	writeSession(t, projectDir,
+		transcript.Record{Type: transcript.SystemSectionAdded, System: &transcript.SystemSectionRecord{Name: "identity", Content: "You are precise.", Caller: "system:init"}},
+		transcript.Record{Type: transcript.ToolAdded, Tool: &transcript.ToolRecord{Schema: &ai.Schema{Name: "Read", Description: "read", Definition: json.RawMessage(`{"type":"object"}`)}, Caller: "tools:init"}},
+		user("m1", "hello"),
+		transcript.Record{Type: transcript.InferenceRequested, Inference: &transcript.InferenceRecord{Sequence: 1, SystemDigest: "bad", ToolsDigest: "bad", MessageIDs: []string{"m1"}}},
+	)
 
 	srv := httptest.NewServer(New(projectDir).Handler())
 	defer srv.Close()
 
-	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/sess-1:infer:1")
+	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/4")
 	if err != nil {
 		t.Fatalf("GET state: %v", err)
 	}
@@ -147,27 +158,23 @@ func TestServerStateReplaysContextAtRecord(t *testing.T) {
 	}
 }
 
-func TestServerStateUsesActiveMessageChain(t *testing.T) {
+func TestServerStateUsesTheConversationAfterAReplacement(t *testing.T) {
 	projectDir := t.TempDir()
-	txDir := filepath.Join(projectDir, "transcripts")
-	if err := os.MkdirAll(txDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"root"}]}}`,
-		`{"id":"sess-1:m2","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","parentMessageId":"m1","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"old branch"}]}}`,
-		`{"id":"sess-1:m3","sessionId":"sess-1","time":"2026-05-15T00:00:03Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","parentMessageId":"m1","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"active branch"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:04Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"messageIds":["m1","m3"]}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	writeSession(t, projectDir,
+		user("m1", "root"),
+		user("m2", "old branch"),
+		transcript.Record{Type: transcript.ConversationReplaced, Messages: []ai.Message{
+			{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("root")},
+			{ID: "m3", Role: ai.RoleAssistant, Content: ai.TextContent("active branch")},
+		}},
+		transcript.Record{Type: transcript.InferenceRequested, Inference: &transcript.InferenceRecord{Sequence: 1, MessageIDs: []string{"m1", "m3"}}},
+	)
 
 	srv := httptest.NewServer(New(projectDir).Handler())
 	defer srv.Close()
 
-	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/sess-1:infer:1")
+	// start, m1, m2, truncate to [m1], m3, inference
+	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/5")
 	if err != nil {
 		t.Fatalf("GET state: %v", err)
 	}
@@ -180,7 +187,7 @@ func TestServerStateUsesActiveMessageChain(t *testing.T) {
 		t.Fatalf("decode state: %v", err)
 	}
 	if len(state.Messages) != 2 || state.Messages[0].ID != "m1" || state.Messages[1].ID != "m3" {
-		t.Fatalf("messages state = %+v, want active chain [m1 m3]", state.Messages)
+		t.Fatalf("messages state = %+v, want [m1 m3]", state.Messages)
 	}
 	if len(state.Messages[1].Content) != 1 || state.Messages[1].Content[0].Text != "active branch" {
 		t.Fatalf("message content not exposed for context review: %+v", state.Messages[1])
@@ -192,23 +199,13 @@ func TestServerStateUsesActiveMessageChain(t *testing.T) {
 
 func TestServerStateReportsMessageIDMismatch(t *testing.T) {
 	projectDir := t.TempDir()
-	txDir := filepath.Join(projectDir, "transcripts")
-	if err := os.MkdirAll(txDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	body := strings.Join([]string{
-		`{"id":"sess-1:start","sessionId":"sess-1","time":"2026-05-15T00:00:00Z","type":"session.started","version":"` + transcript.SchemaVersion + `","start":{"provider":"p","model":"m"}}`,
-		`{"id":"sess-1:m1","sessionId":"sess-1","time":"2026-05-15T00:00:01Z","type":"message.appended","version":"` + transcript.SchemaVersion + `","message":{"id":"m1","role":"user","content":[{"type":"text","text":"hello"}]}}`,
-		`{"id":"sess-1:infer:1","sessionId":"sess-1","time":"2026-05-15T00:00:02Z","type":"inference.requested","version":"` + transcript.SchemaVersion + `","inference":{"sequence":1,"messageIds":["missing"]}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(txDir, "sess-1.jsonl"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	writeSession(t, projectDir, user("m1", "hello"),
+		transcript.Record{Type: transcript.InferenceRequested, Inference: &transcript.InferenceRecord{Sequence: 1, MessageIDs: []string{"missing"}}})
 
 	srv := httptest.NewServer(New(projectDir).Handler())
 	defer srv.Close()
 
-	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/sess-1:infer:1")
+	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/2")
 	if err != nil {
 		t.Fatalf("GET state: %v", err)
 	}

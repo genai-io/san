@@ -38,7 +38,7 @@ func TestReplayCacheDoesNotOutliveTranscript(t *testing.T) {
 	}
 	get := func() *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sessions/s/state/s:start", nil))
+		s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sessions/s/state/0", nil))
 		return w
 	}
 	if got := get(); got.Code != http.StatusOK {
@@ -83,22 +83,13 @@ func TestInspectorKeepsUnreadableFilesAvailableForDiagnosis(t *testing.T) {
 	}
 }
 
-func TestReadFromOffsetIncludesCompleteUnterminatedRecord(t *testing.T) {
+func TestReadFromOffsetWaitsForAWholeLine(t *testing.T) {
 	path := t.TempDir() + "/s.jsonl"
-	for _, body := range []string{`{"id":"complete"}`, "{\"id\":\"first\"}\n{\"id\":\"complete\"}"} {
-		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
-			t.Fatal(err)
-		}
-		data, offset, err := readFromOffset(path, 0)
-		if err != nil || string(data) != body+"\n" || offset != int64(len(body)) {
-			t.Fatalf("complete EOF record was hidden: data=%q offset=%d err=%v", data, offset, err)
-		}
-	}
-	if err := os.WriteFile(path, []byte("{\"id\":\"first\"}\n{\"id\":"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("{\"id\":\"first\"}\n{\"id\":\"second\"}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	data, offset, err := readFromOffset(path, 0)
 	if err != nil || string(data) != "{\"id\":\"first\"}\n" || offset != int64(len(data)) {
-		t.Fatalf("incomplete EOF record must wait for more bytes: data=%q offset=%d err=%v", data, offset, err)
+		t.Fatalf("a line still being written must wait for more bytes: data=%q offset=%d err=%v", data, offset, err)
 	}
 }
