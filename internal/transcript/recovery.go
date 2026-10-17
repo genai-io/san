@@ -39,7 +39,7 @@ func (s *Store) Claim(id string) (func() error, error) {
 	if s.writers[id] != nil {
 		return nil, fmt.Errorf("session %s already has a writer", id)
 	}
-	w, err := s.log.Write(context.Background(), id)
+	w, err := s.log.Writer(context.Background(), id)
 	if err != nil {
 		return nil, fmt.Errorf("claim session %s: %w", id, err)
 	}

@@ -140,27 +140,28 @@ MANUAL  (/compact [focus], app layer)
 Compaction does not delete the old turns from the transcript — that history
 stays on disk for audit and scroll-back. The transcript is an sdk-go
 `pkg/session` log, and compaction is written the way that log writes any
-rewritten conversation: a **reset**, then the conversation that replaced it.
+rewritten conversation: a **truncate** to the unchanged prefix — nothing, for a
+compaction — then the conversation that replaced it.
 
 The core agent gives the summary a stable ID and announces it as a message,
 then emits `core.Compacted` naming it. The session writes a `session.compacted`
-record, and the conversation from the summary on after a reset:
+record, and the conversation from the summary on after a truncate:
 
 ```
-transcript (append-only)            resume: the conversation since the last reset
-  message  m1                         m1   ─ before the reset
-  message  m2                         m2   ─ before the reset
+transcript (append-only)            resume: the conversation as the log leaves it
+  message  m1                         m1   ─ cut by the truncate
+  message  m2                         m2   ─ cut by the truncate
   ...                                 ...
-  message  SUM                        SUM  ─ before the reset
+  message  SUM                        SUM  ─ cut by the truncate
   session.compacted  messageId=SUM
-  reset                               ─────────────────────────────┐
+  truncate keep=0                     ─────────────────────────────┐
   message  SUM                        SUM                           ├─ [SUM, m8, m9]
   message  m8                         m8                            │
   message  m9                         m9                            ┘
 ```
 
-Resume (`Project`, `internal/transcript/projector.go`) starts over at each
-reset, so the reconstructed conversation matches what the live agent sends.
+Resume (`Project`, `internal/transcript/projector.go`) applies each truncate,
+so the reconstructed conversation matches what the live agent sends.
 `/history` reads every message the session ever held, each once, so the
 turns before the summary stay readable.
 

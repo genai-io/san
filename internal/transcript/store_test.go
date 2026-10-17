@@ -279,7 +279,7 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 		InferenceResponded,
 		SessionStatePatched,
 		SessionCompacted,
-		"reset",
+		"truncate",
 		"message",
 	}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("record types = %v, want %v", got, want)

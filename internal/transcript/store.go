@@ -99,7 +99,7 @@ func (s *Store) writerLocked(id string) (w *session.Writer, done func() error, e
 	if w := s.writers[id]; w != nil {
 		return w, func() error { return nil }, nil
 	}
-	w, err = s.log.Write(context.Background(), id)
+	w, err = s.log.Writer(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
 	}

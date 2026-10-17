@@ -158,7 +158,7 @@ func TestServerStateReplaysContextAtRecord(t *testing.T) {
 	}
 }
 
-func TestServerStateUsesTheConversationAfterAReset(t *testing.T) {
+func TestServerStateUsesTheConversationAfterAReplacement(t *testing.T) {
 	projectDir := t.TempDir()
 	writeSession(t, projectDir,
 		user("m1", "root"),
@@ -173,8 +173,8 @@ func TestServerStateUsesTheConversationAfterAReset(t *testing.T) {
 	srv := httptest.NewServer(New(projectDir).Handler())
 	defer srv.Close()
 
-	// start, m1, m2, reset, m1, m3, inference
-	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/6")
+	// start, m1, m2, truncate to [m1], m3, inference
+	resp, err := srv.Client().Get(srv.URL + "/api/sessions/sess-1/state/5")
 	if err != nil {
 		t.Fatalf("GET state: %v", err)
 	}

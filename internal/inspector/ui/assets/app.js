@@ -259,8 +259,10 @@ function openSession(id, li) {
   setStatus("connecting");
 
   let line = 0;
+  let conv = []; // the conversation so far, which a truncate cuts
   es.onopen = () => {
     line = 0; // every (re)connection replays the file from its first line
+    conv = [];
     if (state.eventSource === es) setStatus("recording", true);
   };
   es.onerror = () => { if (state.eventSource === es) setStatus("offline"); };
@@ -268,7 +270,7 @@ function openSession(id, li) {
     if (state.eventSource !== es) return;
     let rec;
     try {
-      rec = fromLog(JSON.parse(ev.data), line++);
+      rec = fromLog(JSON.parse(ev.data), line++, conv);
     } catch (e) {
       return;
     }
@@ -286,17 +288,20 @@ function openSession(id, li) {
 
 // fromLog reads one line of the session log as a transcript record, the way
 // the server's transcript.Records does: a message is message.appended, a
-// reset an empty conversation.replaced, and any other line carries its
-// record in data. Its id is its line number, which the replay API takes.
-function fromLog(line, n) {
+// truncate a conversation.replaced carrying the messages it keeps, and any
+// other line carries its record in data. Its id is its line number, which the
+// replay API takes. conv is the conversation so far.
+function fromLog(line, n, conv) {
   const rec = Object.assign({}, line.data, {id: String(n), type: line.type, time: line.time});
   if (line.type === "message") {
     rec.type = "message.appended";
     rec.message = line.message;
     rec.parentMessageId = state.activeLeaf;
-  } else if (line.type === "reset") {
+    conv.push(line.message);
+  } else if (line.type === "truncate") {
     rec.type = "conversation.replaced";
-    rec.messages = [];
+    conv.length = Math.min(conv.length, line.keep || 0);
+    rec.messages = conv.slice();
   }
   return rec;
 }
