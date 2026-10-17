@@ -10,6 +10,7 @@ type StartCommand struct {
 	MaxTokens       int
 	AgentID         string
 	ParentSessionID string
+	Sidechain       bool
 	Time            time.Time
 }
 

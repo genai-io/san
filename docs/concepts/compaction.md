@@ -138,31 +138,31 @@ MANUAL  (/compact [focus], app layer)
 ## Transcript recording & replay
 
 Compaction does not delete the old turns from the transcript — that history
-stays on disk for audit and scroll-back. Instead it records a **boundary** so
-replay knows where the active chain begins.
+stays on disk for audit and scroll-back. The transcript is an sdk-go
+`pkg/session` log, and compaction is written the way that log writes any
+rewritten conversation: a **reset**, then the conversation that replaced it.
 
-The core agent gives the summary a stable ID, records it as a normal
-`message.appended` (parented to the last pre-compaction message), and emits a
-`session.compacted` record whose `summaryMessageId` is that summary's ID. Replay
-uses that ID as the boundary to stop walking parents at:
+The core agent gives the summary a stable ID and announces it as a message,
+then emits `core.Compacted` naming it. The session writes a `session.compacted`
+record, and the conversation from the summary on after a reset:
 
 ```
-transcript (append-only)            replay: walk leaf → parent, STOP at boundary
-  appended  m1                        m1   ─ excluded (ancestor of boundary)
-  appended  m2                        m2   ─ excluded
+transcript (append-only)            resume: the conversation since the last reset
+  message  m1                         m1   ─ before the reset
+  message  m2                         m2   ─ before the reset
   ...                                 ...
-  appended  SUM   ◀── boundary        SUM  ◀── stop ┐
-  appended  m8  (parent = SUM)        m8            ├─ active chain = [SUM, m8, m9]
-  appended  m9                        m9  (leaf)    ┘
-  session.compacted  summaryMessageId=SUM
+  message  SUM                        SUM  ─ before the reset
+  session.compacted  messageId=SUM
+  reset                               ─────────────────────────────┐
+  message  SUM                        SUM                           ├─ [SUM, m8, m9]
+  message  m8                         m8                            │
+  message  m9                         m9                            ┘
 ```
 
-Without the boundary, replay would walk all the way back through `m1…m2…` and
-reconstruct the *pre*-compaction chain — which is exactly the
-"`messageIds — 2 expected vs 7 replayed`" mismatch the inspector reports when
-the summary append and boundary are missing. `materializeActiveChain`
-(`internal/transcript/projector.go`) stops at the boundary so the
-reconstructed chain matches what the live agent actually sent.
+Resume (`Project`, `internal/transcript/projector.go`) starts over at each
+reset, so the reconstructed conversation matches what the live agent sends.
+`/history` reads every message the session ever held, each once, so the
+turns before the summary stay readable.
 
 ## Reminder freshness
 

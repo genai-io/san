@@ -22,7 +22,6 @@ import (
 
 	"github.com/genai-io/san/internal/inspector/ui"
 	"github.com/genai-io/san/internal/transcript"
-	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // replayCacheCapacity is the upper bound on cached replay states across all
@@ -119,7 +118,6 @@ func (s *Server) listFromDir(summaries []transcript.Summary) ([]sessionListItem,
 		if err != nil {
 			continue
 		}
-		path := filepath.Join(s.transcriptsDir(), e.Name())
 		item := sessionListItem{
 			ID:        id,
 			UpdatedAt: info.ModTime(),
@@ -127,8 +125,6 @@ func (s *Server) listFromDir(summaries []transcript.Summary) ([]sessionListItem,
 		}
 		if summary, ok := byID[id]; ok {
 			item.Title, item.UpdatedAt = summary.Title, summary.UpdatedAt
-		} else {
-			item.Title = previewTitle(path)
 		}
 		items = append(items, item)
 	}
@@ -165,7 +161,7 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request, sessionID, recordID string) {
 	path, ok := s.sessionPath(sessionID)
-	if !ok || recordID == "" || strings.ContainsAny(recordID, "/\\") {
+	if !ok || s.store == nil || recordID == "" || strings.ContainsAny(recordID, "/\\") {
 		http.NotFound(w, r)
 		return
 	}
@@ -183,7 +179,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request, sessionID, 
 		writeJSON(w, cached)
 		return
 	}
-	state, found, err := replayFile(path, recordID)
+	state, found, err := replayFile(r.Context(), s.store, sessionID, recordID)
 	if err != nil {
 		if os.IsNotExist(err) {
 			http.NotFound(w, r)
@@ -291,7 +287,6 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 // readFromOffset returns complete JSONL lines and the consumed file offset.
-// A complete EOF record gets a synthetic newline; partial JSON waits for more bytes.
 func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -316,48 +311,11 @@ func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 		return nil, 0, err
 	}
 	buf = buf[:n]
+	// A line still being written is not a record yet.
 	i := bytes.LastIndexByte(buf, '\n')
-	// A crash can leave a complete final record without the encoder's newline.
-	if json.Valid(buf[i+1:]) {
-		return append(buf, '\n'), offset + int64(n), nil
-	}
-	// Trim trailing partial line.
 	if i >= 0 {
 		return buf[:i+1], offset + int64(i+1), nil
 	}
 	// No newline yet — leave the bytes for next poll.
 	return nil, offset, nil
-}
-
-// previewTitle returns a short prefix of the first user-role message's text
-// content, suitable for a list view. Best-effort; returns "" on any error.
-func previewTitle(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	for rec, err := range transcript.Read(f) {
-		if err != nil {
-			return ""
-		}
-		messages := rec.Messages
-		if rec.Message != nil {
-			messages = []ai.Message{*rec.Message}
-		}
-		for _, msg := range messages {
-			if msg.Role != ai.RoleUser || len(msg.ToolResults()) > 0 {
-				continue
-			}
-			if text := strings.TrimSpace(msg.Text()); text != "" {
-				runes := []rune(text)
-				if len(runes) > 80 {
-					return string(runes[:80]) + "…"
-				}
-				return text
-			}
-		}
-	}
-	return ""
 }

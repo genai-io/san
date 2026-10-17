@@ -1,8 +1,8 @@
 package inspector
 
 import (
+	"context"
 	"encoding/json"
-	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -36,10 +36,9 @@ type replaySystemSection struct {
 }
 
 type replayMessage struct {
-	ID              string     `json:"id"`
-	ParentMessageID string     `json:"parentMessageId,omitempty"`
-	Role            string     `json:"role"`
-	Content         ai.Content `json:"content,omitempty"`
+	ID      string     `json:"id"`
+	Role    string     `json:"role"`
+	Content ai.Content `json:"content,omitempty"`
 }
 
 type replayDigests struct {
@@ -65,16 +64,10 @@ type replaySectionEntry struct {
 	order int
 }
 
-func replayFile(path, targetID string) (replayState, bool, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return replayState{}, false, err
-	}
-	defer f.Close()
-
+func replayFile(ctx context.Context, store *transcript.Store, sessionID, targetID string) (replayState, bool, error) {
 	var st replayBuilder
 	var found bool
-	for rec, err := range transcript.Read(f) {
+	for rec, err := range store.Records(ctx, sessionID) {
 		if err != nil {
 			return replayState{}, false, err
 		}
@@ -101,9 +94,7 @@ type replayBuilder struct {
 	seq        int
 	sections   map[string]replaySectionEntry // section name -> latest section
 	tools      map[string]ai.Schema          // tool name -> latest schema
-	messages   map[string]replayMessage      // message id -> message node
-	order      []string                      // message append order
-	boundaryID string
+	messages   []replayMessage               // the conversation
 	integrity  []replayIntegrityCheck
 }
 
@@ -118,10 +109,6 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 			b.model = rec.Start.Model
 			b.maxTokens = rec.Start.MaxTokens
 			b.agentID = rec.Start.AgentID
-		}
-	case transcript.SessionCompacted:
-		if rec.Compaction != nil {
-			b.boundaryID = rec.Compaction.MessageID
 		}
 	case transcript.SystemSectionAdded:
 		if rec.System == nil {
@@ -159,28 +146,13 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 			delete(b.tools, rec.Tool.Name)
 		}
 	case transcript.ConversationReplaced:
-		b.messages = make(map[string]replayMessage)
-		b.order = nil
-		b.boundaryID = ""
-		parent := ""
+		b.messages = nil
 		for _, msg := range rec.Messages {
-			b.messages[msg.ID] = replayMessage{ID: msg.ID, ParentMessageID: parent, Role: string(msg.Role), Content: msg.Content}
-			b.order = append(b.order, msg.ID)
-			parent = msg.ID
+			b.messages = append(b.messages, replayMessage{ID: msg.ID, Role: string(msg.Role), Content: msg.Content})
 		}
 	case transcript.MessageAppended:
 		if rec.Message != nil {
-			if b.messages == nil {
-				b.messages = make(map[string]replayMessage)
-			}
-			msg := replayMessage{
-				ID:              rec.Message.ID,
-				ParentMessageID: rec.ParentMessageID,
-				Role:            string(rec.Message.Role),
-				Content:         rec.Message.Content,
-			}
-			b.messages[msg.ID] = msg
-			b.order = append(b.order, msg.ID)
+			b.messages = append(b.messages, replayMessage{ID: rec.Message.ID, Role: string(rec.Message.Role), Content: rec.Message.Content})
 		}
 	case transcript.InferenceRequested:
 		if rec.Inference != nil {
@@ -201,7 +173,7 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 func (b *replayBuilder) checkInference(inf *transcript.InferenceRecord) {
 	system := b.sortedSections()
 	tools := b.sortedTools()
-	messageIDs := replayMessageIDs(b.activeMessages())
+	messageIDs := replayMessageIDs(b.messages)
 	sysDigest := transcript.DigestSystem(renderSections(system))
 	toolsDigest := transcript.DigestTools(tools)
 	b.integrity = []replayIntegrityCheck{
@@ -234,7 +206,7 @@ func (b *replayBuilder) snapshot() replayState {
 		ComposedSystem: composedSystem(system),
 		System:         system,
 		Tools:          tools,
-		Messages:       b.activeMessages(),
+		Messages:       slices.Clone(b.messages),
 		Digests:        replayDigests{System: transcript.DigestSystem(renderSections(system)), Tools: transcript.DigestTools(tools)},
 		Integrity:      append([]replayIntegrityCheck(nil), b.integrity...),
 	}
@@ -284,57 +256,6 @@ func (b *replayBuilder) sortedTools() []ai.Schema {
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
-func (b *replayBuilder) activeMessages() []replayMessage {
-	if len(b.order) == 0 {
-		return nil
-	}
-
-	hasChild := make(map[string]bool, len(b.order))
-	for _, id := range b.order {
-		n := b.messages[id]
-		if n.ParentMessageID != "" {
-			hasChild[n.ParentMessageID] = true
-		}
-	}
-
-	var leafID string
-	for _, id := range slices.Backward(b.order) {
-
-		if !hasChild[id] {
-			leafID = id
-			break
-		}
-	}
-	if leafID == "" {
-		leafID = b.order[len(b.order)-1]
-	}
-
-	reversed := make([]replayMessage, 0, len(b.order))
-	seen := make(map[string]bool, len(b.order))
-	for cur := leafID; cur != ""; {
-		if seen[cur] {
-			break
-		}
-		seen[cur] = true
-
-		n, ok := b.messages[cur]
-		if !ok {
-			break
-		}
-		reversed = append(reversed, n)
-		if b.boundaryID != "" && cur == b.boundaryID {
-			break
-		}
-		cur = n.ParentMessageID
-	}
-
-	out := make([]replayMessage, 0, len(reversed))
-	for _, r := range slices.Backward(reversed) {
-		out = append(out, r)
-	}
 	return out
 }
 

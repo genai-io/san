@@ -2,9 +2,10 @@ package app
 
 import (
 	"errors"
-	"os"
 	"slices"
 	"strings"
+
+	sdksession "github.com/genai-io/sdk-go/pkg/session"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -35,7 +36,7 @@ func (m *model) openHistory() tea.Cmd {
 			messages, err := load(msg.sessionID)
 			if err == nil {
 				msg.messages = messages
-			} else if !errors.Is(err, os.ErrNotExist) {
+			} else if !errors.Is(err, sdksession.ErrNotFound) {
 				msg.err = err
 			}
 		}

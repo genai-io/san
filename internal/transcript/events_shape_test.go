@@ -56,17 +56,16 @@ func TestEventsShape(t *testing.T) {
 	}))
 	mustOK(t, "ToolsRemove", store.Append(ctx, Record{SessionID: sid, Time: at(4), Type: ToolRemoved, Tool: &ToolRecord{Name: "Read", Caller: "mode:plan"}}))
 
-	// Three messages: first carries branch, second on same branch (should not
-	// re-emit it), third switches branch (should emit).
-	mustOK(t, "Msg1", store.Append(ctx, Record{SessionID: sid, Time: at(5), GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock("hi")}}}))
-	mustOK(t, "Msg2", store.Append(ctx, Record{SessionID: sid, Time: at(6), ParentMessageID: "m1", GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("hello")}}}))
-	mustOK(t, "Msg3", store.Append(ctx, Record{SessionID: sid, Time: at(7), ParentMessageID: "m2", GitBranch: "feat/x", Type: MessageAppended,
+	// Three messages.
+	mustOK(t, "Msg1", store.Append(ctx, Record{SessionID: sid, Time: at(5), Type: MessageAppended, Message: &ai.Message{ID: "m1", Role: "user", Content: ai.Content{ai.TextBlock("hi")}}}))
+	mustOK(t, "Msg2", store.Append(ctx, Record{SessionID: sid, Time: at(6), Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("hello")}}}))
+	mustOK(t, "Msg3", store.Append(ctx, Record{SessionID: sid, Time: at(7), Type: MessageAppended,
 
 		// inference.requested + responded
 		Message: &ai.Message{ID: "m3", Role: "user", Content: ai.Content{ai.TextBlock("switch branch")}},
 	}))
 
-	mustOK(t, "InferReq", store.Append(ctx, Record{SessionID: sid, Time: at(8), Type: InferenceRequested, Inference: &InferenceRecord{
+	mustOK(t, "InferReq", store.Append(ctx, Record{SessionID: sid, Time: at(8), GitBranch: "feat/x", Type: InferenceRequested, Inference: &InferenceRecord{
 		Sequence: 1, SystemDigest: "sha256:sys", ToolsDigest: "sha256:tools",
 		MessageIDs: []string{"m1", "m2", "m3"},
 	},
@@ -108,6 +107,9 @@ func TestEventsShape(t *testing.T) {
 		var m map[string]any
 		if err := json.Unmarshal([]byte(ln), &m); err != nil {
 			t.Fatalf("line %d invalid JSON: %v\n  line: %s", i, err, ln)
+		}
+		if data, ok := m["data"].(map[string]any); ok {
+			m = data // san's own record, inside the log's
 		}
 		records = append(records, m)
 	}
@@ -162,19 +164,13 @@ func TestEventsShape(t *testing.T) {
 		}
 	}
 
-	// 3. gitBranch is sparse.
-	msgs := byType["message.appended"]
-	if len(msgs) != 3 {
-		t.Fatalf("message.appended count = %d, want 3", len(msgs))
+	// 3. gitBranch is sparse, and messages are the log's own records.
+	if n := len(byType["message"]); n != 5 {
+		t.Fatalf("message count = %d, want 5 (3, then the 2 a compaction keeps)", n)
 	}
-	if msgs[0]["gitBranch"] != "main" {
-		t.Errorf("msg[0] gitBranch = %v, want main", msgs[0]["gitBranch"])
-	}
-	if _, has := msgs[1]["gitBranch"]; has {
-		t.Errorf("msg[1] should omit gitBranch (unchanged), got %v", msgs[1]["gitBranch"])
-	}
-	if msgs[2]["gitBranch"] != "feat/x" {
-		t.Errorf("msg[2] gitBranch = %v, want feat/x", msgs[2]["gitBranch"])
+	reqs := byType["inference.requested"]
+	if len(reqs) != 1 || reqs[0]["gitBranch"] != "feat/x" {
+		t.Errorf("inference.requested gitBranch = %v, want feat/x", reqs)
 	}
 
 	// 4. session.state.patched: first record has 3 fields, second has 1 field, third must NOT exist.
@@ -193,7 +189,6 @@ func TestEventsShape(t *testing.T) {
 
 	// 5. inference.requested has digests + messageIds; inference.responded has
 	//    stopReason/latency/usage; neither has the other's fields.
-	reqs := byType["inference.requested"]
 	resps := byType["inference.responded"]
 	if len(reqs) != 1 || len(resps) != 1 {
 		t.Fatalf("inference req/resp counts = %d/%d", len(reqs), len(resps))

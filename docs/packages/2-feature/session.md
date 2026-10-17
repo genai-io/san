@@ -107,8 +107,9 @@ through their own opened Session.
   blobs/image/<session-id>/...
 ```
 
-Paths do not encode ancestry. Session parents and message parents are distinct
-fields. Transcripts use schema version `3` and SDK-native payloads. Metadata files
+Paths do not encode ancestry; a session's parent is `parentSessionId`.
+Transcripts are sdk-go `pkg/session` logs with schema version `4` and SDK-native
+payloads. Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
 ## Lifecycle and failure handling
@@ -133,10 +134,10 @@ are disposable derived summaries. Earlier schema versions are rejected; no migra
   selects a new identity before accepting another input.
 - Fork stops Runtime, copies history and assets, then opens/replays the child
   once. The source's membership remains; the child starts without group membership.
-- A failed conversation/state append stops later writes. Parent position advances
-  only after success. Audit errors are logged through the same append implementation.
-- Incomplete final fragments are repaired before append; terminated corruption
-  remains an error. Manual compaction before a resumed Runtime starts records
+- A failed conversation/state append stops later writes. Audit errors are logged
+  through the same append implementation.
+- An unfinished final line is ignored on read and cut by the next writer;
+  terminated corruption remains an error. Manual compaction before a resumed Runtime starts records
   both its native summary and boundary immediately.
 
 ## SDK Go responsibilities

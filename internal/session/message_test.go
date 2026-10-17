@@ -50,40 +50,6 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 	}
 }
 
-func TestSessionFailureKeepsAReplayablePrefix(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStoreWithDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
-	defer w.Close()
-	emit := func(id string) {
-		w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}})
-	}
-	emit("saved")
-	path := filepath.Join(dir, "transcripts")
-	held := filepath.Join(dir, "held")
-	if err := os.Rename(path, held); err != nil {
-		t.Fatal(err)
-	}
-	emit("failed")
-	if w.Err() == nil {
-		t.Fatal("persistence failure was hidden")
-	}
-	if err := os.Rename(held, path); err != nil {
-		t.Fatal(err)
-	}
-	emit("later")
-	loaded, err := store.Read("s")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded.Messages) != 1 || loaded.Messages[0].ID != "saved" {
-		t.Fatalf("saved prefix was lost: %+v", loaded.Messages)
-	}
-}
-
 func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	store, err := NewStoreWithDir(t.TempDir())
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 // Record type values follow <entity>.<verb> (past tense), lowercase,
 // dot-separated. See docs/inspector.md for the full taxonomy.
 const (
-	SchemaVersion = "3"
+	SchemaVersion = "4"
 
 	SessionStarted       = "session.started"
 	SessionForked        = "session.forked"
@@ -61,21 +61,21 @@ const (
 // does not enumerate values here so adding a new modal option (or a
 // programmatic decision source) doesn't require a schema change.
 
+// Record is one transcript event. On disk a message is the session log's own
+// message record and every other Record is written whole as the data of an
+// application record, so Message and Messages are never part of that.
 type Record struct {
-	ID        string    `json:"id"`
+	ID        string    `json:"-"` // its position in the log, assigned on read
 	SessionID string    `json:"sessionId"`
 	Time      time.Time `json:"time"`
 	Type      string    `json:"type"`
 
-	ParentMessageID string `json:"parentMessageId,omitempty"`
-	IsSidechain     bool   `json:"isSidechain,omitempty"`
-	Cwd             string `json:"cwd,omitempty"`
-	Version         string `json:"version,omitempty"`
-	GitBranch       string `json:"gitBranch,omitempty"`
-	AgentID         string `json:"agentId,omitempty"`
+	Cwd       string `json:"cwd,omitempty"`
+	Version   string `json:"version,omitempty"`
+	GitBranch string `json:"gitBranch,omitempty"`
 
-	Messages    []ai.Message         `json:"messages,omitempty"`
-	Message     *ai.Message          `json:"message,omitempty"`
+	Messages    []ai.Message         `json:"-"`
+	Message     *ai.Message          `json:"-"`
 	State       *StatePatch          `json:"state,omitempty"`
 	Start       *SessionStart        `json:"start,omitempty"`
 	Fork        *SessionFork         `json:"fork,omitempty"`
@@ -108,6 +108,7 @@ type SessionStart struct {
 	MaxTokens       int    `json:"maxTokens,omitempty"`
 	AgentID         string `json:"agentId,omitempty"`
 	ParentSessionID string `json:"parentSessionId,omitempty"`
+	Sidechain       bool   `json:"sidechain,omitempty"`
 }
 
 type SessionFork struct {

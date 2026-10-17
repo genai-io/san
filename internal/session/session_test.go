@@ -221,9 +221,6 @@ func TestRepeatedMessageDoesNotMoveTheParentPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, record := range readAllRecords(t, store.projectDir, "s") {
-		if record.Message != nil && record.Message.ID == "m3" && record.ParentMessageID != "m2" {
-			t.Fatalf("third message parent=%s", record.ParentMessageID)
-		}
 		if record.Notice != nil && record.Notice.AfterMessageID != "m3" {
 			t.Fatalf("notice position=%s", record.Notice.AfterMessageID)
 		}

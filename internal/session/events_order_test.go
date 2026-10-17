@@ -90,15 +90,6 @@ func TestSessionWritesMessageBeforeInference(t *testing.T) {
 	if iReq >= iResp {
 		t.Errorf("inference.requested at idx %d must precede inference.responded at idx %d", iReq, iResp)
 	}
-
-	// Parent linkage: m2 should chain off m1.
-	for _, r := range records {
-		if r.Type == transcript.MessageAppended && r.Message != nil && r.Message.ID == "m2" {
-			if r.ParentMessageID != "m1" {
-				t.Errorf("m2.parentId = %q, want m1", r.ParentMessageID)
-			}
-		}
-	}
 }
 
 // When the writer writes message.appended via OnAppend, a follow-up
@@ -220,24 +211,20 @@ func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	rec0.Close()
 
 	// Simulate process restart with a fresh writer; without seeding it
-	// would write the next message with parentId="" and break the chain.
+	// would start the conversation over at the next message.
 	rec := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
 
 	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
 	}})
 
-	var newMsg transcript.Record
-	for _, r := range readAllRecords(t, dir, "sess-seed") {
-		if r.Type == transcript.MessageAppended && r.Message != nil && r.Message.ID == "new-m3" {
-			newMsg = r
-		}
+	rec.Close()
+	tx, err := fs.Load(context.Background(), "sess-seed")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if newMsg.Message == nil {
-		t.Fatalf("new-m3 not persisted")
-	}
-	if newMsg.ParentMessageID != "old-m2" {
-		t.Errorf("new message ParentID = %q, want old-m2 (seeding failed)", newMsg.ParentMessageID)
+	if len(tx.Messages) != 3 || tx.Messages[1].ID != "old-m2" || tx.Messages[2].ID != "new-m3" {
+		t.Errorf("resumed conversation = %+v, want old-m1 old-m2 new-m3 (seeding failed)", tx.Messages)
 	}
 }
 

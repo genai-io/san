@@ -258,26 +258,47 @@ function openSession(id, li) {
   state.eventSource = es;
   setStatus("connecting");
 
-  es.onopen = () => { if (state.eventSource === es) setStatus("recording", true); };
+  let line = 0;
+  es.onopen = () => {
+    line = 0; // every (re)connection replays the file from its first line
+    if (state.eventSource === es) setStatus("recording", true);
+  };
   es.onerror = () => { if (state.eventSource === es) setStatus("offline"); };
   es.onmessage = (ev) => {
     if (state.eventSource !== es) return;
     let rec;
     try {
-      rec = JSON.parse(ev.data);
+      rec = fromLog(JSON.parse(ev.data), line++);
     } catch (e) {
       return;
     }
     // Browsers transparently reconnect EventSource on transient drops
     // (laptop sleep, localhost blip). The server starts each stream from
     // offset 0 and replays the whole file, so without dedup the timeline
-    // would balloon across reconnects. Each record's id is unique on disk.
+    // would balloon across reconnects. A record's id is its line number.
     if (rec.id && state.seenIDs.has(rec.id)) return;
     if (rec.id) state.seenIDs.add(rec.id);
     state.records.push(rec);
     ingestForChain(rec);
     appendRow(rec, state.records.length - 1);
   };
+}
+
+// fromLog reads one line of the session log as a transcript record, the way
+// the server's transcript.Records does: a message is message.appended, a
+// reset an empty conversation.replaced, and any other line carries its
+// record in data. Its id is its line number, which the replay API takes.
+function fromLog(line, n) {
+  const rec = Object.assign({}, line.data, {id: String(n), type: line.type, time: line.time});
+  if (line.type === "message") {
+    rec.type = "message.appended";
+    rec.message = line.message;
+    rec.parentMessageId = state.activeLeaf;
+  } else if (line.type === "reset") {
+    rec.type = "conversation.replaced";
+    rec.messages = [];
+  }
+  return rec;
 }
 
 // ingestForChain keeps the active-chain set incremental. Each new

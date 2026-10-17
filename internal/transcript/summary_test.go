@@ -24,7 +24,7 @@ func TestWindowsMergeOnlyTheirOwnIndexEntries(t *testing.T) {
 	}
 	startSession(t, a, "A")
 	startSession(t, b, "B")
-	if err := a.Append(context.Background(), Record{SessionID: "A", ParentMessageID: "A-m1", Time: time.Now(), Type: MessageAppended, Message: &ai.Message{ID: "A2", Role: ai.RoleUser}}); err != nil {
+	if err := a.Append(context.Background(), Record{SessionID: "A", Time: time.Now(), Type: MessageAppended, Message: &ai.Message{ID: "A2", Role: ai.RoleUser}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
