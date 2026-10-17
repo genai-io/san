@@ -39,23 +39,22 @@ func (s *Store) Records(ctx context.Context, id string) iter.Seq2[Record, error]
 // fromLog reads one log record as a transcript record, keeping conv, the
 // conversation so far, to say what a truncate leaves.
 func fromLog(r session.Record, conv *[]ai.Message) (Record, error) {
+	var err error
+	if *conv, err = r.Apply(*conv); err != nil {
+		return Record{}, err
+	}
 	switch r.Type {
-	case "message":
-		*conv = append(*conv, *r.Message)
+	case session.TypeMessage:
 		return Record{Type: MessageAppended, Time: r.Time, Message: r.Message}, nil
-	case "truncate":
-		if r.Keep > len(*conv) {
-			return Record{}, fmt.Errorf("truncate keeps %d of %d messages", r.Keep, len(*conv))
-		}
-		*conv = (*conv)[:r.Keep]
+	case session.TypeTruncate:
 		return Record{Type: ConversationReplaced, Time: r.Time, Messages: slices.Clone(*conv)}, nil
 	}
 	var rec Record
 	if len(r.Data) > 0 {
 		if err := json.Unmarshal(r.Data, &rec); err != nil {
-			return Record{}, fmt.Errorf("decode transcript record %s: %w", r.Type, err)
+			return Record{}, fmt.Errorf("decode transcript record %s: %w", r.Name, err)
 		}
 	}
-	rec.Type = r.Type
+	rec.Type = r.Name
 	return rec, nil
 }

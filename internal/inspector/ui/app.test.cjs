@@ -101,7 +101,7 @@ test('retired event streams cannot change a newly selected session', async () =>
   v.openSession('first');
   const old = v.state.eventSource;
   v.openSession('second');
-  old.onmessage({ data: JSON.stringify({ id: 'old', type: 'session.started' }) });
+  old.onmessage({ data: JSON.stringify({ type: 'custom', name: 'session.started' }) });
   old.onopen();
   old.onerror();
   assert.equal(v.state.records.length, 0);

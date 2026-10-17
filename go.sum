@@ -91,6 +91,8 @@ github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062 h1:E3Cp/72
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062/go.mod h1:xWHeyxIX9/wiFU2kgPW04ojOZyTzrWf+8lGjUCaftiU=
 github.com/genai-io/sdk-go v0.8.1-0.20261017015121-0b957e8d1718 h1:yXiRjiXbCo3awvbPLdkRxqVDK0KpjUCWi8kNJYU26ec=
 github.com/genai-io/sdk-go v0.8.1-0.20261017015121-0b957e8d1718/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
+github.com/genai-io/sdk-go v0.8.1-0.20261017062218-01206fdfc965 h1:a595mSHFlF8rL4vJVK9ZefL0LnyNGf8XmB5UQYJ8bEI=
+github.com/genai-io/sdk-go v0.8.1-0.20261017062218-01206fdfc965/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

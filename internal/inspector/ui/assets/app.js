@@ -288,11 +288,11 @@ function openSession(id, li) {
 
 // fromLog reads one line of the session log as a transcript record, the way
 // the server's transcript.Records does: a message is message.appended, a
-// truncate a conversation.replaced carrying the messages it keeps, and any
-// other line carries its record in data. Its id is its line number, which the
+// truncate a conversation.replaced carrying the messages it keeps, and a
+// custom line carries its record, named name, in data. Its id is its line number, which the
 // replay API takes. conv is the conversation so far.
 function fromLog(line, n, conv) {
-  const rec = Object.assign({}, line.data, {id: String(n), type: line.type, time: line.time});
+  const rec = Object.assign({}, line.data, {id: String(n), type: line.name, time: line.time});
   if (line.type === "message") {
     rec.type = "message.appended";
     rec.message = line.message;
