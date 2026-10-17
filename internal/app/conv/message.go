@@ -700,6 +700,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 				compact := !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID })
 				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail, compact)
 				detail = ""
+			} else if op, ok := parseMemoryOp(tc.Name, tc.Input); ok {
+				row = renderMemoryCall(op, rowWidth, icon)
 			} else {
 				args := extractToolArgs(tc.Input)
 				if tc.Name == tool.ToolGroup {

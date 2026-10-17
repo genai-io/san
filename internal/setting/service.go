@@ -220,6 +220,15 @@ func (s *Settings) CheckPermission(toolName string, args map[string]any, session
 	return s.data.CheckPermission(toolName, args, session)
 }
 
+func (s *Settings) DenyRule(toolName string, args map[string]any) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return ""
+	}
+	return s.data.DenyRule(toolName, args)
+}
+
 func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

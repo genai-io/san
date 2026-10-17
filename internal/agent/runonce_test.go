@@ -19,7 +19,7 @@ func TestAHeadlessRunCarriesTheProjectsInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := withInstructions(dir, core.UserMessage("what is the word?", nil)).Text()
+	out := withInstructions(dir, "", core.UserMessage("what is the word?", nil)).Text()
 	if !strings.Contains(out, "always answer PINEAPPLE") {
 		t.Errorf("the instructions did not reach the message: %q", out)
 	}
@@ -34,8 +34,23 @@ func TestAHeadlessRunCarriesTheProjectsInstructions(t *testing.T) {
 // A repo with nothing to say adds nothing — no empty scope, no bare wrapper.
 func TestNothingToSayAddsNothing(t *testing.T) {
 	msg := core.UserMessage("hello", nil)
-	out := withInstructions(t.TempDir(), msg)
+	out := withInstructions(t.TempDir(), "", msg)
 	if out.Text() != "hello" {
 		t.Errorf("an empty project injected %q", out.Text())
+	}
+}
+
+// A headless run sees the agent's memory index too, as the interactive one does.
+func TestAHeadlessRunCarriesTheMemoryIndex(t *testing.T) {
+	mem := t.TempDir()
+	if err := os.WriteFile(filepath.Join(mem, "MEMORY.md"), []byte("- [Go](go.md) — prefers table tests"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := withInstructions(t.TempDir(), mem, core.UserMessage("hi", nil)).Text()
+	if !strings.Contains(out, `<memory scope="auto">`) || !strings.Contains(out, "prefers table tests") {
+		t.Errorf("memory index missing: %q", out)
+	}
+	if !strings.Contains(out, "go.md") || !strings.Contains(out, "needs fixing") {
+		t.Errorf("dangling link not reported: %q", out)
 	}
 }

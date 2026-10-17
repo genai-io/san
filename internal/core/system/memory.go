@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
@@ -49,6 +50,21 @@ func AutoMemoryDir(cwd string) string {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
 	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(mainWorktreeRoot(cwd)), "memory")
+}
+
+// IsAutoMemoryPath reports whether path is a markdown file in some
+// repository's auto-memory store, so the interface can show it as memory.
+func IsAutoMemoryPath(path string) bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || !strings.HasSuffix(path, ".md") {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	return len(parts) == 3 && parts[0] != ".." && parts[1] == "memory"
 }
 
 // mainWorktreeRoot returns the repository root for cwd, mapping a linked
@@ -99,8 +115,13 @@ func LoadAutoMemoryAt(dir string) (index string, problems []string) {
 		index = strings.Join(lines[:autoMemoryLineCap], "\n")
 	}
 	index = truncateOnLineBoundary(index, autoMemoryByteCap)
-	if len(index) < len(full) {
+	lines := strings.Count(full, "\n") + 1
+	switch {
+	case len(index) < len(full):
 		problems = append(problems, fmt.Sprintf("MEMORY.md is over the %d-line / %d KB load limit and was cut; condense it to one short line per memory.", autoMemoryLineCap, autoMemoryByteCap/1024))
+	case lines*10 > autoMemoryLineCap*9 || len(full)*10 > autoMemoryByteCap*9:
+		problems = append(problems, fmt.Sprintf("MEMORY.md is near its load limit (%d/%d lines, %d/%d KB); keep one short line per memory and merge or drop stale ones.",
+			lines, autoMemoryLineCap, len(full)/1024, autoMemoryByteCap/1024))
 	}
 	return index, append(problems, autoMemoryIndexProblems(dir, full)...)
 }
@@ -145,6 +166,37 @@ func listNames(names []string) string {
 		return strings.Join(names, ", ")
 	}
 	return strings.Join(names[:10], ", ") + fmt.Sprintf(" and %d more", len(names)-10)
+}
+
+// StampModified records the write time as a `modified` field in the
+// frontmatter of the memory file at path, replacing an older one. A file
+// without frontmatter is left alone. It reports whether the file changed.
+func StampModified(path string, now time.Time) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	src := string(data)
+	if !strings.HasPrefix(src, "---\n") {
+		return false, nil
+	}
+	end := strings.Index(src[4:], "\n---")
+	if end < 0 {
+		return false, nil
+	}
+	end += 4
+	var fm []string
+	for _, line := range strings.Split(src[4:end], "\n") {
+		if !strings.HasPrefix(line, "modified:") {
+			fm = append(fm, line)
+		}
+	}
+	fm = append(fm, "modified: "+now.UTC().Format(time.RFC3339))
+	out := "---\n" + strings.Join(fm, "\n") + src[end:]
+	if out == src {
+		return false, nil
+	}
+	return true, os.WriteFile(path, []byte(out), 0o644)
 }
 
 // truncateOnLineBoundary trims s to at most max bytes, cutting at the last

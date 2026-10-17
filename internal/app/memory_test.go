@@ -1,9 +1,16 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestIsAutoMemoryWrite(t *testing.T) {
@@ -34,5 +41,56 @@ func TestIsAutoMemoryWrite(t *testing.T) {
 	}
 	if isAutoMemoryWrite("", "Write", map[string]any{"file_path": filepath.Join(dir, "x.md")}) {
 		t.Error("auto memory off must not permit anything")
+	}
+}
+
+func TestAfterMemoryWrite(t *testing.T) {
+	dir := t.TempDir()
+	topic := filepath.Join(dir, "user_role.md")
+	index := filepath.Join(dir, "MEMORY.md")
+	if err := os.WriteFile(topic, []byte("---\nname: user-role\ntype: user\n---\n\nGo dev.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(index, []byte("- [Gone](gone.md) — x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	call := func(path string) sdkagent.PostToolContext {
+		return sdkagent.PostToolContext{
+			Call:   ai.ToolCall{Name: "Write", Input: `{"file_path":"` + path + `"}`},
+			Result: sdkagent.Result{Content: ai.TextContent("ok")},
+		}
+	}
+
+	r := afterMemoryWrite(dir, call(topic))
+	if r == nil || !strings.Contains(r.Content.Text(), "modified") {
+		t.Fatalf("topic write: %+v", r)
+	}
+	if got, _ := os.ReadFile(topic); !strings.Contains(string(got), "\nmodified: ") {
+		t.Errorf("topic not stamped:\n%s", got)
+	}
+
+	r = afterMemoryWrite(dir, call(index))
+	if r == nil || !strings.Contains(r.Content.Text(), "gone.md") || !strings.Contains(r.Content.Text(), "user_role.md") {
+		t.Fatalf("index write should report the dangling link and the orphan: %+v", r)
+	}
+
+	failed := call(topic)
+	failed.Err = errors.New("boom")
+	if afterMemoryWrite(dir, failed) != nil || afterMemoryWrite("", call(topic)) != nil {
+		t.Error("failed writes and memory off must pass through")
+	}
+}
+
+// Memory writes skip approval in every mode, but a deny rule still stops them.
+func TestPermitAutoMemoryWrite(t *testing.T) {
+	dir := t.TempDir()
+	args := map[string]any{"file_path": filepath.Join(dir, "a.md")}
+	d := setting.NewData()
+	if !permitAutoMemoryWrite(dir, "Write", args, d.DenyRule) {
+		t.Error("memory write should be permitted")
+	}
+	d.Permissions.Deny = []string{"Write(**/a.md)"}
+	if permitAutoMemoryWrite(dir, "Write", args, d.DenyRule) {
+		t.Error("a deny rule must win")
 	}
 }

@@ -3,6 +3,7 @@
 package app
 
 import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -234,12 +235,19 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return bashPromptResponder{model: m, bridge: bridge}
 	}
 
-	params.ResultFilter = m.filterOversizedResult
+	params.ResultFilter = func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
+		// A memory write's result is small, so it never needs paging out.
+		if r := afterMemoryWrite(m.autoMemoryDir(), c); r != nil {
+			return r, nil
+		}
+		return m.filterOversizedResult(ctx, c)
+	}
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
-		decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
-		// The agent keeps its own memory without asking; deny rules still win.
-		if decision.Behavior == perm.Prompt && isAutoMemoryWrite(m.autoMemoryDir(), name, args) {
+		var decision setting.PermissionDecision
+		if permitAutoMemoryWrite(m.autoMemoryDir(), name, args, m.services.Setting.DenyRule) {
 			decision = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
+		} else {
+			decision = m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
 		}
 		mode := m.env.SessionMode()
 		input := marshalPermInput(args)
@@ -642,14 +650,7 @@ func (m *model) wireReminderProviders() {
 		if dir == "" {
 			return ""
 		}
-		// Index problems come from the harness, so they sit outside the memory
-		// block, whose framing tells the model not to act on what is inside.
-		index, problems := system.LoadAutoMemoryAt(dir)
-		out := reminder.WrapMemory("auto", index)
-		if len(problems) > 0 {
-			out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
-		}
-		return out
+		return agent.AutoMemoryReminder(dir)
 	})
 }
 
