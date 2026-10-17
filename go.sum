@@ -95,6 +95,8 @@ github.com/genai-io/sdk-go v0.8.1-0.20261017062218-01206fdfc965 h1:a595mSHFlF8rL
 github.com/genai-io/sdk-go v0.8.1-0.20261017062218-01206fdfc965/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
 github.com/genai-io/sdk-go v0.8.1-0.20261017091645-61a039da551c h1:qBQL9OQZLUL+h5Gbq7cAcyGLiumggqZv5dOZUHNM2ic=
 github.com/genai-io/sdk-go v0.8.1-0.20261017091645-61a039da551c/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
+github.com/genai-io/sdk-go v0.8.1-0.20261017093424-058c614a24a1 h1:3/LRsZC657qba6xwC/iAznNf3AFKd100a9CZHaoBQxY=
+github.com/genai-io/sdk-go v0.8.1-0.20261017093424-058c614a24a1/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
