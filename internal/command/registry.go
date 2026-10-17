@@ -52,6 +52,7 @@ func builtinCommands() []Info {
 		{Name: "evolve", Description: "Configure self-learning (skills & memory)"},
 		{Name: "autopilot", Description: "Configure the autopilot copilot (steers, system prompt, mission)"},
 		{Name: "goal", Description: "State a goal and let autopilot drive until it's met (/goal <text>, /goal clear)"},
+		{Name: "trust", Description: "Trust this folder so its own hooks, MCP servers, plugins and allow rules apply"},
 		{Name: "name", Description: "Set or change the name of the current conversation session"},
 		{Name: "group", Description: "Team up with your other sessions and message them"},
 		{Name: "quit", Description: "Exit the application (/exit also works)"},

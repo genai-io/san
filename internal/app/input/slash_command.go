@@ -102,6 +102,8 @@ type SlashCommandEnv struct {
 	// GroupCommand runs /group: joining a group touches the session's
 	// identity, reminders and lifecycle, all of which live on the model.
 	GroupCommand func(args string) (string, tea.Cmd)
+	// TrustWorkspace runs /trust and reports the outcome.
+	TrustWorkspace func() string
 }
 
 type SlashCommandController struct {
@@ -142,6 +144,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"goal":           (*SlashCommandController).handleGoalCommand,
 		"name":           (*SlashCommandController).handleNameCommand,
 		"group":          (*SlashCommandController).handleGroupCommand,
+		"trust":          (*SlashCommandController).handleTrustCommand,
 		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
@@ -435,6 +438,13 @@ func (c *SlashCommandController) handleNameCommand(_ context.Context, args strin
 		return "", nil, fmt.Errorf("failed to rename session: %w", err)
 	}
 	return fmt.Sprintf("Session renamed to: %s", name), nil, nil
+}
+
+func (c *SlashCommandController) handleTrustCommand(context.Context, string) (string, tea.Cmd, error) {
+	if c.env.TrustWorkspace == nil {
+		return "Workspace trust is not available.", nil, nil
+	}
+	return c.env.TrustWorkspace(), nil, nil
 }
 
 func (c *SlashCommandController) handleGroupCommand(_ context.Context, args string) (string, tea.Cmd, error) {

@@ -201,7 +201,22 @@ func (l *Loader) projectSettingsFiles() []settingsSource {
 		}
 		files = append(files, settingsSource{path: filepath.Join(l.projectDir, name), project: true, local: local})
 	}
+	// A linked worktree also reads the main checkout's local files, last, since
+	// that is where grants are saved.
+	if shared := confdir.LocalDir(l.projectRoot); shared != confdir.Dir(absPath(l.projectRoot)) {
+		if l.claudeCompat {
+			files = append(files, settingsSource{path: filepath.Join(filepath.Dir(shared), ".claude", "settings.local.json"), claudeCompat: true, project: true, local: true})
+		}
+		files = append(files, settingsSource{path: filepath.Join(shared, "settings.local.json"), project: true, local: true})
+	}
 	return files
+}
+
+func absPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
 }
 
 // LoadFile loads settings from a specific file.

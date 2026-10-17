@@ -57,3 +57,18 @@ func MainRepoRoot(cwd string) string {
 	}
 	return root
 }
+
+// LocalDir holds cwd's personal, untracked config (settings.local.json,
+// mcp.local.json): Dir(cwd), or in a linked worktree the same folder in the
+// main checkout, so every worktree shares one copy.
+func LocalDir(cwd string) string {
+	if abs, err := filepath.Abs(cwd); err == nil {
+		cwd = abs
+	}
+	root, main := RepoRoot(cwd), MainRepoRoot(cwd)
+	rel, err := filepath.Rel(root, cwd)
+	if root == main || err != nil {
+		return Dir(cwd)
+	}
+	return Dir(filepath.Join(main, rel))
+}

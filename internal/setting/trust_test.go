@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -104,5 +105,34 @@ func TestTrustOverridesAndHome(t *testing.T) {
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	if !IsWorkspaceTrusted(t.TempDir()) {
 		t.Error("SAN_TRUST_WORKSPACE=1 should trust any folder for the run")
+	}
+}
+
+// A linked worktree shares the main checkout's settings.local.json: grants
+// saved from the worktree land there, and the main checkout's apply.
+func TestWorktreeSharesLocalSettings(t *testing.T) {
+	trustHome(t)
+	main := t.TempDir()
+	if err := exec.Command("git", "init", "-q", main).Run(); err != nil {
+		t.Skip("git unavailable:", err)
+	}
+	wt := t.TempDir()
+	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "feature")+"\n")
+	writeFile(t, filepath.Join(main, ".san", "settings.local.json"), `{"permissions": {"allow": ["Bash(make:*)"]}}`)
+
+	if _, err := addLocalAllowRules(wt, []string{"Bash(go test:*)"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wt, ".san", "settings.local.json")); err == nil {
+		t.Error("grant written to the worktree instead of the main checkout")
+	}
+	d, err := LoadForCwd(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{"Bash(make:*)", "Bash(go test:*)"} {
+		if !slices.Contains(d.Permissions.Allow, r) {
+			t.Errorf("worktree missing shared rule %s: %v", r, d.Permissions.Allow)
+		}
 	}
 }

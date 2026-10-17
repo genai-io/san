@@ -125,6 +125,7 @@ func (r *Registry) loadEnabledPlugins(cwd string, trusted bool) (map[string]bool
 			filepath.Join(confdir.Dir(cwd), "settings.json"),
 			filepath.Join(cwd, ".claude", "settings.local.json"),
 			filepath.Join(confdir.Dir(cwd), "settings.local.json"),
+			filepath.Join(confdir.LocalDir(cwd), "settings.local.json"),
 		)
 	}
 
@@ -268,7 +269,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	case ScopeProject:
 		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.json")
 	case ScopeLocal:
-		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.local.json")
+		settingsPath = filepath.Join(confdir.LocalDir(r.cwd), "settings.local.json")
 	default:
 		settingsPath = filepath.Join(confdir.Dir(homeDir), "settings.json")
 	}
