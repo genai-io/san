@@ -22,6 +22,7 @@ import (
 // prompt no shorter.
 const MinMessagesToCompact = 3
 
+// TODO(sdk-go): compaction is generic; move it to sdk-go as a package over PreStep/OnInferError, keeping only the prompt and reminders here.
 // preStep shortens the conversation once the next prompt would leave the reply
 // no room in the window.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {

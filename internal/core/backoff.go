@@ -28,6 +28,7 @@ func backoffDelay(attempt int, floor time.Duration, frac float64) time.Duration 
 	return max(delay, floor)
 }
 
+// TODO(sdk-go): use sdk-go's single-call retry once it shares agent.WithRetry's policy.
 // BackoffSleep waits out the backoff for `attempt`, returning ctx.Err() if the
 // caller cancels mid-wait so a retry never blocks past an interrupt. Exported
 // so the llm layer's utility-call retry (Complete) shares one policy.

@@ -89,8 +89,8 @@ github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKK
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062 h1:E3Cp/72pzOVGk2fsExA/JWr9/kd7WSm6FLxpdjuQ76o=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062/go.mod h1:xWHeyxIX9/wiFU2kgPW04ojOZyTzrWf+8lGjUCaftiU=
-github.com/genai-io/sdk-go v0.8.1-0.20261016143356-13fbe4270153 h1:oUZwqF/5tzvB7cTihVqjUpQyZ0iybIWBXCF9o3SM1ks=
-github.com/genai-io/sdk-go v0.8.1-0.20261016143356-13fbe4270153/go.mod h1:Dc5t8wFyiRZ51jiWLhYRMjH1IBZvWPQQ6J+W3o1SZLQ=
+github.com/genai-io/sdk-go v0.8.1-0.20261017014143-d42004dc60f7 h1:ffdAtkNdJW/82uCoE4f2Kkx6gJjEwPsDoVkZDd+KVi0=
+github.com/genai-io/sdk-go v0.8.1-0.20261017014143-d42004dc60f7/go.mod h1:Dc5t8wFyiRZ51jiWLhYRMjH1IBZvWPQQ6J+W3o1SZLQ=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

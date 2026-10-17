@@ -91,6 +91,7 @@ type Gate func(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decisio
 // asking, so a reader is never waiting on this.
 type ResultFilter func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error)
 
+// TODO(sdk-go): pass several agent.Hook values instead; PreTool already takes the first refusal.
 // Gates asks each in order and takes the first refusal, which is the rule the
 // loop applies to several PreTool hooks. An edit to the arguments carries
 // forward to the gate after it, so a rewrite and a check can be separate

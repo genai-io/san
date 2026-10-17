@@ -48,6 +48,12 @@ Before editing internal packages, read:
 
 Update those files when the rules change. Do not duplicate them here.
 
+san is one application built on [sdk-go](https://github.com/genai-io/sdk-go),
+which holds the generic agent building blocks. Do not reimplement what sdk-go
+provides; when san grows a generic piece, move it to sdk-go and drop san's
+copy. san keeps its own policy and UI. See sdk-go's CONTRIBUTING.md, "What
+belongs here".
+
 ## Common Commands
 
 See `docs/operations/development.md` for build / test / lint / format

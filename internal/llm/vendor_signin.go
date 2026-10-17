@@ -102,6 +102,7 @@ func registerAuthenticators() {
 	}
 }
 
+// TODO(sdk-go): Copilot's per-turn headers are protocol knowledge; move them to sdk-go's Copilot transport.
 // turnHeadersFor returns the headers one endpoint needs that depend on what
 // the turn actually sends. Copilot is the only one: it meters an agent's
 // follow-up differently from a turn the user typed, and it rejects image

@@ -173,6 +173,7 @@ func (c *Client) CachedTools() []MCPTool {
 	return out
 }
 
+// TODO(sdk-go): use pkg/agent/mcp's tool results directly; converting them here drops images.
 // CallTool runs one of this server's tools, by the server's own name for it.
 func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]any) (*ToolResult, error) {
 	tool, ok := c.tool(name)
