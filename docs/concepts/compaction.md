@@ -153,7 +153,7 @@ transcript (append-only)            resume: the conversation as the log leaves i
   message  m2                         m2   ─ cut by the truncate
   ...                                 ...
   message  SUM                        SUM  ─ cut by the truncate
-  custom session.compacted  messageId=SUM
+  app session.compacted  messageId=SUM
   truncate keep=0                     ─────────────────────────────┐
   message  SUM                        SUM                           ├─ [SUM, m8, m9]
   message  m8                         m8                            │
