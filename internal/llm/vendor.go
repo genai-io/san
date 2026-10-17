@@ -112,10 +112,10 @@ func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.
 
 	cfg := p.endpoint.ConfigFor(p.model(modelID))
 	if len(headers) > 0 {
-		if cfg.Headers == nil {
-			cfg.Headers = make(map[string]string, len(headers))
+		if cfg.Model.Headers == nil {
+			cfg.Model.Headers = make(map[string]string, len(headers))
 		}
-		maps.Copy(cfg.Headers, headers)
+		maps.Copy(cfg.Model.Headers, headers)
 	}
 	client, err := ai.New(cfg)
 	if err != nil {

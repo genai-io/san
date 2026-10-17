@@ -41,6 +41,7 @@ const (
 	CurrencyUSD Currency = "USD"
 )
 
+// TODO(sdk-go): use ai.Cost.
 // Money is one amount in one currency — what a single provider charges for a
 // single call. Amounts are not summed across currencies; see CostTotal.
 type Money struct {

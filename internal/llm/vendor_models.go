@@ -19,6 +19,7 @@ import (
 // resolves a context window, so a slow answer must not stall a turn.
 const modelDetailTimeout = 8 * time.Second
 
+// TODO(sdk-go): DashScope's per-model limits belong to the endpoint's listing in sdk-go.
 // FetchModelLimits reports one model's token limits, for the endpoints that
 // answer per model rather than in their listing.
 //
@@ -43,7 +44,7 @@ func dashscopeModelLimits(ctx context.Context, p *vendorProvider, modelID string
 	ctx, cancel := context.WithTimeout(ctx, modelDetailTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.MergedBaseURL()+"/models/"+modelID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Model.BaseURL+"/models/"+modelID, nil)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -51,7 +52,7 @@ func dashscopeModelLimits(ctx context.Context, p *vendorProvider, modelID string
 	if cfg.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	}
-	for name, value := range cfg.MergedHeaders() {
+	for name, value := range cfg.Model.Headers {
 		req.Header.Set(name, value)
 	}
 

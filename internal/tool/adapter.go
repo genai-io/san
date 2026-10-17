@@ -16,6 +16,7 @@ import (
 // environment side effects (cwd changes, file cache, background tasks).
 var sideEffects sync.Map
 
+// TODO(sdk-go): write tools with agent.ToolFunc and report progress with agent.Report; this adapter and tool/params.go then go.
 // PopSideEffect retrieves and removes the HookResponse for a tool call.
 // Returns nil if no side effect was stored.
 func PopSideEffect(toolCallID string) any {

@@ -7,6 +7,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+// TODO(sdk-go): dropping images a model cannot read belongs in ai.Repair's strip.
 // RequestMessages adapts input to the model's capabilities. The native
 // conversation, including images inside tool results, remains unchanged.
 func (l *Client) RequestMessages(messages []core.Message) []core.Message {

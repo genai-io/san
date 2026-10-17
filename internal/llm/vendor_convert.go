@@ -4,6 +4,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+// TODO(sdk-go): store ai.Model directly instead of mirroring it in ModelInfo.
 // toModelInfo projects an SDK model onto the record San's picker and store
 // read. A model with no window reports zero, which San already treats as
 // "unknown" rather than substituting a guess.
