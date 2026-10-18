@@ -38,6 +38,11 @@ func Run(opts setting.RunOptions) error {
 	if userQuit, err := kit.ResolveTheme(setting.LoadTheme(), setting.SaveTheme); userQuit || err != nil {
 		return err
 	}
+	if cwd, err := os.Getwd(); err == nil {
+		if userQuit, err := resolveWorkspaceTrust(cwd); userQuit || err != nil {
+			return err
+		}
+	}
 
 	m, err := initModel(opts)
 	if err != nil {
@@ -171,6 +176,7 @@ func runPrint(userMessage, personaName string) error {
 	if err != nil {
 		return err
 	}
+	warnUntrustedWorkspace(cwd)
 	params, err := buildPrintParams(cwd, personaName)
 	if err != nil {
 		return err

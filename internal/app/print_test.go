@@ -11,6 +11,7 @@ import (
 )
 
 func TestPrintUsesEffectiveToolAndPermissionSettings(t *testing.T) {
+	t.Setenv("SAN_TRUST_WORKSPACE", "1") // project settings apply in a trusted folder
 	cwd := t.TempDir()
 	dir := filepath.Join(cwd, ".san")
 	if err := os.MkdirAll(filepath.Join(dir, "personas", "restricted"), 0o755); err != nil {

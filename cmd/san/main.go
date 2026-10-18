@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
 	"github.com/genai-io/san/internal/app"
@@ -37,8 +36,9 @@ var cliOpts struct {
 }
 
 func init() {
-	// Load .env file if it exists (silent fail if not found)
-	_ = godotenv.Load()
+	// Load .env from the working directory, minus the entries that would
+	// decide where credentials are sent. See dotenv.go.
+	refusedEnv = loadWorkingDirEnv()
 	// Initialize logging (enabled via SAN_DEBUG=1)
 	_ = log.Init()
 
@@ -60,8 +60,13 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 }
 
+// refusedEnv holds the ./.env entries loadWorkingDirEnv skipped, reported once
+// at startup — init() runs before main, so the warning waits for a place to go.
+var refusedEnv []string
+
 func main() {
 	defer func() { _ = log.Sync() }()
+	warnRefusedEnv(refusedEnv)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

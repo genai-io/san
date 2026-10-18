@@ -2,27 +2,39 @@ package mcp
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // ConfigLoader handles loading MCP configuration from multiple sources
 type ConfigLoader struct {
 	userDir    string // ~/.san
 	projectDir string // ./.san or cwd
+	localDir   string // mcp.local.json's home; the main checkout's in a worktree
+	// untrusted skips the project's servers: each one is a command San would
+	// start. See setting.IsWorkspaceTrusted.
+	untrusted bool
 }
 
 // NewConfigLoader creates a new configuration loader
 func NewConfigLoader(cwd string) *ConfigLoader {
 	homeDir, _ := os.UserHomeDir()
+	if abs, err := filepath.Abs(cwd); err == nil {
+		cwd = abs
+	}
 	return &ConfigLoader{
 		userDir:    confdir.Dir(homeDir),
 		projectDir: confdir.Dir(cwd),
+		localDir:   confdir.LocalDir(cwd),
+		untrusted:  !setting.IsWorkspaceTrusted(cwd),
 	}
 }
 
@@ -33,6 +45,7 @@ func NewConfigLoaderForTest(baseDir string) *ConfigLoader {
 	return &ConfigLoader{
 		userDir:    confdir.Dir(filepath.Join(baseDir, "user")),
 		projectDir: confdir.Dir(filepath.Join(baseDir, "project")),
+		localDir:   confdir.Dir(filepath.Join(baseDir, "project")),
 	}
 }
 
@@ -40,21 +53,28 @@ func NewConfigLoaderForTest(baseDir string) *ConfigLoader {
 // Priority (lowest to highest):
 //  1. ~/.san/mcp.json (user scope)
 //  2. ./.san/mcp.json (project scope)
-//  3. ./.san/mcp.local.json (local scope)
+//  3. ./.san/mcp.local.json (local scope; in a worktree, then the main checkout's)
 func (l *ConfigLoader) LoadAll() (map[string]ServerConfig, error) {
 	servers := make(map[string]ServerConfig)
 
 	// Load in priority order (later overrides earlier)
-	sources := []struct {
+	type source struct {
 		path  string
 		scope Scope
-	}{
+	}
+	sources := []source{
 		{filepath.Join(l.userDir, "mcp.json"), ScopeUser},
 		{filepath.Join(l.projectDir, "mcp.json"), ScopeProject},
 		{filepath.Join(l.projectDir, "mcp.local.json"), ScopeLocal},
 	}
+	if l.localDir != l.projectDir { // a worktree: the main checkout's, which wins
+		sources = append(sources, source{filepath.Join(l.localDir, "mcp.local.json"), ScopeLocal})
+	}
 
 	for _, src := range sources {
+		if l.untrusted && src.scope != ScopeUser && !(src.scope == ScopeLocal && setting.UntrackedInRepo(src.path)) {
+			continue
+		}
 		if configs, err := l.loadFile(src.path); err == nil {
 			for name, config := range configs {
 				config.Name = name
@@ -89,10 +109,8 @@ func (l *ConfigLoader) FilePath(scope Scope) string {
 		return filepath.Join(l.userDir, "mcp.json")
 	case ScopeProject:
 		return filepath.Join(l.projectDir, "mcp.json")
-	case ScopeLocal:
-		return filepath.Join(l.projectDir, "mcp.local.json")
 	default:
-		return filepath.Join(l.projectDir, "mcp.local.json")
+		return filepath.Join(l.localDir, "mcp.local.json")
 	}
 }
 
@@ -230,4 +248,32 @@ func scopeConfigSource(scope Scope) string {
 	default:
 		return "user_settings"
 	}
+}
+
+// ProjectServerFindings lists the servers cwd's own MCP files would start or
+// reach, one line each with its file, for the workspace trust prompt.
+// An untracked mcp.local.json is the user's own and is left out.
+func ProjectServerFindings(cwd string) []string {
+	l := &ConfigLoader{projectDir: confdir.Dir(cwd), localDir: confdir.Dir(cwd)}
+	var out []string
+	for _, scope := range []Scope{ScopeProject, ScopeLocal} {
+		path := l.FilePath(scope)
+		if scope == ScopeLocal && setting.UntrackedInRepo(path) {
+			continue
+		}
+		servers, err := l.loadFile(path)
+		if err != nil {
+			continue
+		}
+		file, _ := filepath.Rel(cwd, path)
+		for _, name := range slices.Sorted(maps.Keys(servers)) {
+			srv := servers[name]
+			target := srv.URL
+			if target == "" {
+				target = strings.TrimSpace(srv.Command + " " + strings.Join(srv.Args, " "))
+			}
+			out = append(out, "start MCP server "+name+": "+target+"  ("+file+")")
+		}
+	}
+	return out
 }

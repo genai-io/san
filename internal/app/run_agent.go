@@ -50,6 +50,7 @@ func RunAgent(opts AgentRunOptions) error {
 	}
 
 	cwd, _ := os.Getwd()
+	warnUntrustedWorkspace(cwd)
 	workerSettings, err := setting.LoadForCwd(cwd)
 	if err != nil {
 		return fmt.Errorf("failed to load agent settings: %w", err)

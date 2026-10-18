@@ -36,6 +36,7 @@ func (m *model) fireFileChanged(filePath, source string) {
 func (m *model) ReloadProjectContext(cwd string) {
 	// cwd changed: discover the new project's plugins, then rebuild the project
 	// feature services that depend on them and re-point at them.
+	m.noteUntrustedWorkspace(cwd)
 	discoverPlugins(cwd)
 	m.reloadProjectServices(cwd)
 	m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()

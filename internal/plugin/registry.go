@@ -7,12 +7,14 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Registry manages all loaded plugins.
@@ -38,8 +40,16 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 	r.cwd = cwd
 	r.plugins = make(map[string]*Plugin)
 
+	// An untrusted folder's plugins, and its say over which plugins run, wait
+	// for trust: a plugin carries hooks and MCP servers.
+	trusted := setting.IsWorkspaceTrusted(cwd)
+	scopes := []Scope{ScopeUser}
+	if trusted {
+		scopes = append(scopes, ScopeProject, ScopeLocal)
+	}
+
 	// Load enabled plugins from settings
-	enabledPlugins, err := r.loadEnabledPlugins(cwd)
+	enabledPlugins, err := r.loadEnabledPlugins(cwd, trusted)
 	if err != nil {
 		// Non-fatal error, continue with empty enabled list
 		enabledPlugins = make(map[string]bool)
@@ -48,7 +58,7 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 	// Load plugins from each scope in deterministic precedence order.
 	// Later scopes override earlier ones when the same plugin key exists.
 	dirsByScope := GetPluginDirs(cwd)
-	for _, scope := range []Scope{ScopeUser, ScopeProject, ScopeLocal} {
+	for _, scope := range scopes {
 		dirs := dirsByScope[scope]
 		for _, dir := range dirs {
 			plugins, err := LoadPluginsFromDir(dir, scope, "")
@@ -70,7 +80,7 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 	}
 
 	// Load from installed_plugins.json files
-	for _, scope := range []Scope{ScopeUser, ScopeProject, ScopeLocal} {
+	for _, scope := range scopes {
 		installedFile := GetInstalledPluginsFile(cwd, scope)
 		plugins, err := LoadInstalledPlugins(installedFile, scope)
 		if err != nil {
@@ -100,7 +110,7 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 }
 
 // loadEnabledPlugins loads enabled plugin settings from all config sources.
-func (r *Registry) loadEnabledPlugins(cwd string) (map[string]bool, error) {
+func (r *Registry) loadEnabledPlugins(cwd string, trusted bool) (map[string]bool, error) {
 	result := make(map[string]bool)
 	homeDir, _ := os.UserHomeDir()
 
@@ -108,10 +118,15 @@ func (r *Registry) loadEnabledPlugins(cwd string) (map[string]bool, error) {
 	settingsFiles := []string{
 		filepath.Join(homeDir, ".claude", "settings.json"),
 		filepath.Join(confdir.Dir(homeDir), "settings.json"),
-		filepath.Join(cwd, ".claude", "settings.json"),
-		filepath.Join(confdir.Dir(cwd), "settings.json"),
-		filepath.Join(cwd, ".claude", "settings.local.json"),
-		filepath.Join(confdir.Dir(cwd), "settings.local.json"),
+	}
+	if trusted {
+		settingsFiles = append(settingsFiles,
+			filepath.Join(cwd, ".claude", "settings.json"),
+			filepath.Join(confdir.Dir(cwd), "settings.json"),
+			filepath.Join(cwd, ".claude", "settings.local.json"),
+			filepath.Join(confdir.Dir(cwd), "settings.local.json"),
+			filepath.Join(confdir.LocalDir(cwd), "settings.local.json"),
+		)
 	}
 
 	for _, f := range settingsFiles {
@@ -254,7 +269,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	case ScopeProject:
 		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.json")
 	case ScopeLocal:
-		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.local.json")
+		settingsPath = filepath.Join(confdir.LocalDir(r.cwd), "settings.local.json")
 	default:
 		settingsPath = filepath.Join(confdir.Dir(homeDir), "settings.json")
 	}
@@ -354,3 +369,23 @@ func (r *Registry) EnabledCount() int {
 
 // defaultRegistry is the package-level plugin registry.
 var defaultRegistry = NewRegistry()
+
+// ProjectPluginFindings lists the plugins cwd's own scopes would load, for the
+// workspace trust prompt: a plugin can carry hooks and MCP servers.
+func ProjectPluginFindings(cwd string) []string {
+	dirsByScope := GetPluginDirs(cwd)
+	var out []string
+	for _, scope := range []Scope{ScopeProject, ScopeLocal} {
+		var plugins []*Plugin
+		for _, dir := range dirsByScope[scope] {
+			found, _ := LoadPluginsFromDir(dir, scope, "")
+			plugins = append(plugins, found...)
+		}
+		installed, _ := LoadInstalledPlugins(GetInstalledPluginsFile(cwd, scope), scope)
+		for _, p := range append(plugins, installed...) {
+			out = append(out, "load plugin "+p.FullName()+"  ("+string(scope)+" scope)")
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}

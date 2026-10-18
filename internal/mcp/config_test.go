@@ -25,6 +25,7 @@ func TestConfigLoader_SaveAndLoad(t *testing.T) {
 	loader := &ConfigLoader{
 		userDir:    filepath.Join(tmpDir, "user", ".san"),
 		projectDir: projectDir,
+		localDir:   projectDir,
 	}
 
 	// Test saving a server config
@@ -108,6 +109,7 @@ func TestConfigLoader_ScopePriority(t *testing.T) {
 	loader := &ConfigLoader{
 		userDir:    userDir,
 		projectDir: projectDir,
+		localDir:   projectDir,
 	}
 
 	configs, err := loader.LoadAll()

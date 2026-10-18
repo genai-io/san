@@ -24,6 +24,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |
 | `/reload-plugins` | Reload plugins and refresh plugin-backed components |
+| `/trust` | Trust the current folder so its own hooks, MCP servers, plugins and allow rules apply without restarting |
 | `/think` | Cycle the active model's advertised reasoning efforts; `/think <effort>` selects one directly |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
 | `/workflow` | List saved workflows; `show <name>` previews, `run <name> [key=value …]` starts, and `stop [task-id]` cancels one |

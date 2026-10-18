@@ -2,6 +2,7 @@ package setting
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -71,6 +72,11 @@ func TestAlwaysAllowRulesOnlyWhereTheyTakeEffect(t *testing.T) {
 
 func TestAddLocalAllowRulesKeepsTheRestOfTheFile(t *testing.T) {
 	cwd := t.TempDir()
+	// An untracked local file in a repository is the user's own, so its rules
+	// apply even where the folder itself is not trusted.
+	if err := exec.Command("git", "init", "-q", cwd).Run(); err != nil {
+		t.Skip("git unavailable:", err)
+	}
 	path := filepath.Join(cwd, ".san", "settings.local.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)

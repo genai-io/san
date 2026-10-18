@@ -536,11 +536,19 @@ func TestRegistry_LoadScopeMergePrefersLocalOverProjectOverUser(t *testing.T) {
 	writeTestPlugin(t, filepath.Join(cwd, ".san", "plugins", "shared"), "shared", "1.0.0", "project plugin", nil)
 	writeTestPlugin(t, filepath.Join(cwd, ".san", "plugins-local", "shared"), "shared", "1.0.0", "local plugin", nil)
 
+	// Untrusted, only the user's own plugin loads.
 	registry := NewRegistry()
 	if err := registry.Load(context.Background(), cwd); err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
+	if p, ok := registry.Get("shared"); !ok || p.Scope != ScopeUser {
+		t.Fatalf("untrusted folder: want the user plugin, got %+v", p)
+	}
 
+	t.Setenv("SAN_TRUST_WORKSPACE", "1")
+	if err := registry.Load(context.Background(), cwd); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
 	p, ok := registry.Get("shared")
 	if !ok {
 		t.Fatal("expected merged plugin to be present")
