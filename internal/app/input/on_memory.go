@@ -108,7 +108,7 @@ func (m *MemorySelector) loadItems() {
 // autoMemoryItem describes the agent-written memory store. Enter opens its
 // MEMORY.md index; t toggles auto memory.
 func autoMemoryItem(cwd string, on bool) memoryItem {
-	dir := system.AutoMemoryDir(cwd)
+	dir := setting.AutoMemoryDir(cwd)
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	state := "off"
 	if on {

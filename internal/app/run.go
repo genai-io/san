@@ -225,7 +225,7 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
 	var memoryDir string
 	if setting.New(settings).AutoMemory() {
-		memoryDir = system.AutoMemoryDir(cwd)
+		memoryDir = setting.AutoMemoryDir(cwd)
 	}
 	return agentpkg.BuildParams{
 		AutoMemoryDir: memoryDir,

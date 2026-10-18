@@ -20,7 +20,7 @@ func (m *model) autoMemoryDir() string {
 	if !m.services.Setting.AutoMemory() {
 		return ""
 	}
-	return system.AutoMemoryDir(m.env.CWD)
+	return setting.AutoMemoryDir(m.env.CWD)
 }
 
 // isAutoMemoryWrite reports whether a Write/Edit call targets a markdown file
