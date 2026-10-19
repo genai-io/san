@@ -162,7 +162,10 @@ follows Claude Code's layout:
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
   still apply.
 - Memory calls stay out of the chat flow: reads fold into one thinking-style
-  row (`✦ Read 2 memories`, a spinner while running), writes into one card at
+  summary naming the files (`Read 2 memories · a, b`, counting up behind a
+  spinner while running), joined onto the message's last thought when there is
+  one (that thought stays live until the message shows what follows it), else
+  on its own `✦` row; writes fold into one card at
   the end of the turn naming each memory saved or updated and its store.
   ctrl+o shows the calls themselves; a failed call always does. A memory file
   in both stores is reported as a duplicate to fix, and each write trims stray

@@ -539,8 +539,11 @@ func renderDecision(v *core.ReviewDecision) string {
 type ToolCallsParams struct {
 	ToolCalls         []core.ToolCall
 	ToolCallsExpanded bool
-	ResultMap         map[string]ToolResultData
-	ParallelMode      bool
+	// MemoryOnThinking: the memory summary went onto the thinking line, so
+	// no row of its own.
+	MemoryOnThinking bool
+	ResultMap        map[string]ToolResultData
+	ParallelMode     bool
 	// DockedModalActive marks the frames where a Question / Approval modal
 	// owns the screen; the call it is asking about holds still until answered.
 	DockedModalActive bool
@@ -627,11 +630,15 @@ type ToolResultData struct {
 func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
-	memoryHidden, memoryRow := memoryFold(params)
+	memoryHidden, summary, live := memoryFold(params)
+	row := ""
+	if !params.MemoryOnThinking {
+		row = memoryRow(summary, live, params.Width)
+	}
 	for _, tc := range params.ToolCalls {
 		if memoryHidden[tc.ID] {
-			sb.WriteString(memoryRow) // in the first hidden call's place
-			memoryRow = ""
+			sb.WriteString(row) // in the first hidden call's place
+			row = ""
 			continue
 		}
 		switch tc.Name {

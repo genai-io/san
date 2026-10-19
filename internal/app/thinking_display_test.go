@@ -57,7 +57,7 @@ func queuedScrollbackPayload(m *model) string {
 func TestFullThinkingCommitsTheBody(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:             core.ChatAssistant,
-		Thinking:         reasoningSentinel + "\n\n",
+		Thinking:         reasoningSentinel + "\n\nnext thought\n\n",
 		ThinkingDuration: 3 * time.Second,
 	})
 	m.env.ThinkingDisplay = setting.ThinkingDisplayFull

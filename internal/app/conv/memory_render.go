@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
@@ -110,17 +111,18 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
-// memoryFold keeps a message's memory calls out of the main flow: it hides
-// them and returns one thinking-style row in their place — a spinner while
-// any runs, "✦ Read 2 memories" once memories were read, nothing for index
-// reads and writes (the turn-end card reports writes). Expanded calls and
-// failed ones are left to render as themselves.
-func memoryFold(params ToolCallsParams) (hidden map[string]bool, row string) {
+// memoryFold keeps a message's memory calls out of the main flow. It returns
+// the calls to hide and one summary in their place — "⠋ Reading memories 1/2 ·
+// a, b" while any runs, "Read 2 memories · a, b" once memories were read,
+// "" for index reads and finished writes (the turn-end card reports those).
+// Expanded calls and failed ones are left to render as themselves.
+func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string, live bool) {
 	if params.ToolCallsExpanded {
-		return nil, ""
+		return nil, "", false
 	}
-	var topics int
-	icon, live := "", ""
+	var reads, readsDone int
+	var names []string
+	icon, saving := "", false
 	for _, tc := range params.ToolCalls {
 		op, ok := parseMemoryOp(tc.Name, tc.Input)
 		if !ok {
@@ -134,32 +136,85 @@ func memoryFold(params ToolCallsParams) (hidden map[string]bool, row string) {
 			hidden = map[string]bool{}
 		}
 		hidden[tc.ID] = true
-		switch {
-		case !done:
-			if icon == "" {
-				icon = toolCallIcon(tc, params)
-			}
-			if op.verb == "Read" {
-				live = "Reading memory…"
-			} else if live == "" {
-				live = "Saving memory…"
-			}
-		case op.verb == "Read" && op.subject != "": // an index read is routine
-			topics++
+		if !done && icon == "" {
+			icon = toolCallIcon(tc, params)
+		}
+		if op.subject == "" {
+			continue // an index read or edit is routine
+		}
+		names = append(names, strings.TrimSuffix(op.file, ".md"))
+		if op.verb != "Read" {
+			saving = saving || !done
+			continue
+		}
+		reads++
+		if done {
+			readsDone++
 		}
 	}
-	text := ""
-	switch {
-	case live != "":
-		return hidden, ThinkingStyle.Render(icon+" "+live) + "\n"
-	case topics == 1:
-		text = "Read 1 memory"
-	case topics > 1:
-		text = fmt.Sprintf("Read %d memories", topics)
-	default:
-		return hidden, ""
+	list := ""
+	if len(names) > 0 {
+		list = " · " + strings.Join(names, ", ")
 	}
-	return hidden, thinkingGutter(true) + ThinkingStyle.Render(text) + "\n"
+	noun := "memory"
+	if reads > 1 {
+		noun = "memories"
+	}
+	switch {
+	case reads > readsDone && reads > 1:
+		return hidden, fmt.Sprintf("%s Reading %s %d/%d%s", icon, noun, readsDone, reads, list), true
+	case reads > readsDone:
+		return hidden, icon + " Reading memory" + list, true
+	case saving:
+		return hidden, icon + " Saving memory" + list, true
+	case reads > 0:
+		return hidden, fmt.Sprintf("Read %d %s%s", reads, noun, list), false
+	}
+	return hidden, "", false
+}
+
+// memoryRow draws the summary on its own thinking-style line; a live one
+// already leads with its spinner.
+func memoryRow(summary string, live bool, width int) string {
+	if summary == "" {
+		return ""
+	}
+	gutter := thinkingGutter(true)
+	if live {
+		gutter = ""
+	}
+	if width > 0 {
+		summary = kit.TruncateText(summary, max(1, width-lipgloss.Width(gutter)))
+	}
+	return gutter + ThinkingStyle.Render(summary) + "\n"
+}
+
+// joinThinkingLine appends the summary to the last written line of a rendered
+// thinking tail (past glamour's padding and trailing blank lines), so
+// "✦ Checking the release · Read 1 memory · freeze" reads as one thought. It
+// reports false when there is no tail or too little room.
+func joinThinkingLine(base, summary string, width int) (string, bool) {
+	if summary == "" {
+		return base, false
+	}
+	lines := strings.Split(base, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		text := strings.TrimRight(xansi.Strip(lines[i]), " ")
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		used := lipgloss.Width(text)
+		tail := " · " + summary
+		if width > 0 {
+			if width-used < 24 {
+				return base, false
+			}
+			tail = kit.TruncateText(tail, width-used)
+		}
+		lines[i] = xansi.Truncate(lines[i], used, "") + "\x1b[m" + ThinkingStyle.Render(tail)
+		return strings.Join(lines, "\n"), true
+	}
+	return base, false
 }
 
 // MemoryChange is a memory file a turn saved or updated.

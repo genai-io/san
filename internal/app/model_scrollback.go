@@ -134,6 +134,9 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	thinkingEnd := msg.ThinkingCommittedLen
 	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
 		thinkingEnd = conv.CompletedBlockBoundary(msg.Thinking)
+		// Hold the last completed thought live until the message shows what
+		// follows it, so a memory read can join its line.
+		thinkingEnd = conv.CompletedBlockBoundary(strings.TrimRight(msg.Thinking[:thinkingEnd], "\n"))
 		if reasoningDone {
 			thinkingEnd = len(msg.Thinking)
 		}

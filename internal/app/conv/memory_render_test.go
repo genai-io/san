@@ -73,8 +73,15 @@ func TestMemoryCallsFold(t *testing.T) {
 		ToolCalls: calls,
 		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
 	}))
-	if strings.TrimSpace(out) != "✦ Read 1 memory" {
+	if strings.TrimSpace(out) != "✦ Read 1 memory · terse" {
 		t.Errorf("folded reads = %q", out)
+	}
+	joined, ok := joinThinkingLine(ThinkingStyle.Render("✦ Checking the rules")+"\n", "Read 1 memory · terse", 80)
+	if got := xansi.Strip(joined); !ok || got != "✦ Checking the rules · Read 1 memory · terse\n" {
+		t.Errorf("joined thinking line = %q (ok=%v)", got, ok)
+	}
+	if _, ok := joinThinkingLine("", "Read 1 memory", 80); ok {
+		t.Error("no thinking tail: the summary keeps its own row")
 	}
 	out = xansi.Strip(RenderToolCalls(ToolCallsParams{
 		ToolCalls: calls[:1],
