@@ -67,19 +67,27 @@ func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]a
 
 // memoryLine is the turn's memory in one quiet line under the answer, by
 // index title and grouped by verb in the order things happened —
-// "◇ memory · used Go dev · saved No AI attribution (user)" — cut to width.
-// A write names its store: a user-store memory follows the user into every
-// repository. "" when the turn left memory alone.
+// "◈ used Go dev · saved No AI attribution to user" — cut to width. ◇ marks a
+// turn that only read memory, ◈ one that changed it. A write names its store:
+// a user-store memory follows the user into every repository. "" when the
+// turn left memory alone.
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
+	icon := "◇"
 	for _, e := range entries {
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
-		title := e.Title
-		if e.Verb == "saved" || e.Verb == "updated" {
-			title += " (" + e.Store + ")"
+		title := memoryItemStyle.Render(e.Title)
+		switch e.Verb {
+		case "saved":
+			title += memoryLabelStyle.Render(" to " + e.Store)
+		case "updated":
+			title += memoryLabelStyle.Render(" in " + e.Store)
+		}
+		if e.Verb != "recalled" && e.Verb != "used" {
+			icon = "◈"
 		}
 		items[e.Verb] = append(items[e.Verb], title)
 	}
@@ -88,16 +96,17 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 	}
 	parts := make([]string, 0, len(verbs))
 	for _, v := range verbs {
-		parts = append(parts, v+" "+strings.Join(items[v], ", "))
+		parts = append(parts, memoryLabelStyle.Render(v+" ")+strings.Join(items[v], memoryLabelStyle.Render(", ")))
 	}
-	text := strings.Join(parts, " · ")
+	line := memoryLabelStyle.Render(icon+" ") + strings.Join(parts, memoryLabelStyle.Render(" · "))
 	if width > 0 {
-		text = kit.TruncateText(text, max(8, width-len("  ◇ memory · ")))
+		line = kit.TruncateText(line, max(8, width-2))
 	}
-	return memoryLabelStyle.Render("◇ memory · ") + memoryItemStyle.Render(text)
+	return line
 }
 
+// The titles carry the line; the icon, verbs and stores recede behind them.
 var (
-	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 )

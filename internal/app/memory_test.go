@@ -81,14 +81,17 @@ func TestPermitAutoMemoryWrite(t *testing.T) {
 }
 
 // The turn's memory is one quiet line, grouped by verb in order; a write
-// names its store.
+// names its store, and its icon says whether memory changed.
 func TestMemoryLine(t *testing.T) {
 	got := ansi.Strip(memoryLine([]conv.MemoryEntry{
 		{Verb: "used", Title: "Go dev", Store: "user"}, {Verb: "updated", Title: "Freeze", Store: "project"},
 		{Verb: "used", Title: "Tabs", Store: "user"}, {Verb: "saved", Title: "Pnpm", Store: "user"},
 	}, 100))
-	if got != "◇ memory · used Go dev, Tabs · updated Freeze (project) · saved Pnpm (user)" {
+	if got != "◈ used Go dev, Tabs · updated Freeze in project · saved Pnpm to user" {
 		t.Errorf("memoryLine = %q", got)
+	}
+	if got := ansi.Strip(memoryLine([]conv.MemoryEntry{{Verb: "recalled", Title: "Go dev"}}, 100)); got != "◇ recalled Go dev" {
+		t.Errorf("read-only memoryLine = %q", got)
 	}
 	if memoryLine(nil, 80) != "" {
 		t.Error("a turn without memory gets no line")

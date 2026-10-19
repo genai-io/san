@@ -160,7 +160,7 @@ sequenceDiagram
         A->>S: every Write / Edit / rm together
     end
     A-->>U: answer
-    App-->>U: ◇ memory · recalled … · saved … (user)
+    App-->>U: ◈ recalled … · saved … to user
 ```
 
 Each store follows Claude Code's layout:
@@ -204,8 +204,9 @@ Each store follows Claude Code's layout:
   its thinking but not its calls: the thinking was on screen before the calls
   arrived, and taking it back would flash. Each turn that touched memory
   ends with one quiet line under the answer, by index title, grouped by verb:
-  `◇ memory · recalled Release freeze · saved No AI attribution (user)`; one
-  entry per memory (a write outranks a read, and names its store), and
+  `◈ recalled Release freeze · saved No AI attribution to user`; ◇ when the
+  turn only read memory, ◈ when it changed it. One entry per memory (a write
+  outranks a read, and names its store), and
   `forgot` for one the turn touched that is gone by its end. ctrl+o shows the
   calls themselves; a failed call always does. A memory file in both stores
   is reported in the next index reminder as a duplicate to fix.
