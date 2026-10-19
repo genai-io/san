@@ -171,7 +171,9 @@ sets it: `~/.san/settings.json` the user store, an untracked
 `.san/settings.local.json` the project store. Committed project settings never
 count, since memory writes need no approval. Claude Code instead uses one store,
 so a user-level value there merges every project's memory. `/memory` lists each
-store on its own row. Subagents don't load either store.
+store on its own row with its directory; `d` there moves the selected store,
+writing the setting to the right file (empty restores the default). Existing
+memories are not moved. Subagents don't load either store.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,

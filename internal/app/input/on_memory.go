@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
@@ -43,6 +45,8 @@ type memoryItem struct {
 	Size        int64
 	Level       string
 	CreateHint  string
+	Location    string        // an auto-memory store's directory
+	Store       setting.Scope // which auto-memory store; "" for AGENTS.md rows
 }
 
 // MemorySelector holds the state for the memory kit.
@@ -54,7 +58,9 @@ type MemorySelector struct {
 	height      int
 	cwd         string
 	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
-	toggleErr   error
+	err         error             // last toggle or move failure
+	dirInput    textinput.Model
+	editingDir  bool // dirInput is moving the selected store
 }
 
 // memorySelectedMsg is sent when a memory file is selected for editing.
@@ -80,7 +86,8 @@ func (m *MemorySelector) EnterSelect(cwd string, settings *setting.Settings, wid
 	m.height = height
 	m.active = true
 	m.selectedIdx = 0
-	m.toggleErr = nil
+	m.err = nil
+	m.editingDir = false
 	m.loadItems()
 }
 
@@ -102,16 +109,21 @@ func (m *MemorySelector) loadItems() {
 	}
 	if m.settings != nil {
 		stores := setting.MemoryStoresFor(cwd)
+		home, _ := os.UserHomeDir()
 		on := m.settings.AutoMemory()
 		m.items = append(m.items,
-			autoMemoryItem("Auto memory · user", stores.User, on),
-			autoMemoryItem("Auto memory · project", stores.Project, on))
+			autoMemoryItem("Auto memory · user", setting.ScopeUser, stores.User, system.UserMemoryDir(home), on),
+			autoMemoryItem("Auto memory · project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd), on))
 	}
 }
 
 // autoMemoryItem describes one agent-written memory store. Enter opens its
-// MEMORY.md index; t toggles auto memory.
-func autoMemoryItem(label, dir string, on bool) memoryItem {
+// MEMORY.md index, d moves it, t toggles auto memory.
+func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string, on bool) memoryItem {
+	location := kit.ShortenPath(dir)
+	if dir == defaultDir {
+		location += " (default)"
+	}
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	state := "off"
 	if on {
@@ -133,6 +145,8 @@ func autoMemoryItem(label, dir string, on bool) memoryItem {
 		Exists:      on,
 		Level:       "auto",
 		CreateHint:  "Off — t turns it on everywhere, p for this project",
+		Location:    location,
+		Store:       store,
 	}
 }
 
@@ -157,7 +171,7 @@ func (m *MemorySelector) toggleAutoMemory(scope setting.Scope) {
 	if m.settings == nil {
 		return
 	}
-	m.toggleErr = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
+	m.err = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
 	m.loadItems()
 }
 
@@ -223,6 +237,9 @@ func (m *MemorySelector) Cancel() {
 // HandleKeypress handles a keypress and returns a command if selection is made.
 func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	keyStr := key.String()
+	if m.editingDir {
+		return m.handleDirInput(key)
+	}
 
 	switch keyStr {
 	case "up", "ctrl+p", "k":
@@ -239,6 +256,8 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		m.toggleAutoMemory(setting.ScopeUser)
 	case "p":
 		m.toggleAutoMemory(setting.ScopeProject)
+	case "d":
+		m.openDirInput()
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
 	case "1", "2", "3", "4", "5":
@@ -249,6 +268,38 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		}
 	}
 
+	return nil
+}
+
+// openDirInput starts moving the selected auto-memory store; an empty value
+// returns it to the default.
+func (m *MemorySelector) openDirInput() {
+	if m.selectedIdx >= len(m.items) || m.items[m.selectedIdx].Store == "" {
+		return
+	}
+	in := textinput.New()
+	in.Placeholder = "absolute or ~/ path; empty for the default"
+	in.SetValue(kit.ShortenPath(filepath.Dir(m.items[m.selectedIdx].Path)))
+	in.CharLimit = 512
+	in.SetWidth(40)
+	in.Focus()
+	m.dirInput, m.editingDir, m.err = in, true, nil
+}
+
+func (m *MemorySelector) handleDirInput(key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "esc":
+		m.editingDir = false
+	case "enter":
+		dir := strings.TrimSpace(m.dirInput.Value())
+		m.err = setting.SaveMemoryDirectory(m.items[m.selectedIdx].Store, m.cwd, dir)
+		m.editingDir = m.err != nil
+		m.loadItems()
+	default:
+		var cmd tea.Cmd
+		m.dirInput, cmd = m.dirInput.Update(key)
+		return cmd
+	}
 	return nil
 }
 
@@ -312,20 +363,35 @@ func (m *MemorySelector) Render() string {
 		const detailIndent = "       "
 		sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + kit.DimStyle().Render(item.Description+sizeStr)))
 		sb.WriteString("\n")
-		if !item.Exists && i == m.selectedIdx {
+		if loc := item.Location; loc != "" {
+			// Keep the tail, where a store's directory names its repository.
+			room := kit.CalculateBoxWidth(m.width) - 8 - len(detailIndent)
+			if w := ansi.StringWidth(loc); w > room {
+				loc = ansi.TruncateLeft(loc, w-room+1, "…")
+			}
+			sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + kit.DimStyle().Render(loc)))
+			sb.WriteString("\n")
+		}
+		if i == m.selectedIdx && m.editingDir {
+			sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + m.dirInput.View()))
+			sb.WriteString("\n")
+		} else if !item.Exists && i == m.selectedIdx {
 			sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + kit.DimStyle().Render(item.CreateHint)))
 			sb.WriteString("\n")
 		}
 	}
 
 	sb.WriteString("\n")
-	if m.toggleErr != nil {
-		sb.WriteString(kit.SelectorHintStyle().Render("  ⚠ " + m.toggleErr.Error()))
+	if m.err != nil {
+		sb.WriteString(kit.SelectorHintStyle().PaddingLeft(2).Width(kit.CalculateBoxWidth(m.width) - 6).Render("⚠ " + m.err.Error()))
 		sb.WriteString("\n")
 	}
 	hint := "↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"
 	if m.settings != nil {
-		hint = "Enter edit · t auto memory · p this project only · Esc"
+		hint = "Enter edit · d move · t on/off · p this project · Esc"
+		if m.editingDir {
+			hint = "Enter save · empty for the default · Esc cancel"
+		}
 	}
 	sb.WriteString(kit.SelectorHintStyle().Render(hint))
 

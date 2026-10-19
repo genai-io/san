@@ -1,6 +1,7 @@
 package setting
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,4 +75,35 @@ func expandMemoryDir(dir, home string) string {
 		return ""
 	}
 	return dir
+}
+
+// SaveMemoryDirectory sets autoMemoryDirectory for scope's store, clearing it
+// when dir is "": ScopeUser writes ~/.san/settings.json, ScopeProject cwd's
+// settings.local.json (the main checkout's in a worktree), which must stay
+// untracked for the value to count.
+func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
+	home, _ := os.UserHomeDir()
+	if dir != "" && expandMemoryDir(dir, home) == "" {
+		return fmt.Errorf("%q must be an absolute path or start with ~/", dir)
+	}
+	path := filepath.Join(confdir.Dir(home), "settings.json")
+	if scope == ScopeProject {
+		path = filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
+		if !UntrackedInRepo(path) {
+			return fmt.Errorf("settings.local.json is tracked by git or outside a repository, so it cannot move this project's memory")
+		}
+	}
+	var doc map[string]any
+	if err := atomicfile.ReadJSON(path, &doc); err != nil {
+		return err
+	}
+	if doc == nil {
+		doc = map[string]any{}
+	}
+	if dir == "" {
+		delete(doc, "autoMemoryDirectory")
+	} else {
+		doc["autoMemoryDirectory"] = dir
+	}
+	return atomicfile.WriteJSON(path, doc, 0o644)
 }

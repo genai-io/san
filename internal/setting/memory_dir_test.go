@@ -60,3 +60,35 @@ func TestMemoryStoresFor(t *testing.T) {
 		}
 	}
 }
+
+// /memory moves a store by writing autoMemoryDirectory where it counts, and
+// refuses a tracked settings.local.json, where it would not.
+func TestSaveMemoryDirectory(t *testing.T) {
+	home := trustHome(t)
+	repo := t.TempDir()
+	if err := exec.Command("git", "init", "-q", repo).Run(); err != nil {
+		t.Skip("git unavailable:", err)
+	}
+	if err := SaveMemoryDirectory(ScopeUser, repo, "~/notes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveMemoryDirectory(ScopeProject, repo, "/abs/proj"); err != nil {
+		t.Fatal(err)
+	}
+	want := system.MemoryStores{User: filepath.Join(home, "notes"), Project: "/abs/proj"}
+	if got := MemoryStoresFor(repo); got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if err := SaveMemoryDirectory(ScopeUser, repo, ""); err != nil || MemoryStoresFor(repo).User != system.UserMemoryDir(home) {
+		t.Errorf("clearing should restore the default: err=%v", err)
+	}
+	if SaveMemoryDirectory(ScopeUser, repo, "relative") == nil {
+		t.Error("a relative path should be refused")
+	}
+	if err := exec.Command("git", "-C", repo, "add", "-f", ".san/settings.local.json").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if SaveMemoryDirectory(ScopeProject, repo, "/abs/other") == nil {
+		t.Error("a tracked settings.local.json should be refused")
+	}
+}
