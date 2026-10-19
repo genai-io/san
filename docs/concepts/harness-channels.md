@@ -161,6 +161,12 @@ follows Claude Code's layout:
   tells it what to save and in which store. Writes to `*.md` inside either store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
   still apply.
+- Memory calls stay out of the chat flow: reads fold into one thinking-style
+  row (`✦ Read 2 memories`, a spinner while running), writes into one card at
+  the end of the turn naming each memory saved or updated and its store.
+  ctrl+o shows the calls themselves; a failed call always does. A memory file
+  in both stores is reported as a duplicate to fix, and each write trims stray
+  indentation off the frontmatter so the model needs no follow-up edit.
 
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to

@@ -291,6 +291,7 @@ func AutoMemoryReminder(s system.MemoryStores) string {
 			problems = append(problems, store.name+": "+line)
 		}
 	}
+	problems = append(problems, s.Duplicates()...)
 	out := reminder.WrapMemory("auto", strings.Join(body, "\n\n"))
 	if len(problems) > 0 {
 		out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))

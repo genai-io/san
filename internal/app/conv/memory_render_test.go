@@ -2,12 +2,14 @@ package conv
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	xansi "github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -26,7 +28,7 @@ func TestMemoryRows(t *testing.T) {
 		{"Write", input(filepath.Join(mem, "feedback_pnpm.md"), "---\nname: use-pnpm\ndescription: use pnpm, never npm\ntype: feedback\n---\n"), "Saved memory · use pnpm, never npm"},
 		{"Write", input(filepath.Join(mem, "MEMORY.md"), "- x"), "Updated memory index"},
 		{"Edit", input(filepath.Join(mem, "user_role.md"), ""), "Updated memory · user_role"},
-		{"Read", input(filepath.Join(mem, "user_role.md"), ""), "Recalled memory · user_role"},
+		{"Read", input(filepath.Join(mem, "user_role.md"), ""), "Read memory · user_role"},
 	}
 	for _, c := range cases {
 		op, ok := parseMemoryOp(c.tool, c.input)
@@ -50,5 +52,51 @@ func TestMemoryRows(t *testing.T) {
 	})
 	if got := xansi.Strip(out); !strings.Contains(got, "feedback_pnpm.md · +8 -0") || strings.Contains(got, "secret diff") {
 		t.Errorf("collapsed result = %q", got)
+	}
+}
+
+// Memory calls leave the main flow: one thinking-style row stands in for them,
+// a failed call still shows itself, and the turn's writes fold into one change
+// per file for the recap card.
+func TestMemoryCallsFold(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	mem := filepath.Join(home, ".san", "memory")
+	topic := filepath.Join(mem, "terse.md")
+	call := func(id, name, path string) core.ToolCall {
+		b, _ := json.Marshal(map[string]string{"file_path": path})
+		return core.ToolCall{ID: id, Name: name, Input: string(b)}
+	}
+	calls := []core.ToolCall{call("r1", "Read", topic), call("r2", "Read", filepath.Join(mem, "MEMORY.md"))}
+	out := xansi.Strip(RenderToolCalls(ToolCallsParams{
+		ToolCalls: calls,
+		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
+	}))
+	if strings.TrimSpace(out) != "✦ Read 1 memory" {
+		t.Errorf("folded reads = %q", out)
+	}
+	out = xansi.Strip(RenderToolCalls(ToolCallsParams{
+		ToolCalls: calls[:1],
+		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read", IsError: true, Content: "boom"}},
+	}))
+	if !strings.Contains(out, "memory") || strings.Contains(out, "✦") {
+		t.Errorf("a failed memory call should show as itself: %q", out)
+	}
+
+	if err := os.MkdirAll(mem, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(topic, []byte("---\nname: terse\ndescription: terse answers\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conv := ConversationModel{Messages: []core.ChatMessage{
+		{Role: core.ChatUser, Content: "remember"},
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call("w1", "Write", topic)}},
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call("e1", "Edit", topic), call("e2", "Edit", filepath.Join(mem, "MEMORY.md"))}},
+	}}
+	got := conv.TurnMemoryChanges()
+	if len(got) != 1 || got[0].Verb != "saved" || got[0].Description != "terse answers" {
+		t.Errorf("turn changes = %+v", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -69,7 +70,10 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 	if stamped, err := system.StampModified(path, time.Now()); err == nil && stamped {
 		// The stamp is ours, not an outside change the next Edit should balk at.
 		fs.RecordFileWritten(path)
-		notes = append(notes, "Recorded the write time as `modified` in its frontmatter.")
+		notes = append(notes, "Recorded the write time as `modified` in its frontmatter and tidied its keys; the file needs no follow-up edit.")
+	}
+	if dup := s.Duplicates(); len(dup) > 0 {
+		notes = append(notes, "Your memory has duplicates:\n- "+strings.Join(dup, "\n- "))
 	}
 	if filepath.Base(path) == system.AutoMemoryIndexName {
 		if _, problems := system.LoadAutoMemoryAt(dir); len(problems) > 0 {
@@ -82,4 +86,22 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 	out := c.Result
 	out.Content = ai.TextContent(strings.TrimSpace(c.Result.Content.Text() + "\n\n" + strings.Join(notes, "\n\n")))
 	return &out
+}
+
+// memoryRecap is the turn-end card naming the memories the turn saved or
+// updated, drawn like the self-learning recap; "" when it wrote none.
+func memoryRecap(s system.MemoryStores, changes []conv.MemoryChange) string {
+	var actions []ReviewAction
+	for _, c := range changes {
+		store := "project"
+		if filepath.Dir(c.Path) == s.User {
+			store = "user"
+		}
+		target := c.Description
+		if target == "" {
+			target = strings.TrimSuffix(filepath.Base(c.Path), ".md")
+		}
+		actions = append(actions, ReviewAction{Kind: "memory", Target: target, Note: c.Verb + " · " + store + " store"})
+	}
+	return formatRecapBlock(actions, "")
 }

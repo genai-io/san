@@ -51,6 +51,26 @@ type MemoryStores struct {
 // Off reports whether auto memory is off.
 func (s MemoryStores) Off() bool { return s == MemoryStores{} }
 
+// Duplicates lists memory files present in both stores: one fact belongs in
+// one store, so the agent is told to keep one.
+func (s MemoryStores) Duplicates() []string {
+	if s.User == "" || s.Project == "" || s.User == s.Project {
+		return nil
+	}
+	var dup []string
+	files, _ := filepath.Glob(filepath.Join(s.User, "*.md"))
+	for _, f := range files {
+		name := filepath.Base(f)
+		if name == AutoMemoryIndexName {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(s.Project, name)); err == nil {
+			dup = append(dup, name+" is in both the user and the project store; keep the one where it holds and delete the other")
+		}
+	}
+	return dup
+}
+
 // UserMemoryDir is the default user store: ~/.san/memory/.
 func UserMemoryDir(homeDir string) string {
 	return filepath.Join(confdir.Dir(homeDir), "memory")
@@ -164,8 +184,9 @@ func listNames(names []string) string {
 }
 
 // StampModified records the write time as a `modified` field in the
-// frontmatter of the memory file at path, replacing an older one. A file
-// without frontmatter is left alone. It reports whether the file changed.
+// frontmatter of the memory file at path, replacing an older one, and trims
+// stray indentation off its flat keys. A file without frontmatter is left
+// alone. It reports whether the file changed.
 func StampModified(path string, now time.Time) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -182,6 +203,7 @@ func StampModified(path string, now time.Time) (bool, error) {
 	end += 4
 	var fm []string
 	for _, line := range strings.Split(src[4:end], "\n") {
+		line = strings.TrimLeft(line, " \t")
 		if !strings.HasPrefix(line, "modified:") {
 			fm = append(fm, line)
 		}

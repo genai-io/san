@@ -627,7 +627,13 @@ type ToolResultData struct {
 func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
+	memoryHidden, memoryRow := memoryFold(params)
 	for _, tc := range params.ToolCalls {
+		if memoryHidden[tc.ID] {
+			sb.WriteString(memoryRow) // in the first hidden call's place
+			memoryRow = ""
+			continue
+		}
 		switch tc.Name {
 		case tool.ToolTaskCreate, tool.ToolTaskUpdate:
 			continue

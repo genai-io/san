@@ -527,7 +527,7 @@ func TestStampModified(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
 	path := filepath.Join(dir, "a.md")
-	src := "---\nname: a\nmodified: 2020-01-01T00:00:00Z\ntype: user\n---\n\nbody\n"
+	src := "---\nname: a\nmodified: 2020-01-01T00:00:00Z\n type: user\n---\n\nbody\n" // stray indent, as some models write it
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -549,5 +549,22 @@ func TestStampModified(t *testing.T) {
 	}
 	if stamped, _ := StampModified(plain, now); stamped {
 		t.Error("a file without frontmatter must be left alone")
+	}
+}
+
+// A memory filed in both stores is reported so the agent keeps one.
+func TestMemoryStoresDuplicates(t *testing.T) {
+	s := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
+	for _, p := range []string{
+		filepath.Join(s.User, "terse.md"), filepath.Join(s.Project, "terse.md"),
+		filepath.Join(s.User, "MEMORY.md"), filepath.Join(s.Project, "MEMORY.md"),
+		filepath.Join(s.User, "only-user.md"),
+	} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := s.Duplicates(); len(got) != 1 || !strings.HasPrefix(got[0], "terse.md ") {
+		t.Errorf("Duplicates() = %v", got)
 	}
 }
