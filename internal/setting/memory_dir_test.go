@@ -117,7 +117,7 @@ func TestSaveWritesNoEmptyBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"selfLearn"`, `"autoPilot"`, `"steers"`} {
+	for _, key := range []string{`"permissions"`, `"selfLearn"`, `"autoPilot"`, `"steers"`} {
 		if strings.Contains(string(got), key) {
 			t.Errorf("an empty %s block was written:\n%s", key, got)
 		}

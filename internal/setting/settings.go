@@ -57,7 +57,7 @@ const DefaultResumeWindowMessages = 20
 
 // Data represents the complete San configuration.
 type Data struct {
-	Permissions PermissionSettings `json:"permissions"`
+	Permissions PermissionSettings `json:"permissions,omitzero"`
 	Model       string             `json:"model,omitempty"`
 	// SubagentModel selects the default worker model; empty or "inherit" uses the parent.
 	SubagentModel  string            `json:"subagentModel,omitempty"`
