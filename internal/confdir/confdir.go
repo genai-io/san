@@ -36,8 +36,17 @@ func RepoRoot(cwd string) string {
 
 // MainRepoRoot is RepoRoot with a linked worktree (whose .git is a
 // "gitdir: <main>/.git/worktrees/<name>" file) mapped back to the main
-// checkout, so every worktree of a repository shares one key.
+// checkout, so every worktree of a repository shares one key. Symlinks are
+// resolved: git records the gitdir resolved, and one checkout must give one key.
 func MainRepoRoot(cwd string) string {
+	root := mainRepoRoot(cwd)
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		return real
+	}
+	return root
+}
+
+func mainRepoRoot(cwd string) string {
 	root := RepoRoot(cwd)
 	data, err := os.ReadFile(filepath.Join(root, ".git"))
 	if err != nil {

@@ -49,7 +49,7 @@ func IsWorkspaceTrusted(cwd string) bool {
 		return true
 	}
 	key := TrustKey(cwd)
-	if home, err := os.UserHomeDir(); err == nil && key == home {
+	if home, err := os.UserHomeDir(); err == nil && key == TrustKey(home) {
 		return true
 	}
 	trustMu.Lock()
