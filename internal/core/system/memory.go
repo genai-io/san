@@ -41,7 +41,22 @@ const (
 	autoMemoryByteCap = 25 * 1024
 )
 
-// AutoMemoryDir is the agent-written memory store for cwd's repository:
+// MemoryStores are the agent-written memory stores a session keeps: User holds
+// what is true in every repository, Project what is true only in this one.
+// The zero value means auto memory is off.
+type MemoryStores struct {
+	User, Project string
+}
+
+// Off reports whether auto memory is off.
+func (s MemoryStores) Off() bool { return s == MemoryStores{} }
+
+// UserMemoryDir is the default user store: ~/.san/memory/.
+func UserMemoryDir(homeDir string) string {
+	return filepath.Join(confdir.Dir(homeDir), "memory")
+}
+
+// AutoMemoryDir is the default project store for cwd's repository:
 // ~/.san/projects/<encoded-repo-root>/memory/. Subdirectories and linked
 // worktrees of one repository share it.
 func AutoMemoryDir(cwd string) string {
@@ -49,27 +64,21 @@ func AutoMemoryDir(cwd string) string {
 	if err != nil {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
-	return AutoMemoryDirIn(AutoMemoryRoot(homeDir), cwd)
+	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
 }
 
-// AutoMemoryRoot is the default parent of every repository's memory store.
-func AutoMemoryRoot(homeDir string) string {
-	return filepath.Join(confdir.Dir(homeDir), "projects")
-}
-
-// AutoMemoryDirIn is cwd's repository store under root, so repositories
-// sharing a root keep separate stores.
-func AutoMemoryDirIn(root, cwd string) string {
-	return filepath.Join(root, encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
-}
-
-// IsAutoMemoryPath reports whether path is a markdown file in some
-// repository's store under root, so the interface can show it as memory.
-func IsAutoMemoryPath(root, path string) bool {
-	if root == "" || !strings.HasSuffix(path, ".md") {
+// IsAutoMemoryPath reports whether path is a markdown file in the default user
+// store or some repository's default project store.
+func IsAutoMemoryPath(path string) bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || !strings.HasSuffix(path, ".md") {
 		return false
 	}
-	rel, err := filepath.Rel(root, filepath.Clean(path))
+	path = filepath.Clean(path)
+	if filepath.Dir(path) == UserMemoryDir(homeDir) {
+		return true
+	}
+	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), path)
 	if err != nil {
 		return false
 	}

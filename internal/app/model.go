@@ -32,6 +32,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
 )
@@ -146,9 +147,9 @@ type model struct {
 	// /evolve saves and external settings edits with one mechanism.
 	agentEvolveCaps evolve.Capabilities
 
-	// agentAutoMemoryDir is the autoMemoryDir() the live agent's prompt was
-	// built with; ensureAgentRuntime rebuilds when auto memory is toggled.
-	agentAutoMemoryDir string
+	// agentAutoMemory is the autoMemory() the live agent's prompt was built
+	// with; ensureAgentRuntime rebuilds when auto memory is toggled or moved.
+	agentAutoMemory system.MemoryStores
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no

@@ -132,12 +132,15 @@ framing, mirroring how the skills directory self-introduces.
 
 ## Auto memory
 
-Besides the user-authored AGENTS.md, the main agent keeps its own memory per
-repository at `~/.san/projects/<repo-root>/memory/` (subdirectories and linked
-worktrees share it). The layout follows Claude Code:
+Besides the user-authored AGENTS.md, the main agent keeps its own memory in
+two stores: the user store `~/.san/memory/` for what holds in every repository,
+and a project store per repository at `~/.san/projects/<repo-root>/memory/`
+(subdirectories and linked worktrees share it). The prompt tells the model which
+store each memory belongs in; the project store wins on conflict. Each store
+follows Claude Code's layout:
 
-- `MEMORY.md` is an index, one line per memory. Its first 200 lines / 25 KB
-  ride the `memory-auto` reminder, framed as context rather than user
+- `MEMORY.md` is an index, one line per memory. Each store's first 200 lines /
+  25 KB ride the `memory-auto` reminder, framed as context rather than user
   instructions. Index problems (near or over the cap, unindexed topic files,
   links to missing files) are appended so the agent repairs them, and are also
   returned on the tool result of every write to `MEMORY.md`.
@@ -163,10 +166,12 @@ On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
 the user or project settings; the project value wins, and
 `SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn.
-`autoMemoryDirectory` (absolute or `~/` path) moves the stores' root, still one
-store per repository under it (Claude Code shares one store); it is read only
-from `~/.san/settings.json` or an untracked `.san/settings.local.json`, never
-from committed project settings, since memory writes need no approval. Subagents don't load it.
+`autoMemoryDirectory` (absolute or `~/` path) moves the store of the file that
+sets it: `~/.san/settings.json` the user store, an untracked
+`.san/settings.local.json` the project store. Committed project settings never
+count, since memory writes need no approval. Claude Code instead uses one store,
+so a user-level value there merges every project's memory. Subagents don't load
+it.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,

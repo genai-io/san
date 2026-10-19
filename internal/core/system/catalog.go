@@ -152,19 +152,19 @@ func rulesSection(override string) core.Section {
 }
 
 // memorySection tells the main agent how to keep its auto memory in dir.
-func memorySection(dir string) core.Section {
+func memorySection(s MemoryStores) core.Section {
 	return core.Section{
 		Slot: core.SlotRules, Name: "memory", Source: core.Predefined,
-		Render: func() string { return wrap("memory", nil, fmt.Sprintf(cachedMemory, dir)) },
+		Render: func() string { return wrap("memory", nil, fmt.Sprintf(cachedMemory, s.User, s.Project)) },
 	}
 }
 
 // Options
 
-// WithAutoMemory turns on the auto-memory instructions for the store at dir.
-// Empty dir leaves them out (auto memory off).
-func WithAutoMemory(dir string) Option {
-	return func(cfg *buildConfig) { cfg.memoryDir = dir }
+// WithAutoMemory turns on the auto-memory instructions for the stores. The
+// zero value leaves them out (auto memory off).
+func WithAutoMemory(s MemoryStores) Option {
+	return func(cfg *buildConfig) { cfg.memory = s }
 }
 
 // WithPersona overrides any of the identity / behavior / rules parts at build

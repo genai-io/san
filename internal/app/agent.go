@@ -122,7 +122,7 @@ func (m *model) promptParams() agent.BuildParams {
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.selfLearnExtraTools(),
 
-		AutoMemoryDir: m.autoMemoryDir(),
+		AutoMemory: m.autoMemory(),
 	}
 }
 
@@ -237,14 +237,14 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 
 	params.ResultFilter = func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
 		// A memory write's result is small, so it never needs paging out.
-		if r := afterMemoryWrite(m.autoMemoryDir(), c); r != nil {
+		if r := afterMemoryWrite(m.autoMemory(), c); r != nil {
 			return r, nil
 		}
 		return m.filterOversizedResult(ctx, c)
 	}
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
 		var decision setting.PermissionDecision
-		if permitAutoMemoryWrite(m.autoMemoryDir(), name, args, m.services.Setting.DenyRule) {
+		if permitAutoMemoryWrite(m.autoMemory(), name, args, m.services.Setting.DenyRule) {
 			decision = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
 		} else {
 			decision = m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
@@ -532,7 +532,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		// are covered uniformly.
 		if m.selfLearnCapabilities() == m.agentEvolveCaps &&
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
-			m.autoMemoryDir() == m.agentAutoMemoryDir {
+			m.autoMemory() == m.agentAutoMemory {
 			return nil, nil
 		}
 		m.StopAgentRuntime()
@@ -556,7 +556,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemoryDir = m.autoMemoryDir()
+	m.agentAutoMemory = m.autoMemory()
 
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
 	// the live Agent + System for its fork. Builds nothing if every skill action is
@@ -646,11 +646,11 @@ func (m *model) wireReminderProviders() {
 	// change picks up the latest index. Kept as its own scope so agent-written
 	// entries never mix with the user-authored memory above.
 	m.services.Reminder.Register(reminder.ProviderMemoryAuto, func() string {
-		dir := m.autoMemoryDir()
-		if dir == "" {
+		s := m.autoMemory()
+		if s.Off() {
 			return ""
 		}
-		return agent.AutoMemoryReminder(dir)
+		return agent.AutoMemoryReminder(s)
 	})
 }
 

@@ -101,14 +101,17 @@ func (m *MemorySelector) loadItems() {
 			"Use /init local to create"),
 	}
 	if m.settings != nil {
-		m.items = append(m.items, autoMemoryItem(cwd, m.settings.AutoMemory()))
+		stores := setting.MemoryStoresFor(cwd)
+		on := m.settings.AutoMemory()
+		m.items = append(m.items,
+			autoMemoryItem("Auto memory · user", stores.User, on),
+			autoMemoryItem("Auto memory · project", stores.Project, on))
 	}
 }
 
-// autoMemoryItem describes the agent-written memory store. Enter opens its
+// autoMemoryItem describes one agent-written memory store. Enter opens its
 // MEMORY.md index; t toggles auto memory.
-func autoMemoryItem(cwd string, on bool) memoryItem {
-	dir := setting.AutoMemoryDir(cwd)
+func autoMemoryItem(label, dir string, on bool) memoryItem {
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	state := "off"
 	if on {
@@ -124,7 +127,7 @@ func autoMemoryItem(cwd string, on bool) memoryItem {
 		noun = "memory"
 	}
 	return memoryItem{
-		Label:       "Auto memory",
+		Label:       label,
 		Description: fmt.Sprintf("%s (%s) · %d %s", state, autoMemorySource(), count, noun),
 		Path:        index,
 		Exists:      on,
@@ -238,7 +241,7 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		m.toggleAutoMemory(setting.ScopeProject)
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
-	case "1", "2", "3", "4":
+	case "1", "2", "3", "4", "5":
 		idx := int(keyStr[0] - '1')
 		if idx < len(m.items) {
 			m.selectedIdx = idx
