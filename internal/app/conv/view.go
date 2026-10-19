@@ -30,6 +30,7 @@ type RenderContext struct {
 	StreamWaiting   bool
 	StreamMessageID string
 	BuildingTool    string
+	BuildingLabel   string
 	PendingCalls    []core.ToolCall
 	CurrentIdx      int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
@@ -258,7 +259,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		SpinnerView:          p.SpinnerView,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
-		ExecutingTool:        p.BuildingTool,
+		ExecutingLabel:       p.BuildingLabel,
 		ContentCommittedLen:  msg.ContentCommittedLen,
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,

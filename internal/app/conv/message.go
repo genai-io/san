@@ -192,7 +192,7 @@ type AssistantParams struct {
 	SpinnerView       string
 	MDRenderer        *MDRenderer
 	Width             int
-	ExecutingTool     string
+	ExecutingLabel    string // what the running tool is doing, in place of "Thinking..."
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
@@ -420,8 +420,8 @@ func formatAssistantContent(params AssistantParams) string {
 	showThinkingFiller := params.Thinking == "" ||
 		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
 	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
-		if params.ExecutingTool != "" {
-			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
+		if params.ExecutingLabel != "" {
+			return ThinkingStyle.Render(params.ExecutingLabel)
 		}
 		if !params.BulletEmitted {
 			return ThinkingStyle.Render("Thinking...")
@@ -467,6 +467,18 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 }
 
 // getToolExecutionDesc returns a human-readable description for a tool being executed.
+// executionLabel is what a running call is doing: memory calls read as
+// recalling or saving memory, the rest by their tool.
+func executionLabel(tc core.ToolCall) string {
+	if op, ok := parseMemoryOp(tc.Name, tc.Input); ok {
+		if op.verb == "Read" {
+			return "Recalling memory..."
+		}
+		return "Saving memory..."
+	}
+	return getToolExecutionDesc(tc.Name)
+}
+
 func getToolExecutionDesc(toolName string) string {
 	switch toolName {
 	case "Read":

@@ -12,6 +12,8 @@ type StreamState struct {
 	Active       bool
 	Waiting      bool // Submission accepted by the UI; the first inference has not started.
 	BuildingTool string
+	// BuildingLabel stands in for "Thinking..." while that tool runs.
+	BuildingLabel string
 	// ThinkingActive follows the latest text/thinking delta. Responses may
 	// return to reasoning after commentary in the same assistant message.
 	ThinkingActive bool
@@ -22,6 +24,7 @@ func (s *StreamState) Stop() {
 	s.Active = false
 	s.Waiting = false
 	s.BuildingTool = ""
+	s.BuildingLabel = ""
 	s.ThinkingActive = false
 }
 

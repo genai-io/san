@@ -112,7 +112,7 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
 // memoryFold keeps a message's memory calls out of the main flow. It returns
-// the calls to hide and one summary in their place — "⠋ Reading memories 1/2 ·
+// the calls to hide and one summary in their place — "⠋ Recalling memories 1/2 ·
 // a, b" while any runs, "Read 2 memories · a, b" once memories were read,
 // "" for index reads and finished writes (the turn-end card reports those).
 // Expanded calls and failed ones are left to render as themselves.
@@ -137,7 +137,10 @@ func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string,
 		}
 		hidden[tc.ID] = true
 		if !done && icon == "" {
-			icon = toolCallIcon(tc, params)
+			icon = params.SpinnerView // the thinking spinner, so it animates the same
+			if icon == "" {
+				icon = toolCallIcon(tc, params)
+			}
 		}
 		if op.subject == "" {
 			continue // an index read or edit is routine
@@ -162,9 +165,9 @@ func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string,
 	}
 	switch {
 	case reads > readsDone && reads > 1:
-		return hidden, fmt.Sprintf("%s Reading %s %d/%d%s", icon, noun, readsDone, reads, list), true
+		return hidden, fmt.Sprintf("%s Recalling %s %d/%d%s", icon, noun, readsDone, reads, list), true
 	case reads > readsDone:
-		return hidden, icon + " Reading memory" + list, true
+		return hidden, icon + " Recalling memory" + list, true
 	case saving:
 		return hidden, icon + " Saving memory" + list, true
 	case reads > 0:

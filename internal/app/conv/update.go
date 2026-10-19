@@ -216,6 +216,10 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 			m.AppendStream("", chunk.Block.Text)
 		}
 	}
+	// A finished call says what comes next, ahead of the stream's end.
+	if chunk.Type == ai.EventBlockEnd && chunk.Block.Type == ai.BlockToolCall && chunk.Block.ToolCall != nil {
+		m.Stream.BuildingLabel = executionLabel(*chunk.Block.ToolCall)
+	}
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
@@ -254,18 +258,18 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 		m.Tool.Track(calls)
 	}
 	m.Stream.MessageID = ""
-	m.Stream.BuildingTool = ""
+	m.Stream.BuildingTool, m.Stream.BuildingLabel = "", ""
 	return nil
 }
 
 func applyPreTool(m *Model, tc core.ToolCall) {
-	m.Stream.BuildingTool = tc.Name
+	m.Stream.BuildingTool, m.Stream.BuildingLabel = tc.Name, executionLabel(tc)
 	m.Tool.MarkCurrent(tc.ID)
 	m.Tool.MarkStarted(tc.ID)
 }
 
 func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
-	m.Stream.BuildingTool = ""
+	m.Stream.BuildingTool, m.Stream.BuildingLabel = "", ""
 	if tool.IsAgentToolName(tr.ToolName) {
 		delete(m.TaskActivity, m.Tool.IndexOf(tr.ToolCallID))
 	}
