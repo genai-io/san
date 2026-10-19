@@ -18,7 +18,8 @@ session and need to surface mid-conversation without busting the prompt
 cache — currently:
 
 - skills directory (re-emit when a skill is enabled / disabled / activated)
-- memory user / memory project (re-emit on memory file change)
+- memory user / memory project (AGENTS.md; re-emit on memory file change)
+- memory auto (both auto-memory stores' `MEMORY.md` indexes, read at render time)
 - one-time notices (queued from hooks or commands)
 
 See [`concepts/harness-channels.md`](../../concepts/harness-channels.md) for
@@ -58,6 +59,7 @@ const (
     ProviderSkillsDirectory = "skills-directory"
     ProviderMemoryUser      = "memory-user"
     ProviderMemoryProject   = "memory-project"
+    ProviderMemoryAuto      = "memory-auto"
 )
 
 // Wrap a body in the <system-reminder> tag with optional source attribution.
@@ -113,7 +115,7 @@ A handful of nits:
   blocks from user content before the summarizer runs, then the harness calls
   `DiscardPendingNotices` and resets `systemRemindersSent` so fresh provider
   state reattaches to the next user turn. All providers (skills, memory-user,
-  memory-project) and one-time notices share this lifecycle. On PostCompact
+  memory-project, memory-auto) and one-time notices share this lifecycle. On PostCompact
   the harness re-reads memory from disk before re-emitting, so an edited
   memory file re-injects its latest content. See
   [`concepts/compaction.md`](../../concepts/compaction.md).

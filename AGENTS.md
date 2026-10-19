@@ -34,7 +34,7 @@ carry its own `AGENTS.md`, and the file nearest the working directory wins.
 - `internal/command`, `internal/skill`, `internal/plugin`, `internal/mcp`, `internal/hook`: extension surfaces.
 - `internal/setting`, `internal/persona`: configuration and persona overlays.
 - `internal/log`, `internal/secret`, `internal/filecache`, `internal/markdown`, `internal/confdir`: infrastructure helpers.
-- `internal/selflearn`: background memory and skill review loop.
+- `internal/selflearn`: background skill review loop (auto memory is the main agent's own).
 - `docs`: durable explanations, design decisions, operations, and references.
 
 ## Rules

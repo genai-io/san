@@ -158,7 +158,7 @@ follows Claude Code's layout:
 
   Only the model reads `type`; the harness treats all four alike.
 - The agent writes during the turn with Write/Edit; the `memory` rules section
-  tells it what to save and where. Writes to `*.md` inside the store need no
+  tells it what to save and in which store. Writes to `*.md` inside either store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
   still apply.
 
@@ -170,8 +170,8 @@ the user or project settings; the project value wins, and
 sets it: `~/.san/settings.json` the user store, an untracked
 `.san/settings.local.json` the project store. Committed project settings never
 count, since memory writes need no approval. Claude Code instead uses one store,
-so a user-level value there merges every project's memory. Subagents don't load
-it.
+so a user-level value there merges every project's memory. `/memory` lists each
+store on its own row. Subagents don't load either store.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,
