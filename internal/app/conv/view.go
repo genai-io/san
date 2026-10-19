@@ -190,7 +190,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	// above still separates it from the turn before.
 	autopilotDriven := msg.Role == core.ChatUser && msg.ToolResult == nil && msg.AutopilotNote != ""
 	if p.memoryStep(msg, idx) {
-		return p.memoryStepSpinner(idx)
+		return p.memoryStepView(msg, idx)
 	}
 
 	if msg.ToolResult == nil {

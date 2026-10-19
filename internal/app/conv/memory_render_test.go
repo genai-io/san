@@ -130,10 +130,9 @@ func TestTurnMemory(t *testing.T) {
 	}
 }
 
-// A step that only keeps memory draws nothing, its thinking included — only a
-// spinner row while it is the live tail; one that also answers, or whose
-// memory call failed, draws as usual.
-func TestMemoryStepDrawsNothing(t *testing.T) {
+// A step that only keeps memory draws its thinking but not its calls, live and
+// settled; one that also answers, or whose memory call failed, draws as usual.
+func TestMemoryStepHidesCalls(t *testing.T) {
 	mem := useMemoryStore(t)
 	read := core.ToolCall{ID: "r1", Name: "Read", Input: `{"file_path":"` + filepath.Join(mem, "MEMORY.md") + `"}`}
 	render := func(step core.ChatMessage, failed bool) string {
@@ -145,18 +144,21 @@ func TestMemoryStepDrawsNothing(t *testing.T) {
 		p := RenderContext{Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
 		return xansi.Strip(RenderMessageAt(p, 1, false))
 	}
-	quiet := core.ChatMessage{Role: core.ChatAssistant, Thinking: "**Checking existing memories**", ToolCalls: []core.ToolCall{read}}
-	if got := render(quiet, false); got != "" {
-		t.Errorf("memory-only step drew %q", got)
+	quiet := core.ChatMessage{Role: core.ChatAssistant, Thinking: "Checking existing memories", ToolCalls: []core.ToolCall{read}}
+	if got := render(quiet, false); !strings.Contains(got, "Checking existing memories") || strings.Contains(got, "Read") {
+		t.Errorf("memory-only step = %q, want its thinking without the call", got)
 	}
-	live := []core.ChatMessage{{Role: core.ChatUser, Content: "remember tabs"}, quiet}
-	p := RenderContext{Width: 80, StreamActive: true, SpinnerView: "*", Messages: live, InlinedResults: PrecomputeInlinedResults(live, 0)}
-	if got := RenderMessageAt(p, 1, true); got != "" {
-		t.Errorf("committed live memory step = %q, want nothing in scrollback", got)
+	if got := render(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{read}}, false); got != "" {
+		t.Errorf("memory-only step without thinking drew %q", got)
 	}
-	p.Interactive = true
-	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, true))); got != "* Thinking..." {
+	live := []core.ChatMessage{{Role: core.ChatUser, Content: "remember tabs"}, {Role: core.ChatAssistant, ToolCalls: []core.ToolCall{read}}}
+	p := RenderContext{Width: 80, Interactive: true, StreamActive: true, SpinnerView: "*", Messages: live, InlinedResults: PrecomputeInlinedResults(live, 0)}
+	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, false))); got != "* Thinking..." {
 		t.Errorf("live memory step = %q, want its spinner row", got)
+	}
+	p.Interactive = false // the scrollback commit
+	if got := RenderMessageAt(p, 1, true); got != "" {
+		t.Errorf("committed memory step without thinking = %q, want nothing", got)
 	}
 	if got := render(quiet, true); !strings.Contains(got, "Read(") {
 		t.Errorf("a failed memory step should show, got %q", got)

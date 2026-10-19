@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	xansi "github.com/charmbracelet/x/ansi"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/reminder"
@@ -67,8 +69,8 @@ func parseMemoryRemove(input string) (memoryOp, bool) {
 }
 
 // memoryStep reports whether an assistant step only kept memory: no text, and
-// every call a memory call that didn't fail. Its thinking narrates that
-// bookkeeping, so the step draws nothing; the turn's memory line reports it.
+// every call a memory call that didn't fail. Its calls don't draw; the turn's
+// memory line reports them.
 func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	if msg.Role != core.ChatAssistant || strings.TrimSpace(msg.Content) != "" || len(msg.ToolCalls) == 0 || msg.ToolCallsExpanded {
 		return false
@@ -82,23 +84,22 @@ func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	return true
 }
 
-// memoryStepSpinner keeps the live row of a memory step that is still the
-// turn's tail, so the turn never looks stalled. It says Thinking, as the next
-// step will: a memory call takes milliseconds, and a label of its own would
-// only flash. Scrollback gets nothing.
-func (p RenderContext) memoryStepSpinner(idx int) string {
-	if !p.Interactive || !p.StreamActive {
+// memoryStepView draws a memory step without its calls. Its thinking stays, in
+// scrollback too: it was on screen before the calls arrived, and taking it back
+// would flash. While the step is the live tail, its spinner keeps the turn
+// looking alive.
+func (p RenderContext) memoryStepView(msg core.ChatMessage, idx int) string {
+	tail := p.Interactive && p.StreamActive
+	for _, later := range p.Messages[idx+1:] {
+		tail = tail && later.Role == core.ChatUser && later.ToolResult != nil
+	}
+	msg.ToolCalls = nil
+	p.StreamActive = tail // settled, it has no spinner or filler to draw
+	body := strings.TrimRight(renderAssistantWithTools(p, msg, idx, tail), "\n")
+	if strings.TrimSpace(xansi.Strip(body)) == "" {
 		return ""
 	}
-	for _, later := range p.Messages[idx+1:] {
-		if later.Role != core.ChatUser || later.ToolResult == nil {
-			return ""
-		}
-	}
-	return "\n" + RenderAssistantMessage(AssistantParams{
-		StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
-		DockedModalActive: p.DockedModalActive, Width: p.Width,
-	})
+	return "\n" + body + "\n"
 }
 
 // MemoryEntry is one memory a turn touched.
