@@ -113,13 +113,17 @@ chunking, resize — keeps all of them or it is wrong.
 
    A narrowing and shortening resize can also push the top of the old live
    frame into native history before San receives `WindowSizeMsg`. Redrawing
-   cannot erase those rows without clearing real conversation history. Pending
-   tool-call batches therefore dock near the composer, putting spare rows
-   above their status, and long running shell commands omit their command body
-   from the compact preview. Expansion and completed results retain the full
-   command. Arbitrarily small viewports can still force live content into
-   history. vt10x does not model xterm resize reflow: validate such changes
-   against xterm as well as the existing native-history gate.
+   cannot erase those rows without clearing real conversation history. The
+   live content always follows the conversation, empty rows below it:
+   moving it right above the input while a tool batch ran kept running status
+   out of reach of such a resize, but shifted a short conversation down and
+   back on every call — a flash on each fast one. A running call's status
+   reaching history on a mid-call resize is the accepted cost. Long running
+   shell commands omit their command body from the compact preview; expansion
+   and completed results retain the full command. Arbitrarily small viewports
+   can still force live content into history. vt10x does not model xterm
+   resize reflow: validate such changes against xterm as well as the existing
+   native-history gate.
 
 Terminal behaviour that is *not* a San bug, so nobody "fixes" it again:
 tmux with its default `scroll-on-clear on` treats an erase-below issued at
