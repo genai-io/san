@@ -151,12 +151,8 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 			content = workers
 		}
 	}
-	padding := strings.Repeat("\n", available-1-strings.Count(content, "\n"))
-	if len(params.PendingCalls) > 0 {
-		// A shrinking terminal should shed empty rows before transient tool status.
-		return padding + content
-	}
-	return content + padding
+	// Empty rows go below, so the live content stays put under the conversation.
+	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.

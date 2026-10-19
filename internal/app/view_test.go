@@ -213,7 +213,9 @@ func TestComposerStaysAtBottomAcrossLiveUpdates(t *testing.T) {
 	}
 }
 
-func TestPendingToolCallsStayNearComposer(t *testing.T) {
+// A running tool's status follows the conversation, empty rows below it: the
+// layout has one rule, so tool state never moves the screen.
+func TestPendingToolCallsFollowTheConversation(t *testing.T) {
 	for _, height := range []int{24, 56} {
 		m := fixedComposerModel(100, height)
 		call := core.ToolCall{ID: "transfer", Name: "Bash", Input: `{"command":"monitor ` + strings.Repeat("transfer ", 50) + `","description":"RUNNING-TRANSFER"}`}
@@ -227,9 +229,8 @@ func TestPendingToolCallsStayNearComposer(t *testing.T) {
 		if start < 0 {
 			t.Fatalf("live frame lost its tool status:\n%s", plain)
 		}
-		row := strings.Count(plain[:start], "\n")
-		if row < height-8 || row >= cursor.Position.Y {
-			t.Fatalf("tool row %d should stay near composer row %d:\n%s", row, cursor.Position.Y, plain)
+		if row := strings.Count(plain[:start], "\n"); row > 4 {
+			t.Fatalf("tool row %d should follow the conversation at the top:\n%s", row, plain)
 		}
 		if cursor.Position.Y != height-3 || rowCount(frame) != height {
 			t.Fatalf("pending call displaced composer: cursor=%#v, rows=%d", cursor, rowCount(frame))
