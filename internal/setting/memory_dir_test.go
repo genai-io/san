@@ -26,25 +26,41 @@ func TestAutoMemoryDirOnlyFromUserSettings(t *testing.T) {
 		t.Errorf("project settings moved memory to %s", got)
 	}
 
-	writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "~/notes/memory"}`)
-	if got, want := AutoMemoryDir(repo), filepath.Join(home, "notes", "memory"); got != want {
-		t.Errorf("user setting: got %s, want %s", got, want)
+	writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "~/notes"}`)
+	userDir := system.AutoMemoryDirIn(filepath.Join(home, "notes"), repo)
+	if got := AutoMemoryDir(repo); got != userDir {
+		t.Errorf("user setting: got %s, want %s", got, userDir)
+	}
+	if !IsAutoMemoryPath(filepath.Join(userDir, "MEMORY.md")) {
+		t.Error("a file under the user's root is not seen as memory")
 	}
 
 	local := filepath.Join(repo, ".san", "settings.local.json")
 	writeFile(t, local, `{"autoMemoryDirectory": "/abs/local"}`)
-	if got := AutoMemoryDir(repo); got != "/abs/local" {
+	if got := AutoMemoryDir(repo); got != system.AutoMemoryDirIn("/abs/local", repo) {
 		t.Errorf("untracked local setting: got %s", got)
 	}
 	if err := exec.Command("git", "-C", repo, "add", "-f", local).Run(); err != nil {
 		t.Fatal(err)
 	}
-	if got := AutoMemoryDir(repo); got != filepath.Join(home, "notes", "memory") {
+	if got := AutoMemoryDir(repo); got != userDir {
 		t.Errorf("a committed settings.local.json must not count: got %s", got)
 	}
 
-	writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "relative/dir"}`)
-	if got := AutoMemoryDir(repo); got != def {
-		t.Errorf("relative path should fall back to the default, got %s", got)
+	for _, bad := range []string{"relative/dir", "/", "~/../etc"} {
+		writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "`+bad+`"}`)
+		if got := AutoMemoryDir(repo); got != def {
+			t.Errorf("%q should fall back to the default, got %s", bad, got)
+		}
+	}
+}
+
+// One root holds a separate store per repository.
+func TestAutoMemoryDirSeparatesRepositories(t *testing.T) {
+	home := trustHome(t)
+	writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "~/notes"}`)
+	a, b := t.TempDir(), t.TempDir()
+	if AutoMemoryDir(a) == AutoMemoryDir(b) {
+		t.Errorf("two repositories share %s", AutoMemoryDir(a))
 	}
 }

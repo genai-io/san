@@ -49,17 +49,27 @@ func AutoMemoryDir(cwd string) string {
 	if err != nil {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
-	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
+	return AutoMemoryDirIn(AutoMemoryRoot(homeDir), cwd)
+}
+
+// AutoMemoryRoot is the default parent of every repository's memory store.
+func AutoMemoryRoot(homeDir string) string {
+	return filepath.Join(confdir.Dir(homeDir), "projects")
+}
+
+// AutoMemoryDirIn is cwd's repository store under root, so repositories
+// sharing a root keep separate stores.
+func AutoMemoryDirIn(root, cwd string) string {
+	return filepath.Join(root, encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
 }
 
 // IsAutoMemoryPath reports whether path is a markdown file in some
-// repository's auto-memory store, so the interface can show it as memory.
-func IsAutoMemoryPath(path string) bool {
-	homeDir, err := os.UserHomeDir()
-	if err != nil || !strings.HasSuffix(path, ".md") {
+// repository's store under root, so the interface can show it as memory.
+func IsAutoMemoryPath(root, path string) bool {
+	if root == "" || !strings.HasSuffix(path, ".md") {
 		return false
 	}
-	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), filepath.Clean(path))
+	rel, err := filepath.Rel(root, filepath.Clean(path))
 	if err != nil {
 		return false
 	}

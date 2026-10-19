@@ -163,7 +163,8 @@ On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
 the user or project settings; the project value wins, and
 `SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn.
-`autoMemoryDirectory` (absolute or `~/` path) moves the store; it is read only
+`autoMemoryDirectory` (absolute or `~/` path) moves the stores' root, still one
+store per repository under it (Claude Code shares one store); it is read only
 from `~/.san/settings.json` or an untracked `.san/settings.local.json`, never
 from committed project settings, since memory writes need no approval. Subagents don't load it.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.

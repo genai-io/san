@@ -9,6 +9,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -29,7 +30,7 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 		FilePath string `json:"file_path"`
 		Content  string `json:"content"`
 	}
-	if json.Unmarshal([]byte(input), &args) != nil || !system.IsAutoMemoryPath(args.FilePath) {
+	if json.Unmarshal([]byte(input), &args) != nil || !setting.IsAutoMemoryPath(args.FilePath) {
 		return memoryOp{}, false
 	}
 	op := memoryOp{file: filepath.Base(args.FilePath)}
