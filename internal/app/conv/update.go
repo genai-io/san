@@ -216,10 +216,6 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 			m.AppendStream("", chunk.Block.Text)
 		}
 	}
-	// A finished call says what comes next, ahead of the stream's end.
-	if chunk.Type == ai.EventBlockEnd && chunk.Block.Type == ai.BlockToolCall && chunk.Block.ToolCall != nil {
-		m.Stream.BuildingLabel = executionLabel(*chunk.Block.ToolCall)
-	}
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {

@@ -112,17 +112,16 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
 // memoryFold keeps a message's memory calls out of the main flow. It returns
-// the calls to hide and one summary in their place — "⠋ Recalling memories 1/2 ·
-// a, b" while any runs, "Read 2 memories · a, b" once memories were read,
-// "" for index reads and finished writes (the turn-end card reports those).
+// the calls to hide and, once they finish, one summary in their place: "Read 2
+// memories · a, b" when memories were read, "" for index reads and writes
+// (the turn-end card reports writes). While they run, Thinking stands in.
 // Expanded calls and failed ones are left to render as themselves.
-func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string, live bool) {
+func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string) {
 	if params.ToolCallsExpanded {
-		return nil, "", false
+		return nil, ""
 	}
-	var reads, readsDone int
 	var names []string
-	icon, saving := "", false
+	running := false
 	for _, tc := range params.ToolCalls {
 		op, ok := parseMemoryOp(tc.Name, tc.Input)
 		if !ok {
@@ -136,56 +135,26 @@ func memoryFold(params ToolCallsParams) (hidden map[string]bool, summary string,
 			hidden = map[string]bool{}
 		}
 		hidden[tc.ID] = true
-		if !done && icon == "" {
-			icon = params.SpinnerView // the thinking spinner, so it animates the same
-			if icon == "" {
-				icon = toolCallIcon(tc, params)
-			}
+		running = running || !done
+		if op.verb == "Read" && op.subject != "" { // an index read is routine
+			names = append(names, strings.TrimSuffix(op.file, ".md"))
 		}
-		if op.subject == "" {
-			continue // an index read or edit is routine
-		}
-		names = append(names, strings.TrimSuffix(op.file, ".md"))
-		if op.verb != "Read" {
-			saving = saving || !done
-			continue
-		}
-		reads++
-		if done {
-			readsDone++
-		}
-	}
-	list := ""
-	if len(names) > 0 {
-		list = " · " + strings.Join(names, ", ")
-	}
-	noun := "memory"
-	if reads > 1 {
-		noun = "memories"
 	}
 	switch {
-	case reads > readsDone && reads > 1:
-		return hidden, fmt.Sprintf("%s Recalling %s %d/%d%s", icon, noun, readsDone, reads, list), true
-	case reads > readsDone:
-		return hidden, icon + " Recalling memory" + list, true
-	case saving:
-		return hidden, icon + " Saving memory" + list, true
-	case reads > 0:
-		return hidden, fmt.Sprintf("Read %d %s%s", reads, noun, list), false
+	case running || len(names) == 0:
+		return hidden, ""
+	case len(names) == 1:
+		return hidden, "Read 1 memory · " + names[0]
 	}
-	return hidden, "", false
+	return hidden, fmt.Sprintf("Read %d memories · %s", len(names), strings.Join(names, ", "))
 }
 
-// memoryRow draws the summary on its own thinking-style line; a live one
-// already leads with its spinner.
-func memoryRow(summary string, live bool, width int) string {
+// memoryRow draws the summary on its own thinking-style line.
+func memoryRow(summary string, width int) string {
 	if summary == "" {
 		return ""
 	}
 	gutter := thinkingGutter(true)
-	if live {
-		gutter = ""
-	}
 	if width > 0 {
 		summary = kit.TruncateText(summary, max(1, width-lipgloss.Width(gutter)))
 	}

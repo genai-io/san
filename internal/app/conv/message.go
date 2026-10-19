@@ -467,14 +467,11 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 }
 
 // getToolExecutionDesc returns a human-readable description for a tool being executed.
-// executionLabel is what a running call is doing: memory calls read as
-// recalling or saving memory, the rest by their tool.
+// executionLabel is what a running call is doing; a memory call is part of
+// the thinking, so it leaves "Thinking..." in place.
 func executionLabel(tc core.ToolCall) string {
-	if op, ok := parseMemoryOp(tc.Name, tc.Input); ok {
-		if op.verb == "Read" {
-			return "Recalling memory..."
-		}
-		return "Saving memory..."
+	if _, ok := parseMemoryOp(tc.Name, tc.Input); ok {
+		return ""
 	}
 	return getToolExecutionDesc(tc.Name)
 }
@@ -642,10 +639,10 @@ type ToolResultData struct {
 func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
-	memoryHidden, summary, live := memoryFold(params)
+	memoryHidden, summary := memoryFold(params)
 	row := ""
 	if !params.MemoryOnThinking {
-		row = memoryRow(summary, live, params.Width)
+		row = memoryRow(summary, params.Width)
 	}
 	for _, tc := range params.ToolCalls {
 		if memoryHidden[tc.ID] {
