@@ -628,9 +628,9 @@ func handleMemoryList(cwd string, settings *setting.Settings) (string, error) {
 	sb.WriteString("╰────────────────────────────────────────────────────╯\n")
 
 	if state.totalFiles > 0 {
-		fmt.Fprintf(&sb, "  Total: %d file(s) loaded (%s)\n", state.totalFiles, system.FormatFileSize(state.totalSize))
+		fmt.Fprintf(&sb, "  Instructions: %d file(s) loaded (%s)\n", state.totalFiles, system.FormatFileSize(state.totalSize))
 	} else {
-		sb.WriteString("  No memory files loaded. Create with /init\n")
+		sb.WriteString("  No instruction files loaded. Create with /init\n")
 	}
 
 	sb.WriteString("\n  Tip: Use @path/to/file.md in memory files to import other files.\n")
