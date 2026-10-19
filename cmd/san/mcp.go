@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -170,8 +169,7 @@ var mcpEditCmd = &cobra.Command{
 			return err
 		}
 
-		editor := kit.GetEditor()
-		editorCmd := exec.Command(editor, info.TempFile)
+		editorCmd := kit.EditorCommand(info.TempFile)
 		editorCmd.Stdin = os.Stdin
 		editorCmd.Stdout = os.Stdout
 		editorCmd.Stderr = os.Stderr
