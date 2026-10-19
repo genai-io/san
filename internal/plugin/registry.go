@@ -2,9 +2,7 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,19 +38,17 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 	r.cwd = cwd
 	r.plugins = make(map[string]*Plugin)
 
-	// An untrusted folder's plugins, and its say over which plugins run, wait
-	// for trust: a plugin carries hooks and MCP servers.
-	trusted := setting.IsWorkspaceTrusted(cwd)
+	// An untrusted folder's plugins wait for trust: a plugin carries hooks and
+	// MCP servers.
 	scopes := []Scope{ScopeUser}
-	if trusted {
+	if setting.IsWorkspaceTrusted(cwd) {
 		scopes = append(scopes, ScopeProject, ScopeLocal)
 	}
 
-	// Load enabled plugins from settings
-	enabledPlugins, err := r.loadEnabledPlugins(cwd, trusted)
-	if err != nil {
-		// Non-fatal error, continue with empty enabled list
-		enabledPlugins = make(map[string]bool)
+	// Settings apply the same trust rules to enabledPlugins.
+	enabledPlugins := map[string]bool{}
+	if s, err := setting.LoadForCwd(cwd); err == nil {
+		enabledPlugins = s.EnabledPlugins
 	}
 
 	// Load plugins from each scope in deterministic precedence order.
@@ -107,43 +103,6 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 
 	r.loaded = true
 	return nil
-}
-
-// loadEnabledPlugins loads enabled plugin settings from all config sources.
-func (r *Registry) loadEnabledPlugins(cwd string, trusted bool) (map[string]bool, error) {
-	result := make(map[string]bool)
-	homeDir, _ := os.UserHomeDir()
-
-	// Load from each settings file in priority order
-	settingsFiles := []string{
-		filepath.Join(homeDir, ".claude", "settings.json"),
-		filepath.Join(confdir.Dir(homeDir), "settings.json"),
-	}
-	if trusted {
-		settingsFiles = append(settingsFiles,
-			filepath.Join(cwd, ".claude", "settings.json"),
-			filepath.Join(confdir.Dir(cwd), "settings.json"),
-			filepath.Join(cwd, ".claude", "settings.local.json"),
-			filepath.Join(confdir.Dir(cwd), "settings.local.json"),
-			filepath.Join(confdir.LocalDir(cwd), "settings.local.json"),
-		)
-	}
-
-	for _, f := range settingsFiles {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		var settings struct {
-			EnabledPlugins map[string]bool `json:"enabledPlugins"`
-		}
-		if err := json.Unmarshal(data, &settings); err != nil {
-			continue
-		}
-		maps.Copy(result, settings.EnabledPlugins)
-	}
-
-	return result, nil
 }
 
 // snapshotLocked copies a plugin for a caller to read outside the lock.

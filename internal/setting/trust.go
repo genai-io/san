@@ -15,15 +15,9 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
-// Workspace trust. A folder's own configuration can run commands (hooks, MCP
-// servers, plugins) or widen what the agent may do (allow rules, the default
-// mode). That configuration arrives with whatever repository was cloned, so it
-// applies only once the user has trusted the folder. Untrusted, project
-// settings keep only their deny and ask rules, which can only restrict.
-//
-// Trust is keyed on the repository's main checkout, so trusting a repository
-// covers all of its worktrees. It does not extend to repositories nested in a
-// trusted folder, and a folder outside any repository is trusted on its own.
+// Workspace trust: a folder's own configuration (hooks, MCP servers, plugins,
+// allow rules) applies only once trusted; untrusted, only deny/ask rules apply.
+// Trust is keyed on the repository's main checkout, covering its worktrees.
 
 // trustEnv set to 1 trusts the working directory for this run only, for CI
 // and scripts that cannot answer the prompt.
@@ -76,12 +70,8 @@ func TrustWorkspace(cwd string) error {
 		f.Trusted = map[string]string{}
 	}
 	f.Trusted[key] = time.Now().UTC().Format(time.RFC3339)
-	path := trustPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	invalidateLoaded() // the project's settings now apply
-	return atomicfile.WriteJSON(path, f, 0o600)
+	return atomicfile.WriteJSON(trustPath(), f, 0o600)
 }
 
 // TrustWorkspaceForSession trusts cwd's folder until San exits. Used when the
@@ -104,7 +94,7 @@ func UntrackedInRepo(path string) bool {
 		return false
 	}
 	root := confdir.RepoRoot(filepath.Dir(abs))
-	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+	if !IsGitRepo(root) {
 		return false
 	}
 	err = exec.Command("git", "-C", root, "ls-files", "--error-unmatch", "--", abs).Run()
@@ -118,11 +108,8 @@ func UntrackedInRepo(path string) bool {
 func ProjectSettingsFindings(cwd string) []string {
 	var out []string
 	for _, src := range NewLoaderForCwd(cwd).projectSettingsFiles() {
-		if src.local && UntrackedInRepo(src.path) {
-			continue
-		}
 		var d Data
-		if atomicfile.ReadJSON(src.path, &d) != nil {
+		if atomicfile.ReadJSON(src.path, &d) != nil || src.local && UntrackedInRepo(src.path) {
 			continue
 		}
 		file, _ := filepath.Rel(cwd, src.path)

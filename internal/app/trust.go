@@ -23,16 +23,24 @@ func workspaceTrustFindings(cwd string) []string {
 	return append(findings, plugin.ProjectPluginFindings(cwd)...)
 }
 
-// resolveWorkspaceTrust asks before cwd's configuration applies. A folder
-// with nothing to review is trusted for this run without asking. It reports
-// whether the user quit instead of answering.
-func resolveWorkspaceTrust(cwd string) (quit bool, err error) {
+// pendingTrustFindings returns what waits for cwd's trust, or nil when cwd is
+// trusted. A folder with nothing to review is trusted for this run.
+func pendingTrustFindings(cwd string) []string {
 	if setting.IsWorkspaceTrusted(cwd) {
-		return false, nil
+		return nil
 	}
 	findings := workspaceTrustFindings(cwd)
 	if len(findings) == 0 {
 		setting.TrustWorkspaceForSession(cwd)
+	}
+	return findings
+}
+
+// resolveWorkspaceTrust asks before cwd's configuration applies. It reports
+// whether the user quit instead of answering.
+func resolveWorkspaceTrust(cwd string) (quit bool, err error) {
+	findings := pendingTrustFindings(cwd)
+	if len(findings) == 0 {
 		return false, nil
 	}
 	final, err := tea.NewProgram(trustPrompt{folder: setting.TrustKey(cwd), findings: findings}).Run()
@@ -51,12 +59,8 @@ func resolveWorkspaceTrust(cwd string) (quit bool, err error) {
 // warnUntrustedWorkspace is the headless form: no prompt, so an untrusted
 // folder's configuration stays off and stderr says what was skipped.
 func warnUntrustedWorkspace(cwd string) {
-	if setting.IsWorkspaceTrusted(cwd) {
-		return
-	}
-	findings := workspaceTrustFindings(cwd)
+	findings := pendingTrustFindings(cwd)
 	if len(findings) == 0 {
-		setting.TrustWorkspaceForSession(cwd)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "san: %s is not trusted, so its configuration was not applied:\n  - %s\n"+
@@ -67,12 +71,8 @@ func warnUntrustedWorkspace(cwd string) {
 // noteUntrustedWorkspace covers a mid-session move into another folder: its
 // configuration stays off, and the chat says so rather than prompting.
 func (m *model) noteUntrustedWorkspace(cwd string) {
-	if setting.IsWorkspaceTrusted(cwd) {
-		return
-	}
-	findings := workspaceTrustFindings(cwd)
+	findings := pendingTrustFindings(cwd)
 	if len(findings) == 0 {
-		setting.TrustWorkspaceForSession(cwd)
 		return
 	}
 	m.conv.AddNotice(fmt.Sprintf("%s is not trusted, so its configuration is off:\n- %s\nRun /trust to turn it on.",

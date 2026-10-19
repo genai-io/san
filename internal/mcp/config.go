@@ -56,35 +56,42 @@ func NewConfigLoaderForTest(baseDir string) *ConfigLoader {
 //  3. ./.san/mcp.local.json (local scope; in a worktree, then the main checkout's)
 func (l *ConfigLoader) LoadAll() (map[string]ServerConfig, error) {
 	servers := make(map[string]ServerConfig)
-
-	// Load in priority order (later overrides earlier)
-	type source struct {
-		path  string
-		scope Scope
+	for _, src := range l.sources() {
+		configs, err := l.loadFile(src.path)
+		if err != nil || l.untrusted && src.needsTrust() {
+			continue
+		}
+		for name, config := range configs {
+			config.Name = name
+			config.Scope = src.scope
+			servers[name] = config
+		}
 	}
-	sources := []source{
+	return servers, nil
+}
+
+type configSource struct {
+	path  string
+	scope Scope
+}
+
+// needsTrust reports whether the file is the folder's own rather than the
+// user's: an untracked mcp.local.json is the user's.
+func (s configSource) needsTrust() bool {
+	return s.scope != ScopeUser && !(s.scope == ScopeLocal && setting.UntrackedInRepo(s.path))
+}
+
+// sources lists the MCP files in priority order, lowest first.
+func (l *ConfigLoader) sources() []configSource {
+	sources := []configSource{
 		{filepath.Join(l.userDir, "mcp.json"), ScopeUser},
 		{filepath.Join(l.projectDir, "mcp.json"), ScopeProject},
 		{filepath.Join(l.projectDir, "mcp.local.json"), ScopeLocal},
 	}
 	if l.localDir != l.projectDir { // a worktree: the main checkout's, which wins
-		sources = append(sources, source{filepath.Join(l.localDir, "mcp.local.json"), ScopeLocal})
+		sources = append(sources, configSource{filepath.Join(l.localDir, "mcp.local.json"), ScopeLocal})
 	}
-
-	for _, src := range sources {
-		if l.untrusted && src.scope != ScopeUser && !(src.scope == ScopeLocal && setting.UntrackedInRepo(src.path)) {
-			continue
-		}
-		if configs, err := l.loadFile(src.path); err == nil {
-			for name, config := range configs {
-				config.Name = name
-				config.Scope = src.scope
-				servers[name] = config
-			}
-		}
-	}
-
-	return servers, nil
+	return sources
 }
 
 // loadFile loads MCP configuration from a single file
@@ -254,18 +261,14 @@ func scopeConfigSource(scope Scope) string {
 // reach, one line each with its file, for the workspace trust prompt.
 // An untracked mcp.local.json is the user's own and is left out.
 func ProjectServerFindings(cwd string) []string {
-	l := &ConfigLoader{projectDir: confdir.Dir(cwd), localDir: confdir.Dir(cwd)}
+	l := NewConfigLoader(cwd)
 	var out []string
-	for _, scope := range []Scope{ScopeProject, ScopeLocal} {
-		path := l.FilePath(scope)
-		if scope == ScopeLocal && setting.UntrackedInRepo(path) {
+	for _, src := range l.sources() {
+		servers, err := l.loadFile(src.path)
+		if err != nil || !src.needsTrust() {
 			continue
 		}
-		servers, err := l.loadFile(path)
-		if err != nil {
-			continue
-		}
-		file, _ := filepath.Rel(cwd, path)
+		file, _ := filepath.Rel(cwd, src.path)
 		for _, name := range slices.Sorted(maps.Keys(servers)) {
 			srv := servers[name]
 			target := srv.URL
