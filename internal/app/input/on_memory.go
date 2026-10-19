@@ -565,7 +565,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 
 	switch subCmd {
 	case "list":
-		result, err := handleMemoryList(cwd)
+		result, err := handleMemoryList(cwd, settings)
 		return result, "", err
 	case "show":
 		result, err := handleMemoryShow(cwd)
@@ -596,7 +596,7 @@ const (
 )
 
 // handleMemoryList lists all memory files.
-func handleMemoryList(cwd string) (string, error) {
+func handleMemoryList(cwd string, settings *setting.Settings) (string, error) {
 	paths := system.GetAllMemoryPaths(cwd)
 	state := &memoryListState{cwd: cwd}
 
@@ -605,9 +605,12 @@ func handleMemoryList(cwd string) (string, error) {
 	sb.WriteString("╭─ Memory Files ─────────────────────────────────────╮\n")
 	sb.WriteString(memoryFormatBoxLine(""))
 
-	state.writeMemorySection(&sb, "Global", []string{paths.Global}, paths.GlobalRules, paths.Global, false)
+	state.writeMemorySection(&sb, "Global", []string{paths.Global}, paths.GlobalRules, kit.ShortenPath(paths.Global), false)
 	state.writeMemorySection(&sb, "Project", paths.Project, paths.ProjectRules, "/init", true)
 	state.writeMemoryLocalSection(&sb, paths.Local)
+	if settings != nil {
+		writeAutoMemorySection(&sb, cwd, settings.AutoMemory())
+	}
 
 	sb.WriteString("╰────────────────────────────────────────────────────╯\n")
 
@@ -661,6 +664,30 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 	displayPath = memoryTruncatePathKeepFilename(displayPath, memoryMaxPath)
 	sizeStr := fmt.Sprintf("(%s)", system.FormatFileSize(size))
 	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", padRight(displayPath, memoryMaxPath), sizeStr)))
+}
+
+// writeAutoMemorySection lists both auto-memory stores, a long directory
+// losing its head so the repository and count stay in view.
+func writeAutoMemorySection(sb *strings.Builder, cwd string, on bool) {
+	if on {
+		sb.WriteString(memoryFormatBoxLine(" ● Auto memory (on, " + autoMemorySource() + ")"))
+	} else {
+		sb.WriteString(memoryFormatBoxLine(" ○ Auto memory (off, " + autoMemorySource() + ")"))
+	}
+	stores := setting.MemoryStoresFor(cwd)
+	home, _ := os.UserHomeDir()
+	for _, item := range []memoryItem{
+		autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
+		autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)),
+	} {
+		head, tail := "   "+apPad(item.Label, 9), " · "+item.Value
+		desc := item.Desc
+		if room := memoryBoxWidth - 3 - len(head) - len(tail); ansi.StringWidth(desc) > room {
+			desc = ansi.TruncateLeft(desc, ansi.StringWidth(desc)-room+1, "…")
+		}
+		sb.WriteString(memoryFormatBoxLine(head + desc + tail))
+	}
+	sb.WriteString(memoryFormatBoxLine(""))
 }
 
 func memoryFormatBoxLine(content string) string {
