@@ -466,7 +466,6 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// getToolExecutionDesc returns a human-readable description for a tool being executed.
 // executionLabel is what a running call is doing; a memory call is part of
 // the thinking, so it leaves "Thinking..." in place.
 func executionLabel(tc core.ToolCall) string {
@@ -476,6 +475,7 @@ func executionLabel(tc core.ToolCall) string {
 	return getToolExecutionDesc(tc.Name)
 }
 
+// getToolExecutionDesc returns a human-readable description for a tool being executed.
 func getToolExecutionDesc(toolName string) string {
 	switch toolName {
 	case "Read":

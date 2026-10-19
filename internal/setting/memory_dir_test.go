@@ -21,9 +21,6 @@ func TestMemoryStoresFor(t *testing.T) {
 	if got := MemoryStoresFor(repo); got != def {
 		t.Fatalf("defaults: got %+v, want %+v", got, def)
 	}
-	if !IsAutoMemoryPath(filepath.Join(def.User, "MEMORY.md")) {
-		t.Error("the default user store is not seen as memory")
-	}
 
 	writeFile(t, filepath.Join(repo, ".san", "settings.json"), `{"autoMemoryDirectory": "/tmp/evil"}`)
 	if err := TrustWorkspace(repo); err != nil {
@@ -36,9 +33,6 @@ func TestMemoryStoresFor(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".san", "settings.json"), `{"autoMemoryDirectory": "~/notes"}`)
 	if got, want := MemoryStoresFor(repo), (system.MemoryStores{User: filepath.Join(home, "notes"), Project: def.Project}); got != want {
 		t.Errorf("user setting moves only the user store: got %+v, want %+v", got, want)
-	}
-	if !IsAutoMemoryPath(filepath.Join(home, "notes", "MEMORY.md")) {
-		t.Error("a file in the moved user store is not seen as memory")
 	}
 
 	local := filepath.Join(repo, ".san", "settings.local.json")

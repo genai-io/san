@@ -51,6 +51,12 @@ type MemoryStores struct {
 // Off reports whether auto memory is off.
 func (s MemoryStores) Off() bool { return s == MemoryStores{} }
 
+// Contains reports whether path is a markdown file directly in one of the stores.
+func (s MemoryStores) Contains(path string) bool {
+	dir := filepath.Dir(filepath.Clean(path))
+	return strings.HasSuffix(path, ".md") && dir != "." && (dir == s.User || dir == s.Project)
+}
+
 // Duplicates lists memory files present in both stores: one fact belongs in
 // one store, so the agent is told to keep one.
 func (s MemoryStores) Duplicates() []string {
@@ -85,25 +91,6 @@ func AutoMemoryDir(cwd string) string {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
 	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
-}
-
-// IsAutoMemoryPath reports whether path is a markdown file in the default user
-// store or some repository's default project store.
-func IsAutoMemoryPath(path string) bool {
-	homeDir, err := os.UserHomeDir()
-	if err != nil || !strings.HasSuffix(path, ".md") {
-		return false
-	}
-	path = filepath.Clean(path)
-	if filepath.Dir(path) == UserMemoryDir(homeDir) {
-		return true
-	}
-	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), path)
-	if err != nil {
-		return false
-	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	return len(parts) == 3 && parts[0] != ".." && parts[1] == "memory"
 }
 
 // encodeProjectPath replaces path separators with "-" so a path can stand
@@ -184,9 +171,8 @@ func listNames(names []string) string {
 }
 
 // StampModified records the write time as a `modified` field in the
-// frontmatter of the memory file at path, replacing an older one, and trims
-// stray indentation off its flat keys. A file without frontmatter is left
-// alone. It reports whether the file changed.
+// frontmatter of the memory file at path, replacing an older one. A file
+// without frontmatter is left alone. It reports whether the file changed.
 func StampModified(path string, now time.Time) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -203,7 +189,6 @@ func StampModified(path string, now time.Time) (bool, error) {
 	end += 4
 	var fm []string
 	for _, line := range strings.Split(src[4:end], "\n") {
-		line = strings.TrimLeft(line, " \t")
 		if !strings.HasPrefix(line, "modified:") {
 			fm = append(fm, line)
 		}

@@ -12,14 +12,21 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
+// useMemoryStore makes a temp dir the session's project store for one test.
+func useMemoryStore(t *testing.T) string {
+	mem := t.TempDir()
+	prev := MemoryStores
+	MemoryStores = system.MemoryStores{Project: mem}
+	t.Cleanup(func() { MemoryStores = prev })
+	return mem
+}
+
 func TestMemoryRows(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	mem := filepath.Join(home, ".san", "projects", "-repo", "memory")
+	mem := useMemoryStore(t)
 	input := func(path, content string) string {
 		b, _ := json.Marshal(map[string]string{"file_path": path, "content": content})
 		return string(b)
@@ -42,7 +49,7 @@ func TestMemoryRows(t *testing.T) {
 		}
 	}
 
-	for _, path := range []string{filepath.Join(home, "notes.md"), filepath.Join(mem, "run.sh"), filepath.Join(mem, "sub", "x.md")} {
+	for _, path := range []string{filepath.Join(filepath.Dir(mem), "notes.md"), filepath.Join(mem, "run.sh"), filepath.Join(mem, "sub", "x.md")} {
 		if _, ok := parseMemoryOp("Write", input(path, "")); ok {
 			t.Errorf("%s should not render as memory", path)
 		}
@@ -61,10 +68,7 @@ func TestMemoryRows(t *testing.T) {
 // turn's dealings with memory come back as one ordered list: used, saved or
 // updated once per file.
 func TestTurnMemory(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	mem := filepath.Join(home, ".san", "memory")
+	mem := useMemoryStore(t)
 	index := filepath.Join(mem, "MEMORY.md")
 	call := func(id, name, path string, extra map[string]string) core.ToolCall {
 		args := map[string]string{"file_path": path}

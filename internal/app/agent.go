@@ -237,14 +237,14 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 
 	params.ResultFilter = func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
 		// A memory write's result is small, so it never needs paging out.
-		if r := afterMemoryWrite(m.autoMemory(), c); r != nil {
+		if r := afterMemoryWrite(params.AutoMemory, c); r != nil {
 			return r, nil
 		}
 		return m.filterOversizedResult(ctx, c)
 	}
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
 		var decision setting.PermissionDecision
-		if permitAutoMemoryWrite(m.autoMemory(), name, args, m.services.Setting.DenyRule) {
+		if permitAutoMemoryWrite(params.AutoMemory, name, args, m.services.Setting.DenyRule) {
 			decision = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
 		} else {
 			decision = m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
@@ -556,7 +556,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = m.autoMemory()
+	m.agentAutoMemory = params.AutoMemory
+	conv.MemoryStores = params.AutoMemory
 
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
 	// the live Agent + System for its fork. Builds nothing if every skill action is

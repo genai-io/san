@@ -11,7 +11,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
@@ -58,7 +57,8 @@ type MemorySelector struct {
 	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
 	err         error             // last toggle or move failure
 	dirInput    textinput.Model
-	editingDir  bool // dirInput is moving the selected store
+	editingDir  bool   // dirInput is moving the selected store
+	autoState   string // "on (user settings)": the AUTO MEMORY header, read once per load
 }
 
 // memorySelectedMsg is sent when a memory file is selected for editing.
@@ -99,7 +99,15 @@ func (m *MemorySelector) loadItems() {
 	}
 	if m.settings != nil {
 		m.items = append(m.items, autoMemoryItems(cwd)...)
+		m.autoState = onOff(m.settings.AutoMemory()) + " (" + autoMemorySource() + ")"
 	}
+}
+
+func onOff(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
 }
 
 // autoMemoryItems describes the user and project stores.
@@ -236,9 +244,8 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		m.openDirInput()
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
-	case "1", "2", "3", "4", "5":
-		idx := int(keyStr[0] - '1')
-		if idx < len(m.items) {
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		if idx := int(keyStr[0] - '1'); idx < len(m.items) {
 			m.selectedIdx = idx
 			return m.selectMemoryItem()
 		}
@@ -319,13 +326,9 @@ func (m *MemorySelector) Render() string {
 	}
 	section("INSTRUCTIONS", "you write these · AGENTS.md")
 	for i, item := range m.items {
-		if i == 3 {
-			state := "on"
-			if !m.settings.AutoMemory() {
-				state = "off"
-			}
+		if item.Store != "" && m.items[i-1].Store == "" {
 			b.WriteString("\n")
-			section("AUTO MEMORY", "San writes these · "+state+" ("+autoMemorySource()+")")
+			section("AUTO MEMORY", "San writes these · "+m.autoState)
 		}
 		b.WriteString(m.renderRow(i, item, w) + "\n")
 		if i == m.selectedIdx && m.editingDir {
@@ -363,16 +366,8 @@ func (m *MemorySelector) renderRow(i int, item memoryItem, width int) string {
 	}
 	right := valueStyle.Render(item.Value)
 	room := width - lipgloss.Width(label) - lipgloss.Width(right) - 4
-	left := label + "  " + apDescStyle.Render(truncLeft(item.Desc, room))
+	left := label + "  " + apDescStyle.Render(kit.TruncateKeepEnd(item.Desc, max(room, 1)))
 	return left + strings.Repeat(" ", max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)) + right
-}
-
-// truncLeft cuts s from the front to fit room cells, so a path keeps its tail.
-func truncLeft(s string, room int) string {
-	if w := ansi.StringWidth(s); w > room {
-		return ansi.TruncateLeft(s, w-max(room, 1)+1, "…")
-	}
-	return s
 }
 
 var memoryWarnStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
@@ -679,14 +674,14 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 // writeAutoMemorySection lists both auto-memory stores, a long directory
 // losing its head so the repository and count stay in view.
 func writeAutoMemorySection(sb *strings.Builder, cwd string, on bool) {
+	glyph := "○"
 	if on {
-		sb.WriteString(memoryFormatBoxLine(" ● Auto memory (on, " + autoMemorySource() + ")"))
-	} else {
-		sb.WriteString(memoryFormatBoxLine(" ○ Auto memory (off, " + autoMemorySource() + ")"))
+		glyph = "●"
 	}
+	sb.WriteString(memoryFormatBoxLine(" " + glyph + " Auto memory (" + onOff(on) + ", " + autoMemorySource() + ")"))
 	for _, item := range autoMemoryItems(cwd) {
 		head, tail := "   "+apPad(item.Label, 9), " · "+item.Value
-		desc := truncLeft(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
+		desc := kit.TruncateKeepEnd(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
 		sb.WriteString(memoryFormatBoxLine(head + desc + tail))
 	}
 	sb.WriteString(memoryFormatBoxLine(""))

@@ -34,25 +34,6 @@ func MemoryStoresFor(cwd string) system.MemoryStores {
 	return s
 }
 
-// IsAutoMemoryPath reports whether path is a markdown file in a default store
-// or in one of the working directory's stores, so the chat can show it as
-// memory.
-func IsAutoMemoryPath(path string) bool {
-	if system.IsAutoMemoryPath(path) {
-		return true
-	}
-	if !strings.HasSuffix(path, ".md") {
-		return false
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return false
-	}
-	s := MemoryStoresFor(wd)
-	dir := filepath.Dir(filepath.Clean(path))
-	return dir == s.User || dir == s.Project
-}
-
 func readMemoryDir(path string) string {
 	var s struct {
 		AutoMemoryDirectory string `json:"autoMemoryDirectory"`

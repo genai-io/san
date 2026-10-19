@@ -12,17 +12,19 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
+
+// MemoryStores are the session's auto-memory stores, set by the app whenever
+// it resolves them; a call into one renders as memory, not as a file op.
+var MemoryStores system.MemoryStores
 
 // memoryOp is a Read, Write or Edit of an auto-memory file, shown as what it
 // means ("Saved memory · prefers pnpm") rather than as a file operation.
 type memoryOp struct {
 	verb    string // Saved, Updated, Read
 	subject string // the memory's description or name; "" for the index
-	file    string
 	path    string
 }
 
@@ -34,10 +36,11 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 		FilePath string `json:"file_path"`
 		Content  string `json:"content"`
 	}
-	if json.Unmarshal([]byte(input), &args) != nil || !setting.IsAutoMemoryPath(args.FilePath) {
+	if json.Unmarshal([]byte(input), &args) != nil || !MemoryStores.Contains(args.FilePath) {
 		return memoryOp{}, false
 	}
-	op := memoryOp{file: filepath.Base(args.FilePath), path: args.FilePath}
+	op := memoryOp{path: args.FilePath}
+	file := filepath.Base(args.FilePath)
 	switch toolName {
 	case tool.ToolRead:
 		op.verb = "Read"
@@ -46,7 +49,7 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 	default:
 		op.verb = "Saved"
 	}
-	if op.file == system.AutoMemoryIndexName {
+	if file == system.AutoMemoryIndexName {
 		if op.verb == "Saved" {
 			op.verb = "Updated"
 		}
@@ -54,7 +57,7 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 	}
 	op.subject = frontmatterField(args.Content, "description")
 	if op.subject == "" {
-		op.subject = strings.TrimSuffix(op.file, ".md")
+		op.subject = strings.TrimSuffix(file, ".md")
 	}
 	return op, true
 }
@@ -67,7 +70,7 @@ func frontmatterField(content, key string) string {
 	}
 	fm, _, _ = strings.Cut(fm, "\n---")
 	for line := range strings.SplitSeq(fm, "\n") {
-		if v, ok := strings.CutPrefix(line, key+":"); ok {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+":"); ok {
 			return strings.Trim(strings.TrimSpace(v), `"'`)
 		}
 	}
@@ -101,7 +104,7 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	trailer := op.file
+	trailer := filepath.Base(op.path)
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
 		trailer += " · " + fileChangeSummary(details)
 	}
@@ -116,6 +119,8 @@ type MemoryEntry struct {
 	Path  string
 	Title string // its index title, else its description, else its slug
 }
+
+var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "updated"}
 
 var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
 
@@ -150,12 +155,7 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 			if !ok || failed[tc.ID] || op.subject == "" {
 				continue
 			}
-			e := MemoryEntry{Verb: strings.ToLower(op.verb), Path: op.path}
-			if e.Verb == "read" {
-				e.Verb = "used"
-			}
-			e.Title = memoryTitle(op.path)
-			add(e)
+			add(MemoryEntry{Verb: turnVerb[op.verb], Path: op.path, Title: memoryTitle(op.path)})
 		}
 	}
 	return out

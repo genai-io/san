@@ -22,11 +22,6 @@ func FuzzyMatch(str, pattern string) bool {
 	return pi == len(pattern)
 }
 
-func CalculateBoxWidth(screenWidth int) int {
-	boxWidth := screenWidth - 8
-	return max(40, min(boxWidth, 60))
-}
-
 func CalculateToolBoxWidth(screenWidth int) int {
 	boxWidth := screenWidth * 80 / 100
 	return max(60, boxWidth)

@@ -167,8 +167,7 @@ follows Claude Code's layout:
   `◇ memory · used Go dev, Release freeze · saved No AI attribution`. ctrl+o
   shows the calls themselves; a failed call always does. The prompt asks for a write and its
   index edit in one response, so a save costs two steps. A memory file in
-  both stores is reported as a duplicate to fix, and each write trims stray
-  frontmatter indentation so the model needs no follow-up edit.
+  both stores is reported as a duplicate to fix.
 
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
