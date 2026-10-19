@@ -7,14 +7,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 )
 
-func TestIsAutoMemoryWrite(t *testing.T) {
-	dir := t.TempDir()
+func TestAutoMemoryStore(t *testing.T) {
+	dir, user := t.TempDir(), t.TempDir()
+	stores := system.MemoryStores{User: user, Project: dir}
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
 		t.Fatal(err)
@@ -35,11 +39,14 @@ func TestIsAutoMemoryWrite(t *testing.T) {
 		{"other tool", "Bash", filepath.Join(dir, "x.md"), false},
 	}
 	for _, c := range cases {
-		if got := isAutoMemoryWrite(dir, c.tool, map[string]any{"file_path": c.path}); got != c.want {
+		if got := autoMemoryStore(stores, c.tool, map[string]any{"file_path": c.path}) == dir; got != c.want {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
-	if isAutoMemoryWrite("", "Write", map[string]any{"file_path": filepath.Join(dir, "x.md")}) {
+	if got := autoMemoryStore(stores, "Write", map[string]any{"file_path": filepath.Join(user, "x.md")}); got != user {
+		t.Errorf("user store write resolved to %q", got)
+	}
+	if autoMemoryStore(system.MemoryStores{}, "Write", map[string]any{"file_path": filepath.Join(dir, "x.md")}) != "" {
 		t.Error("auto memory off must not permit anything")
 	}
 }
@@ -61,7 +68,8 @@ func TestAfterMemoryWrite(t *testing.T) {
 		}
 	}
 
-	r := afterMemoryWrite(dir, call(topic))
+	stores := system.MemoryStores{Project: dir}
+	r := afterMemoryWrite(stores, call(topic))
 	if r == nil || !strings.Contains(r.Content.Text(), "modified") {
 		t.Fatalf("topic write: %+v", r)
 	}
@@ -69,14 +77,14 @@ func TestAfterMemoryWrite(t *testing.T) {
 		t.Errorf("topic not stamped:\n%s", got)
 	}
 
-	r = afterMemoryWrite(dir, call(index))
+	r = afterMemoryWrite(stores, call(index))
 	if r == nil || !strings.Contains(r.Content.Text(), "gone.md") || !strings.Contains(r.Content.Text(), "user_role.md") {
 		t.Fatalf("index write should report the dangling link and the orphan: %+v", r)
 	}
 
 	failed := call(topic)
 	failed.Err = errors.New("boom")
-	if afterMemoryWrite(dir, failed) != nil || afterMemoryWrite("", call(topic)) != nil {
+	if afterMemoryWrite(stores, failed) != nil || afterMemoryWrite(system.MemoryStores{}, call(topic)) != nil {
 		t.Error("failed writes and memory off must pass through")
 	}
 }
@@ -84,13 +92,45 @@ func TestAfterMemoryWrite(t *testing.T) {
 // Memory writes skip approval in every mode, but a deny rule still stops them.
 func TestPermitAutoMemoryWrite(t *testing.T) {
 	dir := t.TempDir()
+	stores := system.MemoryStores{Project: dir}
 	args := map[string]any{"file_path": filepath.Join(dir, "a.md")}
 	d := setting.NewData()
-	if !permitAutoMemoryWrite(dir, "Write", args, d.DenyRule) {
+	if !permitAutoMemoryWrite(stores, "Write", args, d.DenyRule) {
 		t.Error("memory write should be permitted")
 	}
 	d.Permissions.Deny = []string{"Write(**/a.md)"}
-	if permitAutoMemoryWrite(dir, "Write", args, d.DenyRule) {
+	if permitAutoMemoryWrite(stores, "Write", args, d.DenyRule) {
 		t.Error("a deny rule must win")
+	}
+
+	// Forgetting is a plain rm of memory files; anything wider still asks.
+	rm := func(cmd string) bool {
+		return permitAutoMemoryWrite(stores, "Bash", map[string]any{"command": cmd}, setting.NewData().DenyRule)
+	}
+	a, b := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")
+	if !rm("rm "+a) || !rm("rm -f "+a+" "+b) {
+		t.Error("removing memory files should be permitted")
+	}
+	outside := filepath.Join(t.TempDir(), "x.md")
+	for _, cmd := range []string{"rm " + a + " " + outside, "rm " + filepath.Join(dir, "run.sh"), "rm -r " + dir, "rm " + a + "; rm " + outside} {
+		if rm(cmd) {
+			t.Errorf("%q must still ask", cmd)
+		}
+	}
+	if permitAutoMemoryWrite(system.MemoryStores{}, "Bash", map[string]any{"command": "rm " + a}, setting.NewData().DenyRule) {
+		t.Error("memory off permits no rm")
+	}
+}
+
+// The turn's memory is one quiet line, grouped by verb in order.
+func TestMemoryLine(t *testing.T) {
+	got := ansi.Strip(memoryLine([]conv.MemoryEntry{
+		{Verb: "used", Title: "Go dev"}, {Verb: "updated", Title: "Freeze"}, {Verb: "used", Title: "Tabs"},
+	}, 80))
+	if got != "◇ memory · used Go dev, Tabs · updated Freeze" {
+		t.Errorf("memoryLine = %q", got)
+	}
+	if memoryLine(nil, 80) != "" {
+		t.Error("a turn without memory gets no line")
 	}
 }

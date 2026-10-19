@@ -45,9 +45,9 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
-	// AutoMemoryDir is the auto-memory store the main agent maintains; ""
+	// AutoMemory is the auto-memory stores the main agent maintains; zero
 	// when auto memory is off.
-	AutoMemoryDir string
+	AutoMemory system.MemoryStores
 
 	// ExtraTools are caller-built conditional tool schemas appended to the
 	// toolset (e.g. the self-learning Evolve trigger, injected only when
@@ -94,7 +94,7 @@ func (p BuildParams) System() core.System {
 	return system.Build(core.ScopeMain,
 		system.WithPersona(p.Persona),
 		system.WithEnvironment(system.Environment{Cwd: p.CWD, Shell: proc.DefaultShellName()}),
-		system.WithAutoMemory(p.AutoMemoryDir),
+		system.WithAutoMemory(p.AutoMemory),
 	)
 }
 
@@ -214,7 +214,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the
 	// one thing a headless run must not do.
-	message = withInstructions(p.CWD, p.AutoMemoryDir, message)
+	message = withInstructions(p.CWD, p.AutoMemory, message)
 
 	if onText != nil {
 		caller := p.OnEvent
@@ -245,10 +245,10 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 // headless run, as a reminder rather than a prompt section — the same shape
 // and the same scopes the interactive path uses, so what the model is told
 // does not depend on which one asked.
-func withInstructions(cwd, memoryDir string, msg core.Message) core.Message {
+func withInstructions(cwd string, memory system.MemoryStores, msg core.Message) core.Message {
 	reminders := instructionReminders(cwd)
-	if memoryDir != "" {
-		reminders = append(reminders, reminder.WrapWithSource(AutoMemoryReminder(memoryDir), reminder.ProviderMemoryAuto))
+	if !memory.Off() {
+		reminders = append(reminders, reminder.WrapWithSource(AutoMemoryReminder(memory), reminder.ProviderMemoryAuto))
 	}
 	text := reminder.AttachToContent(msg.Text(), reminders)
 	if text == msg.Text() {
@@ -274,12 +274,26 @@ func instructionReminders(cwd string) []string {
 	}
 }
 
-// AutoMemoryReminder is the agent's memory index as a reminder, with any
-// index problems after it. Those come from the harness, so they sit outside
-// the memory block, whose framing tells the model not to act on its contents.
-func AutoMemoryReminder(dir string) string {
-	index, problems := system.LoadAutoMemoryAt(dir)
-	out := reminder.WrapMemory("auto", index)
+// AutoMemoryReminder is both stores' indexes as one reminder, with any index
+// problems after it. Those come from the harness, so they sit outside the
+// memory block, whose framing tells the model not to act on its contents.
+func AutoMemoryReminder(s system.MemoryStores) string {
+	var body, problems []string
+	for _, store := range []struct{ name, dir string }{{"User store", s.User}, {"Project store", s.Project}} {
+		if store.dir == "" {
+			continue
+		}
+		index, p := system.LoadAutoMemoryAt(store.dir)
+		if index == "" {
+			index = "(no memories yet)" // said, so the model doesn't go read a missing index
+		}
+		body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
+		for _, line := range p {
+			problems = append(problems, store.name+": "+line)
+		}
+	}
+	problems = append(problems, s.Duplicates()...)
+	out := reminder.WrapMemory("auto", strings.Join(body, "\n\n"))
 	if len(problems) > 0 {
 		out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
 	}

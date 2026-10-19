@@ -192,7 +192,7 @@ type AssistantParams struct {
 	SpinnerView       string
 	MDRenderer        *MDRenderer
 	Width             int
-	ExecutingTool     string
+	ExecutingLabel    string // what the running tool is doing, in place of "Thinking..."
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
@@ -420,8 +420,8 @@ func formatAssistantContent(params AssistantParams) string {
 	showThinkingFiller := params.Thinking == "" ||
 		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
 	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
-		if params.ExecutingTool != "" {
-			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
+		if params.ExecutingLabel != "" {
+			return ThinkingStyle.Render(params.ExecutingLabel)
 		}
 		if !params.BulletEmitted {
 			return ThinkingStyle.Render("Thinking...")
@@ -464,6 +464,15 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 		return content
 	}
 	return trimStyledBlankLines(rendered)
+}
+
+// executionLabel is what a running call is doing; a memory call is part of
+// the thinking, so it leaves "Thinking..." in place.
+func executionLabel(tc core.ToolCall) string {
+	if _, ok := parseMemoryOp(tc.Name, tc.Input); ok {
+		return ""
+	}
+	return getToolExecutionDesc(tc.Name)
 }
 
 // getToolExecutionDesc returns a human-readable description for a tool being executed.
@@ -628,6 +637,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
 	for _, tc := range params.ToolCalls {
+		// Memory calls leave the chat flow for the turn's memory line
+		// (TurnMemory); expanded and failed ones still render.
+		if _, ok := parseMemoryOp(tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
+			continue
+		}
 		switch tc.Name {
 		case tool.ToolTaskCreate, tool.ToolTaskUpdate:
 			continue

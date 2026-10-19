@@ -45,7 +45,7 @@ Agent, persistence, and orchestration:
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | `internal/group` | `feature` | Groups of sessions on one machine: member files, per-member inboxes, online status from pid and process start time. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |
-| `internal/selflearn` | `feature` | Background self-learning reviewer, durable memory store, and restricted skill-update surface. |
+| `internal/selflearn` | `feature` | Background self-learning reviewer and restricted skill-update surface. |
 
 Extension surfaces:
 

@@ -45,6 +45,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
+	conv.MemoryStores = m.autoMemory()
 	m.conv.OnNotice = m.recordNotice
 	id := m.sessionID()
 	group.BindSession(func() string { return id })

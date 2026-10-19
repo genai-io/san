@@ -2,26 +2,39 @@ package conv
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
+// MemoryStores are the session's auto-memory stores, set by the app whenever
+// it resolves them; a call into one renders as memory, not as a file op.
+var MemoryStores system.MemoryStores
+
 // memoryOp is a Read, Write or Edit of an auto-memory file, shown as what it
 // means ("Saved memory · prefers pnpm") rather than as a file operation.
 type memoryOp struct {
-	verb    string // Saved, Updated, Recalled
-	subject string // the memory's description or name; "" for the index
-	file    string
+	verb    string   // Saved, Updated, Read, Deleted
+	subject string   // the memory's description or name; "" for the index
+	path    string   // the (first) file
+	removed []string // every file a Deleted op removes
 }
 
 func parseMemoryOp(toolName, input string) (memoryOp, bool) {
+	if toolName == tool.ToolBash {
+		return parseMemoryRemove(input)
+	}
 	if toolName != tool.ToolWrite && toolName != tool.ToolEdit && toolName != tool.ToolRead {
 		return memoryOp{}, false
 	}
@@ -29,19 +42,20 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 		FilePath string `json:"file_path"`
 		Content  string `json:"content"`
 	}
-	if json.Unmarshal([]byte(input), &args) != nil || !system.IsAutoMemoryPath(args.FilePath) {
+	if json.Unmarshal([]byte(input), &args) != nil || !MemoryStores.Contains(args.FilePath) {
 		return memoryOp{}, false
 	}
-	op := memoryOp{file: filepath.Base(args.FilePath)}
+	op := memoryOp{path: args.FilePath}
+	file := filepath.Base(args.FilePath)
 	switch toolName {
 	case tool.ToolRead:
-		op.verb = "Recalled"
+		op.verb = "Read"
 	case tool.ToolEdit:
 		op.verb = "Updated"
 	default:
 		op.verb = "Saved"
 	}
-	if op.file == system.AutoMemoryIndexName {
+	if file == system.AutoMemoryIndexName {
 		if op.verb == "Saved" {
 			op.verb = "Updated"
 		}
@@ -49,9 +63,26 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 	}
 	op.subject = frontmatterField(args.Content, "description")
 	if op.subject == "" {
-		op.subject = strings.TrimSuffix(op.file, ".md")
+		op.subject = strings.TrimSuffix(file, ".md")
 	}
 	return op, true
+}
+
+// parseMemoryRemove reads a plain `rm` of memory files as one Deleted op.
+func parseMemoryRemove(input string) (memoryOp, bool) {
+	var args struct {
+		Command string `json:"command"`
+	}
+	_ = json.Unmarshal([]byte(input), &args)
+	files, ok := setting.RemovedFiles(args.Command)
+	if !ok || slices.ContainsFunc(files, func(f string) bool { return !MemoryStores.Contains(f) }) {
+		return memoryOp{}, false
+	}
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = strings.TrimSuffix(filepath.Base(f), ".md")
+	}
+	return memoryOp{verb: "Deleted", subject: strings.Join(names, ", "), path: files[0], removed: files}, true
 }
 
 // frontmatterField returns key's value from content's leading frontmatter.
@@ -62,7 +93,7 @@ func frontmatterField(content, key string) string {
 	}
 	fm, _, _ = strings.Cut(fm, "\n---")
 	for line := range strings.SplitSeq(fm, "\n") {
-		if v, ok := strings.CutPrefix(line, key+":"); ok {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+":"); ok {
 			return strings.Trim(strings.TrimSpace(v), `"'`)
 		}
 	}
@@ -96,7 +127,7 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	trailer := op.file
+	trailer := filepath.Base(op.path)
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
 		trailer += " · " + fileChangeSummary(details)
 	}
@@ -104,3 +135,106 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 }
 
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
+
+// MemoryEntry is one memory a turn touched.
+type MemoryEntry struct {
+	Verb  string // "used", "saved", "updated" or "forgot"
+	Path  string
+	Title string // its index title, else its description, else its slug
+}
+
+var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "updated"}
+
+var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
+
+// TurnMemory lists what the latest turn did with memory, back to its user
+// message, one entry per memory in the order first touched: used (read),
+// saved or updated (a write outranks a read), or forgot — touched or dropped
+// from an index this turn and gone by its end. Index files and failed calls
+// don't count.
+func (m *ConversationModel) TurnMemory() []MemoryEntry {
+	msgs := m.Messages
+	start := len(msgs)
+	for start > 0 && (msgs[start-1].Role != core.ChatUser || msgs[start-1].ToolResult != nil) {
+		start--
+	}
+	failed := map[string]bool{}
+	for _, m := range msgs[start:] {
+		if m.ToolResult != nil && m.ToolResult.IsError {
+			failed[m.ToolResult.ToolCallID] = true
+		}
+	}
+	var out []MemoryEntry
+	at := map[string]int{} // path → its entry
+	note := func(path, verb, title string) {
+		i, ok := at[path]
+		if !ok {
+			i = len(out)
+			at[path] = i
+			out = append(out, MemoryEntry{Path: path})
+		}
+		if e := &out[i]; verb != "" && (e.Verb == "" || e.Verb == "used") {
+			e.Verb = verb
+		}
+		if title != "" {
+			out[i].Title = title
+		}
+	}
+	for _, m := range msgs[start:] {
+		for _, tc := range m.ToolCalls {
+			op, ok := parseMemoryOp(tc.Name, tc.Input)
+			if !ok || failed[tc.ID] {
+				continue
+			}
+			if op.verb == "Deleted" {
+				for _, f := range op.removed {
+					note(filepath.Clean(f), "forgot", "")
+				}
+				continue
+			}
+			if op.subject != "" {
+				note(filepath.Clean(op.path), turnVerb[op.verb], "")
+				continue
+			}
+			var edit struct {
+				Old string `json:"old_string"`
+				New string `json:"new_string"`
+			}
+			_ = json.Unmarshal([]byte(tc.Input), &edit)
+			for _, l := range indexLink.FindAllStringSubmatch(edit.Old, -1) {
+				if !strings.Contains(edit.New, "("+l[2]+")") { // the index dropped this link
+					note(filepath.Join(filepath.Dir(op.path), l[2]), "", l[1])
+				}
+			}
+		}
+	}
+	kept := out[:0]
+	for _, e := range out {
+		if _, err := os.Stat(e.Path); err != nil {
+			e.Verb = "forgot"
+		} else if e.Verb == "" {
+			continue // a link that moved, not a memory that went
+		}
+		if e.Title == "" {
+			e.Title = memoryTitle(e.Path)
+		}
+		kept = append(kept, e)
+	}
+	return kept
+}
+
+// memoryTitle names a memory as its store's index does ("[Go dev](go.md)"),
+// falling back to its description, then its slug.
+func memoryTitle(path string) string {
+	index, _ := os.ReadFile(filepath.Join(filepath.Dir(path), system.AutoMemoryIndexName))
+	for _, l := range indexLink.FindAllStringSubmatch(string(index), -1) {
+		if l[2] == filepath.Base(path) {
+			return l[1]
+		}
+	}
+	body, _ := os.ReadFile(path)
+	if d := frontmatterField(string(body), "description"); d != "" {
+		return d
+	}
+	return strings.TrimSuffix(filepath.Base(path), ".md")
+}

@@ -41,7 +41,48 @@ const (
 	autoMemoryByteCap = 25 * 1024
 )
 
-// AutoMemoryDir is the agent-written memory store for cwd's repository:
+// MemoryStores are the agent-written memory stores a session keeps: User holds
+// what is true in every repository, Project what is true only in this one.
+// The zero value means auto memory is off.
+type MemoryStores struct {
+	User, Project string
+}
+
+// Off reports whether auto memory is off.
+func (s MemoryStores) Off() bool { return s == MemoryStores{} }
+
+// Contains reports whether path is a markdown file directly in one of the stores.
+func (s MemoryStores) Contains(path string) bool {
+	dir := filepath.Dir(filepath.Clean(path))
+	return strings.HasSuffix(path, ".md") && dir != "." && (dir == s.User || dir == s.Project)
+}
+
+// Duplicates lists memory files present in both stores: one fact belongs in
+// one store, so the agent is told to keep one.
+func (s MemoryStores) Duplicates() []string {
+	if s.User == "" || s.Project == "" || s.User == s.Project {
+		return nil
+	}
+	var dup []string
+	files, _ := filepath.Glob(filepath.Join(s.User, "*.md"))
+	for _, f := range files {
+		name := filepath.Base(f)
+		if name == AutoMemoryIndexName {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(s.Project, name)); err == nil {
+			dup = append(dup, name+" is in both the user and the project store; keep the one where it holds and delete the other")
+		}
+	}
+	return dup
+}
+
+// UserMemoryDir is the default user store: ~/.san/memory/.
+func UserMemoryDir(homeDir string) string {
+	return filepath.Join(confdir.Dir(homeDir), "memory")
+}
+
+// AutoMemoryDir is the default project store for cwd's repository:
 // ~/.san/projects/<encoded-repo-root>/memory/. Subdirectories and linked
 // worktrees of one repository share it.
 func AutoMemoryDir(cwd string) string {
@@ -50,21 +91,6 @@ func AutoMemoryDir(cwd string) string {
 		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
 	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
-}
-
-// IsAutoMemoryPath reports whether path is a markdown file in some
-// repository's auto-memory store, so the interface can show it as memory.
-func IsAutoMemoryPath(path string) bool {
-	homeDir, err := os.UserHomeDir()
-	if err != nil || !strings.HasSuffix(path, ".md") {
-		return false
-	}
-	rel, err := filepath.Rel(filepath.Join(confdir.Dir(homeDir), "projects"), filepath.Clean(path))
-	if err != nil {
-		return false
-	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	return len(parts) == 3 && parts[0] != ".." && parts[1] == "memory"
 }
 
 // encodeProjectPath replaces path separators with "-" so a path can stand
@@ -145,8 +171,10 @@ func listNames(names []string) string {
 }
 
 // StampModified records the write time as a `modified` field in the
-// frontmatter of the memory file at path, replacing an older one. A file
-// without frontmatter is left alone. It reports whether the file changed.
+// frontmatter of the memory file at path, replacing an older one, and drops
+// stray indentation a model left on a top-level key (YAML would read it as
+// part of the value above); keys nested under a parent stay as written. A
+// file without frontmatter is left alone. It reports whether the file changed.
 func StampModified(path string, now time.Time) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -162,7 +190,15 @@ func StampModified(path string, now time.Time) (bool, error) {
 	}
 	end += 4
 	var fm []string
+	parent := false // the last top-level key opens a map or block scalar
 	for _, line := range strings.Split(src[4:end], "\n") {
+		if trimmed := strings.TrimLeft(line, " \t"); trimmed == line {
+			_, v, _ := strings.Cut(line, ":")
+			v = strings.TrimSpace(v)
+			parent = v == "" || v[0] == '|' || v[0] == '>'
+		} else if !parent {
+			line = trimmed
+		}
 		if !strings.HasPrefix(line, "modified:") {
 			fm = append(fm, line)
 		}

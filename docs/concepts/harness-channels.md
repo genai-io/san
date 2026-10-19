@@ -132,12 +132,15 @@ framing, mirroring how the skills directory self-introduces.
 
 ## Auto memory
 
-Besides the user-authored AGENTS.md, the main agent keeps its own memory per
-repository at `~/.san/projects/<repo-root>/memory/` (subdirectories and linked
-worktrees share it). The layout follows Claude Code:
+Besides the user-authored AGENTS.md, the main agent keeps its own memory in
+two stores: the user store `~/.san/memory/` for what holds in every repository,
+and a project store per repository at `~/.san/projects/<repo-root>/memory/`
+(subdirectories and linked worktrees share it). The prompt tells the model which
+store each memory belongs in; the project store wins on conflict. Each store
+follows Claude Code's layout:
 
-- `MEMORY.md` is an index, one line per memory. Its first 200 lines / 25 KB
-  ride the `memory-auto` reminder, framed as context rather than user
+- `MEMORY.md` is an index, one line per memory. Each store's first 200 lines /
+  25 KB ride the `memory-auto` reminder, framed as context rather than user
   instructions. Index problems (near or over the cap, unindexed topic files,
   links to missing files) are appended so the agent repairs them, and are also
   returned on the tool result of every write to `MEMORY.md`.
@@ -155,14 +158,37 @@ worktrees share it). The layout follows Claude Code:
 
   Only the model reads `type`; the harness treats all four alike.
 - The agent writes during the turn with Write/Edit; the `memory` rules section
-  tells it what to save and where. Writes to `*.md` inside the store need no
+  tells it what to save and in which store. Writes to `*.md` inside either store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
-  still apply.
+  still apply. Both store directories are created up front, and an empty store
+  shows in the reminder as `(no memories yet)`, so the agent neither runs
+  `mkdir` nor reads a missing index. Forgetting is a plain `rm` of memory
+  files (at most `-f`, literal paths, nothing chained), also unprompted;
+  anything wider asks.
+- Memory calls stay out of the chat flow (the spinner keeps saying Thinking;
+  reading takes under a millisecond). Each turn that touched memory ends with
+  one quiet line under the answer, by index title, grouped by verb:
+  `◇ memory · used Go dev, Release freeze · saved No AI attribution`; one
+  entry per memory (a write outranks a read), and `forgot` for one read or
+  dropped from an index and gone by the turn's end. ctrl+o
+  shows the calls themselves; a failed call always does. The prompt asks for a write and its
+  index edit in one response, so a save costs two steps. A memory file in
+  both stores is reported as a duplicate to fix.
 
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
 the user or project settings; the project value wins, and
-`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn. Subagents don't load it.
+`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn; moving a store or turning memory off
+mid-session re-sends the index reminder (or an "auto memory is now off" notice),
+since the one sent at session start names the old state.
+`autoMemoryDirectory` (absolute or `~/` path) moves the store of the file that
+sets it: `~/.san/settings.json` the user store, an untracked
+`.san/settings.local.json` the project store. Committed project settings never
+count, since memory writes need no approval. Claude Code instead uses one store,
+so a user-level value there merges every project's memory. `/memory` lists each
+store on its own row with its directory; `d` there moves the selected store,
+writing the setting to the right file (empty restores the default). Existing
+memories are not moved. Subagents don't load either store.
 Skills are separate: `/evolve` reviews turns and edits skills, never memory.
 
 **Subagents receive the skills directory and, when they can edit the workspace,

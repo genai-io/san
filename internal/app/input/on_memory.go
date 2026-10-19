@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -34,15 +35,15 @@ type MemoryEditorFinishedMsg struct {
 
 // ── Selector model ──────────────────────────────────────────────────────
 
-// memoryItem represents a memory file option in the kit.
+// memoryItem is one row of the /memory panel.
 type memoryItem struct {
-	Label       string
-	Description string
-	Path        string
-	Exists      bool
-	Size        int64
-	Level       string
-	CreateHint  string
+	Label  string
+	Desc   string // muted middle column: where it lives
+	Value  string // right column: size, count or "not created"
+	Path   string // the file Enter opens
+	Exists bool
+	Level  string
+	Store  setting.Scope // which auto-memory store; "" for AGENTS.md rows
 }
 
 // MemorySelector holds the state for the memory kit.
@@ -54,7 +55,10 @@ type MemorySelector struct {
 	height      int
 	cwd         string
 	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
-	toggleErr   error
+	err         error             // last toggle or move failure
+	dirInput    textinput.Model
+	editingDir  bool   // dirInput is moving the selected store
+	autoState   string // "on (user settings)": the AUTO MEMORY header, read once per load
 }
 
 // memorySelectedMsg is sent when a memory file is selected for editing.
@@ -80,7 +84,8 @@ func (m *MemorySelector) EnterSelect(cwd string, settings *setting.Settings, wid
 	m.height = height
 	m.active = true
 	m.selectedIdx = 0
-	m.toggleErr = nil
+	m.err = nil
+	m.editingDir = false
 	m.loadItems()
 }
 
@@ -88,49 +93,73 @@ func (m *MemorySelector) loadItems() {
 	cwd := m.cwd
 	paths := system.GetAllMemoryPaths(cwd)
 	m.items = []memoryItem{
-		m.buildMemoryItem("Global", "global", []string{paths.Global}, cwd,
-			fmt.Sprintf("Saved in %s", kit.ShortenPath(paths.Global)),
-			"Will be created on edit"),
-
-		m.buildMemoryItem("Project", "project", paths.Project, cwd,
-			"Checked in at AGENTS.md",
-			"Use /init to create"),
-
-		m.buildMemoryItem("Local", "local", []string{paths.Local}, cwd,
-			"Not committed (git-ignored)",
-			"Use /init local to create"),
+		instructionItem("Global", "global", []string{paths.Global}, cwd),
+		instructionItem("Project", "project", paths.Project, cwd),
+		instructionItem("Local", "local", []string{paths.Local}, cwd),
 	}
 	if m.settings != nil {
-		m.items = append(m.items, autoMemoryItem(cwd, m.settings.AutoMemory()))
+		m.items = append(m.items, autoMemoryItems(cwd)...)
+		m.autoState = onOff(m.settings.AutoMemory()) + " (" + autoMemorySource() + ")"
 	}
 }
 
-// autoMemoryItem describes the agent-written memory store. Enter opens its
-// MEMORY.md index; t toggles auto memory.
-func autoMemoryItem(cwd string, on bool) memoryItem {
-	dir := system.AutoMemoryDir(cwd)
-	index := filepath.Join(dir, system.AutoMemoryIndexName)
-	state := "off"
+func onOff(on bool) string {
 	if on {
-		state = "on"
+		return "on"
 	}
+	return "off"
+}
+
+// autoMemoryItems describes the user and project stores.
+func autoMemoryItems(cwd string) []memoryItem {
+	stores := setting.MemoryStoresFor(cwd)
+	home, _ := os.UserHomeDir()
+	return []memoryItem{
+		autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
+		autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)),
+	}
+}
+
+// instructionItem describes one AGENTS.md level: the file nearest cwd when
+// one exists, else where it would be created.
+func instructionItem(label, level string, searchPaths []string, cwd string) memoryItem {
+	path := system.FindNearestMemoryFile(searchPaths)
+	exists := path != ""
+	if !exists {
+		path = searchPaths[0]
+	}
+	desc := kit.ShortenPathForProject(path, cwd)
+	switch level {
+	case "project":
+		desc += " · checked in"
+	case "local":
+		desc += " · git-ignored"
+	}
+	value := "not created"
+	if exists {
+		value = system.FormatFileSize(system.GetFileSize(path))
+	}
+	return memoryItem{Label: label, Desc: desc, Value: value, Path: path, Exists: exists, Level: level}
+}
+
+// autoMemoryItem describes one agent-written store. Enter opens its MEMORY.md
+// index, d moves it.
+func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string) memoryItem {
+	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	entries, _ := filepath.Glob(filepath.Join(dir, "*.md"))
 	count := len(entries)
 	if _, err := os.Stat(index); err == nil {
 		count--
 	}
-	noun := "memories"
+	value := fmt.Sprintf("%d memories", count)
 	if count == 1 {
-		noun = "memory"
+		value = "1 memory"
 	}
-	return memoryItem{
-		Label:       "Auto memory",
-		Description: fmt.Sprintf("%s (%s) · %d %s", state, autoMemorySource(), count, noun),
-		Path:        index,
-		Exists:      on,
-		Level:       "auto",
-		CreateHint:  "Off — t turns it on everywhere, p for this project",
+	desc := kit.ShortenPath(dir)
+	if dir == defaultDir {
+		desc += " · default"
 	}
+	return memoryItem{Label: label, Desc: desc, Value: value, Path: index, Exists: true, Level: "auto", Store: store}
 }
 
 // autoMemorySource names what decides the effective auto-memory state, in
@@ -154,7 +183,7 @@ func (m *MemorySelector) toggleAutoMemory(scope setting.Scope) {
 	if m.settings == nil {
 		return
 	}
-	m.toggleErr = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
+	m.err = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
 	m.loadItems()
 }
 
@@ -177,34 +206,6 @@ func setAutoMemory(settings *setting.Settings, cwd string, on bool, scope settin
 	return nil
 }
 
-// buildMemoryItem describes one memory level. searchPaths is a root-first
-// chain, so the nearest existing file is the one the agent actually obeys;
-// when none exists the first path is where the file would be created.
-func (m *MemorySelector) buildMemoryItem(label, level string, searchPaths []string, cwd, defaultDesc, createHint string) memoryItem {
-	foundPath := system.FindNearestMemoryFile(searchPaths)
-	exists := foundPath != ""
-
-	path := foundPath
-	if !exists {
-		path = searchPaths[0]
-	}
-
-	description := defaultDesc
-	if exists && level == "project" {
-		description = fmt.Sprintf("Checked in at %s", kit.ShortenPathForProject(foundPath, cwd))
-	}
-
-	return memoryItem{
-		Label:       label,
-		Description: description,
-		Path:        path,
-		Exists:      exists,
-		Size:        system.GetFileSize(path),
-		Level:       level,
-		CreateHint:  createHint,
-	}
-}
-
 // IsActive returns whether the selector is active.
 func (m *MemorySelector) IsActive() bool {
 	return m.active
@@ -220,6 +221,9 @@ func (m *MemorySelector) Cancel() {
 // HandleKeypress handles a keypress and returns a command if selection is made.
 func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	keyStr := key.String()
+	if m.editingDir {
+		return m.handleDirInput(key)
+	}
 
 	switch keyStr {
 	case "up", "ctrl+p", "k":
@@ -236,16 +240,52 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		m.toggleAutoMemory(setting.ScopeUser)
 	case "p":
 		m.toggleAutoMemory(setting.ScopeProject)
+	case "d":
+		m.openDirInput()
 	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
-	case "1", "2", "3", "4":
-		idx := int(keyStr[0] - '1')
-		if idx < len(m.items) {
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		if idx := int(keyStr[0] - '1'); idx < len(m.items) {
 			m.selectedIdx = idx
 			return m.selectMemoryItem()
 		}
 	}
 
+	return nil
+}
+
+// Resize keeps the card fitted to the terminal while the panel is open.
+func (m *MemorySelector) Resize(width, height int) { m.width, m.height = width, height }
+
+// openDirInput starts moving the selected auto-memory store; an empty value
+// returns it to the default.
+func (m *MemorySelector) openDirInput() {
+	if m.selectedIdx >= len(m.items) || m.items[m.selectedIdx].Store == "" {
+		return
+	}
+	in := textinput.New()
+	in.Placeholder = "absolute or ~/ path; empty for the default"
+	in.SetValue(kit.ShortenPath(filepath.Dir(m.items[m.selectedIdx].Path)))
+	in.CharLimit = 512
+	in.SetWidth(40)
+	in.Focus()
+	m.dirInput, m.editingDir, m.err = in, true, nil
+}
+
+func (m *MemorySelector) handleDirInput(key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "esc":
+		m.editingDir = false
+	case "enter":
+		dir := strings.TrimSpace(m.dirInput.Value())
+		m.err = setting.SaveMemoryDirectory(m.items[m.selectedIdx].Store, m.cwd, dir)
+		m.editingDir = m.err != nil
+		m.loadItems()
+	default:
+		var cmd tea.Cmd
+		m.dirInput, cmd = m.dirInput.Update(key)
+		return cmd
+	}
 	return nil
 }
 
@@ -272,66 +312,65 @@ func (m *MemorySelector) cancelMemoryWithMsg() tea.Cmd {
 	}
 }
 
-// Render renders the kit.
+// Render draws the panel in the /autopilot card style: an INSTRUCTIONS
+// section for the AGENTS.md files the user writes, an AUTO MEMORY section for
+// the stores San writes.
 func (m *MemorySelector) Render() string {
 	if !m.active {
 		return ""
 	}
-
-	var sb strings.Builder
-
-	sb.WriteString(kit.SelectorTitleStyle().Render("Select memory to edit:"))
-	sb.WriteString("\n\n")
-
+	w := min(max(m.width-16, 1), 96)
+	var b strings.Builder
+	section := func(name, desc string) {
+		b.WriteString(apSectionStyle.Render(name) + "  " + apDescStyle.Render(desc) + "\n")
+	}
+	section("INSTRUCTIONS", "you write these · AGENTS.md")
 	for i, item := range m.items {
-		var statusIcon string
-		var statusStyle lipgloss.Style
-
-		if item.Exists {
-			statusIcon = "●"
-			statusStyle = kit.SelectorStatusConnected()
-		} else {
-			statusIcon = "○"
-			statusStyle = kit.SelectorStatusNone()
+		if item.Store != "" && m.items[i-1].Store == "" {
+			b.WriteString("\n")
+			section("AUTO MEMORY", "San writes these · "+m.autoState)
 		}
-
-		numKey := fmt.Sprintf("%d.", i+1)
-		sizeStr := ""
-		if item.Exists && item.Size > 0 {
-			sizeStr = fmt.Sprintf(" (%s)", system.FormatFileSize(item.Size))
-		}
-
-		line := fmt.Sprintf("%s %s %s",
-			statusStyle.Render(statusIcon),
-			item.Label,
-			kit.SelectorHintStyle().Render(item.Description+sizeStr),
-		)
-
-		sb.WriteString(kit.RenderSelectableRow(numKey+" "+line, i == m.selectedIdx))
-		sb.WriteString("\n")
-
-		if !item.Exists && i == m.selectedIdx {
-			sb.WriteString(kit.SelectorItemStyle().Render("      " + kit.SelectorHintStyle().Render(item.CreateHint)))
-			sb.WriteString("\n")
+		b.WriteString(m.renderRow(i, item, w) + "\n")
+		if i == m.selectedIdx && m.editingDir {
+			b.WriteString(strings.Repeat(" ", 2+apLabelWidth+2) + m.dirInput.View() + "\n")
 		}
 	}
-
-	sb.WriteString("\n")
-	if m.toggleErr != nil {
-		sb.WriteString(kit.SelectorHintStyle().Render("  ⚠ " + m.toggleErr.Error()))
-		sb.WriteString("\n")
+	if m.err != nil {
+		b.WriteString("\n" + memoryWarnStyle.Width(w).Render("⚠ "+m.err.Error()) + "\n")
 	}
-	hint := "↑/↓ navigate · Enter edit · 1-3 quick select · Esc cancel"
-	if m.settings != nil {
-		hint = "Enter edit · t auto memory · p this project only · Esc"
+
+	hint := kit.HintLine(keycap("↑↓")+" navigate", keycap("enter")+" open", keycap("esc")+" close")
+	switch {
+	case m.editingDir:
+		hint = kit.HintLine(keycap("enter")+" save", "empty for the default", keycap("esc")+" cancel")
+	case m.settings != nil:
+		hint = kit.HintLine(keycap("enter")+" open", keycap("d")+" move", keycap("t")+" on/off",
+			keycap("p")+" project", keycap("esc")+" close")
 	}
-	sb.WriteString(kit.SelectorHintStyle().Render(hint))
-
-	content := sb.String()
-	box := kit.SelectorBorderStyle().Width(kit.CalculateBoxWidth(m.width)).Render(content)
-
-	return lipgloss.Place(m.width, m.height-4, lipgloss.Center, lipgloss.Center, box)
+	header := apTitleGlyphStyle.Render("✦ ") + apTitleStyle.Render("Memory") + apDescStyle.Render("   what San remembers across sessions")
+	return panelFrame(m.width, m.height, w, header, strings.TrimRight(b.String(), "\n"), hint)
 }
+
+// renderRow draws "▸ Project   AGENTS.md · checked in        1.2 KB", dimming
+// the value of a file that does not exist yet or a store while auto memory is
+// off. A long description loses its head, so a store keeps its repository.
+func (m *MemorySelector) renderRow(i int, item memoryItem, width int) string {
+	mark := "  "
+	if i == m.selectedIdx {
+		mark = apCursorStyle.Render("▸ ")
+	}
+	label := mark + apLabelStyle.Render(apPad(item.Label, apLabelWidth))
+	valueStyle := apLabelStyle
+	if !item.Exists || (item.Store != "" && !m.settings.AutoMemory()) {
+		valueStyle = apSummaryStyle
+	}
+	right := valueStyle.Render(item.Value)
+	room := width - lipgloss.Width(label) - lipgloss.Width(right) - 4
+	left := label + "  " + apDescStyle.Render(kit.TruncateKeepEnd(item.Desc, max(room, 1)))
+	return left + strings.Repeat(" ", max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)) + right
+}
+
+var memoryWarnStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 
 // ── Runtime interface & Update ──────────────────────────────────────────
 
@@ -531,7 +570,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 
 	switch subCmd {
 	case "list":
-		result, err := handleMemoryList(cwd)
+		result, err := handleMemoryList(cwd, settings)
 		return result, "", err
 	case "show":
 		result, err := handleMemoryShow(cwd)
@@ -562,7 +601,7 @@ const (
 )
 
 // handleMemoryList lists all memory files.
-func handleMemoryList(cwd string) (string, error) {
+func handleMemoryList(cwd string, settings *setting.Settings) (string, error) {
 	paths := system.GetAllMemoryPaths(cwd)
 	state := &memoryListState{cwd: cwd}
 
@@ -571,9 +610,12 @@ func handleMemoryList(cwd string) (string, error) {
 	sb.WriteString("╭─ Memory Files ─────────────────────────────────────╮\n")
 	sb.WriteString(memoryFormatBoxLine(""))
 
-	state.writeMemorySection(&sb, "Global", []string{paths.Global}, paths.GlobalRules, paths.Global, false)
+	state.writeMemorySection(&sb, "Global", []string{paths.Global}, paths.GlobalRules, kit.ShortenPath(paths.Global), false)
 	state.writeMemorySection(&sb, "Project", paths.Project, paths.ProjectRules, "/init", true)
 	state.writeMemoryLocalSection(&sb, paths.Local)
+	if settings != nil {
+		writeAutoMemorySection(&sb, cwd, settings.AutoMemory())
+	}
 
 	sb.WriteString("╰────────────────────────────────────────────────────╯\n")
 
@@ -627,6 +669,22 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 	displayPath = memoryTruncatePathKeepFilename(displayPath, memoryMaxPath)
 	sizeStr := fmt.Sprintf("(%s)", system.FormatFileSize(size))
 	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", padRight(displayPath, memoryMaxPath), sizeStr)))
+}
+
+// writeAutoMemorySection lists both auto-memory stores, a long directory
+// losing its head so the repository and count stay in view.
+func writeAutoMemorySection(sb *strings.Builder, cwd string, on bool) {
+	glyph := "○"
+	if on {
+		glyph = "●"
+	}
+	sb.WriteString(memoryFormatBoxLine(" " + glyph + " Auto memory (" + onOff(on) + ", " + autoMemorySource() + ")"))
+	for _, item := range autoMemoryItems(cwd) {
+		head, tail := "   "+apPad(item.Label, 9), " · "+item.Value
+		desc := kit.TruncateKeepEnd(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
+		sb.WriteString(memoryFormatBoxLine(head + desc + tail))
+	}
+	sb.WriteString(memoryFormatBoxLine(""))
 }
 
 func memoryFormatBoxLine(content string) string {

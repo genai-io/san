@@ -223,12 +223,12 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		parts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
 	}
 	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
-	var memoryDir string
+	var memory system.MemoryStores
 	if setting.New(settings).AutoMemory() {
-		memoryDir = system.AutoMemoryDir(cwd)
+		memory = setting.MemoryStoresFor(cwd)
 	}
 	return agentpkg.BuildParams{
-		AutoMemoryDir: memoryDir,
+		AutoMemory:    memory,
 		ModelID:       settings.Model,
 		MaxTokens:     setting.DefaultMaxTokens,
 		CWD:           cwd,
@@ -236,14 +236,14 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		DisabledTools: setting.WithDefaultDisabledTools(settings.DisabledTools),
 		// Headless uses the same effective policy; prompts become refusals.
 		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
-			if permitAutoMemoryWrite(memoryDir, name, args, settings.DenyRule) {
+			if permitAutoMemoryWrite(memory, name, args, settings.DenyRule) {
 				return agentpkg.PermDecisionResult{Decision: perm.Permit, Reason: "auto memory", ToolName: name}
 			}
 			d := settings.HasPermissionToUseTool(name, args, headless)
 			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
 		},
 		ResultFilter: func(_ context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
-			return afterMemoryWrite(memoryDir, c), nil
+			return afterMemoryWrite(memory, c), nil
 		},
 	}, nil
 }

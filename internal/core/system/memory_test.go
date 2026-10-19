@@ -543,11 +543,59 @@ func TestStampModified(t *testing.T) {
 		t.Error("restamping the same time should be a no-op")
 	}
 
+	// A model's stray indent on a top-level key is dropped; real nesting stays.
+	for src, want := range map[string]string{
+		"---\nname: a\n type: user\n---\n":             "---\nname: a\ntype: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
+		"---\nname: a\nmetadata:\n  type: user\n---\n": "---\nname: a\nmetadata:\n  type: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
+		"---\ndescription: |\n  two\n  lines\n---\n":   "---\ndescription: |\n  two\n  lines\nmodified: 2026-10-16T08:00:00Z\n---\n",
+	} {
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := StampModified(path, now); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := os.ReadFile(path); string(got) != want {
+			t.Errorf("from %q got %q, want %q", src, got, want)
+		}
+	}
+
 	plain := filepath.Join(dir, "MEMORY.md")
 	if err := os.WriteFile(plain, []byte("- [A](a.md) — x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if stamped, _ := StampModified(plain, now); stamped {
 		t.Error("a file without frontmatter must be left alone")
+	}
+}
+
+// A memory filed in both stores is reported so the agent keeps one.
+func TestMemoryStoresDuplicates(t *testing.T) {
+	s := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
+	for _, p := range []string{
+		filepath.Join(s.User, "terse.md"), filepath.Join(s.Project, "terse.md"),
+		filepath.Join(s.User, "MEMORY.md"), filepath.Join(s.Project, "MEMORY.md"),
+		filepath.Join(s.User, "only-user.md"),
+	} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := s.Duplicates(); len(got) != 1 || !strings.HasPrefix(got[0], "terse.md ") {
+		t.Errorf("Duplicates() = %v", got)
+	}
+}
+
+func TestMemoryStoresContains(t *testing.T) {
+	s := MemoryStores{User: "/u", Project: "/p"}
+	for path, want := range map[string]bool{
+		"/u/a.md": true, "/p/MEMORY.md": true, "/p/sub/a.md": false, "/p/a.txt": false, "a.md": false,
+	} {
+		if got := s.Contains(path); got != want {
+			t.Errorf("Contains(%q) = %v, want %v", path, got, want)
+		}
+	}
+	if (MemoryStores{}).Contains("a.md") {
+		t.Error("memory off contains nothing")
 	}
 }

@@ -762,3 +762,70 @@ func hasRemoteTarget(args []string) bool {
 	}
 	return false
 }
+
+// RemovedFiles returns the files a plain `rm` removes: one command, at most a
+// -f flag, every argument a literal. Anything else — chaining, redirects,
+// expansions, globs, other flags — reports false.
+func RemovedFiles(cmd string) ([]string, bool) {
+	file := parseBashAST(cmd)
+	if file == nil || len(file.Stmts) != 1 {
+		return nil, false
+	}
+	stmt := file.Stmts[0]
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Negated || stmt.Background || stmt.Coprocess || len(stmt.Redirs) > 0 || len(call.Assigns) > 0 {
+		return nil, false
+	}
+	var words []string
+	for _, w := range call.Args {
+		lit, ok := literalWord(w)
+		if !ok {
+			return nil, false
+		}
+		words = append(words, lit)
+	}
+	if len(words) < 2 || words[0] != "rm" {
+		return nil, false
+	}
+	files := words[1:]
+	if files[0] == "-f" {
+		files = files[1:]
+	}
+	for _, f := range files {
+		if strings.HasPrefix(f, "-") {
+			return nil, false
+		}
+	}
+	return files, len(files) > 0
+}
+
+// literalWord is w's text when it is plain or quoted text with no expansion
+// or glob, the only words whose meaning the shell can't change.
+func literalWord(w *syntax.Word) (string, bool) {
+	var sb strings.Builder
+	for _, part := range w.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			if strings.ContainsAny(p.Value, "*?[]{}~\\") {
+				return "", false
+			}
+			sb.WriteString(p.Value)
+		case *syntax.SglQuoted:
+			if p.Dollar {
+				return "", false
+			}
+			sb.WriteString(p.Value)
+		case *syntax.DblQuoted:
+			for _, inner := range p.Parts {
+				lit, ok := inner.(*syntax.Lit)
+				if !ok || strings.ContainsAny(lit.Value, "\\$`") {
+					return "", false
+				}
+				sb.WriteString(lit.Value)
+			}
+		default:
+			return "", false
+		}
+	}
+	return sb.String(), true
+}

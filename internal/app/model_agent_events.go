@@ -128,6 +128,10 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
+	// Memory calls stay out of the chat flow; the turn ends with one line.
+	if entries := m.conv.TurnMemory(); len(entries) > 0 {
+		m.notifyMain(mainNotice{Display: memoryLine(entries, m.env.Width)})
+	}
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 

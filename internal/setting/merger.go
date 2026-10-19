@@ -25,6 +25,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.AllowBypass = coalescePtr(overlay.AllowBypass, base.AllowBypass)
 	result.AutoUpdate = coalescePtr(overlay.AutoUpdate, base.AutoUpdate)
 	result.AutoMemory = coalescePtr(overlay.AutoMemory, base.AutoMemory)
+	result.AutoMemoryDirectory = coalesce(overlay.AutoMemoryDirectory, base.AutoMemoryDirectory)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.GitBar = coalescePtr(overlay.GitBar, base.GitBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
