@@ -646,11 +646,7 @@ func (m *model) wireReminderProviders() {
 	// change picks up the latest index. Kept as its own scope so agent-written
 	// entries never mix with the user-authored memory above.
 	m.services.Reminder.Register(reminder.ProviderMemoryAuto, func() string {
-		s := m.autoMemory()
-		if s.Off() {
-			return ""
-		}
-		return agent.AutoMemoryReminder(s)
+		return agent.AutoMemoryReminder(m.autoMemory())
 	})
 }
 

@@ -98,11 +98,17 @@ func (m *MemorySelector) loadItems() {
 		instructionItem("Local", "local", []string{paths.Local}, cwd),
 	}
 	if m.settings != nil {
-		stores := setting.MemoryStoresFor(cwd)
-		home, _ := os.UserHomeDir()
-		m.items = append(m.items,
-			autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
-			autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)))
+		m.items = append(m.items, autoMemoryItems(cwd)...)
+	}
+}
+
+// autoMemoryItems describes the user and project stores.
+func autoMemoryItems(cwd string) []memoryItem {
+	stores := setting.MemoryStoresFor(cwd)
+	home, _ := os.UserHomeDir()
+	return []memoryItem{
+		autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
+		autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)),
 	}
 }
 
@@ -357,12 +363,16 @@ func (m *MemorySelector) renderRow(i int, item memoryItem, width int) string {
 	}
 	right := valueStyle.Render(item.Value)
 	room := width - lipgloss.Width(label) - lipgloss.Width(right) - 4
-	desc := item.Desc
-	if w := ansi.StringWidth(desc); w > room {
-		desc = ansi.TruncateLeft(desc, w-max(room, 1)+1, "…")
-	}
-	left := label + "  " + apDescStyle.Render(desc)
+	left := label + "  " + apDescStyle.Render(truncLeft(item.Desc, room))
 	return left + strings.Repeat(" ", max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)) + right
+}
+
+// truncLeft cuts s from the front to fit room cells, so a path keeps its tail.
+func truncLeft(s string, room int) string {
+	if w := ansi.StringWidth(s); w > room {
+		return ansi.TruncateLeft(s, w-max(room, 1)+1, "…")
+	}
+	return s
 }
 
 var memoryWarnStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
@@ -674,17 +684,9 @@ func writeAutoMemorySection(sb *strings.Builder, cwd string, on bool) {
 	} else {
 		sb.WriteString(memoryFormatBoxLine(" ○ Auto memory (off, " + autoMemorySource() + ")"))
 	}
-	stores := setting.MemoryStoresFor(cwd)
-	home, _ := os.UserHomeDir()
-	for _, item := range []memoryItem{
-		autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
-		autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)),
-	} {
+	for _, item := range autoMemoryItems(cwd) {
 		head, tail := "   "+apPad(item.Label, 9), " · "+item.Value
-		desc := item.Desc
-		if room := memoryBoxWidth - 3 - len(head) - len(tail); ansi.StringWidth(desc) > room {
-			desc = ansi.TruncateLeft(desc, ansi.StringWidth(desc)-room+1, "…")
-		}
+		desc := truncLeft(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
 		sb.WriteString(memoryFormatBoxLine(head + desc + tail))
 	}
 	sb.WriteString(memoryFormatBoxLine(""))

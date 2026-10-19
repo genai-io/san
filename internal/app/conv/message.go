@@ -636,9 +636,10 @@ type ToolResultData struct {
 func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
-	hidden := memoryHidden(params)
 	for _, tc := range params.ToolCalls {
-		if hidden[tc.ID] {
+		// Memory calls leave the chat flow for the turn's memory line
+		// (TurnMemory); expanded and failed ones still render.
+		if _, ok := parseMemoryOp(tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
 			continue
 		}
 		switch tc.Name {

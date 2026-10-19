@@ -254,18 +254,18 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 		m.Tool.Track(calls)
 	}
 	m.Stream.MessageID = ""
-	m.Stream.BuildingTool, m.Stream.BuildingLabel = "", ""
+	m.Stream.BuildingTool = ""
 	return nil
 }
 
 func applyPreTool(m *Model, tc core.ToolCall) {
-	m.Stream.BuildingTool, m.Stream.BuildingLabel = tc.Name, executionLabel(tc)
+	m.Stream.BuildingTool = tc.Name
 	m.Tool.MarkCurrent(tc.ID)
 	m.Tool.MarkStarted(tc.ID)
 }
 
 func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
-	m.Stream.BuildingTool, m.Stream.BuildingLabel = "", ""
+	m.Stream.BuildingTool = ""
 	if tool.IsAgentToolName(tr.ToolName) {
 		delete(m.TaskActivity, m.Tool.IndexOf(tr.ToolCallID))
 	}

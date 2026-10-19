@@ -110,32 +110,9 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
-// memoryHidden lists a message's memory calls, kept out of the chat flow: the
-// turn ends with one memory line instead (TurnMemory). Expanded calls and
-// failed ones still render as themselves.
-func memoryHidden(params ToolCallsParams) map[string]bool {
-	if params.ToolCallsExpanded {
-		return nil
-	}
-	var hidden map[string]bool
-	for _, tc := range params.ToolCalls {
-		if _, ok := parseMemoryOp(tc.Name, tc.Input); !ok {
-			continue
-		}
-		if result, done := params.ResultMap[tc.ID]; done && result.IsError {
-			continue
-		}
-		if hidden == nil {
-			hidden = map[string]bool{}
-		}
-		hidden[tc.ID] = true
-	}
-	return hidden
-}
-
 // MemoryEntry is one memory a turn touched.
 type MemoryEntry struct {
-	Verb  string // "used", "saved", "updated" or "forgot"
+	Verb  string // "used", "saved" or "updated"
 	Path  string
 	Title string // its index title, else its description, else its slug
 }
@@ -143,9 +120,8 @@ type MemoryEntry struct {
 var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
 
 // TurnMemory lists what the latest turn did with memory, back to its user
-// message, in order: memories read (used), written (saved or updated, once per
-// file) and dropped from an index while their file went away (forgot). Index
-// reads and failed calls don't count.
+// message, in order: memories read (used) and written (saved or updated, once
+// per file). Index reads and writes and failed calls don't count.
 func (m *ConversationModel) TurnMemory() []MemoryEntry {
 	msgs := m.Messages
 	start := len(msgs)
@@ -171,21 +147,7 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 	for _, m := range msgs[start:] {
 		for _, tc := range m.ToolCalls {
 			op, ok := parseMemoryOp(tc.Name, tc.Input)
-			if !ok || failed[tc.ID] {
-				continue
-			}
-			var edit struct {
-				Old string `json:"old_string"`
-				New string `json:"new_string"`
-			}
-			_ = json.Unmarshal([]byte(tc.Input), &edit)
-			if op.subject == "" { // the index: an Edit that drops a link may forget it
-				for _, l := range indexLink.FindAllStringSubmatch(edit.Old, -1) {
-					target := filepath.Join(filepath.Dir(op.path), l[2])
-					if _, err := os.Stat(target); err != nil && !strings.Contains(edit.New, "("+l[2]+")") {
-						add(MemoryEntry{Verb: "forgot", Path: target, Title: l[1]})
-					}
-				}
+			if !ok || failed[tc.ID] || op.subject == "" {
 				continue
 			}
 			e := MemoryEntry{Verb: strings.ToLower(op.verb), Path: op.path}

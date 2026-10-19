@@ -30,7 +30,6 @@ type RenderContext struct {
 	StreamWaiting   bool
 	StreamMessageID string
 	BuildingTool    string
-	BuildingLabel   string
 	PendingCalls    []core.ToolCall
 	CurrentIdx      int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
@@ -248,6 +247,14 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	return sb.String()
 }
 
+// executingLabel is what the running tool is doing, in place of "Thinking...".
+func (p RenderContext) executingLabel() string {
+	if p.BuildingTool == "" || p.CurrentIdx >= len(p.PendingCalls) {
+		return ""
+	}
+	return executionLabel(p.PendingCalls[p.CurrentIdx])
+}
+
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
 	base := RenderAssistantMessage(AssistantParams{
 		Content:              msg.Content,
@@ -259,7 +266,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		SpinnerView:          p.SpinnerView,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
-		ExecutingLabel:       p.BuildingLabel,
+		ExecutingLabel:       p.executingLabel(),
 		ContentCommittedLen:  msg.ContentCommittedLen,
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,
@@ -272,11 +279,19 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		return base
 	}
 
+	var sb strings.Builder
+	sb.WriteString(base)
+
+	if msg.Content != "" {
+		sb.WriteString("\n")
+	}
+
 	resultMap := p.InlinedResults.resultsFor(idx)
 	if resultMap == nil {
 		resultMap = map[string]ToolResultData{}
 	}
-	params := ToolCallsParams{
+
+	sb.WriteString(RenderToolCalls(ToolCallsParams{
 		ToolCalls:          msg.ToolCalls,
 		ToolCallsExpanded:  msg.ToolCallsExpanded,
 		ResultMap:          resultMap,
@@ -299,13 +314,8 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		MDRenderer:         p.MDRenderer,
 		Width:              p.Width,
 		Interactive:        p.Interactive,
-	}
-	var sb strings.Builder
-	sb.WriteString(base)
-	if msg.Content != "" {
-		sb.WriteString("\n")
-	}
-	sb.WriteString(RenderToolCalls(params))
+	}))
+
 	return sb.String()
 }
 

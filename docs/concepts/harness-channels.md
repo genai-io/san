@@ -164,9 +164,8 @@ follows Claude Code's layout:
 - Memory calls stay out of the chat flow (the spinner keeps saying Thinking;
   reading takes under a millisecond). Each turn that touched memory ends with
   one quiet line under the answer, by index title, grouped by verb:
-  `◇ memory · used Go dev, Release freeze · saved No AI attribution`. `forgot`
-  is a link dropped from an index along with its file. ctrl+o shows the calls
-  themselves; a failed call always does. The prompt asks for a write and its
+  `◇ memory · used Go dev, Release freeze · saved No AI attribution`. ctrl+o
+  shows the calls themselves; a failed call always does. The prompt asks for a write and its
   index edit in one response, so a save costs two steps. A memory file in
   both stores is reported as a duplicate to fix, and each write trims stray
   frontmatter indentation so the model needs no follow-up edit.

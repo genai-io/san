@@ -93,12 +93,9 @@ func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
 			return fmt.Errorf("settings.local.json is tracked by git or outside a repository, so it cannot move this project's memory")
 		}
 	}
-	var doc map[string]any
+	doc := map[string]any{}
 	if err := atomicfile.ReadJSON(path, &doc); err != nil {
 		return err
-	}
-	if doc == nil {
-		doc = map[string]any{}
 	}
 	if dir == "" {
 		delete(doc, "autoMemoryDirectory")

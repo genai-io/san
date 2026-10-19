@@ -59,8 +59,7 @@ func TestMemoryRows(t *testing.T) {
 
 // Memory calls leave the chat flow — a failed one still shows itself — and the
 // turn's dealings with memory come back as one ordered list: used, saved or
-// updated once per file (with the description it replaced), and forgotten when
-// a link left the index along with its file.
+// updated once per file.
 func TestTurnMemory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -112,14 +111,13 @@ func TestTurnMemory(t *testing.T) {
 			call("w1", "Write", terse, nil),
 			call("e1", "Edit", terse, nil),
 			call("e2", "Edit", freeze, map[string]string{"old_string": "description: freeze until 10/30", "new_string": "description: freeze until 11/5"}),
-			call("e3", "Edit", index, map[string]string{"old_string": "- [Old note](old.md) — x\n- [Freeze](freeze.md) — y", "new_string": "- [Freeze](freeze.md) — y"}),
 		}},
 	}}
 	var got []string
 	for _, e := range conv.TurnMemory() {
 		got = append(got, e.Verb+":"+e.Title)
 	}
-	want := []string{"used:terse answers", "saved:terse answers", "updated:Freeze", "forgot:Old note"}
+	want := []string{"used:terse answers", "saved:terse answers", "updated:Freeze"}
 	if !slices.Equal(got, want) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}
