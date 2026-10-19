@@ -3,7 +3,6 @@
 package app
 
 import (
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -13,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -235,13 +235,10 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return bashPromptResponder{model: m, bridge: bridge}
 	}
 
-	params.ResultFilter = func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
-		// A memory write's result is small, so it never needs paging out.
-		if r := afterMemoryWrite(params.AutoMemory, c); r != nil {
-			return r, nil
-		}
-		return m.filterOversizedResult(ctx, c)
+	if m.memoryRecall == nil {
+		m.memoryRecall = &memoryRecall{surfaced: map[string]bool{}}
 	}
+	params.ResultFilter = agent.WithRecall(m.filterOversizedResult, m.memoryRecall.current.Load)
 	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
 		var decision setting.PermissionDecision
 		if permitAutoMemoryWrite(params.AutoMemory, name, args, m.services.Setting.DenyRule) {
@@ -591,7 +588,11 @@ func (m *model) sendPendingMessages() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
+	if !m.conv.Stream.Active && len(m.pendingMessages) > 0 {
+		m.turnOpenedBy = m.pendingMessages[0].ID
+	}
 	for len(m.pendingMessages) > 0 {
+		m.startMemoryRecall(m.pendingMessages[0].Text())
 		m.pendingMessages[0] = m.attachPendingReminders(m.pendingMessages[0])
 		// Keep rejected input in native form so the next submission can retry it.
 		if err := m.services.Agent.Send(m.pendingMessages[0]); err != nil {
@@ -604,6 +605,38 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		return m.conv.Spinner.Tick
 	}
 	return nil
+}
+
+// memoryRecall is the pick running beside the current turn, read by the
+// agent goroutine's result filter.
+type memoryRecall struct {
+	current  atomic.Pointer[agent.Recall]
+	surfaced map[string]bool // attached in this conversation, never twice
+}
+
+// startMemoryRecall starts picking the memories a message sent to the agent
+// needs, replacing a pick for an earlier one. The message does not wait.
+func (m *model) startMemoryRecall(query string) {
+	if m.memoryRecall == nil || strings.TrimSpace(query) == "" || conv.IsAgentEnvelope(query) || m.agentAutoMemory.Off() {
+		return
+	}
+	if !m.systemRemindersSent || m.memoryRecall.surfaced == nil {
+		m.memoryRecall.surfaced = map[string]bool{} // a new conversation has seen none
+	}
+	provider, info := m.resolveReviewer("")
+	r := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info)}
+	m.memoryRecall.current.Swap(r.Start(m.agentAutoMemory, query, maps.Clone(m.memoryRecall.surfaced))).Stop()
+}
+
+// endMemoryRecall drops the turn's pick, and remembers what it attached.
+func (m *model) endMemoryRecall(recalled []string) {
+	if m.memoryRecall == nil {
+		return
+	}
+	m.memoryRecall.current.Swap(nil).Stop()
+	for _, path := range recalled {
+		m.memoryRecall.surfaced[path] = true
+	}
 }
 
 // attachPendingReminders drains the reminder queue and appends any pending

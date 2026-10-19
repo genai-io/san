@@ -1,15 +1,11 @@
 package app
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
-	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core/system"
@@ -48,44 +44,6 @@ func TestAutoMemoryStore(t *testing.T) {
 	}
 	if autoMemoryStore(system.MemoryStores{}, "Write", map[string]any{"file_path": filepath.Join(dir, "x.md")}) != "" {
 		t.Error("auto memory off must not permit anything")
-	}
-}
-
-func TestAfterMemoryWrite(t *testing.T) {
-	dir := t.TempDir()
-	topic := filepath.Join(dir, "user_role.md")
-	index := filepath.Join(dir, "MEMORY.md")
-	if err := os.WriteFile(topic, []byte("---\nname: user-role\ntype: user\n---\n\nGo dev.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(index, []byte("- [Gone](gone.md) — x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	call := func(path string) sdkagent.PostToolContext {
-		return sdkagent.PostToolContext{
-			Call:   ai.ToolCall{Name: "Write", Input: `{"file_path":"` + path + `"}`},
-			Result: sdkagent.Result{Content: ai.TextContent("ok")},
-		}
-	}
-
-	stores := system.MemoryStores{Project: dir}
-	r := afterMemoryWrite(stores, call(topic))
-	if r == nil || !strings.Contains(r.Content.Text(), "modified") {
-		t.Fatalf("topic write: %+v", r)
-	}
-	if got, _ := os.ReadFile(topic); !strings.Contains(string(got), "\nmodified: ") {
-		t.Errorf("topic not stamped:\n%s", got)
-	}
-
-	r = afterMemoryWrite(stores, call(index))
-	if r == nil || !strings.Contains(r.Content.Text(), "gone.md") || !strings.Contains(r.Content.Text(), "user_role.md") {
-		t.Fatalf("index write should report the dangling link and the orphan: %+v", r)
-	}
-
-	failed := call(topic)
-	failed.Err = errors.New("boom")
-	if afterMemoryWrite(stores, failed) != nil || afterMemoryWrite(system.MemoryStores{}, call(topic)) != nil {
-		t.Error("failed writes and memory off must pass through")
 	}
 }
 

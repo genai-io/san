@@ -20,6 +20,7 @@ cache — currently:
 - skills directory (re-emit when a skill is enabled / disabled / activated)
 - memory user / memory project (AGENTS.md; re-emit on memory file change)
 - memory auto (both auto-memory stores' `MEMORY.md` indexes, read at render time)
+- memory recall (the auto memories picked for one message; no provider, attached to a tool result by `agent.WithRecall`)
 - one-time notices (queued from hooks or commands)
 
 See [`concepts/harness-channels.md`](../../concepts/harness-channels.md) for
@@ -60,6 +61,7 @@ const (
     ProviderMemoryUser      = "memory-user"
     ProviderMemoryProject   = "memory-project"
     ProviderMemoryAuto      = "memory-auto"
+    ProviderMemoryRecall    = "memory-recall"
 )
 
 // Wrap a body in the <system-reminder> tag with optional source attribution.

@@ -164,6 +164,13 @@ type model struct {
 	// once this can be derived from the native runtime chain.
 	systemRemindersSent bool
 
+	// turnOpenedBy is the message that started the running turn; messages
+	// that enter mid-turn belong to it.
+	turnOpenedBy string
+
+	// memoryRecall is shared with the agent goroutine, made with the agent.
+	memoryRecall *memoryRecall
+
 	// earlyNotices are notices shown before the transcript's writer exists
 	// (it starts with the first message); they are written once it does.
 	earlyNotices []core.ChatMessage

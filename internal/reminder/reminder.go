@@ -28,12 +28,12 @@ const (
 	ProviderSkillsDirectory = "skills-directory"
 	ProviderMemoryUser      = "memory-user"
 	ProviderMemoryProject   = "memory-project"
-	// ProviderMemoryAuto is the agent-written memory store maintained by the
-	// L1 reviewer (internal/selflearn). It is a distinct source from the
-	// user-authored AGENTS.md so agent-written and user-authored
-	// instructions are never mixed in the prompt. See
-	// notes/active/l1-background-review.md §4.5.
+	// ProviderMemoryAuto is the auto-memory indexes the main agent keeps,
+	// apart from the user-authored AGENTS.md so the two never mix.
 	ProviderMemoryAuto = "memory-auto"
+	// ProviderMemoryRecall tags the auto memories picked for one message. It
+	// has no provider: the pick rides a tool result (agent.WithRecall).
+	ProviderMemoryRecall = "memory-recall"
 	// ProviderGroup is the roster of the group this session joined.
 	ProviderGroup = "group"
 )

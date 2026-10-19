@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
@@ -36,7 +35,7 @@ const (
 	AutoMemoryIndexName = "MEMORY.md"
 
 	// autoMemoryLineCap and autoMemoryByteCap bound how much of the index is
-	// injected, matching Claude Code. Topic files are read on demand.
+	// injected, matching Claude Code. Topic files ride the recall reminder.
 	autoMemoryLineCap = 200
 	autoMemoryByteCap = 25 * 1024
 )
@@ -75,6 +74,47 @@ func (s MemoryStores) Duplicates() []string {
 		}
 	}
 	return dup
+}
+
+// Memory is one memory file in a store, as the recall selector sees it.
+type Memory struct {
+	Path        string
+	Store       string // "user" or "project"
+	Description string
+}
+
+// Memories lists every memory file in both stores, the indexes left out.
+func (s MemoryStores) Memories() []Memory {
+	var out []Memory
+	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
+		if store.dir == "" || (store.name == "project" && store.dir == s.User) {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(store.dir, "*.md"))
+		for _, f := range files {
+			if filepath.Base(f) == AutoMemoryIndexName {
+				continue
+			}
+			data, _ := os.ReadFile(f)
+			out = append(out, Memory{Path: f, Store: store.name, Description: FrontmatterField(string(data), "description")})
+		}
+	}
+	return out
+}
+
+// FrontmatterField returns key's value from content's leading frontmatter.
+func FrontmatterField(content, key string) string {
+	fm, ok := strings.CutPrefix(content, "---\n")
+	if !ok {
+		return ""
+	}
+	fm, _, _ = strings.Cut(fm, "\n---")
+	for line := range strings.SplitSeq(fm, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+":"); ok {
+			return strings.Trim(strings.TrimSpace(v), `"'`)
+		}
+	}
+	return ""
 }
 
 // UserMemoryDir is the default user store: ~/.san/memory/.
@@ -168,47 +208,6 @@ func listNames(names []string) string {
 		return strings.Join(names, ", ")
 	}
 	return strings.Join(names[:10], ", ") + fmt.Sprintf(" and %d more", len(names)-10)
-}
-
-// StampModified records the write time as a `modified` field in the
-// frontmatter of the memory file at path, replacing an older one, and drops
-// stray indentation a model left on a top-level key (YAML would read it as
-// part of the value above); keys nested under a parent stay as written. A
-// file without frontmatter is left alone. It reports whether the file changed.
-func StampModified(path string, now time.Time) (bool, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, err
-	}
-	src := string(data)
-	if !strings.HasPrefix(src, "---\n") {
-		return false, nil
-	}
-	end := strings.Index(src[4:], "\n---")
-	if end < 0 {
-		return false, nil
-	}
-	end += 4
-	var fm []string
-	parent := false // the last top-level key opens a map or block scalar
-	for _, line := range strings.Split(src[4:end], "\n") {
-		if trimmed := strings.TrimLeft(line, " \t"); trimmed == line {
-			_, v, _ := strings.Cut(line, ":")
-			v = strings.TrimSpace(v)
-			parent = v == "" || v[0] == '|' || v[0] == '>'
-		} else if !parent {
-			line = trimmed
-		}
-		if !strings.HasPrefix(line, "modified:") {
-			fm = append(fm, line)
-		}
-	}
-	fm = append(fm, "modified: "+now.UTC().Format(time.RFC3339))
-	out := "---\n" + strings.Join(fm, "\n") + src[end:]
-	if out == src {
-		return false, nil
-	}
-	return true, os.WriteFile(path, []byte(out), 0o644)
 }
 
 // truncateOnLineBoundary trims s to at most max bytes, cutting at the last

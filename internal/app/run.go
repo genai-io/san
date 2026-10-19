@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
 	agentpkg "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
@@ -241,9 +240,6 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 			}
 			d := settings.HasPermissionToUseTool(name, args, headless)
 			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
-		},
-		ResultFilter: func(_ context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
-			return afterMemoryWrite(memory, c), nil
 		},
 	}, nil
 }

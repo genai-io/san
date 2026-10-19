@@ -36,10 +36,7 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	if toolName == "" {
 		toolName = "Tool"
 	}
-	if out, ok := renderMemoryResult(data); ok {
-		return out
-	}
-
+	data.Content = withoutRecall(data.Content)
 	// File-change failures retain their requested-change preview, and Bash
 	// failures retain their line-count summary. Every other nested failure can
 	// use the shared layout without repeating the call's tool name.
