@@ -233,22 +233,21 @@ func TestTakeWelcomeBannerFreezesAndClears(t *testing.T) {
 	}
 }
 
-// A completed thinking paragraph commits to scrollback mid-stream once the
-// next one starts — reasoning does not wait for the whole block; only the
-// latest thought stays live, so a memory read can join its line. The render
-// runs off-thread; the committed offset advances only once it lands.
+// A completed thinking paragraph (terminated by a blank line) commits to
+// scrollback mid-stream, before any content arrives — reasoning no longer waits
+// for the whole block to finish. The render runs off-thread; the committed
+// offset advances only once it lands.
 func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
-	first := "first paragraph of reasoning\n\n"
 	m := flushTestModel(core.ChatMessage{
 		Role:     core.ChatAssistant,
-		Thinking: first + "second thought\n\n",
+		Thinking: "first paragraph of reasoning\n\n",
 	})
 
 	applyFlush(t, m, m.FlushStreamingBlocks())
 
 	msg := m.conv.Messages[0]
-	if msg.ThinkingCommittedLen != len(first) {
-		t.Fatalf("ThinkingCommittedLen = %d, want %d (the latest thought stays live)", msg.ThinkingCommittedLen, len(first))
+	if msg.ThinkingCommittedLen != len(msg.Thinking) {
+		t.Fatalf("ThinkingCommittedLen = %d, want %d", msg.ThinkingCommittedLen, len(msg.Thinking))
 	}
 	if !msg.ThinkingEmitted {
 		t.Fatal("ThinkingEmitted should be set after the first thinking block commits")
@@ -714,9 +713,7 @@ func TestFlushStreamingBlocksHoldsThinkingAfterContent(t *testing.T) {
 	m.conv.AppendStream("I'll implement the environment changes.\n\n", "")
 	applyFlush(t, m, m.FlushStreamingBlocks())
 	m.conv.AppendStream("", "**Implementing environment changes**\n\n")
-	if cmds := m.FlushStreamingBlocks(); len(cmds) != 0 {
-		t.Fatal("the latest thought stays live until what follows it shows")
-	}
+	applyFlush(t, m, m.FlushStreamingBlocks())
 	committed := m.conv.Messages[0].ThinkingCommittedLen
 	prints := len(m.flush.pendingPrints)
 

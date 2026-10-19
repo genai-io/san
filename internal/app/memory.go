@@ -6,10 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -88,20 +90,59 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 	return &out
 }
 
-// memoryRecap is the turn-end card naming the memories the turn saved or
-// updated, drawn like the self-learning recap; "" when it wrote none.
-func memoryRecap(s system.MemoryStores, changes []conv.MemoryChange) string {
-	var actions []ReviewAction
-	for _, c := range changes {
-		store := "project"
-		if filepath.Dir(c.Path) == s.User {
-			store = "user"
+// memoryLine is the turn's memory summary, grouped by verb in the order
+// things happened — one line for a single verb, an aligned block for several:
+//
+//	◇ memory  used     Go dev, Release freeze
+//	          updated  Release freeze · 10/30 → 11/5 · project
+//
+// Writes name their store; each line is cut to width. "" when the turn left
+// memory alone.
+func memoryLine(s system.MemoryStores, entries []conv.MemoryEntry, width int) string {
+	var verbs []string
+	items := map[string][]string{}
+	for _, e := range entries {
+		if _, ok := items[e.Verb]; !ok {
+			verbs = append(verbs, e.Verb)
 		}
-		target := c.Description
-		if target == "" {
-			target = strings.TrimSuffix(filepath.Base(c.Path), ".md")
+		item := e.Title
+		if e.Change != "" {
+			item += " · " + e.Change
 		}
-		actions = append(actions, ReviewAction{Kind: "memory", Target: target, Note: c.Verb + " · " + store + " store"})
+		if e.Verb != "used" {
+			store := "project"
+			if filepath.Dir(e.Path) == s.User {
+				store = "user"
+			}
+			item += " · " + store
+		}
+		items[e.Verb] = append(items[e.Verb], item)
 	}
-	return formatRecapBlock(actions, "")
+	if len(verbs) == 0 {
+		return ""
+	}
+	const head = "◇ memory  " // the notice indents it under the answer
+	verbWidth := 0
+	if len(verbs) > 1 {
+		verbWidth = len("updated")
+	}
+	var lines []string
+	for i, v := range verbs {
+		lead := memoryLabelStyle.Render(head)
+		if i > 0 {
+			lead = strings.Repeat(" ", len([]rune(head)))
+		}
+		verb := memoryLabelStyle.Render(v + strings.Repeat(" ", max(verbWidth-len(v), 0)) + "  ")
+		text := strings.Join(items[v], ", ")
+		if width > 0 {
+			text = kit.TruncateText(text, max(8, width-lipgloss.Width(lead)-lipgloss.Width(verb)))
+		}
+		lines = append(lines, lead+verb+memoryItemStyle.Render(text))
+	}
+	return strings.Join(lines, "\n")
 }
+
+var (
+	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+)

@@ -300,13 +300,6 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		Width:              p.Width,
 		Interactive:        p.Interactive,
 	}
-	// A tool-only message's last thought is still live: memory joins it.
-	if msg.Content == "" {
-		if _, summary := memoryFold(params); summary != "" {
-			base, params.MemoryOnThinking = joinThinkingLine(base, summary, p.Width)
-		}
-	}
-
 	var sb strings.Builder
 	sb.WriteString(base)
 	if msg.Content != "" {

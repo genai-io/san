@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -99,5 +101,26 @@ func TestPermitAutoMemoryWrite(t *testing.T) {
 	d.Permissions.Deny = []string{"Write(**/a.md)"}
 	if permitAutoMemoryWrite(stores, "Write", args, d.DenyRule) {
 		t.Error("a deny rule must win")
+	}
+}
+
+// The turn's memory reads as one line for one verb and an aligned block for
+// several, writes naming their store.
+func TestMemoryLine(t *testing.T) {
+	s := system.MemoryStores{User: "/u", Project: "/p"}
+	one := ansi.Strip(memoryLine(s, []conv.MemoryEntry{{Verb: "used", Path: "/u/a.md", Title: "Go dev"}, {Verb: "used", Path: "/p/b.md", Title: "Freeze"}}, 80))
+	if one != "◇ memory  used  Go dev, Freeze" {
+		t.Errorf("one verb = %q", one)
+	}
+	block := ansi.Strip(memoryLine(s, []conv.MemoryEntry{
+		{Verb: "used", Path: "/u/a.md", Title: "Go dev"},
+		{Verb: "updated", Path: "/p/b.md", Title: "Freeze", Change: "10/30 → 11/5"},
+	}, 80))
+	want := "◇ memory  used     Go dev\n          updated  Freeze · 10/30 → 11/5 · project"
+	if block != want {
+		t.Errorf("block =\n%s\nwant\n%s", block, want)
+	}
+	if memoryLine(s, nil, 80) != "" {
+		t.Error("a turn without memory gets no line")
 	}
 }

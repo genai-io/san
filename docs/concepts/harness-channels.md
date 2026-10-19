@@ -161,15 +161,21 @@ follows Claude Code's layout:
   tells it what to save and in which store. Writes to `*.md` inside either store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
   still apply.
-- Memory calls stay out of the chat flow: reads fold into one thinking-style
-  summary naming the files (`Read 2 memories · a, b`; while they run, the
-  spinner keeps saying Thinking), joined onto the message's last thought when
-  there is one (that thought stays live until the message shows what follows it), else
-  on its own `✦` row; writes fold into one card at
-  the end of the turn naming each memory saved or updated and its store.
-  ctrl+o shows the calls themselves; a failed call always does. A memory file
-  in both stores is reported as a duplicate to fix, and each write trims stray
-  indentation off the frontmatter so the model needs no follow-up edit.
+- Memory calls stay out of the chat flow (the spinner keeps saying Thinking;
+  reading takes under a millisecond). Each turn that touched memory ends with
+  one summary under the answer, by index title, grouped by verb:
+
+  ```
+  ◇ memory  used     Go dev, Release freeze
+            updated  Release freeze · 2026-10-30 → 2026-11-05 · project
+            saved    No AI commit attribution · user
+  ```
+
+  `updated` shows only the words that changed in the description; `forgot`
+  is a link dropped from an index along with its file. ctrl+o shows the calls
+  themselves; a failed call always does. A memory file in both stores is
+  reported as a duplicate to fix, and each write trims stray frontmatter
+  indentation so the model needs no follow-up edit.
 
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
