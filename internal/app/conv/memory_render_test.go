@@ -117,9 +117,9 @@ func TestTurnMemory(t *testing.T) {
 	}}
 	var got []string
 	for _, e := range conv.TurnMemory() {
-		got = append(got, e.Verb+":"+e.Title+":"+e.Change)
+		got = append(got, e.Verb+":"+e.Title)
 	}
-	want := []string{"used:terse answers:", "saved:terse answers:", "updated:Freeze:10/30 → 11/5", "forgot:Old note:"}
+	want := []string{"used:terse answers", "saved:terse answers", "updated:Freeze", "forgot:Old note"}
 	if !slices.Equal(got, want) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}

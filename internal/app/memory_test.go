@@ -104,23 +104,15 @@ func TestPermitAutoMemoryWrite(t *testing.T) {
 	}
 }
 
-// The turn's memory reads as one line for one verb and an aligned block for
-// several, writes naming their store.
+// The turn's memory is one quiet line, grouped by verb in order.
 func TestMemoryLine(t *testing.T) {
-	s := system.MemoryStores{User: "/u", Project: "/p"}
-	one := ansi.Strip(memoryLine(s, []conv.MemoryEntry{{Verb: "used", Path: "/u/a.md", Title: "Go dev"}, {Verb: "used", Path: "/p/b.md", Title: "Freeze"}}, 80))
-	if one != "◇ memory  used  Go dev, Freeze" {
-		t.Errorf("one verb = %q", one)
-	}
-	block := ansi.Strip(memoryLine(s, []conv.MemoryEntry{
-		{Verb: "used", Path: "/u/a.md", Title: "Go dev"},
-		{Verb: "updated", Path: "/p/b.md", Title: "Freeze", Change: "10/30 → 11/5"},
+	got := ansi.Strip(memoryLine([]conv.MemoryEntry{
+		{Verb: "used", Title: "Go dev"}, {Verb: "updated", Title: "Freeze"}, {Verb: "used", Title: "Tabs"},
 	}, 80))
-	want := "◇ memory  used     Go dev\n          updated  Freeze · 10/30 → 11/5 · project"
-	if block != want {
-		t.Errorf("block =\n%s\nwant\n%s", block, want)
+	if got != "◇ memory · used Go dev, Tabs · updated Freeze" {
+		t.Errorf("memoryLine = %q", got)
 	}
-	if memoryLine(s, nil, 80) != "" {
+	if memoryLine(nil, 80) != "" {
 		t.Error("a turn without memory gets no line")
 	}
 }

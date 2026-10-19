@@ -135,10 +135,9 @@ func memoryHidden(params ToolCallsParams) map[string]bool {
 
 // MemoryEntry is one memory a turn touched.
 type MemoryEntry struct {
-	Verb   string // "used", "saved", "updated" or "forgot"
-	Path   string
-	Title  string // its index title, else its description, else its slug
-	Change string // what an update changed in the description: "10/30 → 11/5"
+	Verb  string // "used", "saved", "updated" or "forgot"
+	Path  string
+	Title string // its index title, else its description, else its slug
 }
 
 var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
@@ -194,23 +193,10 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 				e.Verb = "used"
 			}
 			e.Title = memoryTitle(op.path)
-			if before, after := descriptionLine(edit.Old), descriptionLine(edit.New); before != "" && after != "" && before != after {
-				e.Change = wordChange(before, after)
-			}
 			add(e)
 		}
 	}
 	return out
-}
-
-// descriptionLine is the description a frontmatter fragment sets, or "".
-func descriptionLine(s string) string {
-	for line := range strings.SplitSeq(s, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "description:"); ok {
-			return strings.Trim(strings.TrimSpace(v), `"'`)
-		}
-	}
-	return ""
 }
 
 // memoryTitle names a memory as its store's index does ("[Go dev](go.md)"),
@@ -227,17 +213,4 @@ func memoryTitle(path string) string {
 		return d
 	}
 	return strings.TrimSuffix(filepath.Base(path), ".md")
-}
-
-// wordChange keeps only the words that differ between two descriptions:
-// "freeze until 10/30" and "freeze until 11/5" give "10/30 → 11/5".
-func wordChange(before, after string) string {
-	b, a := strings.Fields(before), strings.Fields(after)
-	for len(b) > 0 && len(a) > 0 && b[0] == a[0] {
-		b, a = b[1:], a[1:]
-	}
-	for len(b) > 0 && len(a) > 0 && b[len(b)-1] == a[len(a)-1] {
-		b, a = b[:len(b)-1], a[:len(a)-1]
-	}
-	return strings.Join(b, " ") + " → " + strings.Join(a, " ")
 }

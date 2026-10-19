@@ -90,56 +90,31 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 	return &out
 }
 
-// memoryLine is the turn's memory summary, grouped by verb in the order
-// things happened — one line for a single verb, an aligned block for several:
-//
-//	◇ memory  used     Go dev, Release freeze
-//	          updated  Release freeze · 10/30 → 11/5 · project
-//
-// Writes name their store; each line is cut to width. "" when the turn left
-// memory alone.
-func memoryLine(s system.MemoryStores, entries []conv.MemoryEntry, width int) string {
+// memoryLine is the turn's memory in one quiet line under the answer, by
+// index title and grouped by verb in the order things happened —
+// "◇ memory · used Go dev · saved No AI attribution" — cut to width; the
+// stores and diffs stay behind ctrl+o. "" when the turn left memory alone.
+func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
 	for _, e := range entries {
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
-		item := e.Title
-		if e.Change != "" {
-			item += " · " + e.Change
-		}
-		if e.Verb != "used" {
-			store := "project"
-			if filepath.Dir(e.Path) == s.User {
-				store = "user"
-			}
-			item += " · " + store
-		}
-		items[e.Verb] = append(items[e.Verb], item)
+		items[e.Verb] = append(items[e.Verb], e.Title)
 	}
 	if len(verbs) == 0 {
 		return ""
 	}
-	const head = "◇ memory  " // the notice indents it under the answer
-	verbWidth := 0
-	if len(verbs) > 1 {
-		verbWidth = len("updated")
+	parts := make([]string, 0, len(verbs))
+	for _, v := range verbs {
+		parts = append(parts, v+" "+strings.Join(items[v], ", "))
 	}
-	var lines []string
-	for i, v := range verbs {
-		lead := memoryLabelStyle.Render(head)
-		if i > 0 {
-			lead = strings.Repeat(" ", len([]rune(head)))
-		}
-		verb := memoryLabelStyle.Render(v + strings.Repeat(" ", max(verbWidth-len(v), 0)) + "  ")
-		text := strings.Join(items[v], ", ")
-		if width > 0 {
-			text = kit.TruncateText(text, max(8, width-lipgloss.Width(lead)-lipgloss.Width(verb)))
-		}
-		lines = append(lines, lead+verb+memoryItemStyle.Render(text))
+	text := strings.Join(parts, " · ")
+	if width > 0 {
+		text = kit.TruncateText(text, max(8, width-len("  ◇ memory · ")))
 	}
-	return strings.Join(lines, "\n")
+	return memoryLabelStyle.Render("◇ memory · ") + memoryItemStyle.Render(text)
 }
 
 var (
