@@ -136,11 +136,28 @@ func renderMemoryResult(data ToolResultData) (string, bool) {
 
 var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
+// memoryStep reports whether an assistant step only kept memory: no text, and
+// every call a memory call that didn't fail. Its thinking narrates that
+// bookkeeping, so the step draws nothing; the turn's memory line reports it.
+func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
+	if msg.Role != core.ChatAssistant || strings.TrimSpace(msg.Content) != "" || len(msg.ToolCalls) == 0 || msg.ToolCallsExpanded {
+		return false
+	}
+	results := p.InlinedResults.resultsFor(idx)
+	for _, tc := range msg.ToolCalls {
+		if _, ok := parseMemoryOp(tc.Name, tc.Input); !ok || results[tc.ID].IsError {
+			return false
+		}
+	}
+	return true
+}
+
 // MemoryEntry is one memory a turn touched.
 type MemoryEntry struct {
 	Verb  string // "used", "saved", "updated" or "forgot"
 	Path  string
 	Title string // its index title, else its description, else its slug
+	Store string // "user" or "project"
 }
 
 var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "updated"}
@@ -217,6 +234,10 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 		}
 		if e.Title == "" {
 			e.Title = memoryTitle(e.Path)
+		}
+		e.Store = "project"
+		if filepath.Dir(e.Path) == MemoryStores.User {
+			e.Store = "user"
 		}
 		kept = append(kept, e)
 	}

@@ -123,3 +123,35 @@ func TestSaveWritesNoEmptyBlocks(t *testing.T) {
 		}
 	}
 }
+
+// Changing a store's directory carries its memories along, but never into a
+// directory that already holds a store.
+func TestMoveMemories(t *testing.T) {
+	from, to, taken := t.TempDir(), filepath.Join(t.TempDir(), "new"), t.TempDir()
+	for _, f := range []string{"MEMORY.md", "go.md"} {
+		if err := os.WriteFile(filepath.Join(from, f), []byte(f), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(taken, "MEMORY.md"), []byte("theirs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MoveMemories(from, taken); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(taken, "MEMORY.md")); string(got) != "theirs" {
+		t.Errorf("an existing store was overwritten: %q", got)
+	}
+	if err := MoveMemories(from, to); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"MEMORY.md", "go.md"} {
+		if _, err := os.Stat(filepath.Join(to, f)); err != nil {
+			t.Errorf("%s not moved: %v", f, err)
+		}
+		if _, err := os.Stat(filepath.Join(from, f)); err == nil {
+			t.Errorf("%s left behind", f)
+		}
+	}
+}
