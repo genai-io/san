@@ -72,7 +72,7 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 	if stamped, err := system.StampModified(path, time.Now()); err == nil && stamped {
 		// The stamp is ours, not an outside change the next Edit should balk at.
 		fs.RecordFileWritten(path)
-		notes = append(notes, "Recorded the write time as `modified` in its frontmatter; the file needs no follow-up edit.")
+		notes = append(notes, "Recorded the write time as `modified` in its frontmatter and removed any stray key indentation; the file needs no follow-up edit.")
 	}
 	if dup := s.Duplicates(); len(dup) > 0 {
 		notes = append(notes, "Your memory has duplicates:\n- "+strings.Join(dup, "\n- "))

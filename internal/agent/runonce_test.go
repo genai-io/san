@@ -55,6 +55,10 @@ func TestAHeadlessRunCarriesTheMemoryIndex(t *testing.T) {
 	if !strings.Contains(out, `<memory scope="auto">`) || !strings.Contains(out, "prefers table tests") || !strings.Contains(out, "terse replies") {
 		t.Errorf("a store's index is missing: %q", out)
 	}
+	empty := withInstructions(t.TempDir(), system.MemoryStores{User: t.TempDir()}, core.UserMessage("hi", nil)).Text()
+	if !strings.Contains(empty, "(no memories yet)") {
+		t.Errorf("an empty store should be named as empty: %q", empty)
+	}
 	if !strings.Contains(out, "go.md") || !strings.Contains(out, "needs fixing") {
 		t.Errorf("dangling link not reported: %q", out)
 	}

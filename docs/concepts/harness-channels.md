@@ -160,11 +160,16 @@ follows Claude Code's layout:
 - The agent writes during the turn with Write/Edit; the `memory` rules section
   tells it what to save and in which store. Writes to `*.md` inside either store need no
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
-  still apply.
+  still apply. Both store directories are created up front, and an empty store
+  shows in the reminder as `(no memories yet)`, so the agent neither runs
+  `mkdir` nor reads a missing index. Deleting a memory is a Bash `rm`, which
+  still asks.
 - Memory calls stay out of the chat flow (the spinner keeps saying Thinking;
   reading takes under a millisecond). Each turn that touched memory ends with
   one quiet line under the answer, by index title, grouped by verb:
-  `◇ memory · used Go dev, Release freeze · saved No AI attribution`. ctrl+o
+  `◇ memory · used Go dev, Release freeze · saved No AI attribution`; one
+  entry per memory (a write outranks a read), and `forgot` for one read or
+  dropped from an index and gone by the turn's end. ctrl+o
   shows the calls themselves; a failed call always does. The prompt asks for a write and its
   index edit in one response, so a save costs two steps. A memory file in
   both stores is reported as a duplicate to fix.
@@ -172,7 +177,9 @@ follows Claude Code's layout:
 On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
 or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
 the user or project settings; the project value wins, and
-`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn.
+`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn; moving a store or turning memory off
+mid-session re-sends the index reminder (or an "auto memory is now off" notice),
+since the one sent at session start names the old state.
 `autoMemoryDirectory` (absolute or `~/` path) moves the store of the file that
 sets it: `~/.san/settings.json` the user store, an untracked
 `.san/settings.local.json` the project store. Committed project settings never

@@ -171,8 +171,10 @@ func listNames(names []string) string {
 }
 
 // StampModified records the write time as a `modified` field in the
-// frontmatter of the memory file at path, replacing an older one. A file
-// without frontmatter is left alone. It reports whether the file changed.
+// frontmatter of the memory file at path, replacing an older one, and drops
+// stray indentation a model left on a top-level key (YAML would read it as
+// part of the value above); keys nested under a parent stay as written. A
+// file without frontmatter is left alone. It reports whether the file changed.
 func StampModified(path string, now time.Time) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -188,7 +190,15 @@ func StampModified(path string, now time.Time) (bool, error) {
 	}
 	end += 4
 	var fm []string
+	parent := false // the last top-level key opens a map or block scalar
 	for _, line := range strings.Split(src[4:end], "\n") {
+		if trimmed := strings.TrimLeft(line, " \t"); trimmed == line {
+			_, v, _ := strings.Cut(line, ":")
+			v = strings.TrimSpace(v)
+			parent = v == "" || v[0] == '|' || v[0] == '>'
+		} else if !parent {
+			line = trimmed
+		}
 		if !strings.HasPrefix(line, "modified:") {
 			fm = append(fm, line)
 		}

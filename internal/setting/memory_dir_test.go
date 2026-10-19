@@ -86,3 +86,21 @@ func TestSaveMemoryDirectory(t *testing.T) {
 		t.Error("a tracked settings.local.json should be refused")
 	}
 }
+
+// Saving another setting keeps a moved store where it is.
+func TestOtherSavesKeepMemoryDirectory(t *testing.T) {
+	home := trustHome(t)
+	repo := t.TempDir()
+	if err := SaveMemoryDirectory(ScopeUser, repo, "~/notes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveAutoMemory(false, ScopeUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewLoader().SaveToUser(&Data{Theme: "light"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := MemoryStoresFor(repo).User; got != filepath.Join(home, "notes") {
+		t.Errorf("a later save dropped autoMemoryDirectory: user store = %s", got)
+	}
+}

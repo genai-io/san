@@ -66,7 +66,8 @@ func TestMemoryRows(t *testing.T) {
 
 // Memory calls leave the chat flow — a failed one still shows itself — and the
 // turn's dealings with memory come back as one ordered list: used, saved or
-// updated once per file.
+// updated (a write outranks a read), and forgotten when a memory read or
+// dropped from the index is gone by the turn's end.
 func TestTurnMemory(t *testing.T) {
 	mem := useMemoryStore(t)
 	index := filepath.Join(mem, "MEMORY.md")
@@ -88,6 +89,8 @@ func TestTurnMemory(t *testing.T) {
 	}
 	terse := write("terse.md", "---\nname: terse\ndescription: terse answers\n---\n")
 	freeze := write("freeze.md", "---\nname: freeze\ndescription: freeze until 11/5\n---\n")
+	tabs := write("tabs.md", "---\nname: tabs\ndescription: tabs over spaces\n---\n")
+	gone := filepath.Join(mem, "old.md")              // read, then deleted this turn
 	write("MEMORY.md", "- [Freeze](freeze.md) — y\n") // the index as the turn left it
 
 	reads := []core.ToolCall{call("r1", "Read", terse, nil), call("r2", "Read", index, nil)}
@@ -110,18 +113,19 @@ func TestTurnMemory(t *testing.T) {
 		{Role: core.ChatUser, Content: "earlier turn"},
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call("x", "Read", freeze, nil)}},
 		{Role: core.ChatUser, Content: "remember"},
-		{Role: core.ChatAssistant, ToolCalls: reads},
+		{Role: core.ChatAssistant, ToolCalls: append(reads, call("r3", "Read", tabs, nil), call("r4", "Read", gone, nil))},
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{
 			call("w1", "Write", terse, nil),
 			call("e1", "Edit", terse, nil),
 			call("e2", "Edit", freeze, map[string]string{"old_string": "description: freeze until 10/30", "new_string": "description: freeze until 11/5"}),
+			call("e3", "Edit", index, map[string]string{"old_string": "- [Old note](old.md) — x\n- [Freeze](freeze.md) — y", "new_string": "- [Freeze](freeze.md) — y"}),
 		}},
 	}}
 	var got []string
 	for _, e := range conv.TurnMemory() {
 		got = append(got, e.Verb+":"+e.Title)
 	}
-	want := []string{"used:terse answers", "saved:terse answers", "updated:Freeze"}
+	want := []string{"saved:terse answers", "used:tabs over spaces", "forgot:Old note", "updated:Freeze"}
 	if !slices.Equal(got, want) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}

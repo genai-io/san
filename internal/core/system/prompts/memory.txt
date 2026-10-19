@@ -2,7 +2,7 @@ You keep a persistent, file-based memory in two stores:
 - user store `%s`: what is true in every repository, shared by all of them.
 - project store `%s`: what is true only in this repository.
 
-Each store's MEMORY.md is its index, loaded into every session as the auto memory reminder. Each memory is its own file beside its index; Read one when its index line looks relevant. Write and edit memories with Write/Edit (not Bash) — files in these directories need no permission.
+Each store's MEMORY.md is its index, loaded into every session as the auto memory reminder. Each memory is its own file beside its index; Read one when its index line looks relevant. Write and edit memories with Write/Edit (not Bash) — files in these directories need no permission. Both directories already exist: write into them directly, with no mkdir or existence check.
 
 Save when the user asks you to remember something, and on your own when you learn something a future session will need:
 - user (user store): who the user is — role, expertise, working preferences.
@@ -26,6 +26,6 @@ type: user | feedback | project | reference
 The fact. For feedback and project, follow with **Why:** and **How to apply:** lines.
 ```
 
-Then add one line to that store's MEMORY.md: `- [Title](file.md) — hook`. The index holds pointers, never memory content. Write the memory and edit its index in the same response, after one Read of that index.
+Then add one line to that store's MEMORY.md: `- [Title](file.md) — hook`. The index holds pointers, never memory content. Write the memory and edit its index in the same response, after one Read of that index; a store the reminder shows no index for has none yet, so Write a new MEMORY.md without reading it.
 
-Before saving, look in both stores for a memory that already covers it and update that file instead of adding a near-duplicate. When the user says to forget something, or a memory turns out wrong, delete the file and its index line. Memories reflect what was true when written: before acting on one that names a file, function or flag, check it still exists, and fix or delete it if it is stale.
+Before saving, look in both stores for a memory that already covers it and update that file, keeping its file name and `name`, instead of adding a near-duplicate. When the user says to forget something, or a memory turns out wrong, delete the file and its index line. Memories reflect what was true when written: before acting on one that names a file, function or flag, check it still exists, and fix or delete it if it is stale.

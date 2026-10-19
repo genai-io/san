@@ -79,6 +79,10 @@ type Data struct {
 	// nil/absent means on. Read via Settings.AutoMemory();
 	// SAN_DISABLE_AUTO_MEMORY overrides it.
 	AutoMemory *bool `json:"autoMemory,omitempty"`
+	// AutoMemoryDirectory moves an auto-memory store. Kept here so saves of
+	// other settings round-trip it; never read from the merged value — which
+	// store it moves depends on the file it came from (see MemoryStoresFor).
+	AutoMemoryDirectory string `json:"autoMemoryDirectory,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
 	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
 	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`

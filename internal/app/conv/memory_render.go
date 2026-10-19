@@ -115,7 +115,7 @@ var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
 // MemoryEntry is one memory a turn touched.
 type MemoryEntry struct {
-	Verb  string // "used", "saved" or "updated"
+	Verb  string // "used", "saved", "updated" or "forgot"
 	Path  string
 	Title string // its index title, else its description, else its slug
 }
@@ -125,8 +125,10 @@ var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "u
 var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
 
 // TurnMemory lists what the latest turn did with memory, back to its user
-// message, in order: memories read (used) and written (saved or updated, once
-// per file). Index reads and writes and failed calls don't count.
+// message, one entry per memory in the order first touched: used (read),
+// saved or updated (a write outranks a read), or forgot — touched or dropped
+// from an index this turn and gone by its end. Index files and failed calls
+// don't count.
 func (m *ConversationModel) TurnMemory() []MemoryEntry {
 	msgs := m.Messages
 	start := len(msgs)
@@ -140,25 +142,56 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 		}
 	}
 	var out []MemoryEntry
-	seen := map[string]bool{} // verb + path
-	add := func(e MemoryEntry) {
-		key := e.Verb + e.Path
-		if e.Verb == "updated" && seen["saved"+e.Path] || seen[key] {
-			return
+	at := map[string]int{} // path → its entry
+	note := func(path, verb, title string) {
+		i, ok := at[path]
+		if !ok {
+			i = len(out)
+			at[path] = i
+			out = append(out, MemoryEntry{Path: path})
 		}
-		seen[key] = true
-		out = append(out, e)
+		if e := &out[i]; verb != "" && (e.Verb == "" || e.Verb == "used") {
+			e.Verb = verb
+		}
+		if title != "" {
+			out[i].Title = title
+		}
 	}
 	for _, m := range msgs[start:] {
 		for _, tc := range m.ToolCalls {
 			op, ok := parseMemoryOp(tc.Name, tc.Input)
-			if !ok || failed[tc.ID] || op.subject == "" {
+			if !ok || failed[tc.ID] {
 				continue
 			}
-			add(MemoryEntry{Verb: turnVerb[op.verb], Path: op.path, Title: memoryTitle(op.path)})
+			if op.subject != "" {
+				note(filepath.Clean(op.path), turnVerb[op.verb], "")
+				continue
+			}
+			var edit struct {
+				Old string `json:"old_string"`
+				New string `json:"new_string"`
+			}
+			_ = json.Unmarshal([]byte(tc.Input), &edit)
+			for _, l := range indexLink.FindAllStringSubmatch(edit.Old, -1) {
+				if !strings.Contains(edit.New, "("+l[2]+")") { // the index dropped this link
+					note(filepath.Join(filepath.Dir(op.path), l[2]), "", l[1])
+				}
+			}
 		}
 	}
-	return out
+	kept := out[:0]
+	for _, e := range out {
+		if _, err := os.Stat(e.Path); err != nil {
+			e.Verb = "forgot"
+		} else if e.Verb == "" {
+			continue // a link that moved, not a memory that went
+		}
+		if e.Title == "" {
+			e.Title = memoryTitle(e.Path)
+		}
+		kept = append(kept, e)
+	}
+	return kept
 }
 
 // memoryTitle names a memory as its store's index does ("[Go dev](go.md)"),

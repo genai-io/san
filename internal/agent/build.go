@@ -284,9 +284,10 @@ func AutoMemoryReminder(s system.MemoryStores) string {
 			continue
 		}
 		index, p := system.LoadAutoMemoryAt(store.dir)
-		if index != "" {
-			body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
+		if index == "" {
+			index = "(no memories yet)" // said, so the model doesn't go read a missing index
 		}
+		body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
 		for _, line := range p {
 			problems = append(problems, store.name+": "+line)
 		}

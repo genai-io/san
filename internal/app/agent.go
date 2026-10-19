@@ -556,6 +556,13 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
+	if m.systemRemindersSent && params.AutoMemory != m.agentAutoMemory {
+		// The index reminder went out once, naming the old stores.
+		m.services.Reminder.RequeueSystemReminders()
+		if params.AutoMemory.Off() {
+			m.services.Reminder.Enqueue("Auto memory is now off: stop reading and saving memory files.")
+		}
+	}
 	m.agentAutoMemory = params.AutoMemory
 	conv.MemoryStores = params.AutoMemory
 

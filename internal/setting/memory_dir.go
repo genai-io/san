@@ -35,11 +35,9 @@ func MemoryStoresFor(cwd string) system.MemoryStores {
 }
 
 func readMemoryDir(path string) string {
-	var s struct {
-		AutoMemoryDirectory string `json:"autoMemoryDirectory"`
-	}
-	_ = atomicfile.ReadJSON(path, &s)
-	return s.AutoMemoryDirectory
+	var d Data
+	_ = atomicfile.ReadJSON(path, &d)
+	return d.AutoMemoryDirectory
 }
 
 // expandMemoryDir resolves a leading ~/ and returns "" for a relative path,

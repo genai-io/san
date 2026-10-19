@@ -543,6 +543,23 @@ func TestStampModified(t *testing.T) {
 		t.Error("restamping the same time should be a no-op")
 	}
 
+	// A model's stray indent on a top-level key is dropped; real nesting stays.
+	for src, want := range map[string]string{
+		"---\nname: a\n type: user\n---\n":             "---\nname: a\ntype: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
+		"---\nname: a\nmetadata:\n  type: user\n---\n": "---\nname: a\nmetadata:\n  type: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
+		"---\ndescription: |\n  two\n  lines\n---\n":   "---\ndescription: |\n  two\n  lines\nmodified: 2026-10-16T08:00:00Z\n---\n",
+	} {
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := StampModified(path, now); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := os.ReadFile(path); string(got) != want {
+			t.Errorf("from %q got %q, want %q", src, got, want)
+		}
+	}
+
 	plain := filepath.Join(dir, "MEMORY.md")
 	if err := os.WriteFile(plain, []byte("- [A](a.md) — x\n"), 0o644); err != nil {
 		t.Fatal(err)

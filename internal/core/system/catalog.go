@@ -151,8 +151,14 @@ func rulesSection(override string) core.Section {
 	}
 }
 
-// memorySection tells the main agent how to keep its auto memory in dir.
+// memorySection tells the main agent how to keep its auto memory. The prompt
+// says both stores exist, so they are created here.
 func memorySection(s MemoryStores) core.Section {
+	for _, dir := range []string{s.User, s.Project} {
+		if dir != "" {
+			_ = os.MkdirAll(dir, 0o755)
+		}
+	}
 	return core.Section{
 		Slot: core.SlotRules, Name: "memory", Source: core.Predefined,
 		Render: func() string { return wrap("memory", nil, fmt.Sprintf(cachedMemory, s.User, s.Project)) },
