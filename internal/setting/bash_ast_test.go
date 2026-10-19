@@ -1,6 +1,7 @@
 package setting
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -432,5 +433,26 @@ func Test_checkASTSecurity_ExcessiveCommands(t *testing.T) {
 	reason := checkASTSecurity(file)
 	if reason == "" {
 		t.Error("expected excessive command count to be flagged")
+	}
+}
+
+func TestRemovedFiles(t *testing.T) {
+	for cmd, want := range map[string][]string{
+		"rm /m/a.md":                {"/m/a.md"},
+		"rm -f /m/a.md '/m/b c.md'": {"/m/a.md", "/m/b c.md"},
+		`rm "/m/a.md"`:              {"/m/a.md"},
+	} {
+		if got, ok := RemovedFiles(cmd); !ok || !slices.Equal(got, want) {
+			t.Errorf("%s: got %q %v, want %q", cmd, got, ok, want)
+		}
+	}
+	for _, cmd := range []string{
+		"rm", "rm -f", "rm -rf /m", "rm -- /m/a.md", "rm /m/*.md", "rm ~/m/a.md", "rm $HOME/a.md",
+		"rm /m/a.md; rm /etc/x", "rm /m/a.md && echo", "rm /m/a.md > /tmp/x", "X=1 rm /m/a.md",
+		"rm $(echo /etc/x)", `rm "/m/$f"`, "rm /m/{a,b}.md", "sudo rm /m/a.md", "rm /m/a.md &", "rmdir /m",
+	} {
+		if got, ok := RemovedFiles(cmd); ok {
+			t.Errorf("%s: should not count as a plain rm, got %q", cmd, got)
+		}
 	}
 }

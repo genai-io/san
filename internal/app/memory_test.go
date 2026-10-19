@@ -102,6 +102,24 @@ func TestPermitAutoMemoryWrite(t *testing.T) {
 	if permitAutoMemoryWrite(stores, "Write", args, d.DenyRule) {
 		t.Error("a deny rule must win")
 	}
+
+	// Forgetting is a plain rm of memory files; anything wider still asks.
+	rm := func(cmd string) bool {
+		return permitAutoMemoryWrite(stores, "Bash", map[string]any{"command": cmd}, setting.NewData().DenyRule)
+	}
+	a, b := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")
+	if !rm("rm "+a) || !rm("rm -f "+a+" "+b) {
+		t.Error("removing memory files should be permitted")
+	}
+	outside := filepath.Join(t.TempDir(), "x.md")
+	for _, cmd := range []string{"rm " + a + " " + outside, "rm " + filepath.Join(dir, "run.sh"), "rm -r " + dir, "rm " + a + "; rm " + outside} {
+		if rm(cmd) {
+			t.Errorf("%q must still ask", cmd)
+		}
+	}
+	if permitAutoMemoryWrite(system.MemoryStores{}, "Bash", map[string]any{"command": "rm " + a}, setting.NewData().DenyRule) {
+		t.Error("memory off permits no rm")
+	}
 }
 
 // The turn's memory is one quiet line, grouped by verb in order.

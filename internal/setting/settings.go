@@ -119,11 +119,11 @@ type Data struct {
 	Persona string `json:"persona,omitempty"`
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of skills). Off by default (opt-in).
-	SelfLearn SelfLearnSettings `json:"selfLearn"`
+	SelfLearn SelfLearnSettings `json:"selfLearn,omitzero"`
 	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
 	// toward (JSON key "autoPilot").
-	AutoPilot AutoPilotSettings `json:"autoPilot"`
+	AutoPilot AutoPilotSettings `json:"autoPilot,omitzero"`
 	// LastOperationMode is the user-wide mode restored when starting a new session.
 	LastOperationMode string `json:"lastOperationMode,omitempty"`
 }
@@ -159,7 +159,7 @@ type AutoPilotSettings struct {
 	// from settings.json and presets.
 	MissionState MissionState `json:"missionState,omitempty"`
 	// Steers selects which lifecycle points the copilot takes the helm at.
-	Steers SteerSettings `json:"steers"`
+	Steers SteerSettings `json:"steers,omitzero"`
 	// MaxContinuations caps how many times the TurnEnd steer may auto-continue
 	// a finished turn before yielding to the human. 0 = the default cap,
 	// negative = no cap (see AutoPilotUnlimitedContinuations).

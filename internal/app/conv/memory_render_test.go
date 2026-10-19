@@ -38,6 +38,7 @@ func TestMemoryRows(t *testing.T) {
 		{"Write", input(filepath.Join(mem, "MEMORY.md"), "- x"), "Updated memory index"},
 		{"Edit", input(filepath.Join(mem, "user_role.md"), ""), "Updated memory · user_role"},
 		{"Read", input(filepath.Join(mem, "user_role.md"), ""), "Read memory · user_role"},
+		{"Bash", `{"command":"rm -f ` + filepath.Join(mem, "a.md") + " " + filepath.Join(mem, "b.md") + `"}`, "Deleted memory · a, b"},
 	}
 	for _, c := range cases {
 		op, ok := parseMemoryOp(c.tool, c.input)
@@ -91,6 +92,7 @@ func TestTurnMemory(t *testing.T) {
 	freeze := write("freeze.md", "---\nname: freeze\ndescription: freeze until 11/5\n---\n")
 	tabs := write("tabs.md", "---\nname: tabs\ndescription: tabs over spaces\n---\n")
 	gone := filepath.Join(mem, "old.md")              // read, then deleted this turn
+	tabsGone := filepath.Join(mem, "spaces.md")       // removed by rm this turn, never read
 	write("MEMORY.md", "- [Freeze](freeze.md) — y\n") // the index as the turn left it
 
 	reads := []core.ToolCall{call("r1", "Read", terse, nil), call("r2", "Read", index, nil)}
@@ -118,6 +120,7 @@ func TestTurnMemory(t *testing.T) {
 			call("w1", "Write", terse, nil),
 			call("e1", "Edit", terse, nil),
 			call("e2", "Edit", freeze, map[string]string{"old_string": "description: freeze until 10/30", "new_string": "description: freeze until 11/5"}),
+			{ID: "d1", Name: "Bash", Input: `{"command":"rm ` + tabsGone + `"}`},
 			call("e3", "Edit", index, map[string]string{"old_string": "- [Old note](old.md) — x\n- [Freeze](freeze.md) — y", "new_string": "- [Freeze](freeze.md) — y"}),
 		}},
 	}}
@@ -125,7 +128,7 @@ func TestTurnMemory(t *testing.T) {
 	for _, e := range conv.TurnMemory() {
 		got = append(got, e.Verb+":"+e.Title)
 	}
-	want := []string{"saved:terse answers", "used:tabs over spaces", "forgot:Old note", "updated:Freeze"}
+	want := []string{"saved:terse answers", "used:tabs over spaces", "forgot:Old note", "updated:Freeze", "forgot:spaces"}
 	if !slices.Equal(got, want) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}

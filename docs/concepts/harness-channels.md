@@ -162,8 +162,9 @@ follows Claude Code's layout:
   approval in any mode, headless (`san -p`) and don't-ask included; deny rules
   still apply. Both store directories are created up front, and an empty store
   shows in the reminder as `(no memories yet)`, so the agent neither runs
-  `mkdir` nor reads a missing index. Deleting a memory is a Bash `rm`, which
-  still asks.
+  `mkdir` nor reads a missing index. Forgetting is a plain `rm` of memory
+  files (at most `-f`, literal paths, nothing chained), also unprompted;
+  anything wider asks.
 - Memory calls stay out of the chat flow (the spinner keeps saying Thinking;
   reading takes under a millisecond). Each turn that touched memory ends with
   one quiet line under the answer, by index title, grouped by verb:

@@ -1,8 +1,10 @@
 package setting
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core/system"
@@ -102,5 +104,22 @@ func TestOtherSavesKeepMemoryDirectory(t *testing.T) {
 	}
 	if got := MemoryStoresFor(repo).User; got != filepath.Join(home, "notes") {
 		t.Errorf("a later save dropped autoMemoryDirectory: user store = %s", got)
+	}
+}
+
+// A one-setting save writes that setting, not empty blocks of the others.
+func TestSaveWritesNoEmptyBlocks(t *testing.T) {
+	home := trustHome(t)
+	if err := SaveAutoMemory(false, ScopeUser); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(home, ".san", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"selfLearn"`, `"autoPilot"`, `"steers"`} {
+		if strings.Contains(string(got), key) {
+			t.Errorf("an empty %s block was written:\n%s", key, got)
+		}
 	}
 }

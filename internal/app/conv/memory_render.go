@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -23,12 +25,16 @@ var MemoryStores system.MemoryStores
 // memoryOp is a Read, Write or Edit of an auto-memory file, shown as what it
 // means ("Saved memory · prefers pnpm") rather than as a file operation.
 type memoryOp struct {
-	verb    string // Saved, Updated, Read
-	subject string // the memory's description or name; "" for the index
-	path    string
+	verb    string   // Saved, Updated, Read, Deleted
+	subject string   // the memory's description or name; "" for the index
+	path    string   // the (first) file
+	removed []string // every file a Deleted op removes
 }
 
 func parseMemoryOp(toolName, input string) (memoryOp, bool) {
+	if toolName == tool.ToolBash {
+		return parseMemoryRemove(input)
+	}
 	if toolName != tool.ToolWrite && toolName != tool.ToolEdit && toolName != tool.ToolRead {
 		return memoryOp{}, false
 	}
@@ -60,6 +66,23 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 		op.subject = strings.TrimSuffix(file, ".md")
 	}
 	return op, true
+}
+
+// parseMemoryRemove reads a plain `rm` of memory files as one Deleted op.
+func parseMemoryRemove(input string) (memoryOp, bool) {
+	var args struct {
+		Command string `json:"command"`
+	}
+	_ = json.Unmarshal([]byte(input), &args)
+	files, ok := setting.RemovedFiles(args.Command)
+	if !ok || slices.ContainsFunc(files, func(f string) bool { return !MemoryStores.Contains(f) }) {
+		return memoryOp{}, false
+	}
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = strings.TrimSuffix(filepath.Base(f), ".md")
+	}
+	return memoryOp{verb: "Deleted", subject: strings.Join(names, ", "), path: files[0], removed: files}, true
 }
 
 // frontmatterField returns key's value from content's leading frontmatter.
@@ -161,6 +184,12 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 		for _, tc := range m.ToolCalls {
 			op, ok := parseMemoryOp(tc.Name, tc.Input)
 			if !ok || failed[tc.ID] {
+				continue
+			}
+			if op.verb == "Deleted" {
+				for _, f := range op.removed {
+					note(filepath.Clean(f), "forgot", "")
+				}
 				continue
 			}
 			if op.subject != "" {

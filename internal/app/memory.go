@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
@@ -46,10 +47,27 @@ func autoMemoryStore(s system.MemoryStores, toolName string, args map[string]any
 }
 
 // permitAutoMemoryWrite reports whether a call is the agent keeping its own
-// memory, which needs no approval in any mode — headless and don't-ask
-// included, where a prompt would become a refusal. Only a deny rule stops it.
+// memory — a Write/Edit, or a plain `rm` of memory files — which needs no
+// approval in any mode, headless and don't-ask included, where a prompt would
+// become a refusal. Only a deny rule stops it.
 func permitAutoMemoryWrite(s system.MemoryStores, toolName string, args map[string]any, denyRule func(string, map[string]any) string) bool {
-	return autoMemoryStore(s, toolName, args) != "" && denyRule(toolName, args) == ""
+	return (autoMemoryStore(s, toolName, args) != "" || removesOnlyMemory(s, toolName, args)) && denyRule(toolName, args) == ""
+}
+
+// removesOnlyMemory reports whether a Bash call is a plain `rm` whose every
+// target is a memory file, checked as a write to it would be.
+func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]any) bool {
+	cmd, _ := args["command"].(string)
+	files, ok := setting.RemovedFiles(cmd)
+	if toolName != tool.ToolBash || !ok {
+		return false
+	}
+	for _, f := range files {
+		if autoMemoryStore(s, tool.ToolWrite, map[string]any{"file_path": f}) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // afterMemoryWrite runs after a successful Write/Edit into the auto-memory
