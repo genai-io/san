@@ -55,7 +55,7 @@ type MemorySelector struct {
 	height      int
 	cwd         string
 	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
-	err         error             // last toggle or move failure
+	err         error             // last toggle or directory change failure
 	dirInput    textinput.Model
 	editingDir  bool   // dirInput is moving the selected store
 	autoState   string // "on (user settings)": the AUTO MEMORY header, read once per load
@@ -143,7 +143,7 @@ func instructionItem(label, level string, searchPaths []string, cwd string) memo
 }
 
 // autoMemoryItem describes one agent-written store. Enter opens its MEMORY.md
-// index, d moves it.
+// index, d changes its directory and carries its memories along.
 func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string) memoryItem {
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	entries, _ := filepath.Glob(filepath.Join(dir, "*.md"))
@@ -257,8 +257,8 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 // Resize keeps the card fitted to the terminal while the panel is open.
 func (m *MemorySelector) Resize(width, height int) { m.width, m.height = width, height }
 
-// openDirInput starts moving the selected auto-memory store; an empty value
-// returns it to the default.
+// openDirInput starts changing the selected store's directory; an empty
+// value returns it to the default.
 func (m *MemorySelector) openDirInput() {
 	if m.selectedIdx >= len(m.items) || m.items[m.selectedIdx].Store == "" {
 		return
@@ -277,8 +277,16 @@ func (m *MemorySelector) handleDirInput(key tea.KeyMsg) tea.Cmd {
 	case "esc":
 		m.editingDir = false
 	case "enter":
-		dir := strings.TrimSpace(m.dirInput.Value())
-		m.err = setting.SaveMemoryDirectory(m.items[m.selectedIdx].Store, m.cwd, dir)
+		item := m.items[m.selectedIdx]
+		m.err = setting.SaveMemoryDirectory(item.Store, m.cwd, strings.TrimSpace(m.dirInput.Value()))
+		if m.err == nil {
+			stores := setting.MemoryStoresFor(m.cwd)
+			to := stores.Project
+			if item.Store == setting.ScopeUser {
+				to = stores.User
+			}
+			m.err = setting.MoveMemories(filepath.Dir(item.Path), to)
+		}
 		m.editingDir = m.err != nil
 		m.loadItems()
 	default:
@@ -344,7 +352,7 @@ func (m *MemorySelector) Render() string {
 	case m.editingDir:
 		hint = kit.HintLine(keycap("enter")+" save", "empty for the default", keycap("esc")+" cancel")
 	case m.settings != nil:
-		hint = kit.HintLine(keycap("enter")+" open", keycap("d")+" move", keycap("t")+" on/off",
+		hint = kit.HintLine(keycap("enter")+" open", keycap("d")+" change dir", keycap("t")+" on/off",
 			keycap("p")+" project", keycap("esc")+" close")
 	}
 	header := apTitleGlyphStyle.Render("✦ ") + apTitleStyle.Render("Memory") + apDescStyle.Render("   what San remembers across sessions")

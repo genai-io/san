@@ -189,6 +189,9 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	// the trailer corner hangs it under the instruction; the normal blank line
 	// above still separates it from the turn before.
 	autopilotDriven := msg.Role == core.ChatUser && msg.ToolResult == nil && msg.AutopilotNote != ""
+	if p.memoryStep(msg, idx) {
+		return ""
+	}
 
 	if msg.ToolResult == nil {
 		sb.WriteString("\n")

@@ -83,3 +83,39 @@ func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
 	}
 	return atomicfile.WriteJSON(path, doc, 0o644)
 }
+
+// MoveMemories carries a store's memory files from one directory to another
+// when its directory changes. A destination that already holds memories is
+// an existing store and is left as it is.
+func MoveMemories(from, to string) error {
+	if from == to {
+		return nil
+	}
+	if have, _ := filepath.Glob(filepath.Join(to, "*.md")); len(have) > 0 {
+		return nil
+	}
+	files, _ := filepath.Glob(filepath.Join(from, "*.md"))
+	if len(files) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		return err
+	}
+	for _, f := range files {
+		dst := filepath.Join(to, filepath.Base(f))
+		if os.Rename(f, dst) == nil {
+			continue
+		}
+		data, err := os.ReadFile(f) // another volume: rename can't cross it
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return err
+		}
+		if err := os.Remove(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}

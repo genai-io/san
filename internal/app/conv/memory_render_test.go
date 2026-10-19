@@ -133,3 +133,31 @@ func TestTurnMemory(t *testing.T) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}
 }
+
+// A step that only keeps memory draws nothing, its thinking included; one that
+// also answers, or whose memory call failed, draws as usual.
+func TestMemoryStepDrawsNothing(t *testing.T) {
+	mem := useMemoryStore(t)
+	read := core.ToolCall{ID: "r1", Name: "Read", Input: `{"file_path":"` + filepath.Join(mem, "MEMORY.md") + `"}`}
+	render := func(step core.ChatMessage, failed bool) string {
+		msgs := []core.ChatMessage{
+			{Role: core.ChatUser, Content: "remember tabs"},
+			step,
+			{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "r1", ToolName: "Read", IsError: failed}},
+		}
+		p := RenderContext{Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
+		return xansi.Strip(RenderMessageAt(p, 1, false))
+	}
+	quiet := core.ChatMessage{Role: core.ChatAssistant, Thinking: "**Checking existing memories**", ToolCalls: []core.ToolCall{read}}
+	if got := render(quiet, false); got != "" {
+		t.Errorf("memory-only step drew %q", got)
+	}
+	if got := render(quiet, true); !strings.Contains(got, "memory") {
+		t.Errorf("a failed memory step should show, got %q", got)
+	}
+	answer := quiet
+	answer.Content = "Noted."
+	if got := render(answer, false); !strings.Contains(got, "Noted.") {
+		t.Errorf("a step with text should draw, got %q", got)
+	}
+}

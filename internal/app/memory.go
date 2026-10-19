@@ -110,8 +110,9 @@ func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkage
 
 // memoryLine is the turn's memory in one quiet line under the answer, by
 // index title and grouped by verb in the order things happened —
-// "◇ memory · used Go dev · saved No AI attribution" — cut to width; the
-// stores and diffs stay behind ctrl+o. "" when the turn left memory alone.
+// "◇ memory · used Go dev · saved No AI attribution (user)" — cut to width.
+// A write names its store: a user-store memory follows the user into every
+// repository. "" when the turn left memory alone.
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
@@ -119,7 +120,11 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
-		items[e.Verb] = append(items[e.Verb], e.Title)
+		title := e.Title
+		if e.Verb == "saved" || e.Verb == "updated" {
+			title += " (" + e.Store + ")"
+		}
+		items[e.Verb] = append(items[e.Verb], title)
 	}
 	if len(verbs) == 0 {
 		return ""
