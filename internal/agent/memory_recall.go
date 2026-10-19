@@ -67,10 +67,10 @@ func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query 
 		ThinkingEffort: r.Effort,
 	})
 	if err != nil {
-		log.Logger().Debug("memory recall failed", zap.Duration("took", time.Since(start)), zap.Error(err))
+		log.Logger().Debug("memory recall failed", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.Error(err))
 		return nil
 	}
-	log.Logger().Debug("memory recall", zap.Duration("took", time.Since(start)), zap.String("reply", resp.Content.Text()))
+	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", resp.Content.Text()))
 	var reply struct {
 		Selected []string `json:"selected_memories"`
 	}
@@ -108,6 +108,7 @@ type Recall struct {
 	ready    chan struct{}
 	memories []system.Memory
 	taken    atomic.Bool
+	attached atomic.Pointer[[]string]
 	cancel   context.CancelFunc
 }
 
@@ -138,7 +139,20 @@ func (p *Recall) Take() string {
 	if p.taken.Swap(true) {
 		return ""
 	}
-	return RecallReminder(p.memories)
+	text, paths := recallReminder(p.memories)
+	p.attached.Store(&paths)
+	return text
+}
+
+// Attached lists the memories the pick delivered, nil before it rode a result.
+func (p *Recall) Attached() []string {
+	if p == nil {
+		return nil
+	}
+	if paths := p.attached.Load(); paths != nil {
+		return *paths
+	}
+	return nil
 }
 
 // Stop abandons a pick its turn no longer needs.
@@ -173,11 +187,13 @@ func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilte
 	}
 }
 
-// RecallReminder carries the recalled memories' contents, each dated by its
+// recallReminder carries the recalled memories' contents, each dated by its
 // file's mtime and skipped when the model already has it in view. Each counts
-// as read, so the model can edit one without reading it again.
-func RecallReminder(memories []system.Memory) string {
+// as read, so the model can edit one without reading it again. It also
+// returns the paths it carried.
+func recallReminder(memories []system.Memory) (string, []string) {
 	var b strings.Builder
+	var paths []string
 	for _, m := range memories {
 		info, err := os.Stat(m.Path)
 		if err != nil || fs.Viewed(m.Path) {
@@ -188,10 +204,11 @@ func RecallReminder(memories []system.Memory) string {
 			continue
 		}
 		fs.RecordFileWritten(m.Path)
+		paths = append(paths, m.Path)
 		b.WriteString("Memory `" + m.Path + "` (" + m.Store + " store, saved " + info.ModTime().Format(time.DateOnly) + "):\n" + strings.TrimSpace(string(data)) + "\n\n")
 	}
 	if b.Len() == 0 {
-		return ""
+		return "", nil
 	}
-	return reminder.WrapWithSource("Memories relevant to this message:\n\n"+strings.TrimSpace(b.String()), reminder.ProviderMemoryRecall)
+	return reminder.WrapWithSource("Memories relevant to this message:\n\n"+strings.TrimSpace(b.String()), reminder.ProviderMemoryRecall), paths
 }

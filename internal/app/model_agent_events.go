@@ -129,15 +129,8 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
 	// Memory calls stay out of the chat flow; the turn ends with one line.
-	entries := m.conv.TurnMemory(m.turnOpenedBy)
+	entries := m.conv.TurnMemory(m.turnOpenedBy, m.endMemoryRecall())
 	m.turnOpenedBy = ""
-	var recalled []string
-	for _, e := range entries {
-		if e.Recalled {
-			recalled = append(recalled, e.Path)
-		}
-	}
-	m.endMemoryRecall(recalled)
 	if len(entries) > 0 {
 		// Here, not via notifyMain: the line belongs above anything this turn
 		// end releases, the next queued message included.

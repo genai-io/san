@@ -118,10 +118,10 @@ func TestTurnMemory(t *testing.T) {
 		}},
 	}}
 	var got []string
-	for _, e := range conv.TurnMemory("") {
+	for _, e := range conv.TurnMemory("", []string{recall}) {
 		got = append(got, e.Verb+":"+e.Title)
 	}
-	want := []string{"saved:terse answers", "used:tabs over spaces", "forgot:Old note", "recalled:attached memory", "updated:Freeze", "forgot:spaces"}
+	want := []string{"recalled:attached memory", "saved:terse answers", "used:tabs over spaces", "forgot:Old note", "updated:Freeze", "forgot:spaces"}
 	if !slices.Equal(got, want) {
 		t.Errorf("TurnMemory = %q, want %q", got, want)
 	}
@@ -155,7 +155,7 @@ func TestMemoryStepDrawsNothing(t *testing.T) {
 		t.Errorf("committed live memory step = %q, want nothing in scrollback", got)
 	}
 	p.Interactive = true
-	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, true))); got != "* Recalling memory..." {
+	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, true))); got != "* Thinking..." {
 		t.Errorf("live memory step = %q, want its spinner row", got)
 	}
 	if got := render(quiet, true); !strings.Contains(got, "Read(") {
@@ -178,7 +178,7 @@ func TestTurnMemoryAcrossMidTurnMessage(t *testing.T) {
 		{ID: "u2", Role: core.ChatUser, Content: "and say ok"},
 		{Role: core.ChatAssistant, Content: "ok"},
 	}}
-	if got := conv.TurnMemory("u1"); len(got) != 1 || got[0].Verb != "forgot" {
+	if got := conv.TurnMemory("u1", nil); len(got) != 1 || got[0].Verb != "forgot" {
 		t.Errorf("TurnMemory(u1) = %+v, want the forget before u2", got)
 	}
 }

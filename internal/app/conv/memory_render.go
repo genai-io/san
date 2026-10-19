@@ -83,7 +83,9 @@ func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 }
 
 // memoryStepSpinner keeps the live row of a memory step that is still the
-// turn's tail, so the turn never looks stalled; scrollback gets nothing.
+// turn's tail, so the turn never looks stalled. It says Thinking, as the next
+// step will: a memory call takes milliseconds, and a label of its own would
+// only flash. Scrollback gets nothing.
 func (p RenderContext) memoryStepSpinner(idx int) string {
 	if !p.Interactive || !p.StreamActive {
 		return ""
@@ -93,15 +95,9 @@ func (p RenderContext) memoryStepSpinner(idx int) string {
 			return ""
 		}
 	}
-	label := "Recalling memory..."
-	for _, tc := range p.Messages[idx].ToolCalls {
-		if op, _ := parseMemoryOp(tc.Name, tc.Input); op.verb != "Read" {
-			label = "Saving memory..."
-		}
-	}
 	return "\n" + RenderAssistantMessage(AssistantParams{
 		StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
-		DockedModalActive: p.DockedModalActive, Width: p.Width, ExecutingLabel: label,
+		DockedModalActive: p.DockedModalActive, Width: p.Width,
 	})
 }
 
@@ -111,9 +107,6 @@ type MemoryEntry struct {
 	Path  string
 	Title string // its index title, else its description, else its slug
 	Store string // "user" or "project"
-	// Recalled is set when the memory was attached to the turn, whatever
-	// the turn then did with it.
-	Recalled bool
 }
 
 var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "updated"}
@@ -124,9 +117,10 @@ var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
 // message, one entry per memory in the order first touched: recalled (attached
 // to a tool result), used (read), saved or updated (a write outranks a read),
 // or forgot — touched this turn and gone by its end. The turn starts at the
-// message openedBy names, else at the last user message. Index files and
-// failed calls don't count.
-func (m *ConversationModel) TurnMemory(openedBy string) []MemoryEntry {
+// message openedBy names, else at the last user message; recalled are the
+// memories attached to it, which the agent's tool results carry but the
+// screen's do not. Index files and failed calls don't count.
+func (m *ConversationModel) TurnMemory(openedBy string, recalled []string) []MemoryEntry {
 	msgs := m.Messages
 	start := len(msgs)
 	for start > 0 && (msgs[start-1].Role != core.ChatUser || msgs[start-1].ToolResult != nil) {
@@ -156,13 +150,10 @@ func (m *ConversationModel) TurnMemory(openedBy string) []MemoryEntry {
 			e.Verb = verb
 		}
 	}
+	for _, path := range recalled {
+		note(filepath.Clean(path), "recalled")
+	}
 	for _, m := range msgs[start:] {
-		if m.ToolResult != nil {
-			for _, path := range recalledPaths(m.ToolResult.Content.Text()) {
-				note(filepath.Clean(path), "recalled")
-				out[at[filepath.Clean(path)]].Recalled = true
-			}
-		}
 		for _, tc := range m.ToolCalls {
 			op, ok := parseMemoryOp(tc.Name, tc.Input)
 			if !ok || failed[tc.ID] {
@@ -205,23 +196,8 @@ func (m *ConversationModel) TurnMemory(openedBy string) []MemoryEntry {
 	return kept
 }
 
-var recalledPath = regexp.MustCompile("(?m)^Memory `([^`]+)`")
-
-// recalledPaths lists the memories a memory-recall reminder in content carries.
-func recalledPaths(content string) []string {
-	var out []string
-	for _, b := range reminder.Blocks(content) {
-		if b.Source == reminder.ProviderMemoryRecall {
-			for _, m := range recalledPath.FindAllStringSubmatch(b.Text, -1) {
-				out = append(out, m[1])
-			}
-		}
-	}
-	return out
-}
-
-// withoutRecall drops memory-recall reminders from a tool result: they are
-// for the model, and the turn's memory line reports them.
+// withoutRecall drops memory-recall reminders from a tool result read back
+// from a transcript: they are for the model, and the memory line reports them.
 func withoutRecall(content string) string {
 	for _, b := range reminder.Blocks(content) {
 		if b.Source == reminder.ProviderMemoryRecall {

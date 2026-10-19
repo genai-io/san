@@ -202,7 +202,7 @@ Each store follows Claude Code's layout:
   paths, nothing chained), also unprompted; anything wider asks.
 - Memory stays out of the chat flow. A step that only touched memory draws
   nothing once settled; while it runs, its row is the spinner saying
-  `Recalling memory...` or `Saving memory...`. Each turn that touched memory
+  `Thinking...`, as the next step will (a label of its own would only flash). Each turn that touched memory
   ends with one quiet line under the answer, by index title, grouped by verb:
   `◇ memory · recalled Release freeze · saved No AI attribution (user)`; one
   entry per memory (a write outranks a read, and names its store), and

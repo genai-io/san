@@ -44,7 +44,7 @@ func TestRecall(t *testing.T) {
 	if len(got) != 1 || got[0].Path != freeze {
 		t.Fatalf("Recall = %+v, want only freeze.md", got)
 	}
-	if out := RecallReminder(got); !strings.Contains(out, "body of freeze.md") || !strings.Contains(out, `source="memory-recall"`) {
+	if out, _ := recallReminder(got); !strings.Contains(out, "body of freeze.md") || !strings.Contains(out, `source="memory-recall"`) {
 		t.Errorf("reminder = %q", out)
 	}
 	if got := (Recaller{Provider: recallProvider{"no json"}}).Recall(context.Background(), stores, "q", nil); got != nil {
@@ -78,6 +78,9 @@ func TestWithRecall(t *testing.T) {
 	}
 	if got := call(); got != "ok" {
 		t.Errorf("the pick rode twice: %q", got)
+	}
+	if got := pick.Attached(); len(got) != 1 || filepath.Base(got[0]) != "freeze.md" {
+		t.Errorf("Attached = %q", got)
 	}
 	if (Recaller{}).Start(system.MemoryStores{Project: dir}, "q", nil) != nil {
 		t.Error("a recaller with no model started a pick")

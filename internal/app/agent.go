@@ -628,15 +628,19 @@ func (m *model) startMemoryRecall(query string) {
 	m.memoryRecall.current.Swap(r.Start(m.agentAutoMemory, query, maps.Clone(m.memoryRecall.surfaced))).Stop()
 }
 
-// endMemoryRecall drops the turn's pick, and remembers what it attached.
-func (m *model) endMemoryRecall(recalled []string) {
+// endMemoryRecall drops the turn's pick and returns what it attached, which
+// later picks in this conversation skip.
+func (m *model) endMemoryRecall() []string {
 	if m.memoryRecall == nil {
-		return
+		return nil
 	}
-	m.memoryRecall.current.Swap(nil).Stop()
+	pick := m.memoryRecall.current.Swap(nil)
+	pick.Stop()
+	recalled := pick.Attached()
 	for _, path := range recalled {
 		m.memoryRecall.surfaced[path] = true
 	}
+	return recalled
 }
 
 // attachPendingReminders drains the reminder queue and appends any pending
