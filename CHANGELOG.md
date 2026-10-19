@@ -3,6 +3,26 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.24.4] - 2026-10-19
+
+### Added
+- Keep memory bookkeeping out of the chat; d changes a store's directory ([@yanmxa](https://github.com/yanmxa) in [#643](https://github.com/genai-io/san/pull/643))
+- User + project auto-memory stores ([@yanmxa](https://github.com/yanmxa) in [#639](https://github.com/genai-io/san/pull/639))
+- Check the index on write, stamp modified, work headless ([@yanmxa](https://github.com/yanmxa) in [#633](https://github.com/genai-io/san/pull/633))
+- Split auto memory out of Evolve, Claude Code style ([@yanmxa](https://github.com/yanmxa) in [#631](https://github.com/genai-io/san/pull/631))
+### Changed
+- One source list per loader, plugins read settings ([@yanmxa](https://github.com/yanmxa) in [#638](https://github.com/genai-io/san/pull/638))
+- Store transcripts in sdk-go's session log ([@yanmxa](https://github.com/yanmxa) in [#635](https://github.com/genai-io/san/pull/635))
+- Sync sdk-go to main and follow its last review changes ([@yanmxa](https://github.com/yanmxa) in [#636](https://github.com/genai-io/san/pull/636))
+- Adapt to sdk-go's package audit ([@yanmxa](https://github.com/yanmxa) in [#634](https://github.com/genai-io/san/pull/634))
+- Sync sdk-go to main ([@yanmxa](https://github.com/yanmxa) in [#632](https://github.com/genai-io/san/pull/632))
+- Pin bubbletea to the genai-io fork on v2.1.0 ([@yanmxa](https://github.com/yanmxa) in [#630](https://github.com/genai-io/san/pull/630))
+- Retry dev tool installs and cache them ([@yanmxa](https://github.com/yanmxa) in [#629](https://github.com/genai-io/san/pull/629))
+### Fixed
+- One store per checkout behind a symlink, plus two small fixes ([@yanmxa](https://github.com/yanmxa) in [#641](https://github.com/genai-io/san/pull/641))
+- Fall back when $EDITOR is missing; let the editor draw ([@yanmxa](https://github.com/yanmxa) in [#642](https://github.com/genai-io/san/pull/642))
+- Keep the live content still while tools run ([@yanmxa](https://github.com/yanmxa) in [#640](https://github.com/genai-io/san/pull/640))
+- Apply a folder's own configuration only once it is trusted ([@yanmxa](https://github.com/yanmxa) in [#637](https://github.com/genai-io/san/pull/637))
 ## [v1.24.3] - 2026-10-14
 
 ### Added
