@@ -42,27 +42,18 @@ func (p *AutopilotSelector) Render() string {
 	}
 }
 
-// frame stacks header + a faint hairline + body + hint into a fixed-width column,
-// wraps it in a rounded card, and centers it. The column is built at exactly
-// innerWidth and the card adds border+padding around it without re-setting a
-// width, so nothing re-wraps.
 func (p *AutopilotSelector) frame(header, body, hint string) string {
-	w := p.innerWidth()
+	return panelFrame(p.width, p.height, p.innerWidth(), header, body, hint)
+}
+
+// panelFrame stacks header + a faint hairline + body + hint into a column of
+// exactly w cells, wraps it in a rounded card, and centers it. The card adds
+// border+padding around the column without re-setting a width, so nothing
+// re-wraps.
+func panelFrame(width, height, w int, header, body, hint string) string {
 	rule := apFaintRuleStyle.Render(strings.Repeat("─", w))
-
-	var b strings.Builder
-	b.WriteString(header)
-	b.WriteString("\n")
-	b.WriteString(rule)
-	b.WriteString("\n\n")
-	b.WriteString(body)
-	b.WriteString("\n\n")
-	b.WriteString(hint)
-
-	col := lipgloss.NewStyle().Width(w).Render(b.String())
-	card := apCardStyle.Render(col)
-	// Center on both axes so the card sits balanced in the terminal.
-	return lipgloss.Place(p.width, p.height-2, lipgloss.Center, lipgloss.Center, card)
+	col := lipgloss.NewStyle().Width(w).Render(header + "\n" + rule + "\n\n" + body + "\n\n" + hint)
+	return lipgloss.Place(width, height-2, lipgloss.Center, lipgloss.Center, apCardStyle.Render(col))
 }
 
 // header renders the title lockup ("✦ Autopilot") with a sub-view crumb when

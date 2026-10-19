@@ -276,6 +276,9 @@ func keycap(s string) string {
 // proper key names: "ctrl+r" → "Ctrl+R", "enter" → "Enter". Arrow glyphs
 // (↑↓, ←→) and other non-letters pass through unchanged.
 func capitalizeKeyLabel(s string) string {
+	if len([]rune(s)) == 1 {
+		return s // a bare letter key: "D" would read as shift+d
+	}
 	parts := strings.Split(s, "+")
 	for i, p := range parts {
 		if p == "" {
