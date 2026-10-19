@@ -441,9 +441,6 @@ func (c *SlashCommandController) handleNameCommand(_ context.Context, args strin
 }
 
 func (c *SlashCommandController) handleTrustCommand(context.Context, string) (string, tea.Cmd, error) {
-	if c.env.TrustWorkspace == nil {
-		return "Workspace trust is not available.", nil, nil
-	}
 	return c.env.TrustWorkspace(), nil, nil
 }
 

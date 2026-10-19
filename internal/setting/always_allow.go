@@ -85,8 +85,9 @@ func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *S
 
 // addLocalAllowRules appends rules to permissions.allow in the project's
 // .san/settings.local.json — the personal, highest-priority layer, so a grant
-// is never committed for the whole team; worktrees share the main checkout's. Only that key is touched; a file
-// that does not parse is left alone. Returns the file's path.
+// is never committed for the whole team; worktrees share the main checkout's.
+// Only that key is touched; a file that does not parse is left alone. Returns
+// the file's path.
 func addLocalAllowRules(cwd string, rules []string) (string, error) {
 	path := filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
 	var doc map[string]any
