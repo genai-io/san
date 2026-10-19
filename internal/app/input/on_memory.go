@@ -304,17 +304,16 @@ func (m *MemorySelector) Render() string {
 			sizeStr = fmt.Sprintf(" (%s)", system.FormatFileSize(item.Size))
 		}
 
-		line := fmt.Sprintf("%s %s %s",
-			statusStyle.Render(statusIcon),
-			item.Label,
-			kit.SelectorHintStyle().Render(item.Description+sizeStr),
-		)
-
+		line := statusStyle.Render(statusIcon) + " " + item.Label
 		sb.WriteString(kit.RenderSelectableRow(numKey+" "+line, i == m.selectedIdx))
 		sb.WriteString("\n")
 
+		// Detail lines sit under the label, past "N. ○ ".
+		const detailIndent = "       "
+		sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + kit.DimStyle().Render(item.Description+sizeStr)))
+		sb.WriteString("\n")
 		if !item.Exists && i == m.selectedIdx {
-			sb.WriteString(kit.SelectorItemStyle().Render("      " + kit.SelectorHintStyle().Render(item.CreateHint)))
+			sb.WriteString(kit.SelectorItemStyle().Render(detailIndent + kit.DimStyle().Render(item.CreateHint)))
 			sb.WriteString("\n")
 		}
 	}
