@@ -1195,12 +1195,12 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
 }
 
-// renderShellToolCall renders the full command unless compact keeps only its
-// header. A single-line command stays in Bash(command) form only when that
+// renderShellToolCall renders a shell tool call without ever truncating its
+// command. A single-line command stays in Bash(command) form only when that
 // complete label fits; its optional description may be shortened to keep the
 // row within the terminal. Commands that contain a newline or do not fit become
 // a full command block below the Bash header and soft-wrap without ellipses.
-func renderShellToolCall(toolName, input string, width int, icon, detail string, compact bool) string {
+func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
 	description = strings.Join(strings.Fields(description), " ")
 	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
@@ -1217,9 +1217,6 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string,
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
 	}
-	if compact && description == "" {
-		description = strings.Join(strings.Fields(command), " ")
-	}
 
 	var sb strings.Builder
 
@@ -1229,9 +1226,6 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string,
 	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
-	if compact {
-		return sb.String()
-	}
 
 	// Soft-wrap every command line to the terminal width. The first row carries
 	// the shell prompt; every later row uses the connector so the command and its
