@@ -118,9 +118,7 @@ chunking, resize — keeps all of them or it is wrong.
    moving it right above the input while a tool batch ran kept running status
    out of reach of such a resize, but shifted a short conversation down and
    back on every call — a flash on each fast one. A running call's status
-   reaching history on a mid-call resize is the accepted cost. Long running
-   shell commands omit their command body from the compact preview; expansion
-   and completed results retain the full command. Arbitrarily small viewports
+   reaching history on a mid-call resize is the accepted cost. Arbitrarily small viewports
    can still force live content into history. vt10x does not model xterm
    resize reflow: validate such changes against xterm as well as the existing
    native-history gate.

@@ -4,7 +4,6 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -712,9 +711,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			} else if tool.IsShellTool(tc.Name) {
-				_, completed := params.ResultMap[tc.ID]
-				compact := !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID })
-				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail, compact)
+				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
