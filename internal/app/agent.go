@@ -579,8 +579,16 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 // message needs no round trip.
 type agentSendFailedMsg struct{ err error }
 
-func (m *model) sendToAgent(msg core.Message) tea.Cmd {
-	m.pendingMessages = append(m.pendingMessages, msg)
+// pendingMessage is input waiting for the agent. Only the user's own message
+// picks memories: a harness message (notice, hook) would waste the pick, and
+// mid-turn it would cancel the one the user's message started.
+type pendingMessage struct {
+	core.Message
+	fromUser bool
+}
+
+func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
+	m.pendingMessages = append(m.pendingMessages, p)
 	return m.sendPendingMessages()
 }
 
@@ -592,10 +600,13 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		m.turnOpenedBy = m.pendingMessages[0].ID
 	}
 	for len(m.pendingMessages) > 0 {
-		m.startMemoryRecall(m.pendingMessages[0].Text())
-		m.pendingMessages[0] = m.attachPendingReminders(m.pendingMessages[0])
+		next := &m.pendingMessages[0]
+		if next.fromUser {
+			m.startMemoryRecall(next.Text())
+		}
+		next.Message = m.attachPendingReminders(next.Message)
 		// Keep rejected input in native form so the next submission can retry it.
-		if err := m.services.Agent.Send(m.pendingMessages[0]); err != nil {
+		if err := m.services.Agent.Send(next.Message); err != nil {
 			return func() tea.Msg { return agentSendFailedMsg{err: err} }
 		}
 		m.pendingMessages = m.pendingMessages[1:]

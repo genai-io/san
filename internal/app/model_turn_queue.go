@@ -24,7 +24,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		log.Logger().Sugar().Debugf("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason
 		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg}).ToMessage()
-		return m.sendToAgent(providerMsg)
+		return m.sendToAgent(pendingMessage{Message: providerMsg})
 	}
 	log.Logger().Sugar().Debugf("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
@@ -94,7 +94,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	})
 	message := core.UserMessage(content, images)
 	message.ID = chat.ID
-	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(message))...), true
+	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, fromUser: true}))...), true
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
@@ -131,7 +131,7 @@ func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.SubmitToAgent(message)
+	return m.submit(pendingMessage{Message: message})
 }
 
 func (m *model) showNoticeLine(n mainNotice) core.Message {
@@ -195,7 +195,7 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 	var send tea.Cmd
 	message := m.showNoticeLine(n)
 	if n.Content != "" { // display-only notices have nothing for the model to read
-		send = m.sendToAgent(message)
+		send = m.sendToAgent(pendingMessage{Message: message})
 	}
 	return tea.Batch(append(m.CommitMessages(), send)...)
 }
@@ -225,5 +225,5 @@ func (m *model) injectAsyncHookContinuation(item trigger.AsyncHookRewake) tea.Cm
 		return tea.Batch(m.CommitMessages()...)
 	}
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: strings.Join(parts, "\n\n")}).ToMessage()
-	return m.SubmitToAgent(msg)
+	return m.submit(pendingMessage{Message: msg})
 }

@@ -412,7 +412,7 @@ func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
 	}}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
-	m.sendToAgent(withID("next", core.UserMessage("continue", nil)))
+	m.sendToAgent(pendingMessage{Message: withID("next", core.UserMessage("continue", nil))})
 	for _, want := range []core.Message{first, withID("next", core.UserMessage("continue", nil))} {
 		select {
 		case got := <-added:
@@ -435,7 +435,7 @@ func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
 			m.env.AutoPilot.Mission = "previous goal"
 			m.env.AutoPilot.MissionState = setting.MissionRunning
 			m.beforeGoal = new(m.env.AutoPilot)
-			m.pendingMessages = []core.Message{core.UserMessage("old input", nil)}
+			m.pendingMessages = []pendingMessage{{Message: core.UserMessage("old input", nil)}}
 			var err error
 			if action == "clear" {
 				err = m.clearSession()
