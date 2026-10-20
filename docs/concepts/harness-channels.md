@@ -130,111 +130,18 @@ alone carries no instruction to follow it; the preamble supplies that
 framing, mirroring how the skills directory self-introduces.
 `reminder.WrapMemory` owns this shape.
 
-## Auto memory
-
-Besides the user-authored AGENTS.md, the main agent keeps its own memory in
-two stores: the user store `~/.san/memory/` for what holds in every repository,
-and a project store per repository at `~/.san/projects/<repo-root>/memory/`
-(subdirectories and linked worktrees share it). The prompt tells the model which
-store each memory belongs in; the project store wins on conflict. One
-message's path through memory:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant App as San (app)
-    participant Sel as Side query<br/>(session model, lowest effort)
-    participant A as Main agent
-    participant S as Stores<br/>(user + project)
-
-    U->>App: message
-    App->>A: message (+ memory-auto indexes, first message)
-    App-)Sel: every memory's description + the message
-    Note over A: first step starts at once, never waits
-    A->>A: step 1 (thinks, calls tools)
-    Sel--)App: up to 5 files
-    App->>A: memory-recall rides the first tool result after the pick
-    Note over A: indexes and attached files count as read
-    opt asked to remember or forget
-        A->>S: Reads still needed, in parallel
-        A->>S: every Write / Edit / rm together
-    end
-    A-->>U: answer
-    App-->>U: ◈ recalled … · saved … to user
-```
-
-Each store follows Claude Code's layout:
-
-- `MEMORY.md` is an index, one line per memory. Each store's first 200 lines /
-  25 KB ride the `memory-auto` reminder, framed as context rather than user
-  instructions. Index problems (near or over the cap, unindexed topic files,
-  links to missing files) are appended so the agent repairs them; writes are
-  not checked one by one, since a step's writes land together.
-- Each memory is its own file with `name` / `description` / `type`
-  frontmatter, dated by its file's mtime (a recall shows the date). San never
-  rewrites a file the agent wrote. The category lives in `type`, not the file name: two feedback
-  memories are two files, each named for its content (`concise-comments.md`).
-
-  | `type` | Holds | Notes |
-  |---|---|---|
-  | `user` | who the user is: role, expertise, preferences | changes slowly |
-  | `feedback` | corrections and confirmed approaches | body adds **Why:** / **How to apply:** |
-  | `project` | ongoing work, decisions, deadlines not in code or git | absolute dates; goes stale fastest |
-  | `reference` | where outside information lives | trackers, dashboards, docs |
-
-  Only the model reads `type`; the harness treats all four alike.
-- Recall, as in Claude Code's prefetch: when a message goes to the agent, a
-  side query to the session model (its lightest reasoning rung) picks up to
-  five memories whose `description` bears on it. The turn never waits: the
-  pick's contents ride the `memory-recall` reminder on the first tool result
-  that completes after it lands, and a turn that calls no tool goes without
-  (the indexes are still there to Read from). A memory is attached once per
-  conversation; the reminder is hidden from the tool result on screen.
-- The indexes and attached memories count as read, so the agent edits them
-  without a Read first. The `memory` rules section tells it what to save and in
-  which store, and to do memory work in at most two responses: the Reads it
-  still needs, then every Write, Edit and `rm` together. Writes to `*.md`
-  inside either store need no approval in any mode, headless (`san -p`) and
-  don't-ask included; deny rules still apply. Both store directories are
-  created up front, and an empty store shows in the reminder as
-  `(no memories yet)`, so the agent neither runs `mkdir` nor reads a missing
-  index. Forgetting is a plain `rm` of memory files (at most `-f`, literal
-  paths, nothing chained), also unprompted; anything wider asks.
-- Memory stays out of the chat flow. A step that only touched memory draws
-  its thinking but not its calls: the thinking was on screen before the calls
-  arrived, and taking it back would flash. Each turn that touched memory
-  ends with one quiet line under the answer, by index title, grouped by verb:
-  `◈ recalled Release freeze · saved No AI attribution to user`; ◇ when the
-  turn only read memory, ◈ when it changed it. One entry per memory (a write
-  outranks a read, and names its store), and
-  `forgot` for one the turn touched that is gone by its end. ctrl+o shows the
-  calls themselves; a failed call always does. A memory file in both stores
-  is reported in the next index reminder as a duplicate to fix.
-
-On by default. `/memory` toggles it for all projects (`t`, or `/memory on|off`)
-or for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
-the user or project settings; the project value wins, and
-`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn; moving a store or turning memory off
-mid-session re-sends the index reminder (or an "auto memory is now off" notice),
-since the one sent at session start names the old state.
-`autoMemoryDirectory` (absolute or `~/` path) moves the store of the file that
-sets it: `~/.san/settings.json` the user store, an untracked
-`.san/settings.local.json` the project store. Committed project settings never
-count, since memory writes need no approval. Claude Code instead uses one store,
-so a user-level value there merges every project's memory. `/memory` lists each
-store on its own row with its directory; `d` there changes the selected
-store's directory, writing the setting to the right file (empty restores the
-default) and moving its memories along unless the new directory already holds
-some. Subagents don't load either store.
-Skills are separate: `/evolve` reviews turns and edits skills, never memory.
-Unlike Claude Code, there is no background extraction pass: the agent saves
-during the turn, when asked or when it learns something worth keeping.
-
 **Subagents receive the skills directory and, when they can edit the workspace,
 project instruction memory.** Read-only workers omit project memory; user memory
 stays with the main loop. Subagents are one-shot workers with fresh conversations,
 so the parent must still supply the task's relevant context. See
 `internal/subagent/executor.go` (`collectSubagentReminders`).
+
+## Auto memory
+
+The main agent also keeps its own memory, in a user store and a project
+store: the `memory-auto` reminder carries their indexes, and `memory-recall`
+attaches the memories a message needs to a tool result. See
+[`concepts/auto-memory.md`](auto-memory.md).
 
 ## Compaction
 
@@ -264,6 +171,7 @@ For the full mechanism — the common pipeline, auto-compact vs. manual
 - [`packages/core.md`](../packages/3-core/core.md) — `System`, `Section`, slot
   layout.
 - [`packages/reminder.md`](../packages/2-feature/reminder.md) — runtime API.
+- [`concepts/auto-memory.md`](auto-memory.md) — the agent's own memory.
 - [`concepts/compaction.md`](compaction.md) — the full compaction mechanism
   (channels, auto vs. manual, transcript boundary).
 - [`packages/session.md`](../packages/2-feature/session.md) — how compaction

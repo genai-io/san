@@ -21,7 +21,7 @@ import (
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
-// maxRecalled caps the memories attached to one message, as Claude Code does.
+// maxRecalled caps the memories attached to one message.
 const maxRecalled = 5
 
 // recallDeadline bounds a pick that never answers; the turn never waits on it.
@@ -102,8 +102,8 @@ func memoryID(m system.Memory) string {
 }
 
 // Recall is one message's pick, made beside its turn so the turn never waits:
-// it rides the first tool result that completes after it lands, as Claude
-// Code's prefetch does, and a turn that calls no tool goes without it.
+// it rides the first tool result that completes after it lands, and a turn
+// that calls no tool goes without it.
 type Recall struct {
 	ready    chan struct{}
 	memories []system.Memory

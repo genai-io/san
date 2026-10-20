@@ -35,7 +35,7 @@ const (
 	AutoMemoryIndexName = "MEMORY.md"
 
 	// autoMemoryLineCap and autoMemoryByteCap bound how much of the index is
-	// injected, matching Claude Code. Topic files ride the recall reminder.
+	// injected. Topic files ride the recall reminder.
 	autoMemoryLineCap = 200
 	autoMemoryByteCap = 25 * 1024
 )
