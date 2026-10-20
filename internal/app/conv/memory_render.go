@@ -8,25 +8,24 @@ import (
 	"slices"
 	"strings"
 
-	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // MemoryStores are the session's auto-memory stores, set by the app whenever
 // it resolves them; a call into one renders as memory, not as a file op.
 var MemoryStores system.MemoryStores
 
-// memoryOp is a Read, Write or Edit of an auto-memory file, shown as what it
-// means ("Saved memory · prefers pnpm") rather than as a file operation.
+// memoryOp is a Read, Write or Edit of an auto-memory file, or a plain `rm`
+// of some.
 type memoryOp struct {
 	verb    string   // Saved, Updated, Read, Deleted
-	subject string   // the memory's description or name; "" for the index
+	index   bool     // the op is on a MEMORY.md
 	path    string   // the (first) file
 	removed []string // every file a Deleted op removes
 }
@@ -40,13 +39,11 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 	}
 	var args struct {
 		FilePath string `json:"file_path"`
-		Content  string `json:"content"`
 	}
 	if json.Unmarshal([]byte(input), &args) != nil || !MemoryStores.Contains(args.FilePath) {
 		return memoryOp{}, false
 	}
-	op := memoryOp{path: args.FilePath}
-	file := filepath.Base(args.FilePath)
+	op := memoryOp{path: args.FilePath, index: filepath.Base(args.FilePath) == system.AutoMemoryIndexName}
 	switch toolName {
 	case tool.ToolRead:
 		op.verb = "Read"
@@ -54,16 +51,6 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 		op.verb = "Updated"
 	default:
 		op.verb = "Saved"
-	}
-	if file == system.AutoMemoryIndexName {
-		if op.verb == "Saved" {
-			op.verb = "Updated"
-		}
-		return op, true
-	}
-	op.subject = frontmatterField(args.Content, "description")
-	if op.subject == "" {
-		op.subject = strings.TrimSuffix(file, ".md")
 	}
 	return op, true
 }
@@ -78,67 +65,12 @@ func parseMemoryRemove(input string) (memoryOp, bool) {
 	if !ok || slices.ContainsFunc(files, func(f string) bool { return !MemoryStores.Contains(f) }) {
 		return memoryOp{}, false
 	}
-	names := make([]string, len(files))
-	for i, f := range files {
-		names[i] = strings.TrimSuffix(filepath.Base(f), ".md")
-	}
-	return memoryOp{verb: "Deleted", subject: strings.Join(names, ", "), path: files[0], removed: files}, true
+	return memoryOp{verb: "Deleted", path: files[0], removed: files}, true
 }
-
-// frontmatterField returns key's value from content's leading frontmatter.
-func frontmatterField(content, key string) string {
-	fm, ok := strings.CutPrefix(content, "---\n")
-	if !ok {
-		return ""
-	}
-	fm, _, _ = strings.Cut(fm, "\n---")
-	for line := range strings.SplitSeq(fm, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+":"); ok {
-			return strings.Trim(strings.TrimSpace(v), `"'`)
-		}
-	}
-	return ""
-}
-
-// renderMemoryCall draws the call row: "● Saved memory · prefers pnpm".
-func renderMemoryCall(op memoryOp, width int, icon string) string {
-	head := op.verb + " memory"
-	if op.subject == "" {
-		head += " index"
-	}
-	row := toolCallStyle.Width(2).Render(icon) + memoryCallStyle.Render(head)
-	if op.subject != "" {
-		tail := " · " + op.subject
-		if width > 0 {
-			tail = kit.TruncateText(tail, max(0, width-lipgloss.Width(row)))
-		}
-		row += toolResultStyle.Render(tail)
-	}
-	return row + "\n"
-}
-
-// renderMemoryResult folds a memory call's result to one trailer naming the
-// file; the diff or file body stays behind ctrl+o.
-func renderMemoryResult(data ToolResultData) (string, bool) {
-	if !data.Nested || data.IsError || data.Expanded {
-		return "", false
-	}
-	op, ok := parseMemoryOp(data.ToolName, data.ToolInput)
-	if !ok {
-		return "", false
-	}
-	trailer := filepath.Base(op.path)
-	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
-		trailer += " · " + fileChangeSummary(details)
-	}
-	return renderNestedToolTrailer(trailer, toolResultStyle), true
-}
-
-var memoryCallStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 
 // memoryStep reports whether an assistant step only kept memory: no text, and
-// every call a memory call that didn't fail. Its thinking narrates that
-// bookkeeping, so the step draws nothing; the turn's memory line reports it.
+// every call a memory call that didn't fail. Its calls don't draw; the turn's
+// memory line reports them.
 func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	if msg.Role != core.ChatAssistant || strings.TrimSpace(msg.Content) != "" || len(msg.ToolCalls) == 0 || msg.ToolCallsExpanded {
 		return false
@@ -152,9 +84,27 @@ func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	return true
 }
 
+// memoryStepView draws a memory step without its calls. Its thinking stays, in
+// scrollback too: it was on screen before the calls arrived, and taking it back
+// would flash. While the step is the live tail, its spinner keeps the turn
+// looking alive.
+func (p RenderContext) memoryStepView(msg core.ChatMessage, idx int) string {
+	tail := p.Interactive && p.StreamActive
+	for _, later := range p.Messages[idx+1:] {
+		tail = tail && later.Role == core.ChatUser && later.ToolResult != nil
+	}
+	msg.ToolCalls = nil
+	p.StreamActive = tail // settled, it has no spinner or filler to draw
+	body := strings.TrimRight(renderAssistantWithTools(p, msg, idx, tail), "\n")
+	if strings.TrimSpace(xansi.Strip(body)) == "" {
+		return ""
+	}
+	return "\n" + body + "\n"
+}
+
 // MemoryEntry is one memory a turn touched.
 type MemoryEntry struct {
-	Verb  string // "used", "saved", "updated" or "forgot"
+	Verb  string // "recalled", "used", "saved", "updated" or "forgot"
 	Path  string
 	Title string // its index title, else its description, else its slug
 	Store string // "user" or "project"
@@ -165,15 +115,20 @@ var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "u
 var indexLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+\.md)\)`)
 
 // TurnMemory lists what the latest turn did with memory, back to its user
-// message, one entry per memory in the order first touched: used (read),
-// saved or updated (a write outranks a read), or forgot — touched or dropped
-// from an index this turn and gone by its end. Index files and failed calls
-// don't count.
-func (m *ConversationModel) TurnMemory() []MemoryEntry {
+// message, one entry per memory in the order first touched: recalled (attached
+// to a tool result), used (read), saved or updated (a write outranks a read),
+// or forgot — touched this turn and gone by its end. The turn starts at the
+// message openedBy names, else at the last user message; recalled are the
+// memories attached to it, which the agent's tool results carry but the
+// screen's do not. Index files and failed calls don't count.
+func (m *ConversationModel) TurnMemory(openedBy string, recalled []string) []MemoryEntry {
 	msgs := m.Messages
 	start := len(msgs)
 	for start > 0 && (msgs[start-1].Role != core.ChatUser || msgs[start-1].ToolResult != nil) {
 		start--
+	}
+	if i := slices.IndexFunc(msgs, func(c core.ChatMessage) bool { return openedBy != "" && c.ID == openedBy }); i >= 0 {
+		start = i + 1
 	}
 	failed := map[string]bool{}
 	for _, m := range msgs[start:] {
@@ -182,20 +137,22 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 		}
 	}
 	var out []MemoryEntry
-	at := map[string]int{} // path → its entry
-	note := func(path, verb, title string) {
+	at := map[string]int{}         // path → its entry
+	dropped := map[string]string{} // path → title, from index lines edited away
+	note := func(path, verb string) {
 		i, ok := at[path]
 		if !ok {
 			i = len(out)
 			at[path] = i
-			out = append(out, MemoryEntry{Path: path})
+			out = append(out, MemoryEntry{Path: path, Verb: verb})
 		}
-		if e := &out[i]; verb != "" && (e.Verb == "" || e.Verb == "used") {
+		// A write outranks a read, and a read outranks being shown.
+		if e := &out[i]; e.Verb == "recalled" || (e.Verb == "used" && verb != "recalled") {
 			e.Verb = verb
 		}
-		if title != "" {
-			out[i].Title = title
-		}
+	}
+	for _, path := range recalled {
+		note(filepath.Clean(path), "recalled")
 	}
 	for _, m := range msgs[start:] {
 		for _, tc := range m.ToolCalls {
@@ -205,35 +162,31 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 			}
 			if op.verb == "Deleted" {
 				for _, f := range op.removed {
-					note(filepath.Clean(f), "forgot", "")
+					note(filepath.Clean(f), "forgot")
 				}
 				continue
 			}
-			if op.subject != "" {
-				note(filepath.Clean(op.path), turnVerb[op.verb], "")
+			if !op.index {
+				note(filepath.Clean(op.path), turnVerb[op.verb])
 				continue
 			}
 			var edit struct {
 				Old string `json:"old_string"`
-				New string `json:"new_string"`
 			}
 			_ = json.Unmarshal([]byte(tc.Input), &edit)
 			for _, l := range indexLink.FindAllStringSubmatch(edit.Old, -1) {
-				if !strings.Contains(edit.New, "("+l[2]+")") { // the index dropped this link
-					note(filepath.Join(filepath.Dir(op.path), l[2]), "", l[1])
-				}
+				dropped[filepath.Join(filepath.Dir(op.path), l[2])] = l[1] // a forgotten memory keeps its title
 			}
 		}
 	}
 	kept := out[:0]
 	for _, e := range out {
+		e.Title = memoryTitle(e.Path)
 		if _, err := os.Stat(e.Path); err != nil {
 			e.Verb = "forgot"
-		} else if e.Verb == "" {
-			continue // a link that moved, not a memory that went
-		}
-		if e.Title == "" {
-			e.Title = memoryTitle(e.Path)
+			if t, ok := dropped[e.Path]; ok {
+				e.Title = t
+			}
 		}
 		e.Store = "project"
 		if filepath.Dir(e.Path) == MemoryStores.User {
@@ -242,6 +195,17 @@ func (m *ConversationModel) TurnMemory() []MemoryEntry {
 		kept = append(kept, e)
 	}
 	return kept
+}
+
+// withoutRecall drops memory-recall reminders from a tool result read back
+// from a transcript: they are for the model, and the memory line reports them.
+func withoutRecall(content string) string {
+	for _, b := range reminder.Blocks(content) {
+		if b.Source == reminder.ProviderMemoryRecall {
+			content = strings.Replace(content, b.Text, "", 1)
+		}
+	}
+	return strings.TrimRight(content, "\n")
 }
 
 // memoryTitle names a memory as its store's index does ("[Go dev](go.md)"),
@@ -254,7 +218,7 @@ func memoryTitle(path string) string {
 		}
 	}
 	body, _ := os.ReadFile(path)
-	if d := frontmatterField(string(body), "description"); d != "" {
+	if d := system.FrontmatterField(string(body), "description"); d != "" {
 		return d
 	}
 	return strings.TrimSuffix(filepath.Base(path), ".md")

@@ -377,7 +377,7 @@ func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	}()
 	<-started
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"}).ToMessage()
-	cmd := m.sendToAgent(msg)
+	cmd := m.sendToAgent(pendingMessage{Message: msg})
 	m.handleStreamCancel()
 	runCmd(cmd)
 	close(release)
@@ -390,7 +390,7 @@ func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	next, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "next"}).ToMessage()
-	runCmd(m.sendToAgent(next))
+	runCmd(m.sendToAgent(pendingMessage{Message: next}))
 	select {
 	case <-provider.requests:
 	case <-time.After(time.Second):

@@ -235,8 +235,13 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // On no-provider or ensureAgentRuntime failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
-	m.pendingMessages = append(m.pendingMessages, msg)
-	content := msg.Text()
+	return m.submit(pendingMessage{Message: msg, fromUser: true})
+}
+
+// submit is SubmitToAgent for any message, a harness one included.
+func (m *model) submit(p pendingMessage) tea.Cmd {
+	m.pendingMessages = append(m.pendingMessages, p)
+	content := p.Text()
 	log.Logger().Sugar().Debugf("SubmitToAgent: %q", kit.TruncateText(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()

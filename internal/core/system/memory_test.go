@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestResolveImports(t *testing.T) {
@@ -524,52 +523,6 @@ func TestLoadAutoMemoryAtWarnsNearLimit(t *testing.T) {
 	}
 	if _, problems := LoadAutoMemoryAt(dir); len(problems) != 1 || !strings.Contains(problems[0], "near its load limit") {
 		t.Errorf("problems = %q", problems)
-	}
-}
-
-func TestStampModified(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
-	path := filepath.Join(dir, "a.md")
-	src := "---\nname: a\nmodified: 2020-01-01T00:00:00Z\ntype: user\n---\n\nbody\n"
-	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if stamped, err := StampModified(path, now); err != nil || !stamped {
-		t.Fatalf("stamped=%v err=%v", stamped, err)
-	}
-	got, _ := os.ReadFile(path)
-	want := "---\nname: a\ntype: user\nmodified: 2026-10-16T08:00:00Z\n---\n\nbody\n"
-	if string(got) != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-	if stamped, _ := StampModified(path, now); stamped {
-		t.Error("restamping the same time should be a no-op")
-	}
-
-	// A model's stray indent on a top-level key is dropped; real nesting stays.
-	for src, want := range map[string]string{
-		"---\nname: a\n type: user\n---\n":             "---\nname: a\ntype: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
-		"---\nname: a\nmetadata:\n  type: user\n---\n": "---\nname: a\nmetadata:\n  type: user\nmodified: 2026-10-16T08:00:00Z\n---\n",
-		"---\ndescription: |\n  two\n  lines\n---\n":   "---\ndescription: |\n  two\n  lines\nmodified: 2026-10-16T08:00:00Z\n---\n",
-	} {
-		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := StampModified(path, now); err != nil {
-			t.Fatal(err)
-		}
-		if got, _ := os.ReadFile(path); string(got) != want {
-			t.Errorf("from %q got %q, want %q", src, got, want)
-		}
-	}
-
-	plain := filepath.Join(dir, "MEMORY.md")
-	if err := os.WriteFile(plain, []byte("- [A](a.md) — x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if stamped, _ := StampModified(plain, now); stamped {
-		t.Error("a file without frontmatter must be left alone")
 	}
 }
 

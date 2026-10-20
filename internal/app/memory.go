@@ -1,21 +1,16 @@
 package app
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
-	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/fs"
 )
 
 // autoMemory is the auto-memory stores the main agent maintains, zero when
@@ -70,59 +65,29 @@ func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]a
 	return true
 }
 
-// afterMemoryWrite runs after a successful Write/Edit into the auto-memory
-// store: it stamps the file's `modified` time and, when the index changed,
-// tells the model right away what is wrong with it instead of next session.
-func afterMemoryWrite(s system.MemoryStores, c sdkagent.PostToolContext) *sdkagent.Result {
-	if c.Err != nil {
-		return nil
-	}
-	var args map[string]any
-	if json.Unmarshal([]byte(c.Call.Input), &args) != nil {
-		return nil
-	}
-	dir := autoMemoryStore(s, c.Call.Name, args)
-	if dir == "" {
-		return nil
-	}
-	path, _ := args["file_path"].(string)
-	var notes []string
-	if stamped, err := system.StampModified(path, time.Now()); err == nil && stamped {
-		// The stamp is ours, not an outside change the next Edit should balk at.
-		fs.RecordFileWritten(path)
-		notes = append(notes, "Recorded the write time as `modified` in its frontmatter and removed any stray key indentation; the file needs no follow-up edit.")
-	}
-	if dup := s.Duplicates(); len(dup) > 0 {
-		notes = append(notes, "Your memory has duplicates:\n- "+strings.Join(dup, "\n- "))
-	}
-	if filepath.Base(path) == system.AutoMemoryIndexName {
-		if _, problems := system.LoadAutoMemoryAt(dir); len(problems) > 0 {
-			notes = append(notes, "Your memory index needs fixing:\n- "+strings.Join(problems, "\n- "))
-		}
-	}
-	if len(notes) == 0 {
-		return nil
-	}
-	out := c.Result
-	out.Content = ai.TextContent(strings.TrimSpace(c.Result.Content.Text() + "\n\n" + strings.Join(notes, "\n\n")))
-	return &out
-}
-
 // memoryLine is the turn's memory in one quiet line under the answer, by
 // index title and grouped by verb in the order things happened —
-// "◇ memory · used Go dev · saved No AI attribution (user)" — cut to width.
-// A write names its store: a user-store memory follows the user into every
-// repository. "" when the turn left memory alone.
+// "◈ used Go dev · saved No AI attribution to user" — cut to width. ◇ marks a
+// turn that only read memory, ◈ one that changed it. A write names its store:
+// a user-store memory follows the user into every repository. "" when the
+// turn left memory alone.
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
+	icon := "◇"
 	for _, e := range entries {
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
-		title := e.Title
-		if e.Verb == "saved" || e.Verb == "updated" {
-			title += " (" + e.Store + ")"
+		title := memoryItemStyle.Render(e.Title)
+		switch e.Verb {
+		case "saved":
+			title += memoryLabelStyle.Render(" to " + e.Store)
+		case "updated":
+			title += memoryLabelStyle.Render(" in " + e.Store)
+		}
+		if e.Verb != "recalled" && e.Verb != "used" {
+			icon = "◈"
 		}
 		items[e.Verb] = append(items[e.Verb], title)
 	}
@@ -131,16 +96,17 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 	}
 	parts := make([]string, 0, len(verbs))
 	for _, v := range verbs {
-		parts = append(parts, v+" "+strings.Join(items[v], ", "))
+		parts = append(parts, memoryLabelStyle.Render(v+" ")+strings.Join(items[v], memoryLabelStyle.Render(", ")))
 	}
-	text := strings.Join(parts, " · ")
+	line := memoryLabelStyle.Render(icon+" ") + strings.Join(parts, memoryLabelStyle.Render(" · "))
 	if width > 0 {
-		text = kit.TruncateText(text, max(8, width-len("  ◇ memory · ")))
+		line = kit.TruncateText(line, max(8, width-2))
 	}
-	return memoryLabelStyle.Render("◇ memory · ") + memoryItemStyle.Render(text)
+	return line
 }
 
+// The titles carry the line; the icon, verbs and stores recede behind them.
 var (
-	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 )

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/fs"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -211,6 +213,10 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 // Permission is the caller's: a run with nobody at the keyboard cannot prompt,
 // so BuildParams.PermissionRules decides alone.
 func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (*core.Result, error) {
+	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID})}
+	recall := recaller.Start(p.AutoMemory, message.Text(), nil)
+	defer recall.Stop()
+	p.ResultFilter = WithRecall(p.ResultFilter, func() *Recall { return recall })
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the
 	// one thing a headless run must not do.
@@ -286,6 +292,8 @@ func AutoMemoryReminder(s system.MemoryStores) string {
 		index, p := system.LoadAutoMemoryAt(store.dir)
 		if index == "" {
 			index = "(no memories yet)" // said, so the model doesn't go read a missing index
+		} else {
+			fs.RecordFileWritten(filepath.Join(store.dir, system.AutoMemoryIndexName)) // shown, so editable unread
 		}
 		body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
 		for _, line := range p {

@@ -8,7 +8,7 @@ layer: feature
 Runs San's background self-learning pass: after a turn, a restricted fork
 reviews the just-completed conversation and creates, refines or retires
 agent-created skills. Memory is not part of it — the main agent keeps its own
-auto memory (see [harness channels](../../concepts/harness-channels.md#auto-memory)).
+auto memory (see [auto memory](../../concepts/auto-memory.md)).
 Triggering is model-decided — the main agent calls the
 `Evolve` tool when a turn is worth learning from.
 

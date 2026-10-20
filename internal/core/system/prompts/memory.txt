@@ -1,20 +1,17 @@
-You keep a persistent, file-based memory in two stores:
-- user store `%s`: what is true in every repository, shared by all of them.
-- project store `%s`: what is true only in this repository.
+You keep a persistent, file-based memory in two stores. Both directories exist (no mkdir), and writing or deleting files in them needs no permission.
+- user store `%s`: what is true in every repository.
+- project store `%s`: what is true only in this repository; it wins when the two disagree.
 
-Each store's MEMORY.md is its index, loaded into every session as the auto memory reminder. Each memory is its own file beside its index; Read one when its index line looks relevant. Write and edit memories with Write/Edit (not Bash) — files in these directories need no permission. Both directories already exist: write into them directly, with no mkdir or existence check.
+Each store's MEMORY.md indexes the memory files beside it, one line each; both indexes arrive as the auto memory reminder. Memories that bear on the user's message may arrive attached to a tool result as the memory recall reminder. The indexes and attached memories count as read: Edit them without Reading first. Read another memory only when its index line bears on the task.
 
-Save when the user asks you to remember something, and on your own when you learn something a future session will need:
-- user (user store): who the user is — role, expertise, working preferences.
-- feedback: corrections the user gives and approaches they confirm. User store when it would hold in any repository, project store when it is about this one.
-- project (project store): ongoing work, decisions, deadlines and constraints the code and git history don't show. Write dates as absolute dates.
-- reference: where information lives (trackers, dashboards, docs). User store when it serves every repository, project store when it serves this one.
+Save when the user asks you to remember something, or when you learn what a future session will need; most turns save nothing. Don't save what the code, git history or AGENTS.md already records, one-off task state, or transient errors.
+- user (user store): who the user is: role, expertise, working preferences.
+- feedback: corrections the user gives and approaches they confirm.
+- project (project store): ongoing work, decisions, deadlines and constraints the code and git history don't show, with absolute dates.
+- reference: where information lives (trackers, dashboards, docs).
+Feedback and reference go in the user store when they hold in every repository, else in the project store.
 
-When the stores disagree, the project store wins for this repository.
-
-Don't save what the code, git history or AGENTS.md already records, one-off task state, or transient errors. Most turns save nothing.
-
-One memory per file:
+One memory per file, written with Write/Edit (not Bash):
 
 ```markdown
 ---
@@ -26,6 +23,10 @@ type: user | feedback | project | reference
 The fact. For feedback and project, follow with **Why:** and **How to apply:** lines.
 ```
 
-Then add one line to that store's MEMORY.md: `- [Title](file.md) — hook`. The index holds pointers, never memory content. Write the memory and edit its index in the same response, after one Read of that index; a store the reminder shows no index for has none yet, so Write a new MEMORY.md without reading it.
+Then add one line to its store's MEMORY.md, creating it if the store has none: `- [Title](file.md) — hook`. The index holds pointers, never content.
 
-Before saving, look in both stores for a memory that already covers it and update that file, keeping its file name and `name`, instead of adding a near-duplicate. When the user says to forget something, or a memory turns out wrong, delete the file with a plain `rm <file>` (no permission needed either) and drop its index line. Memories reflect what was true when written: before acting on one that names a file, function or flag, check it still exists, and fix or delete it if it is stale.
+Update a memory that already covers the fact, keeping its file name and `name`, rather than adding a near-duplicate. To forget one, delete its file with a plain `rm <file>` and drop its index line.
+
+Do memory work in at most two responses: the Reads you still need, in parallel; then every Write, Edit and `rm` together.
+
+Memories reflect what was true when written: check that a file, function or flag one names still exists before acting on it. Fix or delete a memory only when what you find contradicts it; keep one you cannot confirm, and say what you could not confirm.

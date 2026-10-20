@@ -106,7 +106,7 @@ func addContextUsage(usage *conv.ContextUsage, text string) {
 		case reminder.ProviderSkillsDirectory:
 			usage.Skills += size
 			conversation -= size
-		case reminder.ProviderMemoryUser, reminder.ProviderMemoryProject, reminder.ProviderMemoryAuto:
+		case reminder.ProviderMemoryUser, reminder.ProviderMemoryProject, reminder.ProviderMemoryAuto, reminder.ProviderMemoryRecall:
 			usage.MemoryFiles += size
 			conversation -= size
 		}

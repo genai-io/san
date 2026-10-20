@@ -42,7 +42,7 @@ const defaultWidth = 80
 type model struct {
 	workerMu *sync.Mutex // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
-	pendingMessages []core.Message
+	pendingMessages []pendingMessage
 
 	// ── Sub-models (one per event source / concern) ─────────────
 	userInput input.Model // Source 1: user keyboard input
@@ -163,6 +163,13 @@ type model struct {
 	// TODO: derive this from the chain the model sees instead of caching it,
 	// once this can be derived from the native runtime chain.
 	systemRemindersSent bool
+
+	// turnOpenedBy is the message that started the running turn; messages
+	// that enter mid-turn belong to it.
+	turnOpenedBy string
+
+	// memoryRecall is shared with the agent goroutine, made with the agent.
+	memoryRecall *memoryRecall
 
 	// earlyNotices are notices shown before the transcript's writer exists
 	// (it starts with the first message); they are written once it does.

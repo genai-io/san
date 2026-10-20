@@ -303,8 +303,10 @@ func mutedThinkingBody(thinking string, width int, md *MDRenderer) string {
 		}
 	}
 	if text == "" {
+		// Drop bold markers as the markdown pass does, so a "**Title**" line
+		// doesn't shift when the block settles.
 		wrapWidth := max(width-streamWrapReserve, minWrapWidth)
-		text = lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
+		text = lipgloss.NewStyle().Width(wrapWidth).Render(strings.ReplaceAll(thinking, "**", ""))
 	}
 	var lines []string
 	for line := range strings.SplitSeq(strings.Trim(text, "\n"), "\n") {
@@ -714,8 +716,6 @@ func RenderToolCalls(params ToolCallsParams) string {
 				compact := !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID })
 				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail, compact)
 				detail = ""
-			} else if op, ok := parseMemoryOp(tc.Name, tc.Input); ok {
-				row = renderMemoryCall(op, rowWidth, icon)
 			} else {
 				args := extractToolArgs(tc.Input)
 				if tc.Name == tool.ToolGroup {

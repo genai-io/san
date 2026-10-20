@@ -190,7 +190,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	// above still separates it from the turn before.
 	autopilotDriven := msg.Role == core.ChatUser && msg.ToolResult == nil && msg.AutopilotNote != ""
 	if p.memoryStep(msg, idx) {
-		return ""
+		return p.memoryStepView(msg, idx)
 	}
 
 	if msg.ToolResult == nil {
@@ -520,7 +520,9 @@ func boundedWorkerRows(rows []string, width int) string {
 func RenderActiveContent(p RenderContext) string {
 	p.Interactive = true
 	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
-	if p.StreamWaiting {
+	// A turn between steps (one committed, the next not yet streaming) keeps
+	// its spinner, or the row would blink out and back.
+	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
 			StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,

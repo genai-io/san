@@ -56,6 +56,13 @@ func ResetFileViews() {
 	clear(fileViews)
 }
 
+// Viewed reports whether the model's view of filePath is current, so showing
+// it the file again would repeat what it has.
+func Viewed(filePath string) bool {
+	view, err := viewOf(filePath)
+	return err == nil && view == viewCurrent
+}
+
 // fileView classifies how current the model's view of a file is.
 type fileView int
 

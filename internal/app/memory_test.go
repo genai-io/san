@@ -1,15 +1,11 @@
 package app
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
-	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core/system"
@@ -51,44 +47,6 @@ func TestAutoMemoryStore(t *testing.T) {
 	}
 }
 
-func TestAfterMemoryWrite(t *testing.T) {
-	dir := t.TempDir()
-	topic := filepath.Join(dir, "user_role.md")
-	index := filepath.Join(dir, "MEMORY.md")
-	if err := os.WriteFile(topic, []byte("---\nname: user-role\ntype: user\n---\n\nGo dev.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(index, []byte("- [Gone](gone.md) — x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	call := func(path string) sdkagent.PostToolContext {
-		return sdkagent.PostToolContext{
-			Call:   ai.ToolCall{Name: "Write", Input: `{"file_path":"` + path + `"}`},
-			Result: sdkagent.Result{Content: ai.TextContent("ok")},
-		}
-	}
-
-	stores := system.MemoryStores{Project: dir}
-	r := afterMemoryWrite(stores, call(topic))
-	if r == nil || !strings.Contains(r.Content.Text(), "modified") {
-		t.Fatalf("topic write: %+v", r)
-	}
-	if got, _ := os.ReadFile(topic); !strings.Contains(string(got), "\nmodified: ") {
-		t.Errorf("topic not stamped:\n%s", got)
-	}
-
-	r = afterMemoryWrite(stores, call(index))
-	if r == nil || !strings.Contains(r.Content.Text(), "gone.md") || !strings.Contains(r.Content.Text(), "user_role.md") {
-		t.Fatalf("index write should report the dangling link and the orphan: %+v", r)
-	}
-
-	failed := call(topic)
-	failed.Err = errors.New("boom")
-	if afterMemoryWrite(stores, failed) != nil || afterMemoryWrite(system.MemoryStores{}, call(topic)) != nil {
-		t.Error("failed writes and memory off must pass through")
-	}
-}
-
 // Memory writes skip approval in every mode, but a deny rule still stops them.
 func TestPermitAutoMemoryWrite(t *testing.T) {
 	dir := t.TempDir()
@@ -123,14 +81,17 @@ func TestPermitAutoMemoryWrite(t *testing.T) {
 }
 
 // The turn's memory is one quiet line, grouped by verb in order; a write
-// names its store.
+// names its store, and its icon says whether memory changed.
 func TestMemoryLine(t *testing.T) {
 	got := ansi.Strip(memoryLine([]conv.MemoryEntry{
 		{Verb: "used", Title: "Go dev", Store: "user"}, {Verb: "updated", Title: "Freeze", Store: "project"},
 		{Verb: "used", Title: "Tabs", Store: "user"}, {Verb: "saved", Title: "Pnpm", Store: "user"},
 	}, 100))
-	if got != "◇ memory · used Go dev, Tabs · updated Freeze (project) · saved Pnpm (user)" {
+	if got != "◈ used Go dev, Tabs · updated Freeze in project · saved Pnpm to user" {
 		t.Errorf("memoryLine = %q", got)
+	}
+	if got := ansi.Strip(memoryLine([]conv.MemoryEntry{{Verb: "recalled", Title: "Go dev"}}, 100)); got != "◇ recalled Go dev" {
+		t.Errorf("read-only memoryLine = %q", got)
 	}
 	if memoryLine(nil, 80) != "" {
 		t.Error("a turn without memory gets no line")
