@@ -67,15 +67,65 @@ sequenceDiagram
 
 ## Recall
 
-When a message goes to the agent, a side query to the session model (its
-lightest reasoning rung) picks up to five memories whose `description` bears on
-it. The turn never waits: the pick's contents ride the `memory-recall`
-reminder on the first tool result that completes after it lands, and a turn
-that calls no tool goes without (the indexes are still there to Read from).
+Recall puts the memories a message needs in front of the agent without
+making the turn wait for them.
 
-A memory is attached once per conversation, and not at all when the agent
-already has the file in view. The reminder is hidden from the tool result on
-screen.
+### When it runs
+
+A pick starts when a **user's message** goes to the agent:
+
+- a message typed and sent, queued, or sent mid-turn;
+- a skill or slash-command prompt, a scheduled (`/loop`, cron) prompt, an
+  autopilot continuation;
+- the prompt of a headless `san -p` run.
+
+Nothing else starts one: not harness messages (notices, background agent
+results, a Stop hook's block, an async hook's continuation), not tool results
+or later steps of the same turn, not compaction, resume or a model switch, and
+not subagents, which load no memory. An empty message, or one sent while auto
+memory is off, starts none either. A newer user message replaces the running
+pick, which is cancelled.
+
+### How it runs
+
+The pick is one side query beside the turn, not a second conversation:
+
+| | Main agent | Pick |
+|---|---|---|
+| Runs as | the session: history, tools, many steps | one `llm.Complete` call in a goroutine |
+| Sees | the whole conversation and the indexes | each memory's `<store>/<file>` and `description`, and the message |
+| Returns | the answer | `{"selected_memories": [...]}`, up to 5 files |
+| Model | session model, its usual effort | session model, its lightest reasoning rung |
+
+The pick is told that a user memory holds everywhere and a project memory in
+the current repository, and to choose only memories that bear on what the
+message asks, not ones that share a word with it or describe the user in
+general. It returns nothing when none does. It gives up after a minute.
+
+### Where it lands
+
+The main agent never waits for the pick and never knows it is running. Each
+tool result passes the result filter on its way back to the model; the filter
+checks, without blocking, whether the pick has landed:
+
+| When | What happens |
+|---|---|
+| A tool result returns before the pick lands | it goes back unchanged; the next result checks again |
+| The pick lands, then a tool result returns | the picked memories ride that result as the `memory-recall` reminder |
+| The agent Reads a memory before the pick lands | that memory is skipped when the pick attaches: never in context twice |
+| The turn calls no tool | the pick is dropped at turn end; the agent still has the indexes to Read from |
+
+Each pick attaches once. Every attached memory counts as read, so the agent
+can edit it without a Read, and shows the date of its file's last change. The
+reminder is part of the result the model sees, not of the result on screen.
+
+Within a conversation an attached memory is not offered again. `/clear` and
+compaction start that list over, since the memory has left the context; a
+resumed session starts it over too.
+
+On the turn's memory line, `recalled` names memories the pick attached and
+`used` those the agent Read itself. A slow pick mostly shows as `used`: the
+agent found the memory in the index first.
 
 ## Saving and forgetting
 
