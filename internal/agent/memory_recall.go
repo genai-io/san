@@ -27,8 +27,8 @@ const maxRecalled = 5
 // recallDeadline bounds a pick that never answers; the turn never waits on it.
 const recallDeadline = time.Minute
 
-const recallSystemPrompt = `You select memories that will be useful to a coding agent as it handles a user's message. You get the list of memory files, each with its store and description, then the message.
-Return the files that will clearly help with this message, up to 5. Include one only when you are certain from its description that it bears on the message; when none clearly does, return an empty list.
+const recallSystemPrompt = `You select memories that will be useful to a coding agent as it handles a user's message. You get the list of memory files, each as <store>/<file> with its description, then the message. A user memory holds in every repository; a project memory holds in the repository the user is working in now.
+Return the files the agent needs to handle this message well, up to 5: a rule, fact or preference that bears on what the message asks it to do. Skip one that only shares a word with the message or describes the user in general; when none bears on it, return an empty list.
 Reply with JSON only: {"selected_memories": ["<store>/<file>", ...]}`
 
 // Recaller picks the memories a message needs with a side query, so the main
