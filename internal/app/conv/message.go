@@ -303,8 +303,10 @@ func mutedThinkingBody(thinking string, width int, md *MDRenderer) string {
 		}
 	}
 	if text == "" {
+		// Drop bold markers as the markdown pass does, so a "**Title**" line
+		// doesn't shift when the block settles.
 		wrapWidth := max(width-streamWrapReserve, minWrapWidth)
-		text = lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
+		text = lipgloss.NewStyle().Width(wrapWidth).Render(strings.ReplaceAll(thinking, "**", ""))
 	}
 	var lines []string
 	for line := range strings.SplitSeq(strings.Trim(text, "\n"), "\n") {

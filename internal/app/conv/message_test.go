@@ -791,6 +791,30 @@ func TestRenderActiveContentShowsRunningStateForPendingWebFetch(t *testing.T) {
 	}
 }
 
+// A live thinking title reads as it will once settled: no bold markers.
+func TestLiveThinkingDropsBoldMarkers(t *testing.T) {
+	if got := strings.TrimSpace(stripANSI(renderThinkingBlock("**Saving memory**", true, 80, nil))); got != "✦ Saving memory" {
+		t.Errorf("live thinking = %q", got)
+	}
+}
+
+// Between steps, with one committed and the next not yet streaming, the live
+// area still shows the turn's spinner.
+func TestRenderActiveContentKeepsSpinnerBetweenSteps(t *testing.T) {
+	msgs := []core.ChatMessage{
+		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "a", Name: "Bash"}}},
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
+	}
+	p := RenderContext{Messages: msgs, CommittedCount: len(msgs), StreamActive: true, SpinnerView: "*", Width: 80}
+	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "* Thinking..." {
+		t.Errorf("between steps = %q, want the spinner", got)
+	}
+	p.StreamActive = false
+	if got := RenderActiveContent(p); strings.TrimSpace(got) != "" {
+		t.Errorf("idle = %q, want nothing", got)
+	}
+}
+
 func TestPrecomputeInlinedResultsFromScopesToActiveRange(t *testing.T) {
 	// assistant(0) with a tool call, then its result(1), then a fresh
 	// assistant(2) with a call and its result(3).
