@@ -185,6 +185,42 @@ its memories along unless the new directory already holds some.
 Subagents don't load either store. Skills are separate: `/evolve` reviews
 turns and edits skills, never memory.
 
+## Design choices
+
+- **Recall never holds up the turn.** The pick takes 2–10 s on a reasoning
+  model; waiting for it would add that to every turn. Not waiting costs at
+  most one step: the agent Reads the memory from the index itself. A tool
+  result is the earliest place the pick can join without delaying anything,
+  since it is the next thing the model reads after its first step.
+- **The pick is a side query, not a forked conversation.** Choosing from
+  descriptions needs only the message, so a one-shot call does it and leaves
+  the main conversation, its context and its prompt cache untouched.
+- **Only the user's messages start a pick.** They carry the intent memory
+  should serve. A harness message (notice, hook) would waste a call, and
+  mid-turn it would cancel the pick the user's message started.
+- **Indexes always, bodies on demand.** The capped indexes tell the agent what
+  exists at a fixed cost; a memory's body enters the context only when a pick
+  or the agent wants it.
+- **Memory work takes two responses.** Indexes and attached memories count as
+  read, so the agent edits them directly: Reads still needed first, then all
+  writes together. "Remember X" went from about 25 s to 12 s.
+- **Two stores.** Some facts hold everywhere (who the user is), others in one
+  repository (its freeze, its conventions); one store would mix repositories.
+  The project store is keyed by the repository root, so subdirectories and
+  worktrees share it. Committed project settings cannot move a store, since
+  memory writes need no approval.
+- **San never edits what the agent wrote.** A `modified` stamp once changed
+  files under the agent and broke its next Edit; the file's mtime dates a
+  memory instead.
+- **No per-write checks.** A step's writes land together, so checking each one
+  fired between them; index problems go into the next index reminder.
+- **No background extraction.** The agent saves during the turn, when asked or
+  when it learns something worth keeping. A separate pass after the turn would
+  need its own fork, cursor and conflict rules with the main agent.
+- **Out of the chat flow.** Memory bookkeeping is not the user's work, so its
+  calls don't draw and the turn ends with one line. What already showed (a
+  step's thinking) stays, since taking it back flashes.
+
 ## See Also
 
 - [`concepts/harness-channels.md`](harness-channels.md) — reminders and the
