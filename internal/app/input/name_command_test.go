@@ -78,19 +78,20 @@ func TestHandleNameCommand_RoleFlag(t *testing.T) {
 	c := NewSlashCommandController(SlashCommandEnv{
 		RenameSession: func(name, role string) (string, error) { gotName, gotRole = name, role; return "@api in shop", nil },
 	})
-	for args, want := range map[string][2]string{
-		"api --role owns the HTTP layer": {"api", "owns the HTTP layer"},
-		`--role "登录页重构"`:                 {"", "登录页重构"},
+	for _, tc := range []struct{ args, name, role string }{
+		{"api --role owns the HTTP layer", "api", "owns the HTTP layer"},
+		{`--role "登录页重构"`, "", "登录页重构"},
 	} {
-		out, _, err := c.handleNameCommand(context.Background(), args)
+		out, _, err := c.handleNameCommand(context.Background(), tc.args)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if gotName != want[0] || gotRole != want[1] {
-			t.Errorf("%q → name %q role %q, want %q %q", args, gotName, gotRole, want[0], want[1])
+		if gotName != tc.name || gotRole != tc.role {
+			t.Errorf("%q → name %q role %q, want %q %q", tc.args, gotName, gotRole, tc.name, tc.role)
 		}
-		if !strings.Contains(out, "@api in shop") || (want[0] == "") == strings.Contains(out, "renamed") {
-			t.Errorf("%q → output %q", args, out)
+		renamed := strings.Contains(out, "Session renamed")
+		if !strings.Contains(out, "@api in shop") || renamed != (tc.name != "") {
+			t.Errorf("%q → output %q", tc.args, out)
 		}
 	}
 }

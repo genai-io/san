@@ -318,10 +318,8 @@ func (m *model) forkSession() (string, error) {
 	return originalID, nil
 }
 
-// renameSession sets a custom name for the current session and persists it.
-// The name is stored in env so subsequent saves use it instead of auto-generating
-// a title from the conversation entries. In a group the member follows; the
-// returned line says how.
+// renameSession names the session and persists it, so saves stop generating a
+// title; in a group the member follows, and the returned line says how.
 func (m *model) renameSession(name, role string) (string, error) {
 	if name != "" {
 		m.env.SessionName = name

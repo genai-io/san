@@ -428,8 +428,10 @@ func (m *model) releaseGroupOnSwitch() {
 	}
 	group.Release()
 	m.grp = groupState{polling: m.grp.polling}
-	m.conv.AddNotice(fmt.Sprintf("Out of group %s: @%s stays with the previous session; /resume it to return", g, self.Name))
-	m.services.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
+	m.conv.AddNotice(m.fitLines(fmt.Sprintf("Out of group %s: @%s stays with the previous session; /resume it to return", g, self.Name)))
+	if m.systemRemindersSent { // otherwise the model never heard of the group
+		m.services.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
+	}
 }
 
 // rejoinGroup reclaims the membership a resumed session recorded.
@@ -557,9 +559,7 @@ func (m *model) renameMember(name, role string) string {
 	}
 	var notes []string
 	if name != "" {
-		if handle := group.NameFrom(name); handle == "" {
-			notes = append(notes, "member name kept as @"+self.Name)
-		} else if err := group.Rename(handle); err != nil {
+		if err := group.Rename(group.NameFrom(name)); err != nil {
 			notes = append(notes, "member name kept: "+err.Error())
 		}
 	}
@@ -568,7 +568,7 @@ func (m *model) renameMember(name, role string) string {
 			notes = append(notes, "role kept: "+err.Error())
 		}
 	}
-	m.reconcileMembership()
+	m.grp.blob = currentMembership() // renameSession's append persists it
 	_, now := group.Current()
 	if (now.Name != self.Name || now.Role != self.Role) && m.systemRemindersSent {
 		m.services.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now @%s — %s", g, now.Name, now.Role))

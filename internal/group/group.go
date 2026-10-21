@@ -222,17 +222,22 @@ func Join(g string, self Member) (Member, error) {
 	if err := os.MkdirAll(groupDir(g), 0o700); err != nil {
 		return Member{}, err
 	}
-	if err := claim(memberFile(g, self.Name), self); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return Member{}, fmt.Errorf("%q is already taken in group %s", self.Name, g)
-		}
-		return Member{}, err
-	}
-	if err := os.MkdirAll(inboxDir(g, self.Name), 0o700); err != nil {
+	if err := publish(g, self); err != nil {
 		return Member{}, err
 	}
 	setCurrent(g, self)
 	return self, nil
+}
+
+// publish claims self's name in group g and makes its inbox.
+func publish(g string, self Member) error {
+	if err := claim(memberFile(g, self.Name), self); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%q is already taken in group %s", self.Name, g)
+		}
+		return err
+	}
+	return os.MkdirAll(inboxDir(g, self.Name), 0o700)
 }
 
 // homeRelative writes a path under the home directory as ~/…: members share
@@ -368,14 +373,7 @@ func Rename(name string) error {
 	}
 	old := self.Name
 	self.Name = name
-	if err := claim(memberFile(g, name), self); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%q is already taken in group %s", name, g)
-		}
-		return err
-	}
-	if err := os.MkdirAll(inboxDir(g, name), 0o700); err != nil {
-		_ = os.Remove(memberFile(g, name))
+	if err := publish(g, self); err != nil {
 		return err
 	}
 	setCurrent(g, self)
