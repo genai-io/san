@@ -10,6 +10,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/kit"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
@@ -62,7 +63,7 @@ func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
 	}
 }
 
-func TestLiveWorkflowReflowsAndPulses(t *testing.T) {
+func TestLiveWorkflowReflows(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := task.NewAgentTask("wf-width", "workflow", "/workflow demo", ctx, cancel, "")
@@ -72,25 +73,19 @@ func TestLiveWorkflowReflowsAndPulses(t *testing.T) {
 	if got := ansi.Strip(appendLiveWorkflowViews("", running, 0, 80)); got != "width 80 ●" {
 		t.Fatalf("initial view = %q", got)
 	}
-	if got := ansi.Strip(appendLiveWorkflowViews("", running, 3, 120)); got != "width 120 ◉" {
-		t.Fatalf("resized pulse = %q", got)
-	}
-	if got := ansi.Strip(appendLiveWorkflowViews("", running, 6, 120)); got != "width 120 ●" {
-		t.Fatalf("pulse did not return to solid = %q", got)
+	if got := ansi.Strip(appendLiveWorkflowViews("", running, 3, 120)); got != "width 120 ●" {
+		t.Fatalf("resized view = %q", got)
 	}
 }
 
-func TestLiveWorkflowSpinsOnlyActivityAndKeepsFinishedMarkersFixed(t *testing.T) {
+func TestLiveWorkflowBlinksOnlyActivityAndKeepsFinishedMarkersFixed(t *testing.T) {
 	activity := "  Activity\n    │  ● running\n    │  ✓ done\n    │  ✗ failed"
 	graph := "  Workflow demo · 0/1 finished\n    map ● → next ○"
 	input := activity + "\n\n" + graph
-	for frame, marker := range []string{"|", "/", "-", "\\", "|"} {
+	for frame := range 5 {
 		got := styleWorkflowLiveView(input, frame)
-		graphFrame := graph
-		if (frame/3)%2 == 1 {
-			graphFrame = strings.Replace(graph, "●", "◉", 1)
-		}
-		want := strings.Replace(activity, "● running", marker+" running", 1) + "\n\n" + graphFrame
+		marker := ansi.Strip(kit.LiveDot(frame))
+		want := strings.Replace(activity, "● running", marker+" running", 1) + "\n\n" + graph
 		if ansi.Strip(got) != want {
 			t.Fatalf("frame %d: got %q, want %q", frame, got, want)
 		}
@@ -106,7 +101,8 @@ func TestLiveWorkflowActivityPreservesToolContent(t *testing.T) {
 		"    │  ✓ Bash(printf '●')\n" +
 		"    │    └ ● ✓ ✗\n" +
 		"    │      ● wrapped result\n    ╰─"
-	for frame, marker := range []string{"|", "/", "-", "\\"} {
+	for frame := range 4 {
+		marker := ansi.Strip(kit.LiveDot(frame))
 		got := ansi.Strip(styleWorkflowActivity(activity, frame))
 		want := strings.Replace(activity, "│  ● Bash", "│  "+marker+" Bash", 1)
 		if got != want {
@@ -488,6 +484,19 @@ const (
 // explanation still live (not yet committed to scrollback). The batch is what
 // makes the fixture realistic: both calls get a PreTool event, so the "current"
 // call is the *last* one tracked, not the one the modal is asking about.
+// atBlinkOut advances the frame clock to the live dot's off frame, where a row
+// still running shows no ● and a frozen one keeps its static bullet.
+func atBlinkOut(t *testing.T, m *model) {
+	t.Helper()
+	for range 4 {
+		if m.conv.Spinner.Frame()%4 == 3 {
+			return
+		}
+		m.conv.Spinner, _ = m.conv.Spinner.Update(m.conv.Spinner.Tick())
+	}
+	t.Fatalf("frame clock stuck at %d", m.conv.Spinner.Frame())
+}
+
 func dockedModalModel(t *testing.T, rationale string) *model {
 	t.Helper()
 
@@ -579,7 +588,7 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 // elapsed timer over the user's deliberation (issue #440).
 func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+	atBlinkOut(t, m)
 
 	frame, _ := m.viewString()
 
@@ -592,8 +601,8 @@ func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	if row == "" {
 		t.Fatalf("modal frame has no row for the gated call:\n%s", frame)
 	}
-	if strings.Contains(row, spinnerGlyph) {
-		t.Fatalf("tool row %q spins while it waits on the approval modal", row)
+	if !strings.Contains(row, "●") {
+		t.Fatalf("tool row %q blinks while it waits on the approval modal", row)
 	}
 	if !strings.Contains(row, "waiting for approval") {
 		t.Fatalf("tool row %q does not say what it is waiting for", row)
@@ -634,7 +643,7 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
-	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+	atBlinkOut(t, m)
 
 	m.HandlePermGate(&agent.PermGateRequest{
 		RequestID:   "req-1",
@@ -652,8 +661,8 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 		if !strings.Contains(line, "Bash(") {
 			continue
 		}
-		if strings.Contains(line, spinnerGlyph) {
-			t.Fatalf("tool row %q spins while the modal owns the screen", line)
+		if !strings.Contains(line, "●") {
+			t.Fatalf("tool row %q blinks while the modal owns the screen", line)
 		}
 	}
 }
@@ -663,13 +672,13 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 // spin either — the turn is parked on the modal, not producing text.
 func TestDockedModalFreezesAssistantBullet(t *testing.T) {
 	m := dockedModalModel(t, "RATIONALE_SENTINEL about to check the disk")
-	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
+	atBlinkOut(t, m)
 
 	frame, _ := m.viewString()
 
 	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
-		if strings.Contains(line, "RATIONALE_SENTINEL") && strings.Contains(line, spinnerGlyph) {
-			t.Fatalf("assistant row %q spins while the turn waits on the modal", line)
+		if strings.Contains(line, "RATIONALE_SENTINEL") && !strings.Contains(line, "●") {
+			t.Fatalf("assistant row %q blinks while the turn waits on the modal", line)
 		}
 	}
 }

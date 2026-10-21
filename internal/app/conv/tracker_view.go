@@ -15,12 +15,6 @@ import (
 // maxVisibleItems caps task rows; overflow is summarized in one extra row.
 const maxVisibleItems = 8
 
-// trackerPulseTicks is the number of spinner frames per ●/◌ swap of an
-// in-progress item. At ~360ms per frame this gives a ~1.1s breathe — calmer
-// than the agent icon's faster blink (cf. agentBlinkTicks in tool_render.go),
-// suiting the tracker's quieter role.
-const trackerPulseTicks = 3
-
 // TrackerListParams holds the parameters for rendering a tracker list.
 type TrackerListParams struct {
 	Items        []*todo.Item
@@ -275,20 +269,14 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		return renderItemLine(indent, mutedStyle.Render("◌"), idTag, activeText(t), mutedStyle.Render("[stalled]"), width)
 
 	case itemRunning:
-		// Pulse on the shared frame tick (a true ~360ms clock; see FrameClock)
+		// Blink on the shared frame tick (a true ~360ms clock; see FrameClock)
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
-		activeIcon := "●"
-		activeStyle := tint(trackerInProgressStyle)
-		if (blink/trackerPulseTicks)%2 == 1 {
-			activeIcon = "◌"
-			activeStyle = mutedStyle
-		}
 		detail := ""
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
 			detail = mutedStyle.Render("· " + elapsed)
 		}
-		return renderItemLine(indent, activeStyle.Render(activeIcon), idTag, tint(lipgloss.NewStyle()).Render(activeText(t)), detail, width)
+		return renderItemLine(indent, kit.LiveDot(blink), idTag, tint(lipgloss.NewStyle()).Render(activeText(t)), detail, width)
 
 	default:
 		detail := ""

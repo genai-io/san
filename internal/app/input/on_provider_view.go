@@ -504,22 +504,17 @@ func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 	return kit.DimStyle()
 }
 
-// providerSpinnerFrames aliases kit.BrailleSpinnerFrames so callers keep
-// the existing local name; the table itself is shared (see kit/spinner.go)
-// so non-Unicode TTY fallbacks land in one place.
-var providerSpinnerFrames = kit.BrailleSpinnerFrames
-
 func (s *ProviderSelector) renderConnectResult() string {
 	if !s.IsConnecting() {
 		return s.connectResultStyle().Render(s.lastConnectResult)
 	}
 
-	// While in flight the row shows the animated braille spinner, plus the
+	// While in flight the row shows the live dot, plus the
 	// device code when one is pending. The code sits here rather than in the
 	// footer because it belongs to this provider, and it is short enough to fit
 	// the info column at any panel width; its URL is long and identical every
 	// time, so that stays in the footer.
-	frame := kit.DimStyle().Render(providerSpinnerFrames[s.spinnerTick%len(providerSpinnerFrames)])
+	frame := kit.LiveDot(s.spinnerTick)
 	if s.loginPrompt.UserCode == "" {
 		return frame
 	}

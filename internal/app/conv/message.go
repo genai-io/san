@@ -54,12 +54,11 @@ var (
 				Foreground(kit.CurrentTheme.Focus).
 				Bold(true)
 
-	// The assistant bullet leads with weight, not hue: the strongest neutral
-	// (near-black on light, near-white on dark) plus bold. The conversation
-	// body stays monochrome — teal is reserved for the user's "❭" marker.
-	aiPromptStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.TextBright).
-			Bold(true)
+	// A settled bullet is the body text color, the same as a tool row's, so
+	// every finished ● in the conversation reads alike. The conversation body
+	// stays monochrome — teal is reserved for the user's "❭" marker.
+	bulletStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.Text)
 
 	// Matching neutral rules give the composer one stable boundary.
 	SeparatorStyle = lipgloss.NewStyle().
@@ -113,10 +112,6 @@ var (
 
 	trackerPendingStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted)
-
-	trackerInProgressStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Primary).
-				Bold(true)
 
 	trackerCompletedStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
@@ -186,7 +181,7 @@ type AssistantParams struct {
 	IsLast            bool
 	// DockedModalActive freezes the bullet: the stream stays "active" across a
 	// permission gate (it clears only on a text-only Done chunk), so without
-	// this the live tail spins while the turn is parked on the user's answer.
+	// this the live tail blinks while the turn is parked on the user's answer.
 	DockedModalActive bool
 	SpinnerView       string
 	MDRenderer        *MDRenderer
@@ -259,7 +254,7 @@ const continuationGutter = "  "
 // continue a turn whose marker was already emitted.
 func contentGutter(showBullet bool) string {
 	if showBullet {
-		return aiPromptStyle.Render("● ")
+		return bulletStyle.Render("● ")
 	}
 	return continuationGutter
 }
@@ -370,10 +365,13 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 	// The first content of a turn leads with "● "; once a block has been
 	// committed the bullet is spent and the remainder aligns under a gutter.
-	// While streaming, the active tail shows the spinner in the bullet slot.
+	// Until anything of the reply shows, the bullet slot holds the live dot;
+	// once text or reasoning streams, that is the progress and the dot rests.
 	aiIcon := contentGutter(!params.BulletEmitted)
-	if params.StreamActive && params.IsLast && !params.DockedModalActive {
-		aiIcon = aiPromptStyle.Render(params.SpinnerView + " ")
+	nothingShown := params.Content == "" && !params.BulletEmitted &&
+		(params.Thinking == "" || !setting.DrawsThinkingBody(params.ThinkingDisplay))
+	if params.StreamActive && params.IsLast && !params.DockedModalActive && nothingShown {
+		aiIcon = params.SpinnerView + " "
 	}
 
 	interrupted := false
@@ -429,14 +427,14 @@ func formatAssistantContent(params AssistantParams) string {
 		}
 		// BulletEmitted: content is already streaming to scrollback block by
 		// block — fall through so the momentary gap between committed blocks
-		// still shows the live spinner, not the "Thinking…" filler.
+		// keeps its row, not the "Thinking…" filler.
 	}
 
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		if params.Content == "" {
 			// Nothing new to draw (turn start, or the gap right after a block
-			// commits): a lone space keeps the leading spinner on screen so the
-			// tail reads as live without trailing any caret glyph after the text.
+			// commits): a lone space keeps the row, so the live dot has a place
+			// at turn start and the tail does not jump between blocks.
 			return " "
 		}
 		// Plain-wrap the streaming tail so its \n-line count matches the height
@@ -664,10 +662,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				// agentIcon blinks ●/○ off the frame counter; on the call a
+				// The live dot blinks off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := agentIcon(params.Blink)
+				icon := kit.LiveDot(params.Blink)
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
@@ -748,13 +746,13 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-// toolCallIcon picks a call's row glyph: the spinner while it is in flight, a
+// toolCallIcon picks a call's row glyph: the live dot while it is in flight, a
 // static bullet once it has a result or is not the call being executed.
 //
 // The call a permission prompt is asking about was marked current and stamped
 // as started by its PreToolEvent, which fires *before* the request goes out, so
 // it holds a static bullet until it is allowed to run. Its batch siblings keep
-// spinning: the gate lives inside each tool's Execute and a parallel batch runs
+// blinking: the gate lives inside each tool's Execute and a parallel batch runs
 // one goroutine per call, so an allow-listed sibling really is executing while
 // the user decides. A modal that names no call still freezes every row —
 // see modalNamesNoCall.
@@ -777,7 +775,7 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 		return "●"
 	}
 
-	// In parallel mode every in-flight call spins; sequentially, only the
+	// In parallel mode every in-flight call blinks; sequentially, only the
 	// current call does.
 	if params.ParallelMode || idx == params.CurrentIdx {
 		return params.SpinnerView

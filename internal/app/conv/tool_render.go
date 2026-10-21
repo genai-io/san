@@ -1307,18 +1307,6 @@ func configuredAgentColor(agent agentInput, colors map[string]string) string {
 	return colors[strings.ToLower(agent.Name)]
 }
 
-// agentBlinkTicks is the number of spinner ticks per ● / ○ swap.
-// One spinner tick is ~360ms (see newFrameClock in model.go), so 2 ticks
-// gives the familiar ~720ms blink.
-const agentBlinkTicks = 2
-
-func agentIcon(tick int) string {
-	if (tick/agentBlinkTicks)%2 == 0 {
-		return "●"
-	}
-	return "○"
-}
-
 func truncateToolLabel(label string, width int) string {
 	return kit.TruncateText(label, maxToolLabelWidth(width))
 }

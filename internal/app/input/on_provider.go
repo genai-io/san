@@ -177,8 +177,8 @@ type ProviderSelector struct {
 	// for its full 15-minute lifetime with nobody left to read the result.
 	cancelLogin context.CancelFunc
 
-	// spinnerTick advances on each providerConnectingTickMsg; used to pick a braille
-	// frame while a connect/refresh is in flight.
+	// spinnerTick advances on each providerConnectingTickMsg; it is the live
+	// dot's frame while a connect/refresh is in flight.
 	spinnerTick int
 }
 

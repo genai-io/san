@@ -674,8 +674,7 @@ func (s *PluginSelector) renderActions(sb *strings.Builder) {
 func (s *PluginSelector) inlineActionStatus() string {
 	switch {
 	case s.isLoading:
-		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).
-			Render("   " + s.spinnerFrame() + " " + s.loadingMsg)
+		return "   " + kit.LiveDot(s.loadingFrame) + " " + kit.DimStyle().Render(s.loadingMsg)
 	case s.lastMessage == "":
 		return ""
 	case s.isError:
@@ -688,11 +687,6 @@ func (s *PluginSelector) inlineActionStatus() string {
 
 // ── Footer ────────────────────────────────────────────────────────────────
 
-// spinnerFrame returns the current spinner glyph for the loading animation.
-func (s *PluginSelector) spinnerFrame() string {
-	return kit.BrailleSpinnerFrames[s.loadingFrame%len(kit.BrailleSpinnerFrames)]
-}
-
 func (s *PluginSelector) renderFooter(sb *strings.Builder, hint string) {
 	// Action views carry the spinner and ✓/⚠ result inline on the active action
 	// row (see renderActions / inlineActionStatus); the footer shows them only
@@ -700,8 +694,7 @@ func (s *PluginSelector) renderFooter(sb *strings.Builder, hint string) {
 	inActionView := s.level == pluginLevelDetail || s.level == pluginLevelInstallOptions
 	if !inActionView {
 		if s.isLoading {
-			spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
-			sb.WriteString(spinnerStyle.Render("  " + s.spinnerFrame() + " " + s.loadingMsg))
+			sb.WriteString("  " + kit.LiveDot(s.loadingFrame) + " " + kit.DimStyle().Render(s.loadingMsg))
 			sb.WriteString("\n")
 		} else if s.lastMessage != "" {
 			if s.isError {

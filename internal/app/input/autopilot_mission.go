@@ -14,7 +14,6 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 )
@@ -33,7 +32,8 @@ type MissionRefinedMsg struct {
 
 type missionDialog struct {
 	input    textarea.Model // holds the whole mission; editing it IS the mission
-	spinner  spinner.Model
+	spinner  spinner.Model  // only the ticker; frame drives the live dot
+	frame    int
 	refining bool
 	status   string // transient notice/error under the editor
 }
@@ -42,8 +42,7 @@ func newMissionDialog() missionDialog {
 	ta := newChromelessTextarea()
 	ta.Placeholder = "Describe the mission: what should the copilot get done this session?"
 	sp := spinner.New()
-	sp.Spinner = spinner.Spinner{Frames: kit.StarSpinnerFrames, FPS: kit.StarSpinnerFPS}
-	sp.Style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
+	sp.Spinner = spinner.Spinner{Frames: []string{"●"}, FPS: kit.LiveDotFPS}
 	return missionDialog{input: ta, spinner: sp}
 }
 
@@ -154,6 +153,9 @@ func (p *AutopilotSelector) Thinking() bool {
 func (p *AutopilotSelector) UpdateSpinner(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	p.mission.spinner, cmd = p.mission.spinner.Update(msg)
+	if cmd != nil {
+		p.mission.frame++
+	}
 	return cmd
 }
 
@@ -166,7 +168,7 @@ func (p *AutopilotSelector) renderMission() string {
 	b.WriteString(p.renderComposer())
 	if p.mission.refining {
 		b.WriteString("\n")
-		b.WriteString(p.mission.spinner.View() + " " + apDescStyle.Render("refining…"))
+		b.WriteString(kit.LiveDot(p.mission.frame) + " " + apDescStyle.Render("refining…"))
 	}
 	if p.mission.status != "" {
 		b.WriteString("\n")

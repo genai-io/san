@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
@@ -886,13 +887,13 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		CurrentIdx:  0,
-		Blink:       agentBlinkTicks,
+		Blink:       0,
 		SpinnerView: "◓",
 		Width:       100,
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explore: HA code structure"
+	want := "● Agent - Explore: HA code structure"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want a single visible gap before explicit agent label", rendered)
 	}
@@ -909,13 +910,13 @@ func TestRenderToolCallsPreservesAgentName(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		Blink:        agentBlinkTicks,
+		Blink:        0,
 		SpinnerView:  "◓",
 		Width:        100,
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - general-purpose: audit git changes"
+	want := "● Agent - general-purpose: audit git changes"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want named agent label", rendered)
 	}
@@ -945,13 +946,13 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 		ModelName:    "gpt-5.4-mini",
 		InputTokens:  18500,
 		OutputTokens: 467,
-		Blink:        agentBlinkTicks,
+		Blink:        0,
 		SpinnerView:  "◓",
 		Width:        120,
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explore: audit git changes before review"
+	want := "● Agent - Explore: audit git changes before review"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want agent header", rendered)
 	}
@@ -1534,12 +1535,12 @@ func TestRenderToolCallsFreezesAgentRowAwaitingApproval(t *testing.T) {
 		Interactive:  true,
 	}
 
-	// agentIcon flips every agentBlinkTicks frames; both phases must render
-	// the same static bullet once the prompt is up.
-	for _, blink := range []int{0, agentBlinkTicks} {
+	// The live dot is on at frame 0 and blinks out at frame 3; both phases
+	// must render the same static bullet once the prompt is up.
+	for _, blink := range []int{0, 3} {
 		params.Blink = blink
 		live := stripANSI(RenderToolCalls(params))
-		if !strings.Contains(live, agentIcon(blink)) {
+		if !strings.Contains(live, stripANSI(kit.LiveDot(blink))+" Agent") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, want the blinking icon while the call runs unprompted", blink, live)
 		}
 
@@ -1550,7 +1551,7 @@ func TestRenderToolCallsFreezesAgentRowAwaitingApproval(t *testing.T) {
 		if !strings.Contains(frozen, "●") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, want a static bullet while the call waits on approval", blink, frozen)
 		}
-		if strings.Contains(frozen, "○") {
+		if !strings.Contains(frozen, "● Agent") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks while it waits on approval", blink, frozen)
 		}
 	}
@@ -1636,7 +1637,7 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 		DockedModalActive: true,
 	}
 
-	for _, blink := range []int{0, agentBlinkTicks} {
+	for _, blink := range []int{0, 3} {
 		params.Blink = blink
 		rendered := stripANSI(RenderToolCalls(params))
 		if strings.Contains(rendered, "⋯") {
@@ -1648,8 +1649,21 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 		if strings.Contains(rendered, "waiting for approval") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, no approval was asked for", blink, rendered)
 		}
-		if strings.Contains(rendered, "○") {
+		if !strings.Contains(rendered, "● Agent") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, agent row still blinks under the modal", blink, rendered)
 		}
+	}
+}
+
+// The live dot marks a wait with nothing to show. Once the reply streams,
+// the text is the progress, so the bullet slot rests on a plain ●.
+func TestRenderAssistantMessageLiveDotOnlyBeforeTheReplyShows(t *testing.T) {
+	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80, SpinnerView: "⋯"}
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "⋯ Thinking...") {
+		t.Fatalf("waiting on the first token should show the live dot:\n%s", out)
+	}
+	p.Content = "streaming reply"
+	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "⋯") || !strings.Contains(out, "● streaming reply") {
+		t.Fatalf("a streaming reply should rest on a plain bullet:\n%s", out)
 	}
 }
