@@ -50,11 +50,14 @@ require (
 // history. It also adds tea.ScrollUp, which commits rows by scrolling them off
 // a full-height frame instead of shrinking it, on genai-io/ultraviolet (branch
 // `san`) TerminalRenderer.ScrollUp, and tea.ResizeScrollbackMsg, which reports
-// the rows a resize pushed into scrollback. Drop both once upstream ships
-// equivalents.
+// the rows a resize pushed into scrollback. The ultraviolet fork also leaves
+// unchanged wide (CJK, emoji) rows alone instead of repainting them every
+// frame, and never erases an inline frame from the top left corner, which tmux
+// takes for clearing the screen and copies into history. Drop both once
+// upstream ships equivalents.
 replace (
-	charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021064020-4bec1715d0d1
-	github.com/charmbracelet/ultraviolet => github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c
+	charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6
+	github.com/charmbracelet/ultraviolet => github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b
 )
 
 require (

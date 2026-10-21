@@ -115,12 +115,12 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKKDTrHmbYxI7CYi+/hbdiDT2m4Hj+t0ikCjsrQ=
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
-github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021064020-4bec1715d0d1 h1:GR4tYypdNZyDGOmpqMURyA4w+ikR+iBP/bhgksW4M9s=
-github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021064020-4bec1715d0d1/go.mod h1:iwY+TidDNcZq37S5wj5gjjz999EGVZprEP9N+bMqfMs=
+github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6 h1:bVgD1ZhvGbuNMIN9zcETz7URdDrH3c3ic4Isg93n7L0=
+github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6/go.mod h1:J2/PHiN8RLwBV2Tp4OdkuKXMKwwA+7SDqK0yX5AJ46M=
 github.com/genai-io/sdk-go v0.9.1 h1:H00j/8E4FhzagRQnPwdTDtRpvd2TtaGjjJZARi2hwUM=
 github.com/genai-io/sdk-go v0.9.1/go.mod h1:PtlY9EjvpQC0D/UoxTcX/XCB1hqoEKAAn/7qpUnlH68=
-github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c h1:pZ7h9RHJA9jvxxtpZIVzL0E9pvTosb8mzJly7VCjgyw=
-github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
+github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b h1:XMd4IEi7Ea1AIzmq7SytglOA+3+hgMhroAFPkqReNo0=
+github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
