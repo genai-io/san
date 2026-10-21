@@ -62,9 +62,10 @@ function in `internal/setting/permission.go` — keep the two in sync.
    (destructive bash, sensitive paths, data exfiltration; never
    judge-reviewable) and the recoverable tier (work-discarding git,
    out-of-working-dir writes; the AutoPilot judge may weigh the git case).
-5. **Session permissions** — rules accumulated during the run from approval
+5. **Ask rules** — `permissions.ask`. An explicit ask outranks any session
+   grant, so "allow for this session" cannot silence it.
+6. **Session permissions** — rules accumulated during the run from approval
    modals and hook updates.
-6. **Ask rules** — `permissions.ask`.
 7. **Allow rules** — `permissions.allow`.
 8. **Mode default** — `setting.ModeDefault`, the mode table above. This is
    where AutoPilot marks a prompt `Reviewable`.

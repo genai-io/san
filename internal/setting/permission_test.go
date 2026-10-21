@@ -1150,3 +1150,18 @@ func TestPowerShellGrantCoversOnlyItsCommand(t *testing.T) {
 		}
 	}
 }
+
+// A session grant ("allow for this session") must not outrank an explicit ask
+// rule: the ask rule is the user's standing instruction to be asked every time.
+func TestAskRuleOutranksSessionGrant(t *testing.T) {
+	settings := &Data{Permissions: PermissionSettings{Ask: []string{"Bash(git push *)"}}}
+	args := map[string]any{"command": "git push origin main"}
+	for name, session := range map[string]*SessionPermissions{
+		"tool grant":    {AllowedTools: map[string]bool{"Bash": true}},
+		"pattern grant": {AllowedPatterns: map[string]bool{"Bash(git push *)": true}},
+	} {
+		if d := settings.HasPermissionToUseTool("Bash", args, session); d.Behavior != perm.Prompt {
+			t.Errorf("%s: decision = %v (%s), want the ask rule's prompt", name, d.Behavior, d.Reason)
+		}
+	}
+}

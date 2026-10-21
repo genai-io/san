@@ -41,8 +41,8 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 //     (destructive bash, sensitive paths, data exfiltration — never
 //     judge-reviewable) and the recoverable tier (work-discarding git,
 //     out-of-working-dir writes — the AutoPilot judge may weigh git)
-//  5. Session permissions (runtime overrides)
-//  6. Ask rules
+//  5. Ask rules — an explicit ask outranks any session grant
+//  6. Session permissions (runtime overrides)
 //  7. Allow rules
 //  8. Mode default
 //  9. Headless / DontAsk coercion: Ask → Deny
@@ -94,20 +94,20 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		return coerceAsk(d, session)
 	}
 
-	// ── Step 5: Session permissions ──
+	// ── Step 5: Ask rules ──
+	for _, pattern := range s.Permissions.Ask {
+		if MatchesToolPattern(toolName, args, rule, pattern) {
+			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
+		}
+	}
+
+	// ── Step 6: Session permissions ──
 	if session != nil {
 		if session.IsToolAllowed(toolName) {
 			return decide(perm.Permit, "session: allow all "+toolName)
 		}
 		if pattern, ok := MatchAllowList(toolName, args, slices.Collect(maps.Keys(session.AllowedPatterns))); ok {
 			return decide(perm.Permit, "session pattern: "+pattern)
-		}
-	}
-
-	// ── Step 6: Ask rules ──
-	for _, pattern := range s.Permissions.Ask {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
 		}
 	}
 
