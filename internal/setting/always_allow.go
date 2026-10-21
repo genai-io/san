@@ -47,6 +47,7 @@ func ExactAllowRules(toolName string, args map[string]any) []string {
 			if c.Name == "" || len(c.RedirPaths) > 0 || c.InSubshell || c.HasAssign || runsCode(c.Name) {
 				return nil
 			}
+			c.Name = c.Argv0 // the rule names the executable as written
 			if rule := "Bash(" + normalizeParsedCommand(c) + ")"; !slices.Contains(rules, rule) {
 				rules = append(rules, rule)
 			}
@@ -81,6 +82,17 @@ func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *S
 		return nil
 	}
 	return rules
+}
+
+// SessionGrantTakesEffect reports whether "allow for session" would stop this
+// call prompting; a deny, ask or safety check outranks the session grant.
+func (s *Data) SessionGrantTakesEffect(toolName string, args map[string]any, session *SessionPermissions) bool {
+	with := session.Snapshot()
+	if with == nil {
+		with = &SessionPermissions{}
+	}
+	with.AllowTool(toolName)
+	return s.CheckPermission(toolName, args, with) == perm.Permit
 }
 
 // addLocalAllowRules appends rules to permissions.allow in the project's

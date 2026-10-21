@@ -41,8 +41,8 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 //     (destructive bash, sensitive paths, data exfiltration — never
 //     judge-reviewable) and the recoverable tier (work-discarding git,
 //     out-of-working-dir writes — the AutoPilot judge may weigh git)
-//  5. Session permissions (runtime overrides)
-//  6. Ask rules
+//  5. Ask rules — an explicit ask outranks any session grant
+//  6. Session permissions (runtime overrides)
 //  7. Allow rules
 //  8. Mode default
 //  9. Headless / DontAsk coercion: Ask → Deny
@@ -94,20 +94,20 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		return coerceAsk(d, session)
 	}
 
-	// ── Step 5: Session permissions ──
+	// ── Step 5: Ask rules ──
+	for _, pattern := range s.Permissions.Ask {
+		if MatchesToolPattern(toolName, args, rule, pattern) {
+			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
+		}
+	}
+
+	// ── Step 6: Session permissions ──
 	if session != nil {
 		if session.IsToolAllowed(toolName) {
 			return decide(perm.Permit, "session: allow all "+toolName)
 		}
 		if pattern, ok := MatchAllowList(toolName, args, slices.Collect(maps.Keys(session.AllowedPatterns))); ok {
 			return decide(perm.Permit, "session pattern: "+pattern)
-		}
-	}
-
-	// ── Step 6: Ask rules ──
-	for _, pattern := range s.Permissions.Ask {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
 		}
 	}
 
@@ -418,33 +418,20 @@ func bashRuleForms(cmd string) []string {
 	return forms
 }
 
+// bashSubcommandRuleForms returns the allow-rule forms for each subcommand,
+// naming the executable as written (a git rule must not cover ./x/git); nil
+// when the command does not parse or expands at run time.
 func bashSubcommandRuleForms(cmd string) [][]string {
-	var parsed []parsedCommand
-	if file := parseBashAST(cmd); file != nil {
-		parsed = extractCommandsAST(file)
+	file := parseBashAST(cmd)
+	if file == nil || expandsAtRunTime(file) {
+		return nil
 	}
-
-	if len(parsed) > 0 {
-		result := make([][]string, 0, len(parsed))
-		for _, subCmd := range parsed {
-			forms := []string{subCmd.String()}
-			if normalized := normalizeParsedCommand(subCmd); normalized != "" && normalized != subCmd.String() {
-				forms = append(forms, normalized)
-			}
-			result = append(result, forms)
-		}
-		return result
-	}
-
-	rawCommands := extractBashCommands(cmd)
-	result := make([][]string, 0, len(rawCommands))
-	for _, raw := range rawCommands {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		forms := []string{raw}
-		if normalized := normalizeBashCommand(raw); normalized != "" && normalized != raw {
+	parsed := extractCommandsAST(file)
+	result := make([][]string, 0, len(parsed))
+	for _, subCmd := range parsed {
+		subCmd.Name = subCmd.Argv0
+		forms := []string{subCmd.String()}
+		if normalized := normalizeParsedCommand(subCmd); normalized != "" && normalized != forms[0] {
 			forms = append(forms, normalized)
 		}
 		result = append(result, forms)

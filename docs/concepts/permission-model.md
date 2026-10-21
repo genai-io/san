@@ -62,9 +62,10 @@ function in `internal/setting/permission.go` — keep the two in sync.
    (destructive bash, sensitive paths, data exfiltration; never
    judge-reviewable) and the recoverable tier (work-discarding git,
    out-of-working-dir writes; the AutoPilot judge may weigh the git case).
-5. **Session permissions** — rules accumulated during the run from approval
+5. **Ask rules** — `permissions.ask`. An explicit ask outranks any session
+   grant, so "allow for this session" cannot silence it.
+6. **Session permissions** — rules accumulated during the run from approval
    modals and hook updates.
-6. **Ask rules** — `permissions.ask`.
 7. **Allow rules** — `permissions.allow`.
 8. **Mode default** — `setting.ModeDefault`, the mode table above. This is
    where AutoPilot marks a prompt `Reviewable`.
@@ -82,12 +83,18 @@ Hooks sit on either side of this gate rather than inside it:
 
 The pipeline lives in `internal/setting/permission.go`. Bash gets special
 treatment: `bash_ast.go` parses the command and matches per-argv patterns
-(`Bash(git status:*)` allows `git status -uall` but not `git push`).
+(`Bash(git status:*)` allows `git status -uall` but not `git push`). Allow
+rules match the executable as written, so `Bash(git:*)` does not cover
+`./x/git`, and a command that expands at run time (`$VAR`, `$(...)`, `<(...)`,
+`$((...))`) matches no narrow allow rule. Deny rules and the safety checks
+match by basename and look inside substitutions, so neither form slips past
+them.
 
 Provably read-only Bash invocations short-circuit to allow at the
 mode-default step (`setting.IsReadOnlyBashCommand`): every command in the
 chain must be on the read-only list (`rg`, `grep`, `find`, `ls`, read-only
-`git`, …) with no output redirection, substitution, or env-var prefix.
+`git`, …), named without a path, with no output redirection, substitution, or
+env-var prefix.
 This replaces the retired Grep/Glob tools — search runs through Bash
 without approval prompts, in every mode including explore. Deny/ask rules
 and the safety checks still run first and override it. The safety checks

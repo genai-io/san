@@ -259,6 +259,10 @@ func isReadOnlyParsedCommand(c parsedCommand) bool {
 			return false
 		}
 	}
+	// A path names some other program than the one on the list.
+	if c.Argv0 != c.Name {
+		return false
+	}
 	if c.Name == "git" {
 		return isReadOnlyGitCommand(c)
 	}
