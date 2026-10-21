@@ -192,9 +192,8 @@ type nativeHistoryModel struct {
 	model
 	started   bool
 	committed chan struct{}
-	// printFrameHeight is the frame height the model reports when it prepares
-	// a print — what prepareScrollbackPrint would measure from the latest
-	// View, which need not match the frame the terminal actually shows.
+	// printFrameHeight is the frame height a print is sized against — measured
+	// from the latest View, which need not match the frame the terminal shows.
 	printFrameHeight int
 }
 
@@ -227,18 +226,13 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flush.queueScrollbackPrint(nativeEdit, 0)
 		return m, first
 	case scrollbackPrintReadyMsg:
-		frame := m.View()
-		content, ok := m.flush.prepareScrollbackPrint(
-			msg.id,
-			nativeHistoryWidth,
-			nativeHistoryHeight,
-			m.printFrameHeight,
-		)
+		frame, capacity := m.View(), nativeHistoryHeight-m.printFrameHeight
+		if capacity <= 0 {
+			frame, capacity = minimalScrollbackFrame(), nativeHistoryHeight-minimalScrollbackFrameHeight
+		}
+		content, ok := m.flush.prepareScrollbackPrint(msg.id, nativeHistoryWidth, capacity)
 		if !ok {
 			return m, nil
-		}
-		if frameFillsScreen(m.printFrameHeight, nativeHistoryHeight) {
-			frame = minimalScrollbackFrame()
 		}
 		m.flush.frameForPrint = &frame
 		return m, tea.Sequence(

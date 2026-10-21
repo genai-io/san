@@ -44,20 +44,83 @@ func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
 			t.Fatal("retained rows carry full-width padding into the live frame")
 		}
 	}
-	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+	resizeTerminal(m, 40, 24, tea.ResizeScrollbackMsg{})
 	if len(m.flush.pendingPrints) != 0 || !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
 		t.Fatal("resize hid or unnecessarily printed the recent reply")
 	}
 
 	// Shrinking height hands only the oldest physical rows to native history.
 	m.queueScrollbackPrint(strings.Repeat("older row\n", 12)+"LATEST-REPLY", 0)
-	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 10})
+	resizeTerminal(m, 40, 10, tea.ResizeScrollbackMsg{})
 	footer, _ := m.renderFooter("")
 	if len(m.flush.visible) > 10-rowCount(footer) || len(m.flush.pendingPrints) == 0 {
 		t.Fatal("resize did not bound the retained rows and print overflow")
 	}
+	drainScrollback(m)
 	if !strings.Contains(ansi.Strip(m.View().Content), "LATEST-REPLY") {
 		t.Fatal("shrinking the terminal hid the latest reply")
+	}
+}
+
+func TestResizeSkipsRowsTheTerminalScrolledOff(t *testing.T) {
+	setup := func() (*model, []string) {
+		m := fixedComposerModel(80, 24)
+		var rows []string
+		for i := range 18 {
+			rows = append(rows, fmt.Sprintf("settled row %02d", i))
+		}
+		m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+		return m, strings.Split(m.View().Content, "\n")
+	}
+
+	m, frame := setup()
+	resizeTerminal(m, 80, 14, tea.ResizeScrollbackMsg{Known: true, Lines: frame[:4]})
+	if len(m.flush.pendingPrints) != 1 {
+		t.Fatal("resize left no overflow to commit")
+	}
+	committed := ansi.Strip(m.flush.pendingPrints[0].remaining)
+	if strings.Contains(committed, "settled row 03") || !strings.HasPrefix(committed, "settled row 04") {
+		t.Fatalf("commit repeats or skips rows the terminal scrolled off: %q", committed)
+	}
+
+	m, frame = setup()
+	frame[1] = "something else"
+	resizeTerminal(m, 80, 14, tea.ResizeScrollbackMsg{Known: true, Lines: frame[:4]})
+	if committed := ansi.Strip(m.flush.pendingPrints[0].remaining); !strings.HasPrefix(committed, "settled row 00") {
+		t.Fatalf("a report that does not match the frame dropped rows: %q", committed)
+	}
+}
+
+func TestResizeHoldsHistoryUntilReportAndRequeuesUnscrolledRows(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.flush.queueScrollbackPrint("queued row", 0)
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 80, Height: 20})
+	if m.startScrollbackPrint(m.flush.pendingPrints[0].id) != nil {
+		t.Fatal("a print started before the resize was reported")
+	}
+	if m.finishResize(tea.ResizeScrollbackMsg{Unscrolled: []string{"taken back"}}) == nil {
+		t.Fatal("the report did not restart the queue")
+	}
+	content, ok := startChunk(m, m.flush.pendingPrints[0].id)
+	if !ok || !strings.HasPrefix(ansi.Strip(content), "taken back\nqueued row") {
+		t.Fatalf("taken-back rows not printed first: %q", ansi.Strip(content))
+	}
+}
+
+func TestHandoffFrameFitsAfterNarrowing(t *testing.T) {
+	m := fixedComposerModel(90, 26)
+	row := "  " + strings.Repeat("wide row ", 9)
+	m.flush.queueScrollbackPrint(strings.Repeat(row+"\n", 40)+row, 0)
+	if _, ok := startChunk(m, m.flush.pendingPrints[0].id); !ok {
+		t.Fatal("handoff did not start")
+	}
+	m.finishChunkScroll(tea.ScrollUpMsg{Scrolled: true})
+	// The next chunk's scroll was measured for the old size and is refused.
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 70, Height: 20})
+	m.finishChunkScroll(tea.ScrollUpMsg{})
+	frame := m.View().Content
+	if n := len(scrollbackPhysicalLines(frame, 70)); n != 20 {
+		t.Fatalf("handoff frame is %d rows on a 20-row terminal", n)
 	}
 }
 
@@ -119,11 +182,11 @@ func TestSettledReplyReflowsAfterNarrowingAndWidening(t *testing.T) {
 		m := fixedComposerModel(80, 24)
 		m.queueScrollbackPrint(text, 0)
 		before := m.View().Content
-		m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+		resizeTerminal(m, 40, 24, tea.ResizeScrollbackMsg{})
 		if strings.Contains(ansi.Strip(m.View().Content), ansi.Strip(strings.Split(text, "\n")[0])) {
 			t.Fatal("fixture did not wrap at the narrow width")
 		}
-		m.handleWindowResize(tea.WindowSizeMsg{Width: 80, Height: 24})
+		resizeTerminal(m, 80, 24, tea.ResizeScrollbackMsg{})
 		if got := m.View().Content; got != before {
 			t.Fatalf("80 -> 40 -> 80 changed settled output:\nbefore: %q\nafter: %q", before, got)
 		}
@@ -142,7 +205,8 @@ func TestSettledLineReflowsAfterPartialHistoryHandoff(t *testing.T) {
 		if printed+retained != ansi.Strip(text) || strings.Contains(retained, "\n") {
 			t.Fatalf("partial handoff lost text or stored soft wraps: printed=%q, retained=%q", printed, retained)
 		}
-		m.handleWindowResize(tea.WindowSizeMsg{Width: 160, Height: 7})
+		resizeTerminal(m, 160, 7, tea.ResizeScrollbackMsg{})
+		drainScrollback(m)
 		if got := ansi.Strip(m.View().Content); !strings.Contains(got, retained) {
 			t.Fatalf("widening did not rejoin the retained suffix: %q", got)
 		}
@@ -301,7 +365,7 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 	var chunks []string
 	for cmd != nil {
 		ready := cmd().(scrollbackPrintReadyMsg)
-		content, ok := flush.prepareScrollbackPrint(ready.id, 4, 5, 3)
+		content, ok := flush.prepareScrollbackPrint(ready.id, 4, 2)
 		if !ok {
 			t.Fatal("ready chunk has no payload")
 		}
@@ -326,7 +390,7 @@ func TestScrollbackDrainAllocationsGrowWithRows(t *testing.T) {
 			flush.queueScrollbackPrint(content, 0)
 			for len(flush.pendingPrints) > 0 {
 				id := flush.pendingPrints[0].id
-				if _, ok := flush.prepareScrollbackPrint(id, 80, 24, 23); !ok {
+				if _, ok := flush.prepareScrollbackPrint(id, 80, 1); !ok {
 					t.Fatal("queued history did not drain")
 				}
 				flush.finishScrollbackPrint(id)
@@ -343,14 +407,14 @@ func TestScrollbackRemainingRowsRewrapAfterResize(t *testing.T) {
 	var flush flushState
 	flush.queueScrollbackPrint("\x1b[31mabcdefg\x1b[0m\nlast!", 0)
 	id := flush.pendingPrints[0].id
-	first, ok := flush.prepareScrollbackPrint(id, 4, 5, 4)
+	first, ok := flush.prepareScrollbackPrint(id, 4, 1)
 	if !ok {
 		t.Fatal("first chunk did not prepare")
 	}
 	flush.finishScrollbackPrint(id)
 	chunks := []string{first}
 	for len(flush.pendingPrints) > 0 {
-		chunk, ok := flush.prepareScrollbackPrint(id, 2, 5, 4)
+		chunk, ok := flush.prepareScrollbackPrint(id, 2, 1)
 		if !ok {
 			t.Fatal("resized chunk did not prepare")
 		}
@@ -446,7 +510,7 @@ func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 	if resumed.id != ready.id {
 		t.Fatalf("resumed print id = %d, want %d", resumed.id, ready.id)
 	}
-	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height, 0)
+	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height)
 	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
 		t.Fatalf("resumed content = %q, ok=%v", content, ok)
 	}
@@ -471,7 +535,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 		t.Fatal("the queued print must start")
 	}
 	ready := cmd().(scrollbackPrintReadyMsg)
-	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0); !ok {
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height); !ok {
 		t.Fatal("the print should prepare before the approval opens")
 	}
 	if m.userInput.Approval.IsActive() {
@@ -874,7 +938,7 @@ func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
 	}
 	content, ok := m.flush.prepareScrollbackPrint(
-		m.flush.pendingPrints[0].id, m.env.Width, m.env.Height, 0)
+		m.flush.pendingPrints[0].id, m.env.Width, m.env.Height)
 	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
 		t.Fatalf("resumed content = %q, ok=%v", content, ok)
 	}
@@ -911,7 +975,7 @@ func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
 	}
 
 	ready := cmd().(scrollbackPrintReadyMsg)
-	chunk, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 2)
+	chunk, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height-2)
 	if !ok {
 		t.Fatal("the print did not prepare")
 	}
@@ -935,7 +999,7 @@ func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.flush.queueScrollbackPrint("ONE\nTWO", 6)
 	ready := printScrollback(m.flush.pendingPrints[0].id)().(scrollbackPrintReadyMsg)
-	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0)
+	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height)
 
 	if rows := rowCount(m.pendingScrollbackView()); rows != 6 {
 		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
@@ -965,6 +1029,30 @@ func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
 			t.Errorf("rendered lost %q: %q", want, rendered)
 		}
 	}
+}
+
+// drainScrollback lands every queued print the way the renderer would.
+func drainScrollback(m *model) {
+	for len(m.flush.pendingPrints) > 0 {
+		id := m.flush.pendingPrints[0].id
+		if m.startScrollbackPrint(id) == nil {
+			return
+		}
+		for len(m.flush.pendingPrints) > 0 && m.flush.pendingPrints[0].scrolling {
+			m.finishChunkScroll(tea.ScrollUpMsg{Scrolled: true})
+		}
+		if len(m.flush.pendingPrints) > 0 && m.flush.pendingPrints[0].id == id && m.flush.pendingPrints[0].current != "" {
+			m.finishScrollbackPrint(id)
+		}
+	}
+}
+
+// resizeTerminal resizes m the way the program does: the size, then the
+// renderer's report of what the terminal scrolled off.
+func resizeTerminal(m *model, width, height int, report tea.ResizeScrollbackMsg) tea.Cmd {
+	m.handleWindowResize(tea.WindowSizeMsg{Width: width, Height: height})
+	m.flush.takeResizeScrollback(report)
+	return m.flushVisibleOverflow()
 }
 
 // startChunk starts the queue head's next chunk and returns what it commits.

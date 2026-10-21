@@ -49,9 +49,11 @@ require (
 // (bubbletea#1867). Without them, prints duplicate or drop rows of native
 // history. It also adds tea.ScrollUp, which commits rows by scrolling them off
 // a full-height frame instead of shrinking it, on genai-io/ultraviolet (branch
-// `san`) TerminalRenderer.ScrollUp. Drop both once upstream ships equivalents.
+// `san`) TerminalRenderer.ScrollUp, and tea.ResizeScrollbackMsg, which reports
+// the rows a resize pushed into scrollback. Drop both once upstream ships
+// equivalents.
 replace (
-	charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021013403-29fd056c2f1c
+	charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021064020-4bec1715d0d1
 	github.com/charmbracelet/ultraviolet => github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c
 )
 

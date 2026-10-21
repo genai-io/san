@@ -55,24 +55,26 @@ chunking, resize — keeps all of them or it is wrong.
 
 2. **A frame that spans the terminal scrolls its chunk off the top.** The
    normal frame always fills the screen, so there is no room to insert above
-   it. While a chunk is in flight the chat rows read from that chunk instead of
-   from the newest row (`handingOff` in `chatTailAbove`): the chunk is drawn at
-   the top, what follows it in reading order below, the composer where it was.
+   it. While prints are queued the chat rows read from the oldest row not yet
+   in history instead of ending at the newest (`handingOff` in
+   `chatTailAbove`): that row is drawn at the top, what follows it in reading
+   order below, the composer where it was.
    `tea.ScrollUp` (fork) then emits line feeds at the bottom row and shifts the
    renderer's screen model, and those rows enter history exactly as they were
    drawn. Nothing is erased: the next frame paints only the rows that scrolled
-   in. A chunk is at most the chat rows (`scrollChunkIntoHistory`).
+   in. A chunk is at most the chat rows (`startScrollbackPrint`).
 
 3. **A scroll the renderer refuses is inserted above one row.** The fork
    refuses when the painted frame does not span the terminal, in the alternate
-   screen, or while a resize is unreconciled, and then writes nothing. The
+   screen, while a resize is unreconciled, or when the terminal is no longer
+   the size the chunk was measured for, and then writes nothing. The
    chunk is put back and printed with `insertAbove` under
-   `minimalScrollbackFrame`, `capacity = H − 1`; the same frame stands in when a
-   frame row is wider than the terminal. One row, not zero: `insertAbove`
-   positions relative to a frame row, and a zero-row frame leaks a blank row
-   into history. A frame shorter than the terminal (before the first size is
-   known) prints with `capacity = H − h`; the queue is single-flight FIFO so no
-   two inserts interleave.
+   `minimalScrollbackFrame`, `capacity = H − 1` (`finishChunkScroll`); the same
+   frame stands in when a frame row is wider than the terminal. One row, not
+   zero: `insertAbove` positions relative to a frame row, and a zero-row frame
+   leaks a blank row into history. Before the first size is known there is
+   nothing to fit, and the whole print goes above what is drawn. The queue is
+   single-flight FIFO so no two inserts interleave.
 
 4. **A shrinking inline frame is erased from its top row.** Only the fallback
    in invariant 3 shrinks the frame. The fork once parked the cursor on row 0
@@ -118,9 +120,36 @@ chunking, resize — keeps all of them or it is wrong.
    terminal where the cursor is after the resize; the count is not a
    heuristic to tune per terminal.
 
-   A narrowing and shortening resize can also push the top of the old live
-   frame into native history before San receives `WindowSizeMsg`. Redrawing
-   cannot erase those rows without clearing real conversation history. The
+   A shortening resize pushes the top of the old frame into native history
+   before San receives `WindowSizeMsg`, and committing the overflow then
+   would print those rows a second time. The fork holds the redraw, asks the
+   terminal where the cursor went, and reports the rows above it that left
+   the screen as `tea.ResizeScrollbackMsg`; overflow waits for it
+   (`resizedFrom`), and the reported settled rows are dropped instead of
+   committed (`takeResizeScrollback`), only where they match what was drawn.
+   The count can fall short, never over: rows a narrowing rewraps are counted
+   by the text drawn on them (padding the screen clears is not on the
+   terminal), broken greedily, the fewest rows any terminal breaks them into
+   (tmux breaks CJK text into more), and a row pushed only in part is left
+   out, so such a row can repeat its head but nothing is dropped that history
+   lacks. GNU screen truncates and is counted unwrapped, as above. The same
+   report places the redraw: when the rows above the cursor fill the screen,
+   it starts at the screen's top row, which is exact; otherwise it moves up
+   by the estimate `skipReflowedRows` uses without a report. Live rows that
+   left the screen cannot be taken back.
+
+   A scroll's line feeds wait in the renderer for the frame that follows it,
+   so a resize can arrive before they reach the terminal, which would then
+   apply them to a screen of another size and lose the chunk. The fork takes
+   them back instead and returns the rows as `Unscrolled` (less any the
+   terminal pushed itself); San prints them again ahead of the queue
+   (`requeueUnscrolled`). No chunk starts between the resize and its report,
+   and a scroll measured for another size is refused.
+
+   Known limit: the terminal resizes before the program learns of it, and a
+   frame written in between lands on a screen of another size. A scroll in
+   that window can still push misplaced rows into history. Only an in-band
+   resize report (DECSET 2048) would close it. The
    live content always follows the conversation, empty rows below it:
    moving it right above the input while a tool batch ran kept running status
    out of reach of such a resize, but shifted a short conversation down and
@@ -163,8 +192,9 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   full frame and scrolls it off; the composer and live activity stay put below
   it and never scroll.
   Queued payloads are parsed into physical rows once, then consumed without
-  reparsing the remainder on every chunk. A width change rewraps only the
-  remaining rows. `/clear` drops both unparsed payloads and cached rows.
+  reparsing the remainder on every chunk. A width change rewraps everything
+  still queued once (`fitPendingRows`): a handoff draws those rows in the
+  frame, and a row wider than the terminal makes the frame taller than it. `/clear` drops both unparsed payloads and cached rows.
 - Activity is capped after reserving the composer or docked modal, with the
   same cap in the view and overflow check, so a tall workflow cannot displace
   the input cursor or modal options.
