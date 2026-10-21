@@ -21,6 +21,20 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
+// turnOf builds one assistant turn: a user prompt, an assistant message that
+// calls a tool, and the tool's result.
+func turnOf(tag string, toolCallID string) []core.ChatMessage {
+	return []core.ChatMessage{
+		{Role: core.ChatUser, Content: "prompt " + tag},
+		{Role: core.ChatAssistant, Content: "thinking about " + tag, ToolCalls: []core.ToolCall{
+			{ID: toolCallID, Name: "Bash", Input: `{"command":"echo ` + tag + `"}`},
+		}},
+		{Role: core.ChatUser, ToolResult: &core.ToolResult{
+			ToolName: "Bash", ToolCallID: toolCallID, Content: ai.TextContent("out " + tag),
+		}},
+	}
+}
+
 func TestIdleCtrlOInspectsCommittedResultsAndPreservesDraft(t *testing.T) {
 	m := commitTestModel(turnOf("done", "tc")...)
 	m.env.Ready = true
