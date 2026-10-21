@@ -192,9 +192,8 @@ type nativeHistoryModel struct {
 	model
 	started   bool
 	committed chan struct{}
-	// printFrameHeight is the frame height the model reports when it prepares
-	// a print — what prepareScrollbackPrint would measure from the latest
-	// View, which need not match the frame the terminal actually shows.
+	// printFrameHeight is the frame height a print is sized against — measured
+	// from the latest View, which need not match the frame the terminal shows.
 	printFrameHeight int
 }
 
@@ -227,18 +226,13 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flush.queueScrollbackPrint(nativeEdit, 0)
 		return m, first
 	case scrollbackPrintReadyMsg:
-		frame := m.View()
-		content, ok := m.flush.prepareScrollbackPrint(
-			msg.id,
-			nativeHistoryWidth,
-			nativeHistoryHeight,
-			m.printFrameHeight,
-		)
+		frame, capacity := m.View(), nativeHistoryHeight-m.printFrameHeight
+		if capacity <= 0 {
+			frame, capacity = minimalScrollbackFrame(), nativeHistoryHeight-minimalScrollbackFrameHeight
+		}
+		content, ok := m.flush.prepareScrollbackPrint(msg.id, nativeHistoryWidth, capacity)
 		if !ok {
 			return m, nil
-		}
-		if frameFillsScreen(m.printFrameHeight, nativeHistoryHeight) {
-			frame = minimalScrollbackFrame()
 		}
 		m.flush.frameForPrint = &frame
 		return m, tea.Sequence(
@@ -450,20 +444,18 @@ func (m *clearScrollbackRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) 
 		print := m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
 		m.queueScrollbackPrint(strings.Repeat("OLD-QUEUED\n", 30), 0)
 		if m.started {
-			id := m.flush.pendingPrints[0].id
-			content, _ := m.prepareScrollbackPrint(id)
-			print = tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: id} })
+			print = m.startScrollbackPrint(m.flush.pendingPrints[0].id)
 		}
 		_, wipe, _ := m.executeCommand(context.Background(), "/clear")
 		return m, tea.Sequence(wipe, print)
 	case scrollbackPrintReadyMsg:
-		content, ok := m.prepareScrollbackPrint(msg.id)
-		if !ok {
+		cmd := m.startScrollbackPrint(msg.id)
+		if cmd == nil {
 			return m, ack
 		}
-		return m, tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} })
-	case scrollbackPrintDoneMsg:
-		next := m.finishScrollbackPrint(msg.id)
+		return m, cmd
+	case scrollbackPrintDoneMsg, tea.ScrollUpMsg:
+		_, next := m.model.Update(msg)
 		if len(m.flush.pendingPrints) > 0 {
 			return m, next
 		}
@@ -604,7 +596,7 @@ func (m *fixedComposerRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.settled <- struct{}{}
 		}
 		return m, cmd
-	case scrollbackPrintDoneMsg:
+	case scrollbackPrintDoneMsg, tea.ScrollUpMsg:
 		_, cmd := m.model.Update(msg)
 		if len(m.flush.pendingPrints) == 0 {
 			m.settled <- struct{}{}
@@ -777,15 +769,28 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 	}
 	program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
 	waitForCommit()
-	history, screen := waitFor(rows[len(rows)-1])
-	all := history + "\n" + screen
-	previous := -1
-	for _, row := range append([]string{"REPLY-000"}, rows...) {
-		at := strings.Index(all, row)
-		if strings.Count(all, row) != 1 || at <= previous {
-			t.Fatalf("reply missing, duplicated, or out of order at %q:\n%s", row, all)
+	// The queue drains before the restored View is flushed.
+	inOrder := func(all string) string {
+		previous := -1
+		for _, row := range append([]string{"REPLY-000"}, rows...) {
+			at := strings.Index(all, row)
+			if strings.Count(all, row) != 1 || at <= previous {
+				return row
+			}
+			previous = at
 		}
-		previous = at
+		return ""
+	}
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(time.Millisecond) {
+		h, screen := waitFor(rows[len(rows)-1])
+		history = h
+		bad := inOrder(h + "\n" + screen)
+		if bad == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("reply missing, duplicated, or out of order at %q:\n%s\n%s", bad, h, screen)
+		}
 	}
 	if strings.Contains(history, "COMPOSER-LIVE") {
 		t.Fatalf("input leaked into native history:\n%s", history)

@@ -9,6 +9,11 @@ import (
 )
 
 func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
+	if m.env.Ready && m.flush.resizedFrom == 0 {
+		// The terminal may scroll some of the frame off as it resizes; overflow
+		// waits for tea.ResizeScrollbackMsg to say which rows.
+		m.flush.resizedFrom = m.env.Width
+	}
 	m.env.Width = msg.Width
 	m.env.Height = msg.Height
 	// A chunk prepared before this resize used the old terminal geometry. Keep
@@ -49,5 +54,23 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	}
 
 	m.userInput.Textarea.SetWidth(msg.Width - 4 - 2)
-	return m.flushVisibleOverflow()
+	m.flush.fitPendingRows(msg.Width)
+	return nil
+}
+
+// finishResize lands the renderer's report of what the resize scrolled off and
+// restarts the history queue it held.
+func (m *model) finishResize(msg tea.ResizeScrollbackMsg) tea.Cmd {
+	m.flush.takeResizeScrollback(msg)
+	if len(m.flush.pendingPrints) > 0 && (m.flush.pendingPrints[0].current != "" || m.flush.pendingPrints[0].scrolling) {
+		// The chunk in flight answers first and requeues the rows then.
+		return nil
+	}
+	if queued := m.flush.requeueUnscrolled(m.env.Width); queued != nil {
+		return queued
+	}
+	if _, active := m.activeOverlay(); active {
+		return nil
+	}
+	return m.resumeDeferredScrollbackPrint()
 }

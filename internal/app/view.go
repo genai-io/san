@@ -140,11 +140,16 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	// A non-positive budget means the bottom block is taller than the screen on
 	// its own. tailLines would drop the tail anyway; bailing here skips the
 	// render that produced it, which is the whole cost on a short terminal.
-	available := m.env.Height - strings.Count(bottom, "\n")
+	available := m.chatRows(bottom)
 	if available <= 0 {
 		return ""
 	}
 	section := m.renderChatSection(conv.RenderActiveContent(params))
+	if m.handingOff() {
+		// The oldest row not yet in history stays on top until it scrolls off.
+		content := headLines(section, available)
+		return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	}
 	content := tailLines(section, available)
 	if strings.Count(section, "\n")+1 > available {
 		if workers, active := conv.RenderActiveWorkers(params, available); active {
@@ -153,6 +158,12 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	}
 	// Empty rows go below, so the live content stays put under the conversation.
 	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+}
+
+// chatRows is how many rows the chat tail gets above bottom, the block anchored
+// to the foot of the screen.
+func (m *model) chatRows(bottom string) int {
+	return m.env.Height - strings.Count(bottom, "\n")
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.
@@ -183,6 +194,15 @@ func tailLines(s string, maxLines int) string {
 		return s
 	}
 	return strings.Join(lines[len(lines)-maxLines:], "\n")
+}
+
+// headLines returns the first maxLines newline-delimited lines of s.
+func headLines(s string, maxLines int) string {
+	if maxLines <= 0 {
+		return ""
+	}
+	lines := strings.SplitN(s, "\n", maxLines+1)
+	return strings.Join(lines[:min(len(lines), maxLines)], "\n")
 }
 
 // renderFooter renders everything below the chat section (separators, queue
@@ -262,7 +282,7 @@ func hangComposerRows(view string) string {
 
 // renderChatSection assembles recent settled rows and active messages.
 // The caller limits its height with tailLines.
-func (m model) renderChatSection(activeContent string) string {
+func (m *model) renderChatSection(activeContent string) string {
 	var parts []string
 
 	if pending := m.pendingScrollbackView(); pending != "" {
