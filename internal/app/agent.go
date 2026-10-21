@@ -810,6 +810,10 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.Permi
 	}
 	permReq.ID = req.RequestID
 	permReq.AllowRules = m.services.Setting.AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
+	// Session grants sit below allow rules, so neither would take effect here.
+	if !m.services.Setting.SessionGrantTakesEffect(req.ToolName, req.Input, m.env.SessionPermissions) {
+		permReq.OnceOnly = true
+	}
 	return permReq
 }
 

@@ -260,6 +260,15 @@ func (s *Settings) AlwaysAllowRules(toolName string, args map[string]any, sessio
 	return s.data.AlwaysAllowRules(toolName, args, session)
 }
 
+func (s *Settings) SessionGrantTakesEffect(toolName string, args map[string]any, session *SessionPermissions) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return true
+	}
+	return s.data.SessionGrantTakesEffect(toolName, args, session)
+}
+
 // AddLocalAllowRules saves rules to the project's .san/settings.local.json and
 // reloads, so the next identical call passes the gate. Returns the file's path.
 func (s *Settings) AddLocalAllowRules(cwd string, rules []string) (string, error) {

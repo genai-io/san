@@ -1164,6 +1164,12 @@ func TestAskRuleOutranksSessionGrant(t *testing.T) {
 			t.Errorf("%s: decision = %v (%s), want the ask rule's prompt", name, d.Behavior, d.Reason)
 		}
 	}
+	if settings.SessionGrantTakesEffect("Bash", args, &SessionPermissions{}) {
+		t.Error("allow for session offered under an ask rule; it would do nothing")
+	}
+	if !settings.SessionGrantTakesEffect("Bash", map[string]any{"command": "make"}, &SessionPermissions{}) {
+		t.Error("allow for session withheld where it would take effect")
+	}
 }
 
 // A narrow Bash grant covers the command as written: a path names another

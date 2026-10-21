@@ -84,6 +84,17 @@ func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *S
 	return rules
 }
 
+// SessionGrantTakesEffect reports whether "allow for session" would stop this
+// call prompting; a deny, ask or safety check outranks the session grant.
+func (s *Data) SessionGrantTakesEffect(toolName string, args map[string]any, session *SessionPermissions) bool {
+	with := session.Snapshot()
+	if with == nil {
+		with = &SessionPermissions{}
+	}
+	with.AllowTool(toolName)
+	return s.CheckPermission(toolName, args, with) == perm.Permit
+}
+
 // addLocalAllowRules appends rules to permissions.allow in the project's
 // .san/settings.local.json — the personal, highest-priority layer, so a grant
 // is never committed for the whole team; worktrees share the main checkout's.
