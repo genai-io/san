@@ -117,10 +117,6 @@ func (m *model) replaceSession(opened *session.Session) {
 	if m.services.Hook != nil {
 		m.services.Hook.SetSession(m.sessionID(), m.sessionTranscriptPath())
 	}
-	if g, self := group.Current(); g != "" && self.SessionID != m.sessionID() {
-		group.Release()
-		m.grp = groupState{polling: m.grp.polling}
-	}
 }
 
 func (m *model) appendTurnState() {
@@ -310,6 +306,7 @@ func (m *model) forkSession() (string, error) {
 	}
 	originalID := forked.Metadata.ParentSessionID
 	m.replaceSession(opened)
+	m.releaseGroupOnSwitch()
 	m.services.Agent.SetMessages(forked.Messages)
 	// Same storage switch as loadSessionByID: clear the tracker so
 	// initTaskStorage adopts the fork's directory, then re-import the tasks
@@ -323,10 +320,14 @@ func (m *model) forkSession() (string, error) {
 
 // renameSession sets a custom name for the current session and persists it.
 // The name is stored in env so subsequent saves use it instead of auto-generating
-// a title from the conversation entries.
-func (m *model) renameSession(name string) error {
-	m.env.SessionName = name
-	return m.appendSessionState()
+// a title from the conversation entries. In a group the member follows; the
+// returned line says how.
+func (m *model) renameSession(name, role string) (string, error) {
+	if name != "" {
+		m.env.SessionName = name
+	}
+	note := m.renameMember(name, role)
+	return note, m.appendSessionState()
 }
 
 // clearSession starts a fresh durable identity after retiring the previous writer.

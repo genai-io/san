@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -259,5 +260,66 @@ func TestInAGroupCompletionLeadsWithMembers(t *testing.T) {
 	want := []string{"group members", "group leave", "group hold", "group kick", "group list", "group disband"}
 	if !slices.Equal(got, want) {
 		t.Errorf("in a group /group offers %v, want %v", got, want)
+	}
+}
+
+// The session name is the member name: a named session joins under it, and
+// renaming it in a group renames the member, with --role setting what it owns.
+func TestTheSessionNameIsTheMemberName(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession(func() string { return "s-self" })
+	m := &model{env: env{Width: 80, CWD: "/w/shop", SessionName: "API Server"}, conv: conv.NewModel(80),
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
+	m.groupCommand("join shop")
+	t.Cleanup(func() { _ = group.Leave() })
+	if _, self := group.Current(); self.Name != "api-server" {
+		t.Fatalf("joined as @%s, want the session name", self.Name)
+	}
+	note, err := m.renameSession("网关", "owns the HTTP layer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, self := group.Current(); self.Name != "网关" || self.Role != "owns the HTTP layer" || m.env.SessionName != "网关" {
+		t.Fatalf("after /name: %+v, session %q", self, m.env.SessionName)
+	}
+	if !strings.Contains(note, "@网关 in shop") || !strings.Contains(m.grp.blob, "网关") {
+		t.Errorf("note %q, persisted membership %q", note, m.grp.blob)
+	}
+}
+
+func TestRosterChangesSayRenamesAndRoles(t *testing.T) {
+	member := func(name, role string) rosterEntry {
+		return rosterEntry{Member: group.Member{Name: name, Role: role}, online: true}
+	}
+	prev := map[string]rosterEntry{"s-a": member("api", "r"), "s-b": member("web", "r")}
+	next := map[string]rosterEntry{"s-a": member("gateway", "r"), "s-b": member("web", "owns UI")}
+	var got []string
+	for _, c := range rosterChanges("shop", "s-self", prev, next) {
+		got = append(got, c.text)
+	}
+	want := []string{"Group shop: @api is now @gateway — r", "Group shop: @web now: owns UI"}
+	if !slices.Equal(got, want) {
+		t.Errorf("rosterChanges = %q, want %q", got, want)
+	}
+}
+
+// /fork or /resume leaves the previous session's group with that session, and
+// says so instead of dropping out silently.
+func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession(func() string { return "s-old" })
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	m := &model{conv: conv.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.NewService()}}
+	m.releaseGroupOnSwitch()
+	if g, _ := group.Current(); g != "" {
+		t.Fatalf("still in %s after the switch", g)
+	}
+	if n := len(m.conv.Messages); n != 1 || !strings.Contains(m.conv.Messages[0].Content, "Out of group shop") {
+		t.Errorf("notices = %+v", m.conv.Messages)
+	}
+	if members := group.Members("shop"); len(members) != 1 || members[0].Online() {
+		t.Errorf("the previous session's member should stay, offline: %+v", members)
 	}
 }

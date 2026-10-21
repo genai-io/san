@@ -351,7 +351,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 	}}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.renameSession("renamed"); err != nil {
+	if _, err := m.renameSession("renamed", ""); err != nil {
 		t.Fatal(err)
 	}
 	if !m.services.Agent.Active() || m.services.Session != w {

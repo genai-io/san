@@ -113,7 +113,7 @@ var (
 	}
 )
 
-var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$`)
+var validName = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_-]{0,39}$`)
 
 // ValidName reports whether s can name a group or a member.
 func ValidName(s string) bool { return validName.MatchString(s) }
@@ -351,6 +351,50 @@ func Disband(g string) error {
 	}
 	return os.RemoveAll(groupDir(g))
 }
+
+// Rename gives this member a new name in its group, inbox and all. The new
+// file is claimed before the old one goes, so the name is never lost to a
+// joiner and the session never drops out of the roster.
+func Rename(name string) error {
+	g, self := Current()
+	if g == "" {
+		return errNotJoined
+	}
+	if !ValidName(name) {
+		return invalidName("member", name)
+	}
+	if name == self.Name {
+		return nil
+	}
+	old := self.Name
+	self.Name = name
+	if err := claim(memberFile(g, name), self); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%q is already taken in group %s", name, g)
+		}
+		return err
+	}
+	if err := os.MkdirAll(inboxDir(g, name), 0o700); err != nil {
+		_ = os.Remove(memberFile(g, name))
+		return err
+	}
+	setCurrent(g, self)
+	_ = os.Remove(memberFile(g, old))
+	// The old member file is gone, so new senders find the new name; what
+	// already lies in the old inbox moves over.
+	// ponytail: a sender that read the roster just before can still land one
+	// message in the old inbox after this sweep; it is lost with the directory.
+	from := inboxDir(g, old)
+	entries, _ := os.ReadDir(from)
+	for _, e := range entries {
+		_ = os.Rename(filepath.Join(from, e.Name()), filepath.Join(inboxDir(g, name), e.Name()))
+	}
+	_ = os.RemoveAll(from)
+	return nil
+}
+
+// SetRole records what this member owns in its file.
+func SetRole(role string) error { return updateSelf(func(self *Member) { self.Role = role }) }
 
 // SetHold records in this member's file whether it holds messages.
 func SetHold(hold bool) error { return updateSelf(func(self *Member) { self.Hold = hold }) }

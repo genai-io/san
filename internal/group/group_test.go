@@ -187,3 +187,50 @@ func TestAJoinIsStampedWithTheSessionAsItIsThen(t *testing.T) {
 		t.Errorf("joined as session %q, want the current one", self.SessionID)
 	}
 }
+
+func TestARenameKeepsTheMembershipAndItsMessages(t *testing.T) {
+	isolate(t)
+	writeMember(t, "shop", Member{Name: "web", SessionID: "s-other"})
+	if _, err := Join("shop", Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	msg := Message{From: "web", To: "api", Content: "rebased", SentAt: time.Now()}
+	if err := atomicfile.WriteJSON(filepath.Join(inboxDir("shop", "api"), "1-web.json"), msg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Rename("web"); err == nil || !strings.Contains(err.Error(), "already taken") {
+		t.Fatalf("renaming onto a taken name: err = %v", err)
+	}
+	if err := Rename("后端"); err != nil {
+		t.Fatal(err)
+	}
+	if _, self := Current(); self.Name != "后端" || Check() != Joined {
+		t.Fatalf("after rename: %+v, %v", self, Check())
+	}
+	if got := Inbox(); len(got) != 1 || got[0].Content != "rebased" {
+		t.Errorf("Inbox after rename = %+v, want the waiting message", got)
+	}
+	var names []string
+	for _, m := range Members("shop") {
+		names = append(names, m.Name)
+	}
+	if strings.Join(names, ",") != "web,后端" {
+		t.Errorf("members = %v, want the old name gone", names)
+	}
+	if _, err := os.Stat(inboxDir("shop", "api")); !os.IsNotExist(err) {
+		t.Errorf("old inbox left behind: %v", err)
+	}
+}
+
+func TestNameFromKeepsLetters(t *testing.T) {
+	for in, want := range map[string]string{
+		"My Awesome Session":    "my-awesome-session",
+		"登录页 重构":                "登录页-重构",
+		"!!!":                   "",
+		strings.Repeat("长", 35): strings.Repeat("长", 30),
+	} {
+		if got := NameFrom(in); got != want {
+			t.Errorf("NameFrom(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

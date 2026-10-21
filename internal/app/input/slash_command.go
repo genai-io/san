@@ -98,7 +98,7 @@ type SlashCommandEnv struct {
 	ForkSession             func() (originalSessionID string, err error)
 	RunSelfLearnDemo        func()
 	SetActivePersona        func(name string) error
-	RenameSession           func(name string) error
+	RenameSession           func(name, role string) (string, error)
 	// GroupCommand runs /group: joining a group touches the session's
 	// identity, reminders and lifecycle, all of which live on the model.
 	GroupCommand func(args string) (string, tea.Cmd)
@@ -424,20 +424,30 @@ func (c *SlashCommandController) handleGoalCommand(_ context.Context, args strin
 	return "", func() tea.Msg { return GoalSetMsg{Goal: goal} }, nil
 }
 
-// handleNameCommand sets or changes the name of the current conversation session.
-// Usage: /name <session-name>
+// handleNameCommand sets or changes the name of the current conversation
+// session; in a group it is also the member name, and --role what it owns.
+// Usage: /name [session-name] [--role TEXT]
 func (c *SlashCommandController) handleNameCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	name := strings.TrimSpace(args)
-	if name == "" {
-		return "Usage: /name <session-name>\n\nSets or changes the name of the current conversation.", nil, nil
+	name, role, _ := strings.Cut(args, "--role")
+	name, role = strings.TrimSpace(name), strings.Trim(strings.TrimSpace(role), `"'`)
+	if name == "" && role == "" {
+		return "Usage: /name [session-name] [--role TEXT]\n\nSets or changes the name of the current conversation. In a group it is also\nyour member name, and --role says what this session owns.", nil, nil
 	}
 	if c.env.RenameSession == nil {
 		return "Session renaming is not available.", nil, nil
 	}
-	if err := c.env.RenameSession(name); err != nil {
+	note, err := c.env.RenameSession(name, role)
+	if err != nil {
 		return "", nil, fmt.Errorf("failed to rename session: %w", err)
 	}
-	return fmt.Sprintf("Session renamed to: %s", name), nil, nil
+	var out []string
+	if name != "" {
+		out = append(out, "Session renamed to: "+name)
+	}
+	if note != "" {
+		out = append(out, note)
+	}
+	return strings.Join(out, " · "), nil, nil
 }
 
 func (c *SlashCommandController) handleTrustCommand(context.Context, string) (string, tea.Cmd, error) {
