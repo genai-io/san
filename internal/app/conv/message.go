@@ -21,7 +21,7 @@ const (
 	minWrapWidth = 40
 
 	// streamWrapReserve is the column budget held back when plain-wrapping the
-	// live streaming tail: 2 cols for the "● "/"∙ " gutter plus 2 cols of slack
+	// live streaming tail: 2 cols for the "● "/"✦ " gutter plus 2 cols of slack
 	// so an ambiguous-width glyph (the spinner star ✶ counted 1 cell but drawn
 	// 2, CJK, box-drawing) can't push a line into the last column — that makes
 	// the inline-mode insertAbove miscount rows and weld a stale frame into
@@ -191,7 +191,7 @@ type AssistantParams struct {
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
-	// "collapsed" replaces it with one "∙ Thought for 3.2 s" line, "hidden"
+	// "collapsed" replaces it with one "✦ Thought for 3.2 s" line, "hidden"
 	// draws nothing. Empty is treated as "full" so a caller that has not been
 	// taught the setting keeps the historical behaviour.
 	ThinkingDisplay string
@@ -203,7 +203,7 @@ type AssistantParams struct {
 	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
 	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
 	// the turn's first content block has been committed; ThinkingEmitted does the
-	// same for the "∙ " marker once the turn's first thinking block is committed.
+	// same for the "✦ " marker once the turn's first thinking block is committed.
 	ContentCommittedLen  int
 	ThinkingCommittedLen int
 	BulletEmitted        bool
@@ -231,8 +231,8 @@ func (p AssistantParams) collapsedThinking() string {
 	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderCollapsedThinking renders "∙ Thought for 3.2 s". An untimed message
-// (restored from disk) shows just "∙ Thought".
+// RenderCollapsedThinking renders "✦ Thought for 3.2 s". An untimed message
+// (restored from disk) shows just "✦ Thought".
 func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
@@ -260,10 +260,11 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
-// thinkingMark leads reasoning: a small dot, the reply's ● in a lower key.
-const thinkingMark = "∙"
+// thinkingMark leads reasoning: the star of the San mark, apart from the
+// reply's ●.
+const thinkingMark = "✦"
 
-// thinkingGutter returns the 2-column lead for a reasoning block: the muted "∙"
+// thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
 // marker for the turn's first thinking block, or a blank continuation gutter for
 // blocks committed after it, so progressively-committed reasoning aligns under
 // the single leading glyph.
@@ -274,10 +275,10 @@ func thinkingGutter(showIcon bool) string {
 	return continuationGutter
 }
 
-// renderThinkingBlock renders reasoning text as the muted "∙" block shared by
+// renderThinkingBlock renders reasoning text as the muted "✦" block shared by
 // the live view and the scrollback commit path. The glyph and text both stay
 // muted, matching the status-bar thinking indicator — no hue. showIcon leads the
-// block with the "∙ " marker (the turn's first thinking) or a blank continuation
+// block with the "✦ " marker (the turn's first thinking) or a blank continuation
 // gutter for blocks committed after it. With md set the reasoning is laid out as
 // markdown (then re-toned muted); without it, a plain muted wrap — the live
 // streaming tail passes nil to stay cheap, matching the content tail.
@@ -333,7 +334,7 @@ func sliceFrom(s string, n int) string {
 
 // RenderCommittedThinkingBlock renders a completed reasoning block for commit to
 // native scrollback — the muted gutter plus the wrapped thinking text. showIcon
-// leads with the "∙ " marker (the turn's first thinking block) or a blank
+// leads with the "✦ " marker (the turn's first thinking block) or a blank
 // continuation gutter for blocks committed after it. Returns "" when the slice
 // renders empty (e.g. only blank lines).
 func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int, md *MDRenderer) string {
@@ -444,7 +445,7 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// waitingRow is the live "∙ Thinking... · 12s" row, held at the foot of the
+// waitingRow is the live "✦ Thinking... · 12s" row, held at the foot of the
 // message from submission until the reply's first text, even while reasoning
 // streams above it in bursts. It is reasoning's mark, never the reply's ●, so
 // it ends rather than turning into the reply. Timed like a running tool row.

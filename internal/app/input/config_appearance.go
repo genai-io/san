@@ -7,7 +7,7 @@
 //     Both default off; left/right previews Off/On, Enter applies the row.
 //   - THINKING — full / collapsed / hidden. How the model's reasoning is
 //     drawn. Full by default (the reasoning streams as before); collapsed
-//     drops the body everywhere and shows one "∙ Thought for 3.2 s" line
+//     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
 //     instead.
 //
 // All are personal preferences, so — unlike Self-Learning — they have no

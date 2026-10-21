@@ -161,7 +161,7 @@ type ChatMessage struct {
 	ContentCommittedLen  int  // bytes of Content already flushed to scrollback
 	ThinkingCommittedLen int  // bytes of Thinking already flushed to scrollback
 	BulletEmitted        bool // the "● " content marker has already been emitted
-	ThinkingEmitted      bool // the "∙ " thinking marker has already been emitted
+	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
 
 	// Reasoning time, first thinking delta to latest (see AppendThinking).
 	// Shown as "Thought for 3.2 s" in collapsed mode. Not persisted.

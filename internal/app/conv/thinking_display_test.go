@@ -117,7 +117,7 @@ func TestRenderCollapsedThinkingOmitsAnUnmeasuredDuration(t *testing.T) {
 	}
 
 	unmeasured := stripANSI(RenderCollapsedThinking(0))
-	if unmeasured != "∙ Thought" {
+	if unmeasured != "✦ Thought" {
 		t.Fatalf("an unmeasured duration must not read as zero: %q", unmeasured)
 	}
 }
@@ -127,16 +127,16 @@ func TestRenderCollapsedThinkingUsesReadableSeconds(t *testing.T) {
 		duration time.Duration
 		want     string
 	}{
-		{49 * time.Millisecond, "∙ Thought"},
-		{50 * time.Millisecond, "∙ Thought for 0.1 s"},
-		{328 * time.Millisecond, "∙ Thought for 0.3 s"},
-		{2500 * time.Millisecond, "∙ Thought for 2.5 s"},
-		{9949 * time.Millisecond, "∙ Thought for 9.9 s"},
-		{9950 * time.Millisecond, "∙ Thought for 10 s"},
-		{10450 * time.Millisecond, "∙ Thought for 10 s"},
-		{12400 * time.Millisecond, "∙ Thought for 12 s"},
-		{12500 * time.Millisecond, "∙ Thought for 13 s"},
-		{time.Minute, "∙ Thought for 60 s"},
+		{49 * time.Millisecond, "✦ Thought"},
+		{50 * time.Millisecond, "✦ Thought for 0.1 s"},
+		{328 * time.Millisecond, "✦ Thought for 0.3 s"},
+		{2500 * time.Millisecond, "✦ Thought for 2.5 s"},
+		{9949 * time.Millisecond, "✦ Thought for 9.9 s"},
+		{9950 * time.Millisecond, "✦ Thought for 10 s"},
+		{10450 * time.Millisecond, "✦ Thought for 10 s"},
+		{12400 * time.Millisecond, "✦ Thought for 12 s"},
+		{12500 * time.Millisecond, "✦ Thought for 13 s"},
+		{time.Minute, "✦ Thought for 60 s"},
 	} {
 		t.Run(tc.duration.String(), func(t *testing.T) {
 			if got := stripANSI(RenderCollapsedThinking(tc.duration)); got != tc.want {
