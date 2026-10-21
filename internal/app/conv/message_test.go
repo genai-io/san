@@ -1667,3 +1667,16 @@ func TestRenderAssistantMessageLiveDotOnlyBeforeTheReplyShows(t *testing.T) {
 		t.Fatalf("a streaming reply should rest on a plain bullet:\n%s", out)
 	}
 }
+
+// A wait for the model is timed the way a running tool row is, so a long one
+// reads as long rather than as stuck.
+func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
+	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80, SpinnerView: "⋯"}
+	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "·") {
+		t.Fatalf("an unstamped wait should show no timer:\n%s", out)
+	}
+	p.WaitStartedAt = time.Now().Add(-12 * time.Second)
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Thinking... · 12s") {
+		t.Fatalf("a 12s wait should be timed:\n%s", out)
+	}
+}

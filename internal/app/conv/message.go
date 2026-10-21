@@ -186,7 +186,8 @@ type AssistantParams struct {
 	SpinnerView       string
 	MDRenderer        *MDRenderer
 	Width             int
-	ExecutingLabel    string // what the running tool is doing, in place of "Thinking..."
+	ExecutingLabel    string    // what the running tool is doing, in place of "Thinking..."
+	WaitStartedAt     time.Time // when the wait began; "Thinking..." shows its elapsed time
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
@@ -423,7 +424,12 @@ func formatAssistantContent(params AssistantParams) string {
 			return ThinkingStyle.Render(params.ExecutingLabel)
 		}
 		if !params.BulletEmitted {
-			return ThinkingStyle.Render("Thinking...")
+			// Timed like a running tool row, so a long wait reads as one.
+			thinking := ThinkingStyle.Render("Thinking...")
+			if elapsed := formatElapsedTime(params.WaitStartedAt); elapsed != "" {
+				thinking += toolResultStyle.Render(" · " + elapsed)
+			}
+			return thinking
 		}
 		// BulletEmitted: content is already streaming to scrollback block by
 		// block — fall through so the momentary gap between committed blocks

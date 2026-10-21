@@ -28,6 +28,7 @@ type RenderContext struct {
 	// ── Streaming + in-flight tool execution ────────────────────
 	StreamActive    bool
 	StreamWaiting   bool
+	StreamStartedAt time.Time
 	StreamMessageID string
 	BuildingTool    string
 	PendingCalls    []core.ToolCall
@@ -276,6 +277,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingEmitted:      msg.ThinkingEmitted,
 		ThinkingDisplay:      p.ThinkingDisplay,
 		ThinkingDuration:     msg.ThinkingDuration,
+		WaitStartedAt:        p.StreamStartedAt,
 	})
 
 	if len(msg.ToolCalls) == 0 {
@@ -526,6 +528,7 @@ func RenderActiveContent(p RenderContext) string {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
 			StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
+			WaitStartedAt: p.StreamStartedAt,
 		})
 	}
 	return content

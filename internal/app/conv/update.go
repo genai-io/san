@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 
@@ -190,10 +191,16 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	// cleared this in OnCompacted, but a failed compaction falls straight through
 	// to here, so clear the in-progress indicator either way.
 	m.Compact.Clear()
+	// The submission's wait carries into its first inference; each later step
+	// is a new wait and times from zero.
+	started := m.Stream.StartedAt
+	if !m.Stream.Waiting {
+		started = time.Now()
+	}
 	m.Stream.Stop()
 	commitCmds := rt.CommitMessages()
 	msg := m.Append(core.ChatMessage{Role: core.ChatAssistant})
-	m.Stream = StreamState{Active: true, MessageID: msg.ID}
+	m.Stream = StreamState{Active: true, MessageID: msg.ID, StartedAt: started}
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
