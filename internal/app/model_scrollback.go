@@ -1,11 +1,12 @@
 // Scrollback rendering: convert pending conversation messages into ANSI
 // terminal output. Recent settled rows stay above the composer; older rows
-// enter the terminal's native scrollback through tea.Println.
+// enter the terminal's native scrollback by scrolling off the top of the frame,
+// as output does in a plain terminal, or through tea.Println when the frame
+// leaves room above it.
 //
-// The frame rule everything here obeys: insertAbove prints above the managed
-// frame, and the inline renderer only redraws the frame's current extent — so
-// what the frame holds then stays on screen, and any row it stops holding is
-// left behind. Both are permanent; scrollback cannot be rewritten. The full
+// The frame rule everything here obeys: the inline renderer only redraws the
+// frame's current extent, so a row that leaves the screen stays exactly as it
+// was last drawn. Scrollback cannot be rewritten. The full
 // protocol — the invariants and the one site that enforces each — is
 // docs/design/decisions/0002-native-scrollback-commit-protocol.md; read it
 // before changing how a print measures, freezes, or shrinks the frame.
@@ -36,6 +37,7 @@ type pendingScrollbackPrint struct {
 	current   string
 	frameRows int  // chat rows this print's content occupied in the live tail
 	started   bool // first chunk prepared; the rest is no longer the frame's job
+	scrolling bool // current is scrolling off the frame's top (tea.ScrollUp in flight)
 }
 
 func printScrollback(id uint64) tea.Cmd {
@@ -327,14 +329,7 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 	if !m.env.Ready || m.env.Height <= 0 || len(m.flush.visible) == 0 {
 		return nil
 	}
-	footer, _ := m.renderFooter("")
-	bottom := footer
-	params := m.messageRenderParams()
-	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
-		bottom = "\n\n" + ov.Render()
-		params.DockedModalActive = true
-	}
-	bottom = m.renderChatIndicators(m.renderTrackerList(), bottom) + bottom
+	bottom, params := m.frameBottom()
 	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveContent(params)))
 	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
 	overflow := len(rows) - keep
@@ -353,6 +348,102 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 	m.flush.visible = slices.Clone(m.flush.visible)
 	printed := renderScrollbackLines(rows[:overflow])
 	return m.flush.queueScrollbackPrint(printed, 0)
+}
+
+// startScrollbackPrint sends the queue head's next chunk to history. A frame
+// that spans the terminal leaves no room above it, so the chunk is drawn at its
+// top and scrolled off; a shorter frame has the chunk inserted above it.
+func (m *model) startScrollbackPrint(id uint64) tea.Cmd {
+	frame := m.View()
+	// Physical rows, like the chunk this is subtracted from: a frame line wider
+	// than the terminal occupies more rows than it has newlines, and counting
+	// the two differently overstates the room above the frame.
+	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
+	if frameFillsScreen(frameHeight, m.env.Height) {
+		return m.scrollChunkIntoHistory(id)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(id, m.env.Width, m.env.Height, frameHeight)
+	if !ok {
+		return nil
+	}
+	return m.printAbove(id, content, frame)
+}
+
+// printAbove inserts content above frame, which is frozen until it lands.
+func (m *model) printAbove(id uint64, content string, frame tea.View) tea.Cmd {
+	m.flush.frameForPrint = &frame
+	if m.flush.output != nil {
+		m.flush.output.Begin()
+	}
+	// Bubble Tea's renderer barrier flushes the latest managed View before
+	// insertAbove. Sequence ensures completion is observed only after this
+	// chunk has been inserted.
+	return tea.Sequence(
+		tea.Println(content),
+		func() tea.Msg { return scrollbackPrintDoneMsg{id: id} },
+	)
+}
+
+// scrollChunkIntoHistory scrolls the next chunk off the top of the frame. The
+// handoff keeps the chat rows reading from the chunk, so it is drawn at the top
+// with what follows it below, and leaves the way output leaves a plain terminal.
+func (m *model) scrollChunkIntoHistory(id uint64) tea.Cmd {
+	bottom, _ := m.frameBottom()
+	chat := max(1, m.env.Height-strings.Count(bottom, "\n")) // as chatTailAbove measures it
+	content, ok := m.flush.prepareScrollbackPrint(id, m.env.Width, m.env.Height, m.env.Height-chat)
+	if !ok {
+		return nil
+	}
+	m.flush.pendingPrints[0].scrolling = true
+	frame := m.View()
+	if len(scrollbackPhysicalLines(frame.Content, m.env.Width)) != m.env.Height {
+		// A row wider than the terminal makes the frame taller than it, and
+		// the renderer drops rows off its top. Insert above one row instead.
+		m.flush.pendingPrints[0].scrolling = false
+		return m.printAbove(id, content, minimalScrollbackFrame())
+	}
+	m.flush.frameForPrint = &frame
+	return tea.ScrollUp(rowCount(content))
+}
+
+// finishScrollIntoHistory lands the renderer's answer and starts the print's
+// next chunk. Refused, nothing was written, and the chunk is inserted above a
+// one-row frame instead.
+func (m *model) finishScrollIntoHistory(msg tea.ScrollUpMsg) tea.Cmd {
+	f := &m.flush
+	if len(f.pendingPrints) == 0 || !f.pendingPrints[0].scrolling {
+		return nil
+	}
+	head := &f.pendingPrints[0]
+	if !msg.Scrolled && head.current != "" {
+		f.frameForPrint = nil
+		head.scrolling = false
+		head.rows = append(scrollbackPhysicalLines(head.current, head.width), head.rows...)
+		head.current = ""
+		content, _ := f.prepareScrollbackPrint(head.id, m.env.Width, m.env.Height, minimalScrollbackFrameHeight)
+		return m.printAbove(head.id, content, minimalScrollbackFrame())
+	}
+	if len(head.rows) > 0 {
+		f.frameForPrint = nil
+		head.scrolling = false
+		head.current = ""
+		return m.startScrollbackPrint(head.id)
+	}
+	return m.finishScrollbackPrint(head.id)
+}
+
+// frameBottom is the block anchored under the chat rows — indicators plus the
+// composer, or the docked modal in its place — with the render params that
+// layout implies.
+func (m *model) frameBottom() (string, conv.RenderContext) {
+	footer, _ := m.renderFooter("")
+	bottom := footer
+	params := m.messageRenderParams()
+	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
+		bottom = "\n\n" + ov.Render()
+		params.DockedModalActive = true
+	}
+	return m.renderChatIndicators(m.renderTrackerList(), bottom) + bottom, params
 }
 
 // Split at cell boundaries without turning soft wraps into stored newlines.
@@ -383,7 +474,7 @@ func wrapScrollbackLines(lines []uv.Line, width int) []uv.Line {
 // before the print runs — the live tail has already stopped drawing what the
 // queue is still holding, which makes a stall a disappearance.
 func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
-	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" {
+	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].current != "" || m.flush.pendingPrints[0].scrolling {
 		return nil
 	}
 	return printScrollback(m.flush.pendingPrints[0].id)
@@ -432,6 +523,10 @@ func (m *model) clearScrollback(wipe tea.Cmd) tea.Cmd {
 		f.pendingPrints = slices.Clone(f.pendingPrints[:1])
 		f.pendingPrints[0].remaining = ""
 		f.pendingPrints[0].rows = nil
+		if f.pendingPrints[0].scrolling {
+			// Whether it scrolls or not, the wipe that follows erases it.
+			f.pendingPrints[0].current = ""
+		}
 		f.clearAfterPrint = wipe
 		return nil
 	}
@@ -446,6 +541,7 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	}
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
+	f.pendingPrints[0].scrolling = false
 	var next tea.Cmd
 	if f.pendingPrints[0].remaining != "" || len(f.pendingPrints[0].rows) > 0 {
 		next = printScrollback(id)
@@ -460,58 +556,20 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	return tea.Sequence(wipe, next)
 }
 
-func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
-	frame := m.View()
-	// Physical rows, like the chunk this is subtracted from: a frame line wider
-	// than the terminal occupies more rows than it has newlines, and counting
-	// the two differently overstates the room above the frame.
-	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
-	compact := frameFillsScreen(frameHeight, m.env.Height) && m.env.Ready
-	if compact {
-		frameHeight = max(1, m.env.Height-1)
-	}
-	content, ok := m.flush.prepareScrollbackPrint(
-		id,
-		m.env.Width,
-		m.env.Height,
-		frameHeight,
-	)
-	if !ok {
-		return "", false
-	}
-	if compact {
-		// shortcut: one row per insert; batch more rows when the renderer supports a full-height frame.
-		// Capture this chunk's handoff copy, not the entire queued remainder.
-		frame = m.View()
-		rows := rowCount(frame.Content)
-		frame.Content = tailLines(frame.Content, frameHeight)
-		if frame.Cursor != nil {
-			cursor := *frame.Cursor
-			cursor.Position.Y = max(0, cursor.Position.Y-(rows-rowCount(frame.Content)))
-			frame.Cursor = &cursor
-		}
-		frameHeight = len(scrollbackPhysicalLines(frame.Content, m.env.Width))
-	}
-	if frameFillsScreen(frameHeight, m.env.Height) {
-		frame = minimalScrollbackFrame()
-	}
-	m.flush.frameForPrint = &frame
-	if m.flush.output != nil {
-		m.flush.output.Begin()
-	}
-	return content, true
+// handingOff reports that a chunk is being scrolled off the top of the frame.
+func (f *flushState) handingOff() bool {
+	return len(f.pendingPrints) > 0 && f.pendingPrints[0].scrolling
 }
 
-// frameFillsScreen reports that the frame leaves no room above it. The print
-// then has nowhere to insert, so it shrinks the frame to one row for the
-// duration — both halves of prepareScrollbackPrint read the answer here rather
-// than one telling the other.
+// frameFillsScreen reports that the frame leaves no room above it, so a print
+// has to scroll instead of insert.
 func frameFillsScreen(frameHeight, height int) bool {
 	return height > 0 && frameHeight >= height
 }
 
-// minimalScrollbackFrame is the one-row frame a print runs under when the real
-// frame leaves no room above it. One row, not zero: a zero-height frame makes
+// minimalScrollbackFrame is the one-row frame a print runs under when the frame
+// cannot scroll, or when a resize or clear has invalidated the frozen one. One
+// row, not zero: a zero-height frame makes
 // the renderer's inline erase start at the cursor's row instead of the frame's
 // top row, so the rows of the previously painted frame above the cursor
 // survive, and the print's scroll then pushes them into native history as a
@@ -673,6 +731,14 @@ func (m model) welcomeBannerText() string {
 func (m model) pendingScrollbackView() string {
 	if len(m.flush.pendingPrints) == 0 {
 		return ""
+	}
+	if m.flush.handingOff() {
+		// Read in order from the chunk; the frame cuts what does not fit.
+		parts := []string{m.flush.pendingPrints[0].current}
+		for _, p := range m.flush.pendingPrints[1:] {
+			parts = append(parts, p.remaining)
+		}
+		return strings.Join(parts, "\n")
 	}
 	// Until the first chunk goes out the whole payload stands in for the tail;
 	// after it, only the chunk in flight. Holding the remainder would swell the

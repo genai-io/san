@@ -47,51 +47,58 @@ The invariants, each with the one place that enforces it. A change that
 touches frame geometry — the View's height, the frame a print runs under,
 chunking, resize — keeps all of them or it is wrong.
 
-1. **The frame a print runs under is frozen and painted before the insert.**
-   `prepareScrollbackPrint` captures the frame into `frameForPrint`, `View`
-   returns it until the print completes, and the fork's `insertAbove` flushes
-   the queued view first. Measuring a frame the terminal does not show is
+1. **The frame a print runs under is frozen and painted before it runs.**
+   `startScrollbackPrint` captures the frame into `frameForPrint`, `View`
+   returns it until the chunk lands, and the fork's `insertAbove` and
+   `scrollUp` flush the queued view first. Measuring a frame the terminal does not show is
    exactly how a stale copy is born.
 
-2. **A chunk is never taller than the room above the painted frame.**
-   `capacity = H − h` in `flushState.prepareScrollbackPrint`; the queue is
-   single-flight FIFO so no two inserts interleave.
+2. **A frame that spans the terminal scrolls its chunk off the top.** The
+   normal frame always fills the screen, so there is no room to insert above
+   it. While a chunk is in flight the chat rows read from that chunk instead of
+   from the newest row (`handingOff` in `chatTailAbove`): the chunk is drawn at
+   the top, what follows it in reading order below, the composer where it was.
+   `tea.ScrollUp` (fork) then emits line feeds at the bottom row and shifts the
+   renderer's screen model, and those rows enter history exactly as they were
+   drawn. Nothing is erased: the next frame paints only the rows that scrolled
+   in. A chunk is at most the chat rows (`scrollChunkIntoHistory`).
 
-3. **The frame never has zero rows.** When the padded frame leaves no room
-   above it, a one-row print runs above its retained bottom `H − 1` rows.
-   Select the print chunk before capturing this frozen frame: the handoff copy
-   must represent that chunk, not the whole pending payload. Keeping recent
-   text visible prevents a blank flash at each streaming paragraph handoff.
-   `terminalOutput` starts buffering in the Update that queues a runnable handoff,
-   before the renderer can paint a pre-ready view containing the whole payload.
-   It holds that redraw, the chunk-specific redraw, and the insert until the matching
-   done event, then writes them together. Canceling a queued print or deferring it
-   behind an overlay releases the batch so the interactive UI remains visible.
-   When synchronized output is enabled,
-   its closing sequence follows the insert, so the temporary one-row shift is
-   never painted on its own. Shutdown flushes any unfinished batch and reports
-   write failures.
-   If the retained frame still fills the terminal, the fallback is
-   `minimalScrollbackFrame` — one blank row — with `capacity = H − 1`.
-   `insertAbove` positions relative to a frame row;
-   a zero-row frame puts the block one row low and leaks a blank row into
-   history.
+3. **A scroll the renderer refuses is inserted above one row.** The fork
+   refuses when the painted frame does not span the terminal, in the alternate
+   screen, or while a resize is unreconciled, and then writes nothing. The
+   chunk is put back and printed with `insertAbove` under
+   `minimalScrollbackFrame`, `capacity = H − 1`; the same frame stands in when a
+   frame row is wider than the terminal. One row, not zero: `insertAbove`
+   positions relative to a frame row, and a zero-row frame leaks a blank row
+   into history. A frame shorter than the terminal (before the first size is
+   known) prints with `capacity = H − h`; the queue is single-flight FIFO so no
+   two inserts interleave.
 
-4. **A shrinking inline frame is erased from its top row.** Invariant 3
-   makes shrinking a routine step of every full-screen print. The fork once
-   parked the cursor on row 0 before `Erase()` for this; on bubbletea v2.1.0
-   with invariants 1 and 3 in place the park measured no difference (tmux,
-   9/9 clean runs without it), so it was dropped. A stale frame copy after a
-   shrink means one of those two broke first.
+4. **A shrinking inline frame is erased from its top row.** Only the fallback
+   in invariant 3 shrinks the frame. The fork once parked the cursor on row 0
+   before `Erase()` for this; on bubbletea v2.1.0 with invariant 1 in place the
+   park measured no difference, so it was dropped. A stale frame copy after a
+   shrink means one of those broke first.
 
-5. **Overlay prompts never enter a history handoff.**
+   The shrink is also what flickered: every shrink and regrow is a full erase
+   and repaint, twice per committed row, visible in any terminal without
+   synchronized output (tmux, Apple Terminal). Scrolling removed it.
+   `terminalOutput` still holds a handoff's writes until its last chunk lands,
+   so a synchronized terminal shows the whole handoff as one frame.
+
+5. **Inline frames never move the cursor with a hard tab.** Painted rows
+   become history, and terminals (tmux) keep a tab that moved the cursor as a
+   tab, so code copied from history would change. The fork enables tab stops in
+   the alternate screen only.
+
+6. **Overlay prompts never enter a history handoff.**
    Full-screen panels render in the alternate screen (#517), where a print
    would vanish with the buffer; docked prompts (approval, question) render
    inline in the composer's place (#573), where insertAbove would carry the
    prompt into scrollback. Either way, a print whose turn comes while an
    overlay owns the frame waits and restarts when it closes.
 
-6. **A resize redraw reaches the frame's top through the rows the terminal
+7. **A resize redraw reaches the frame's top through the rows the terminal
    rewrapped.** The redraw moves up by the cursor's row *within* the frame,
    which is the physical distance only while every frame row is one terminal
    row; a narrowing rewraps the wide rows above the cursor, so the fork's
@@ -135,10 +142,12 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
 - The gate is `internal/app/model_scrollback_renderer_test.go`: a vt10x
   terminal with `RecordHistory` drives the real renderer; a live-frame row,
   or a second copy of a committed row, anywhere in history fails the test.
-  Add a case there before changing any of the five sites.
+  Add a case there before changing any of these sites.
 - When something does appear twice, read the bytes before guessing:
-  `TEA_TRACE=<file>` logs every renderer burst. The flush right before an
-  `insert above` must reach the frame's top — `CR ESC[<k>A ESC[J`. A bare
+  `TEA_TRACE=<file>` logs every renderer burst. A handoff's burst is line
+  feeds then the rows that scrolled in, with no `ESC[J`. On the fallback, the
+  flush right before an `insert above` must reach the frame's top —
+  `CR ESC[<k>A ESC[J`. A bare
   `CR ESC[J` means the erase started at the cursor, and the rows above it
   are about to become history.
 - The renderer half lives on the `san` branch of the `genai-io/bubbletea`
@@ -150,9 +159,9 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   overflowing rows print. Each Update checks overflow against the space left
   by active content and bottom controls. Retained lines keep their original
   hard breaks; soft wraps are rebuilt at the current width, including after
-  a partial line enters history. History handoffs retain the bottom `H − 1`
-  rows, print one row, then restore the padded view. Recent text, the composer,
-  and live activity stay visible; the chunk capacity keeps them out of history.
+  a partial line enters history. A handoff draws each chunk at the top of the
+  full frame and scrolls it off; the composer and live activity stay put below
+  it and never scroll.
   Queued payloads are parsed into physical rows once, then consumed without
   reparsing the remainder on every chunk. A width change rewraps only the
   remaining rows. `/clear` drops both unparsed payloads and cached rows.
@@ -160,7 +169,8 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   same cap in the view and overflow check, so a tall workflow cannot displace
   the input cursor or modal options.
 - `/clear` cancels retained rows and future print chunks. An issued chunk uses
-  the minimal frame until completion, then the terminal wipe precedes new prints.
+  the minimal frame until completion (an issued scroll is let land), then the
+  terminal wipe precedes new prints.
   Print IDs stay monotonic so late ready/done messages cannot affect a new queue.
 
 ## References
@@ -171,5 +181,5 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   — the native-history gate.
 - `genai-io/bubbletea` branch `san`: the renderer patches on top of upstream.
 - xterm.js `Buffer._reflowSmaller`: the cursor bump per split and the
-  cursor-line exemption behind the known limit in invariant 6.
+  cursor-line exemption behind the known limit in invariant 7.
 - charmbracelet/bubbletea#1736; genai-io/san#314, #497, #517.

@@ -102,7 +102,7 @@ func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	if newID <= oldID {
 		t.Fatal("clear reused a print identity")
 	}
-	if _, ok := m.prepareScrollbackPrint(newID); !ok {
+	if _, ok := startChunk(m, newID); !ok {
 		t.Fatal("new conversation did not start printing")
 	}
 	m.Update(scrollbackPrintDoneMsg{id: oldID})
@@ -373,7 +373,7 @@ func BenchmarkScrollbackHistoryDrain(b *testing.B) {
 				m.flush.queueScrollbackPrint(content, 0)
 				for len(m.flush.pendingPrints) > 0 {
 					id := m.flush.pendingPrints[0].id
-					if _, ok := m.prepareScrollbackPrint(id); !ok {
+					if _, ok := startChunk(m, id); !ok {
 						b.Fatal("queued history did not drain")
 					}
 					m.flush.finishScrollbackPrint(id)
@@ -383,25 +383,36 @@ func BenchmarkScrollbackHistoryDrain(b *testing.B) {
 	}
 }
 
-func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
-	m := flushTestModel(core.ChatMessage{})
-	m.env.Height = 1
-	cmd := m.flush.queueScrollbackPrint("A", 0)
-	if cmd == nil {
-		t.Fatal("the first chunk must start immediately")
-	}
-	ready := cmd().(scrollbackPrintReadyMsg)
-	if _, ok := m.prepareScrollbackPrint(ready.id); !ok {
-		t.Fatal("a full-height frame must still prepare a print")
-	}
-	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != minimalScrollbackFrame().Content {
-		t.Fatalf("frame during print = %#v, ok=%v, want the one-row frozen frame", frame, ok)
-	}
-	if next := m.finishScrollbackPrint(ready.id); next != nil {
-		t.Fatal("the one-row payload should finish in one minimized print")
-	}
-	if m.flush.frameForPrint != nil {
-		t.Fatal("the managed frame must be restored after the print completes")
+func TestScrollbackFullHeightFrameScrollsChunkOffTheTop(t *testing.T) {
+	for _, scrolled := range []bool{true, false} {
+		m := fixedComposerModel(80, 24)
+		var rows []string
+		for i := range 40 {
+			rows = append(rows, fmt.Sprintf("ROW-%02d", i))
+		}
+		ready := m.flush.queueScrollbackPrint(strings.Join(rows, "\n"), 0)().(scrollbackPrintReadyMsg)
+		if m.startScrollbackPrint(ready.id) == nil || !m.flush.pendingPrints[0].scrolling {
+			t.Fatal("a frame spanning the terminal must scroll the chunk")
+		}
+		frame, _ := m.scrollbackFrameForPrint()
+		lines := strings.Split(ansi.Strip(frame.Content), "\n")
+		chunk := rowCount(m.flush.pendingPrints[0].current)
+		if len(lines) != 24 || strings.TrimSpace(lines[0]) != "ROW-00" ||
+			strings.TrimSpace(lines[chunk-1]) != fmt.Sprintf("ROW-%02d", chunk-1) ||
+			!strings.Contains(strings.Join(lines[chunk:], "\n"), "─") {
+			t.Fatalf("frozen frame must be the chunk above the composer:\n%s", strings.Join(lines, "\n"))
+		}
+		_, cmd := m.Update(tea.ScrollUpMsg{Rows: chunk, Scrolled: scrolled})
+		if scrolled {
+			if next := ansi.Strip(m.flush.pendingPrints[0].current); !m.flush.pendingPrints[0].scrolling || !strings.HasPrefix(next, rows[chunk]+"\n") {
+				t.Fatalf("the next chunk must follow: %q", m.flush.pendingPrints[0].current)
+			}
+			continue
+		}
+		if frame, _ := m.scrollbackFrameForPrint(); frame.Content != minimalScrollbackFrame().Content ||
+			!strings.HasPrefix(ansi.Strip(m.flush.pendingPrints[0].current), "ROW-00\n") || cmd == nil {
+			t.Fatal("a refused scroll must insert the chunk above a one-row frame")
+		}
 	}
 }
 
@@ -486,7 +497,7 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	}
 
 	first := firstCmd().(scrollbackPrintReadyMsg)
-	firstContent, ok := m.prepareScrollbackPrint(first.id)
+	firstContent, ok := startChunk(m, first.id)
 	if !ok || trimLinePadding(firstContent) != "A" {
 		t.Fatalf("first print content = %q, ok=%v, want A", firstContent, ok)
 	}
@@ -502,7 +513,7 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 		t.Fatal("finishing the queue head must start the next print")
 	}
 	second := secondCmd().(scrollbackPrintReadyMsg)
-	secondContent, ok := m.prepareScrollbackPrint(second.id)
+	secondContent, ok := startChunk(m, second.id)
 	if !ok || trimLinePadding(secondContent) != "B" {
 		t.Fatalf("second print content = %q, ok=%v, want B", secondContent, ok)
 	}
@@ -636,7 +647,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	}
 
 	first := firstCmds[0]().(scrollbackPrintReadyMsg)
-	firstContent, ok := m.prepareScrollbackPrint(first.id)
+	firstContent, ok := startChunk(m, first.id)
 	if !ok {
 		t.Fatal("Bash print command has no current payload")
 	}
@@ -645,7 +656,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		t.Fatal("finishing Bash must start the queued Edit print")
 	}
 	second := secondCmd().(scrollbackPrintReadyMsg)
-	secondContent, ok := m.prepareScrollbackPrint(second.id)
+	secondContent, ok := startChunk(m, second.id)
 	if !ok {
 		t.Fatal("Edit print command has no current payload")
 	}
@@ -954,4 +965,12 @@ func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
 			t.Errorf("rendered lost %q: %q", want, rendered)
 		}
 	}
+}
+
+// startChunk starts the queue head's next chunk and returns what it commits.
+func startChunk(m *model, id uint64) (string, bool) {
+	if m.startScrollbackPrint(id) == nil {
+		return "", false
+	}
+	return m.flush.pendingPrints[0].current, true
 }

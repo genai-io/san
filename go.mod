@@ -47,8 +47,13 @@ require (
 // inline scrollback: flush the queued frame before Println (bubbletea#1736),
 // and erase a narrowed frame through the rows the terminal rewrapped
 // (bubbletea#1867). Without them, prints duplicate or drop rows of native
-// history. Drop this once upstream ships equivalents.
-replace charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062
+// history. It also adds tea.ScrollUp, which commits rows by scrolling them off
+// a full-height frame instead of shrinking it, on genai-io/ultraviolet (branch
+// `san`) TerminalRenderer.ScrollUp. Drop both once upstream ships equivalents.
+replace (
+	charm.land/bubbletea/v2 => github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021013403-29fd056c2f1c
+	github.com/charmbracelet/ultraviolet => github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c
+)
 
 require (
 	cloud.google.com/go/auth v0.18.2 // indirect

@@ -440,19 +440,11 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if _, active := m.activeOverlay(); active {
 			return m, nil
 		}
-		// Bubble Tea's renderer barrier flushes the latest managed View before
-		// insertAbove. Sequence ensures completion is observed only after this
-		// chunk has been inserted.
-		content, ok := m.prepareScrollbackPrint(msg.id)
-		if !ok {
-			return m, nil
-		}
-		return m, tea.Sequence(
-			tea.Println(content),
-			func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} },
-		)
+		return m, m.startScrollbackPrint(msg.id)
 	case scrollbackPrintDoneMsg:
 		return m, m.finishScrollbackPrint(msg.id)
+	case tea.ScrollUpMsg:
+		return m, m.finishScrollIntoHistory(msg)
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
 	case input.SecretPromptResponseMsg:

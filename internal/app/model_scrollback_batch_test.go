@@ -27,7 +27,12 @@ func queuedScrollbackBatch(t *testing.T, rows string) (*model, *synchronizedOutp
 }
 
 func TestScrollbackBatchHoldsPreReadyAndBetweenChunkRedraws(t *testing.T) {
-	m, output, id := queuedScrollbackBatch(t, "ONE\nTWO")
+	m := fixedComposerModel(80, 24)
+	output := &synchronizedOutput{writes: make(chan struct{}, 10)}
+	m.flush.output = &terminalOutput{writer: output}
+	m.flush.queueScrollbackPrint(strings.Repeat("ROW\n", 30)+"LAST", 0)
+	m.Update(tea.KeyReleaseMsg{})
+	id := m.flush.pendingPrints[0].id
 	write := func(text string) {
 		t.Helper()
 		if _, err := m.flush.output.Write([]byte(text)); err != nil {
@@ -39,23 +44,20 @@ func TestScrollbackBatchHoldsPreReadyAndBetweenChunkRedraws(t *testing.T) {
 		t.Fatal("pre-ready redraw reached the terminal before the handoff")
 	}
 	m.Update(scrollbackPrintReadyMsg{id: id})
-	if m.flush.frameForPrint == nil || len(m.flush.pendingPrints[0].rows) != 1 {
+	if m.flush.frameForPrint == nil || len(m.flush.pendingPrints[0].rows) == 0 {
 		t.Fatal("fixture must prepare only the first of two chunks")
 	}
-	write("first-insert")
-	m.Update(scrollbackPrintDoneMsg{id: id})
-	if output.String() != "pre-readyfirst-insert" {
-		t.Fatalf("first batch = %q", output.String())
+	write("first-scroll")
+	m.Update(tea.ScrollUpMsg{Scrolled: true})
+	write("second-scroll")
+	if output.String() != "" {
+		t.Fatal("between-chunk redraw escaped the batch")
 	}
-	write("between-chunks")
-	if output.String() != "pre-readyfirst-insert" {
-		t.Fatal("between-chunk redraw escaped the next batch")
+	for len(m.flush.pendingPrints) > 0 {
+		m.Update(tea.ScrollUpMsg{Scrolled: true})
 	}
-	m.Update(scrollbackPrintReadyMsg{id: id})
-	write("second-insert")
-	m.Update(scrollbackPrintDoneMsg{id: id})
 	write("restored")
-	if len(m.flush.pendingPrints) != 0 || output.String() != "pre-readyfirst-insertbetween-chunkssecond-insertrestored" {
+	if len(m.flush.pendingPrints) != 0 || output.String() != "pre-readyfirst-scrollsecond-scrollrestored" {
 		t.Fatalf("history did not drain and release output: %q", output.String())
 	}
 }

@@ -76,8 +76,6 @@ github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UF
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/charmbracelet/colorprofile v0.4.3 h1:QPa1IWkYI+AOB+fE+mg/5/4HRMZcaXex9t5KX76i20Q=
 github.com/charmbracelet/colorprofile v0.4.3/go.mod h1:/zT4BhpD5aGFpqQQqw7a+VtHCzu+zrQtt1zhMt9mR4Q=
-github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 h1:hISLzUbwcvJbGoNR6A3L/TpguRRnACBmZOee8LcHLJw=
-github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
 github.com/charmbracelet/x/ansi v0.11.9 h1:kIrqLBxtTVbLyyHO2Evoi93EjQo1mylWmpNEsfPxXAM=
 github.com/charmbracelet/x/ansi v0.11.9/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
 github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f h1:pk6gmGpCE7F3FcjaOEKYriCvpmIN4+6OS/RD0vm4uIA=
@@ -117,10 +115,12 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKKDTrHmbYxI7CYi+/hbdiDT2m4Hj+t0ikCjsrQ=
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
-github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062 h1:E3Cp/72pzOVGk2fsExA/JWr9/kd7WSm6FLxpdjuQ76o=
-github.com/genai-io/bubbletea/v2 v2.1.1-0.20261015154049-b8df17ae9062/go.mod h1:xWHeyxIX9/wiFU2kgPW04ojOZyTzrWf+8lGjUCaftiU=
+github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021013403-29fd056c2f1c h1:pYswuucjPKO3j1XK94yn8uRlLOLGC48snt1q3M4vNy8=
+github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021013403-29fd056c2f1c/go.mod h1:iwY+TidDNcZq37S5wj5gjjz999EGVZprEP9N+bMqfMs=
 github.com/genai-io/sdk-go v0.9.1 h1:H00j/8E4FhzagRQnPwdTDtRpvd2TtaGjjJZARi2hwUM=
 github.com/genai-io/sdk-go v0.9.1/go.mod h1:PtlY9EjvpQC0D/UoxTcX/XCB1hqoEKAAn/7qpUnlH68=
+github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c h1:pZ7h9RHJA9jvxxtpZIVzL0E9pvTosb8mzJly7VCjgyw=
+github.com/genai-io/ultraviolet v0.0.0-20261020172003-b2a673ac3e7c/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

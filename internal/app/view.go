@@ -145,6 +145,11 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 		return ""
 	}
 	section := m.renderChatSection(conv.RenderActiveContent(params))
+	if m.flush.handingOff() {
+		// The oldest row not yet in history stays on top until it scrolls off.
+		content := headLines(section, available)
+		return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	}
 	content := tailLines(section, available)
 	if strings.Count(section, "\n")+1 > available {
 		if workers, active := conv.RenderActiveWorkers(params, available); active {
@@ -183,6 +188,15 @@ func tailLines(s string, maxLines int) string {
 		return s
 	}
 	return strings.Join(lines[len(lines)-maxLines:], "\n")
+}
+
+// headLines returns the first maxLines newline-delimited lines of s.
+func headLines(s string, maxLines int) string {
+	if maxLines <= 0 {
+		return ""
+	}
+	lines := strings.SplitN(s, "\n", maxLines+1)
+	return strings.Join(lines[:min(len(lines), maxLines)], "\n")
 }
 
 // renderFooter renders everything below the chat section (separators, queue
