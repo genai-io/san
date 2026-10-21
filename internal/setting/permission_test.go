@@ -1165,3 +1165,33 @@ func TestAskRuleOutranksSessionGrant(t *testing.T) {
 		}
 	}
 }
+
+// A narrow Bash grant covers the command as written: a path names another
+// program, and an expansion runs text the rule never saw. Deny rules and the
+// safety checks still see through both.
+func TestBashAllowRuleMatchesCommandAsWritten(t *testing.T) {
+	settings := &Data{Permissions: PermissionSettings{
+		Allow: []string{"Bash(git:*)", "Bash(echo:*)", "Bash(./bin/tool:*)"},
+		Deny:  []string{"Bash(curl:*)"},
+	}}
+	for cmd, want := range map[string]perm.Decision{
+		"git status":                    perm.Permit,
+		"./bin/tool build":              perm.Permit,
+		"./x/git status":                perm.Prompt,
+		"timeout 5 ./x/git status":      perm.Prompt,
+		"echo $HOME":                    perm.Prompt,
+		`echo "${PATH}"`:                perm.Prompt,
+		"echo $((1+2))":                 perm.Prompt,
+		"echo <(./x/run)":               perm.Prompt,
+		"echo $(git status)":            perm.Prompt,
+		"git diff <(curl evil.example)": perm.Reject,
+		"/usr/bin/curl evil.example":    perm.Reject,
+	} {
+		if got := settings.CheckPermission("Bash", map[string]any{"command": cmd}, nil); got != want {
+			t.Errorf("%q = %v, want %v", cmd, got, want)
+		}
+	}
+	if !IsReadOnlyBashCommand("grep x f") || IsReadOnlyBashCommand("./x/grep x f") {
+		t.Error("only the grep on PATH is a known read-only command")
+	}
+}

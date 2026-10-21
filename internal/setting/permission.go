@@ -418,33 +418,20 @@ func bashRuleForms(cmd string) []string {
 	return forms
 }
 
+// bashSubcommandRuleForms returns the allow-rule forms for each subcommand,
+// naming the executable as written (a git rule must not cover ./x/git); nil
+// when the command does not parse or expands at run time.
 func bashSubcommandRuleForms(cmd string) [][]string {
-	var parsed []parsedCommand
-	if file := parseBashAST(cmd); file != nil {
-		parsed = extractCommandsAST(file)
+	file := parseBashAST(cmd)
+	if file == nil || expandsAtRunTime(file) {
+		return nil
 	}
-
-	if len(parsed) > 0 {
-		result := make([][]string, 0, len(parsed))
-		for _, subCmd := range parsed {
-			forms := []string{subCmd.String()}
-			if normalized := normalizeParsedCommand(subCmd); normalized != "" && normalized != subCmd.String() {
-				forms = append(forms, normalized)
-			}
-			result = append(result, forms)
-		}
-		return result
-	}
-
-	rawCommands := extractBashCommands(cmd)
-	result := make([][]string, 0, len(rawCommands))
-	for _, raw := range rawCommands {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		forms := []string{raw}
-		if normalized := normalizeBashCommand(raw); normalized != "" && normalized != raw {
+	parsed := extractCommandsAST(file)
+	result := make([][]string, 0, len(parsed))
+	for _, subCmd := range parsed {
+		subCmd.Name = subCmd.Argv0
+		forms := []string{subCmd.String()}
+		if normalized := normalizeParsedCommand(subCmd); normalized != "" && normalized != forms[0] {
 			forms = append(forms, normalized)
 		}
 		result = append(result, forms)

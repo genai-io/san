@@ -47,6 +47,7 @@ func ExactAllowRules(toolName string, args map[string]any) []string {
 			if c.Name == "" || len(c.RedirPaths) > 0 || c.InSubshell || c.HasAssign || runsCode(c.Name) {
 				return nil
 			}
+			c.Name = c.Argv0 // the rule names the executable as written
 			if rule := "Bash(" + normalizeParsedCommand(c) + ")"; !slices.Contains(rules, rule) {
 				rules = append(rules, rule)
 			}
