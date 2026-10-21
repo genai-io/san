@@ -69,8 +69,11 @@ func TerminateGroup(cmd *exec.Cmd, _ syscall.Signal) error {
 		return nil
 	}
 	descendants := descendantsOf(uint32(cmd.Process.Pid))
+	// Claim the job before Kill wakes StartGroup's watcher, which would
+	// otherwise close it first and leave orphans in the job running.
+	job, hasJob := jobs.LoadAndDelete(cmd)
 	err := cmd.Process.Kill()
-	if job, ok := jobs.LoadAndDelete(cmd); ok {
+	if hasJob {
 		_ = windows.TerminateJobObject(job.(windows.Handle), 1)
 		_ = windows.CloseHandle(job.(windows.Handle))
 	}
