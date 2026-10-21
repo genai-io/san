@@ -64,3 +64,13 @@ func TestApplyPersonaOverlay_NilOverlayReturnsBase(t *testing.T) {
 		t.Error("a nil overlay should return base unchanged")
 	}
 }
+
+// Timeouts set in any settings layer must survive the merge.
+func TestMergeKeepsTimeouts(t *testing.T) {
+	base := &Data{StreamFirstChunkTimeout: "10m", StreamIdleTimeout: "2m"}
+	overlay := &Data{StreamIdleTimeout: "90s", HookUITimeout: "5s"}
+	got := mergeSettings(base, overlay)
+	if got.StreamFirstChunkTimeout != "10m" || got.StreamIdleTimeout != "90s" || got.HookUITimeout != "5s" {
+		t.Errorf("merged timeouts = %q/%q/%q, want 10m/90s/5s", got.StreamFirstChunkTimeout, got.StreamIdleTimeout, got.HookUITimeout)
+	}
+}
