@@ -46,7 +46,8 @@ func (s *Store) Keys() []string
 
 - File permissions are 0600 on create. Plain JSON, not encrypted — the
   threat model is local multi-user isolation, not at-rest secrecy.
-- Each `Set` re-serializes the whole file (atomic write).
+- `Set` and `Delete` re-read the file under `secrets.json.lock` and merge,
+  so concurrent San processes keep each other's keys (atomic write).
 - Consumer: [`packages/llm.md`](../2-feature/llm.md) for provider API keys.
 - Code: `internal/secret/`.
 

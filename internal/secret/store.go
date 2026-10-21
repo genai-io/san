@@ -1,8 +1,6 @@
 package secret
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -49,26 +47,34 @@ func ResetDefault() {
 }
 
 func (s *Store) load() error {
-	raw, err := os.ReadFile(s.path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	return json.Unmarshal(raw, &s.data)
+	return atomicfile.ReadJSON(s.path, &s.data)
 }
 
-func (s *Store) save() error {
-	// 0600: this file holds API keys and tokens.
-	return atomicfile.WriteJSON(s.path, s.data, 0o600)
+// update applies fn to the file's current contents under a cross-process
+// lock, so keys another San process wrote since startup survive.
+func (s *Store) update(fn func(map[string]string)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return atomicfile.WithLock(s.path+".lock", func() error {
+		data := map[string]string{}
+		if err := atomicfile.ReadJSON(s.path, &data); err != nil {
+			return err
+		}
+		if data == nil {
+			data = map[string]string{}
+		}
+		fn(data)
+		// 0600: this file holds API keys and tokens.
+		if err := atomicfile.WriteJSON(s.path, data, 0o600); err != nil {
+			return err
+		}
+		s.data = data
+		return nil
+	})
 }
 
 func (s *Store) Set(key, value string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data[key] = value
-	return s.save()
+	return s.update(func(data map[string]string) { data[key] = value })
 }
 
 func (s *Store) Get(key string) string {
@@ -78,10 +84,7 @@ func (s *Store) Get(key string) string {
 }
 
 func (s *Store) Delete(key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.data, key)
-	return s.save()
+	return s.update(func(data map[string]string) { delete(data, key) })
 }
 
 // Resolve is a standalone helper that uses the default store.
