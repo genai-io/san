@@ -504,11 +504,26 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 		t.Errorf("asked %q, want the per-model detail path", path)
 	}
 
-	// Every other vendor says so rather than spending a round trip to find out.
+	// Every other vendor has nothing to ask, and says so without a round trip.
 	deepseek, _ := catalog.Find("deepseek")
 	other := newVendorProvider("deepseek:api_key", deepseek, endpoint.Config{APIKey: "k", BaseURL: server.URL})
-	if _, _, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err == nil {
-		t.Error("a vendor with no per-model detail endpoint reported limits anyway")
+	if in, out, err := other.FetchModelLimits(context.Background(), "deepseek-v4-pro"); err != nil || in != 0 || out != 0 {
+		t.Errorf("limits = %d/%d, err = %v; want 0/0 and no error", in, out, err)
+	}
+}
+
+// A listed model with no stated limits, on a vendor with no per-model lookup,
+// is a settled answer. An error from FetchModelLimits read as transient, so
+// every inference re-resolved the catalog and rewrote the model cache.
+func TestUnstatedLimitsSettleOnAVendorWithoutDetailLookup(t *testing.T) {
+	server := listing(t, `{"object":"list","data":[{"id":"glm-9-imaginary","object":"model"}]}`)
+	vendor, _ := catalog.Find("bigmodel")
+	p := newVendorProvider("bigmodel:api_key", vendor, endpoint.Config{APIKey: "k", BaseURL: server.URL})
+	l := &Client{provider: p, model: "glm-9-imaginary"}
+
+	l.effectiveMaxTokens()
+	if !l.limits.answered {
+		t.Error("limits not settled; every inference asks again")
 	}
 }
 

@@ -23,13 +23,11 @@ const modelDetailTimeout = 8 * time.Second
 // FetchModelLimits reports one model's token limits, for the endpoints that
 // answer per model rather than in their listing.
 //
-// It reports an error for every other vendor, which is the honest answer:
-// San's resolver only reaches for it when the listing already came back
-// without a window, and a vendor with nothing further to ask has nothing
-// further to say.
+// Every other vendor reports no limits and no error: there is nothing further
+// to ask, and an error would read as transient and re-ask on every call.
 func (p *vendorProvider) FetchModelLimits(ctx context.Context, modelID string) (contextWindow, maxOutput int, err error) {
 	if p.vendor.ID != alibabaVendor {
-		return 0, 0, fmt.Errorf("llm: %s publishes no per-model limits", p.vendor.ID)
+		return 0, 0, nil
 	}
 	return dashscopeModelLimits(ctx, p, modelID)
 }
