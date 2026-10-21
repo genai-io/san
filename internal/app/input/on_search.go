@@ -41,6 +41,7 @@ type SearchSelector struct {
 	apiKeyActive bool
 	apiKeyEnvVar string
 	apiKeyInput  textinput.Model
+	apiKeyErr    string
 }
 
 func NewSearchSelector(settingSvc *setting.Settings) SearchSelector {
@@ -170,6 +171,7 @@ func (s *SearchSelector) openAPIKeyInput() {
 		return
 	}
 	s.apiKeyActive = true
+	s.apiKeyErr = ""
 	s.apiKeyEnvVar = s.items[s.nav.Selected].EnvVars[0]
 	ti := textinput.New()
 	ti.Placeholder = s.apiKeyEnvVar
@@ -186,7 +188,10 @@ func (s *SearchSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if store := secret.Default(); store != nil {
-			_ = store.Set(s.apiKeyEnvVar, value)
+			if err := store.Set(s.apiKeyEnvVar, value); err != nil {
+				s.apiKeyErr = err.Error()
+				return nil
+			}
 		}
 		os.Setenv(s.apiKeyEnvVar, value)
 
@@ -252,6 +257,10 @@ func (s *SearchSelector) Render() string {
 			boxStyle := lipgloss.NewStyle().Background(inputBg).Padding(0, 1)
 			body.WriteString("      " + boxStyle.Render(label+s.apiKeyInput.View()))
 			body.WriteString("\n")
+			if s.apiKeyErr != "" {
+				errStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+				body.WriteString("      " + errStyle.Render(s.apiKeyErr) + "\n")
+			}
 		}
 	}
 	sb.WriteString(panel.PadViewport(body.String()))

@@ -122,7 +122,10 @@ func (s *ProviderSelector) submitCustomForm() tea.Cmd {
 
 	if apiKey != "" {
 		if store := secret.Default(); store != nil {
-			_ = store.Set(llm.CustomAPIKeyEnvVar, apiKey)
+			if err := store.Set(llm.CustomAPIKeyEnvVar, apiKey); err != nil {
+				s.customFormErr = err.Error()
+				return nil
+			}
 		}
 		os.Setenv(llm.CustomAPIKeyEnvVar, apiKey)
 	}
