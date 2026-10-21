@@ -52,9 +52,6 @@ func DrawsThinkingBody(mode string) bool {
 	return mode == "" || mode == ThinkingDisplayFull
 }
 
-// DefaultResumeWindowMessages is the resume window when unset.
-const DefaultResumeWindowMessages = 20
-
 // Data represents the complete San configuration.
 type Data struct {
 	Permissions PermissionSettings `json:"permissions,omitzero"`
@@ -108,10 +105,6 @@ type Data struct {
 	// unrecognized resolves to DefaultThinkingDisplay. Read via
 	// Data.ThinkingDisplayMode().
 	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
-	// ResumeWindowMessages is how many recent messages a resume prints.
-	// Display only: the model still sees the whole session. Pointer so an
-	// explicit 0 differs from unset.
-	ResumeWindowMessages *int `json:"resumeWindowMessages,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -429,15 +422,6 @@ func (s *Data) ThinkingDisplayMode() string {
 	default:
 		return DefaultThinkingDisplay
 	}
-}
-
-// ResumeWindowMessageCount resolves ResumeWindowMessages; unset or negative
-// means the default.
-func (s *Data) ResumeWindowMessageCount() int {
-	if s == nil || s.ResumeWindowMessages == nil || *s.ResumeWindowMessages < 0 {
-		return DefaultResumeWindowMessages
-	}
-	return *s.ResumeWindowMessages
 }
 
 // StartupMode is the operation mode a new session starts in: the mode the user
@@ -834,10 +818,6 @@ func (s *Data) Clone() *Data {
 		dst.GitBar = &v
 	}
 	dst.ThinkingDisplay = s.ThinkingDisplay
-	if s.ResumeWindowMessages != nil {
-		v := *s.ResumeWindowMessages
-		dst.ResumeWindowMessages = &v
-	}
 	maps.Copy(dst.Env, s.Env)
 	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)
 	maps.Copy(dst.DisabledTools, s.DisabledTools)

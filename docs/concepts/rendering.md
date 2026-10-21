@@ -425,8 +425,7 @@ a width change.
 
 `handleWindowResize` is also the **deferred initial paint**: the first
 `WindowSizeMsg` is where a resumed conversation is committed, via
-`commitAllMessages()`. Only the replay window is committed — earlier messages are
-kept but never printed, and `/history` reads them (see `resumeWindowMessages`).
+`commitAllMessages()`, all of it.
 
 ## Inspecting completed tool results
 

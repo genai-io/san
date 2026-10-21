@@ -88,6 +88,26 @@ func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
 	}
 }
 
+// Resume replays the whole conversation, whatever the previous one printed.
+func TestResumeReplaysEveryMessage(t *testing.T) {
+	m, store := resumedModel(t, parallelResultChain())
+	t.Cleanup(group.Forget)
+	var messages []core.Message
+	for range 60 {
+		messages = append(messages, ai.UserMessage("prompt"))
+	}
+	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "other"}, Messages: messages}); err != nil {
+		t.Fatal(err)
+	}
+	m.conv.CommittedCount = len(m.conv.Messages)
+	if err := m.loadSessionByID("other"); err != nil {
+		t.Fatal(err)
+	}
+	if m.conv.CommittedCount != 0 || len(m.conv.Messages) != len(messages) {
+		t.Fatalf("replay starts at %d of %d rows, want 0 of %d", m.conv.CommittedCount, len(m.conv.Messages), len(messages))
+	}
+}
+
 func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
 	for _, action := range []string{"resume", "fork"} {
 		t.Run(action, func(t *testing.T) {

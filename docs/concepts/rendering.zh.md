@@ -400,9 +400,7 @@ CommittedCount = 3                           // 追上
 逐块消耗已解析的行；只有终端宽度变化时才重新排版剩余内容。
 
 `handleWindowResize` 同时承担**延迟的首次绘制**：第一个 `WindowSizeMsg`
-才把 resume 出来的对话通过 `commitAllMessages()` 提交。只有重放窗口会被
-提交——更早的消息被保留但从不打印，由 `/history` 按需读取（见
-`resumeWindowMessages`）。
+才把 resume 出来的对话通过 `commitAllMessages()` 全部提交。
 
 ## 查看运行结束后的工具结果
 
