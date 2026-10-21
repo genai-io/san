@@ -70,7 +70,7 @@ func (c *Cache) RecentEntries() []Entry  // newest first, max 20
 func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per file / 50,000 total
 ```
 
-- One `*Cache` per session.
+- One `*Cache` per session, cleared on `/clear` and `/resume`.
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
   `internal/app/conv/compact.go` (build on compaction). See also

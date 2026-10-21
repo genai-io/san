@@ -34,6 +34,13 @@ func (c *Cache) Touch(filePath string) {
 	c.evict()
 }
 
+// Clear forgets every touched file, for a new conversation.
+func (c *Cache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	clear(c.entries)
+}
+
 func (c *Cache) Recent(n int) []entry {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -719,6 +719,8 @@ func (m *model) ResetAgentRuntime() {
 	// first message, the skills/memory reminders.
 	m.services.Reminder.DiscardPendingNotices()
 	m.systemRemindersSent = false
+	// Compaction must not restore the old conversation's files.
+	m.env.FileCache.Clear()
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.

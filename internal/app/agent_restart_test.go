@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -148,6 +149,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 // chain; otherwise the next user message would resurrect the old session.
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
+		env:      env{FileCache: filecache.New()},
 		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()},
 		conv:     conv.NewModel(80),
 	}
@@ -163,7 +165,7 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 // Skills/memory reminders ride on a conversation's first message only;
 // replacing the conversation drops old notices and sends them again.
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()

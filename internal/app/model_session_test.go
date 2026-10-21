@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
@@ -35,6 +36,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	m.autopilot = new(atomic.Pointer[autopilotRuntime])
 	m.services.Agent.SetMessages(history)
 	m.env.SessionName = "old title"
+	m.env.FileCache = filecache.New()
 	if err := m.clearSession(); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +76,7 @@ func initClearSessionTest(t *testing.T, m *model) {
 	m.services.sessionID = "before-clear"
 	m.services.Hook = hook.NewEngine(nil, "before-clear", "", "")
 	m.services.Task = task.NewManager()
+	m.env.FileCache = filecache.New()
 }
 
 func mustCreateSession(t *testing.T, store *session.Store, opts session.CreateOptions) *session.Session {

@@ -182,9 +182,10 @@ func (m *model) loadSessionByID(id string) error {
 	// This is a different persisted conversation. Do not let a stopped agent's
 	// restart snapshot override the selected transcript on the next turn, and
 	// don't let the previous conversation's Reads satisfy Edit's
-	// read-before-modify gate in this one.
+	// read-before-modify gate in this one, nor its files ride on compaction.
 	m.replaceSession(opened)
 	fs.ResetFileViews()
+	m.env.FileCache.Clear()
 	m.restoreHistory(sess)
 
 	if len(sess.Tasks) == 0 {
