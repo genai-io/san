@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
@@ -18,6 +19,19 @@ const (
 	maxResponseSize = 5 * 1024 * 1024 // 5MB
 	httpTimeout     = 30 * time.Second
 )
+
+// publicDialer checks the IP actually dialed, so DNS rebinding can't slip past
+// it; IsGlobalUnicast also rejects unspecified, loopback and link-local addresses.
+var publicDialer = &net.Dialer{
+	Timeout: 10 * time.Second,
+	Control: func(_, address string, _ syscall.RawConn) error {
+		host, _, _ := net.SplitHostPort(address)
+		if ip := net.ParseIP(host); ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+			return fmt.Errorf("blocked: request to private/internal address %s", host)
+		}
+		return nil
+	},
+}
 
 // WebFetchTool fetches content from URLs
 type WebFetchTool struct{}
@@ -44,28 +58,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, cwd s
 	}
 
 	// Create HTTP client with SSRF protection, timeout, and redirect validation
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				host = addr
-			}
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-			if err != nil {
-				return nil, err
-			}
-			for _, ip := range ips {
-				if ip.IP.IsLoopback() || ip.IP.IsPrivate() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() {
-					return nil, fmt.Errorf("blocked: request to private/internal address %s", ip.IP)
-				}
-			}
-			dialAddr := addr
-			if port != "" {
-				dialAddr = net.JoinHostPort(host, port)
-			}
-			return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, dialAddr)
-		},
-	}
+	transport := &http.Transport{DialContext: publicDialer.DialContext}
 	client := &http.Client{
 		Transport: transport,
 		Timeout:   httpTimeout,
