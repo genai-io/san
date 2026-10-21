@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/kit"
 	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
@@ -113,7 +114,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 type pluginLoadingTickMsg struct{}
 
 func pluginLoadingTick() tea.Cmd {
-	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(kit.LiveDotFPS, func(time.Time) tea.Msg {
 		return pluginLoadingTickMsg{}
 	})
 }

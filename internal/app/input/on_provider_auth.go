@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/secret"
@@ -382,11 +383,6 @@ func providerFirstEnvVar(envVars []string) string {
 	return ""
 }
 
-// providerSpinnerInterval is the spin cadence while a connect/refresh runs —
-// fast enough to read as a smooth spinner (independent of the slower global
-// thinking-spinner tick).
-const providerSpinnerInterval = 90 * time.Millisecond
-
 // providerConnectingTickMsg is the periodic "still connecting/refreshing" tick that
 // advances the in-flight spinner; the terminal counterpart to
 // providerConnectResultMsg, which signals the work is done.
@@ -394,7 +390,7 @@ type providerConnectingTickMsg struct{}
 
 // providerConnectingTickCmd schedules the next connecting tick (spinner frame).
 func providerConnectingTickCmd() tea.Cmd {
-	return tea.Tick(providerSpinnerInterval, func(time.Time) tea.Msg {
+	return tea.Tick(kit.LiveDotFPS, func(time.Time) tea.Msg {
 		return providerConnectingTickMsg{}
 	})
 }

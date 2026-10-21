@@ -153,8 +153,8 @@ func TestMemoryStepHidesCalls(t *testing.T) {
 	}
 	live := []core.ChatMessage{{Role: core.ChatUser, Content: "remember tabs"}, {Role: core.ChatAssistant, ToolCalls: []core.ToolCall{read}}}
 	p := RenderContext{Width: 80, Interactive: true, StreamActive: true, SpinnerView: "*", Messages: live, InlinedResults: PrecomputeInlinedResults(live, 0)}
-	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, false))); got != "* Thinking..." {
-		t.Errorf("live memory step = %q, want its spinner row", got)
+	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, false))); got != "✦" {
+		t.Errorf("live memory step = %q, want its waiting row", got)
 	}
 	p.Interactive = false // the scrollback commit
 	if got := RenderMessageAt(p, 1, true); got != "" {

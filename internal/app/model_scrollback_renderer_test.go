@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -848,7 +849,18 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			}
 			waitFor("❭ hi")
 			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
-			waitFor("Thinking...")
+			// The waiting row is the bare star; it blinks, so poll for an on frame.
+			deadline := time.Now().Add(3 * time.Second)
+			for {
+				_, screen := terminal.snapshot()
+				if slices.ContainsFunc(strings.Split(screen, "\n"), func(line string) bool { return strings.TrimSpace(line) == "✦" }) {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("timed out waiting for the waiting row:\n%s", screen)
+				}
+				time.Sleep(time.Millisecond)
+			}
 			const reply = "Hi! What can I help you with?"
 			var streamed string
 			for _, delta := range []string{"Hi!", " What", " can I", " help", " you with?"} {

@@ -41,8 +41,8 @@ func (m *OutputModel) ResizeMDRenderer(width int) {
 // FrameClock wraps the animation spinner together with a monotonic frame
 // counter. The spinner's own frame index is unexported and wraps at the frame
 // count, so liveness animations can't read it; Frame advances once per real
-// frame the spinner consumes, and animations divide it by their own cadence —
-// agentBlinkTicks, trackerPulseTicks — to derive their phase.
+// frame the spinner consumes, and every live row reads its kit.LiveDot phase
+// from it, so all of them blink in step.
 type FrameClock struct {
 	spinner spinner.Model
 	frame   int
@@ -62,8 +62,8 @@ func (c FrameClock) Update(msg tea.Msg) (FrameClock, tea.Cmd) {
 	return c, cmd
 }
 
-// View renders the current spinner frame.
-func (c FrameClock) View() string { return c.spinner.View() }
+// View renders the live dot for the current frame (see kit.LiveDot).
+func (c FrameClock) View() string { return kit.LiveDot(c.frame) }
 
 // Tick advances the spinner one frame; use the method value (c.Tick) as a tea.Cmd.
 func (c FrameClock) Tick() tea.Msg { return c.spinner.Tick() }
@@ -74,8 +74,9 @@ func (c FrameClock) Frame() int { return c.frame }
 func newFrameClock() FrameClock {
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{
-		Frames: kit.StarSpinnerFrames,
-		FPS:    kit.StarSpinnerFPS,
+		// One frame: the spinner is only the ticker; View draws the dot.
+		Frames: []string{"●"},
+		FPS:    kit.LiveDotFPS,
 	}
 	sp.Style = lipgloss.NewStyle()
 	return FrameClock{spinner: sp}

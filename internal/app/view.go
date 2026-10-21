@@ -436,25 +436,23 @@ func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, 
 }
 
 var (
-	activityRunningStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
-	activityDoneStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
-	activityFailedStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Bold(true)
+	activityDoneStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
+	activityFailedStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Bold(true)
 )
 
 func styleWorkflowLiveView(live string, frame int) string {
 	if strings.HasPrefix(live, "  Activity") {
 		activity, graph, found := strings.Cut(live, "\n\n")
 		if found {
-			return styleWorkflowActivity(activity, frame) + "\n\n" + pulseWorkflowGraph(graph, frame)
+			return styleWorkflowActivity(activity, frame) + "\n\n" + graph
 		}
 		return styleWorkflowActivity(activity, frame)
 	}
-	return pulseWorkflowGraph(live, frame)
+	return live
 }
 
 func styleWorkflowActivity(activity string, frame int) string {
-	lineSpinner := [...]string{"|", "/", "-", "\\"}
-	running := lineSpinner[frame%len(lineSpinner)]
+	running := kit.LiveDot(frame)
 	const prefix = "    │  "
 	lines := strings.Split(activity, "\n")
 	for i, line := range lines {
@@ -468,7 +466,7 @@ func styleWorkflowActivity(activity string, frame int) string {
 		}
 		switch marker {
 		case "●":
-			marker = activityRunningStyle.Render(running)
+			marker = running
 		case "✓":
 			marker = activityDoneStyle.Render(marker)
 		case "✗":
@@ -479,13 +477,6 @@ func styleWorkflowActivity(activity string, frame int) string {
 		lines[i] = prefix + marker + " " + text
 	}
 	return strings.Join(lines, "\n")
-}
-
-func pulseWorkflowGraph(graph string, frame int) string {
-	if (frame/3)%2 == 1 {
-		return strings.ReplaceAll(graph, "●", "◉")
-	}
-	return graph
 }
 
 func (m model) renderModeStatus() string {
@@ -556,6 +547,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		// Streaming + tool execution
 		StreamActive:       m.conv.Stream.Active,
 		StreamWaiting:      m.conv.Stream.Waiting,
+		StreamStartedAt:    m.conv.Stream.StartedAt,
 		StreamMessageID:    m.conv.Stream.MessageID,
 		BuildingTool:       m.conv.Stream.BuildingTool,
 		PendingCalls:       m.conv.Tool.PendingCalls,

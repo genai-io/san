@@ -612,7 +612,7 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		m.pendingMessages = m.pendingMessages[1:]
 	}
 	if !m.conv.Stream.Active {
-		m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
+		m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: time.Now()}
 		return m.conv.Spinner.Tick
 	}
 	return nil

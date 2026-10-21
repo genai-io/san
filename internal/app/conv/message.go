@@ -54,12 +54,11 @@ var (
 				Foreground(kit.CurrentTheme.Focus).
 				Bold(true)
 
-	// The assistant bullet leads with weight, not hue: the strongest neutral
-	// (near-black on light, near-white on dark) plus bold. The conversation
-	// body stays monochrome — teal is reserved for the user's "❭" marker.
-	aiPromptStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.TextBright).
-			Bold(true)
+	// A settled bullet is the body text color, the same as a tool row's, so
+	// every finished ● in the conversation reads alike. The conversation body
+	// stays monochrome — teal is reserved for the user's "❭" marker.
+	bulletStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.Text)
 
 	// Matching neutral rules give the composer one stable boundary.
 	SeparatorStyle = lipgloss.NewStyle().
@@ -113,10 +112,6 @@ var (
 
 	trackerPendingStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted)
-
-	trackerInProgressStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Primary).
-				Bold(true)
 
 	trackerCompletedStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
@@ -186,12 +181,12 @@ type AssistantParams struct {
 	IsLast            bool
 	// DockedModalActive freezes the bullet: the stream stays "active" across a
 	// permission gate (it clears only on a text-only Done chunk), so without
-	// this the live tail spins while the turn is parked on the user's answer.
+	// this the live tail blinks while the turn is parked on the user's answer.
 	DockedModalActive bool
-	SpinnerView       string
+	Blink             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
 	Width             int
-	ExecutingLabel    string // what the running tool is doing, in place of "Thinking..."
+	WaitStartedAt     time.Time // when the wait began; the waiting row shows its elapsed time
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
@@ -259,10 +254,14 @@ const continuationGutter = "  "
 // continue a turn whose marker was already emitted.
 func contentGutter(showBullet bool) string {
 	if showBullet {
-		return aiPromptStyle.Render("● ")
+		return bulletStyle.Render("● ")
 	}
 	return continuationGutter
 }
+
+// thinkingMark leads reasoning: the star of the San mark, apart from the
+// reply's ●.
+const thinkingMark = "✦"
 
 // thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
 // marker for the turn's first thinking block, or a blank continuation gutter for
@@ -270,7 +269,7 @@ func contentGutter(showBullet bool) string {
 // the single leading glyph.
 func thinkingGutter(showIcon bool) string {
 	if showIcon {
-		return ThinkingStyle.Render("✦ ")
+		return ThinkingStyle.Render(thinkingMark + " ")
 	}
 	return continuationGutter
 }
@@ -370,11 +369,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 	// The first content of a turn leads with "● "; once a block has been
 	// committed the bullet is spent and the remainder aligns under a gutter.
-	// While streaming, the active tail shows the spinner in the bullet slot.
 	aiIcon := contentGutter(!params.BulletEmitted)
-	if params.StreamActive && params.IsLast && !params.DockedModalActive {
-		aiIcon = aiPromptStyle.Render(params.SpinnerView + " ")
-	}
 
 	interrupted := false
 	switch {
@@ -400,8 +395,9 @@ func RenderAssistantMessage(params AssistantParams) string {
 		sb.WriteString(line + "\n\n")
 	}
 
-	content := formatAssistantContent(params)
-	if content != "" {
+	if row := params.waitingRow(); row != "" {
+		sb.WriteString(row + "\n")
+	} else if content := formatAssistantContent(params); content != "" {
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, aiIcon, content) + "\n")
 	}
 
@@ -414,29 +410,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 // formatAssistantContent formats the assistant message content based on streaming state.
 func formatAssistantContent(params AssistantParams) string {
-	// The filler stands in for reasoning the user cannot see: with the body
-	// suppressed (collapsed) it is the only sign the model is thinking, and
-	// "Thinking..." is still no reasoning content. Under "hidden" the user
-	// asked for nothing at all, so the bare spinner is the whole indicator.
-	showThinkingFiller := params.Thinking == "" ||
-		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
-	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
-		if params.ExecutingLabel != "" {
-			return ThinkingStyle.Render(params.ExecutingLabel)
-		}
-		if !params.BulletEmitted {
-			return ThinkingStyle.Render("Thinking...")
-		}
-		// BulletEmitted: content is already streaming to scrollback block by
-		// block — fall through so the momentary gap between committed blocks
-		// still shows the live spinner, not the "Thinking…" filler.
-	}
-
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		if params.Content == "" {
-			// Nothing new to draw (turn start, or the gap right after a block
-			// commits): a lone space keeps the leading spinner on screen so the
-			// tail reads as live without trailing any caret glyph after the text.
+			// Nothing new to draw (the gap right after a block commits): a lone
+			// space keeps the row, so the tail does not jump between blocks.
 			return " "
 		}
 		// Plain-wrap the streaming tail so its \n-line count matches the height
@@ -467,37 +444,27 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// executionLabel is what a running call is doing; a memory call is part of
-// the thinking, so it leaves "Thinking..." in place.
-func executionLabel(tc core.ToolCall) string {
-	if _, ok := parseMemoryOp(tc.Name, tc.Input); ok {
+// waitingRow is the live "✦ 12s" row, held at the foot of the message from
+// submission until the reply's first text, even while reasoning streams above
+// it in bursts. The star needs no word beside it; it is reasoning's mark,
+// never the reply's ●, so it ends rather than turning into the reply. Timed
+// like a running tool row.
+func (p AssistantParams) waitingRow() string {
+	if !p.StreamActive || !p.IsLast || p.Content != "" || p.BulletEmitted || len(p.ToolCalls) > 0 {
 		return ""
 	}
-	return getToolExecutionDesc(tc.Name)
-}
-
-// getToolExecutionDesc returns a human-readable description for a tool being executed.
-func getToolExecutionDesc(toolName string) string {
-	switch toolName {
-	case "Read":
-		return "Reading file..."
-	case "Write":
-		return "Writing file..."
-	case "Edit":
-		return "Editing file..."
-	case tool.ToolBash, tool.ToolPowerShell:
-		return "Executing command..."
-	case "WebFetch":
-		return "Fetching web content..."
-	case "WebSearch":
-		return "Searching the web..."
-	case tool.ToolAskUserQuestion:
-		return "Preparing question..."
-	case tool.ToolSkill:
-		return "Loading skill..."
-	default:
-		return "Executing..."
+	if p.DockedModalActive {
+		// Parked on the user: hold still and don't time their answer.
+		return ThinkingStyle.Render(thinkingMark)
 	}
+	row := thinkingMark
+	if !kit.BlinkOn(p.Blink) {
+		row = " "
+	}
+	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
+		row += " " + elapsed
+	}
+	return ThinkingStyle.Render(row)
 }
 
 // RenderSystemMessage renders a system/notice core.
@@ -664,10 +631,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				// agentIcon blinks ●/○ off the frame counter; on the call a
+				// The live dot blinks off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := agentIcon(params.Blink)
+				icon := kit.LiveDot(params.Blink)
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
@@ -748,13 +715,13 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-// toolCallIcon picks a call's row glyph: the spinner while it is in flight, a
+// toolCallIcon picks a call's row glyph: the live dot while it is in flight, a
 // static bullet once it has a result or is not the call being executed.
 //
 // The call a permission prompt is asking about was marked current and stamped
 // as started by its PreToolEvent, which fires *before* the request goes out, so
 // it holds a static bullet until it is allowed to run. Its batch siblings keep
-// spinning: the gate lives inside each tool's Execute and a parallel batch runs
+// blinking: the gate lives inside each tool's Execute and a parallel batch runs
 // one goroutine per call, so an allow-listed sibling really is executing while
 // the user decides. A modal that names no call still freezes every row —
 // see modalNamesNoCall.
@@ -777,7 +744,7 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 		return "●"
 	}
 
-	// In parallel mode every in-flight call spins; sequentially, only the
+	// In parallel mode every in-flight call blinks; sequentially, only the
 	// current call does.
 	if params.ParallelMode || idx == params.CurrentIdx {
 		return params.SpinnerView

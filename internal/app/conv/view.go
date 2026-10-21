@@ -28,6 +28,7 @@ type RenderContext struct {
 	// ── Streaming + in-flight tool execution ────────────────────
 	StreamActive    bool
 	StreamWaiting   bool
+	StreamStartedAt time.Time
 	StreamMessageID string
 	BuildingTool    string
 	PendingCalls    []core.ToolCall
@@ -250,14 +251,6 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	return sb.String()
 }
 
-// executingLabel is what the running tool is doing, in place of "Thinking...".
-func (p RenderContext) executingLabel() string {
-	if p.BuildingTool == "" || p.CurrentIdx >= len(p.PendingCalls) {
-		return ""
-	}
-	return executionLabel(p.PendingCalls[p.CurrentIdx])
-}
-
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
 	base := RenderAssistantMessage(AssistantParams{
 		Content:              msg.Content,
@@ -266,16 +259,16 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		StreamActive:         p.StreamActive,
 		IsLast:               isLast,
 		DockedModalActive:    p.DockedModalActive,
-		SpinnerView:          p.SpinnerView,
+		Blink:                p.Blink,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
-		ExecutingLabel:       p.executingLabel(),
 		ContentCommittedLen:  msg.ContentCommittedLen,
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,
 		ThinkingEmitted:      msg.ThinkingEmitted,
 		ThinkingDisplay:      p.ThinkingDisplay,
 		ThinkingDuration:     msg.ThinkingDuration,
+		WaitStartedAt:        p.StreamStartedAt,
 	})
 
 	if len(msg.ToolCalls) == 0 {
@@ -524,8 +517,9 @@ func RenderActiveContent(p RenderContext) string {
 	// its spinner, or the row would blink out and back.
 	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
-			StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
+			StreamActive: true, IsLast: true, Blink: p.Blink,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
+			WaitStartedAt: p.StreamStartedAt,
 		})
 	}
 	return content

@@ -27,7 +27,7 @@ func scheduleSelflearnTick() tea.Cmd {
 }
 
 const (
-	selflearnTickInterval = 100 * time.Millisecond // spinner cadence (matches provider-connect)
+	selflearnTickInterval = kit.LiveDotFPS // live dot cadence
 
 	selflearnDoneHoldDuration   = 2 * time.Second // "evolved · N changes" visibility
 	selflearnFailedHoldDuration = 3 * time.Second // longer so failures stay readable
@@ -247,7 +247,7 @@ func (s *SelfLearnIndicator) Tick(now time.Time) (delay time.Duration, stillActi
 	defer s.mu.Unlock()
 	switch s.phase {
 	case selflearnReviewing:
-		s.frame = (s.frame + 1) % len(kit.AsciiSpinnerFrames)
+		s.frame++
 		return selflearnTickInterval, true
 	case selflearnDone:
 		return s.decayPhase(now, selflearnDoneHoldDuration)
@@ -334,7 +334,7 @@ type SelfLearnIndicatorSnapshot struct {
 func (s SelfLearnIndicatorSnapshot) Render() string {
 	switch s.Phase {
 	case selflearnReviewing:
-		spinner := kit.AsciiSpinnerFrames[s.Frame%len(kit.AsciiSpinnerFrames)]
+		spinner := kit.LiveDot(s.Frame)
 		if s.Target == "" {
 			return spinner
 		}

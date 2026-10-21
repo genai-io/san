@@ -10,7 +10,8 @@ import (
 type StreamState struct {
 	MessageID    string // Inference output belongs to this message, independent of display order.
 	Active       bool
-	Waiting      bool // Submission accepted by the UI; the first inference has not started.
+	Waiting      bool      // Submission accepted by the UI; the first inference has not started.
+	StartedAt    time.Time // When the current wait for the model began; times the waiting row.
 	BuildingTool string
 	// ThinkingActive follows the latest text/thinking delta. Responses may
 	// return to reasoning after commentary in the same assistant message.

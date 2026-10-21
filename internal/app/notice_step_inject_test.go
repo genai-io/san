@@ -183,7 +183,7 @@ func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
 	m.deliverNotice(taskNotice())
 
 	view := conv.RenderActiveContent(m.messageRenderParams())
-	if !strings.Contains(view, "research completed") || !strings.Contains(view, "Thinking") {
+	if !strings.Contains(view, "research completed") || !hasWaitingRow(view) {
 		t.Fatalf("completion must be visible while inference is still running:\n%s", view)
 	}
 	if m.conv.CommittedCount != 0 {

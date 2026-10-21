@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TestSelfLearnIndicatorPhaseTransitions covers the four-phase state machine
@@ -22,8 +24,8 @@ func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
 	if snap.Phase != selflearnReviewing {
 		t.Fatalf("phase: got %v, want reviewing", snap.Phase)
 	}
-	// Reviewing render is just the spinner frame ("|", "/", "-", "\\").
-	if got := snap.Render(); len(got) != 1 || strings.ContainsAny(got, "evolvedfailedchanges") {
+	// Reviewing render is just the live dot.
+	if got := ansi.Strip(snap.Render()); got != "●" {
 		t.Fatalf("reviewing render without target: %q", got)
 	}
 

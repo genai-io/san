@@ -69,25 +69,13 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	// The pulse is driven by the shared Blink tick, not the wall clock, so a
-	// full cadence is deterministic: advancing Blink across one period must show
-	// both the solid (●) and dim (◌) phases.
-	var hasSolid, hasDim bool
-	for blink := range 4 * trackerPulseTicks {
-		frame := stripANSI(renderItem(task, itemRunning, 80, 2, nil, blink, nil))
-		if strings.Contains(frame, "●") {
-			hasSolid = true
-		}
-		if strings.Contains(frame, "◌") {
-			hasDim = true
-		}
+	// The blink is driven by the shared Blink tick, not the wall clock, so it
+	// is deterministic: the dot shows at frame 0 and blinks out at frame 3.
+	if on := stripANSI(renderItem(task, itemRunning, 80, 2, nil, 0, nil)); !strings.Contains(on, "●") {
+		t.Fatalf("in-progress task should show the live dot, got %q", on)
 	}
-
-	if !hasSolid {
-		t.Fatal("in-progress task should show solid active icon (●) at some point")
-	}
-	if !hasDim {
-		t.Fatal("in-progress task should show dim active icon (◌) at some point")
+	if off := stripANSI(renderItem(task, itemRunning, 80, 2, nil, 3, nil)); strings.Contains(off, "●") {
+		t.Fatalf("in-progress task should blink the dot out, got %q", off)
 	}
 }
 
@@ -127,7 +115,7 @@ func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
 	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0, nil))
-	for blink := range 4 * trackerPulseTicks {
+	for blink := range 8 {
 		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink, nil)); frame != first {
 			t.Fatalf("stalled task animated across frames:\n%q\n%q", first, frame)
 		}
