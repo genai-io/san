@@ -251,14 +251,6 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	return sb.String()
 }
 
-// executingLabel is what the running tool is doing, in place of "Thinking...".
-func (p RenderContext) executingLabel() string {
-	if p.BuildingTool == "" || p.CurrentIdx >= len(p.PendingCalls) {
-		return ""
-	}
-	return executionLabel(p.PendingCalls[p.CurrentIdx])
-}
-
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
 	base := RenderAssistantMessage(AssistantParams{
 		Content:              msg.Content,
@@ -270,7 +262,6 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		Blink:                p.Blink,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
-		ExecutingLabel:       p.executingLabel(),
 		ContentCommittedLen:  msg.ContentCommittedLen,
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,

@@ -186,8 +186,7 @@ type AssistantParams struct {
 	Blink             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
 	Width             int
-	ExecutingLabel    string    // what the running tool is doing, in place of "Thinking..."
-	WaitStartedAt     time.Time // when the wait began; "Thinking..." shows its elapsed time
+	WaitStartedAt     time.Time // when the wait began; the waiting row shows its elapsed time
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
@@ -445,64 +444,27 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// waitingRow is the live "✦ Thinking... · 12s" row, held at the foot of the
-// message from submission until the reply's first text, even while reasoning
-// streams above it in bursts. It is reasoning's mark, never the reply's ●, so
-// it ends rather than turning into the reply. Timed like a running tool row.
+// waitingRow is the live "✦ 12s" row, held at the foot of the message from
+// submission until the reply's first text, even while reasoning streams above
+// it in bursts. The star needs no word beside it; it is reasoning's mark,
+// never the reply's ●, so it ends rather than turning into the reply. Timed
+// like a running tool row.
 func (p AssistantParams) waitingRow() string {
 	if !p.StreamActive || !p.IsLast || p.Content != "" || p.BulletEmitted || len(p.ToolCalls) > 0 {
 		return ""
 	}
-	label := "Thinking..."
-	if p.ExecutingLabel != "" {
-		label = p.ExecutingLabel
-	}
 	if p.DockedModalActive {
 		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Render(thinkingMark + " " + label)
+		return ThinkingStyle.Render(thinkingMark)
 	}
-	mark := thinkingMark
+	row := thinkingMark
 	if !kit.BlinkOn(p.Blink) {
-		mark = " "
+		row = " "
 	}
-	row := mark + " " + label
 	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
-		row += " · " + elapsed
+		row += " " + elapsed
 	}
 	return ThinkingStyle.Render(row)
-}
-
-// executionLabel is what a running call is doing; a memory call is part of
-// the thinking, so it leaves "Thinking..." in place.
-func executionLabel(tc core.ToolCall) string {
-	if _, ok := parseMemoryOp(tc.Name, tc.Input); ok {
-		return ""
-	}
-	return getToolExecutionDesc(tc.Name)
-}
-
-// getToolExecutionDesc returns a human-readable description for a tool being executed.
-func getToolExecutionDesc(toolName string) string {
-	switch toolName {
-	case "Read":
-		return "Reading file..."
-	case "Write":
-		return "Writing file..."
-	case "Edit":
-		return "Editing file..."
-	case tool.ToolBash, tool.ToolPowerShell:
-		return "Executing command..."
-	case "WebFetch":
-		return "Fetching web content..."
-	case "WebSearch":
-		return "Searching the web..."
-	case tool.ToolAskUserQuestion:
-		return "Preparing question..."
-	case tool.ToolSkill:
-		return "Loading skill..."
-	default:
-		return "Executing..."
-	}
 }
 
 // RenderSystemMessage renders a system/notice core.

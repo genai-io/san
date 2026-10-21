@@ -30,7 +30,7 @@ const (
 	// ThinkingDisplayFull draws the reasoning body, live and in scrollback.
 	ThinkingDisplayFull = "full"
 	// ThinkingDisplayCollapsed draws no reasoning body anywhere; the live tail
-	// shows a "Thinking…" indicator and the settled turn a single
+	// shows the waiting star and the settled turn a single
 	// "✦ Thought for 3.2 s" line. Opt in when a reasoning model's transcript is
 	// mostly thinking and it buries the operations and the answer — committed
 	// scrollback is permanent (ADR-0002), so the noise cannot be cleaned up

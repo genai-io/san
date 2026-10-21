@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -317,7 +318,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	if cmd := m.SubmitToAgent(msg); cmd == nil {
 		t.Fatal("submission returned no send command")
 	}
-	if frame := ansi.Strip(m.View().Content); !strings.Contains(frame, "Thinking...") {
+	if frame := ansi.Strip(m.View().Content); !hasWaitingRow(frame) {
 		t.Fatalf("submitted input has no response indicator before the agent starts:\n%s", frame)
 	}
 	if !m.conv.Stream.Active || !m.conv.Stream.Waiting || len(m.conv.Messages) != 1 {
@@ -484,6 +485,13 @@ const (
 // explanation still live (not yet committed to scrollback). The batch is what
 // makes the fixture realistic: both calls get a PreTool event, so the "current"
 // call is the *last* one tracked, not the one the modal is asking about.
+// hasWaitingRow reports whether view shows the bare-star waiting row.
+func hasWaitingRow(view string) bool {
+	return slices.ContainsFunc(strings.Split(ansi.Strip(view), "\n"), func(line string) bool {
+		return strings.TrimSpace(line) == "✦"
+	})
+}
+
 // atBlinkOut advances the frame clock to the live dot's off frame, where a row
 // still running shows no ● and a frozen one keeps its static bullet.
 func atBlinkOut(t *testing.T, m *model) {

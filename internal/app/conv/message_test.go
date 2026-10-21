@@ -788,7 +788,7 @@ func TestRenderActiveContentKeepsSpinnerBetweenSteps(t *testing.T) {
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
 	}
 	p := RenderContext{Messages: msgs, CommittedCount: len(msgs), StreamActive: true, SpinnerView: "*", Width: 80}
-	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "✦ Thinking..." {
+	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "✦" {
 		t.Errorf("between steps = %q, want the spinner", got)
 	}
 	p.StreamActive = false
@@ -1660,7 +1660,7 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 // turns into the reply, and once the reply streams the bullet rests.
 func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
-	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "✦ Thinking...") || strings.Contains(out, "●") {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
 		t.Fatalf("waiting on the first token should show the reasoning mark:\n%s", out)
 	}
 	p.Blink = 3
@@ -1669,11 +1669,11 @@ func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 	}
 	p.Thinking, p.ThinkingDisplay = "Inspecting repository docs", setting.ThinkingDisplayFull
 	p.Blink = 0
-	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.Contains(out, "✦ Thinking...") {
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.HasSuffix(strings.TrimSpace(out), "\n✦") {
 		t.Fatalf("the wait should hold below streaming reasoning:\n%s", out)
 	}
 	p.Content = "streaming reply"
-	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "Thinking...") || !strings.Contains(out, "● streaming reply") {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "Thinking") || strings.Count(out, "✦") != 1 || !strings.Contains(out, "● streaming reply") {
 		t.Fatalf("a streaming reply should end the wait and rest on a plain bullet:\n%s", out)
 	}
 }
@@ -1682,11 +1682,11 @@ func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 // reads as long rather than as stuck.
 func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
 	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
-	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "·") {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
 		t.Fatalf("an unstamped wait should show no timer:\n%s", out)
 	}
 	p.WaitStartedAt = time.Now().Add(-12 * time.Second)
-	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Thinking... · 12s") {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ 12s" {
 		t.Fatalf("a 12s wait should be timed:\n%s", out)
 	}
 }
