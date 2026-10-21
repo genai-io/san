@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -61,6 +62,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
 	}
 	m.env.CWD = t.TempDir()
+	m.env.FileCache = filecache.New()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
 	m.services.Agent.SetMessages(history.Messages)

@@ -113,3 +113,23 @@ func TestOldOutboxCannotRestartStreamingAfterSwitch(t *testing.T) {
 		t.Fatalf("retired outbox changed new session: active=%v rows=%d->%d", m.conv.Stream.Active, before, len(m.conv.Messages))
 	}
 }
+
+func TestRecentFilesStayInOriginalSession(t *testing.T) {
+	for _, action := range []string{"clear", "resume"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, parallelResultChain())
+			t.Cleanup(group.Forget)
+			m.env.FileCache.Touch("old-session.go")
+			if action == "clear" {
+				if err := m.clearSession(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				switchToOtherSession(t, m, store)
+			}
+			if got := m.env.FileCache.Recent(0); len(got) != 0 {
+				t.Fatalf("new session would restore the old session's files on compaction: %+v", got)
+			}
+		})
+	}
+}

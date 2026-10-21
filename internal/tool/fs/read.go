@@ -66,6 +66,10 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	if info.IsDir() {
 		return toolresult.NewErrorResult(t.Name(), "path is a directory: "+filePath)
 	}
+	// Opening a FIFO or device can block forever.
+	if !info.Mode().IsRegular() {
+		return toolresult.NewErrorResult(t.Name(), "not a regular file: "+filePath)
+	}
 
 	// Open file
 	file, err := os.Open(filePath)
