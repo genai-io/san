@@ -88,7 +88,10 @@ func (s *ProviderSelector) submitOllamaForm() tea.Cmd {
 	}
 
 	if store := secret.Default(); store != nil {
-		_ = store.Set(ollamaEnvVar, baseURL)
+		if err := store.Set(ollamaEnvVar, baseURL); err != nil {
+			s.ollamaFormErr = err.Error()
+			return nil
+		}
 	}
 	os.Setenv(ollamaEnvVar, baseURL)
 	s.closeOllamaForm()

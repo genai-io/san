@@ -144,12 +144,18 @@ func (s *ProviderSelector) submitCredentialForm() tea.Cmd {
 		switch {
 		case values[i] != "":
 			if store != nil {
-				_ = store.Set(v, values[i])
+				if err := store.Set(v, values[i]); err != nil {
+					f.err = err.Error()
+					return nil
+				}
 			}
 			os.Setenv(v, values[i])
 		default:
 			if store != nil {
-				_ = store.Delete(v)
+				if err := store.Delete(v); err != nil {
+					f.err = err.Error()
+					return nil
+				}
 			}
 			os.Unsetenv(v)
 		}
