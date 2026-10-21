@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +96,12 @@ func TestAMemberNoticesBeingKickedOrDisbanded(t *testing.T) {
 	}
 	if Check() != Joined {
 		t.Fatal("a fresh member does not read as joined")
+	}
+	if runtime.GOOS != "windows" { // a read that fails for another reason is not a kick
+		_ = os.Chmod(memberFile("shop", "api"), 0)
+		if Check() != Joined {
+			t.Errorf("Check on an unreadable member file = %v, want Joined until it is gone", Check())
+		}
 	}
 	_ = os.Remove(memberFile("shop", "api")) // another session ran /group kick api
 	if Check() != Removed {

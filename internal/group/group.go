@@ -414,17 +414,19 @@ func updateSelf(change func(*Member)) error {
 }
 
 // Check reports how this process's membership stands on disk, so a member
-// that was kicked or whose group was disbanded can notice.
+// that was kicked or whose group was disbanded can notice. Only a missing or
+// taken-over file counts: any other read error is retried on the next poll.
 func Check() Status {
 	g, self := Current()
 	if g == "" {
 		return NotJoined
 	}
-	if _, ok := Stamp(g); !ok {
+	if _, err := os.Stat(groupDir(g)); errors.Is(err, os.ErrNotExist) {
 		return Disbanded
 	}
 	var onDisk Member
-	if readJSON(memberFile(g, self.Name), &onDisk) != nil || onDisk.SessionID != self.SessionID {
+	err := readJSON(memberFile(g, self.Name), &onDisk)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && onDisk.SessionID != self.SessionID) {
 		return Removed
 	}
 	return Joined
