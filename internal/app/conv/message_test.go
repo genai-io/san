@@ -11,21 +11,22 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-// The turn's first committed thinking block leads with the "✦" marker;
+// The turn's first committed thinking block leads with the "∙" marker;
 // progressively-committed blocks after it align under a blank continuation
 // gutter so the glyph appears once, not on every block.
 func TestRenderCommittedThinkingBlockGutter(t *testing.T) {
 	first := RenderCommittedThinkingBlock("first reasoning block", true, 80, nil)
-	if !strings.Contains(first, "✦") {
-		t.Fatalf("first thinking block should lead with the ✦ marker, got %q", first)
+	if !strings.Contains(first, "∙") {
+		t.Fatalf("first thinking block should lead with the ∙ marker, got %q", first)
 	}
 	cont := RenderCommittedThinkingBlock("continuation reasoning block", false, 80, nil)
-	if strings.Contains(cont, "✦") {
-		t.Fatalf("continuation thinking block should not repeat the ✦ marker, got %q", cont)
+	if strings.Contains(cont, "∙") {
+		t.Fatalf("continuation thinking block should not repeat the ∙ marker, got %q", cont)
 	}
 }
 
@@ -774,20 +775,20 @@ func TestRenderActiveContentShowsRunningStateForPendingWebFetch(t *testing.T) {
 
 // A live thinking title reads as it will once settled: no bold markers.
 func TestLiveThinkingDropsBoldMarkers(t *testing.T) {
-	if got := strings.TrimSpace(stripANSI(renderThinkingBlock("**Saving memory**", true, 80, nil))); got != "✦ Saving memory" {
+	if got := strings.TrimSpace(stripANSI(renderThinkingBlock("**Saving memory**", true, 80, nil))); got != "∙ Saving memory" {
 		t.Errorf("live thinking = %q", got)
 	}
 }
 
 // Between steps, with one committed and the next not yet streaming, the live
-// area still shows the turn's spinner.
+// area still shows the turn's waiting row.
 func TestRenderActiveContentKeepsSpinnerBetweenSteps(t *testing.T) {
 	msgs := []core.ChatMessage{
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "a", Name: "Bash"}}},
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
 	}
 	p := RenderContext{Messages: msgs, CommittedCount: len(msgs), StreamActive: true, SpinnerView: "*", Width: 80}
-	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "* Thinking..." {
+	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "∙ Thinking..." {
 		t.Errorf("between steps = %q, want the spinner", got)
 	}
 	p.StreamActive = false
@@ -1655,23 +1656,32 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 	}
 }
 
-// The live dot marks a wait with nothing to show. Once the reply streams,
-// the text is the progress, so the bullet slot rests on a plain ●.
-func TestRenderAssistantMessageLiveDotOnlyBeforeTheReplyShows(t *testing.T) {
-	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80, SpinnerView: "⋯"}
-	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "⋯ Thinking...") {
-		t.Fatalf("waiting on the first token should show the live dot:\n%s", out)
+// Waiting on the reply is reasoning's live mark, not the reply's ●: it never
+// turns into the reply, and once the reply streams the bullet rests.
+func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
+	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "∙ Thinking...") || strings.Contains(out, "●") {
+		t.Fatalf("waiting on the first token should show the reasoning mark:\n%s", out)
+	}
+	p.Blink = 3
+	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "∙") {
+		t.Fatalf("the waiting mark should blink out on the off frame:\n%s", out)
+	}
+	p.Thinking, p.ThinkingDisplay = "Inspecting repository docs", setting.ThinkingDisplayFull
+	p.Blink = 0
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.Contains(out, "∙ Thinking...") {
+		t.Fatalf("the wait should hold below streaming reasoning:\n%s", out)
 	}
 	p.Content = "streaming reply"
-	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "⋯") || !strings.Contains(out, "● streaming reply") {
-		t.Fatalf("a streaming reply should rest on a plain bullet:\n%s", out)
+	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "Thinking...") || !strings.Contains(out, "● streaming reply") {
+		t.Fatalf("a streaming reply should end the wait and rest on a plain bullet:\n%s", out)
 	}
 }
 
 // A wait for the model is timed the way a running tool row is, so a long one
 // reads as long rather than as stuck.
 func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
-	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80, SpinnerView: "⋯"}
+	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
 	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "·") {
 		t.Fatalf("an unstamped wait should show no timer:\n%s", out)
 	}

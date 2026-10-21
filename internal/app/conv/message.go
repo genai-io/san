@@ -21,7 +21,7 @@ const (
 	minWrapWidth = 40
 
 	// streamWrapReserve is the column budget held back when plain-wrapping the
-	// live streaming tail: 2 cols for the "● "/"✦ " gutter plus 2 cols of slack
+	// live streaming tail: 2 cols for the "● "/"∙ " gutter plus 2 cols of slack
 	// so an ambiguous-width glyph (the spinner star ✶ counted 1 cell but drawn
 	// 2, CJK, box-drawing) can't push a line into the last column — that makes
 	// the inline-mode insertAbove miscount rows and weld a stale frame into
@@ -183,7 +183,7 @@ type AssistantParams struct {
 	// permission gate (it clears only on a text-only Done chunk), so without
 	// this the live tail blinks while the turn is parked on the user's answer.
 	DockedModalActive bool
-	SpinnerView       string
+	Blink             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
 	Width             int
 	ExecutingLabel    string    // what the running tool is doing, in place of "Thinking..."
@@ -191,7 +191,7 @@ type AssistantParams struct {
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
-	// "collapsed" replaces it with one "✦ Thought for 3.2 s" line, "hidden"
+	// "collapsed" replaces it with one "∙ Thought for 3.2 s" line, "hidden"
 	// draws nothing. Empty is treated as "full" so a caller that has not been
 	// taught the setting keeps the historical behaviour.
 	ThinkingDisplay string
@@ -203,7 +203,7 @@ type AssistantParams struct {
 	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
 	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
 	// the turn's first content block has been committed; ThinkingEmitted does the
-	// same for the "✦ " marker once the turn's first thinking block is committed.
+	// same for the "∙ " marker once the turn's first thinking block is committed.
 	ContentCommittedLen  int
 	ThinkingCommittedLen int
 	BulletEmitted        bool
@@ -231,8 +231,8 @@ func (p AssistantParams) collapsedThinking() string {
 	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderCollapsedThinking renders "✦ Thought for 3.2 s". An untimed message
-// (restored from disk) shows just "✦ Thought".
+// RenderCollapsedThinking renders "∙ Thought for 3.2 s". An untimed message
+// (restored from disk) shows just "∙ Thought".
 func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
@@ -260,21 +260,24 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
-// thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
+// thinkingMark leads reasoning: a small dot, the reply's ● in a lower key.
+const thinkingMark = "∙"
+
+// thinkingGutter returns the 2-column lead for a reasoning block: the muted "∙"
 // marker for the turn's first thinking block, or a blank continuation gutter for
 // blocks committed after it, so progressively-committed reasoning aligns under
 // the single leading glyph.
 func thinkingGutter(showIcon bool) string {
 	if showIcon {
-		return ThinkingStyle.Render("✦ ")
+		return ThinkingStyle.Render(thinkingMark + " ")
 	}
 	return continuationGutter
 }
 
-// renderThinkingBlock renders reasoning text as the muted "✦" block shared by
+// renderThinkingBlock renders reasoning text as the muted "∙" block shared by
 // the live view and the scrollback commit path. The glyph and text both stay
 // muted, matching the status-bar thinking indicator — no hue. showIcon leads the
-// block with the "✦ " marker (the turn's first thinking) or a blank continuation
+// block with the "∙ " marker (the turn's first thinking) or a blank continuation
 // gutter for blocks committed after it. With md set the reasoning is laid out as
 // markdown (then re-toned muted); without it, a plain muted wrap — the live
 // streaming tail passes nil to stay cheap, matching the content tail.
@@ -330,7 +333,7 @@ func sliceFrom(s string, n int) string {
 
 // RenderCommittedThinkingBlock renders a completed reasoning block for commit to
 // native scrollback — the muted gutter plus the wrapped thinking text. showIcon
-// leads with the "✦ " marker (the turn's first thinking block) or a blank
+// leads with the "∙ " marker (the turn's first thinking block) or a blank
 // continuation gutter for blocks committed after it. Returns "" when the slice
 // renders empty (e.g. only blank lines).
 func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int, md *MDRenderer) string {
@@ -366,14 +369,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 	// The first content of a turn leads with "● "; once a block has been
 	// committed the bullet is spent and the remainder aligns under a gutter.
-	// Until anything of the reply shows, the bullet slot holds the live dot;
-	// once text or reasoning streams, that is the progress and the dot rests.
 	aiIcon := contentGutter(!params.BulletEmitted)
-	nothingShown := params.Content == "" && !params.BulletEmitted &&
-		(params.Thinking == "" || !setting.DrawsThinkingBody(params.ThinkingDisplay))
-	if params.StreamActive && params.IsLast && !params.DockedModalActive && nothingShown {
-		aiIcon = params.SpinnerView + " "
-	}
 
 	interrupted := false
 	switch {
@@ -399,8 +395,9 @@ func RenderAssistantMessage(params AssistantParams) string {
 		sb.WriteString(line + "\n\n")
 	}
 
-	content := formatAssistantContent(params)
-	if content != "" {
+	if row := params.waitingRow(); row != "" {
+		sb.WriteString(row + "\n")
+	} else if content := formatAssistantContent(params); content != "" {
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, aiIcon, content) + "\n")
 	}
 
@@ -413,34 +410,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 // formatAssistantContent formats the assistant message content based on streaming state.
 func formatAssistantContent(params AssistantParams) string {
-	// The filler stands in for reasoning the user cannot see: with the body
-	// suppressed (collapsed) it is the only sign the model is thinking, and
-	// "Thinking..." is still no reasoning content. Under "hidden" the user
-	// asked for nothing at all, so the bare spinner is the whole indicator.
-	showThinkingFiller := params.Thinking == "" ||
-		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
-	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
-		if params.ExecutingLabel != "" {
-			return ThinkingStyle.Render(params.ExecutingLabel)
-		}
-		if !params.BulletEmitted {
-			// Timed like a running tool row, so a long wait reads as one.
-			thinking := ThinkingStyle.Render("Thinking...")
-			if elapsed := formatElapsedTime(params.WaitStartedAt); elapsed != "" {
-				thinking += toolResultStyle.Render(" · " + elapsed)
-			}
-			return thinking
-		}
-		// BulletEmitted: content is already streaming to scrollback block by
-		// block — fall through so the momentary gap between committed blocks
-		// keeps its row, not the "Thinking…" filler.
-	}
-
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		if params.Content == "" {
-			// Nothing new to draw (turn start, or the gap right after a block
-			// commits): a lone space keeps the row, so the live dot has a place
-			// at turn start and the tail does not jump between blocks.
+			// Nothing new to draw (the gap right after a block commits): a lone
+			// space keeps the row, so the tail does not jump between blocks.
 			return " "
 		}
 		// Plain-wrap the streaming tail so its \n-line count matches the height
@@ -469,6 +442,33 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 		return content
 	}
 	return trimStyledBlankLines(rendered)
+}
+
+// waitingRow is the live "∙ Thinking... · 12s" row, held at the foot of the
+// message from submission until the reply's first text, even while reasoning
+// streams above it in bursts. It is reasoning's mark, never the reply's ●, so
+// it ends rather than turning into the reply. Timed like a running tool row.
+func (p AssistantParams) waitingRow() string {
+	if !p.StreamActive || !p.IsLast || p.Content != "" || p.BulletEmitted || len(p.ToolCalls) > 0 {
+		return ""
+	}
+	label := "Thinking..."
+	if p.ExecutingLabel != "" {
+		label = p.ExecutingLabel
+	}
+	if p.DockedModalActive {
+		// Parked on the user: hold still and don't time their answer.
+		return ThinkingStyle.Render(thinkingMark + " " + label)
+	}
+	mark := thinkingMark
+	if !kit.BlinkOn(p.Blink) {
+		mark = " "
+	}
+	row := mark + " " + label
+	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
+		row += " · " + elapsed
+	}
+	return ThinkingStyle.Render(row)
 }
 
 // executionLabel is what a running call is doing; a memory call is part of

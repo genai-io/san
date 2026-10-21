@@ -267,7 +267,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		StreamActive:         p.StreamActive,
 		IsLast:               isLast,
 		DockedModalActive:    p.DockedModalActive,
-		SpinnerView:          p.SpinnerView,
+		Blink:                p.Blink,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
 		ExecutingLabel:       p.executingLabel(),
@@ -526,7 +526,7 @@ func RenderActiveContent(p RenderContext) string {
 	// its spinner, or the row would blink out and back.
 	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
-			StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
+			StreamActive: true, IsLast: true, Blink: p.Blink,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
 			WaitStartedAt: p.StreamStartedAt,
 		})
