@@ -154,11 +154,15 @@ func (l *Client) ThinkingEffort() string {
 }
 
 // Complete sends a one-shot completion, for utility calls like compaction.
+// tools is what the model is offered, nil for none; maxTokens 0 keeps the
+// client's own cap.
 func (l *Client) Complete(ctx context.Context,
-	sysPrompt string, msgs []core.Message, maxTokens int,
+	sysPrompt string, msgs []core.Message, tools []ToolSchema, maxTokens int,
 ) (CompletionResponse, error) {
-	opts := l.completionOpts(msgs, nil, sysPrompt)
-	opts.MaxTokens = maxTokens
+	opts := l.completionOpts(msgs, tools, sysPrompt)
+	if maxTokens > 0 {
+		opts.MaxTokens = maxTokens
+	}
 
 	// Utility calls (e.g. compaction) are not streamed to the UI, so retry
 	// them in place on transient failures, sharing the agent loop's backoff.

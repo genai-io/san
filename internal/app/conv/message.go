@@ -78,6 +78,11 @@ var (
 	agentNoticeStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
 
+	// A /btw exchange is an aside: its mark is muted so it never reads as part
+	// of the turn it was asked beside.
+	sideMarkStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.TextDim)
+
 	// The tool call line stays readable — the action and its target (the file
 	// being edited, the command being run) matter, and the live spinner rides
 	// this line while the call is in flight.
@@ -470,6 +475,30 @@ func (p AssistantParams) waitingRow() string {
 // RenderSystemMessage renders a system/notice core.
 func RenderSystemMessage(content string) string {
 	return systemMsgStyle.Render(content) + "\n"
+}
+
+// sideNoticePrefix marks a notice holding a /btw exchange,
+// "/btw <question>\n\n<answer>". The text is the whole record, so a resumed
+// session draws it the same way.
+const sideNoticePrefix = "/btw "
+
+// SideNotice is the notice text recording one /btw exchange.
+func SideNotice(question, answer string) string {
+	return sideNoticePrefix + question + "\n\n" + answer
+}
+
+// RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the
+// question, set apart from the reply's ●, and the answer under the reply
+// gutter. The question is wrapped, not padded: a row filled out to the width
+// rewraps into an extra blank row once scrollback is narrowed.
+func RenderSideAnswer(question, answer string, width int, md *MDRenderer) string {
+	mark := sideMarkStyle.Render("◇ btw ")
+	indent := strings.Repeat(" ", lipgloss.Width(mark))
+	lines := strings.Split(lipgloss.Wrap(question, max(width-len(indent), 10), ""), "\n")
+	for i, line := range lines {
+		lines[i] = bulletStyle.Render(line)
+	}
+	return mark + strings.Join(lines, "\n"+indent) + "\n" + RenderCommittedContentBlock(answer, false, md) + "\n"
 }
 
 // RenderAgentNotice renders a background-agent notice (a subagent completion or

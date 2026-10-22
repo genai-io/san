@@ -36,9 +36,14 @@ func (m *model) handleSubmit() tea.Cmd {
 	if m.conv.Stream.Active {
 		// A workflow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
-		if input.IsWorkflowStopCommand(raw) {
+		// /btw exists to be asked while the agent works.
+		if input.IsWorkflowStopCommand(raw) || input.IsBtwCommand(raw) {
+			m.userInput.RecordSubmission(m.env.CWD, raw)
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
 			m.userInput.Reset()
+			if result == "" {
+				return cmd
+			}
 			// Show the stop result even while the parent inference continues.
 			return tea.Batch(cmd, m.deliverNotice(mainNotice{Display: result}))
 		}

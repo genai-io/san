@@ -456,6 +456,8 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:
 		return m, m.onMainNotice(msg.notice)
+	case btwAnswerMsg:
+		return m, m.onBtwAnswer(msg)
 	case selfLearnStartedMsg:
 		return m, m.onSelfLearnStarted()
 	case selflearnTickMsg:
@@ -497,6 +499,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
+		m.btwWaiting() ||
 		m.services.Task.HasRunning()
 }
 

@@ -87,6 +87,7 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 	response, err := c.Complete(ctx,
 		system.CompactPrompt(),
 		[]core.Message{core.UserMessage(conversationText, nil)},
+		nil,
 		core.CompactMaxTokens,
 	)
 	if err != nil {

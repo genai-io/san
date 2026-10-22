@@ -323,6 +323,10 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 		parts = append(parts, "", compactView, "")
 	}
 
+	if live := m.btwLive(); live != "" {
+		parts = append(parts, "", live, "")
+	}
+
 	if live := m.renderSelfLearnLive(); live != "" {
 		// Surrounded by blank rows so the inline indicator reads as
 		// its own block — clearly separated from active content above
