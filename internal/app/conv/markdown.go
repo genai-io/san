@@ -4,7 +4,6 @@
 package conv
 
 import (
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -843,10 +842,21 @@ func customizeStyle(s *ansi.StyleConfig, width int) {
 	}
 }
 
-var reTripleNewlines = regexp.MustCompile(`\n{3,}`)
-
+// collapseBlankLines keeps one blank row between blocks. Glamour's blank rows
+// carry margin spaces and style codes, so blank means nothing visible: a
+// heading's margin and the next paragraph's would otherwise stack into two.
 func collapseBlankLines(s string) string {
-	return reTripleNewlines.ReplaceAllString(s, "\n\n")
+	lines := strings.Split(s, "\n")
+	out := lines[:0]
+	prevBlank := false
+	for _, line := range lines {
+		blank := strings.TrimSpace(xansi.Strip(line)) == ""
+		if !blank || !prevBlank {
+			out = append(out, line)
+		}
+		prevBlank = blank
+	}
+	return strings.Join(out, "\n")
 }
 
 // CompletedBlockBoundary returns the byte offset in content up to which the
