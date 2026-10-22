@@ -7,6 +7,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -15,6 +16,7 @@ import (
 func newRecapModel(t *testing.T) *model {
 	m := fixedComposerModel(80, 40)
 	m.services.Agent, m.services.Task = &agent.Runtime{}, task.NewManager()
+	m.services.MCP = mcp.NewManagerForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.ApplyModePermissions(t.TempDir())
@@ -83,5 +85,54 @@ func TestDrivingChanged(t *testing.T) {
 	}
 	if !drivingChanged(before, setting.AutoPilotSettings{Steers: setting.SteerSettings{TurnEnd: true}}) {
 		t.Error("Continue only works while driving")
+	}
+}
+
+// Coming back to a session still at work earns a recap: the screen shows the
+// current step, not what happened while away. Writing it ahead waits for the
+// session to go quiet, since a session at work keeps its cache warm.
+func TestRecapWhileTheSessionWorks(t *testing.T) {
+	m := newRecapModel(t)
+	m.conv.Stream.Active = true
+
+	m.recap.awaySince = time.Now().Add(-5 * time.Minute)
+	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
+		t.Fatal("a recap was written ahead while the session works")
+	}
+	if cmd := m.onFocus(); cmd == nil || !m.recap.busy || !m.recap.show {
+		t.Fatal("coming back to a working session wrote no recap")
+	}
+	if live := m.recapLive(); !strings.Contains(live, "writing") {
+		t.Fatalf("no live row while the recap is written: %q", live)
+	}
+}
+
+// A draft keeps an unasked recap away, but not one asked for: /recap runs
+// while its own text is still in the composer.
+func TestRecapDraftGatesOnlyUnaskedRecaps(t *testing.T) {
+	m := newRecapModel(t)
+	m.userInput.Textarea.SetValue("/recap")
+
+	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	if cmd := m.onFocus(); cmd != nil {
+		t.Fatal("a draft did not keep the unasked recap away")
+	}
+	if cmd := m.recapNow(); cmd == nil || !m.recap.show {
+		t.Fatal("/recap did nothing with its own text in the composer")
+	}
+}
+
+// Nobody reads ghost text in an unfocused terminal: the hint is skipped while
+// away and fetched once on return.
+func TestSuggestWaitsForFocus(t *testing.T) {
+	m := newRecapModel(t)
+	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatAssistant, Content: "Also done."})
+
+	m.recap.awaySince = time.Now()
+	if cmd := m.startPromptSuggestion(); cmd != nil || !m.suggestOwed {
+		t.Fatal("a hint was fetched for an unfocused terminal")
+	}
+	if m.onFocus(); m.suggestOwed {
+		t.Fatal("the hint skipped while away was not fetched on return")
 	}
 }

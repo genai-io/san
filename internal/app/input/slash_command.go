@@ -156,10 +156,11 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 	}
 }
 
-// IsBtwCommand reports whether input is /btw, which runs even mid-turn.
-func IsBtwCommand(input string) bool {
+// IsSideCommand reports whether input is /btw or /recap, side requests that
+// run even mid-turn.
+func IsSideCommand(input string) bool {
 	name, _, ok := command.ParseCommand(input)
-	return ok && name == "btw"
+	return ok && (name == "btw" || name == "recap")
 }
 
 func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {

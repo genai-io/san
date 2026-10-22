@@ -34,6 +34,11 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 	if m.env.LLMProvider == nil || !m.env.AutoPilot.Steers.SuggestOn() {
 		return nil
 	}
+	// Nobody reads ghost text in an unfocused terminal; it is fetched on return.
+	if !m.recap.awaySince.IsZero() {
+		m.suggestOwed = true
+		return nil
+	}
 	prompt := suggestNextInput
 	if mission := m.drivenMission(); mission != "" {
 		prompt = suggestTowardMission + "\n\n<steering_instructions>\n" + m.autopilotSteeringInstructions() +
@@ -46,6 +51,17 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 		resp, err := req.complete(ctx)
 		return resp.Content.Text(), err
 	})
+}
+
+// owedSuggestion fetches the hint skipped while the terminal was unfocused,
+// unless a turn is at work: its end fetches one anyway.
+func (m *model) owedSuggestion() tea.Cmd {
+	owed := m.suggestOwed
+	m.suggestOwed = false
+	if !owed || m.conv.Stream.Active {
+		return nil
+	}
+	return m.startPromptSuggestion()
 }
 
 // drivenMission is the live mission while AutoPilot drives, else "": what

@@ -512,6 +512,7 @@ func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
 		m.btwWaiting() ||
+		(m.recap.show && m.recap.busy) ||
 		m.services.Task.HasRunning()
 }
 

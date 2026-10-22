@@ -68,48 +68,66 @@ func (m *model) onBlur() tea.Cmd {
 	return tea.Tick(min(after, recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
 }
 
-// onFocus ends an absence: one long enough gets its recap, the one written
-// ahead if the conversation has not moved since, else a fresh one.
+// onFocus ends an absence: the input hint skipped meanwhile is fetched, and
+// an absence long enough gets its recap.
 func (m *model) onFocus() tea.Cmd {
 	since := m.recap.awaySince
 	m.recap.awaySince = time.Time{}
+	return tea.Batch(m.owedSuggestion(), m.recapOnReturn(since))
+}
+
+// recapOnReturn recaps an absence that began at since, if it lasted long
+// enough: the one written ahead if the conversation has not moved since, else
+// a fresh one.
+func (m *model) recapOnReturn(since time.Time) tea.Cmd {
 	after := m.env.AutoPilot.RecapAfter()
-	if since.IsZero() || after == 0 || time.Since(since) < after || !m.recapWanted() {
+	if since.IsZero() || after == 0 || time.Since(since) < after || !m.recapWanted() || m.hasDraft() {
 		return nil
 	}
 	m.recap.away = time.Since(since)
-	if r := m.recap.ready; r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() {
-		return m.showRecap(r)
-	}
-	m.recap.show = true
-	if m.recap.busy {
-		return nil
-	}
-	return m.writeRecap()
+	return m.deliverRecap()
 }
 
 // recapNow answers /recap: a recap of the session as it stands.
 func (m *model) recapNow() tea.Cmd {
-	if m.env.LLMProvider == nil || m.assistantReplies() == 0 {
+	if m.env.LLMProvider == nil {
+		m.conv.AddNotice("No model connected.")
+		return nil
+	}
+	if !m.recapWanted() {
 		m.conv.AddNotice("Nothing to recap yet.")
 		return nil
 	}
 	m.recap.away = 0
+	return m.deliverRecap()
+}
+
+// deliverRecap shows the recap written ahead when the conversation has not
+// moved since, else writes one now, drawn live until it lands. Writing now is
+// no dearer than ahead: a conversation that moved has just warmed the cache.
+func (m *model) deliverRecap() tea.Cmd {
 	if r := m.recap.ready; r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() {
 		return m.showRecap(r)
 	}
+	// A running spinner already ticks; a second chain would double its speed.
+	var tick tea.Cmd
+	if !m.needsSpinner() {
+		tick = m.conv.Spinner.Tick
+	}
 	m.recap.show = true
 	if m.recap.busy {
-		return nil
+		return tick
 	}
-	return m.writeRecap()
+	return tea.Batch(tick, m.writeRecap())
 }
 
 // prepareRecap writes the recap ahead while the user is away and the
-// conversation is quiet, so it reads a warm cache and is ready on return.
-// Called when the cache window comes up and when a turn ends after it.
+// conversation is quiet, so it reads the cache before it expires and is ready
+// on return. A session at work keeps its cache warm, so it is left to be
+// written on return. Called when the cache window comes up and when the
+// session goes idle after it.
 func (m *model) prepareRecap() tea.Cmd {
-	if m.recap.awaySince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapWanted() {
+	if m.recap.awaySince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapWanted() || m.hasDraft() || !m.sessionQuiet() {
 		return nil
 	}
 	n := m.chainLen()
@@ -119,9 +137,9 @@ func (m *model) prepareRecap() tea.Cmd {
 	return m.writeRecap()
 }
 
-// prepareRecapAtTurnEnd rewrites the recap after a turn that ran while the
-// user is away, once the cache window has come up: the chain just moved, and
-// the cache is as warm as it gets.
+// prepareRecapAtTurnEnd rewrites the recap when the session goes idle while
+// the user is away, once the cache window has come up: the chain just moved,
+// and the cache is as warm as it gets.
 func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 	after := m.env.AutoPilot.RecapAfter()
 	if m.recap.awaySince.IsZero() || after == 0 || time.Since(m.recap.awaySince) < min(after, recapCacheWindow) {
@@ -130,17 +148,27 @@ func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 	return m.prepareRecap()
 }
 
-// recapWanted reports whether there is something to recap that the screen
-// does not already show: not a turn at work (unless it waits on the user), not
-// a draft the user left mid-thought.
+// recapWanted reports whether there is a conversation to recap.
 func (m *model) recapWanted() bool {
-	if m.env.LLMProvider == nil || m.conv.Compact.Active || m.assistantReplies() == 0 {
-		return false
+	return m.env.LLMProvider != nil && !m.conv.Compact.Active && m.assistantReplies() > 0
+}
+
+// hasDraft reports a draft in the composer: the user is already back in the
+// conversation, so an unasked recap would only interrupt.
+func (m *model) hasDraft() bool { return strings.TrimSpace(m.userInput.FullValue()) != "" }
+
+// sessionQuiet reports whether the conversation is holding still: no turn at
+// work, unless it waits on the user.
+func (m *model) sessionQuiet() bool {
+	return !m.conv.Stream.Active || m.waitingOn() != ""
+}
+
+// recapLive draws the recap being written for a user who is back.
+func (m *model) recapLive() string {
+	if !m.recap.show || !m.recap.busy {
+		return ""
 	}
-	if m.conv.Stream.Active && m.waitingOn() == "" {
-		return false
-	}
-	return strings.TrimSpace(m.userInput.FullValue()) == ""
+	return conv.RenderRecap(m.recapFacts(m.recap.away), m.conv.Spinner.View()+" writing…")
 }
 
 func (m *model) writeRecap() tea.Cmd {
