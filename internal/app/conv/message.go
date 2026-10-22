@@ -497,10 +497,11 @@ func RecapNotice(facts, body string) string {
 	return recapNoticePrefix + facts + "\n\n" + body
 }
 
-// RenderRecap renders a recap: a muted "◇ recap" mark trailed by its facts,
-// and the model's lines under the reply gutter, kept line for line.
+// RenderRecap renders a recap: a muted "↺ recap" mark trailed by its facts,
+// and the model's lines under the reply gutter, kept line for line. ↺ is one
+// cell even where ambiguous-width glyphs take two.
 func RenderRecap(facts, body string) string {
-	head := "◇ recap"
+	head := "↺ recap"
 	if facts != "" {
 		head += " · " + facts
 	}

@@ -30,10 +30,10 @@ const recapTimeout = 2 * time.Minute
 const recapCacheWindow = 4 * time.Minute
 
 const recapInstructions = `<system-reminder>The user stepped away from this session and is coming back. Write them a recap. You are a separate, one-off note: the main work is not interrupted, and you cannot use tools.
-Plain text, no markdown, in the language of the conversation, under 40 words, one line each:
-%GOAL%Now: what is being worked on and where it stands, concretely (the file, PR or test).
+Plain text, no markdown, in the language of the conversation, under 25 words in total, one short line each:
+%GOAL%Now: what is being worked on and where it stands, in a few words (name the file, PR or test).
 Next: the one next action. Begin it with "Your turn:" when it waits on the user.
-Skip root-cause narrative, internals and secondary to-dos.%FACTS%
+No reasons, internals or secondary to-dos.%FACTS%
 </system-reminder>`
 
 // recapState follows the terminal's focus and the recap written for it.
@@ -146,7 +146,7 @@ func (m *model) recapWanted() bool {
 func (m *model) writeRecap() tea.Cmd {
 	m.recap.busy = true
 	goal := m.recapGoal()
-	prompt := strings.ReplaceAll(recapInstructions, "%GOAL%", "Goal: the overall goal of the session.\n")
+	prompt := strings.ReplaceAll(recapInstructions, "%GOAL%", "Goal: the session's overall goal, in a few words.\n")
 	if goal != "" {
 		prompt = strings.ReplaceAll(recapInstructions, "%GOAL%", "")
 	}
@@ -207,7 +207,7 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 func (m *model) recapGoal() string {
 	mission := m.drivenMission()
 	line, _, _ := strings.Cut(mission, "\n")
-	return kit.TruncateText(strings.TrimSpace(line), 80)
+	return kit.TruncateText(strings.TrimSpace(line), 60)
 }
 
 // recapFacts is what San knows without asking the model, most urgent first:
@@ -218,8 +218,8 @@ func (m *model) recapFacts(away time.Duration) string {
 	if away > 0 {
 		facts = append(facts, "away "+formatAway(away))
 	}
-	if on := m.waitingOn(); on != "" {
-		facts = append(facts, "waiting on "+on)
+	if needed := m.waitingOn(); needed != "" {
+		facts = append(facts, needed+" needed")
 	}
 	plans, done := 0, 0
 	for _, t := range m.services.Tracker.List() {
@@ -248,7 +248,7 @@ func (m *model) recapFacts(away time.Duration) string {
 		facts = append(facts, mission)
 	}
 	if n := len(m.services.Task.ListRunning()); n > 0 {
-		facts = append(facts, strconv.Itoa(n)+" running in background")
+		facts = append(facts, strconv.Itoa(n)+" in background")
 	}
 	return strings.Join(facts, " · ")
 }
@@ -262,11 +262,11 @@ func (m *model) waitingOn() string {
 	}
 	switch ov.(type) {
 	case *input.ApprovalModel:
-		return "your approval"
+		return "approval"
 	case *conv.QuestionPrompt:
-		return "your answer"
+		return "answer"
 	case *input.SecretPromptModel:
-		return "your input"
+		return "input"
 	}
 	return ""
 }
