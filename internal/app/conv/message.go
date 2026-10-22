@@ -78,6 +78,11 @@ var (
 	agentNoticeStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
 
+	// A /btw exchange is an aside: its mark is muted so it never reads as part
+	// of the turn it was asked beside.
+	sideMarkStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.TextDim)
+
 	// The tool call line stays readable — the action and its target (the file
 	// being edited, the command being run) matter, and the live spinner rides
 	// this line while the call is in flight.
@@ -470,6 +475,23 @@ func (p AssistantParams) waitingRow() string {
 // RenderSystemMessage renders a system/notice core.
 func RenderSystemMessage(content string) string {
 	return systemMsgStyle.Render(content) + "\n"
+}
+
+// RenderSideAnswer renders a /btw exchange, "/btw <question>\n\n<answer>": a
+// muted "◇ btw" mark leading the question, set apart from the reply's ●, and
+// the answer as markdown under the reply gutter.
+func RenderSideAnswer(content string, width int, md *MDRenderer) string {
+	question, answer, _ := strings.Cut(content, "\n\n")
+	mark := sideMarkStyle.Render("◇ btw ")
+	question = bulletStyle.Width(max(width-lipgloss.Width(mark), 10)).Render(strings.TrimPrefix(question, "/btw "))
+	head := lipgloss.JoinHorizontal(lipgloss.Top, mark, question) + "\n"
+	body := answer
+	if md != nil {
+		if rendered, err := md.Render(answer); err == nil {
+			body = strings.Trim(rendered, "\n")
+		}
+	}
+	return head + lipgloss.JoinHorizontal(lipgloss.Top, continuationGutter, body) + "\n"
 }
 
 // RenderAgentNotice renders a background-agent notice (a subagent completion or

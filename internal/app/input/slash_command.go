@@ -104,6 +104,8 @@ type SlashCommandEnv struct {
 	GroupCommand func(args string) (string, tea.Cmd)
 	// TrustWorkspace runs /trust and reports the outcome.
 	TrustWorkspace func() string
+	// SideQuestion answers /btw without the main agent seeing it.
+	SideQuestion func(question string) tea.Cmd
 }
 
 type SlashCommandController struct {
@@ -147,7 +149,22 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"trust":          (*SlashCommandController).handleTrustCommand,
 		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
+		"btw":            (*SlashCommandController).handleBtwCommand,
 	}
+}
+
+// IsBtwCommand reports whether input is /btw, which runs even mid-turn.
+func IsBtwCommand(input string) bool {
+	name, _, ok := command.ParseCommand(input)
+	return ok && name == "btw"
+}
+
+func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	question := strings.TrimSpace(args)
+	if question == "" {
+		return "Usage: /btw <question>", nil, nil
+	}
+	return "", c.env.SideQuestion(question), nil
 }
 
 // handlePersonaCommand switches the active persona. Bare /persona opens the

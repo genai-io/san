@@ -39,6 +39,7 @@ func builtinCommands() []Info {
 		{Name: "persona", Description: "Switch the active persona (/persona <name>, or /persona to open the picker)"},
 		{Name: "context", Description: "Show what fills the context window · /context limit <window> <output> | reset to override it"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
+		{Name: "btw", Description: "Ask a side question without interrupting the agent; it never sees the exchange"},
 		{Name: "init", Description: "Initialize instruction files (AGENTS.md, local, rules)"},
 		{Name: "memory", Description: "Manage memory files and turn auto memory on/off"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
