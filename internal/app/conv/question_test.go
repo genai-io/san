@@ -123,3 +123,24 @@ func TestQuestionPromptTypesOnTheOtherRow(t *testing.T) {
 		t.Fatalf("typed text should appear once, on its row:\n%s", plain)
 	}
 }
+
+// A paste is an answer of its own: from any row it lands in the free-text
+// row, newlines folded, and Enter submits it.
+func TestQuestionPromptPasteAnswersOnTheOtherRow(t *testing.T) {
+	p := NewQuestionPrompt()
+	p.Show(&tool.QuestionRequest{
+		ID: "ask-1",
+		Questions: []tool.Question{{
+			Question: "Which port?",
+			Options:  []tool.QuestionOption{{Label: "8080"}, {Label: "3000"}},
+		}},
+	}, 80)
+	p.HandlePaste("90\n90")
+	_, resp := p.handleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if resp == nil || resp.Response == nil {
+		t.Fatal("Enter did not submit the pasted answer")
+	}
+	if got := resp.Response.Answers[0]; len(got) != 1 || got[0] != "90 90" {
+		t.Fatalf("answer = %q, want the pasted text", got)
+	}
+}
