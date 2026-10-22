@@ -37,7 +37,7 @@ type RenderContext struct {
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
 	// ToolProgress maps a running command's ID to its latest output counter
-	// ("1.2k lines"), shown next to the timer. Empty for calls with no output.
+	// ("1.2k lines") and, after a newline, the output's tail.
 	ToolProgress map[string]string
 	// AwaitingApprovalID is the in-flight call parked on a permission prompt.
 	// It was stamped as started before the prompt went out, so its row has to
@@ -52,6 +52,8 @@ type RenderContext struct {
 	// renderer so it knows whether to draw the reasoning body, a
 	// "Thought for 3.2 s" line, or nothing.
 	ThinkingDisplay string
+	// BashPreviewLines is how many last output lines a shell row shows.
+	BashPreviewLines int
 
 	// ── Per-tick UI state ───────────────────────────────────────
 	SpinnerView  string
@@ -304,6 +306,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		CurrentIdx:         p.CurrentIdx,
 		ToolStartedAt:      p.ToolStartedAt,
 		ToolProgress:       p.ToolProgress,
+		BashPreviewLines:   p.BashPreviewLines,
 		AwaitingApprovalID: p.AwaitingApprovalID,
 		ModelName:          p.ModelName,
 		InputTokens:        p.InputTokens,

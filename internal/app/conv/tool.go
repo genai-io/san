@@ -17,9 +17,10 @@ type ToolExecState struct {
 	// on a running row, so a long command no longer looks stuck. Only
 	// in-flight calls appear; it is cleared with every new batch.
 	StartedAt map[string]time.Time
-	// Progress holds the latest output counter of a running command ("1.2k
-	// lines"), keyed by tool-call ID — the replaceable companion to the
-	// elapsed timer, showing output is actually flowing. Cleared with StartedAt.
+	// Progress holds the latest progress of a running command, keyed by
+	// tool-call ID: its output counter ("1.2k lines") on the first line — the
+	// companion to the elapsed timer — and the output's tail after it, for the
+	// row's preview. Cleared with StartedAt.
 	Progress map[string]string
 	// AwaitingApprovalID is the tool call parked on the permission modal. Its
 	// PreToolEvent already stamped it as started, so without this the row would

@@ -81,7 +81,13 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	bashPrompt          = "  $ "
+	// A shell command reads apart from its output by its marks: "$" leads the
+	// command and ">" each further line of it, as a shell's own prompts do,
+	// while output rows hang on the "┊" gutter; a wrapped command row is only
+	// indented, since it continues the same line.
+	bashPrompt       = "  $ "
+	bashContinuation = "  > "
+	bashWrapIndent   = "    "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -131,14 +137,14 @@ func visibleLine(line string) string {
 }
 
 func renderNestedToolBodyLine(line string, width int) string {
-	return renderGutteredLine(nestedBodyPrefix, visibleLine(line), width)
+	return renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolResultStyle, visibleLine(line), width)
 }
 
 // renderGutteredLine soft-wraps one row to the terminal width so every
-// continuation row keeps the "┊" gutter. Left to the terminal, a wrapped row
-// restarts at column 0 and the connector breaks. Tabs expand to lipgloss's
+// wrapped row keeps its gutter (wrapPrefix). Left to the terminal, a wrapped
+// row restarts at column 0 and the connector breaks. Tabs expand to lipgloss's
 // tab width up front so the wrap budget matches what Render will draw.
-func renderGutteredLine(prefix, line string, width int) string {
+func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
@@ -147,8 +153,8 @@ func renderGutteredLine(prefix, line string, width int) string {
 
 	var sb strings.Builder
 	for segment := range strings.SplitSeq(xansi.Hardwrap(line, wrapWidth, true), "\n") {
-		sb.WriteString(toolResultStyle.Render(prefix+segment) + "\n")
-		prefix = nestedBodyPrefix
+		sb.WriteString(style.Render(prefix+segment) + "\n")
+		prefix = wrapPrefix
 	}
 	return sb.String()
 }
@@ -246,14 +252,38 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	showBody := data.Expanded && content != ""
-	if showBody {
+	if data.Expanded {
 		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
+	} else {
+		sb.WriteString(renderOutputPreview(content, data.PreviewLines, data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
 	}
 	sb.WriteString(renderNestedToolTrailer(summary, style))
+	return sb.String()
+}
+
+// renderOutputPreview draws the last n lines of a shell command's output on
+// the "┊" gutter, the same rows while it runs and once it is done. Each line
+// is cut to the width rather than wrapped, so the preview is never taller
+// than n rows; output shorter than n shows as many rows as it has.
+func renderOutputPreview(output string, n, width int) string {
+	output = strings.TrimRight(output, "\n")
+	if n <= 0 || strings.TrimSpace(output) == "" {
+		return ""
+	}
+	lines := strings.Split(output, "\n")
+	lines = lines[max(0, len(lines)-n):]
+	if width <= 0 {
+		width = 80
+	}
+	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
+	var sb strings.Builder
+	for _, line := range lines {
+		line = strings.ReplaceAll(visibleLine(line), "\t", "    ")
+		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+xansi.Truncate(line, room, "…")) + "\n")
+	}
 	return sb.String()
 }
 
@@ -1227,27 +1257,24 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
-	// Soft-wrap every command line to the terminal width. The first row carries
-	// the shell prompt; every later row uses the connector so the command and its
-	// result form one continuous block. No command text is replaced by ellipses.
+	// Soft-wrap every command line to the terminal width, in the call's own
+	// color: "$" leads the first line and ">" every later one, so the command
+	// never reads as the "┊" output below it. No command text is replaced by
+	// ellipses. Blank lines at either end are dropped so the first line keeps "$".
 	seenCommand := false
-	for commandLine := range strings.SplitSeq(command, "\n") {
-		// Preserve intentional blank lines after the command starts while keeping
-		// the connector continuous. Leading blank lines are still skipped so the
-		// first visible command retains "$".
+	for commandLine := range strings.SplitSeq(strings.TrimRight(command, " \t\r\n"), "\n") {
 		if strings.TrimSpace(commandLine) == "" {
-			if seenCommand {
-				sb.WriteString(renderNestedToolBodyLine("", width))
+			if !seenCommand {
+				continue
 			}
-			continue
+			commandLine = ""
 		}
-
 		prefix := bashPrompt
 		if seenCommand {
-			prefix = nestedBodyPrefix
+			prefix = bashContinuation
 		}
 		seenCommand = true
-		sb.WriteString(renderGutteredLine(prefix, commandLine, width))
+		sb.WriteString(renderGutteredLine(prefix, bashWrapIndent, toolCallStyle, commandLine, width))
 	}
 	return sb.String()
 }

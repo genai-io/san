@@ -69,8 +69,8 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEntry {
 	params := conv.RenderContext{
 		Width: m.env.Width, MDRenderer: conv.NewMDRenderer(m.env.Width),
-		ThinkingDisplay: m.env.ThinkingDisplay,
-		AgentColors:     m.agentColors(), MemberColors: m.grp.colors,
+		ThinkingDisplay: m.env.ThinkingDisplay, BashPreviewLines: m.env.BashPreviewLines,
+		AgentColors: m.agentColors(), MemberColors: m.grp.colors,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 	}
 	renderer := func(width int) *conv.MDRenderer {

@@ -9,6 +9,10 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+// progressTailBytes is how much of the output's end a report carries — room
+// for the longest preview (setting.MaxBashPreviewLines) of ordinary lines.
+const progressTailBytes = 4 << 10
+
 // progressInterval throttles how often a running command reports its growing
 // output: often enough to feel live, rarely enough not to flood the UI channel.
 const progressInterval = 120 * time.Millisecond
@@ -23,6 +27,7 @@ type outputProgress struct {
 	mu         sync.Mutex
 	lines      int
 	bytes      int64
+	tail       []byte
 	lastReport time.Time
 }
 
@@ -41,14 +46,18 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	p.mu.Lock()
 	p.bytes += int64(n)
 	p.lines += bytes.Count(chunk, []byte{'\n'})
-	lines, byteCount := p.lines, p.bytes
+	p.tail = append(p.tail, chunk[max(0, len(chunk)-progressTailBytes):]...)
+	if over := len(p.tail) - progressTailBytes; over > 0 {
+		p.tail = append(p.tail[:0], p.tail[over:]...)
+	}
+	lines, byteCount, tail := p.lines, p.bytes, string(p.tail)
 	fire := p.lastReport.IsZero() || time.Since(p.lastReport) >= progressInterval
 	if fire {
 		p.lastReport = time.Now()
 	}
 	p.mu.Unlock()
 	if fire {
-		p.report(lines, byteCount)
+		p.report(lines, byteCount, tail)
 	}
 }
 

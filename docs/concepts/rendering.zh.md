@@ -163,9 +163,10 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 ```
 ● Read(src/foo.go)                      ← 工具名 + 摘要参数
   └ 128 lines                          ← 折叠的结果摘要
-● Bash(npm test)
-  ┊ > vitest run                       ← 展开的输出
-  ┊ ✓ src/foo.test.ts (12)
+● Bash (run the tests)
+  $ cd web                             ← 命令：首行 "$"，之后每行 ">"
+  > npm test
+  ┊ ✓ src/foo.test.ts (12)             ← 输出的最后 bashPreviewLines 行
   ┊ ✓ src/bar.test.ts (8)
   └ 3 lines
 ```
@@ -175,7 +176,9 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 - **Pending vs done** — 工具调用在 `m.conv.Tool.PendingCalls` 里直到
   对应的 `ToolResult` 到达；pending 期间工具名旁显示 spinner。
 - **Expanded / collapsed** — 消息级别的 `Expanded`，Ctrl-O 切换。嵌套的
-  Read 和 shell 结果折叠时只显示摘要；展开内容和摘要的连接符保持同一列。
+  Read 结果折叠时只显示摘要；shell 结果保留输出的最后 `bashPreviewLines`
+  行，和运行中从进度里显示的是同样几行，所以结束时不会跳动。展开内容和
+  摘要的连接符保持同一列。
 - **错误** — 嵌套的失败结果显示诊断信息，并以带错误颜色的 `failed` 行收尾。
 - **并行模式** — 多个工具调用并发跑时，每个调用独立显示进度。结果按完成
   顺序到达，因此按调用 ID 记录完成状态；整批结束后才将调用和配对结果一起

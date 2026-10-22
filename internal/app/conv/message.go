@@ -573,8 +573,10 @@ type ToolCallsParams struct {
 	// for the live elapsed timer on its row. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
 	// ToolProgress maps a running command's ID to its latest output counter,
-	// shown next to the timer. Empty for calls that have produced no output.
+	// shown next to the timer, and after it the output's tail, shown below.
 	ToolProgress map[string]string
+	// BashPreviewLines is how many last output lines a shell row shows.
+	BashPreviewLines int
 	// AwaitingApprovalID is the call parked on a permission prompt: announced,
 	// but not allowed to run yet.
 	AwaitingApprovalID string
@@ -634,7 +636,9 @@ type ToolResultData struct {
 	Expanded    bool
 	ToolInput   string
 	Width       int
-	Details     any
+	// PreviewLines is how many last output lines a collapsed shell result shows.
+	PreviewLines int
+	Details      any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
 	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.
@@ -733,12 +737,17 @@ func RenderToolCalls(params ToolCallsParams) string {
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))
+			if _, done := params.ResultMap[tc.ID]; !done && tool.IsShellTool(tc.Name) {
+				_, tail, _ := strings.Cut(params.ToolProgress[tc.ID], "\n")
+				sb.WriteString(renderOutputPreview(tail, params.BashPreviewLines, params.Width))
+			}
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
+			resultData.PreviewLines = params.BashPreviewLines
 			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
@@ -826,8 +835,9 @@ func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 		return ""
 	}
 	detail := " · " + elapsed
-	if progress := params.ToolProgress[tc.ID]; progress != "" {
-		detail += " · " + progress
+	// A shell command's progress is its counter, then its output's tail.
+	if counter, _, _ := strings.Cut(params.ToolProgress[tc.ID], "\n"); counter != "" {
+		detail += " · " + counter
 	}
 	return toolResultStyle.Render(detail)
 }

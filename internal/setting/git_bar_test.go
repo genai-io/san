@@ -84,3 +84,14 @@ func TestSaveGitBar(t *testing.T) {
 		}
 	}
 }
+func TestBashPreviewLineCount(t *testing.T) {
+	n := func(v int) *int { return &v }
+	for _, c := range []struct {
+		set  *int
+		want int
+	}{{nil, DefaultBashPreviewLines}, {n(0), 0}, {n(5), 5}, {n(-1), 0}, {n(99), MaxBashPreviewLines}} {
+		if got := (&Data{BashPreviewLines: c.set}).BashPreviewLineCount(); got != c.want {
+			t.Errorf("BashPreviewLines %v = %d, want %d", c.set, got, c.want)
+		}
+	}
+}

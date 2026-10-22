@@ -6,11 +6,11 @@ import (
 )
 
 // BashProgress reports the cumulative output a running foreground command has
-// produced so far — total lines and bytes across stdout and stderr — so the UI
-// can show a live counter and a long-running command reads as making progress
-// rather than being stuck. It is called repeatedly, already throttled by the
-// caller; the same call may report the same or a growing count.
-type BashProgress func(lines int, bytes int64)
+// produced so far — total lines and bytes across stdout and stderr, and the
+// last few KB of it — so the UI can show a live counter and the output's tail,
+// and a long-running command reads as making progress rather than being stuck.
+// It is called repeatedly, already throttled by the caller.
+type BashProgress func(lines int, bytes int64, tail string)
 
 type bashProgressKey struct{}
 

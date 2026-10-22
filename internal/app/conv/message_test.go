@@ -160,10 +160,10 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 		}
 	}
 	plain := stripANSI(out)
-	// Later physical command lines use the result connector, while the first
-	// line retains the shell prompt.
-	if !strings.Contains(plain, "  $ for f in a b; do\n  ┊   echo \"$f\"\n  ┊ done\n") {
-		t.Fatalf("multi-line command should connect its continuation lines, got %q", plain)
+	// "$" leads the first command line and ">" every later one, so no command
+	// line reads as the "┊" output below it.
+	if !strings.Contains(plain, "  $ for f in a b; do\n  >   echo \"$f\"\n  > done\n") {
+		t.Fatalf("multi-line command should mark its continuation lines with >, got %q", plain)
 	}
 	// The description stays on the header in normal text, separated by a dash.
 	if !strings.Contains(stripANSI(out), "Bash (loop over files)") {
@@ -197,12 +197,13 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		t.Fatalf("command should follow the prompt without extra spacing: %q", rows[0])
 	}
 
-	// Wrapped rows use the connector so the command block stays connected to its
-	// result summary. The prompt appears only on the first row.
-	for i, row := range rows[1:] {
-		if !strings.HasPrefix(row, nestedBodyPrefix) || strings.HasPrefix(row, bashPrompt) {
-			t.Fatalf("continuation row %d should retain the connector without repeating the prompt: %q", i+1, row)
-		}
+	// A row wrapped off the first line is only indented: it continues that
+	// line, so it carries neither "$" nor ">". The next line gets ">".
+	if !strings.HasPrefix(rows[1], bashWrapIndent) || strings.TrimSpace(rows[1])[0] == '>' {
+		t.Fatalf("a wrapped row should be indented without a mark: %q", rows[1])
+	}
+	if last := rows[len(rows)-1]; last != bashContinuation+"echo done" {
+		t.Fatalf("the next command line should lead with %q: %q", bashContinuation, last)
 	}
 
 	// The prompt and nested result markers occupy the same column.
@@ -211,21 +212,21 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	}
 }
 
-func Test_renderBashToolCallKeepsConnectorsContinuousAcrossBlankLines(t *testing.T) {
+func Test_renderBashToolCallMarksBlankCommandLines(t *testing.T) {
 	for _, input := range []string{
 		`{"command":"first\n\nthird"}`,
 		`{"command":"first\n   \nthird"}`,
 	} {
 		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
-		if !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n"+nestedBodyPrefix+"third\n") {
-			t.Fatalf("blank command lines should retain the connector, got %q", out)
+		if !strings.Contains(out, bashPrompt+"first\n"+bashContinuation+"\n"+bashContinuation+"third\n") {
+			t.Fatalf("a blank line inside the command keeps its > mark, got %q", out)
 		}
 	}
 
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
-		t.Fatalf("trailing blank command line should retain the connector, got %q", out)
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, bashPrompt+"first\n") {
+		t.Fatalf("trailing blank command lines should be dropped, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, bashContinuation) || !strings.Contains(out, bashPrompt+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
 	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
@@ -250,8 +251,8 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 		switch {
 		case strings.HasPrefix(line, bashPrompt):
 			reconstructed.WriteString(strings.TrimPrefix(line, bashPrompt))
-		case strings.HasPrefix(line, nestedBodyPrefix):
-			reconstructed.WriteString(strings.TrimPrefix(line, nestedBodyPrefix))
+		case strings.HasPrefix(line, bashWrapIndent):
+			reconstructed.WriteString(strings.TrimPrefix(line, bashWrapIndent))
 		default:
 			t.Fatalf("unexpected command block row %q", line)
 		}
@@ -612,7 +613,7 @@ func TestRenderToolCallsCompletedCommandPreservesSpaces(t *testing.T) {
 	for line := range strings.SplitSeq(out, "\n") {
 		if text, ok := strings.CutPrefix(line, bashPrompt); ok {
 			got.WriteString(text)
-		} else if text, ok := strings.CutPrefix(line, nestedBodyPrefix); ok {
+		} else if text, ok := strings.CutPrefix(line, bashWrapIndent); ok {
 			got.WriteString(text)
 		}
 	}
@@ -1717,5 +1718,56 @@ func TestRenderRecapWraps(t *testing.T) {
 		if w := lipgloss.Width(line); w > 30 {
 			t.Fatalf("line %q is %d wide, want <= 30", xansi.Strip(line), w)
 		}
+	}
+}
+
+// A shell row shows its output's last N lines on the "┊" gutter, the same rows
+// while it runs (from its progress) and once its result is in; output shorter
+// than N shows as many rows as it has, and N = 0 shows none.
+func TestRenderToolCallsShellOutputPreview(t *testing.T) {
+	call := core.ToolCall{ID: "cmd", Name: "Bash", Input: `{"command":"make"}`}
+	output := "one\ntwo\nthree\nfour\n"
+	preview := func(p ToolCallsParams) []string {
+		var rows []string
+		for line := range strings.SplitSeq(stripANSI(RenderToolCalls(p)), "\n") {
+			if text, ok := strings.CutPrefix(line, nestedBodyPrefix); ok {
+				rows = append(rows, text)
+			}
+		}
+		return rows
+	}
+	running := ToolCallsParams{
+		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
+		ToolStartedAt: map[string]time.Time{"cmd": time.Now().Add(-2 * time.Second)},
+		ToolProgress:  map[string]string{"cmd": "4 lines\n" + output},
+	}
+	done := ToolCallsParams{
+		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
+		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output}},
+	}
+	for name, p := range map[string]ToolCallsParams{"running": running, "done": done} {
+		if got := preview(p); strings.Join(got, ",") != "two,three,four" {
+			t.Errorf("%s: preview = %q, want the last 3 lines", name, got)
+		}
+		p.BashPreviewLines = 10
+		if got := preview(p); len(got) != 4 {
+			t.Errorf("%s: preview of 4 lines with room for 10 = %q, want 4 rows", name, got)
+		}
+		p.BashPreviewLines = 0
+		if got := preview(p); len(got) != 0 {
+			t.Errorf("%s: preview with 0 lines = %q, want none", name, got)
+		}
+	}
+	if out := stripANSI(RenderToolCalls(running)); !strings.Contains(out, "· 4 lines") || strings.Contains(out, "lines\none") {
+		t.Errorf("the running row should carry only the counter beside its timer:\n%s", out)
+	}
+}
+
+// A preview line is cut to the width, never wrapped, so the preview is never
+// taller than its line count.
+func TestRenderOutputPreviewCutsLongLines(t *testing.T) {
+	out := stripANSI(renderOutputPreview(strings.Repeat("x", 200), 3, 40))
+	if rows := strings.Split(strings.TrimSuffix(out, "\n"), "\n"); len(rows) != 1 || lipgloss.Width(rows[0]) > 40 || !strings.HasSuffix(rows[0], "…") {
+		t.Fatalf("a long line should be one cut row: %q", out)
 	}
 }

@@ -106,6 +106,10 @@ type Data struct {
 	// unrecognized resolves to DefaultThinkingDisplay. Read via
 	// Data.ThinkingDisplayMode().
 	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
+	// BashPreviewLines is how many of a shell command's last output lines its
+	// row shows, while it runs and after; 0 shows none. Nil means
+	// DefaultBashPreviewLines. Read via Data.BashPreviewLineCount().
+	BashPreviewLines *int `json:"bashPreviewLines,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -428,6 +432,21 @@ func (s *Data) ShowContextBar() bool {
 // ShowGitBar reports whether the optional repository status row is enabled.
 func (s *Data) ShowGitBar() bool {
 	return s != nil && s.GitBar != nil && *s.GitBar
+}
+
+// DefaultBashPreviewLines and MaxBashPreviewLines bound a shell row's output
+// preview; the cap keeps a row from crowding the screen.
+const (
+	DefaultBashPreviewLines = 3
+	MaxBashPreviewLines     = 20
+)
+
+// BashPreviewLineCount resolves BashPreviewLines, clamped to [0, MaxBashPreviewLines].
+func (s *Data) BashPreviewLineCount() int {
+	if s == nil || s.BashPreviewLines == nil {
+		return DefaultBashPreviewLines
+	}
+	return min(max(*s.BashPreviewLines, 0), MaxBashPreviewLines)
 }
 
 // ThinkingDisplayMode resolves how reasoning is drawn, mapping an unset or

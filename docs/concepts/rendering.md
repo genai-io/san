@@ -177,9 +177,10 @@ renders the tool-calls block under an assistant message:
 ```
 ● Read(src/foo.go)                      ← tool name + summary args
   └ 128 lines                          ← collapsed result summary
-● Bash(npm test)
-  ┊ > vitest run                       ← expanded output
-  ┊ ✓ src/foo.test.ts (12)
+● Bash (run the tests)
+  $ cd web                             ← the command: "$", then ">"
+  > npm test
+  ┊ ✓ src/foo.test.ts (12)             ← the output's last bashPreviewLines
   ┊ ✓ src/bar.test.ts (8)
   └ 3 lines
 ```
@@ -190,8 +191,10 @@ State that drives it:
   until its `ToolResult` arrives. While pending, the tool name shows
   a spinner.
 - **Expanded / collapsed** — per-message `Expanded` flag, toggled by
-  Ctrl-O. Nested Read and shell results collapse to a summary; expanded
-  content shares the summary's connector column.
+  Ctrl-O. Nested Read results collapse to a summary; shell results keep
+  their last `bashPreviewLines` of output, the same rows the running call
+  showed from its progress, so the row does not jump when it finishes.
+  Expanded content shares the summary's connector column.
 - **Error** — nested failures show their diagnostic and a tinted `failed` trailer.
 - **Parallel mode** — when multiple tool calls run in parallel, each
   call shows its own progress. Completion is tracked by call ID, since results

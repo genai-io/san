@@ -34,7 +34,8 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "theme": "dark",
   "contextBar": true,
   "gitBar": true,
-  "thinkingDisplay": "collapsed"
+  "thinkingDisplay": "collapsed",
+  "bashPreviewLines": 3
 }
 ```
 
@@ -61,6 +62,13 @@ Reads are asynchronous (two-second timeout, three-second delay between polls),
 local-only and never fetch. Workspace changes clear the snapshot and reread;
 disabling cancels polling. The row hides outside a repository, without Git, or
 on read failure.
+
+### `bashPreviewLines`
+
+How many of a shell command's last output lines its row shows, while it runs
+and after it finishes (default `3`, at most `20`; `0` shows only the line
+count). Lines are cut at the terminal width, not wrapped. Ctrl-O still expands
+the full output.
 
 ### `thinkingDisplay`
 
