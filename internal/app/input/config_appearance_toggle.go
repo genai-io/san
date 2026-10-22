@@ -1,6 +1,7 @@
 package input
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -23,6 +24,8 @@ func (p *appearancePanel) resetBarChoices() {
 			p.options[i].barOn = p.barBaseline
 		case kindGitBar:
 			p.options[i].barOn = p.gitBarBaseline
+		case kindBashPreview:
+			p.options[i].lines = p.previewBaseline
 		}
 	}
 }
@@ -50,9 +53,33 @@ func renderBarToggle(opt appearanceOption, hovered bool, width int) string {
 	} else {
 		offStyle = selected
 	}
-	row := caret + label + offStyle.Render("Off") + " " + onStyle.Render("On")
+	return withDesc(caret+label+offStyle.Render("Off")+" "+onStyle.Render("On"), opt.desc, width)
+}
+
+// renderLineStepper draws the preview-lines row in the toggles' layout: the
+// count in one cell between ‹ › arrows, "Off" for 0.
+func renderLineStepper(opt appearanceOption, hovered bool, width int) string {
+	caret := "  "
+	label := appearanceLabelStyle.Render(opt.label)
+	selected := appearanceToggleSelectedStyle
+	if hovered {
+		caret = appearanceCursorStyle.Render("▸ ")
+		label = appearanceCursorStyle.Render(opt.label)
+		selected = appearanceToggleFocusedStyle
+	}
+	label += strings.Repeat(" ", max(18-lipgloss.Width(opt.label), 1))
+	value := "Off"
+	if opt.lines > 0 {
+		value = strconv.Itoa(opt.lines)
+	}
+	arrow := appearanceDescStyle.Render
+	return withDesc(caret+label+arrow("‹ ")+selected.Render(value)+arrow(" ›"), opt.desc, width)
+}
+
+// withDesc appends the row's description when it fits.
+func withDesc(row, desc string, width int) string {
 	if remaining := width - lipgloss.Width(row) - 2; remaining >= 16 {
-		row += "  " + appearanceDescStyle.Render(ansi.Truncate(opt.desc, remaining, "…"))
+		row += "  " + appearanceDescStyle.Render(ansi.Truncate(desc, remaining, "…"))
 	}
 	return row
 }

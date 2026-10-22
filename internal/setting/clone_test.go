@@ -1,51 +1,60 @@
 package setting
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
-// TestClonePreservesAllScalarFields guards against Clone() drift that would
-// silently revert a setting to its default at startup: every scalar field on
-// Data must round-trip through Clone. New fields should be added here at the
-// same time they are added to Clone().
-func TestClonePreservesAllScalarFields(t *testing.T) {
-	yes, no := true, false
+// TestCloneCopiesEveryField guards against Clone() drift that would silently
+// revert a setting to its default at startup (it has dropped SelfLearn and
+// bashPreviewLines before). The source sets every field of Data — a new field
+// left out of it fails the test — and the clone must equal it without sharing
+// any pointer, slice or map.
+func TestCloneCopiesEveryField(t *testing.T) {
+	yes, no, three := true, false, 3
 	src := &Data{
-		Model:          "claude-opus-4-7",
-		Theme:          "dark",
-		SearchProvider: "exa",
-		AllowBypass:    &yes,
-		AutoMemory:     &no,
-		Persona:        "ml-researcher",
-		SelfLearn: SelfLearnSettings{
-			Skills:   SelfLearnSkills{DenyCreate: true},
-			Strategy: "custom",
-		},
+		Permissions:             PermissionSettings{DefaultMode: "plan", Allow: []string{"Read"}, Deny: []string{"Bash(rm:*)"}, Ask: []string{"Write"}},
+		Model:                   "claude-opus-4-7",
+		SubagentModel:           "inherit",
+		Hooks:                   map[string][]Hook{"PreToolUse": {{Matcher: "Bash", Hooks: []HookCmd{{Type: "command", Command: "true"}}}}},
+		Env:                     map[string]string{"K": "v"},
+		EnabledPlugins:          map[string]bool{"p": true},
+		DisabledTools:           map[string]bool{"WebFetch": true},
+		Theme:                   "dark",
+		SearchProvider:          "exa",
+		AllowBypass:             &yes,
+		AutoUpdate:              &no,
+		AutoMemory:              &no,
+		AutoMemoryDirectory:     "~/notes",
+		StreamFirstChunkTimeout: "5m",
+		StreamIdleTimeout:       "2m",
+		HookUITimeout:           "30s",
+		ContextBar:              &yes,
+		GitBar:                  &yes,
+		ThinkingDisplay:         ThinkingDisplayCollapsed,
+		BashPreviewLines:        &three,
+		Persona:                 "ml-researcher",
+		SelfLearn:               SelfLearnSettings{Skills: SelfLearnSkills{DenyCreate: true}, Strategy: "custom"},
+		AutoPilot:               AutoPilotSettings{Model: "openai/gpt"},
+		LastOperationMode:       "auto",
+	}
+	v := reflect.ValueOf(*src)
+	for i := range v.NumField() {
+		if v.Field(i).IsZero() {
+			t.Fatalf("set Data.%s in this test's source so Clone is checked for it", v.Type().Field(i).Name)
+		}
 	}
 
 	dst := src.Clone()
-
-	if dst.Model != src.Model {
-		t.Errorf("Model: got %q, want %q", dst.Model, src.Model)
+	if !reflect.DeepEqual(dst, src) {
+		t.Fatalf("Clone differs from its source:\n got %+v\nwant %+v", dst, src)
 	}
-	if dst.Theme != src.Theme {
-		t.Errorf("Theme: got %q, want %q", dst.Theme, src.Theme)
-	}
-	if dst.SearchProvider != src.SearchProvider {
-		t.Errorf("SearchProvider: got %q, want %q", dst.SearchProvider, src.SearchProvider)
-	}
-	if dst.AllowBypass == nil || *dst.AllowBypass != *src.AllowBypass {
-		t.Errorf("AllowBypass: got %v, want %v", dst.AllowBypass, src.AllowBypass)
-	}
-	if dst.AutoMemory == nil || *dst.AutoMemory != *src.AutoMemory {
-		t.Errorf("AutoMemory: got %v, want %v", dst.AutoMemory, src.AutoMemory)
-	}
-	if dst.Persona != src.Persona {
-		t.Errorf("Persona: got %q, want %q", dst.Persona, src.Persona)
-	}
-	// SelfLearn is value-typed; the whole struct (incl. nested Skills) must
-	// survive. Skipping this row caused /config to silently
-	// show stale defaults until the bug was caught.
-	if dst.SelfLearn != src.SelfLearn {
-		t.Errorf("SelfLearn: got %+v, want %+v", dst.SelfLearn, src.SelfLearn)
+	*dst.BashPreviewLines = 9
+	dst.Permissions.Allow[0] = "changed"
+	dst.Env["K"] = "changed"
+	dst.Hooks["PreToolUse"][0].Hooks[0].Command = "changed"
+	if *src.BashPreviewLines != 3 || src.Permissions.Allow[0] != "Read" || src.Env["K"] != "v" || src.Hooks["PreToolUse"][0].Hooks[0].Command != "true" {
+		t.Fatal("Clone shares storage with its source")
 	}
 }
 

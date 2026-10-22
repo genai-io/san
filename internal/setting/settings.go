@@ -816,51 +816,38 @@ func mergeProviderPreferences(s *Data) {
 	}
 }
 
-// Clone returns a deep copy of the Data.
+// Clone returns a deep copy of the Data. It copies the struct whole, so a new
+// scalar field needs nothing here; only reference fields — pointers, slices,
+// maps — get their own storage below.
 func (s *Data) Clone() *Data {
 	if s == nil {
 		return defaultData()
 	}
-	dst := NewData()
-	dst.Permissions.DefaultMode = s.Permissions.DefaultMode
-	dst.Permissions.Allow = append([]string(nil), s.Permissions.Allow...)
-	dst.Permissions.Deny = append([]string(nil), s.Permissions.Deny...)
-	dst.Permissions.Ask = append([]string(nil), s.Permissions.Ask...)
-	dst.Model = s.Model
-	dst.SubagentModel = s.SubagentModel
-	dst.Theme = s.Theme
-	dst.SearchProvider = s.SearchProvider
-	dst.StreamFirstChunkTimeout = s.StreamFirstChunkTimeout
-	dst.StreamIdleTimeout = s.StreamIdleTimeout
-	dst.HookUITimeout = s.HookUITimeout
-	dst.Persona = s.Persona
-	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
+	dst := *s
+	dst.Permissions.Allow = slices.Clone(s.Permissions.Allow)
+	dst.Permissions.Deny = slices.Clone(s.Permissions.Deny)
+	dst.Permissions.Ask = slices.Clone(s.Permissions.Ask)
 	dst.AutoPilot = s.AutoPilot.Clone()
-	dst.LastOperationMode = s.LastOperationMode
-	if s.AllowBypass != nil {
-		v := *s.AllowBypass
-		dst.AllowBypass = &v
+	dst.AllowBypass = clonePtr(s.AllowBypass)
+	dst.AutoUpdate = clonePtr(s.AutoUpdate)
+	dst.AutoMemory = clonePtr(s.AutoMemory)
+	dst.ContextBar = clonePtr(s.ContextBar)
+	dst.GitBar = clonePtr(s.GitBar)
+	dst.BashPreviewLines = clonePtr(s.BashPreviewLines)
+	empty := NewData() // the maps are never nil on a clone
+	dst.Env = maps.Clone(s.Env)
+	if dst.Env == nil {
+		dst.Env = empty.Env
 	}
-	if s.AutoUpdate != nil {
-		v := *s.AutoUpdate
-		dst.AutoUpdate = &v
+	dst.EnabledPlugins = maps.Clone(s.EnabledPlugins)
+	if dst.EnabledPlugins == nil {
+		dst.EnabledPlugins = empty.EnabledPlugins
 	}
-	if s.AutoMemory != nil {
-		v := *s.AutoMemory
-		dst.AutoMemory = &v
+	dst.DisabledTools = maps.Clone(s.DisabledTools)
+	if dst.DisabledTools == nil {
+		dst.DisabledTools = empty.DisabledTools
 	}
-	if s.ContextBar != nil {
-		v := *s.ContextBar
-		dst.ContextBar = &v
-	}
-	if s.GitBar != nil {
-		v := *s.GitBar
-		dst.GitBar = &v
-	}
-	dst.ThinkingDisplay = s.ThinkingDisplay
-	maps.Copy(dst.Env, s.Env)
-	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)
-	maps.Copy(dst.DisabledTools, s.DisabledTools)
+	dst.Hooks = empty.Hooks
 	for event, hooks := range s.Hooks {
 		clonedHooks := make([]Hook, len(hooks))
 		for i, hook := range hooks {
@@ -876,5 +863,13 @@ func (s *Data) Clone() *Data {
 		}
 		dst.Hooks[event] = clonedHooks
 	}
-	return dst
+	return &dst
+}
+
+func clonePtr[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/setting"
 )
@@ -288,5 +289,45 @@ func TestAppearancePanelSavesThinkingDisplay(t *testing.T) {
 	}
 	if data.ThinkingDisplay != setting.ThinkingDisplayHidden {
 		t.Fatalf("persisted thinkingDisplay = %q, want hidden\n%s", data.ThinkingDisplay, raw)
+	}
+}
+
+// The preview-lines row steps within 0–20 and Enter persists the count.
+func TestAppearancePreviewLinesStepsAndSaves(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p := newAppearancePanel(nil)
+	p.Enter()
+	for i, opt := range p.options {
+		if opt.kind == kindBashPreview {
+			p.cursor = i
+		}
+	}
+	press := func(key string, n int) {
+		for range n {
+			p.HandleKey(tea.KeyPressMsg{Code: []rune(key)[0], Text: key})
+		}
+	}
+	press("h", 10)
+	if got := p.options[p.cursor].lines; got != 0 {
+		t.Fatalf("stepped below 0: %d", got)
+	}
+	if !strings.Contains(ansi.Strip(p.Render(100, 30)), "‹  Off  ›") {
+		t.Fatalf("0 should read Off:\n%s", ansi.Strip(p.Render(100, 30)))
+	}
+	press("l", 30)
+	if got := p.options[p.cursor].lines; got != setting.MaxBashPreviewLines {
+		t.Fatalf("stepped past the max: %d", got)
+	}
+	press("h", 15)
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !done || cmd == nil {
+		t.Fatal("Enter did not apply")
+	}
+	if msg, ok := cmd().(BashPreviewSavedMsg); !ok || msg.Lines != 5 {
+		t.Fatalf("saved msg = %#v, want 5 lines", cmd())
+	}
+	saved, err := setting.NewLoader().LoadFile(filepath.Join(os.Getenv("HOME"), ".san", "settings.json"))
+	if err != nil || saved.BashPreviewLineCount() != 5 {
+		t.Fatalf("persisted %+v (%v), want 5 lines", saved, err)
 	}
 }

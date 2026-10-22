@@ -9,6 +9,8 @@
 //     drawn. Full by default (the reasoning streams as before); collapsed
 //     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
 //     instead.
+//   - SHELL OUTPUT — how many of a shell command's last output lines its row
+//     shows; left/right steps 0–20, Enter applies.
 //
 // All are personal preferences, so — unlike Self-Learning — they have no
 // project scope; selecting a row persists to the user settings file.
@@ -53,6 +55,12 @@ type ThinkingDisplaySavedMsg struct {
 	Mode string
 }
 
+// BashPreviewSavedMsg is emitted after persisting the shell output preview's
+// line count, already written to disk.
+type BashPreviewSavedMsg struct {
+	Lines int
+}
+
 // appearanceKind tags which setting a row applies when selected.
 type appearanceKind int
 
@@ -61,6 +69,7 @@ const (
 	kindContextBar
 	kindGitBar
 	kindThinkingDisplay
+	kindBashPreview
 )
 
 // appearanceOption is one selectable row. section heads the group it belongs
@@ -75,6 +84,7 @@ type appearanceOption struct {
 	theme           string // kindTheme: the theme value to apply
 	barOn           bool   // kindContextBar / kindGitBar: the on/off value to apply
 	thinkingDisplay string // kindThinkingDisplay: the display mode to apply
+	lines           int    // kindBashPreview: the line count to apply
 }
 
 // appearanceOptions is the full, section-ordered row list. The theme group
@@ -90,6 +100,7 @@ func appearanceOptions() []appearanceOption {
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2 s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2 s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
+		{section: "SHELL OUTPUT", kind: kindBashPreview, label: "Preview lines", desc: "A command's last output lines, live and after"},
 	}
 }
 
@@ -106,6 +117,7 @@ type appearancePanel struct {
 	barBaseline      bool
 	gitBarBaseline   bool
 	thinkingBaseline string
+	previewBaseline  int
 
 	// saveErr holds the last failed persist so Render can surface it inline
 	// instead of silently swallowing it. Cleared on navigation / re-entry.
@@ -124,6 +136,7 @@ func (p *appearancePanel) Enter() {
 	p.barBaseline = false
 	p.gitBarBaseline = false
 	p.thinkingBaseline = setting.DefaultThinkingDisplay
+	p.previewBaseline = setting.DefaultBashPreviewLines
 	if p.settings != nil {
 		if data := p.settings.Snapshot(); data != nil {
 			if data.Theme != "" {
@@ -132,6 +145,7 @@ func (p *appearancePanel) Enter() {
 			p.barBaseline = data.ShowContextBar()
 			p.gitBarBaseline = data.ShowGitBar()
 			p.thinkingBaseline = data.ThinkingDisplayMode()
+			p.previewBaseline = data.BashPreviewLineCount()
 		}
 	}
 	p.resetBarChoices()
@@ -160,10 +174,16 @@ func (p *appearancePanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		p.saveErr = nil
 	case "left", "h", "right", "l":
-		if isAppearanceBar(p.options[p.cursor]) {
-			p.options[p.cursor].barOn = msg.String() == "right" || msg.String() == "l"
-			p.saveErr = nil
+		more := msg.String() == "right" || msg.String() == "l"
+		switch opt := &p.options[p.cursor]; {
+		case isAppearanceBar(*opt):
+			opt.barOn = more
+		case opt.kind == kindBashPreview && more:
+			opt.lines = min(opt.lines+1, setting.MaxBashPreviewLines)
+		case opt.kind == kindBashPreview:
+			opt.lines = max(opt.lines-1, 0)
 		}
+		p.saveErr = nil
 	case "enter", " ":
 		return p.apply(p.options[p.cursor])
 	}
@@ -212,6 +232,13 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		}
 		p.thinkingBaseline = opt.thinkingDisplay
 		return func() tea.Msg { return ThinkingDisplaySavedMsg{Mode: opt.thinkingDisplay} }, true
+	case kindBashPreview:
+		if err := setting.SaveBashPreviewLines(opt.lines); err != nil {
+			p.saveErr = err
+			return nil, false
+		}
+		p.previewBaseline = opt.lines
+		return func() tea.Msg { return BashPreviewSavedMsg{Lines: opt.lines} }, true
 	}
 	return nil, false
 }
@@ -219,6 +246,9 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 func (p *appearancePanel) HintLine() string {
 	if isAppearanceBar(p.options[p.cursor]) {
 		return keycap("↑↓") + " move  " + keycap("←→") + " off/on  " + keycap("enter") + " apply"
+	}
+	if p.options[p.cursor].kind == kindBashPreview {
+		return keycap("↑↓") + " move  " + keycap("←→") + " fewer/more  " + keycap("enter") + " apply"
 	}
 	return radioHintLine()
 }
@@ -267,6 +297,8 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 		return opt.barOn == p.gitBarBaseline
 	case kindThinkingDisplay:
 		return opt.thinkingDisplay == p.thinkingBaseline
+	case kindBashPreview:
+		return opt.lines == p.previewBaseline
 	default:
 		return opt.theme == p.themeBaseline
 	}

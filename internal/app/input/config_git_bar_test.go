@@ -117,7 +117,7 @@ func TestAppearanceOptionsStayVisibleInShortPanel(t *testing.T) {
 		}
 		plain := ansi.Strip(body)
 		hovered := strings.Contains(plain, "▸ ● "+opt.label) || strings.Contains(plain, "▸ ○ "+opt.label)
-		if isAppearanceBar(opt) {
+		if isAppearanceBar(opt) || opt.kind == kindBashPreview {
 			hovered = strings.Contains(plain, "▸ "+opt.label)
 		}
 		if !strings.Contains(plain, opt.section) || !hovered {

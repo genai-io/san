@@ -14,6 +14,7 @@
 package app
 
 import (
+	"strconv"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -349,6 +350,18 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("reload settings after thinking-display save failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Thinking: " + msg.Mode)
+		return m, nil
+	case input.BashPreviewSavedMsg:
+		// Applies to rows drawn from here on; committed scrollback is immutable.
+		m.env.BashPreviewLines = msg.Lines
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after shell-preview save failed", zap.Error(err))
+		}
+		preview := "off"
+		if msg.Lines > 0 {
+			preview = strconv.Itoa(msg.Lines) + " lines"
+		}
+		m.conv.AddNotice("Shell output preview: " + preview)
 		return m, nil
 	case input.AutoUpdateSavedMsg:
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
