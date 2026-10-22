@@ -246,16 +246,35 @@ func renderBashToolResultInline(data ToolResultData) string {
 	content := strings.TrimSuffix(data.Content, "\n")
 	summary := formatLineCount(content)
 	style := toolResultStyle
+	// The details count the real output; the text may be cut, or stand in
+	// "(no output)" for none.
+	details, hasDetails := data.Details.(toolresult.BashDetails)
 	if data.IsError {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
+	} else if hasDetails && details.BackgroundTask != "" {
+		summary = "started in background · " + details.BackgroundTask
+	} else if hasDetails {
+		summary = "no output"
+		if details.LineCount > 0 {
+			summary = formatLineCountValue(details.LineCount)
+		}
+	}
+	preview := content
+	switch {
+	case hasDetails && details.BackgroundTask != "":
+		preview = "" // its text is how to reach the task (Ctrl-O shows it), not output
+	case hasDetails && details.LineCount == 0:
+		content, preview = "", ""
+	case hasDetails && details.Tail != "":
+		preview = details.Tail
 	}
 
 	var sb strings.Builder
 	if data.Expanded {
 		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
 	} else {
-		sb.WriteString(renderOutputPreview(content, data.BashPreviewLines, data.Width))
+		sb.WriteString(renderOutputPreview(preview, data.BashPreviewLines, data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -284,7 +303,8 @@ func renderOutputPreview(output string, n, width int) string {
 	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
 	var sb strings.Builder
 	for line := range strings.SplitSeq(output[start+1:], "\n") {
-		line = strings.ReplaceAll(visibleLine(line), "\t", "    ")
+		// Plain text: an output's own color reset would end the dim tone midway.
+		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
 		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+kit.TruncateText(line, room)) + "\n")
 	}
 	return sb.String()

@@ -1763,8 +1763,33 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	}
 }
 
+// The finished row counts and previews the real output from its details: the
+// text can be cut short, or be the "(no output)" placeholder.
+func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
+	render := func(content string, d toolresult.BashDetails) string {
+		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80, BashPreviewLines: 2}))
+	}
+	cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000, Tail: "ne 7999\nline 8000\n"})
+	if !strings.Contains(cut, "┊ line 8000\n") || strings.Contains(cut, "truncated") || !strings.Contains(cut, "└ 8000 lines") {
+		t.Errorf("cut output should preview its real end and count:\n%s", cut)
+	}
+	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "┊") || !strings.Contains(none, "└ no output") {
+		t.Errorf("no output should show no rows:\n%s", none)
+	}
+	if bg := render("Task started in background.\nkill -TERM -- -1", toolresult.BashDetails{BackgroundTask: "bash-1"}); strings.Contains(bg, "┊") || !strings.Contains(bg, "└ started in background · bash-1") {
+		t.Errorf("a background start is not output to preview:\n%s", bg)
+	}
+}
+
 // A preview line is cut to the width, never wrapped, so the preview is never
 // taller than its line count.
+func TestRenderOutputPreviewIsPlainText(t *testing.T) {
+	out := renderOutputPreview("\x1b[31mFAIL\x1b[0m rest", 3, 40)
+	if strings.Contains(out, "[31m") || strings.Contains(out, "[0m rest") {
+		t.Fatalf("the output's own escapes should not reach the preview: %q", out)
+	}
+}
+
 func TestRenderOutputPreviewCutsLongLines(t *testing.T) {
 	out := stripANSI(renderOutputPreview(strings.Repeat("x", 200), 3, 40))
 	if rows := strings.Split(strings.TrimSuffix(out, "\n"), "\n"); len(rows) != 1 || lipgloss.Width(rows[0]) > 40 || !strings.HasSuffix(rows[0], "…") {

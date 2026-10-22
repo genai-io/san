@@ -6,8 +6,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	coretool "github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 func TestOutputProgress_countsAndForwardsVerbatim(t *testing.T) {
@@ -95,5 +97,48 @@ func TestOutputProgress_tailKeepsTheEnd(t *testing.T) {
 	}
 	if len(gotTail) != progressTailBytes || !strings.HasSuffix(gotTail, "end\n") {
 		t.Fatalf("tail is %d bytes ending %q, want %d ending in the output's end", len(gotTail), gotTail[max(0, len(gotTail)-8):], progressTailBytes)
+	}
+}
+
+// Output that stops inside a throttle window is still reported once the window
+// ends, not left at the last report until the command finishes.
+func TestOutputProgress_reportsWhatTheThrottleHeldBack(t *testing.T) {
+	reports := make(chan int, 4)
+	p := &outputProgress{report: func(lines int, _ int64, _ string) { reports <- lines }}
+	w := p.tee(&bytes.Buffer{})
+	_, _ = w.Write([]byte("one\n"))
+	_, _ = w.Write([]byte("two\nthree\n"))
+	if got := <-reports; got != 1 {
+		t.Fatalf("first report = %d lines, want 1", got)
+	}
+	select {
+	case got := <-reports:
+		if got != 3 {
+			t.Fatalf("held-back report = %d lines, want 3", got)
+		}
+	case <-time.After(5 * progressInterval):
+		t.Fatal("the throttled write was never reported")
+	}
+	p.stop()
+}
+
+// Past the 30 KB the model gets, the result still counts every line and keeps
+// the real end, so the finished row's preview matches the last live one.
+func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
+	ctx := coretool.ContextWithBashProgress(context.Background(), func(int, int64, string) {})
+	result := bashTool(t).ExecuteApproved(ctx, map[string]any{
+		"command": `for i in $(seq 1 8000); do echo "line $i"; done`,
+		"timeout": 30000,
+	}, t.TempDir())
+	d, ok := result.Details.(toolresult.BashDetails)
+	if !result.Success || !ok {
+		t.Fatalf("success=%v details=%#v", result.Success, result.Details)
+	}
+	if d.LineCount != 8000 || !strings.HasSuffix(d.Tail, "line 7999\nline 8000\n") {
+		t.Fatalf("lineCount=%d tail ends %q, want 8000 and the real end", d.LineCount, d.Tail[max(0, len(d.Tail)-20):])
+	}
+	short := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo hi", "timeout": 30000}, t.TempDir())
+	if d := short.Details.(toolresult.BashDetails); d.LineCount != 1 || d.Tail != "" {
+		t.Fatalf("uncut output: %#v, want 1 line and no separate tail", d)
 	}
 }

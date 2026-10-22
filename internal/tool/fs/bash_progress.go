@@ -29,6 +29,8 @@ type outputProgress struct {
 	bytes      int64
 	tail       []byte
 	lastReport time.Time
+	trailing   *time.Timer // reports what a throttled write left unreported
+	stopped    bool
 }
 
 // tee counts the full stream even when its destination discards excess bytes.
@@ -56,11 +58,45 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	if fire { // copied only for a report: a fast command writes far more often
 		p.lastReport = time.Now()
 		tail = string(p.tail)
+	} else if p.trailing == nil {
+		// Without this, output that stops inside the window would sit
+		// unreported until the command ends.
+		p.trailing = time.AfterFunc(progressInterval-time.Since(p.lastReport), p.flush)
 	}
 	p.mu.Unlock()
 	if fire {
 		p.report(lines, byteCount, tail)
 	}
+}
+
+func (p *outputProgress) flush() {
+	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return
+	}
+	p.trailing = nil
+	p.lastReport = time.Now()
+	lines, byteCount, tail := p.lines, p.bytes, string(p.tail)
+	p.mu.Unlock()
+	p.report(lines, byteCount, tail)
+}
+
+// stop ends reporting once the command is done.
+func (p *outputProgress) stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopped = true
+	if p.trailing != nil {
+		p.trailing.Stop()
+	}
+}
+
+// lastTail returns the end of the output seen so far.
+func (p *outputProgress) lastTail() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return string(p.tail)
 }
 
 // countingWriter observes the accepted bytes without changing the destination's policy.
