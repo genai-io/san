@@ -572,9 +572,8 @@ type ToolCallsParams struct {
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// for the live elapsed timer on its row. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
-	// ToolProgress maps a running command's ID to its latest output counter,
-	// shown next to the timer, and after it the output's tail, shown below.
-	ToolProgress map[string]string
+	// ToolProgress maps a running command's ID to its latest progress.
+	ToolProgress map[string]ToolProgress
 	// BashPreviewLines is how many last output lines a shell row shows.
 	BashPreviewLines int
 	// AwaitingApprovalID is the call parked on a permission prompt: announced,
@@ -636,9 +635,9 @@ type ToolResultData struct {
 	Expanded    bool
 	ToolInput   string
 	Width       int
-	// PreviewLines is how many last output lines a collapsed shell result shows.
-	PreviewLines int
-	Details      any
+	// BashPreviewLines is how many last output lines a collapsed shell result shows.
+	BashPreviewLines int
+	Details          any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
 	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.
@@ -738,8 +737,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 			sb.WriteString(appendRowDetail(row, detail))
 			if _, done := params.ResultMap[tc.ID]; !done && tool.IsShellTool(tc.Name) {
-				_, tail, _ := strings.Cut(params.ToolProgress[tc.ID], "\n")
-				sb.WriteString(renderOutputPreview(tail, params.BashPreviewLines, params.Width))
+				sb.WriteString(renderOutputPreview(params.ToolProgress[tc.ID].Tail, params.BashPreviewLines, params.Width))
 			}
 		}
 
@@ -747,7 +745,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
-			resultData.PreviewLines = params.BashPreviewLines
+			resultData.BashPreviewLines = params.BashPreviewLines
 			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
@@ -835,8 +833,7 @@ func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 		return ""
 	}
 	detail := " · " + elapsed
-	// A shell command's progress is its counter, then its output's tail.
-	if counter, _, _ := strings.Cut(params.ToolProgress[tc.ID], "\n"); counter != "" {
+	if counter := params.ToolProgress[tc.ID].Counter; counter != "" {
 		detail += " · " + counter
 	}
 	return toolResultStyle.Render(detail)

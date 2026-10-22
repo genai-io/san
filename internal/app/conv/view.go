@@ -36,9 +36,8 @@ type RenderContext struct {
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
-	// ToolProgress maps a running command's ID to its latest output counter
-	// ("1.2k lines") and, after a newline, the output's tail.
-	ToolProgress map[string]string
+	// ToolProgress maps a running command's ID to its latest progress.
+	ToolProgress map[string]ToolProgress
 	// AwaitingApprovalID is the in-flight call parked on a permission prompt.
 	// It was stamped as started before the prompt went out, so its row has to
 	// be told apart from the siblings that really are executing.

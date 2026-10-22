@@ -636,7 +636,7 @@ func TestRenderToolCallsFitsNarrowTerminal(t *testing.T) {
 						ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
 						SpinnerView: "⋯", Width: width, ToolCallsExpanded: expanded, Interactive: true,
 						ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
-						ToolProgress:  map[string]string{call.ID: "123.4k lines"},
+						ToolProgress:  map[string]ToolProgress{call.ID: {Counter: "123.4k lines"}},
 					})
 					for line := range strings.SplitSeq(out, "\n") {
 						if got := lipgloss.Width(line); got > width {
@@ -673,7 +673,7 @@ func TestRenderToolCallsShowsOutputCounterNextToTimer(t *testing.T) {
 		SpinnerView:   "⋯",
 		Width:         100,
 		ToolStartedAt: map[string]time.Time{"tc-1": time.Now().Add(-8 * time.Second)},
-		ToolProgress:  map[string]string{"tc-1": "1.2k lines"},
+		ToolProgress:  map[string]ToolProgress{"tc-1": {Counter: "1.2k lines"}},
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
@@ -694,7 +694,7 @@ func TestRenderToolCallsHidesCounterWithoutTimer(t *testing.T) {
 		SpinnerView:   "⋯",
 		Width:         100,
 		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
-		ToolProgress:  map[string]string{"tc-1": "42 lines"},
+		ToolProgress:  map[string]ToolProgress{"tc-1": {Counter: "42 lines"}},
 	}
 
 	if got := stripANSI(RenderToolCalls(params)); strings.Contains(got, "42 lines") {
@@ -1739,7 +1739,7 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	running := ToolCallsParams{
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ToolStartedAt: map[string]time.Time{"cmd": time.Now().Add(-2 * time.Second)},
-		ToolProgress:  map[string]string{"cmd": "4 lines\n" + output},
+		ToolProgress:  map[string]ToolProgress{"cmd": {Counter: "4 lines", Tail: output}},
 	}
 	done := ToolCallsParams{
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,

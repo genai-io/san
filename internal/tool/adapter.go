@@ -143,7 +143,7 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
 			ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64, tail string) {
 				if text := formatBashProgress(lines, bytes); text != "" {
-					a.activityFn(callID, text+"\n"+tail)
+					a.activityFn(callID, text+"\n"+tail) // split by conv's SetProgress
 				}
 			})
 		}

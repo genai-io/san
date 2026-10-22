@@ -50,10 +50,12 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	if over := len(p.tail) - progressTailBytes; over > 0 {
 		p.tail = append(p.tail[:0], p.tail[over:]...)
 	}
-	lines, byteCount, tail := p.lines, p.bytes, string(p.tail)
+	lines, byteCount := p.lines, p.bytes
 	fire := p.lastReport.IsZero() || time.Since(p.lastReport) >= progressInterval
-	if fire {
+	var tail string
+	if fire { // copied only for a report: a fast command writes far more often
 		p.lastReport = time.Now()
+		tail = string(p.tail)
 	}
 	p.mu.Unlock()
 	if fire {

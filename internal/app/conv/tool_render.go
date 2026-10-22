@@ -255,7 +255,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 	if data.Expanded {
 		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
 	} else {
-		sb.WriteString(renderOutputPreview(content, data.PreviewLines, data.Width))
+		sb.WriteString(renderOutputPreview(content, data.BashPreviewLines, data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -273,16 +273,19 @@ func renderOutputPreview(output string, n, width int) string {
 	if n <= 0 || strings.TrimSpace(output) == "" {
 		return ""
 	}
-	lines := strings.Split(output, "\n")
-	lines = lines[max(0, len(lines)-n):]
+	// Only the last n lines are split off: the output may run to thousands.
+	start := len(output)
+	for i := 0; i < n && start > 0; i++ {
+		start = strings.LastIndexByte(output[:start], '\n')
+	}
 	if width <= 0 {
 		width = 80
 	}
 	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
 	var sb strings.Builder
-	for _, line := range lines {
+	for line := range strings.SplitSeq(output[start+1:], "\n") {
 		line = strings.ReplaceAll(visibleLine(line), "\t", "    ")
-		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+xansi.Truncate(line, room, "…")) + "\n")
+		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+kit.TruncateText(line, room)) + "\n")
 	}
 	return sb.String()
 }
@@ -1257,10 +1260,9 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
-	// Soft-wrap every command line to the terminal width, in the call's own
-	// color: "$" leads the first line and ">" every later one, so the command
-	// never reads as the "┊" output below it. No command text is replaced by
-	// ellipses. Blank lines at either end are dropped so the first line keeps "$".
+	// Soft-wrap every command line in the call's own color, marked as the
+	// constants above describe; no command text is replaced by ellipses. Blank
+	// lines at either end are dropped so the first line keeps "$".
 	seenCommand := false
 	for commandLine := range strings.SplitSeq(strings.TrimRight(command, " \t\r\n"), "\n") {
 		if strings.TrimSpace(commandLine) == "" {
