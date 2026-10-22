@@ -30,7 +30,7 @@ type QuestionPrompt struct {
 func NewQuestionPrompt() *QuestionPrompt {
 	ti := textinput.New()
 	ti.Prompt = "" // the row's number leads the input
-	ti.CharLimit = 200
+	ti.CharLimit = 2000
 	ti.SetWidth(50)
 
 	return &QuestionPrompt{
@@ -519,6 +519,22 @@ func (p *QuestionPrompt) openCustom(q tool.Question) {
 	p.customInput.Placeholder = customHint(description)
 	p.customInput.Focus()
 	p.restoreCustomInput()
+}
+
+// HandlePaste implements the app's pasteHandler: pasted text is an answer of
+// its own, so it lands in the free-text row from whichever row is highlighted.
+func (p *QuestionPrompt) HandlePaste(content string) tea.Cmd {
+	if !p.active || p.request == nil {
+		return nil
+	}
+	if !p.showingCustom {
+		q := p.request.Questions[p.currentQuestion]
+		p.selectedOption[p.currentQuestion] = customOptionIndex(q)
+		p.openCustom(q)
+	}
+	var cmd tea.Cmd
+	p.customInput, cmd = p.customInput.Update(tea.PasteMsg{Content: content})
+	return cmd
 }
 
 // customHint is what the free-text row says before anything is typed: the
