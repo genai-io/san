@@ -40,7 +40,7 @@ func TestWithSideQuestion(t *testing.T) {
 
 func TestBtwAnswerAfterSessionChangeIsDropped(t *testing.T) {
 	m := &model{services: services{sessionID: "new"}}
-	ask := btwAsk{id: 1, question: "why?", sessionID: "old"}
+	ask := btwAsk{question: "why?", sessionID: "old"}
 	m.btw = []btwAsk{ask}
 
 	m.onBtwAnswer(btwAnswerMsg{ask: ask, answer: "because"})

@@ -121,7 +121,7 @@ func SuggestPromptCmd(req PromptSuggestionRequest) tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		resp, err := req.Client.Complete(req.Ctx, req.SystemPrompt, req.Messages, req.MaxTokens)
+		resp, err := req.Client.Complete(req.Ctx, req.SystemPrompt, req.Messages, nil, req.MaxTokens)
 		if err != nil {
 			return PromptSuggestionMsg{Err: err}
 		}

@@ -94,7 +94,7 @@ func TestLLMComplete(t *testing.T) {
 	}
 	l := &Client{provider: mp, model: "test-model"}
 
-	resp, err := l.Complete(context.Background(), "compact", []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("summarize")}}, 2048)
+	resp, err := l.Complete(context.Background(), "compact", []core.Message{{Role: ai.RoleUser, Content: ai.TextContent("summarize")}}, nil, 2048)
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	provider := &retryThenSuccessProvider{}
 	client := NewClient(provider, "test-model", 1)
 
-	resp, err := client.Complete(context.Background(), "", nil, 1)
+	resp, err := client.Complete(context.Background(), "", nil, nil, 1)
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}

@@ -166,7 +166,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	compactClient := client
 	compactFunc := func(ctx context.Context, msgs []core.Message) (string, error) {
 		text := core.BuildCompactionText(msgs)
-		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, core.CompactMaxTokens)
+		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens)
 		if err != nil {
 			return "", err
 		}

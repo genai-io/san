@@ -241,8 +241,9 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	case core.ChatNotice:
 		if msg.AgentNotice {
 			sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
-		} else if strings.HasPrefix(msg.Content, "/btw ") {
-			sb.WriteString(RenderSideAnswer(msg.Content, p.Width, p.MDRenderer))
+		} else if rest, ok := strings.CutPrefix(msg.Content, sideNoticePrefix); ok {
+			question, answer, _ := strings.Cut(rest, "\n\n")
+			sb.WriteString(RenderSideAnswer(question, answer, p.Width, p.MDRenderer))
 		} else {
 			sb.WriteString(RenderSystemMessage(msg.Content))
 		}

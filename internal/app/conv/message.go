@@ -477,29 +477,28 @@ func RenderSystemMessage(content string) string {
 	return systemMsgStyle.Render(content) + "\n"
 }
 
-// RenderSideAnswer renders a /btw exchange, "/btw <question>\n\n<answer>": a
-// muted "◇ btw" mark leading the question, set apart from the reply's ●, and
-// the answer as markdown under the reply gutter.
-func RenderSideAnswer(content string, width int, md *MDRenderer) string {
-	question, answer, _ := strings.Cut(content, "\n\n")
-	// Wrapped, not padded: a row filled out to the width rewraps into an extra
-	// blank row once scrollback is narrowed.
+// sideNoticePrefix marks a notice holding a /btw exchange,
+// "/btw <question>\n\n<answer>". The text is the whole record, so a resumed
+// session draws it the same way.
+const sideNoticePrefix = "/btw "
+
+// SideNotice is the notice text recording one /btw exchange.
+func SideNotice(question, answer string) string {
+	return sideNoticePrefix + question + "\n\n" + answer
+}
+
+// RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the
+// question, set apart from the reply's ●, and the answer under the reply
+// gutter. The question is wrapped, not padded: a row filled out to the width
+// rewraps into an extra blank row once scrollback is narrowed.
+func RenderSideAnswer(question, answer string, width int, md *MDRenderer) string {
 	mark := sideMarkStyle.Render("◇ btw ")
 	indent := strings.Repeat(" ", lipgloss.Width(mark))
-	var head strings.Builder
-	for i, line := range strings.Split(lipgloss.Wrap(strings.TrimPrefix(question, "/btw "), max(width-len(indent), 10), ""), "\n") {
-		if i == 0 {
-			head.WriteString(mark)
-		} else {
-			head.WriteString(indent)
-		}
-		head.WriteString(bulletStyle.Render(line) + "\n")
+	lines := strings.Split(lipgloss.Wrap(question, max(width-len(indent), 10), ""), "\n")
+	for i, line := range lines {
+		lines[i] = bulletStyle.Render(line)
 	}
-	body := answer
-	if md != nil {
-		body = renderMarkdownContent(md, answer)
-	}
-	return head.String() + lipgloss.JoinHorizontal(lipgloss.Top, continuationGutter, body) + "\n"
+	return mark + strings.Join(lines, "\n"+indent) + "\n" + RenderCommittedContentBlock(answer, false, md) + "\n"
 }
 
 // RenderAgentNotice renders a background-agent notice (a subagent completion or

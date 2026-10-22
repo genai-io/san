@@ -201,7 +201,7 @@ func buildHookCompleter(p llm.Provider) hook.LLMCompleter {
 	}
 	return func(ctx context.Context, systemPrompt, userMessage, model string) (string, error) {
 		c := llm.NewClient(p, model, 0)
-		resp, err := c.Complete(ctx, systemPrompt, []core.Message{core.UserMessage(userMessage, nil)}, 4096)
+		resp, err := c.Complete(ctx, systemPrompt, []core.Message{core.UserMessage(userMessage, nil)}, nil, 4096)
 		if err != nil {
 			return "", err
 		}

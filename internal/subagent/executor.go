@@ -503,7 +503,7 @@ func fileReadToolGuidance(schemas []core.ToolSchema, mode PermissionMode) string
 func subagentCompactFunc(client *llm.Client, task string) func(context.Context, []core.Message) (string, error) {
 	return func(ctx context.Context, msgs []core.Message) (string, error) {
 		text := core.BuildCompactionText(msgs)
-		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, core.CompactMaxTokens)
+		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens)
 		if err != nil {
 			return "", err
 		}
