@@ -40,6 +40,7 @@ func builtinCommands() []Info {
 		{Name: "context", Description: "Show what fills the context window · /context limit <window> <output> | reset to override it"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
 		{Name: "btw", Description: "Ask a side question, even mid-turn, without adding it to the conversation"},
+		{Name: "recap", Description: "Recap where this session stands: the goal, now, and the next step"},
 		{Name: "init", Description: "Initialize instruction files (AGENTS.md, local, rules)"},
 		{Name: "memory", Description: "Manage memory files and turn auto memory on/off"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},

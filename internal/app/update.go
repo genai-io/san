@@ -257,6 +257,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// hot-swap the running judge so the new model/prompt/steers take effect at
 		// once, and write it — minus the per-session mission and system prompt — as
 		// the default for new sessions.
+		before := m.env.AutoPilot
 		m.applyAutopilotConfig(msg.Config)
 		m.persistAutopilotDefault()
 		// Suggest is the input hint's feature switch. Clear both visible and
@@ -264,7 +265,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.env.AutoPilot.Steers.SuggestOn() {
 			m.userInput.PromptSuggestion.Clear()
 		}
-		if m.autopilotEngaged() {
+		if m.autopilotEngaged() || !drivingChanged(before, msg.Config) {
 			m.conv.AddNotice("Autopilot config saved")
 		} else {
 			m.conv.AddNotice("Autopilot config saved · shift+tab to engage")
@@ -458,6 +459,17 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.onMainNotice(msg.notice)
 	case btwAnswerMsg:
 		return m, m.onBtwAnswer(msg)
+	case tea.BlurMsg:
+		return m, m.onBlur()
+	case tea.FocusMsg:
+		return m, m.onFocus()
+	case recapPrepareMsg:
+		if msg.awaySince.Equal(m.recap.awaySince) {
+			return m, m.prepareRecap()
+		}
+		return m, nil
+	case recapReadyMsg:
+		return m, m.onRecapReady(msg)
 	case selfLearnStartedMsg:
 		return m, m.onSelfLearnStarted()
 	case selflearnTickMsg:

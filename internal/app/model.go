@@ -56,6 +56,8 @@ type model struct {
 	taskCompletionsShown map[string]bool
 	// btw holds the /btw questions still waiting on their answer.
 	btw []btwAsk
+	// recap follows the terminal's focus for the recap shown on coming back.
+	recap recapState
 	// drainedThisStep caps OnStepEnd to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep bool

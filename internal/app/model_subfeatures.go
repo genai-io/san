@@ -17,64 +17,6 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// suggestTask is the Suggest steer's per-call instruction — the mission-driven
-// input hint. Like every LLM steer it rides on the shared autopilotSystemPrompt
-// persona, so only the task and its output format live here.
-const suggestTask = `Suggest the SINGLE next instruction to give the agent toward the mission — a short, direct imperative the user can accept and send as-is.
-Reply with ONLY that instruction (a few words to one sentence): no quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
-
-// startPromptSuggestion fires the input hint. AutoPilot owns the whole decision
-// here, reading its live config directly so the hint holds no autopilot state:
-// the Suggest steer is the feature switch — on by default. With it off, the
-// hint never runs, in or out of AutoPilot mode. With it on, a mission driven
-// under AutoPilot proposes the next step toward it; otherwise it falls back to
-// predicting the human's next input.
-func (m *model) startPromptSuggestion() tea.Cmd {
-	if m.env.LLMProvider == nil {
-		return nil
-	}
-	if !m.env.AutoPilot.Steers.SuggestOn() {
-		return nil
-	}
-	if mission := m.autopilotSuggestMission(); mission != "" {
-		return m.userInput.PromptSuggestion.Start(m.missionSuggestionRequest(mission))
-	}
-	return input.StartPromptSuggestion(m.promptSuggestionDeps())
-}
-
-// missionSuggestionRequest builds the Suggest-steer hint: the recent session
-// plus the mission, asking for the single next instruction to give the agent.
-func (m *model) missionSuggestionRequest(mission string) input.PromptSuggestionRequest {
-	msgs := input.RecentSuggestionMessages(&m.conv.ConversationModel)
-	msgs = append(msgs, core.UserMessage(suggestTask+"\n\nMission:\n"+mission, nil))
-	return input.PromptSuggestionRequest{
-		Client:       m.buildLLMClient(),
-		Messages:     msgs,
-		SystemPrompt: m.autopilotSystemPrompt(),
-		MaxTokens:    60,
-	}
-}
-
-func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
-	return input.PromptSuggestionDeps{
-		Input:        &m.userInput,
-		Conversation: &m.conv.ConversationModel,
-		HasProvider:  m.env.LLMProvider != nil,
-		BuildClient:  m.buildLLMClient,
-	}
-}
-
-// autopilotSuggestMission returns the mission the Suggest steer should propose
-// the next step toward — the live autopilot mission when the steer is on, else
-// "". Read fresh from env every call, so clearing the mission (End completion /
-// ctrl+r / panel) takes effect immediately.
-func (m *model) autopilotSuggestMission() string {
-	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.SuggestOn() {
-		return ""
-	}
-	return m.env.AutoPilot.ActiveMission()
-}
-
 func (m *model) overlayDeps() input.OverlayDeps {
 	reloadModelStore := func() {
 		if store := m.services.LLM.Store(); store != nil {

@@ -1,7 +1,5 @@
-// /btw: a side question answered from the conversation as it stands. The
-// request reuses the main agent's system prompt, tools and chain, so the
-// provider's prompt cache serves the prefix; neither the question nor the
-// answer enters the agent's chain, so the main agent never sees them.
+// /btw: a side question answered from the conversation as it stands, as a
+// side request (see side.go).
 package app
 
 import (
@@ -12,13 +10,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/sdk-go/pkg/ai"
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
 )
 
 const btwTimeout = 2 * time.Minute
@@ -32,15 +25,6 @@ const btwInstructions = `<system-reminder>This is a side question from the user.
 </system-reminder>
 
 `
-
-// btwPending answers a call the main agent is still running, so the request
-// is well-formed and the model knows the result isn't in yet.
-const btwPending = "[No result yet: this call is still running in the main conversation.]"
-
-// btwReplying stands in for the reply the main agent is still writing. Left
-// open, the request it answers reads as the model's own to do, and a model
-// asked a side question then does both.
-const btwReplying = "[The main agent is replying to this right now; its reply is not in yet.]"
 
 // btwAsk is one /btw in flight, drawn live until its answer lands. It keeps
 // the session it was asked in: an answer that outlives a /clear or /resume
@@ -57,16 +41,7 @@ type btwAnswerMsg struct {
 
 // sideQuestion starts answering question off the UI goroutine.
 func (m *model) sideQuestion(question string) tea.Cmd {
-	client := m.buildLLMClient()
-	var system string
-	var schemas []core.ToolSchema
-	if sys, tools := m.services.Agent.System(), m.services.Agent.Tools(); sys != nil && tools != nil {
-		system, schemas = sys.Prompt(), tools.Schemas()
-	} else {
-		params := m.promptParams()
-		system, schemas = params.System().Prompt(), params.Schemas()
-	}
-	chain := m.services.Agent.Messages()
+	req := m.newSideRequest("btw", btwInstructions+question)
 	ask := btwAsk{question: strings.Join(strings.Fields(question), " "), sessionID: m.sessionID()}
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd
@@ -77,8 +52,7 @@ func (m *model) sideQuestion(question string) tea.Cmd {
 	return tea.Batch(tick, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
 		defer cancel()
-		msgs := client.RequestMessages(withSideQuestion(chain, question))
-		return btwAnswerMsg{ask: ask, answer: askSide(ctx, client, system, schemas, msgs)}
+		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req)}
 	})
 }
 
@@ -109,33 +83,11 @@ func (m *model) btwLive() string {
 	return strings.TrimSuffix(strings.Join(rows, "\n"), "\n")
 }
 
-// withSideQuestion appends the question to a copy of chain, filling whatever
-// the main agent has in flight with a placeholder: btwPending for a running
-// tool call, btwReplying for a reply not yet written. The question is a
-// message of its own: sdk-go's OpenAI chat driver sends a message holding
-// tool results as tool messages only, dropping any text beside them.
-func withSideQuestion(chain []core.Message, question string) []core.Message {
-	msgs := slices.Clone(chain)
-	if n := len(msgs); n > 0 && msgs[n-1].Role == ai.RoleUser {
-		msgs = append(msgs, core.AssistantMessage(btwReplying, "", nil))
-	} else if n > 0 {
-		var pending []ai.ToolResult
-		for _, call := range msgs[n-1].ToolCalls() {
-			pending = append(pending, ai.ToolResult{ToolCallID: call.ID, ToolName: call.Name, Content: ai.TextContent(btwPending)})
-		}
-		if len(pending) > 0 {
-			msgs = append(msgs, ai.ToolResultsMessage(pending...))
-		}
-	}
-	return append(msgs, core.UserMessage(btwInstructions+question, nil))
-}
-
-func askSide(ctx context.Context, client *llm.Client, system string, schemas []core.ToolSchema, msgs []core.Message) string {
-	resp, err := client.Complete(ctx, system, msgs, schemas, 0)
+func askSide(ctx context.Context, req sideRequest) string {
+	resp, err := req.complete(ctx)
 	if err != nil {
 		return "Error: " + err.Error()
 	}
-	log.Logger().Debug("btw answered", zap.Int("input", resp.Usage.Input), zap.Int("cache_read", resp.Usage.CacheRead), zap.Int("cache_write", resp.Usage.CacheWrite), zap.Int("output", resp.Usage.Output))
 	if text := strings.TrimSpace(resp.Content.Text()); text != "" {
 		return text
 	}

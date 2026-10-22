@@ -200,6 +200,15 @@ func autopilotWithoutSessionFields(cfg setting.AutoPilotSettings) setting.AutoPi
 	return shared
 }
 
+// drivingChanged reports whether an edit touched anything beyond Suggest and
+// Recap, the switches that work without AutoPilot mode.
+func drivingChanged(before, after setting.AutoPilotSettings) bool {
+	probe := before.Clone()
+	probe.Steers.Suggest = after.Steers.Suggest
+	probe.RecapAfterMinutes = after.RecapAfterMinutes
+	return !probe.Equal(after)
+}
+
 // persistAutopilotDefault hot-swaps the running judge from m.env.AutoPilot and
 // writes the live config — minus the per-session fields (mission, its state and
 // the inline system prompt) — to settings.json as the default for new sessions.

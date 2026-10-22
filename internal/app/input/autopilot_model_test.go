@@ -118,6 +118,7 @@ func TestAutopilotEscSaves(t *testing.T) {
 // rather than closing the panel.
 func TestAutopilotEnterWorksTheRow(t *testing.T) {
 	p := newModelPickPanel()
+	p.cursor = rowIndex(t, &p, "Mission")
 	if cmd := p.HandleKeypress(keyEnter); !p.IsActive() || cmd != nil {
 		t.Fatal("enter should act on the row, not close the panel")
 	}

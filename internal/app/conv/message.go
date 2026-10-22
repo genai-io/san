@@ -487,6 +487,26 @@ func SideNotice(question, answer string) string {
 	return sideNoticePrefix + question + "\n\n" + answer
 }
 
+// recapNoticePrefix marks a notice holding a recap, "/recap <facts>\n\n<body>".
+// The text is the whole record, so a resumed session draws it the same way.
+const recapNoticePrefix = "/recap "
+
+// RecapNotice is the notice text recording one recap: facts San measured
+// itself, and the lines the model wrote.
+func RecapNotice(facts, body string) string {
+	return recapNoticePrefix + facts + "\n\n" + body
+}
+
+// RenderRecap renders a recap: a muted "◇ recap" mark trailed by its facts,
+// and the model's lines under the reply gutter, kept line for line.
+func RenderRecap(facts, body string) string {
+	head := "◇ recap"
+	if facts != "" {
+		head += " · " + facts
+	}
+	return sideMarkStyle.Render(head) + "\n" + RenderCommittedContentBlock(body, false, nil) + "\n"
+}
+
 // RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the
 // question, set apart from the reply's ●, and the answer under the reply
 // gutter. The question is wrapped, not padded: a row filled out to the width

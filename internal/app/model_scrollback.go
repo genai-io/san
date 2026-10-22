@@ -652,7 +652,9 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 // survive, and the print's scroll then pushes them into native history as a
 // stale copy.
 func minimalScrollbackFrame() tea.View {
-	return tea.NewView(" ")
+	v := tea.NewView(" ")
+	v.ReportFocus = true // as View does, or each print toggles focus reporting
+	return v
 }
 
 // minimalScrollbackFrameHeight is the rows minimalScrollbackFrame occupies.

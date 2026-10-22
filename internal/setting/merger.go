@@ -47,12 +47,13 @@ func mergeSettings(base, overlay *Data) *Data {
 // entire autoPilot block is dropped on every Load and every save.
 func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 	return AutoPilotSettings{
-		Model:            coalesce(overlay.Model, base.Model),
-		ThinkingEffort:   coalesce(overlay.ThinkingEffort, base.ThinkingEffort),
-		SystemPrompt:     coalesce(overlay.SystemPrompt, base.SystemPrompt),
-		SystemPromptFile: coalesce(overlay.SystemPromptFile, base.SystemPromptFile),
-		Mission:          coalesce(overlay.Mission, base.Mission),
-		MaxContinuations: coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
+		Model:             coalesce(overlay.Model, base.Model),
+		ThinkingEffort:    coalesce(overlay.ThinkingEffort, base.ThinkingEffort),
+		SystemPrompt:      coalesce(overlay.SystemPrompt, base.SystemPrompt),
+		SystemPromptFile:  coalesce(overlay.SystemPromptFile, base.SystemPromptFile),
+		Mission:           coalesce(overlay.Mission, base.Mission),
+		MaxContinuations:  coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
+		RecapAfterMinutes: coalesceInt(overlay.RecapAfterMinutes, base.RecapAfterMinutes),
 		Steers: SteerSettings{
 			Suggest:    coalescePtr(overlay.Steers.Suggest, base.Steers.Suggest),
 			Permission: coalescePtr(overlay.Steers.Permission, base.Steers.Permission),

@@ -106,6 +106,8 @@ type SlashCommandEnv struct {
 	TrustWorkspace func() string
 	// SideQuestion answers /btw without the main agent seeing it.
 	SideQuestion func(question string) tea.Cmd
+	// Recap answers /recap without the main agent seeing it.
+	Recap func() tea.Cmd
 }
 
 type SlashCommandController struct {
@@ -150,6 +152,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 		"btw":            (*SlashCommandController).handleBtwCommand,
+		"recap":          (*SlashCommandController).handleRecapCommand,
 	}
 }
 
@@ -165,6 +168,10 @@ func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string
 		return "Usage: /btw <question>", nil, nil
 	}
 	return "", c.env.SideQuestion(question), nil
+}
+
+func (c *SlashCommandController) handleRecapCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	return "", c.env.Recap(), nil
 }
 
 // handlePersonaCommand switches the active persona. Bare /persona opens the
