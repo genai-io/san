@@ -38,6 +38,7 @@ func (m *model) handleSubmit() tea.Cmd {
 		// command must reach the task now, not after that model turn ends.
 		// /btw exists to be asked while the agent works.
 		if input.IsWorkflowStopCommand(raw) || input.IsBtwCommand(raw) {
+			m.userInput.RecordSubmission(m.env.CWD, raw)
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
 			m.userInput.Reset()
 			if result == "" {

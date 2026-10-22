@@ -23,6 +23,9 @@ import (
 
 const btwTimeout = 2 * time.Minute
 
+// btwAttempts matches the retries the agent loop gives a transient failure.
+const btwAttempts = 3
+
 const btwInstructions = `<system-reminder>This is a side question from the user. Answer it directly in a single response from what this conversation already holds.
 - You are a separate, one-off answer: the main work is not interrupted and continues on its own, and there is no follow-up turn.
 - Answer only this question. Requests earlier in the conversation are the main agent's to carry out, not yours.
@@ -132,9 +135,14 @@ func askSide(ctx context.Context, client *llm.Client, system string, schemas []c
 		return "Error: " + err.Error()
 	}
 	opts := append([]ai.Option{ai.WithSystem(system), ai.WithTools(schemas...)}, client.CallOptions()...)
-	resp, err := tc.Complete(ctx, msgs, opts...)
-	if err != nil {
-		return "Error: " + err.Error()
+	var resp *ai.Response
+	for attempt := 1; ; attempt++ {
+		if resp, err = tc.Complete(ctx, msgs, opts...); err == nil {
+			break
+		}
+		if !ai.IsRetryable(err) || attempt == btwAttempts || core.BackoffSleep(ctx, attempt, ai.RetryAfter(err)) != nil {
+			return "Error: " + err.Error()
+		}
 	}
 	log.Logger().Debug("btw answered", zap.Int("input", resp.Usage.Input), zap.Int("cache_read", resp.Usage.CacheRead), zap.Int("cache_write", resp.Usage.CacheWrite), zap.Int("output", resp.Usage.Output))
 	if text := strings.TrimSpace(resp.Content.Text()); text != "" {

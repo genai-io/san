@@ -482,16 +482,24 @@ func RenderSystemMessage(content string) string {
 // the answer as markdown under the reply gutter.
 func RenderSideAnswer(content string, width int, md *MDRenderer) string {
 	question, answer, _ := strings.Cut(content, "\n\n")
+	// Wrapped, not padded: a row filled out to the width rewraps into an extra
+	// blank row once scrollback is narrowed.
 	mark := sideMarkStyle.Render("◇ btw ")
-	question = bulletStyle.Width(max(width-lipgloss.Width(mark), 10)).Render(strings.TrimPrefix(question, "/btw "))
-	head := lipgloss.JoinHorizontal(lipgloss.Top, mark, question) + "\n"
+	indent := strings.Repeat(" ", lipgloss.Width(mark))
+	var head strings.Builder
+	for i, line := range strings.Split(lipgloss.Wrap(strings.TrimPrefix(question, "/btw "), max(width-len(indent), 10), ""), "\n") {
+		if i == 0 {
+			head.WriteString(mark)
+		} else {
+			head.WriteString(indent)
+		}
+		head.WriteString(bulletStyle.Render(line) + "\n")
+	}
 	body := answer
 	if md != nil {
-		if rendered, err := md.Render(answer); err == nil {
-			body = strings.Trim(rendered, "\n")
-		}
+		body = renderMarkdownContent(md, answer)
 	}
-	return head + lipgloss.JoinHorizontal(lipgloss.Top, continuationGutter, body) + "\n"
+	return head.String() + lipgloss.JoinHorizontal(lipgloss.Top, continuationGutter, body) + "\n"
 }
 
 // RenderAgentNotice renders a background-agent notice (a subagent completion or
