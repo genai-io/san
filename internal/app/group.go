@@ -181,15 +181,6 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 		}
 		cmds = append(cmds, m.deliverGroupReminder(line, line+group.NoSendMessage))
 	case group.Joined:
-		if self.SessionID != m.sessionID() {
-			// Another session took over this process (/fork): the membership
-			// stays with the session that joined.
-			group.Release()
-			m.reconcileMembership()
-			line := "This session is not in group " + g
-			cmds = append(cmds, m.deliverGroupReminder(line, line+group.NoSendMessage))
-			break
-		}
 		m.reconcileMembership()
 		m.grp.stamp, m.grp.fullRead = msg.stamp, msg.fullRead
 		cmds = append(cmds, m.syncRoster(g, self, msg)...)
@@ -213,6 +204,13 @@ func (m *model) syncRoster(g string, self group.Member, msg memberMsg) []tea.Cmd
 	next := msg.roster
 	prev := m.grp.roster
 	m.grp.roster = next
+	for id, now := range next { // a renamed member keeps its colour
+		if was, ok := prev[id]; ok && was.Name != now.Name {
+			if slot, ok := m.grp.colors[was.Name]; ok {
+				m.grp.colors[now.Name] = slot
+			}
+		}
+	}
 	m.placeMemberColors(next, self.SessionID)
 	if prev == nil {
 		return nil // the first read after joining: the join itself told the model
@@ -242,8 +240,8 @@ func (m *model) placeMemberColors(roster map[string]rosterEntry, selfID string) 
 
 type rosterChange struct{ line, text string } // for the person, for the model
 
-// rosterChanges compares two roster reads: who joined, left, switched mode,
-// or went offline or came back.
+// rosterChanges compares two roster reads: who joined, left, was renamed or
+// took a new role, switched mode, or went offline or came back.
 func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []rosterChange {
 	var out []rosterChange
 	say := func(line, text string) { out = append(out, rosterChange{line, "Group " + g + ": " + text}) }
@@ -258,6 +256,12 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		switch {
 		case !ok:
 			say(fmt.Sprintf("@%s joined — %s", now.Name, now.Role), fmt.Sprintf("@%s joined%s — %s (%s)", now.Name, holdsNote(now.Hold), now.Role, now.Cwd))
+		case was.Name != now.Name:
+			line := fmt.Sprintf("@%s is now @%s — %s", was.Name, now.Name, now.Role)
+			say(line, line)
+		case was.Role != now.Role:
+			line := fmt.Sprintf("@%s now: %s", now.Name, now.Role)
+			say(line, line)
 		case !was.Hold && now.Hold:
 			show("@%s now holds messages", now.Name)
 		case was.Hold && !now.Hold:
@@ -414,9 +418,25 @@ func (m *model) exitGroup() {
 	_ = group.Leave()
 }
 
+// releaseGroupOnSwitch takes this process out of the group of the session it
+// ran before /fork or /resume: the membership stays with that session, offline
+// until it is resumed. Both the person and the model are told.
+func (m *model) releaseGroupOnSwitch() {
+	g, self := group.Current()
+	if g == "" || self.SessionID == m.sessionID() {
+		return
+	}
+	group.Release()
+	m.grp = groupState{polling: m.grp.polling}
+	m.conv.AddNotice(m.fitLines(fmt.Sprintf("Out of group %s: @%s stays with the previous session; /resume it to return", g, self.Name)))
+	if m.systemRemindersSent { // otherwise the model never heard of the group
+		m.services.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
+	}
+}
+
 // rejoinGroup reclaims the membership a resumed session recorded.
 func (m *model) rejoinGroup(blob string) {
-	group.Release() // the session this process ran before goes offline
+	m.releaseGroupOnSwitch()
 	m.grp = groupState{polling: m.grp.polling}
 	var ms membership
 	if blob != "" && json.Unmarshal([]byte(blob), &ms) == nil && ms.Group != "" {
@@ -490,6 +510,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 
 func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	name, member, role, hold := parseGroupJoin(args)
+	member = cmp.Or(member, group.NameFrom(m.env.SessionName)) // a named session joins under its name
 	if g, _ := group.Current(); g != "" {
 		return fmt.Sprintf("Already in group %s; /group leave first.", g), nil
 	}
@@ -524,6 +545,36 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		m.services.Reminder.Enqueue(group.Roster())
 	}
 	return m.fitLines(fmt.Sprintf("Joined %s as @%s · %s%s", msg.group, self.Name, group.MemberCount(len(group.Members(msg.group))), holdTag(self.Hold)))
+}
+
+// renameMember follows /name into the group: the session name, in member
+// form, becomes the member name, and role, when given, what it owns.
+func (m *model) renameMember(name, role string) string {
+	g, self := group.Current()
+	if g == "" {
+		if role != "" {
+			return "Not in a group; --role applies once you /group join."
+		}
+		return ""
+	}
+	var notes []string
+	if name != "" {
+		if err := group.Rename(group.NameFrom(name)); err != nil {
+			notes = append(notes, "member name kept: "+err.Error())
+		}
+	}
+	if role != "" {
+		if err := group.SetRole(role); err != nil {
+			notes = append(notes, "role kept: "+err.Error())
+		}
+	}
+	m.grp.blob = currentMembership() // renameSession's append persists it
+	_, now := group.Current()
+	if (now.Name != self.Name || now.Role != self.Role) && m.systemRemindersSent {
+		m.services.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now @%s — %s", g, now.Name, now.Role))
+	}
+	notes = append([]string{fmt.Sprintf("@%s in %s — %s", now.Name, g, now.Role)}, notes...)
+	return strings.Join(notes, " · ")
 }
 
 // joinFlagSuggestions offers the join flags not yet given, once a group is named.

@@ -383,8 +383,14 @@ name: <a 1-3 word kebab-case handle for what this session works on>
 role: <at most 10 words on what this session owns, in the conversation's language>
 ```
 
-With no conversation, or if the call fails, the name falls back to the `/name`
-session name or the directory name, and the role to `working in <directory>`.
+A session named with `/name` joins under that name and the call only fills
+the role. With no conversation, or if the call fails, the name falls back to
+the directory name, and the role to `working in <directory>`. Names may use
+any letters, so `/name 网关` works.
+
+In a group, `/name <name> [--role TEXT]` renames the member too: the new file
+is claimed before the old one goes, the inbox moves with it, and the others
+see `@old is now @new`.
 
 ## Keeping the roster
 

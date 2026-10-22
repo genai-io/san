@@ -113,7 +113,7 @@ var (
 	}
 )
 
-var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$`)
+var validName = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_-]{0,39}$`)
 
 // ValidName reports whether s can name a group or a member.
 func ValidName(s string) bool { return validName.MatchString(s) }
@@ -222,17 +222,22 @@ func Join(g string, self Member) (Member, error) {
 	if err := os.MkdirAll(groupDir(g), 0o700); err != nil {
 		return Member{}, err
 	}
-	if err := claim(memberFile(g, self.Name), self); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return Member{}, fmt.Errorf("%q is already taken in group %s", self.Name, g)
-		}
-		return Member{}, err
-	}
-	if err := os.MkdirAll(inboxDir(g, self.Name), 0o700); err != nil {
+	if err := publish(g, self); err != nil {
 		return Member{}, err
 	}
 	setCurrent(g, self)
 	return self, nil
+}
+
+// publish claims self's name in group g and makes its inbox.
+func publish(g string, self Member) error {
+	if err := claim(memberFile(g, self.Name), self); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("%q is already taken in group %s", self.Name, g)
+		}
+		return err
+	}
+	return os.MkdirAll(inboxDir(g, self.Name), 0o700)
 }
 
 // homeRelative writes a path under the home directory as ~/…: members share
@@ -352,6 +357,43 @@ func Disband(g string) error {
 	return os.RemoveAll(groupDir(g))
 }
 
+// Rename gives this member a new name in its group, inbox and all. The new
+// file is claimed before the old one goes, so the name is never lost to a
+// joiner and the session never drops out of the roster.
+func Rename(name string) error {
+	g, self := Current()
+	if g == "" {
+		return errNotJoined
+	}
+	if !ValidName(name) {
+		return invalidName("member", name)
+	}
+	if name == self.Name {
+		return nil
+	}
+	old := self.Name
+	self.Name = name
+	if err := publish(g, self); err != nil {
+		return err
+	}
+	setCurrent(g, self)
+	_ = os.Remove(memberFile(g, old))
+	// The old member file is gone, so new senders find the new name; what
+	// already lies in the old inbox moves over.
+	// ponytail: a sender that read the roster just before can still land one
+	// message in the old inbox after this sweep; it is lost with the directory.
+	from := inboxDir(g, old)
+	entries, _ := os.ReadDir(from)
+	for _, e := range entries {
+		_ = os.Rename(filepath.Join(from, e.Name()), filepath.Join(inboxDir(g, name), e.Name()))
+	}
+	_ = os.RemoveAll(from)
+	return nil
+}
+
+// SetRole records what this member owns in its file.
+func SetRole(role string) error { return updateSelf(func(self *Member) { self.Role = role }) }
+
 // SetHold records in this member's file whether it holds messages.
 func SetHold(hold bool) error { return updateSelf(func(self *Member) { self.Hold = hold }) }
 
@@ -372,17 +414,19 @@ func updateSelf(change func(*Member)) error {
 }
 
 // Check reports how this process's membership stands on disk, so a member
-// that was kicked or whose group was disbanded can notice.
+// that was kicked or whose group was disbanded can notice. Only a missing or
+// taken-over file counts: any other read error is retried on the next poll.
 func Check() Status {
 	g, self := Current()
 	if g == "" {
 		return NotJoined
 	}
-	if _, ok := Stamp(g); !ok {
+	if _, err := os.Stat(groupDir(g)); errors.Is(err, os.ErrNotExist) {
 		return Disbanded
 	}
 	var onDisk Member
-	if readJSON(memberFile(g, self.Name), &onDisk) != nil || onDisk.SessionID != self.SessionID {
+	err := readJSON(memberFile(g, self.Name), &onDisk)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && onDisk.SessionID != self.SessionID) {
 		return Removed
 	}
 	return Joined

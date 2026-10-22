@@ -131,14 +131,14 @@ func GroupsListing() string {
 	return "Groups: " + strings.Join(parts, ", ")
 }
 
-var nonNameChars = regexp.MustCompile(`[^a-z0-9_-]+`)
+var nonNameChars = regexp.MustCompile(`[^\p{L}\p{N}_-]+`)
 
 // NameFrom turns free text into a valid member name, or "" when nothing of it
 // is left.
 func NameFrom(s string) string {
 	s = strings.Trim(nonNameChars.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "-"), "-_")
-	if len(s) > 30 {
-		s = strings.TrimRight(s[:30], "-_")
+	if r := []rune(s); len(r) > 30 {
+		s = strings.TrimRight(string(r[:30]), "-_")
 	}
 	if !ValidName(s) {
 		return ""

@@ -362,7 +362,9 @@ name: <a 1-3 word kebab-case handle for what this session works on>
 role: <at most 10 words on what this session owns, in the conversation's language>
 ```
 
-对话为空或调用失败时，名字退回到 `/name` 设置的会话名或目录名，职责为 `working in <目录名>`。
+用 `/name` 命名过的会话直接以会话名加入，这次调用只补职责。对话为空或调用失败时，名字退回到目录名，职责为 `working in <目录名>`。名字可以用任意文字，`/name 网关` 也行。
+
+在组里，`/name <名字> [--role 文字]` 同时给成员改名：先占新文件再删旧文件，inbox 跟着搬，其他成员看到 `@old is now @new`。
 
 ## 成员列表怎么维护
 

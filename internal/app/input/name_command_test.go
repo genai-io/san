@@ -10,7 +10,7 @@ import (
 func TestHandleNameCommand_Rename(t *testing.T) {
 	var got string
 	c := NewSlashCommandController(SlashCommandEnv{
-		RenameSession: func(name string) error { got = name; return nil },
+		RenameSession: func(name, _ string) (string, error) { got = name; return "", nil },
 	})
 	out, _, err := c.handleNameCommand(context.Background(), "  My Awesome Session  ")
 	if err != nil {
@@ -48,7 +48,7 @@ func TestHandleNameCommand_WhitespaceOnlyShowsUsage(t *testing.T) {
 
 func TestHandleNameCommand_FailureSurfaced(t *testing.T) {
 	c := NewSlashCommandController(SlashCommandEnv{
-		RenameSession: func(string) error { return errors.New("boom") },
+		RenameSession: func(string, string) (string, error) { return "", errors.New("boom") },
 	})
 	out, _, err := c.handleNameCommand(context.Background(), "test")
 	if err == nil {
@@ -70,5 +70,28 @@ func TestHandleNameCommand_Unavailable(t *testing.T) {
 	}
 	if !strings.Contains(out, "not available") {
 		t.Errorf("output = %q, want an unavailable message", out)
+	}
+}
+
+func TestHandleNameCommand_RoleFlag(t *testing.T) {
+	var gotName, gotRole string
+	c := NewSlashCommandController(SlashCommandEnv{
+		RenameSession: func(name, role string) (string, error) { gotName, gotRole = name, role; return "@api in shop", nil },
+	})
+	for _, tc := range []struct{ args, name, role string }{
+		{"api --role owns the HTTP layer", "api", "owns the HTTP layer"},
+		{`--role "登录页重构"`, "", "登录页重构"},
+	} {
+		out, _, err := c.handleNameCommand(context.Background(), tc.args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotName != tc.name || gotRole != tc.role {
+			t.Errorf("%q → name %q role %q, want %q %q", tc.args, gotName, gotRole, tc.name, tc.role)
+		}
+		renamed := strings.Contains(out, "Session renamed")
+		if !strings.Contains(out, "@api in shop") || renamed != (tc.name != "") {
+			t.Errorf("%q → output %q", tc.args, out)
+		}
 	}
 }
