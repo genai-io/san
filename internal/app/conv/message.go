@@ -499,8 +499,10 @@ func RecapNotice(facts, body string) string {
 
 // RenderRecap renders a recap dim end to end, an aside to the conversation:
 // its paragraph led by mark where a reply has its ●, and under it the facts
-// San measured.
-func RenderRecap(mark, facts, body string) string {
+// San measured. It wraps itself: a recap drawn live under a running turn would
+// otherwise be cut at the screen edge.
+func RenderRecap(mark, facts, body string, width int) string {
+	body = lipgloss.Wrap(body, max(width-lipgloss.Width(continuationGutter), 10), "")
 	out := lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Render(body))
 	if facts != "" {
 		out += "\n" + continuationGutter + sideMarkStyle.Render(facts)

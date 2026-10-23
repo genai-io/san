@@ -198,7 +198,7 @@ func (m *model) recapLive() string {
 	if !m.recap.show {
 		return ""
 	}
-	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(m.recap.away), "writing…")
+	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(m.recap.away), "writing…", m.env.Width)
 }
 
 func (m *model) writeRecap() tea.Cmd {
