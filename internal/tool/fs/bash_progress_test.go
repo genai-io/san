@@ -52,10 +52,15 @@ func TestOutputProgress_forwardsBytesUnchanged(t *testing.T) {
 	}
 }
 
-func TestOutputProgress_teeWithoutReporterIsBareBuffer(t *testing.T) {
-	buf := &bytes.Buffer{}
-	if w := (&outputProgress{}).tee(buf); w != buf {
-		t.Fatalf("tee without a reporter = %T, want the bare buffer (zero overhead)", w)
+// With nobody listening the output's end is still kept: the result carries it.
+func TestOutputProgress_keepsTailWithoutReporter(t *testing.T) {
+	p := &outputProgress{}
+	w := p.tee(&bytes.Buffer{})
+	if _, err := w.Write([]byte("one\ntwo\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.lastTail(); got != "one\ntwo\n" {
+		t.Fatalf("tail = %q, want the output's end", got)
 	}
 }
 
@@ -122,23 +127,31 @@ func TestOutputProgress_reportsWhatTheThrottleHeldBack(t *testing.T) {
 	p.stop()
 }
 
-// Past the 30 KB the model gets, the result still counts every line and keeps
-// the real end, so the finished row's preview matches the last live one.
+// Past the 30 KB the model gets, the result still counts every line, and a
+// failure keeps the real end as stdout and stderr interleaved, so its finished
+// row shows what the live one did. A success keeps no end: it folds.
 func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 	ctx := coretool.ContextWithBashProgress(context.Background(), func(int, int64, string) {})
 	result := bashTool(t).ExecuteApproved(ctx, map[string]any{
-		"command": `for i in $(seq 1 8000); do echo "line $i"; done`,
+		"command": `for i in $(seq 1 8000); do echo "line $i"; done; exit 1`,
 		"timeout": 30000,
 	}, t.TempDir())
 	d, ok := result.Details.(toolresult.BashDetails)
-	if !result.Success || !ok {
+	if result.Success || !ok {
 		t.Fatalf("success=%v details=%#v", result.Success, result.Details)
 	}
 	if d.LineCount != 8000 || !strings.HasSuffix(d.Tail, "line 7999\nline 8000\n") {
 		t.Fatalf("lineCount=%d tail ends %q, want 8000 and the real end", d.LineCount, d.Tail[max(0, len(d.Tail)-20):])
 	}
-	short := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo hi", "timeout": 30000}, t.TempDir())
-	if d := short.Details.(toolresult.BashDetails); d.LineCount != 1 || d.Tail != "" {
-		t.Fatalf("uncut output: %#v, want 1 line and no separate tail", d)
+	if lines := strings.Count(d.Tail, "\n"); lines != previewTailLines {
+		t.Fatalf("tail has %d lines, want the %d a row can preview", lines, previewTailLines)
+	}
+	mixed := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo a; sleep 0.05; echo err >&2; sleep 0.05; echo b; exit 1", "timeout": 30000}, t.TempDir())
+	if d := mixed.Details.(toolresult.BashDetails); d.LineCount != 3 || d.Tail != "a\nerr\nb\n" {
+		t.Fatalf("uncut failure: %#v, want 3 lines in the order written", d)
+	}
+	succeeded := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo hi", "timeout": 30000}, t.TempDir())
+	if d := succeeded.Details.(toolresult.BashDetails); d.LineCount != 1 || d.Tail != "" {
+		t.Fatalf("success: %#v, want its count and no end", d)
 	}
 }

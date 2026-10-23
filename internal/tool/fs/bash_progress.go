@@ -18,7 +18,8 @@ const progressTailBytes = 4 << 10
 const progressInterval = 120 * time.Millisecond
 
 // outputProgress accumulates the line and byte totals of a running command's
-// output and forwards throttled snapshots to a reporter. stdout and stderr are
+// output and its interleaved end, and forwards throttled snapshots to a reporter
+// when there is one. stdout and stderr are
 // copied on separate goroutines, so every field is mutex-guarded and the count
 // is shared across both streams — the reporter sees one combined total.
 type outputProgress struct {
@@ -35,9 +36,6 @@ type outputProgress struct {
 
 // tee counts the full stream even when its destination discards excess bytes.
 func (p *outputProgress) tee(buf io.Writer) io.Writer {
-	if p == nil || p.report == nil {
-		return buf
-	}
 	return &countingWriter{buf: buf, progress: p}
 }
 
@@ -53,12 +51,12 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 		p.tail = append(p.tail[:0], p.tail[over:]...)
 	}
 	lines, byteCount := p.lines, p.bytes
-	fire := p.lastReport.IsZero() || time.Since(p.lastReport) >= progressInterval
+	fire := p.report != nil && (p.lastReport.IsZero() || time.Since(p.lastReport) >= progressInterval)
 	var tail string
 	if fire { // copied only for a report: a fast command writes far more often
 		p.lastReport = time.Now()
 		tail = string(p.tail)
-	} else if p.pending == nil {
+	} else if p.report != nil && p.pending == nil {
 		// Without this, output that stops inside the window would sit
 		// unreported until the command ends.
 		p.pending = time.AfterFunc(progressInterval-time.Since(p.lastReport), p.flush)
