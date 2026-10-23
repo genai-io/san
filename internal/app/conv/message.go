@@ -572,9 +572,10 @@ type ToolCallsParams struct {
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// for the live elapsed timer on its row. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
-	// ToolProgress maps a running command's ID to its latest output counter,
-	// shown next to the timer. Empty for calls that have produced no output.
-	ToolProgress map[string]string
+	// ToolProgress maps a running command's ID to its latest progress.
+	ToolProgress map[string]ToolProgress
+	// BashPreviewLines is how many last output lines a shell row shows.
+	BashPreviewLines int
 	// AwaitingApprovalID is the call parked on a permission prompt: announced,
 	// but not allowed to run yet.
 	AwaitingApprovalID string
@@ -634,7 +635,9 @@ type ToolResultData struct {
 	Expanded    bool
 	ToolInput   string
 	Width       int
-	Details     any
+	// BashPreviewLines is how many last output lines a collapsed shell result shows.
+	BashPreviewLines int
+	Details          any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
 	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.
@@ -733,12 +736,16 @@ func RenderToolCalls(params ToolCallsParams) string {
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))
+			if _, done := params.ResultMap[tc.ID]; !done && tool.IsShellTool(tc.Name) {
+				sb.WriteString(renderOutputPreview(params.ToolProgress[tc.ID].Tail, params.BashPreviewLines, params.Width))
+			}
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
+			resultData.BashPreviewLines = params.BashPreviewLines
 			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
@@ -826,8 +833,8 @@ func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 		return ""
 	}
 	detail := " · " + elapsed
-	if progress := params.ToolProgress[tc.ID]; progress != "" {
-		detail += " · " + progress
+	if counter := params.ToolProgress[tc.ID].Counter; counter != "" {
+		detail += " · " + counter
 	}
 	return toolResultStyle.Render(detail)
 }

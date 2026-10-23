@@ -1,6 +1,7 @@
 package input
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -23,6 +24,8 @@ func (p *appearancePanel) resetBarChoices() {
 			p.options[i].barOn = p.barBaseline
 		case kindGitBar:
 			p.options[i].barOn = p.gitBarBaseline
+		case kindBashPreview:
+			p.options[i].previewLines = p.previewBaseline
 		}
 	}
 }
@@ -32,27 +35,42 @@ func (p *appearancePanel) resetBarChoices() {
 // Unfocused controls use a neutral fill; the focused value shares the popup's
 // active-tab accent so color marks navigation, not every enabled preference.
 func renderBarToggle(opt appearanceOption, hovered bool, width int) string {
-	caret := "  "
-	label := appearanceLabelStyle.Render(opt.label)
-	if hovered {
-		caret = appearanceCursorStyle.Render("▸ ")
-		label = appearanceCursorStyle.Render(opt.label)
-	}
-	label += strings.Repeat(" ", max(18-lipgloss.Width(opt.label), 1))
-
+	head, selected := appearanceRowHead(opt, hovered)
 	offStyle, onStyle := appearanceToggleStyle, appearanceToggleStyle
-	selected := appearanceToggleSelectedStyle
-	if hovered {
-		selected = appearanceToggleFocusedStyle
-	}
 	if opt.barOn {
 		onStyle = selected
 	} else {
 		offStyle = selected
 	}
-	row := caret + label + offStyle.Render("Off") + " " + onStyle.Render("On")
+	return withDesc(head+offStyle.Render("Off")+" "+onStyle.Render("On"), opt.desc, width)
+}
+
+// renderPreviewStepper draws the preview-lines row in the toggles' layout: the
+// count in one cell between ‹ › arrows, "Off" for 0.
+func renderPreviewStepper(opt appearanceOption, hovered bool, width int) string {
+	head, selected := appearanceRowHead(opt, hovered)
+	value := "Off"
+	if opt.previewLines > 0 {
+		value = strconv.Itoa(opt.previewLines)
+	}
+	arrow := appearanceDescStyle.Render
+	return withDesc(head+arrow("‹ ")+selected.Render(value)+arrow(" ›"), opt.desc, width)
+}
+
+// appearanceRowHead is a control row's caret and padded label, plus the style
+// of its selected value: the active-tab accent while the row has the cursor.
+func appearanceRowHead(opt appearanceOption, hovered bool) (string, lipgloss.Style) {
+	caret, label, selected := "  ", appearanceLabelStyle.Render(opt.label), appearanceToggleSelectedStyle
+	if hovered {
+		caret, label, selected = appearanceCursorStyle.Render("▸ "), appearanceCursorStyle.Render(opt.label), appearanceToggleFocusedStyle
+	}
+	return caret + label + strings.Repeat(" ", max(18-lipgloss.Width(opt.label), 1)), selected
+}
+
+// withDesc appends the row's description when it fits.
+func withDesc(row, desc string, width int) string {
 	if remaining := width - lipgloss.Width(row) - 2; remaining >= 16 {
-		row += "  " + appearanceDescStyle.Render(ansi.Truncate(opt.desc, remaining, "…"))
+		row += "  " + appearanceDescStyle.Render(ansi.Truncate(desc, remaining, "…"))
 	}
 	return row
 }

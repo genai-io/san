@@ -571,6 +571,12 @@ func SaveThinkingDisplay(mode string) error {
 	return updateSettingsFile(ScopeUser, func(d *Data) { d.ThinkingDisplay = mode })
 }
 
+// SaveBashPreviewLines persists the shell output preview's line count to
+// ~/.san/settings.json, explicitly, so 0 (no preview) survives a reload.
+func SaveBashPreviewLines(n int) error {
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.BashPreviewLines = &n })
+}
+
 // SaveAutoUpdate persists whether background auto-update is on to
 // ~/.san/settings.json, as an explicit value so turning it off sticks.
 func SaveAutoUpdate(on bool) error {

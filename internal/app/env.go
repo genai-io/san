@@ -59,6 +59,9 @@ type env struct {
 	// it is never empty. Cached here because the render path — the live tail
 	// and the scrollback flush alike — reads it per message per frame.
 	ThinkingDisplay string
+	// BashPreviewLines is the resolved setting.Data.BashPreviewLineCount: how
+	// many last output lines a shell row shows.
+	BashPreviewLines int
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	// Two views of one posture, kept in step by ApplyModePermissions.

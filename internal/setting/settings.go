@@ -106,6 +106,10 @@ type Data struct {
 	// unrecognized resolves to DefaultThinkingDisplay. Read via
 	// Data.ThinkingDisplayMode().
 	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
+	// BashPreviewLines is how many of a shell command's last output lines its
+	// row shows, while it runs and after; 0 shows none. Nil means
+	// DefaultBashPreviewLines. Read via Data.BashPreviewLineCount().
+	BashPreviewLines *int `json:"bashPreviewLines,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -428,6 +432,21 @@ func (s *Data) ShowContextBar() bool {
 // ShowGitBar reports whether the optional repository status row is enabled.
 func (s *Data) ShowGitBar() bool {
 	return s != nil && s.GitBar != nil && *s.GitBar
+}
+
+// DefaultBashPreviewLines and MaxBashPreviewLines bound a shell row's output
+// preview; the cap keeps a row from crowding the screen.
+const (
+	DefaultBashPreviewLines = 3
+	MaxBashPreviewLines     = 20
+)
+
+// BashPreviewLineCount resolves BashPreviewLines, clamped to [0, MaxBashPreviewLines].
+func (s *Data) BashPreviewLineCount() int {
+	if s == nil || s.BashPreviewLines == nil {
+		return DefaultBashPreviewLines
+	}
+	return min(max(*s.BashPreviewLines, 0), MaxBashPreviewLines)
 }
 
 // ThinkingDisplayMode resolves how reasoning is drawn, mapping an unset or
@@ -797,48 +816,26 @@ func mergeProviderPreferences(s *Data) {
 	}
 }
 
-// Clone returns a deep copy of the Data.
+// Clone returns a deep copy of the Data. It copies the struct whole, so a new
+// scalar field needs nothing here; only reference fields — pointers, slices,
+// maps — get their own storage below.
 func (s *Data) Clone() *Data {
 	if s == nil {
 		return defaultData()
 	}
-	dst := NewData()
-	dst.Permissions.DefaultMode = s.Permissions.DefaultMode
-	dst.Permissions.Allow = append([]string(nil), s.Permissions.Allow...)
-	dst.Permissions.Deny = append([]string(nil), s.Permissions.Deny...)
-	dst.Permissions.Ask = append([]string(nil), s.Permissions.Ask...)
-	dst.Model = s.Model
-	dst.SubagentModel = s.SubagentModel
-	dst.Theme = s.Theme
-	dst.SearchProvider = s.SearchProvider
-	dst.StreamFirstChunkTimeout = s.StreamFirstChunkTimeout
-	dst.StreamIdleTimeout = s.StreamIdleTimeout
-	dst.HookUITimeout = s.HookUITimeout
-	dst.Persona = s.Persona
-	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
+	dst := *s
+	dst.Permissions.Allow = slices.Clone(s.Permissions.Allow)
+	dst.Permissions.Deny = slices.Clone(s.Permissions.Deny)
+	dst.Permissions.Ask = slices.Clone(s.Permissions.Ask)
 	dst.AutoPilot = s.AutoPilot.Clone()
-	dst.LastOperationMode = s.LastOperationMode
-	if s.AllowBypass != nil {
-		v := *s.AllowBypass
-		dst.AllowBypass = &v
-	}
-	if s.AutoUpdate != nil {
-		v := *s.AutoUpdate
-		dst.AutoUpdate = &v
-	}
-	if s.AutoMemory != nil {
-		v := *s.AutoMemory
-		dst.AutoMemory = &v
-	}
-	if s.ContextBar != nil {
-		v := *s.ContextBar
-		dst.ContextBar = &v
-	}
-	if s.GitBar != nil {
-		v := *s.GitBar
-		dst.GitBar = &v
-	}
-	dst.ThinkingDisplay = s.ThinkingDisplay
+	dst.AllowBypass = clonePtr(s.AllowBypass)
+	dst.AutoUpdate = clonePtr(s.AutoUpdate)
+	dst.AutoMemory = clonePtr(s.AutoMemory)
+	dst.ContextBar = clonePtr(s.ContextBar)
+	dst.GitBar = clonePtr(s.GitBar)
+	dst.BashPreviewLines = clonePtr(s.BashPreviewLines)
+	empty := NewData() // the maps are never nil on a clone
+	dst.Env, dst.EnabledPlugins, dst.DisabledTools, dst.Hooks = empty.Env, empty.EnabledPlugins, empty.DisabledTools, empty.Hooks
 	maps.Copy(dst.Env, s.Env)
 	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)
 	maps.Copy(dst.DisabledTools, s.DisabledTools)
@@ -857,5 +854,13 @@ func (s *Data) Clone() *Data {
 		}
 		dst.Hooks[event] = clonedHooks
 	}
-	return dst
+	return &dst
+}
+
+func clonePtr[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }

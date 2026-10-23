@@ -586,9 +586,10 @@ func (m model) messageRenderParams() conv.RenderContext {
 		AwaitingApprovalID: m.conv.Tool.AwaitingApprovalID,
 
 		// Renderer env
-		Width:           m.env.Width,
-		MDRenderer:      m.conv.MDRenderer,
-		ThinkingDisplay: m.env.ThinkingDisplay,
+		Width:            m.env.Width,
+		MDRenderer:       m.conv.MDRenderer,
+		ThinkingDisplay:  m.env.ThinkingDisplay,
+		BashPreviewLines: m.env.BashPreviewLines,
 
 		// Per-tick UI state
 		SpinnerView:  m.conv.Spinner.View(),

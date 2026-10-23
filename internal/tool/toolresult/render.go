@@ -17,12 +17,15 @@ type FileChangeDetails struct {
 	TruncatedDiffLines int // diff lines dropped by the storage cap (0 = complete)
 }
 
-// BashDetails preserves failure metadata separately from the model-facing text.
-// The UI uses it to show the process error in the summary without counting or
-// repeating the appended "Error: ..." line as command output.
+// BashDetails is display metadata kept apart from the model-facing text, which
+// may be cut short: the process error, the output's real line count, and —
+// only when the text was cut — the output's real end, for the row's preview.
+// A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
 	Error     string `json:"error"`
 	LineCount int    `json:"lineCount"`
+	Tail      string `json:"tail,omitempty"`
+	TaskID    string `json:"taskId,omitempty"`
 }
 
 // AgentDetails keeps display metadata out of the parent model's result text.

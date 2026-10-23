@@ -106,7 +106,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	shell, err := t.resolve()
 	if err != nil {
-		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0)
+		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "")
 	}
 
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
@@ -125,7 +125,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, -1)
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), "")
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -153,6 +153,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	if err == nil {
 		err = cmd.Wait()
 	}
+	progress.stop()
 	duration := time.Since(start)
 
 	// A command that backgrounds a child inheriting the output pipe (e.g.
@@ -166,10 +167,11 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount())
+	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount(), progress.lastTail())
 }
 
-func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int) toolresult.ToolResult {
+// tail is the output's real end, kept for the UI only when the text is cut.
+func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
@@ -178,14 +180,12 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		fullOutput += errOutput
 	}
 
-	if lineCount < 0 && fullOutput != "" {
-		lineCount = strings.Count(strings.TrimSuffix(fullOutput, "\n"), "\n") + 1
-	} else if lineCount < 0 {
-		lineCount = 0
-	}
-
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
+	details := toolresult.BashDetails{LineCount: lineCount}
+	if truncated {
+		details.Tail = tail
+	}
 
 	// Build CC-compatible structured response for hooks
 	hookResponse := map[string]any{
@@ -204,11 +204,12 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		if ctx.Err() == context.DeadlineExceeded {
 			errorMsg := "command timed out after " + timeout.String() +
 				" — if it was waiting for interactive input, re-run with a non-interactive flag (e.g. -y, -m, BatchMode=yes) or supply input inline"
+			details.Error = errorMsg
 			return toolresult.ToolResult{
 				Success:      false,
 				Output:       fullOutput,
 				Error:        errorMsg,
-				Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount},
+				Details:      details,
 				HookResponse: hookResponse,
 				Metadata: toolresult.ResultMetadata{
 					Title:     t.Name(),
@@ -225,12 +226,13 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			errorMsg = fmt.Sprintf("exit code %d", exitErr.ExitCode())
 		}
+		details.Error = errorMsg
 
 		return toolresult.ToolResult{
 			Success:      false,
 			Output:       fullOutput,
 			Error:        errorMsg,
-			Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount},
+			Details:      details,
 			HookResponse: hookResponse,
 			Metadata: toolresult.ResultMetadata{
 				Title:     t.Name(),
@@ -264,6 +266,7 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	return toolresult.ToolResult{
 		Success:      true,
 		Output:       fullOutput,
+		Details:      details,
 		HookResponse: hookResponse,
 		Metadata: toolresult.ResultMetadata{
 			Title:     t.Name(),
@@ -397,6 +400,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  output,
+		Details: toolresult.BashDetails{TaskID: bgTask.ID},
 		HookResponse: map[string]any{
 			"backgroundTask": backgroundMeta,
 		},

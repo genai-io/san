@@ -151,7 +151,7 @@ func shellParameters() map[string]any {
 			},
 			"description": map[string]any{
 				"type":        "string",
-				"description": "Clear, concise description of what this command does in active voice",
+				"description": "What this command does, in a few plain words in active voice (e.g. \"Run the unit tests\"). It titles the call for the user watching it run, above the command and its output.",
 			},
 			"timeout": map[string]any{
 				"type":        "integer",

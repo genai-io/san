@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"strings"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -17,10 +18,10 @@ type ToolExecState struct {
 	// on a running row, so a long command no longer looks stuck. Only
 	// in-flight calls appear; it is cleared with every new batch.
 	StartedAt map[string]time.Time
-	// Progress holds the latest output counter of a running command ("1.2k
-	// lines"), keyed by tool-call ID — the replaceable companion to the
-	// elapsed timer, showing output is actually flowing. Cleared with StartedAt.
-	Progress map[string]string
+	// Progress holds the latest progress of a running command, keyed by
+	// tool-call ID: the companion to the elapsed timer and the row's preview.
+	// Cleared with StartedAt.
+	Progress map[string]ToolProgress
 	// AwaitingApprovalID is the tool call parked on the permission modal. Its
 	// PreToolEvent already stamped it as started, so without this the row would
 	// spin and tick as if the call had been allowed to run. Empty while no
@@ -75,17 +76,26 @@ func (t *ToolExecState) ClearAwaitingApproval() {
 	t.AwaitingApprovalID = ""
 }
 
-// SetProgress records the latest output counter for a running tool call. A blank
-// text clears it (nothing to show yet).
-func (t *ToolExecState) SetProgress(toolCallID, text string) {
-	if text == "" {
+// ToolProgress is a running command's latest progress: its output counter
+// ("1.2k lines"), shown beside the timer, and its output's tail, shown below.
+type ToolProgress struct {
+	Counter string
+	Tail    string
+}
+
+// SetProgress records a running tool call's progress from its activity
+// message: the counter, then on later lines the output's tail. A blank
+// message clears it (nothing to show yet).
+func (t *ToolExecState) SetProgress(toolCallID, message string) {
+	if message == "" {
 		delete(t.Progress, toolCallID)
 		return
 	}
 	if t.Progress == nil {
-		t.Progress = make(map[string]string)
+		t.Progress = make(map[string]ToolProgress)
 	}
-	t.Progress[toolCallID] = text
+	counter, tail, _ := strings.Cut(message, "\n")
+	t.Progress[toolCallID] = ToolProgress{Counter: counter, Tail: tail}
 }
 
 func (t *ToolExecState) IndexOf(toolCallID string) int {

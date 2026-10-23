@@ -41,7 +41,7 @@ func TestAgentRunningShellErrorsStayWithWorker(t *testing.T) {
 			defer cancel()
 			started := make(chan struct{})
 			var once sync.Once
-			ctx = tool.ContextWithBashProgress(ctx, func(_ int, bytes int64) {
+			ctx = tool.ContextWithBashProgress(ctx, func(_ int, bytes int64, _ string) {
 				if bytes > 0 {
 					once.Do(func() { close(started) })
 				}
