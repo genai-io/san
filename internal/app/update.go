@@ -358,7 +358,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("reload settings after shell-preview save failed", zap.Error(err))
 		}
 		preview := "off"
-		if msg.Lines > 0 {
+		switch {
+		case msg.Lines == 1:
+			preview = "1 line"
+		case msg.Lines > 1:
 			preview = strconv.Itoa(msg.Lines) + " lines"
 		}
 		m.conv.AddNotice("Shell output preview: " + preview)

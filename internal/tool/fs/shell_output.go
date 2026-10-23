@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"io"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/task"
@@ -38,6 +39,13 @@ func (b *outputCapture) String() string {
 	}
 	return decodeOutput(data)
 }
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
+}
+
 func (b *outputCapture) LineCount() int {
 	if b.buf.Len() > 0 && b.lastByte != '\n' {
 		return b.newlines + 1

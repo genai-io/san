@@ -835,19 +835,10 @@ func (s *Data) Clone() *Data {
 	dst.GitBar = clonePtr(s.GitBar)
 	dst.BashPreviewLines = clonePtr(s.BashPreviewLines)
 	empty := NewData() // the maps are never nil on a clone
-	dst.Env = maps.Clone(s.Env)
-	if dst.Env == nil {
-		dst.Env = empty.Env
-	}
-	dst.EnabledPlugins = maps.Clone(s.EnabledPlugins)
-	if dst.EnabledPlugins == nil {
-		dst.EnabledPlugins = empty.EnabledPlugins
-	}
-	dst.DisabledTools = maps.Clone(s.DisabledTools)
-	if dst.DisabledTools == nil {
-		dst.DisabledTools = empty.DisabledTools
-	}
-	dst.Hooks = empty.Hooks
+	dst.Env, dst.EnabledPlugins, dst.DisabledTools, dst.Hooks = empty.Env, empty.EnabledPlugins, empty.DisabledTools, empty.Hooks
+	maps.Copy(dst.Env, s.Env)
+	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)
+	maps.Copy(dst.DisabledTools, s.DisabledTools)
 	for event, hooks := range s.Hooks {
 		clonedHooks := make([]Hook, len(hooks))
 		for i, hook := range hooks {

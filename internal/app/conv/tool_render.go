@@ -244,7 +244,7 @@ func formatReadResultSummary(content string) string {
 
 func renderBashToolResultInline(data ToolResultData) string {
 	content := strings.TrimSuffix(data.Content, "\n")
-	summary := formatLineCount(content)
+	var summary string
 	style := toolResultStyle
 	// The details count the real output; the text may be cut, or stand in
 	// "(no output)" for none.
@@ -252,22 +252,22 @@ func renderBashToolResultInline(data ToolResultData) string {
 	if data.IsError {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
-	} else if hasDetails && details.BackgroundTask != "" {
-		summary = "started in background · " + details.BackgroundTask
-	} else if hasDetails {
-		summary = "no output"
-		if details.LineCount > 0 {
-			summary = formatLineCountValue(details.LineCount)
-		}
 	}
 	preview := content
 	switch {
-	case hasDetails && details.BackgroundTask != "":
-		preview = "" // its text is how to reach the task (Ctrl-O shows it), not output
-	case hasDetails && details.LineCount == 0:
-		content, preview = "", ""
-	case hasDetails && details.Tail != "":
-		preview = details.Tail
+	case data.IsError:
+	case !hasDetails:
+		summary = formatLineCount(content)
+	case details.BackgroundTask != "":
+		// Its text is how to reach the task (Ctrl-O shows it), not output.
+		summary, preview = "started in background · "+details.BackgroundTask, ""
+	case details.LineCount == 0:
+		summary, content, preview = "no output", "", ""
+	default:
+		summary = formatLineCountValue(details.LineCount)
+		if details.Tail != "" {
+			preview = details.Tail
+		}
 	}
 
 	var sb strings.Builder

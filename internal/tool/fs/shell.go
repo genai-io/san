@@ -125,7 +125,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, -1, "")
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), "")
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -180,16 +180,11 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		fullOutput += errOutput
 	}
 
-	if lineCount < 0 && fullOutput != "" {
-		lineCount = strings.Count(strings.TrimSuffix(fullOutput, "\n"), "\n") + 1
-	} else if lineCount < 0 {
-		lineCount = 0
-	}
-
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
-	if !truncated {
-		tail = ""
+	details := toolresult.BashDetails{LineCount: lineCount}
+	if truncated {
+		details.Tail = tail
 	}
 
 	// Build CC-compatible structured response for hooks
@@ -209,11 +204,12 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		if ctx.Err() == context.DeadlineExceeded {
 			errorMsg := "command timed out after " + timeout.String() +
 				" — if it was waiting for interactive input, re-run with a non-interactive flag (e.g. -y, -m, BatchMode=yes) or supply input inline"
+			details.Error = errorMsg
 			return toolresult.ToolResult{
 				Success:      false,
 				Output:       fullOutput,
 				Error:        errorMsg,
-				Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount, Tail: tail},
+				Details:      details,
 				HookResponse: hookResponse,
 				Metadata: toolresult.ResultMetadata{
 					Title:     t.Name(),
@@ -230,12 +226,13 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			errorMsg = fmt.Sprintf("exit code %d", exitErr.ExitCode())
 		}
+		details.Error = errorMsg
 
 		return toolresult.ToolResult{
 			Success:      false,
 			Output:       fullOutput,
 			Error:        errorMsg,
-			Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount, Tail: tail},
+			Details:      details,
 			HookResponse: hookResponse,
 			Metadata: toolresult.ResultMetadata{
 				Title:     t.Name(),
@@ -269,7 +266,7 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	return toolresult.ToolResult{
 		Success:      true,
 		Output:       fullOutput,
-		Details:      toolresult.BashDetails{LineCount: lineCount, Tail: tail},
+		Details:      details,
 		HookResponse: hookResponse,
 		Metadata: toolresult.ResultMetadata{
 			Title:     t.Name(),
