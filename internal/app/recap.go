@@ -29,11 +29,11 @@ const recapTimeout = 2 * time.Minute
 // on return.
 const recapCacheWindow = 4 * time.Minute
 
-const recapInstructions = `<system-reminder>The user stepped away from this session and is coming back. Write them a recap. You are a separate, one-off note: the main work is not interrupted, and you cannot use tools.
-Plain text, no markdown, in the language of the conversation, under 25 words in total, one short line each:
-%GOAL%Now: what is being worked on and where it stands, in a few words (name the file, PR or test).
+const recapInstructions = `<system-reminder>The user stepped away and is coming back. Write a recap that lets them pick the work back up at a glance. You are a one-off note beside the conversation: the main work is not interrupted, and you cannot use tools.
+Plain text, no markdown, in the language of the conversation, under 40 words, one line each:
+%GOAL%Now: where the work stands: what is done, what is in progress, anything failed or blocked. Name the file, PR or test.
 Next: the one next action. Begin it with "Your turn:" when it waits on the user.
-No reasons, internals or secondary to-dos.%FACTS%
+Skip reasons, internals and side to-dos.%FACTS%
 </system-reminder>`
 
 // recapState follows the terminal's focus and the recap written for it.
@@ -174,7 +174,7 @@ func (m *model) recapLive() string {
 func (m *model) writeRecap() tea.Cmd {
 	m.recap.busy = true
 	goal := m.recapGoal()
-	prompt := strings.ReplaceAll(recapInstructions, "%GOAL%", "Goal: the session's overall goal, in a few words.\n")
+	prompt := strings.ReplaceAll(recapInstructions, "%GOAL%", "Goal: what the session is for, in a few words.\n")
 	if goal != "" {
 		prompt = strings.ReplaceAll(recapInstructions, "%GOAL%", "")
 	}
