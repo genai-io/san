@@ -582,8 +582,8 @@ type ToolCallsParams struct {
 	// ToolProgress maps a running command's ID to its latest output counter,
 	// shown next to the timer. Empty for calls that have produced no output.
 	ToolProgress map[string]string
-	// AwaitingApprovalID is the call parked on a permission prompt: started by
-	// its PreToolEvent, but not allowed to run yet.
+	// AwaitingApprovalID is the call parked on a permission prompt: announced,
+	// but not allowed to run yet.
 	AwaitingApprovalID string
 	ModelName          string
 	InputTokens        int
@@ -770,13 +770,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 // toolCallIcon picks a call's row glyph: the live dot while it is in flight, a
 // static bullet once it has a result or is not the call being executed.
 //
-// The call a permission prompt is asking about was marked current and stamped
-// as started by its PreToolEvent, which fires *before* the request goes out, so
-// it holds a static bullet until it is allowed to run. Its batch siblings keep
-// blinking: the gate lives inside each tool's Execute and a parallel batch runs
-// one goroutine per call, so an allow-listed sibling really is executing while
-// the user decides. A modal that names no call still freezes every row —
-// see modalNamesNoCall.
+// The call a permission prompt is asking about holds a static bullet until it
+// is allowed to run. A modal that names no call freezes every row — see
+// modalNamesNoCall.
 func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return "●"

@@ -40,7 +40,11 @@ type withCallID struct{ inner Tool }
 
 func (i withCallID) Schema() ToolSchema { return i.inner.Schema() }
 
+// Run first reports that the call is running: the SDK announces a whole batch
+// (ToolStart) before running it one call at a time, so only this ToolUpdate
+// says when a call's own run begins.
 func (i withCallID) Run(ctx context.Context, call ai.ToolCall) (sdkagent.Result, error) {
+	sdkagent.Report(ctx, sdkagent.Result{})
 	return i.inner.Run(WithToolCallID(ctx, call.ID), call)
 }
 

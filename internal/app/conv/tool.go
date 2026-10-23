@@ -50,9 +50,9 @@ func (t *ToolExecState) MarkCurrent(toolCallID string) {
 }
 
 // MarkStarted stamps the moment a tool call began executing, so the view can
-// show how long it has been running. Called on its PreToolEvent, and again
-// when a permission prompt is approved — the first stamp then covers only how
-// long the user took to answer, which is not what the row is reporting.
+// show how long it has been running. Called when its run begins, and on a
+// subagent's approved prompt for the parent call, whose earlier stamp would
+// otherwise count the user's deliberation.
 func (t *ToolExecState) MarkStarted(toolCallID string) {
 	if toolCallID == "" {
 		return
