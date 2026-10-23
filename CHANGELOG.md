@@ -3,6 +3,31 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.0] - 2026-10-23
+
+### Added
+- Fold a successful command; keep a failure's end as it interleaved ([@yanmxa](https://github.com/yanmxa) in [#667](https://github.com/genai-io/san/pull/667))
+- Preview a command's last output lines, live and after ([@yanmxa](https://github.com/yanmxa) in [#663](https://github.com/genai-io/san/pull/663))
+- Recap on return, Suggest as a cached side request ([@yanmxa](https://github.com/yanmxa) in [#662](https://github.com/genai-io/san/pull/662))
+- /btw asks a side question the main agent never sees ([@yanmxa](https://github.com/yanmxa) in [#660](https://github.com/genai-io/san/pull/660))
+- /name names the member; say when a session switch leaves the group ([@yanmxa](https://github.com/yanmxa) in [#659](https://github.com/genai-io/san/pull/659))
+- One live indicator for every running state ([@yanmxa](https://github.com/yanmxa) in [#652](https://github.com/genai-io/san/pull/652))
+### Changed
+- Live marks breathe instead of blinking ([@yanmxa](https://github.com/yanmxa) in [#665](https://github.com/genai-io/san/pull/665))
+### Fixed
+- Time a queued tool call from its run, not the batch's announcement ([@yanmxa](https://github.com/yanmxa) in [#666](https://github.com/genai-io/san/pull/666))
+- Follow symlinks in config folders; keep ~/.san links on save ([@yanmxa](https://github.com/yanmxa) in [#664](https://github.com/genai-io/san/pull/664))
+- Paste into the free-text answer row ([@yanmxa](https://github.com/yanmxa) in [#661](https://github.com/genai-io/san/pull/661))
+- Read refuses non-regular files; /clear and /resume forget touched files ([@yanmxa](https://github.com/yanmxa) in [#658](https://github.com/genai-io/san/pull/658))
+- Close gaps in rule precedence, Bash allow matching and settings merge ([@yanmxa](https://github.com/yanmxa) in [#657](https://github.com/genai-io/san/pull/657))
+- Close WebFetch DNS rebinding and a Windows job-kill race ([@yanmxa](https://github.com/yanmxa) in [#656](https://github.com/genai-io/san/pull/656))
+- Merge secret writes with the file and surface store errors ([@yanmxa](https://github.com/yanmxa) in [#655](https://github.com/genai-io/san/pull/655))
+- Settle model limits on vendors without a per-model lookup ([@yanmxa](https://github.com/yanmxa) in [#654](https://github.com/genai-io/san/pull/654))
+- Stop wide rows flashing and frames copying into history ([@yanmxa](https://github.com/yanmxa) in [#653](https://github.com/genai-io/san/pull/653))
+- Resume replays the whole conversation ([@yanmxa](https://github.com/yanmxa) in [#651](https://github.com/genai-io/san/pull/651))
+- Compact instead of resending a request body too large to send ([@yanmxa](https://github.com/yanmxa) in [#650](https://github.com/genai-io/san/pull/650))
+- Commit history by scrolling, and not twice on resize ([@yanmxa](https://github.com/yanmxa) in [#648](https://github.com/genai-io/san/pull/648))
+- Show a running shell call's command ([@yanmxa](https://github.com/yanmxa) in [#647](https://github.com/genai-io/san/pull/647))
 ## [v1.24.4] - 2026-10-19
 
 ### Added
