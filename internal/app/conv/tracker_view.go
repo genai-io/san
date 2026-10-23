@@ -276,7 +276,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		return renderItemLine(indent, mutedStyle.Render("◌"), idTag, activeText(t), mutedStyle.Render("[stalled]"), width)
 
 	case itemRunning:
-		// Blink on the shared frame tick (a true ~360ms clock; see FrameClock)
+		// Breathe on the shared frame tick (a true ~360ms clock; see FrameClock)
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
 		detail := ""

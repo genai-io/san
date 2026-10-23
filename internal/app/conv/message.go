@@ -186,7 +186,7 @@ type AssistantParams struct {
 	IsLast            bool
 	// DockedModalActive freezes the bullet: the stream stays "active" across a
 	// permission gate (it clears only on a text-only Done chunk), so without
-	// this the live tail blinks while the turn is parked on the user's answer.
+	// this the live tail breathes while the turn is parked on the user's answer.
 	DockedModalActive bool
 	Blink             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
@@ -460,16 +460,13 @@ func (p AssistantParams) waitingRow() string {
 	}
 	if p.DockedModalActive {
 		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Render(thinkingMark)
+		return ThinkingStyle.Bold(true).Render(thinkingMark)
 	}
-	row := thinkingMark
-	if !kit.BlinkOn(p.Blink) {
-		row = " "
-	}
+	row := kit.LiveStar(p.Blink)
 	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
-		row += " " + elapsed
+		row += ThinkingStyle.Render(" " + elapsed)
 	}
-	return ThinkingStyle.Render(row)
+	return row
 }
 
 // RenderSystemMessage renders a system/notice core.
@@ -683,7 +680,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				// The live dot blinks off the frame counter; on the call a
+				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
 				icon := kit.LiveDot(params.Blink)
@@ -792,7 +789,7 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 		return "●"
 	}
 
-	// In parallel mode every in-flight call blinks; sequentially, only the
+	// In parallel mode every in-flight call breathes; sequentially, only the
 	// current call does.
 	if params.ParallelMode || idx == params.CurrentIdx {
 		return params.SpinnerView

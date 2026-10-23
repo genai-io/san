@@ -1664,9 +1664,10 @@ func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
 		t.Fatalf("waiting on the first token should show the reasoning mark:\n%s", out)
 	}
-	p.Blink = 3
-	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "✦") {
-		t.Fatalf("the waiting mark should blink out on the off frame:\n%s", out)
+	for p.Blink = range 6 {
+		if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
+			t.Fatalf("frame %d: the waiting mark should breathe, not blink out:\n%s", p.Blink, out)
+		}
 	}
 	p.Thinking, p.ThinkingDisplay = "Inspecting repository docs", setting.ThinkingDisplayFull
 	p.Blink = 0

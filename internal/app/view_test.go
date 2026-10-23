@@ -492,17 +492,10 @@ func hasWaitingRow(view string) bool {
 	})
 }
 
-// atBlinkOut advances the frame clock to the live dot's off frame, where a row
-// still running shows no ● and a frozen one keeps its static bullet.
-func atBlinkOut(t *testing.T, m *model) {
-	t.Helper()
-	for range 4 {
-		if m.conv.Spinner.Frame()%4 == 3 {
-			return
-		}
-		m.conv.Spinner, _ = m.conv.Spinner.Update(m.conv.Spinner.Tick())
-	}
-	t.Fatalf("frame clock stuck at %d", m.conv.Spinner.Frame())
+// showsLiveDot reports whether a raw (styled) frame row draws the breathing
+// live dot of the current frame rather than a frozen static bullet.
+func showsLiveDot(m *model, row string) bool {
+	return strings.Contains(row, kit.LiveDot(m.conv.Spinner.Frame()))
 }
 
 func dockedModalModel(t *testing.T, rationale string) *model {
@@ -596,22 +589,22 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 // elapsed timer over the user's deliberation (issue #440).
 func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
-	atBlinkOut(t, m)
 
 	frame, _ := m.viewString()
 
 	var row string
-	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
-		if strings.Contains(line, "Bash(df -h)") {
+	for line := range strings.SplitSeq(frame, "\n") {
+		if strings.Contains(ansi.Strip(line), "Bash(df -h)") {
 			row = line
 		}
 	}
 	if row == "" {
 		t.Fatalf("modal frame has no row for the gated call:\n%s", frame)
 	}
-	if !strings.Contains(row, "●") {
-		t.Fatalf("tool row %q blinks while it waits on the approval modal", row)
+	if showsLiveDot(m, row) {
+		t.Fatalf("tool row %q breathes while it waits on the approval modal", row)
 	}
+	row = ansi.Strip(row)
 	if !strings.Contains(row, "waiting for approval") {
 		t.Fatalf("tool row %q does not say what it is waiting for", row)
 	}
@@ -651,7 +644,6 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m.services.Session = nil
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.Approval.Hide()
-	atBlinkOut(t, m)
 
 	m.HandlePermGate(&agent.PermGateRequest{
 		RequestID:   "req-1",
@@ -665,12 +657,12 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	}
 
 	frame, _ := m.viewString()
-	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
-		if !strings.Contains(line, "Bash(") {
+	for line := range strings.SplitSeq(frame, "\n") {
+		if !strings.Contains(ansi.Strip(line), "Bash(") {
 			continue
 		}
-		if !strings.Contains(line, "●") {
-			t.Fatalf("tool row %q blinks while the modal owns the screen", line)
+		if showsLiveDot(m, line) {
+			t.Fatalf("tool row %q breathes while the modal owns the screen", line)
 		}
 	}
 }
@@ -680,13 +672,12 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 // spin either — the turn is parked on the modal, not producing text.
 func TestDockedModalFreezesAssistantBullet(t *testing.T) {
 	m := dockedModalModel(t, "RATIONALE_SENTINEL about to check the disk")
-	atBlinkOut(t, m)
 
 	frame, _ := m.viewString()
 
-	for line := range strings.SplitSeq(ansi.Strip(frame), "\n") {
-		if strings.Contains(line, "RATIONALE_SENTINEL") && !strings.Contains(line, "●") {
-			t.Fatalf("assistant row %q blinks while the turn waits on the modal", line)
+	for line := range strings.SplitSeq(frame, "\n") {
+		if strings.Contains(ansi.Strip(line), "RATIONALE_SENTINEL") && showsLiveDot(m, line) {
+			t.Fatalf("assistant row %q breathes while the turn waits on the modal", line)
 		}
 	}
 }
