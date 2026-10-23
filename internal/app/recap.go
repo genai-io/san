@@ -37,7 +37,7 @@ const (
 	recapNewTurns = 2
 )
 
-const recapInstructions = `<system-reminder>The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown, in the language of the conversation. Lead with the overall goal and current task and where it stands: done, in progress or blocked. Then the one next action, saying so when it is the user's. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents. You are a one-off note beside the conversation: the main work goes on, and you cannot use tools.%FACTS%
+const recapInstructions = `<system-reminder>The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown, in the conversation's language. Lead with the overall goal and current task and where it stands, then the one next action, noting when it's theirs. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents.%FACTS%
 </system-reminder>`
 
 // recapState follows the terminal's focus and the recap written for it.
