@@ -9,34 +9,35 @@ import (
 // LiveDotFPS is the frame interval every live indicator advances on.
 const LiveDotFPS = 360 * time.Millisecond
 
-// Live marks breathe instead of blinking: each frame steps the color up from
-// near the background to a peak and back, so every live mark moves in step and
-// none drops out. The reasoning star peaks at body text.
+// Live marks breathe instead of blinking: each breath is one color per frame,
+// up from near the background to a peak and back, so every live mark moves in
+// step and none drops out.
 var (
-	pulseFaint = AdaptiveColor{Dark: "#3F3F46", Light: "#E4E4E7"}
-	pulseLow   = AdaptiveColor{Dark: "#6E7480", Light: "#A1A1AA"}
-
 	// The dot holds near the background, swells to the brightest text color,
-	// holds, and fades: the full contrast range, paused at both ends so the
-	// swing reads in either theme.
-	dotTrough = AdaptiveColor{Dark: "#232327", Light: "#F4F4F5"}
+	// holds, and fades, so the swing reads in either theme.
+	dotFaint  = AdaptiveColor{Dark: "#232327", Light: "#F4F4F5"}
 	dotMid    = AdaptiveColor{Dark: "#8F8F90", Light: "#7F7F80"}
-	dotPulse  = [...]AdaptiveColor{dotTrough, dotTrough, dotMid, CurrentTheme.TextBright, CurrentTheme.TextBright, dotMid}
-	starPulse = [...]AdaptiveColor{pulseFaint, pulseLow, CurrentTheme.TextDim, CurrentTheme.Text, CurrentTheme.TextDim, pulseLow}
+	dotBreath = [...]AdaptiveColor{dotFaint, dotFaint, dotMid, CurrentTheme.TextBright, CurrentTheme.TextBright, dotMid}
+
+	// The star peaks at body text.
+	starFaint  = AdaptiveColor{Dark: "#3F3F46", Light: "#E4E4E7"}
+	starMid    = AdaptiveColor{Dark: "#6E7480", Light: "#A1A1AA"}
+	starBreath = [...]AdaptiveColor{starFaint, starMid, CurrentTheme.TextDim, CurrentTheme.Text, CurrentTheme.TextDim, starMid}
 )
 
 // LiveDot is the one indicator for a reply or action still in flight: a
 // breathing ●. The row settles into a solid ● in its own color when the work
 // is done, so the color says done and the breathing says waiting.
 func LiveDot(frame int) string {
-	return lipgloss.NewStyle().Foreground(dotPulse[frame%len(dotPulse)]).Render("●")
+	return lipgloss.NewStyle().Foreground(dotBreath[frame%len(dotBreath)]).Render("●")
 }
 
-// StarMark leads reasoning: the star of the San mark, apart from the reply's ●.
-const StarMark = "✦"
+// ThinkingMark leads reasoning: the star of the San mark, apart from the
+// reply's ●.
+const ThinkingMark = "✦"
 
-// LiveStar is the breathing StarMark that marks a wait on the model's reply,
-// bold so the small glyph reads.
+// LiveStar is the breathing ThinkingMark held while the model's reply is
+// awaited, bold so the small glyph reads.
 func LiveStar(frame int) string {
-	return lipgloss.NewStyle().Bold(true).Foreground(starPulse[frame%len(starPulse)]).Render(StarMark)
+	return lipgloss.NewStyle().Bold(true).Foreground(starBreath[frame%len(starBreath)]).Render(ThinkingMark)
 }

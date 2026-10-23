@@ -30,7 +30,7 @@ type TrackerListParams struct {
 	// it cannot by itself justify a moving pixel.
 	Executing func(t *todo.Item) bool
 	// Frame is the shared frame-tick counter (see FrameClock.Frame) that
-	// drives the in-progress pulse via trackerPulseTicks.
+	// breathes the in-progress item's live dot.
 	Frame int
 	// AgentColors maps an agent's name to its display color. An item owned by a
 	// background agent (Owner set) is tinted with that color, matching the

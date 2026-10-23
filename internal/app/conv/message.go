@@ -264,16 +264,13 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
-// thinkingMark leads reasoning (see kit.StarMark).
-const thinkingMark = kit.StarMark
-
 // thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
 // marker for the turn's first thinking block, or a blank continuation gutter for
 // blocks committed after it, so progressively-committed reasoning aligns under
 // the single leading glyph.
 func thinkingGutter(showIcon bool) string {
 	if showIcon {
-		return ThinkingStyle.Render(thinkingMark + " ")
+		return ThinkingStyle.Render(kit.ThinkingMark + " ")
 	}
 	return continuationGutter
 }
@@ -459,7 +456,7 @@ func (p AssistantParams) waitingRow() string {
 	}
 	if p.DockedModalActive {
 		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Bold(true).Render(thinkingMark)
+		return ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
 	}
 	row := kit.LiveStar(p.Frame)
 	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
