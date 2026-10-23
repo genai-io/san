@@ -1839,6 +1839,7 @@ func TestWrapAtSpaces(t *testing.T) {
 		{"中文没有空格", 4, "中文\n没有\n空格"},
 		{"中文", 1, "中\n文"},
 		{"echo 很长很长的一个词", 8, "echo 很\n长很长的\n一个词"},
+		{"x = set(abcdefghijklm)", 16, "x = set(abcdefgh\nijklm)"},
 	} {
 		got := wrapAtSpaces(tc.in, tc.width)
 		if got != tc.want || strings.ReplaceAll(got, "\n", "") != tc.in {

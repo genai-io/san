@@ -141,15 +141,14 @@ func renderNestedToolBodyLine(line string, width int) string {
 }
 
 // wrapAtSpaces cuts s into rows at most width wide, after the last space in
-// reach so a wrapped command reads as whole words; a longer word is cut. Every
-// character is kept, so the rows join back into the command.
+// reach so a wrapped command reads as whole words. A word too wide for any row
+// is cut, and so is one whose break would leave the row less than half full.
+// Every character is kept, so the rows join back into the command.
 func wrapAtSpaces(s string, width int) string {
 	var sb strings.Builder
 	for xansi.StringWidth(s) > width && utf8.RuneCountInString(s) > 1 {
 		row := xansi.Truncate(s, width, "")
-		// A word too wide for any row is cut anyway, so it starts here rather
-		// than leave this row short.
-		if i := strings.LastIndexByte(row, ' '); i > 0 && !wordWiderThan(s[i+1:], width) {
+		if i := strings.LastIndexByte(row, ' '); i > 0 && 2*xansi.StringWidth(row[:i+1]) >= width && !wordWiderThan(s[i+1:], width) {
 			row = row[:i+1]
 		} else if row == "" { // a character wider than the row: it takes one alone
 			_, size := utf8.DecodeRuneInString(s)
