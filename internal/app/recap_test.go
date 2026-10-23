@@ -20,11 +20,16 @@ func newRecapModel(t *testing.T) *model {
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.ApplyModePermissions(t.TempDir())
-	m.conv.Messages = []core.ChatMessage{
-		{Role: core.ChatUser, Content: "Fix it."},
-		{Role: core.ChatAssistant, Content: "Done."},
+	for range recapMinTurns {
+		addTurn(m)
 	}
 	return m
+}
+
+func addTurn(m *model) {
+	m.conv.Messages = append(m.conv.Messages,
+		core.ChatMessage{Role: core.ChatUser, Content: "Fix it."},
+		core.ChatMessage{Role: core.ChatAssistant, Content: "Done."})
 }
 
 // A short absence earns nothing; a long one shows the recap written ahead, as
@@ -32,8 +37,9 @@ func newRecapModel(t *testing.T) *model {
 func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	m := newRecapModel(t)
 
+	n := len(m.conv.Messages)
 	m.recap.awaySince = time.Now().Add(-time.Minute)
-	if cmd := m.onFocus(); cmd != nil || len(m.conv.Messages) != 2 {
+	if cmd := m.onFocus(); cmd != nil || len(m.conv.Messages) != n {
 		t.Fatal("a minute away must not recap")
 	}
 
@@ -52,9 +58,10 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 // A recap written for another session, or one that failed, never lands.
 func TestRecapForAnotherSessionIsDropped(t *testing.T) {
 	m := newRecapModel(t)
+	n := len(m.conv.Messages)
 	m.recap.busy, m.recap.show = true, true
 	m.onRecapReady(recapReadyMsg{sessionID: "elsewhere", text: "Now: x"})
-	if m.recap.busy || len(m.conv.Messages) != 2 {
+	if m.recap.busy || len(m.conv.Messages) != n {
 		t.Fatal("another session's recap landed here")
 	}
 }
@@ -104,6 +111,29 @@ func TestRecapWhileTheSessionWorks(t *testing.T) {
 	}
 	if live := m.recapLive(); !strings.Contains(live, "writing") {
 		t.Fatalf("no live row while the recap is written: %q", live)
+	}
+}
+
+// An unasked recap needs new ground: a few turns since the last one. /recap
+// is always answered.
+func TestRecapWaitsForNewTurns(t *testing.T) {
+	m := newRecapModel(t)
+	m.recap.shownAt = m.turns()
+	addTurn(m)
+
+	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	if cmd := m.onFocus(); cmd != nil {
+		t.Fatal("recapped again after a single turn")
+	}
+	if cmd := m.recapNow(); cmd == nil {
+		t.Fatal("/recap was held back by the turn count")
+	}
+	m.recap.busy, m.recap.show = false, false
+
+	addTurn(m)
+	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	if cmd := m.onFocus(); cmd == nil {
+		t.Fatal("two new turns earned no recap")
 	}
 }
 

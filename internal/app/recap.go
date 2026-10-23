@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
@@ -28,6 +29,13 @@ const recapTimeout = 2 * time.Minute
 // (Anthropic's default lasts five minutes) rather than paying for all of it
 // on return.
 const recapCacheWindow = 4 * time.Minute
+
+// An unasked recap waits for a session of recapMinTurns turns, and for
+// recapNewTurns more since the last one: a recap over the same ground is noise.
+const (
+	recapMinTurns = 3
+	recapNewTurns = 2
+)
 
 const recapInstructions = `<system-reminder>The user stepped away and is coming back. Write a recap that lets them pick the work back up at a glance. You are a one-off note beside the conversation: the main work is not interrupted, and you cannot use tools.
 Plain text, no markdown, in the language of the conversation, under 40 words, one line each:
@@ -43,7 +51,7 @@ type recapState struct {
 	busy      bool          // a recap request is in flight
 	show      bool          // show the recap in flight as soon as it lands
 	ready     recapReadyMsg // a recap written ahead, not shown yet
-	shownAt   int           // chain length the last shown recap was written at
+	shownAt   int           // turns() when the last recap was shown
 }
 
 type recapPrepareMsg struct{ awaySince time.Time }
@@ -81,7 +89,7 @@ func (m *model) onFocus() tea.Cmd {
 // a fresh one.
 func (m *model) recapOnReturn(since time.Time) tea.Cmd {
 	after := m.env.AutoPilot.RecapAfter()
-	if since.IsZero() || after == 0 || time.Since(since) < after || !m.recapWanted() || m.hasDraft() {
+	if since.IsZero() || after == 0 || time.Since(since) < after || !m.recapDue() || m.hasDraft() {
 		return nil
 	}
 	m.recap.away = time.Since(since)
@@ -127,11 +135,10 @@ func (m *model) deliverRecap() tea.Cmd {
 // written on return. Called when the cache window comes up and when the
 // session goes idle after it.
 func (m *model) prepareRecap() tea.Cmd {
-	if m.recap.awaySince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapWanted() || m.hasDraft() || !m.sessionQuiet() {
+	if m.recap.awaySince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapDue() || m.hasDraft() || !m.sessionQuiet() {
 		return nil
 	}
-	n := m.chainLen()
-	if n == m.recap.shownAt || (m.recap.ready.text != "" && m.recap.ready.chainLen == n) {
+	if m.recap.ready.text != "" && m.recap.ready.chainLen == m.chainLen() {
 		return nil
 	}
 	return m.writeRecap()
@@ -151,6 +158,28 @@ func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 // recapWanted reports whether there is a conversation to recap.
 func (m *model) recapWanted() bool {
 	return m.env.LLMProvider != nil && !m.conv.Compact.Active && m.assistantReplies() > 0
+}
+
+// recapDue reports whether an unasked recap has new ground to cover. A
+// shorter conversation after /clear starts the count over.
+func (m *model) recapDue() bool {
+	n := m.turns()
+	if n < m.recap.shownAt {
+		m.recap.shownAt = 0
+	}
+	return m.recapWanted() && n >= recapMinTurns && n-m.recap.shownAt >= recapNewTurns
+}
+
+// turns counts the turns begun in the conversation: typed prompts and
+// AutoPilot's continuations alike, not tool results.
+func (m *model) turns() int {
+	n := 0
+	for _, msg := range m.conv.Messages {
+		if msg.Role == core.ChatUser && msg.ToolResult == nil {
+			n++
+		}
+	}
+	return n
 }
 
 // hasDraft reports a draft in the composer: the user is already back in the
@@ -221,7 +250,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 // sees. The facts are measured now, not when the text was written.
 func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 	m.recap.ready = recapReadyMsg{}
-	m.recap.shownAt = r.chainLen
+	m.recap.shownAt = m.turns()
 	body := r.text
 	if r.goal != "" {
 		body = "Goal: " + r.goal + "\n" + body
