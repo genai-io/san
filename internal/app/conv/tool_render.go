@@ -86,8 +86,7 @@ const (
 	// A shell command hangs on the dotted body rail and its output on a solid
 	// one that ends in the "└" summary, or, when every line is in view, in its
 	// last line.
-	bashOutputPrefix    = "  │ "
-	nestedTrailerIndent = "    "
+	bashOutputPrefix = "  │ "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -319,7 +318,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 			head, last = last[:i], last[i+1:]
 		}
 		return renderBashOutput(head, data.Width) +
-			renderGutteredLine(nestedTrailerPrefix, nestedTrailerIndent, toolResultStyle, visibleLine(last), data.Width)
+			renderGutteredLine(nestedTrailerPrefix, strings.Repeat(" ", lipgloss.Width(nestedTrailerPrefix)), toolResultStyle, visibleLine(last), data.Width)
 	}
 	var sb strings.Builder
 	switch {
