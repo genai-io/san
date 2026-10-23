@@ -1809,3 +1809,25 @@ func TestRenderOutputPreviewCutsLongLines(t *testing.T) {
 		t.Fatalf("a long line should be one cut row: %q", out)
 	}
 }
+
+// A wrapped command breaks after a space, so its rows read as whole words, and
+// keeps every character, so the rows join back into the command.
+func TestWrapAtSpaces(t *testing.T) {
+	for _, tc := range []struct {
+		in    string
+		width int
+		want  string
+	}{
+		{"echo compile; sleep 0.2", 14, "echo compile; \nsleep 0.2"},
+		{"printf 'A     B'", 12, "printf 'A   \n  B'"},
+		{"abcdefghij", 4, "abcd\nefgh\nij"},
+		{"中文没有空格", 4, "中文\n没有\n空格"},
+		{"中文", 1, "中\n文"},
+		{"echo 很长很长的一个词", 8, "echo 很\n长很长的\n一个词"},
+	} {
+		got := wrapAtSpaces(tc.in, tc.width)
+		if got != tc.want || strings.ReplaceAll(got, "\n", "") != tc.in {
+			t.Errorf("wrapAtSpaces(%q, %d) = %q, want %q", tc.in, tc.width, got, tc.want)
+		}
+	}
+}

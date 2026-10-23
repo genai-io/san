@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
@@ -138,6 +139,42 @@ func visibleLine(line string) string {
 
 func renderNestedToolBodyLine(line string, width int) string {
 	return renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolResultStyle, visibleLine(line), width)
+}
+
+// wrapAtSpaces cuts s into rows at most width wide, after the last space in
+// reach so a wrapped command reads as whole words; a longer word is cut. Every
+// character is kept, so the rows join back into the command.
+func wrapAtSpaces(s string, width int) string {
+	var sb strings.Builder
+	for xansi.StringWidth(s) > width && utf8.RuneCountInString(s) > 1 {
+		row := xansi.Truncate(s, width, "")
+		// A word too wide for any row is cut anyway, so it starts here rather
+		// than leave this row short.
+		if i := strings.LastIndexByte(row, ' '); i > 0 && !wordWiderThan(s[i+1:], width) {
+			row = row[:i+1]
+		} else if row == "" { // a character wider than the row: it takes one alone
+			_, size := utf8.DecodeRuneInString(s)
+			row = s[:size]
+		}
+		sb.WriteString(row + "\n")
+		s = s[len(row):]
+	}
+	sb.WriteString(s)
+	return sb.String()
+}
+
+// wordWiderThan reports whether the word s starts with is wider than width.
+func wordWiderThan(s string, width int) bool {
+	word, _, _ := strings.Cut(s, " ")
+	return xansi.StringWidth(word) > width
+}
+
+// commandWrapWidth is the room a command line has beside its "$" / ">" mark.
+func commandWrapWidth(width int) int {
+	if width <= 0 {
+		width = 80
+	}
+	return max(1, width-lipgloss.Width(bashPrompt))
 }
 
 // renderGutteredLine soft-wraps one row to the terminal width so every
@@ -1302,6 +1339,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 			prefix = bashContinuation
 		}
 		seenCommand = true
+		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
 		sb.WriteString(renderGutteredLine(prefix, bashWrapIndent, toolCallStyle, commandLine, width))
 	}
 	return sb.String()
