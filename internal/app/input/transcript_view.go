@@ -48,19 +48,18 @@ func (h *TranscriptViewer) Enter(title string, lines []string, width, height int
 	h.Resize(width, height)
 }
 
-// EnterEntries opens at the most recent tool result, expanded for inspection.
+// EnterEntries opens at the most recent tool result, every result expanded:
+// this view is for reading what the chat folds.
 func (h *TranscriptViewer) EnterEntries(entries []TranscriptEntry, width, height int) {
 	h.Enter("History", nil, width, height)
 	h.entries = entries
 	for i, entry := range entries {
 		if entry.Tool {
 			h.tools = append(h.tools, i)
+			h.entries[i].expanded = true
 		}
 	}
 	h.selected = max(0, len(h.tools)-1)
-	if len(h.tools) > 0 {
-		h.entries[h.tools[h.selected]].expanded = true
-	}
 	h.renderEntries()
 	if len(h.tools) > 0 {
 		h.gotoSelected()

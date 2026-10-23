@@ -50,7 +50,7 @@ func TestRenderAssistantMessageThinkingDisplay(t *testing.T) {
 		if strings.Contains(out, bodySentinel) {
 			t.Fatalf("collapsed mode leaked the reasoning body:\n%s", out)
 		}
-		if !strings.Contains(out, "Thought for 3.2 s") {
+		if !strings.Contains(out, "Thought for 3.2s") {
 			t.Fatalf("collapsed mode should draw the Thought-for line:\n%s", out)
 		}
 		if !strings.Contains(out, "the answer") {
@@ -112,7 +112,7 @@ func TestRenderAssistantMessageCollapsedThinkingPrintsOnce(t *testing.T) {
 // off rather than reported as zero.
 func TestRenderCollapsedThinkingOmitsAnUnmeasuredDuration(t *testing.T) {
 	measured := RenderCollapsedThinking(2500 * time.Millisecond)
-	if !strings.Contains(stripANSI(measured), "Thought for 2.5 s") {
+	if !strings.Contains(stripANSI(measured), "Thought for 2.5s") {
 		t.Fatalf("measured Thought-for line = %q", stripANSI(measured))
 	}
 
@@ -128,15 +128,15 @@ func TestRenderCollapsedThinkingUsesReadableSeconds(t *testing.T) {
 		want     string
 	}{
 		{49 * time.Millisecond, "✦ Thought"},
-		{50 * time.Millisecond, "✦ Thought for 0.1 s"},
-		{328 * time.Millisecond, "✦ Thought for 0.3 s"},
-		{2500 * time.Millisecond, "✦ Thought for 2.5 s"},
-		{9949 * time.Millisecond, "✦ Thought for 9.9 s"},
-		{9950 * time.Millisecond, "✦ Thought for 10 s"},
-		{10450 * time.Millisecond, "✦ Thought for 10 s"},
-		{12400 * time.Millisecond, "✦ Thought for 12 s"},
-		{12500 * time.Millisecond, "✦ Thought for 13 s"},
-		{time.Minute, "✦ Thought for 60 s"},
+		{50 * time.Millisecond, "✦ Thought for 0.1s"},
+		{328 * time.Millisecond, "✦ Thought for 0.3s"},
+		{2500 * time.Millisecond, "✦ Thought for 2.5s"},
+		{9949 * time.Millisecond, "✦ Thought for 9.9s"},
+		{9950 * time.Millisecond, "✦ Thought for 10s"},
+		{10450 * time.Millisecond, "✦ Thought for 10s"},
+		{12400 * time.Millisecond, "✦ Thought for 12s"},
+		{12500 * time.Millisecond, "✦ Thought for 13s"},
+		{time.Minute, "✦ Thought for 60s"},
 	} {
 		t.Run(tc.duration.String(), func(t *testing.T) {
 			if got := stripANSI(RenderCollapsedThinking(tc.duration)); got != tc.want {

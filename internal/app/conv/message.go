@@ -195,12 +195,12 @@ type AssistantParams struct {
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
-	// "collapsed" replaces it with one "✦ Thought for 3.2 s" line, "hidden"
+	// "collapsed" replaces it with one "✦ Thought for 3.2s" line, "hidden"
 	// draws nothing. Empty is treated as "full" so a caller that has not been
 	// taught the setting keeps the historical behaviour.
 	ThinkingDisplay string
 	// ThinkingDuration is how long the message reasoned, reported by the
-	// collapsed mode's "Thought for 3.2 s" line.
+	// collapsed mode's "Thought for 3.2s" line.
 	ThinkingDuration time.Duration
 
 	// Streaming-commit offsets: how much of Content/Thinking is already in
@@ -222,7 +222,7 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
-// collapsedThinking is the "Thought for 3.2 s" line collapsed mode prints, or
+// collapsedThinking is the "Thought for 3.2s" line collapsed mode prints, or
 // "". It waits until reasoning ends, since scrollback cannot be rewritten, and
 // skips a message whose line the flush already printed (ThinkingEmitted).
 func (p AssistantParams) collapsedThinking() string {
@@ -235,16 +235,16 @@ func (p AssistantParams) collapsedThinking() string {
 	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderCollapsedThinking renders "✦ Thought for 3.2 s". An untimed message
+// RenderCollapsedThinking renders "✦ Thought for 3.2s". An untimed message
 // (restored from disk) shows just "✦ Thought".
 func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
 		rounded := d.Round(100 * time.Millisecond)
 		if rounded < 10*time.Second {
-			label += fmt.Sprintf(" for %.1f s", rounded.Seconds())
+			label += fmt.Sprintf(" for %.1fs", rounded.Seconds())
 		} else {
-			label += fmt.Sprintf(" for %.0f s", d.Round(time.Second).Seconds())
+			label += fmt.Sprintf(" for %.0fs", d.Round(time.Second).Seconds())
 		}
 	}
 	return thinkingGutter(true) + ThinkingStyle.Render(label)
@@ -635,7 +635,7 @@ type ToolResultData struct {
 	Expanded    bool
 	ToolInput   string
 	Width       int
-	// BashPreviewLines is how many last output lines a collapsed shell result shows.
+	// BashPreviewLines is how many lines a finished shell result may show unfolded.
 	BashPreviewLines int
 	Details          any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.

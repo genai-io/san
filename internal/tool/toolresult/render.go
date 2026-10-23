@@ -17,10 +17,25 @@ type FileChangeDetails struct {
 	TruncatedDiffLines int // diff lines dropped by the storage cap (0 = complete)
 }
 
+// LastLines is the end of s, at most n lines; only that end is scanned, as an
+// output may run to thousands.
+func LastLines(s string, n int) string {
+	end := strings.TrimRight(s, "\n")
+	start := len(end)
+	for range n {
+		i := strings.LastIndexByte(end[:start], '\n')
+		if i < 0 {
+			return s
+		}
+		start = i
+	}
+	return s[start+1:]
+}
+
 // BashDetails is display metadata kept apart from the model-facing text, which
 // may be cut short and lists stderr after stdout: the process error, the
-// output's real line count, and — for a failure — its last lines as they
-// interleaved, which the row keeps.
+// output's real line count, and — for a failure or a short output — its last
+// lines as they interleaved, which the row keeps.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
 	Error     string `json:"error"`

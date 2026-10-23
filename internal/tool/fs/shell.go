@@ -183,8 +183,10 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
 	details := toolresult.BashDetails{LineCount: lineCount}
-	if err != nil { // only a failed row keeps its last lines
-		details.Tail = lastLines(tail, previewTailLines)
+	// A failed row keeps its last lines; a short output is kept whole, which a
+	// successful row shows when it fits the preview.
+	if err != nil || lineCount <= previewTailLines {
+		details.Tail = toolresult.LastLines(tail, previewTailLines)
 	}
 
 	// Build CC-compatible structured response for hooks

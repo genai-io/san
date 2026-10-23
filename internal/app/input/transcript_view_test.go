@@ -32,19 +32,22 @@ func TestTranscriptToolsNavigateAndExpandIndependently(t *testing.T) {
 	}
 	h.EnterEntries(entries, 80, 24)
 	if !strings.Contains(h.Render(), "tool 2/2 · B") || !strings.Contains(h.Render(), "B body") {
-		t.Fatal("the latest tool should open expanded")
+		t.Fatal("the latest tool should be selected")
+	}
+	if !h.entries[1].expanded || !h.entries[2].expanded {
+		t.Fatal("every tool should open expanded")
 	}
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyLeft})
-	if !strings.Contains(h.Render(), "tool 1/2 · A") || !strings.Contains(ansi.Strip(h.Render()), "› A summary") {
+	if !strings.Contains(h.Render(), "tool 1/2 · A") || !strings.Contains(ansi.Strip(h.Render()), "› A body") {
 		t.Fatal("left should select the previous tool")
 	}
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !h.entries[1].expanded || !h.entries[2].expanded || renders != [2]int{2, 1} {
-		t.Fatal("expansion should re-render only the selected tool")
+	if h.entries[1].expanded || !h.entries[2].expanded || renders != [2]int{2, 1} {
+		t.Fatal("collapsing should re-render only the selected tool")
 	}
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if h.entries[1].expanded || !h.entries[2].expanded {
-		t.Fatal("collapsing one result should leave the other expanded")
+	if !h.entries[1].expanded || !h.entries[2].expanded {
+		t.Fatal("enter should expand the selected tool again")
 	}
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})

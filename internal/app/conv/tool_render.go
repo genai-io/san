@@ -13,6 +13,7 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -82,13 +83,10 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	// A shell command reads apart from its output by its marks: "$" leads the
-	// command and ">" each further line of it, as a shell's own prompts do,
-	// while output rows hang on the "┊" gutter; a wrapped command row is only
-	// indented, since it continues the same line.
-	bashPrompt       = "  $ "
-	bashContinuation = "  > "
-	bashWrapIndent   = "    "
+	// A shell command hangs on the dotted body rail and its output on a solid
+	// one that ends in the "└" summary, or, when every line is in view, in its
+	// last line.
+	bashOutputPrefix = "  │ "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -126,7 +124,7 @@ func renderNestedToolBody(content string, width int) string {
 }
 
 // visibleLine drops the progress a tool drew in place and then wrote over —
-// git's "Rebasing (1/3)\r…". Left in, the carriage return lands inside the "┊"
+// git's "Rebasing (1/3)\r…". Left in, the carriage return lands inside the
 // gutter and the terminal restarts the row at column 0, connector and all. A
 // trailing one is CRLF, not an overwrite.
 func visibleLine(line string) string {
@@ -142,15 +140,14 @@ func renderNestedToolBodyLine(line string, width int) string {
 }
 
 // wrapAtSpaces cuts s into rows at most width wide, after the last space in
-// reach so a wrapped command reads as whole words; a longer word is cut. Every
-// character is kept, so the rows join back into the command.
+// reach so a wrapped command reads as whole words. A word too wide for any row
+// is cut, and so is one whose break would leave the row less than half full.
+// Every character is kept, so the rows join back into the command.
 func wrapAtSpaces(s string, width int) string {
 	var sb strings.Builder
 	for xansi.StringWidth(s) > width && utf8.RuneCountInString(s) > 1 {
 		row := xansi.Truncate(s, width, "")
-		// A word too wide for any row is cut anyway, so it starts here rather
-		// than leave this row short.
-		if i := strings.LastIndexByte(row, ' '); i > 0 && !wordWiderThan(s[i+1:], width) {
+		if i := strings.LastIndexByte(row, ' '); i > 0 && 2*xansi.StringWidth(row[:i+1]) >= width && !wordWiderThan(s[i+1:], width) {
 			row = row[:i+1]
 		} else if row == "" { // a character wider than the row: it takes one alone
 			_, size := utf8.DecodeRuneInString(s)
@@ -169,12 +166,12 @@ func wordWiderThan(s string, width int) bool {
 	return xansi.StringWidth(word) > width
 }
 
-// commandWrapWidth is the room a command line has beside its "$" / ">" mark.
+// commandWrapWidth is the room a command line has beside its rail.
 func commandWrapWidth(width int) int {
 	if width <= 0 {
 		width = 80
 	}
-	return max(1, width-lipgloss.Width(bashPrompt))
+	return max(1, width-lipgloss.Width(nestedBodyPrefix))
 }
 
 // renderGutteredLine soft-wraps one row to the terminal width so every
@@ -186,7 +183,7 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 		width = 80
 	}
 	line = strings.ReplaceAll(line, "\t", "    ")
-	wrapWidth := max(1, width-lipgloss.Width(nestedBodyPrefix))
+	wrapWidth := max(1, width-lipgloss.Width(prefix))
 
 	var sb strings.Builder
 	for segment := range strings.SplitSeq(xansi.Hardwrap(line, wrapWidth, true), "\n") {
@@ -196,7 +193,8 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 	return sb.String()
 }
 
-func renderNestedToolBodyContinuous(content string, width int) string {
+// renderBashOutput hangs a shell command's output on the solid rail, wrapped.
+func renderBashOutput(content string, width int) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return ""
@@ -204,7 +202,7 @@ func renderNestedToolBodyContinuous(content string, width int) string {
 
 	var sb strings.Builder
 	for line := range strings.SplitSeq(content, "\n") {
-		sb.WriteString(renderNestedToolBodyLine(line, width))
+		sb.WriteString(renderGutteredLine(bashOutputPrefix, bashOutputPrefix, toolResultStyle, visibleLine(line), width))
 	}
 	return sb.String()
 }
@@ -290,6 +288,10 @@ func renderBashToolResultInline(data ToolResultData) string {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
+	lineCount := details.LineCount
+	if !hasDetails {
+		lineCount = strings.Count(content, "\n") + 1
+	}
 	switch {
 	case data.IsError:
 	case !hasDetails:
@@ -302,22 +304,30 @@ func renderBashToolResultInline(data ToolResultData) string {
 	default:
 		summary = formatLineCountValue(details.LineCount)
 	}
-	// A finished command keeps its last lines only when it failed: success is
-	// the model's to report, a failure is what the user may step in on. The
-	// tail is the output as it interleaved, the end the row showed live.
-	var preview string
-	if data.IsError {
-		preview = content
-		if hasDetails && details.Tail != "" {
-			preview = details.Tail
-		}
+	// The tail is the output as it interleaved, the end the row showed live.
+	tail := content
+	if hasDetails && details.Tail != "" {
+		tail = details.Tail
 	}
-
+	// Success is the model's to report, so a longer output folds to its count;
+	// one that fits the preview has nothing to fold, and its last line closes
+	// the row instead of a count.
+	if !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
+		head, last := "", strings.TrimRight(tail, "\n")
+		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
+			head, last = last[:i], last[i+1:]
+		}
+		return renderBashOutput(head, data.Width) +
+			renderGutteredLine(nestedTrailerPrefix, strings.Repeat(" ", lipgloss.Width(nestedTrailerPrefix)), toolResultStyle, visibleLine(last), data.Width)
+	}
 	var sb strings.Builder
-	if data.Expanded {
-		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
-	} else {
-		sb.WriteString(renderOutputPreview(preview, data.BashPreviewLines, data.Width))
+	switch {
+	case data.Expanded:
+		sb.WriteString(renderBashOutput(content, data.Width))
+	case data.IsError:
+		// A failure is what the user may step in on: it keeps its whole tail,
+		// wrapped, whatever the preview setting.
+		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -326,29 +336,24 @@ func renderBashToolResultInline(data ToolResultData) string {
 	return sb.String()
 }
 
-// renderOutputPreview draws the last n lines of a shell command's output on
-// the "┊" gutter, the same rows while it runs and once it has failed. Each line
-// is cut to the width rather than wrapped, so the preview is never taller
-// than n rows; output shorter than n shows as many rows as it has.
+// renderOutputPreview draws the last n lines of a running shell command's
+// output on the solid rail. Each line is cut to the width rather than wrapped,
+// so the preview is never taller than n rows; output shorter than n shows as
+// many rows as it has.
 func renderOutputPreview(output string, n, width int) string {
 	output = strings.TrimRight(output, "\n")
 	if n <= 0 || strings.TrimSpace(output) == "" {
 		return ""
 	}
-	// Only the last n lines are split off: the output may run to thousands.
-	start := len(output)
-	for i := 0; i < n && start > 0; i++ {
-		start = strings.LastIndexByte(output[:start], '\n')
-	}
 	if width <= 0 {
 		width = 80
 	}
-	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
+	room := max(1, width-lipgloss.Width(bashOutputPrefix))
 	var sb strings.Builder
-	for line := range strings.SplitSeq(output[start+1:], "\n") {
+	for line := range strings.SplitSeq(toolresult.LastLines(output, n), "\n") {
 		// Plain text: an output's own color reset would end the dim tone midway.
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
-		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+kit.TruncateText(line, room)) + "\n")
+		sb.WriteString(toolResultStyle.Render(bashOutputPrefix+kit.TruncateText(line, room)) + "\n")
 	}
 	return sb.String()
 }
@@ -1325,7 +1330,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 
 	// Soft-wrap every command line in the call's own color, marked as the
 	// constants above describe; no command text is replaced by ellipses. Blank
-	// lines at either end are dropped so the first line keeps "$".
+	// lines at the start are dropped.
 	seenCommand := false
 	for commandLine := range strings.SplitSeq(strings.TrimRight(command, " \t\r\n"), "\n") {
 		if strings.TrimSpace(commandLine) == "" {
@@ -1334,13 +1339,9 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 			}
 			commandLine = ""
 		}
-		prefix := bashPrompt
-		if seenCommand {
-			prefix = bashContinuation
-		}
 		seenCommand = true
 		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
-		sb.WriteString(renderGutteredLine(prefix, bashWrapIndent, toolCallStyle, commandLine, width))
+		sb.WriteString(renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolCallStyle, commandLine, width))
 	}
 	return sb.String()
 }

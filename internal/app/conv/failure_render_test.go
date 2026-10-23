@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -43,7 +44,12 @@ func TestFailedToolBodiesRespectExpansion(t *testing.T) {
 				data.Details = toolresult.BashDetails{Error: "exit code 1", LineCount: 1000}
 			}
 			collapsed := stripANSI(RenderToolResultInline(data, nil))
-			if len(collapsed) > 300 || !strings.Contains(collapsed, "exit code 1") {
+			// A Bash failure also keeps its output's end, bounded in rows.
+			bounded := len(collapsed) <= 300
+			if name == "Bash" {
+				bounded = strings.Count(collapsed, "\n") <= setting.MaxBashPreviewLines+1
+			}
+			if !bounded || !strings.Contains(collapsed, "exit code 1") {
 				t.Errorf("%s nested=%v must show a bounded reason; rendered %d bytes", name, nested, len(collapsed))
 			}
 			data.Expanded = true
