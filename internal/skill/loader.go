@@ -101,47 +101,22 @@ func (l *loader) loadAll() (map[string]*Skill, error) {
 	skills := make(map[string]*Skill)
 
 	for _, sp := range l.getSearchPaths() {
-		if _, err := os.Stat(sp.path); os.IsNotExist(err) {
-			continue
-		}
-
-		// Walk the skills directory
-		err := filepath.Walk(sp.path, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil // Skip errors, continue walking
+		confdir.WalkFiles(sp.path, func(path string) {
+			if !strings.EqualFold(filepath.Base(path), "skill.md") {
+				return
 			}
-
-			// Look for SKILL.md files (case-insensitive)
-			if info.IsDir() {
-				return nil
-			}
-			baseName := strings.ToLower(info.Name())
-			if baseName != "skill.md" {
-				return nil
-			}
-
 			skill, err := l.loadSkillFile(path, sp.scope, sp.namespace)
 			if err != nil {
-				return nil // Skip invalid skills
+				return // Skip invalid skills
 			}
 
-			// Use FullName (namespace:name) as the key
+			// Use FullName (namespace:name) as the key; higher priority
+			// scopes override lower ones.
 			fullName := skill.FullName()
-
-			// Higher priority scopes override lower ones
-			if existing, ok := skills[fullName]; ok {
-				if skill.Scope > existing.Scope {
-					skills[fullName] = skill
-				}
-			} else {
+			if existing, ok := skills[fullName]; !ok || skill.Scope > existing.Scope {
 				skills[fullName] = skill
 			}
-
-			return nil
 		})
-		if err != nil {
-			continue // Skip directory errors
-		}
 	}
 
 	return skills, nil
@@ -194,7 +169,7 @@ func scanResourceDir(dir string) []string {
 
 	var files []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !confdir.IsDir(dir, e) {
 			files = append(files, e.Name())
 		}
 	}

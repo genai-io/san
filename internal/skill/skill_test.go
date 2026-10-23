@@ -381,3 +381,31 @@ Review instructions.
 		t.Errorf("Namespace = %s, want 'code' (explicit frontmatter)", skill.Namespace)
 	}
 }
+
+// A skill folder linked in from a shared repo loads like a real one.
+func TestLoadAllSkillsFollowsSymlinks(t *testing.T) {
+	tmpDir := t.TempDir()
+	shared := filepath.Join(tmpDir, "playbooks", "jenkins")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: jenkins\ndescription: Run Jenkins jobs\n---\n\nSteps.\n"
+	if err := os.WriteFile(filepath.Join(shared, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skillsDir := filepath.Join(tmpDir, ".san", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(shared, filepath.Join(skillsDir, "jenkins")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	skills, err := (&loader{cwd: tmpDir}).loadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := skills["jenkins"]; !ok {
+		t.Fatal("the symlinked jenkins skill was not loaded")
+	}
+}

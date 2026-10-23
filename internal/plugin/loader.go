@@ -111,7 +111,7 @@ func LoadPluginsFromDir(dir string, scope Scope, sourcePrefix string) ([]*Plugin
 
 	var plugins []*Plugin
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !confdir.IsDir(dir, entry) {
 			continue
 		}
 

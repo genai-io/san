@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/skill"
 )
 
@@ -135,7 +136,7 @@ func skillDirs(root string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !confdir.IsDir(root, e) {
 			continue
 		}
 		sub := filepath.Join(root, e.Name())
