@@ -498,15 +498,14 @@ func RecapNotice(facts, body string) string {
 }
 
 // RenderRecap renders a recap dim end to end, an aside to the conversation:
-// the ⌂ mark ("welcome back") trailed by its facts, and the model's lines
-// under the reply gutter, kept line for line. ⌂ is one cell even where
-// ambiguous-width glyphs take two.
-func RenderRecap(facts, body string) string {
-	head := "⌂"
+// its paragraph led by mark where a reply has its ●, and under it the facts
+// San measured.
+func RenderRecap(mark, facts, body string) string {
+	out := lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Render(body))
 	if facts != "" {
-		head += " " + facts
+		out += "\n" + continuationGutter + sideMarkStyle.Render(facts)
 	}
-	return sideMarkStyle.Render(head) + "\n" + RenderCommittedContentBlock(sideMarkStyle.Render(body), false, nil) + "\n"
+	return out + "\n"
 }
 
 // RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the

@@ -1,7 +1,8 @@
 // Recap: coming back to the terminal after being away, one note on where the
 // session stands. San states what it measures itself (time away, what waits on
 // you, plan progress, the mission, work in the background); a side request
-// writes the rest: the goal, what is being done now, and the one next step.
+// writes the rest in a sentence or two: the goal, where the work stands, and
+// the one next step.
 package app
 
 import (
@@ -15,7 +16,6 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
@@ -37,11 +37,7 @@ const (
 	recapNewTurns = 2
 )
 
-const recapInstructions = `<system-reminder>The user stepped away and is coming back. Write a recap that lets them pick the work back up at a glance. You are a one-off note beside the conversation: the main work is not interrupted, and you cannot use tools.
-Plain text, no markdown, in the language of the conversation, under 40 words, one line each:
-%GOAL%Now: where the work stands: what is done, what is in progress, anything failed or blocked. Name the file, PR or test.
-Next: the one next action. Begin it with "Your turn:" when it waits on the user.
-Skip reasons, internals and side to-dos.%FACTS%
+const recapInstructions = `<system-reminder>The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown, in the language of the conversation. Lead with the overall goal and current task and where it stands: done, in progress or blocked. Then the one next action, saying so when it is the user's. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents. You are a one-off note beside the conversation: the main work goes on, and you cannot use tools.%FACTS%
 </system-reminder>`
 
 // recapState follows the terminal's focus and the recap written for it.
@@ -58,8 +54,7 @@ type recapPrepareMsg struct{ awaySince time.Time }
 
 type recapReadyMsg struct {
 	sessionID string
-	chainLen  int    // chain length it was written at; a longer chain makes it stale
-	goal      string // the mission it stood on, stated by San, not the model
+	chainLen  int // chain length it was written at; a longer chain makes it stale
 	text      string
 	err       error
 }
@@ -197,25 +192,20 @@ func (m *model) recapLive() string {
 	if !m.recap.show || !m.recap.busy {
 		return ""
 	}
-	return conv.RenderRecap(m.recapFacts(m.recap.away), m.conv.Spinner.View()+" writing…")
+	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(m.recap.away), "writing…")
 }
 
 func (m *model) writeRecap() tea.Cmd {
 	m.recap.busy = true
-	goal := m.recapGoal()
-	prompt := strings.ReplaceAll(recapInstructions, "%GOAL%", "Goal: what the session is for, in a few words.\n")
-	if goal != "" {
-		prompt = strings.ReplaceAll(recapInstructions, "%GOAL%", "")
-	}
 	facts := ""
 	if f := m.recapFacts(0); f != "" {
 		facts = "\nThe user already sees these facts; don't repeat them: " + f + "."
 	}
-	if goal != "" {
-		facts += "\nThe goal is shown to them already: " + goal
+	if goal := m.recapGoal(); goal != "" {
+		facts += "\nThe overall goal is AutoPilot's mission: " + goal
 	}
-	req := m.newSideRequest("recap", strings.ReplaceAll(prompt, "%FACTS%", facts))
-	ready := recapReadyMsg{sessionID: m.sessionID(), chainLen: len(req.chain), goal: goal}
+	req := m.newSideRequest("recap", strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
+	ready := recapReadyMsg{sessionID: m.sessionID(), chainLen: len(req.chain)}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), recapTimeout)
 		defer cancel()
@@ -251,20 +241,15 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 	m.recap.ready = recapReadyMsg{}
 	m.recap.shownAt = m.turns()
-	body := r.text
-	if r.goal != "" {
-		body = "Goal: " + r.goal + "\n" + body
-	}
-	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(m.recap.away), body))
+	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(m.recap.away), r.text))
 	return tea.Batch(m.CommitMessages()...)
 }
 
-// recapGoal is the mission AutoPilot drives, on one line; "" leaves the goal
-// to the model.
+// recapGoal is the first line of the mission AutoPilot drives; "" leaves the
+// goal to the model.
 func (m *model) recapGoal() string {
-	mission := m.drivenMission()
-	line, _, _ := strings.Cut(mission, "\n")
-	return kit.TruncateText(strings.TrimSpace(line), 60)
+	line, _, _ := strings.Cut(m.drivenMission(), "\n")
+	return strings.TrimSpace(line)
 }
 
 // recapFacts is what San knows without asking the model, most urgent first:
