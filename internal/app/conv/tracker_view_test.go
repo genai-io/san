@@ -69,13 +69,14 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	// The blink is driven by the shared Blink tick, not the wall clock, so it
-	// is deterministic: the dot shows at frame 0 and blinks out at frame 3.
-	if on := stripANSI(renderItem(task, itemRunning, 80, 2, nil, 0, nil)); !strings.Contains(on, "●") {
-		t.Fatalf("in-progress task should show the live dot, got %q", on)
+	// The breathing is driven by the shared Frame tick, not the wall clock, so
+	// it is deterministic: the dot stays on every frame and changes tone.
+	faint, peak := renderItem(task, itemRunning, 80, 2, nil, 0, nil), renderItem(task, itemRunning, 80, 2, nil, 3, nil)
+	if !strings.Contains(stripANSI(faint), "●") || !strings.Contains(stripANSI(peak), "●") {
+		t.Fatalf("in-progress task should keep the live dot on every frame, got %q / %q", faint, peak)
 	}
-	if off := stripANSI(renderItem(task, itemRunning, 80, 2, nil, 3, nil)); strings.Contains(off, "●") {
-		t.Fatalf("in-progress task should blink the dot out, got %q", off)
+	if faint == peak {
+		t.Fatalf("in-progress task should breathe across frames, got %q on both", faint)
 	}
 }
 

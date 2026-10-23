@@ -42,7 +42,7 @@ func (m *OutputModel) ResizeMDRenderer(width int) {
 // counter. The spinner's own frame index is unexported and wraps at the frame
 // count, so liveness animations can't read it; Frame advances once per real
 // frame the spinner consumes, and every live row reads its kit.LiveDot phase
-// from it, so all of them blink in step.
+// from it, so all of them breathe in step.
 type FrameClock struct {
 	spinner spinner.Model
 	frame   int

@@ -55,7 +55,7 @@ type RenderContext struct {
 
 	// ── Per-tick UI state ───────────────────────────────────────
 	SpinnerView  string
-	Blink        int
+	Frame        int
 	ModelName    string
 	InputTokens  int
 	OutputTokens int
@@ -265,7 +265,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		StreamActive:         p.StreamActive,
 		IsLast:               isLast,
 		DockedModalActive:    p.DockedModalActive,
-		Blink:                p.Blink,
+		Frame:                p.Frame,
 		MDRenderer:           p.MDRenderer,
 		Width:                p.Width,
 		ContentCommittedLen:  msg.ContentCommittedLen,
@@ -308,7 +308,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ModelName:          p.ModelName,
 		InputTokens:        p.InputTokens,
 		OutputTokens:       p.OutputTokens,
-		Blink:              p.Blink,
+		Frame:              p.Frame,
 		AgentColors:        p.AgentColors,
 		MemberColors:       p.MemberColors,
 		SpinnerView:        p.SpinnerView,
@@ -425,7 +425,7 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
 			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width,
-			Blink: p.Blink, AgentColors: p.AgentColors,
+			Frame: p.Frame, AgentColors: p.AgentColors,
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
 		})
 		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
@@ -520,10 +520,10 @@ func RenderActiveContent(p RenderContext) string {
 	p.Interactive = true
 	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
 	// A turn between steps (one committed, the next not yet streaming) keeps
-	// its spinner, or the row would blink out and back.
+	// its spinner, or the row would vanish and come back.
 	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
-			StreamActive: true, IsLast: true, Blink: p.Blink,
+			StreamActive: true, IsLast: true, Frame: p.Frame,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
 			WaitStartedAt: p.StreamStartedAt,
 		})
@@ -539,7 +539,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		CurrentIdx:         p.CurrentIdx,
 		TaskActivity:       p.TaskActivity,
 		SpinnerView:        p.SpinnerView,
-		Blink:              p.Blink,
+		Frame:              p.Frame,
 		AgentColors:        p.AgentColors,
 		Width:              p.Width,
 		SuppressAgentLabel: suppressAgentLabel,

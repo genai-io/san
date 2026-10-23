@@ -186,9 +186,9 @@ type AssistantParams struct {
 	IsLast            bool
 	// DockedModalActive freezes the bullet: the stream stays "active" across a
 	// permission gate (it clears only on a text-only Done chunk), so without
-	// this the live tail blinks while the turn is parked on the user's answer.
+	// this the live tail breathes while the turn is parked on the user's answer.
 	DockedModalActive bool
-	Blink             int // frame clock phase for the waiting row's live mark
+	Frame             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
 	Width             int
 	WaitStartedAt     time.Time // when the wait began; the waiting row shows its elapsed time
@@ -264,17 +264,13 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
-// thinkingMark leads reasoning: the star of the San mark, apart from the
-// reply's ●.
-const thinkingMark = "✦"
-
 // thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
 // marker for the turn's first thinking block, or a blank continuation gutter for
 // blocks committed after it, so progressively-committed reasoning aligns under
 // the single leading glyph.
 func thinkingGutter(showIcon bool) string {
 	if showIcon {
-		return ThinkingStyle.Render(thinkingMark + " ")
+		return ThinkingStyle.Render(kit.ThinkingMark + " ")
 	}
 	return continuationGutter
 }
@@ -460,16 +456,13 @@ func (p AssistantParams) waitingRow() string {
 	}
 	if p.DockedModalActive {
 		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Render(thinkingMark)
+		return ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
 	}
-	row := thinkingMark
-	if !kit.BlinkOn(p.Blink) {
-		row = " "
-	}
+	row := kit.LiveStar(p.Frame)
 	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
-		row += " " + elapsed
+		row += ThinkingStyle.Render(" " + elapsed)
 	}
-	return ThinkingStyle.Render(row)
+	return row
 }
 
 // RenderSystemMessage renders a system/notice core.
@@ -588,7 +581,7 @@ type ToolCallsParams struct {
 	ModelName          string
 	InputTokens        int
 	OutputTokens       int
-	Blink              int
+	Frame              int
 	AgentColors        map[string]string
 	MemberColors       map[string]int
 	SpinnerView        string
@@ -683,10 +676,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				// The live dot blinks off the frame counter; on the call a
+				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := kit.LiveDot(params.Blink)
+				icon := kit.LiveDot(params.Frame)
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
@@ -792,7 +785,7 @@ func toolCallIcon(tc core.ToolCall, params ToolCallsParams) string {
 		return "●"
 	}
 
-	// In parallel mode every in-flight call blinks; sequentially, only the
+	// In parallel mode every in-flight call breathes; sequentially, only the
 	// current call does.
 	if params.ParallelMode || idx == params.CurrentIdx {
 		return params.SpinnerView

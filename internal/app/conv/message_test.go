@@ -889,7 +889,7 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		CurrentIdx:  0,
-		Blink:       0,
+		Frame:       0,
 		SpinnerView: "◓",
 		Width:       100,
 	}
@@ -912,7 +912,7 @@ func TestRenderToolCallsPreservesAgentName(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		Blink:        0,
+		Frame:        0,
 		SpinnerView:  "◓",
 		Width:        100,
 	}
@@ -948,7 +948,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 		ModelName:    "gpt-5.4-mini",
 		InputTokens:  18500,
 		OutputTokens: 467,
-		Blink:        0,
+		Frame:        0,
 		SpinnerView:  "◓",
 		Width:        120,
 	}
@@ -1540,7 +1540,7 @@ func TestRenderToolCallsFreezesAgentRowAwaitingApproval(t *testing.T) {
 	// The live dot is on at frame 0 and blinks out at frame 3; both phases
 	// must render the same static bullet once the prompt is up.
 	for _, blink := range []int{0, 3} {
-		params.Blink = blink
+		params.Frame = blink
 		live := stripANSI(RenderToolCalls(params))
 		if !strings.Contains(live, stripANSI(kit.LiveDot(blink))+" Agent") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, want the blinking icon while the call runs unprompted", blink, live)
@@ -1640,7 +1640,7 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 	}
 
 	for _, blink := range []int{0, 3} {
-		params.Blink = blink
+		params.Frame = blink
 		rendered := stripANSI(RenderToolCalls(params))
 		if strings.Contains(rendered, "⋯") {
 			t.Fatalf("blink %d: RenderToolCalls() = %q, a row spins while the modal owns the screen", blink, rendered)
@@ -1664,12 +1664,13 @@ func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
 		t.Fatalf("waiting on the first token should show the reasoning mark:\n%s", out)
 	}
-	p.Blink = 3
-	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "✦") {
-		t.Fatalf("the waiting mark should blink out on the off frame:\n%s", out)
+	for p.Frame = range 6 {
+		if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
+			t.Fatalf("frame %d: the waiting mark should breathe, not blink out:\n%s", p.Frame, out)
+		}
 	}
 	p.Thinking, p.ThinkingDisplay = "Inspecting repository docs", setting.ThinkingDisplayFull
-	p.Blink = 0
+	p.Frame = 0
 	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.HasSuffix(strings.TrimSpace(out), "\n✦") {
 		t.Fatalf("the wait should hold below streaming reasoning:\n%s", out)
 	}
