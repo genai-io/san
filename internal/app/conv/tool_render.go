@@ -86,8 +86,8 @@ const (
 	// A shell command hangs on the dotted body rail and its output on a solid
 	// one that ends in the "└" summary, or, when every line is in view, in its
 	// last line.
-	bashOutputPrefix = "  │ "
-	trailerIndent    = "    "
+	bashOutputPrefix    = "  │ "
+	nestedTrailerIndent = "    "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -289,9 +289,9 @@ func renderBashToolResultInline(data ToolResultData) string {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
-	lines := details.LineCount
+	lineCount := details.LineCount
 	if !hasDetails {
-		lines = strings.Count(content, "\n") + 1
+		lineCount = strings.Count(content, "\n") + 1
 	}
 	switch {
 	case data.IsError:
@@ -306,29 +306,29 @@ func renderBashToolResultInline(data ToolResultData) string {
 		summary = formatLineCountValue(details.LineCount)
 	}
 	// The tail is the output as it interleaved, the end the row showed live.
-	end := content
+	tail := content
 	if hasDetails && details.Tail != "" {
-		end = details.Tail
+		tail = details.Tail
 	}
 	// Success is the model's to report, so a longer output folds to its count;
 	// one that fits the preview has nothing to fold, and its last line closes
 	// the row instead of a count.
-	if !data.IsError && content != "" && details.TaskID == "" && lines <= data.BashPreviewLines {
-		head, last := "", strings.TrimRight(end, "\n")
+	if !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
+		head, last := "", strings.TrimRight(tail, "\n")
 		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
 			head, last = last[:i], last[i+1:]
 		}
 		return renderBashOutput(head, data.Width) +
-			renderGutteredLine(nestedTrailerPrefix, trailerIndent, toolResultStyle, visibleLine(last), data.Width)
+			renderGutteredLine(nestedTrailerPrefix, nestedTrailerIndent, toolResultStyle, visibleLine(last), data.Width)
 	}
 	var sb strings.Builder
 	switch {
 	case data.Expanded:
 		sb.WriteString(renderBashOutput(content, data.Width))
 	case data.IsError:
-		// A failure is what the user may step in on: it keeps its whole end,
+		// A failure is what the user may step in on: it keeps its whole tail,
 		// wrapped, whatever the preview setting.
-		sb.WriteString(renderBashOutput(toolresult.LastLines(end, setting.MaxBashPreviewLines), data.Width))
+		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
