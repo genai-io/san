@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // ResolvePath follows symlinks even when the file or its parents are new.
@@ -54,4 +56,26 @@ func ResolvePath(path string) (string, error) {
 		suffix = filepath.Join(base, suffix)
 		candidate = parent
 	}
+}
+
+// writeTarget is where Write puts path's contents. A symlink inside the user's
+// own config folder (~/.san) is written through, so a file linked in from a
+// dotfiles repo stays linked. Anywhere else, a project's .san included, the
+// link came with the folder and is replaced: a write never leaves it.
+func writeTarget(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	if rel, err := filepath.Rel(confdir.Dir(home), abs); err != nil || !filepath.IsLocal(rel) {
+		return path
+	}
+	if resolved, err := ResolvePath(abs); err == nil {
+		return resolved
+	}
+	return path
 }

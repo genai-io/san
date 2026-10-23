@@ -3,6 +3,7 @@ package atomicfile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -112,5 +113,55 @@ func TestWriteFileResolvesSymlinksBeforeParentTraversal(t *testing.T) {
 	}
 	if err := WriteFile(dangling, []byte("unseen"), 0o600); err == nil {
 		t.Fatal("unseen existing target overwritten")
+	}
+}
+
+// A settings file linked into ~/.san from a dotfiles repo stays linked when
+// San saves it; a link inside a project's .san is replaced, never written
+// through to wherever it points.
+func TestWriteThroughUserConfigLinksOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	dotfiles := filepath.Join(home, "dotfiles", "settings.json")
+	outside := filepath.Join(home, "outside.json")
+	for _, f := range []string{dotfiles, outside} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userLink := filepath.Join(home, ".san", "settings.json")
+	projectLink := filepath.Join(home, "repo", ".san", "settings.local.json")
+	for _, l := range []struct{ link, target string }{{userLink, dotfiles}, {projectLink, outside}} {
+		if err := os.MkdirAll(filepath.Dir(l.link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(l.target, l.link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+
+	if err := WriteJSON(userLink, map[string]int{"v": 1}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(userLink); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("saving ~/.san/settings.json replaced its symlink")
+	}
+	if got, _ := os.ReadFile(dotfiles); !strings.Contains(string(got), `"v": 1`) {
+		t.Fatalf("dotfiles copy = %s, want the saved settings", got)
+	}
+
+	if err := WriteJSON(projectLink, map[string]int{"v": 2}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(projectLink); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("a project's link was written through instead of replaced")
+	}
+	if got, _ := os.ReadFile(outside); string(got) != "{}" {
+		t.Fatalf("a write left the project: outside.json = %s", got)
 	}
 }

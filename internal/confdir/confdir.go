@@ -5,6 +5,7 @@
 package confdir
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,4 +81,42 @@ func LocalDir(cwd string) string {
 		return Dir(cwd)
 	}
 	return Dir(filepath.Join(main, rel))
+}
+
+// ResolvesToDir reports whether entry, read from dir, is a directory once a
+// symlink is followed: os.ReadDir reports a linked directory as a link. Config
+// folders are often linked in from a dotfiles or shared repo.
+func ResolvesToDir(dir string, entry fs.DirEntry) bool {
+	if entry.Type()&fs.ModeSymlink == 0 {
+		return entry.IsDir()
+	}
+	info, err := os.Stat(filepath.Join(dir, entry.Name()))
+	return err == nil && info.IsDir()
+}
+
+// WalkFiles calls fn for each file under root, in lexical order, following
+// symlinked files and directories; a directory reached again through a link
+// cycle is skipped. Unreadable entries are skipped.
+func WalkFiles(root string, fn func(path string)) {
+	seen := map[string]bool{}
+	var walk func(dir string)
+	walk = func(dir string) {
+		real, err := filepath.EvalSymlinks(dir)
+		if err != nil || seen[real] {
+			return
+		}
+		seen[real] = true
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			if path := filepath.Join(dir, e.Name()); ResolvesToDir(dir, e) {
+				walk(path)
+			} else {
+				fn(path)
+			}
+		}
+	}
+	walk(root)
 }

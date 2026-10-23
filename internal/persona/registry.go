@@ -152,7 +152,7 @@ func loadDir(root string, scope Scope) []*Persona {
 	}
 	var out []*Persona
 	for _, e := range entries {
-		if !e.IsDir() || strings.EqualFold(e.Name(), DefaultName) {
+		if !confdir.ResolvesToDir(root, e) || strings.EqualFold(e.Name(), DefaultName) {
 			continue
 		}
 		p, ok := parseDir(filepath.Join(root, e.Name()))

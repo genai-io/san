@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 )
@@ -101,7 +102,7 @@ func ResolveSkills(manifest *Manifest, pluginPath string) []string {
 				continue
 			}
 			for _, entry := range entries {
-				if entry.IsDir() {
+				if confdir.ResolvesToDir(p, entry) {
 					skillDir := filepath.Join(p, entry.Name())
 					if skill.FindSkillFile(skillDir) != "" {
 						skills = append(skills, skillDir)
@@ -129,9 +130,11 @@ func collectMarkdownFiles(paths []string) []string {
 			continue
 		}
 		if info.IsDir() {
-			if files, err := scanMarkdownFiles(p); err == nil {
-				result = append(result, files...)
-			}
+			confdir.WalkFiles(p, func(path string) {
+				if strings.HasSuffix(path, ".md") {
+					result = append(result, path)
+				}
+			})
 		} else if strings.HasSuffix(p, ".md") {
 			result = append(result, p)
 		}
@@ -206,21 +209,6 @@ func resolveConfigMap[T any](
 	default:
 		return zero
 	}
-}
-
-// scanMarkdownFiles recursively scans a directory for markdown files.
-func scanMarkdownFiles(dir string) ([]string, error) {
-	var files []string
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".md") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
 }
 
 // loadHooksFile loads hooks configuration from a JSON file.

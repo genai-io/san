@@ -79,7 +79,7 @@ Configuration and supporting capabilities:
 | `internal/filecache` | `infrastructure` | File restore/cache helpers. |
 | `internal/markdown` | `infrastructure` | Markdown frontmatter parsing. |
 | `internal/proc` | `infrastructure` | Cross-platform process-group / signal helpers (Unix/Windows variants) and the OS URL launcher. |
-| `internal/confdir` | `infrastructure` | Shared `.san` configuration directory naming helper. |
+| `internal/confdir` | `infrastructure` | Shared `.san` configuration directory naming, and scanning config folders through symlinks. |
 | `internal/atomicfile` | `infrastructure` | Temp-file-then-rename file replacement, so a reader never sees a half-written file. |
 | `internal/autoupdate` | `infrastructure` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |
 

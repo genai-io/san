@@ -26,9 +26,10 @@ const dirPerm os.FileMode = 0o755
 
 // Write replaces the file at path with data, creating parent directories as
 // needed. The temporary file is removed on every failure path, so a failed
-// write leaves nothing behind.
+// write leaves nothing behind. A symlink is replaced unless writeTarget says
+// to write through it.
 func Write(path string, data []byte, perm os.FileMode) error {
-	return write(path, data, perm, true)
+	return write(writeTarget(path), data, perm, true)
 }
 
 // WriteFile atomically replaces regular file contents: follow symlinks, retain
