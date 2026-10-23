@@ -169,7 +169,7 @@ func scanResourceDir(dir string) []string {
 
 	var files []string
 	for _, e := range entries {
-		if !confdir.IsDir(dir, e) {
+		if !confdir.ResolvesToDir(dir, e) {
 			files = append(files, e.Name())
 		}
 	}

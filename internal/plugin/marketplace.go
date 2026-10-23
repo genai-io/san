@@ -203,7 +203,7 @@ func isValidMarketplace(path string) bool {
 	pluginsDir := filepath.Join(path, "plugins")
 	if entries, err := os.ReadDir(pluginsDir); err == nil {
 		for _, e := range entries {
-			if confdir.IsDir(pluginsDir, e) && isValidPlugin(filepath.Join(pluginsDir, e.Name())) {
+			if confdir.ResolvesToDir(pluginsDir, e) && isValidPlugin(filepath.Join(pluginsDir, e.Name())) {
 				return true
 			}
 		}
@@ -215,7 +215,7 @@ func isValidMarketplace(path string) bool {
 		return false
 	}
 	for _, e := range entries {
-		if confdir.IsDir(path, e) && isValidPlugin(filepath.Join(path, e.Name())) {
+		if confdir.ResolvesToDir(path, e) && isValidPlugin(filepath.Join(path, e.Name())) {
 			return true
 		}
 	}
@@ -445,7 +445,7 @@ func (m *MarketplaceManager) ListPlugins(marketplaceID string) ([]string, error)
 		for _, e := range entries {
 			name := e.Name()
 			// Skip non-directories, already seen, and hidden directories
-			if !confdir.IsDir(dir, e) || seen[name] || strings.HasPrefix(name, ".") {
+			if !confdir.ResolvesToDir(dir, e) || seen[name] || strings.HasPrefix(name, ".") {
 				continue
 			}
 			pluginPath := filepath.Join(dir, name)

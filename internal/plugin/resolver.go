@@ -102,7 +102,7 @@ func ResolveSkills(manifest *Manifest, pluginPath string) []string {
 				continue
 			}
 			for _, entry := range entries {
-				if confdir.IsDir(p, entry) {
+				if confdir.ResolvesToDir(p, entry) {
 					skillDir := filepath.Join(p, entry.Name())
 					if skill.FindSkillFile(skillDir) != "" {
 						skills = append(skills, skillDir)

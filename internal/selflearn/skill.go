@@ -144,7 +144,7 @@ func (m *SkillManager) Inventory() []SkillInfo {
 			continue
 		}
 		for _, e := range entries {
-			if !confdir.IsDir(scope.dir, e) || seen[e.Name()] {
+			if !confdir.ResolvesToDir(scope.dir, e) || seen[e.Name()] {
 				continue
 			}
 			path := filepath.Join(scope.dir, e.Name(), "SKILL.md")

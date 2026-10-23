@@ -136,7 +136,7 @@ func skillDirs(root string) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if !confdir.IsDir(root, e) {
+		if !confdir.ResolvesToDir(root, e) {
 			continue
 		}
 		sub := filepath.Join(root, e.Name())

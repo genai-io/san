@@ -83,10 +83,10 @@ func LocalDir(cwd string) string {
 	return Dir(filepath.Join(main, rel))
 }
 
-// IsDir reports whether entry, read from dir, is a directory, following a
-// symlink: os.ReadDir reports a linked directory as a link. Config folders
-// are often linked in from a dotfiles or shared repo.
-func IsDir(dir string, entry fs.DirEntry) bool {
+// ResolvesToDir reports whether entry, read from dir, is a directory once a
+// symlink is followed: os.ReadDir reports a linked directory as a link. Config
+// folders are often linked in from a dotfiles or shared repo.
+func ResolvesToDir(dir string, entry fs.DirEntry) bool {
 	if entry.Type()&fs.ModeSymlink == 0 {
 		return entry.IsDir()
 	}
@@ -111,7 +111,7 @@ func WalkFiles(root string, fn func(path string)) {
 			return
 		}
 		for _, e := range entries {
-			if path := filepath.Join(dir, e.Name()); IsDir(dir, e) {
+			if path := filepath.Join(dir, e.Name()); ResolvesToDir(dir, e) {
 				walk(path)
 			} else {
 				fn(path)
