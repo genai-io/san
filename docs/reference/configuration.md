@@ -65,9 +65,10 @@ on read failure.
 
 ### `bashPreviewLines`
 
-How many of a shell command's last output lines its row shows, while it runs
-and after it finishes (default `3`, at most `20`; `0` shows only the line
-count). Lines are cut at the terminal width, not wrapped. Ctrl-O still expands
+How many of a shell command's last output lines its row shows while it runs
+(default `3`, at most `20`; `0` shows only the line count). Once it finishes,
+a failed command keeps them; a successful one folds to its line count, since
+the model reports what it found. Lines are cut at the terminal width, not wrapped. Ctrl-O still expands
 the full output. Also set in `/settings` → Appearance → Shell output.
 
 ### `thinkingDisplay`

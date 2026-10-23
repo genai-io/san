@@ -1721,9 +1721,10 @@ func TestRenderRecapWraps(t *testing.T) {
 	}
 }
 
-// A shell row shows its output's last N lines on the "┊" gutter, the same rows
-// while it runs (from its progress) and once its result is in; output shorter
-// than N shows as many rows as it has, and N = 0 shows none.
+// A shell row shows its output's last N lines on the "┊" gutter while it runs
+// (from its progress) and, the same rows, once it has failed; output shorter
+// than N shows as many rows as it has, and N = 0 shows none. A command that
+// succeeded folds to its count.
 func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	call := core.ToolCall{ID: "cmd", Name: "Bash", Input: `{"command":"make"}`}
 	output := "one\ntwo\nthree\nfour\n"
@@ -1741,11 +1742,11 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 		ToolStartedAt: map[string]time.Time{"cmd": time.Now().Add(-2 * time.Second)},
 		ToolProgress:  map[string]ToolProgress{"cmd": {Counter: "4 lines", Tail: output}},
 	}
-	done := ToolCallsParams{
+	failed := ToolCallsParams{
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
-		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output}},
+		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, IsError: true, Details: toolresult.BashDetails{Error: "exit code 2", LineCount: 4, Tail: output}}},
 	}
-	for name, p := range map[string]ToolCallsParams{"running": running, "done": done} {
+	for name, p := range map[string]ToolCallsParams{"running": running, "failed": failed} {
 		if got := preview(p); strings.Join(got, ",") != "two,three,four" {
 			t.Errorf("%s: preview = %q, want the last 3 lines", name, got)
 		}
@@ -1761,17 +1762,29 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	if out := stripANSI(RenderToolCalls(running)); !strings.Contains(out, "· 4 lines") || strings.Contains(out, "lines\none") {
 		t.Errorf("the running row should carry only the counter beside its timer:\n%s", out)
 	}
+	succeeded := ToolCallsParams{
+		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
+		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4}}},
+	}
+	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); len(got) != 0 || !strings.Contains(out, "└ 4 lines") {
+		t.Errorf("a command that succeeded should fold to its count:\n%s", out)
+	}
 }
 
-// The finished row counts and previews the real output from its details: the
-// text can be cut short, or be the "(no output)" placeholder.
+// The finished row counts the real output from its details, and a failed one
+// previews its real end: the text can be cut short, list stderr after stdout,
+// or be the "(no output)" placeholder.
 func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 	render := func(content string, d toolresult.BashDetails) string {
 		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80, BashPreviewLines: 2}))
 	}
-	cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000, Tail: "ne 7999\nline 8000\n"})
-	if !strings.Contains(cut, "┊ line 8000\n") || strings.Contains(cut, "truncated") || !strings.Contains(cut, "└ 8000 lines") {
-		t.Errorf("cut output should preview its real end and count:\n%s", cut)
+	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "┊") || !strings.Contains(cut, "└ 8000 lines") {
+		t.Errorf("cut output that succeeded should fold to its real count:\n%s", cut)
+	}
+	failed := stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", IsError: true, Width: 80, BashPreviewLines: 2,
+		Content: "a\nb\nerr", Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 3, Tail: "a\nerr\nb\n"}}))
+	if !strings.Contains(failed, "┊ err\n  ┊ b\n") || !strings.Contains(failed, "exit code 1") {
+		t.Errorf("a failure should keep its end as it interleaved:\n%s", failed)
 	}
 	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "┊") || !strings.Contains(none, "└ no output") {
 		t.Errorf("no output should show no rows:\n%s", none)

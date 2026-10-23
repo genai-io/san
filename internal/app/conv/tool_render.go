@@ -253,19 +253,25 @@ func renderBashToolResultInline(data ToolResultData) string {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
-	preview := content
 	switch {
 	case data.IsError:
 	case !hasDetails:
 		summary = formatLineCount(content)
 	case details.TaskID != "":
 		// Its text is how to reach the task (Ctrl-O shows it), not output.
-		summary, preview = "started in background · "+details.TaskID, ""
+		summary = "started in background · " + details.TaskID
 	case details.LineCount == 0:
-		summary, content, preview = "no output", "", ""
+		summary, content = "no output", ""
 	default:
 		summary = formatLineCountValue(details.LineCount)
-		if details.Tail != "" {
+	}
+	// A finished command keeps its last lines only when it failed: success is
+	// the model's to report, a failure is what the user may step in on. The
+	// tail is the output as it interleaved, the end the row showed live.
+	var preview string
+	if data.IsError {
+		preview = content
+		if hasDetails && details.Tail != "" {
 			preview = details.Tail
 		}
 	}
@@ -284,7 +290,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 }
 
 // renderOutputPreview draws the last n lines of a shell command's output on
-// the "┊" gutter, the same rows while it runs and once it is done. Each line
+// the "┊" gutter, the same rows while it runs and once it has failed. Each line
 // is cut to the width rather than wrapped, so the preview is never taller
 // than n rows; output shorter than n shows as many rows as it has.
 func renderOutputPreview(output string, n, width int) string {

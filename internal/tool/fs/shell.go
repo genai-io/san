@@ -125,7 +125,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), "")
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out)
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -170,7 +170,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount(), progress.lastTail())
 }
 
-// tail is the output's real end, kept for the UI only when the text is cut.
+// tail is the output's real end as it interleaved, which a failed row keeps.
 func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
@@ -183,8 +183,8 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
 	details := toolresult.BashDetails{LineCount: lineCount}
-	if truncated {
-		details.Tail = tail
+	if err != nil { // only a failed row keeps its last lines
+		details.Tail = lastLines(tail, previewTailLines)
 	}
 
 	// Build CC-compatible structured response for hooks

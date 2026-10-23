@@ -10,7 +10,7 @@
 //     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
 //     instead.
 //   - SHELL OUTPUT — how many of a shell command's last output lines its row
-//     shows; left/right steps 0–20, Enter applies.
+//     shows while running and after a failure; left/right steps 0–20.
 //
 // All are personal preferences, so — unlike Self-Learning — they have no
 // project scope; selecting a row persists to the user settings file.
@@ -100,7 +100,7 @@ func appearanceOptions() []appearanceOption {
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2 s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2 s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
-		{section: "SHELL OUTPUT", kind: kindBashPreview, label: "Preview lines", desc: "A command's last output lines, live and after"},
+		{section: "SHELL OUTPUT", kind: kindBashPreview, label: "Preview lines", desc: "Last lines while running, kept if it fails"},
 	}
 }
 
