@@ -32,8 +32,11 @@ func LiveDot(frame int) string {
 	return lipgloss.NewStyle().Foreground(dotPulse[frame%len(dotPulse)]).Render("●")
 }
 
-// LiveStar is the breathing ✦ that marks a wait on the model's reply, bold so
-// the small glyph reads.
+// StarMark leads reasoning: the star of the San mark, apart from the reply's ●.
+const StarMark = "✦"
+
+// LiveStar is the breathing StarMark that marks a wait on the model's reply,
+// bold so the small glyph reads.
 func LiveStar(frame int) string {
-	return lipgloss.NewStyle().Bold(true).Foreground(starPulse[frame%len(starPulse)]).Render("✦")
+	return lipgloss.NewStyle().Bold(true).Foreground(starPulse[frame%len(starPulse)]).Render(StarMark)
 }

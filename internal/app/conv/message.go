@@ -188,7 +188,7 @@ type AssistantParams struct {
 	// permission gate (it clears only on a text-only Done chunk), so without
 	// this the live tail breathes while the turn is parked on the user's answer.
 	DockedModalActive bool
-	Blink             int // frame clock phase for the waiting row's live mark
+	Frame             int // frame clock phase for the waiting row's live mark
 	MDRenderer        *MDRenderer
 	Width             int
 	WaitStartedAt     time.Time // when the wait began; the waiting row shows its elapsed time
@@ -264,9 +264,8 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
-// thinkingMark leads reasoning: the star of the San mark, apart from the
-// reply's ●.
-const thinkingMark = "✦"
+// thinkingMark leads reasoning (see kit.StarMark).
+const thinkingMark = kit.StarMark
 
 // thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
 // marker for the turn's first thinking block, or a blank continuation gutter for
@@ -462,7 +461,7 @@ func (p AssistantParams) waitingRow() string {
 		// Parked on the user: hold still and don't time their answer.
 		return ThinkingStyle.Bold(true).Render(thinkingMark)
 	}
-	row := kit.LiveStar(p.Blink)
+	row := kit.LiveStar(p.Frame)
 	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
 		row += ThinkingStyle.Render(" " + elapsed)
 	}
@@ -585,7 +584,7 @@ type ToolCallsParams struct {
 	ModelName          string
 	InputTokens        int
 	OutputTokens       int
-	Blink              int
+	Frame              int
 	AgentColors        map[string]string
 	MemberColors       map[string]int
 	SpinnerView        string
@@ -683,7 +682,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := kit.LiveDot(params.Blink)
+				icon := kit.LiveDot(params.Frame)
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}

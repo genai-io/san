@@ -29,9 +29,9 @@ type TrackerListParams struct {
 	// status field records intent and outlives the process that wrote it, so
 	// it cannot by itself justify a moving pixel.
 	Executing func(t *todo.Item) bool
-	// Blink is the shared frame-tick counter (see FrameClock.Frame) that
+	// Frame is the shared frame-tick counter (see FrameClock.Frame) that
 	// drives the in-progress pulse via trackerPulseTicks.
-	Blink int
+	Frame int
 	// AgentColors maps an agent's name to its display color. An item owned by a
 	// background agent (Owner set) is tinted with that color, matching the
 	// agent's launch line in the flow. Plain user todos have no owner and keep
@@ -114,7 +114,7 @@ func RenderTrackerList(params TrackerListParams) string {
 		if progress != "" {
 			suffix = mutedStyle.Render(kit.TruncateText(" · "+progress, max(1, params.Width/2)))
 		}
-		line := renderItem(t, phase, max(1, params.Width-lipgloss.Width(suffix)), idWidth, params.Blockers, params.Blink, params.AgentColors)
+		line := renderItem(t, phase, max(1, params.Width-lipgloss.Width(suffix)), idWidth, params.Blockers, params.Frame, params.AgentColors)
 		sb.WriteString(kit.TruncateText(strings.TrimSuffix(line, "\n")+suffix, max(1, params.Width)) + "\n")
 	}
 
@@ -234,7 +234,7 @@ func activeText(t *todo.Item) string {
 	return text
 }
 
-func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, blink int, agentColors map[string]string) string {
+func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, frame int, agentColors map[string]string) string {
 	indent := "  "
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	idTag := ""
@@ -283,7 +283,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
 			detail = mutedStyle.Render("· " + elapsed)
 		}
-		return renderItemLine(indent, kit.LiveDot(blink), idTag, tint(lipgloss.NewStyle()).Render(activeText(t)), detail, width)
+		return renderItemLine(indent, kit.LiveDot(frame), idTag, tint(lipgloss.NewStyle()).Render(activeText(t)), detail, width)
 
 	default:
 		detail := ""

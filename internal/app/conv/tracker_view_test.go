@@ -69,7 +69,7 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	// The breathing is driven by the shared Blink tick, not the wall clock, so
+	// The breathing is driven by the shared Frame tick, not the wall clock, so
 	// it is deterministic: the dot stays on every frame and changes tone.
 	faint, peak := renderItem(task, itemRunning, 80, 2, nil, 0, nil), renderItem(task, itemRunning, 80, 2, nil, 3, nil)
 	if !strings.Contains(stripANSI(faint), "●") || !strings.Contains(stripANSI(peak), "●") {

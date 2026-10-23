@@ -419,7 +419,7 @@ func (m *model) renderTrackerList() string {
 		CompletionShown: m.taskCompletionShown,
 		Blockers:        m.services.Tracker.OpenBlockers,
 		Executing:       m.executingTrackerItem,
-		Blink:           m.conv.Spinner.Frame(),
+		Frame:           m.conv.Spinner.Frame(),
 		AgentColors:     m.agentColors(),
 		WorkerStatus: func(id string) task.TaskInfo {
 			if m.services.Task != nil {
@@ -592,7 +592,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Per-tick UI state
 		SpinnerView:  m.conv.Spinner.View(),
-		Blink:        m.conv.Spinner.Frame(),
+		Frame:        m.conv.Spinner.Frame(),
 		ModelName:    m.env.GetModelDisplayName(),
 		InputTokens:  m.env.InputTokens,
 		OutputTokens: m.env.OutputTokens,

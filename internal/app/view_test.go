@@ -492,10 +492,25 @@ func hasWaitingRow(view string) bool {
 	})
 }
 
-// showsLiveDot reports whether a raw (styled) frame row draws the breathing
-// live dot of the current frame rather than a frozen static bullet.
-func showsLiveDot(m *model, row string) bool {
-	return strings.Contains(row, kit.LiveDot(m.conv.Spinner.Frame()))
+// rowAcrossFrames returns the styled row containing marker, rendered two frame
+// ticks apart: a frozen row draws the same both times, a live one does not.
+func rowAcrossFrames(t *testing.T, m *model, marker string) (before, after string) {
+	t.Helper()
+	row := func() string {
+		frame, _ := m.viewString()
+		for line := range strings.SplitSeq(frame, "\n") {
+			if strings.Contains(ansi.Strip(line), marker) {
+				return line
+			}
+		}
+		t.Fatalf("frame has no row containing %q:\n%s", marker, frame)
+		return ""
+	}
+	before = row()
+	for range 2 {
+		m.conv.Spinner, _ = m.conv.Spinner.Update(m.conv.Spinner.Tick())
+	}
+	return before, row()
 }
 
 func dockedModalModel(t *testing.T, rationale string) *model {
@@ -590,19 +605,9 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 
-	frame, _ := m.viewString()
-
-	var row string
-	for line := range strings.SplitSeq(frame, "\n") {
-		if strings.Contains(ansi.Strip(line), "Bash(df -h)") {
-			row = line
-		}
-	}
-	if row == "" {
-		t.Fatalf("modal frame has no row for the gated call:\n%s", frame)
-	}
-	if showsLiveDot(m, row) {
-		t.Fatalf("tool row %q breathes while it waits on the approval modal", row)
+	row, later := rowAcrossFrames(t, m, "Bash(df -h)")
+	if row != later {
+		t.Fatalf("tool row breathes while it waits on the approval modal: %q then %q", row, later)
 	}
 	row = ansi.Strip(row)
 	if !strings.Contains(row, "waiting for approval") {
@@ -656,14 +661,8 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 		t.Fatalf("awaiting call = %q, want no call named when the request carries no ID", got)
 	}
 
-	frame, _ := m.viewString()
-	for line := range strings.SplitSeq(frame, "\n") {
-		if !strings.Contains(ansi.Strip(line), "Bash(") {
-			continue
-		}
-		if showsLiveDot(m, line) {
-			t.Fatalf("tool row %q breathes while the modal owns the screen", line)
-		}
+	if row, later := rowAcrossFrames(t, m, "Bash("); row != later {
+		t.Fatalf("tool row breathes while the modal owns the screen: %q then %q", row, later)
 	}
 }
 
@@ -673,12 +672,8 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 func TestDockedModalFreezesAssistantBullet(t *testing.T) {
 	m := dockedModalModel(t, "RATIONALE_SENTINEL about to check the disk")
 
-	frame, _ := m.viewString()
-
-	for line := range strings.SplitSeq(frame, "\n") {
-		if strings.Contains(ansi.Strip(line), "RATIONALE_SENTINEL") && showsLiveDot(m, line) {
-			t.Fatalf("assistant row %q breathes while the turn waits on the modal", line)
-		}
+	if row, later := rowAcrossFrames(t, m, "RATIONALE_SENTINEL"); row != later {
+		t.Fatalf("assistant row breathes while the turn waits on the modal: %q then %q", row, later)
 	}
 }
 
