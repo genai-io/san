@@ -46,7 +46,7 @@ func (m *model) newSideRequest(label, prompt string) sideRequest {
 		r.system, r.schemas = sys.Prompt(), tools.Schemas()
 	} else {
 		params := m.promptParams()
-		r.system, r.schemas = params.System().Prompt(), params.Schemas()
+		r.system, r.schemas = params.System().Prompt(), params.ToolSchemas()
 	}
 	return r
 }

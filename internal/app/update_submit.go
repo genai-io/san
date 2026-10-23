@@ -93,14 +93,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// message can wear its "⎿ autopilot · N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {
-		// A capped run counts toward its ceiling ("2/5"). An uncapped one has no
-		// denominator, and a bare "2" hanging off the mark reads like a truncated
-		// fraction — so it says what the number is instead.
-		if m.env.AutoPilot.ContinuationsUnlimited() {
-			autopilotNote = fmt.Sprintf("step %d", m.autopilotContinuations)
-		} else {
-			autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
-		}
+		autopilotNote = m.continuationCount()
 		m.autopilotContinuing = false
 	}
 

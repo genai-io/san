@@ -112,6 +112,25 @@ func (p BuildParams) Schemas() []core.ToolSchema {
 	}).Tools()
 }
 
+// ToolSchemas returns the tool definitions an agent built from p sends, MCP
+// tools included, in the order it sends them.
+func (p BuildParams) ToolSchemas() []core.ToolSchema {
+	tools := tool.AdaptToolRegistry(p.Schemas(), func() string { return p.CWD })
+	p.addMCPTools(tools)
+	return tools.Schemas()
+}
+
+// addMCPTools registers p's MCP tools. Built-in tools are filtered by
+// tool.Set{Disabled}; MCP tools honor the /tool panel's disable here.
+func (p BuildParams) addMCPTools(tools *core.Tools) {
+	for _, t := range p.MCPTools {
+		if p.DisabledTools[t.Schema().Name] {
+			continue
+		}
+		tools.Add(t, "mcp:"+t.Schema().Name)
+	}
+}
+
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	return buildAgentWithOutbox(p, 0)
 }
@@ -154,14 +173,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		return ag.Messages()
 	}))
 	tools := tool.AdaptToolRegistry(schemas, cwdFunc, adaptOpts...)
-	for _, t := range p.MCPTools {
-		// Built-in tools are filtered by tool.Set{Disabled}, but MCP tools are
-		// registered here directly — honor the /tool panel's disable for them too.
-		if p.DisabledTools[t.Schema().Name] {
-			continue
-		}
-		tools.Add(t, "mcp:"+t.Schema().Name)
-	}
+	p.addMCPTools(tools)
 
 	compactClient := client
 	compactFunc := func(ctx context.Context, msgs []core.Message) (string, error) {

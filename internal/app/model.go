@@ -57,7 +57,8 @@ type model struct {
 	// btw holds the /btw questions still waiting on their answer.
 	btw []btwAsk
 	// recap follows the terminal's focus for the recap shown on coming back.
-	recap recapState
+	recap          recapState
+	unfocusedSince time.Time // when the terminal lost focus; zero while it has it
 	// suggestOwed records an input hint skipped while the terminal was unfocused.
 	suggestOwed bool
 	// drainedThisStep caps OnStepEnd to one queued message per step

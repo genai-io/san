@@ -35,7 +35,7 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 		return nil
 	}
 	// Nobody reads ghost text in an unfocused terminal; it is fetched on return.
-	if !m.recap.awaySince.IsZero() {
+	if !m.unfocusedSince.IsZero() {
 		m.suggestOwed = true
 		return nil
 	}

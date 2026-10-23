@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/todo"
 )
 
 const recapTimeout = 2 * time.Minute
@@ -40,14 +40,13 @@ const (
 const recapInstructions = `<system-reminder>The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown, in the conversation's language. Lead with the overall goal and current task and where it stands, then the one next action, noting when it's theirs. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents.%FACTS%
 </system-reminder>`
 
-// recapState follows the terminal's focus and the recap written for it.
+// recapState is the recap written for an absence and when it shows.
 type recapState struct {
-	awaySince time.Time     // when the terminal lost focus; zero while it has it
-	away      time.Duration // how long the absence being recapped lasted
-	busy      bool          // a recap request is in flight
-	show      bool          // show the recap in flight as soon as it lands
-	ready     recapReadyMsg // a recap written ahead, not shown yet
-	shownAt   int           // turns() when the last recap was shown
+	away    time.Duration // how long the absence being recapped lasted
+	busy    bool          // a recap request is in flight
+	show    bool          // show the recap in flight as soon as it lands; implies busy
+	ready   recapReadyMsg // a recap written ahead, not shown yet
+	shownAt int           // turns() when the last recap was shown
 }
 
 type recapPrepareMsg struct{ awaySince time.Time }
@@ -62,20 +61,20 @@ type recapReadyMsg struct {
 // onBlur starts the clock on an absence and schedules writing its recap
 // ahead, inside the cache window.
 func (m *model) onBlur() tea.Cmd {
-	m.recap.awaySince = time.Now()
+	m.unfocusedSince = time.Now()
 	after := m.env.AutoPilot.RecapAfter()
 	if after == 0 {
 		return nil
 	}
-	since := m.recap.awaySince
+	since := m.unfocusedSince
 	return tea.Tick(min(after, recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
 }
 
 // onFocus ends an absence: the input hint skipped meanwhile is fetched, and
 // an absence long enough gets its recap.
 func (m *model) onFocus() tea.Cmd {
-	since := m.recap.awaySince
-	m.recap.awaySince = time.Time{}
+	since := m.unfocusedSince
+	m.unfocusedSince = time.Time{}
 	return tea.Batch(m.owedSuggestion(), m.recapOnReturn(since))
 }
 
@@ -109,8 +108,8 @@ func (m *model) recapNow() tea.Cmd {
 // moved since, else writes one now, drawn live until it lands. Writing now is
 // no dearer than ahead: a conversation that moved has just warmed the cache.
 func (m *model) deliverRecap() tea.Cmd {
-	if r := m.recap.ready; r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() {
-		return m.showRecap(r)
+	if m.recapReady() {
+		return m.showRecap(m.recap.ready)
 	}
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd
@@ -130,10 +129,10 @@ func (m *model) deliverRecap() tea.Cmd {
 // written on return. Called when the cache window comes up and when the
 // session goes idle after it.
 func (m *model) prepareRecap() tea.Cmd {
-	if m.recap.awaySince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapDue() || m.hasDraft() || !m.sessionQuiet() {
+	if m.unfocusedSince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapDue() || m.hasDraft() || !m.sessionQuiet() {
 		return nil
 	}
-	if m.recap.ready.text != "" && m.recap.ready.chainLen == m.chainLen() {
+	if m.recapReady() {
 		return nil
 	}
 	return m.writeRecap()
@@ -144,10 +143,17 @@ func (m *model) prepareRecap() tea.Cmd {
 // and the cache is as warm as it gets.
 func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 	after := m.env.AutoPilot.RecapAfter()
-	if m.recap.awaySince.IsZero() || after == 0 || time.Since(m.recap.awaySince) < min(after, recapCacheWindow) {
+	if m.unfocusedSince.IsZero() || after == 0 || time.Since(m.unfocusedSince) < min(after, recapCacheWindow) {
 		return nil
 	}
 	return m.prepareRecap()
+}
+
+// recapReady reports a recap written ahead that the conversation has not
+// moved past.
+func (m *model) recapReady() bool {
+	r := m.recap.ready
+	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen()
 }
 
 // recapWanted reports whether there is a conversation to recap.
@@ -189,7 +195,7 @@ func (m *model) sessionQuiet() bool {
 
 // recapLive draws the recap being written for a user who is back.
 func (m *model) recapLive() string {
-	if !m.recap.show || !m.recap.busy {
+	if !m.recap.show {
 		return ""
 	}
 	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(m.recap.away), "writing…")
@@ -263,16 +269,7 @@ func (m *model) recapFacts(away time.Duration) string {
 	if needed := m.waitingOn(); needed != "" {
 		facts = append(facts, needed+" needed")
 	}
-	plans, done := 0, 0
-	for _, t := range m.services.Tracker.List() {
-		if todo.BackgroundTaskID(t) == "" {
-			plans++
-			if t.Status == todo.StatusCompleted && !todo.EndedAbnormally(t) {
-				done++
-			}
-		}
-	}
-	if plans > 0 {
+	if done, plans := conv.PlanProgress(m.services.Tracker.List()); plans > 0 {
 		facts = append(facts, "plan "+strconv.Itoa(done)+"/"+strconv.Itoa(plans))
 	}
 	if ap := m.env.AutoPilot; m.drivenMission() != "" {
@@ -282,10 +279,7 @@ func (m *model) recapFacts(away time.Duration) string {
 		}
 		mission := "mission " + state
 		if ap.MissionState == setting.MissionRunning && ap.Steers.TurnEnd {
-			mission += " " + strconv.Itoa(m.autopilotContinuations)
-			if !ap.ContinuationsUnlimited() {
-				mission += "/" + strconv.Itoa(ap.ResolvedMaxContinuations())
-			}
+			mission += " " + m.continuationCount()
 		}
 		facts = append(facts, mission)
 	}
@@ -322,10 +316,5 @@ func formatAway(d time.Duration) string {
 	if minutes < 60 {
 		return strconv.Itoa(minutes) + "m"
 	}
-	m := minutes % 60
-	pad := ""
-	if m < 10 {
-		pad = "0"
-	}
-	return strconv.Itoa(minutes/60) + "h" + pad + strconv.Itoa(m) + "m"
+	return fmt.Sprintf("%dh%02dm", minutes/60, minutes%60)
 }

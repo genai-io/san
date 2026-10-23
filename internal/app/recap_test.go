@@ -38,12 +38,12 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	m := newRecapModel(t)
 
 	n := len(m.conv.Messages)
-	m.recap.awaySince = time.Now().Add(-time.Minute)
+	m.unfocusedSince = time.Now().Add(-time.Minute)
 	if cmd := m.onFocus(); cmd != nil || len(m.conv.Messages) != n {
 		t.Fatal("a minute away must not recap")
 	}
 
-	m.recap.awaySince = time.Now().Add(-23 * time.Minute)
+	m.unfocusedSince = time.Now().Add(-23 * time.Minute)
 	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Now: x\nNext: y"}
 	m.onFocus()
 	last := m.conv.Messages[len(m.conv.Messages)-1]
@@ -102,7 +102,7 @@ func TestRecapWhileTheSessionWorks(t *testing.T) {
 	m := newRecapModel(t)
 	m.conv.Stream.Active = true
 
-	m.recap.awaySince = time.Now().Add(-5 * time.Minute)
+	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
 	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
 		t.Fatal("a recap was written ahead while the session works")
 	}
@@ -121,7 +121,7 @@ func TestRecapWaitsForNewTurns(t *testing.T) {
 	m.recap.shownAt = m.turns()
 	addTurn(m)
 
-	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd != nil {
 		t.Fatal("recapped again after a single turn")
 	}
@@ -131,7 +131,7 @@ func TestRecapWaitsForNewTurns(t *testing.T) {
 	m.recap.busy, m.recap.show = false, false
 
 	addTurn(m)
-	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd == nil {
 		t.Fatal("two new turns earned no recap")
 	}
@@ -143,7 +143,7 @@ func TestRecapDraftGatesOnlyUnaskedRecaps(t *testing.T) {
 	m := newRecapModel(t)
 	m.userInput.Textarea.SetValue("/recap")
 
-	m.recap.awaySince = time.Now().Add(-10 * time.Minute)
+	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd != nil {
 		t.Fatal("a draft did not keep the unasked recap away")
 	}
@@ -158,7 +158,7 @@ func TestSuggestWaitsForFocus(t *testing.T) {
 	m := newRecapModel(t)
 	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatAssistant, Content: "Also done."})
 
-	m.recap.awaySince = time.Now()
+	m.unfocusedSince = time.Now()
 	if cmd := m.startPromptSuggestion(); cmd != nil || !m.suggestOwed {
 		t.Fatal("a hint was fetched for an unfocused terminal")
 	}

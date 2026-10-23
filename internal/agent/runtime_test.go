@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -182,5 +183,19 @@ func TestSessionUnexpectedExitClearsLifecycle(t *testing.T) {
 	sess.SetMessages(nil)
 	if sess.Outbox() != nil {
 		t.Fatal("replacing the conversation retained the retired outbox")
+	}
+}
+
+// A side request sent while no agent runs must carry the tools exactly as a
+// running agent sends them, or the prompt cache misses.
+func TestToolSchemasMatchTheBuiltAgent(t *testing.T) {
+	p := BuildParams{Provider: stubProvider{}, ModelID: "m", DisabledTools: map[string]bool{"Bash": true}}
+	sess := &Runtime{}
+	if err := sess.Start(p, nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Stop()
+	if got, want := p.ToolSchemas(), sess.Tools().Schemas(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ToolSchemas() differs from the built agent's tools:\n got %v\nwant %v", got, want)
 	}
 }

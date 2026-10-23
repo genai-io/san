@@ -464,7 +464,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.FocusMsg:
 		return m, m.onFocus()
 	case recapPrepareMsg:
-		if msg.awaySince.Equal(m.recap.awaySince) {
+		if msg.awaySince.Equal(m.unfocusedSince) {
 			return m, m.prepareRecap()
 		}
 		return m, nil
@@ -512,7 +512,7 @@ func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
 		m.btwWaiting() ||
-		(m.recap.show && m.recap.busy) ||
+		m.recap.show ||
 		m.services.Task.HasRunning()
 }
 

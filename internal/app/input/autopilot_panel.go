@@ -363,33 +363,39 @@ var continuationLadder = []int{5, 10, 20, 50, 100, setting.AutoPilotUnlimitedCon
 // stepContinuations moves the Continue cap one rung along continuationLadder. A
 // hand-set value off the ladder steps to its nearest neighbor.
 func stepContinuations(p *AutopilotSelector, step int) {
-	// rank orders no-limit after every finite cap.
+	cur := p.snap.MaxContinuations
+	if cur == 0 {
+		cur = setting.AutoPilotDefaultMaxContinuations
+	}
+	// No limit ranks after every finite cap.
 	rank := func(v int) int {
 		if v < 0 {
 			return 1 << 30
 		}
 		return v
 	}
-	cur := rank(p.snap.MaxContinuations)
-	if p.snap.MaxContinuations == 0 {
-		cur = setting.AutoPilotDefaultMaxContinuations
+	if v, ok := stepLadder(continuationLadder, cur, step, rank); ok {
+		p.snap.MaxContinuations = v
 	}
-	l := continuationLadder
+}
+
+// stepLadder returns the rung after cur along ladder (step > 0) or before it,
+// ordered by rank; false past either end.
+func stepLadder(ladder []int, cur, step int, rank func(int) int) (int, bool) {
 	if step > 0 {
-		for _, v := range l {
-			if rank(v) > cur {
-				p.snap.MaxContinuations = v
-				return
+		for _, v := range ladder {
+			if rank(v) > rank(cur) {
+				return v, true
 			}
 		}
-		return
+		return 0, false
 	}
-	for i := len(l) - 1; i >= 0; i-- {
-		if rank(l[i]) < cur {
-			p.snap.MaxContinuations = l[i]
-			return
+	for i := len(ladder) - 1; i >= 0; i-- {
+		if rank(ladder[i]) < rank(cur) {
+			return ladder[i], true
 		}
 	}
+	return 0, false
 }
 
 // recapLadder is what ←/→ steps the Recap threshold through, in minutes; -1 is off.
@@ -406,22 +412,8 @@ func recapMinutes(s setting.AutoPilotSettings) int {
 // stepRecap moves the Recap threshold one rung along recapLadder. A hand-set
 // value off the ladder steps to its nearest neighbor.
 func stepRecap(p *AutopilotSelector, step int) {
-	cur := recapMinutes(p.snap)
-	l := recapLadder
-	if step > 0 {
-		for _, v := range l {
-			if v > cur {
-				p.snap.RecapAfterMinutes = v
-				return
-			}
-		}
-		return
-	}
-	for i := len(l) - 1; i >= 0; i-- {
-		if l[i] < cur {
-			p.snap.RecapAfterMinutes = l[i]
-			return
-		}
+	if v, ok := stepLadder(recapLadder, recapMinutes(p.snap), step, func(v int) int { return v }); ok {
+		p.snap.RecapAfterMinutes = v
 	}
 }
 

@@ -217,21 +217,11 @@ func (m *ConversationModel) ToggleAllExpandable() {
 }
 
 func (m ConversationModel) ConvertToProvider() []core.Message {
-	return m.ConvertToProviderFrom(0)
-}
-
-func (m ConversationModel) ConvertToProviderFrom(startIdx int) []core.Message {
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	if startIdx > len(m.Messages) {
-		startIdx = len(m.Messages)
-	}
-	providerMsgs := make([]core.Message, 0, len(m.Messages)-startIdx)
-	for i := startIdx; i < len(m.Messages); i++ {
+	providerMsgs := make([]core.Message, 0, len(m.Messages))
+	for _, msg := range m.Messages {
 		// A notice is San talking to the person, not a turn. ToMessage is what
 		// knows that, so this loop does not have to.
-		if pm, ok := m.Messages[i].ToMessage(); ok {
+		if pm, ok := msg.ToMessage(); ok {
 			providerMsgs = append(providerMsgs, pm)
 		}
 	}
