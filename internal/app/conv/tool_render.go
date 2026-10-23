@@ -83,13 +83,11 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	// A shell command reads apart from its output by its marks: "$" leads the
-	// command and ">" each further line of it, as a shell's own prompts do,
-	// while output rows hang on the "┊" gutter; a wrapped command row is only
-	// indented, since it continues the same line.
-	bashPrompt       = "  $ "
-	bashContinuation = "  > "
-	bashWrapIndent   = "    "
+	// "$" leads a shell command; its further and wrapped lines align under the
+	// text, keeping the command's own indentation, while output rows hang on
+	// the "┊" gutter.
+	bashPrompt = "  $ "
+	bashIndent = "    "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -1351,11 +1349,11 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 		}
 		prefix := bashPrompt
 		if seenCommand {
-			prefix = bashContinuation
+			prefix = bashIndent
 		}
 		seenCommand = true
 		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
-		sb.WriteString(renderGutteredLine(prefix, bashWrapIndent, toolCallStyle, commandLine, width))
+		sb.WriteString(renderGutteredLine(prefix, bashIndent, toolCallStyle, commandLine, width))
 	}
 	return sb.String()
 }

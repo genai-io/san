@@ -160,10 +160,10 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 		}
 	}
 	plain := stripANSI(out)
-	// "$" leads the first command line and ">" every later one, so no command
-	// line reads as the "┊" output below it.
-	if !strings.Contains(plain, "  $ for f in a b; do\n  >   echo \"$f\"\n  > done\n") {
-		t.Fatalf("multi-line command should mark its continuation lines with >, got %q", plain)
+	// "$" leads the first command line; later ones align under its text with
+	// their own indentation kept.
+	if !strings.Contains(plain, "  $ for f in a b; do\n      echo \"$f\"\n    done\n") {
+		t.Fatalf("multi-line command should align its later lines under the first, got %q", plain)
 	}
 	// The description stays on the header in normal text, separated by a dash.
 	if !strings.Contains(stripANSI(out), "Bash (loop over files)") {
@@ -199,11 +199,11 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 
 	// A row wrapped off the first line is only indented: it continues that
 	// line, so it carries neither "$" nor ">". The next line gets ">".
-	if !strings.HasPrefix(rows[1], bashWrapIndent) || strings.TrimSpace(rows[1])[0] == '>' {
+	if !strings.HasPrefix(rows[1], bashIndent) || strings.TrimSpace(rows[1])[0] == '>' {
 		t.Fatalf("a wrapped row should be indented without a mark: %q", rows[1])
 	}
-	if last := rows[len(rows)-1]; last != bashContinuation+"echo done" {
-		t.Fatalf("the next command line should lead with %q: %q", bashContinuation, last)
+	if last := rows[len(rows)-1]; last != bashIndent+"echo done" {
+		t.Fatalf("the next command line should lead with %q: %q", bashIndent, last)
 	}
 
 	// The prompt and nested result markers occupy the same column.
@@ -218,7 +218,7 @@ func Test_renderBashToolCallMarksBlankCommandLines(t *testing.T) {
 		`{"command":"first\n   \nthird"}`,
 	} {
 		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
-		if !strings.Contains(out, bashPrompt+"first\n"+bashContinuation+"\n"+bashContinuation+"third\n") {
+		if !strings.Contains(out, bashPrompt+"first\n"+bashIndent+"\n"+bashIndent+"third\n") {
 			t.Fatalf("a blank line inside the command keeps its > mark, got %q", out)
 		}
 	}
@@ -226,7 +226,7 @@ func Test_renderBashToolCallMarksBlankCommandLines(t *testing.T) {
 	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, bashPrompt+"first\n") {
 		t.Fatalf("trailing blank command lines should be dropped, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, bashContinuation) || !strings.Contains(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, bashIndent) || !strings.Contains(out, bashPrompt+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
 	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
@@ -251,8 +251,8 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 		switch {
 		case strings.HasPrefix(line, bashPrompt):
 			reconstructed.WriteString(strings.TrimPrefix(line, bashPrompt))
-		case strings.HasPrefix(line, bashWrapIndent):
-			reconstructed.WriteString(strings.TrimPrefix(line, bashWrapIndent))
+		case strings.HasPrefix(line, bashIndent):
+			reconstructed.WriteString(strings.TrimPrefix(line, bashIndent))
 		default:
 			t.Fatalf("unexpected command block row %q", line)
 		}
@@ -613,7 +613,7 @@ func TestRenderToolCallsCompletedCommandPreservesSpaces(t *testing.T) {
 	for line := range strings.SplitSeq(out, "\n") {
 		if text, ok := strings.CutPrefix(line, bashPrompt); ok {
 			got.WriteString(text)
-		} else if text, ok := strings.CutPrefix(line, bashWrapIndent); ok {
+		} else if text, ok := strings.CutPrefix(line, bashIndent); ok {
 			got.WriteString(text)
 		}
 	}
