@@ -63,6 +63,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		GroupCommand:            m.groupCommand,
 		TrustWorkspace:          m.trustWorkspace,
 		SideQuestion:            m.sideQuestion,
+		Recap:                   m.recapNow,
 		OpenHistory:             m.openHistory,
 		ResetAgentRuntime:       m.ResetAgentRuntime,
 		ClearScrollback:         m.clearScrollback,

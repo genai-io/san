@@ -39,8 +39,9 @@ type AutopilotSavedMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
-	refine MissionRefiner                   // injected; nil disables mission refinement
-	live   func() setting.AutoPilotSettings // injected; returns the live session config
+	refine  MissionRefiner                   // injected; nil disables mission refinement
+	live    func() setting.AutoPilotSettings // injected; returns the live session config
+	engaged func() bool                      // injected; whether AutoPilot mode is on
 
 	modelSource  func() []string           // injected; connected "vendor/model" refs
 	effortSource func(ref string) []string // injected; a ref's reasoning rungs
@@ -51,10 +52,11 @@ type AutopilotSelector struct {
 	modelFilter  string                    // apModel: typed filter over pickVendor's models
 	modelCursor  int                       // apModel: selection in modelChoices
 
-	active bool
-	width  int
-	height int
-	view   autopilotView
+	active  bool
+	driving bool // AutoPilot mode was on at Enter; the driving steers act only then
+	width   int
+	height  int
+	view    autopilotView
 
 	// snap is the working buffer; esc saves it. baseline is snap as of
 	// Enter() so closing an unedited panel saves nothing.
@@ -91,6 +93,10 @@ func (p *AutopilotSelector) SetMissionRefiner(fn MissionRefiner) { p.refine = fn
 // autopilot (not a stale settings snapshot).
 func (p *AutopilotSelector) SetConfigSource(fn func() setting.AutoPilotSettings) { p.live = fn }
 
+// SetEngagedSource wires the getter for whether AutoPilot mode is on, which
+// decides whether the panel draws the driving steers as live.
+func (p *AutopilotSelector) SetEngagedSource(fn func() bool) { p.engaged = fn }
+
 // Enter activates the overlay on the menu view with a fresh working buffer.
 func (p *AutopilotSelector) Enter(width, height int) {
 	p.Resize(width, height)
@@ -99,6 +105,7 @@ func (p *AutopilotSelector) Enter(width, height int) {
 	if p.live != nil {
 		p.snap = p.live().Clone()
 	}
+	p.driving = p.engaged != nil && p.engaged()
 	p.baseline = p.snap.Clone()
 	p.presets, _ = setting.ListAutoPilotPresets()
 	p.cursor = p.firstSelectable()
@@ -273,6 +280,7 @@ type apRow struct {
 	value    string                               // apRowEntry: right-aligned current value
 	on       bool                                 // apRowToggle: checked
 	disabled bool                                 // drawn dim; act explains why instead
+	idle     bool                                 // drawn dim but still editable: takes effect once driving
 	act      func(*AutopilotSelector)             // enter/space
 	adjust   func(p *AutopilotSelector, step int) // ←/→, when the row has a value to step
 }
@@ -287,7 +295,7 @@ func (p *AutopilotSelector) rows() []apRow {
 			kind: apRowToggle, label: "Continue", on: s.Steers.TurnEnd,
 			desc:   "to the next turn · " + continueLimit(s),
 			act:    func(p *AutopilotSelector) { p.snap.Steers.TurnEnd = !p.snap.Steers.TurnEnd },
-			adjust: stepContinuations,
+			adjust: stepContinuations, idle: !p.driving,
 		}
 	} else {
 		continueRow = apRow{
@@ -302,28 +310,34 @@ func (p *AutopilotSelector) rows() []apRow {
 		loadDesc += " · replaces the running mission"
 	}
 
+	drivingHeader := apRow{kind: apRowSection, label: "While it drives"}
+	if !p.driving {
+		drivingHeader.desc = "shift+tab to drive"
+	}
+
 	return []apRow{
-		{kind: apRowSection, label: "Give it"},
-		{kind: apRowEntry, label: "Mission", desc: "the goal it works toward", value: p.missionValue(),
-			act: (*AutopilotSelector).openMission},
-		{kind: apRowEntry, label: "System", desc: "how it thinks and decides (system prompt)", value: systemPromptValue(s),
-			act: (*AutopilotSelector).openSystemPrompt},
-		{kind: apRowEntry, label: "Model", desc: "which model makes the calls", value: modelValue(s),
-			act: (*AutopilotSelector).beginModelPick},
-		{kind: apRowSpacer},
-		{kind: apRowSection, label: "Let it"},
+		{kind: apRowSection, label: "Always"},
 		{kind: apRowToggle, label: "Suggest", desc: "your next input · Tab to accept", on: s.Steers.SuggestOn(),
 			act: func(p *AutopilotSelector) { flip(&p.snap.Steers.Suggest, p.snap.Steers.SuggestOn()) }},
-		{kind: apRowToggle, label: "Approve", desc: "permission requests · asks you if risky", on: s.Steers.PermissionOn(),
+		{kind: apRowToggle, label: "Recap", desc: recapDesc(s), on: s.RecapAfter() > 0,
+			act: toggleRecap, adjust: stepRecap},
+		{kind: apRowSpacer},
+		drivingHeader,
+		{kind: apRowEntry, label: "Mission", desc: "the goal it works toward", value: p.missionValue(), idle: !p.driving,
+			act: (*AutopilotSelector).openMission},
+		{kind: apRowEntry, label: "System", desc: "how it thinks and decides (system prompt)", value: systemPromptValue(s), idle: !p.driving,
+			act: (*AutopilotSelector).openSystemPrompt},
+		{kind: apRowEntry, label: "Model", desc: "which model makes the calls", value: modelValue(s), idle: !p.driving,
+			act: (*AutopilotSelector).beginModelPick},
+		{kind: apRowToggle, label: "Approve", desc: "permission requests · asks you if risky", on: s.Steers.PermissionOn(), idle: !p.driving,
 			act: func(p *AutopilotSelector) { flip(&p.snap.Steers.Permission, p.snap.Steers.PermissionOn()) }},
-		{kind: apRowToggle, label: "Answer", desc: "questions and [y/N] prompts", on: answerOn(s),
+		{kind: apRowToggle, label: "Answer", desc: "questions and [y/N] prompts", on: answerOn(s), idle: !p.driving,
 			act: func(p *AutopilotSelector) {
 				on := !answerOn(p.snap)
 				p.snap.Steers.Question, p.snap.Steers.BashPrompt = on, on
 			}},
 		continueRow,
 		{kind: apRowSpacer},
-		{kind: apRowSection, label: "Presets"},
 		{kind: apRowEntry, label: "Save preset…", desc: "reuse this setup in other sessions",
 			act: (*AutopilotSelector).beginExport},
 		{kind: apRowEntry, label: "Load preset…", desc: loadDesc,
@@ -349,33 +363,74 @@ var continuationLadder = []int{5, 10, 20, 50, 100, setting.AutoPilotUnlimitedCon
 // stepContinuations moves the Continue cap one rung along continuationLadder. A
 // hand-set value off the ladder steps to its nearest neighbor.
 func stepContinuations(p *AutopilotSelector, step int) {
-	// rank orders no-limit after every finite cap.
+	cur := p.snap.MaxContinuations
+	if cur == 0 {
+		cur = setting.AutoPilotDefaultMaxContinuations
+	}
+	// No limit ranks after every finite cap.
 	rank := func(v int) int {
 		if v < 0 {
 			return 1 << 30
 		}
 		return v
 	}
-	cur := rank(p.snap.MaxContinuations)
-	if p.snap.MaxContinuations == 0 {
-		cur = setting.AutoPilotDefaultMaxContinuations
+	if v, ok := stepLadder(continuationLadder, cur, step, rank); ok {
+		p.snap.MaxContinuations = v
 	}
-	l := continuationLadder
+}
+
+// stepLadder returns the rung after cur along ladder (step > 0) or before it,
+// ordered by rank; false past either end.
+func stepLadder(ladder []int, cur, step int, rank func(int) int) (int, bool) {
 	if step > 0 {
-		for _, v := range l {
-			if rank(v) > cur {
-				p.snap.MaxContinuations = v
-				return
+		for _, v := range ladder {
+			if rank(v) > rank(cur) {
+				return v, true
 			}
 		}
-		return
+		return 0, false
 	}
-	for i := len(l) - 1; i >= 0; i-- {
-		if rank(l[i]) < cur {
-			p.snap.MaxContinuations = l[i]
-			return
+	for i := len(ladder) - 1; i >= 0; i-- {
+		if rank(ladder[i]) < rank(cur) {
+			return ladder[i], true
 		}
 	}
+	return 0, false
+}
+
+// recapLadder is what ←/→ steps the Recap threshold through, in minutes; -1 is off.
+var recapLadder = []int{-1, 3, 5, 10, 30}
+
+// recapMinutes is the Recap threshold as a recapLadder value.
+func recapMinutes(s setting.AutoPilotSettings) int {
+	if after := s.RecapAfter(); after > 0 {
+		return int(after.Minutes())
+	}
+	return -1
+}
+
+// stepRecap moves the Recap threshold one rung along recapLadder. A hand-set
+// value off the ladder steps to its nearest neighbor.
+func stepRecap(p *AutopilotSelector, step int) {
+	if v, ok := stepLadder(recapLadder, recapMinutes(p.snap), step, func(v int) int { return v }); ok {
+		p.snap.RecapAfterMinutes = v
+	}
+}
+
+// toggleRecap turns recaps off, or back on at the default threshold.
+func toggleRecap(p *AutopilotSelector) {
+	if p.snap.RecapAfter() > 0 {
+		p.snap.RecapAfterMinutes = -1
+	} else {
+		p.snap.RecapAfterMinutes = 0
+	}
+}
+
+func recapDesc(s setting.AutoPilotSettings) string {
+	if m := recapMinutes(s); m > 0 {
+		return "when you're back · after " + strconv.Itoa(m) + "m away"
+	}
+	return "when you're back · only on /recap"
 }
 
 func continueLimit(s setting.AutoPilotSettings) string {

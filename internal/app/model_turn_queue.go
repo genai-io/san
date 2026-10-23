@@ -32,6 +32,9 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	if cmd := m.prepareRecapAtTurnEnd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if msg.Result.StopReason != "" && msg.Result.StopReason != core.StopEndTurn {
 		m.conv.AddNotice(fmt.Sprintf("Agent stopped: %s", msg.Result.StopReason))
 		if msg.Result.StopDetail != "" {

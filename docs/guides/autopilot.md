@@ -7,36 +7,51 @@ something needs you. Configure it with `/autopilot`, engage it with `shift+tab`
 ## The panel
 
 ```
-GIVE IT
-▸ Mission    the goal it works toward                      not set · Enter to write
-  System     how it thinks and decides (system prompt)     built-in
-  Model      which model makes the calls                   same as session
-LET IT
-  [✓] Suggest   your next input · Tab to accept
+ALWAYS
+▸ [✓] Suggest   your next input · Tab to accept
+  [✓] Recap     when you're back · after 5m away
+
+WHILE IT DRIVES · shift+tab to drive
+      Mission   the goal it works toward          not set · Enter to write
+      System    how it thinks and decides (system prompt)       built-in
+      Model     which model makes the calls              same as session
   [✓] Approve   permission requests · asks you if risky
   [ ] Answer    questions and [y/N] prompts
   [ ] Continue  to the next turn · needs a mission
-PRESETS
-  Save preset…  reuse this setup in other sessions
-  Load preset…  3 saved
+
+      Save preset…  reuse this setup in other sessions
+      Load preset…  3 saved
 ```
 
-`enter` or `space` edits or toggles a row, `←`/`→` step Continue's limit, `esc`
-saves and closes. Saving never starts a run.
+`enter` or `space` edits or toggles a row, `←`/`→` step Recap's wait and
+Continue's limit, `esc` saves and closes. Saving never starts a run.
+
+Always works in every mode:
+
+- **Suggest** — ghost-text next input after each turn. While Autopilot drives a
+  mission, it proposes the next step toward it.
+- **Recap** — when the terminal regains focus after the wait, one note on where
+  the session stands: San's own facts (time away, what waits on you, plan
+  progress, mission, background work) and the goal, now, and next step. `/recap`
+  shows one any time. Needs a terminal that reports focus (in tmux:
+  `set -g focus-events on`).
+
+Both are side requests, like `/btw`: they reuse the session's prompt, tools and
+conversation, so the provider's prompt cache serves them, and the agent never
+sees them. Recap is written while you are away, before the cache expires.
+
+While it drives — these act only in Autopilot mode, and are drawn dim outside it:
 
 - **Mission** — the goal every decision leans on.
 - **System** — the editable part of the copilot's system prompt. The safety
   rules are fixed and always apply.
 - **Model** — optional; pick provider, model, then thinking rung. Stored as
   `vendor/model`, so it keeps its provider when the session model changes.
-- **Suggest** — ghost-text next input, in every mode.
 - **Approve** — judges permission requests; risky or failed checks go to you.
   A skill load is safe; scripts it runs are judged as Bash calls.
 - **Answer** — answers `AskUserQuestion` and a command's `[y/N]` prompts.
 - **Continue** — after each turn of a running mission, sends the next step until
   it is done or the limit (default 20) is reached.
-
-Approve, Answer and Continue act only in Autopilot mode.
 
 ## Running a mission
 
@@ -71,6 +86,7 @@ Sets the mission running, turns Answer and Continue on with no limit, and starts
     "thinkingEffort": "low",               // empty = model default
     "systemPromptFile": "~/prompts/pilot.md",
     "maxContinuations": 20,                // -1 = no limit
+    "recapAfterMinutes": 5,                // -1 = only on /recap
     "steers": {
       "suggest": true,     // Suggest
       "permission": true,  // Approve

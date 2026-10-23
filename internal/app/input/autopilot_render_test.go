@@ -31,14 +31,15 @@ func TestAutopilotNarrowFrameDoesNotOverflowTerminal(t *testing.T) {
 	}
 }
 
-// The menu is one page in three groups, and the System row says outright that
-// it is the (editable part of the) system prompt.
+// The menu is one page: what always runs, then what runs only while it drives,
+// and the System row says outright that it is the (editable part of the)
+// system prompt.
 func TestAutopilotMenuGroups(t *testing.T) {
 	p := NewAutopilotSelector()
 	p.Enter(120, 40)
 
 	rendered := p.Render()
-	for _, want := range []string{"GIVE IT", "LET IT", "PRESETS", "(system prompt)", "Continue"} {
+	for _, want := range []string{"ALWAYS", "Recap", "WHILE IT DRIVES", "shift+tab to drive", "(system prompt)", "Continue", "Load preset…"} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("menu is missing %q", want)
 		}

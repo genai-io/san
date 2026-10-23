@@ -517,7 +517,7 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	if !group.ValidName(name) {
 		return fmt.Sprintf("Invalid group name %q: use letters, digits, - or _.", name), nil
 	}
-	msgs := m.conv.ConvertToProviderFrom(0)
+	msgs := m.conv.ConvertToProvider()
 	provider, model, cwd, session := m.env.LLMProvider, m.env.GetModelID(), m.env.CWD, m.env.SessionName
 	if (member != "" && role != "") || len(msgs) == 0 { // given, or nothing to summarize
 		gotName, gotRole := group.Fallback(session, cwd)

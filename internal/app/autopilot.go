@@ -200,6 +200,24 @@ func autopilotWithoutSessionFields(cfg setting.AutoPilotSettings) setting.AutoPi
 	return shared
 }
 
+// continuationCount counts AutoPilot's continuations: toward the cap ("2/5"),
+// or as "step 2" when uncapped, since a bare "2" reads like a cut-off fraction.
+func (m *model) continuationCount() string {
+	if m.env.AutoPilot.ContinuationsUnlimited() {
+		return fmt.Sprintf("step %d", m.autopilotContinuations)
+	}
+	return fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
+}
+
+// drivingChanged reports whether an edit touched anything beyond Suggest and
+// Recap, the switches that work without AutoPilot mode.
+func drivingChanged(before, after setting.AutoPilotSettings) bool {
+	probe := before
+	probe.Steers.Suggest = after.Steers.Suggest
+	probe.RecapAfterMinutes = after.RecapAfterMinutes
+	return !probe.Equal(after)
+}
+
 // persistAutopilotDefault hot-swaps the running judge from m.env.AutoPilot and
 // writes the live config — minus the per-session fields (mission, its state and
 // the inline system prompt) — to settings.json as the default for new sessions.

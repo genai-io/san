@@ -49,21 +49,14 @@ func RenderTrackerList(params TrackerListParams) string {
 	}
 
 	items := make([]*todo.Item, 0, len(params.Items))
-	plans, plansDone := 0, 0
 	for _, t := range params.Items {
-		done := phaseOf(t, false) == itemFinished
 		id := todo.BackgroundTaskID(t)
-		if id != "" && done && (params.CompletionShown == nil || params.CompletionShown(id)) {
+		if id != "" && phaseOf(t, false) == itemFinished && (params.CompletionShown == nil || params.CompletionShown(id)) {
 			continue
 		}
 		items = append(items, t)
-		if id == "" {
-			plans++
-			if done {
-				plansDone++
-			}
-		}
 	}
+	plansDone, plans := PlanProgress(params.Items)
 
 	// Keep exceptions visible even when idle; only the plan waits for turn end.
 	if len(items) == 0 || (plansDone == len(items) && !params.StreamActive) {
@@ -196,6 +189,20 @@ const (
 	itemAborted                   // ended without finishing its work
 	itemFinished                  // ended having done its work
 )
+
+// PlanProgress counts the plan's items, leaving out background work, and how
+// many of them finished.
+func PlanProgress(items []*todo.Item) (done, total int) {
+	for _, t := range items {
+		if todo.BackgroundTaskID(t) == "" {
+			total++
+			if phaseOf(t, false) == itemFinished {
+				done++
+			}
+		}
+	}
+	return done, total
+}
 
 // phaseOf classifies an item. executing answers whether its executor is running;
 // it only distinguishes itemRunning from itemStalled, since an item that already

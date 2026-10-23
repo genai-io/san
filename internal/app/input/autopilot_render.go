@@ -77,6 +77,9 @@ func (p *AutopilotSelector) renderMenu(width int) string {
 		switch row.kind {
 		case apRowSection:
 			b.WriteString(apSectionStyle.Render(strings.ToUpper(row.label)))
+			if row.desc != "" {
+				b.WriteString(apSummaryStyle.Render(" · " + row.desc))
+			}
 		case apRowEntry:
 			b.WriteString(p.renderEntry(i, row, width))
 		case apRowToggle:
@@ -104,12 +107,17 @@ func (p *AutopilotSelector) cursorMark(i int) string {
 // label, muted description, and the current value right-aligned. The
 // description is truncated first on a narrow card so the value always shows.
 func (p *AutopilotSelector) renderEntry(i int, row apRow, width int) string {
-	label := p.cursorMark(i) + apLabelStyle.Render(apPad(row.label, apLabelWidth))
+	labelStyle, descStyle := apLabelStyle, apDescStyle
+	if row.idle {
+		labelStyle, descStyle = apSummaryStyle, apSummaryStyle
+	}
+	// The blank where a toggle draws its "[✓] " keeps every label in one column.
+	label := p.cursorMark(i) + "    " + labelStyle.Render(apPad(row.label, apLabelWidth))
 	right := apSummaryStyle.Render(row.value)
 	room := width - lipgloss.Width(label) - lipgloss.Width(right) - 4
 	desc := ""
 	if row.desc != "" && room > 0 {
-		desc = "  " + apDescStyle.Render(kit.TruncateText(row.desc, room))
+		desc = "  " + descStyle.Render(kit.TruncateText(row.desc, room))
 	}
 	left := label + desc
 	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)
@@ -117,14 +125,17 @@ func (p *AutopilotSelector) renderEntry(i int, row apRow, width int) string {
 }
 
 // renderToggle draws "▸ [✓] Suggest   your next input · Tab to accept". A
-// disabled row is drawn dim end to end.
+// disabled or idle row is drawn dim end to end; an idle one keeps its check.
 func (p *AutopilotSelector) renderToggle(i int, row apRow) string {
 	mark, labelStyle, descStyle := "[ ]", apLabelStyle, apDescStyle
+	if row.on && !row.disabled {
+		mark = "[✓]"
+	}
 	switch {
-	case row.disabled:
+	case row.disabled || row.idle:
 		mark, labelStyle, descStyle = apSummaryStyle.Render(mark), apSummaryStyle, apSummaryStyle
 	case row.on:
-		mark = apCheckStyle.Render("[✓]")
+		mark = apCheckStyle.Render(mark)
 	}
 	return p.cursorMark(i) + mark + " " + labelStyle.Render(apPad(row.label, apLabelWidth)) + "  " + descStyle.Render(row.desc)
 }

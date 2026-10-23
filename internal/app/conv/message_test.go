@@ -1707,3 +1707,14 @@ func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
 		t.Fatalf("answer must sit under the reply gutter: %q", lines[len(lines)-1])
 	}
 }
+
+// A recap drawn live is cut at the screen edge, so it wraps itself, every
+// line inside the width and under the gutter.
+func TestRenderRecapWraps(t *testing.T) {
+	out := RenderRecap("⌂", "away 1m", strings.Repeat("word ", 20), 30)
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if w := lipgloss.Width(line); w > 30 {
+			t.Fatalf("line %q is %d wide, want <= 30", xansi.Strip(line), w)
+		}
+	}
+}

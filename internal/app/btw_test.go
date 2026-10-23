@@ -13,7 +13,7 @@ func TestWithSideQuestion(t *testing.T) {
 	call := ai.ToolCallBlock(ai.ToolCall{ID: "c1", Name: "Bash"})
 	running := []core.Message{core.UserMessage("run tests", nil), {Role: ai.RoleAssistant, Content: ai.Content{call}}}
 
-	got := withSideQuestion(running, "why?")
+	got := withSidePrompt(running, "why?")
 	if len(got) != 4 || len(running) != 2 {
 		t.Fatalf("want pending results and question appended to a copy, got %d messages (chain now %d)", len(got), len(running))
 	}
@@ -26,14 +26,14 @@ func TestWithSideQuestion(t *testing.T) {
 	}
 
 	idle := []core.Message{core.UserMessage("hi", nil), core.AssistantMessage("hello", "", nil)}
-	if got := withSideQuestion(idle, "why?"); len(got) != 3 {
+	if got := withSidePrompt(idle, "why?"); len(got) != 3 {
 		t.Fatalf("idle chain gets only the question, got %d messages", len(got))
 	}
 
 	// Left open, the request in flight reads as the side answer's to carry out.
 	replying := []core.Message{core.UserMessage("write an essay", nil)}
-	got = withSideQuestion(replying, "why?")
-	if len(got) != 3 || got[1].Role != ai.RoleAssistant || got[1].Content.Text() != btwReplying {
+	got = withSidePrompt(replying, "why?")
+	if len(got) != 3 || got[1].Role != ai.RoleAssistant || got[1].Content.Text() != sideReplying {
 		t.Fatalf("reply in flight must get a placeholder before the question: %+v", got)
 	}
 }

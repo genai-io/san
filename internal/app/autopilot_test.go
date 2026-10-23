@@ -13,9 +13,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -285,6 +287,9 @@ func TestApplyAutopilotConfigMissionState(t *testing.T) {
 func newSuggestionModel(t *testing.T, suggest bool, mode setting.OperationMode) *model {
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
 	m.services.LLM = &llm.Conn{}
+	m.services.Agent = &agent.Runtime{}
+	m.services.Setting = setting.New(setting.NewData())
+	m.services.MCP = mcp.NewManagerForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.OperationMode = mode

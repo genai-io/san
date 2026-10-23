@@ -20,6 +20,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/context` | Show what is filling the context window; `/context limit <window> <output>` \| `reset` overrides it |
 | `/compact` | Compress conversation history |
 | `/btw <question>` | Ask a side question, even mid-turn, without adding it to the conversation |
+| `/recap` | Recap where this session stands: the goal, now, and the next step |
 | `/init` | Create AGENTS.md and config files |
 | `/memory` | View / edit AGENTS.md files and the user / project auto-memory stores; `t` / `p` toggle auto memory, `d` changes the selected store's directory, moving its memories |
 | `/mcp` | Manage MCP servers |

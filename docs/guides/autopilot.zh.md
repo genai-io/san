@@ -6,35 +6,48 @@
 ## 面板
 
 ```
-GIVE IT
-▸ Mission    the goal it works toward                      not set · Enter to write
-  System     how it thinks and decides (system prompt)     built-in
-  Model      which model makes the calls                   same as session
-LET IT
-  [✓] Suggest   your next input · Tab to accept
+ALWAYS
+▸ [✓] Suggest   your next input · Tab to accept
+  [✓] Recap     when you're back · after 5m away
+
+WHILE IT DRIVES · shift+tab to drive
+      Mission   the goal it works toward          not set · Enter to write
+      System    how it thinks and decides (system prompt)       built-in
+      Model     which model makes the calls              same as session
   [✓] Approve   permission requests · asks you if risky
   [ ] Answer    questions and [y/N] prompts
   [ ] Continue  to the next turn · needs a mission
-PRESETS
-  Save preset…  reuse this setup in other sessions
-  Load preset…  3 saved
+
+      Save preset…  reuse this setup in other sessions
+      Load preset…  3 saved
 ```
 
-`enter` 或 `space` 编辑或切换,`←`/`→` 调整 Continue 的上限,`esc` 保存并关闭。
-保存不会启动任务。
+`enter` 或 `space` 编辑或切换,`←`/`→` 调整 Recap 的等待时间和 Continue 的上限,
+`esc` 保存并关闭。保存不会启动任务。
+
+Always 一节在任何模式下都生效:
+
+- **Suggest** —— 每轮结束后在输入框里用灰字建议下一条输入。Autopilot 驾驶
+  mission 时,改为提议朝 mission 推进的下一步。
+- **Recap** —— 离开超过设定时间、终端重新获得焦点时,给出一条会话进展:San 自己
+  掌握的事实(离开多久、什么在等你、计划进度、mission、后台任务),加上目标、
+  当前在做什么、下一步。`/recap` 随时可看。需要终端上报焦点(tmux 里:
+  `set -g focus-events on`)。
+
+两者和 `/btw` 一样是旁路请求:复用会话的 prompt、工具和对话,走 provider 的
+prompt cache,agent 看不到它们。Recap 在你离开期间、缓存过期之前就写好。
+
+While it drives 一节只在 Autopilot 模式下生效,模式外整节变暗:
 
 - **Mission** —— 所有判断都朝它靠的目标。
 - **System** —— 副驾 system prompt 中可编辑的部分;安全规则固定且始终生效。
 - **Model** —— 可选;依次选 provider、模型、thinking 档位。存为 `vendor/model`,
   切换会话模型后仍留在原 provider。
-- **Suggest** —— 在输入框里用灰字建议下一条输入,任何模式都生效。
 - **Approve** —— 审查权限请求;有风险或判断失败的交给你。加载 skill 是安全的,
   它运行的脚本按 Bash 调用审查。
 - **Answer** —— 回答 `AskUserQuestion` 和命令的 `[y/N]` 提示。
 - **Continue** —— 运行中的 mission 每轮结束后发出下一步,直到完成或达到上限
   (默认 20)。
-
-Approve、Answer、Continue 只在 Autopilot 模式下生效。
 
 ## 执行 mission
 
@@ -68,6 +81,7 @@ Approve、Answer、Continue 只在 Autopilot 模式下生效。
     "thinkingEffort": "low",               // 留空 = 模型默认
     "systemPromptFile": "~/prompts/pilot.md",
     "maxContinuations": 20,                // -1 = 不限
+    "recapAfterMinutes": 5,                // -1 = 只在 /recap 时
     "steers": {
       "suggest": true,     // Suggest
       "permission": true,  // Approve

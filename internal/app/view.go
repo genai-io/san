@@ -38,6 +38,7 @@ func (m *model) View() tea.View {
 	content, cursor := m.viewString()
 	v := tea.NewView(content)
 	v.Cursor = cursor
+	v.ReportFocus = true // Recap follows the terminal's focus
 	// Full-screen panels are transient, not transcript: drawn inline, their
 	// top rows outlive the close. The alternate screen keeps them out of
 	// history and restores the conversation on close. A docked modal stays
@@ -325,6 +326,10 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 
 	if live := m.btwLive(); live != "" {
 		parts = append(parts, "", live, "")
+	}
+
+	if live := m.recapLive(); live != "" {
+		parts = append(parts, "", strings.TrimSuffix(live, "\n"), "")
 	}
 
 	if live := m.renderSelfLearnLive(); live != "" {

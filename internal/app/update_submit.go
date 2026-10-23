@@ -36,8 +36,8 @@ func (m *model) handleSubmit() tea.Cmd {
 	if m.conv.Stream.Active {
 		// A workflow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
-		// /btw exists to be asked while the agent works.
-		if input.IsWorkflowStopCommand(raw) || input.IsBtwCommand(raw) {
+		// /btw and /recap exist to be asked while the agent works.
+		if input.IsWorkflowStopCommand(raw) || input.IsSideCommand(raw) {
 			m.userInput.RecordSubmission(m.env.CWD, raw)
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
 			m.userInput.Reset()
@@ -93,14 +93,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// message can wear its "⎿ autopilot · N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {
-		// A capped run counts toward its ceiling ("2/5"). An uncapped one has no
-		// denominator, and a bare "2" hanging off the mark reads like a truncated
-		// fraction — so it says what the number is instead.
-		if m.env.AutoPilot.ContinuationsUnlimited() {
-			autopilotNote = fmt.Sprintf("step %d", m.autopilotContinuations)
-		} else {
-			autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
-		}
+		autopilotNote = m.continuationCount()
 		m.autopilotContinuing = false
 	}
 

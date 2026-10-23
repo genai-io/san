@@ -106,6 +106,8 @@ type SlashCommandEnv struct {
 	TrustWorkspace func() string
 	// SideQuestion answers /btw without the main agent seeing it.
 	SideQuestion func(question string) tea.Cmd
+	// Recap answers /recap without the main agent seeing it.
+	Recap func() tea.Cmd
 }
 
 type SlashCommandController struct {
@@ -150,13 +152,15 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 		"btw":            (*SlashCommandController).handleBtwCommand,
+		"recap":          (*SlashCommandController).handleRecapCommand,
 	}
 }
 
-// IsBtwCommand reports whether input is /btw, which runs even mid-turn.
-func IsBtwCommand(input string) bool {
+// IsSideCommand reports whether input is /btw or /recap, side requests that
+// run even mid-turn.
+func IsSideCommand(input string) bool {
 	name, _, ok := command.ParseCommand(input)
-	return ok && name == "btw"
+	return ok && (name == "btw" || name == "recap")
 }
 
 func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {
@@ -165,6 +169,10 @@ func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string
 		return "Usage: /btw <question>", nil, nil
 	}
 	return "", c.env.SideQuestion(question), nil
+}
+
+func (c *SlashCommandController) handleRecapCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	return "", c.env.Recap(), nil
 }
 
 // handlePersonaCommand switches the active persona. Bare /persona opens the

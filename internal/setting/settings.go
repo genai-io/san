@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/genai-io/san/internal/confdir"
 )
@@ -157,6 +158,10 @@ type AutoPilotSettings struct {
 	// a finished turn before yielding to the human. 0 = the default cap,
 	// negative = no cap (see AutoPilotUnlimitedContinuations).
 	MaxContinuations int `json:"maxContinuations,omitempty"`
+	// RecapAfterMinutes is how long the terminal must be out of focus for
+	// coming back to show a recap, in or out of AutoPilot mode: 0 =
+	// RecapDefaultAfterMinutes, negative = off (/recap still works).
+	RecapAfterMinutes int `json:"recapAfterMinutes,omitempty"`
 }
 
 // SteerSettings toggles each point where the copilot steers the session.
@@ -165,7 +170,7 @@ type AutoPilotSettings struct {
 // action — the start offer or /goal — not a persisted steer.)
 type SteerSettings struct {
 	// Suggest is the feature switch for the input hint (on by default, in and
-	// out of AutoPilot mode): while a mission is driven it proposes the next
+	// out of AutoPilot mode, like the recap): while a mission is driven it proposes the next
 	// step toward it, otherwise it predicts the human's next input. Tri-state
 	// keeps an explicit off distinct from the default-on zero value.
 	Suggest *bool `json:"suggest,omitempty"`
@@ -238,6 +243,21 @@ func (a *AutoPilotSettings) EngageDriving() {
 	a.MaxContinuations = AutoPilotUnlimitedContinuations
 }
 
+// RecapDefaultAfterMinutes is the away time that earns a recap when
+// recapAfterMinutes is unset.
+const RecapDefaultAfterMinutes = 5
+
+// RecapAfter is how long away earns a recap on coming back; 0 means off.
+func (a AutoPilotSettings) RecapAfter() time.Duration {
+	switch {
+	case a.RecapAfterMinutes < 0:
+		return 0
+	case a.RecapAfterMinutes == 0:
+		return RecapDefaultAfterMinutes * time.Minute
+	}
+	return time.Duration(a.RecapAfterMinutes) * time.Minute
+}
+
 // ResolvedMaxContinuations returns the configured continuation cap, or the
 // default when unset. Meaningless when ContinuationsUnlimited — check that
 // first; it returns the default so a caller that forgets still gets a sane
@@ -267,7 +287,7 @@ func (a AutoPilotSettings) Clone() AutoPilotSettings {
 // out of persisted session state and settings files when nothing was configured.
 func (a AutoPilotSettings) IsZero() bool {
 	return a.Model == "" && a.ThinkingEffort == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
-		a.Mission == "" && a.MissionState == "" && a.MaxContinuations == 0 &&
+		a.Mission == "" && a.MissionState == "" && a.MaxContinuations == 0 && a.RecapAfterMinutes == 0 &&
 		a.Steers.Suggest == nil && a.Steers.Permission == nil &&
 		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
 }
@@ -283,6 +303,7 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.SystemPromptFile == b.SystemPromptFile &&
 		a.Mission == b.Mission &&
 		a.MaxContinuations == b.MaxContinuations &&
+		a.RecapAfter() == b.RecapAfter() &&
 		a.Steers.SuggestOn() == b.Steers.SuggestOn() &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&
