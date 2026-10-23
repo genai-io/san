@@ -188,19 +188,19 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		t.Fatalf("expected the long command to wrap onto multiple rows, got %q", raw)
 	}
 	for _, row := range rows {
-		if !strings.HasPrefix(row, bashCommandPrefix) {
+		if !strings.HasPrefix(row, nestedBodyPrefix) {
 			t.Fatalf("every command row should hang on the dotted rail: %q", row)
 		}
 	}
-	if got := strings.TrimPrefix(rows[0], bashCommandPrefix); !strings.HasPrefix(got, "git log") {
+	if got := strings.TrimPrefix(rows[0], nestedBodyPrefix); !strings.HasPrefix(got, "git log") {
 		t.Fatalf("command should follow the rail without extra spacing: %q", rows[0])
 	}
-	if last := rows[len(rows)-1]; last != bashCommandPrefix+"echo done" {
+	if last := rows[len(rows)-1]; last != nestedBodyPrefix+"echo done" {
 		t.Fatalf("the next command line should hang on the rail: %q", last)
 	}
 
 	// The command rail, the output rail and the summary share one column.
-	if c := strings.Index(nestedTrailerPrefix, "└"); strings.Index(bashCommandPrefix, "┊") != c || strings.Index(bashOutputPrefix, "│") != c {
+	if c := strings.Index(nestedTrailerPrefix, "└"); strings.Index(nestedBodyPrefix, "┊") != c || strings.Index(bashOutputPrefix, "│") != c {
 		t.Fatalf("command and output rails must share the └ column")
 	}
 }
@@ -211,18 +211,18 @@ func Test_renderBashToolCallMarksBlankCommandLines(t *testing.T) {
 		`{"command":"first\n   \nthird"}`,
 	} {
 		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
-		if !strings.Contains(out, bashCommandPrefix+"first\n"+bashCommandPrefix+"\n"+bashCommandPrefix+"third\n") {
+		if !strings.Contains(out, nestedBodyPrefix+"first\n"+nestedBodyPrefix+"\n"+nestedBodyPrefix+"third\n") {
 			t.Fatalf("a blank line inside the command keeps its rail, got %q", out)
 		}
 	}
 
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+bashCommandPrefix+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+nestedBodyPrefix+"first\n") {
 		t.Fatalf("trailing blank command lines should be dropped, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+bashCommandPrefix+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+nestedBodyPrefix+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashCommandPrefix+"(no command)\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, nestedBodyPrefix+"(no command)\n") {
 		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
 	}
 }
@@ -242,8 +242,8 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 	var reconstructed strings.Builder
 	for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")[1:] {
 		switch {
-		case strings.HasPrefix(line, bashCommandPrefix):
-			reconstructed.WriteString(strings.TrimPrefix(line, bashCommandPrefix))
+		case strings.HasPrefix(line, nestedBodyPrefix):
+			reconstructed.WriteString(strings.TrimPrefix(line, nestedBodyPrefix))
 		default:
 			t.Fatalf("unexpected command block row %q", line)
 		}
@@ -481,7 +481,7 @@ func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testi
 	if !strings.HasPrefix(rendered, "⋯ Bash (inspect repository history) · 12s · 1.2k lines\n") {
 		t.Fatalf("running command should move to a block when the full label does not fit, got %q", rendered)
 	}
-	if !strings.Contains(rendered, bashCommandPrefix+"git log --oneline --graph --all --decorate --abbrev-commit\n") {
+	if !strings.Contains(rendered, nestedBodyPrefix+"git log --oneline --graph --all --decorate --abbrev-commit\n") {
 		t.Fatalf("running command was truncated instead of rendered in full, got %q", rendered)
 	}
 	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
@@ -602,7 +602,7 @@ func TestRenderToolCallsCompletedCommandPreservesSpaces(t *testing.T) {
 	}))
 	var got strings.Builder
 	for line := range strings.SplitSeq(out, "\n") {
-		if text, ok := strings.CutPrefix(line, bashCommandPrefix); ok {
+		if text, ok := strings.CutPrefix(line, nestedBodyPrefix); ok {
 			got.WriteString(text)
 		}
 	}

@@ -635,9 +635,9 @@ type ToolResultData struct {
 	Expanded    bool
 	ToolInput   string
 	Width       int
-	Details     any
 	// BashPreviewLines is how many lines a finished shell result may show unfolded.
 	BashPreviewLines int
+	Details          any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
 	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.

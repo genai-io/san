@@ -186,7 +186,7 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	// A failed row keeps its last lines; a short output is kept whole, which a
 	// successful row shows when it fits the preview.
 	if err != nil || lineCount <= previewTailLines {
-		details.Tail = lastLines(tail, previewTailLines)
+		details.Tail = toolresult.LastLines(tail, previewTailLines)
 	}
 
 	// Build CC-compatible structured response for hooks

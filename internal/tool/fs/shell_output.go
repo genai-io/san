@@ -43,20 +43,6 @@ func (b *outputCapture) String() string {
 // previewTailLines is the most a Bash row previews (setting.MaxBashPreviewLines).
 const previewTailLines = 20
 
-// lastLines is the end of s, at most n lines.
-func lastLines(s string, n int) string {
-	end := strings.TrimRight(s, "\n")
-	start := len(end)
-	for range n {
-		i := strings.LastIndexByte(end[:start], '\n')
-		if i < 0 {
-			return s
-		}
-		start = i
-	}
-	return s[start+1:]
-}
-
 func countLines(s string) int {
 	if s == "" {
 		return 0

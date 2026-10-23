@@ -83,11 +83,11 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	// A shell command hangs on a dotted rail and its output on a solid one that
-	// ends in the "└" summary, or, when every line is in view, in its last line.
-	bashCommandPrefix = "  ┊ "
-	bashOutputPrefix  = "  │ "
-	bashWrapIndent    = "    "
+	// A shell command hangs on the dotted body rail and its output on a solid
+	// one that ends in the "└" summary, or, when every line is in view, in its
+	// last line.
+	bashOutputPrefix = "  │ "
+	trailerIndent    = "    "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -172,7 +172,7 @@ func commandWrapWidth(width int) int {
 	if width <= 0 {
 		width = 80
 	}
-	return max(1, width-lipgloss.Width(bashCommandPrefix))
+	return max(1, width-lipgloss.Width(nestedBodyPrefix))
 }
 
 // renderGutteredLine soft-wraps one row to the terminal width so every
@@ -184,7 +184,7 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 		width = 80
 	}
 	line = strings.ReplaceAll(line, "\t", "    ")
-	wrapWidth := max(1, width-lipgloss.Width(nestedBodyPrefix))
+	wrapWidth := max(1, width-lipgloss.Width(prefix))
 
 	var sb strings.Builder
 	for segment := range strings.SplitSeq(xansi.Hardwrap(line, wrapWidth, true), "\n") {
@@ -194,7 +194,8 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 	return sb.String()
 }
 
-func renderNestedToolBodyContinuous(content string, width int) string {
+// renderBashOutput hangs a shell command's output on the solid rail, wrapped.
+func renderBashOutput(content string, width int) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return ""
@@ -288,14 +289,14 @@ func renderBashToolResultInline(data ToolResultData) string {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
-	// Success is the model's to report, so a longer output folds to its count;
-	// one that fits the preview has nothing to fold.
-	var fits bool
+	lines := details.LineCount
+	if !hasDetails {
+		lines = strings.Count(content, "\n") + 1
+	}
 	switch {
 	case data.IsError:
 	case !hasDetails:
 		summary = formatLineCount(content)
-		fits = strings.Count(content, "\n") < data.BashPreviewLines
 	case details.TaskID != "":
 		// Its text is how to reach the task (Ctrl-O shows it), not output.
 		summary = "started in background · " + details.TaskID
@@ -303,30 +304,31 @@ func renderBashToolResultInline(data ToolResultData) string {
 		summary, content = "no output", ""
 	default:
 		summary = formatLineCountValue(details.LineCount)
-		fits = details.LineCount <= data.BashPreviewLines
 	}
 	// The tail is the output as it interleaved, the end the row showed live.
 	end := content
 	if hasDetails && details.Tail != "" {
 		end = details.Tail
 	}
-	if fits {
-		// Every line is in view, so its last closes the row instead of a count.
-		head, last := "", end
-		if i := strings.LastIndexByte(strings.TrimRight(end, "\n"), '\n'); i >= 0 {
-			head, last = end[:i], strings.TrimRight(end[i+1:], "\n")
+	// Success is the model's to report, so a longer output folds to its count;
+	// one that fits the preview has nothing to fold, and its last line closes
+	// the row instead of a count.
+	if !data.IsError && content != "" && details.TaskID == "" && lines <= data.BashPreviewLines {
+		head, last := "", strings.TrimRight(end, "\n")
+		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
+			head, last = last[:i], last[i+1:]
 		}
-		return renderNestedToolBodyContinuous(head, data.Width) +
-			renderGutteredLine(nestedTrailerPrefix, bashWrapIndent, toolResultStyle, visibleLine(last), data.Width)
+		return renderBashOutput(head, data.Width) +
+			renderGutteredLine(nestedTrailerPrefix, trailerIndent, toolResultStyle, visibleLine(last), data.Width)
 	}
 	var sb strings.Builder
 	switch {
 	case data.Expanded:
-		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
+		sb.WriteString(renderBashOutput(content, data.Width))
 	case data.IsError:
 		// A failure is what the user may step in on: it keeps its whole end,
 		// wrapped, whatever the preview setting.
-		sb.WriteString(renderNestedToolBodyContinuous(lastLines(end, setting.MaxBashPreviewLines), data.Width))
+		sb.WriteString(renderBashOutput(toolresult.LastLines(end, setting.MaxBashPreviewLines), data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -336,9 +338,9 @@ func renderBashToolResultInline(data ToolResultData) string {
 }
 
 // renderOutputPreview draws the last n lines of a running shell command's
-// output on the solid rail. Each line
-// is cut to the width rather than wrapped, so the preview is never taller
-// than n rows; output shorter than n shows as many rows as it has.
+// output on the solid rail. Each line is cut to the width rather than wrapped,
+// so the preview is never taller than n rows; output shorter than n shows as
+// many rows as it has.
 func renderOutputPreview(output string, n, width int) string {
 	output = strings.TrimRight(output, "\n")
 	if n <= 0 || strings.TrimSpace(output) == "" {
@@ -347,29 +349,14 @@ func renderOutputPreview(output string, n, width int) string {
 	if width <= 0 {
 		width = 80
 	}
-	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
+	room := max(1, width-lipgloss.Width(bashOutputPrefix))
 	var sb strings.Builder
-	for line := range strings.SplitSeq(lastLines(output, n), "\n") {
+	for line := range strings.SplitSeq(toolresult.LastLines(output, n), "\n") {
 		// Plain text: an output's own color reset would end the dim tone midway.
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
 		sb.WriteString(toolResultStyle.Render(bashOutputPrefix+kit.TruncateText(line, room)) + "\n")
 	}
 	return sb.String()
-}
-
-// lastLines is the end of s from its nth-last line on; only that end is split
-// off, as the output may run to thousands.
-func lastLines(s string, n int) string {
-	s = strings.TrimRight(s, "\n")
-	start := len(s)
-	for range n {
-		i := strings.LastIndexByte(s[:start], '\n')
-		if i < 0 {
-			return s
-		}
-		start = i
-	}
-	return s[start+1:]
 }
 
 func formatBashFailure(content string, details any) (string, string) {
@@ -1355,7 +1342,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 		}
 		seenCommand = true
 		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
-		sb.WriteString(renderGutteredLine(bashCommandPrefix, bashCommandPrefix, toolCallStyle, commandLine, width))
+		sb.WriteString(renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolCallStyle, commandLine, width))
 	}
 	return sb.String()
 }
