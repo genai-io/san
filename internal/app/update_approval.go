@@ -72,11 +72,11 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	reason := "user denied"
 	if decision.Approved {
 		reason = "user approved"
-		callID := req.ToolCallID
+		// A gated call of this turn is stamped when it runs; a subagent's
+		// parent is running already and restarts its timer from here.
 		if pending.Source.AgentID != "" {
-			callID = pending.Source.ParentToolCallID
+			m.conv.Tool.MarkStarted(pending.Source.ParentToolCallID)
 		}
-		m.conv.Tool.MarkStarted(callID)
 		if decision.AllowAll && m.env.SessionPermissions != nil {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
 		}

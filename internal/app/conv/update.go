@@ -167,8 +167,8 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			return tea.Batch(rt.CommitMessages()...)
 		}
 		return applyPostInfer(rt, m, e.Response)
-	case sdkagent.ToolStart:
-		applyPreTool(m, core.ToolCall{ID: e.ID, Name: e.Name, Input: e.Args})
+	case sdkagent.ToolUpdate:
+		applyToolRunning(m, e.ID, e.Name)
 		return nil
 	case sdkagent.ToolEnd:
 		return applyPostTool(rt, m, core.ToolResult{
@@ -265,10 +265,13 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	return nil
 }
 
-func applyPreTool(m *Model, tc core.ToolCall) {
-	m.Stream.BuildingTool = tc.Name
-	m.Tool.MarkCurrent(tc.ID)
-	m.Tool.MarkStarted(tc.ID)
+// applyToolRunning marks the call whose run has begun (core's withCallID
+// reports it), not the one ToolStart announced: a batch is announced whole and
+// then run a call at a time, so a queued call has no timer until it runs.
+func applyToolRunning(m *Model, id, name string) {
+	m.Stream.BuildingTool = name
+	m.Tool.MarkCurrent(id)
+	m.Tool.MarkStarted(id)
 }
 
 func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {

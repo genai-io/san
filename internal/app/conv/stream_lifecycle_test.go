@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/genai-io/san/internal/core"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -76,5 +77,24 @@ func TestInferenceRetryPreservesNoticeAndRebindsIdentity(t *testing.T) {
 	m.AppendStream("retried reply", "")
 	if m.Stream.MessageID == "" || m.Stream.MessageID == old || len(m.Messages) != 2 || m.Messages[0].Content != "background error" || m.Messages[1].Content != "retried reply" {
 		t.Fatalf("retry lost the notice or streamed into the old message: %+v", m)
+	}
+}
+
+// A batch is announced whole (ToolStart each) and then run a call at a time; a
+// queued call must not be timed or marked current until its run begins.
+func TestQueuedToolCallIsTimedFromItsRun(t *testing.T) {
+	m, rt := NewModel(80), &streamRuntime{}
+	m.Tool.Track([]core.ToolCall{{ID: "first", Name: "Bash"}, {ID: "second", Name: "Read"}})
+	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "first", Name: "Bash"})
+	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "second", Name: "Read"})
+	if len(m.Tool.StartedAt) != 0 {
+		t.Fatalf("announced calls are timed before they run: %v", m.Tool.StartedAt)
+	}
+	applyAgentEvent(rt, &m, sdkagent.ToolUpdate{ID: "first", Name: "Bash"})
+	if _, ok := m.Tool.StartedAt["first"]; !ok || len(m.Tool.StartedAt) != 1 {
+		t.Fatalf("only the running call is timed, got %v", m.Tool.StartedAt)
+	}
+	if m.Tool.CurrentIdx != 0 || m.Stream.BuildingTool != "Bash" {
+		t.Fatalf("the running call is current: idx %d, tool %q", m.Tool.CurrentIdx, m.Stream.BuildingTool)
 	}
 }

@@ -155,9 +155,9 @@ func TestMarkToolCallCompleteAdvancesAndClearsPendingState(t *testing.T) {
 	}
 }
 
-// A gated call carries its PreToolEvent stamp through the whole permission
-// prompt, so approving it has to restamp — otherwise the row's elapsed timer
-// reports the user's deliberation as execution time (issue #440).
+// A running call whose subagent waits on a prompt keeps its stamp through it,
+// so approving restamps — otherwise the row's elapsed timer reports the user's
+// deliberation as execution time (issue #440).
 func TestApprovalRestampsGatedCallAndClearsWaiting(t *testing.T) {
 	state := ToolExecState{}
 	state.Track([]core.ToolCall{{ID: "tc-1", Name: "Bash"}})
