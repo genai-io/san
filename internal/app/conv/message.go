@@ -498,13 +498,13 @@ func RecapNotice(facts, body string) string {
 }
 
 // RenderRecap renders a recap dim end to end, an aside to the conversation:
-// the "✎ recap" mark trailed by its facts, and the model's lines under the
-// reply gutter, kept line for line. ✎ is one cell even where ambiguous-width
-// glyphs take two.
+// the ⌂ mark ("welcome back") trailed by its facts, and the model's lines
+// under the reply gutter, kept line for line. ⌂ is one cell even where
+// ambiguous-width glyphs take two.
 func RenderRecap(facts, body string) string {
-	head := "✎ recap"
+	head := "⌂"
 	if facts != "" {
-		head += " · " + facts
+		head += " " + facts
 	}
 	return sideMarkStyle.Render(head) + "\n" + RenderCommittedContentBlock(sideMarkStyle.Render(body), false, nil) + "\n"
 }
