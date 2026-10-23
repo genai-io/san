@@ -84,7 +84,7 @@ type appearanceOption struct {
 	theme           string // kindTheme: the theme value to apply
 	barOn           bool   // kindContextBar / kindGitBar: the on/off value to apply
 	thinkingDisplay string // kindThinkingDisplay: the display mode to apply
-	lines           int    // kindBashPreview: the line count to apply
+	previewLines    int    // kindBashPreview: the line count to apply
 }
 
 // appearanceOptions is the full, section-ordered row list. The theme group
@@ -179,9 +179,9 @@ func (p *appearancePanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		case isAppearanceBar(*opt):
 			opt.barOn = more
 		case opt.kind == kindBashPreview && more:
-			opt.lines = min(opt.lines+1, setting.MaxBashPreviewLines)
+			opt.previewLines = min(opt.previewLines+1, setting.MaxBashPreviewLines)
 		case opt.kind == kindBashPreview:
-			opt.lines = max(opt.lines-1, 0)
+			opt.previewLines = max(opt.previewLines-1, 0)
 		}
 		p.saveErr = nil
 	case "enter", " ":
@@ -233,12 +233,12 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		p.thinkingBaseline = opt.thinkingDisplay
 		return func() tea.Msg { return ThinkingDisplaySavedMsg{Mode: opt.thinkingDisplay} }, true
 	case kindBashPreview:
-		if err := setting.SaveBashPreviewLines(opt.lines); err != nil {
+		if err := setting.SaveBashPreviewLines(opt.previewLines); err != nil {
 			p.saveErr = err
 			return nil, false
 		}
-		p.previewBaseline = opt.lines
-		return func() tea.Msg { return BashPreviewSavedMsg{Lines: opt.lines} }, true
+		p.previewBaseline = opt.previewLines
+		return func() tea.Msg { return BashPreviewSavedMsg{Lines: opt.previewLines} }, true
 	}
 	return nil, false
 }
@@ -298,7 +298,7 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 	case kindThinkingDisplay:
 		return opt.thinkingDisplay == p.thinkingBaseline
 	case kindBashPreview:
-		return opt.lines == p.previewBaseline
+		return opt.previewLines == p.previewBaseline
 	default:
 		return opt.theme == p.themeBaseline
 	}

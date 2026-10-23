@@ -57,7 +57,7 @@ func (p *appearancePanel) renderBody(width int) appearanceBody {
 		case isAppearanceBar(opt):
 			body.lines = append(body.lines, renderBarToggle(opt, i == p.cursor, width))
 		case opt.kind == kindBashPreview:
-			body.lines = append(body.lines, renderLineStepper(opt, i == p.cursor, width))
+			body.lines = append(body.lines, renderPreviewStepper(opt, i == p.cursor, width))
 		default:
 			body.lines = append(body.lines, renderRadioRow(opt.label, opt.desc, i == p.cursor, p.isCurrent(opt)))
 		}

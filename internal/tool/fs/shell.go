@@ -400,7 +400,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  output,
-		Details: toolresult.BashDetails{BackgroundTask: bgTask.ID},
+		Details: toolresult.BashDetails{TaskID: bgTask.ID},
 		HookResponse: map[string]any{
 			"backgroundTask": backgroundMeta,
 		},

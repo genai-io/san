@@ -22,10 +22,10 @@ type FileChangeDetails struct {
 // only when the text was cut — the output's real end, for the row's preview.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
-	Error          string `json:"error"`
-	LineCount      int    `json:"lineCount"`
-	Tail           string `json:"tail,omitempty"`
-	BackgroundTask string `json:"backgroundTask,omitempty"`
+	Error     string `json:"error"`
+	LineCount int    `json:"lineCount"`
+	Tail      string `json:"tail,omitempty"`
+	TaskID    string `json:"taskId,omitempty"`
 }
 
 // AgentDetails keeps display metadata out of the parent model's result text.

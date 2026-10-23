@@ -1776,7 +1776,7 @@ func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "┊") || !strings.Contains(none, "└ no output") {
 		t.Errorf("no output should show no rows:\n%s", none)
 	}
-	if bg := render("Task started in background.\nkill -TERM -- -1", toolresult.BashDetails{BackgroundTask: "bash-1"}); strings.Contains(bg, "┊") || !strings.Contains(bg, "└ started in background · bash-1") {
+	if bg := render("Task started in background.\nkill -TERM -- -1", toolresult.BashDetails{TaskID: "bash-1"}); strings.Contains(bg, "┊") || !strings.Contains(bg, "└ started in background · bash-1") {
 		t.Errorf("a background start is not output to preview:\n%s", bg)
 	}
 }

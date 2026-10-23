@@ -29,7 +29,7 @@ type outputProgress struct {
 	bytes      int64
 	tail       []byte
 	lastReport time.Time
-	trailing   *time.Timer // reports what a throttled write left unreported
+	pending    *time.Timer // reports what a throttled write left unreported
 	stopped    bool
 }
 
@@ -58,10 +58,10 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	if fire { // copied only for a report: a fast command writes far more often
 		p.lastReport = time.Now()
 		tail = string(p.tail)
-	} else if p.trailing == nil {
+	} else if p.pending == nil {
 		// Without this, output that stops inside the window would sit
 		// unreported until the command ends.
-		p.trailing = time.AfterFunc(progressInterval-time.Since(p.lastReport), p.flush)
+		p.pending = time.AfterFunc(progressInterval-time.Since(p.lastReport), p.flush)
 	}
 	p.mu.Unlock()
 	if fire {
@@ -75,7 +75,7 @@ func (p *outputProgress) flush() {
 		p.mu.Unlock()
 		return
 	}
-	p.trailing = nil
+	p.pending = nil
 	p.lastReport = time.Now()
 	lines, byteCount, tail := p.lines, p.bytes, string(p.tail)
 	p.mu.Unlock()
@@ -87,8 +87,8 @@ func (p *outputProgress) stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.stopped = true
-	if p.trailing != nil {
-		p.trailing.Stop()
+	if p.pending != nil {
+		p.pending.Stop()
 	}
 }
 

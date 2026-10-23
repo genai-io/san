@@ -25,7 +25,7 @@ func (p *appearancePanel) resetBarChoices() {
 		case kindGitBar:
 			p.options[i].barOn = p.gitBarBaseline
 		case kindBashPreview:
-			p.options[i].lines = p.previewBaseline
+			p.options[i].previewLines = p.previewBaseline
 		}
 	}
 }
@@ -45,13 +45,13 @@ func renderBarToggle(opt appearanceOption, hovered bool, width int) string {
 	return withDesc(head+offStyle.Render("Off")+" "+onStyle.Render("On"), opt.desc, width)
 }
 
-// renderLineStepper draws the preview-lines row in the toggles' layout: the
+// renderPreviewStepper draws the preview-lines row in the toggles' layout: the
 // count in one cell between ‹ › arrows, "Off" for 0.
-func renderLineStepper(opt appearanceOption, hovered bool, width int) string {
+func renderPreviewStepper(opt appearanceOption, hovered bool, width int) string {
 	head, selected := appearanceRowHead(opt, hovered)
 	value := "Off"
-	if opt.lines > 0 {
-		value = strconv.Itoa(opt.lines)
+	if opt.previewLines > 0 {
+		value = strconv.Itoa(opt.previewLines)
 	}
 	arrow := appearanceDescStyle.Render
 	return withDesc(head+arrow("‹ ")+selected.Render(value)+arrow(" ›"), opt.desc, width)

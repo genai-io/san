@@ -258,9 +258,9 @@ func renderBashToolResultInline(data ToolResultData) string {
 	case data.IsError:
 	case !hasDetails:
 		summary = formatLineCount(content)
-	case details.BackgroundTask != "":
+	case details.TaskID != "":
 		// Its text is how to reach the task (Ctrl-O shows it), not output.
-		summary, preview = "started in background · "+details.BackgroundTask, ""
+		summary, preview = "started in background · "+details.TaskID, ""
 	case details.LineCount == 0:
 		summary, content, preview = "no output", "", ""
 	default:

@@ -308,14 +308,14 @@ func TestAppearancePreviewLinesStepsAndSaves(t *testing.T) {
 		}
 	}
 	press("h", 10)
-	if got := p.options[p.cursor].lines; got != 0 {
+	if got := p.options[p.cursor].previewLines; got != 0 {
 		t.Fatalf("stepped below 0: %d", got)
 	}
 	if !strings.Contains(ansi.Strip(p.Render(100, 30)), "‹  Off  ›") {
 		t.Fatalf("0 should read Off:\n%s", ansi.Strip(p.Render(100, 30)))
 	}
 	press("l", 30)
-	if got := p.options[p.cursor].lines; got != setting.MaxBashPreviewLines {
+	if got := p.options[p.cursor].previewLines; got != setting.MaxBashPreviewLines {
 		t.Fatalf("stepped past the max: %d", got)
 	}
 	press("h", 15)
