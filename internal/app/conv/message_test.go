@@ -144,7 +144,7 @@ func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
 
 func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
 	out := stripANSI(renderShellToolCall("Bash", `{}`, 100, "●", ""))
-	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  $ (no command)\n") {
+	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  ┊ (no command)\n") {
 		t.Fatalf("empty command should retain the Bash command block, got %q", out)
 	}
 }
@@ -160,9 +160,8 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 		}
 	}
 	plain := stripANSI(out)
-	// "$" leads the first command line; later ones align under its text with
-	// their own indentation kept.
-	if !strings.Contains(plain, "  $ for f in a b; do\n      echo \"$f\"\n    done\n") {
+	// Every command line hangs on the dotted rail with its own indentation kept.
+	if !strings.Contains(plain, "  ┊ for f in a b; do\n  ┊   echo \"$f\"\n  ┊ done\n") {
 		t.Fatalf("multi-line command should align its later lines under the first, got %q", plain)
 	}
 	// The description stays on the header in normal text, separated by a dash.
@@ -176,39 +175,33 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 }
 
 func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
-	// A long line in a multi-line command wraps within the existing terminal
-	// block: the first row is led by a "$" prompt and later rows use connectors.
-	// No gutter bar or background fill is added.
+	// A long line in a multi-line command wraps within the block: every row,
+	// wrapped or not, hangs on the dotted rail. The solid rail is the output's.
 	long := `{"command":"git log --oneline --graph --all --decorate --abbrev-commit --since='2 weeks ago' | head -50\necho done"}`
 	raw := renderShellToolCall("Bash", long, 70, "●", "")
 	if strings.ContainsAny(raw, "│") || strings.Contains(raw, "48;2;") {
-		t.Fatalf("command block should have no bar and no background, got %q", raw)
+		t.Fatalf("command block should have no solid rail and no background, got %q", raw)
 	}
 
 	rows := strings.Split(strings.TrimRight(stripANSI(raw), "\n"), "\n")[1:]
 	if len(rows) < 2 {
 		t.Fatalf("expected the long command to wrap onto multiple rows, got %q", raw)
 	}
-	if !strings.HasPrefix(rows[0], bashPrompt) {
-		t.Fatalf("first command row should carry the %q prompt: %q", bashPrompt, rows[0])
+	for _, row := range rows {
+		if !strings.HasPrefix(row, bashCommandPrefix) {
+			t.Fatalf("every command row should hang on the dotted rail: %q", row)
+		}
 	}
-	// The command text starts immediately after the single space following "$".
-	if got := strings.TrimPrefix(rows[0], bashPrompt); !strings.HasPrefix(got, "git log") {
-		t.Fatalf("command should follow the prompt without extra spacing: %q", rows[0])
+	if got := strings.TrimPrefix(rows[0], bashCommandPrefix); !strings.HasPrefix(got, "git log") {
+		t.Fatalf("command should follow the rail without extra spacing: %q", rows[0])
 	}
-
-	// A row wrapped off the first line is only indented: it continues that
-	// line, so it carries neither "$" nor ">". The next line gets ">".
-	if !strings.HasPrefix(rows[1], bashIndent) || strings.TrimSpace(rows[1])[0] == '>' {
-		t.Fatalf("a wrapped row should be indented without a mark: %q", rows[1])
-	}
-	if last := rows[len(rows)-1]; last != bashIndent+"echo done" {
-		t.Fatalf("the next command line should lead with %q: %q", bashIndent, last)
+	if last := rows[len(rows)-1]; last != bashCommandPrefix+"echo done" {
+		t.Fatalf("the next command line should hang on the rail: %q", last)
 	}
 
-	// The prompt and nested result markers occupy the same column.
-	if strings.IndexByte(bashPrompt, '$') != strings.Index(nestedTrailerPrefix, "└") {
-		t.Fatalf("prompt $ column must equal the result └ column")
+	// The command rail, the output rail and the summary share one column.
+	if c := strings.Index(nestedTrailerPrefix, "└"); strings.Index(bashCommandPrefix, "┊") != c || strings.Index(bashOutputPrefix, "│") != c {
+		t.Fatalf("command and output rails must share the └ column")
 	}
 }
 
@@ -218,18 +211,18 @@ func Test_renderBashToolCallMarksBlankCommandLines(t *testing.T) {
 		`{"command":"first\n   \nthird"}`,
 	} {
 		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
-		if !strings.Contains(out, bashPrompt+"first\n"+bashIndent+"\n"+bashIndent+"third\n") {
-			t.Fatalf("a blank line inside the command keeps its > mark, got %q", out)
+		if !strings.Contains(out, bashCommandPrefix+"first\n"+bashCommandPrefix+"\n"+bashCommandPrefix+"third\n") {
+			t.Fatalf("a blank line inside the command keeps its rail, got %q", out)
 		}
 	}
 
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+bashCommandPrefix+"first\n") {
 		t.Fatalf("trailing blank command lines should be dropped, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, bashIndent) || !strings.Contains(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); !strings.HasSuffix(out, "Bash\n"+bashCommandPrefix+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashCommandPrefix+"(no command)\n") {
 		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
 	}
 }
@@ -249,10 +242,8 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 	var reconstructed strings.Builder
 	for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")[1:] {
 		switch {
-		case strings.HasPrefix(line, bashPrompt):
-			reconstructed.WriteString(strings.TrimPrefix(line, bashPrompt))
-		case strings.HasPrefix(line, bashIndent):
-			reconstructed.WriteString(strings.TrimPrefix(line, bashIndent))
+		case strings.HasPrefix(line, bashCommandPrefix):
+			reconstructed.WriteString(strings.TrimPrefix(line, bashCommandPrefix))
 		default:
 			t.Fatalf("unexpected command block row %q", line)
 		}
@@ -490,7 +481,7 @@ func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testi
 	if !strings.HasPrefix(rendered, "⋯ Bash (inspect repository history) · 12s · 1.2k lines\n") {
 		t.Fatalf("running command should move to a block when the full label does not fit, got %q", rendered)
 	}
-	if !strings.Contains(rendered, bashPrompt+"git log --oneline --graph --all --decorate --abbrev-commit\n") {
+	if !strings.Contains(rendered, bashCommandPrefix+"git log --oneline --graph --all --decorate --abbrev-commit\n") {
 		t.Fatalf("running command was truncated instead of rendered in full, got %q", rendered)
 	}
 	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
@@ -560,7 +551,7 @@ func TestRenderToolCallsShowsRunningShellCommand(t *testing.T) {
 		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
 	}
 	live := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(live, "$ monitor transfer") {
+	if !strings.Contains(live, "┊ monitor transfer") {
 		t.Fatalf("running shell should show its command, got %q", live)
 	}
 	if !strings.Contains(live, "Monitor upload progress") || !strings.Contains(live, "· 28s") {
@@ -611,9 +602,7 @@ func TestRenderToolCallsCompletedCommandPreservesSpaces(t *testing.T) {
 	}))
 	var got strings.Builder
 	for line := range strings.SplitSeq(out, "\n") {
-		if text, ok := strings.CutPrefix(line, bashPrompt); ok {
-			got.WriteString(text)
-		} else if text, ok := strings.CutPrefix(line, bashIndent); ok {
+		if text, ok := strings.CutPrefix(line, bashCommandPrefix); ok {
 			got.WriteString(text)
 		}
 	}
@@ -1124,8 +1113,8 @@ func TestRenderToolCallsNestsBashResultUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "Bash(git status)\n  ┊ on main\n  ┊ nothing to commit\n  └ 2 lines\n") {
-		t.Fatalf("Bash result should be a dotted, nested line summary followed by expanded output, got %q", rendered)
+	if !strings.Contains(rendered, "Bash(git status)\n  │ on main\n  │ nothing to commit\n  └ 2 lines\n") {
+		t.Fatalf("Bash result should hang its expanded output on the solid rail above its summary, got %q", rendered)
 	}
 }
 
@@ -1148,7 +1137,7 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  ┊ test output\n  ┊ stderr detail\n  └ failed · exit code 1 · 2 lines\n") {
+	if !strings.Contains(rendered, "  │ test output\n  │ stderr detail\n  └ failed · exit code 1 · 2 lines\n") {
 		t.Fatalf("Bash failure should move its error into the summary without counting it as output, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error: exit code 1") {
@@ -1172,7 +1161,7 @@ func TestRenderToolCallsKeepsBashOutputConnectorAcrossBlankLines(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  ┊ first\n  ┊ \n  ┊ third\n  └ failed · exit code 1 · 3 lines\n") {
+	if !strings.Contains(rendered, "  │ first\n  │ \n  │ third\n  └ failed · exit code 1 · 3 lines\n") {
 		t.Fatalf("blank Bash output lines should retain the connector, got %q", rendered)
 	}
 }
@@ -1192,7 +1181,7 @@ func TestRenderToolCallsRestoresLegacyBashFailureSummary(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  ┊ first\n  ┊ \n  ┊ third\n  └ failed · exit code 1 · 3 lines\n") {
+	if !strings.Contains(rendered, "  │ first\n  │ \n  │ third\n  └ failed · exit code 1 · 3 lines\n") {
 		t.Fatalf("legacy Bash failures without details should retain the concise summary, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error: exit code 1") {
@@ -1240,7 +1229,7 @@ func TestRenderToolCallsSummarizesBashTimeout(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  ┊ started\n  └ failed · timed out after 2s · 1 line\n") {
+	if !strings.Contains(rendered, "  │ started\n  └ failed · timed out after 2s · 1 line\n") {
 		t.Fatalf("Bash timeout should use a concise reason and preserve output count, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error:") || strings.Contains(rendered, "non-interactive") {
@@ -1721,17 +1710,18 @@ func TestRenderRecapWraps(t *testing.T) {
 	}
 }
 
-// A running shell row shows its output's last N lines on the "┊" gutter;
+// A running shell row shows its output's last N lines on the solid rail;
 // output shorter than N shows as many rows as it has, and N = 0 shows none. A
 // failed one keeps its whole kept end, wrapped, whatever N. A command that
-// succeeded folds to its count unless its output fits in N lines.
+// succeeded folds to its count unless its output fits in N lines, whose last
+// line then closes the row in place of the count.
 func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	call := core.ToolCall{ID: "cmd", Name: "Bash", Input: `{"command":"make"}`}
 	output := "one\ntwo\nthree\nfour\n"
 	preview := func(p ToolCallsParams) []string {
 		var rows []string
 		for line := range strings.SplitSeq(stripANSI(RenderToolCalls(p)), "\n") {
-			if text, ok := strings.CutPrefix(line, nestedBodyPrefix); ok {
+			if text, ok := strings.CutPrefix(line, bashOutputPrefix); ok {
 				rows = append(rows, text)
 			}
 		}
@@ -1781,8 +1771,8 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	}
 	succeeded.BashPreviewLines = 4
 	succeeded.ResultMap["cmd"] = ToolResultData{ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4, Tail: output}}
-	if got := preview(succeeded); strings.Join(got, ",") != "one,two,three,four" {
-		t.Errorf("a success that fits the preview should stay shown, got %q", got)
+	if out := stripANSI(RenderToolCalls(succeeded)); !strings.HasSuffix(out, "  │ one\n  │ two\n  │ three\n  └ four\n") {
+		t.Errorf("a success that fits the preview should stay shown, closed by its last line:\n%s", out)
 	}
 }
 
@@ -1793,18 +1783,18 @@ func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 	render := func(content string, d toolresult.BashDetails) string {
 		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80}))
 	}
-	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "┊") || !strings.Contains(cut, "└ 8000 lines") {
+	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "│") || !strings.Contains(cut, "└ 8000 lines") {
 		t.Errorf("cut output that succeeded should fold to its real count:\n%s", cut)
 	}
 	failed := stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", IsError: true, Width: 80,
 		Content: "a\nb\nerr", Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 3, Tail: "a\nerr\nb\n"}}))
-	if !strings.Contains(failed, "┊ err\n  ┊ b\n") || !strings.Contains(failed, "exit code 1") {
+	if !strings.Contains(failed, "│ err\n  │ b\n") || !strings.Contains(failed, "exit code 1") {
 		t.Errorf("a failure should keep its end as it interleaved:\n%s", failed)
 	}
-	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "┊") || !strings.Contains(none, "└ no output") {
+	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "│") || !strings.Contains(none, "└ no output") {
 		t.Errorf("no output should show no rows:\n%s", none)
 	}
-	if bg := render("Task started in background.\nkill -TERM -- -1", toolresult.BashDetails{TaskID: "bash-1"}); strings.Contains(bg, "┊") || !strings.Contains(bg, "└ started in background · bash-1") {
+	if bg := render("Task started in background.\nkill -TERM -- -1", toolresult.BashDetails{TaskID: "bash-1"}); strings.Contains(bg, "│") || !strings.Contains(bg, "└ started in background · bash-1") {
 		t.Errorf("a background start is not output to preview:\n%s", bg)
 	}
 }
