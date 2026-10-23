@@ -7,7 +7,7 @@
 //     Both default off; left/right previews Off/On, Enter applies the row.
 //   - THINKING — full / collapsed / hidden. How the model's reasoning is
 //     drawn. Full by default (the reasoning streams as before); collapsed
-//     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
+//     drops the body everywhere and shows one "✦ Thought for 3.2s" line
 //     instead.
 //   - SHELL OUTPUT — how many of a shell command's last output lines its row
 //     shows while running and after a failure; left/right steps 0–20.
@@ -98,8 +98,8 @@ func appearanceOptions() []appearanceOption {
 		{section: "STATUS BAR", kind: kindContextBar, label: "Context usage", desc: "Visual context meter"},
 		{section: "STATUS BAR", kind: kindGitBar, label: "Git information", desc: "Branch, repository and changes"},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
-		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2 s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
-		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2 s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
 		{section: "SHELL OUTPUT", kind: kindBashPreview, label: "Preview lines", desc: "Last lines while a command runs"},
 	}
 }
