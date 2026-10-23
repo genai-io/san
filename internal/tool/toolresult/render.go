@@ -19,8 +19,8 @@ type FileChangeDetails struct {
 
 // BashDetails is display metadata kept apart from the model-facing text, which
 // may be cut short and lists stderr after stdout: the process error, the
-// output's real line count, and — for a failure — its last lines as they
-// interleaved, which the row keeps.
+// output's real line count, and — for a failure or a short output — its last
+// lines as they interleaved, which the row keeps.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
 	Error     string `json:"error"`

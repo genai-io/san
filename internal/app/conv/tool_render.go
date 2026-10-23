@@ -13,6 +13,7 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -290,10 +291,14 @@ func renderBashToolResultInline(data ToolResultData) string {
 		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
+	// Success is the model's to report, so a longer output folds to its count;
+	// one that fits the preview has nothing to fold.
+	var fits bool
 	switch {
 	case data.IsError:
 	case !hasDetails:
 		summary = formatLineCount(content)
+		fits = strings.Count(content, "\n") < data.BashPreviewLines
 	case details.TaskID != "":
 		// Its text is how to reach the task (Ctrl-O shows it), not output.
 		summary = "started in background · " + details.TaskID
@@ -301,23 +306,23 @@ func renderBashToolResultInline(data ToolResultData) string {
 		summary, content = "no output", ""
 	default:
 		summary = formatLineCountValue(details.LineCount)
+		fits = details.LineCount <= data.BashPreviewLines
 	}
-	// A finished command keeps its last lines only when it failed: success is
-	// the model's to report, a failure is what the user may step in on. The
-	// tail is the output as it interleaved, the end the row showed live.
-	var preview string
-	if data.IsError {
-		preview = content
-		if hasDetails && details.Tail != "" {
-			preview = details.Tail
-		}
+	// The tail is the output as it interleaved, the end the row showed live.
+	end := content
+	if hasDetails && details.Tail != "" {
+		end = details.Tail
 	}
-
 	var sb strings.Builder
-	if data.Expanded {
+	switch {
+	case data.Expanded:
 		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
-	} else {
-		sb.WriteString(renderOutputPreview(preview, data.BashPreviewLines, data.Width))
+	case data.IsError:
+		// A failure is what the user may step in on: it keeps its whole end,
+		// wrapped, whatever the preview setting.
+		sb.WriteString(renderNestedToolBodyContinuous(lastLines(end, setting.MaxBashPreviewLines), data.Width))
+	case fits:
+		sb.WriteString(renderNestedToolBodyContinuous(end, data.Width))
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -326,8 +331,8 @@ func renderBashToolResultInline(data ToolResultData) string {
 	return sb.String()
 }
 
-// renderOutputPreview draws the last n lines of a shell command's output on
-// the "┊" gutter, the same rows while it runs and once it has failed. Each line
+// renderOutputPreview draws the last n lines of a running shell command's
+// output on the "┊" gutter. Each line
 // is cut to the width rather than wrapped, so the preview is never taller
 // than n rows; output shorter than n shows as many rows as it has.
 func renderOutputPreview(output string, n, width int) string {
@@ -335,22 +340,32 @@ func renderOutputPreview(output string, n, width int) string {
 	if n <= 0 || strings.TrimSpace(output) == "" {
 		return ""
 	}
-	// Only the last n lines are split off: the output may run to thousands.
-	start := len(output)
-	for i := 0; i < n && start > 0; i++ {
-		start = strings.LastIndexByte(output[:start], '\n')
-	}
 	if width <= 0 {
 		width = 80
 	}
 	room := max(1, width-lipgloss.Width(nestedBodyPrefix))
 	var sb strings.Builder
-	for line := range strings.SplitSeq(output[start+1:], "\n") {
+	for line := range strings.SplitSeq(lastLines(output, n), "\n") {
 		// Plain text: an output's own color reset would end the dim tone midway.
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
 		sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+kit.TruncateText(line, room)) + "\n")
 	}
 	return sb.String()
+}
+
+// lastLines is the end of s from its nth-last line on; only that end is split
+// off, as the output may run to thousands.
+func lastLines(s string, n int) string {
+	s = strings.TrimRight(s, "\n")
+	start := len(s)
+	for range n {
+		i := strings.LastIndexByte(s[:start], '\n')
+		if i < 0 {
+			return s
+		}
+		start = i
+	}
+	return s[start+1:]
 }
 
 func formatBashFailure(content string, details any) (string, string) {

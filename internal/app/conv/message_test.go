@@ -1721,10 +1721,10 @@ func TestRenderRecapWraps(t *testing.T) {
 	}
 }
 
-// A shell row shows its output's last N lines on the "┊" gutter while it runs
-// (from its progress) and, the same rows, once it has failed; output shorter
-// than N shows as many rows as it has, and N = 0 shows none. A command that
-// succeeded folds to its count.
+// A running shell row shows its output's last N lines on the "┊" gutter;
+// output shorter than N shows as many rows as it has, and N = 0 shows none. A
+// failed one keeps its whole kept end, wrapped, whatever N. A command that
+// succeeded folds to its count unless its output fits in N lines.
 func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	call := core.ToolCall{ID: "cmd", Name: "Bash", Input: `{"command":"make"}`}
 	output := "one\ntwo\nthree\nfour\n"
@@ -1746,18 +1746,28 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, IsError: true, Details: toolresult.BashDetails{Error: "exit code 2", LineCount: 4, Tail: output}}},
 	}
-	for name, p := range map[string]ToolCallsParams{"running": running, "failed": failed} {
-		if got := preview(p); strings.Join(got, ",") != "two,three,four" {
-			t.Errorf("%s: preview = %q, want the last 3 lines", name, got)
+	if got := preview(running); strings.Join(got, ",") != "two,three,four" {
+		t.Errorf("running: preview = %q, want the last 3 lines", got)
+	}
+	running.BashPreviewLines = 10
+	if got := preview(running); len(got) != 4 {
+		t.Errorf("running: preview of 4 lines with room for 10 = %q, want 4 rows", got)
+	}
+	running.BashPreviewLines = 0
+	if got := preview(running); len(got) != 0 {
+		t.Errorf("running: preview with 0 lines = %q, want none", got)
+	}
+	running.BashPreviewLines = 3
+	for _, n := range []int{0, 3} {
+		failed.BashPreviewLines = n
+		if got := preview(failed); strings.Join(got, ",") != "one,two,three,four" {
+			t.Errorf("failed with %d preview lines = %q, want every line", n, got)
 		}
-		p.BashPreviewLines = 10
-		if got := preview(p); len(got) != 4 {
-			t.Errorf("%s: preview of 4 lines with room for 10 = %q, want 4 rows", name, got)
-		}
-		p.BashPreviewLines = 0
-		if got := preview(p); len(got) != 0 {
-			t.Errorf("%s: preview with 0 lines = %q, want none", name, got)
-		}
+	}
+	long := strings.Repeat("word ", 30)
+	failed.ResultMap["cmd"] = ToolResultData{ToolName: "Bash", Content: long, IsError: true, Details: toolresult.BashDetails{Error: "exit code 2", LineCount: 1, Tail: long}}
+	if got := preview(failed); len(got) < 2 || strings.Count(strings.Join(got, ""), "word") != 30 {
+		t.Errorf("a failure's long line should wrap whole, got %q", got)
 	}
 	if out := stripANSI(RenderToolCalls(running)); !strings.Contains(out, "· 4 lines") || strings.Contains(out, "lines\none") {
 		t.Errorf("the running row should carry only the counter beside its timer:\n%s", out)
@@ -1769,6 +1779,11 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); len(got) != 0 || !strings.Contains(out, "└ 4 lines") {
 		t.Errorf("a command that succeeded should fold to its count:\n%s", out)
 	}
+	succeeded.BashPreviewLines = 4
+	succeeded.ResultMap["cmd"] = ToolResultData{ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4, Tail: output}}
+	if got := preview(succeeded); strings.Join(got, ",") != "one,two,three,four" {
+		t.Errorf("a success that fits the preview should stay shown, got %q", got)
+	}
 }
 
 // The finished row counts the real output from its details, and a failed one
@@ -1776,12 +1791,12 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 // or be the "(no output)" placeholder.
 func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 	render := func(content string, d toolresult.BashDetails) string {
-		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80, BashPreviewLines: 2}))
+		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80}))
 	}
 	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "┊") || !strings.Contains(cut, "└ 8000 lines") {
 		t.Errorf("cut output that succeeded should fold to its real count:\n%s", cut)
 	}
-	failed := stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", IsError: true, Width: 80, BashPreviewLines: 2,
+	failed := stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", IsError: true, Width: 80,
 		Content: "a\nb\nerr", Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 3, Tail: "a\nerr\nb\n"}}))
 	if !strings.Contains(failed, "┊ err\n  ┊ b\n") || !strings.Contains(failed, "exit code 1") {
 		t.Errorf("a failure should keep its end as it interleaved:\n%s", failed)
