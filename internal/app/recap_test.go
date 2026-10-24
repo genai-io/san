@@ -1,15 +1,20 @@
 package app
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 func newRecapModel(t *testing.T) *model {
@@ -51,6 +56,85 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	}
 	if m.recap.busy || m.recap.ready.text != "" {
 		t.Fatal("the recap written ahead must be used, not rewritten")
+	}
+
+	// The same terminal loses focus again after the work is already done.
+	// Neither the warm-cache preparation nor returning eight minutes later
+	// should generate a second recap over the same conversation.
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled another recap despite no new turns")
+	}
+	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
+	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
+		t.Fatal("prepared a duplicate recap on the second absence")
+	}
+	if cmd := m.onFocus(); cmd != nil || len(m.conv.Messages) != n+1 {
+		t.Fatal("returning again recapped the same finished work")
+	}
+}
+
+// The recap is a persisted notice, not an agent message. After a real
+// transcript round trip it still gates the next automatic recap.
+func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
+	store, err := session.NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.Create(session.CreateOptions{ID: "recap-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var messages []core.Message
+	for range recapMinTurns {
+		messages = append(messages, core.UserMessage("Fix it.", nil), core.AssistantMessage("Done.", "", nil))
+	}
+	for i := range messages {
+		messages[i].ID = core.NewMessageID()
+	}
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
+		Notice: &transcript.NoticeRecord{Text: conv.RecapNotice("away 1h04m", "Done; waiting for the user.")}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	history, err := store.Read("recap-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newRecapModel(t)
+	m.conv.Messages = store.ChatRows(history)
+	if last := m.conv.Messages[len(m.conv.Messages)-1]; last.Role != core.ChatNotice || !strings.HasPrefix(last.Content, "/recap ") {
+		t.Fatalf("restored recap notice = %+v", last)
+	}
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled another recap despite no new turns")
+	}
+	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
+	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
+		t.Fatal("prepared a recap over restored finished work")
+	}
+	if cmd := m.onFocus(); cmd != nil || m.recap.busy {
+		t.Fatal("recapped again after resuming the session")
+	}
+}
+
+// Work that arrives while the user is away can still earn a recap even when
+// there was nothing new to recap at blur time.
+func TestRecapBecomesDueWhileAway(t *testing.T) {
+	m := newRecapModel(t)
+	m.showRecap(recapReadyMsg{text: "Done."})
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled a recap over completed work")
+	}
+	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
+	addTurn(m)
+	addTurn(m)
+	if cmd := m.prepareRecapAtTurnEnd(); cmd == nil || !m.recap.busy {
+		t.Fatal("new work while away did not prepare a recap")
 	}
 }
 
@@ -125,12 +209,26 @@ func TestRecapSkipsRunningTurn(t *testing.T) {
 }
 
 // An unasked recap needs new ground: a few turns since the last one. /recap
-// is always answered.
+// is always answered. The recap notice, not transient state, keeps this true
+// after restoring a session too.
 func TestRecapWaitsForNewTurns(t *testing.T) {
 	m := newRecapModel(t)
-	m.recap.shownAt = m.turns()
-	addTurn(m)
+	m.showRecap(recapReadyMsg{text: "Done; waiting for the user."})
 
+	// A fresh model with the same restored conversation has no in-memory recap
+	// state. The persisted notice alone must prevent another automatic recap.
+	resumed := newRecapModel(t)
+	resumed.conv.Messages = append([]core.ChatMessage(nil), m.conv.Messages...)
+	for _, current := range []*model{m, resumed} {
+		current.unfocusedSince = time.Now().Add(-10 * time.Minute)
+		if cmd := current.prepareRecap(); cmd != nil || current.recap.busy {
+			t.Fatal("prepared another recap over the same finished work")
+		}
+		if cmd := current.onFocus(); cmd != nil || current.recap.busy {
+			t.Fatal("recapped again without new turns")
+		}
+	}
+	addTurn(m)
 	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd != nil {
 		t.Fatal("recapped again after a single turn")
