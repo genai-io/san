@@ -615,36 +615,91 @@ func renderGenericToolResultInline(data ToolResultData) string {
 	return sb.String()
 }
 
+// askQuestionTexts reads the tool call's questions without changing the tool
+// result sent to the model. The transcript uses them to show answers without
+// repeating each question.
+func askQuestionTexts(input string) []string {
+	var params struct {
+		Question  string `json:"question"`
+		Questions []struct {
+			Question string `json:"question"`
+		} `json:"questions"`
+	}
+	if json.Unmarshal([]byte(input), &params) != nil {
+		return nil
+	}
+	if len(params.Questions) > 0 {
+		questions := make([]string, 0, len(params.Questions))
+		for _, q := range params.Questions {
+			questions = append(questions, q.Question)
+		}
+		return questions
+	}
+	if params.Question == "" {
+		params.Question = "Please choose:"
+	}
+	return []string{params.Question}
+}
+
+func renderAskUserCall(input, icon string, width int) string {
+	questions := askQuestionTexts(input)
+	if len(questions) == 0 {
+		questions = []string{"Question"}
+	}
+	var sb strings.Builder
+	for i, question := range questions {
+		prefix := icon + " "
+		if i > 0 {
+			prefix = "  "
+		}
+		if len(questions) > 1 {
+			question = fmt.Sprintf("Q%d: %s", i+1, question)
+		}
+		for line := range strings.SplitSeq(question, "\n") {
+			sb.WriteString(renderGutteredLine(prefix, "  ", questionCallStyle, line, width))
+			prefix = "  "
+		}
+	}
+	return sb.String()
+}
+
 func renderAskUserResultInline(data ToolResultData) string {
-	icon := toolResultIcon(data.IsError)
-
 	if data.IsError {
-		return toolResultStyle.Render(fmt.Sprintf("  %s  %s", icon, data.Content)) + "\n"
+		return toolResultStyle.Render(fmt.Sprintf("  ✗  %s", data.Content)) + "\n"
 	}
-
 	if strings.Contains(data.Content, "User cancelled") {
-		return toolResultStyle.Render(fmt.Sprintf("  %s  Cancelled", icon)) + "\n"
+		return toolResultStyle.Render("  ↳ Cancelled") + "\n"
+	}
+	if data.Content == "User did not select any option." {
+		return toolResultStyle.Render("  ↳ No selection") + "\n"
 	}
 
+	questions := askQuestionTexts(data.ToolInput)
 	var answers []string
 	for line := range strings.SplitSeq(data.Content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || line == "User responses:" {
 			continue
 		}
-		if answers == nil {
-			answers = make([]string, 0, 4)
+		for i, question := range questions {
+			if answer, ok := strings.CutPrefix(line, question+" → "); ok {
+				line = answer
+				if len(questions) > 1 {
+					line = fmt.Sprintf("Q%d: %s", i+1, answer)
+				}
+				break
+			}
 		}
 		answers = append(answers, line)
 	}
 
 	if len(answers) == 0 {
-		return toolResultStyle.Render(fmt.Sprintf("  %s  Answered", icon)) + "\n"
+		return toolResultStyle.Render("  ↳ Answered") + "\n"
 	}
 
 	var sb strings.Builder
-	for _, a := range answers {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  %s", icon, a)) + "\n")
+	for _, answer := range answers {
+		sb.WriteString(toolResultStyle.Render("  ↳ "+answer) + "\n")
 	}
 	return sb.String()
 }
