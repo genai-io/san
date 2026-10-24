@@ -64,7 +64,7 @@ sequenceDiagram
         A->>S: every Write / Edit / rm together
     end
     A-->>U: answer
-    App-->>U: ◈ saved … to user (only if memory changed)
+    App-->>U: ⟡ saved … to user (only if memory changed)
 ```
 
 ## Recall
@@ -170,8 +170,9 @@ footer after the answer:
 ● The PR is ready.
 ```
 
-The `⟡` marker gently breathes while an explicit read is running and becomes
-static when it succeeds. Only the marker changes tone; the label and title do
+All memory operations share the same `⟡` marker, including saving, updating
+and forgetting. The marker gently breathes while an explicit read is running
+and becomes static when it succeeds. Only the marker changes tone; the label and title do
 not flash. Automatic recall uses `⟡ Memory · recalled: <title>` next to the tool
 result that delivered it. Titles wrap under the label on narrow terminals;
 compact notices show neither the raw file path nor the private memory body.
@@ -184,7 +185,7 @@ the answer, grouped by verb and naming each write's store:
 
 ```
 ● 记住了：这个项目用 pnpm，不用 npm。
-  ◈ saved Pnpm not npm to project
+  ⟡ saved Pnpm not npm to project
 ```
 
 There is one change entry per memory (a write outranks a read), and `forgot`

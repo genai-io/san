@@ -72,7 +72,7 @@ func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]a
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
-	icon := "◈"
+	icon := kit.MemoryMark
 	for _, e := range entries {
 		if e.Verb == "used" || e.Verb == "recalled" {
 			continue
