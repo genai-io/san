@@ -662,9 +662,12 @@ func RenderToolCalls(params ToolCallsParams) string {
 	var sb strings.Builder
 
 	for _, tc := range params.ToolCalls {
-		// Memory calls leave the chat flow for the turn's memory line
-		// (TurnMemory); expanded and failed ones still render.
-		if _, ok := parseMemoryOp(tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
+		// Reads stay beside the call that used the memory. Other bookkeeping
+		// stays quiet until the turn's change summary.
+		if op, ok := parseMemoryOp(tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
+			if op.verb == "Read" && !op.index {
+				sb.WriteString(renderMemoryRead(tc, op, params))
+			}
 			continue
 		}
 		switch tc.Name {

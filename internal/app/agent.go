@@ -171,7 +171,9 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if rec != nil {
 		onEvent = rec.RecordEvent
 		for _, n := range m.earlyNotices {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice}})
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
+				Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
+					AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
 		}
 		m.earlyNotices = nil
 		m.services.Hook.SetAuditCallback(func(a hook.HookFiredAudit) {

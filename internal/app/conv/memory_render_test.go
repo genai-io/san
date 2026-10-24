@@ -55,10 +55,10 @@ func TestParseMemoryOp(t *testing.T) {
 	}
 }
 
-// Memory calls leave the chat flow — a failed one still shows itself — and the
-// turn's dealings with memory come back as one ordered list: recalled, used,
-// saved or updated (a write outranks a read), and forgotten when a memory it
-// touched is gone by the turn's end.
+// Memory reads stay in their tool step; a failed one still shows the full
+// call. The turn's change bookkeeping remains one ordered list: recalled,
+// used, saved or updated (a write outranks a read), and forgotten when a memory
+// it touched is gone by the turn's end. Read-only entries get no footer.
 func TestTurnMemory(t *testing.T) {
 	mem := useMemoryStore(t)
 	index := filepath.Join(mem, "MEMORY.md")
@@ -90,8 +90,8 @@ func TestTurnMemory(t *testing.T) {
 		ToolCalls: reads,
 		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
 	}))
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("memory calls should leave the chat flow, got %q", out)
+	if !strings.Contains(out, "⟡ Memory · read: terse answers") || strings.Contains(out, "MEMORY.md") {
+		t.Errorf("memory reads should show at their step while index reads stay quiet, got %q", out)
 	}
 	out = xansi.Strip(RenderToolCalls(ToolCallsParams{
 		ToolCalls: reads[:1],

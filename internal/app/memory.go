@@ -65,17 +65,18 @@ func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]a
 	return true
 }
 
-// memoryLine is the turn's memory in one quiet line under the answer, by
-// index title and grouped by verb in the order things happened —
-// "◈ used Go dev · saved No AI attribution to user" — cut to width. ◇ marks a
-// turn that only read memory, ◈ one that changed it. A write names its store:
-// a user-store memory follows the user into every repository. "" when the
-// turn left memory alone.
+// memoryLine is the turn's memory changes in one quiet line under the answer,
+// grouped by verb. Reads and recalls already appear at their tool steps and
+// must not be repeated here. A write names its store; an unchanged turn gets
+// no footer.
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
-	icon := "◇"
+	icon := "◈"
 	for _, e := range entries {
+		if e.Verb == "used" || e.Verb == "recalled" {
+			continue
+		}
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
@@ -85,9 +86,6 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 			title += memoryLabelStyle.Render(" to " + e.Store)
 		case "updated":
 			title += memoryLabelStyle.Render(" in " + e.Store)
-		}
-		if e.Verb != "recalled" && e.Verb != "used" {
-			icon = "◈"
 		}
 		items[e.Verb] = append(items[e.Verb], title)
 	}

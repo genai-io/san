@@ -87,11 +87,11 @@ func TestMemoryLine(t *testing.T) {
 		{Verb: "used", Title: "Go dev", Store: "user"}, {Verb: "updated", Title: "Freeze", Store: "project"},
 		{Verb: "used", Title: "Tabs", Store: "user"}, {Verb: "saved", Title: "Pnpm", Store: "user"},
 	}, 100))
-	if got != "◈ used Go dev, Tabs · updated Freeze in project · saved Pnpm to user" {
+	if got != "◈ updated Freeze in project · saved Pnpm to user" {
 		t.Errorf("memoryLine = %q", got)
 	}
-	if got := ansi.Strip(memoryLine([]conv.MemoryEntry{{Verb: "recalled", Title: "Go dev"}}, 100)); got != "◇ recalled Go dev" {
-		t.Errorf("read-only memoryLine = %q", got)
+	if got := ansi.Strip(memoryLine([]conv.MemoryEntry{{Verb: "recalled", Title: "Go dev"}}, 100)); got != "" {
+		t.Errorf("read-only memory must not produce a turn-end footer: %q", got)
 	}
 	if memoryLine(nil, 80) != "" {
 		t.Error("a turn without memory gets no line")

@@ -29,7 +29,19 @@ var (
 // breathing ●. The row settles into a solid ● in its own color when the work
 // is done, so the color says done and the breathing says waiting.
 func LiveDot(frame int) string {
-	return lipgloss.NewStyle().Foreground(dotBreath[frame%len(dotBreath)]).Render("●")
+	return liveDotMark("●", frame)
+}
+
+// MemoryMark identifies a memory being read or supplied as context.
+const MemoryMark = "⟡"
+
+// LiveMemory gives an in-flight memory read the same gentle breath as tools.
+func LiveMemory(frame int) string {
+	return liveDotMark(MemoryMark, frame)
+}
+
+func liveDotMark(mark string, frame int) string {
+	return lipgloss.NewStyle().Foreground(dotBreath[frame%len(dotBreath)]).Render(mark)
 }
 
 // ThinkingMark leads reasoning: the star of the San mark, apart from the
