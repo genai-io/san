@@ -41,10 +41,9 @@ const recapInstructions = `<system-reminder>The user stepped away and is coming 
 
 // recapState is the recap written for an absence and when it shows.
 type recapState struct {
-	busy    bool          // a recap request is in flight
-	show    bool          // show the recap in flight as soon as it lands; implies busy
-	ready   recapReadyMsg // a recap written ahead, not shown yet
-	shownAt int           // turns() when the last recap was shown
+	busy  bool          // a recap request is in flight
+	show  bool          // show the recap in flight as soon as it lands; implies busy
+	ready recapReadyMsg // a recap written ahead, not shown yet
 }
 
 type recapPrepareMsg struct{ awaySince time.Time }
@@ -158,14 +157,24 @@ func (m *model) recapWanted() bool {
 	return m.env.LLMProvider != nil && !m.conv.Compact.Active && m.assistantReplies() > 0
 }
 
-// recapDue reports whether an unasked recap has new ground to cover. A
-// shorter conversation after /clear starts the count over.
+// recapDue reports whether an unasked recap has new ground to cover. Use the
+// recorded notice rather than process-local state so a resumed session does not
+// recap the same completed work again.
 func (m *model) recapDue() bool {
-	n := m.turns()
-	if n < m.recap.shownAt {
-		m.recap.shownAt = 0
+	if !m.recapWanted() || m.turns() < recapMinTurns {
+		return false
 	}
-	return m.recapWanted() && n >= recapMinTurns && n-m.recap.shownAt >= recapNewTurns
+	since := 0
+	for i := len(m.conv.Messages) - 1; i >= 0; i-- {
+		msg := m.conv.Messages[i]
+		if msg.Role == core.ChatNotice && strings.HasPrefix(msg.Content, "/recap ") {
+			return since >= recapNewTurns
+		}
+		if msg.Role == core.ChatUser && msg.ToolResult == nil {
+			since++
+		}
+	}
+	return true
 }
 
 // turns counts the turns begun in the conversation: typed prompts and
@@ -243,7 +252,6 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 // sees. The facts are measured now, not when the text was written.
 func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 	m.recap.ready = recapReadyMsg{}
-	m.recap.shownAt = m.turns()
 	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(), r.text))
 	return tea.Batch(m.CommitMessages()...)
 }

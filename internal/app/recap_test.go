@@ -125,12 +125,26 @@ func TestRecapSkipsRunningTurn(t *testing.T) {
 }
 
 // An unasked recap needs new ground: a few turns since the last one. /recap
-// is always answered.
+// is always answered. The recap notice, not transient state, keeps this true
+// after restoring a session too.
 func TestRecapWaitsForNewTurns(t *testing.T) {
 	m := newRecapModel(t)
-	m.recap.shownAt = m.turns()
-	addTurn(m)
+	m.showRecap(recapReadyMsg{text: "Done; waiting for the user."})
 
+	// A fresh model with the same restored conversation has no in-memory recap
+	// state. The persisted notice alone must prevent another automatic recap.
+	resumed := newRecapModel(t)
+	resumed.conv.Messages = append([]core.ChatMessage(nil), m.conv.Messages...)
+	for _, current := range []*model{m, resumed} {
+		current.unfocusedSince = time.Now().Add(-10 * time.Minute)
+		if cmd := current.prepareRecap(); cmd != nil || current.recap.busy {
+			t.Fatal("prepared another recap over the same finished work")
+		}
+		if cmd := current.onFocus(); cmd != nil || current.recap.busy {
+			t.Fatal("recapped again without new turns")
+		}
+	}
+	addTurn(m)
 	m.unfocusedSince = time.Now().Add(-10 * time.Minute)
 	if cmd := m.onFocus(); cmd != nil {
 		t.Fatal("recapped again after a single turn")

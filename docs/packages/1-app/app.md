@@ -94,6 +94,16 @@ tool execution and the next inference receive the decision/answer.
   injection would let reload edit the `services` struct in place
   instead.
 
+### Return recaps
+
+`recap.go` prepares a recap after the terminal loses focus and shows it on
+return only after the configured away time. Automatic recaps require at least
+three conversation turns and, after a recap, two new turns. The last recap is
+identified by its persisted `/recap` notice in the conversation, not a
+process-local counter, so returning again or resuming a finished session does
+not repeat the same work. `/recap` remains available on demand. Tests live in
+`internal/app/recap_test.go`.
+
 ## Internals
 
 Root files (no business logic; pure glue):
