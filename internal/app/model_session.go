@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
@@ -93,7 +94,8 @@ func (m *model) appendSessionState() error {
 func (m *model) recordNotice(n core.ChatMessage) {
 	if opened := m.services.Session; opened != nil {
 		_ = opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
-			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice}})
+			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
+				AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
 		return
 	}
 	m.earlyNotices = append(m.earlyNotices, n)

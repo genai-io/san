@@ -56,13 +56,15 @@ sequenceDiagram
     A->>A: step 1 (thinks, calls tools)
     Sel--)App: up to 5 files
     App->>A: memory-recall rides the first tool result after the pick
+    App-->>U: ⟡ Memory · recalled: … (at that result)
     Note over A: indexes and attached files count as read
     opt asked to remember or forget
         A->>S: Reads still needed, in parallel
+        App-->>U: ⟡ Memory · read: … (at each Read step)
         A->>S: every Write / Edit / rm together
     end
     A-->>U: answer
-    App-->>U: ◈ recalled … · saved … to user
+    App-->>U: ⟡ saved … to user (only if memory changed)
 ```
 
 ## Recall
@@ -123,9 +125,18 @@ Within a conversation an attached memory is not offered again. `/clear` and
 compaction start that list over, since the memory has left the context; a
 resumed session starts it over too.
 
-On the turn's memory line, `recalled` names memories the pick attached and
-`used` those the agent Read itself. A slow pick mostly shows as `used`: the
-agent found the memory in the index first.
+`Memory · recalled` names memories the pick attached; `Memory · read` names
+ones the agent Read itself. Both appear at the step that consumed them, not
+under the final answer. A slow pick mostly shows explicit reads: the agent
+found the memory in the index first.
+
+For automatic recall, the SDK's `ToolEnd` contains the original tool output;
+the recall filter runs afterward. The UI therefore uses the subsequent
+`MessageAdded` tool-result event to append a display-only recall notice before
+the next inference. The notice captures the titles and pins itself to the
+receiving native result's message ID, rather than the writer's latest message
+(which may already be a later answer). It persists separately, so resume keeps
+its placement without exposing or duplicating reminder bodies.
 
 ## Saving and forgetting
 
@@ -145,22 +156,41 @@ keeping; there is no background extraction pass.
 
 ## On screen
 
-Memory stays out of the chat flow. A step that only touched memory draws its
-thinking but not its calls: the thinking was on screen before the calls
-arrived, and taking it back would flash.
+Memory consumption is shown where it happens, rather than as an unexplained
+footer after the answer:
 
-Each turn that touched memory ends with one quiet line under the answer, by
-index title, grouped by verb:
+```
+● I'll check the commit convention first.
+
+⟡ Memory · read: Sign off PR commits
+
+● Bash(git status)
+  └ working tree clean
+
+● The PR is ready.
+```
+
+All memory operations share the same `⟡` marker, including saving, updating
+and forgetting. The marker gently breathes while an explicit read is running
+and becomes static when it succeeds. Only the marker changes tone; the label and title do
+not flash. Automatic recall uses `⟡ Memory · recalled: <title>` next to the tool
+result that delivered it. Titles wrap under the label on narrow terminals;
+compact notices show neither the raw file path nor the private memory body.
+ctrl+o still exposes the actual calls and results, and a failed Read shows its
+error instead of claiming the memory was read. Index-only reads remain quiet.
+A memory-only read step keeps its thinking and its contextual read notice.
+
+Saving, updating and forgetting still end with one quiet change summary under
+the answer, grouped by verb and naming each write's store:
 
 ```
 ● 记住了：这个项目用 pnpm，不用 npm。
-  ◈ recalled Release freeze · saved Pnpm not npm to project
+  ⟡ saved Pnpm not npm to project
 ```
 
-`◇` marks a turn that only read memory, `◈` one that changed it. There is one
-entry per memory (a write outranks a read, and names its store), and `forgot`
-for one the turn touched that is gone by its end. ctrl+o shows the calls
-themselves; a failed call always does.
+There is one change entry per memory (a write outranks a read), and `forgot`
+for one the turn touched that is gone by its end. Reads and recalls are not
+repeated in this summary; a read-only turn gets no footer or empty notice.
 
 ## Settings
 
@@ -217,9 +247,25 @@ turns and edits skills, never memory.
 - **No background extraction.** The agent saves during the turn, when asked or
   when it learns something worth keeping. A separate pass after the turn would
   need its own fork, cursor and conflict rules with the main agent.
-- **Out of the chat flow.** Memory bookkeeping is not the user's work, so its
-  calls don't draw and the turn ends with one line. What already showed (a
-  step's thinking) stays, since taking it back flashes.
+- **Consumption is contextual; bookkeeping stays quiet.** A compact read or
+  recall notice belongs at the step that consumed the memory, not under an
+  unrelated final answer. Only saves, updates and forgetting keep a turn-end
+  summary. What already showed (a step's thinking) stays, since taking it back
+  flashes.
+
+## Tests
+
+```bash
+go test ./internal/app/conv ./internal/app ./internal/app/kit
+```
+
+- `internal/app/conv/memory_read_test.go`: placement among sibling tools,
+  memory-only steps, breathing/static markers, expansion, failure, recall
+  delivery, narrow-terminal wrapping and replay without the original file.
+- `internal/app/memory_read_test.go`: SDK event ordering through scrollback
+  commit, persisted recall notices and no duplicated turn-end footer.
+- `internal/app/memory_test.go` and `internal/app/conv/memory_render_test.go`:
+  memory permissions, operation recognition and change-summary bookkeeping.
 
 ## See Also
 

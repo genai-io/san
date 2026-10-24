@@ -128,13 +128,14 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
-	// Memory calls stay out of the chat flow; the turn ends with one line.
+	// Reads and recalls are already shown at their tool steps. Only memory
+	// changes get a turn-end summary, and a read-only turn adds no empty notice.
 	entries := m.conv.TurnMemory(m.turnOpenedBy, m.endMemoryRecall())
 	m.turnOpenedBy = ""
-	if len(entries) > 0 {
+	if line := memoryLine(entries, m.env.Width); line != "" {
 		// Here, not via notifyMain: the line belongs above anything this turn
 		// end releases, the next queued message included.
-		m.conv.AddNotice(memoryLine(entries, m.env.Width))
+		m.conv.AddNotice(line)
 	}
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()

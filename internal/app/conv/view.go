@@ -242,6 +242,8 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	case core.ChatNotice:
 		if msg.AgentNotice {
 			sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
+		} else if rest, ok := strings.CutPrefix(msg.Content, memoryRecallNoticePrefix); ok {
+			sb.WriteString(renderMemoryRecallNotice(rest, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, recapNoticePrefix); ok {
 			facts, body, _ := strings.Cut(rest, "\n\n")
 			sb.WriteString(RenderRecap(sideMarkStyle.Render(kit.RecapMark), facts, body, p.Width))

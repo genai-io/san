@@ -143,6 +143,16 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 
 func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	switch e := ev.(type) {
+	case sdkagent.MessageAdded:
+		// PostTool filters run after ToolEnd. Only the native result added to
+		// the conversation carries an attached recall; show that use here,
+		// not at turn end, without replacing the raw output already drawn.
+		for _, result := range e.Message.ToolResults() {
+			if notice := recalledMemoryNotice(result.Text(), e.Message.ID); notice != "" {
+				m.AddNotice(notice)
+			}
+		}
+		return nil
 	case sdkagent.CompactionStart:
 		return rt.OnCompactStart(len(e.Messages))
 	case sdkagent.CompactionEnd:

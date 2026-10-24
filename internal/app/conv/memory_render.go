@@ -10,6 +10,7 @@ import (
 
 	xansi "github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/reminder"
@@ -68,16 +69,17 @@ func parseMemoryRemove(input string) (memoryOp, bool) {
 	return memoryOp{verb: "Deleted", path: files[0], removed: files}, true
 }
 
-// memoryStep reports whether an assistant step only kept memory: no text, and
-// every call a memory call that didn't fail. Its calls don't draw; the turn's
-// memory line reports them.
+// memoryStep reports whether an assistant step only kept memory: no text,
+// and every call is hidden bookkeeping that did not fail. Explicit reads and
+// attached recalls stay in their own tool step instead of a turn-end footer.
 func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	if msg.Role != core.ChatAssistant || strings.TrimSpace(msg.Content) != "" || len(msg.ToolCalls) == 0 || msg.ToolCallsExpanded {
 		return false
 	}
 	results := p.InlinedResults.resultsFor(idx)
 	for _, tc := range msg.ToolCalls {
-		if _, ok := parseMemoryOp(tc.Name, tc.Input); !ok || results[tc.ID].IsError {
+		op, ok := parseMemoryOp(tc.Name, tc.Input)
+		if !ok || results[tc.ID].IsError || (op.verb == "Read" && !op.index) {
 			return false
 		}
 	}
@@ -100,6 +102,101 @@ func (p RenderContext) memoryStepView(msg core.ChatMessage, idx int) string {
 		return ""
 	}
 	return "\n" + body + "\n"
+}
+
+// renderMemoryRead replaces the compact file operation with a contextual
+// memory notice. Only a completed, successful read uses the past-tense label.
+func renderMemoryRead(tc core.ToolCall, op memoryOp, params ToolCallsParams) string {
+	marker := toolCallStyle.Render(kit.MemoryMark)
+	verb := "read"
+	if _, done := params.ResultMap[tc.ID]; !done {
+		verb = "reading"
+		if params.SpinnerView != "" && toolCallIcon(tc, params) == params.SpinnerView {
+			marker = kit.LiveMemory(params.Frame)
+		}
+	}
+	return renderMemoryNotice(marker, verb, memoryTitle(op.path), params.Width)
+}
+
+func renderMemoryNotice(marker, verb, title string, width int) string {
+	title = strings.Join(strings.Fields(xansi.Strip(title)), " ")
+	return renderGutteredLine(marker+" ", "  ", sideMarkStyle, "Memory · "+verb+": "+title, width)
+}
+
+var recalledMemoryPath = regexp.MustCompile("(?m)^Memory `([^`\\r\\n]+)` \\((?:user|project) store(?:, [^)\\r\\n]*)?\\):\\r?$")
+
+// recalledMemoryPaths reads only the harness's recall blocks, never matching
+// a similar heading in ordinary tool output. Paths are unique within a result.
+func recalledMemoryPaths(content string) []string {
+	var paths []string
+	seen := map[string]bool{}
+	for _, block := range reminder.Blocks(content) {
+		if block.Source != reminder.ProviderMemoryRecall {
+			continue
+		}
+		for _, match := range recalledMemoryPath.FindAllStringSubmatch(block.Text, -1) {
+			path := match[1]
+			if !seen[path] {
+				seen[path] = true
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+const memoryRecallNoticePrefix = "/memory-recalled "
+
+type memoryRecallDisplay struct {
+	AfterMessageID string   `json:"afterMessageId"`
+	Titles         []string `json:"titles"`
+}
+
+// recalledMemoryNotice captures the titles when the filtered native result
+// reaches the model. ToolEnd precedes that filter, so the raw tool result the
+// UI already drew cannot carry this notice. Persisting a display-only notice
+// here keeps it before the next inference and in the same place after resume.
+func recalledMemoryNotice(content, afterMessageID string) string {
+	var titles []string
+	for _, path := range recalledMemoryPaths(content) {
+		title := strings.TrimSuffix(filepath.Base(path), ".md")
+		// Never read a file outside the configured stores for a display title.
+		if MemoryStores.Contains(path) {
+			title = memoryTitle(path)
+		}
+		titles = append(titles, title)
+	}
+	if len(titles) == 0 {
+		return ""
+	}
+	data, _ := json.Marshal(memoryRecallDisplay{AfterMessageID: afterMessageID, Titles: titles})
+	return memoryRecallNoticePrefix + string(data)
+}
+
+// MemoryRecallNoticeAnchor pins a recall notice to the native result that
+// delivered it, even when the transcript writer has run ahead of the UI.
+func MemoryRecallNoticeAnchor(content string) string {
+	rest, ok := strings.CutPrefix(content, memoryRecallNoticePrefix)
+	if !ok {
+		return ""
+	}
+	var data memoryRecallDisplay
+	if json.Unmarshal([]byte(rest), &data) != nil {
+		return ""
+	}
+	return data.AfterMessageID
+}
+
+func renderMemoryRecallNotice(content string, width int) string {
+	var data memoryRecallDisplay
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return ""
+	}
+	var sb strings.Builder
+	for _, title := range data.Titles {
+		sb.WriteString(renderMemoryNotice(toolCallStyle.Render(kit.MemoryMark), "recalled", title, width))
+	}
+	return sb.String()
 }
 
 // MemoryEntry is one memory a turn touched.
@@ -198,7 +295,8 @@ func (m *ConversationModel) TurnMemory(openedBy string, recalled []string) []Mem
 }
 
 // withoutRecall drops memory-recall reminders from a tool result read back
-// from a transcript: they are for the model, and the memory line reports them.
+// from a transcript: they are for the model; the contextual recall notice
+// names them without displaying their private contents.
 func withoutRecall(content string) string {
 	for _, b := range reminder.Blocks(content) {
 		if b.Source == reminder.ProviderMemoryRecall {
