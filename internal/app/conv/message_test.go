@@ -1702,9 +1702,9 @@ func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
 // A recap drawn live is cut at the screen edge, so it wraps itself, every
 // line inside the width and under the gutter.
 func TestRenderRecapWraps(t *testing.T) {
-	out := RenderRecap("↩", strings.Repeat("plan ", 12), strings.Repeat("word ", 20)+"\nNext action", 30)
+	out := RenderRecap("※", strings.Repeat("plan ", 12), strings.Repeat("word ", 20)+"\nNext action", 30)
 	lines := strings.Split(strings.TrimRight(xansi.Strip(out), "\n"), "\n")
-	if len(lines) < 5 || !strings.HasPrefix(lines[0], "↩ ") {
+	if len(lines) < 5 || !strings.HasPrefix(lines[0], "※ ") {
 		t.Fatalf("recap did not wrap into paragraph and facts: %q", lines)
 	}
 	for i, line := range lines {
@@ -1718,14 +1718,14 @@ func TestRenderRecapWraps(t *testing.T) {
 }
 
 func TestRenderRecapItalicBody(t *testing.T) {
-	out := RenderRecap("↩", "plan 1/2", "Next step", 80)
+	out := RenderRecap("※", "plan 1/2", "Next step", 80)
 	if !strings.Contains(out, "\x1b[3;") {
 		t.Fatalf("recap body should be italic: %q", out)
 	}
 	if strings.Contains(out, "\n  \x1b[3;") {
 		t.Fatalf("recap facts should stay upright: %q", out)
 	}
-	if plain := xansi.Strip(out); plain != "↩ Next step\n  plan 1/2\n" {
+	if plain := xansi.Strip(out); plain != "※ Next step\n  plan 1/2\n" {
 		t.Fatalf("recap layout = %q", plain)
 	}
 }
