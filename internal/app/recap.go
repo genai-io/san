@@ -1,13 +1,12 @@
 // Recap: coming back to the terminal after being away, one note on where the
-// session stands. San states what it measures itself (time away, what waits on
-// you, plan progress, the mission, work in the background); a side request
-// writes the rest in a sentence or two: the goal, where the work stands, and
-// the one next step.
+// session stands. San states what it measures itself (what waits on you, plan
+// progress, the mission, work in the background); a side request writes the
+// rest in a sentence or two: the goal, where the work stands, and the one next
+// step.
 package app
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +41,6 @@ const recapInstructions = `<system-reminder>The user stepped away and is coming 
 
 // recapState is the recap written for an absence and when it shows.
 type recapState struct {
-	away    time.Duration // how long the absence being recapped lasted
 	busy    bool          // a recap request is in flight
 	show    bool          // show the recap in flight as soon as it lands; implies busy
 	ready   recapReadyMsg // a recap written ahead, not shown yet
@@ -79,14 +77,14 @@ func (m *model) onFocus() tea.Cmd {
 }
 
 // recapOnReturn recaps an absence that began at since, if it lasted long
-// enough: the one written ahead if the conversation has not moved since, else
-// a fresh one.
+// enough and the session is idle. Returning mid-turn skips this automatic
+// recap; it must not interrupt tool calls or appear unexpectedly later.
 func (m *model) recapOnReturn(since time.Time) tea.Cmd {
 	after := m.env.AutoPilot.RecapAfter()
-	if since.IsZero() || after == 0 || time.Since(since) < after || !m.recapDue() || m.hasDraft() {
+	if since.IsZero() || after == 0 || time.Since(since) < after ||
+		m.conv.Stream.Active || !m.recapDue() || m.hasDraft() {
 		return nil
 	}
-	m.recap.away = time.Since(since)
 	return m.deliverRecap()
 }
 
@@ -100,7 +98,6 @@ func (m *model) recapNow() tea.Cmd {
 		m.conv.AddNotice("Nothing to recap yet.")
 		return nil
 	}
-	m.recap.away = 0
 	return m.deliverRecap()
 }
 
@@ -198,13 +195,13 @@ func (m *model) recapLive() string {
 	if !m.recap.show {
 		return ""
 	}
-	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(m.recap.away), "writing…", m.env.Width)
+	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(), "writing…", m.env.Width)
 }
 
 func (m *model) writeRecap() tea.Cmd {
 	m.recap.busy = true
 	facts := ""
-	if f := m.recapFacts(0); f != "" {
+	if f := m.recapFacts(); f != "" {
 		facts = "\nThe user already sees these facts; don't repeat them: " + f + "."
 	}
 	if goal := m.recapGoal(); goal != "" {
@@ -247,7 +244,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 	m.recap.ready = recapReadyMsg{}
 	m.recap.shownAt = m.turns()
-	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(m.recap.away), r.text))
+	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(), r.text))
 	return tea.Batch(m.CommitMessages()...)
 }
 
@@ -259,13 +256,10 @@ func (m *model) recapGoal() string {
 }
 
 // recapFacts is what San knows without asking the model, most urgent first:
-// time away, what waits on the user, the plan's progress, the mission and the
-// work running in the background.
-func (m *model) recapFacts(away time.Duration) string {
+// what waits on the user, the plan's progress, the mission and the work running
+// in the background.
+func (m *model) recapFacts() string {
 	var facts []string
-	if away > 0 {
-		facts = append(facts, "away "+formatAway(away))
-	}
 	if needed := m.waitingOn(); needed != "" {
 		facts = append(facts, needed+" needed")
 	}
@@ -309,12 +303,3 @@ func (m *model) waitingOn() string {
 
 // chainLen is the length of the agent's chain: what a recap was written from.
 func (m *model) chainLen() int { return len(m.services.Agent.Messages()) }
-
-// formatAway renders an absence as "23m" or "2h05m".
-func formatAway(d time.Duration) string {
-	minutes := int(d.Minutes())
-	if minutes < 60 {
-		return strconv.Itoa(minutes) + "m"
-	}
-	return fmt.Sprintf("%dh%02dm", minutes/60, minutes%60)
-}

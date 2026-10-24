@@ -1,7 +1,6 @@
 package app
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -47,7 +46,7 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Now: x\nNext: y"}
 	m.onFocus()
 	last := m.conv.Messages[len(m.conv.Messages)-1]
-	if last.Role != core.ChatNotice || !strings.HasPrefix(last.Content, "/recap away 23m\n\nNow: x") {
+	if last.Role != core.ChatNotice || last.Content != "/recap \n\nNow: x\nNext: y" {
 		t.Fatalf("recap notice = %q", last.Content)
 	}
 	if m.recap.busy || m.recap.ready.text != "" {
@@ -75,7 +74,7 @@ func TestRecapFacts(t *testing.T) {
 	if err := m.services.Tracker.Update(a.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)
 	}
-	if got := m.recapFacts(65 * time.Minute); got != "away 1h05m · plan 1/2" {
+	if got := m.recapFacts(); got != "plan 1/2" {
 		t.Fatalf("facts = %q", got)
 	}
 	m.env.AutoPilot.Mission = "ship it\nwith notes"
@@ -95,22 +94,33 @@ func TestDrivingChanged(t *testing.T) {
 	}
 }
 
-// Coming back to a session still at work earns a recap: the screen shows the
-// current step, not what happened while away. Writing it ahead waits for the
-// session to go quiet, since a session at work keeps its cache warm.
-func TestRecapWhileTheSessionWorks(t *testing.T) {
+// Returning while a turn is still using tools skips the automatic recap,
+// even if one was written ahead. Finishing the turn does not resurrect it;
+// a later absence while idle can earn a new one.
+func TestRecapSkipsRunningTurn(t *testing.T) {
 	m := newRecapModel(t)
+	m.env.CWD = t.TempDir()
+	m.services.sessionID = "test-recap"
 	m.conv.Stream.Active = true
 
 	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
 	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
 		t.Fatal("a recap was written ahead while the session works")
 	}
-	if cmd := m.onFocus(); cmd == nil || !m.recap.busy || !m.recap.show {
-		t.Fatal("coming back to a working session wrote no recap")
+	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Next step"}
+	n := len(m.conv.Messages)
+	if cmd := m.onFocus(); cmd != nil || m.recap.busy || m.recap.show || len(m.conv.Messages) != n {
+		t.Fatal("coming back during a running turn must skip the recap")
 	}
-	if live := m.recapLive(); !strings.Contains(live, "writing") {
-		t.Fatalf("no live row while the recap is written: %q", live)
+	m.conv.Stream.Active = false
+	m.handleStopHookResult(stopHookResultMsg{Result: core.Result{StopReason: core.StopEndTurn}})
+	if len(m.conv.Messages) != n {
+		t.Fatal("finishing the turn must not show the skipped recap")
+	}
+	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
+	m.onFocus()
+	if got := m.conv.Messages[len(m.conv.Messages)-1]; got.Role != core.ChatNotice || got.Content != "/recap \n\nNext step" {
+		t.Fatalf("a later idle return should still show a recap: %q", got.Content)
 	}
 }
 

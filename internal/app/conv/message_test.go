@@ -1702,11 +1702,24 @@ func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
 // A recap drawn live is cut at the screen edge, so it wraps itself, every
 // line inside the width and under the gutter.
 func TestRenderRecapWraps(t *testing.T) {
-	out := RenderRecap("⌂", "away 1m", strings.Repeat("word ", 20), 30)
+	out := RenderRecap("↩", "plan 1/2", strings.Repeat("word ", 20), 30)
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 		if w := lipgloss.Width(line); w > 30 {
 			t.Fatalf("line %q is %d wide, want <= 30", xansi.Strip(line), w)
 		}
+	}
+}
+
+func TestRenderRecapItalicBody(t *testing.T) {
+	out := RenderRecap("↩", "plan 1/2", "Next step", 80)
+	if !strings.Contains(out, "\x1b[3;") {
+		t.Fatalf("recap body should be italic: %q", out)
+	}
+	if strings.Contains(out, "\n  \x1b[3;") {
+		t.Fatalf("recap facts should stay upright: %q", out)
+	}
+	if plain := xansi.Strip(out); plain != "↩ Next step\n  plan 1/2\n" {
+		t.Fatalf("recap layout = %q", plain)
 	}
 }
 
