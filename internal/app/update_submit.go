@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -133,8 +134,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	msg.AutopilotNote = autopilotNote
 	msg = m.conv.Append(msg)
 	m.userInput.Reset()
-	message := core.UserMessage(msg.Content, msg.Images)
-	message.ID = msg.ID
+	message, _ := msg.ToMessage()
 	return m.SubmitToAgent(message)
 }
 
@@ -168,30 +168,33 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	}, true
 }
 
-// describeImages adds file paths when a model cannot view attached images.
-// Native attachments remain in history; RequestMessages filters inference input.
+// describeImages keeps an inspectable source path alongside each attachment,
+// including for vision models: the image block disappears after compaction, but
+// the path in the text survives so the model can read the file again. Pasted
+// images live in the session blob dir for as long as the transcript can be resumed.
 func (m *model) describeImages(content string, images []core.Attachment) string {
-	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
+	if len(images) == 0 {
 		return content
 	}
+	vision := llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID())
 	var sb strings.Builder
 	if content != "" {
 		sb.WriteString(content)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
-	// A pasted image gets its file in the session's blob dir: the path below is
-	// inlined into content conv persists and replays, so the file has to keep
-	// resolving for as long as the transcript can be resumed.
-	imagesDir := ""
-	if err := m.ensureSessionStore(); err == nil {
-		imagesDir = m.services.SessionStore.ImagesDir(m.sessionID())
+	if !vision {
+		sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
 	}
 	for i, img := range images {
-		path, err := image.EnsureFilePath(img, imagesDir)
-		if err != nil {
-			// Nothing on disk to point at — the name is all the model gets.
-			path = img.FileName
+		path := img.Path
+		if path == "" && m.ensureSessionStore() == nil {
+			// Persist clipboard bytes instead of pointing the model at a temp
+			// path that will vanish when this process exits.
+			path, _ = image.EnsureFilePath(img, m.services.SessionStore.ImagesDir(m.sessionID()))
+		}
+		if path == "" {
+			// Never claim a filename is a readable path when writing failed.
+			path = "file unavailable"
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}
@@ -216,11 +219,17 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 	// dispatchSubmission resets the textarea after a send, so park the draft
 	// and put it back.
 	draft := m.userInput.Textarea.Value()
-	m.userInput.RestoreImages(item.Images)
+	draftImages := slices.Clone(m.userInput.Images.Pending)
+	draftNextID := m.userInput.Images.NextID
+	m.userInput.RestoreQueuedImages(item.Content, item.Images)
 	cmd := m.dispatchSubmission(item.Content)
-	if draft != "" && m.userInput.Textarea.Value() == "" {
-		m.userInput.Textarea.SetValue(draft)
-		m.userInput.Textarea.CursorEnd()
+	if current := m.userInput.Textarea.Value(); current == "" || current == draft {
+		if current == "" {
+			m.userInput.Textarea.SetValue(draft)
+			m.userInput.Textarea.CursorEnd()
+		}
+		m.userInput.Images.Pending = draftImages
+		m.userInput.Images.NextID = draftNextID
 	}
 	return cmd
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -447,14 +448,22 @@ func (m *Model) RecordSubmission(cwd, input string) {
 	history.Save(cwd, m.History.Items)
 }
 
-func (m *Model) RestoreImages(images []core.Attachment) {
+// RestoreQueuedImages uses the IDs already present in the queued text, rather
+// than allocating new ones that ExtractInlineImages would not recognize.
+func (m *Model) RestoreQueuedImages(content string, images []core.Attachment) {
 	m.Images.Pending = nil
 	m.Images.Selection = ImageSelection{}
+	matches := core.InlineImageTokenRe.FindAllStringSubmatch(content, -1)
 	for i, img := range images {
-		id := m.Images.NextID + i + 1
+		id := m.Images.NextID + 1
+		if i < len(matches) {
+			if parsed, err := strconv.Atoi(matches[i][1]); err == nil {
+				id = parsed
+			}
+		}
 		m.Images.Pending = append(m.Images.Pending, PendingImage{ID: id, Data: img})
+		m.Images.NextID = max(m.Images.NextID, id)
 	}
-	m.Images.NextID += len(images)
 }
 
 func (m *Model) PendingImages() []core.Attachment {

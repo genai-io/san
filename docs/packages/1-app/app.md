@@ -94,6 +94,26 @@ tool execution and the next inference receive the decision/answer.
   injection would let reload edit the `services` struct in place
   instead.
 
+### Image turns
+
+`update_submit.go` resolves file references and pasted attachments on both direct
+and queued sends. The agent-bound message uses `ChatMessage.ToMessage` so inline
+pictures keep their position among text blocks; file references without inline
+tokens are appended after them. Queued edits remove attachments whose tokens
+were deleted, and a canceled stream restores queued token IDs without replacing
+an unrelated draft's pending attachments.
+
+`describeImages` appends source paths to the **model text** for vision and
+text-only models, while keeping the UI's display text separate. Pasted pictures
+are written under the session's `blobs/image/<session-id>/`, so paths remain
+readable after resume or compaction; text-only requests filter out native image
+blocks without changing stored history. `core.BuildCompactionText` records
+`[image]` markers even for older turns without a source path or user text.
+If the session blob cannot be written, the message does not claim that a
+clipboard filename is a readable path. `internal/image` keeps the existing
+5 MiB raw-input cap, not a Claude-Code-specific 5 MiB base64 cap: providers
+have different limits, and the direct Claude API permits 10 MiB base64 images.
+
 ## Internals
 
 Root files (no business logic; pure glue):

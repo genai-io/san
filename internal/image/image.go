@@ -65,10 +65,12 @@ func Load(path string) (core.Attachment, error) {
 		return core.Attachment{}, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Detect actual content type to verify
+	// The extension determines the media type sent to the provider; do not
+	// label JPEG bytes as PNG (or accept arbitrary image/* data) based on the
+	// filename alone.
 	detectedType := http.DetectContentType(data)
-	if !strings.HasPrefix(detectedType, "image/") {
-		return core.Attachment{}, fmt.Errorf("file is not a valid image")
+	if detectedType != mediaType {
+		return core.Attachment{}, fmt.Errorf("image content type %s does not match %s", detectedType, ext)
 	}
 
 	return newImage(mediaType, filepath.Base(absPath), absPath, data), nil

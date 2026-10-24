@@ -95,8 +95,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		DisplayContent: displayContent,
 		Images:         images,
 	})
-	message := core.UserMessage(content, images)
-	message.ID = chat.ID
+	message, _ := chat.ToMessage()
 	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, fromUser: true}))...), true
 }
 

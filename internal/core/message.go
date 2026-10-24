@@ -228,7 +228,8 @@ func (c ChatMessage) userContent() ai.Content {
 		}
 		return content
 	}
-	content := make(ai.Content, 0, len(parts))
+	content := make(ai.Content, 0, len(parts)+1)
+	matchedImages := 0
 	for _, part := range parts {
 		switch part.Type {
 		case ContentPartText:
@@ -238,8 +239,22 @@ func (c ChatMessage) userContent() ai.Content {
 		case ContentPartImage:
 			if part.Image != nil {
 				content = append(content, ai.ImageBlock(part.Image.Image))
+				matchedImages++
 			}
 		}
+	}
+	// DisplayContent positions the pasted images; Content may have extra model
+	// context (such as persistent image paths) that is intentionally not shown
+	// in the UI. Preserve that suffix when converting the row to a message.
+	plain := strings.TrimSpace(InlineImageTokenRe.ReplaceAllString(c.DisplayContent, ""))
+	if strings.HasPrefix(c.Content, plain) {
+		if suffix := c.Content[len(plain):]; suffix != "" {
+			content = append(content, ai.TextBlock(suffix))
+		}
+	}
+	// File references have no inline token, but still belong in the message.
+	for _, img := range c.Images[matchedImages:] {
+		content = append(content, ai.ImageBlock(img.Image))
 	}
 	return content
 }
@@ -429,6 +444,23 @@ func stripSystemReminders(content string) string {
 	return strings.TrimSpace(content)
 }
 
+// compactionUserText preserves the fact that an image was attached even when
+// the native image blocks are dropped from the summary request. New turns may
+// also carry a readable source path in their text; older turns still get a
+// marker so image-only requests are not silently erased.
+func compactionUserText(msg Message) string {
+	text := stripSystemReminders(msg.Text())
+	for _, block := range msg.Content {
+		if block.Type == ai.BlockImage {
+			if text != "" {
+				text += "\n"
+			}
+			text += "[image]"
+		}
+	}
+	return text
+}
+
 // BuildCompactionText renders the conversation for summarization, stripping
 // the trailing <system-reminder> blocks from each user message and dropping
 // messages that were nothing but reminders: reminders re-emit fresh after a
@@ -451,8 +483,7 @@ func writeConversationText(w io.Writer, msgs []Message) {
 					fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", tr.ToolName, clip(tr.Content.Text(), 500))
 				}
 			} else {
-				content := msg.Text()
-				content = stripSystemReminders(content)
+				content := compactionUserText(msg)
 				if content == "" {
 					continue
 				}
@@ -548,6 +579,7 @@ func InterleavedContentParts(msg ChatMessage) []ContentPart {
 			if idx, ok := idToIdx[id]; ok && idx < len(msg.Images) {
 				img := msg.Images[idx]
 				parts = append(parts, ContentPart{Type: ContentPartImage, Image: &img})
+				delete(idToIdx, id)
 			}
 		}
 
@@ -573,8 +605,10 @@ func BuildImageIDMap(displayContent string, imageCount int) map[int]int {
 	for _, match := range matches {
 		id, err := strconv.Atoi(match[1])
 		if err == nil && idx < imageCount {
-			m[id] = idx
-			idx++
+			if _, exists := m[id]; !exists {
+				m[id] = idx
+				idx++
+			}
 		}
 	}
 	return m

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -122,6 +123,70 @@ func TestAppendThinkingTimesFirstToLatestDelta(t *testing.T) {
 	}
 	if msg.ThinkingDuration != 3200*time.Millisecond {
 		t.Fatalf("ThinkingDuration = %v, want 3.2s", msg.ThinkingDuration)
+	}
+}
+
+func TestRepeatedImageTokenDoesNotResendOrHideAnotherImage(t *testing.T) {
+	chat := ChatMessage{
+		Role: ChatUser, DisplayContent: "[Image #1] [Image #1] [Image #2]",
+		Content: "  ",
+		Images: []Attachment{
+			{Image: ai.Image{Data: "Zmlyc3Q="}},
+			{Image: ai.Image{Data: "c2Vjb25k"}},
+		},
+	}
+	msg, _ := chat.ToMessage()
+	var data []string
+	for _, block := range msg.Content {
+		if block.Type == ai.BlockImage {
+			data = append(data, block.Image.Data)
+		}
+	}
+	if !slices.Equal(data, []string{"Zmlyc3Q=", "c2Vjb25k"}) {
+		t.Fatalf("images = %v, want each attachment once", data)
+	}
+}
+
+func TestChatUserContentKeepsImageOrderAndSourcePaths(t *testing.T) {
+	chat := ChatMessage{
+		Role: ChatUser, DisplayContent: "compare [Image #1] with the file",
+		Content: "compare  with the file\n\n[Image #1: /tmp/pasted.png]\n[Image #2: /tmp/file.png]",
+		Images: []Attachment{
+			{Image: ai.Image{Data: "cGFzdGU="}},
+			{Image: ai.Image{Data: "ZmlsZQ=="}},
+		},
+	}
+	msg, _ := chat.ToMessage()
+	if len(msg.Content) != 5 {
+		t.Fatalf("blocks = %+v, want text, paste, text, paths, file", msg.Content)
+	}
+	want := []ai.BlockType{ai.BlockText, ai.BlockImage, ai.BlockText, ai.BlockText, ai.BlockImage}
+	for i, block := range msg.Content {
+		if block.Type != want[i] {
+			t.Fatalf("block %d type = %s, want %s", i, block.Type, want[i])
+		}
+	}
+	if msg.Content[1].Image.Data != "cGFzdGU=" || msg.Content[4].Image.Data != "ZmlsZQ==" || !strings.Contains(msg.Content[3].Text, "/tmp/file.png") {
+		t.Fatalf("image data or persistent paths lost: %+v", msg.Content)
+	}
+}
+
+func TestBuildCompactionTextPreservesImageOnlyUserTurn(t *testing.T) {
+	msg := UserMessage("", []Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aGVsbG8="}}})
+	text := BuildCompactionText([]Message{msg})
+	if !strings.Contains(text, "User: [image]") {
+		t.Fatalf("compaction text = %q, want an image marker", text)
+	}
+	if !strings.Contains(WithRecentRequests("summary", []Message{msg}, 0), "[image]") {
+		t.Fatal("recent requests lost an image-only user turn")
+	}
+}
+
+func TestBuildCompactionTextStripsReminderAndKeepsImage(t *testing.T) {
+	msg := UserMessage("inspect this\n<system-reminder>secret</system-reminder>", []Attachment{{Image: ai.Image{MediaType: "image/png"}}})
+	text := BuildCompactionText([]Message{msg})
+	if !strings.Contains(text, "User: inspect this\n[image]") || strings.Contains(text, "secret") {
+		t.Fatalf("compaction text = %q", text)
 	}
 }
 
