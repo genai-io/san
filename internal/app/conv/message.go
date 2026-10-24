@@ -89,6 +89,11 @@ var (
 	toolCallStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Text)
 
+	// AskUserQuestion reads as a question in the transcript, not a tool label.
+	questionCallStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextBright).
+				Bold(true)
+
 	// Only the "⎿ … → size" result trailer recedes: it's secondary metadata,
 	// dimmed to the same supporting tone as the expanded body so the eye lands
 	// on the assistant's prose and the actions, not the bookkeeping.
@@ -697,6 +702,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
 			}
+		} else if tc.Name == tool.ToolAskUserQuestion {
+			sb.WriteString(renderAskUserCall(tc.Input, toolCallIcon(tc, params), params.Width))
 		} else if params.ToolCallsExpanded {
 			toolLine := renderToolLine(tc.Name, params.Width)
 			sb.WriteString(toolLine + "\n")
