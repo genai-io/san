@@ -97,9 +97,10 @@ tool execution and the next inference receive the decision/answer.
 ### Image turns
 
 `update_submit.go` resolves file references and pasted attachments on both direct
-and queued sends. The agent-bound message uses `ChatMessage.ToMessage` so inline
-pictures keep their position among text blocks; file references without inline
-tokens are appended after them. Queued edits remove attachments whose tokens
+and queued sends. `input.ImageDisplay` replaces loaded file references at their
+original positions with numbered markers and orders pasted and file images
+by appearance. The agent-bound message uses `ChatMessage.ToMessage` to keep
+that text/image order in the native transcript. Queued edits remove attachments whose tokens
 were deleted, and a canceled stream restores queued token IDs without replacing
 an unrelated draft's pending attachments.
 
@@ -107,12 +108,26 @@ an unrelated draft's pending attachments.
 text-only models, while keeping the UI's display text separate. Pasted pictures
 are written under the session's `blobs/image/<session-id>/`, so paths remain
 readable after resume or compaction; text-only requests filter out native image
-blocks without changing stored history. `core.BuildCompactionText` records
-`[image]` markers even for older turns without a source path or user text.
+blocks without changing stored history. `core.BuildCompactionText` replaces
+image blocks with numbered `[Image #N]` markers at their original positions,
+even for older turns without a source path or user text.
 If the session blob cannot be written, the message does not claim that a
-clipboard filename is a readable path. `internal/image` keeps the existing
-5 MiB raw-input cap, not a Claude-Code-specific 5 MiB base64 cap: providers
-have different limits, and the direct Claude API permits 10 MiB base64 images.
+clipboard filename is a readable path. `internal/image` accepts at most 32 MiB of compressed input and 20 million
+pixels. Oversized payloads or images over 2000 px on either axis are resized
+or re-encoded to at most 5 MiB of binary image data; unchanged smaller images
+retain their original bytes. File references retain their original source path,
+even if the attached payload is resized. For an oversized animated GIF, only
+the first frame survives normalization.
+
+### Return recaps
+
+`recap.go` prepares a recap after the terminal loses focus and shows it on
+return only after the configured away time. Automatic recaps require at least
+three conversation turns and, after a recap, two new turns. The last recap is
+identified by its persisted `/recap` notice in the conversation, not a
+process-local counter, so returning again or resuming a finished session does
+not repeat the same work. `/recap` remains available on demand. Tests live in
+`internal/app/recap_test.go`.
 
 ## Internals
 

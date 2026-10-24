@@ -8,17 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
-)
-
-const (
-	// maxImageSize is the maximum allowed image size (5MB)
-	maxImageSize = 5 * 1024 * 1024
 )
 
 // supportedTypes maps file extensions to MIME types
@@ -47,33 +41,29 @@ func Load(path string) (core.Attachment, error) {
 		return core.Attachment{}, fmt.Errorf("cannot access file: %w", err)
 	}
 
-	// Check file size
-	if info.Size() > maxImageSize {
-		return core.Attachment{}, fmt.Errorf("image too large: %d bytes (max %d)", info.Size(), maxImageSize)
-	}
-
-	// Check extension
+	// Check extension before reading.
 	ext := strings.ToLower(filepath.Ext(absPath))
 	mediaType, ok := supportedTypes[ext]
 	if !ok {
 		return core.Attachment{}, fmt.Errorf("unsupported image format: %s", ext)
 	}
-
-	// Read file
-	data, err := os.ReadFile(absPath)
+	if info.Size() > maxInputSize {
+		return core.Attachment{}, fmt.Errorf("image input too large: %d bytes (max %d)", info.Size(), maxInputSize)
+	}
+	f, err := os.Open(absPath)
+	if err != nil {
+		return core.Attachment{}, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+	data, err := readImageBytes(f)
 	if err != nil {
 		return core.Attachment{}, fmt.Errorf("failed to read file: %w", err)
 	}
-
-	// The extension determines the media type sent to the provider; do not
-	// label JPEG bytes as PNG (or accept arbitrary image/* data) based on the
-	// filename alone.
-	detectedType := http.DetectContentType(data)
-	if detectedType != mediaType {
-		return core.Attachment{}, fmt.Errorf("image content type %s does not match %s", detectedType, ext)
+	data, encodedType, err := normalize(data, mediaType)
+	if err != nil {
+		return core.Attachment{}, err
 	}
-
-	return newImage(mediaType, filepath.Base(absPath), absPath, data), nil
+	return newImage(encodedType, normalizedName(filepath.Base(absPath), encodedType), absPath, data), nil
 }
 
 // newImage builds a core.Attachment from raw bytes, base64-encoding the data.

@@ -157,20 +157,34 @@ func TestMixedPastedAndFileImagesKeepBothOnAgentSend(t *testing.T) {
 	}
 	m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
 
-	chat, ok := m.buildUserMessage("compare [Image #1] with @file.png")
-	if !ok {
-		t.Fatal("could not build a message containing both image sources")
-	}
-	chat.Content = m.describeImages(chat.Content, chat.Images)
-	msg, _ := chat.ToMessage()
-	if imgCount(msg) != 2 {
-		t.Fatalf("agent-bound message has %d images, want paste and file", imgCount(msg))
-	}
-	if len(msg.Content) < 2 || msg.Content[0].Type != ai.BlockText || msg.Content[1].Type != ai.BlockImage {
-		t.Fatalf("image lost its inline position: %+v", msg.Content)
-	}
-	if !strings.Contains(msg.Text(), filepath.Join(m.env.CWD, "file.png")) {
-		t.Fatalf("source path missing from model text: %q", msg.Text())
+	for _, tc := range []struct {
+		raw, display, first string
+	}{
+		{"compare [Image #1] with @file.png", "compare [Image #1] with [Image #2]", "paste"},
+		{"compare @file.png with [Image #1]", "compare [Image #1] with [Image #2]", "file"},
+	} {
+		chat, ok := m.buildUserMessage(tc.raw)
+		if !ok {
+			t.Fatalf("could not build %q", tc.raw)
+		}
+		if chat.DisplayContent != tc.display {
+			t.Fatalf("display = %q, want %q", chat.DisplayContent, tc.display)
+		}
+		chat.Content = m.describeImages(chat.Content, chat.Images)
+		msg, _ := chat.ToMessage()
+		if imgCount(msg) != 2 {
+			t.Fatalf("agent-bound message has %d images, want paste and file", imgCount(msg))
+		}
+		if len(msg.Content) < 4 || msg.Content[0].Type != ai.BlockText || msg.Content[1].Type != ai.BlockImage || msg.Content[3].Type != ai.BlockImage {
+			t.Fatalf("images lost their inline positions: %+v", msg.Content)
+		}
+		firstIsPaste := msg.Content[1].Image.Data == chartImage().Data
+		if firstIsPaste != (tc.first == "paste") {
+			t.Fatalf("image order for %q is wrong", tc.raw)
+		}
+		if !strings.Contains(msg.Text(), filepath.Join(m.env.CWD, "file.png")) {
+			t.Fatalf("source path missing from model text: %q", msg.Text())
+		}
 	}
 }
 

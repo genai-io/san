@@ -155,11 +155,8 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 		m.conv.AddNotice("Image error: " + err.Error())
 		return core.ChatMessage{}, false
 	}
-	displayContent := content
 	content, inlineImages := m.userInput.ExtractInlineImages(content)
-	allImages := make([]core.Attachment, 0, len(inlineImages)+len(fileImages))
-	allImages = append(allImages, inlineImages...)
-	allImages = append(allImages, fileImages...)
+	displayContent, allImages := input.ImageDisplay(m.env.CWD, raw, inlineImages, fileImages)
 	return core.ChatMessage{
 		Role:           core.ChatUser,
 		Content:        content,

@@ -444,21 +444,33 @@ func stripSystemReminders(content string) string {
 	return strings.TrimSpace(content)
 }
 
-// compactionUserText preserves the fact that an image was attached even when
-// the native image blocks are dropped from the summary request. New turns may
-// also carry a readable source path in their text; older turns still get a
-// marker so image-only requests are not silently erased.
+// compactionUserText renders native user blocks in their original order. The
+// image bytes do not go to the summarizer, but the numbered markers preserve
+// which part of a request each picture belonged to; source paths in adjacent
+// text survive as well. Older image-only turns still get a marker.
 func compactionUserText(msg Message) string {
-	text := stripSystemReminders(msg.Text())
+	var sb strings.Builder
+	images := 0
 	for _, block := range msg.Content {
-		if block.Type == ai.BlockImage {
-			if text != "" {
-				text += "\n"
+		switch block.Type {
+		case ai.BlockText:
+			text := block.Text
+			// A harness reminder may be the last text block before an
+			// image, not the final block in the native message.
+			if strings.HasSuffix(strings.TrimSpace(text), systemReminderClose) {
+				text = stripSystemReminders(text)
 			}
-			text += "[image]"
+			sb.WriteString(text)
+		case ai.BlockImage:
+			images++
+			text := sb.String()
+			if len(text) > 0 && !strings.ContainsAny(text[len(text)-1:], " \t\r\n") {
+				sb.WriteByte(' ')
+			}
+			fmt.Fprintf(&sb, "[Image #%d]", images)
 		}
 	}
-	return text
+	return stripSystemReminders(sb.String())
 }
 
 // BuildCompactionText renders the conversation for summarization, stripping
