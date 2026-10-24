@@ -33,7 +33,9 @@ Always 一节在任何模式下都生效:
   掌握的事实(什么在等你、计划进度、mission、后台任务),加上目标、
   当前在做什么、下一步。若回来时这一轮仍在运行,这次自动 Recap 会直接跳过,
   不会在这一轮结束后补发。`/recap` 随时可看。需要终端上报焦点(tmux 里:
-  `set -g focus-events on`)。
+  `set -g focus-events on`)。生成中只显示轻微呼吸的 `※`,不显示 `writing…`
+  或 Recap 标签;完成后保留同一个静止的 `※`,旁边显示淡色斜体摘要,
+  可选的状态信息仍放在下方。
 
 两者和 `/btw` 一样是旁路请求:复用会话的 prompt、工具和对话,走 provider 的
 prompt cache,agent 看不到它们。Recap 在你离开期间、缓存过期之前就写好。

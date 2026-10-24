@@ -16,6 +16,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
@@ -205,7 +206,7 @@ func (m *model) recapLive() string {
 	if !m.recap.show {
 		return ""
 	}
-	return conv.RenderRecap(m.conv.Spinner.View(), m.recapFacts(), "writing…", m.env.Width)
+	return conv.RenderRecap(kit.LiveRecap(m.conv.Spinner.Frame()), m.recapFacts(), "", m.env.Width)
 }
 
 func (m *model) writeRecap() tea.Cmd {

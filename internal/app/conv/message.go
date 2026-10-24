@@ -496,12 +496,14 @@ func RecapNotice(facts, body string) string {
 }
 
 // RenderRecap renders a recap dim and its body italic, an aside to the
-// conversation: its paragraph is led by mark where a reply has its ●, with
-// San's measured facts below. It wraps itself: a recap drawn live under a
-// running turn would otherwise be cut at the screen edge.
+// conversation. While generating it shows only its progress mark; afterward
+// the same static mark leads the body, with measured facts below.
 func RenderRecap(mark, facts, body string, width int) string {
-	body = lipgloss.Wrap(body, max(width-lipgloss.Width(continuationGutter), 10), "")
-	out := lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Italic(true).Render(body)) + "\n"
+	out := mark + "\n"
+	if body != "" {
+		body = lipgloss.Wrap(body, max(width-lipgloss.Width(continuationGutter), 10), "")
+		out = lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Italic(true).Render(body)) + "\n"
+	}
 	if facts != "" {
 		for line := range strings.SplitSeq(facts, "\n") {
 			out += renderGutteredLine(continuationGutter, continuationGutter, sideMarkStyle, line, width)

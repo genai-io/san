@@ -35,7 +35,10 @@ Always works in every mode:
   mission, background work) and the goal, now, and next step. `/recap`
   shows one any time. If a turn is still running when you return, that
   automatic recap is skipped (not shown after the turn ends). Needs a terminal
-  that reports focus (in tmux: `set -g focus-events on`).
+  that reports focus (in tmux: `set -g focus-events on`). While generating,
+  only `※` gently breathes, with no `writing…` or Recap label. When ready,
+  the same `※` stays static beside the dim, italic summary; optional facts
+  remain below it.
 
 Both are side requests, like `/btw`: they reuse the session's prompt, tools and
 conversation, so the provider's prompt cache serves them, and the agent never
