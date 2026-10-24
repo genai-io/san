@@ -501,11 +501,13 @@ func RecapNotice(facts, body string) string {
 // running turn would otherwise be cut at the screen edge.
 func RenderRecap(mark, facts, body string, width int) string {
 	body = lipgloss.Wrap(body, max(width-lipgloss.Width(continuationGutter), 10), "")
-	out := lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Italic(true).Render(body))
+	out := lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Italic(true).Render(body)) + "\n"
 	if facts != "" {
-		out += "\n" + continuationGutter + sideMarkStyle.Render(facts)
+		for line := range strings.SplitSeq(facts, "\n") {
+			out += renderGutteredLine(continuationGutter, continuationGutter, sideMarkStyle, line, width)
+		}
 	}
-	return out + "\n"
+	return out
 }
 
 // RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the
