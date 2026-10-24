@@ -31,10 +31,11 @@ Always works in every mode:
 - **Suggest** — ghost-text next input after each turn. While Autopilot drives a
   mission, it proposes the next step toward it.
 - **Recap** — when the terminal regains focus after the wait, one note on where
-  the session stands: San's own facts (time away, what waits on you, plan
-  progress, mission, background work) and the goal, now, and next step. `/recap`
-  shows one any time. Needs a terminal that reports focus (in tmux:
-  `set -g focus-events on`).
+  the session stands: San's own facts (what waits on you, plan progress,
+  mission, background work) and the goal, now, and next step. `/recap`
+  shows one any time. If a turn is still running when you return, that
+  automatic recap is skipped (not shown after the turn ends). Needs a terminal
+  that reports focus (in tmux: `set -g focus-events on`).
 
 Both are side requests, like `/btw`: they reuse the session's prompt, tools and
 conversation, so the provider's prompt cache serves them, and the agent never
