@@ -55,12 +55,13 @@ type recapReadyMsg struct {
 	err       error
 }
 
-// onBlur starts the clock on an absence and schedules writing its recap
-// ahead, inside the cache window.
+// onBlur starts the clock on an absence. Only a conversation with new ground
+// schedules a warm-cache recap; a turn finished while away can still prepare
+// one through prepareRecapAtTurnEnd.
 func (m *model) onBlur() tea.Cmd {
 	m.unfocusedSince = time.Now()
 	after := m.env.AutoPilot.RecapAfter()
-	if after == 0 {
+	if after == 0 || !m.recapDue() || m.hasDraft() {
 		return nil
 	}
 	since := m.unfocusedSince

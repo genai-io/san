@@ -61,7 +61,9 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	// The same terminal loses focus again after the work is already done.
 	// Neither the warm-cache preparation nor returning eight minutes later
 	// should generate a second recap over the same conversation.
-	m.onBlur()
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled another recap despite no new turns")
+	}
 	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
 	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
 		t.Fatal("prepared a duplicate recap on the second absence")
@@ -108,13 +110,31 @@ func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
 	if last := m.conv.Messages[len(m.conv.Messages)-1]; last.Role != core.ChatNotice || !strings.HasPrefix(last.Content, "/recap ") {
 		t.Fatalf("restored recap notice = %+v", last)
 	}
-	m.onBlur()
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled another recap despite no new turns")
+	}
 	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
 	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
 		t.Fatal("prepared a recap over restored finished work")
 	}
 	if cmd := m.onFocus(); cmd != nil || m.recap.busy {
 		t.Fatal("recapped again after resuming the session")
+	}
+}
+
+// Work that arrives while the user is away can still earn a recap even when
+// there was nothing new to recap at blur time.
+func TestRecapBecomesDueWhileAway(t *testing.T) {
+	m := newRecapModel(t)
+	m.showRecap(recapReadyMsg{text: "Done."})
+	if cmd := m.onBlur(); cmd != nil {
+		t.Fatal("scheduled a recap over completed work")
+	}
+	m.unfocusedSince = time.Now().Add(-8 * time.Minute)
+	addTurn(m)
+	addTurn(m)
+	if cmd := m.prepareRecapAtTurnEnd(); cmd == nil || !m.recap.busy {
+		t.Fatal("new work while away did not prepare a recap")
 	}
 }
 

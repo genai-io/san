@@ -100,9 +100,10 @@ tool execution and the next inference receive the decision/answer.
 return only after the configured away time. Automatic recaps require at least
 three conversation turns and, after a recap, two new turns. The last recap is
 identified by its persisted `/recap` notice in the conversation, not a
-process-local counter, so returning again or resuming a finished session does
-not repeat the same work. `/recap` remains available on demand. Tests live in
-`internal/app/recap_test.go`.
+process-local counter. If nothing new is due at blur, no preparation timer or
+model request starts; turn end still checks for new work finished while away.
+Returning again or resuming a finished session does not repeat the same work.
+`/recap` remains available on demand. Tests live in `internal/app/recap_test.go`.
 
 ## Internals
 
