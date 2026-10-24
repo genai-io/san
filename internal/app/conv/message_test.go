@@ -1702,10 +1702,17 @@ func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
 // A recap drawn live is cut at the screen edge, so it wraps itself, every
 // line inside the width and under the gutter.
 func TestRenderRecapWraps(t *testing.T) {
-	out := RenderRecap("↩", "plan 1/2", strings.Repeat("word ", 20), 30)
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	out := RenderRecap("↩", strings.Repeat("plan ", 12), strings.Repeat("word ", 20)+"\nNext action", 30)
+	lines := strings.Split(strings.TrimRight(xansi.Strip(out), "\n"), "\n")
+	if len(lines) < 5 || !strings.HasPrefix(lines[0], "↩ ") {
+		t.Fatalf("recap did not wrap into paragraph and facts: %q", lines)
+	}
+	for i, line := range lines {
 		if w := lipgloss.Width(line); w > 30 {
-			t.Fatalf("line %q is %d wide, want <= 30", xansi.Strip(line), w)
+			t.Fatalf("line %q is %d wide, want <= 30", line, w)
+		}
+		if i > 0 && !strings.HasPrefix(line, continuationGutter) {
+			t.Fatalf("continuation line %q lost the recap gutter", line)
 		}
 	}
 }
