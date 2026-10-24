@@ -1,6 +1,7 @@
 package image
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -18,11 +19,15 @@ func newClipboardImage(data []byte) (*core.Attachment, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	if len(data) > maxImageSize {
-		return nil, fmt.Errorf("clipboard image too large: %d bytes (max %d)", len(data), maxImageSize)
+	if len(data) > maxInputSize {
+		return nil, fmt.Errorf("clipboard image input too large: %d bytes (max %d)", len(data), maxInputSize)
 	}
-	fileName := fmt.Sprintf("clipboard_%s.png", time.Now().Format("150405"))
-	img := newImage("image/png", fileName, "", data)
+	encoded, mediaType, err := normalize(data, "image/png")
+	if err != nil {
+		return nil, fmt.Errorf("clipboard image: %w", err)
+	}
+	fileName := normalizedName(fmt.Sprintf("clipboard_%s.png", time.Now().Format("150405")), mediaType)
+	img := newImage(mediaType, fileName, "", encoded)
 	return &img, nil
 }
 
@@ -61,7 +66,12 @@ func readClipboardMacOS() (*core.Attachment, error) {
 		return nil, nil
 	}
 
-	data, err := os.ReadFile(tmpFile)
+	f, err := os.Open(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open clipboard image: %w", err)
+	}
+	defer f.Close()
+	data, err := readImageBytes(f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read clipboard image: %w", err)
 	}
@@ -71,16 +81,25 @@ func readClipboardMacOS() (*core.Attachment, error) {
 
 // readClipboardLinux reads image from Linux clipboard using xclip or xsel.
 func readClipboardLinux() (*core.Attachment, error) {
+	var output bytes.Buffer
 	cmd := exec.Command("xclip", "-selection", "clipboard", "-t", "image/png", "-o")
-	data, err := cmd.Output()
+	cmd.Stdout = &limitedWriter{w: &output, remaining: maxInputSize}
+	err := cmd.Run()
 	if err != nil {
+		if output.Len() >= maxInputSize {
+			return nil, fmt.Errorf("clipboard image input too large (max %d bytes)", maxInputSize)
+		}
+		output.Reset()
 		cmd = exec.Command("xsel", "--clipboard", "--output")
-		data, err = cmd.Output()
-		if err != nil {
+		cmd.Stdout = &limitedWriter{w: &output, remaining: maxInputSize}
+		if err = cmd.Run(); err != nil {
+			if output.Len() >= maxInputSize {
+				return nil, fmt.Errorf("clipboard image input too large (max %d bytes)", maxInputSize)
+			}
 			return nil, nil
 		}
 	}
-	return newClipboardImage(data)
+	return newClipboardImage(output.Bytes())
 }
 
 // readClipboardWindows reads image from the Windows clipboard using PowerShell.
@@ -115,7 +134,12 @@ func readClipboardWindows() (*core.Attachment, error) {
 		return nil, nil
 	}
 
-	data, err := os.ReadFile(tmpFile)
+	f, err := os.Open(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open clipboard image: %w", err)
+	}
+	defer f.Close()
+	data, err := readImageBytes(f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read clipboard image: %w", err)
 	}

@@ -75,17 +75,11 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if err != nil {
 		m.conv.AddNotice("Image error: " + err.Error())
 	}
-	// Images the user attached travel on the item — they were moved off the
-	// textarea when it was queued. Anything pending in the textarea now belongs
-	// to the next message, so it must not be picked up here.
-	images := make([]core.Attachment, 0, len(item.Images)+len(fileImages))
-	images = append(images, item.Images...)
-	images = append(images, fileImages...)
-	// Split display from content the way buildUserMessage does: the queued text
-	// still carries the [Image #N] markers the textarea used to position its
-	// attachments, which the reader wants to see and the model doesn't.
-	displayContent := content
+	// Keep the images in their original text positions for both display and
+	// the native message. References loaded from disk share this path with
+	// pictures already parked on the queued item.
 	content = strings.TrimSpace(core.InlineImageTokenRe.ReplaceAllString(content, ""))
+	displayContent, images := input.ImageDisplay(m.env.CWD, item.Content, item.Images, fileImages)
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
 	content = m.describeImages(content, images)
@@ -95,8 +89,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		DisplayContent: displayContent,
 		Images:         images,
 	})
-	message := core.UserMessage(content, images)
-	message.ID = chat.ID
+	message, _ := chat.ToMessage()
 	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, fromUser: true}))...), true
 }
 

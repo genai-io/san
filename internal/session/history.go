@@ -30,11 +30,19 @@ func ChatRows(messages []core.Message) []core.ChatMessage {
 		for _, row := range core.ChatRowsOf(msg) {
 			if row.Role == core.ChatUser && row.ToolResult == nil {
 				var display strings.Builder
+				imageCount := 0
+				for _, block := range msg.Content {
+					if block.Type == ai.BlockImage {
+						imageCount++
+					}
+				}
 				image := 0
 				for _, block := range msg.Content {
 					switch block.Type {
 					case ai.BlockText:
-						display.WriteString(harnessInjectedRe.ReplaceAllString(block.Text, ""))
+						if !imageSourceNote(block.Text, imageCount) {
+							display.WriteString(harnessInjectedRe.ReplaceAllString(block.Text, ""))
+						}
 					case ai.BlockImage:
 						image++
 						fmt.Fprintf(&display, "[Image #%d]", image)
@@ -46,6 +54,28 @@ func ChatRows(messages []core.Message) []core.ChatMessage {
 		}
 	}
 	return rows
+}
+
+// imageSourceNote is model-only source metadata added after the user's text.
+// Keep it in the native transcript for compaction and replay, but don't expose
+// it as a second paragraph when projecting the conversation after resume.
+func imageSourceNote(text string, imageCount int) bool {
+	if imageCount == 0 {
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) == imageCount+1 && strings.HasPrefix(lines[0], "[Attached image(s) —") {
+		lines = lines[1:]
+	}
+	if len(lines) != imageCount {
+		return false
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, fmt.Sprintf("[Image #%d: ", i+1)) || !strings.HasSuffix(line, "]") {
+			return false
+		}
+	}
+	return true
 }
 
 // ChatRows builds the display from native messages and separate presentation events.

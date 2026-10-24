@@ -228,7 +228,8 @@ func (c ChatMessage) userContent() ai.Content {
 		}
 		return content
 	}
-	content := make(ai.Content, 0, len(parts))
+	content := make(ai.Content, 0, len(parts)+1)
+	matchedImages := 0
 	for _, part := range parts {
 		switch part.Type {
 		case ContentPartText:
@@ -238,8 +239,22 @@ func (c ChatMessage) userContent() ai.Content {
 		case ContentPartImage:
 			if part.Image != nil {
 				content = append(content, ai.ImageBlock(part.Image.Image))
+				matchedImages++
 			}
 		}
+	}
+	// DisplayContent positions the pasted images; Content may have extra model
+	// context (such as persistent image paths) that is intentionally not shown
+	// in the UI. Preserve that suffix when converting the row to a message.
+	plain := strings.TrimSpace(InlineImageTokenRe.ReplaceAllString(c.DisplayContent, ""))
+	if strings.HasPrefix(c.Content, plain) {
+		if suffix := c.Content[len(plain):]; suffix != "" {
+			content = append(content, ai.TextBlock(suffix))
+		}
+	}
+	// File references have no inline token, but still belong in the message.
+	for _, img := range c.Images[matchedImages:] {
+		content = append(content, ai.ImageBlock(img.Image))
 	}
 	return content
 }
@@ -429,6 +444,35 @@ func stripSystemReminders(content string) string {
 	return strings.TrimSpace(content)
 }
 
+// compactionUserText renders native user blocks in their original order. The
+// image bytes do not go to the summarizer, but the numbered markers preserve
+// which part of a request each picture belonged to; source paths in adjacent
+// text survive as well. Older image-only turns still get a marker.
+func compactionUserText(msg Message) string {
+	var sb strings.Builder
+	images := 0
+	for _, block := range msg.Content {
+		switch block.Type {
+		case ai.BlockText:
+			text := block.Text
+			// A harness reminder may be the last text block before an
+			// image, not the final block in the native message.
+			if strings.HasSuffix(strings.TrimSpace(text), systemReminderClose) {
+				text = stripSystemReminders(text)
+			}
+			sb.WriteString(text)
+		case ai.BlockImage:
+			images++
+			text := sb.String()
+			if len(text) > 0 && !strings.ContainsAny(text[len(text)-1:], " \t\r\n") {
+				sb.WriteByte(' ')
+			}
+			fmt.Fprintf(&sb, "[Image #%d]", images)
+		}
+	}
+	return stripSystemReminders(sb.String())
+}
+
 // BuildCompactionText renders the conversation for summarization, stripping
 // the trailing <system-reminder> blocks from each user message and dropping
 // messages that were nothing but reminders: reminders re-emit fresh after a
@@ -451,8 +495,7 @@ func writeConversationText(w io.Writer, msgs []Message) {
 					fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", tr.ToolName, clip(tr.Content.Text(), 500))
 				}
 			} else {
-				content := msg.Text()
-				content = stripSystemReminders(content)
+				content := compactionUserText(msg)
 				if content == "" {
 					continue
 				}
@@ -548,6 +591,7 @@ func InterleavedContentParts(msg ChatMessage) []ContentPart {
 			if idx, ok := idToIdx[id]; ok && idx < len(msg.Images) {
 				img := msg.Images[idx]
 				parts = append(parts, ContentPart{Type: ContentPartImage, Image: &img})
+				delete(idToIdx, id)
 			}
 		}
 
@@ -573,8 +617,10 @@ func BuildImageIDMap(displayContent string, imageCount int) map[int]int {
 	for _, match := range matches {
 		id, err := strconv.Atoi(match[1])
 		if err == nil && idx < imageCount {
-			m[id] = idx
-			idx++
+			if _, exists := m[id]; !exists {
+				m[id] = idx
+				idx++
+			}
 		}
 	}
 	return m

@@ -166,8 +166,8 @@ func IsCompactSummary(content string) bool {
 	return strings.HasPrefix(content, CompactSummaryPrefix)
 }
 
-// WithRecentRequests appends the person's latest messages, verbatim and newest
-// kept first, to a compaction summary: what was asked is the one thing a
+// WithRecentRequests appends the person's latest messages, preserving their
+// text verbatim plus markers for attached images, newest kept first, to a compaction summary: what was asked is the one thing a
 // paraphrase must not bend. They take at most ~10k tokens, and a tenth of a
 // known budget, so a small window still comes out of compaction with room.
 func WithRecentRequests(summary string, msgs []Message, budget int) string {
@@ -178,7 +178,7 @@ func WithRecentRequests(summary string, msgs []Message, budget int) string {
 		if msg.Role != ai.RoleUser || len(msg.ToolResults()) > 0 {
 			continue
 		}
-		text := strings.TrimSpace(stripSystemReminders(msg.Text()))
+		text := strings.TrimSpace(compactionUserText(msg))
 		if !IsCompactSummary(text) {
 			candidates = append(candidates, text)
 			continue

@@ -115,6 +115,27 @@ func TestDeleteCurrentQueueItemRemovesSelected(t *testing.T) {
 	}
 }
 
+func TestEditingQueuedTurnDropsRemovedImage(t *testing.T) {
+	m := New("", 80, nil, SelectorDeps{})
+	first := core.Attachment{Image: ai.Image{FileName: "first.png"}}
+	second := core.Attachment{Image: ai.Image{FileName: "second.png"}}
+	m.Queue.Enqueue("a [Image #1] and [Image #2]", []core.Attachment{first, second})
+	m.Queue.SelectIdx = 0
+	m.Textarea.SetValue("a and [Image #2]")
+
+	m.SaveCurrentQueueEdit()
+
+	item, _ := m.Queue.At(0)
+	if len(item.Images) != 1 || item.Images[0].FileName != "second.png" {
+		t.Fatalf("queued images = %+v, want only second.png", item.Images)
+	}
+	m.RestoreQueuedImages(item.Content, item.Images)
+	_, got := m.ExtractInlineImages(item.Content)
+	if len(got) != 1 || got[0].FileName != "second.png" {
+		t.Fatalf("restored images = %+v, want only second.png", got)
+	}
+}
+
 func TestSaveCurrentQueueEditWritesBack(t *testing.T) {
 	m := New("", 10, nil, SelectorDeps{})
 	m.Queue.Enqueue("original", nil)

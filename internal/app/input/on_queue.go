@@ -206,7 +206,23 @@ func (m *Model) SaveCurrentQueueEdit() {
 		return
 	}
 	content := strings.TrimSpace(m.Textarea.Value())
-	m.Queue.UpdateAt(m.Queue.SelectIdx, content, item.Images)
+	images := item.Images
+	// A removed token must remove its attachment too; otherwise editing a
+	// queued turn can still send a picture the user no longer sees.
+	oldTokens := core.InlineImageTokenRe.FindAllString(item.Content, -1)
+	if len(oldTokens) > 0 {
+		remaining := make(map[string]bool)
+		for _, token := range core.InlineImageTokenRe.FindAllString(content, -1) {
+			remaining[token] = true
+		}
+		images = nil
+		for i, token := range oldTokens {
+			if i < len(item.Images) && remaining[token] {
+				images = append(images, item.Images[i])
+			}
+		}
+	}
+	m.Queue.UpdateAt(m.Queue.SelectIdx, content, images)
 }
 
 // LoadQueueItemIntoTextarea loads the content of the selected queue item

@@ -27,6 +27,16 @@ func TestLoad_UnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsMismatchedImageExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mislabeled.png")
+	if err := os.WriteFile(path, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("JPEG bytes with a PNG extension must not be sent as image/png")
+	}
+}
+
 func Test_supportedTypes(t *testing.T) {
 	// Verify all expected types are supported
 	expectedTypes := map[string]string{

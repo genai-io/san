@@ -91,7 +91,11 @@ native history. Runtime retains it through stops and errors. Inputs rejected bef
 agent acceptance remain in a native pending queue; rebuilding never reads UI rows.
 Accepted input is announced and retained even when inference fails or a run stops
 before its next step. Runtime rejects sends once its mailbox starts stopping.
-`Store.ChatRows` expands persisted tool output only for display. Runtime receives
+`Store.ChatRows` expands persisted tool output only for display and reconstructs
+image markers in their native text/image order. It hides San's model-only source
+path paragraph from the resumed UI without removing it from the native
+conversation; the model can still use that path after compaction or resume.
+Runtime receives
 the original preview and attachment reference, keeping resumed context bounded.
 
 Completed subagents write native conversation replacement and title records

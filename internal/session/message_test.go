@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,25 @@ func TestRestoreProjectsDisplayWithoutChangingTheConversation(t *testing.T) {
 	}
 	if msg.Text() != "hello\n\n<system-reminder>hidden</system-reminder>" {
 		t.Fatal("projection changed model history")
+	}
+}
+
+func TestRestoreProjectsInlineImagesWithoutModelOnlySourceNote(t *testing.T) {
+	note := "\n\n[Image #1: /tmp/a.png]\n[Image #2: /tmp/b.png]"
+	msg := core.Message{ID: "m", Role: ai.RoleUser, Content: ai.Content{
+		ai.TextBlock("Compare "),
+		ai.ImageBlock(ai.Image{MediaType: "image/png", Data: "YQ=="}),
+		ai.TextBlock(" with "),
+		ai.ImageBlock(ai.Image{MediaType: "image/png", Data: "Yg=="}),
+		ai.TextBlock(" briefly."),
+		ai.TextBlock(note),
+	}}
+	rows := ChatRows([]core.Message{msg})
+	if len(rows) != 1 || rows[0].DisplayContent != "Compare [Image #1] with [Image #2] briefly." {
+		t.Fatalf("resumed display = %+v", rows)
+	}
+	if !strings.Contains(msg.Text(), "/tmp/b.png") || len(msg.Content) != 6 {
+		t.Fatal("display projection changed native transcript")
 	}
 }
 
