@@ -858,7 +858,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			deadline := time.Now().Add(3 * time.Second)
 			for {
 				_, screen := terminal.snapshot()
-				if strings.Contains(screen, "Generating response") {
+				if strings.Contains(screen, "✦") {
 					break
 				}
 				if time.Now().After(deadline) {

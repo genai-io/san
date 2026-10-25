@@ -43,7 +43,7 @@ func TestInferenceProgressKeepsItsRowInShortViewsAndHistoryHandoffs(t *testing.T
 			}
 			view := m.View()
 			frame := ansi.Strip(view.Content)
-			if strings.Count(frame, "Generating Write arguments") != 1 || !strings.Contains(frame, "33051 bytes") {
+			if strings.Count(frame, "✦") != 1 || strings.Contains(frame, "Generating") || strings.Contains(frame, "bytes") || m.conv.Stream.GeneratedBytes != 33051 {
 				t.Fatalf("height=%d handoff=%v hid or duplicated generation status:\n%s", height, handoff, frame)
 			}
 			if rowCount(frame) != height || view.Cursor == nil || view.Cursor.Position.Y != height-3 {
@@ -62,7 +62,7 @@ func TestInferenceProgressCannotReviveAfterUserCancellation(t *testing.T) {
 	if m.conv.Stream.Inferring || m.conv.Stream.GeneratedBytes != 0 || len(m.conv.Tool.PendingCalls) != 0 {
 		t.Fatalf("late progress revived cancelled work: %+v", m.conv.Stream)
 	}
-	if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "Generating Write") || !strings.Contains(frame, "cancelled") {
+	if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "✦") || !strings.Contains(frame, "cancelled") {
 		t.Fatalf("cancelled inference still looks active: %q", frame)
 	}
 }
@@ -78,7 +78,7 @@ func TestFailedInferenceCommitsAnExplicitIncompleteNotice(t *testing.T) {
 			t.Fatalf("failed turn did not commit %q: %q", want, printed)
 		}
 	}
-	if m.conv.Stream.Active || m.conv.Stream.Inferring || strings.Contains(printed, "Generating Write arguments") {
+	if m.conv.Stream.Active || m.conv.Stream.Inferring || strings.Contains(printed, "✦") || !m.conv.Stream.LastDataAt.IsZero() {
 		t.Fatal("failed turn retained live progress or committed it into history")
 	}
 }

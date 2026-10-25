@@ -516,7 +516,25 @@ func extractTrailingParenContent(s, fallback string) string {
 }
 
 func fileChangeSummary(details toolresult.FileChangeDetails) string {
-	return fmt.Sprintf("+%d -%d", details.AddedLines, details.RemovedLines)
+	addedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
+	if details.IsNewFile {
+		lines := formatLineCountValue(details.AddedLines)
+		if details.AddedLines > 0 {
+			lines = addedStyle.Render("+" + lines)
+		}
+		return "new file · " + lines
+	}
+	var counts []string
+	if details.AddedLines > 0 {
+		counts = append(counts, addedStyle.Render(fmt.Sprintf("+%d", details.AddedLines)))
+	}
+	if details.RemovedLines > 0 {
+		counts = append(counts, errorStyle.Render(fmt.Sprintf("-%d", details.RemovedLines)))
+	}
+	if len(counts) == 0 {
+		return "no changes"
+	}
+	return strings.Join(counts, " ")
 }
 
 func renderFileChangeResultInline(data ToolResultData) string {

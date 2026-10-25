@@ -57,7 +57,7 @@ func TestInferenceWaitingFollowsNoticesWithoutEmptyReplyMarker(t *testing.T) {
 			p := RenderContext{Messages: messages, Width: width, StreamActive: true, Inferring: true,
 				StreamMessageID: "live", StreamStartedAt: time.Now().Add(-49 * time.Second), ThinkingDisplay: "full"}
 			out := ansi.Strip(RenderActiveContent(p))
-			if notice, status := strings.Index(out, "Background job failed"), strings.Index(out, "Generating response"); notice < 0 || status <= notice || strings.Count(out, "Generating response") != 1 {
+			if notice, status := strings.Index(out, "Background job failed"), strings.LastIndex(out, "49s"); notice < 0 || status <= notice || strings.Count(out, "49s") != 1 {
 				t.Fatalf("width %d: notice does not precede the single inference status: %q", width, out)
 			}
 			for _, line := range strings.Split(out, "\n") {

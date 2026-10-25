@@ -26,17 +26,16 @@ type RenderContext struct {
 	InlinedResults inlinedToolResults
 
 	// ── Streaming + in-flight tool execution ────────────────────
-	StreamActive     bool
-	StreamWaiting    bool
-	StreamStartedAt  time.Time
-	StreamMessageID  string
-	BuildingTool     string
-	Inferring        bool
-	InferenceAttempt int
-	GeneratingTool   string
-	GeneratedBytes   int
-	PendingCalls     []core.ToolCall
-	CurrentIdx       int
+	StreamActive        bool
+	StreamWaiting       bool
+	StreamStartedAt     time.Time
+	StreamMessageID     string
+	BuildingTool        string
+	Inferring           bool
+	InferenceAttempt    int
+	InferenceLastDataAt time.Time
+	PendingCalls        []core.ToolCall
+	CurrentIdx          int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
@@ -590,30 +589,14 @@ func RenderActiveBody(p RenderContext) string {
 // RenderInferenceStatus is one live-only row. It is separate from assistant
 // content so the application can reserve it even when the body is clipped.
 func RenderInferenceStatus(p RenderContext) string {
-	if !p.StreamActive || !p.Inferring {
+	if !p.StreamActive || !p.Inferring || p.DockedModalActive {
 		return ""
 	}
-	mark := kit.LiveStar(p.Frame)
-	label := "Generating response"
-	if p.GeneratingTool != "" || p.GeneratedBytes > 0 {
-		label = "Generating tool arguments"
-		if p.GeneratingTool != "" {
-			label = "Generating " + p.GeneratingTool + " arguments"
-		}
-		if p.GeneratedBytes > 0 {
-			label += fmt.Sprintf(" · %d bytes", p.GeneratedBytes)
-		}
-	}
+	label := ""
 	if p.InferenceAttempt > 1 {
-		label = fmt.Sprintf("Retrying · attempt %d · %s", p.InferenceAttempt, label)
+		label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
 	}
-	if p.DockedModalActive {
-		mark = ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
-		label = "Waiting for your response"
-	} else if elapsed := formatElapsedTime(p.StreamStartedAt); elapsed != "" {
-		label += " · " + elapsed
-	}
-	return kit.TruncateText(mark+ThinkingStyle.Render(" "+label), max(1, p.Width))
+	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label)
 }
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {

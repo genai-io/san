@@ -464,12 +464,34 @@ func (p AssistantParams) waitingRow() string {
 		return ""
 	}
 	if p.DockedModalActive {
-		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
+		return ""
 	}
-	row := kit.LiveStar(p.Frame)
-	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
-		row += ThinkingStyle.Render(" " + elapsed)
+	return renderModelWait(p.Frame, p.Width, p.WaitStartedAt, p.WaitStartedAt, "")
+}
+
+const quietModelWaitAfter = 30 * time.Second
+
+// The breathing mark is UI liveness, not proof of model progress. Explain a
+// quiet connection only after real model data has stopped arriving.
+func renderModelWait(frame, width int, startedAt, lastDataAt time.Time, label string) string {
+	if lastDataAt.IsZero() {
+		lastDataAt = startedAt
+	}
+	if label == "" && !lastDataAt.IsZero() && time.Since(lastDataAt) >= quietModelWaitAfter {
+		label = "Waiting for model"
+	}
+	if elapsed := formatElapsedTime(startedAt); elapsed != "" {
+		if label != "" {
+			label += " · "
+		}
+		label += elapsed
+	}
+	row := kit.LiveStar(frame)
+	if label != "" {
+		row += ThinkingStyle.Render(" " + label)
+	}
+	if width > 0 {
+		row = kit.TruncateText(row, width)
 	}
 	return row
 }

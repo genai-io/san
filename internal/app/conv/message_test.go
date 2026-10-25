@@ -1330,7 +1330,7 @@ func TestRenderToolCallsNestsWriteResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "+ package app") {
 		t.Fatalf("Write result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ +1 -0\n") || strings.Index(rendered, "  └ +1 -0") < strings.Index(rendered, "+ package app") {
+	if !strings.Contains(rendered, "  └ new file · +1 line\n") || strings.Index(rendered, "  └ new file · +1 line") < strings.Index(rendered, "+ package app") {
 		t.Fatalf("Write summary should follow its diff, got %q", rendered)
 	}
 }

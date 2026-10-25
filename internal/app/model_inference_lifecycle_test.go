@@ -46,7 +46,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				ToolCallID: "read-1", ToolName: tool.ToolRead, InputBytes: 1024,
 			}}})
 			live := ansi.Strip(conv.RenderActiveContent(m.messageRenderParams()))
-			if !strings.Contains(live, "Generating Read arguments") || !strings.Contains(live, "1024 bytes") || len(m.conv.Tool.PendingCalls) != 0 {
+			if strings.Count(live, "✦") != 1 || strings.Contains(live, "Generating") || strings.Contains(live, "bytes") || m.conv.Stream.GeneratedBytes != 1024 || len(m.conv.Tool.PendingCalls) != 0 {
 				t.Fatalf("generation progress was hidden or started a tool: %q", live)
 			}
 			if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 0 {
@@ -96,7 +96,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				}
 			}
 			printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
-			if strings.Contains(printed, "Generating Read arguments") || strings.Contains(printed, "1024 bytes") {
+			if strings.Contains(printed, "✦") || strings.Contains(printed, "1024 bytes") || !m.conv.Stream.LastDataAt.IsZero() {
 				t.Fatal("transient generation progress leaked into scrollback")
 			}
 			last := -1

@@ -86,6 +86,22 @@ recap facts; do not add repeated transcript-access hints.
 Asynchronous notices remain conversation content, ahead of a standalone waiting
 indicator at the live tail. This is presentation-only: actual streamed text,
 reasoning, message ownership, and persisted transcript order are not rearranged.
+The inference indicator stays alive through text and tool-input streaming until
+inference ends. Normally it is only a breathing `✦ 17s`: animation means UI
+liveness, not model progress. After 30 seconds without incoming text, reasoning,
+or changed tool-input progress, it adds `Waiting for model`; real incoming data
+clears that explanation. UI ticks, notices, and duplicate progress do not reset
+the silence clock. Real retries may show `Retrying · attempt N`. An approval or
+question modal owns its explanation, with no duplicate inference waiting row.
+These states neither invent model progress nor change timeout/retry policy, and
+are never committed to terminal history.
+
+Edit/Write results retain their full numbered inline diff, semantic backgrounds,
+and two-column inset aligned with the `  └` footer. New files report
+`└ new file · +29 lines` (singular `line` for one; `0 lines` for an empty file).
+Existing-file changes show green additions and red removals, omitting zero
+counts; a zero/zero result says `no changes`. Both nested and standalone result
+renderers use the same summary formatter.
 
 The tasks component is display-only: the root app owns the task manager and
 routes actions. `/tasks` supports inspection, details, and stopping an exact task
