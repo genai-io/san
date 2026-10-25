@@ -473,7 +473,13 @@ func (p AssistantParams) waitingRow() string {
 	return row
 }
 
-const failedTurnNoticePrefix = "Turn failed; output is incomplete: "
+// Failure notice text is persisted. Keep its formatters and legacy text
+// recognition together so wording cannot drift between creation and rendering.
+const (
+	failedTurnNoticePrefix      = "Turn failed; output is incomplete: "
+	failedInferenceNoticePrefix = "Inference attempt "
+	failedInferenceNoticeMarker = " failed:"
+)
 
 // FailedTurnNotice distinguishes a stopped, unfinished turn from a completed
 // assistant reply, including when a partial reply has already reached history.
@@ -481,11 +487,20 @@ func FailedTurnNotice(err error) string {
 	return failedTurnNoticePrefix + err.Error()
 }
 
+// FailedInferenceNotice closes one failed attempt, which may still be retried.
+func FailedInferenceNotice(attempt int, err error) string {
+	return fmt.Sprintf("%s%d%s %v", failedInferenceNoticePrefix, attempt, failedInferenceNoticeMarker, err)
+}
+
+func isFailureNotice(content string) bool {
+	return strings.HasPrefix(content, failedTurnNoticePrefix) ||
+		strings.HasPrefix(content, failedInferenceNoticePrefix) && strings.Contains(content, failedInferenceNoticeMarker)
+}
+
 // RenderSystemMessage renders a system/notice core.
 func RenderSystemMessage(content string) string {
 	style := systemMsgStyle
-	if strings.HasPrefix(content, failedTurnNoticePrefix) ||
-		strings.HasPrefix(content, "Inference attempt ") && strings.Contains(content, " failed:") {
+	if isFailureNotice(content) {
 		style = style.Foreground(kit.CurrentTheme.Error)
 	}
 	return style.Render(content) + "\n"

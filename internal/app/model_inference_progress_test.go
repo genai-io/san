@@ -16,8 +16,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func modelWithInferenceProgress(t *testing.T, height int) *model {
-	t.Helper()
+func modelWithInferenceProgress(height int) *model {
 	m := fixedComposerModel(80, height)
 	m.services.Agent = &agent.Runtime{}
 	m.services.Tool = tool.NewRegistry()
@@ -36,7 +35,7 @@ func modelWithInferenceProgress(t *testing.T, height int) *model {
 func TestInferenceProgressKeepsItsRowInShortViewsAndHistoryHandoffs(t *testing.T) {
 	for _, height := range []int{5, 6, 8, 24} {
 		for _, handoff := range []bool{false, true} {
-			m := modelWithInferenceProgress(t, height)
+			m := modelWithInferenceProgress(height)
 			m.conv.AppendStream(strings.Repeat("\nlong commentary", 30), "")
 			m.conv.AddNotice("background completed")
 			if handoff {
@@ -55,7 +54,7 @@ func TestInferenceProgressKeepsItsRowInShortViewsAndHistoryHandoffs(t *testing.T
 }
 
 func TestInferenceProgressCannotReviveAfterUserCancellation(t *testing.T) {
-	m := modelWithInferenceProgress(t, 24)
+	m := modelWithInferenceProgress(24)
 	m.handleStreamCancel()
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 		Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 99000},
@@ -69,7 +68,7 @@ func TestInferenceProgressCannotReviveAfterUserCancellation(t *testing.T) {
 }
 
 func TestFailedInferenceCommitsAnExplicitIncompleteNotice(t *testing.T) {
-	m := modelWithInferenceProgress(t, 40)
+	m := modelWithInferenceProgress(40)
 	err := errors.New("stream stalled")
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Err: err}})
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: core.AgentStopped{Err: err}})

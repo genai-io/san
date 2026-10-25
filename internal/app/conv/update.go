@@ -4,7 +4,6 @@ package conv
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -175,7 +174,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		if e.Err != nil {
 			rt.OnInference(e.Response)
 			if !errors.Is(e.Err, context.Canceled) {
-				m.AddNotice(fmt.Sprintf("Inference attempt %d failed: %v", e.Attempt, e.Err))
+				m.AddNotice(FailedInferenceNotice(e.Attempt, e.Err))
 			}
 			return tea.Batch(rt.CommitMessages()...)
 		}

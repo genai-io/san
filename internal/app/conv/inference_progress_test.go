@@ -112,6 +112,28 @@ func TestInferenceStatusIsBoundedAndFreezesUnderModal(t *testing.T) {
 	}
 }
 
+func TestFailureNoticeFormattingAndLegacyRecognition(t *testing.T) {
+	attempt := FailedInferenceNotice(2, errors.New("stream stalled"))
+	if attempt != "Inference attempt 2 failed: stream stalled" {
+		t.Fatalf("attempt notice wording changed: %q", attempt)
+	}
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{attempt, true},
+		{FailedTurnNotice(errors.New("stream stalled")), true},
+		{"Inference attempt 1 failed:provider unavailable", true},
+		{"background task completed", false},
+		{"background task failed: stream stalled", false},
+		{"Inference attempt 1 started", false},
+	} {
+		if got := isFailureNotice(tc.text); got != tc.want {
+			t.Errorf("isFailureNotice(%q) = %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}
+
 func TestFailedTurnNoticeMarksPartialOutputIncomplete(t *testing.T) {
 	notice := FailedTurnNotice(errors.New("stream stalled"))
 	if view := stripANSI(RenderSystemMessage(notice)); !strings.Contains(view, "Turn failed") || !strings.Contains(view, "output is incomplete") || !strings.Contains(view, "stream stalled") {
