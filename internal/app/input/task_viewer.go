@@ -15,6 +15,8 @@ import (
 // a promise of a complete historical log. Status preserves the backend lifecycle.
 type TaskViewItem struct {
 	ID, AgentName, Description, Subject, Progress, Output, Error string
+	OutputFile                                                   string
+	Recorded                                                     bool // Persisted entry without a live worker.
 	Status                                                       task.TaskStatus
 	AwaitingApproval, ApprovalQueued, OutputTruncated            bool
 	CanContinue                                                  bool
@@ -42,6 +44,7 @@ type TaskViewerClosedMsg struct{ ViewID uint64 }
 // TaskViewer never mutates tasks. The caller owns all lifecycle operations.
 type TaskViewer struct {
 	active, detail, confirm, confirmStop bool
+	historyExpanded                      bool
 	width, height                        int
 	body                                 viewport.Model
 	rowOffsets                           map[string]int
@@ -141,6 +144,9 @@ func (v *TaskViewer) rebuild() {
 	if !v.active || v.confirm {
 		return
 	}
+	if !v.detail {
+		v.selectVisible()
+	}
 	v.body.SetHeight(max(1, v.height-4-strings.Count(v.hint(), "\n")-1-transcriptFrameMargin))
 	offset := v.body.YOffset()
 	var lines []string
@@ -161,6 +167,12 @@ func (v *TaskViewer) rebuild() {
 			}
 			if _, live := v.live(item.ID); !live {
 				lines = append(lines, "No longer in the live task list; showing last snapshot.")
+			}
+			if item.Recorded {
+				lines = append(lines, "Recorded task; live worker unavailable.")
+			}
+			if item.OutputFile != "" {
+				lines = append(lines, "Output log: "+item.OutputFile)
 			}
 			if item.Status == task.StatusRunning && item.Progress != "" {
 				lines = append(lines, "Progress: "+item.Progress)
@@ -186,20 +198,39 @@ func (v *TaskViewer) rebuild() {
 			lines = append(lines, "", label, output)
 		}
 	} else {
+		active, history := v.groupedItems()
 		v.rowOffsets = make(map[string]int, len(v.items))
 		rowOffset := 0
-		for _, item := range v.items {
+		addLine := func(line string) {
+			lines = append(lines, line)
+			rowOffset += strings.Count(ansi.Wrap(line, max(1, v.width-2), " "), "\n") + 1
+		}
+		addItem := func(item TaskViewItem) {
 			v.rowOffsets[item.ID] = rowOffset
 			prefix := "  ● "
 			if item.ID == v.selected {
 				prefix = "› ● "
 			}
-			row := prefix + taskViewSubject(item) + " [" + taskViewStatus(item) + "]"
-			lines = append(lines, row)
-			rowOffset += strings.Count(ansi.Wrap(row, max(1, v.width-2), " "), "\n") + 1
+			addLine(prefix + taskViewSubject(item) + " [" + taskViewStatus(item) + "]")
 		}
-		if len(lines) == 0 {
-			lines = []string{"No background tasks."}
+		for _, item := range active {
+			addItem(item)
+		}
+		if len(active) == 0 {
+			if len(history) == 0 {
+				addLine("No background tasks.")
+			} else {
+				addLine("No active background tasks.")
+			}
+		}
+		if len(history) > 0 {
+			addLine("")
+			addLine(v.historySummary(history))
+			if v.historyExpanded {
+				for _, item := range history {
+					addItem(item)
+				}
+			}
 		}
 		if v.selected != "" {
 			if _, ok := v.live(v.selected); !ok {
@@ -247,7 +278,7 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		case "enter":
 			id := v.stopID
 			item, ok := v.live(id)
-			if v.confirmStop && ok && item.Status == task.StatusRunning && v.selected == id && item.Attempt == v.stopAttempt {
+			if v.confirmStop && ok && !item.Recorded && item.Status == task.StatusRunning && v.selected == id && item.Attempt == v.stopAttempt {
 				viewID, attempt := v.viewID, v.stopAttempt
 				v.Suspend()
 				v.pendingAction = true
@@ -276,22 +307,28 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 			v.body.GotoTop()
 			v.rebuild()
 		}
+	case "h":
+		if !v.detail && !key.Key().IsRepeat {
+			v.historyExpanded = !v.historyExpanded
+			v.body.GotoTop()
+			v.rebuild()
+		}
 	case "s":
-		if item, ok := v.live(v.selected); ok && item.Status == task.StatusRunning {
+		if item, ok := v.live(v.selected); ok && !item.Recorded && item.Status == task.StatusRunning {
 			v.confirm = true
 			v.confirmStop = false
 			v.stopID, v.stopAttempt = item.ID, item.Attempt
 			v.rebuild()
 		}
 	case "c":
-		if item, ok := v.live(v.selected); ok && item.CanContinue && (item.Status == task.StatusFailed || item.Status == task.StatusCompleted) {
+		if item, ok := v.live(v.selected); ok && !item.Recorded && item.CanContinue && (item.Status == task.StatusFailed || item.Status == task.StatusCompleted) {
 			id, viewID, attempt := item.ID, v.viewID, item.Attempt
 			v.Suspend()
 			v.pendingAction = true
 			return func() tea.Msg { return TaskContinueMsg{TaskID: id, ViewID: viewID, Attempt: attempt} }
 		}
 	case "r":
-		if item, ok := v.live(v.selected); ok && item.Status == task.StatusRunning && item.AwaitingApproval {
+		if item, ok := v.live(v.selected); ok && !item.Recorded && item.Status == task.StatusRunning && item.AwaitingApproval {
 			id, viewID := item.ID, v.viewID
 			v.Suspend()
 			v.pendingAction = true
@@ -306,8 +343,9 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 			}
 			break
 		}
+		items := v.visibleItems()
 		index := -1
-		for i, item := range v.items {
+		for i, item := range items {
 			if item.ID == v.selected {
 				index = i
 			}
@@ -315,10 +353,10 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		if k == "up" || k == "k" {
 			index = max(0, index-1)
 		} else {
-			index = min(len(v.items)-1, index+1)
+			index = min(len(items)-1, index+1)
 		}
-		if index >= 0 && index < len(v.items) {
-			v.selected = v.items[index].ID
+		if index >= 0 && index < len(items) {
+			v.selected = items[index].ID
 			v.rebuild()
 			row := v.rowOffsets[v.selected]
 			if row < v.body.YOffset() {
@@ -340,11 +378,21 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 }
 func (v *TaskViewer) hint() string {
 	hint := "↑/↓ select · Enter details\ns stop · r approval · Esc close"
+	if _, history := v.groupedItems(); !v.detail && len(history) > 0 {
+		hint = "↑/↓ select · Enter · h history\ns stop · r approval · Esc close"
+	}
 	if v.detail {
 		hint = "↑/↓ scroll · PgUp/PgDown\ns stop · r approval · Esc back"
 	}
-	if item, ok := v.live(v.selected); ok && item.CanContinue && (item.Status == task.StatusFailed || item.Status == task.StatusCompleted) {
-		hint = strings.ReplaceAll(hint, "s stop · r approval", "c ask main to continue")
+	if item, ok := v.live(v.selected); ok && !item.Recorded && item.CanContinue && (item.Status == task.StatusFailed || item.Status == task.StatusCompleted) {
+		label := "c ask main to continue"
+		if v.width < 36 {
+			label = "c continue"
+		}
+		hint = strings.ReplaceAll(hint, "s stop · r approval", label)
+	}
+	if item, ok := v.current(); ok && item.Recorded {
+		hint = strings.ReplaceAll(hint, "s stop · r approval · ", "")
 	}
 	if v.confirm {
 		hint = "←/→ choose · Enter confirm\nEsc back"
@@ -364,5 +412,7 @@ func (v *TaskViewer) Render() string {
 		}
 		return strings.Join([]string{rule, ansi.Wrap("Stop task "+v.stopID+"?", max(1, v.width-1), " "), "Ends this task; no resume.", "", choice, rule, kit.HintLine(v.hint())}, "\n")
 	}
-	return strings.Join([]string{rule, kit.SelectorTitleStyle().Render(fmt.Sprintf("Tasks · %d", len(v.items))), "", v.body.View(), rule, kit.HintLine(v.hint())}, "\n")
+	active, _ := v.groupedItems()
+	title := kit.TruncateText(fmt.Sprintf("Tasks · %d active", len(active)), max(1, v.width-1))
+	return strings.Join([]string{rule, kit.SelectorTitleStyle().Render(title), "", v.body.View(), rule, kit.HintLine(v.hint())}, "\n")
 }

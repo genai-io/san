@@ -149,7 +149,18 @@ Task created → attempt 1 running → attempt 1 failed
   tasks cannot be automatically resumed. A missing or damaged conversation must
   not silently become a fresh conversation. Starting genuinely new work remains
   a separate explicit Agent invocation.
-- `/tasks` shows the child session and attempt history. `c` on an eligible ended
+- `/tasks` defaults to active workers (including queued/current approvals).
+  Completed, failed, stopped, killed, and interrupted workers live in a collapsed
+  History section with an explicit failure count; `h` expands/collapses it.
+  Active rows come first; history is newest-launched first. Navigation only
+  targets visible rows, and closing/reopening resets history to collapsed.
+  This is presentation-only: failures, output logs, attempt history, and eligible
+  continuation actions are not deleted or reclassified. A detail already open
+  stays on the same task when it ends or starts a new attempt. Persisted ended
+  tracker entries whose workers are gone remain inspectable as recorded history,
+  with their stored failure reason but no fabricated live output or actions.
+- `/tasks` details show the child session, output-log path when available, and
+  attempt history. `c` on an eligible ended
   worker asks main to choose a safe continuation; the UI does not directly launch
   tools or bypass approval. Completion visibility is keyed by task and attempt,
   so an old notice cannot hide a newer result. At delivery, a completion from an
@@ -195,6 +206,10 @@ internal/task/agent_attempt_test.go  — same task identity, immutable attempts,
 internal/tool/fs/shell_service_test.go — service lifetime and option validation.
 internal/subagent/executor_resume_test.go — same native child conversation across execution attempts.
 internal/app/task_recovery_test.go   — attempt-aware notices, manual-stop hold, UI continuation requests.
+internal/app/input/task_viewer_history_test.go — collapsed history, visible selection, stable actions, narrow/short views.
+internal/app/input/task_viewer_recorded_test.go — recorded history is always read-only.
+internal/app/model_task_history_test.go — persisted reasons, live precedence, ownership and interrupted history.
+internal/app/conv/tracker_history_test.go — announcement-aware folding and quiet secondary history.
 internal/task/hooks_test.go          — lifecycle hook emission.
 internal/task/session_test.go        — ownership across switches and nested launches.
 internal/task/output_observability_test.go — log errors and display-only progress.

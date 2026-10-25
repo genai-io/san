@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 )
 
 const taskViewerOutputLimit = 32 * 1024
@@ -64,14 +65,17 @@ func (m *model) pendingApprovalCount() int {
 }
 
 func (m *model) taskSnapshots() []input.TaskViewItem {
-	if m.services.Task == nil {
-		return nil
+	var workers []task.BackgroundTask
+	if m.services.Task != nil {
+		workers = m.services.Task.List()
 	}
-	workers := m.services.Task.List()
 	infos := make([]task.TaskInfo, 0, len(workers))
+	seen := make(map[string]bool, len(workers))
+	recorded := make(map[string]bool)
 	sessionID := m.sessionID()
 	for _, worker := range workers {
 		info := worker.GetStatus()
+		seen[info.ID] = true
 		if info.ParentSessionID != "" && info.ParentSessionID != sessionID {
 			continue
 		}
@@ -79,6 +83,26 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 			info.Output = worker.GetOutput()
 		}
 		infos = append(infos, info)
+	}
+	// The session tracker survives process restart; its ended workers must still
+	// be inspectable after folding their old rows out of the inline tracker.
+	if m.services.Tracker != nil {
+		for _, item := range m.services.Tracker.List() {
+			id := todo.BackgroundTaskID(item)
+			if id == "" || seen[id] || item.Status != todo.StatusCompleted {
+				continue
+			}
+			status := task.TaskStatus(todo.BackgroundStatusDetail(item))
+			if status == "" {
+				status = task.StatusCompleted
+			}
+			infos = append(infos, task.TaskInfo{
+				ID: id, Type: task.TaskType(todo.BackgroundTaskType(item)), AgentName: item.Owner,
+				Description: item.Subject, Status: status, Error: todo.BackgroundError(item),
+				StartTime: item.CreatedAt,
+			})
+			seen[id], recorded[id] = true, true
+		}
 	}
 	// Status includes copied output. Capture it once, then sort snapshots rather
 	// than copying every worker's buffer on each comparison.
@@ -127,6 +151,7 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 			ID: info.ID, AgentName: owner, Description: info.Description,
 			Subject: info.Description, Status: info.Status, Progress: progress,
 			Output: output, Error: info.Error, OutputTruncated: truncated,
+			OutputFile: info.OutputFile, Recorded: recorded[info.ID],
 			CanContinue: canContinueTask(info), Attempt: info.Attempt, SessionID: info.AgentSessionID, Attempts: strings.Join(history, "\n"),
 			AwaitingApproval: info.Status == task.StatusRunning && waiting[info.ID],
 			ApprovalQueued:   waiting[info.ID] && activeTask != info.ID,

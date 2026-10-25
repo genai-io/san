@@ -39,11 +39,12 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 	_ = todo.Default().Update(pending.ID, todo.WithStatus(todo.StatusPending))
 
 	view := RenderTrackerList(TrackerListParams{
-		Items:        todo.Default().List(),
-		StreamActive: true,
-		Width:        120,
-		Blockers:     todo.Default().OpenBlockers,
-		Executing:    func(*todo.Item) bool { return true },
+		CompletionShown: func(string) bool { return false },
+		Items:           todo.Default().List(),
+		StreamActive:    true,
+		Width:           120,
+		Blockers:        todo.Default().OpenBlockers,
+		Executing:       func(*todo.Item) bool { return true },
 	})
 	plain := stripANSI(view)
 
@@ -95,10 +96,11 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 	_ = todo.Default().Update(pending2.ID, todo.WithStatus(todo.StatusPending))
 
 	view := RenderTrackerList(TrackerListParams{
-		Items:        todo.Default().List(),
-		StreamActive: true,
-		Width:        120,
-		Executing:    func(*todo.Item) bool { return true },
+		CompletionShown: func(string) bool { return false },
+		Items:           todo.Default().List(),
+		StreamActive:    true,
+		Width:           120,
+		Executing:       func(*todo.Item) bool { return true },
 	})
 	plain := stripANSI(view)
 
@@ -244,18 +246,17 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			wantSummaries: []string{"3 more pending"},
 		},
 		{
-			name:      "abnormal endings stay after completions leave",
-			count:     11,
-			status:    todo.StatusCompleted,
-			overrides: map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
-			wantIDs:   []string{"1", "2", "3", "4"},
+			name:          "abnormal endings stay after completions leave",
+			count:         11,
+			status:        todo.StatusCompleted,
+			overrides:     map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
+			wantSummaries: []string{"History · 4", "/tasks"},
 		},
 		{
 			name:          "many failed agents",
 			count:         11,
 			status:        "failed",
-			wantIDs:       []string{"4", "5", "6", "7", "8", "9", "10", "11"},
-			wantSummaries: []string{"3 failed/stopped"},
+			wantSummaries: []string{"History · 11", "/tasks"},
 		},
 		{
 			name:          "hidden failures stay in the summary",
@@ -263,7 +264,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			status:        todo.StatusInProgress,
 			overrides:     map[int]string{11: "failed"},
 			wantIDs:       []string{"3", "4", "5", "6", "7", "8", "9", "10"},
-			wantSummaries: []string{"2 more in progress", "1 failed/stopped"},
+			wantSummaries: []string{"2 more in progress", "History · 1", "/tasks"},
 		},
 	}
 	rowRE := regexp.MustCompile(`\bTask (\d+)\b`)
@@ -307,7 +308,10 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 					t.Fatalf("missing overflow summary %q:\n%s", want, plain)
 				}
 			}
-			wantLines := len(tc.wantIDs) + 1 // shared Tasks heading
+			wantLines := len(tc.wantIDs)
+			if len(tc.wantIDs) > 0 {
+				wantLines++ // Only current rows need a Tasks heading.
+			}
 			if len(tc.wantSummaries) > 0 {
 				wantLines++
 			}

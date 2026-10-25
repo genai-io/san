@@ -454,11 +454,9 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// waitingRow is the live "✦ 12s" row, held at the foot of the message from
-// submission until the reply's first text, even while reasoning streams above
-// it in bursts. The star needs no word beside it; it is reasoning's mark,
-// never the reply's ●, so it ends rather than turning into the reply. Timed
-// like a running tool row.
+// waitingRow is the live "✦ On it · 12s" row, held at the foot of the
+// message until the reply's first text, even while reasoning streams above
+// it. The breathing star marks UI liveness, not model progress.
 func (p AssistantParams) waitingRow() string {
 	if p.SuppressWaitingRow || !p.StreamActive || !p.IsLast || p.Content != "" || p.BulletEmitted || len(p.ToolCalls) > 0 {
 		return ""
@@ -479,6 +477,9 @@ func renderModelWait(frame, width int, startedAt, lastDataAt time.Time, label st
 	}
 	if label == "" && !lastDataAt.IsZero() && time.Since(lastDataAt) >= quietModelWaitAfter {
 		label = "Waiting for model"
+	}
+	if label == "" {
+		label = "On it"
 	}
 	if elapsed := formatElapsedTime(startedAt); elapsed != "" {
 		if label != "" {

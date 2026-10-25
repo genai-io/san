@@ -53,15 +53,22 @@ var (
 // the item under edit (-1 = none); the selected row carries the focus bar and
 // swaps the "↑ edit" affordance for the editing keys.
 func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string {
-	if len(items) == 0 {
+	return RenderQueuePreviewLimit(items, selectedIdx, width, maxVisibleQueueItems, true)
+}
+
+// RenderQueuePreviewLimit lets the composer surrender decoration and overflow
+// rows before actionable queue content on short terminals. The edited item
+// remains inside the visible window.
+func RenderQueuePreviewLimit(items []QueuePreviewItem, selectedIdx, width, limit int, showOverflow bool) string {
+	if len(items) == 0 || limit <= 0 {
 		return ""
 	}
 
 	startIdx := 0
-	if len(items) > maxVisibleQueueItems && selectedIdx >= maxVisibleQueueItems {
-		startIdx = selectedIdx - maxVisibleQueueItems + 1
+	if len(items) > limit && selectedIdx >= limit {
+		startIdx = selectedIdx - limit + 1
 	}
-	endIdx := min(startIdx+maxVisibleQueueItems, len(items))
+	endIdx := min(startIdx+limit, len(items))
 
 	// The hint rides the row the eye is on: the selected row while editing,
 	// otherwise the row nearest the input.
@@ -89,7 +96,7 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 		if item.HasImages {
 			maxContentWidth -= lipgloss.Width("[Image] ")
 		}
-		if i == hintIdx {
+		if i == hintIdx && (width >= 32 || selectedIdx >= 0) {
 			maxContentWidth -= lipgloss.Width(hint) + 2
 		}
 
@@ -107,10 +114,10 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 		sb.WriteString(line + "\n")
 	}
 
-	if endIdx < len(items) {
+	if showOverflow && endIdx < len(items) {
 		sb.WriteString(overflowStyle.Render(fmt.Sprintf("   +%d more below", len(items)-endIdx)) + "\n")
 	}
-	if startIdx > 0 {
+	if showOverflow && startIdx > 0 {
 		return overflowStyle.Render(fmt.Sprintf("   +%d more above", startIdx)) + "\n" + sb.String()
 	}
 

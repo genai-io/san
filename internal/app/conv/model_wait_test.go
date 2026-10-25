@@ -14,14 +14,14 @@ func TestModelWaitQuietBreathAndSilence(t *testing.T) {
 	started := time.Now().Add(-17 * time.Second)
 	first := renderModelWait(0, 80, started, started, "")
 	peak := renderModelWait(3, 80, started, started, "")
-	if ansi.Strip(first) != "✦ 17s" || ansi.Strip(peak) != "✦ 17s" || first == peak {
-		t.Fatalf("normal wait must breathe without extra words or changing geometry: %q / %q", first, peak)
+	if ansi.Strip(first) != "✦ On it · 17s" || ansi.Strip(peak) != "✦ On it · 17s" || first == peak {
+		t.Fatalf("normal wait must breathe with fixed concise copy and stable geometry: %q / %q", first, peak)
 	}
 	old := time.Now().Add(-time.Minute)
 	if row := ansi.Strip(renderModelWait(0, 80, old, old, "")); row != "✦ Waiting for model · 1m 0s" {
 		t.Fatalf("prolonged silence needs a truthful explanation: %q", row)
 	}
-	if row := ansi.Strip(renderModelWait(0, 80, old, time.Now(), "")); row != "✦ 1m 0s" {
+	if row := ansi.Strip(renderModelWait(0, 80, old, time.Now(), "")); row != "✦ On it · 1m 0s" {
 		t.Fatalf("recent data must clear the explanation, not reset inference time: %q", row)
 	}
 	if row := ansi.Strip(renderModelWait(0, 80, old, old, "Retrying · attempt 2")); row != "✦ Retrying · attempt 2 · 1m 0s" {

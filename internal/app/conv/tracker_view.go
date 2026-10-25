@@ -21,7 +21,7 @@ type TrackerListParams struct {
 	StreamActive bool
 	Width        int
 	Blockers     func(itemID string) []string
-	// CompletionShown keeps a successful worker visible until its notice is shown.
+	// CompletionShown keeps a terminal worker visible until its notice is shown.
 	// Nil treats completions as already announced.
 	CompletionShown func(taskID string) bool
 	// Executing reports whether the executor behind an item is running right
@@ -43,24 +43,32 @@ type TrackerListParams struct {
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
-// Successful workers leave after their notice is shown; finished plans stay until idle.
+// Terminal workers leave after their notice is shown; abnormal history is summarized.
+// Finished plans stay until idle.
 func RenderTrackerList(params TrackerListParams) string {
 	if len(params.Items) == 0 {
 		return ""
 	}
 
 	items := make([]*todo.Item, 0, len(params.Items))
+	history := 0
 	for _, t := range params.Items {
 		id := todo.BackgroundTaskID(t)
-		if id != "" && phaseOf(t, false) == itemFinished && (params.CompletionShown == nil || params.CompletionShown(id)) {
+		if id != "" && t.Status == todo.StatusCompleted && (params.CompletionShown == nil || params.CompletionShown(id)) {
+			if phaseOf(t, false) == itemAborted {
+				history++
+			}
 			continue
 		}
 		items = append(items, t)
 	}
 	plansDone, plans := PlanProgress(params.Items)
 
-	// Keep exceptions visible even when idle; only the plan waits for turn end.
-	if len(items) == 0 || (plansDone == len(items) && !params.StreamActive) {
+	// Completed plans may rest when idle, but history must not hide unfinished plans.
+	if !params.StreamActive && plansDone == len(items) {
+		items = nil
+	}
+	if len(items) == 0 && history == 0 {
 		return ""
 	}
 
@@ -72,11 +80,11 @@ func RenderTrackerList(params TrackerListParams) string {
 	if plans > 0 {
 		header += " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans))
 	}
-	sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
+	if len(items) > 0 {
+		sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
+	}
 
 	visible, hidden := visibleTrackerItems(items)
-	sb.WriteString(renderFoldedLine(hidden))
-
 	idWidth := itemIDWidth(visible)
 
 	// Query executor liveness only for visible rows; counts use recorded status.
@@ -139,6 +147,20 @@ func RenderTrackerList(params TrackerListParams) string {
 		sb.WriteString(kit.TruncateText(strings.TrimSuffix(line, "\n")+suffix, max(1, params.Width)) + "\n")
 	}
 
+	// Current identities lead; past work is a single quiet secondary entry.
+	// Share the overflow row rather than spending any of the eight task slots.
+	folded := strings.TrimSuffix(renderFoldedLine(hidden), "\n")
+	if history > 0 {
+		label := fmt.Sprintf("History · %d · /tasks", history)
+		prefix := "  "
+		if folded != "" && params.Width > lipgloss.Width(label)+5 {
+			prefix = kit.TruncateText(folded, params.Width-lipgloss.Width(label)-3) + " · "
+		}
+		folded = prefix + mutedStyle.Render(label)
+	}
+	if folded != "" {
+		sb.WriteString(kit.TruncateText(folded, max(1, params.Width)) + "\n")
+	}
 	return sb.String()
 }
 

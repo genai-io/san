@@ -48,7 +48,7 @@ func TestFailedToolBodiesRespectExpansion(t *testing.T) {
 			// A Bash failure also keeps its output's end, bounded in rows.
 			bounded := len(collapsed) <= 300
 			if name == "Bash" {
-				bounded = strings.Count(collapsed, "\n") <= setting.MaxBashPreviewLines+1
+				bounded = strings.Count(collapsed, "\n") <= setting.MaxBashPreviewLines+2 // output, omission marker, failure status
 			}
 			if !bounded || !strings.Contains(collapsed, "exit code 1") {
 				t.Errorf("%s nested=%v must show a bounded reason; rendered %d bytes", name, nested, len(collapsed))

@@ -485,10 +485,10 @@ const (
 // explanation still live (not yet committed to scrollback). The batch is what
 // makes the fixture realistic: both calls get a PreTool event, so the "current"
 // call is the *last* one tracked, not the one the modal is asking about.
-// hasWaitingRow reports whether view shows the bare-star waiting row.
+// hasWaitingRow reports the fixed normal waiting copy, with or without elapsed time.
 func hasWaitingRow(view string) bool {
 	return slices.ContainsFunc(strings.Split(ansi.Strip(view), "\n"), func(line string) bool {
-		return strings.TrimSpace(line) == "✦"
+		return strings.HasPrefix(strings.TrimSpace(line), "✦ On it")
 	})
 }
 

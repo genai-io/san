@@ -35,7 +35,7 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 		ToolCallID: "write-1", ToolName: "Write", InputBytes: 33051,
 	}})
 	view := inferenceView(&m, 80)
-	for _, want := range []string{"I will write the HTML now.", "a background task completed", "1m 52s"} {
+	for _, want := range []string{"I will write the HTML now.", "a background task completed", "On it · 1m 52s"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q in %q", want, view)
 		}
@@ -105,7 +105,7 @@ func TestInferenceProgressStopsBeforeToolExecution(t *testing.T) {
 func TestInferenceStatusIsBoundedAndDefersToModal(t *testing.T) {
 	p := RenderContext{StreamActive: true, Inferring: true, InferenceAttempt: 2,
 		StreamStartedAt: time.Now().Add(-112 * time.Second)}
-	for _, width := range []int{1, 20, 40, 80} {
+	for _, width := range []int{1, 20, 32, 40, 80, 100} {
 		p.Width = width
 		if row := RenderInferenceStatus(p); ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
 			t.Fatalf("generation row exceeds width %d: %q", width, row)

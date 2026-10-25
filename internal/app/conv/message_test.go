@@ -770,7 +770,7 @@ func TestRenderActiveContentKeepsSpinnerBetweenSteps(t *testing.T) {
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
 	}
 	p := RenderContext{Messages: msgs, CommittedCount: len(msgs), StreamActive: true, SpinnerView: "*", Width: 80}
-	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "✦" {
+	if got := strings.TrimSpace(stripANSI(RenderActiveContent(p))); got != "✦ On it" {
 		t.Errorf("between steps = %q, want the spinner", got)
 	}
 	p.StreamActive = false
@@ -1663,17 +1663,17 @@ func TestRenderToolCallsFreezesEveryRowUnderModalNamingNoCall(t *testing.T) {
 // turns into the reply, and once the reply streams the bullet rests.
 func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
-	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ On it" {
 		t.Fatalf("waiting on the first token should show the reasoning mark:\n%s", out)
 	}
 	for p.Frame = range 6 {
-		if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
+		if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ On it" {
 			t.Fatalf("frame %d: the waiting mark should breathe, not blink out:\n%s", p.Frame, out)
 		}
 	}
 	p.Thinking, p.ThinkingDisplay = "Inspecting repository docs", setting.ThinkingDisplayFull
 	p.Frame = 0
-	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.HasSuffix(strings.TrimSpace(out), "\n✦") {
+	if out := stripANSI(RenderAssistantMessage(p)); !strings.Contains(out, "Inspecting repository docs") || !strings.HasSuffix(strings.TrimSpace(out), "\n✦ On it") {
 		t.Fatalf("the wait should hold below streaming reasoning:\n%s", out)
 	}
 	p.Content = "streaming reply"
@@ -1686,11 +1686,11 @@ func TestRenderAssistantMessageWaitsOnTheReasoningMark(t *testing.T) {
 // reads as long rather than as stuck.
 func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
 	p := AssistantParams{StreamActive: true, IsLast: true, Width: 80}
-	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦" {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ On it" {
 		t.Fatalf("an unstamped wait should show no timer:\n%s", out)
 	}
 	p.WaitStartedAt = time.Now().Add(-12 * time.Second)
-	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ 12s" {
+	if out := stripANSI(RenderAssistantMessage(p)); strings.TrimSpace(out) != "✦ On it · 12s" {
 		t.Fatalf("a 12s wait should be timed:\n%s", out)
 	}
 }
@@ -1798,7 +1798,7 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4}}},
 	}
-	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "└ last 3 of 4 lines") {
+	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "  …\n") || strings.Contains(out, "last 3 of") {
 		t.Errorf("a successful command should show its bounded tail and real count:\n%s", out)
 	}
 	succeeded.BashPreviewLines = 4

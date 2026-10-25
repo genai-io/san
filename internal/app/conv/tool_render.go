@@ -159,10 +159,10 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 
 // renderBashOutput hangs a shell command's output on the solid rail, wrapped.
 func renderBashOutput(content string, width int) string {
-	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return ""
 	}
+	content = strings.TrimSuffix(content, "\n")
 
 	var sb strings.Builder
 	for line := range strings.SplitSeq(content, "\n") {
@@ -274,11 +274,11 @@ func renderBashToolResultInline(data ToolResultData) string {
 		tail = details.Tail
 	}
 	// A short success keeps all output, with its last line closing the row.
-	// Longer successes retain a bounded tail and an explicit omitted-line count.
-	if !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
-		head, last := "", strings.TrimRight(tail, "\n")
+	// Longer successes retain a bounded tail with one quiet omission marker.
+	if !data.Expanded && !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
+		head, last := "", strings.TrimSuffix(tail, "\n")
 		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
-			head, last = last[:i], last[i+1:]
+			head, last = last[:i]+"\n", last[i+1:]
 		}
 		return renderBashOutput(head, data.Width) +
 			renderGutteredLine(nestedTrailerPrefix, strings.Repeat(" ", lipgloss.Width(nestedTrailerPrefix)), toolResultStyle, visibleLine(last), data.Width)
@@ -289,17 +289,12 @@ func renderBashToolResultInline(data ToolResultData) string {
 		sb.WriteString(renderBashOutput(content, data.Width))
 	case data.IsError:
 		// Failures retain a diagnostic tail independently of preview preference.
+		if lineCount > setting.MaxBashPreviewLines {
+			sb.WriteString(toolResultStyle.Render("  …") + "\n")
+		}
 		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
 	case details.TaskID == "" && content != "" && data.BashPreviewLines > 0:
-		preview := toolresult.LastLines(tail, data.BashPreviewLines)
-		sb.WriteString(renderOutputPreview(preview, data.BashPreviewLines, data.Width))
-		shown := 0
-		if preview != "" {
-			shown = strings.Count(strings.TrimSuffix(preview, "\n"), "\n") + 1
-		}
-		if shown < lineCount {
-			summary = fmt.Sprintf("last %d of %d lines", shown, lineCount)
-		}
+		return renderOutputPreview(tail, data.BashPreviewLines, data.Width, lineCount)
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -309,20 +304,25 @@ func renderBashToolResultInline(data ToolResultData) string {
 }
 
 // renderOutputPreview draws the last n lines of a running shell command's
-// output on the solid rail. Each line is cut to the width rather than wrapped,
-// so the preview is never taller than n rows; output shorter than n shows as
-// many rows as it has.
-func renderOutputPreview(output string, n, width int) string {
-	output = strings.TrimRight(output, "\n")
-	if n <= 0 || strings.TrimSpace(output) == "" {
+// output on the solid rail, preceded by one quiet omission marker when needed.
+// Each actual output line is cut to width, keeping the configured line budget.
+func renderOutputPreview(output string, n, width int, totalLines ...int) string {
+	if n <= 0 || output == "" {
 		return ""
+	}
+	lineCount := strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
+	if len(totalLines) > 0 {
+		lineCount = max(lineCount, totalLines[0])
 	}
 	if width <= 0 {
 		width = 80
 	}
 	room := max(1, width-lipgloss.Width(bashOutputPrefix))
 	var sb strings.Builder
-	for line := range strings.SplitSeq(toolresult.LastLines(output, n), "\n") {
+	if lineCount > n {
+		sb.WriteString(toolResultStyle.Render("  …") + "\n")
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(toolresult.LastLines(output, n), "\n"), "\n") {
 		// Plain text: an output's own color reset would end the dim tone midway.
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
 		sb.WriteString(toolResultStyle.Render(bashOutputPrefix+kit.TruncateText(line, room)) + "\n")
