@@ -4,7 +4,6 @@ package conv
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -165,14 +164,17 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			m.DropStreamingAssistant()
 			m.Stream.Stop()
 		}
-		return applyPreInfer(rt, m)
+		cmd := applyPreInfer(rt, m)
+		m.Stream.Attempt = max(1, e.Attempt)
+		return cmd
 	case sdkagent.InferenceUpdate:
 		return applyChunk(rt, m, e.Delta)
 	case sdkagent.InferenceEnd:
+		m.Stream.EndInference()
 		if e.Err != nil {
 			rt.OnInference(e.Response)
 			if !errors.Is(e.Err, context.Canceled) {
-				m.AddNotice(fmt.Sprintf("Inference attempt %d failed: %v", e.Attempt, e.Err))
+				m.AddNotice(FailedInferenceNotice(e.Attempt, e.Err))
 			}
 			return tea.Batch(rt.CommitMessages()...)
 		}
@@ -210,7 +212,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	m.Stream.Stop()
 	commitCmds := rt.CommitMessages()
 	msg := m.Append(core.ChatMessage{Role: core.ChatAssistant})
-	m.Stream = StreamState{Active: true, MessageID: msg.ID, StartedAt: started}
+	m.Stream = StreamState{Active: true, Inferring: true, MessageID: msg.ID, StartedAt: started}
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
@@ -223,9 +225,20 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	if !m.Stream.Active {
 		return nil
 	}
+	if chunk.Type == ai.EventProgress {
+		// Progress is display-only. It must never install a pending tool call
+		// or append parameter fragments to the assistant's text.
+		if m.Stream.Inferring && chunk.Progress != nil {
+			m.Stream.GeneratingTool = chunk.Progress.ToolName
+			m.Stream.GeneratedBytes = chunk.Progress.InputBytes
+		}
+		return nil
+	}
 	// The wire says which block a fragment belongs to, where San's own chunk
 	// had two named fields and could carry nothing else.
 	if chunk.Type == ai.EventBlockDelta && chunk.Block.Text != "" {
+		m.Stream.GeneratingTool = ""
+		m.Stream.GeneratedBytes = 0
 		switch chunk.Block.Type {
 		case ai.BlockText:
 			m.AppendStream(chunk.Block.Text, "")

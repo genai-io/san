@@ -26,13 +26,17 @@ type RenderContext struct {
 	InlinedResults inlinedToolResults
 
 	// ── Streaming + in-flight tool execution ────────────────────
-	StreamActive    bool
-	StreamWaiting   bool
-	StreamStartedAt time.Time
-	StreamMessageID string
-	BuildingTool    string
-	PendingCalls    []core.ToolCall
-	CurrentIdx      int
+	StreamActive     bool
+	StreamWaiting    bool
+	StreamStartedAt  time.Time
+	StreamMessageID  string
+	BuildingTool     string
+	Inferring        bool
+	InferenceAttempt int
+	GeneratingTool   string
+	GeneratedBytes   int
+	PendingCalls     []core.ToolCall
+	CurrentIdx       int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
@@ -278,6 +282,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingDisplay:      p.ThinkingDisplay,
 		ThinkingDuration:     msg.ThinkingDuration,
 		WaitStartedAt:        p.StreamStartedAt,
+		SuppressWaitingRow:   p.Inferring,
 	})
 
 	if len(msg.ToolCalls) == 0 {
@@ -520,9 +525,27 @@ func boundedWorkerRows(rows []string, width int) string {
 	return strings.Join(rows, "\n")
 }
 
+// RenderActiveContent combines the live body and its independent generation
+// status. The app budgets these separately when the terminal needs clipping.
 func RenderActiveContent(p RenderContext) string {
+	content := RenderActiveBody(p)
+	if status := RenderInferenceStatus(p); status != "" {
+		if strings.TrimSpace(content) == "" {
+			return status
+		}
+		return strings.TrimRight(content, "\n") + "\n" + status
+	}
+	return content
+}
+
+// RenderActiveBody omits generation status so the app can reserve its row above
+// the composer, even on a short terminal or during a scrollback handoff.
+func RenderActiveBody(p RenderContext) string {
 	p.Interactive = true
 	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
+	if p.StreamActive && p.Inferring {
+		return strings.TrimRight(content, "\n")
+	}
 	// A turn between steps (one committed, the next not yet streaming) keeps
 	// its spinner, or the row would vanish and come back.
 	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
@@ -533,6 +556,35 @@ func RenderActiveContent(p RenderContext) string {
 		})
 	}
 	return content
+}
+
+// RenderInferenceStatus is one live-only row. It is separate from assistant
+// content so the application can reserve it even when the body is clipped.
+func RenderInferenceStatus(p RenderContext) string {
+	if !p.StreamActive || !p.Inferring {
+		return ""
+	}
+	mark := kit.LiveStar(p.Frame)
+	label := "Generating response"
+	if p.GeneratingTool != "" || p.GeneratedBytes > 0 {
+		label = "Generating tool arguments"
+		if p.GeneratingTool != "" {
+			label = "Generating " + p.GeneratingTool + " arguments"
+		}
+		if p.GeneratedBytes > 0 {
+			label += fmt.Sprintf(" · %d bytes", p.GeneratedBytes)
+		}
+	}
+	if p.InferenceAttempt > 1 {
+		label = fmt.Sprintf("Retrying · attempt %d · %s", p.InferenceAttempt, label)
+	}
+	if p.DockedModalActive {
+		mark = ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
+		label = "Waiting for your response"
+	} else if elapsed := formatElapsedTime(p.StreamStartedAt); elapsed != "" {
+		label += " · " + elapsed
+	}
+	return kit.TruncateText(mark+ThinkingStyle.Render(" "+label), max(1, p.Width))
 }
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {

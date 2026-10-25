@@ -117,8 +117,8 @@ github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKK
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6 h1:bVgD1ZhvGbuNMIN9zcETz7URdDrH3c3ic4Isg93n7L0=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6/go.mod h1:J2/PHiN8RLwBV2Tp4OdkuKXMKwwA+7SDqK0yX5AJ46M=
-github.com/genai-io/sdk-go v0.9.2 h1:dtuQ/OVs18TcgHQg3CNcSHcrfx9h0GzSM156EoPy1II=
-github.com/genai-io/sdk-go v0.9.2/go.mod h1:PtlY9EjvpQC0D/UoxTcX/XCB1hqoEKAAn/7qpUnlH68=
+github.com/genai-io/sdk-go v0.9.3-0.20261025063223-aac2577d391a h1:8Z0vBiCynsp39uVB2ykTHc+EdW2iD7jBxjd8UOfQYiQ=
+github.com/genai-io/sdk-go v0.9.3-0.20261025063223-aac2577d391a/go.mod h1:PtlY9EjvpQC0D/UoxTcX/XCB1hqoEKAAn/7qpUnlH68=
 github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b h1:XMd4IEi7Ea1AIzmq7SytglOA+3+hgMhroAFPkqReNo0=
 github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

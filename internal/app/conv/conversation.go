@@ -13,6 +13,12 @@ type StreamState struct {
 	Waiting      bool      // Submission accepted by the UI; the first inference has not started.
 	StartedAt    time.Time // When the current wait for the model began; times the waiting row.
 	BuildingTool string
+	// Inferring is narrower than Active: a turn stays active while its tools
+	// run, but generation progress must stop at InferenceEnd.
+	Inferring      bool
+	Attempt        int
+	GeneratingTool string
+	GeneratedBytes int
 	// ThinkingActive follows the latest text/thinking delta. Responses may
 	// return to reasoning after commentary in the same assistant message.
 	ThinkingActive bool
@@ -23,7 +29,15 @@ func (s *StreamState) Stop() {
 	s.Active = false
 	s.Waiting = false
 	s.BuildingTool = ""
+	s.EndInference()
+	s.Attempt = 0
 	s.ThinkingActive = false
+}
+
+func (s *StreamState) EndInference() {
+	s.Inferring = false
+	s.GeneratingTool = ""
+	s.GeneratedBytes = 0
 }
 
 type ConversationModel struct {

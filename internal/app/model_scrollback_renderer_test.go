@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -854,11 +853,12 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			}
 			waitFor("❭ hi")
 			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
-			// The waiting row is the bare star; it blinks, so poll for an on frame.
+			// Inference status remains live after the first text, not just while
+			// waiting for the first token.
 			deadline := time.Now().Add(3 * time.Second)
 			for {
 				_, screen := terminal.snapshot()
-				if slices.ContainsFunc(strings.Split(screen, "\n"), func(line string) bool { return strings.TrimSpace(line) == "✦" }) {
+				if strings.Contains(screen, "Generating response") {
 					break
 				}
 				if time.Now().After(deadline) {

@@ -207,6 +207,17 @@ Submitting an idle turn immediately shows the response spinner while waiting
 for the first inference event. This waiting state is display-only; the agent's
 `InferenceStart` creates the actual assistant message. Input during the wait is
 queued, and cancellation or a failed send clears the spinner.
+During an inference, an independent live generation row remains visible after
+commentary text, thinking blocks, background notices, or progressively committed
+output. The final frame budget reserves its row even on a short terminal or
+while older rows are handed to native history. SDK tool-argument progress shows
+the tool name and received byte count,
+not parameter contents, and never installs or executes a pending call. Retries
+show their actual attempt number; `InferenceEnd` retires generation progress
+before pending tools run. A stopped failed turn explicitly marks its output as
+incomplete. This status is display-only and never enters native history or the
+model conversation. Regression coverage lives in
+`conv/inference_progress_test.go` and `model_inference_lifecycle_test.go`.
 `Session.Send` is nonblocking and runs before the submit handler returns, so an
 Esc cannot be followed by a delayed command sending the cancelled request.
 
