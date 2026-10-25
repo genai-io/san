@@ -103,6 +103,11 @@ not change `Agent.run_in_background` or task lifecycle metadata. See
   plus a truncation notice. Interactive capture and unfinished prompt text are
   bounded too. Background output streams directly to the task log, with the
   existing 512 KiB in-memory preview; stdout/stderr share their arrival order.
+- Shell progress and final display details use the same exact interleaved row
+  count, including an unfinished last row. SDK `Report` carries `BashDetails`
+  through `ToolUpdate` for the UI, not the model conversation. `TailTruncated`
+  distinguishes a bounded byte suffix from complete output; omission counts
+  must not be inferred from rounded counter text or retained newlines alone.
 
 ## Tests
 

@@ -231,8 +231,8 @@ messages. It does not add a persistent history shortcut hint when a turn ends;
 idle Ctrl+O and `/history` still open the transcript viewer.
 
 While a tool-call batch is pending, the conversation tail docks above the
-activity/input area, with spare rows above it. Long shell commands show only
-their header and elapsed/progress detail until expanded or completed. When the
+activity/input area, with spare rows above it. Long shell commands use the shared
+lossless inset command block beneath their header. When the
 description is empty, the header uses a shortened command preview; short
 commands that fit stay on the header. This reduces the transient content xterm
 can push into native history during a narrowing and shortening resize. Tool
@@ -240,11 +240,15 @@ headers reserve width for running detail, optional agent hints appear only when
 they fit, and expanded tool content wraps explicitly to the terminal width.
 Wrapping command bodies and string parameters preserves spaces, including
 spaces inside quoted arguments. Bash's configured output preview rolls over the
-last N actual output lines while running. When older lines are omitted, one quiet
-`…` row sits above that tail, outside the N-line budget; there is no `last N of M
-lines` caption. Settled collapsed output uses the same presentation. Trailing blank
-lines are real output lines, and expanded output/logs retain the full evidence.
-Failures keep their diagnostic tail and truthful failure status.
+last N actual output lines while running. A faint `│` output guide shares the
+command's `$` column, and omission markers belong inside that guide: `│ … (28)`
+means 28 whole output lines were omitted. Counts come from exact SDK progress
+metadata, never a rounded counter or the byte-capped tail alone. When the total
+is unknown or only part of a long row was cut, show `│ …` without guessing a
+count. The omission row is outside the N-line budget. Settled successes close
+with `└` on their last output row; running output stays open, and failures close
+on `└ failed · reason`. There is no extra line-count footer. Trailing blanks are
+real output lines, and expanded output/logs retain the full evidence.
 
 When foreground workers overflow the live tail, `conv.RenderActiveWorkers`
 reserves their identity rows and compact rows for ordinary pending tool siblings
@@ -259,6 +263,11 @@ Worker activity travels through per-call bounded buffers in `AgentToUI` and is
 applied as one poll batch. Model/mode/usage metadata is retained separately from
 recent tools; metadata is the worker's, not a fallback from the parent. Background
 progress shares the existing tracker row instead of adding a second row.
+Shell progress uses SDK `Report`/`ToolUpdate.Partial.Details` with `BashDetails`
+for exact line counts, byte-tail truncation, and recent output. It replaces the
+pending call's display snapshot without restarting its timer, adding transcript
+content, or accepting late reports for completed/foreign calls. Agent activity
+continues using the separate bounded bridge.
 
 The task tracker above the input uses one shared `Tasks` heading and shows at
 most eight task rows and one overflow summary. The heading appears only while

@@ -561,7 +561,7 @@ func TestRenderToolCallsShowsRunningShellCommand(t *testing.T) {
 	params.ToolCallsExpanded = false
 	params.ResultMap = map[string]ToolResultData{call.ID: {ToolName: "Bash", Content: "done"}}
 	done := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(done, "monitor transfer") || !strings.Contains(done, "└ 1 line") || strings.Contains(done, "28s") {
+	if !strings.Contains(done, "monitor transfer") || !strings.Contains(done, "└ completed") || strings.Contains(done, "28s") {
 		t.Fatalf("completed shell lost its command/result or retained its timer: %q", done)
 	}
 }
@@ -1116,7 +1116,7 @@ func TestRenderToolCallsNestsBashResultUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "Bash(git status)\n  │ on main\n  │ nothing to commit\n  └ 2 lines\n") {
+	if !strings.Contains(rendered, "Bash(git status)\n    │ on main\n    └ nothing to commit\n") {
 		t.Fatalf("Bash result should hang its expanded output on the solid rail above its summary, got %q", rendered)
 	}
 }
@@ -1140,7 +1140,7 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  │ test output\n  │ stderr detail\n  └ failed · exit code 1 · 2 lines\n") {
+	if !strings.Contains(rendered, "    │ test output\n    │ stderr detail\n    └ failed · exit code 1\n") {
 		t.Fatalf("Bash failure should move its error into the summary without counting it as output, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error: exit code 1") {
@@ -1164,7 +1164,7 @@ func TestRenderToolCallsKeepsBashOutputConnectorAcrossBlankLines(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  │ first\n  │ \n  │ third\n  └ failed · exit code 1 · 3 lines\n") {
+	if !strings.Contains(rendered, "    │ first\n    │ \n    │ third\n    └ failed · exit code 1\n") {
 		t.Fatalf("blank Bash output lines should retain the connector, got %q", rendered)
 	}
 }
@@ -1184,7 +1184,7 @@ func TestRenderToolCallsRestoresLegacyBashFailureSummary(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  │ first\n  │ \n  │ third\n  └ failed · exit code 1 · 3 lines\n") {
+	if !strings.Contains(rendered, "    │ first\n    │ \n    │ third\n    └ failed · exit code 1\n") {
 		t.Fatalf("legacy Bash failures without details should retain the concise summary, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error: exit code 1") {
@@ -1207,7 +1207,7 @@ func TestRenderToolCallsNestsBashFailureWithoutOutput(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "Bash(false)\n  └ failed · exit code 1\n") {
+	if !strings.Contains(rendered, "Bash(false)\n    └ failed · exit code 1\n") {
 		t.Fatalf("Bash failure without output should show only its reason in the summary, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error:") || strings.Contains(rendered, "no output") {
@@ -1232,7 +1232,7 @@ func TestRenderToolCallsSummarizesBashTimeout(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "  │ started\n  └ failed · timed out after 2s · 1 line\n") {
+	if !strings.Contains(rendered, "    │ started\n    └ failed · timed out after 2s\n") {
 		t.Fatalf("Bash timeout should use a concise reason and preserve output count, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Error:") || strings.Contains(rendered, "non-interactive") {
@@ -1249,7 +1249,7 @@ func TestRenderToolCallsKeepsBashConnectorWhenOutputIsCollapsed(t *testing.T) {
 		},
 		Width: 100,
 	}))
-	if !strings.Contains(rendered, "Bash(git status)\n  └ 2 lines\n") {
+	if !strings.Contains(rendered, "Bash(git status)\n    └ completed\n") {
 		t.Fatalf("collapsed Bash output should retain its connector, got %q", rendered)
 	}
 }
@@ -1742,19 +1742,19 @@ func TestRenderRecapItalicBody(t *testing.T) {
 	}
 }
 
-// A running shell row shows its output's last N lines on the solid rail;
-// output shorter than N shows as many rows as it has, and N = 0 shows none. A
-// failed one keeps its whole kept end, wrapped, whatever N. A command that
-// succeeded folds to its count unless its output fits in N lines, whose last
-// line then closes the row in place of the count.
+// A running shell row keeps an open guide over its last N output lines. A
+// settled success closes its last line; failures retain a wrapped diagnostic
+// tail and close on their truthful error status.
 func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	call := core.ToolCall{ID: "cmd", Name: "Bash", Input: `{"command":"make"}`}
 	output := "one\ntwo\nthree\nfour\n"
 	preview := func(p ToolCallsParams) []string {
 		var rows []string
 		for line := range strings.SplitSeq(stripANSI(RenderToolCalls(p)), "\n") {
-			if text, ok := strings.CutPrefix(line, bashOutputPrefix); ok {
-				rows = append(rows, text)
+			for _, prefix := range []string{"    │ ", "    └ "} {
+				if text, ok := strings.CutPrefix(line, prefix); ok && !strings.HasPrefix(text, "…") && !strings.HasPrefix(text, "failed") {
+					rows = append(rows, text)
+				}
 			}
 		}
 		return rows
@@ -1762,7 +1762,7 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 	running := ToolCallsParams{
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ToolStartedAt: map[string]time.Time{"cmd": time.Now().Add(-2 * time.Second)},
-		ToolProgress:  map[string]ToolProgress{"cmd": {Counter: "4 lines", Tail: output}},
+		ToolProgress:  map[string]ToolProgress{"cmd": {Counter: "4 lines", Tail: output, LineCount: 4}},
 	}
 	failed := ToolCallsParams{
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
@@ -1798,12 +1798,12 @@ func TestRenderToolCallsShellOutputPreview(t *testing.T) {
 		ToolCalls: []core.ToolCall{call}, Width: 80, BashPreviewLines: 3,
 		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4}}},
 	}
-	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "  …\n") || strings.Contains(out, "last 3 of") {
+	if got, out := preview(succeeded), stripANSI(RenderToolCalls(succeeded)); strings.Join(got, ",") != "two,three,four" || !strings.Contains(out, "    │ … (1)\n") || strings.Contains(out, "last 3 of") {
 		t.Errorf("a successful command should show its bounded tail and real count:\n%s", out)
 	}
 	succeeded.BashPreviewLines = 4
 	succeeded.ResultMap["cmd"] = ToolResultData{ToolName: "Bash", Content: output, Details: toolresult.BashDetails{LineCount: 4, Tail: output}}
-	if out := stripANSI(RenderToolCalls(succeeded)); !strings.HasSuffix(out, "  │ one\n  │ two\n  │ three\n  └ four\n") {
+	if out := stripANSI(RenderToolCalls(succeeded)); !strings.HasSuffix(out, "    │ one\n    │ two\n    │ three\n    └ four\n") {
 		t.Errorf("a success that fits the preview should stay shown, closed by its last line:\n%s", out)
 	}
 }
@@ -1815,12 +1815,12 @@ func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 	render := func(content string, d toolresult.BashDetails) string {
 		return stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", Content: content, Details: d, Width: 80}))
 	}
-	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "│") || !strings.Contains(cut, "└ 8000 lines") {
+	if cut := render("line 1\nline 2\n... (output truncated)", toolresult.BashDetails{LineCount: 8000}); strings.Contains(cut, "│") || !strings.Contains(cut, "└ completed") {
 		t.Errorf("cut output that succeeded should fold to its real count:\n%s", cut)
 	}
 	failed := stripANSI(renderBashToolResultInline(ToolResultData{ToolName: "Bash", IsError: true, Width: 80,
 		Content: "a\nb\nerr", Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 3, Tail: "a\nerr\nb\n"}}))
-	if !strings.Contains(failed, "│ err\n  │ b\n") || !strings.Contains(failed, "exit code 1") {
+	if !strings.Contains(failed, "│ err\n    │ b\n") || !strings.Contains(failed, "exit code 1") {
 		t.Errorf("a failure should keep its end as it interleaved:\n%s", failed)
 	}
 	if none := render("(no output)", toolresult.BashDetails{}); strings.Contains(none, "│") || !strings.Contains(none, "└ no output") {
@@ -1834,14 +1834,14 @@ func TestRenderBashResultUsesDetailsForCountAndEnd(t *testing.T) {
 // A preview line is cut to the width, never wrapped, so the preview is never
 // taller than its line count.
 func TestRenderOutputPreviewIsPlainText(t *testing.T) {
-	out := renderOutputPreview("\x1b[31mFAIL\x1b[0m rest", 3, 40)
+	out := renderOutputPreview("\x1b[31mFAIL\x1b[0m rest", 3, 40, toolresult.BashDetails{}, false)
 	if strings.Contains(out, "[31m") || strings.Contains(out, "[0m rest") {
 		t.Fatalf("the output's own escapes should not reach the preview: %q", out)
 	}
 }
 
 func TestRenderOutputPreviewCutsLongLines(t *testing.T) {
-	out := stripANSI(renderOutputPreview(strings.Repeat("x", 200), 3, 40))
+	out := stripANSI(renderOutputPreview(strings.Repeat("x", 200), 3, 40, toolresult.BashDetails{}, false))
 	if rows := strings.Split(strings.TrimSuffix(out, "\n"), "\n"); len(rows) != 1 || lipgloss.Width(rows[0]) > 40 || !strings.HasSuffix(rows[0], "…") {
 		t.Fatalf("a long line should be one cut row: %q", out)
 	}

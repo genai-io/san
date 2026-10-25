@@ -82,10 +82,6 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	// A shell command hangs on the dotted body rail and its output on a solid
-	// one that ends in the "└" summary, or, when every line is in view, in its
-	// last line.
-	bashOutputPrefix = "  │ "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -157,18 +153,67 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 	return sb.String()
 }
 
-// renderBashOutput hangs a shell command's output on the solid rail, wrapped.
-func renderBashOutput(content string, width int) string {
+// renderBashRow keeps the guide quieter than its content and aligned with "$".
+func renderBashRow(marker, content string, style lipgloss.Style, width int) string {
+	return strings.Repeat(" ", kit.CommandMarkerColumn(width)) +
+		lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled).Render(marker) + " " + style.Render(content) + "\n"
+}
+
+func bashOutputRoom(width int) int {
+	if width <= 0 {
+		width = 80
+	}
+	return max(1, width-1-kit.CommandMarkerColumn(width)-2)
+}
+
+func bashOutputLineCount(output string) int {
+	if output == "" {
+		return 0
+	}
+	return strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
+}
+
+// renderBashOutput wraps full output without discarding blank lines. A settled
+// result closes on its last physical row; a running body keeps the guide open.
+func renderBashOutput(content string, width int, style lipgloss.Style, closed bool) string {
 	if content == "" {
 		return ""
 	}
-	content = strings.TrimSuffix(content, "\n")
-
+	rows := strings.Split(xansi.Hardwrap(strings.ReplaceAll(visibleBashOutput(content), "\t", "    "), bashOutputRoom(width), true), "\n")
 	var sb strings.Builder
-	for line := range strings.SplitSeq(content, "\n") {
-		sb.WriteString(renderGutteredLine(bashOutputPrefix, bashOutputPrefix, toolResultStyle, visibleLine(line), width))
+	for i, row := range rows {
+		marker := "│"
+		if closed && i == len(rows)-1 {
+			marker = "└"
+		}
+		sb.WriteString(renderBashRow(marker, row, style, width))
 	}
 	return sb.String()
+}
+
+func visibleBashOutput(output string) string {
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = visibleLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Counts refer only to whole omitted output rows. A byte-capped partial line
+// still needs an omission marker, but must not invent an omitted-line count.
+func renderBashOmission(output, preview string, width int, details toolresult.BashDetails) string {
+	shown := bashOutputLineCount(preview)
+	if bashOutputLineCount(output) <= shown && details.LineCount <= shown && !details.TailTruncated {
+		return ""
+	}
+	label := "…"
+	if omitted := details.LineCount - shown; omitted > 0 {
+		counted := fmt.Sprintf("… (%d)", omitted)
+		if lipgloss.Width(counted) <= bashOutputRoom(width) {
+			label = counted
+		}
+	}
+	return renderBashRow("│", label, lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled), width)
 }
 
 func renderNestedToolTrailer(summary string, style lipgloss.Style) string {
@@ -242,90 +287,68 @@ func formatReadResultSummary(content string) string {
 }
 
 func renderBashToolResultInline(data ToolResultData) string {
-	content := strings.TrimSuffix(data.Content, "\n")
-	var summary string
-	style := toolResultStyle
-	// The details count the real output; the text may be cut, or stand in
-	// "(no output)" for none.
+	content := data.Content
 	details, hasDetails := data.Details.(toolresult.BashDetails)
+	if details.TaskID != "" {
+		body := ""
+		if data.Expanded {
+			body = renderBashOutput(content, data.Width, toolResultStyle, false)
+		}
+		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolResultStyle, true)
+	}
+
+	summary := ""
 	if data.IsError {
 		content, summary = formatBashFailure(content, data.Details)
-		style = errorStyle
 	}
-	lineCount := details.LineCount
-	if !hasDetails {
-		lineCount = strings.Count(content, "\n") + 1
-	}
-	switch {
-	case data.IsError:
-	case !hasDetails:
-		summary = formatLineCount(content)
-	case details.TaskID != "":
-		// Its text is how to reach the task (Ctrl-O shows it), not output.
-		summary = "started in background · " + details.TaskID
-	case details.LineCount == 0:
-		summary, content = "no output", ""
-	default:
-		summary = formatLineCountValue(details.LineCount)
-	}
-	// The tail is the output as it interleaved, the end the row showed live.
 	tail := content
 	if hasDetails && details.Tail != "" {
 		tail = details.Tail
 	}
-	// A short success keeps all output, with its last line closing the row.
-	// Longer successes retain a bounded tail with one quiet omission marker.
-	if !data.Expanded && !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
-		head, last := "", strings.TrimSuffix(tail, "\n")
-		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
-			head, last = last[:i]+"\n", last[i+1:]
+	if data.Expanded {
+		body := renderBashOutput(content, data.Width, toolResultStyle, !data.IsError)
+		if data.IsError {
+			return body + renderBashOutput(summary, data.Width, errorStyle, true)
 		}
-		return renderBashOutput(head, data.Width) +
-			renderGutteredLine(nestedTrailerPrefix, strings.Repeat(" ", lipgloss.Width(nestedTrailerPrefix)), toolResultStyle, visibleLine(last), data.Width)
-	}
-	var sb strings.Builder
-	switch {
-	case data.Expanded:
-		sb.WriteString(renderBashOutput(content, data.Width))
-	case data.IsError:
-		// Failures retain a diagnostic tail independently of preview preference.
-		if lineCount > setting.MaxBashPreviewLines {
-			sb.WriteString(toolResultStyle.Render("  …") + "\n")
+		if body == "" {
+			return renderBashOutput("no output", data.Width, toolResultStyle, true)
 		}
-		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
-	case details.TaskID == "" && content != "" && data.BashPreviewLines > 0:
-		return renderOutputPreview(tail, data.BashPreviewLines, data.Width, lineCount)
+		return body
 	}
-	if data.IsError && !data.Expanded {
-		summary = compactFailureReason(summary, data.Width)
+	if data.IsError {
+		// Error evidence keeps its diagnostic budget and wrapping; the failure
+		// footer, not the last diagnostic, closes the result.
+		preview := toolresult.LastLines(tail, setting.MaxBashPreviewLines)
+		return renderBashOmission(tail, preview, data.Width, details) +
+			renderBashOutput(preview, data.Width, toolResultStyle, false) +
+			renderBashOutput(compactFailureReason(summary, data.Width), data.Width, errorStyle, true)
 	}
-	sb.WriteString(renderNestedToolTrailer(summary, style))
-	return sb.String()
+	if hasDetails && details.LineCount == 0 || tail == "" {
+		return renderBashOutput("no output", data.Width, toolResultStyle, true)
+	}
+	if data.BashPreviewLines <= 0 {
+		return renderBashOutput("completed", data.Width, toolResultStyle, true)
+	}
+	return renderOutputPreview(tail, data.BashPreviewLines, data.Width, details, true)
 }
 
-// renderOutputPreview draws the last n lines of a running shell command's
-// output on the solid rail, preceded by one quiet omission marker when needed.
-// Each actual output line is cut to width, keeping the configured line budget.
-func renderOutputPreview(output string, n, width int, totalLines ...int) string {
+// renderOutputPreview keeps the last n actual output rows. Only a completed
+// success closes its last row; live previews retain an open guide.
+func renderOutputPreview(output string, n, width int, details toolresult.BashDetails, closed bool) string {
 	if n <= 0 || output == "" {
 		return ""
 	}
-	lineCount := strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
-	if len(totalLines) > 0 {
-		lineCount = max(lineCount, totalLines[0])
-	}
-	if width <= 0 {
-		width = 80
-	}
-	room := max(1, width-lipgloss.Width(bashOutputPrefix))
+	preview := toolresult.LastLines(output, n)
 	var sb strings.Builder
-	if lineCount > n {
-		sb.WriteString(toolResultStyle.Render("  …") + "\n")
-	}
-	for line := range strings.SplitSeq(strings.TrimSuffix(toolresult.LastLines(output, n), "\n"), "\n") {
-		// Plain text: an output's own color reset would end the dim tone midway.
+	sb.WriteString(renderBashOmission(output, preview, width, details))
+	lines := strings.Split(strings.TrimSuffix(preview, "\n"), "\n")
+	for i, line := range lines {
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
-		sb.WriteString(toolResultStyle.Render(bashOutputPrefix+kit.TruncateText(line, room)) + "\n")
+		marker := "│"
+		if closed && i == len(lines)-1 {
+			marker = "└"
+		}
+		sb.WriteString(renderBashRow(marker, kit.TruncateText(line, bashOutputRoom(width)), toolResultStyle, width))
 	}
 	return sb.String()
 }
@@ -333,27 +356,18 @@ func renderOutputPreview(output string, n, width int, totalLines ...int) string 
 func formatBashFailure(content string, details any) (string, string) {
 	if bashDetails, ok := details.(toolresult.BashDetails); ok {
 		content = trimBashErrorSuffix(content, bashDetails.Error)
-		return content, formatBashFailureSummary(bashDetails.Error, bashDetails.LineCount)
+		return content, formatBashFailureSummary(bashDetails.Error)
 	}
-
 	if output, reason, ok := splitBashFailureContent(content); ok {
-		lineCount := 0
-		if strings.TrimSuffix(output, "\n") != "" {
-			lineCount = strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
-		}
-		return output, formatBashFailureSummary(reason, lineCount)
+		return output, formatBashFailureSummary(reason)
 	}
-
-	return content, "failed · " + formatLineCount(content)
+	return content, "failed"
 }
 
-func formatBashFailureSummary(reason string, lineCount int) string {
+func formatBashFailureSummary(reason string) string {
 	summary := "failed"
 	if reason = formatBashFailureReason(reason); reason != "" {
 		summary += " · " + reason
-	}
-	if lineCount > 0 {
-		summary += " · " + formatLineCountValue(lineCount)
 	}
 	return summary
 }
@@ -371,10 +385,14 @@ func splitBashFailureContent(content string) (output, reason string, ok bool) {
 }
 
 func trimBashErrorSuffix(content, errorMessage string) string {
-	if content == "Error: "+errorMessage {
+	withoutTerminator := strings.TrimSuffix(content, "\n")
+	if withoutTerminator == "Error: "+errorMessage {
 		return ""
 	}
-	return strings.TrimSuffix(content, "\nError: "+errorMessage)
+	if output, ok := strings.CutSuffix(withoutTerminator, "\nError: "+errorMessage); ok {
+		return output
+	}
+	return content
 }
 
 func formatBashFailureReason(reason string) string {

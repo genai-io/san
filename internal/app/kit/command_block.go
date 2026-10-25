@@ -8,6 +8,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// CommandMarkerColumn is the shared column for shell input and output markers.
+// Very narrow terminals reduce the inset before giving up command content.
+func CommandMarkerColumn(width int) int {
+	if width <= 0 {
+		width = 80
+	}
+	available := max(1, width-1)
+	margin := min(2, max(0, available-5))
+	return margin + min(2, max(0, available-margin-5))
+}
+
 // RenderCommandBlock draws shell input as one inset rectangular surface. The
 // outer margin stays on the terminal canvas; every command row, including
 // explicit blank rows, fills the same background width. It adds no vertical
@@ -19,7 +30,7 @@ func RenderCommandBlock(command string, width int) string {
 	available := max(1, width-1)
 	margin := min(2, max(0, available-5))
 	blockWidth := available - margin
-	leftPad := min(2, max(0, blockWidth-5))
+	leftPad := CommandMarkerColumn(width) - margin
 	promptWidth := min(2, max(0, blockWidth-leftPad-2))
 	contentWidth := max(1, blockWidth-leftPad-promptWidth-1)
 	outer := strings.Repeat(" ", margin)

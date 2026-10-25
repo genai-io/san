@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -818,7 +819,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 			sb.WriteString(appendRowDetail(row, detail))
 			if _, done := params.ResultMap[tc.ID]; !done && tool.IsShellTool(tc.Name) {
-				sb.WriteString(renderOutputPreview(params.ToolProgress[tc.ID].Tail, params.BashPreviewLines, params.Width))
+				progress := params.ToolProgress[tc.ID]
+				sb.WriteString(renderOutputPreview(progress.Tail, params.BashPreviewLines, params.Width,
+					toolresult.BashDetails{LineCount: progress.LineCount, TailTruncated: progress.TailTruncated}, false))
 			}
 		}
 

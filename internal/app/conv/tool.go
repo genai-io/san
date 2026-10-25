@@ -79,8 +79,10 @@ func (t *ToolExecState) ClearAwaitingApproval() {
 // ToolProgress is a running command's latest progress: its output counter
 // ("1.2k lines"), shown beside the timer, and its output's tail, shown below.
 type ToolProgress struct {
-	Counter string
-	Tail    string
+	Counter       string
+	Tail          string
+	LineCount     int
+	TailTruncated bool
 }
 
 // SetProgress records a running tool call's progress from its activity

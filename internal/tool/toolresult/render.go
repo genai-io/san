@@ -41,10 +41,11 @@ func LastLines(s string, n int) string {
 // lines as they interleaved, which the row keeps.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
-	Error     string `json:"error"`
-	LineCount int    `json:"lineCount"`
-	Tail      string `json:"tail,omitempty"`
-	TaskID    string `json:"taskId,omitempty"`
+	Error         string `json:"error"`
+	LineCount     int    `json:"lineCount"`
+	Tail          string `json:"tail,omitempty"`
+	TailTruncated bool   `json:"tailTruncated,omitempty"`
+	TaskID        string `json:"taskId,omitempty"`
 }
 
 // AgentDetails keeps display metadata out of the parent model's result text.

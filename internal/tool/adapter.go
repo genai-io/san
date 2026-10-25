@@ -135,18 +135,20 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 	if a.promptResponder != nil {
 		ctx = ContextWithBashPromptResponderProvider(ctx, a.promptResponder)
 	}
-	// A running command (Bash) reports its growing output through the same
-	// activity callback agent tools use: one message, the counter on its first
-	// line and the output's tail after it, which the receiver shows as the
-	// row's live counter and preview rather than as activity-feed lines.
-	if a.activityFn != nil {
-		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
-			ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64, tail string) {
-				if text := formatBashProgress(lines, bytes); text != "" {
-					a.activityFn(callID, text+"\n"+tail) // split by conv's SetProgress
-				}
+	// Shell output uses the SDK's display-only partial results, not activity
+	// strings: the rounded counter must not become the source of row counts.
+	if IsShellTool(a.inner.Name()) {
+		inherited := BashProgressFromContext(ctx)
+		reportCtx := ctx
+		ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64, tail string) {
+			agent.Report(reportCtx, agent.Result{
+				Content: ai.TextContent(formatBashProgress(lines, bytes)),
+				Details: toolresult.BashDetails{LineCount: lines, Tail: tail, TailTruncated: bytes > int64(len(tail))},
 			})
-		}
+			if inherited != nil {
+				inherited(lines, bytes, tail)
+			}
+		})
 	}
 	if IsAgentToolName(a.inner.Name()) {
 		if a.activityFn != nil {

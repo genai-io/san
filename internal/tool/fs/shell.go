@@ -111,7 +111,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	shell, err := t.resolve()
 	if err != nil {
-		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "")
+		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "", false)
 	}
 
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
@@ -130,7 +130,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out)
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out, false)
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -148,8 +148,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr outputCapture
-	// Count output as it streams so the UI can show a live line counter; when
-	// nothing is listening, tee returns the bare buffer and this costs nothing.
+	// Count the full interleaved stream independently of bounded model capture;
+	// the same totals drive both live progress and finished display metadata.
 	progress := &outputProgress{report: tool.BashProgressFromContext(ctx)}
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
@@ -172,11 +172,13 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount(), progress.lastTail())
+	lines, byteCount := progress.totals()
+	tail := progress.lastTail()
+	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, lines, tail, byteCount > int64(len(tail)))
 }
 
 // tail is the output's real end as it interleaved, retained for the finished row.
-func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string) toolresult.ToolResult {
+func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string, tailTruncated bool) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
@@ -188,9 +190,11 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
 	// Retain the real interleaved end even when model-facing output is cut.
+	retainedTail := toolresult.LastLines(tail, previewTailLines)
 	details := toolresult.BashDetails{
-		LineCount: lineCount,
-		Tail:      toolresult.LastLines(tail, previewTailLines),
+		LineCount:     lineCount,
+		Tail:          retainedTail,
+		TailTruncated: len(retainedTail) < len(tail) || tailTruncated,
 	}
 
 	// Build CC-compatible structured response for hooks

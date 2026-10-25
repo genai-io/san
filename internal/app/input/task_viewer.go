@@ -144,6 +144,7 @@ func (v *TaskViewer) rebuild() {
 	if !v.active || v.confirm {
 		return
 	}
+	previousSelection := v.selected
 	if !v.detail {
 		v.selectVisible()
 	}
@@ -240,6 +241,22 @@ func (v *TaskViewer) rebuild() {
 	}
 	v.body.SetContent(ansi.Wrap(strings.Join(lines, "\n"), max(1, v.width-2), " "))
 	v.body.SetYOffset(offset)
+	// Preserve deliberate page scrolling unless rebuilding changed selection.
+	if !v.detail && v.selected != previousSelection {
+		v.ensureSelectionVisible()
+	}
+}
+
+func (v *TaskViewer) ensureSelectionVisible() {
+	row, ok := v.rowOffsets[v.selected]
+	if !ok {
+		return
+	}
+	if row < v.body.YOffset() {
+		v.body.SetYOffset(row)
+	} else if row >= v.body.YOffset()+v.body.Height() {
+		v.body.SetYOffset(row - v.body.Height() + 1)
+	}
 }
 func (v *TaskViewer) close() { *v = TaskViewer{viewID: v.viewID} }
 
@@ -358,12 +375,7 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		if index >= 0 && index < len(items) {
 			v.selected = items[index].ID
 			v.rebuild()
-			row := v.rowOffsets[v.selected]
-			if row < v.body.YOffset() {
-				v.body.SetYOffset(row)
-			} else if row >= v.body.YOffset()+v.body.Height() {
-				v.body.SetYOffset(row - v.body.Height() + 1)
-			}
+			v.ensureSelectionVisible()
 		}
 	case "pgup":
 		v.body.PageUp()
