@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
@@ -58,13 +59,14 @@ type SubagentSessionStore interface {
 }
 
 type runConfig struct {
-	config      *AgentConfig
-	provider    llm.Provider // provider this run talks to (parent's, or a routed vendor)
-	modelID     string
-	maxSteps    int
-	displayName string
-	brief       system.SubagentBrief // identity/charter for this run; immutable
-	permMode    PermissionMode
+	disabledTools map[string]bool
+	config        *AgentConfig
+	provider      llm.Provider // provider this run talks to (parent's, or a routed vendor)
+	modelID       string
+	maxSteps      int
+	displayName   string
+	brief         system.SubagentBrief // identity/charter for this run; immutable
+	permMode      PermissionMode
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
@@ -173,6 +175,9 @@ func (e *Executor) ParentModelID() string {
 // SubagentStart hook carried. Cancelled runs persist their conversation and
 // partial output for inspection.
 func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
+	if req.ResumeTaskID != "" {
+		return nil, fmt.Errorf("continuation requires background execution")
+	}
 	if req.ParentToolCallID == "" {
 		req.ParentToolCallID = core.ToolCallIDFromContext(ctx)
 	}
@@ -189,11 +194,6 @@ func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentRes
 	e.fireSubagentStart(run.req, run.hookID)
 
 	result, err := e.executePreparedRun(ctx, run)
-	if err != nil && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
-		run.cfg.provider = e.provider
-		run.cfg.modelID = e.parentModelID
-		result, err = e.executePreparedRun(ctx, run)
-	}
 	if err != nil {
 		if unfinished := e.buildUnfinishedAgentResult(run, result); unfinished != nil {
 			return unfinished, err
@@ -213,20 +213,89 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if e.interactions == nil {
 		req.OnQuestion = nil // Headless background workers have no question channel.
 	}
-	run, err := e.prepareRun(ctx, req)
+	var run *preparedRun
+	var agentTask *task.AgentTask
+	var err error
+	if req.ResumeTaskID != "" {
+		if _, ok := e.sessionStore.(liveSessionStore); !ok {
+			cancel()
+			return nil, fmt.Errorf("native continuation requires live session persistence")
+		}
+		found, ok := task.Default().Get(req.ResumeTaskID)
+		if ok {
+			agentTask, ok = found.(*task.AgentTask)
+		}
+		if !ok || agentTask.GetStatus().ParentSessionID != e.parentSessionID {
+			cancel()
+			return nil, fmt.Errorf("task not found in parent session")
+		}
+		if agentTask.IsRunning() {
+			cancel()
+			return nil, fmt.Errorf("task is currently running")
+		}
+		state, ok := agentTask.LaunchState().(*continuationState)
+		if !ok || state.sessionID == "" {
+			cancel()
+			return nil, fmt.Errorf("native continuation checkpoint unavailable")
+		}
+		if err = e.validateRequest(req); err != nil {
+			cancel()
+			return nil, err
+		}
+		prior := agentTask.GetStatus()
+		if req.ResumeAttempt > 0 && req.ResumeAttempt != prior.Attempt {
+			cancel()
+			return nil, fmt.Errorf("selected execution changed before continuation")
+		}
+		next := state.req
+		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
+		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
+		next.OnQuestion = req.OnQuestion
+		next.OnTextDelta, next.OnTextEnd = req.OnTextDelta, req.OnTextEnd
+		next.OnToolStart, next.OnToolResult = req.OnToolStart, req.OnToolResult
+		next.ActivityMaxChars = req.ActivityMaxChars
+		// Each explicit continuation gets a finite step budget. Retain the
+		// original budget unless the caller explicitly supplies a new one;
+		// configuration, model and permission policy remain frozen.
+		cfg := *state.cfg
+		if req.MaxSteps > 0 {
+			cfg.maxSteps = req.MaxSteps
+		}
+		run = &preparedRun{originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
+		run.req.TaskID = agentTask.GetID()
+		// Validate and claim native history before changing task state. A broken
+		// checkpoint is a failed continuation request, not another execution
+		// failure that wakes main and invites an unbounded recovery loop.
+		if err = e.openNative(run); err != nil {
+			cancel()
+			return nil, err
+		}
+		if _, err = agentTask.BeginAttemptAfter(prior.Attempt, e.parentSessionID, ctx, cancel); err != nil {
+			_ = run.native.Close()
+			cancel()
+			return nil, err
+		}
+	} else {
+		run, err = e.prepareRun(ctx, req)
+	}
 	if err != nil {
 		cancel()
 		return nil, err
 	}
 	identity := run.cfg.config.Name
 
-	agentTask := task.Default().CreateAgentTask(
-		generateShortID(),
-		identity,
-		req.Description,
-		ctx,
-		cancel,
-	)
+	if agentTask == nil {
+		agentTask = task.Default().CreateAgentTask(
+			generateShortID(),
+			identity,
+			req.Description,
+			ctx,
+			cancel,
+		)
+		state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: agentTask.GetID()}
+		run.checkpoint = state
+		agentTask.SetLaunchState(state)
+	}
 	agentTask.SetIdentity(identity, "")
 	agentTask.SetPermissionMode(string(run.cfg.permMode))
 
@@ -236,10 +305,17 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		agentTask.SetLiveView(msg)
 	}
 
+	generation := agentTask.GetStatus().Attempt
 	go func() {
 		defer cancel()
 
 		result, err := e.runPrepared(ctx, run)
+		if run.native != nil {
+			agentTask.SetInspectionFile(run.native.TranscriptPath())
+		}
+		if run.checkpoint != nil {
+			agentTask.SetIdentity(identity, run.checkpoint.sessionID)
+		}
 		if err != nil {
 			// A cancelled run still returns its partial work — keep it in the
 			// task output and record its persisted session for inspection.
@@ -248,11 +324,13 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
 				}
 				agentTask.SetIdentity(identity, result.AgentID)
-				agentTask.SetOutputFile(result.TranscriptPath)
+				if run.native == nil {
+					agentTask.SetOutputFile(result.TranscriptPath)
+				}
 				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
-			agentTask.Complete(err)
+			agentTask.CompleteAttempt(generation, err)
 			return
 		}
 
@@ -261,13 +339,15 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		}
 
 		agentTask.SetIdentity(identity, result.AgentID)
-		agentTask.SetOutputFile(result.TranscriptPath)
+		if run.native == nil {
+			agentTask.SetOutputFile(result.TranscriptPath)
+		}
 		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 
 		if result.Success {
-			agentTask.Complete(nil)
+			agentTask.CompleteAttempt(generation, nil)
 		} else {
-			agentTask.Complete(fmt.Errorf("%s", result.Error))
+			agentTask.CompleteAttempt(generation, fmt.Errorf("%s", result.Error))
 		}
 	}()
 
@@ -340,6 +420,16 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 	}
 
+	// Freeze mutable registry/approval-time configuration, including lazily
+	// loaded prompt content. Continuation must not observe later policy edits.
+	config = &AgentConfig{
+		Name: config.Name, Description: config.Description, Color: config.Color,
+		WhenToUse: config.WhenToUse, Model: config.Model, PermissionMode: config.PermissionMode,
+		AllowTools: slices.Clone(config.AllowTools), DenyTools: slices.Clone(config.DenyTools),
+		Skills: slices.Clone(config.Skills), SystemPrompt: config.GetSystemPrompt(),
+		MaxSteps: config.MaxSteps, Source: config.Source, McpServers: slices.Clone(config.McpServers),
+		displayOnly: config.displayOnly,
+	}
 	permMode := e.requestPermissionMode(config, req)
 	displayName := displayAgentName(config.Name)
 
@@ -357,13 +447,14 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 	}
 
 	return &runConfig{
-		config:      config,
-		provider:    provider,
-		modelID:     modelID,
-		maxSteps:    maxSteps,
-		displayName: displayName,
-		brief:       e.buildBrief(config, permMode),
-		permMode:    permMode,
+		disabledTools: e.disabledToolsSnapshot(),
+		config:        config,
+		provider:      provider,
+		modelID:       modelID,
+		maxSteps:      maxSteps,
+		displayName:   displayName,
+		brief:         e.buildBrief(config, permMode),
+		permMode:      permMode,
 	}, nil
 }
 
@@ -397,7 +488,20 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	if e.mcpManager != nil {
 		mcpGetter = e.mcpManager.ToolSchemas
 	}
-	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
+	disabled := make(map[string]bool, len(rc.disabledTools))
+	for name, blocked := range rc.disabledTools {
+		if blocked {
+			disabled[name] = true
+		}
+	}
+	// Original prohibitions remain in force, and newer global disables may
+	// tighten a continuation. Re-enabling a tool never widens its old policy.
+	for name, blocked := range e.disabledToolsSnapshot() {
+		if blocked {
+			disabled[name] = true
+		}
+	}
+	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), disabled, mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil)
 	brief := rc.brief
 	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
@@ -455,7 +559,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		System:        sys,
 		Tools:         tools,
 		Gate:          gate,
-		CompactFunc:   subagentCompactFunc(llmClient, e.taskPrompt(rc, run.req)),
+		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt),
 		MaxSteps:      rc.maxSteps,
 		OutboxBuf:     -1,
 		OnEvent:       onEvent,

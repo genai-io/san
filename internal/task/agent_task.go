@@ -29,15 +29,20 @@ type AgentTask struct {
 	ctx    context.Context    // Task context
 	cancel context.CancelFunc // Cancel function
 
-	mu             sync.RWMutex     // Protects mutable fields
+	mu             sync.RWMutex // Protects mutable fields
+	attempt        int
+	attempts       []AttemptInfo
+	attemptStart   time.Time
+	inspectionFile string // Native transcript fallback; never receives task-log records.
+	finishing      bool
+	attemptOutput  bytes.Buffer
+	launchState    any
 	permissionMode string           // Effective mode resolved before the worker starts.
-	output         bytes.Buffer     // Collected output from the agent
 	progress       string           // Latest non-metadata activity for the live tracker.
 	outputErr      string           // First output-log failure; a nonempty path alone is not proof of durability.
 	liveView       string           // Current structured progress, if the caller supplies one.
 	liveRender     func(int) string // Optional width-aware live renderer.
 	done           chan struct{}    // Closed when task completes
-	doneOnce       sync.Once        // Guards done channel close
 }
 
 // Verify AgentTask implements BackgroundTask
@@ -47,15 +52,17 @@ var _ BackgroundTask = (*AgentTask)(nil)
 func NewAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc, outputPath string) *AgentTask {
 	outputFile, outputErr := initOutputFile(outputPath)
 	task := &AgentTask{
-		ID:          id,
-		AgentName:   agentName,
-		Description: description,
-		Status:      StatusRunning,
-		StartTime:   time.Now(),
-		OutputFile:  outputFile,
-		ctx:         ctx,
-		cancel:      cancel,
-		done:        make(chan struct{}),
+		attempt:      1,
+		attemptStart: time.Now(),
+		ID:           id,
+		AgentName:    agentName,
+		Description:  description,
+		Status:       StatusRunning,
+		StartTime:    time.Now(),
+		OutputFile:   outputFile,
+		ctx:          ctx,
+		cancel:       cancel,
+		done:         make(chan struct{}),
 	}
 	if outputErr != nil {
 		task.outputErr = outputErr.Error()
@@ -122,7 +129,7 @@ func (t *AgentTask) SetOutputFile(path string) {
 func (t *AgentTask) GetOutputFile() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return usableOutputPath(t.OutputFile, t.outputErr)
+	return t.inspectionPathLocked()
 }
 
 // GetID returns the unique task identifier
@@ -143,7 +150,7 @@ func (t *AgentTask) GetDescription() string {
 // AppendOutput appends data to the output buffer
 func (t *AgentTask) AppendOutput(data []byte) {
 	t.mu.Lock()
-	appendCapped(&t.output, data)
+	appendCapped(&t.attemptOutput, data)
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
@@ -213,7 +220,7 @@ func (t *AgentTask) RenderLiveView(width int) string {
 func (t *AgentTask) GetOutput() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return t.output.String()
+	return t.attemptOutput.String()
 }
 
 // Complete marks the task as completed and notifies subscribers.
@@ -236,14 +243,32 @@ func (t *AgentTask) markKilled() { t.finalize(StatusKilled, "") }
 // finalize is AgentTask's single terminal transition; see BashTask.finalize for
 // the invariant it enforces and why.
 func (t *AgentTask) finalize(status TaskStatus, errText string) {
+	t.finalizeAttempt(0, status, errText)
+}
+
+func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText string) {
 	t.mu.Lock()
-	if t.Status != StatusRunning {
+	if t.Status != StatusRunning || (generation != 0 && generation != t.attempt) {
 		t.mu.Unlock()
 		return
 	}
+	generation = t.attempt
 	t.Status = status
 	t.Error = errText
 	t.EndTime = time.Now()
+	t.attempts = append(t.attempts, AttemptInfo{Attempt: t.attempt, Status: status, StartTime: t.attemptStart, EndTime: t.EndTime, Error: errText, Output: t.attemptOutput.String()})
+	// Retain every attempt's metadata, but bound aggregate snapshot output.
+	remaining := maxOutputBufferSize
+	for i := len(t.attempts) - 1; i >= 0; i-- {
+		output := t.attempts[i].Output
+		if len(output) > remaining {
+			output = strings.Clone(output[len(output)-remaining:])
+		}
+		t.attempts[i].Output = output
+		remaining -= len(output)
+	}
+	done := t.done
+	t.finishing = true
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
@@ -252,12 +277,16 @@ func (t *AgentTask) finalize(status TaskStatus, errText string) {
 		Event:  "task.completed",
 		Status: string(status),
 		Metadata: map[string]any{
-			"error": errText,
+			"attempt": generation,
+			"error":   errText,
 		},
 	})
 
-	t.doneOnce.Do(func() { close(t.done) })
 	notifyTaskCompleted(t.GetStatus())
+	t.mu.Lock()
+	t.finishing = false
+	close(done)
+	t.mu.Unlock()
 }
 
 // IsRunning returns true if the task is still running
@@ -270,8 +299,11 @@ func (t *AgentTask) IsRunning() bool {
 // WaitForCompletion waits until the task completes or timeout.
 // Returns true if completed, false if timeout.
 func (t *AgentTask) WaitForCompletion(timeout time.Duration) bool {
+	t.mu.RLock()
+	done := t.done
+	t.mu.RUnlock()
 	select {
-	case <-t.done:
+	case <-done:
 		return true
 	case <-time.After(timeout):
 		return false
@@ -280,19 +312,16 @@ func (t *AgentTask) WaitForCompletion(timeout time.Duration) bool {
 
 // Stop gracefully stops the task by canceling the context
 func (t *AgentTask) Stop() error {
-	if t.cancel != nil {
-		t.cancel()
-	}
-	return nil
+	return t.StopAttempt(t.GetStatus().Attempt)
 }
 
 // Kill forcefully terminates the task
 func (t *AgentTask) Kill() error {
-	if t.cancel != nil {
-		t.cancel()
+	info := t.GetStatus()
+	if info.Status != StatusRunning {
+		return nil
 	}
-	t.markKilled()
-	return nil
+	return t.KillAttempt(info.Attempt)
 }
 
 // GetStatus returns the current task status info
@@ -301,6 +330,8 @@ func (t *AgentTask) GetStatus() TaskInfo {
 	defer t.mu.RUnlock()
 
 	return TaskInfo{
+		Attempt:         t.attempt,
+		Attempts:        append([]AttemptInfo(nil), t.attempts...),
 		ParentSessionID: t.parentSessionID,
 
 		ID:             t.ID,
@@ -310,8 +341,8 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		StartTime:      t.StartTime,
 		EndTime:        t.EndTime,
 		Error:          t.Error,
-		Output:         t.output.String(),
-		OutputFile:     usableOutputPath(t.OutputFile, t.outputErr),
+		Output:         t.attemptOutput.String(),
+		OutputFile:     t.inspectionPathLocked(),
 		OutputError:    t.outputErr,
 		Progress:       t.progress,
 		AgentName:      t.AgentName,
@@ -333,5 +364,7 @@ func (t *AgentTask) UpdateProgress(roundCount, tokenUsage int) {
 
 // GetContext returns the task's context
 func (t *AgentTask) GetContext() context.Context {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.ctx
 }

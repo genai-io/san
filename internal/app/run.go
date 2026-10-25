@@ -17,13 +17,35 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // Run routes to either print mode or interactive TUI.
 func Run(opts setting.RunOptions) error {
+	var m *model
+	// Services belong to the application, not an individual agent turn. Keep
+	// teardown here so print-mode success and errors clean up too, while the
+	// TUI still stops its runtime before services and closes its session last.
+	defer func() {
+		tasks := task.Default()
+		if m != nil {
+			m.StopAgentRuntime()
+			tasks = m.services.Task
+		}
+		if tasks != nil {
+			if err := tasks.StopServices(""); err != nil {
+				log.Logger().Sugar().Warnf("stop background services: %v", err)
+			}
+		}
+		if m != nil {
+			_ = m.services.Session.Close()
+		}
+	}()
+
 	if opts.Persona != "" {
 		if err := validatePersona(opts.Persona); err != nil {
 			return err
@@ -43,12 +65,11 @@ func Run(opts setting.RunOptions) error {
 		}
 	}
 
-	m, err := initModel(opts)
+	var err error
+	m, err = initModel(opts)
 	if err != nil {
 		return err
 	}
-
-	defer func() { m.StopAgentRuntime(); _ = m.services.Session.Close() }()
 
 	// Fresh sessions show the splash live above the input from launch and freeze
 	// it into scrollback on the first commit, so it stays visible immediately

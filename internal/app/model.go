@@ -43,6 +43,8 @@ type model struct {
 	workerMu *sync.Mutex // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
 	pendingMessages []pendingMessage
+	// A manual stop holds background-driven turns until real user input arrives.
+	backgroundNoticesHeld bool
 
 	// ── Sub-models (one per event source / concern) ─────────────
 	userInput input.Model // Source 1: user keyboard input
@@ -81,6 +83,7 @@ type model struct {
 	welcomePending bool
 
 	interactions interactionState // UI-owned FIFO; one active reply endpoint across prompt kinds.
+	tasks        taskViewerState  // session-scoped task browsing and action return path
 
 	// reviewerApprovals / reviewerEscalations count auto-review outcomes this
 	// session for the status bar: gray-zone tool calls the judge auto-approved

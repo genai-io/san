@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -23,12 +24,18 @@ import (
 )
 
 type preparedRun struct {
-	req         tool.AgentExecRequest
-	cfg         *runConfig
-	cwdMu       sync.RWMutex // Tool adapters read cwd from parallel goroutines.
-	cwd         string
-	system      core.System
-	sideEffects sync.Map // Each run owns handoffs, even when model call IDs repeat.
+	originalPrompt string
+	toolStarted    bool
+	priorFailure   string
+	native         *session.Session
+	history        []core.Message
+	checkpoint     *continuationState
+	req            tool.AgentExecRequest
+	cfg            *runConfig
+	cwdMu          sync.RWMutex // Tool adapters read cwd from parallel goroutines.
+	cwd            string
+	system         core.System
+	sideEffects    sync.Map // Each run owns handoffs, even when model call IDs repeat.
 	// Batch handoffs are owned by the turn goroutine. All sibling tools use
 	// the pre-batch cwd; the last cwd-changing call in request order wins,
 	// regardless of completion order.
@@ -123,6 +130,7 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 		}
 		r.recordUsage(event.Response)
 	case sdkagent.ToolStart:
+		r.toolStarted = true
 		if r.pendingTools == 0 {
 			r.batchTools = nil
 			r.batchCwd, r.batchCwdIdx = "", -1
@@ -174,12 +182,13 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &preparedRun{
-		req:       req,
-		cfg:       cfg,
-		cwd:       e.cwd,
-		startedAt: time.Now(),
-		hookID:    "a" + generateShortID(),
-		activity:  make([]string, 0, 16),
+		originalPrompt: e.taskPrompt(cfg, req),
+		req:            req,
+		cfg:            cfg,
+		cwd:            e.cwd,
+		startedAt:      time.Now(),
+		hookID:         "a" + generateShortID(),
+		activity:       make([]string, 0, 16),
 	}, nil
 }
 
@@ -191,7 +200,30 @@ func (e *Executor) logRunStart(run *preparedRun) {
 	)
 }
 
-func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*core.Result, error) {
+func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (out *core.Result, runErr error) {
+	if run.native == nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := e.openNative(run); err != nil {
+			return nil, err
+		}
+	}
+	if run.native != nil {
+		defer func() {
+			if run.checkpoint != nil {
+				run.checkpoint.cwd = run.currentCwd()
+			}
+			persistErr := errors.Join(run.native.Err(), run.native.Close())
+			if run.checkpoint != nil {
+				run.checkpoint.persistenceErr = persistErr
+			}
+			runErr = errors.Join(runErr, persistErr)
+		}()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var onToolExec func(string, map[string]any)
 	if run.req.OnActivity != nil {
 		run.streamActivity(fmt.Sprintf("Model: %s", run.cfg.modelID))
@@ -207,15 +239,24 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 			}
 		}
 	}
-	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, func(ev core.Event) {
+	onEvent := func(ev core.Event) {
+		if run.native != nil {
+			if _, stopped := ev.(core.AgentStopped); !stopped {
+				run.native.RecordEvent(ev)
+			}
+		}
 		run.forwardEvent(ctx, ev)
-	})
+	}
+	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, onEvent)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanupAgent()
 
-	if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
+	if run.req.ResumeTaskID != "" {
+		ag.SetMessages(run.history)
+		ag.Append(core.UserMessage(fmt.Sprintf("Continuation (previous execution: %s; current cwd: %s). Verify current filesystem/external state before retrying any interrupted tool with unknown outcome.\n", run.priorFailure, run.currentCwd())+run.req.Prompt, nil))
+	} else if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
 		return nil, err
 	}
 	if run.req.OnActivity != nil {
@@ -247,6 +288,21 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	}
 
 	result, err := ag.ThinkAct(ctx)
+	// One safe fallback, never an outer replay of a tool-bearing execution.
+	// Reuse the exact conversation and native writer; do not append the task
+	// or continuation instruction again.
+	if ctx.Err() == nil && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
+		messages := ag.Messages()
+		run.cfg.provider, run.cfg.modelID = e.provider, e.parentModelID
+		fallback, cleanupFallback, buildErr := e.buildAgent(ctx, run, onToolExec, onEvent)
+		if buildErr != nil {
+			return result, buildErr
+		}
+		defer cleanupFallback()
+		ag = fallback
+		ag.SetMessages(messages)
+		result, err = ag.ThinkAct(ctx)
+	}
 	if err != nil {
 		if result != nil {
 			return result, err
@@ -303,12 +359,17 @@ func (e *Executor) buildUnfinishedAgentResult(run *preparedRun, result *core.Res
 // run into an AgentResult. Both the success and cancelled paths share it —
 // they differ only in Success/Error.
 func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success bool, errMsg string) *AgentResult {
-	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
-		run.cfg.displayName,
-		run.cfg.modelID,
-		run.req.Description,
-		result.Messages,
-	)
+	var agentSessionID, agentTranscriptPath string
+	if run.native != nil {
+		agentSessionID, agentTranscriptPath = run.native.ID(), run.native.TranscriptPath()
+	} else {
+		agentSessionID, agentTranscriptPath = e.persistSubagentSession(
+			run.cfg.displayName,
+			run.cfg.modelID,
+			run.req.Description,
+			result.Messages,
+		)
+	}
 	e.fireSubagentStop(run.req, run.hookID, agentTranscriptPath, result.Content)
 
 	return &AgentResult{

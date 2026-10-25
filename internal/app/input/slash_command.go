@@ -94,6 +94,7 @@ type SlashCommandEnv struct {
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
 	SpinnerTickCmd          func() tea.Cmd
 	OpenHistory             func() tea.Cmd
+	OpenTasks               func() tea.Cmd
 	ResetCronQueue          func()
 	ForkSession             func() (originalSessionID string, err error)
 	RunSelfLearnDemo        func()
@@ -125,6 +126,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"fork":           (*SlashCommandController).handleForkCommand,
 		"resume":         (*SlashCommandController).handleResumeCommand,
 		"history":        (*SlashCommandController).handleHistoryCommand,
+		"tasks":          (*SlashCommandController).handleTasksCommand,
 		"help":           (*SlashCommandController).handleHelpCommand,
 		"tools":          (*SlashCommandController).handleToolCommand,
 		"skills":         (*SlashCommandController).handleSkillCommand,
@@ -407,6 +409,13 @@ func (c *SlashCommandController) handleConfigCommand(ctx context.Context, args s
 // handleHistoryCommand opens the same transcript viewer as idle Ctrl+O.
 func (c *SlashCommandController) handleHistoryCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	return "", c.env.OpenHistory(), nil
+}
+
+func (c *SlashCommandController) handleTasksCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if c.env.OpenTasks == nil {
+		return "Background task viewer is unavailable.", nil, nil
+	}
+	return "", c.env.OpenTasks(), nil
 }
 
 // handleAutopilotCommand opens the /autopilot copilot config popup.

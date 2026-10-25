@@ -122,7 +122,7 @@ Both were measured in an empty directory with no project instructions (`AGENTS.m
 
 San is **~9x leaner** in context before any work begins.
 
-Only the tools that ship enabled are counted. Seven of the sixteen registered tools — `Cron`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `SendMessage`, `AgentStop`, `Workflow` — are disabled by default precisely so their schemas do not tax every conversation; enabling the first six from `/tools` raised the total to ~3.8k tokens when measured, before `Workflow` existed.
+Only the tools that shipped enabled at measurement time are counted. Seven of the sixteen registered tools — `Cron`, `TaskCreate`, `TaskGet`, `TaskUpdate`, `SendMessage`, `AgentStop`, `Workflow` — were disabled by default; enabling the first six from `/tools` raised the total to ~3.8k tokens when measured, before `Workflow` existed. These are historical figures: `SendMessage` is now enabled by default so main can steer ordinary background workers without joining a group; current schemas and token totals have changed.
 
 **Method**
 

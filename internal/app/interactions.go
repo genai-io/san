@@ -79,6 +79,9 @@ func (m *model) pruneInteractions() {
 
 func (m *model) advanceInteractions() tea.Cmd {
 	m.pruneInteractions()
+	if m.userInput.Tasks.ActionPending() || m.tasks.stopID != 0 {
+		return nil
+	}
 	if m.interactions.active == nil {
 		if _, overlay := m.activeOverlay(); overlay || len(m.interactions.queue) == 0 {
 			return nil
@@ -159,12 +162,17 @@ func (m *model) finishInteraction() {
 			m.userInput.Secret.Hide()
 		}
 	}
+	finished := m.interactions.active
 	m.interactions.active = nil
 	m.interactions.permission = nil
 	m.interactions.shown = false
+	if finished != nil && finished == m.tasks.review {
+		m.resumeTaskViewer()
+	}
 }
 
 func (m *model) closeInteractions() {
+	m.hideTaskViewer()
 	m.conv.AgentToUI.Close()
 	cancelInteraction(m.interactions.active)
 	for _, req := range m.interactions.queue {

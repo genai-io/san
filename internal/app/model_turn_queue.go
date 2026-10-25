@@ -146,18 +146,28 @@ func (m *model) showNoticeLine(n mainNotice) core.Message {
 		if m.taskCompletionsShown == nil {
 			m.taskCompletionsShown = make(map[string]bool)
 		}
-		m.taskCompletionsShown[n.FinishedTaskID] = true
+		m.taskCompletionsShown[taskCompletionKey(n.FinishedTaskID, n.FinishedAttempt)] = true
 	}
 	return message
 }
 
+func taskCompletionKey(id string, attempt int) string {
+	if attempt <= 0 {
+		return id
+	}
+	return fmt.Sprintf("%s#%d", id, attempt)
+}
+
 func (m *model) taskCompletionShown(id string) bool {
-	if id == "" || m.taskCompletionsShown[id] || m.services.Task == nil {
+	if id == "" || m.services.Task == nil {
 		return true
 	}
 	// Resumed records whose workers are gone have no live notice to wait for.
-	_, known := m.services.Task.Get(id)
-	return !known
+	worker, known := m.services.Task.Get(id)
+	if !known {
+		return true
+	}
+	return m.taskCompletionsShown[taskCompletionKey(id, worker.GetStatus().Attempt)]
 }
 
 // mainNoticeMsg wraps one Source-2 notice for the Update loop.

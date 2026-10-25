@@ -38,7 +38,8 @@ type TrackerListParams struct {
 	// the status palette.
 	AgentColors map[string]string
 	// WorkerStatus provides display-only live activity and output-log health.
-	WorkerStatus func(taskID string) task.TaskInfo
+	AwaitingApproval map[string]bool
+	WorkerStatus     func(taskID string) task.TaskInfo
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
@@ -81,6 +82,13 @@ func RenderTrackerList(params TrackerListParams) string {
 	// Query executor liveness only for visible rows; counts use recorded status.
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
+		waiting := t.Status == todo.StatusInProgress && todo.BackgroundTaskID(t) != "" && params.AwaitingApproval[todo.BackgroundTaskID(t)]
+		if waiting && params.WorkerStatus != nil {
+			waiting = params.WorkerStatus(todo.BackgroundTaskID(t)).Status == task.StatusRunning
+		}
+		if waiting {
+			phase = itemApproval
+		}
 		progress := ""
 		if phase == itemAborted {
 			progress = todo.BackgroundError(t)
@@ -92,7 +100,10 @@ func RenderTrackerList(params TrackerListParams) string {
 				if info.Error != "" {
 					progress = info.Error
 				}
-			} else {
+				if info.Status != task.StatusFailed && kit.IsRoutineStopReason(progress) {
+					progress = ""
+				}
+			} else if phase != itemFinished {
 				progress = info.Progress
 				if progress == "" {
 					// Structured callers may supply only LiveView.
@@ -163,10 +174,9 @@ func renderFoldedLine(hidden [itemFinished + 1]int) string {
 		{itemFinished, "completed"},
 	} {
 		if n := hidden[group.phase]; n > 0 {
+			// The combined group also contains deliberate stops; only an
+			// individual failure row, not this mixed count, warrants error red.
 			text := fmt.Sprintf("%d %s", n, group.label)
-			if group.phase == itemAborted {
-				text = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Render(text)
-			}
 			parts = append(parts, text)
 		}
 	}
@@ -181,6 +191,8 @@ func renderFoldedLine(hidden [itemFinished + 1]int) string {
 // how a finished item ended, and whether an executor is actually running it
 // into one exhaustive set, so each render branch answers to exactly one phase.
 type itemPhase int
+
+const itemApproval itemPhase = -1
 
 const (
 	itemWaiting  itemPhase = iota // nothing has started it
@@ -256,10 +268,15 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 	}
 
 	switch phase {
+	case itemApproval:
+		return renderItemLine(indent, mutedStyle.Render("●"), idTag, activeText(t), mutedStyle.Render("[awaiting approval]"), width)
 	case itemAborted:
 		abortedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		if detail := todo.BackgroundStatusDetail(t); detail == "stopped" || detail == "killed" || detail == todo.StatusDetailInterrupted {
+			abortedStyle = mutedStyle
+		}
 		detail := mutedStyle.Render("[" + todo.BackgroundStatusDetail(t) + "]")
-		return renderItemLine(indent, abortedStyle.Render("!"), idTag, subject, detail, width)
+		return renderItemLine(indent, abortedStyle.Render("●"), idTag, subject, detail, width)
 
 	case itemFinished:
 		detail := ""

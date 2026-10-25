@@ -65,6 +65,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		SideQuestion:            m.sideQuestion,
 		Recap:                   m.recapNow,
 		OpenHistory:             m.openHistory,
+		OpenTasks:               m.openTasks,
 		ResetAgentRuntime:       m.ResetAgentRuntime,
 		ClearScrollback:         m.clearScrollback,
 	}

@@ -52,7 +52,7 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 		"(50%)",
 		"●",
 		"Fix auth module",
-		"!",
+		"●",
 		"Fix payment module",
 		"[failed]",
 		"●",

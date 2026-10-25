@@ -60,6 +60,9 @@ func (t *ShellTool) RequiresPermission() bool {
 
 // PreparePermission prepares a permission request with command preview
 func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
+	if _, err := shellLifetime(params); err != nil {
+		return nil, err
+	}
 	command, err := tool.RequireString(params, "command")
 	if err != nil {
 		return nil, err
@@ -87,6 +90,10 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 // ExecuteApproved executes the command after user approval
 func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
+	lifetime, optionErr := shellLifetime(params)
+	if optionErr != nil {
+		return toolresult.NewErrorResult(t.Name(), optionErr.Error())
+	}
 
 	command := tool.GetString(params, "command")
 	description := tool.GetString(params, "description")
@@ -97,7 +104,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	// Handle background execution
 	if runBackground {
-		return t.executeBackground(ctx, command, description, cwd, timeout)
+		return t.executeBackground(ctx, command, description, cwd, timeout, lifetime)
 	}
 
 	// Create context with timeout
@@ -286,8 +293,34 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]any, cwd stri
 	return t.ExecuteApproved(ctx, params, cwd)
 }
 
+// shellLifetime validates options both before permission and before execution.
+func shellLifetime(params map[string]any) (task.Lifetime, error) {
+	raw, specified := params["lifetime"]
+	lifetime := task.LifetimeJob
+	if specified {
+		value, ok := raw.(string)
+		if !ok || (value != string(task.LifetimeJob) && value != string(task.LifetimeService)) {
+			return "", fmt.Errorf("lifetime must be 'job' or 'service'")
+		}
+		if !tool.GetBool(params, "run_in_background") {
+			return "", fmt.Errorf("lifetime requires run_in_background=true")
+		}
+		lifetime = task.Lifetime(value)
+	}
+	if lifetime == task.LifetimeService {
+		if _, exists := params["timeout"]; exists {
+			return "", fmt.Errorf("service lifetime cannot specify an execution timeout")
+		}
+	}
+	return lifetime, nil
+}
+
 // executeBackground runs the command in the background and returns immediately
-func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration) toolresult.ToolResult {
+func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration, lifetimes ...task.Lifetime) toolresult.ToolResult {
+	lifetime := task.LifetimeJob
+	if len(lifetimes) > 0 {
+		lifetime = lifetimes[0]
+	}
 	shell, err := t.resolve()
 	if err != nil {
 		return toolresult.ToolResult{
@@ -297,8 +330,14 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		}
 	}
 
-	// Create context with timeout for background task
-	taskCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	// Services are session-owned, not tied to a foreground turn or job deadline.
+	var taskCtx context.Context
+	var cancel context.CancelFunc
+	if lifetime == task.LifetimeService {
+		taskCtx, cancel = context.WithCancel(context.Background())
+	} else {
+		taskCtx, cancel = context.WithTimeout(context.Background(), timeout)
+	}
 
 	// Create command
 	cmd := shellCommand(taskCtx, shell, command, shellEnv(ctx))
@@ -346,6 +385,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 
 	// Register with task manager
 	bgTask := task.Default().CreateBashTask(ctx, cmd, command, description, cancel)
+	bgTask.SetLifetime(lifetime)
 
 	// Start goroutine to collect output and wait for completion
 	go func() {
@@ -358,6 +398,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 			close(drained)
 		}()
 		err := cmd.Wait()
+		contextErr := taskCtx.Err() // capture before drain delay and deferred cancel
 		bgTask.MarkReaped()
 		// A grandchild may inherit the pipe after its parent exits.
 		select {
@@ -376,7 +417,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		}
 
 		// Mark task as complete
-		bgTask.Complete(exitCode, err)
+		bgTask.CompleteWithContext(exitCode, err, contextErr, timeout)
 	}()
 
 	// Report how to stop the detached command. Where the platform gives the
@@ -384,7 +425,11 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	// call can stop it and every ordinary descendant without a control tool.
 	output := fmt.Sprintf("Task started in background.\nTask ID: %s\nPID: %d\nCommand: %s\nOutputFile: %s",
 		bgTask.ID, bgTask.PID, command, bgTask.OutputFile)
+	if lifetime == task.LifetimeService {
+		output += "\nLifetime: service (session-owned; no execution deadline). Startup is not health confirmation: explicitly run an appropriate startup health check before relying on this service. No health probe was executed automatically."
+	}
 	backgroundMeta := map[string]any{
+		"lifetime":    lifetime,
 		"taskId":      bgTask.ID,
 		"description": description,
 		"pid":         bgTask.PID,

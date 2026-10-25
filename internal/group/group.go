@@ -92,8 +92,9 @@ const (
 	Disbanded // the group directory is gone
 )
 
-// NoSendMessage ends every notice that this session is out of its group.
-const NoSendMessage = "; SendMessage is no longer available."
+// NoSendMessage ends notices that this session can no longer message group
+// members. Local worker messaging remains a separate capability.
+const NoSendMessage = "; group member messaging is no longer available."
 
 var (
 	ErrOnlineElsewhere = errors.New("this session is already online elsewhere")

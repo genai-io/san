@@ -41,6 +41,8 @@ type BashTask struct {
 	// atomic for the same reason as stopRequested.
 	reaped atomic.Bool
 
+	failure   FailureInfo
+	lifetime  Lifetime
 	mu        sync.RWMutex  // Protects mutable fields below
 	status    TaskStatus    // Current status
 	endTime   time.Time     // When the task ended (if completed)
@@ -62,6 +64,7 @@ func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.
 		ID:          id,
 		Command:     command,
 		Description: description,
+		lifetime:    LifetimeJob,
 		status:      StatusRunning,
 		PID:         cmd.Process.Pid,
 		StartTime:   time.Now(),
@@ -139,16 +142,64 @@ func (t *BashTask) GetOutput() string {
 // command that can send SIGTERM directly. Treat that graceful external
 // termination as stopped too. A timeout uses SIGKILL and remains a failure.
 func (t *BashTask) Complete(exitCode int, err error) {
+	t.CompleteWithContext(exitCode, err, nil, 0)
+}
+
+// CompleteWithContext records deadline evidence captured by the process owner
+// immediately after Wait, before cancellation or output-drain delays.
+func (t *BashTask) CompleteWithContext(exitCode int, err, contextErr error, timeout time.Duration) {
 	status, errMsg := StatusCompleted, ""
+	failure := FailureInfo{}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		exitCode = exitErr.ExitCode()
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			exitCode = signalExitCode(ws.Signal())
+			failure.Signal = ws.Signal().String()
+			failure.Kind = FailureSignal
+		}
+	}
+	t.mu.RLock()
+	service := t.lifetime == LifetimeService
+	t.mu.RUnlock()
 	switch {
-	case t.stopRequested.Load() || wasGracefullyTerminated(err):
+	case t.stopRequested.Load() || (!service && wasGracefullyTerminated(err)):
 		status, errMsg = StatusStopped, "stopped before completion"
+		failure = FailureInfo{}
+	case errors.Is(contextErr, context.DeadlineExceeded):
+		status, failure.Kind, failure.Timeout = StatusFailed, FailureTimeout, timeout
+		errMsg = "command timed out after " + timeout.String()
+		if err != nil {
+			errMsg += ": " + err.Error()
+		}
 	case err != nil:
 		status, errMsg = StatusFailed, err.Error()
+		if failure.Kind == "" {
+			failure.Kind = FailureUnknown
+			if errors.As(err, &exitErr) {
+				failure.Kind = FailureExit
+			}
+		}
 	case exitCode != 0:
-		status = StatusFailed
+		status, failure.Kind = StatusFailed, FailureExit
+	case service:
+		status, failure.Kind, errMsg = StatusFailed, FailureExit, "service exited unexpectedly (exit code 0)"
 	}
+	t.mu.Lock()
+	if t.status == StatusRunning {
+		t.failure = failure
+	}
+	t.mu.Unlock()
 	t.finalize(status, exitCode, errMsg)
+}
+
+// SetLifetime configures ownership before the process-wait goroutine starts.
+func (t *BashTask) SetLifetime(lifetime Lifetime) {
+	t.mu.Lock()
+	t.lifetime = lifetime
+	path := t.OutputFile
+	t.mu.Unlock()
+	t.recordOutput(path, outputRecord{Event: "task.lifetime", Metadata: map[string]any{"lifetime": lifetime}})
 }
 
 // wasGracefullyTerminated reports whether the child died of SIGTERM — the
@@ -170,7 +221,13 @@ func wasGracefullyTerminated(err error) bool {
 func signalExitCode(sig syscall.Signal) int { return 128 + int(sig) }
 
 // markKilled marks the task as killed (internal use).
-func (t *BashTask) markKilled() { t.finalize(StatusKilled, signalExitCode(syscall.SIGKILL), "") }
+func (t *BashTask) markKilled() {
+	if t.stopRequested.Load() {
+		t.finalize(StatusStopped, signalExitCode(syscall.SIGKILL), "stopped before completion")
+		return
+	}
+	t.finalize(StatusKilled, signalExitCode(syscall.SIGKILL), "")
+}
 
 // finalize performs the one and only terminal transition a BashTask can make.
 // Every route out of StatusRunning — clean exit, non-zero exit, error, kill —
@@ -191,12 +248,15 @@ func (t *BashTask) finalize(status TaskStatus, exitCode int, errMsg string) {
 	t.exitCode = exitCode
 	t.errMsg = errMsg
 	outputFile := t.OutputFile
+	failure, lifetime := t.failure, t.lifetime
 	t.mu.Unlock()
 
 	t.recordOutput(outputFile, outputRecord{
 		Event:  "task.completed",
 		Status: string(status),
 		Metadata: map[string]any{
+			"failure":   failure,
+			"lifetime":  lifetime,
 			"exit_code": exitCode,
 			"error":     errMsg,
 		},
@@ -293,6 +353,8 @@ func (t *BashTask) GetStatus() TaskInfo {
 		ExitCode:    t.exitCode,
 		OutputFile:  usableOutputPath(t.OutputFile, t.outputErr),
 		OutputError: t.outputErr,
+		Failure:     t.failure,
+		Lifetime:    t.lifetime,
 		Error:       t.errMsg,
 		Output:      t.output.String(),
 	}

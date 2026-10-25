@@ -179,6 +179,9 @@ func (m *Manager) Kill(id string) error {
 	if !task.IsRunning() {
 		return fmt.Errorf("task already completed: %s", id)
 	}
+	if agent, ok := task.(*AgentTask); ok {
+		return m.KillAttempt(id, agent.GetStatus().Attempt)
+	}
 
 	// Try graceful stop first
 	if err := task.Stop(); err != nil {

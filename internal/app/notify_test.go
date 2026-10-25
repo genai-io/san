@@ -11,6 +11,21 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
+func TestStoppedNotificationKeepsOneConciseDisplayLine(t *testing.T) {
+	for _, reason := range []string{"stopped before completion", "context canceled"} {
+		msg, _ := taskCompletionMessage(task.TaskInfo{ID: "worker", Type: task.TaskTypeAgent, AgentName: "Agent", Description: "Security review", Status: task.StatusStopped, Error: reason})
+		m := commitTestModel()
+		m.showNoticeLine(fromBrokerMessage(msg))
+		view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, 0))
+		if strings.TrimSpace(view) != "◆ Security review stopped" {
+			t.Fatalf("stop has redundant type, detail, or completion row: %q", view)
+		}
+		if !strings.Contains(msg.Content, "Error: "+reason) {
+			t.Fatal("display-only simplification changed the worker's persisted notification")
+		}
+	}
+}
+
 func TestTaskFailureSummaryKeepsTerminalReasonAndStatus(t *testing.T) {
 	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusStopped, task.StatusCompleted} {
 		for _, description := range []string{"review", strings.Repeat("审查 source ", 20)} {

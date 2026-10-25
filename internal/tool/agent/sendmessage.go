@@ -18,8 +18,8 @@ import (
 // SendMessageTool routes a message to another agent through the broker:
 // main → a running subagent (by task id), or a subagent → "main". The message
 // lands in the recipient's inbox and is read at its next step (a subagent) or
-// turn boundary (main). Delivery is best-effort — a message to an agent that
-// has finished, or never reads again, is dropped.
+// turn boundary (main). Acceptance is not an acknowledgment or completion;
+// known terminal tasks are rejected even if their broker route still exists.
 type SendMessageTool struct{}
 
 func NewSendMessageTool() *SendMessageTool { return &SendMessageTool{} }
@@ -99,6 +99,21 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		return toolresult.NewErrorResult(t.Name(), "cannot send a message to yourself")
 	}
 
+	// A stale broker route must never make an inactive execution or a non-agent
+	// task messageable. Continuing a session requires an explicit Agent resume.
+	if bgTask, found := task.Default().Get(to); found {
+		info := bgTask.GetStatus()
+		if sessionID := task.SessionIDFromContext(ctx); sessionID != "" && info.ParentSessionID != "" && sessionID != info.ParentSessionID {
+			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q belongs to a different parent session; use a running agent task ID from this session", to))
+		}
+		if bgTask.GetType() != task.TaskTypeAgent {
+			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file or start an agent for follow-up work", to, bgTask.GetType()))
+		}
+		if info.Status != task.StatusRunning {
+			return toolresult.NewErrorResult(t.Name(), terminalMessageReason(to, info.Status))
+		}
+	}
+
 	display := brokerSubject(from, subject)
 	delivered := broker.Send(broker.Message{
 		SessionID: task.SessionIDFromContext(ctx),
@@ -113,7 +128,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("Message delivered to %s; it is read at the recipient's next step. Continue with your task.", recipientLabel(to)),
+		Output:  fmt.Sprintf("Message accepted and queued for %s; the recipient reads queued messages at its next step or turn boundary. This is not an acknowledgment or completion. Continue with your task.", recipientLabel(to)),
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
@@ -134,17 +149,21 @@ func brokerSubject(from, subject string) string {
 // sentTo says when a member will read the message, so the sender knows
 // whether to wait for a reply.
 func sentTo(m group.Member) string {
+	return groupQueueStatus(m) + " Queued mail is not an acknowledgment or completion."
+}
+
+func groupQueueStatus(m group.Member) string {
 	switch {
 	case !m.Online():
 		return fmt.Sprintf("Queued · offline; @%s sees it when its session resumes.", m.Name)
 	case m.Hold:
-		return fmt.Sprintf("Sent · waits for its user; @%s holds messages until its user next types — don't wait for a reply.", m.Name)
+		return fmt.Sprintf("Queued · waits for its user; @%s holds messages until its user next types — don't wait for a reply.", m.Name)
 	case m.State == group.Approval:
-		return fmt.Sprintf("Sent · waits on its user's approval; @%s is stopped on an approval, so a reply may take a while.", m.Name)
+		return fmt.Sprintf("Queued · waits on its user's approval; @%s is stopped on an approval, so a reply may take a while.", m.Name)
 	case m.State == group.Working:
-		return fmt.Sprintf("Sent · reads it between steps; @%s is busy, so it reads it between its current steps.", m.Name)
+		return fmt.Sprintf("Queued · reads it between steps; @%s is busy, so it reads it between its current steps.", m.Name)
 	}
-	return fmt.Sprintf("Sent · reading now; @%s is idle, so it handles it now.", m.Name)
+	return fmt.Sprintf("Queued · awaiting next turn; @%s is idle and can handle it at its next turn boundary.", m.Name)
 }
 
 // recipientLabel renders a target id for tool output.
@@ -199,7 +218,14 @@ func undeliverableReason(to string) string {
 	if bgTask.GetStatus().Status == task.StatusRunning {
 		return fmt.Sprintf("worker %q is still starting up or its inbox is momentarily full — wait a moment and send again", to)
 	}
-	return fmt.Sprintf("worker %q has finished (status %s) and can no longer be messaged; spawn a new agent to continue its work", to, bgTask.GetStatus().Status)
+	return terminalMessageReason(to, bgTask.GetStatus().Status)
+}
+
+func terminalMessageReason(to string, status task.TaskStatus) string {
+	if status == task.StatusStopped || status == task.StatusKilled {
+		return fmt.Sprintf("worker %q was deliberately stopped (status %s); messages cannot restart it and it cannot be resumed automatically. Ask the user before starting new work", to, status)
+	}
+	return fmt.Sprintf("worker %q has no active execution (status %s); use Agent with resume_task_id=%q and a short continuation prompt to continue the same task and session. Sending a message does not restart it", to, status, to)
 }
 
 // wrapAgentMessage tags peer mail so the recipient can tell it from real user

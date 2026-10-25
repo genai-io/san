@@ -76,9 +76,43 @@ type BackgroundTask interface {
 	GetOutput() string
 }
 
+// FailureKind records observed runtime evidence, not a guess based on error prose.
+type FailureKind string
+
+const (
+	FailureUnknown FailureKind = "unknown"
+	FailureTimeout FailureKind = "timeout"
+	FailureExit    FailureKind = "exit"
+	FailureSignal  FailureKind = "signal"
+	FailureAgent   FailureKind = "agent_error"
+)
+
+type FailureInfo struct {
+	Kind    FailureKind   `json:"kind,omitempty"`
+	Signal  string        `json:"signal,omitempty"`
+	Timeout time.Duration `json:"timeout,omitempty"`
+}
+
+// Lifetime distinguishes finite jobs from explicitly session-owned services.
+type Lifetime string
+
+const (
+	LifetimeJob     Lifetime = "job"
+	LifetimeService Lifetime = "service"
+)
+
 // TaskInfo is a snapshot of task information
 // It contains both common fields and type-specific fields
+type AttemptInfo struct {
+	Attempt            int
+	Status             TaskStatus
+	StartTime, EndTime time.Time
+	Error, Output      string
+}
+
 type TaskInfo struct {
+	Attempt         int
+	Attempts        []AttemptInfo
 	ParentSessionID string
 
 	// Common fields
@@ -93,6 +127,8 @@ type TaskInfo struct {
 	OutputError string // First output-log failure, separate from execution outcome.
 	Progress    string // Latest meaningful activity, separate from final model-facing output.
 	Error       string
+	Failure     FailureInfo
+	Lifetime    Lifetime
 
 	// Bash-specific fields
 	Command  string

@@ -13,6 +13,7 @@ import (
 )
 
 func (m *model) handleStreamCancel() tea.Cmd {
+	m.backgroundNoticesHeld = true
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
 	m.services.Agent.InterruptTurn()

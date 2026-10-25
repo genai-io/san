@@ -38,8 +38,17 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 		t.Fatal("explicit enable must override the task-tracker default")
 	}
 
+	// Steering local workers is available without joining a group, but users
+	// retain the ability to disable messaging explicitly.
+	if IsDefaultDisabledTool("SendMessage") || WithDefaultDisabledTools(nil)["SendMessage"] {
+		t.Fatal("SendMessage must be available for ordinary background workers")
+	}
+	if !WithDefaultDisabledTools(map[string]bool{"SendMessage": true})["SendMessage"] {
+		t.Fatal("explicit messaging disable was ignored")
+	}
+
 	// Optional tools ship disabled and can be enabled explicitly.
-	for _, name := range []string{"SendMessage", "AgentStop", "Workflow", "Group", "Evolve"} {
+	for _, name := range []string{"AgentStop", "Workflow", "Group", "Evolve"} {
 		if !IsDefaultDisabledTool(name) || !WithDefaultDisabledTools(nil)[name] {
 			t.Fatalf("%s should be disabled by default", name)
 		}

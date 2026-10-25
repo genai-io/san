@@ -31,6 +31,7 @@ func builtinCommands() []Info {
 		{Name: "fork", Description: "Fork current conversation into a new session"},
 		{Name: "resume", Description: "Resume a previous session (opens session selector)"},
 		{Name: "history", Description: "Browse session history and expand tool results"},
+		{Name: "tasks", Description: "Inspect background tasks, review approvals and stop a task"},
 		{Name: "help", Description: "Show available commands"},
 		{Name: "tools", Description: "Manage available tools (enable/disable)"},
 		{Name: "skills", Description: "Manage skills (enable/disable/activate)"},
