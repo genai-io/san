@@ -195,6 +195,9 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 	if n.SessionID != "" && n.SessionID != m.sessionID() {
 		return nil
 	}
+	if n.FinishedTaskID != "" {
+		m.refreshTaskViewer()
+	}
 	if !m.conv.Stream.Active {
 		return m.injectAsNewTurn(n)
 	}

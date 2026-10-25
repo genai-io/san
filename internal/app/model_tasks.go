@@ -202,14 +202,16 @@ func (m *model) resumeTaskViewer() {
 	m.tasks.review = nil
 }
 
-func (m *model) refreshTaskViewer() {
-	if m.tasks == (taskViewerState{}) && !m.userInput.Tasks.IsActive() && !m.userInput.Tasks.ActionPending() {
-		return
-	}
-	if m.tasks.sessionID != m.sessionID() {
+// syncTaskViewerSession invalidates a viewer after a session switch without
+// copying worker output or rebuilding the viewport on unrelated UI messages.
+func (m *model) syncTaskViewerSession() {
+	if m.tasks.sessionID != m.sessionID() && (m.tasks != (taskViewerState{}) || m.userInput.Tasks.IsActive() || m.userInput.Tasks.ActionPending()) {
 		m.hideTaskViewer()
-		return
 	}
+}
+
+func (m *model) refreshTaskViewer() {
+	m.syncTaskViewerSession()
 	if m.userInput.Tasks.IsActive() {
 		m.userInput.Tasks.Refresh(m.taskSnapshots())
 	}

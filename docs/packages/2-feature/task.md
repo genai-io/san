@@ -85,7 +85,8 @@ func ResetDefaultTracker()         // test-only
 - Terminal notifications carry the error reason and any partial output
   together. Output above the notification's inline-size limit points at a
   healthy task log, including when the task failed or was stopped; the failure
-  status remains explicit.
+  status remains explicit. Task/attempt identity also travels as typed broker
+  metadata; internal completion bookkeeping never parses the model-facing XML.
 - Log initialization, append, and close errors are retained in `OutputError`,
   independently of execution status. An incomplete log is not advertised through
   `OutputFile`; completion notices use a bounded UTF-8-safe preview instead.
@@ -150,7 +151,10 @@ Task created → attempt 1 running → attempt 1 failed
 - `/tasks` shows the child session and attempt history. `c` on an eligible ended
   worker asks main to choose a safe continuation; the UI does not directly launch
   tools or bypass approval. Completion visibility is keyed by task and attempt,
-  so an old notice cannot hide a newer result.
+  so an old notice cannot hide a newer result. The viewer snapshots worker output
+  on its one-second poll and on approval/completion changes, not on every stream,
+  spinner, or scrolling event. Actions still revalidate ownership, status, and
+  attempt against the backend before execution.
 - Manual interruption holds background-driven turns until real user input;
   arriving notifications remain visible and queued rather than restarting main.
 - Continuation launch checkpoints are currently process-local. Native history is

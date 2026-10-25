@@ -3,7 +3,6 @@ package task
 import (
 	"bytes"
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -227,14 +226,7 @@ func (t *AgentTask) GetOutput() string {
 // A context.Canceled error records the task as stopped (deliberate cancel),
 // any other error as failed. It is idempotent — a second call is a no-op.
 func (t *AgentTask) Complete(err error) {
-	switch {
-	case err == nil:
-		t.finalize(StatusCompleted, "")
-	case errors.Is(err, context.Canceled):
-		t.finalize(StatusStopped, "stopped before completion")
-	default:
-		t.finalize(StatusFailed, err.Error())
-	}
+	t.CompleteAttempt(0, err)
 }
 
 // markKilled marks the task as killed (internal use).

@@ -18,7 +18,6 @@ package app
 import (
 	"fmt"
 	"html"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -50,13 +49,9 @@ type mainNotice struct {
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
 	n := mainNotice{SessionID: m.SessionID, Display: m.Subject, Content: m.Content, FromAgent: true}
-	if strings.HasPrefix(m.Content, "<task-notification ") {
-		n.FinishedTaskID = m.From
-		tag, _, _ := strings.Cut(m.Content, ">")
-		if _, value, ok := strings.Cut(tag, ` attempt="`); ok {
-			value, _, _ = strings.Cut(value, `"`)
-			n.FinishedAttempt, _ = strconv.Atoi(value)
-		}
+	if completion := m.TaskCompletion; completion != nil {
+		n.FinishedTaskID = completion.TaskID
+		n.FinishedAttempt = completion.Attempt
 	}
 	return n
 }
@@ -154,6 +149,9 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		To:        broker.Main,
 		Subject:   subject,
 		Content:   b.String(),
+		TaskCompletion: &broker.TaskCompletion{
+			TaskID: info.ID, Attempt: info.Attempt,
+		},
 	}, true
 }
 

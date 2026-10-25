@@ -233,6 +233,13 @@ func ResetDefaultRegistry()           // test-only
   the child, not copied through the parent's context. Continuation retains the
   original resolved worker policy, including named tool denies; approval previews
   project that original policy rather than a subsequently reloaded definition.
+  The schema's `prompt` field distinguishes a full new-work brief from an
+  incremental continuation instruction. `resume_task_id` documents omission/null
+  for new work and strict lookup for continuation; parameter normalization stays
+  in the tool adapter, not in conversation restoration. `run_in_background` defaults
+  to false only for new work; continuation always runs in the background.
+  An omitted `max_steps` uses the selected definition's budget for new work and
+  retains the original budget for continuation; a positive value overrides it.
 - Real session stores record child events live before the first inference and
   reuse the same transcript during continuation. Legacy end-of-run persistence
   adapters still support new work but cannot continue it. A continuation needs

@@ -30,6 +30,16 @@ type Message struct {
 	To        string
 	Subject   string
 	Content   string
+	// TaskCompletion is routing metadata, independent of the model-facing body.
+	// The broker passes it through without interpreting task lifecycle state.
+	TaskCompletion *TaskCompletion
+}
+
+// TaskCompletion identifies a finished execution, not the whole task lifetime.
+// A nil Message.TaskCompletion denotes ordinary mail.
+type TaskCompletion struct {
+	TaskID  string
+	Attempt int
 }
 
 // Deliver hands a routed message to a recipient. It must not block; it returns

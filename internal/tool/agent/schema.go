@@ -42,7 +42,7 @@ var agentToolParameters = map[string]any{
 	"properties": map[string]any{
 		"prompt": map[string]any{
 			"type":        "string",
-			"description": "The task for the agent to perform",
+			"description": "For new work, a self-contained task brief with the goal, relevant paths, constraints, known findings, and validation plan. For continuation, only the short incremental instruction; the original child conversation is restored internally.",
 		},
 		"description": map[string]any{
 			"type":        "string",
@@ -54,15 +54,15 @@ var agentToolParameters = map[string]any{
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
-			"description": "Defaults to false: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true only when your next step does not depend on this result; background completion will be notified separately.",
+			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true only when your next step does not depend on this result; background completion will be notified separately. Continuation always runs in the background.",
 		},
 		"resume_task_id": map[string]any{
 			"type":        []string{"string", "null"},
-			"description": "Existing Task ID returned by Agent to continue the same child session, not an agent name or file path. For new work, omit this field or use null; empty string, new, and /dev/null are accepted as no-session placeholders. Continuation runs in the background with the original worker; prompt contains only the new instruction, not its history. Omit name when continuing.",
+			"description": "Existing Task ID returned by Agent to continue the same child session, not an agent name or file path. For new work, omit this field or use null. Continuation retains the original task identity, agent configuration, and permission policy; omit name. Legacy no-session placeholders (empty string, new, /dev/null) are accepted as new work, but prefer omission or null. Unknown IDs are errors, never a fallback to a new conversation.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps. Overrides the agent's budget; defaults to 500 when unset.",
+			"description": "Maximum number of LLM inference steps. A positive value overrides the execution budget. New work defaults to the selected agent's configured budget (500 unless configured otherwise); continuation retains its original budget when omitted.",
 		},
 	},
 	"required": []string{"description", "prompt"},

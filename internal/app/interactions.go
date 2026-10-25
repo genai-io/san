@@ -32,6 +32,7 @@ func (m *model) enqueueInteraction(req *conv.InteractionRequest) tea.Cmd {
 		return nil
 	}
 	m.interactions.queue = append(m.interactions.queue, req)
+	defer m.refreshTaskViewer()
 	return m.advanceInteractions()
 }
 
@@ -69,11 +70,14 @@ func (m *model) pruneInteractions() {
 			cancelInteraction(req)
 		}
 	}
+	queueChanged := len(queue) != len(m.interactions.queue)
 	clear(m.interactions.queue[len(queue):])
 	m.interactions.queue = queue
 	if req := m.interactions.active; req != nil && !m.validInteraction(req) {
 		cancelInteraction(req)
 		m.finishInteraction()
+	} else if queueChanged {
+		m.refreshTaskViewer()
 	}
 }
 
@@ -168,6 +172,8 @@ func (m *model) finishInteraction() {
 	m.interactions.shown = false
 	if finished != nil && finished == m.tasks.review {
 		m.resumeTaskViewer()
+	} else if finished != nil {
+		m.refreshTaskViewer()
 	}
 }
 

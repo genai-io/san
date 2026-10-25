@@ -23,6 +23,26 @@ func TestAgentSchemaKeepsValidationAndDenialGuidance(t *testing.T) {
 	}
 }
 
+func TestAgentSchemaDistinguishesCreationAndContinuation(t *testing.T) {
+	properties := agentToolParameters["properties"].(map[string]any)
+	for field, phrases := range map[string][]string{
+		"prompt":            {"self-contained task brief", "only the short incremental instruction", "restored internally"},
+		"run_in_background": {"Defaults to false for new work", "Continuation always runs in the background"},
+		"max_steps":         {"positive value", "selected agent's configured budget", "continuation retains its original budget"},
+		"resume_task_id":    {"original task identity", "permission policy", "Unknown IDs are errors"},
+	} {
+		description := properties[field].(map[string]any)["description"].(string)
+		for _, phrase := range phrases {
+			if !strings.Contains(description, phrase) {
+				t.Errorf("%s description missing %q", field, phrase)
+			}
+		}
+	}
+	if _, hasDefault := properties["resume_task_id"].(map[string]any)["default"]; hasDefault {
+		t.Fatal("continuation target must not default to a guessed task or placeholder")
+	}
+}
+
 func TestResumeCreationSemanticsBelongToFieldDescription(t *testing.T) {
 	schema := agentSchema("")
 	definition := schema.Definition.(map[string]any)

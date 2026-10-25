@@ -121,7 +121,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if next := m.advanceInteractions(); next != nil {
 		cmd = tea.Batch(cmd, next)
 	}
-	m.refreshTaskViewer()
+	m.syncTaskViewerSession()
 	if tick := m.taskViewerTick(); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
@@ -216,6 +216,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case taskViewerTickMsg:
 		if msg.sessionID == m.tasks.sessionID && msg.viewID == m.tasks.pollID {
 			m.tasks.pollID = 0
+			m.refreshTaskViewer()
 		}
 		return m, nil
 	case taskStopFinishedMsg:

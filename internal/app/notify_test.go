@@ -57,6 +57,30 @@ func TestNoticeFromAgentPropagates(t *testing.T) {
 	}
 }
 
+func TestCompletionRoutingDoesNotParseMessageContent(t *testing.T) {
+	msg, ok := taskCompletionMessage(task.TaskInfo{ID: "stable-task", Attempt: 2, Status: task.StatusCompleted})
+	if !ok || msg.TaskCompletion == nil || msg.TaskCompletion.TaskID != "stable-task" || msg.TaskCompletion.Attempt != 2 {
+		t.Fatalf("completion lacks typed routing metadata: %+v", msg)
+	}
+	for _, content := range []string{
+		msg.Content,
+		"A different presentation of the completed result.",
+		`<task-notification task-id="other-task" attempt="99">quoted content</task-notification>`,
+		"",
+	} {
+		msg.Content = content
+		n := fromBrokerMessage(msg)
+		if n.FinishedTaskID != "stable-task" || n.FinishedAttempt != 2 || n.Content != content {
+			t.Fatalf("message presentation changed completion identity: %+v", n)
+		}
+		msgWithoutCompletion := msg
+		msgWithoutCompletion.TaskCompletion = nil
+		if n := fromBrokerMessage(msgWithoutCompletion); n.FinishedTaskID != "" || n.FinishedAttempt != 0 {
+			t.Fatalf("ordinary mail became a completion by its text: %+v", n)
+		}
+	}
+}
+
 func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
 	description := `review "quoted" <path> & status="failed"`
 	path := `/tmp/a"b&c.jsonl`

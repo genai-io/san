@@ -25,6 +25,7 @@ func (t *AgentTask) LaunchState() any     { t.mu.RLock(); defer t.mu.RUnlock(); 
 func (t *AgentTask) SetLaunchState(v any) { t.mu.Lock(); t.launchState = v; t.mu.Unlock() }
 
 // CompleteAttempt ignores callbacks from retired executions.
+// Zero selects the current attempt for unscoped Complete callers.
 func (t *AgentTask) CompleteAttempt(n int, err error) {
 	status, text := StatusCompleted, ""
 	if errors.Is(err, context.Canceled) {

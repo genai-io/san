@@ -3,9 +3,48 @@ package task
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
+
+func TestAgentCompletionClassification(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status TaskStatus
+		reason string
+	}{
+		{name: "success", status: StatusCompleted},
+		{name: "cancel", err: context.Canceled, status: StatusStopped, reason: "stopped before completion"},
+		{name: "wrapped cancel", err: fmt.Errorf("tool interrupted: %w", context.Canceled), status: StatusStopped, reason: "stopped before completion"},
+		{name: "deadline", err: context.DeadlineExceeded, status: StatusFailed, reason: context.DeadlineExceeded.Error()},
+		{name: "failure", err: errors.New("provider failed"), status: StatusFailed, reason: "provider failed"},
+	}
+	for _, tc := range cases {
+		for _, scoped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/scoped=%t", tc.name, scoped), func(t *testing.T) {
+				a := NewAgentTask("completion", "worker", "work", context.Background(), nil, "")
+				if scoped {
+					a.CompleteAttempt(1, tc.err)
+				} else {
+					a.Complete(tc.err)
+				}
+				info := a.GetStatus()
+				if info.Status != tc.status || info.Error != tc.reason || len(info.Attempts) != 1 {
+					t.Fatalf("unexpected completion: %+v", info)
+				}
+				attempt := info.Attempts[0]
+				if attempt.Attempt != 1 || attempt.Status != tc.status || attempt.Error != tc.reason {
+					t.Fatalf("attempt disagrees with task: %+v", attempt)
+				}
+				if !a.WaitForCompletion(time.Millisecond) {
+					t.Fatal("completion did not release waiters")
+				}
+			})
+		}
+	}
+}
 
 func TestAgentAttemptContinuation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
