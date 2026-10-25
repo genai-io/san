@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
@@ -137,41 +136,6 @@ func visibleLine(line string) string {
 
 func renderNestedToolBodyLine(line string, width int) string {
 	return renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolResultStyle, visibleLine(line), width)
-}
-
-// wrapAtSpaces cuts s into rows at most width wide, after the last space in
-// reach so a wrapped command reads as whole words. A word too wide for any row
-// is cut, and so is one whose break would leave the row less than half full.
-// Every character is kept, so the rows join back into the command.
-func wrapAtSpaces(s string, width int) string {
-	var sb strings.Builder
-	for xansi.StringWidth(s) > width && utf8.RuneCountInString(s) > 1 {
-		row := xansi.Truncate(s, width, "")
-		if i := strings.LastIndexByte(row, ' '); i > 0 && 2*xansi.StringWidth(row[:i+1]) >= width && !wordWiderThan(s[i+1:], width) {
-			row = row[:i+1]
-		} else if row == "" { // a character wider than the row: it takes one alone
-			_, size := utf8.DecodeRuneInString(s)
-			row = s[:size]
-		}
-		sb.WriteString(row + "\n")
-		s = s[len(row):]
-	}
-	sb.WriteString(s)
-	return sb.String()
-}
-
-// wordWiderThan reports whether the word s starts with is wider than width.
-func wordWiderThan(s string, width int) bool {
-	word, _, _ := strings.Cut(s, " ")
-	return xansi.StringWidth(word) > width
-}
-
-// commandWrapWidth is the room a command line has beside its rail.
-func commandWrapWidth(width int) int {
-	if width <= 0 {
-		width = 80
-	}
-	return max(1, width-lipgloss.Width(nestedBodyPrefix))
 }
 
 // renderGutteredLine soft-wraps one row to the terminal width so every
@@ -309,9 +273,8 @@ func renderBashToolResultInline(data ToolResultData) string {
 	if hasDetails && details.Tail != "" {
 		tail = details.Tail
 	}
-	// Success is the model's to report, so a longer output folds to its count;
-	// one that fits the preview has nothing to fold, and its last line closes
-	// the row instead of a count.
+	// A short success keeps all output, with its last line closing the row.
+	// Longer successes retain a bounded tail and an explicit omitted-line count.
 	if !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
 		head, last := "", strings.TrimRight(tail, "\n")
 		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
@@ -325,9 +288,18 @@ func renderBashToolResultInline(data ToolResultData) string {
 	case data.Expanded:
 		sb.WriteString(renderBashOutput(content, data.Width))
 	case data.IsError:
-		// A failure is what the user may step in on: it keeps its whole tail,
-		// wrapped, whatever the preview setting.
+		// Failures retain a diagnostic tail independently of preview preference.
 		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
+	case details.TaskID == "" && content != "" && data.BashPreviewLines > 0:
+		preview := toolresult.LastLines(tail, data.BashPreviewLines)
+		sb.WriteString(renderOutputPreview(preview, data.BashPreviewLines, data.Width))
+		shown := 0
+		if preview != "" {
+			shown = strings.Count(strings.TrimSuffix(preview, "\n"), "\n") + 1
+		}
+		if shown < lineCount {
+			summary = fmt.Sprintf("last %d of %d lines", shown, lineCount)
+		}
 	}
 	if data.IsError && !data.Expanded {
 		summary = compactFailureReason(summary, data.Width)
@@ -430,10 +402,10 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
 		if !data.CollapseDiff {
-			block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, nestedBodyPrefix)
+			block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, "  ")
 			sb.WriteString(block)
 			if details.TruncatedDiffLines > 0 {
-				sb.WriteString(truncatedStyle.Render(fmt.Sprintf(nestedBodyPrefix+"… diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+				sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 			}
 		}
 		sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
@@ -482,7 +454,7 @@ func renderFileChangeInputPreview(input, diagnostic string, width int) string {
 	if new == "" && params.Content != "" {
 		new = params.Content
 	}
-	previewWidth := width - lipgloss.Width(nestedBodyPrefix)
+	previewWidth := width - 2
 	if previewWidth <= lipgloss.Width("+ ") {
 		return ""
 	}
@@ -493,7 +465,7 @@ func renderFileChangeInputPreview(input, diagnostic string, width int) string {
 		}
 		for line := range strings.SplitSeq(preview.text, "\n") {
 			for segment := range strings.SplitSeq(xansi.Wrap(line, previewWidth-lipgloss.Width(preview.marker)-1, " "), "\n") {
-				sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+preview.marker+" "+segment) + "\n")
+				sb.WriteString(toolResultStyle.Render("  "+preview.marker+" "+segment) + "\n")
 			}
 		}
 	}
@@ -753,8 +725,6 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderAgentResultDetails(data, details, mdRenderer)
 	}
 	// Legacy transcripts stored the display header in the model-facing text.
-	icon := toolResultIcon(data.IsError)
-
 	var sb strings.Builder
 	content := data.Content
 
@@ -768,8 +738,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	taskID := extractField(content, "Task ID: ", "")
 	isBackground := strings.Contains(content, "started in background")
 	if isBackground && taskID != "" {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  → background (Task ID: %s)", icon, taskID)) + "\n")
-		return sb.String()
+		return renderAgentBackgroundStart(taskID, data.Width)
 	}
 
 	toolUses := extractIntField(content, "ToolUses: ")
@@ -785,16 +754,12 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	doneStats := buildDoneStats(toolUses, tokens, duration, resultModel)
 
 	if !data.Expanded {
-		resultLine := fmt.Sprintf("  %s  Done", icon)
-		if doneStats != "" {
-			resultLine += " (" + doneStats + ")"
+		body := content
+		if strings.HasPrefix(body, "Agent ") || strings.HasPrefix(body, "Agent:") || strings.HasPrefix(body, "ToolUses:") {
+			_, body, _ = strings.Cut(body, "\n\n")
+			_, body = splitByProcessCount(body, extractIntField(content, "Process: "))
 		}
-		sb.WriteString(toolResultStyle.Render(resultLine))
-		if data.Interactive {
-			sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
-		}
-		sb.WriteString("\n")
-		return sb.String()
+		return renderCompactAgentResponse(body, data.Width)
 	}
 
 	if data.ToolInput != "" {
@@ -841,15 +806,32 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 
 func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetails, mdRenderer *MDRenderer) string {
 	if details.TaskID != "" {
-		return toolResultStyle.Render(fmt.Sprintf("  %s  → background (Task ID: %s)", toolResultIcon(false), details.TaskID)) + "\n"
+		return renderAgentBackgroundStart(details.TaskID, data.Width)
+	}
+	if !data.Expanded {
+		if details.Stopped || data.IsError {
+			status, style := "Failed", errorStyle
+			if details.Stopped {
+				status, style = "Stopped", toolResultStyle
+			}
+			reason := details.Error
+			if reason == "" {
+				reason = data.Content
+			}
+			if reason != "" && !(details.Stopped && kit.IsRoutineStopReason(reason)) {
+				status += " · " + reason
+			}
+			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
+		}
+		return renderCompactAgentResponse(data.Content, data.Width)
 	}
 	status, style := "Finished", toolResultStyle
-	if data.IsError {
+	if data.IsError || details.Stopped {
 		status, style = "Failed", errorStyle
 		if details.Stopped {
 			status, style = "Stopped", toolResultStyle
 		}
-		if details.Error != "" {
+		if details.Error != "" && !(details.Stopped && kit.IsRoutineStopReason(details.Error)) {
 			status += " · " + compactFailureReason(details.Error, data.Width)
 		}
 	}
@@ -857,39 +839,83 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 		status += " (" + stats + ")"
 	}
 	var sb strings.Builder
-	if data.Expanded {
-		width := data.Width
-		if width <= 0 {
-			width = 80
-		}
-		sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), width))
-		activity := details.Activity
-		const maxActivityLines = 30
-		if len(activity) > maxActivityLines {
-			sb.WriteString(renderNestedToolBody(fmt.Sprintf("(%d earlier tool calls omitted)", len(activity)-maxActivityLines), data.Width))
-			activity = activity[len(activity)-maxActivityLines:]
-		}
-		sb.WriteString(renderNestedToolBody(strings.Join(activity, "\n"), data.Width))
-		response := data.Content
-		if mdRenderer != nil {
-			if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
-				response = strings.TrimSpace(md)
-			}
-		}
-		sb.WriteString(renderNestedToolBody(response, data.Width))
+	width := data.Width
+	if width <= 0 {
+		width = 80
 	}
-	if data.IsError && !data.Expanded {
-		status = compactFailureReason(status, data.Width)
+	sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), width))
+	activity := details.Activity
+	const maxActivityLines = 30
+	if len(activity) > maxActivityLines {
+		sb.WriteString(renderNestedToolBody(fmt.Sprintf("(%d earlier tool calls omitted)", len(activity)-maxActivityLines), data.Width))
+		activity = activity[len(activity)-maxActivityLines:]
 	}
+	sb.WriteString(renderNestedToolBody(strings.Join(activity, "\n"), data.Width))
+	response := data.Content
+	if mdRenderer != nil {
+		if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
+			response = strings.TrimSpace(md)
+		}
+	}
+	sb.WriteString(renderNestedToolBody(response, data.Width))
 	if data.Nested {
 		sb.WriteString(style.Render(nestedTrailerPrefix + status))
 	} else {
 		sb.WriteString(style.Render(fmt.Sprintf("  %s  Agent → %s", toolResultIcon(data.IsError && !details.Stopped), status)))
 	}
-	if !data.Expanded && data.Interactive {
-		sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
-	}
 	sb.WriteString("\n")
+	return sb.String()
+}
+
+func renderAgentBackgroundStart(taskID string, width int) string {
+	return renderGutteredLine(nestedTrailerPrefix, "    ", toolResultStyle, "Started in background · "+taskID, width)
+}
+
+func renderAgentLocalBody(body string, width int) string {
+	if strings.TrimSpace(body) == "" {
+		return ""
+	}
+	if width <= 0 {
+		width = 80
+	}
+	var sb strings.Builder
+	for _, line := range strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n") {
+		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
+	}
+	return sb.String()
+}
+
+// renderCompactAgentResponse uses only worker prose, never a synthesized summary.
+func renderCompactAgentResponse(response string, width int) string {
+	response = strings.TrimSpace(response)
+	// Older details do not retain inspection pointers. Only recognize the paired
+	// generated suffix when the transcript filename corroborates the agent ID.
+	parts := strings.Split(response, "\n\n")
+	if len(parts) >= 3 {
+		id, hasID := strings.CutPrefix(parts[len(parts)-2], "AgentID: ")
+		path, hasPath := strings.CutPrefix(parts[len(parts)-1], "Transcript: ")
+		if hasID && hasPath && id != "" && !strings.ContainsAny(id, " /\\\n\r") && !strings.ContainsAny(path, "\n\r") && strings.HasSuffix(path, "/"+id+".jsonl") {
+			response = strings.TrimSpace(strings.Join(parts[:len(parts)-2], "\n\n"))
+		}
+	}
+	if response == "" {
+		response = "No output"
+	}
+	if width <= 0 {
+		width = 80
+	}
+	lines := strings.Split(xansi.Wrap(response, max(1, width-2), " "), "\n")
+	omitted := len(lines) > 8
+	if omitted {
+		lines = lines[:8]
+	}
+	var sb strings.Builder
+	for _, line := range lines {
+		sb.WriteString(toolCallStyle.Render("  "+line) + "\n")
+	}
+	if omitted {
+		sb.WriteString(toolResultStyle.Render("  … more output omitted") + "\n")
+	}
 	return sb.String()
 }
 
@@ -1063,10 +1089,14 @@ func formatAgentLabel(agent agentInput) string {
 		desc = conciseAgentDescription(agent.Prompt)
 	}
 
-	if desc != "" {
-		return fmt.Sprintf("Agent - %s: %s", agent.Name, desc)
+	name := "Agent"
+	if agent.Name != "" && agent.Name != "Agent" {
+		name += " · " + agent.Name
 	}
-	return fmt.Sprintf("Agent - %s", agent.Name)
+	if desc != "" {
+		return name + " · " + desc
+	}
+	return name
 }
 
 // sendMessageLabel names a SendMessage call by its recipient and opening words.
@@ -1147,11 +1177,7 @@ func groupCallArgs(input string) string {
 }
 
 func conciseAgentDescription(desc string) string {
-	words := strings.Fields(desc)
-	if len(words) > 10 {
-		return strings.Join(words[:10], " ") + "..."
-	}
-	return kit.TruncateText(desc, 60)
+	return strings.Join(strings.Fields(desc), " ")
 }
 
 func displayAgentName(agentName, mode string) string {
@@ -1383,21 +1409,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
-	// Soft-wrap every command line in the call's own color, marked as the
-	// constants above describe; no command text is replaced by ellipses. Blank
-	// lines at the start are dropped.
-	seenCommand := false
-	for commandLine := range strings.SplitSeq(strings.TrimRight(command, " \t\r\n"), "\n") {
-		if strings.TrimSpace(commandLine) == "" {
-			if !seenCommand {
-				continue
-			}
-			commandLine = ""
-		}
-		seenCommand = true
-		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
-		sb.WriteString(renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolCallStyle, commandLine, width))
-	}
+	sb.WriteString(kit.RenderCommandBlock(command, width))
 	return sb.String()
 }
 
@@ -1417,7 +1429,10 @@ func extractBashCommand(input string) (command, description string) {
 func renderAgentToolLine(label string, width int, iconText string, color string) string {
 	style := agentStyle(color)
 	icon := style.Width(2).Render(iconText)
-	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(truncateToolLabel(label, width)))
+	if width > 0 {
+		label = xansi.Hardwrap(label, max(1, width-2), true)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(label))
 }
 
 func agentStyle(color string) lipgloss.Style {

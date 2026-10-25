@@ -58,17 +58,20 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	}
 	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.ChatRows()[1].ToolResult.Content.Text(), Details: loaded.ChatRows()[1].ToolDetails, Width: 100}
 	collapsed := ansi.Strip(conv.RenderToolResultInline(data, nil))
-	for _, want := range []string{"Finished", "125 tokens", "worker-model"} {
-		if !strings.Contains(collapsed, want) {
-			t.Fatalf("resumed UI lost %q: %q", want, collapsed)
+	if !strings.Contains(collapsed, "Verified finding") {
+		t.Fatalf("resumed UI lost its result: %q", collapsed)
+	}
+	for _, metadata := range []string{"125 tokens", "worker-model", "Transcript:", "AgentID:", "Finished"} {
+		if strings.Contains(collapsed, metadata) {
+			t.Fatalf("default result leaked body/metadata %q: %q", metadata, collapsed)
 		}
 	}
-	if strings.Contains(collapsed, "Verified finding") {
-		t.Fatalf("collapsed result leaked the body: %q", collapsed)
-	}
 	data.Expanded = true
-	if expanded := conv.RenderToolResultInline(data, nil); !strings.Contains(expanded, "Verified finding") || !strings.Contains(expanded, "Transcript:") {
-		t.Fatalf("expanded UI lost findings or evidence: %q", expanded)
+	expanded := ansi.Strip(conv.RenderToolResultInline(data, nil))
+	for _, want := range []string{"Verified finding", "Transcript:", "125 tokens", "worker-model"} {
+		if !strings.Contains(expanded, want) {
+			t.Fatalf("expanded resumed UI lost %q: %q", want, expanded)
+		}
 	}
 }
 

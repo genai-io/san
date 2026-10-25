@@ -2,6 +2,7 @@ package conv
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,7 +31,7 @@ func TestActivityBurstKeepsNewestAndWorkerMetadata(t *testing.T) {
 			t.Errorf("burst lost %q: %s", want, noisy)
 		}
 	}
-	if !strings.Contains(quiet, "quiet.go") || len(agentToolLines(m.TaskActivity[1], 0)) != 8 {
+	if !strings.Contains(quiet, "quiet.go") || len(m.TaskActivity[1]) != 8+4 {
 		t.Fatalf("sibling lost or feed unbounded: quiet=%s noisy=%s", quiet, noisy)
 	}
 	if len(bridge.takeActivity()) != 0 {
@@ -40,7 +41,7 @@ func TestActivityBurstKeepsNewestAndWorkerMetadata(t *testing.T) {
 	for _, msg := range bridge.takeActivity() {
 		m.applyActivity(msg)
 	}
-	if agentModel(m.TaskActivity[1], "") != "worker-model" {
+	if !slices.Contains(m.TaskActivity[1], "Model: worker-model") {
 		t.Fatal("next drain erased metadata")
 	}
 	m.Tool.ClearPending()

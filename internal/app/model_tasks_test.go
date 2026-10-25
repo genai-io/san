@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // This worker makes graceful stopping deterministic without launching an agent,
@@ -293,5 +294,71 @@ func TestTaskRootTrackerUsesOnlyLivePermissionAssociation(t *testing.T) {
 	expire()
 	if strings.Contains(ansi.Strip(m.renderTrackerList()), "awaiting approval") {
 		t.Fatal("expired permission remained in tracker")
+	}
+}
+
+func TestTaskRootQueuedMainApprovalKeepsOperationInspectable(t *testing.T) {
+	for _, width := range []int{32, 40} {
+		for _, height := range []int{8, 10, 12} {
+			t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
+				m := interactionModel()
+				m.env.Width, m.env.Height = width, height
+				current := interactionApproval(m, context.Background(), "current")
+				current.Source.AgentID = ""
+				current.Permission.ToolName = "Bash"
+				current.PermissionView = &perm.PermissionRequest{ToolName: "Bash", BashMeta: &perm.BashMetadata{Command: "operation-first\noperation-second\noperation-last"}}
+				m.enqueueInteraction(current)
+				m.enqueueInteraction(interactionApproval(m, context.Background(), "queued"))
+				frame := ansi.Strip(m.View().Content)
+				if !strings.Contains(frame, "operation-first") {
+					t.Fatalf("actionable approval hid the operation:\n%s", frame)
+				}
+				seen := frame
+				for range 10 {
+					m.userInput.Approval.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyPgDown})
+					frame = ansi.Strip(m.View().Content)
+					seen += frame
+					if rowCount(frame) > height || !strings.Contains(frame, "Allow once") || !strings.Contains(frame, "Deny") {
+						t.Fatalf("scroll displaced decisions:\n%s", frame)
+					}
+				}
+				for _, operation := range []string{"operation-first", "operation-second", "operation-last"} {
+					if !strings.Contains(seen, operation) {
+						t.Fatalf("operation row unreachable: %s", operation)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTaskRootDockedApprovalFitsSmallTerminalWithQueue(t *testing.T) {
+	for _, width := range []int{32, 40} {
+		for _, height := range []int{10, 12, 24} {
+			for _, queued := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%dx%d/queued=%v", width, height, queued), func(t *testing.T) {
+					m := interactionModel()
+					m.env.Width = width
+					m.env.Height = height
+					current := interactionApproval(m, context.Background(), "current")
+					m.enqueueInteraction(current)
+					if queued {
+						m.enqueueInteraction(interactionApproval(m, context.Background(), "queued"))
+					}
+					frame := m.View().Content
+					if rows := strings.Count(frame, "\n") + 1; rows > height {
+						t.Fatalf("approval frame overflows: %d > %d\n%s", rows, height, ansi.Strip(frame))
+					}
+					for _, line := range strings.Split(frame, "\n") {
+						if n := ansi.StringWidth(line); n >= width {
+							t.Fatalf("approval reaches wrap column: %d >= %d: %q", n, width, ansi.Strip(line))
+						}
+					}
+					if !strings.Contains(ansi.Strip(frame), "Write") {
+						t.Fatalf("approval missing: %s", ansi.Strip(frame))
+					}
+				})
+			}
+		}
 	}
 }

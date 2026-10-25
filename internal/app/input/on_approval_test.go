@@ -1,131 +1,183 @@
 package input
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-
+	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// TestApprovalModalDigitKeysFollowOptionOrder confirms the digit key dispatch
-// is indexed off buildApprovalOptionRows rather than hard-coded cases. Adding
-// a new row at any position should automatically map to a new digit without
-// touching HandleKeypress.
-func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
-	request := &perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(ls)"}}
-	model := &ApprovalModel{}
-	options := buildApprovalOptionRows(request)
-
-	cases := []struct {
-		key      rune
-		wantOpt  int
-		wantResp ApprovalResponseMsg
-	}{
-		{'1', 0, ApprovalResponseMsg{Approved: true}},
-		{'2', 1, ApprovalResponseMsg{Approved: true, AllowAll: true}},
-		{'3', 2, ApprovalResponseMsg{Approved: true, Persist: true}},
-		{'4', 3, ApprovalResponseMsg{}},
+func approvalKey(p *ApprovalModel, s string) *ApprovalResponseMsg {
+	var k tea.KeyPressMsg
+	switch s {
+	case "enter":
+		k.Code = tea.KeyEnter
+	case "esc":
+		k.Code = tea.KeyEscape
+	default:
+		k.Code = []rune(s)[0]
+		k.Text = s
 	}
-	for _, tc := range cases {
-		model.active, model.request = true, request
-		_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
-		if resp == nil {
-			t.Fatalf("digit %q produced no response", string(tc.key))
+	_, r := p.handleKeypress(k)
+	return r
+}
+func TestApprovalScopeConfirmation(t *testing.T) {
+	for _, persist := range []bool{false, true} {
+		p := NewApproval()
+		req := &perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(ls)", "Bash(pwd)"}}
+		p.Show(req, 40, 10)
+		if approvalKey(&p, "3") != nil || p.screen != 1 {
+			t.Fatal("more granted")
 		}
-		want := options[tc.wantOpt]
-		if resp.Approved != want.Approved || resp.AllowAll != want.AllowAll || resp.Persist != want.Persist {
-			t.Errorf("digit %q: response = %+v, want option %d %+v",
-				string(tc.key), *resp, tc.wantOpt, want)
+		key := "2"
+		if persist {
+			key = "3"
+		}
+		if approvalKey(&p, key) != nil || p.screen != 2 || p.selectedIdx != 0 {
+			t.Fatal("scope skipped confirmation")
+		}
+		view := p.Render()
+		if persist && !strings.Contains(view, "Bash(ls)") {
+			t.Fatal(view)
+		}
+		r := approvalKey(&p, "2")
+		if r == nil || r.Request != req || r.Persist != persist || r.AllowAll == persist {
+			t.Fatalf("response %+v", r)
+		}
+	}
+}
+func TestApprovalNavigationAndReplacement(t *testing.T) {
+	p := NewApproval()
+	req := &perm.PermissionRequest{ToolName: "Bash"}
+	p.Show(req, 32, 12)
+	if _, r := p.handleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}); r != nil {
+		t.Fatal("shift-tab grants")
+	}
+	approvalKey(&p, "3")
+	approvalKey(&p, "2")
+	replacement := &perm.PermissionRequest{ToolName: "Write", OnceOnly: true}
+	p.Show(replacement, 32, 12)
+	if p.screen != 0 || p.pending.AllowAll || len(p.options()) != 2 {
+		t.Fatal("stale state")
+	}
+	if _, r := p.handleKeypress(tea.KeyPressMsg{Code: 'y', Text: "y", IsRepeat: true}); r != nil {
+		t.Fatal("repeat grants")
+	}
+	r := approvalKey(&p, "y")
+	if r == nil || r.Request != replacement || r.AllowAll || r.Persist {
+		t.Fatal(r)
+	}
+}
+func TestApprovalCommandScrollableAtSmallSizes(t *testing.T) {
+	for _, size := range [][2]int{{32, 12}, {40, 10}} {
+		p := NewApproval()
+		command := "echo " + strings.Repeat("abcdefghij", 30) + "\n    final-command"
+		p.Show(&perm.PermissionRequest{ToolName: "Bash", BashMeta: &perm.BashMetadata{Command: command}}, size[0], size[1])
+		seen := ""
+		for i := 0; i < 30; i++ {
+			view := ansi.Strip(p.Render())
+			if len(strings.Split(view, "\n")) > size[1] {
+				t.Fatal(view)
+			}
+			for _, line := range strings.Split(view, "\n") {
+				if ansi.StringWidth(line) > size[0] {
+					t.Fatal(line)
+				}
+			}
+			seen += view
+			p.handleKeypress(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+		}
+		if !strings.Contains(seen, "final-command") {
+			t.Fatal("command tail unreachable")
+		}
+		full := ansi.Strip(p.bashPreview.render(size[0]))
+		if strings.Contains(full, "…") || strings.Contains(full, "...") {
+			t.Fatal(full)
+		}
+	}
+}
+func TestApprovalBackAndExactPersistentScope(t *testing.T) {
+	p := NewApproval()
+	req := &perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(ls)", "Bash(pwd)"}}
+	p.Show(req, 100, 24)
+	approvalKey(&p, "3")
+	approvalKey(&p, "3")
+	view := ansi.Strip(p.Render())
+	for _, text := range []string{"Bash(ls)", "Bash(pwd)", ".san/settings.local.json", "Esc back"} {
+		if !strings.Contains(view, text) {
+			t.Fatalf("missing %q: %s", text, view)
+		}
+	}
+	if approvalKey(&p, "y") != nil || p.screen != 2 {
+		t.Fatal("Y grants scope")
+	}
+	if approvalKey(&p, "enter") != nil || p.screen != 1 {
+		t.Fatal("confirmation must default Back")
+	}
+	approvalKey(&p, "2")
+	if approvalKey(&p, "esc") != nil || p.screen != 1 {
+		t.Fatal("Esc must return one level")
+	}
+	if approvalKey(&p, "esc") != nil || p.screen != 0 {
+		t.Fatal("Esc must return to base")
+	}
+	if r := approvalKey(&p, "esc"); r == nil || r.Approved || r.Request != req {
+		t.Fatal(r)
+	}
+}
+
+func TestApprovalCommandUsesSharedInsetSurface(t *testing.T) {
+	command := "  echo " + strings.Repeat("token-with-spaces ", 30)
+	preview := newApprovalBashPreview(&perm.BashMetadata{Command: command})
+	for _, width := range []int{32, 40, 80} {
+		full := preview.render(width)
+		if full != strings.TrimSuffix(kit.RenderCommandBlock(command, width), "\n") {
+			t.Fatalf("width %d differs from the shared lossless command block: %q", width, full)
+		}
+		for _, row := range strings.Split(ansi.Strip(full), "\n") {
+			if ansi.StringWidth(row) != width-1 || !strings.HasPrefix(row, "  ") {
+				t.Fatalf("width %d has ragged or unindented preview: %q", width, row)
+			}
 		}
 	}
 }
 
-// "Always allow" names the rule it saves, and is offered only with one.
-func TestApprovalAlwaysAllowNamesItsRule(t *testing.T) {
-	labels := BuildApprovalOptions(&perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(touch:x)", "Bash(echo:ok)"}})
-	if labels[2] != "Always allow Bash(touch:x) +1" {
-		t.Errorf("label = %q", labels[2])
+func TestApprovalDiffRemainsNumberedAndScrollable(t *testing.T) {
+	p := NewApproval()
+	lines := []perm.DiffLine{{Type: perm.DiffLineRemoved, Content: "old-value", OldLineNo: 7}, {Type: perm.DiffLineAdded, Content: "new-value", NewLineNo: 7}}
+	for i := 8; i < 40; i++ {
+		lines = append(lines, perm.DiffLine{Type: perm.DiffLineAdded, Content: "tail-value", NewLineNo: i})
 	}
-	labels = BuildApprovalOptions(&perm.PermissionRequest{ToolName: "Bash"})
-	if len(labels) != 3 || labels[2] != "No" {
-		t.Errorf("without rules, options = %v, want no Always allow", labels)
+	p.Show(&perm.PermissionRequest{ToolName: "Edit", FilePath: "example.go", DiffMeta: &perm.DiffMetadata{Lines: lines, AddedCount: 33, RemovedCount: 1}}, 40, 10)
+	first := ansi.Strip(p.Render())
+	for _, text := range []string{"old-value", "new-value", "7"} {
+		if !strings.Contains(first, text) {
+			t.Fatal(first)
+		}
 	}
-}
-
-// Up/Down boundaries must follow len(options)-1, not a hardcoded 3.
-func TestApprovalModalArrowBoundsFollowOptionCount(t *testing.T) {
-	model := &ApprovalModel{
-		active:      true,
-		request:     &perm.PermissionRequest{ToolName: "Bash"},
-		selectedIdx: 0,
+	seen := first
+	for i := 0; i < 30; i++ {
+		p.TogglePreview()
+		seen += ansi.Strip(p.Render())
 	}
-	options := buildApprovalOptionRows(model.request)
-
-	// Walk down past the end — should clamp at len-1, not crash, not exceed.
-	for i := 0; i < len(options)+3; i++ {
-		model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	if model.selectedIdx != len(options)-1 {
-		t.Errorf("after %d downs: selectedIdx=%d, want %d (clamp at last)",
-			len(options)+3, model.selectedIdx, len(options)-1)
-	}
-
-	// Walk up past the start — should clamp at 0.
-	for i := 0; i < len(options)+3; i++ {
-		model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
-	}
-	if model.selectedIdx != 0 {
-		t.Errorf("after walking up: selectedIdx=%d, want 0", model.selectedIdx)
+	if !strings.Contains(seen, "39") || !strings.Contains(seen, "tail-value") {
+		t.Fatal("diff tail not reachable")
 	}
 }
 
-// Shift+Tab finds the AllowAll row by its flag, not by index. If the modal
-// reorders options, the accelerator still hits the right row.
-func TestApprovalModalShiftTabFindsAllowAllByFlag(t *testing.T) {
-	model := &ApprovalModel{
-		active:  true,
-		request: &perm.PermissionRequest{ToolName: "Skill"},
-	}
-	_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if resp == nil {
-		t.Fatal("ShiftTab produced no response")
-	}
-	if !resp.Approved || !resp.AllowAll {
-		t.Errorf("ShiftTab response = %+v, want {Approved:true, AllowAll:true}", *resp)
-	}
-}
-
-// Esc/Ctrl+C maps to the first row with Approved=false, again by flag rather
-// than index — so reordering "No" or replacing it with a richer reject row
-// still works.
-func TestApprovalModalEscFindsRejectByFlag(t *testing.T) {
-	model := &ApprovalModel{
-		active:  true,
-		request: &perm.PermissionRequest{ToolName: "Bash"},
-	}
-	_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if resp == nil {
-		t.Fatal("Esc produced no response")
-	}
-	if resp.Approved {
-		t.Errorf("Esc response Approved = true, want false")
-	}
-}
-
-// BuildApprovalOptions and buildApprovalOptionRows must stay aligned in
-// length and label order — they share a producer so a regression here means
-// the public helper drifted from the internal source.
 func TestBuildApprovalOptionsMatchesRows(t *testing.T) {
 	req := &perm.PermissionRequest{ToolName: "Edit"}
 	labels := BuildApprovalOptions(req)
 	rows := buildApprovalOptionRows(req)
 	if len(labels) != len(rows) {
-		t.Fatalf("len(labels)=%d, len(rows)=%d", len(labels), len(rows))
+		t.Fatal(labels)
 	}
 	for i := range rows {
 		if labels[i] != rows[i].Label {
-			t.Errorf("label[%d] = %q, row label = %q", i, labels[i], rows[i].Label)
+			t.Fatal(labels)
 		}
 	}
 }

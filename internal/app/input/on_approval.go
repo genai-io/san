@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -23,6 +25,19 @@ type ApprovalModel struct {
 	agentPreview *approvalAgentPreview
 	width        int
 	selectedIdx  int
+	height       int
+	screen       int // 0: current call, 1: more permissions, 2: scope confirmation
+	pending      approvalOption
+	scroll       int
+	previewKey   approvalPreviewKey
+	previewLines []string
+}
+
+// Preview content is fixed for a shown request; only layout and colors vary.
+type approvalPreviewKey struct {
+	width, screen          int
+	persist, compact, dark bool
+	profile                colorprofile.Profile
 }
 
 // NewApproval creates a new ApprovalModel instance
@@ -37,6 +52,9 @@ func (p *ApprovalModel) setRequest(req *perm.PermissionRequest, width int) {
 	p.request = req
 	p.width = width
 	p.selectedIdx = 0
+	p.screen, p.scroll = 0, 0
+	p.pending = approvalOption{}
+	p.previewLines = nil
 
 	if req.DiffMeta != nil {
 		p.diffPreview = newApprovalDiffPreview(req.DiffMeta, req.FilePath)
@@ -66,6 +84,12 @@ func (p *ApprovalModel) setRequest(req *perm.PermissionRequest, width int) {
 // Show displays the permission prompt with the given request.
 func (p *ApprovalModel) Show(req *perm.PermissionRequest, width, height int) {
 	p.setRequest(req, width)
+	p.Resize(width, height)
+}
+
+// Resize updates the available approval panel budget.
+func (p *ApprovalModel) Resize(width, height int) {
+	p.width, p.height = max(width, 1), max(height, 1)
 }
 
 // Hide hides the permission prompt
@@ -76,6 +100,7 @@ func (p *ApprovalModel) Hide() {
 	p.bashPreview = nil
 	p.skillPreview = nil
 	p.agentPreview = nil
+	p.previewLines = nil
 }
 
 // IsActive returns whether the prompt is visible
@@ -83,14 +108,13 @@ func (p *ApprovalModel) IsActive() bool {
 	return p.active
 }
 
-// TogglePreview toggles the expand state of diff/bash previews.
+// TogglePreview advances the scrollable preview by one page.
+func (p *ApprovalModel) previewPageSize() int {
+	return max(1, p.height-2-len(p.options())-2)
+}
+
 func (p *ApprovalModel) TogglePreview() {
-	if p.diffPreview != nil {
-		p.diffPreview.toggleExpand()
-	}
-	if p.bashPreview != nil {
-		p.bashPreview.toggleExpand()
-	}
+	p.scroll += p.previewPageSize()
 }
 
 // ApprovalResponseMsg is sent when the user responds to a permission request
@@ -117,83 +141,86 @@ func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 // handleKeypress advances modal state for a keypress, returning a response
 // once the user has made a decision.
 func (p *ApprovalModel) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalResponseMsg) {
-	if !p.active {
+	if !p.active || msg.Key().IsRepeat {
 		return nil, nil
 	}
-	options := buildApprovalOptionRows(p.request)
-
-	switch msg.String() {
-	case "up", "ctrl+p":
-		if p.selectedIdx > 0 {
-			p.selectedIdx--
-		}
-		return nil, nil
-
-	case "down", "ctrl+n":
-		if p.selectedIdx < len(options)-1 {
-			p.selectedIdx++
-		}
-		return nil, nil
-
-	case "enter":
-		return p.respondAt(options, p.selectedIdx)
-
-	case "shift+tab":
-		// shift+tab is the accelerator for "Yes, allow all this session".
-		// Look it up by AllowAll instead of hardcoding the index so the
-		// accelerator survives reordering.
-		for i, opt := range options {
-			if opt.AllowAll {
-				return p.respondAt(options, i)
-			}
-		}
-		return nil, nil
-
-	case "ctrl+o":
-		if p.diffPreview != nil {
-			p.diffPreview.toggleExpand()
-		}
-		if p.bashPreview != nil {
-			p.bashPreview.toggleExpand()
-		}
-		return nil, nil
-
+	rows := p.options()
+	s := msg.String()
+	switch s {
+	case "up", "ctrl+p", "shift+tab":
+		p.selectedIdx = max(0, p.selectedIdx-1)
+	case "down", "ctrl+n", "tab":
+		p.selectedIdx = min(len(rows)-1, p.selectedIdx+1)
+	case "pgdown", "ctrl+o":
+		p.scroll += p.previewPageSize()
+	case "pgup":
+		p.scroll = max(0, p.scroll-p.previewPageSize())
 	case "esc", "ctrl+c":
-		// Esc/Ctrl+C maps to whichever option carries no approval — the
-		// modal must always offer one such row (a "No" or equivalent).
-		for i, opt := range options {
-			if !opt.Approved {
-				return p.respondAt(options, i)
+		if p.screen > 0 {
+			p.screen--
+			p.selectedIdx = 0
+			p.scroll = 0
+		} else {
+			return p.respondAt(rows, 1)
+		}
+	case "enter", "space", " ":
+		return p.activate(rows, p.selectedIdx)
+	default:
+		if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+			return p.activate(rows, int(s[0]-'1'))
+		}
+		if p.screen == 0 {
+			switch s {
+			case "y", "Y":
+				return p.respondAt(rows, 0)
+			case "n", "N":
+				return p.respondAt(rows, 1)
 			}
 		}
+	}
+	return nil, nil
+}
+
+func (p *ApprovalModel) options() []approvalOption {
+	switch p.screen {
+	case 1:
+		rows := buildApprovalOptionRows(p.request)
+		return append([]approvalOption{{Label: "Back"}}, rows[1:len(rows)-1]...)
+	case 2:
+		return []approvalOption{{Label: "Back"}, {Label: "Confirm permission", Approved: true, AllowAll: p.pending.AllowAll, Persist: p.pending.Persist}}
+	default:
+		rows := []approvalOption{{Label: "Allow once", Approved: true}, {Label: "Deny"}}
+		if p.request != nil && !p.request.OnceOnly {
+			rows = append(rows, approvalOption{Label: "More permissions…"})
+		}
+		return rows
+	}
+}
+
+func (p *ApprovalModel) activate(rows []approvalOption, i int) (tea.Cmd, *ApprovalResponseMsg) {
+	if i < 0 || i >= len(rows) {
 		return nil, nil
 	}
-
-	// Digit keys: "1".."9" map to options by 1-based index. "y"/"n" remain
-	// shortcuts for the first approved / first non-approved row.
-	if s := msg.String(); len(s) == 1 {
-		if s[0] >= '1' && s[0] <= '9' {
-			if idx := int(s[0] - '1'); idx < len(options) {
-				return p.respondAt(options, idx)
-			}
-		}
-		switch s {
-		case "y", "Y":
-			for i, opt := range options {
-				if opt.Approved && !opt.AllowAll && !opt.Persist {
-					return p.respondAt(options, i)
-				}
-			}
-		case "n", "N":
-			for i, opt := range options {
-				if !opt.Approved {
-					return p.respondAt(options, i)
-				}
-			}
-		}
+	if p.screen == 0 && i == 2 {
+		p.screen = 1
+		p.selectedIdx = 0
+		p.scroll = 0
+		return nil, nil
 	}
-
-	return nil, nil
+	if p.screen > 0 && i == 0 {
+		p.screen--
+		p.selectedIdx = 0
+		p.scroll = 0
+		return nil, nil
+	}
+	if p.screen == 1 {
+		p.pending = rows[i]
+		p.screen = 2
+		p.selectedIdx = 0
+		p.scroll = 0
+		return nil, nil
+	}
+	return p.respondAt(rows, i)
 }
 
 func (p *ApprovalModel) respondAt(options []approvalOption, i int) (tea.Cmd, *ApprovalResponseMsg) {
@@ -240,58 +267,105 @@ func approvalTitleStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
 }
 
+func (p *ApprovalModel) wrappedPreview(width int, compact bool) []string {
+	key := approvalPreviewKey{width: width, screen: p.screen, persist: p.pending.Persist,
+		compact: compact, dark: kit.IsDarkBackground(), profile: lipgloss.Writer.Profile}
+	if p.previewLines != nil && p.previewKey == key {
+		return p.previewLines
+	}
+	var preview string
+	if p.screen == 2 {
+		if p.pending.Persist {
+			preview = "Save exact allow rules: " + strings.Join(p.request.AllowRules, ", ") + "\nProject-local .san/settings.local.json"
+		} else {
+			preview = "Allow future calls to " + p.request.ToolName + " for this session, beyond this command. This does not allow all tools. Safety checks and explicit ask rules still apply."
+			preview = ansi.Wrap(preview, width, " ")
+		}
+	} else if p.diffPreview != nil {
+		p.diffPreview.expanded = true
+		preview = p.diffPreview.render(width)
+	} else if p.bashPreview != nil {
+		preview = p.bashPreview.render(width)
+	} else if p.skillPreview != nil {
+		preview = p.skillPreview.render(width)
+	} else if p.agentPreview != nil {
+		preview = p.agentPreview.render(width)
+	} else {
+		preview = p.request.Description
+	}
+	// Keep the compact header, but make the complete requester/title available
+	// in the scrollable region rather than losing safety-relevant identity.
+	if ansi.StringWidth("● "+p.getTitle()) > width {
+		preview = p.getTitle() + "\n" + preview
+	}
+	if compact {
+		preview += "\n" + p.request.PermissionMode + " · cwd: " + strconv.QuoteToGraphic(p.request.WorkingDirectory)
+	}
+	p.previewKey = key
+	p.previewLines = strings.Split(strings.TrimRight(ansi.Hardwrap(preview, width, true), "\n"), "\n")
+	return p.previewLines
+}
+
 func (p *ApprovalModel) renderInline() string {
 	if !p.active || p.request == nil {
 		return ""
 	}
-
-	var sb strings.Builder
-	contentWidth := max(p.width-2, 40)
-
-	title := p.getTitle()
-	sb.WriteString(" ")
-	sb.WriteString(approvalTitleStyle().Render(title))
-	sb.WriteString("\n\n")
-	if p.request.WorkingDirectory != "" {
-		context := p.request.PermissionMode + " · cwd: " + strconv.QuoteToGraphic(p.request.WorkingDirectory)
-		sb.WriteString(" " + approvalHintStyle().Render(kit.TruncateText(context, contentWidth-2)))
-		sb.WriteString("\n\n")
+	w := max(1, p.width)
+	h := p.height
+	if h <= 0 {
+		h = 24
 	}
-
-	if p.diffPreview != nil {
-		sb.WriteString(p.diffPreview.render(contentWidth))
-	} else if p.bashPreview != nil {
-		sb.WriteString(p.bashPreview.render(contentWidth))
-	} else if p.skillPreview != nil {
-		sb.WriteString(p.skillPreview.render(contentWidth))
-	} else if p.agentPreview != nil {
-		sb.WriteString(p.agentPreview.render(contentWidth))
-	} else if p.request.ToolName == tool.ToolSendMessage {
-		_, body, _ := strings.Cut(p.request.Description, ": ")
-		sb.WriteString(renderMessagePreview(body, contentWidth))
+	header := []string{approvalTitleStyle().Render(kit.TruncateText("● "+p.getTitle(), w)), approvalHintStyle().Render(kit.TruncateText(p.request.PermissionMode+" · cwd: "+strconv.QuoteToGraphic(p.request.WorkingDirectory), w))}
+	compact := h < len(header)+len(p.options())+2
+	if compact {
+		// On very short panels, keep the operation inspectable before cwd chrome.
+		header = header[:1]
 	}
-	sb.WriteString("\n")
-
-	sb.WriteString(" ")
-	sb.WriteString(approvalQuestionStyle().Render("Do you want to proceed?"))
-	sb.WriteString("\n")
-
-	sb.WriteString(p.renderMenu())
-	sb.WriteString("\n")
-
-	footer := " Esc to cancel"
-	hasExpandableContent := (p.diffPreview != nil && len(p.diffPreview.diffMeta.Lines) > approvalDefaultMaxVisibleLines) ||
-		(p.bashPreview != nil && p.bashPreview.needsExpand())
-	if hasExpandableContent {
-		footer += " · Ctrl+O expand"
+	lines := p.wrappedPreview(w, compact)
+	var menu []string
+	for i, row := range p.options() {
+		prefix := "  "
+		if i == p.selectedIdx {
+			prefix = "> "
+		}
+		label := kit.TruncateText(fmt.Sprintf("%s%d. %s", prefix, i+1, row.Label), w)
+		if i == p.selectedIdx {
+			label = approvalSelectedStyle().Render(label)
+		} else {
+			label = approvalUnselectedStyle().Render(label)
+		}
+		menu = append(menu, label)
 	}
-	sb.WriteString(approvalFooterStyle().Render(footer))
-	sb.WriteString("\n")
-
-	solidSep := strings.Repeat("─", contentWidth)
-	sb.WriteString(approvalSeparatorStyle().Render(solidSep))
-
-	return sb.String()
+	// Reserve the decision rows and hint first. A scroll notice consumes a
+	// row only when needed; never force a preview row past the panel budget.
+	budget := max(0, h-len(header)-len(menu)-1)
+	// A scroll label must never consume the last inspectable operation row.
+	scrollNotice := len(lines) > budget && budget > 1
+	if scrollNotice {
+		budget--
+	}
+	p.scroll = min(p.scroll, max(0, len(lines)-max(1, budget)))
+	end := min(len(lines), p.scroll+budget)
+	var hint string
+	if p.screen > 0 {
+		hint = "Enter confirm · Esc back"
+	} else {
+		hint = "Enter · Y once · N/Esc deny"
+	}
+	if !scrollNotice && len(lines) > budget {
+		if p.screen == 0 {
+			hint = "Y once · Esc deny · PgDn"
+		} else {
+			hint = "Enter · Esc back · PgDn"
+		}
+	}
+	out := append(header, lines[p.scroll:end]...)
+	out = append(out, menu...)
+	out = append(out, kit.TruncateText(hint, w))
+	if scrollNotice {
+		out = append(out, kit.TruncateText(fmt.Sprintf("PgUp/PgDown/Ctrl+O scroll %d/%d", p.scroll+1, len(lines)), w))
+	}
+	return strings.Join(out, "\n")
 }
 
 func (p *ApprovalModel) getTitle() string {
@@ -311,7 +385,7 @@ func (p *ApprovalModel) getTitle() string {
 		// "Message @web in group shop: <body>" — the body is previewed below.
 		title, _, _ = strings.Cut(p.request.Description, ": ")
 	default:
-		title = p.request.Description
+		title = p.request.ToolName
 	}
 
 	if p.request.CallerAgent != "" {
@@ -320,11 +394,7 @@ func (p *ApprovalModel) getTitle() string {
 	return title
 }
 
-// approvalOption is one row of the approval modal: its label, an optional
-// keyboard hint, and the response flags that fire when the user picks it.
-// Behavior + presentation collapsed into one struct so adding a new option
-// is a single append to buildApprovalOptionRows — renderer, keyboard
-// dispatch, and trace emit all stay in sync automatically.
+// approvalOption describes a permission outcome or navigation row.
 type approvalOption struct {
 	Label    string
 	Hint     string
@@ -333,23 +403,21 @@ type approvalOption struct {
 	Persist  bool
 }
 
-// buildApprovalOptionRows is the single source of truth for the modal's
-// option set. Adding "this directory only", removing "Always allow",
-// reordering — happens here and propagates to renderMenu, HandleKeypress,
-// and BuildApprovalOptions automatically.
+// buildApprovalOptionRows lists eligible outcomes for tracing and the More menu.
+// Session and persistent outcomes require a separate scope confirmation in the UI.
 func buildApprovalOptionRows(req *perm.PermissionRequest) []approvalOption {
-	rows := []approvalOption{{Label: "Yes", Approved: true}}
-	if req == nil || !req.OnceOnly {
-		rows = append(rows, approvalOption{Label: allSessionLabel(req), Hint: "(shift+tab)", Approved: true, AllowAll: true})
+	rows := []approvalOption{{Label: "Allow once", Approved: true}}
+	if req != nil && !req.OnceOnly {
+		rows = append(rows, approvalOption{Label: "Allow " + req.ToolName + " for this session…", Approved: true, AllowAll: true})
 	}
 	if req != nil && !req.OnceOnly && len(req.AllowRules) > 0 {
 		rows = append(rows, approvalOption{Label: alwaysAllowLabel(req.AllowRules), Approved: true, Persist: true})
 	}
-	return append(rows, approvalOption{Label: "No"})
+	return append(rows, approvalOption{Label: "Deny"})
 }
 
-// BuildApprovalOptions returns just the labels in display order. Used by the
-// trace writer; the modal renderer uses buildApprovalOptionRows directly.
+// BuildApprovalOptions returns eligible outcome labels for the trace writer.
+// Navigation rows and the scope-confirmation screen are intentionally omitted.
 func BuildApprovalOptions(req *perm.PermissionRequest) []string {
 	rows := buildApprovalOptionRows(req)
 	out := make([]string, len(rows))
@@ -359,57 +427,10 @@ func BuildApprovalOptions(req *perm.PermissionRequest) []string {
 	return out
 }
 
-func allSessionLabel(req *perm.PermissionRequest) string {
-	if req == nil {
-		return "Yes, allow all during this session"
-	}
-	switch req.ToolName {
-	case "Edit":
-		return "Yes, allow all edits during this session"
-	case "Write":
-		return "Yes, allow all writes during this session"
-	case tool.ToolBash, tool.ToolPowerShell:
-		return "Yes, allow all commands during this session"
-	case tool.ToolSkill:
-		return "Yes, allow all skills during this session"
-	case tool.ToolAgent:
-		return "Yes, allow all agents during this session"
-	case tool.ToolSendMessage:
-		return "Yes, allow all messages during this session"
-	default:
-		return "Yes, allow all during this session"
-	}
-}
-
 // alwaysAllowLabel names the rule the option saves, so what is granted is
 // what the user reads.
 func alwaysAllowLabel(rules []string) string {
-	label := "Always allow " + rules[0]
-	if len(rules) > 1 {
-		label += fmt.Sprintf(" +%d", len(rules)-1)
-	}
-	return label
-}
-
-func (p *ApprovalModel) renderMenu() string {
-	var sb strings.Builder
-
-	options := buildApprovalOptionRows(p.request)
-	for i, opt := range options {
-		if i == p.selectedIdx {
-			bar := kit.FocusBarStyle().Render(kit.FocusBar)
-			sb.WriteString(" " + bar + " " + approvalSelectedStyle().Render(fmt.Sprintf("%d. %s", i+1, opt.Label)))
-		} else {
-			sb.WriteString(approvalUnselectedStyle().Render(fmt.Sprintf("   %d. %s", i+1, opt.Label)))
-		}
-		if opt.Hint != "" {
-			sb.WriteString(" ")
-			sb.WriteString(approvalHintStyle().Render(opt.Hint))
-		}
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
+	return "Always allow " + strings.Join(rules, ", ")
 }
 
 // Render renders the permission prompt (calls renderInline)
@@ -498,26 +519,31 @@ func (p *approvalAgentPreview) render(width int) string {
 	sb.WriteString(labelStyle.Render("Task:"))
 	sb.WriteString("\n")
 
-	// A subagent prompt is model-authored and may be any language, so the cap
-	// is applied in display columns and cut on a rune boundary.
+	// Keep the existing prose bound, but let the panel scroll through every
+	// wrapped line rather than truncating each source line independently.
 	prompt := kit.TruncateText(p.agentMeta.Prompt, 500)
-
-	lines := strings.Split(prompt, "\n")
-	for i, line := range lines {
-		if i >= 10 {
-			sb.WriteString("   ")
-			sb.WriteString(dimStyle.Render("..."))
-			sb.WriteString("\n")
-			break
-		}
+	for _, line := range strings.Split(prompt, "\n") {
 		sb.WriteString("   ")
-		// max(...) guards a terminal too narrow for the budget, which the old
-		// line[:width-9] would have sliced out of range.
-		sb.WriteString(dimStyle.Render(kit.TruncateText(line, max(width-6, 1))))
+		sb.WriteString(dimStyle.Render(line))
 		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	// Wrap inside the indentation budget so the outer panel hardwrap never
+	// creates unindented continuation lines. ANSI widths include CJK cells.
+	indent := strings.Repeat(" ", min(3, max(0, width-2)))
+	budget := max(1, width-len(indent))
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSuffix(sb.String(), "\n"), "\n") {
+		line = strings.TrimPrefix(line, "   ")
+		for _, wrapped := range strings.Split(ansi.Hardwrap(line, budget, true), "\n") {
+			if wrapped == "" {
+				lines = append(lines, "")
+			} else {
+				lines = append(lines, indent+wrapped)
+			}
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func approvalFormatPermissionMode(mode string) string {

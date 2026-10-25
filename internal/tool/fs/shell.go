@@ -177,7 +177,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount(), progress.lastTail())
 }
 
-// tail is the output's real end as it interleaved, which a failed row keeps.
+// tail is the output's real end as it interleaved, retained for the finished row.
 func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
@@ -189,11 +189,10 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
-	details := toolresult.BashDetails{LineCount: lineCount}
-	// A failed row keeps its last lines; a short output is kept whole, which a
-	// successful row shows when it fits the preview.
-	if err != nil || lineCount <= previewTailLines {
-		details.Tail = toolresult.LastLines(tail, previewTailLines)
+	// Retain the real interleaved end even when model-facing output is cut.
+	details := toolresult.BashDetails{
+		LineCount: lineCount,
+		Tail:      toolresult.LastLines(tail, previewTailLines),
 	}
 
 	// Build CC-compatible structured response for hooks

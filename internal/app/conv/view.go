@@ -83,6 +83,10 @@ type RenderContext struct {
 	// show only here — once a message is frozen into native scrollback the
 	// key no longer reaches it.
 	Interactive bool
+
+	// waitingAtTail keeps transient waiting chrome after settled notices without
+	// moving the owning assistant's reasoning or response text.
+	waitingAtTail bool
 }
 
 // inlinedToolResults precomputes which ToolResult messages should be
@@ -265,7 +269,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 }
 
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
-	base := RenderAssistantMessage(AssistantParams{
+	params := AssistantParams{
 		Content:              msg.Content,
 		Thinking:             msg.Thinking,
 		ToolCalls:            msg.ToolCalls,
@@ -283,7 +287,15 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingDuration:     msg.ThinkingDuration,
 		WaitStartedAt:        p.StreamStartedAt,
 		SuppressWaitingRow:   p.Inferring,
-	})
+	}
+	waiting := params
+	waiting.Content = sliceFrom(waiting.Content, waiting.ContentCommittedLen)
+	if p.waitingAtTail && waiting.waitingRow() != "" {
+		// Only suppress the empty response's waiting row. Reasoning remains at
+		// its transcript position, with its original streaming ownership.
+		params.BulletEmitted = true
+	}
+	base := RenderAssistantMessage(params)
 
 	if len(msg.ToolCalls) == 0 {
 		return base
@@ -433,8 +445,9 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 		rendered := RenderToolCalls(ToolCallsParams{
 			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
-			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width,
-			Frame: p.Frame, AgentColors: p.AgentColors,
+			CurrentIdx: p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,
+			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width, SpinnerView: p.SpinnerView,
+			Frame: p.Frame, AgentColors: p.AgentColors, CompactAgentLabel: true,
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
 		})
 		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
@@ -542,13 +555,29 @@ func RenderActiveContent(p RenderContext) string {
 // the composer, even on a short terminal or during a scrollback handoff.
 func RenderActiveBody(p RenderContext) string {
 	p.Interactive = true
+	waiting := p.StreamWaiting
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		msg := p.Messages[i]
+		if msg.Role != core.ChatAssistant || !p.StreamActive || msg.ID == "" || msg.ID != p.StreamMessageID {
+			continue
+		}
+		params := AssistantParams{
+			StreamActive: true, IsLast: true,
+			Content:       sliceFrom(msg.Content, msg.ContentCommittedLen),
+			BulletEmitted: msg.BulletEmitted, ToolCalls: msg.ToolCalls,
+		}
+		if params.waitingRow() != "" {
+			waiting = true
+			p.waitingAtTail = true
+		}
+	}
 	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
 	if p.StreamActive && p.Inferring {
 		return strings.TrimRight(content, "\n")
 	}
 	// A turn between steps (one committed, the next not yet streaming) keeps
 	// its spinner, or the row would vanish and come back.
-	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
+	if waiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
 			StreamActive: true, IsLast: true, Frame: p.Frame,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
@@ -593,6 +622,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		BuildingTool:       p.BuildingTool,
 		PendingCalls:       p.PendingCalls,
 		CurrentIdx:         p.CurrentIdx,
+		ToolStartedAt:      p.ToolStartedAt,
 		TaskActivity:       p.TaskActivity,
 		SpinnerView:        p.SpinnerView,
 		Frame:              p.Frame,

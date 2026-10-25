@@ -2,6 +2,7 @@ package conv
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,10 +14,10 @@ func TestWorkerMetadataSurvivesRecentHistory(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		activity = retainAgentActivity(activity, fmt.Sprintf("Read file%d", i))
 	}
-	if model := agentModel(activity, "parent-model"); model != "actual-worker-model" {
-		t.Fatalf("wrong model: %s", model)
+	if !slices.Contains(activity, "Model: actual-worker-model") {
+		t.Fatalf("worker model not retained: %#v", activity)
 	}
-	if len(agentToolLines(activity, 0)) != maxAgentActivityHistory {
+	if len(activity) != maxAgentActivityHistory+1 {
 		t.Fatalf("recent history not bounded: %#v", activity)
 	}
 }

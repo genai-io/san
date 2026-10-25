@@ -91,6 +91,7 @@ func (m *model) viewString() (string, *tea.Cursor) {
 // the tail unbounded would push the modal's answer options off the bottom of the
 // screen, which is worse than showing no text at all.
 func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView string) string {
+	m.resizeApprovalPanel()
 	modal := "\n" + separator + "\n"
 	if context := m.interactionQueueContext(); context != "" {
 		modal += context + "\n"

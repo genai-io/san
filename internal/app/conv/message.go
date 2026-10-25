@@ -141,38 +141,35 @@ func RenderAutopilotMark(note string) string {
 }
 
 // RenderUserMessage renders a user message with prompt and optional images.
+// Wrapped and explicitly entered lines align under the text, not the prompt.
 func RenderUserMessage(content, displayContent string, images []core.Attachment, mdRenderer *MDRenderer, width int) string {
-	var sb strings.Builder
 	prompt := InputPromptStyle.Render(InputPrompt)
 	if displayContent == "" {
 		displayContent = content
 	}
-
 	if len(images) > 0 && core.InlineImageTokenRe.MatchString(displayContent) {
-		sb.WriteString(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			prompt,
-			userMsgStyle.Render(styleInlineImageTokens(displayContent)),
-		) + "\n")
-		return sb.String()
-	}
-
-	if len(images) > 0 {
+		displayContent = styleInlineImageTokens(displayContent)
+	} else if len(images) > 0 {
 		imgParts := make([]string, 0, len(images))
 		for i := range images {
 			imgParts = append(imgParts, PendingImageStyle.Render(fmt.Sprintf("[Image #%d]", i+1)))
 		}
-		imageLabel := strings.Join(imgParts, " ")
+		prompt += strings.Join(imgParts, " ")
 		if displayContent != "" {
-			sb.WriteString(prompt + imageLabel + " " + userMsgStyle.Render(displayContent) + "\n")
-		} else {
-			sb.WriteString(prompt + imageLabel + "\n")
+			prompt += " "
 		}
-	} else if displayContent != "" {
-		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, prompt, userMsgStyle.Render(displayContent)) + "\n")
 	}
-
-	return sb.String()
+	if displayContent == "" {
+		if len(images) > 0 {
+			return prompt + "\n"
+		}
+		return ""
+	}
+	if width <= 0 {
+		width = 80
+	}
+	displayContent = xansi.Wrap(strings.ReplaceAll(displayContent, "\t", "    "), max(1, width-lipgloss.Width(prompt)), " ")
+	return renderGutteredLine(prompt, strings.Repeat(" ", lipgloss.Width(prompt)), userMsgStyle, displayContent, width)
 }
 
 func styleInlineImageTokens(content string) string {
@@ -629,7 +626,9 @@ type ToolCallsParams struct {
 	TaskOwnerMap       map[string]string
 	MDRenderer         *MDRenderer
 	Width              int
-	Interactive        bool
+	// CompactAgentLabel reserves one row for identity in height-bounded worker views.
+	CompactAgentLabel bool
+	Interactive       bool
 }
 
 // expandHints reports whether "(ctrl+o to expand)" affordances belong on this
@@ -664,6 +663,19 @@ func (p ToolCallsParams) modalNamesNoCall() bool {
 // call can say what it is waiting for.
 func (p ToolCallsParams) parkedOnUser(toolCallID string) bool {
 	return p.awaitsApproval(toolCallID) || p.modalNamesNoCall()
+}
+
+func (p ToolCallsParams) agentExecuting(tc core.ToolCall) bool {
+	started, ok := p.ToolStartedAt[tc.ID]
+	if !ok || started.IsZero() {
+		return false
+	}
+	for i, pending := range p.PendingCalls {
+		if pending.ID == tc.ID {
+			return p.ParallelMode || i == p.CurrentIdx
+		}
+	}
+	return false
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -715,6 +727,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 		if tool.IsAgentToolName(tc.Name) {
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
+			if params.CompactAgentLabel && params.Width > 0 {
+				label = kit.TruncateText(label, max(1, params.Width-2))
+			}
 			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
@@ -725,17 +740,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := kit.LiveDot(params.Frame)
-				if params.parkedOnUser(tc.ID) {
-					icon = "●"
+				icon := "●"
+				if params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
+					icon = kit.LiveDot(params.Frame)
 				}
-				row := renderAgentToolLine(label, params.Width, icon, color)
-				sb.WriteString(row)
-				hint := "  (ctrl+o to expand)"
-				if !params.ToolCallsExpanded && params.expandHints() && (params.Width <= 0 || lipgloss.Width(row)+lipgloss.Width(hint) <= params.Width) {
-					sb.WriteString(ThinkingStyle.Render(hint))
-				}
-				sb.WriteString("\n")
+				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color) + "\n")
 			}
 			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
@@ -797,11 +806,22 @@ func RenderToolCalls(params ToolCallsParams) string {
 			sb.WriteString(renderDecision(resultData.Decision))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
 		} else if tool.IsAgentToolName(tc.Name) && tc.Name != tool.ToolSendMessage { // a message runs no agent
-			limit := maxCompactAgentToolLines
-			if params.ParallelMode {
-				limit = maxParallelAgentToolLines
+			if params.awaitsApproval(tc.ID) {
+				sb.WriteString(renderAgentLocalBody("Waiting for approval", params.Width))
+			} else if !params.agentExecuting(tc) {
+				sb.WriteString(renderAgentLocalBody("Pending", params.Width))
+			} else {
+				activity := renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width)
+				if !params.ToolCallsExpanded {
+					status := strings.TrimSpace(xansi.Strip(activity))
+					detail := xansi.Strip(runningRowDetail(tc, params))
+					if params.Width > 0 {
+						status = xansi.Truncate(status, max(1, params.Width-2-lipgloss.Width(detail)), "…")
+					}
+					activity = renderAgentLocalBody(status+detail, params.Width)
+				}
+				sb.WriteString(activity)
 			}
-			sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, limit, AgentStats{}, params.Width))
 		}
 	}
 

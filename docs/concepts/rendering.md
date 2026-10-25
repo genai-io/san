@@ -58,6 +58,59 @@ range (settled rendering: `0..CommittedCount`; active rendering:
 `CommittedCount..len(Messages)`). The repaint zone also includes retained
 settled rows, without rendering those messages again.
 
+## Production rendering and interaction contracts
+
+Agent calls keep one round-prefix identity from launch through completion.
+Spawn previews and worker prompts use the full configured name, with `Agent` as
+the default; the runtime's shortened name does not replace that UI identity.
+Compact running rows show real current activity and elapsed execution time;
+unstarted and approval-blocked calls stay static. The scroll fallback shares the
+conversation renderer so it cannot revive stale activity or a `Pending` state.
+Height-bounded worker views shorten the identity to one row before allocating
+space to current activity or approval state. Agent approval previews wrap within
+their inset, preserving continuation indentation and inspectable prompt prose.
+Model, mode, usage, and routine
+process metadata belong to the explicit detail view, not the default task flow.
+Foreground completion replaces activity with the existing result text (bounded
+when long), without an extra `Completed` / `Finished` row. Background launch is
+only a handoff acknowledgment, attached with the result's `└` connector rather
+than a success checkmark; its outcome arrives as one concise existing
+notification, not another Agent block or a second stop receipt. Terminal task
+details drop stale progress and routine cancellation errors, retaining meaningful
+findings and genuine reasons. Explicit expansion retains original content and
+usage details; telemetry and persisted results are unchanged.
+Errors, exit codes, and test results remain actionable output, not metadata to
+suppress. Keep the upstream `Memory ⟡` and `Recap ※` identities and meaningful
+recap facts; do not add repeated transcript-access hints.
+
+Asynchronous notices remain conversation content, ahead of a standalone waiting
+indicator at the live tail. This is presentation-only: actual streamed text,
+reasoning, message ownership, and persisted transcript order are not rearranged.
+
+The tasks component is display-only: the root app owns the task manager and
+routes actions. `/tasks` supports inspection, details, and stopping an exact task
+ID and execution attempt only after confirmation, with **Back** selected by default.
+`r` review reveals the current mixed FIFO of approvals, questions, and other
+interactions; it does not reorder requests. Pending plan items are not queued
+runtime work. Approval state is associated with the actual originating task ID,
+not inferred from the currently selected row. `c` asks main to choose a safe
+continuation for an eligible completed or failed Agent task in its existing child
+session. It does not replay commands directly, bypass approval, or continue a
+deliberately stopped/killed task.
+
+Base approvals offer **Allow once**, **Deny**, and, only when eligible, **More
+permissions**. Broader grants require a separate confirmation defaulting to
+**Back**. Tab and Shift-Tab navigate; they never grant immediately. Esc backs out
+of nested choices and denies at the base prompt. Worker approvals remain
+`OnceOnly`; persistent grants are exact `AllowRules` written to
+`.san/settings.local.json`, not broad implicit trust.
+
+Entrypoints are the root app interaction router and `/tasks` command, with
+`internal/app/input` owning prompts and `internal/app/conv` owning result
+rendering. Regression coverage lives in the corresponding input, task-viewer,
+interaction, and conversation-renderer tests. Root integration must preserve
+these contracts when composing the display-only components.
+
 ## View() composes the repaint zone
 
 `(*model).View()` in [`internal/app/view.go`](../../internal/app/view.go)
@@ -178,12 +231,23 @@ renders the tool-calls block under an assistant message:
 ● Read(src/foo.go)                      ← tool name + summary args
   └ 128 lines                          ← collapsed result summary
 ● Bash (run the tests)
-  $ cd web                             ← the command: "$", then ">"
-  > npm test
-  ┊ ✓ src/foo.test.ts (12)             ← the output's last bashPreviewLines
-  ┊ ✓ src/bar.test.ts (8)
-  └ 3 lines
+    $ cd web                           ← "$" only on the first command row
+      npm test
+  │ ✓ src/foo.test.ts (12)              ← the output's last bashPreviewLines
+  │ ✓ src/bar.test.ts (8)
+  └ last 2 of 3 lines
 ```
+
+Command input uses a continuous rectangular `CommandBg` surface, shared by the
+transcript and approval preview. It has a two-column unpainted outer inset and
+two columns of inner padding; every visual row fills the same width, including
+explicit blank lines. Output keeps the terminal canvas, with no extra blank row
+between command and output. Continuations preserve the original indentation.
+Edit and Write surfaces use the same two-column outer inset as the result's `└`
+connector, without a leftover rail gutter. Numbered `-`/`+` rows keep red/green
+backgrounds, including new-file Write previews and blank lines. Long diff lines
+wrap without losing content or inventing new line numbers. The app does not
+paint the whole terminal background to simulate a theme.
 
 State that drives it:
 

@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -39,6 +40,56 @@ func interactionApproval(m *model, ctx context.Context, id string) *conv.Interac
 		Source:         tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id, PermissionMode: "default", WorkingDirectory: "/worker/cwd", ToolCallID: "worker-call"},
 		Permission:     &agent.PermGateRequest{Context: ctx, ToolName: "Write", RequestID: id, Response: make(chan agent.PermGateResponse, 1)},
 		PermissionView: &perm.PermissionRequest{ID: id, ToolName: "Write", CallerAgent: "worker", OnceOnly: true},
+	}
+}
+
+func TestInteractionApprovalRecoversOnlyExactUnambiguousDisplayIdentity(t *testing.T) {
+	for _, ambiguous := range []bool{false, true} {
+		m := interactionModel()
+		request := interactionApproval(m, context.Background(), "request")
+		request.Source.AgentID = ""
+		request.Permission.ToolName = "Agent"
+		request.Permission.Input = map[string]any{"prompt": "Review", "_resolvedAgentConfig": "runtime-only"}
+		calls := []core.ToolCall{{ID: "exact", Name: "Agent", Input: `{"prompt":"Review"}`}}
+		if ambiguous {
+			calls = append(calls, core.ToolCall{ID: "identical-peer", Name: "Agent", Input: `{"prompt":"Review"}`})
+		}
+		m.enqueueInteraction(request)
+		m.conv.Tool.Track(calls)
+		m.advanceInteractions()
+		want := "exact"
+		if ambiguous {
+			want = ""
+		}
+		if m.conv.Tool.AwaitingApprovalID != want {
+			t.Fatalf("ambiguous=%v: display ownership=%q, want %q", ambiguous, m.conv.Tool.AwaitingApprovalID, want)
+		}
+		if request.Permission.ToolCallID != "" || len(request.Permission.Input) != 2 {
+			t.Fatal("display fallback mutated request identity or execution arguments")
+		}
+	}
+}
+
+func TestInteractionApprovalSurvivesLateToolTracking(t *testing.T) {
+	for _, worker := range []bool{false, true} {
+		m := interactionModel()
+		request := interactionApproval(m, context.Background(), "request")
+		request.Permission.ToolCallID = "actual-call"
+		if worker {
+			request.Source.ParentToolCallID = "parent-call"
+		} else {
+			request.Source.AgentID = ""
+		}
+		want := request.Permission.ToolCallID
+		if worker {
+			want = request.Source.ParentToolCallID
+		}
+		m.enqueueInteraction(request)
+		m.conv.Tool.Track([]core.ToolCall{{ID: want, Name: "Agent"}})
+		m.advanceInteractions()
+		if m.conv.Tool.AwaitingApprovalID != want || m.interactions.active != request || !m.userInput.Approval.IsActive() {
+			t.Fatalf("late tracking lost exact approval ownership: worker=%v call=%q", worker, m.conv.Tool.AwaitingApprovalID)
+		}
 	}
 }
 

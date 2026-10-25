@@ -20,7 +20,10 @@ type FileChangeDetails struct {
 // LastLines is the end of s, at most n lines; only that end is scanned, as an
 // output may run to thousands.
 func LastLines(s string, n int) string {
-	end := strings.TrimRight(s, "\n")
+	if n <= 0 {
+		return ""
+	}
+	end := strings.TrimSuffix(s, "\n")
 	start := len(end)
 	for range n {
 		i := strings.LastIndexByte(end[:start], '\n')

@@ -86,8 +86,8 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// every command is exactly when the user reaches for accept-edits or
 		// autopilot, and the permission gate reads the posture per call, so the
 		// switch lands on the turn's next tool. Overlays that bind Shift+Tab
-		// themselves (the approval prompt's "allow all this session", the
-		// pickers) already took it in routeKeypress; the command popup is the one
+		// themselves (the approval prompt's option navigation and the pickers)
+		// already took it in routeKeypress; the command popup is the one
 		// caller that reaches this far.
 		if !m.userInput.Suggestions.IsVisible() {
 			return m.cycleOperationMode(), true

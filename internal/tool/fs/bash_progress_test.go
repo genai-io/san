@@ -127,10 +127,8 @@ func TestOutputProgress_reportsWhatTheThrottleHeldBack(t *testing.T) {
 	p.stop()
 }
 
-// Past the 30 KB the model gets, the result still counts every line, and a
-// failure keeps the real end as stdout and stderr interleaved, so its finished
-// row shows what the live one did. A success keeps a short output whole and a
-// long one no end: it folds.
+// Past the 30 KB the model gets, results still count every line and retain the
+// interleaved end on success as well as failure, matching the running preview.
 func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 	ctx := coretool.ContextWithBashProgress(context.Background(), func(int, int64, string) {})
 	result := bashTool(t).ExecuteApproved(ctx, map[string]any{
@@ -156,7 +154,7 @@ func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 		t.Fatalf("short success: %#v, want its count and whole output", d)
 	}
 	long := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "seq 1 100", "timeout": 30000}, t.TempDir())
-	if d := long.Details.(toolresult.BashDetails); d.LineCount != 100 || d.Tail != "" {
-		t.Fatalf("long success: %#v, want its count and no end", d)
+	if d := long.Details.(toolresult.BashDetails); d.LineCount != 100 || !strings.HasSuffix(d.Tail, "99\n100\n") || strings.Count(d.Tail, "\n") != previewTailLines {
+		t.Fatalf("long success: %#v, want its count and diagnostic end", d)
 	}
 }

@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>San — UI/UX 前后对比</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:#f5f6f8; --paper:#fff; --ink:#172434; --sub:#647180; --line:#dce2e8;
+    --focus:#0f766e; --soft:#eaf3f1; --shadow:0 16px 48px -28px #17243440;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  html[data-theme="dark"] {
+    color-scheme:dark;
+    --page:#0a101a; --paper:#101a28; --ink:#e0e8f2; --sub:#9aaabd; --line:#263547;
+    --focus:#5eead4; --soft:#142e32; --shadow:0 16px 48px -28px #0009;
+  }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--page); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased }
+  button,input { font:inherit }
+  button { cursor:pointer }
+  button:focus-visible,summary:focus-visible,a:focus-visible { outline:3px solid var(--focus); outline-offset:4px }
+  button { -webkit-tap-highlight-color:transparent }
+  .wrap { width:min(1360px,calc(100% - 80px)); margin:auto }
+  .masthead { height:86px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line) }
+  .brand { display:flex; gap:12px; align-items:center; font-size:20px; font-weight:760; letter-spacing:.08em }
+  .brandmark { display:flex; flex-direction:column; gap:4px; width:23px; transform:skewY(-9deg) }
+  .brandmark i { height:3px; background:var(--focus); border-radius:1px }
+  .brandmark i:nth-child(2) { width:17px }
+  .brandmark i:nth-child(3) { width:11px }
+  .masthead-meta { display:flex; gap:22px; align-items:center; color:var(--sub); font:11px var(--mono); letter-spacing:.06em }
+  .tag { border:1px solid var(--line); border-radius:5px; padding:6px 9px; letter-spacing:.02em }
+  .hero { display:flex; align-items:end; justify-content:space-between; gap:30px; padding:42px 0 34px }
+  .eyebrow { margin:0 0 13px; font:11px var(--mono); letter-spacing:.14em; color:var(--focus) }
+  h1 { font-size:clamp(30px,3.2vw,44px); letter-spacing:-.045em; font-weight:650; line-height:1.25; margin:0 }
+  h1 span { color:var(--sub); font-weight:450 }
+  .hero-note { max-width:360px; margin:0 0 3px; font-size:13px; line-height:1.9; color:var(--sub) }
+  .controls { padding:17px 0; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:18px }
+  .tabs,.themes { display:flex; align-items:center; gap:4px }
+  .tabs button { padding:9px 14px; border:0; border-radius:6px; background:transparent; color:var(--sub); font-size:13px }
+  .tabs button[aria-selected="true"] { background:var(--paper); color:var(--ink); box-shadow:0 1px 5px #00000008; font-weight:650 }
+  .tabs .index { font:10px var(--mono); opacity:.5; margin-right:6px }
+  .themes { border:1px solid var(--line); border-radius:8px; padding:3px; background:var(--paper) }
+  .themes button { display:flex; align-items:center; gap:7px; border:0; background:transparent; color:var(--sub); border-radius:5px; padding:7px 12px; font:11px var(--mono) }
+  .themes button[aria-pressed="true"] { background:var(--soft); color:var(--focus) }
+  svg { width:15px; height:15px; flex-shrink:0; vertical-align:middle }
+  .comparison { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px }
+  .comparison > article { min-width:0 }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; padding:13px 2px }
+  .panel-title { display:flex; align-items:baseline; gap:11px; font-size:13px; font-weight:650 }
+  .panel-title .en { font:10px var(--mono); letter-spacing:.12em; color:var(--sub) }
+  .after-head .en { color:var(--focus) }
+  .panel-caption { color:var(--sub); font-size:11px }
+  .terminal {
+    --bg:#fafafa; --surface:#e4e4e7; --fg:#18181b; --dim:#71717a; --muted:#6b7280; --accent:#0d9488;
+    --border:#d4d4d8; --ok:#15803d; --error:#b91c1c; --warning:#b45309; --link:#64748b; --on-accent:#fff;
+    background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:12px;
+    box-shadow:var(--shadow); overflow:hidden; font:12px/1.75 var(--mono); height:640px;
+    display:flex; flex-direction:column; container-type:size; container-name:terminal;
+  }
+  .terminal.after {
+    --bg:#fafbfc; --surface:#f1f5f9; --fg:#1f2937; --dim:#57606a; --muted:#64748b; --accent:#0f766e;
+    --border:#cfd8e3; --ok:#15803d; --error:#b91c1c; --warning:#9a6700; --link:#1d4ed8; --on-accent:#fff;
+  }
+  html[data-theme="dark"] .terminal.before {
+    --bg:#18181b; --surface:#27272a; --fg:#dddee2; --dim:#a8aebb; --muted:#7b8696; --accent:#46e8c0;
+    --border:#52525b; --ok:#86efac; --error:#fca5a5; --warning:#fcd34d; --link:#9db5d4; --on-accent:#18181b;
+  }
+  html[data-theme="dark"] .terminal.after {
+    --bg:#0d1526; --surface:#142035; --fg:#d8e2f0; --dim:#9aaec4; --muted:#9aaec4; --accent:#5eead4;
+    --border:#30445e; --ok:#86d9a3; --error:#f59b9b; --warning:#e8bd70; --link:#8bb8ff; --on-accent:#0d1526;
+  }
+  .window-bar { height:39px; min-height:39px; display:flex; align-items:center; justify-content:space-between; padding:0 17px; border-bottom:1px solid var(--border); color:var(--dim); font-size:10px }
+  .window-dots { display:flex; gap:5px; width:42px }
+  .window-dots i { width:7px; height:7px; border:1px solid var(--border); border-radius:50% }
+  .window-end { width:42px; text-align:right; opacity:.7 }
+  .terminal-body { flex:1; min-height:0; overflow:auto; padding:22px 24px 16px; scrollbar-width:thin; scrollbar-color:var(--border) transparent }
+  .terminal-body p { margin:0 }
+  .upstream-output { margin:0; font:inherit; line-height:1.65; white-space:pre; tab-size:4 }
+  .upstream-footer { margin:0 20px; padding:6px 0 12px; overflow:auto; scrollbar-width:thin; color:var(--dim); font-size:10px }
+  .source-note { display:flex; flex-wrap:wrap; gap:6px 15px; margin:0 0 20px; color:var(--sub); font:10px/1.9 var(--mono) }
+  .source-note a { color:var(--focus); text-underline-offset:3px }
+  .memory-notice { margin:0 0 13px; display:grid; grid-template-columns:15px minmax(0,1fr); gap:4px; color:var(--dim); font-size:11px }
+  .memory-notice .mark { color:var(--fg) }
+  .recap { margin:17px 0 0; display:grid; grid-template-columns:15px minmax(0,1fr); gap:4px; color:var(--dim); font-size:11px }
+  .recap .body { font-style:italic }
+  .recap .facts { font-style:normal; margin-top:4px; font-size:10px }
+  .lockup { display:flex; align-items:center; gap:10px; margin-bottom:22px; line-height:1.5 }
+  .san-word { color:var(--fg); font-size:16px; letter-spacing:.06em; font-weight:700 }
+  .san-word b { color:var(--accent) }
+  .lockup .meta { color:var(--dim); font-size:10px; border-left:1px solid var(--border); padding-left:11px }
+  .message { display:grid; grid-template-columns:15px minmax(0,1fr); gap:4px; margin-bottom:16px }
+  .message .mark { color:var(--accent); font-weight:700 }
+  .message.assistant .mark { color:var(--fg) }
+  .message.thinking { color:var(--muted); margin-bottom:14px; font-size:11px }
+  .message.thinking .mark { color:var(--muted) }
+  .message strong { font-weight:650 }
+  .message code,.inline-code { color:var(--link); font:inherit }
+  .tool { margin:0 0 15px }
+  .tool-head { display:grid; grid-template-columns:15px minmax(0,1fr); gap:4px; align-items:baseline }
+  .tool-head strong { font-weight:650 }
+  .tool-description { color:var(--dim); font-size:11px; margin-left:6px }
+  .tool-output { color:var(--dim); padding-left:19px; font-size:11px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere }
+  .tool-output .error,.error { color:var(--error) }
+  .ok { color:var(--ok) }
+  .warning { color:var(--warning) }
+  .dim { color:var(--dim) }
+  .muted { color:var(--muted) }
+  .before .tool-command { color:var(--dim); padding-left:19px; font-size:11px }
+  .after .tool-command { color:var(--fg); padding-left:19px; font-size:11px }
+  .tool-result { margin-left:19px; color:var(--dim); font-size:10px }
+  .duration { margin-left:auto; color:var(--dim); font-weight:400; font-size:10px }
+  .after .tool-header-content { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:7px }
+  .after .tool-description { margin:0 }
+  .after .tool-output { margin:3px 0 0 19px; padding:0 0 0 10px; border-left:1px solid var(--border) }
+  .after .tool-result { margin-top:3px }
+  .tool-result.error,.state-pill.error { color:var(--error) }
+  .state-pill.warning { color:var(--warning) }
+  .tool-target { font:inherit; color:var(--fg); overflow-wrap:anywhere }
+  .command-block { width:fit-content; max-width:calc(100% - 19px); margin:3px 0 0 19px; padding:0 1ch 0 0; color:var(--fg); font-size:11px }
+  .after[data-command-tint="true"] .command-block { background:var(--surface) }
+  .command-line { display:grid; grid-template-columns:12px minmax(0,1fr); gap:6px; align-items:baseline }
+  .command-gutter { color:var(--dim); user-select:none }
+  .command-line code { font:inherit; white-space:pre-wrap; overflow-wrap:anywhere }
+  .diff-preview { margin:5px 0 0 19px; font-size:11px; line-height:1.8; overflow-x:auto }
+  .diff-row { display:block }
+  .diff-code { display:block; white-space:pre; padding:0 7px }
+  .write-preview { margin:6px 0 5px 19px; color:var(--fg); font:11px/1.8 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere }
+  .file-preview { white-space:normal }
+  .file-line { display:grid; grid-template-columns:3ch 1ch minmax(0,1fr); column-gap:1ch; align-items:baseline; min-height:1.8em; padding:0 .75ch 0 0; background:#eef9f0 }
+  html[data-theme="dark"] .file-line { background:#14291f }
+  .file-line-number { color:var(--dim); text-align:right; user-select:none }
+  .file-line-change { color:var(--ok); user-select:none }
+  .file-line code { min-width:0; font:inherit; color:var(--fg); white-space:pre-wrap; overflow-wrap:anywhere }
+  .diff-row.add .diff-code { background:#eef9f0; color:var(--ok) }
+  .diff-row.remove .diff-code { background:#fff0f0; color:var(--error) }
+  html[data-theme="dark"] .diff-row.add .diff-code { background:#14291f }
+  html[data-theme="dark"] .diff-row.remove .diff-code { background:#2e1d26 }
+  .bash-examples { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:0 0 9px; color:var(--sub); font-size:11px }
+  .bash-examples[hidden] { display:none }
+  .bash-examples .label { margin-right:5px; font:10px var(--mono) }
+  .bash-examples button { border:1px solid var(--line); border-radius:4px; padding:6px 9px; color:var(--sub); background:transparent; font:10px var(--mono) }
+  .bash-examples button[aria-pressed="true"] { color:var(--focus); border-color:var(--focus); background:var(--soft) }
+  .bash-examples #command-tint-toggle { margin-left:auto }
+  .bash-examples #command-tint-toggle[aria-pressed="true"] { border-color:var(--line); color:var(--ink); background:var(--paper) }
+  .turn-end { margin:18px 0 0 19px; color:var(--dim); font-size:10px }
+  .composer { border-top:1px solid var(--border); margin:0 20px; padding:11px 3px 10px }
+  .composer-row { display:flex; gap:9px; align-items:baseline; color:var(--dim) }
+  .composer .caret { color:var(--accent); font-size:15px; font-weight:700 }
+  .composer .placeholder { opacity:1; font-size:11px }
+  .composer-hint { color:var(--dim); font-size:9px; margin:3px 0 0 22px }
+  .statusbar { margin:0 20px; min-height:34px; border-top:1px solid var(--border); display:flex; gap:9px; align-items:center; color:var(--dim); font-size:9px; white-space:nowrap }
+  .statusbar .status-right { margin-left:auto; display:flex; align-items:center; gap:10px }
+  .mode-label { color:var(--fg); line-height:1.5; font-size:9px }
+  .context-meter { display:inline-block; width:34px; height:3px; border-radius:2px; background:var(--border); vertical-align:middle; margin-right:4px }
+  .context-meter i { display:block; width:42%; height:100%; background:var(--accent); border-radius:2px }
+  .activity { padding:9px 12px; margin:5px 0 15px 19px; border:1px solid var(--border); border-radius:5px; color:var(--dim); font-size:10px }
+  .activity strong { color:var(--warning); font-weight:500 }
+  .state-pill { font-size:9px; line-height:1.8; color:var(--dim) }
+  .flow-controls,.file-examples { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:0 0 10px; color:var(--sub); font-size:10px }
+  .flow-controls[hidden],.file-examples[hidden] { display:none }
+  .flow-controls .label,.file-examples .label { font:9px var(--mono); letter-spacing:.04em; margin-right:4px }
+  .flow-controls button,.file-examples button { border:1px solid var(--line); border-radius:4px; padding:6px 9px; background:transparent; color:var(--sub); font:10px var(--mono) }
+  .flow-controls button[aria-pressed="true"],.file-examples button[aria-pressed="true"] { background:var(--soft); border-color:var(--focus); color:var(--focus) }
+  .flow-controls .demo-label { margin-left:14px }
+  .flow-controls button:disabled { opacity:.4; cursor:default }
+  .flow-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 14px; align-items:baseline; margin-bottom:12px; font-size:11px }
+  .flow-heading h2 { font:650 12px var(--mono); margin:0 }
+  .flow-heading span { color:var(--dim); font-size:10px }
+  .task-list { margin:9px 0 14px }
+  .task-row { display:flex; align-items:baseline; gap:8px; width:100%; min-width:0; margin:0; padding:7px 0; border:0; border-left:2px solid transparent; background:transparent; color:var(--fg); text-align:left; font:11px/1.7 var(--mono) }
+  .task-row .task-dot { width:13px; flex-shrink:0; text-align:center }
+  .task-row .task-subject { min-width:0; flex:1; overflow-wrap:anywhere }
+  .task-row .task-status { font-size:10px; color:var(--dim); white-space:nowrap }
+  .task-row[data-selected="true"] { border-left-color:var(--accent) }
+  .task-row .warning { color:var(--warning) }
+  .task-row .error { color:var(--error) }
+  .task-footer { padding-top:10px; color:var(--dim); font-size:10px }
+  .attention-line { margin:0 0 10px; color:var(--warning); font-size:10px; line-height:1.8 }
+  .attention-line button { margin-left:8px }
+  .task-detail-panel { border-top:1px solid var(--border); margin:10px 0 16px; padding:12px 0; font-size:10px }
+  .task-detail-panel h3 { margin:0 0 6px; font-size:11px; font-weight:650 }
+  .task-detail-panel p { color:var(--dim); line-height:1.8 }
+  .detail-actions { display:flex; flex-wrap:wrap; gap:7px 16px; margin-top:10px }
+  .plan-block { border-top:1px solid var(--border); padding-top:12px; margin-top:14px; font-size:10px; color:var(--dim) }
+  .plan-block strong { display:block; font-weight:500; color:var(--fg); margin-bottom:5px }
+  .event-log { margin-top:14px; padding-top:10px; border-top:1px solid var(--border); color:var(--dim); font-size:10px; line-height:1.8 }
+  .event-log .event-entry { margin:4px 0; overflow-wrap:anywhere }
+  .event-log .event-entry:first-child { margin-top:0 }
+  .approval-shell { display:flex; flex-direction:column; min-height:0; height:100% }
+  .after[data-scene="approval"] .terminal-body { display:flex; flex-direction:column; overflow:hidden }
+  .permission { display:flex; flex:1; min-height:0; flex-direction:column; border-top:1px solid var(--border); padding-top:10px }
+  .permission-top { margin-bottom:5px; flex-shrink:0 }
+  .permission-top h3 { font:650 11px/1.8 var(--mono); margin:0; overflow-wrap:anywhere }
+  .permission-meta { color:var(--dim); font-size:9px; overflow-wrap:anywhere; flex-shrink:0; margin-bottom:7px }
+  .permission-main { min-height:0; overflow:auto; flex:1; padding-bottom:8px; scrollbar-width:thin }
+  .permission-main .command-block { margin-left:0; max-width:100% }
+  .permission-explain { color:var(--dim); font-size:10px; line-height:1.8; margin:8px 0!important; overflow-wrap:anywhere }
+  .permission-rule { color:var(--fg); font-size:10px; white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0 }
+  .permission-menu { border-top:1px solid var(--border); padding-top:7px; flex-shrink:0 }
+  .permission-choice { display:flex; align-items:baseline; gap:6px; width:100%; border:0; background:transparent; color:var(--dim); padding:5px 0; text-align:left; font:11px/1.7 var(--mono) }
+  .permission-choice .focus-mark { width:12px; flex-shrink:0; color:var(--accent) }
+  .permission-choice[data-selected="true"] { color:var(--fg); font-weight:650 }
+  .permission-choice:focus-visible { outline-offset:0 }
+  .permission-hint { color:var(--dim); font-size:9px; line-height:1.7; padding-top:7px; flex-shrink:0 }
+  .permission-feedback { padding:10px 0; font-size:11px; overflow:auto }
+  .permission-feedback p { color:var(--dim); font-size:10px; margin:8px 0!important; line-height:1.8 }
+  .empty-state { color:var(--dim); font-size:11px; padding:8px 0 }
+  .text-button { background:none; border:0; color:var(--accent); padding:2px 0; font:10px var(--mono); text-decoration:underline; text-underline-offset:3px }
+  @media(max-width:500px) { .flow-controls .demo-label{margin-left:0;width:100%;margin-top:5px} .task-row{gap:5px;font-size:10px} .task-row .task-status{font-size:9px} }
+  .blink-dot { animation:breathe 2.4s ease-in-out infinite }
+  @keyframes breathe { 0%,100%{opacity:.18} 50%{opacity:1} }
+  .after .blink-dot { animation:none }
+  .after .running-mark { color:var(--link) }
+  .observations { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; padding:26px 0 28px }
+  .observation { border-top:1px solid var(--line); padding-top:16px; display:grid; grid-template-columns:25px minmax(0,1fr); gap:8px }
+  .observation .number { color:var(--focus); font:10px/1.7 var(--mono) }
+  .observation h2 { font-size:13px; margin:0 0 7px; font-weight:650 }
+  .observation p { color:var(--sub); font-size:12px; line-height:1.8; margin:0 }
+  .palette-section { display:flex; gap:35px; align-items:center; justify-content:space-between; padding:23px 25px; background:var(--paper); border:1px solid var(--line); border-radius:10px; margin:0 0 25px }
+  .palette-intro { min-width:200px }
+  .palette-intro h2 { font-size:13px; margin:0 0 5px; font-weight:650 }
+  .palette-intro p { margin:0; color:var(--sub); font-size:11px }
+  .swatches { display:grid; grid-template-columns:repeat(7,1fr); gap:19px; flex:1; max-width:780px }
+  .swatch-color { height:24px; border-radius:4px; border:1px solid #80808020; margin-bottom:8px }
+  .swatch-name { color:var(--sub); font-size:10px }
+  .swatch-hex { font:9px var(--mono); margin-top:3px; color:var(--ink) }
+  .footnote { font-size:11px; line-height:1.9; color:var(--sub); max-width:960px; margin:0 }
+  footer { display:flex; justify-content:space-between; gap:20px; margin-top:26px; padding:19px 0 25px; border-top:1px solid var(--line); color:var(--sub); font:10px var(--mono) }
+  footer a { color:var(--sub); text-underline-offset:3px }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+  @media(min-width:1500px) { .terminal { font-size:13px } .terminal-body { padding:24px 28px } }
+  @media(max-width:1050px) { .wrap{width:calc(100% - 40px)} .terminal-body{padding:20px 17px} .hero-note{max-width:285px} .palette-section{align-items:start;flex-direction:column;gap:20px} .swatches{width:100%;max-width:none} .panel-caption{font-size:10px} .statusbar{gap:6px;font-size:8px} }
+  @media(max-width:760px) { .wrap{width:calc(100% - 32px)} .masthead{height:68px} .masthead-meta .edition{display:none} .hero{padding:30px 0 25px;display:block} .hero-note{max-width:100%;margin-top:17px} .controls{align-items:start;flex-direction:column;gap:14px} .themes{align-self:end} .tabs{width:100%;justify-content:space-between} .tabs button{padding:9px 10px} .comparison{grid-template-columns:1fr;gap:18px} .terminal{height:570px} .terminal-body{padding:22px} .observations{grid-template-columns:1fr;gap:18px} .observation{padding-top:13px} .swatches{grid-template-columns:repeat(4,1fr);gap:17px} .palette-section{padding:20px} footer{font-size:9px;flex-wrap:wrap} }
+  @media(max-width:760px) { .tabs{flex-wrap:wrap;justify-content:flex-start} .tabs .index{display:none} .tabs button{font-size:12px;padding:8px 11px} .before .terminal-body{overflow-x:auto} .panel-head{gap:10px;flex-wrap:wrap} }
+  @media(max-width:1180px) { .comparison{grid-template-columns:minmax(0,1fr)} .controls{flex-wrap:wrap} .themes{margin-left:auto} .tabs{flex-wrap:wrap} }
+  @container terminal (max-height:420px) {
+    .approval-shell > .flow-heading { margin-bottom:6px }
+    .approval-shell > .permission-meta { display:none }
+    .permission { padding-top:6px }
+    .permission-top { margin-bottom:2px }
+    .permission-meta { line-height:1.4; margin-bottom:4px }
+    .permission-menu { padding-top:4px }
+    .permission-choice { padding:2px 0; font-size:10px; line-height:1.6 }
+    .permission-hint { font-size:8px; line-height:1.5; padding-top:4px }
+    .permission-hint .hint-extra { display:none }
+  }
+  @media(prefers-reduced-motion:reduce) { *,*::before,*::after{animation:none!important;scroll-behavior:auto!important} }
+  @media print { .wrap{width:100%} .terminal{box-shadow:none;break-inside:avoid} .controls{display:none} .observations{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i></span>SAN<span style="font-size:11px;font-weight:400;letter-spacing:0;color:var(--sub)">Design study</span></div>
+    <div class="masthead-meta"><span class="edition">TERMINAL / INTERACTION / COLOR</span><span class="tag">交互视觉稿 · 06</span></div>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="page-title">
+      <div><p class="eyebrow">LESS NOISE. MORE CLARITY.</p><h1 id="page-title">还是 San。<span>只是更清楚。</span></h1></div>
+      <p class="hero-note">不把终端变成仪表盘。保留轻量与原生感，<br>让阅读层级、运行状态和授权范围更明确。</p>
+    </section>
+    <p class="source-note"><span>基线：<a href="https://github.com/genai-io/san/commit/0819ce4975de4a6a562d3b46a4b6ed7ceb66669f" target="_blank" rel="noopener noreferrer">upstream/main · 0819ce49</a></span><span>左侧：最新 Go 组件真实渲染输出 · 70 列 · 固定演示数据</span></p>
+    <div class="controls">
+      <div class="tabs" role="tablist" aria-label="对比场景">
+        <button type="button" id="tab-conversation" role="tab" aria-selected="true" aria-controls="comparison-panel" data-scene="conversation"><span class="index">01</span>工作对话</button>
+        <button type="button" id="tab-bash" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-scene="bash"><span class="index">02</span>Bash 样例</button>
+        <button type="button" id="tab-approval" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-scene="approval"><span class="index">03</span>权限确认</button>
+        <button type="button" id="tab-tasks" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-scene="tasks"><span class="index">04</span>并行任务</button>
+        <button type="button" id="tab-memory" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-scene="memory"><span class="index">05</span>记忆与总结</button>
+      </div>
+      <div class="themes" role="group" aria-label="预览配色">
+        <button type="button" data-theme-choice="light" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20.4 14a8.5 8.5 0 0 1-10.4-10.4A8.5 8.5 0 1 0 20.4 14Z"/></svg>Midnight</button>
+      </div>
+    </div>
+    <div class="bash-examples" role="group" aria-label="Bash example" hidden>
+      <span class="label">EXAMPLE</span>
+      <button type="button" data-bash-case="multiline" aria-pressed="true">Multiline loop</button>
+      <button type="button" data-bash-case="failure" aria-pressed="false">Failed command</button>
+      <button type="button" data-bash-case="background" aria-pressed="false">Background task</button>
+      <button type="button" id="command-tint-toggle" aria-pressed="true" aria-controls="after-terminal">Command background: On</button>
+    </div>
+    <div class="file-examples" role="group" aria-label="File preview example">
+      <span class="label">FILE PREVIEW</span>
+      <button type="button" data-file-preview="edit" aria-pressed="true">Edit diff</button>
+      <button type="button" data-file-preview="write" aria-pressed="false">Write new file</button>
+    </div>
+    <div class="flow-controls" role="group" aria-label="Approval and task demo" hidden>
+      <span class="label">REQUEST SOURCE</span>
+      <button type="button" data-flow-source="worker" aria-pressed="true">Worker</button>
+      <button type="button" data-flow-source="main" aria-pressed="false">Main session</button>
+      <span class="label demo-label">SIMULATE</span>
+      <button type="button" data-demo-event="add-request">Add approval</button>
+      <button type="button" data-demo-event="complete">Complete task</button>
+      <button type="button" data-demo-event="fail">Fail task</button>
+      <button type="button" data-demo-event="expire">Expire request</button>
+      <button type="button" data-demo-event="reset">Reset demo</button>
+    </div>
+    <section id="comparison-panel" role="tabpanel" aria-labelledby="tab-conversation" tabindex="0">
+      <div class="comparison">
+        <article aria-labelledby="before-title">
+          <div class="panel-head"><div class="panel-title" id="before-title"><span class="en">UPSTREAM</span>最新上游</div><span class="panel-caption">0819ce49 · 真实组件输出</span></div>
+          <div class="terminal before" id="before-terminal"></div>
+        </article>
+        <article aria-labelledby="after-title">
+          <div class="panel-head after-head"><div class="panel-title" id="after-title"><span class="en">AFTER</span>建议方案</div><span class="panel-caption" id="after-caption">Light · 清晰，不刺眼</span></div>
+          <div class="terminal after" id="after-terminal"></div>
+        </article>
+      </div>
+    </section>
+    <div class="observations" id="observations"></div>
+    <section class="palette-section" aria-labelledby="palette-title">
+      <div class="palette-intro"><h2 id="palette-title">一套语义，两种光线。</h2><p id="palette-description">建议方案 · Light 色板</p></div>
+      <div class="swatches" id="swatches"></div>
+    </section>
+    <p class="footnote">说明：左侧是 upstream/main · 0819ce49 的真实 Go 组件静态输出，保留其 ANSI 颜色、文案和换行；固定为各场景的初始示例，不跟随右侧模拟事件变化，也不是完整终端截图。右侧为交互提案：任务详情、行级操作、范围二次确认及键盘行为尚未接入生产 TUI。Worker 仅允许单次批准或拒绝；会话授权按工具生效，安全检查与显式审批规则仍然有效。所有事件仅改变本页演示状态，不执行命令、不停止真实任务、不保存真实规则。历史查看的补充入口是空闲时 Ctrl+O 或 /history，不在每次工具输出后重复提示。</p>
+    <noscript><p>请启用 JavaScript 查看五组前后对比；此文件无需联网，也不连接模型。</p></noscript>
+  </main>
+  <footer><span>SAN / Minimal overhead. Maximum agent.</span><span>单文件 · 无外部依赖 · 可离线打开</span></footer>
+</div>
+<div class="sr-only" id="announcement" role="status" aria-live="polite"></div>
+<script type="application/json" id="upstream-snapshots">
+{
+  "meta": {
+    "commit": "0819ce4975de4a6a562d3b46a4b6ed7ceb66669f",
+    "width": 70,
+    "description": "Generated by real conv and input renderers with static fixtures and TrueColor. Not a full Bubble Tea View. Redundant SGR runs and prose right-padding normalized; visible text, colors, line breaks, diff backgrounds and status alignment retained. Footer is the real status component only. No model, command or private memory access."
+  },
+  "light": {
+    "conversation": [
+      "\u001b[1;38;2;13;148;136m❭ \u001b[m检查登录接口的测试，修复失败用例。",
+      "\u001b[38;2;107;114;128m✦ 先运行测试定位问题，再修复并验证。\u001b[m",
+      "",
+      "\u001b[38;2;24;24;27m● Bash(go test ./internal/auth/...)\u001b[m\u001b[38;2;113;113;122m (运行登录测试)\u001b[m",
+      "\u001b[38;2;113;113;122m  │ FAIL TestLogin_ExpiredToken\u001b[m",
+      "\u001b[38;2;113;113;122m  │ expected 401, got 200\u001b[m",
+      "\u001b[38;2;185;28;28m  └ failed · exit status 1 · 2 lines\u001b[m",
+      "\u001b[38;2;24;24;27m● Edit(internal/auth/login.go)\u001b[m",
+      "  ┊ \u001b[38;2;185;28;28;48;2;254;226;226m  42 - return accept(token)                                       \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m  42 + if token.Expired() {                                       \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m  43 +     return unauthorized()                                  \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m  44 + }                                                          \u001b[m",
+      "\u001b[38;2;113;113;122m  └ +3 -1\u001b[m",
+      "\u001b[38;2;24;24;27m● Bash(go test ./internal/auth/...)\u001b[m\u001b[38;2;113;113;122m (验证修复)\u001b[m",
+      "\u001b[38;2;113;113;122m  │ ok atlas/internal/auth 0.128s\u001b[m",
+      "\u001b[38;2;113;113;122m  └ PASS\u001b[m",
+      "\u001b[38;2;24;24;27m● 已修复过期 token 被错误接受的问题。登录接口现在返回\u001b[m",
+      "  \u001b[38;2;100;116;139m401\u001b[m\u001b[38;2;24;24;27m，两个测试均通过。\u001b[m"
+    ],
+    "approval": [
+      "\u001b[1;38;2;13;148;136m❭ \u001b[m安装项目依赖，然后重新运行测试。",
+      "\u001b[38;2;24;24;27m● 需要先下载 go.mod 中声明的模块。\u001b[m",
+      " \u001b[1;38;2;71;85;105mBash command\u001b[m",
+      "",
+      " \u001b[3;38;2;107;114;128mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;24;24;27mgo mod download\u001b[m",
+      "   \u001b[3;38;2;113;113;122m下载项目依赖\u001b[m",
+      "",
+      " \u001b[38;2;113;113;122mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;13;148;136m▎\u001b[m \u001b[1;38;2;9;9;11m1. Yes\u001b[m",
+      "\u001b[38;2;113;113;122m   2. Yes, allow all commands during this session\u001b[m \u001b[3;38;2;107;114;128m(shift+tab)\u001b[m",
+      "\u001b[38;2;113;113;122m   3. Always allow Bash(go mod download)\u001b[m",
+      "\u001b[38;2;113;113;122m   4. No\u001b[m",
+      "",
+      "\u001b[38;2;107;114;128m Esc to cancel\u001b[m",
+      "\u001b[38;2;203;213;225m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "memory": [
+      "\u001b[1;38;2;13;148;136m❭ \u001b[m按项目约定检查登录逻辑。",
+      "",
+      "\u001b[38;2;113;113;122m\u001b[38;2;24;24;27m⟡\u001b[m Memory · recalled: 项目约定 · 登录接口\u001b[m",
+      "\u001b[38;2;24;24;27m● 已按项目约定完成检查，登录接口测试通过。\u001b[m",
+      "※ \u001b[3;38;2;113;113;122m补充过期 token 校验，并验证了返回码。\u001b[m",
+      "\u001b[38;2;113;113;122m  3 tool uses · 2.7s\u001b[m"
+    ],
+    "footer": ["                            \u001b[38;2;107;114;128mclaude-sonnet-4-6 · 42.0k/100.0k · $0.080\u001b[m"]
+  },
+  "dark": {
+    "conversation": [
+      "\u001b[1;38;2;70;232;192m❭ \u001b[m检查登录接口的测试，修复失败用例。",
+      "\u001b[38;2;123;134;150m✦ 先运行测试定位问题，再修复并验证。\u001b[m",
+      "",
+      "\u001b[38;2;221;222;226m● Bash(go test ./internal/auth/...)\u001b[m\u001b[38;2;168;174;187m (运行登录测试)\u001b[m",
+      "\u001b[38;2;168;174;187m  │ FAIL TestLogin_ExpiredToken\u001b[m",
+      "\u001b[38;2;168;174;187m  │ expected 401, got 200\u001b[m",
+      "\u001b[38;2;252;165;165m  └ failed · exit status 1 · 2 lines\u001b[m",
+      "\u001b[38;2;221;222;226m● Edit(internal/auth/login.go)\u001b[m",
+      "  ┊ \u001b[38;2;252;165;165;48;2;43;24;24m  42 - return accept(token)                                       \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m  42 + if token.Expired() {                                       \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m  43 +     return unauthorized()                                  \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m  44 + }                                                          \u001b[m",
+      "\u001b[38;2;168;174;187m  └ +3 -1\u001b[m",
+      "\u001b[38;2;221;222;226m● Bash(go test ./internal/auth/...)\u001b[m\u001b[38;2;168;174;187m (验证修复)\u001b[m",
+      "\u001b[38;2;168;174;187m  │ ok atlas/internal/auth 0.128s\u001b[m",
+      "\u001b[38;2;168;174;187m  └ PASS\u001b[m",
+      "\u001b[38;2;221;222;226m● 已修复过期 token 被错误接受的问题。登录接口现在返回\u001b[m",
+      "  \u001b[38;2;157;181;212m401\u001b[m\u001b[38;2;221;222;226m，两个测试均通过。\u001b[m"
+    ],
+    "approval": [
+      "\u001b[1;38;2;70;232;192m❭ \u001b[m安装项目依赖，然后重新运行测试。",
+      "\u001b[38;2;221;222;226m● 需要先下载 go.mod 中声明的模块。\u001b[m",
+      " \u001b[1;38;2;208;223;239mBash command\u001b[m",
+      "",
+      " \u001b[3;38;2;123;134;150mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;221;222;226mgo mod download\u001b[m",
+      "   \u001b[3;38;2;168;174;187m下载项目依赖\u001b[m",
+      "",
+      " \u001b[38;2;168;174;187mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;70;232;192m▎\u001b[m \u001b[1;38;2;250;250;250m1. Yes\u001b[m",
+      "\u001b[38;2;168;174;187m   2. Yes, allow all commands during this session\u001b[m \u001b[3;38;2;123;134;150m(shift+tab)\u001b[m",
+      "\u001b[38;2;168;174;187m   3. Always allow Bash(go mod download)\u001b[m",
+      "\u001b[38;2;168;174;187m   4. No\u001b[m",
+      "",
+      "\u001b[38;2;123;134;150m Esc to cancel\u001b[m",
+      "\u001b[38;2;78;101;128m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "memory": [
+      "\u001b[1;38;2;70;232;192m❭ \u001b[m按项目约定检查登录逻辑。",
+      "",
+      "\u001b[38;2;168;174;187m\u001b[38;2;221;222;226m⟡\u001b[m Memory · recalled: 项目约定 · 登录接口\u001b[m",
+      "\u001b[38;2;221;222;226m● 已按项目约定完成检查，登录接口测试通过。\u001b[m",
+      "※ \u001b[3;38;2;168;174;187m补充过期 token 校验，并验证了返回码。\u001b[m",
+      "\u001b[38;2;168;174;187m  3 tool uses · 2.7s\u001b[m"
+    ],
+    "footer": ["                            \u001b[38;2;123;134;150mclaude-sonnet-4-6 · 42.0k/100.0k · $0.080\u001b[m"]
+  }
+}
+</script>
+<script type="application/json" id="bash-snapshots">
+{
+  "dark": {
+    "background": [
+      "\u001b[38;2;221;222;226m●\u001b[m \u001b[38;2;221;222;226mBash\u001b[m\u001b[38;2;168;174;187m (Run race checks in background)\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊ go test -race \u005c\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊   ./internal/auth/... \u005c\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊   ./internal/session/...\u001b[m",
+      "\u001b[38;2;168;174;187m  └ started in background · task-7d2\u001b[m"
+    ],
+    "failure": [
+      "\u001b[38;2;221;222;226m●\u001b[m \u001b[38;2;221;222;226mBash\u001b[m\u001b[38;2;168;174;187m (Reproduce expired-token failure)\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊ go test ./internal/auth/... \u005c\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊   -run TestLogin_ExpiredToken \u005c\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊   -count=1\u001b[m",
+      "\u001b[38;2;168;174;187m  │ --- FAIL: TestLogin_ExpiredToken (0.00s)\u001b[m",
+      "\u001b[38;2;168;174;187m  │     login_test.go:42: expected 401, got 200\u001b[m",
+      "\u001b[38;2;168;174;187m  │ FAIL atlas/internal/auth\u001b[m",
+      "\u001b[38;2;252;165;165m  └ failed · exit status 1 · 3 lines\u001b[m"
+    ],
+    "multiline": [
+      "\u001b[38;2;221;222;226m●\u001b[m \u001b[38;2;221;222;226mBash\u001b[m\u001b[38;2;168;174;187m (Run package tests)\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊ set -e\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊ for pkg in ./internal/auth ./internal/session; do\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊   go test \"$pkg\"\u001b[m",
+      "\u001b[38;2;221;222;226m  ┊ done\u001b[m",
+      "\u001b[38;2;168;174;187m  │ ok atlas/internal/auth 0.128s\u001b[m",
+      "\u001b[38;2;168;174;187m  └ ok atlas/internal/session 0.214s\u001b[m"
+    ]
+  },
+  "light": {
+    "background": [
+      "\u001b[38;2;24;24;27m●\u001b[m \u001b[38;2;24;24;27mBash\u001b[m\u001b[38;2;113;113;122m (Run race checks in background)\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊ go test -race \u005c\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊   ./internal/auth/... \u005c\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊   ./internal/session/...\u001b[m",
+      "\u001b[38;2;113;113;122m  └ started in background · task-7d2\u001b[m"
+    ],
+    "failure": [
+      "\u001b[38;2;24;24;27m●\u001b[m \u001b[38;2;24;24;27mBash\u001b[m\u001b[38;2;113;113;122m (Reproduce expired-token failure)\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊ go test ./internal/auth/... \u005c\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊   -run TestLogin_ExpiredToken \u005c\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊   -count=1\u001b[m",
+      "\u001b[38;2;113;113;122m  │ --- FAIL: TestLogin_ExpiredToken (0.00s)\u001b[m",
+      "\u001b[38;2;113;113;122m  │     login_test.go:42: expected 401, got 200\u001b[m",
+      "\u001b[38;2;113;113;122m  │ FAIL atlas/internal/auth\u001b[m",
+      "\u001b[38;2;185;28;28m  └ failed · exit status 1 · 3 lines\u001b[m"
+    ],
+    "multiline": [
+      "\u001b[38;2;24;24;27m●\u001b[m \u001b[38;2;24;24;27mBash\u001b[m\u001b[38;2;113;113;122m (Run package tests)\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊ set -e\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊ for pkg in ./internal/auth ./internal/session; do\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊   go test \"$pkg\"\u001b[m",
+      "\u001b[38;2;24;24;27m  ┊ done\u001b[m",
+      "\u001b[38;2;113;113;122m  │ ok atlas/internal/auth 0.128s\u001b[m",
+      "\u001b[38;2;113;113;122m  └ ok atlas/internal/session 0.214s\u001b[m"
+    ]
+  }
+}
+</script>
+<script type="application/json" id="flow-snapshots">
+{
+  "dark": {
+    "approvalMain": [
+      " \u001b[1;38;2;208;223;239mBash command\u001b[m",
+      "",
+      " \u001b[3;38;2;123;134;150mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;221;222;226mgo mod download\u001b[m",
+      "   \u001b[3;38;2;168;174;187mDownload project dependencies\u001b[m",
+      "",
+      " \u001b[38;2;168;174;187mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;70;232;192m▎\u001b[m \u001b[1;38;2;250;250;250m1. Yes\u001b[m",
+      "\u001b[38;2;168;174;187m   2. Yes, allow all commands during this session\u001b[m \u001b[3;38;2;123;134;150m(shift+tab)\u001b[m",
+      "\u001b[38;2;168;174;187m   3. Always allow Bash(go mod download)\u001b[m",
+      "\u001b[38;2;168;174;187m   4. No\u001b[m",
+      "",
+      "\u001b[38;2;123;134;150m Esc to cancel\u001b[m",
+      "\u001b[38;2;78;101;128m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "approvalWorker": [
+      " \u001b[1;38;2;208;223;239m@security-review (task-sec) · Bash command\u001b[m",
+      "",
+      " \u001b[3;38;2;123;134;150mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;221;222;226mgo test -race ./internal/auth/...\u001b[m",
+      "   \u001b[3;38;2;168;174;187mReview authentication permissions\u001b[m",
+      "",
+      " \u001b[38;2;168;174;187mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;70;232;192m▎\u001b[m \u001b[1;38;2;250;250;250m1. Yes\u001b[m",
+      "\u001b[38;2;168;174;187m   2. No\u001b[m",
+      "",
+      "\u001b[38;2;123;134;150m Esc to cancel\u001b[m",
+      "\u001b[38;2;78;101;128m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "tasks": [
+      "  \u001b[1;38;2;168;174;187mTasks\u001b[m \u001b[38;2;123;134;150m(0%)\u001b[m",
+      "  \u001b[38;2;250;250;250m●\u001b[m  Review permissions  \u001b[38;2;123;134;150m· 12s\u001b[m\u001b[38;2;123;134;150m · Bash: go test -race ./internal/…\u001b[m",
+      "  \u001b[38;2;250;250;250m●\u001b[m  Update API docs  \u001b[38;2;123;134;150m· 12s\u001b[m\u001b[38;2;123;134;150m · Reviewing response codes\u001b[m",
+      "  \u001b[38;2;123;134;150m○\u001b[m  #plan-edge  Check edge cases"
+    ],
+    "write": [
+      "\u001b[38;2;221;222;226m●\u001b[m \u001b[38;2;221;222;226mWrite(docs/auth.md)\u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   1 + # Authentication\u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                                           \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   2 + \u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                                                           \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   3 + Validate tokens before accepting a request.\u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   4 + Return 401 for expired tokens.\u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                             \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   5 + \u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                                                           \u001b[m",
+      "  ┊ \u001b[38;2;134;239;172;48;2;22;40;29m   6 + Run: go test ./internal/auth/...\u001b[m\u001b[38;2;134;239;172;48;2;22;40;29m                           \u001b[m",
+      "\u001b[38;2;168;174;187m  └ +6 -0\u001b[m"
+    ]
+  },
+  "light": {
+    "approvalMain": [
+      " \u001b[1;38;2;71;85;105mBash command\u001b[m",
+      "",
+      " \u001b[3;38;2;107;114;128mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;24;24;27mgo mod download\u001b[m",
+      "   \u001b[3;38;2;113;113;122mDownload project dependencies\u001b[m",
+      "",
+      " \u001b[38;2;113;113;122mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;13;148;136m▎\u001b[m \u001b[1;38;2;9;9;11m1. Yes\u001b[m",
+      "\u001b[38;2;113;113;122m   2. Yes, allow all commands during this session\u001b[m \u001b[3;38;2;107;114;128m(shift+tab)\u001b[m",
+      "\u001b[38;2;113;113;122m   3. Always allow Bash(go mod download)\u001b[m",
+      "\u001b[38;2;113;113;122m   4. No\u001b[m",
+      "",
+      "\u001b[38;2;107;114;128m Esc to cancel\u001b[m",
+      "\u001b[38;2;203;213;225m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "approvalWorker": [
+      " \u001b[1;38;2;71;85;105m@security-review (task-sec) · Bash command\u001b[m",
+      "",
+      " \u001b[3;38;2;107;114;128mask · cwd: \"~/workspace/atlas\"\u001b[m",
+      "",
+      "   \u001b[38;2;24;24;27mgo test -race ./internal/auth/...\u001b[m",
+      "   \u001b[3;38;2;113;113;122mReview authentication permissions\u001b[m",
+      "",
+      " \u001b[38;2;113;113;122mDo you want to proceed?\u001b[m",
+      " \u001b[38;2;13;148;136m▎\u001b[m \u001b[1;38;2;9;9;11m1. Yes\u001b[m",
+      "\u001b[38;2;113;113;122m   2. No\u001b[m",
+      "",
+      "\u001b[38;2;107;114;128m Esc to cancel\u001b[m",
+      "\u001b[38;2;203;213;225m────────────────────────────────────────────────────────────────────\u001b[m"
+    ],
+    "tasks": [
+      "  \u001b[1;38;2;113;113;122mTasks\u001b[m \u001b[38;2;107;114;128m(0%)\u001b[m",
+      "  \u001b[38;2;9;9;11m●\u001b[m  Review permissions  \u001b[38;2;107;114;128m· 12s\u001b[m\u001b[38;2;107;114;128m · Bash: go test -race ./internal/…\u001b[m",
+      "  \u001b[38;2;9;9;11m●\u001b[m  Update API docs  \u001b[38;2;107;114;128m· 12s\u001b[m\u001b[38;2;107;114;128m · Reviewing response codes\u001b[m",
+      "  \u001b[38;2;107;114;128m○\u001b[m  #plan-edge  Check edge cases"
+    ],
+    "write": [
+      "\u001b[38;2;24;24;27m●\u001b[m \u001b[38;2;24;24;27mWrite(docs/auth.md)\u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   1 + # Authentication\u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                                           \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   2 + \u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                                                           \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   3 + Validate tokens before accepting a request.\u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   4 + Return 401 for expired tokens.\u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                             \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   5 + \u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                                                           \u001b[m",
+      "  ┊ \u001b[38;2;21;128;61;48;2;220;252;231m   6 + Run: go test ./internal/auth/...\u001b[m\u001b[38;2;21;128;61;48;2;220;252;231m                           \u001b[m",
+      "\u001b[38;2;113;113;122m  └ +6 -0\u001b[m"
+    ]
+  }
+}
+</script>
+<script>
+(() => {
+  'use strict';
+  let flowEpoch = 0;
+  const initialScene = location.hash.slice(1);
+  const state = { theme:'light', scene:['conversation','bash','approval','tasks','memory'].includes(initialScene)?initialScene:'conversation', bashCase:'multiline', commandTint:true, filePreview:new URLSearchParams(location.search).get('file')==='write'?'write':'edit', flow:makeFlow('worker'), selectedTaskId:null, stopConfirmTaskId:null, permissionStage:'request', permissionSelection:'allow-once' };
+  let lastRenderedScene = '';
+  const before = document.getElementById('before-terminal');
+  const after = document.getElementById('after-terminal');
+  const upstreamSnapshots = JSON.parse(document.getElementById('upstream-snapshots').textContent);
+  const bashSnapshots = JSON.parse(document.getElementById('bash-snapshots').textContent);
+  const flowSnapshots = JSON.parse(document.getElementById('flow-snapshots').textContent);
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+  }
+  function makeFlow(mode) {
+    const epoch = ++flowEpoch;
+    const request = mode === 'worker'
+      ? { id:`${epoch}-request-sec`, kind:'permission', taskId:'task-sec', requester:'@security-review', tool:'Bash', command:'go test -race ./internal/auth/...', description:'Review authentication permissions', onceOnly:true, rules:[], status:'pending' }
+      : { id:`${epoch}-request-main`, kind:'permission', taskId:null, requester:'Main session', tool:'Bash', command:'go mod download', description:'Download project dependencies', onceOnly:false, rules:['Bash(go mod download)'], status:'pending' };
+    request.cwd = '~/workspace/atlas';
+    return { epoch, mode, sequence:1, activeRequestId:request.id, requests:[request], tasks:[
+      {id:'task-sec',agent:'security-review',subject:'Review permissions',execution:'running',activity:'Inspecting authentication permissions',output:'Race-check command prepared.',noticeDelivered:false},
+      {id:'task-docs',agent:'docs-update',subject:'Update API docs',execution:'running',activity:'Reviewing response codes · 12s',output:'Checked 3 API descriptions.',noticeDelivered:false},
+      {id:'task-auth',agent:'auth-tests',subject:'Authentication tests',execution:'completed',activity:'2 tests passed · 1.8s',output:'ok atlas/internal/auth 0.128s\nPASS',noticeDelivered:true}
+    ], notices:[{text:'Authentication tests completed · 2 tests passed.',taskId:'task-auth',kind:'completed'}] };
+  }
+  function findTask(id) { return state.flow.tasks.find(task => task.id === id); }
+  function pendingRequests() {
+    return state.flow.requests.filter(request => request.kind === 'permission' && request.status === 'pending' && (!request.taskId || findTask(request.taskId)?.execution === 'running'));
+  }
+  function activeRequest() { return pendingRequests().find(request => request.id === state.flow.activeRequestId) || null; }
+  function taskRequest(id) { return pendingRequests().find(request => request.taskId === id) || null; }
+  function addNotice(text, taskId=null, kind='decision') { state.flow.notices.push({text,taskId,kind}); }
+  function syncActiveRequest() {
+    for (const request of state.flow.requests) {
+      if (request.status === 'pending' && request.taskId && findTask(request.taskId)?.execution !== 'running') {
+        request.status = 'expired';
+        addNotice(`Request expired · ${request.requester}. No permission was granted.`,request.taskId,'expired');
+      }
+    }
+    if (!activeRequest()) {
+      const next = pendingRequests()[0];
+      state.flow.activeRequestId = next ? next.id : null;
+      state.permissionStage = 'request';
+      state.permissionSelection = 'allow-once';
+    }
+  }
+  function resetFlow(mode=state.flow.mode) {
+    state.flow = makeFlow(mode);
+    state.selectedTaskId = null;
+    state.stopConfirmTaskId = null;
+    state.permissionStage = 'request';
+    state.permissionSelection = 'allow-once';
+  }
+  function flowButton(action,label,attributes='') {
+    return `<button type="button" class="text-button" data-action="${action}" data-epoch="${state.flow.epoch}" ${attributes}>${escapeHtml(label)}</button>`;
+  }
+  function noticeLog() {
+    const entries = state.flow.notices.slice(-3);
+    return '<div class="event-log" aria-label="Recent outcomes">' + entries.map(entry => `<div class="event-entry ${entry.kind==='failed'?'error':''}">● ${escapeHtml(entry.text)}${entry.taskId&&entry.kind==='completed'?' '+flowButton('view-result','View result',`data-task-id="${entry.taskId}" data-focus-id="result-${entry.taskId}"`):''}</div>`).join('') + '</div>';
+  }
+  function permissionOptions(request=activeRequest()) {
+    if (!request) return [];
+    if (state.permissionStage === 'more' && !request.onceOnly) return [
+      {action:'request-session',label:`Allow ${request.tool} for this session…`},
+      ...(request.rules.length ? [{action:'request-rule',label:`Always allow ${request.rules.join(' + ')}…`}] : []),
+      {action:'back-approval',label:'Back'}
+    ];
+    if (state.permissionStage === 'confirm-session' && !request.onceOnly) return [{action:'confirm-session',label:`Allow ${request.tool} for this session`},{action:'back-approval',label:'Back'}];
+    if (state.permissionStage === 'confirm-rule' && !request.onceOnly && request.rules.length) return [{action:'confirm-rule',label:'Save rule and allow once'},{action:'back-approval',label:'Back'}];
+    return [{action:'allow-once',label:'Allow once'},{action:'deny-request',label:'Deny'},...(!request.onceOnly?[{action:'more-permissions',label:'More permissions…'}]:[])];
+  }
+  function ansiToHtml(lines) {
+    const source = lines.join('\n').replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '');
+    const sgr = /\x1b\[([0-9;]*)m/g;
+    let position = 0, html = '';
+    let style = {};
+    const colors = ['#000000','#800000','#008000','#808000','#000080','#800080','#008080','#c0c0c0','#808080','#ff0000','#00ff00','#ffff00','#0000ff','#ff00ff','#00ffff','#ffffff'];
+    function indexedColor(index) {
+      if (index < 16) return colors[index];
+      if (index >= 232) { const value = 8 + (index - 232) * 10; return `rgb(${value},${value},${value})`; }
+      const cube = [0,95,135,175,215,255];
+      const value = index - 16;
+      return `rgb(${cube[Math.floor(value/36)]},${cube[Math.floor(value/6)%6]},${cube[value%6]})`;
+    }
+    function append(text) {
+      if (!text) return;
+      const escaped = escapeHtml(text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ''));
+      const rules = [];
+      if (style.fg) rules.push('color:' + style.fg);
+      if (style.bg) rules.push('background-color:' + style.bg);
+      if (style.bold) rules.push('font-weight:700');
+      if (style.italic) rules.push('font-style:italic');
+      if (style.underline) rules.push('text-decoration:underline');
+      if (style.dim) rules.push('opacity:.65');
+      html += rules.length ? `<span style="${rules.join(';')}">${escaped}</span>` : escaped;
+    }
+    for (const match of source.matchAll(sgr)) {
+      append(source.slice(position, match.index));
+      const codes = match[1] ? match[1].split(';').map(Number) : [0];
+      for (let i=0; i<codes.length; i++) {
+        const code = codes[i];
+        if (code === 0) style = {};
+        else if (code === 1) style.bold = true;
+        else if (code === 2) style.dim = true;
+        else if (code === 3) style.italic = true;
+        else if (code === 4) style.underline = true;
+        else if (code === 22) { delete style.bold; delete style.dim; }
+        else if (code === 23) delete style.italic;
+        else if (code === 24) delete style.underline;
+        else if (code === 39) delete style.fg;
+        else if (code === 49) delete style.bg;
+        else if (code === 38 || code === 48) {
+          const key = code === 38 ? 'fg' : 'bg';
+          if (codes[i+1] === 2 && i+4 < codes.length) { style[key] = `rgb(${codes[i+2]},${codes[i+3]},${codes[i+4]})`; i += 4; }
+          else if (codes[i+1] === 5 && i+2 < codes.length) { style[key] = indexedColor(codes[i+2]); i += 2; }
+        }
+        else if (code >= 30 && code <= 37) style.fg = colors[code-30];
+        else if (code >= 90 && code <= 97) style.fg = colors[code-90+8];
+        else if (code >= 40 && code <= 47) style.bg = colors[code-40];
+        else if (code >= 100 && code <= 107) style.bg = colors[code-100+8];
+      }
+      position = match.index + match[0].length;
+    }
+    append(source.slice(position));
+    return html;
+  }
+  const observations = {
+    conversation:[
+      ['保留已有的输出预览','最新上游已经保留短输出与失败诊断。右侧只调整状态标记和层级，不再把输出预览包装成新增能力。'],
+      ['保留圆点，不更换视觉语法','步骤继续用 ●。失败只强调 failed 与退出码，正常完成保持中性；思考、记忆和总结保留已有专用标记。'],
+      ['去装饰，不去掉内容结构','Edit 保留行号与增删底色，Write 新文件也保留行号、+ 标记与淡绿行底。实际内容、空行和缩进完整显示；只去掉重复虚线，不把代码简化成普通段落。']
+    ],
+    bash:[
+      ['用底色区分，不用空行切开','$ 只出现在整段命令的起点；后续行保留原始缩进。轻底色只覆盖命令，输出继续使用原背景，不加边框、圆角或阴影。'],
+      ['失败信息不能藏起来','保留诊断位置、关键错误、退出码；普通成功不满屏绿色。后台任务明确给出 task ID，不把 started 写成 completed。'],
+      ['直接比较有无底色','使用 Command background: On / Off 切换，观察浅色和 Midnight 下的差异。左侧上游输出保持原样，右侧命令内容与缩进不变。']
+    ],
+    approval:[
+      ['请求来源和授权范围分开','Worker 只提供 Allow once / Deny；Main session 才在条件满足时提供工具级会话授权与项目本地规则。命令、cwd 和请求者始终明确。'],
+      ['一次只处理一个，不被新请求替换','用 Add approval 追加请求：当前命令、选项和焦点保持不变。回答后进入下一项，但焦点先落在标题，避免连按 Enter 误批后继。'],
+      ['把失效和拒绝区分开','Expire request 会撤销旧请求和确认状态；Deny 只拒绝当前调用，不停止其他任务。模拟事件仅作用于右侧，不执行真实命令。']
+    ],
+    tasks:[
+      ['稳定的一行一任务','任务可选择并查看 owner、输出和操作。状态就地更新，不在四个分组间跳动；计划事项单列 Pending，不冒充调度队列。'],
+      ['等待审批来自真实请求关联','右侧用同一个 request/task ID 连接任务页和审批页，不再把 Stalled 当成审批等待。Review approval 可以走完整的处理流程。'],
+      ['结果有承接，停止不等于失败','完成通知显示后，成功项退出活动区；正在查看的项暂时保留。Fail task、Stop task 与 Expire request 保留不同反馈，不提供虚假的 Resume 或自动 Retry。']
+    ],
+    memory:[
+      ['沿用最新的 ⟡，不再另造符号','读取或召回记忆时，在消费它的步骤旁展示标题。这个行为已经在最新上游实现，提案直接保留。'],
+      ['Recap 统一用 ※','生成过程中与结束后使用同一标记，避免与正文 ●、思考 ✦ 混淆。右侧只调整间距和文字层级。'],
+      ['只显示来源，不泄露记忆正文','演示仅包含虚构的记忆标题。保持就地提示，正文内容继续留在实际需要它的上下文里。']
+    ]
+  };
+  const palette = {
+    light:[['正文','#1F2937'],['次级','#57606A'],['焦点','#0F766E'],['链接','#1D4ED8'],['成功','#15803D'],['警告','#9A6700'],['失败','#B91C1C']],
+    dark:[['正文','#D8E2F0'],['次级','#9AAEC4'],['焦点','#5EEAD4'],['链接','#8BB8FF'],['成功','#86D9A3'],['警告','#E8BD70'],['失败','#F59B9B']]
+  };
+  function windowBar() {
+    return '<div class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>san — ~/workspace/atlas</span><span class="window-end">⌘ 1</span></div>';
+  }
+  function lockup() {
+    return '<div class="lockup"><span class="san-word">&lt; SAN <b>✦</b> /&gt;</span><span class="meta">atlas<br>claude-sonnet-4-6</span></div>';
+  }
+  function message(text, kind='assistant') {
+    const marks = { user:'❭', assistant:'●', thinking:'✦' };
+    return `<div class="message ${kind}"><span class="mark" aria-hidden="true">${marks[kind]}</span><div>${text}</div></div>`;
+  }
+  function footer() {
+    const taskScene = state.scene === 'tasks';
+    const waiting = pendingRequests().length;
+    const status = `<span class="mode-label">ask</span>${taskScene&&waiting?`<span class="warning">${waiting} needs approval</span>`:''}<span class="status-right"><span>Sonnet 4.6</span><span>42% context</span><span>$0.08</span></span>`;
+    const composer = state.scene === 'approval' && activeRequest() ? '' : '<div class="composer"><div class="composer-row"><span class="caret" aria-hidden="true">❭</span><span class="placeholder">Ask a follow-up…</span></div><div class="composer-hint">Enter send · Alt+Enter newline · / commands</div></div>';
+    return composer + `<div class="statusbar">${status}</div>`;
+  }
+  function commandBlock(command) {
+    return '<div class="command-block">' + command.split('\n').map((line,index) => `<div class="command-line"><span class="command-gutter" aria-hidden="true">${index === 0 ? '$' : ''}</span><code>${escapeHtml(line)}</code></div>`).join('') + '</div>';
+  }
+  function tool(name, description, command, output, failed=false, result='2 tests passed') {
+    const multiline = command.includes('\n');
+    const target = multiline ? '' : `<span class="tool-target">(${escapeHtml(command)})</span>`;
+    const content = `<div class="tool-header-content"><strong>${name}</strong>${target}<span class="tool-description">${description}</span></div>`;
+    const trailer = result ? `<div class="tool-result ${failed?'error':''}">└ ${result}</div>` : '';
+    const accessibleState = failed ? 'Failed' : result.startsWith('started in background') ? 'Started in background' : 'Completed';
+    return `<div class="tool"><div class="tool-head"><span class="${failed?'error':''}" aria-label="${accessibleState}">●</span>${content}</div>${multiline?commandBlock(command):''}${output?'<div class="tool-output">'+output+'</div>':''}${trailer}</div>`;
+  }
+  function editPreview() {
+    const rows = [['remove',' 42 − return accept(token)'],['add',' 42 + if token.Expired() {'],['add',' 43 +     return unauthorized()'],['add',' 44 + }']];
+    return '<div class="tool"><div class="tool-head"><span aria-label="Completed">●</span><div><strong>Edit</strong><span class="tool-description">internal/auth/login.go</span></div></div>' +
+      '<div class="diff-preview" role="region" aria-label="Edit diff preview">' + rows.map(([kind,text]) => `<div class="diff-row ${kind}"><span class="diff-code">${escapeHtml(text)}</span></div>`).join('') + '</div>' +
+      '<div class="tool-result">└ <span class="ok">+3</span> <span class="error">−1</span></div></div>';
+  }
+  function conversation() {
+    if (state.filePreview === 'write') {
+      const content = '# Authentication\n\nValidate tokens before accepting a request.\nReturn 401 for expired tokens.\n\nRun: go test ./internal/auth/...';
+      const rows = content.split('\n').map((line,index) => `<div class="file-line"><span class="file-line-number" aria-hidden="true">${index+1}</span><span class="file-line-change" aria-hidden="true">+</span><code>${escapeHtml(line)}</code></div>`).join('');
+      return '<div class="tool"><div class="tool-head"><span aria-label="Completed">●</span><div><strong>Write</strong><span class="tool-description">docs/auth.md</span></div></div><div class="write-preview file-preview" role="region" aria-label="New file preview">' + rows + '</div><div class="tool-result">└ new file · <span class="ok">+6 lines</span></div></div>';
+    }
+    let body = message('检查登录接口的测试，修复失败用例。','user');
+    body += message('先运行测试定位问题，再修复并验证。','thinking');
+    body += tool('Bash','Run authentication tests','go test ./internal/auth/...','FAIL TestLogin_ExpiredToken<br>expected 401, got 200',true,'failed · exit status 1 · 2 lines');
+    body += editPreview();
+    body += tool('Bash','Verify the fix','go test ./internal/auth/...','ok atlas/internal/auth 0.128s<br>PASS',false,'');
+    body += message('已修复过期 token 被错误接受的问题。<br>登录接口现在返回 <code>401</code>，两个测试均通过。');
+    return body;
+  }
+  const slash = String.fromCharCode(92);
+  const bashCases = {
+    multiline: {
+      description:'Run package tests',
+      command:['set -e','for pkg in ./internal/auth ./internal/session; do','  go test "$pkg"','done'].join('\n'),
+      output:'ok atlas/internal/auth 0.128s<br>ok atlas/internal/session 0.214s',
+      result:'', failed:false
+    },
+    failure: {
+      description:'Reproduce expired-token failure',
+      command:['go test ./internal/auth/... '+slash,'  -run TestLogin_ExpiredToken '+slash,'  -count=1'].join('\n'),
+      output:'--- FAIL: TestLogin_ExpiredToken (0.00s)<br>    login_test.go:42: expected 401, got 200<br>FAIL atlas/internal/auth',
+      result:'failed · exit status 1 · 3 lines', failed:true
+    },
+    background: {
+      description:'Run race checks in background',
+      command:['go test -race '+slash,'  ./internal/auth/... '+slash,'  ./internal/session/...'].join('\n'),
+      output:'', result:'started in background · task-7d2', failed:false
+    }
+  };
+  function bash() {
+    const sample = bashCases[state.bashCase];
+    return tool('Bash',sample.description,sample.command,sample.output,sample.failed,sample.result);
+  }
+  function approval() {
+    const request = activeRequest();
+    if (!request) return '<div class="approval-shell"><div class="flow-heading"><h2 data-focus-id="approval-result" tabindex="-1">No approvals waiting</h2></div><div class="permission-feedback"><p>Decisions apply only to the request and scope shown. Denying a call does not stop its task.</p>' + flowButton('view-tasks','Back to tasks','data-focus-id="back-to-tasks"') + noticeLog() + '</div></div>';
+    const count = pendingRequests().length;
+    const options = permissionOptions(request);
+    if (!options.some(option => option.action === state.permissionSelection)) state.permissionSelection = options[0].action;
+    let explanation = `<p class="permission-explain">${escapeHtml(request.description)}</p>`;
+    if (state.permissionStage === 'more') explanation += '<p class="permission-explain">Choose a scope. This menu is available only for eligible main-session requests.</p>';
+    if (state.permissionStage === 'confirm-session') explanation += `<p class="permission-explain warning">Allow ${escapeHtml(request.tool)} for this session?</p><p class="permission-explain">This applies beyond the current command. Safety checks and explicit approval rules still apply. Independent workers keep their own permissions.</p>`;
+    if (state.permissionStage === 'confirm-rule') explanation += '<p class="permission-explain">Save this project-local rule?</p><pre class="permission-rule">' + escapeHtml(request.rules.join('\n')) + '</pre><p class="permission-explain">Saved to <code>.san/settings.local.json</code>. This is not a grant for all Bash commands.</p>';
+    const menu = options.map((option,index) => `<button type="button" class="permission-choice" data-action="${option.action}" data-request-id="${request.id}" data-epoch="${state.flow.epoch}" data-focus-id="permission-${request.id}-${option.action}" data-selected="${option.action===state.permissionSelection}" tabindex="${option.action===state.permissionSelection?0:-1}"><span class="focus-mark" aria-hidden="true">${option.action===state.permissionSelection?'▎':''}</span><span>${index+1}. ${escapeHtml(option.label)}</span></button>`).join('');
+    const last = state.flow.notices.at(-1);
+    const feedback = last && last.kind !== 'completed' ? `<p class="permission-meta" role="status">${escapeHtml(last.text)}</p>` : '';
+    return '<div class="approval-shell"><div class="flow-heading"><h2>Approval required</h2><span>1 active' + (count>1?` · ${count-1} waiting`:'') + '</span></div>' + feedback +
+      `<section class="permission" data-request-id="${request.id}" aria-label="Permission request"><div class="permission-top"><h3 data-focus-id="permission-heading-${request.id}" tabindex="-1">● ${escapeHtml(request.tool)} · ${escapeHtml(request.requester)}</h3></div><div class="permission-meta">${request.taskId?escapeHtml(request.taskId)+' · ':''}${request.onceOnly?'This call only · worker permissions are isolated':'Main session · choose the scope explicitly'}</div><div class="permission-main"><div class="permission-meta">cwd: ${escapeHtml(request.cwd)}</div>${commandBlock(request.command)}${explanation}</div><div class="permission-menu" role="group" aria-label="Approval choices">${menu}</div><div class="permission-hint">↑/↓ select · Enter confirm · Esc ${state.permissionStage==='request'?'deny':'back'}<span class="hint-extra"><br>New requests never replace the one you are reviewing.</span></div></section></div>`;
+  }
+  function taskStatus(task) {
+    if (taskRequest(task.id)) return {label:'awaiting approval',color:'warning'};
+    if (task.execution === 'failed') return {label:'failed',color:'error'};
+    if (task.execution === 'stopped') return {label:'stopped',color:'muted'};
+    if (task.execution === 'completed') return {label:'completed',color:'muted'};
+    return {label:'running',color:''};
+  }
+  function visibleTasks() { return state.flow.tasks.filter(task => !task.noticeDelivered || task.execution !== 'completed' || task.id === state.selectedTaskId); }
+  function taskRow(task) {
+    const status = taskStatus(task);
+    return `<button type="button" class="task-row" data-action="select-task" data-epoch="${state.flow.epoch}" data-task-id="${task.id}" data-focus-id="task-${task.id}" data-selected="${task.id===state.selectedTaskId}" aria-expanded="${task.id===state.selectedTaskId}" aria-controls="task-detail"><span class="task-dot ${status.color}" aria-hidden="true">●</span><span class="task-subject">${escapeHtml(task.subject)}</span><span class="task-status ${status.color}">${status.label}${status.label==='running'?' · 12s':''}</span></button>`;
+  }
+  function taskDetail() {
+    const task = findTask(state.selectedTaskId);
+    if (!task) return '<div id="task-detail" hidden></div>';
+    const request = taskRequest(task.id);
+    let actions = '';
+    if (state.stopConfirmTaskId === task.id && task.execution === 'running') {
+      actions = '<p class="permission-explain">Stop @' + escapeHtml(task.agent) + '? Partial output will be retained. This is not a resumable pause.</p><div class="detail-actions">' + flowButton('confirm-stop','Stop task',`data-task-id="${task.id}" data-focus-id="stop-confirm-${task.id}"`) + flowButton('cancel-stop','Back',`data-task-id="${task.id}" data-focus-id="stop-back-${task.id}"`) + '</div>';
+    } else {
+      actions = '<div class="detail-actions">' + (request?flowButton('review-task',request.id===state.flow.activeRequestId?'Review approval':'View approval queue',`data-task-id="${task.id}" data-focus-id="review-${task.id}"`):'') + (task.execution==='running'?flowButton('request-stop','Stop task…',`data-task-id="${task.id}" data-focus-id="stop-${task.id}"`):'') + flowButton('close-task','Close details',`data-task-id="${task.id}" data-focus-id="close-${task.id}"`) + '</div>';
+    }
+    return `<section id="task-detail" class="task-detail-panel" aria-label="Task details"><h3>${escapeHtml(task.subject)} · @${escapeHtml(task.agent)}</h3><p>${task.id} · ${taskStatus(task).label}</p><p>${escapeHtml(task.activity)}</p>${request?commandBlock(request.command):''}<pre class="write-preview" style="margin-left:0" aria-label="Task output">${escapeHtml(task.output)}</pre>${actions}</section>`;
+  }
+  function tasks() {
+    const pending = pendingRequests();
+    const live = state.flow.tasks.filter(task => task.execution === 'running');
+    const waiting = live.filter(task => taskRequest(task.id));
+    const attention = pending.length ? `<div class="attention-line">${pending.length} approval${pending.length===1?'':'s'} pending ${flowButton('view-approval','Review current request','data-focus-id="review-current"')}</div>` : '';
+    return `<div class="flow-heading"><h2 data-focus-id="tasks-heading" tabindex="-1">Background tasks</h2><span>${live.length} active${waiting.length?' · '+waiting.length+' awaiting approval':''}</span></div>${attention}<div class="task-list" aria-label="Background tasks">${visibleTasks().map(taskRow).join('') || '<p class="empty-state">No active background tasks.</p>'}</div>${taskDetail()}<p class="task-footer">Select a task for its owner, output and available actions. Row order stays stable.</p><div class="plan-block"><strong>Plan · not scheduled background work</strong>● Check edge cases <span class="muted">· pending</span></div>${noticeLog()}`;
+  }
+  function memory() {
+    return message('按项目约定检查登录逻辑。','user') +
+      '<div class="memory-notice"><span class="mark" aria-hidden="true">⟡</span><div>Memory · recalled: 项目约定 · 登录接口</div></div>' +
+      message('已按项目约定完成检查，登录接口测试通过。') +
+      '<div class="recap"><span aria-hidden="true">※</span><div><div class="body">补充过期 token 校验，并验证了返回码。</div></div></div>';
+  }
+  function renderTerminal(isAfter) {
+    if (!isAfter) {
+      const snapshot = upstreamSnapshots[state.theme];
+      let lines = snapshot[state.scene];
+      if (state.scene === 'bash') lines = bashSnapshots[state.theme][state.bashCase];
+      if (state.scene === 'approval') lines = flowSnapshots[state.theme][state.flow.mode==='worker'?'approvalWorker':'approvalMain'];
+      if (state.scene === 'tasks') lines = flowSnapshots[state.theme].tasks;
+      if (state.scene === 'conversation' && state.filePreview === 'write') lines = flowSnapshots[state.theme].write;
+      return windowBar() + '<div class="terminal-body"><pre class="upstream-output">' + ansiToHtml(lines) + '</pre></div><div class="upstream-footer"><pre class="upstream-output">' + ansiToHtml(snapshot.footer) + '</pre></div>';
+    }
+    const content = { conversation, bash, approval, tasks, memory }[state.scene]();
+    return windowBar() + '<div class="terminal-body">' + content + '</div>' + footer();
+  }
+  function focusControl(focusId) {
+    const target = Array.from(after.querySelectorAll('[data-focus-id]')).find(element => element.dataset.focusId === focusId);
+    if (target) target.focus({preventScroll:true});
+    return Boolean(target);
+  }
+  function render(options={}) {
+    const focused = after.contains(document.activeElement) ? document.activeElement.dataset.focusId : null;
+    const oldBody = after.querySelector('.terminal-body');
+    const scrollTop = lastRenderedScene === state.scene && oldBody ? oldBody.scrollTop : 0;
+    syncActiveRequest();
+    document.documentElement.dataset.theme = state.theme;
+    after.dataset.scene = state.scene;
+    after.dataset.commandTint = String(state.commandTint);
+    const tintToggle = document.getElementById('command-tint-toggle');
+    tintToggle.setAttribute('aria-pressed',String(state.commandTint));
+    tintToggle.textContent = 'Command background: ' + (state.commandTint ? 'On' : 'Off');
+    before.innerHTML = renderTerminal(false);
+    after.innerHTML = renderTerminal(true);
+    const newBody = after.querySelector('.terminal-body');
+    if (newBody) newBody.scrollTop = scrollTop;
+    document.getElementById('after-caption').textContent = state.theme === 'light' ? 'Light · 清晰，不刺眼' : 'Midnight · 蓝黑底，青绿焦点';
+    document.getElementById('comparison-panel').setAttribute('aria-labelledby','tab-' + state.scene);
+    document.querySelector('.bash-examples').hidden = state.scene !== 'bash';
+    document.querySelector('.file-examples').hidden = state.scene !== 'conversation';
+    document.querySelector('.flow-controls').hidden = !['approval','tasks'].includes(state.scene);
+    document.querySelectorAll('[data-bash-case]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.bashCase === state.bashCase)));
+    document.querySelectorAll('[data-file-preview]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.filePreview === state.filePreview)));
+    document.querySelectorAll('[data-flow-source]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.flowSource === state.flow.mode)));
+    document.querySelector('[data-demo-event="add-request"]').disabled = findTask('task-docs').execution !== 'running' || Boolean(taskRequest('task-docs'));
+    document.querySelector('[data-demo-event="complete"]').disabled = findTask('task-docs').execution !== 'running';
+    document.querySelector('[data-demo-event="fail"]').disabled = findTask('task-docs').execution !== 'running';
+    document.querySelector('[data-demo-event="expire"]').disabled = !activeRequest();
+    document.querySelectorAll('[data-scene]').forEach(button => {
+      const selected = button.dataset.scene === state.scene;
+      button.setAttribute('aria-selected',String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.themeChoice === state.theme)));
+    document.getElementById('observations').innerHTML = observations[state.scene].map(([title,text],i) => `<section class="observation"><span class="number">0${i+1}</span><div><h2>${title}</h2><p>${text}</p></div></section>`).join('');
+    document.getElementById('palette-description').textContent = '建议方案 · ' + (state.theme === 'light' ? 'Light' : 'Midnight') + ' 色板';
+    document.getElementById('swatches').innerHTML = palette[state.theme].map(([name,color]) => `<div><div class="swatch-color" style="background:${color}" aria-hidden="true"></div><div class="swatch-name">${name}</div><div class="swatch-hex">${color}</div></div>`).join('');
+    const wantedFocus = options.focusId || focused;
+    if (wantedFocus && !focusControl(wantedFocus)) {
+      if (state.scene === 'approval') focusControl(activeRequest()?'permission-heading-'+activeRequest().id:'approval-result');
+      else if (state.scene === 'tasks') focusControl('tasks-heading');
+    }
+    lastRenderedScene = state.scene;
+  }
+  function announce(text) { document.getElementById('announcement').textContent = text; }
+  document.querySelectorAll('[data-scene]').forEach(button => button.addEventListener('click',() => {
+    state.scene = button.dataset.scene;
+    render();
+    announce('Preview updated.');
+  }));
+  document.querySelectorAll('[data-bash-case]').forEach(button => button.addEventListener('click',() => {
+    state.bashCase = button.dataset.bashCase;
+    render();
+    announce('Bash example: ' + button.textContent);
+  }));
+  document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click',() => {
+    state.theme = button.dataset.themeChoice;
+    render();
+    announce(state.theme === 'light' ? 'Light theme.' : 'Midnight theme.');
+  }));
+  document.getElementById('command-tint-toggle').addEventListener('click',() => {
+    state.commandTint = !state.commandTint;
+    render();
+    announce('Command background ' + (state.commandTint ? 'on.' : 'off.'));
+  });
+  document.querySelectorAll('.tabs,.themes,.bash-examples').forEach(group => group.addEventListener('keydown',event => {
+    const buttons = Array.from(group.querySelectorAll(group.matches('.bash-examples') ? '[data-bash-case]' : 'button'));
+    const index = buttons.indexOf(document.activeElement);
+    if (index < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next].click(); buttons[next].focus();
+  }));
+  function endTask(task,status) {
+    if (!task || task.execution !== 'running') return false;
+    task.execution = status;
+    task.noticeDelivered = status === 'completed';
+    task.activity = status === 'completed' ? 'Finished; result delivered to the conversation.' : status === 'failed' ? 'Command exited with status 1.' : 'Stopped by user. Partial output retained.';
+    if (status === 'completed') task.output = 'Documentation checks passed.';
+    if (status === 'failed') task.output += '\nError: documentation example returned an unexpected status.';
+    if (state.stopConfirmTaskId === task.id) state.stopConfirmTaskId = null;
+    syncActiveRequest();
+    addNotice(`${task.subject} ${status}${status==='stopped'?'; partial output retained':''}.`,task.id,status);
+    return true;
+  }
+  function handleFlowAction(action,taskId,requestId,epoch) {
+    if (Number(epoch) !== state.flow.epoch) return;
+    const permissionActions = ['allow-once','deny-request','more-permissions','request-session','request-rule','confirm-session','confirm-rule','back-approval'];
+    if (permissionActions.includes(action)) {
+      const request = activeRequest();
+      if (!request || request.id !== requestId || !permissionOptions(request).some(option => option.action === action)) return;
+      if (action === 'more-permissions' || action === 'request-session' || action === 'request-rule' || action === 'back-approval') {
+        state.permissionStage = action === 'more-permissions' ? 'more' : action === 'request-session' ? 'confirm-session' : action === 'request-rule' ? 'confirm-rule' : state.permissionStage === 'more' ? 'request' : 'more';
+        state.permissionSelection = state.permissionStage.startsWith('confirm-') ? 'back-approval' : state.permissionStage==='more' ? 'back-approval' : 'allow-once';
+        render({focusId:`permission-${request.id}-${state.permissionSelection}`});
+        announce(state.permissionStage==='request'?'Current request.':'Review the exact permission scope.');
+        return;
+      }
+      request.status = action === 'deny-request' ? 'denied' : 'approved';
+      request.scope = action === 'confirm-session' ? 'session-tool' : action === 'confirm-rule' ? 'project-rule' : 'once';
+      const task = findTask(request.taskId);
+      if (task) {
+        task.activity = request.status === 'denied' ? 'Bash call denied. The task may choose another approach.' : 'Running the approved Bash call.';
+        task.output += request.status === 'denied' ? '\nBash call denied by user.' : '\nPermission granted for this call.';
+      }
+      const text = request.status === 'denied' ? `Denied ${request.tool} for ${request.requester}${task?'; task remains active':''}.` : action === 'confirm-session' ? `Allowed ${request.tool} for the main session; safety checks still apply.` : action === 'confirm-rule' ? `Allowed once; saved ${request.rules.join(' + ')} in .san/settings.local.json (demo).` : `Allowed ${request.tool} once for ${request.requester}.`;
+      addNotice(text,request.taskId,'decision');
+      if (request.taskId) state.selectedTaskId = request.taskId;
+      syncActiveRequest();
+      render({focusId:activeRequest()?'permission-heading-'+activeRequest().id:'approval-result'});
+      announce(text);
+      return;
+    }
+    const task = findTask(taskId);
+    if (action === 'select-task' && task) {
+      state.selectedTaskId = state.selectedTaskId === task.id ? null : task.id;
+      state.stopConfirmTaskId = null;
+      render({focusId:'task-'+task.id});
+    } else if (action === 'view-result' && task) {
+      state.scene = 'tasks'; state.selectedTaskId = task.id;
+      render({focusId:'task-'+task.id});
+    } else if (action === 'close-task') {
+      state.selectedTaskId = null; state.stopConfirmTaskId = null;
+      render({focusId:task?'task-'+task.id:'tasks-heading'});
+    } else if ((action === 'review-task' && taskRequest(taskId)) || action === 'view-approval') {
+      state.scene = 'approval';
+      render({focusId:activeRequest()?'permission-heading-'+activeRequest().id:'approval-result'});
+    } else if (action === 'view-tasks') {
+      state.scene = 'tasks'; render({focusId:state.selectedTaskId?'task-'+state.selectedTaskId:'tasks-heading'});
+    } else if (action === 'request-stop' && task?.execution === 'running') {
+      state.stopConfirmTaskId = task.id;
+      render({focusId:'stop-back-'+task.id});
+    } else if (action === 'cancel-stop') {
+      state.stopConfirmTaskId = null; render({focusId:task?'stop-'+task.id:'tasks-heading'});
+    } else if (action === 'confirm-stop' && task?.execution === 'running' && state.stopConfirmTaskId === task.id) {
+      endTask(task,'stopped');
+      render({focusId:'task-'+task.id});
+      announce(`Stopped ${task.subject}. Partial output retained.`);
+    }
+  }
+  function demoEvent(event) {
+    if (event === 'reset') resetFlow();
+    else if (event === 'add-request') {
+      const task = findTask('task-docs');
+      if (task.execution !== 'running' || taskRequest(task.id)) return;
+      state.flow.requests.push({id:`${state.flow.epoch}-request-docs-${++state.flow.sequence}`,kind:'permission',taskId:task.id,requester:'@docs-update',tool:'Bash',command:'go test ./internal/session/...',description:'Verify documentation examples',cwd:'~/workspace/atlas',onceOnly:true,rules:[],status:'pending'});
+      addNotice('Approval requested by @docs-update.',task.id,'request');
+    } else if (event === 'complete' || event === 'fail') {
+      endTask(findTask('task-docs'),event==='complete'?'completed':'failed');
+    } else if (event === 'expire') {
+      const request = activeRequest();
+      if (!request) return;
+      if (request.taskId) endTask(findTask(request.taskId),'stopped');
+      else { request.status = 'expired'; addNotice('Main-session request expired. No permission was granted.',null,'expired'); }
+    }
+    syncActiveRequest();
+    render();
+    announce('Demo updated. No real tasks or settings were changed.');
+  }
+  document.querySelectorAll('[data-file-preview]').forEach(button => button.addEventListener('click',() => {
+    state.filePreview = button.dataset.filePreview; render(); announce('File preview: '+button.textContent);
+  }));
+  document.querySelectorAll('[data-flow-source]').forEach(button => button.addEventListener('click',() => {
+    resetFlow(button.dataset.flowSource); render(); announce('New '+button.textContent+' example.');
+  }));
+  document.querySelectorAll('[data-demo-event]').forEach(button => button.addEventListener('click',() => demoEvent(button.dataset.demoEvent)));
+  after.addEventListener('click',event => {
+    const button = event.target.closest('button[data-action]');
+    if (button) handleFlowAction(button.dataset.action,button.dataset.taskId,button.dataset.requestId,button.dataset.epoch);
+  });
+  after.addEventListener('keydown',event => {
+    const request = activeRequest();
+    if (state.scene !== 'approval' || !request || !event.target.closest('.permission')) return;
+    if (event.repeat && (['Enter',' '].includes(event.key) || /^[1-9yn]$/i.test(event.key))) { event.preventDefault(); return; }
+    const options = permissionOptions(request);
+    if (['ArrowUp','ArrowDown','Home','End'].includes(event.key)) {
+      event.preventDefault();
+      const current = event.target.closest('.permission-choice');
+      let index = current ? options.findIndex(option => option.action === current.dataset.action) : event.key==='ArrowDown'?-1:0;
+      index = event.key==='Home'?0:event.key==='End'?options.length-1:(index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;
+      state.permissionSelection = options[index].action;
+      render({focusId:`permission-${request.id}-${state.permissionSelection}`});
+    } else if (event.key === 'Enter') {
+      const choice = event.target.closest('.permission-choice');
+      if (choice) {
+        event.preventDefault();
+        handleFlowAction(choice.dataset.action,null,request.id,state.flow.epoch);
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault(); handleFlowAction(state.permissionStage==='request'?'deny-request':'back-approval',null,request.id,state.flow.epoch);
+    } else if (/^[1-9]$/.test(event.key)) {
+      const option = options[Number(event.key)-1];
+      if (option) { event.preventDefault(); handleFlowAction(option.action,null,request.id,state.flow.epoch); }
+    } else if (state.permissionStage === 'request' && ['y','n'].includes(event.key.toLowerCase()) && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault(); handleFlowAction(event.key.toLowerCase()==='y'?'allow-once':'deny-request',null,request.id,state.flow.epoch);
+    }
+  });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ package conv
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/core"
@@ -14,9 +15,9 @@ func TestLiveAgentErrorsAreBoundedUntilExpanded(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"prompt":"Review"}`}
 	activity := map[int][]string{0: {"Read(main.go) failed: " + strings.Repeat("诊断 details\n", 1000)}}
 	for _, width := range []int{30, 80} {
-		params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, TaskActivity: activity, Width: width}
+		params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, ToolStartedAt: map[string]time.Time{call.ID: time.Now()}, TaskActivity: activity, Width: width}
 		collapsed := stripANSI(RenderToolCalls(params))
-		spinner := stripANSI(RenderPendingToolSpinner(PendingToolSpinnerParams{PendingCalls: []core.ToolCall{call}, TaskActivity: activity, Width: width}))
+		spinner := stripANSI(RenderPendingToolSpinner(PendingToolSpinnerParams{PendingCalls: params.PendingCalls, ToolStartedAt: params.ToolStartedAt, TaskActivity: activity, Width: width}))
 		for _, view := range []string{collapsed, spinner} {
 			if strings.Count(view, "\n") > 6 || !strings.Contains(view, "failed") {
 				t.Fatalf("width %d: live error occupies %d lines or loses its status", width, strings.Count(view, "\n"))
@@ -71,12 +72,12 @@ func TestStructuredAgentFailureKeepsActivityAndPartialResults(t *testing.T) {
 		if stopped {
 			status = "Stopped"
 		}
-		if !strings.Contains(collapsed, status+" · provider unavailable") || !strings.Contains(collapsed, "125 tokens") || strings.Contains(collapsed, "partial findings") {
+		if !strings.Contains(collapsed, status+" · provider unavailable") || strings.Contains(collapsed, "125 tokens") || strings.Contains(collapsed, "partial findings") {
 			t.Fatalf("structured failure has wrong collapsed state: %q", collapsed)
 		}
 		data.Expanded = true
 		expanded := stripANSI(RenderToolResultInline(data, nil))
-		for _, want := range []string{"Read(main.go)", "partial findings", "/tmp/child.jsonl"} {
+		for _, want := range []string{"Read(main.go)", "partial findings", "/tmp/child.jsonl", "125 tokens"} {
 			if !strings.Contains(expanded, want) {
 				t.Fatalf("unfinished result lost %q: %q", want, expanded)
 			}
@@ -84,9 +85,35 @@ func TestStructuredAgentFailureKeepsActivityAndPartialResults(t *testing.T) {
 	}
 }
 
+func TestCompletedAgentMetadataRequiresExpansion(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		for _, structured := range []bool{false, true} {
+			data := ToolResultData{ToolName: "Agent", Nested: nested, Width: 80,
+				Content: "Agent: Explore\nToolUses: 3\nTokens: 125\nDuration: 2.7s\nModel: test-model\n\nFinding"}
+			if structured {
+				data.Content = "Finding"
+				data.Details = toolresult.AgentDetails{ToolUses: 3, InputTokens: 100, OutputTokens: 25, Model: "test-model"}
+			}
+			collapsed := stripANSI(RenderToolResultInline(data, nil))
+			for _, metadata := range []string{"tool uses", "tokens", "2.7s", "test-model"} {
+				if strings.Contains(collapsed, metadata) {
+					t.Fatalf("default completion leaks %q: %q", metadata, collapsed)
+				}
+			}
+			data.Expanded = true
+			expanded := stripANSI(RenderToolResultInline(data, nil))
+			for _, want := range []string{"Finding", "3 tool uses", "125 tokens", "test-model"} {
+				if !strings.Contains(expanded, want) {
+					t.Fatalf("expanded completion lost %q: %q", want, expanded)
+				}
+			}
+		}
+	}
+}
+
 func TestLegacyAgentUsageUnderstandsBothTokenFormats(t *testing.T) {
 	for _, tokens := range []string{"125", "in=100 out=25"} {
-		data := ToolResultData{ToolName: "Agent", Content: "Agent: Explore\nToolUses: 1\nTokens: " + tokens + "\nDuration: 1s\n\nFinding"}
+		data := ToolResultData{ToolName: "Agent", Expanded: true, Content: "Agent: Explore\nToolUses: 1\nTokens: " + tokens + "\nDuration: 1s\n\nFinding"}
 		if got := stripANSI(RenderToolResultInline(data, nil)); !strings.Contains(got, "125 tokens") {
 			t.Fatalf("legacy usage disappeared for %q: %q", tokens, got)
 		}

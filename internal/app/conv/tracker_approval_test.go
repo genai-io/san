@@ -47,8 +47,8 @@ func TestTrackerExplicitApprovalAndMixedPlan(t *testing.T) {
 	if a != b || !strings.Contains(stripANSI(a), "awaiting approval") {
 		t.Fatal("approval should stay still")
 	}
-	if !strings.Contains(a, "Plan intent") {
-		t.Fatal("worker approval hid the existing plan")
+	if !strings.Contains(a, "Plan intent") || !strings.Contains(a, "Background workers") || strings.Contains(a, "Queued") {
+		t.Fatal("worker approval hid or confused the existing plan")
 	}
 	p.AwaitingApproval = nil
 	if !strings.Contains(RenderTrackerList(p), "stalled") {

@@ -126,17 +126,16 @@ func TestShiftTabCyclesModeDuringStream(t *testing.T) {
 	}
 }
 
-// The approval prompt keeps Shift+Tab as its "allow all this session"
-// accelerator: it is an overlay, so routeKeypress hands it the key before the
-// mode cycle ever sees it.
+// Shift+Tab navigates the approval's choices, never grants a broader scope or
+// cycles operation mode: routeKeypress hands it to the foreground overlay.
 func TestShiftTabAtApprovalPromptDoesNotCycleMode(t *testing.T) {
 	m := &model{conv: conv.NewModel(80)}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.conv.Stream.Active = true
 	m.userInput.Approval.Show(&perm.PermissionRequest{ToolName: "Bash"}, 80, 24)
 
-	if _, ok := m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}); !ok {
-		t.Fatal("shift+tab was not routed to the approval overlay")
+	if cmd, ok := m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}); !ok || cmd != nil || !m.userInput.Approval.IsActive() {
+		t.Fatal("shift+tab must navigate the approval overlay without granting")
 	}
 	if m.env.OperationMode != setting.ModeNormal {
 		t.Fatalf("OperationMode = %v, want %v (the approval prompt owns this key)", m.env.OperationMode, setting.ModeNormal)

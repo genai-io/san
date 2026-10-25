@@ -26,6 +26,7 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 			resizable.Resize(msg.Width, msg.Height)
 		}
 	}
+	m.resizeApprovalPanel()
 
 	m.conv.ResizeMDRenderer(msg.Width)
 

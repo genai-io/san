@@ -452,7 +452,7 @@ func TestActivityReservesComposerAndModalSpace(t *testing.T) {
 	modal := dockedModalModel(t, "why this command is needed")
 	addTallWorkflowActivity(t, modal)
 	frame, _ = modal.viewString()
-	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "1. Allow once") || !strings.Contains(ansi.Strip(frame), "2. Deny") {
 		t.Fatalf("workflow displaced approval options:\n%s", ansi.Strip(frame))
 	}
 }
@@ -593,7 +593,7 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 	}
 	// The options are the last thing in the modal: if they survived the cap,
 	// nothing below the chat tail was pushed off screen.
-	if !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+	if !strings.Contains(ansi.Strip(frame), "1. Allow once") || !strings.Contains(ansi.Strip(frame), "2. Deny") {
 		t.Fatalf("modal frame lost its question to the chat tail:\n%s", frame)
 	}
 }

@@ -80,7 +80,17 @@ func RenderTrackerList(params TrackerListParams) string {
 	idWidth := itemIDWidth(visible)
 
 	// Query executor liveness only for visible rows; counts use recorded status.
-	for _, t := range visible {
+	lastPlan := false
+	for i, t := range visible {
+		isPlan := todo.BackgroundTaskID(t) == ""
+		if plans > 0 && plans < len(items) && (i == 0 || isPlan != lastPlan) {
+			label := "Background workers"
+			if isPlan {
+				label = "Plan"
+			}
+			sb.WriteString(kit.TruncateText("  "+headerStyle.Render(label), max(1, params.Width)) + "\n")
+		}
+		lastPlan = isPlan
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
 		waiting := t.Status == todo.StatusInProgress && todo.BackgroundTaskID(t) != "" && params.AwaitingApproval[todo.BackgroundTaskID(t)]
 		if waiting && params.WorkerStatus != nil {

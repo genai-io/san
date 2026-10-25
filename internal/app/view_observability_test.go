@@ -64,7 +64,7 @@ func TestWorkerIdentityLayoutReservesDockedModal(t *testing.T) {
 	for range 2 {
 		frame, _ := m.viewString()
 		plain := ansi.Strip(frame)
-		if rowCount(frame) != m.env.Height || !strings.Contains(plain, "Do you want to proceed?") {
+		if rowCount(frame) != m.env.Height || !strings.Contains(plain, "1. Allow once") || !strings.Contains(plain, "2. Deny") {
 			t.Fatalf("workers displaced modal:\n%s", plain)
 		}
 		for _, call := range calls {

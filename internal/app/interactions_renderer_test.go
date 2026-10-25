@@ -98,12 +98,13 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 					go func() { _, err := executor.Run(ctx, req); workerDone <- err }()
 				}
 				if mode == subagent.PermissionDefault {
-					waitFor("Do you want to proceed?")
+					waitFor("1. Allow once")
+					waitFor("2. Deny")
 					if _, err := os.Stat(marker); !os.IsNotExist(err) {
 						t.Fatal("worker executed Write before confirmation")
 					}
 					_, screen := terminal.snapshot()
-					if strings.Contains(screen, "during this session") {
+					if strings.Contains(screen, "More permissions") || strings.Contains(screen, "for this session") {
 						t.Fatal("worker UI offered a parent-scoped grant")
 					}
 					key := tea.KeyEnter
