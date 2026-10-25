@@ -154,7 +154,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 	var toolName string
 	if params.BuildingTool != "" {
 		toolName = params.BuildingTool
-	} else if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
+	} else if params.CurrentIdx >= 0 && params.CurrentIdx < len(params.PendingCalls) {
 		toolName = params.PendingCalls[params.CurrentIdx].Name
 	} else {
 		return ""

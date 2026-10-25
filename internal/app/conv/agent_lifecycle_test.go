@@ -233,3 +233,13 @@ func TestAgentLifecycleBuildingKeepsIdentity(t *testing.T) {
 		t.Fatalf("streamed Agent call lost its identity: %q", got)
 	}
 }
+
+func TestAgentLifecycleNegativeCurrentIndex(t *testing.T) {
+	call := core.ToolCall{ID: "worker", Name: "Agent"}
+	if got := RenderPendingToolSpinner(PendingToolSpinnerParams{PendingCalls: []core.ToolCall{call}, CurrentIdx: -1}); got != "" {
+		t.Fatalf("invalid selection rendered a worker: %q", got)
+	}
+	if got := ansi.Strip(RenderPendingToolSpinner(PendingToolSpinnerParams{BuildingTool: "Agent", PendingCalls: []core.ToolCall{call}, CurrentIdx: -1, Width: 32})); got != "● Agent\n  Pending\n" {
+		t.Fatalf("building fallback lost identity: %q", got)
+	}
+}
