@@ -7,6 +7,7 @@ import (
 
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -754,8 +755,19 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	if req == nil || (req.Context != nil && req.Context.Err() != nil) {
 		return conv.PollPermGate(m.services.Agent.PermissionGate())
 	}
+	permissionView, err := m.preparePermissionRequest(req)
+	if err != nil {
+		// Preparation failures are tool errors, not requests for human consent.
+		// The gate owns a buffered response channel; never enqueue an invalid
+		// call or let a generic preview hide the actionable validation reason.
+		select {
+		case req.Response <- agent.PermGateResponse{Reason: fmt.Sprintf("cannot prepare %s approval: %v", req.ToolName, err)}:
+		default:
+		}
+		return conv.PollPermGate(m.services.Agent.PermissionGate())
+	}
 	return tea.Batch(m.enqueueInteraction(&conv.InteractionRequest{
-		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: m.preparePermissionRequest(req),
+		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: permissionView,
 		Source: tool.AgentInteractionSource{WorkingDirectory: m.env.CWD, PermissionMode: m.env.SessionMode()},
 	}), conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
@@ -803,7 +815,7 @@ func permDetail(req *perm.PermissionRequest) json.RawMessage {
 // Agent tool configuration
 // ============================================================
 
-func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.PermissionRequest {
+func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.PermissionRequest, error) {
 	permReq := &perm.PermissionRequest{
 		ToolName:    req.ToolName,
 		Description: req.Description,
@@ -814,7 +826,11 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.Permi
 	}
 	if resolved, ok := tool.Get(req.ToolName); ok {
 		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
-			if rich, err := pat.PreparePermission(ctx, req.Input, m.env.CWD); err == nil && rich != nil {
+			rich, err := pat.PreparePermission(ctx, req.Input, m.env.CWD)
+			if err != nil {
+				return nil, err
+			}
+			if rich != nil {
 				permReq = rich
 			}
 		}
@@ -827,7 +843,7 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.Permi
 	if !m.services.Setting.SessionGrantTakesEffect(req.ToolName, req.Input, m.env.SessionPermissions) {
 		permReq.OnceOnly = true
 	}
-	return permReq
+	return permReq, nil
 }
 
 func (m *model) ReconfigureAgentTool() {

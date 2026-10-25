@@ -162,7 +162,16 @@ func (m *model) showActiveInteraction() tea.Cmd {
 	case req.Permission != nil:
 		view := req.PermissionView
 		if view == nil {
-			view = m.preparePermissionRequest(req.Permission)
+			var err error
+			view, err = m.preparePermissionRequest(req.Permission)
+			if err != nil {
+				select {
+				case req.Permission.Response <- agent.PermGateResponse{Reason: "cannot prepare " + req.Permission.ToolName + " approval: " + err.Error()}:
+				default:
+				}
+				m.finishInteraction()
+				return m.advanceInteractions()
+			}
 		}
 		m.interactions.permission = view
 		if req.Source.AgentID != "" {

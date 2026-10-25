@@ -36,7 +36,7 @@ func TestLargeForegroundOutputAlsoCapsHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
-		"command": "cat large.txt; cat large.txt >&2", "timeout": 10000,
+		"command": "cat large.txt; cat large.txt >&2", "timeout_ms": 10000,
 	}, dir)
 	if !result.Success {
 		t.Fatal(result.Error)
@@ -63,7 +63,7 @@ func TestLargeBackgroundOutputKeepsFullDiskLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
-		"command": "cat large.txt; printf 'finished\\n' >&2", "run_in_background": true, "timeout": 10000,
+		"command": "cat large.txt; printf 'finished\\n' >&2", "execution_mode": shellBackgroundJob, "timeout_ms": 10000,
 	}, dir)
 	if !result.Success {
 		t.Fatal(result.Error)

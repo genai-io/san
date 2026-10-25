@@ -11,8 +11,9 @@ their output asynchronously.
 
 ## Purpose
 
-When the agent invokes `Bash` with `run_in_background: true` or spawns a
-subagent via `Agent`, the work is registered as a `BackgroundTask` here.
+When the agent invokes `Bash` with `execution_mode: "background_job"` or
+`"background_service"`, or spawns a background subagent via `Agent`, the work is
+registered as a `BackgroundTask` here.
 The TUI's task panel reads from this registry; completion notifications flow
 back to the agent automatically. `AgentStop` cancels a running agent task; on
 Unix, a background Bash command reports its own process-group ID so Bash can
@@ -151,7 +152,10 @@ Task created → attempt 1 running → attempt 1 failed
 - `/tasks` shows the child session and attempt history. `c` on an eligible ended
   worker asks main to choose a safe continuation; the UI does not directly launch
   tools or bypass approval. Completion visibility is keyed by task and attempt,
-  so an old notice cannot hide a newer result. The viewer snapshots worker output
+  so an old notice cannot hide a newer result. At delivery, a completion from an
+  older attempt of a known task is discarded before display or model wakeup;
+  current failures, ordinary messages, and unscoped Bash notices still deliver.
+  The viewer snapshots worker output
   on its one-second poll and on approval/completion changes, not on every stream,
   spinner, or scrolling event. Actions still revalidate ownership, status, and
   attempt against the backend before execution.
@@ -164,15 +168,17 @@ Task created → attempt 1 running → attempt 1 failed
 
 ### Shell jobs and services
 
-`Bash(run_in_background=true)` defaults to `lifetime: "job"`: a finite command
-with the existing 120-second default and 600-second maximum execution timeout.
+`Bash` defaults to `execution_mode: "foreground"`; omit the mode for ordinary
+commands whose results are needed before continuing. Use
+`execution_mode: "background_job"` only for independent finite work. Both finite
+modes accept `timeout_ms` (default 120000, maximum 600000 milliseconds).
 `FailureInfo` records observed deadline, exit, or signal evidence. A SIGKILL alone
 is not diagnosed as a deadline or OOM; Unix signal exit codes use `128 + signal`.
 
-Use explicit `lifetime: "service"` for a provider/dev server that must remain
-alive. Services reject execution `timeout`, do not inherit a finite job's deadline,
-and must be explicitly health-checked before dependent work starts. Starting the
-process is not readiness confirmation. A spontaneous service exit, even exit 0,
+Use explicit `execution_mode: "background_service"` for a provider/dev server
+that must remain alive. Services reject a non-null `timeout_ms`, do not inherit a
+finite job's deadline, and must be explicitly health-checked before dependent
+work starts. Starting the process is not readiness confirmation. A spontaneous service exit, even exit 0,
 is a failure; deliberate stop/cleanup is stopped. Application teardown stops all
 managed services with graceful termination and bounded kill escalation. Merely
 switching the selected conversation does not stop another session's service.

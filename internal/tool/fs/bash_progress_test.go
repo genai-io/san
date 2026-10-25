@@ -76,8 +76,8 @@ func TestBashExecuteApproved_reportsOutputProgress(t *testing.T) {
 	})
 
 	result := bashTool(t).ExecuteApproved(ctx, map[string]any{
-		"command": `for i in $(seq 1 5); do echo "line $i"; sleep 0.05; done`,
-		"timeout": 30000,
+		"command":    `for i in $(seq 1 5); do echo "line $i"; sleep 0.05; done`,
+		"timeout_ms": 30000,
 	}, t.TempDir())
 
 	if !result.Success {
@@ -132,8 +132,8 @@ func TestOutputProgress_reportsWhatTheThrottleHeldBack(t *testing.T) {
 func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 	ctx := coretool.ContextWithBashProgress(context.Background(), func(int, int64, string) {})
 	result := bashTool(t).ExecuteApproved(ctx, map[string]any{
-		"command": `for i in $(seq 1 8000); do echo "line $i"; done; exit 1`,
-		"timeout": 30000,
+		"command":    `for i in $(seq 1 8000); do echo "line $i"; done; exit 1`,
+		"timeout_ms": 30000,
 	}, t.TempDir())
 	d, ok := result.Details.(toolresult.BashDetails)
 	if result.Success || !ok {
@@ -145,15 +145,15 @@ func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 	if lines := strings.Count(d.Tail, "\n"); lines != previewTailLines {
 		t.Fatalf("tail has %d lines, want the %d a row can preview", lines, previewTailLines)
 	}
-	mixed := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo a; sleep 0.05; echo err >&2; sleep 0.05; echo b; exit 1", "timeout": 30000}, t.TempDir())
+	mixed := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo a; sleep 0.05; echo err >&2; sleep 0.05; echo b; exit 1", "timeout_ms": 30000}, t.TempDir())
 	if d := mixed.Details.(toolresult.BashDetails); d.LineCount != 3 || d.Tail != "a\nerr\nb\n" {
 		t.Fatalf("uncut failure: %#v, want 3 lines in the order written", d)
 	}
-	short := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo hi", "timeout": 30000}, t.TempDir())
+	short := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "echo hi", "timeout_ms": 30000}, t.TempDir())
 	if d := short.Details.(toolresult.BashDetails); d.LineCount != 1 || d.Tail != "hi\n" {
 		t.Fatalf("short success: %#v, want its count and whole output", d)
 	}
-	long := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "seq 1 100", "timeout": 30000}, t.TempDir())
+	long := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "seq 1 100", "timeout_ms": 30000}, t.TempDir())
 	if d := long.Details.(toolresult.BashDetails); d.LineCount != 100 || !strings.HasSuffix(d.Tail, "99\n100\n") || strings.Count(d.Tail, "\n") != previewTailLines {
 		t.Fatalf("long success: %#v, want its count and diagnostic end", d)
 	}

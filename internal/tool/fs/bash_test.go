@@ -120,8 +120,8 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 	})
 
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
-		"command":           "sleep 60",
-		"run_in_background": true,
+		"command":        "sleep 60",
+		"execution_mode": shellBackgroundJob,
 	}, t.TempDir())
 	if !result.Success {
 		t.Fatalf("background Bash failed: %s", result.Error)

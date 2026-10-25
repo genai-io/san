@@ -60,7 +60,8 @@ func (t *ShellTool) RequiresPermission() bool {
 
 // PreparePermission prepares a permission request with command preview
 func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
-	if _, err := shellLifetime(params); err != nil {
+	options, err := parseShellExecutionOptions(params)
+	if err != nil {
 		return nil, err
 	}
 	command, err := tool.RequireString(params, "command")
@@ -69,7 +70,6 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 	}
 
 	description := tool.GetString(params, "description")
-	runBackground := tool.GetBool(params, "run_in_background")
 
 	// Count lines in command
 	lineCount := strings.Count(command, "\n") + 1
@@ -81,7 +81,7 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 		BashMeta: &perm.BashMetadata{
 			Command:       command,
 			Description:   description,
-			RunBackground: runBackground,
+			RunBackground: options.background,
 			LineCount:     lineCount,
 		},
 	}, nil
@@ -90,21 +90,19 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 // ExecuteApproved executes the command after user approval
 func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
-	lifetime, optionErr := shellLifetime(params)
-	if optionErr != nil {
-		return toolresult.NewErrorResult(t.Name(), optionErr.Error())
+	options, err := parseShellExecutionOptions(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
-
-	command := tool.GetString(params, "command")
+	command, err := tool.RequireString(params, "command")
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 	description := tool.GetString(params, "description")
-	runBackground := tool.GetBool(params, "run_in_background")
+	timeout := options.timeout
 
-	// Get timeout (default 120 seconds, max 600 seconds)
-	timeout := min(time.Duration(tool.GetFloat64(params, "timeout", 120000))*time.Millisecond, 600*time.Second)
-
-	// Handle background execution
-	if runBackground {
-		return t.executeBackground(ctx, command, description, cwd, timeout, lifetime)
+	if options.background {
+		return t.executeBackground(ctx, command, description, cwd, timeout, options.lifetime)
 	}
 
 	// Create context with timeout
@@ -292,28 +290,6 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]any, cwd stri
 	return t.ExecuteApproved(ctx, params, cwd)
 }
 
-// shellLifetime validates options both before permission and before execution.
-func shellLifetime(params map[string]any) (task.Lifetime, error) {
-	raw, specified := params["lifetime"]
-	lifetime := task.LifetimeJob
-	if specified {
-		value, ok := raw.(string)
-		if !ok || (value != string(task.LifetimeJob) && value != string(task.LifetimeService)) {
-			return "", fmt.Errorf("lifetime must be 'job' or 'service'")
-		}
-		if !tool.GetBool(params, "run_in_background") {
-			return "", fmt.Errorf("lifetime requires run_in_background=true")
-		}
-		lifetime = task.Lifetime(value)
-	}
-	if lifetime == task.LifetimeService {
-		if _, exists := params["timeout"]; exists {
-			return "", fmt.Errorf("service lifetime cannot specify an execution timeout")
-		}
-	}
-	return lifetime, nil
-}
-
 // executeBackground runs the command in the background and returns immediately
 func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration, lifetimes ...task.Lifetime) toolresult.ToolResult {
 	lifetime := task.LifetimeJob
@@ -329,7 +305,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		}
 	}
 
-	// Services are session-owned, not tied to a foreground turn or job deadline.
+	// Services are application-managed, not tied to a foreground turn or job deadline.
 	var taskCtx context.Context
 	var cancel context.CancelFunc
 	if lifetime == task.LifetimeService {
@@ -425,7 +401,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	output := fmt.Sprintf("Task started in background.\nTask ID: %s\nPID: %d\nCommand: %s\nOutputFile: %s",
 		bgTask.ID, bgTask.PID, command, bgTask.OutputFile)
 	if lifetime == task.LifetimeService {
-		output += "\nLifetime: service (session-owned; no execution deadline). Startup is not health confirmation: explicitly run an appropriate startup health check before relying on this service. No health probe was executed automatically."
+		output += "\nExecution mode: background_service (managed by this San process; no execution deadline). Startup is not health confirmation: explicitly run an appropriate startup health check before relying on this service. No health probe was executed automatically."
 	}
 	backgroundMeta := map[string]any{
 		"lifetime":    lifetime,
