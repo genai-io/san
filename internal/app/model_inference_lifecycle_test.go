@@ -42,6 +42,13 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				deliver(sdkagent.InferenceUpdate{Delta: event})
 			}
 			m.showNoticeLine(mainNotice{Display: "background failure"})
+			deliver(sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{
+				ToolCallID: "read-1", ToolName: tool.ToolRead, InputBytes: 1024,
+			}}})
+			live := ansi.Strip(conv.RenderActiveContent(m.messageRenderParams()))
+			if !strings.Contains(live, "Generating Read arguments") || !strings.Contains(live, "1024 bytes") || len(m.conv.Tool.PendingCalls) != 0 {
+				t.Fatalf("generation progress was hidden or started a tool: %q", live)
+			}
 			if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 0 {
 				t.Fatal("notices committed the assistant before inference finished")
 			}
@@ -57,7 +64,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			if assistant.ID != owner || assistant.Content != "Original assistant reply" || assistant.ThinkingSignature != "final-signature" {
 				t.Fatalf("inference metadata attached to the wrong row: %+v", assistant)
 			}
-			if !m.conv.Stream.Active || m.conv.Stream.MessageID != "" {
+			if !m.conv.Stream.Active || m.conv.Stream.MessageID != "" || m.conv.Stream.Inferring || m.conv.Stream.GeneratedBytes != 0 {
 				t.Fatalf("InferenceEnd should release identity, not end the turn: %+v", m.conv.Stream)
 			}
 			if withTools {
@@ -89,6 +96,9 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				}
 			}
 			printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
+			if strings.Contains(printed, "Generating Read arguments") || strings.Contains(printed, "1024 bytes") {
+				t.Fatal("transient generation progress leaked into scrollback")
+			}
 			last := -1
 			for _, text := range []string{"Original assistant reply", "background completed", "background failure"} {
 				index := strings.Index(printed, text)

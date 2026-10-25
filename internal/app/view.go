@@ -145,20 +145,34 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	if available <= 0 {
 		return ""
 	}
-	section := m.renderChatSection(conv.RenderActiveContent(params))
+	status := conv.RenderInferenceStatus(params)
+	if status != "" {
+		// Generation is not an ordinary body line: it must remain visible when
+		// a short terminal or a history handoff clips the chat above it.
+		available--
+		if available == 0 {
+			return status
+		}
+	}
+	section := m.renderChatSection(conv.RenderActiveBody(params))
+	var content string
 	if m.handingOff() {
 		// The oldest row not yet in history stays on top until it scrolls off.
-		content := headLines(section, available)
-		return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
-	}
-	content := tailLines(section, available)
-	if strings.Count(section, "\n")+1 > available {
-		if workers, active := conv.RenderActiveWorkers(params, available); active {
-			content = workers
+		content = headLines(section, available)
+	} else {
+		content = tailLines(section, available)
+		if strings.Count(section, "\n")+1 > available {
+			if workers, active := conv.RenderActiveWorkers(params, available); active {
+				content = workers
+			}
 		}
 	}
 	// Empty rows go below, so the live content stays put under the conversation.
-	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	content += strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	if status != "" {
+		content += "\n" + status
+	}
+	return content
 }
 
 // chatRows is how many rows the chat tail gets above bottom, the block anchored
@@ -579,6 +593,10 @@ func (m model) messageRenderParams() conv.RenderContext {
 		StreamStartedAt:    m.conv.Stream.StartedAt,
 		StreamMessageID:    m.conv.Stream.MessageID,
 		BuildingTool:       m.conv.Stream.BuildingTool,
+		Inferring:          m.conv.Stream.Inferring,
+		InferenceAttempt:   m.conv.Stream.Attempt,
+		GeneratingTool:     m.conv.Stream.GeneratingTool,
+		GeneratedBytes:     m.conv.Stream.GeneratedBytes,
 		PendingCalls:       m.conv.Tool.PendingCalls,
 		CurrentIdx:         m.conv.Tool.CurrentIdx,
 		ToolStartedAt:      m.conv.Tool.StartedAt,

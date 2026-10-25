@@ -9,11 +9,11 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -190,7 +190,7 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 	// shutdown, not an agent failure the user needs to see.
 	failed := err != nil && !errors.Is(err, context.Canceled)
 	if failed {
-		m.conv.AddNotice(fmt.Sprintf("Agent error: %v", err))
+		m.conv.AddNotice(conv.FailedTurnNotice(err))
 		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
 	}
 	m.pruneInteractions()
