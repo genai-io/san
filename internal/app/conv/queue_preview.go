@@ -82,6 +82,7 @@ func RenderQueuePreviewLimit(items []QueuePreviewItem, selectedIdx, width, limit
 	var sb strings.Builder
 	for i := startIdx; i < endIdx; i++ {
 		item := items[i]
+		text := strings.Join(strings.Fields(item.Content), " ")
 
 		gutter := " "
 		contentStyle := queueContentStyle
@@ -95,12 +96,16 @@ func RenderQueuePreviewLimit(items []QueuePreviewItem, selectedIdx, width, limit
 		if item.HasImages {
 			maxContentWidth = max(0, maxContentWidth-lipgloss.Width("[Image] "))
 		}
-		textWidth := lipgloss.Width(strings.Join(strings.Fields(item.Content), " "))
-		if i == hintIdx && maxContentWidth >= textWidth+lipgloss.Width(hint)+2 {
+		if i == hintIdx && maxContentWidth >= lipgloss.Width(text)+lipgloss.Width(hint)+2 {
 			maxContentWidth -= lipgloss.Width(hint) + 2
 		}
 
-		content := contentStyle.Render(truncateQueueContent(item.Content, maxContentWidth))
+		if maxContentWidth <= 0 {
+			text = ""
+		} else {
+			text = xansi.Truncate(text, maxContentWidth, "…")
+		}
+		content := contentStyle.Render(text)
 		if item.HasImages {
 			content = PendingImageStyle.Render("[Image] ") + content
 		}
@@ -123,14 +128,4 @@ func RenderQueuePreviewLimit(items []QueuePreviewItem, selectedIdx, width, limit
 	}
 
 	return sb.String()
-}
-
-// truncateQueueContent flattens a queued message to one line and truncates it
-// to maxWidth display columns (CJK-aware).
-func truncateQueueContent(s string, maxWidth int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if maxWidth <= 0 {
-		return ""
-	}
-	return xansi.Truncate(s, maxWidth, "…")
 }
