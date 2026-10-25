@@ -46,6 +46,35 @@ func TestActiveWaitingFollowsNotices(t *testing.T) {
 	}
 }
 
+func TestInferenceWaitingFollowsNoticesWithoutEmptyReplyMarker(t *testing.T) {
+	for _, width := range []int{32, 40, 80} {
+		for _, thinking := range []string{"", "Prior reasoning"} {
+			messages := []core.ChatMessage{
+				{ID: "live", Role: core.ChatAssistant, Thinking: thinking},
+				{Role: core.ChatNotice, AgentNotice: true, Content: "Background job failed"},
+			}
+			before := append([]core.ChatMessage(nil), messages...)
+			p := RenderContext{Messages: messages, Width: width, StreamActive: true, Inferring: true,
+				StreamMessageID: "live", StreamStartedAt: time.Now().Add(-49 * time.Second), ThinkingDisplay: "full"}
+			out := ansi.Strip(RenderActiveContent(p))
+			if notice, status := strings.Index(out, "Background job failed"), strings.Index(out, "Generating response"); notice < 0 || status <= notice || strings.Count(out, "Generating response") != 1 {
+				t.Fatalf("width %d: notice does not precede the single inference status: %q", width, out)
+			}
+			for _, line := range strings.Split(out, "\n") {
+				if strings.TrimSpace(line) == "●" {
+					t.Fatalf("width %d: empty response left an orphan reply marker: %q", width, out)
+				}
+			}
+			if thinking != "" && !strings.Contains(out, thinking) {
+				t.Fatalf("inference status hid the existing reasoning: %q", out)
+			}
+			if !reflect.DeepEqual(messages, before) {
+				t.Fatal("rendering changed transcript ownership or content")
+			}
+		}
+	}
+}
+
 func TestActiveWaitingFollowsPersistedTaskEnvelope(t *testing.T) {
 	for _, width := range []int{32, 40, 80} {
 		p := RenderContext{Width: width, StreamActive: true, StreamMessageID: "live", StreamStartedAt: time.Now().Add(-49 * time.Second), Messages: []core.ChatMessage{

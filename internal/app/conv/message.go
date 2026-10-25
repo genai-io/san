@@ -418,6 +418,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 func formatAssistantContent(params AssistantParams) string {
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		if params.Content == "" {
+			if params.SuppressWaitingRow {
+				// The independent inference status already owns the placeholder.
+				return ""
+			}
 			// Nothing new to draw (the gap right after a block commits): a lone
 			// space keeps the row, so the tail does not jump between blocks.
 			return " "
