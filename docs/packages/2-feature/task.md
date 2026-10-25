@@ -54,7 +54,10 @@ func ResetDefaultTracker()         // test-only
   `AgentTask`.
 - `BashTask` (`bash_task.go`) — wraps `*exec.Cmd`, streams stdout/stderr
   to disk, exposes `Tail`/`Read`.
-- `AgentTask` (`agent_task.go`) — wraps a subagent invocation. Callers may
+- `AgentTask` (`agent_task.go`, `agent_attempt.go`) — owns one logical worker
+  task with a stable ID and serialized execution attempts. Its current status
+  describes the latest attempt; immutable `Attempts` retain previous failures and
+  results. Callers may
   publish an in-memory `LiveView` snapshot and an optional width-aware renderer
   for the TUI, independently of append-only progress events in the output
   file. Workflows reflow their activity and graph when the terminal resizes;
@@ -82,7 +85,8 @@ func ResetDefaultTracker()         // test-only
 - Terminal notifications carry the error reason and any partial output
   together. Output above the notification's inline-size limit points at a
   healthy task log, including when the task failed or was stopped; the failure
-  status remains explicit.
+  status remains explicit. Task/attempt identity also travels as typed broker
+  metadata; internal completion bookkeeping never parses the model-facing XML.
 - Log initialization, append, and close errors are retained in `OutputError`,
   independently of execution status. An incomplete log is not advertised through
   `OutputFile`; completion notices use a bounded UTF-8-safe preview instead.
@@ -99,11 +103,92 @@ func ResetDefaultTracker()         // test-only
   row remains diagnostic after restart. Tool progress puts the tool name and
   failure reason before the command preview; full diagnostics remain in the log.
 
+## Continuation and failure handling
+
+A logical task, child conversation, and execution attempt are different identities.
+Continuing an agent retains the task ID and native child-session ID; only the
+execution attempt changes. A failed attempt is never rewritten as successful.
+
+```text
+Task created → attempt 1 running → attempt 1 failed
+                                  ↓ main chooses a safe continuation
+              same Task/session → attempt 2 running → result → parent verification
+```
+
+- While a worker runs, `SendMessage(to=<task-id>)` queues incremental instructions.
+  It is enabled by default in ordinary main sessions, without group membership;
+  an explicit `/tools` disable is still respected.
+  Acceptance does not mean the worker has read them or completed its work.
+- For new work, omit `resume_task_id` or use JSON `null`. Compatibility with
+  callers that fill every optional field also treats blank strings, `new`, and
+  `/dev/null` as explicit no-session placeholders. They create new work through
+  the normal permission gate; they never identify an existing worker. Other
+  unknown IDs, agent names, and file paths are rejected with a correction instead
+  of silently starting a new conversation.
+- When its execution has ended, `Agent(resume_task_id=<task-id>, prompt=...)`
+  explicitly continues its native conversation. The prompt contains only the new
+  instruction, not a parent-generated copy of the child's history. Continuation
+  is background-only and passes through the Agent permission gate.
+- A failure chain permits one corrective continuation. Two consecutive failed
+  executions exhaust the recovery budget; report a blocker and choose a new plan
+  rather than repeatedly waking main. Each continuation also has a finite step
+  budget (the original by default, or an explicit positive override). Successful
+  follow-ups reset the consecutive-failure chain.
+- Native conversation events are recorded from the start of execution, separately
+  from task output logs. A healthy transcript is opened under its writer lease,
+  restored internally, and appended to. Missing/broken history is rejected before
+  starting another attempt, avoiding a notification/recovery feedback loop.
+  The lease closes before completion is
+  announced, so the next attempt cannot race the previous writer.
+- Main sees the failure reason, partial findings, session pointer, and attempt
+  number. It can continue, take over remaining work, or report a blocker. It must
+  inspect uncertain side effects before retrying; neither message delivery nor a
+  normal worker exit proves the requested task was fulfilled.
+- Running, deliberately stopped/killed, foreign-session, and missing-checkpoint
+  tasks cannot be automatically resumed. A missing or damaged conversation must
+  not silently become a fresh conversation. Starting genuinely new work remains
+  a separate explicit Agent invocation.
+- `/tasks` shows the child session and attempt history. `c` on an eligible ended
+  worker asks main to choose a safe continuation; the UI does not directly launch
+  tools or bypass approval. Completion visibility is keyed by task and attempt,
+  so an old notice cannot hide a newer result. The viewer snapshots worker output
+  on its one-second poll and on approval/completion changes, not on every stream,
+  spinner, or scrolling event. Actions still revalidate ownership, status, and
+  attempt against the backend before execution.
+- Manual interruption holds background-driven turns until real user input;
+  arriving notifications remain visible and queued rather than restarting main.
+- Continuation launch checkpoints are currently process-local. Native history is
+  durable, but reconstructing task ownership/policy after the entire San process
+  exits is not implemented. This is not a general crash-recovery scheduler or an
+  automatic dependency-DAG restart engine.
+
+### Shell jobs and services
+
+`Bash(run_in_background=true)` defaults to `lifetime: "job"`: a finite command
+with the existing 120-second default and 600-second maximum execution timeout.
+`FailureInfo` records observed deadline, exit, or signal evidence. A SIGKILL alone
+is not diagnosed as a deadline or OOM; Unix signal exit codes use `128 + signal`.
+
+Use explicit `lifetime: "service"` for a provider/dev server that must remain
+alive. Services reject execution `timeout`, do not inherit a finite job's deadline,
+and must be explicitly health-checked before dependent work starts. Starting the
+process is not readiness confirmation. A spontaneous service exit, even exit 0,
+is a failure; deliberate stop/cleanup is stopped. Application teardown stops all
+managed services with graceful termination and bounded kill escalation. Merely
+switching the selected conversation does not stop another session's service.
+Services are not automatically restarted: main must inspect the reason, verify
+safe restart and readiness, and rerun affected validation explicitly.
+
 ## Tests
 
 ```
 internal/task/manager_test.go        — register / get / list / kill.
 internal/task/bash_task_test.go      — output streaming and cancel.
+internal/task/bash_service_test.go   — deadline/signal evidence and service stop semantics.
+internal/task/agent_attempt_test.go  — same task identity, immutable attempts, stale completion fencing.
+internal/tool/fs/shell_service_test.go — service lifetime and option validation.
+internal/subagent/executor_resume_test.go — same native child conversation across execution attempts.
+internal/app/task_recovery_test.go   — attempt-aware notices, manual-stop hold, UI continuation requests.
 internal/task/hooks_test.go          — lifecycle hook emission.
 internal/task/session_test.go        — ownership across switches and nested launches.
 internal/task/output_observability_test.go — log errors and display-only progress.

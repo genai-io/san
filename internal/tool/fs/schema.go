@@ -117,6 +117,7 @@ func (t *ShellTool) Schema() core.ToolSchema {
 	if t.second {
 		description += "\n\n" + secondShellNote(name)
 	}
+	description += "\n\nBackground lifetime defaults to job (finite work; default timeout 120000ms, maximum 600000ms). For a long-running session-owned server, explicitly set run_in_background=true and lifetime='service', and omit timeout. Services have no execution deadline and are stopped on application shutdown, not session switching. A service exiting on its own, even with exit code 0, is a failure. Starting is not proof of health: explicitly run an appropriate startup health check before relying on the service; no health probe is run automatically."
 	return core.ToolSchema{
 		Name:        name,
 		Description: description,
@@ -156,6 +157,11 @@ func shellParameters() map[string]any {
 			"timeout": map[string]any{
 				"type":        "integer",
 				"description": "Optional timeout in milliseconds (max 600000)",
+			},
+			"lifetime": map[string]any{
+				"type":        "string",
+				"enum":        []string{"job", "service"},
+				"description": "Background only: job (default, finite timeout) or service (session-owned, no timeout; explicitly verify startup health).",
 			},
 			"run_in_background": map[string]any{
 				"type":        "boolean",

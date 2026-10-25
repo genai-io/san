@@ -387,7 +387,7 @@ func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	next, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "next"}).ToMessage()
-	runCmd(m.sendToAgent(pendingMessage{Message: next}))
+	runCmd(m.sendToAgent(pendingMessage{Message: next, fromUser: true}))
 	select {
 	case <-provider.requests:
 	case <-time.After(time.Second):

@@ -31,6 +31,13 @@ func (t *AgentStopTool) PreparePermission(ctx context.Context, params map[string
 	if err != nil {
 		return nil, err
 	}
+	if worker, exists := task.Default().Get(taskID); exists {
+		info := worker.GetStatus()
+		if owner := task.SessionIDFromContext(ctx); owner != "" && info.ParentSessionID != "" && owner != info.ParentSessionID {
+			return nil, fmt.Errorf("agent task belongs to a different parent session")
+		}
+		params["_stopAttempt"] = info.Attempt
+	}
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
@@ -39,14 +46,14 @@ func (t *AgentStopTool) PreparePermission(ctx context.Context, params map[string
 }
 
 func (t *AgentStopTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
-	return t.execute(params)
+	return t.execute(ctx, params)
 }
 
 func (t *AgentStopTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
-	return t.execute(params)
+	return t.execute(ctx, params)
 }
 
-func (t *AgentStopTool) execute(params map[string]any) toolresult.ToolResult {
+func (t *AgentStopTool) execute(ctx context.Context, params map[string]any) toolresult.ToolResult {
 	start := time.Now()
 	taskID, err := tool.RequireString(params, "task_id")
 	if err != nil {
@@ -60,9 +67,17 @@ func (t *AgentStopTool) execute(params map[string]any) toolresult.ToolResult {
 	if bgTask.GetType() != task.TaskTypeAgent {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %s is a background Bash command; stop its process group with Bash instead", taskID))
 	}
-	// Kill validates liveness itself; a pre-check here would only be a second,
-	// racier copy of its "already completed" rejection.
-	if err := task.Default().Kill(taskID); err != nil {
+	if owner := task.SessionIDFromContext(ctx); owner != "" && bgTask.GetStatus().ParentSessionID != "" && owner != bgTask.GetStatus().ParentSessionID {
+		return toolresult.NewErrorResult(t.Name(), "agent task belongs to a different parent session")
+	}
+	// Permission approval and graceful escalation stay pinned to the selected
+	// execution; an old stop request must not cancel a later continuation.
+	if attempt, pinned := params["_stopAttempt"].(int); pinned {
+		err = task.Default().KillAttempt(taskID, attempt)
+	} else {
+		err = task.Default().Kill(taskID)
+	}
+	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to stop agent task: %v", err))
 	}
 

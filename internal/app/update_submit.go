@@ -245,6 +245,11 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
 	m.pendingMessages = append(m.pendingMessages, p)
+	if p.fromUser {
+		m.backgroundNoticesHeld = false
+	} else if m.backgroundNoticesHeld {
+		return tea.Batch(m.CommitMessages()...)
+	}
 	content := p.Text()
 	log.Logger().Sugar().Debugf("SubmitToAgent: %q", kit.TruncateText(content, 60))
 	if m.env.LLMProvider == nil {

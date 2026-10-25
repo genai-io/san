@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -123,6 +125,72 @@ func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
 	}
 	if r := toolInst.Execute(context.Background(), map[string]any{"message": "hi"}, "."); r.Success {
 		t.Fatal("missing recipient should fail")
+	}
+}
+
+func TestSendMessage_KnownTaskBoundary(t *testing.T) {
+	cases := []struct {
+		name, owner, sender string
+		status              task.TaskStatus
+		bash                bool
+		wantError           string
+	}{
+		{name: "running", owner: "session-a", sender: "session-a", status: task.StatusRunning},
+		{name: "legacy sender", owner: "session-a", status: task.StatusRunning},
+		{name: "legacy owner", sender: "session-a", status: task.StatusRunning},
+		{name: "completed stale route", status: task.StatusCompleted, wantError: "resume_task_id"},
+		{name: "failed stale route", status: task.StatusFailed, wantError: "same task and session"},
+		{name: "stopped stale route", status: task.StatusStopped, wantError: "cannot be resumed automatically"},
+		{name: "killed stale route", status: task.StatusKilled, wantError: "deliberately stopped"},
+		{name: "bash", status: task.StatusRunning, bash: true, wantError: "not an agent"},
+		{name: "cross session", owner: "session-a", sender: "session-b", status: task.StatusRunning, wantError: "different parent session"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			broker.Reset()
+			t.Cleanup(broker.Reset)
+			id := task.NewID()
+			owner := task.WithSessionID(context.Background(), tc.owner)
+			if tc.bash {
+				bg := task.Default().CreateBashTask(owner, &exec.Cmd{Process: &os.Process{Pid: 1}}, "true", "test", func() {})
+				id = bg.GetID()
+			} else {
+				bg := task.Default().CreateAgentTask(id, "worker", "test", owner, func() {})
+				switch tc.status {
+				case task.StatusCompleted:
+					bg.Complete(nil)
+				case task.StatusFailed:
+					bg.Complete(fmt.Errorf("test failure"))
+				case task.StatusStopped:
+					bg.Complete(context.Canceled)
+				case task.StatusKilled:
+					if err := bg.Kill(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if got := bg.GetStatus().Status; got != tc.status {
+					t.Fatalf("fixture status = %s, want %s", got, tc.status)
+				}
+			}
+			t.Cleanup(func() { task.Default().Remove(id) })
+			calls := 0
+			broker.Register(id, func(m broker.Message) bool {
+				calls++
+				if m.To != id {
+					t.Fatalf("retargeted to %q", m.To)
+				}
+				return true
+			})
+			ctx := task.WithSessionID(context.Background(), tc.sender)
+			result := NewSendMessageTool().Execute(ctx, map[string]any{"to": id, "message": "follow up"}, ".")
+			if tc.wantError != "" {
+				if result.Success || !strings.Contains(result.Error, tc.wantError) || calls != 0 {
+					t.Fatalf("result=%+v, broker calls=%d", result, calls)
+				}
+			} else if !result.Success || calls != 1 || !strings.Contains(result.Output, "accepted and queued") || !strings.Contains(result.Output, "not an acknowledgment or completion") {
+				t.Fatalf("result=%+v, broker calls=%d", result, calls)
+			}
+		})
 	}
 }
 

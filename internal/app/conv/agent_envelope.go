@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 )
@@ -72,7 +73,9 @@ func agentEnvelopeSummary(content string, width int) string {
 			line := status
 			if reason, ok := strings.CutPrefix(strings.TrimSpace(body), "Error: "); ok && (status == "failed" || status == "stopped" || status == "killed") {
 				reason, _, _ = strings.Cut(html.UnescapeString(reason), "\n")
-				line += " · " + strings.Join(strings.Fields(reason), " ")
+				if status == "failed" || !kit.IsRoutineStopReason(reason) {
+					line += " · " + strings.Join(strings.Fields(reason), " ")
+				}
 			}
 			line = kit.TruncateText(line, max(1, width-2))
 			// Reserve the outcome before shortening a task's description.
@@ -94,6 +97,26 @@ func agentEnvelopeSummary(content string, width int) string {
 		}
 	}
 	return "Background agent message"
+}
+
+// renderAgentEnvelope derives severity from structured terminal status, never
+// from a word such as "failed" in an agent's prose or task description.
+func renderAgentEnvelope(content string, width int, colors map[string]int) string {
+	summary := agentEnvelopeSummary(content, width)
+	tag, _, _ := strings.Cut(strings.TrimSpace(content), ">")
+	if strings.HasPrefix(tag, "<task-notification ") {
+		var style lipgloss.Style
+		switch envelopeAttr(tag, "status") {
+		case "failed":
+			style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		case "stopped", "killed":
+			style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+		default:
+			return RenderAgentNotice(summary, width, colors)
+		}
+		return style.Render(kit.TruncateText("◆ "+summary, max(1, width))) + "\n"
+	}
+	return RenderAgentNotice(summary, width, colors)
 }
 
 // envelopeAttr returns the value of a name="value" attribute within an opening

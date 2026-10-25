@@ -119,8 +119,9 @@ func ResetDefaultRegistry()           // test-only
 - Background permissions are resolved before task registration and goroutine
   scheduling, and recorded internally as `agent.permissions`. Later parent-mode
   changes affect new runs, not a worker already launched. The main Agent tool
-  exposes only task briefing, an optional name, background execution, and step
-  budget; neither `mode` nor `model` is a tool parameter. Ordinary workers inherit
+  exposes task briefing, an optional name, background execution, step budget,
+  and an existing task ID for continuation; neither `mode` nor `model` is a tool
+  parameter. Ordinary workers inherit
   parent permissions, including YOLO. Named definitions and internal workflow
   policies retain their configured limits; `deny_tools` still wins.
 - `executor_interaction.go` binds each UI request to its worker/task, spawning
@@ -148,9 +149,13 @@ func ResetDefaultRegistry()           // test-only
   adding a duplicate error row. These events do not send broker notices to main:
   a failed attempt is not a failed task. Terminal results and explicit
   `SendMessage` calls are the parent communication boundary.
-- Every exit path — success, cancel, error — fires `SubagentStop` with
-  the same agent id `SubagentStart` carried. Subagents are one-shot: a run
-  is not resumable; to continue a line of work, spawn a fresh subagent.
+- Every execution exit — success, cancel, error — fires `SubagentStop` with
+  the same invocation id `SubagentStart` carried. An ended background worker can
+  be explicitly continued with `Agent(resume_task_id=..., prompt=...)`: the
+  logical task and child-session IDs stay unchanged, a new execution attempt is
+  created, and only the new instruction is appended to its native conversation.
+  Running workers receive instructions via `SendMessage` instead. Deliberately
+  stopped/killed workers are not automatically revived.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
@@ -221,9 +226,27 @@ func ResetDefaultRegistry()           // test-only
 
 ## Configuration and limits
 
-- Subagents start with fresh conversations. Supply the actual working directory,
-  source paths, relevant constraints, and a concrete expected result in the
-  delegated prompt. Spawning another worker does not resume the previous one.
+- New subagents start with fresh conversations. Supply the actual working
+  directory, source paths, constraints, and expected validation in the initial
+  brief. To continue an existing worker, use `resume_task_id` and only an
+  incremental correction/follow-up: its original messages are restored inside
+  the child, not copied through the parent's context. Continuation retains the
+  original resolved worker policy, including named tool denies; approval previews
+  project that original policy rather than a subsequently reloaded definition.
+  The schema's `prompt` field distinguishes a full new-work brief from an
+  incremental continuation instruction. `resume_task_id` documents omission/null
+  for new work and strict lookup for continuation; parameter normalization stays
+  in the tool adapter, not in conversation restoration. `run_in_background` defaults
+  to false only for new work; continuation always runs in the background.
+  An omitted `max_steps` uses the selected definition's budget for new work and
+  retains the original budget for continuation; a positive value overrides it.
+- Real session stores record child events live before the first inference and
+  reuse the same transcript during continuation. Legacy end-of-run persistence
+  adapters still support new work but cannot continue it. A continuation needs
+  both the durable transcript and a process-local ownership/policy checkpoint;
+  it is not yet supported after restarting the whole application. A failure chain
+  permits one corrective execution; a second consecutive failure blocks further
+  continuation and requires a new plan rather than an unbounded automatic loop.
 - Custom definition and workflow policies still distinguish read-only inspection
   from edits and unrestricted shell execution. These are internal/configured
   constraints, not default Agent presets or model-facing selectors. An unattended

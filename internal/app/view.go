@@ -91,7 +91,11 @@ func (m *model) viewString() (string, *tea.Cursor) {
 // the tail unbounded would push the modal's answer options off the bottom of the
 // screen, which is worse than showing no text at all.
 func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView string) string {
-	modal := "\n" + separator + "\n" + ov.Render()
+	modal := "\n" + separator + "\n"
+	if context := m.interactionQueueContext(); context != "" {
+		modal += context + "\n"
+	}
+	modal += ov.Render()
 
 	params := m.messageRenderParams()
 	// Only this branch renders under a modal, so it is the one place that knows
@@ -427,14 +431,15 @@ func (m *model) renderTrackerList() string {
 		}
 	}
 	view := conv.RenderTrackerList(conv.TrackerListParams{
-		Items:           items,
-		StreamActive:    m.conv.Stream.Active,
-		Width:           m.env.Width,
-		CompletionShown: m.taskCompletionShown,
-		Blockers:        m.services.Tracker.OpenBlockers,
-		Executing:       m.executingTrackerItem,
-		Frame:           m.conv.Spinner.Frame(),
-		AgentColors:     m.agentColors(),
+		Items:            items,
+		StreamActive:     m.conv.Stream.Active,
+		Width:            m.env.Width,
+		CompletionShown:  m.taskCompletionShown,
+		Blockers:         m.services.Tracker.OpenBlockers,
+		Executing:        m.executingTrackerItem,
+		Frame:            m.conv.Spinner.Frame(),
+		AgentColors:      m.agentColors(),
+		AwaitingApproval: m.pendingTaskApprovals(),
 		WorkerStatus: func(id string) task.TaskInfo {
 			if m.services.Task != nil {
 				if worker, ok := m.services.Task.Get(id); ok {

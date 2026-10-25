@@ -83,6 +83,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
 		&m.userInput.Transcript,
+		&m.userInput.Tasks,
 	}
 }
 
@@ -119,6 +120,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.syncGroupState()
 	if next := m.advanceInteractions(); next != nil {
 		cmd = tea.Batch(cmd, next)
+	}
+	m.syncTaskViewerSession()
+	if tick := m.taskViewerTick(); tick != nil {
+		cmd = tea.Batch(cmd, tick)
 	}
 	// Advancing can also dismiss a request canceled during this Update.
 	if _, overlayIsActive := m.activeOverlay(); overlayWasActive && !overlayIsActive {
@@ -196,6 +201,34 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleCtrlOSingleTick()
 	case historyLoadedMsg:
 		m.historyLoaded(msg)
+		return m, nil
+	case input.TaskStopMsg:
+		return m, m.stopViewedTask(msg)
+	case input.TaskContinueMsg:
+		return m, m.continueViewedTask(msg)
+	case input.TaskReviewApprovalMsg:
+		return m, m.reviewTaskApproval(msg)
+	case input.TaskViewerClosedMsg:
+		if m.consumeTaskAction(msg.ViewID) {
+			m.hideTaskViewer()
+		}
+		return m, m.advanceInteractions()
+	case taskViewerTickMsg:
+		if msg.sessionID == m.tasks.sessionID && msg.viewID == m.tasks.pollID {
+			m.tasks.pollID = 0
+			m.refreshTaskViewer()
+		}
+		return m, nil
+	case taskStopFinishedMsg:
+		if msg.sessionID == m.sessionID() && msg.sessionID == m.tasks.sessionID && msg.viewID == m.tasks.stopID {
+			if msg.err != nil {
+				m.conv.AddNotice("Could not stop task " + msg.taskID + ": " + msg.err.Error())
+			}
+			// The worker's terminal notice owns the outcome; do not print a
+			// second success receipt for the same stop operation.
+			m.resumeTaskViewer()
+			return m, tea.Batch(m.CommitMessages()...)
+		}
 		return m, nil
 	case ctrlCExpiredMsg:
 		// A later press re-armed the window; its own tick will disarm it.

@@ -41,15 +41,17 @@ type mainNotice struct {
 	// inbound agent message rather than a plain system notice.
 	FromAgent bool
 	// FinishedTaskID ties a terminal task notice to its tracker row.
-	FinishedTaskID string
+	FinishedTaskID  string
+	FinishedAttempt int
 }
 
 // fromBrokerMessage converts a message the broker routed to "main" (a subagent
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
 	n := mainNotice{SessionID: m.SessionID, Display: m.Subject, Content: m.Content, FromAgent: true}
-	if strings.HasPrefix(m.Content, "<task-notification ") {
-		n.FinishedTaskID = m.From
+	if completion := m.TaskCompletion; completion != nil {
+		n.FinishedTaskID = completion.TaskID
+		n.FinishedAttempt = completion.Attempt
 	}
 	return n
 }
@@ -80,6 +82,21 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, `<task-notification task-id="%s" status="%s"`, html.EscapeString(info.ID), status)
+	if info.Attempt > 0 {
+		fmt.Fprintf(&b, ` attempt="%d"`, info.Attempt)
+	}
+	if info.Failure.Kind != "" {
+		fmt.Fprintf(&b, ` failure-kind="%s" exit-code="%d"`, html.EscapeString(string(info.Failure.Kind)), info.ExitCode)
+		if info.Failure.Signal != "" {
+			fmt.Fprintf(&b, ` signal="%s"`, html.EscapeString(info.Failure.Signal))
+		}
+		if info.Failure.Timeout > 0 {
+			fmt.Fprintf(&b, ` timeout-ms="%d"`, info.Failure.Timeout.Milliseconds())
+		}
+	}
+	if info.Lifetime != "" {
+		fmt.Fprintf(&b, ` lifetime="%s"`, html.EscapeString(string(info.Lifetime)))
+	}
 	if info.AgentSessionID != "" {
 		fmt.Fprintf(&b, ` agent-id="%s"`, html.EscapeString(info.AgentSessionID))
 	}
@@ -90,16 +107,17 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		fmt.Fprintf(&b, ` output-file="%s"`, html.EscapeString(info.OutputFile))
 	}
 	b.WriteString(">\n")
+	if info.Error != "" {
+		b.WriteString("Error: ")
+		b.WriteString(tool.EscapeXMLText(info.Error))
+		b.WriteString("\n")
+	}
 	if info.OutputError != "" {
 		b.WriteString(tool.EscapeXMLText("Output log unavailable: " + info.OutputError))
 		b.WriteString("\n")
 	}
-	if info.Error != "" {
-		b.WriteString("Error: ")
-		b.WriteString(tool.EscapeXMLText(info.Error))
-		if result != "" {
-			b.WriteString("\n\nPartial output:\n")
-		}
+	if info.Error != "" && result != "" {
+		b.WriteString("\nPartial output:\n")
 	}
 	switch {
 	case len(result) > maxTaskOutputInNotification && info.OutputError != "":
@@ -116,6 +134,9 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	case result != "":
 		b.WriteString(tool.EscapeXMLText(result))
 	}
+	if info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
+		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. If safe, use Agent with resume_task_id set to this task ID and only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Otherwise take over the remaining work or report a blocker; never bypass a denied command.")
+	}
 	b.WriteString("\n</task-notification>")
 
 	subject := fmt.Sprintf("%s %s", description, status)
@@ -128,6 +149,9 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		To:        broker.Main,
 		Subject:   subject,
 		Content:   b.String(),
+		TaskCompletion: &broker.TaskCompletion{
+			TaskID: info.ID, Attempt: info.Attempt,
+		},
 	}, true
 }
 
@@ -139,6 +163,9 @@ func taskSubject(info task.TaskInfo) string {
 			return s
 		}
 	case task.TaskTypeBash:
+		if info.Description != "" {
+			return info.Description
+		}
 		if info.Command != "" {
 			return info.Command
 		}
@@ -168,6 +195,8 @@ func joinNameDesc(name, desc string) string {
 	name = strings.TrimSpace(name)
 	desc = strings.TrimSpace(desc)
 	switch {
+	case strings.EqualFold(name, "agent") && desc != "":
+		return desc
 	case name != "" && desc != "" && !strings.EqualFold(name, desc):
 		return name + ": " + desc
 	case desc != "":

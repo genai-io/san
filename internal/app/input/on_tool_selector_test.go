@@ -13,7 +13,7 @@ import (
 // setting it would fall back to.
 func TestToolSelectorShowsTheRuntimeLayerOverTheSetting(t *testing.T) {
 	s := NewToolSelector(
-		func(setting.Scope) map[string]bool { return map[string]bool{} },
+		func(setting.Scope) map[string]bool { return map[string]bool{"SendMessage": true} },
 		func(map[string]bool, setting.Scope) error { return nil },
 		func() map[string]string { return map[string]string{"SendMessage": "on while in a group"} },
 	)

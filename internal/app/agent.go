@@ -481,8 +481,8 @@ func firstValidDuration(vals ...string) time.Duration {
 // Agent lifecycle (delegates to services.Agent)
 // ============================================================
 
-// disabledTools is the settings' disabled set, except that SendMessage is on
-// while this session is in a group: it is how the model messages the members.
+// disabledTools respects configured worker-messaging disables. Group sessions
+// additionally hold SendMessage on so their members remain reachable.
 func (m *model) disabledTools() map[string]bool {
 	disabled := maps.Clone(m.services.Setting.DisabledTools())
 	for name := range toolsHeldOn() {
@@ -591,10 +591,16 @@ type pendingMessage struct {
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
 	m.pendingMessages = append(m.pendingMessages, p)
+	if p.fromUser {
+		m.backgroundNoticesHeld = false
+	}
 	return m.sendPendingMessages()
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
+	if m.backgroundNoticesHeld {
+		return nil
+	}
 	if !m.services.Agent.Active() {
 		return nil
 	}
@@ -716,6 +722,7 @@ func (m *model) StopAgentRuntime() {
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() {
 	m.services.Agent.Reset()
+	m.backgroundNoticesHeld = false
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.
@@ -813,6 +820,8 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.Permi
 		}
 	}
 	permReq.ID = req.RequestID
+	permReq.WorkingDirectory = m.env.CWD
+	permReq.PermissionMode = m.env.SessionMode()
 	permReq.AllowRules = m.services.Setting.AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
 	// Session grants sit below allow rules, so neither would take effect here.
 	if !m.services.Setting.SessionGrantTakesEffect(req.ToolName, req.Input, m.env.SessionPermissions) {
