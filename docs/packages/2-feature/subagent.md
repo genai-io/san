@@ -107,6 +107,14 @@ func ResetDefaultRegistry()           // test-only
   worker's inspection trail. It refuses nothing; it is a gate rather than a
   wrapper because that is what the loop asks once per call.
 
+## Delegation
+
+Direct work is the default. Delegate an independent scope when parallel execution,
+specialized capabilities, or separate context justify the coordination cost and
+loss of shared context. For new work, foreground execution fits a dependent next
+step; background execution lets the parent continue useful independent work.
+Continuation keeps its existing background execution contract.
+
 ## Lifecycle
 
 - Construction: `Initialize(Options{CWD, PluginAgentPaths})` loads
