@@ -579,7 +579,18 @@ func TestRenderToolCallsExpandedCommandPreservesSpaces(t *testing.T) {
 		if !ok {
 			t.Fatalf("expanded command has no body: %q", out)
 		}
-		got := strings.TrimPrefix(strings.ReplaceAll(strings.TrimRight(body, "\n"), "\n", ""), "    command: ")
+		var restored strings.Builder
+		for i, row := range strings.Split(strings.TrimSuffix(body, "\n"), "\n") {
+			prefix := "    command: "
+			if i > 0 {
+				prefix = strings.Repeat(" ", len(prefix))
+			}
+			if !strings.HasPrefix(row, prefix) {
+				t.Fatalf("expanded command lost hanging indent: %q", row)
+			}
+			restored.WriteString(strings.TrimPrefix(row, prefix))
+		}
+		got := restored.String()
 		if got != command {
 			t.Fatalf("wrapping changed command: got %q, want %q", got, command)
 		}

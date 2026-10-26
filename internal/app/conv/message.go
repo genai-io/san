@@ -753,13 +753,16 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 		}
 		if tool.IsAgentToolName(tc.Name) {
+			if sb.Len() > 0 && tc.Name != tool.ToolSendMessage {
+				sb.WriteString("\n")
+			}
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
-			if params.CompactAgentLabel && params.Width > 0 {
-				label = kit.TruncateText(label, max(1, params.Width-2))
+			_, hasResult := params.ResultMap[tc.ID]
+			if (params.CompactAgentLabel || hasResult && !params.ToolCallsExpanded) && params.Width > 0 {
+				label = kit.TruncateText(label, max(1, params.Width-kit.ToolIconWidth))
 			}
 			color := configuredAgentColor(agent, params.AgentColors)
-			_, hasResult := params.ResultMap[tc.ID]
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
 				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width, params.MemberColors) + "\n")
 			} else if hasResult {
@@ -784,13 +787,17 @@ func RenderToolCalls(params ToolCallsParams) string {
 			sb.WriteString(toolLine + "\n")
 			var p map[string]any
 			if err := json.Unmarshal([]byte(tc.Input), &p); err == nil {
+				indent := strings.Repeat(" ", toolResultExpandedStyle.GetPaddingLeft())
+				style := toolResultExpandedStyle.PaddingLeft(0)
 				for k, v := range p {
 					if s, ok := v.(string); ok {
-						if len(s) > 80 {
-							sb.WriteString(toolResultExpandedStyle.Render(fmt.Sprintf("%s:", k)) + "\n")
-							sb.WriteString(toolResultExpandedStyle.Render(s) + "\n")
+						prefix := indent + k + ": "
+						if len(s) > 80 || params.Width > 0 && lipgloss.Width(prefix) >= params.Width {
+							sb.WriteString(renderGutteredLine(indent, indent, style, k+":", params.Width))
+							sb.WriteString(renderGutteredLine(indent, indent, style, s, params.Width))
 						} else {
-							sb.WriteString(toolResultExpandedStyle.Render(fmt.Sprintf("%s: %s", k, s)) + "\n")
+							continuation := strings.Repeat(" ", lipgloss.Width(prefix))
+							sb.WriteString(renderGutteredLine(prefix, continuation, style, s, params.Width))
 						}
 					}
 				}

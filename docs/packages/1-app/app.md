@@ -252,6 +252,10 @@ with `└` on their last output row; running output stays open, and failures clo
 on `└ failed · reason`. There is no extra line-count footer. Trailing blanks are
 real output lines, and expanded output/logs retain the full evidence.
 
+Completed Agent blocks retain their identity and show up to four dim, nonblank
+Markdown preview rows with inline truncation; expansion keeps the full result.
+Expanded tool parameters keep continuation lines aligned with their values.
+
 When foreground workers overflow the live tail, `conv.RenderActiveWorkers`
 reserves their identity rows and compact rows for ordinary pending tool siblings
 before sharing recent details. The latest notice also keeps a row. Background
