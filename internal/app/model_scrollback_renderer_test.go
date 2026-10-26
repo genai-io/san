@@ -799,12 +799,14 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 type firstTurnTerminal struct {
 	*terminalHistoryState
 	frames []string
+	writes []string
 }
 
 func (o *firstTurnTerminal) Write(p []byte) (int, error) {
 	n, err := o.terminalHistoryState.Write(p)
 	o.mu.Lock()
 	o.frames = append(o.frames, o.state.String())
+	o.writes = append(o.writes, string(p))
 	o.mu.Unlock()
 	return n, err
 }
@@ -1000,6 +1002,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			defer terminal.mu.Unlock()
 			seen := false
 			previousRow := height
+			previousFrame := -1
 			for i, frame := range terminal.frames {
 				if strings.Contains(frame, anchor) {
 					seen = true
@@ -1008,9 +1011,11 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 						// New paragraphs and history can move text up, never down
 						// again when the temporary handoff frame is restored.
 						if row > previousRow {
-							t.Errorf("streaming frame %d moved text down from row %d to row %d", i, previousRow, row)
+							t.Errorf("streaming frame %d moved text down from row %d to row %d\nprevious frame %d:\n%s\nprevious write (first 8192 runes): %.8192q\ncurrent frame:\n%s\ncurrent write (first 8192 runes): %.8192q",
+								i, previousRow, row, previousFrame, terminal.frames[previousFrame], terminal.writes[previousFrame], frame, terminal.writes[i])
 						}
 						previousRow = row
+						previousFrame = i
 					}
 				} else if seen {
 					t.Errorf("streaming frame %d temporarily erased visible text:\n%s", i, frame)
