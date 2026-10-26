@@ -28,9 +28,9 @@ func TestAgentLifecycleCompactResponse(t *testing.T) {
 }
 
 func TestAgentLifecycleResponseWrapsWords(t *testing.T) {
-	const response = "Finding: authentication uses the expected permission boundary. Validation: foreground checks passed. Next: no changes required."
+	const response = "Finding: permission boundaries hold. Validation passed. No changes required."
 	for _, width := range []int{32, 40, 100} {
-		got := ansi.Strip(renderCompactAgentResponse(response, width))
+		got := ansi.Strip(renderAgentResultDetails(ToolResultData{Content: response, Width: width}, toolresult.AgentDetails{}, nil))
 		if strings.Join(strings.Fields(got), " ") != response {
 			t.Fatalf("width %d split response words: %q", width, got)
 		}
@@ -47,7 +47,7 @@ func TestAgentLifecyclePreservesTranscriptProse(t *testing.T) {
 		"Finding\n\nTranscript: this paragraph is a finding",
 		"Finding\n\nAgentID: worker\n\nTranscript: /tmp/unrelated.jsonl",
 	} {
-		got := ansi.Strip(renderCompactAgentResponse(prose, 80))
+		got := ansi.Strip(renderAgentResultDetails(ToolResultData{Content: prose, Width: 80}, toolresult.AgentDetails{}, nil))
 		if !strings.Contains(got, "Transcript:") {
 			t.Fatalf("worker prose was stripped: %q", got)
 		}
@@ -182,6 +182,11 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 			params.ResultMap = map[string]ToolResultData{call.ID: {
 				ToolName: "Agent", Content: "No vulnerabilities found", Details: toolresult.AgentDetails{},
 			}}
+			completedHeader, _, _ := strings.Cut(ansi.Strip(RenderToolCalls(params)), "\n")
+			if !strings.HasPrefix(completedHeader, "● Agent · ") || ansi.StringWidth(completedHeader) > width {
+				t.Fatalf("width %d: completed identity missing or overflowing: %q", width, completedHeader)
+			}
+			header = completedHeader + "\n"
 			check("No vulnerabilities found", "Thinking...", "12s", "Finished", "Completed")
 		}
 	}

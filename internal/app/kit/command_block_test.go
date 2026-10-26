@@ -72,3 +72,24 @@ func TestWrapCommandLinePreservesContents(t *testing.T) {
 		}
 	}
 }
+
+func TestWrapCommandLinePreservesLongCommandContents(t *testing.T) {
+	for _, width := range []int{25, 33, 73, 93} {
+		for _, command := range []string{
+			"printf 'A     B' " + strings.Repeat("argument ", 24),
+			"  " + strings.Repeat("中文", 60),
+			"    " + strings.Repeat("next ", 30) + "\\",
+			strings.Repeat(" ", 120),
+		} {
+			wrapped := wrapCommandLine(command, width)
+			if strings.ReplaceAll(wrapped, "\n", "") != command {
+				t.Fatalf("width %d changed command characters: %q", width, wrapped)
+			}
+			for row := range strings.SplitSeq(wrapped, "\n") {
+				if ansi.StringWidth(row) > width {
+					t.Fatalf("width %d overflowed: %q", width, row)
+				}
+			}
+		}
+	}
+}

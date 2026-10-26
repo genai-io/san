@@ -795,7 +795,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 			_, body, _ = strings.Cut(body, "\n\n")
 			_, body = splitByProcessCount(body, extractIntField(content, "Process: "))
 		}
-		return renderCompactAgentResponse(body, data.Width)
+		return renderCompactAgentResponse(body, data.Width, mdRenderer)
 	}
 
 	if data.ToolInput != "" {
@@ -859,7 +859,7 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 			}
 			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
 		}
-		return renderCompactAgentResponse(data.Content, data.Width)
+		return renderCompactAgentResponse(data.Content, data.Width, mdRenderer)
 	}
 	status, style := "Finished", toolResultStyle
 	if data.IsError || details.Stopped {
@@ -921,8 +921,10 @@ func renderAgentLocalBody(body string, width int) string {
 	return sb.String()
 }
 
+const maxAgentPreviewLines = 4
+
 // renderCompactAgentResponse uses only worker prose, never a synthesized summary.
-func renderCompactAgentResponse(response string, width int) string {
+func renderCompactAgentResponse(response string, width int, mdRenderer *MDRenderer) string {
 	response = strings.TrimSpace(response)
 	// Older details do not retain inspection pointers. Only recognize the paired
 	// generated suffix when the transcript filename corroborates the agent ID.
@@ -934,23 +936,32 @@ func renderCompactAgentResponse(response string, width int) string {
 			response = strings.TrimSpace(strings.Join(parts[:len(parts)-2], "\n\n"))
 		}
 	}
-	if response == "" {
-		response = "No output"
-	}
 	if width <= 0 {
 		width = 80
 	}
-	lines := strings.Split(xansi.Wrap(response, max(1, width-2), " "), "\n")
-	omitted := len(lines) > 8
-	if omitted {
-		lines = lines[:8]
+	if mdRenderer == nil {
+		mdRenderer = NewMDRenderer(width)
+	}
+	response = strings.TrimSpace(xansi.Strip(renderMarkdownContent(mdRenderer, response)))
+	if response == "" {
+		response = "No output"
+	}
+	room := max(1, width-3)
+	lines := make([]string, 0, maxAgentPreviewLines)
+	for line := range strings.SplitSeq(xansi.Wrap(response, room, " "), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if len(lines) == maxAgentPreviewLines {
+			last := len(lines) - 1
+			lines[last] = xansi.Truncate(strings.TrimRight(lines[last], " "), max(0, room-2), "") + " …"
+			break
+		}
+		lines = append(lines, strings.TrimRight(line, " "))
 	}
 	var sb strings.Builder
 	for _, line := range lines {
-		sb.WriteString(toolCallStyle.Render("  "+line) + "\n")
-	}
-	if omitted {
-		sb.WriteString(toolResultStyle.Render("  … more output omitted") + "\n")
+		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
 	}
 	return sb.String()
 }
@@ -1420,10 +1431,9 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 // a full command block below the Bash header and soft-wrap without ellipses.
 func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
-	description = strings.Join(strings.Fields(description), " ")
-	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
+		labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 		commandLabel := fmt.Sprintf("%s(%s)", toolName, command)
 		if lipgloss.Width(commandLabel) <= labelWidth {
 			label := toolCallStyle.Render(commandLabel)
@@ -1432,14 +1442,16 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 			return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 		}
 	}
+	return renderShellCommandBlock(toolName, command, description, width, icon, detail)
+}
+
+func renderShellCommandBlock(toolName, command, description string, width int, icon, detail string) string {
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
 	}
-
+	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 	var sb strings.Builder
 
-	// Header line: ● Bash (description) · running detail. The command is
-	// rendered separately below without abbreviation.
 	displayName := xansi.Truncate(toolName, labelWidth, "…")
 	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
 	iconCell := toolCallStyle.Width(kit.ToolIconWidth).Render(icon)
@@ -1459,7 +1471,7 @@ func extractBashCommand(input string) (command, description string) {
 	if err := json.Unmarshal([]byte(input), &params); err != nil {
 		return "", ""
 	}
-	return params.Command, params.Description
+	return params.Command, strings.Join(strings.Fields(params.Description), " ")
 }
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {

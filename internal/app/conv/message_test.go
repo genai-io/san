@@ -579,9 +579,8 @@ func TestRenderToolCallsExpandedCommandPreservesSpaces(t *testing.T) {
 		if !ok {
 			t.Fatalf("expanded command has no body: %q", out)
 		}
-		got := strings.TrimPrefix(strings.ReplaceAll(strings.TrimRight(body, "\n"), "\n", ""), "    command: ")
-		if got != command {
-			t.Fatalf("wrapping changed command: got %q, want %q", got, command)
+		if body != stripANSI(kit.RenderCommandBlock(command, 30)) || strings.Contains(out, "command:") {
+			t.Fatalf("expanded shell must use the lossless dollar-prompt block: %q", out)
 		}
 		for line := range strings.SplitSeq(out, "\n") {
 			if lipgloss.Width(line) > 30 {
