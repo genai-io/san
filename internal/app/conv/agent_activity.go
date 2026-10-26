@@ -136,7 +136,8 @@ type PendingToolSpinnerParams struct {
 	// Frame drives the agent running icon.
 	Frame int
 	// AgentColors maps agent names to display colors.
-	AgentColors map[string]string
+	AgentColors     map[string]string
+	AgentIdentities map[string]AgentDisplay
 	// Width is the terminal width for label truncation.
 	Width int
 	// SuppressAgentLabel avoids duplicating the active agent title when the
@@ -173,7 +174,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 					ToolCalls: []core.ToolCall{tc}, PendingCalls: params.PendingCalls,
 					CurrentIdx: params.CurrentIdx, ToolStartedAt: params.ToolStartedAt,
 					TaskActivity: params.TaskActivity, Frame: params.Frame,
-					AgentColors: params.AgentColors, Width: params.Width,
+					AgentIdentities: params.AgentIdentities, AgentColors: params.AgentColors, Width: params.Width,
 				})
 			}
 		}

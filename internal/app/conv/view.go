@@ -2,7 +2,6 @@ package conv
 
 import (
 	"fmt"
-	"html"
 	"strings"
 	"time"
 
@@ -65,10 +64,11 @@ type RenderContext struct {
 	OutputTokens int
 
 	// ── Decorations (color / activity maps) ─────────────────────
-	AgentColors  map[string]string
-	MemberColors map[string]int // group member → palette slot, fixed for the session
-	TaskActivity map[int][]string
-	TaskOwnerMap map[string]string
+	AgentIdentities map[string]AgentDisplay
+	AgentColors     map[string]string
+	MemberColors    map[string]int // group member → palette slot, fixed for the session
+	TaskActivity    map[int][]string
+	TaskOwnerMap    map[string]string
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
 	// DockedModalActive marks the frames where a Question / Approval / secret
@@ -189,6 +189,23 @@ func (p inlinedToolResults) IsResultInlined(idx int) bool {
 	return ok
 }
 
+func completionNotice(msg core.ChatMessage) bool {
+	return msg.Role == core.ChatUser && msg.ToolResult == nil && agentEnvelopeKindOf(strings.TrimSpace(msg.Content)) == envelopeTask && !msg.Expanded
+}
+
+func adjacentCompletionNotice(p RenderContext, idx int) bool {
+	if !completionNotice(p.Messages[idx]) {
+		return false
+	}
+	for i := idx - 1; i >= 0; i-- {
+		if p.InlinedResults.IsResultInlined(i) {
+			continue
+		}
+		return completionNotice(p.Messages[i])
+	}
+	return false
+}
+
 func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	msg := p.Messages[idx]
 	var sb strings.Builder
@@ -202,7 +219,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		return p.memoryStepView(msg, idx)
 	}
 
-	if msg.ToolResult == nil {
+	if msg.ToolResult == nil && !adjacentCompletionNotice(p, idx) {
 		sb.WriteString("\n")
 	}
 
@@ -228,15 +245,12 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// A background-agent envelope (task completion / relayed message) is
 			// submitted to the model as a user turn and persisted as raw XML.
 			// Live and resume share this summary; history can expose the body.
-			sb.WriteString(renderAgentEnvelope(msg.Content, p.Width, p.MemberColors))
+			envelope := parseAgentEnvelope(msg.Content)
+			sb.WriteString(envelope.renderWithIdentity(p))
 			if msg.Expanded {
-				tag, body, _ := strings.Cut(msg.Content, ">")
-				if end := strings.LastIndex(body, "</"); end >= 0 {
-					body = body[:end]
-				}
-				body = html.UnescapeString(strings.TrimSpace(body))
-				if file := envelopeAttr(tag, "output-file"); file != "" {
-					body += "\n\nOutput file: " + file
+				body := envelope.text()
+				if envelope.outputFile != "" {
+					body += "\n\nOutput file: " + envelope.outputFile
 				}
 				sb.WriteString(renderNestedToolBody(body, p.Width))
 			}
@@ -329,6 +343,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		InputTokens:        p.InputTokens,
 		OutputTokens:       p.OutputTokens,
 		Frame:              p.Frame,
+		AgentIdentities:    p.AgentIdentities,
 		AgentColors:        p.AgentColors,
 		MemberColors:       p.MemberColors,
 		SpinnerView:        p.SpinnerView,
@@ -446,7 +461,7 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
 			CurrentIdx: p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,
 			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width, SpinnerView: p.SpinnerView,
-			Frame: p.Frame, AgentColors: p.AgentColors, CompactAgentLabel: true,
+			Frame: p.Frame, AgentIdentities: p.AgentIdentities, AgentColors: p.AgentColors, CompactAgentLabel: true,
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
 		})
 		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
@@ -609,6 +624,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		TaskActivity:       p.TaskActivity,
 		SpinnerView:        p.SpinnerView,
 		Frame:              p.Frame,
+		AgentIdentities:    p.AgentIdentities,
 		AgentColors:        p.AgentColors,
 		Width:              p.Width,
 		SuppressAgentLabel: suppressAgentLabel,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -67,10 +68,11 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	ResumeTaskID        string          // Continue the same task and native child session with Prompt only.
-	ResumeAttempt       int             // Internal approval-time execution fence; not model-facing.
-	ParentToolCallID    string          // internal spawning call correlation; never model-facing
-	Workflow            *WorkflowOrigin // internal workflow attribution; never model-facing
+	OnIdentity          func(toolresult.AgentIdentity) // display-only; reported before work begins
+	ResumeTaskID        string                         // Continue the same task and native child session with Prompt only.
+	ResumeAttempt       int                            // Internal approval-time execution fence; not model-facing.
+	ParentToolCallID    string                         // internal spawning call correlation; never model-facing
+	Workflow            *WorkflowOrigin                // internal workflow attribution; never model-facing
 	Agent               string
 	ResolvedAgentConfig any // exact approval-time configuration; never model-facing
 	Prompt              string
@@ -96,6 +98,7 @@ type AgentExecRequest struct {
 
 // AgentExecResult contains the result of agent execution.
 type AgentExecResult struct {
+	Identity          toolresult.AgentIdentity
 	AgentID           string
 	AgentName         string
 	OutputFile        string
@@ -113,6 +116,7 @@ type AgentExecResult struct {
 
 // AgentTaskInfo contains info about a background agent task.
 type AgentTaskInfo struct {
+	Identity   toolresult.AgentIdentity
 	TaskID     string
 	AgentName  string
 	OutputFile string

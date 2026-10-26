@@ -104,6 +104,7 @@ func (m *model) recordNotice(n core.ChatMessage) {
 // replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.Session) {
 	if m.sessionID() != opened.ID() {
+		m.conv.SetAgentIdentitySession(opened.ID())
 		m.env.SessionPermissions = setting.NewSessionPermissions()
 		m.env.ApplyModePermissions(m.env.CWD)
 		m.pendingMessages = nil

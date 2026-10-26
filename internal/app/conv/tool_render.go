@@ -1161,7 +1161,7 @@ var memberPalette = []kit.AdaptiveColor{
 	{Dark: "#5EEAD4", Light: "#0F766E"}, // teal
 	{Dark: "#FCD34D", Light: "#B45309"}, // amber
 	{Dark: "#C4B5FD", Light: "#6D28D9"}, // violet
-	{Dark: "#FDA4AF", Light: "#BE123C"}, // rose
+	{Dark: "#67E8F9", Light: "#0E7490"}, // cyan; red is reserved for errors
 }
 
 // memberColor is the slot the session gave name; a name it has not placed
@@ -1179,21 +1179,28 @@ func memberColor(name string, colors map[string]int) kit.AdaptiveColor {
 // line: the icon and @name in the member's colour, then the body cut to the
 // width, keeping a trailing " · note" whole.
 func renderMemberLine(icon, dir, name, body string, width int, colors map[string]int) string {
-	color := lipgloss.NewStyle().Foreground(memberColor(name, colors))
+	return renderIdentityMessageLine(icon, dir, "@"+name, body, width, memberColor(name, colors), toolCallStyle)
+}
+
+func renderIdentityMessageLine(icon, dir, name, body string, width int, tone kit.AdaptiveColor, bodyStyle lipgloss.Style) string {
+	if width <= 0 {
+		width = 80
+	}
+	color := lipgloss.NewStyle().Foreground(tone)
 	note := ""
 	if i := strings.LastIndex(body, " · "); i >= 0 {
 		body, note = body[:i], toolResultStyle.Render(body[i:])
 	}
-	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name)
+	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render(name)
 	if body == "" { // no subject: who it is to or from says it all
-		return head + note
+		return kit.TruncateText(head+note, max(1, width))
 	}
 	head += toolCallStyle.Render(":")
 	room := width - lipgloss.Width(head) - lipgloss.Width(note) - 2
 	if room < 8 {
-		return head + note
+		return kit.TruncateText(head+note, max(1, width))
 	}
-	return head + toolCallStyle.Render(" "+kit.TruncateText(body, room)) + note
+	return head + bodyStyle.Render(" "+kit.TruncateText(body, room)) + note
 }
 
 // groupCallArgs names a Group call by what it does, e.g. "join shop as web".
@@ -1475,16 +1482,16 @@ func extractBashCommand(input string) (command, description string) {
 }
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {
-	style := agentStyle(color)
+	return renderAgentColoredLine(label, width, iconText, agentColor(color))
+}
+
+func renderAgentColoredLine(label string, width int, iconText string, color kit.AdaptiveColor) string {
+	style := toolCallStyle.Foreground(color)
 	icon := style.Width(kit.ToolIconWidth).Render(iconText)
 	if width > 0 {
 		label = xansi.Hardwrap(label, max(1, width-kit.ToolIconWidth), true)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(label))
-}
-
-func agentStyle(color string) lipgloss.Style {
-	return toolCallStyle.Foreground(agentColor(color))
 }
 
 func agentColor(color string) kit.AdaptiveColor {

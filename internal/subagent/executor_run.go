@@ -18,6 +18,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
@@ -50,6 +51,31 @@ type preparedRun struct {
 	activity     []string
 	inputTokens  int
 	outputTokens int
+}
+
+func (r *preparedRun) identity() toolresult.AgentIdentity {
+	id := r.req.TaskID
+	if id == "" {
+		id = r.hookID
+	}
+	callID := r.req.ParentToolCallID
+	if r.checkpoint != nil {
+		callID = r.checkpoint.req.ParentToolCallID
+	}
+	identity := toolresult.AgentIdentity{ID: id, Name: r.cfg.config.Name, CallID: callID}
+	if r.native != nil {
+		identity.SessionID = r.native.ID()
+	} else if r.checkpoint != nil {
+		identity.SessionID = r.checkpoint.sessionID
+	}
+	return identity
+}
+
+func (r *preparedRun) reportIdentity() {
+	if report := r.req.OnIdentity; report != nil {
+		r.req.OnIdentity = nil
+		report(r.identity())
+	}
 }
 
 // recordActivity keeps an inspection line and streams it to the worker's UI.
@@ -209,6 +235,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 			return nil, err
 		}
 	}
+	run.reportIdentity()
 	if run.native != nil {
 		defer func() {
 			if run.checkpoint != nil {
@@ -372,7 +399,10 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 	}
 	e.fireSubagentStop(run.req, run.hookID, agentTranscriptPath, result.Content)
 
+	identity := run.identity()
+	identity.SessionID = agentSessionID
 	return &AgentResult{
+		Identity:       identity,
 		AgentID:        agentSessionID,
 		AgentName:      run.cfg.config.Name,
 		TranscriptPath: agentTranscriptPath,

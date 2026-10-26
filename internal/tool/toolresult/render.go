@@ -48,8 +48,17 @@ type BashDetails struct {
 	TaskID        string `json:"taskId,omitempty"`
 }
 
+// AgentIdentity is display-only correlation for a running child agent.
+type AgentIdentity struct {
+	ID        string
+	Name      string
+	CallID    string
+	SessionID string
+}
+
 // AgentDetails keeps display metadata out of the parent model's result text.
 type AgentDetails struct {
+	Identity     AgentIdentity
 	Model        string
 	ToolUses     int
 	InputTokens  int

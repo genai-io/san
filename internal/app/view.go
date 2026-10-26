@@ -587,6 +587,22 @@ func (m model) renderQueuePreview() string {
 }
 
 func (m model) messageRenderParams() conv.RenderContext {
+	var activeAgentIDs []string
+	if m.services.Task != nil {
+		for _, worker := range m.services.Task.List() {
+			info := worker.GetStatus()
+			if info.Type != task.TaskTypeAgent {
+				continue
+			}
+			if info.ParentSessionID != "" && info.ParentSessionID != m.sessionID() {
+				continue
+			}
+			if info.Status == task.StatusRunning || !m.taskCompletionsShown[taskCompletionKey(info.ID, info.Attempt)] {
+				activeAgentIDs = append(activeAgentIDs, info.ID, info.AgentSessionID)
+			}
+		}
+	}
+	m.conv.SetActiveAgentIdentities(activeAgentIDs)
 	return conv.RenderContext{
 		// Conversation state
 		Messages:       m.conv.Messages,
@@ -624,10 +640,11 @@ func (m model) messageRenderParams() conv.RenderContext {
 		OutputTokens: m.env.OutputTokens,
 
 		// Decorations
-		AgentColors:  m.agentColors(),
-		MemberColors: m.grp.colors,
-		TaskActivity: m.conv.TaskActivity,
-		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
+		AgentIdentities: m.conv.AgentDisplaySnapshot(),
+		AgentColors:     m.agentColors(),
+		MemberColors:    m.grp.colors,
+		TaskActivity:    m.conv.TaskActivity,
+		TaskOwnerMap:    buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock is left false here and set by
 		// renderDockedModalView, the only caller rendering under a modal.

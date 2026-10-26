@@ -649,6 +649,7 @@ type ToolCallsParams struct {
 	OutputTokens       int
 	Frame              int
 	AgentColors        map[string]string
+	AgentIdentities    map[string]AgentDisplay
 	MemberColors       map[string]int
 	SpinnerView        string
 	TaskOwnerMap       map[string]string
@@ -757,25 +758,34 @@ func RenderToolCalls(params ToolCallsParams) string {
 				sb.WriteString("\n")
 			}
 			agent := parseAgentInput(tc.Input)
+			color := agentColor(configuredAgentColor(agent, params.AgentColors))
+			identity, identified := params.AgentIdentities[tc.ID]
+			if identified {
+				agent.Name = AgentDisplayName(identity, params.AgentIdentities)
+				color = agentIdentityColor(identity, params.AgentColors)
+			}
 			label := formatAgentLabel(agent)
 			_, hasResult := params.ResultMap[tc.ID]
 			if (params.CompactAgentLabel || hasResult && !params.ToolCallsExpanded) && params.Width > 0 {
 				label = kit.TruncateText(label, max(1, params.Width-kit.ToolIconWidth))
 			}
-			color := configuredAgentColor(agent, params.AgentColors)
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
-				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width, params.MemberColors) + "\n")
+				sb.WriteString(renderAgentMessageLine("●", "To", to, body, params.Width, params.AgentIdentities, params.AgentColors, params.MemberColors) + "\n")
 			} else if hasResult {
-				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
+				sb.WriteString(renderAgentColoredLine(label, params.Width, "●", color) + "\n")
 			} else {
 				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
 				icon := "●"
 				if params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
-					icon = kit.LiveDot(params.Frame)
+					if identified {
+						icon = lipgloss.NewStyle().Foreground(color).Faint(params.Frame%6 < 2).Render("●")
+					} else {
+						icon = kit.LiveDot(params.Frame)
+					}
 				}
-				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color) + "\n")
+				sb.WriteString(renderAgentColoredLine(label, params.Width, icon, color) + "\n")
 			}
 			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))

@@ -181,6 +181,18 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		}
 		return applyPostInfer(rt, m, e.Response)
 	case sdkagent.ToolUpdate:
+		if details, ok := e.Partial.Details.(toolresult.AgentDetails); ok {
+			i := m.Tool.IndexOf(e.ID)
+			if tool.IsAgentToolName(e.Name) && i >= 0 && m.Tool.PendingCalls[i].Name == e.Name && !m.Tool.completed[e.ID] && !m.Tool.StartedAt[e.ID].IsZero() {
+				m.reserveAgentCalls(m.Tool.PendingCalls)
+				original, known := m.identities.displays[details.Identity.CallID]
+				current := m.identities.displays[e.ID]
+				if details.Identity.CallID == "" || details.Identity.CallID == e.ID || (known && original.ID == current.ID) || (details.Identity.ID != "" && details.Identity.ID == current.ID) {
+					m.bindAgentIdentity(e.ID, details.Identity)
+				}
+			}
+			return nil
+		}
 		if details, ok := e.Partial.Details.(toolresult.BashDetails); ok {
 			// Partial results are display-only. In particular, a delayed report
 			// must not start a completed call or move the current batch forward.
@@ -301,6 +313,7 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
 		m.SetStreamToolCalls(calls)
 		m.Tool.Track(calls)
+		m.reserveAgentCalls(calls)
 	}
 	m.Stream.MessageID = ""
 	m.Stream.BuildingTool = ""
@@ -318,6 +331,10 @@ func applyToolRunning(m *Model, id, name string) {
 
 func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
 	m.Stream.BuildingTool = ""
+	m.AgentDisplaySnapshot()
+	if d, ok := details.(toolresult.AgentDetails); ok {
+		m.bindAgentIdentity(tr.ToolCallID, d.Identity)
+	}
 	if tool.IsAgentToolName(tr.ToolName) {
 		delete(m.TaskActivity, m.Tool.IndexOf(tr.ToolCallID))
 	}
