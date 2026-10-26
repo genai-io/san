@@ -69,7 +69,7 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 				if len(lines) != height || cursor == nil || cursor.Position.Y != height-3 {
 					t.Fatalf("composer displaced: rows=%d cursor=%+v\n%s", len(lines), cursor, plain)
 				}
-				if strings.Count(plain, "Pending") != 1 || strings.Count(plain, "✦ On it") != 1 || !strings.Contains(plain, "editing") {
+				if strings.Contains(plain, "Pending") || strings.Count(plain, "✦ On it") != 1 || !strings.Contains(plain, "editing") {
 					t.Fatalf("lost actionable queue or duplicated groups:\n%s", plain)
 				}
 				at := -1
@@ -77,21 +77,21 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 					if strings.Contains(line, "✦ On it") {
 						at = i
 					}
-					if strings.Contains(line, "Pending") || strings.Contains(line, "editing") {
+					if strings.Contains(line, "more") || strings.Contains(line, "editing") {
 						if ansi.StringWidth(line) >= width {
 							t.Fatalf("queue exceeds width: %q", line)
 						}
 					}
 				}
-				if at < 1 || !strings.HasPrefix(lines[at+1], "─") || strings.Index(plain, "Pending") > strings.Index(plain, "✦ On it") {
+				if at < 1 || !strings.HasPrefix(lines[at+1], "─") || strings.Index(plain, "editing") > strings.Index(plain, "✦ On it") {
 					t.Fatalf("incorrect dock order:\n%s", plain)
 				}
 				if height == 24 {
-					if !strings.Contains(plain, "Tasks") || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || !strings.Contains(plain, "\n\nPending · 3\n") || lines[at-1] != "" {
+					if !strings.Contains(plain, "Tasks") || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || lines[at-1] != "" {
 						t.Fatalf("roomy groups lack hierarchy:\n%s", plain)
 					}
 				} else {
-					if strings.Contains(plain, "first-prompt") || strings.Contains(plain, "more above") || lines[at-1] == "" {
+					if strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "+2 more") || strings.Contains(plain, "more above") || lines[at-1] == "" {
 						t.Fatalf("tight layout spent rows on decoration:\n%s", plain)
 					}
 				}
