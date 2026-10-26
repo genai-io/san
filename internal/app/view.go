@@ -624,10 +624,11 @@ func (m model) messageRenderParams() conv.RenderContext {
 		OutputTokens: m.env.OutputTokens,
 
 		// Decorations
-		AgentColors:  m.agentColors(),
-		MemberColors: m.grp.colors,
-		TaskActivity: m.conv.TaskActivity,
-		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
+		AgentIdentities: m.conv.AgentDisplaySnapshot(),
+		AgentColors:     m.agentColors(),
+		MemberColors:    m.grp.colors,
+		TaskActivity:    m.conv.TaskActivity,
+		TaskOwnerMap:    buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock is left false here and set by
 		// renderDockedModalView, the only caller rendering under a modal.

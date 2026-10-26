@@ -250,6 +250,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		next := state.req
 		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
 		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
+		next.OnIdentity = req.OnIdentity
 		next.OnQuestion = req.OnQuestion
 		next.OnTextDelta, next.OnTextEnd = req.OnTextDelta, req.OnTextEnd
 		next.OnToolStart, next.OnToolResult = req.OnToolStart, req.OnToolResult
@@ -293,6 +294,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel,
 		)
 		state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: agentTask.GetID()}
+		state.req.OnIdentity = nil // Never retain a completed parent's display callback.
 		run.checkpoint = state
 		agentTask.SetLaunchState(state)
 	}
@@ -300,6 +302,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	agentTask.SetPermissionMode(string(run.cfg.permMode))
 
 	run.req.TaskID = agentTask.GetID()
+	run.reportIdentity() // Report on the spawning call, before returning the launch.
 	run.req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
 		agentTask.SetLiveView(msg)

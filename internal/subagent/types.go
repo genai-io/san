@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	"gopkg.in/yaml.v3"
 )
 
@@ -350,6 +351,7 @@ func (c *AgentConfig) GetSystemPrompt() string {
 
 // AgentResult contains the result of an agent execution
 type AgentResult struct {
+	Identity       toolresult.AgentIdentity
 	AgentID        string
 	AgentName      string
 	Model          string

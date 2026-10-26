@@ -70,7 +70,8 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 	params := conv.RenderContext{
 		Width: m.env.Width, MDRenderer: conv.NewMDRenderer(m.env.Width),
 		ThinkingDisplay: m.env.ThinkingDisplay, BashPreviewLines: m.env.BashPreviewLines,
-		AgentColors: m.agentColors(), MemberColors: m.grp.colors,
+		AgentIdentities: m.conv.AgentDisplayHistorySnapshot(messages),
+		AgentColors:     m.agentColors(), MemberColors: m.grp.colors,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 	}
 	renderer := func(width int) *conv.MDRenderer {
@@ -136,7 +137,8 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 				return conv.RenderToolCalls(conv.ToolCallsParams{
 					ToolCalls: []core.ToolCall{call}, ResultMap: resultMap,
 					Width: width, MDRenderer: renderer(width),
-					AgentColors: params.AgentColors, MemberColors: params.MemberColors,
+					AgentIdentities: params.AgentIdentities,
+					AgentColors:     params.AgentColors, MemberColors: params.MemberColors,
 					TaskOwnerMap: params.TaskOwnerMap,
 				})
 			}

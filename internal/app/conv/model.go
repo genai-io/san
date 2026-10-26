@@ -17,6 +17,7 @@ type OutputModel struct {
 }
 
 type Model struct {
+	identities *agentIdentityState
 	ConversationModel
 	OutputModel
 }
@@ -24,6 +25,7 @@ type Model struct {
 func NewModel(width int) Model {
 	agentUI := NewAgentToUI(100)
 	return Model{
+		identities:        &agentIdentityState{},
 		ConversationModel: NewConversation(),
 		OutputModel: OutputModel{
 			Spinner:    newFrameClock(),

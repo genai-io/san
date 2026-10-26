@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // AgentTool spawns subagents to handle complex tasks.
@@ -264,8 +265,11 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Description:         description,
 		Background:          runBackground,
 		MaxSteps:            maxSteps,
-		OnActivity:          onActivity,
-		OnQuestion:          onQuestion,
+		OnIdentity: func(identity toolresult.AgentIdentity) {
+			sdkagent.Report(ctx, sdkagent.Result{Details: toolresult.AgentDetails{Identity: identity}})
+		},
+		OnActivity: onActivity,
+		OnQuestion: onQuestion,
 	}
 
 	// Handle background execution
@@ -284,7 +288,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,
-			Details: toolresult.AgentDetails{TaskID: taskInfo.TaskID},
+			Details: toolresult.AgentDetails{TaskID: taskInfo.TaskID, Identity: taskInfo.Identity},
 			Output:  output + tool.BackgroundLaunchSuffix,
 			HookResponse: map[string]any{
 				"backgroundTask": map[string]any{
@@ -336,7 +340,8 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Error:        result.Error,
 		HookResponse: buildAgentHookResponse(result, agentName, prompt),
 		Details: toolresult.AgentDetails{
-			Model: result.Model, ToolUses: result.ToolUses,
+			Identity: result.Identity,
+			Model:    result.Model, ToolUses: result.ToolUses,
 			InputTokens: result.TotalInputTokens, OutputTokens: result.TotalOutputTokens,
 			Duration: agentDuration, Activity: result.Activity, Error: result.Error,
 			Stopped: errors.Is(err, context.Canceled),

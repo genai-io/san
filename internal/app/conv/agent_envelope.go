@@ -99,6 +99,39 @@ func agentEnvelopeSummary(content string, width int) string {
 	return "Background agent message"
 }
 
+func renderAgentEnvelopeWithIdentity(content string, p RenderContext) string {
+	if p.Width <= 0 {
+		p.Width = 80
+	}
+	tag, body, _ := strings.Cut(strings.TrimSpace(content), ">")
+	if strings.HasPrefix(tag, "<agent-message ") {
+		if from := envelopeAttr(tag, "from"); from != "" {
+			if end := strings.LastIndex(body, "</"); end >= 0 {
+				body = body[:end]
+			}
+			body = strings.Join(strings.Fields(html.UnescapeString(body)), " ")
+			return renderAgentMessageLine("◆", "From", from, body, p.Width, p.AgentIdentities, p.AgentColors, p.MemberColors) + "\n"
+		}
+	}
+	if strings.HasPrefix(tag, "<task-notification ") {
+		identity, found := p.AgentIdentities[envelopeAttr(tag, "task-id")]
+		if !found {
+			identity, found = p.AgentIdentities[envelopeAttr(tag, "agent-id")]
+		}
+		if found {
+			name := kit.TruncateText(AgentDisplayName(identity, p.AgentIdentities), max(1, p.Width/2-2))
+			head := lipgloss.NewStyle().Foreground(agentIdentityColor(identity, p.AgentColors)).Render("◆ " + name)
+			room := max(1, p.Width-ansi.StringWidth(head)-3)
+			style := toolResultStyle
+			if envelopeAttr(tag, "status") == "failed" {
+				style = errorStyle
+			}
+			return head + toolResultStyle.Render(" · ") + style.Render(agentEnvelopeSummary(content, room+2)) + "\n"
+		}
+	}
+	return renderAgentEnvelope(content, p.Width, p.MemberColors)
+}
+
 // renderAgentEnvelope derives severity from structured terminal status, never
 // from a word such as "failed" in an agent's prose or task description.
 func renderAgentEnvelope(content string, width int, colors map[string]int) string {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // ExecutorAdapter adapts the Executor to implement tool.AgentExecutor
@@ -30,6 +31,7 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &tool.AgentExecResult{
+		Identity:          result.Identity,
 		AgentID:           result.AgentID,
 		AgentName:         result.AgentName,
 		OutputFile:        result.TranscriptPath,
@@ -56,7 +58,12 @@ func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTa
 	}
 
 	info := agentTask.GetStatus()
+	identity := toolresult.AgentIdentity{ID: info.ID, Name: info.AgentName, CallID: req.ParentToolCallID, SessionID: info.AgentSessionID}
+	if state, ok := agentTask.LaunchState().(*continuationState); ok {
+		identity.CallID = state.req.ParentToolCallID
+	}
 	return tool.AgentTaskInfo{
+		Identity:   identity,
 		TaskID:     info.ID,
 		AgentName:  info.AgentName,
 		OutputFile: info.OutputFile,
