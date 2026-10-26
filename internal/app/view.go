@@ -219,26 +219,11 @@ func headLines(s string, maxLines int) string {
 	return strings.Join(lines[:min(len(lines), maxLines)], "\n")
 }
 
-// renderFooter renders everything below the chat section (separators, queue
-// preview, input area, suggestions, status line) into a single string so its
-// line count can be measured. It also reports the row the input area starts on,
-// which View needs to place the cursor: the queue preview above the composer is
-// variable-height, so the offset can't be a constant.
+// renderFooter returns the footer and the input row for cursor placement.
 func (m *model) renderFooter(separator string) (string, int) {
 	var b strings.Builder
-	// Queued messages sit above the input separator: they are already
-	// submitted — on their way into the conversation — so they read as part
-	// of the chat flow, and the input strip below stays reserved for what's
-	// being typed now.
 	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
 		b.WriteString("\n")
-		if m.footerHasBreathingRoom() {
-			// A quiet caption and whitespace distinguish submitted prompts from
-			// active Tasks, without another card or separator.
-			b.WriteString("\n")
-			b.WriteString(ghostTextStyle.Render(fmt.Sprintf("Pending · %d", m.userInput.Queue.Len())))
-			b.WriteString("\n")
-		}
 		b.WriteString(queuePreview)
 	}
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
@@ -246,9 +231,7 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString("\n")
 		b.WriteString(suggestions)
 	}
-	// Keep the single inference row below every pending/background block and
-	// directly against the input rule. Including it in the footer reserves its
-	// row before activity and the live conversation compete for space.
+	// Reserve inference space before allocating chat and activity rows.
 	if status := conv.RenderInferenceStatus(m.messageRenderParams()); status != "" {
 		if m.footerHasBreathingRoom() {
 			b.WriteString("\n")
@@ -292,13 +275,8 @@ func (m model) renderInputView() string {
 	return prompt + hangComposerRows(m.userInput.RenderTextarea())
 }
 
-// hangComposerRows indents every composer row after the first by the prompt's
-// width, so wrapped and newline-split input hangs under the first row's text
-// instead of falling back to column 0. Two reasons it has to: a committed user
-// message renders the same way in scrollback (RenderUserMessage joins the
-// prompt and the body side by side), and inputCursor shifts the cursor right by
-// that same prompt width on *every* row — without the indent the cursor sits
-// two columns past the character it should precede on every line but the first.
+// hangComposerRows aligns continuation text with the prompt-adjusted cursor,
+// matching the prompt-width gutter used by committed user messages.
 func hangComposerRows(view string) string {
 	lines := strings.Split(view, "\n")
 	if len(lines) < 2 {
@@ -600,16 +578,12 @@ func (m model) renderQueuePreview() string {
 		}
 	}
 
-	if m.footerHasBreathingRoom() {
+	if len(previews) == 1 || m.footerHasBreathingRoom() {
 		return strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
 	}
-	// Tight frames keep the edited prompt (or next queued prompt) actionable.
-	// Inline the group label rather than spending a row on it or overflow.
-	label := "Pending "
-	if len(previews) > 1 {
-		label = fmt.Sprintf("Pending · %d ", len(previews))
-	}
-	return ghostTextStyle.Render(label) + strings.TrimSuffix(conv.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(label), 1, false), "\n")
+	hint := fmt.Sprintf("  +%d more", len(previews)-1)
+	preview := strings.TrimSuffix(conv.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(hint), 1, false), "\n")
+	return preview + ghostTextStyle.Italic(true).Render(hint)
 }
 
 func (m model) messageRenderParams() conv.RenderContext {

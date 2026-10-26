@@ -482,7 +482,8 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}
 			m.flush.output = &terminalOutput{writer: io.MultiWriter(terminal, output)}
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+			program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 				tea.WithFPS(60), tea.WithWindowSize(80, 24))
 			done := make(chan error, 1)
@@ -500,6 +501,7 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 					t.Error("timed out stopping clear model")
 				}
 			}()
+			startup.wait(t)
 			if !output.WaitFor("LIVE-DRAFT", 3*time.Second) {
 				t.Fatal("initial composer did not render")
 			}
@@ -623,7 +625,8 @@ func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
 			}
 			terminal := newTerminalHistoryState(width, height)
 			m.flush.output = &terminalOutput{writer: terminal}
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+			program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 				tea.WithFPS(60), tea.WithWindowSize(width, height))
 			done := make(chan error, 1)
@@ -662,6 +665,7 @@ func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
 					time.Sleep(time.Millisecond)
 				}
 			}
+			startup.wait(t)
 			waitFor("❭")
 			var rows []string
 			for i := 0; i < 19; i++ {
@@ -710,7 +714,8 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
 	terminal := newTerminalHistoryState(width, height)
 	m.flush.output = &terminalOutput{writer: terminal}
-	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+	startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+	program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 		tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 		tea.WithFPS(60), tea.WithWindowSize(width, height))
 	done := make(chan error, 1)
@@ -747,6 +752,7 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
+	startup.wait(t)
 	waitFor("COMPOSER-LIVE")
 	waitForCommit := func() {
 		t.Helper()
@@ -799,12 +805,14 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 type firstTurnTerminal struct {
 	*terminalHistoryState
 	frames []string
+	writes []string
 }
 
 func (o *firstTurnTerminal) Write(p []byte) (int, error) {
 	n, err := o.terminalHistoryState.Write(p)
 	o.mu.Lock()
 	o.frames = append(o.frames, o.state.String())
+	o.writes = append(o.writes, string(p))
 	o.mu.Unlock()
 	return n, err
 }
@@ -819,7 +827,8 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
 			terminal := &firstTurnTerminal{terminalHistoryState: newTerminalHistoryState(100, height)}
 			m.flush.output = &terminalOutput{writer: terminal}
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+			program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=vscode"}),
 				tea.WithFPS(60), tea.WithWindowSize(100, height))
 			done := make(chan error, 1)
@@ -851,6 +860,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 					time.Sleep(time.Millisecond)
 				}
 			}
+			startup.wait(t)
 			waitFor("❭ hi")
 			program.Send(conv.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
 			// Inference status remains live after the first text, not just while
@@ -918,7 +928,8 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			}
 			terminal := &firstTurnTerminal{terminalHistoryState: newTerminalHistoryState(width, height)}
 			m.flush.output = &terminalOutput{writer: terminal}
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+			program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=vscode"}),
 				tea.WithFPS(60), tea.WithWindowSize(width, height))
 			done := make(chan error, 1)
@@ -950,6 +961,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 					time.Sleep(time.Millisecond)
 				}
 			}
+			startup.wait(t)
 			waitFor(anchor)
 			if synchronized {
 				program.Send(tea.ModeReportMsg{Mode: ansi.ModeSynchronizedOutput, Value: ansi.ModeReset})
@@ -1000,6 +1012,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			defer terminal.mu.Unlock()
 			seen := false
 			previousRow := height
+			previousFrame := -1
 			for i, frame := range terminal.frames {
 				if strings.Contains(frame, anchor) {
 					seen = true
@@ -1008,9 +1021,11 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 						// New paragraphs and history can move text up, never down
 						// again when the temporary handoff frame is restored.
 						if row > previousRow {
-							t.Errorf("streaming frame %d moved text down from row %d to row %d", i, previousRow, row)
+							t.Errorf("streaming frame %d moved text down from row %d to row %d\nprevious frame %d:\n%s\nprevious write (first 8192 runes): %.8192q\ncurrent frame:\n%s\ncurrent write (first 8192 runes): %.8192q",
+								i, previousRow, row, previousFrame, terminal.frames[previousFrame], terminal.writes[previousFrame], frame, terminal.writes[i])
 						}
 						previousRow = row
+						previousFrame = i
 					}
 				} else if seen {
 					t.Errorf("streaming frame %d temporarily erased visible text:\n%s", i, frame)
