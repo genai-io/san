@@ -1,9 +1,6 @@
 package conv
 
 import (
-	"encoding/json"
-	"strings"
-
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -35,12 +32,7 @@ func (m *Model) pruneAgentIdentities() {
 			if !tool.IsAgentToolName(call.Name) {
 				continue
 			}
-			var args struct {
-				Resume string `json:"resume_task_id"`
-				To     string `json:"to"`
-				TaskID string `json:"task_id"`
-			}
-			_ = json.Unmarshal([]byte(call.Input), &args)
+			args := parseAgentIdentityInput(call.Input)
 			protect(args.Resume)
 			protect(args.To)
 			protect(args.TaskID)
@@ -62,10 +54,10 @@ func (m *Model) pruneAgentIdentities() {
 			protect(d.TaskID)
 		}
 		if IsAgentEnvelope(msg.Content) {
-			tag, _, _ := strings.Cut(strings.TrimSpace(msg.Content), ">")
-			for _, attr := range []string{"task-id", "agent-id", "from"} {
-				protect(envelopeAttr(tag, attr))
-			}
+			envelope := parseAgentEnvelope(msg.Content)
+			protect(envelope.taskID)
+			protect(envelope.agentID)
+			protect(envelope.from)
 		}
 	}
 	remaining := maxCachedAgentAliases

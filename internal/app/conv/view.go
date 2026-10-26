@@ -2,7 +2,6 @@ package conv
 
 import (
 	"fmt"
-	"html"
 	"strings"
 	"time"
 
@@ -191,7 +190,7 @@ func (p inlinedToolResults) IsResultInlined(idx int) bool {
 }
 
 func completionNotice(msg core.ChatMessage) bool {
-	return msg.Role == core.ChatUser && msg.ToolResult == nil && strings.HasPrefix(strings.TrimSpace(msg.Content), "<task-notification") && !msg.Expanded
+	return msg.Role == core.ChatUser && msg.ToolResult == nil && agentEnvelopeKindOf(strings.TrimSpace(msg.Content)) == envelopeTask && !msg.Expanded
 }
 
 func adjacentCompletionNotice(p RenderContext, idx int) bool {
@@ -246,15 +245,12 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// A background-agent envelope (task completion / relayed message) is
 			// submitted to the model as a user turn and persisted as raw XML.
 			// Live and resume share this summary; history can expose the body.
-			sb.WriteString(renderAgentEnvelopeWithIdentity(msg.Content, p))
+			envelope := parseAgentEnvelope(msg.Content)
+			sb.WriteString(envelope.renderWithIdentity(p))
 			if msg.Expanded {
-				tag, body, _ := strings.Cut(msg.Content, ">")
-				if end := strings.LastIndex(body, "</"); end >= 0 {
-					body = body[:end]
-				}
-				body = html.UnescapeString(strings.TrimSpace(body))
-				if file := envelopeAttr(tag, "output-file"); file != "" {
-					body += "\n\nOutput file: " + file
+				body := envelope.text()
+				if envelope.outputFile != "" {
+					body += "\n\nOutput file: " + envelope.outputFile
 				}
 				sb.WriteString(renderNestedToolBody(body, p.Width))
 			}

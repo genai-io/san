@@ -64,7 +64,7 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 			if !strings.Contains(received, nameStyle.Render("reviewer")) || !strings.Contains(ansi.Strip(received), "Boundary safe") {
 				t.Fatalf("%s width %d: sender identity changed: %q", theme, width, received)
 			}
-			notice := renderAgentEnvelopeWithIdentity(`<task-notification task-id="worker-route" status="failed" description="Check limits">Error: provider unavailable</task-notification>`, ctx)
+			notice := parseAgentEnvelope(`<task-notification task-id="worker-route" status="failed" description="Check limits">Error: provider unavailable</task-notification>`).renderWithIdentity(ctx)
 			identityStyle := lipgloss.NewStyle().Foreground(memberPalette[1])
 			if !strings.Contains(notice, identityStyle.Render("◆ reviewer")) || !strings.Contains(ansi.Strip(notice), "failed") {
 				t.Fatalf("%s width %d: failure changed identity or lost outcome: %q", theme, width, notice)

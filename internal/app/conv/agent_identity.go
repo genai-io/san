@@ -48,6 +48,9 @@ func (m *Model) SetActiveAgentIdentities(ids []string) {
 	if m.identities == nil {
 		m.identities = &agentIdentityState{}
 	}
+	if slices.Equal(m.identities.active, ids) {
+		return
+	}
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	if !slices.Equal(m.identities.active, ids) {
@@ -63,6 +66,19 @@ func (m *Model) SetAgentIdentitySession(id string) {
 	}
 }
 
+type agentIdentityInput struct {
+	Name   string `json:"name"`
+	Resume string `json:"resume_task_id"`
+	To     string `json:"to"`
+	TaskID string `json:"task_id"`
+}
+
+func parseAgentIdentityInput(input string) agentIdentityInput {
+	var args agentIdentityInput
+	_ = json.Unmarshal([]byte(input), &args)
+	return args
+}
+
 func (m *Model) reserveAgentCalls(calls []core.ToolCall) {
 	if m.identities == nil {
 		m.identities = &agentIdentityState{}
@@ -75,11 +91,7 @@ func (m *Model) reserveAgentCalls(calls []core.ToolCall) {
 		if _, ok := s.displays[call.ID]; ok {
 			continue
 		}
-		var args struct {
-			Name   string `json:"name"`
-			Resume string `json:"resume_task_id"`
-		}
-		_ = json.Unmarshal([]byte(call.Input), &args)
+		args := parseAgentIdentityInput(call.Input)
 		if d, ok := s.displays[args.Resume]; args.Resume != "" && ok {
 			s.put(call.ID, d)
 			continue
@@ -132,9 +144,11 @@ func (m *Model) bindAgentIdentity(callID string, identity toolresult.AgentIdenti
 	if identity.Name != "" {
 		d.Name = identity.Name
 	}
-	for key, existing := range s.displays {
-		if existing == old {
-			s.put(key, d)
+	if d != old {
+		for key, existing := range s.displays {
+			if existing == old {
+				s.put(key, d)
+			}
 		}
 	}
 	s.put(callID, d)
@@ -146,15 +160,19 @@ func (m *Model) bindAgentIdentity(callID string, identity toolresult.AgentIdenti
 	}
 }
 
+func (m *Model) ingestAgentMessages(messages []core.ChatMessage) {
+	for _, msg := range messages {
+		m.reserveAgentCalls(msg.ToolCalls)
+		if d, ok := msg.ToolDetails.(toolresult.AgentDetails); ok && msg.ToolResult != nil {
+			m.bindAgentIdentity(msg.ToolResult.ToolCallID, d.Identity)
+		}
+	}
+}
+
 // AgentDisplayHistorySnapshot builds a detached registry; history never grows the live cache.
 func (m *Model) AgentDisplayHistorySnapshot(messages []core.ChatMessage) map[string]AgentDisplay {
 	history := Model{identities: &agentIdentityState{}}
-	for _, msg := range messages {
-		history.reserveAgentCalls(msg.ToolCalls)
-		if d, ok := msg.ToolDetails.(toolresult.AgentDetails); ok && msg.ToolResult != nil {
-			history.bindAgentIdentity(msg.ToolResult.ToolCallID, d.Identity)
-		}
-	}
+	history.ingestAgentMessages(messages)
 	if m.identities != nil {
 		for key, d := range m.identities.displays {
 			history.identities.put(key, d)
@@ -180,12 +198,7 @@ func (m *Model) AgentDisplaySnapshot() map[string]AgentDisplay {
 		start--
 	}
 	// Calls within each launch reserve slots before any sibling result binds aliases.
-	for _, msg := range m.Messages[start:] {
-		m.reserveAgentCalls(msg.ToolCalls)
-		if details, ok := msg.ToolDetails.(toolresult.AgentDetails); ok && msg.ToolResult != nil {
-			m.bindAgentIdentity(msg.ToolResult.ToolCallID, details.Identity)
-		}
-	}
+	m.ingestAgentMessages(m.Messages[start:])
 	m.reserveAgentCalls(m.Tool.PendingCalls)
 	s.scanned = len(m.Messages)
 	if s.scanned > 0 {

@@ -1494,10 +1494,6 @@ func renderAgentColoredLine(label string, width int, iconText string, color kit.
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(label))
 }
 
-func agentStyle(color string) lipgloss.Style {
-	return toolCallStyle.Foreground(agentColor(color))
-}
-
 func agentColor(color string) kit.AdaptiveColor {
 	switch strings.ToLower(strings.TrimSpace(color)) {
 	case "blue":
