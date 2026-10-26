@@ -15,7 +15,7 @@ func TestCommandBlockIsInsetRectangle(t *testing.T) {
 	t.Cleanup(func() { lipgloss.Writer.Profile, darkModeVal = oldProfile, oldDark })
 	for _, theme := range []string{"light", "dark"} {
 		InitTheme(theme)
-		for _, width := range []int{10, 32, 40, 100} {
+		for _, width := range []int{8, 10, 12, 32, 40, 100} {
 			command := "echo first\n\n  echo second \\\n    " + strings.Repeat("中文", 30) + "\n"
 			raw := RenderCommandBlock(command, width)
 			rows := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
@@ -32,8 +32,8 @@ func TestCommandBlockIsInsetRectangle(t *testing.T) {
 					t.Fatalf("background does not cover the whole inset row: %q", row)
 				}
 			}
-			if width >= 32 && !strings.HasPrefix(ansi.Strip(rows[0]), "    $ echo first") {
-				t.Fatal("command block lost its outer margin and inner padding")
+			if !strings.HasPrefix(ansi.Strip(rows[0]), "  $ ") {
+				t.Fatal("command prompt must start at the inset edge without extra padding")
 			}
 			if strings.TrimSpace(ansi.Strip(rows[len(rows)-1])) != "" {
 				t.Fatal("explicit trailing blank command row was dropped")
@@ -45,7 +45,7 @@ func TestCommandBlockIsInsetRectangle(t *testing.T) {
 func TestCommandBlockAddsNoVerticalPadding(t *testing.T) {
 	got := ansi.Strip(RenderCommandBlock("first\n\n  third", 40))
 	rows := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
-	if len(rows) != 3 || !strings.HasPrefix(rows[0], "    $ first") || strings.TrimSpace(rows[1]) != "" || !strings.HasPrefix(rows[2], "        third") {
+	if len(rows) != 3 || !strings.HasPrefix(rows[0], "  $ first") || strings.TrimSpace(rows[1]) != "" || !strings.HasPrefix(rows[2], "      third") {
 		t.Fatalf("source rows or indentation changed: %q", rows)
 	}
 }

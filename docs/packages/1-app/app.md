@@ -240,8 +240,10 @@ headers reserve width for running detail, optional agent hints appear only when
 they fit, and expanded tool content wraps explicitly to the terminal width.
 Wrapping command bodies and string parameters preserves spaces, including
 spaces inside quoted arguments. Bash's configured output preview rolls over the
-last N actual output lines while running. A faint `│` output guide shares the
-command's `$` column, and omission markers belong inside that guide: `│ … (28)`
+last N actual output lines while running. The `$` prompt, faint `│` output guide,
+and closing `└` align with the tool-name text, using only the two-column outer
+inset without extra marker padding. Command and output text share the next
+content column, and omission markers belong inside that guide: `│ … (28)`
 means 28 whole output lines were omitted. Counts come from exact SDK progress
 metadata, never a rounded counter or the byte-capped tail alone. When the total
 is unknown or only part of a long row was cut, show `│ …` without guessing a

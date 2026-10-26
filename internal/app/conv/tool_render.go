@@ -1409,7 +1409,7 @@ func renderToolLine(label string, width int) string {
 }
 
 func renderToolLineWithIcon(label string, width int, iconText string) string {
-	icon := toolCallStyle.Width(2).Render(iconText)
+	icon := toolCallStyle.Width(kit.ToolIconWidth).Render(iconText)
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
 }
 
@@ -1428,7 +1428,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 		if lipgloss.Width(commandLabel) <= labelWidth {
 			label := toolCallStyle.Render(commandLabel)
 			label += renderBashDescription(description, labelWidth-lipgloss.Width(commandLabel))
-			iconCell := toolCallStyle.Width(2).Render(icon)
+			iconCell := toolCallStyle.Width(kit.ToolIconWidth).Render(icon)
 			return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 		}
 	}
@@ -1442,7 +1442,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	// rendered separately below without abbreviation.
 	displayName := xansi.Truncate(toolName, labelWidth, "…")
 	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
-	iconCell := toolCallStyle.Width(2).Render(icon)
+	iconCell := toolCallStyle.Width(kit.ToolIconWidth).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
 	sb.WriteString(kit.RenderCommandBlock(command, width))
@@ -1464,9 +1464,9 @@ func extractBashCommand(input string) (command, description string) {
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {
 	style := agentStyle(color)
-	icon := style.Width(2).Render(iconText)
+	icon := style.Width(kit.ToolIconWidth).Render(iconText)
 	if width > 0 {
-		label = xansi.Hardwrap(label, max(1, width-2), true)
+		label = xansi.Hardwrap(label, max(1, width-kit.ToolIconWidth), true)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(label))
 }
@@ -1515,7 +1515,7 @@ func bashPreviewLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	return max(1, width-lipgloss.Width("● "))
+	return max(1, width-kit.ToolIconWidth)
 }
 
 func maxToolLabelWidth(width int) int {
@@ -1523,5 +1523,5 @@ func maxToolLabelWidth(width int) int {
 		return 80
 	}
 	maxWidth := min(width, max(width*80/100, 50))
-	return max(1, maxWidth-lipgloss.Width("● "))
+	return max(1, maxWidth-kit.ToolIconWidth)
 }

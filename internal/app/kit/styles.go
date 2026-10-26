@@ -4,6 +4,9 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// ToolIconWidth reserves the display columns for a tool icon and its gap.
+const ToolIconWidth = 2
+
 // Selector styles — lazy functions to pick up the current theme at render time.
 
 // FocusBar is the thin vertical accent drawn to the left of a focused row.
