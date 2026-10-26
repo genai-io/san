@@ -232,7 +232,7 @@ func (m *model) renderFooter(separator string) (string, int) {
 	// being typed now.
 	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
 		b.WriteString("\n")
-		if m.footerHasBreathingRoom() {
+		if m.userInput.Queue.Len() > 1 && m.footerHasBreathingRoom() {
 			// A quiet caption and whitespace distinguish submitted prompts from
 			// active Tasks, without another card or separator.
 			b.WriteString("\n")
@@ -600,15 +600,12 @@ func (m model) renderQueuePreview() string {
 		}
 	}
 
-	if m.footerHasBreathingRoom() {
+	if len(previews) == 1 || m.footerHasBreathingRoom() {
 		return strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
 	}
 	// Tight frames keep the edited prompt (or next queued prompt) actionable.
-	// Inline the group label rather than spending a row on it or overflow.
-	label := "Pending "
-	if len(previews) > 1 {
-		label = fmt.Sprintf("Pending · %d ", len(previews))
-	}
+	// Multiple prompts inline their count rather than spending a row on it or overflow.
+	label := fmt.Sprintf("Pending · %d ", len(previews))
 	return ghostTextStyle.Render(label) + strings.TrimSuffix(conv.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(label), 1, false), "\n")
 }
 

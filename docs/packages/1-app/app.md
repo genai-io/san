@@ -210,10 +210,12 @@ queued, and cancellation or a failed send clears the spinner.
 During an inference, one breathing status row reads `✦ On it · 17s`, including
 while commentary, thinking, or partial tool arguments stream. It is footer
 content, ordered below Tasks/background indicators and queued messages, directly
-against the input's top separator without a blank row between them. Roomy layouts
-use a quiet `Pending · N` caption, queued previews, and restrained whitespace to
-separate Tasks, pending prompts, and inference. Short screens inline the pending
-count and keep only the edited/next queued prompt, dropping spacing, captions,
+against the input's top separator without a blank row between them. A single
+queued prompt shows its preview and available edit hints without a Pending label
+or a reserved caption row. For multiple queued prompts, roomy layouts use a quiet
+`Pending · N` caption, queued previews, and restrained whitespace to separate
+Tasks, pending prompts, and inference. Short screens inline the pending count and
+keep only the edited/next queued prompt, dropping spacing, captions,
 and extra previews before sacrificing the input or inference row. Approval and
 question panels suppress the standalone row. Genuine silence after 30 seconds
 shows `Waiting for model`; actual retries show their attempt number. Tool-input

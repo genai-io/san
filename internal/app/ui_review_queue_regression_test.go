@@ -12,7 +12,7 @@ import (
 
 func TestUIReviewCompactQueueBudgets(t *testing.T) {
 	for _, width := range []int{30, 32, 40} {
-		for _, count := range []int{2, 10, 50} {
+		for _, count := range []int{1, 2, 10, 50} {
 			for _, selected := range []int{-1, count - 1} {
 				t.Run(fmt.Sprintf("%d/%d/%d", width, count, selected), func(t *testing.T) {
 					m := fixedComposerModel(width, 12)
@@ -24,7 +24,7 @@ func TestUIReviewCompactQueueBudgets(t *testing.T) {
 					if ansi.StringWidth(row) >= width {
 						t.Fatalf("row width %d >= %d: %q", ansi.StringWidth(row), width, row)
 					}
-					if !strings.Contains(row, "你好") || !strings.Contains(row, fmt.Sprintf("Pending · %d", count)) {
+					if !strings.Contains(row, "你好") || count > 1 && !strings.Contains(row, fmt.Sprintf("Pending · %d", count)) || count == 1 && strings.Contains(row, "Pending") {
 						t.Fatalf("lost content/count: %q", row)
 					}
 				})
