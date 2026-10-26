@@ -21,13 +21,13 @@ func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema 
 
 func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
-	sb.WriteString("Handle the task directly by default. Use a subagent when an independently scoped part of the work benefits from parallel execution, specialized capabilities, or a separate context. Weigh that benefit against the coordination cost and loss of shared context.\n\n")
+	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task when the benefits of parallel execution, specialized capabilities, or context isolation outweigh the coordination cost and loss of shared context.\n\n")
 	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
 		sb.WriteString(catalog)
 		sb.WriteString("\n\nUse name to select a predefined agent. Otherwise, use the default Agent.\n\n")
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
-	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when your next step depends on the result; use background execution when you can continue useful independent work while it runs. Once work is delegated, do not duplicate it yourself. Verify the result before reporting it.\n\n")
+	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
 	sb.WriteString("Use SendMessage for additional instructions while a worker is running. To continue an ended or failed worker, set resume_task_id to its exact existing Task ID returned by Agent and provide only a short incremental prompt: its original child session and history are restored internally, not copied through the main conversation. Continuation runs in the background and retains the original task identity and policy. Do not resume deliberately stopped workers or repeat denied commands. Inspect uncertain tool side effects before retrying; if continuation is unavailable, report the blocker rather than silently restarting from scratch.")
 
 	return core.ToolSchema{

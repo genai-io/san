@@ -20,9 +20,9 @@ func TestAgentSchemaEncouragesDirectWorkForClearScope(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
 		"Handle the task directly by default",
-		"independently scoped part",
-		"parallel execution, specialized capabilities, or a separate context",
-		"coordination cost and loss of shared context",
+		"independently scoped task",
+		"parallel execution, specialized capabilities, or context isolation",
+		"outweigh the coordination cost and loss of shared context",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("Agent description should contain %q", want)
@@ -37,9 +37,9 @@ func TestAgentSchemaRetainsDelegationGuidance(t *testing.T) {
 		"Include the validation plan",
 		"report the failed tool and reason",
 		"When delegating multiple independent tasks, launch them concurrently",
-		"use foreground execution when your next step depends on the result",
-		"use background execution when you can continue useful independent work",
-		"do not duplicate it yourself",
+		"use foreground execution when you need the result to proceed",
+		"background execution when you can continue independent work",
+		"Do not duplicate delegated work",
 		"Verify the result before reporting it",
 	} {
 		if !strings.Contains(description, want) {
