@@ -187,7 +187,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 				m.reserveAgentCalls(m.Tool.PendingCalls)
 				original, known := m.identities.displays[details.Identity.CallID]
 				current := m.identities.displays[e.ID]
-				if details.Identity.CallID == "" || details.Identity.CallID == e.ID || (known && original.ID == current.ID) {
+				if details.Identity.CallID == "" || details.Identity.CallID == e.ID || (known && original.ID == current.ID) || (details.Identity.ID != "" && details.Identity.ID == current.ID) {
 					m.bindAgentIdentity(e.ID, details.Identity)
 				}
 			}
