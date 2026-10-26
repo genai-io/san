@@ -44,7 +44,7 @@ func TestPrintStopsServicesOnExit(t *testing.T) {
 			boom := errors.New("print lifecycle agent failure")
 			p := &printLifecycleProvider{t: t, fail: fail, boom: boom}
 			p.client = ai.NewClientWithDriver(aitest.New(
-				aitest.Asks(ai.ToolCall{ID: "service", Name: "Bash", Input: `{"command":"exec sleep 60","run_in_background":true,"lifetime":"service"}`}),
+				aitest.Asks(ai.ToolCall{ID: "service", Name: "Bash", Input: `{"command":"exec sleep 60","execution_mode":"background_service"}`}),
 				aitest.Says("done"),
 			), ai.Model{ID: "print-lifecycle", API: "aitest", ContextWindow: 200000})
 			id := llm.ProviderID("print-lifecycle-test")

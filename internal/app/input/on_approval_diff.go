@@ -87,43 +87,27 @@ func (d *approvalDiffPreview) renderFileHeader(label string) string {
 }
 
 func (d *approvalDiffPreview) renderNewFilePreview(width int) string {
-	var sb strings.Builder
-
-	sb.WriteString(d.renderFileHeader("(new file)"))
-	sb.WriteString("\n")
-	sep := strings.Repeat("─", width)
-	sb.WriteString(approvalDiffContextStyle().Render(sep))
-	sb.WriteString("\n")
-
+	maxVisible := d.maxVisible
+	if d.expanded {
+		maxVisible = 0
+	}
+	// Write's real preview metadata stores file contents as context rows. A new
+	// file is entirely additions; derive display rows without mutating the request.
 	lines := d.diffMeta.Lines
-	showCount := len(lines)
-	truncated := false
-
-	if !d.expanded && showCount > d.maxVisible {
-		showCount = d.maxVisible
-		truncated = true
-	}
-
-	for i := 0; i < showCount; i++ {
-		line := lines[i]
-		if line.Type == perm.DiffLineHunk || line.Type == perm.DiffLineMetadata {
-			continue
+	if d.diffMeta.IsNewFile {
+		lines = append([]perm.DiffLine(nil), lines...)
+		for i := range lines {
+			if lines[i].Type == perm.DiffLineContext {
+				lines[i].Type = perm.DiffLineAdded
+			}
 		}
-		lineNo := fmt.Sprintf("%4d", line.NewLineNo)
-		sb.WriteString(approvalDiffLineNoStyle().Render(lineNo))
-		sb.WriteString(approvalDiffContextStyle().Render(" │ "))
-		sb.WriteString(approvalDiffAddedStyle().Render(line.Content))
-		sb.WriteString("\n")
 	}
-
-	if truncated {
-		remaining := len(lines) - d.maxVisible
-		msg := fmt.Sprintf("... %d more lines (Ctrl+O to expand)", remaining)
-		sb.WriteString(approvalDiffMoreStyle().Render(msg))
-		sb.WriteString("\n")
+	block, hidden := conv.RenderFileDiff(lines, max(1, width), maxVisible)
+	out := d.renderFileHeader("(new file)") + "\n" + block
+	if hidden > 0 {
+		out += approvalDiffMoreStyle().Render(fmt.Sprintf("... %d more lines (Ctrl+O to expand)", hidden)) + "\n"
 	}
-
-	return sb.String()
+	return out
 }
 
 func (d *approvalDiffPreview) renderUnifiedDiff(width int) string {

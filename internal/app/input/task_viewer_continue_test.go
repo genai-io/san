@@ -13,6 +13,7 @@ func TestTaskViewerContinuationUsesStableTaskAndAttempt(t *testing.T) {
 	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusCompleted, task.StatusStopped, task.StatusKilled, task.StatusRunning} {
 		var viewer TaskViewer
 		viewer.Show([]TaskViewItem{{ID: "stable", SessionID: "child", Attempt: 2, Status: status, CanContinue: true}}, 80, 24)
+		viewer.HandleKeypress(taskKey("h"))
 		viewID := viewer.ViewID()
 		cmd := viewer.HandleKeypress(taskKey("c"))
 		want := status == task.StatusFailed || status == task.StatusCompleted
@@ -31,6 +32,7 @@ func TestTaskViewerContinuationUsesStableTaskAndAttempt(t *testing.T) {
 func TestTaskViewerContinuationHistoryAndRepeat(t *testing.T) {
 	var viewer TaskViewer
 	viewer.Show([]TaskViewItem{{ID: "stable", SessionID: "child", Attempt: 2, Attempts: "1 failed: provider unavailable", Status: task.StatusFailed, CanContinue: true}}, 40, 24)
+	viewer.HandleKeypress(taskKey("h"))
 	viewer.HandleKeypress(taskKey("enter"))
 	view := ansi.Strip(viewer.Render())
 	for _, want := range []string{"Session: child", "Attempt: 2", "provider unavailable", "c ask main to continue"} {

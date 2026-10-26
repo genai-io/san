@@ -33,7 +33,7 @@ func TestWorkflowInteractionOriginAndRoutingIsolation(t *testing.T) {
 	})
 	responses := make([]llm.CompletionResponse, 0, 8)
 	for range 4 {
-		responses = append(responses, testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test workflow approval","run_in_background":false}`))
+		responses = append(responses, testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test workflow approval","execution_mode":"foreground"}`))
 	}
 	for range 4 {
 		responses = append(responses, testutil.EndTurnResponse("done"))

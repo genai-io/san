@@ -136,6 +136,7 @@ func TestTaskViewerSettledDetailsRetainResultsNotProgress(t *testing.T) {
 	for _, status := range []task.TaskStatus{task.StatusCompleted, task.StatusStopped, task.StatusKilled, task.StatusFailed} {
 		var v TaskViewer
 		v.Show([]TaskViewItem{{ID: "review", AgentName: "agent", Subject: "Security review", Status: status, Progress: "Thinking...", Output: "Useful partial finding"}}, 80, 24)
+		v.HandleKeypress(taskKey("h"))
 		v.HandleKeypress(taskKey("enter"))
 		view := ansi.Strip(v.Render())
 		if strings.Contains(view, "Thinking...") || !strings.Contains(view, "Useful partial finding") || !strings.Contains(view, "Security review") {
@@ -148,6 +149,7 @@ func TestTaskViewerStopIsNotAnError(t *testing.T) {
 	var v TaskViewer
 	item := TaskViewItem{ID: "review", AgentName: "agent", Subject: "Security review", Status: "stopped", Error: "stopped before completion", Output: "Error: context canceled"}
 	v.Show([]TaskViewItem{item}, 80, 24)
+	v.HandleKeypress(taskKey("h"))
 	v.HandleKeypress(taskKey("enter"))
 	view := ansi.Strip(v.Render())
 	if !strings.Contains(view, "Status: stopped") || strings.Contains(view, "Error:") || strings.Contains(view, "context canceled") {

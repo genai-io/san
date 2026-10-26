@@ -35,7 +35,7 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 				marker := filepath.Join(cwd, "approved-marker")
 				seen := make(chan tool.AgentInteractionSource, 1)
 				executor := subagent.NewExecutor(&testutil.FakeProvider{Responses: []llm.CompletionResponse{
-					testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test approval","run_in_background":false}`),
+					testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test approval"}`),
 					testutil.EndTurnResponse("done"),
 				}}, cwd, "fake-model", nil)
 				executor.SetInteractions(forwardingInteractions{approve: func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) (bool, string) {

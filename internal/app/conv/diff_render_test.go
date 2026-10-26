@@ -4,10 +4,61 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/tool/perm"
 )
+
+func TestRenderFileDiffLosslessWrapping(t *testing.T) {
+	for _, width := range []int{32, 40} {
+		for _, kind := range []perm.DiffLineType{perm.DiffLineAdded, perm.DiffLineRemoved, perm.DiffLineContext} {
+			content := "\t" + strings.Repeat("中文ab", 16) + "END"
+			out, hidden := RenderFileDiff([]perm.DiffLine{{Type: kind, Content: content, OldLineNo: 12, NewLineNo: 12}}, width, 1)
+			if hidden != 0 || strings.Contains(out, "…") {
+				t.Fatalf("width %d: hidden=%d output=%q", width, hidden, out)
+			}
+			var recovered strings.Builder
+			rows := strings.Split(strings.TrimSuffix(xansi.Strip(out), "\n"), "\n")
+			for i, row := range rows {
+				if xansi.StringWidth(row) > width {
+					t.Fatalf("width %d exceeded by %q", width, row)
+				}
+				const contentColumn = 2 + 4 + 3 // outer inset, line number, marker
+				if i > 0 && strings.TrimSpace(row[:contentColumn]) != "" {
+					t.Fatalf("continuation invented a gutter: %q", row)
+				}
+				// CJK can leave one padding cell at the wrap boundary.
+				recovered.WriteString(strings.TrimRight(row[contentColumn:], " "))
+			}
+			if recovered.String() != diffDisplayText(content) {
+				t.Fatalf("content lost: got %q want %q", recovered.String(), diffDisplayText(content))
+			}
+		}
+	}
+}
+
+func TestRenderFileDiffWrapCapCountsLogicalRows(t *testing.T) {
+	lines := []perm.DiffLine{{Type: perm.DiffLineAdded, Content: strings.Repeat("x", 100), NewLineNo: 1}, {Type: perm.DiffLineAdded, Content: "hidden", NewLineNo: 2}}
+	out, hidden := RenderFileDiff(lines, 32, 1)
+	if hidden != 1 || strings.Count(out, "\n") <= 1 || strings.Contains(out, "hidden") {
+		t.Fatalf("logical row cap: hidden=%d output=%q", hidden, out)
+	}
+}
+
+func TestRenderDiffRowWrapPreservesEmphasis(t *testing.T) {
+	base := lipgloss.NewStyle()
+	strong := lipgloss.NewStyle().Transform(func(s string) string { return strings.ToUpper(s) })
+	out := renderDiffRow("   1 + ", "prefixabcdefghijklsuffix", runeSpan{6, 18}, base, strong, 15)
+	var text strings.Builder
+	for row := range strings.SplitSeq(out, "\n") {
+		text.WriteString(strings.TrimRight(row[7:], " "))
+	}
+	if text.String() != "prefixABCDEFGHIJKLsuffix" {
+		t.Fatalf("wrapped emphasis lost: %q", text.String())
+	}
+}
 
 func TestChangedSpanFindsMiddle(t *testing.T) {
 	oldSpan, newSpan, ok := changedSpan(

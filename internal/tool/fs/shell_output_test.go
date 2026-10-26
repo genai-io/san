@@ -2,6 +2,7 @@ package fs
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func TestOutputCaptureStaysBoundedWhileCountingFullStream(t *testing.T) {
+func TestOutputCaptureKeepsBoundedPrefixWhileDrainingFullStream(t *testing.T) {
 	var out outputCapture
 	chunk := []byte(strings.Repeat("中文\n", 20000))
 	for range 10 {
@@ -22,8 +23,8 @@ func TestOutputCaptureStaysBoundedWhileCountingFullStream(t *testing.T) {
 			t.Fatalf("write = %d, %v", n, err)
 		}
 	}
-	if out.buf.Len() > maxShellOutputBytes+1 || out.LineCount() != 200000 {
-		t.Fatalf("retained = %d, lines = %d", out.buf.Len(), out.LineCount())
+	if !bytes.Equal(out.buf.Bytes(), chunk[:maxShellOutputBytes+1]) {
+		t.Fatalf("capture did not retain exactly the bounded prefix: %d bytes", out.buf.Len())
 	}
 	if got := truncateShellOutput(out.String()); !utf8.ValidString(got) || !strings.Contains(got, "truncated") {
 		t.Fatalf("bad truncated UTF-8: %q", got[len(got)-40:])
@@ -36,7 +37,7 @@ func TestLargeForegroundOutputAlsoCapsHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
-		"command": "cat large.txt; cat large.txt >&2", "timeout": 10000,
+		"command": "cat large.txt; cat large.txt >&2", "timeout_ms": 10000,
 	}, dir)
 	if !result.Success {
 		t.Fatal(result.Error)
@@ -63,7 +64,7 @@ func TestLargeBackgroundOutputKeepsFullDiskLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
-		"command": "cat large.txt; printf 'finished\\n' >&2", "run_in_background": true, "timeout": 10000,
+		"command": "cat large.txt; printf 'finished\\n' >&2", "execution_mode": shellBackgroundJob, "timeout_ms": 10000,
 	}, dir)
 	if !result.Success {
 		t.Fatal(result.Error)

@@ -20,7 +20,10 @@ type FileChangeDetails struct {
 // LastLines is the end of s, at most n lines; only that end is scanned, as an
 // output may run to thousands.
 func LastLines(s string, n int) string {
-	end := strings.TrimRight(s, "\n")
+	if n <= 0 {
+		return ""
+	}
+	end := strings.TrimSuffix(s, "\n")
 	start := len(end)
 	for range n {
 		i := strings.LastIndexByte(end[:start], '\n')
@@ -38,10 +41,11 @@ func LastLines(s string, n int) string {
 // lines as they interleaved, which the row keeps.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
-	Error     string `json:"error"`
-	LineCount int    `json:"lineCount"`
-	Tail      string `json:"tail,omitempty"`
-	TaskID    string `json:"taskId,omitempty"`
+	Error         string `json:"error"`
+	LineCount     int    `json:"lineCount"`
+	Tail          string `json:"tail,omitempty"`
+	TailTruncated bool   `json:"tailTruncated,omitempty"`
+	TaskID        string `json:"taskId,omitempty"`
 }
 
 // AgentDetails keeps display metadata out of the parent model's result text.

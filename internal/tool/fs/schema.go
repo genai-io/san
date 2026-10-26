@@ -117,7 +117,7 @@ func (t *ShellTool) Schema() core.ToolSchema {
 	if t.second {
 		description += "\n\n" + secondShellNote(name)
 	}
-	description += "\n\nBackground lifetime defaults to job (finite work; default timeout 120000ms, maximum 600000ms). For a long-running session-owned server, explicitly set run_in_background=true and lifetime='service', and omit timeout. Services have no execution deadline and are stopped on application shutdown, not session switching. A service exiting on its own, even with exit code 0, is a failure. Starting is not proof of health: explicitly run an appropriate startup health check before relying on the service; no health probe is run automatically."
+	description += "\n\nRun commands in the foreground by default. Use execution_mode='background_job' when explicitly requested or while doing a concrete independent next step; use 'background_service' for a server that must keep running. If your next step needs the result, wait for it; do not background routine short commands. timeout_ms is an execution deadline, not a wait-before-background threshold. Services have no execution deadline: omit timeout_ms or use null. They are managed by this San process and stopped on application shutdown, not session switching. A service exiting on its own, even with exit code 0, is a failure. Check readiness before relying on a service; launching it is not a health check."
 	return core.ToolSchema{
 		Name:        name,
 		Description: description,
@@ -131,7 +131,7 @@ const bashDescription = `Executes a bash command and returns its output.
 - Search and discovery run through this tool (rg, find/fd, ls); pipe large output through head/wc. Provably read-only commands run without approval prompts.
 - For file contents use the dedicated tools: Read (not cat), Edit (not sed), Write (not echo/redirection).
 - No TTY and no stdin — anything awaiting interactive input hangs until timeout. Use non-interactive flags ("git commit -m", "npm init -y", "apt-get -y") or feed input via heredoc.
-- Optional timeout in ms (default 120000, max 600000). On Unix, run_in_background detaches the command and its result includes the process-group ID plus exact Bash commands for graceful or forced termination.`
+- On Unix, background execution detaches the command; its result includes the process-group ID and exact Bash commands for graceful or forced termination.`
 
 const powerShellDescription = `Executes a PowerShell command and returns its output. The shell is %s.
 
@@ -140,7 +140,7 @@ const powerShellDescription = `Executes a PowerShell command and returns its out
 - Search and discovery run through this tool (Get-ChildItem -Recurse -Filter, Select-String, or rg when installed); cut large output with Select-Object -First N. A single pipeline of read-only cmdlets runs without an approval prompt; anything with ; && ( { $ or a redirection asks.
 - For file contents use the dedicated tools: Read (not Get-Content), Edit (not -replace), Write (not Set-Content/Out-File).
 - No console and no stdin — anything awaiting input hangs until timeout. Use non-interactive flags (-Force, -Confirm:$false, "git commit -m").
-- Optional timeout in ms (default 120000, max 600000). run_in_background runs the command detached; you are notified when it completes.`
+- Background execution runs the command detached; you are notified when it completes.`
 
 func shellParameters() map[string]any {
 	return map[string]any{
@@ -151,21 +151,19 @@ func shellParameters() map[string]any {
 				"description": "The command to execute",
 			},
 			"description": map[string]any{
-				"type":        "string",
-				"description": "What this command does, in a few plain words in active voice (e.g. \"Run the unit tests\"). It titles the call for the user watching it run, above the command and its output.",
+				"type":        []string{"string", "null"},
+				"description": "Optional short description in active voice (e.g. Run the unit tests), shown in approvals and task notices. Omit or use null to show a command preview instead.",
 			},
-			"timeout": map[string]any{
-				"type":        "integer",
-				"description": "Optional timeout in milliseconds (max 600000)",
+			"timeout_ms": map[string]any{
+				"type":        []string{"integer", "null"},
+				"minimum":     1,
+				"maximum":     maxShellTimeoutMS,
+				"description": fmt.Sprintf("Execution deadline in milliseconds for foreground or background_job (default %d, maximum %d). Omit or use null for the default; background_service requires omission or null. Does not control when a call returns or becomes background work.", defaultShellTimeoutMS, maxShellTimeoutMS),
 			},
-			"lifetime": map[string]any{
-				"type":        "string",
-				"enum":        []string{"job", "service"},
-				"description": "Background only: job (default, finite timeout) or service (session-owned, no timeout; explicitly verify startup health).",
-			},
-			"run_in_background": map[string]any{
-				"type":        "boolean",
-				"description": "Set to true to run this command in the background. You will be notified when it completes.",
+			"execution_mode": map[string]any{
+				"type":        []string{"string", "null"},
+				"enum":        []any{shellForeground, shellBackgroundJob, shellBackgroundService, nil},
+				"description": "Defaults to foreground (also when null): wait and return the result directly. background_job returns a task ID immediately for finite work with an independent next step. background_service starts a managed long-running service without an execution deadline; verify readiness separately.",
 			},
 		},
 		"required": []string{"command"},

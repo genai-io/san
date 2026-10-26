@@ -15,7 +15,9 @@ type StreamState struct {
 	BuildingTool string
 	// Inferring is narrower than Active: a turn stays active while its tools
 	// run, but generation progress must stop at InferenceEnd.
-	Inferring      bool
+	Inferring bool
+	// LastDataAt tracks real model data, not UI ticks or background notices.
+	LastDataAt     time.Time
 	Attempt        int
 	GeneratingTool string
 	GeneratedBytes int
@@ -36,6 +38,7 @@ func (s *StreamState) Stop() {
 
 func (s *StreamState) EndInference() {
 	s.Inferring = false
+	s.LastDataAt = time.Time{}
 	s.GeneratingTool = ""
 	s.GeneratedBytes = 0
 }

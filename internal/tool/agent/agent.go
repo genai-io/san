@@ -123,7 +123,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		ToolName:    t.Name(),
 		Description: desc,
 		AgentMeta: &perm.AgentMetadata{
-			AgentName:      config.Name,
+			AgentName:      displayName,
 			Description:    config.Description,
 			Model:          effectiveModel,
 			PermissionMode: config.PermissionMode,

@@ -26,7 +26,8 @@ type outputProgress struct {
 	report tool.BashProgress
 
 	mu         sync.Mutex
-	lines      int
+	lines      int // newline count; the current unterminated row is added at snapshot
+	partial    bool
 	bytes      int64
 	tail       []byte
 	lastReport time.Time
@@ -46,11 +47,14 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	p.mu.Lock()
 	p.bytes += int64(n)
 	p.lines += bytes.Count(chunk, []byte{'\n'})
+	if len(chunk) > 0 {
+		p.partial = chunk[len(chunk)-1] != '\n'
+	}
 	p.tail = append(p.tail, chunk[max(0, len(chunk)-progressTailBytes):]...)
 	if over := len(p.tail) - progressTailBytes; over > 0 {
 		p.tail = append(p.tail[:0], p.tail[over:]...)
 	}
-	lines, byteCount := p.lines, p.bytes
+	lines, byteCount := p.rowCount(), p.bytes
 	fire := p.report != nil && (p.lastReport.IsZero() || time.Since(p.lastReport) >= progressInterval)
 	var tail string
 	if fire { // copied only for a report: a fast command writes far more often
@@ -75,7 +79,7 @@ func (p *outputProgress) flush() {
 	}
 	p.pending = nil
 	p.lastReport = time.Now()
-	lines, byteCount, tail := p.lines, p.bytes, string(p.tail)
+	lines, byteCount, tail := p.rowCount(), p.bytes, string(p.tail)
 	p.mu.Unlock()
 	p.report(lines, byteCount, tail)
 }
@@ -83,11 +87,31 @@ func (p *outputProgress) flush() {
 // stop ends reporting once the command is done.
 func (p *outputProgress) stop() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.stopped = true
 	if p.pending != nil {
 		p.pending.Stop()
 	}
+	lines, byteCount, tail := p.rowCount(), p.bytes, string(p.tail)
+	p.mu.Unlock()
+	// A quick command may finish before the throttle expires. Publish its
+	// authoritative totals before the SDK emits ToolEnd.
+	if p.report != nil && byteCount > 0 {
+		p.report(lines, byteCount, tail)
+	}
+}
+
+// rowCount requires mu to be held and counts the interleaved output rows.
+func (p *outputProgress) rowCount() int {
+	if p.partial {
+		return p.lines + 1
+	}
+	return p.lines
+}
+
+func (p *outputProgress) totals() (int, int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.rowCount(), p.bytes
 }
 
 // lastTail returns the end of the output seen so far.

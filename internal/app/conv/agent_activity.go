@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -14,17 +14,6 @@ import (
 // maxAgentActivityLines is the maximum number of activity lines to display.
 // Older lines scroll off the top, keeping the view compact.
 const maxAgentActivityLines = 8
-
-const (
-	maxCompactAgentToolLines  = 3
-	maxParallelAgentToolLines = 1
-)
-
-type AgentStats struct {
-	Model        string
-	InputTokens  int
-	OutputTokens int
-}
 
 // renderAgentActivity renders the most recent agent activity lines,
 // capped at maxAgentActivityLines to keep the view height bounded.
@@ -50,7 +39,7 @@ func renderAgentActivity(activity []string) string {
 	return sb.String()
 }
 
-func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, limit int, stats AgentStats, width int) string {
+func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, width int) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -66,53 +55,14 @@ func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, t
 	if expanded {
 		return renderAgentActivity(activity)
 	}
-	return renderAgentActivityCompact(tc.Input, activity, limit, stats, width)
+	return renderAgentActivityCompact(activity, width)
 }
 
-func renderAgentActivityCompact(input string, activity []string, limit int, stats AgentStats, width int) string {
+func renderAgentActivityCompact(activity []string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
-	var sb strings.Builder
-	writeLine := func(line string) {
-		line, _, _ = strings.Cut(strings.TrimSpace(line), "\n")
-		line = strings.Join(strings.Fields(visibleLine(line)), " ")
-		sb.WriteString(toolResultStyle.Render("  ⎿  "+kit.TruncateText(line, max(1, width-5))) + "\n")
-	}
-	if summary := agentSummary(input, activity, stats); summary != "" {
-		writeLine(summary)
-	}
-
-	toolLines := agentToolLines(activity, limit)
-	for _, line := range toolLines {
-		writeLine(line)
-	}
-	if len(toolLines) == 0 {
-		writeLine(agentStatus(activity))
-	}
-	return sb.String()
-}
-
-func agentSummary(input string, activity []string, stats AgentStats) string {
-	parts := make([]string, 0, 4)
-	if model := agentModel(activity, stats.Model); model != "" {
-		parts = append(parts, "model: "+model)
-	}
-	if mode := agentMode(input, activity); mode != "" {
-		parts = append(parts, "mode: "+mode)
-	}
-	if n := len(agentToolLines(activity, 0)); n > 0 {
-		parts = append(parts, fmt.Sprintf("recent tools: %d", n))
-	}
-	if tokens := agentTokens(activity, stats); tokens != "" {
-		parts = append(parts, "tokens: "+tokens)
-	}
-	for _, line := range activity {
-		if omitted, ok := strings.CutPrefix(line, "Omitted: "); ok {
-			parts = append(parts, omitted+" updates omitted")
-		}
-	}
-	return strings.Join(parts, "   ")
+	return renderAgentLocalBody(compactFailureReason(agentStatus(activity), width), width)
 }
 
 // activityMetadataKey identifies replaceable status lines in the existing
@@ -147,101 +97,23 @@ func retainAgentActivityLimit(activity []string, message string, limit int) []st
 	return append(metadata, recent...)
 }
 
-func agentModel(activity []string, fallback string) string {
-	for _, a := range slices.Backward(activity) {
-		if model, ok := strings.CutPrefix(strings.TrimSpace(a), "Model: "); ok {
-			return strings.TrimSpace(model)
-		}
-	}
-	return fallback
-}
-
-func agentMode(input string, activity []string) string {
-	if mode := parseAgentInput(input).Mode; mode != "" {
-		return mode
-	}
-	for _, line := range activity {
-		if after, ok := strings.CutPrefix(line, "Mode: "); ok {
-			mode, _, _ := strings.Cut(after, " · ")
-			return strings.TrimSpace(mode)
-		}
-	}
-	return "default"
-}
-
-func tokenSummary(inputTokens, outputTokens int) string {
-	if inputTokens <= 0 && outputTokens <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("↑%s ↓%s", kit.FormatTokenCount(inputTokens), kit.FormatTokenCount(outputTokens))
-}
-
-func agentTokens(activity []string, stats AgentStats) string {
-	for _, a := range slices.Backward(activity) {
-		inputTokens, outputTokens, ok := parseUsageActivity(a)
-		if ok {
-			return tokenSummary(inputTokens, outputTokens)
-		}
-	}
-	return tokenSummary(stats.InputTokens, stats.OutputTokens)
-}
-
-func parseUsageActivity(line string) (int, int, bool) {
-	line = strings.TrimSpace(line)
-	rest, ok := strings.CutPrefix(line, "Usage: ")
-	if !ok {
-		return 0, 0, false
-	}
-	var inputTokens, outputTokens int
-	for field := range strings.FieldsSeq(rest) {
-		key, value, ok := strings.Cut(field, "=")
-		if !ok {
-			continue
-		}
-		n, err := strconv.Atoi(value)
-		if err != nil {
-			continue
-		}
-		switch key {
-		case "input":
-			inputTokens = n
-		case "output":
-			outputTokens = n
-		}
-	}
-	return inputTokens, outputTokens, inputTokens > 0 || outputTokens > 0
-}
-
 func agentStatus(activity []string) string {
 	for _, a := range slices.Backward(activity) {
 		line := strings.TrimSpace(a)
-		if line == "" || isAgentToolLine(line) || activityMetadataKey(line) != "" {
+		if line == "" || activityMetadataKey(line) != "" {
 			continue
+		}
+		// Shell progress can share the worker feed. A bare output count is
+		// bookkeeping, not a useful description of the Agent's current work.
+		head, _, _ := strings.Cut(line, "\n")
+		if fields := strings.Fields(head); len(fields) == 2 && (fields[1] == "line" || fields[1] == "lines") {
+			if _, err := strconv.ParseFloat(strings.TrimRight(fields[0], "kKmM"), 64); err == nil {
+				return "Working..."
+			}
 		}
 		return line
 	}
 	return "Starting..."
-}
-
-func agentToolLines(activity []string, limit int) []string {
-	lines := make([]string, 0, len(activity))
-	for _, line := range activity {
-		if isAgentToolLine(line) {
-			lines = append(lines, line)
-		}
-	}
-	if limit > 0 && len(lines) > limit {
-		lines = lines[len(lines)-limit:]
-	}
-	return lines
-}
-
-func isAgentToolLine(line string) bool {
-	line = strings.TrimSpace(line)
-	if line == "" || activityMetadataKey(line) != "" || line == "Thinking..." {
-		return false
-	}
-	return true
 }
 
 // PendingToolSpinnerParams holds the parameters for rendering a pending tool spinner.
@@ -255,6 +127,8 @@ type PendingToolSpinnerParams struct {
 	PendingCalls []core.ToolCall
 	// CurrentIdx is the index of the current sequential tool.
 	CurrentIdx int
+	// ToolStartedAt is execution evidence, not merely a streamed tool announcement.
+	ToolStartedAt map[string]time.Time
 	// TaskActivity tracks agent activity messages by index.
 	TaskActivity map[int][]string
 	// SpinnerView is the current spinner frame.
@@ -286,25 +160,26 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 		return ""
 	}
 
-	// Agent tool: render agent label + activity lines
+	// Use the same Agent row as the conversation. A separate fallback state
+	// machine can revive stale activity or call a started worker "Pending".
 	if tool.IsAgentToolName(toolName) {
 		if params.SuppressAgentLabel {
 			return ""
 		}
-		var sb strings.Builder
-		// Show Agent label so it remains visible after the assistant message scrolls off.
-		if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
+		if params.CurrentIdx >= 0 && params.CurrentIdx < len(params.PendingCalls) {
 			tc := params.PendingCalls[params.CurrentIdx]
-			agent := parseAgentInput(tc.Input)
-			label := formatAgentLabel(agent)
-			sb.WriteString(renderAgentToolLine(label, params.Width, kit.LiveDot(params.Frame), configuredAgentColor(agent, params.AgentColors)) + "\n")
+			if tool.IsAgentToolName(tc.Name) {
+				return RenderToolCalls(ToolCallsParams{
+					ToolCalls: []core.ToolCall{tc}, PendingCalls: params.PendingCalls,
+					CurrentIdx: params.CurrentIdx, ToolStartedAt: params.ToolStartedAt,
+					TaskActivity: params.TaskActivity, Frame: params.Frame,
+					AgentColors: params.AgentColors, Width: params.Width,
+				})
+			}
 		}
-		input := ""
-		if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
-			input = params.PendingCalls[params.CurrentIdx].Input
-		}
-		sb.WriteString(renderAgentActivityCompact(input, params.TaskActivity[params.CurrentIdx], maxCompactAgentToolLines, AgentStats{}, params.Width))
-		return sb.String()
+		// The tool name may arrive before its arguments finish streaming.
+		return renderAgentToolLine(toolName, params.Width, "●", "") + "\n" +
+			renderAgentLocalBody("Pending", params.Width)
 	}
 
 	// Standard tools: spinner is shown inline in the assistant message row,

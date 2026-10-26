@@ -62,35 +62,38 @@ type Theme struct {
 
 	Border     AdaptiveColor
 	Background AdaptiveColor
+	// CommandBg separates shell input from output without painting the terminal.
+	CommandBg AdaptiveColor
 }
 
 var CurrentTheme = Theme{
-	Muted:     AdaptiveColor{Dark: "#7B8696", Light: "#6B7280"},
-	Accent:    AdaptiveColor{Dark: "#9DB5D4", Light: "#64748B"},
-	Primary:   AdaptiveColor{Dark: "#D0DFEF", Light: "#475569"},
-	AI:        AdaptiveColor{Dark: "#B0C4E0", Light: "#64748B"},
-	Separator: AdaptiveColor{Dark: "#4E6580", Light: "#CBD5E1"},
+	Muted:     AdaptiveColor{Dark: "#9AAEC4", Light: "#64748B"},
+	Accent:    AdaptiveColor{Dark: "#8BB8FF", Light: "#475569"},
+	Primary:   AdaptiveColor{Dark: "#D8E2F0", Light: "#334155"},
+	AI:        AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},
+	Separator: AdaptiveColor{Dark: "#30445E", Light: "#CFD8E3"},
 
-	Focus: AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"},
+	Focus: AdaptiveColor{Dark: "#5EEAD4", Light: "#0F766E"},
 
-	Text:         AdaptiveColor{Dark: "#DDDEE2", Light: "#18181B"},
-	TextDim:      AdaptiveColor{Dark: "#A8AEBB", Light: "#71717A"},
-	TextBright:   AdaptiveColor{Dark: "#FAFAFA", Light: "#09090B"},
-	TextDisabled: AdaptiveColor{Dark: "#52525B", Light: "#A1A1AA"},
+	Text:         AdaptiveColor{Dark: "#D8E2F0", Light: "#1F2937"},
+	TextDim:      AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},
+	TextBright:   AdaptiveColor{Dark: "#EDF3FA", Light: "#111827"},
+	TextDisabled: AdaptiveColor{Dark: "#64748B", Light: "#8A96A5"},
 
-	Success:   AdaptiveColor{Dark: "#86EFAC", Light: "#15803D"},
-	Error:     AdaptiveColor{Dark: "#FCA5A5", Light: "#B91C1C"},
-	Warning:   AdaptiveColor{Dark: "#FCD34D", Light: "#B45309"},
-	SuccessBg: AdaptiveColor{Dark: "#16281d", Light: "#DCFCE7"},
-	ErrorBg:   AdaptiveColor{Dark: "#2b1818", Light: "#FEE2E2"},
+	Success:   AdaptiveColor{Dark: "#86D9A3", Light: "#15803D"},
+	Error:     AdaptiveColor{Dark: "#F59B9B", Light: "#B91C1C"},
+	Warning:   AdaptiveColor{Dark: "#E8BD70", Light: "#9A6700"},
+	SuccessBg: AdaptiveColor{Dark: "#14291F", Light: "#EEF9F0"},
+	ErrorBg:   AdaptiveColor{Dark: "#2E1D26", Light: "#FFF0F0"},
 
 	SuccessBgStrong: AdaptiveColor{Dark: "#2F5D3E", Light: "#A7F3D0"},
 	ErrorBgStrong:   AdaptiveColor{Dark: "#5E2A2A", Light: "#FCB5B5"},
 
 	Yolo: AdaptiveColor{Dark: "#C4B5FD", Light: "#6D28D9"},
 
-	Border:     AdaptiveColor{Dark: "#52525B", Light: "#D4D4D8"},
-	Background: AdaptiveColor{Dark: "#18181B", Light: "#FAFAFA"},
+	Border:     AdaptiveColor{Dark: "#30445E", Light: "#CFD8E3"},
+	Background: AdaptiveColor{Dark: "#0D1526", Light: "#FAFBFC"},
+	CommandBg:  AdaptiveColor{Dark: "#142035", Light: "#F1F5F9"},
 }
 
 // darkModeVal caches the resolved background mode. It defaults to dark and is

@@ -58,6 +58,71 @@ func TestTaskCompletionVisibilityIsPerAttempt(t *testing.T) {
 	}
 }
 
+func TestObsoleteTaskCompletionDoesNotWakeMain(t *testing.T) {
+	for _, state := range []struct {
+		name         string
+		active, held bool
+	}{
+		{"idle", false, false}, {"streaming", true, false},
+		{"held idle", false, true}, {"held streaming", true, true},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			m, provider := noticeDeliveryModel(t)
+			m.services.Task = task.NewManager()
+			worker := viewerWorker(m, "continued", "", time.Now())
+			worker.info.Status, worker.info.Attempt = task.StatusFailed, 1
+			worker.info.Error, worker.info.AgentSessionID = "obsolete attempt failed", "child"
+			message, _ := taskCompletionMessage(worker.info)
+			worker.info.Status, worker.info.Attempt = task.StatusRunning, 2
+			m.conv.Stream.Active, m.backgroundNoticesHeld = state.active, state.held
+
+			if cmd := m.deliverNotice(fromBrokerMessage(message)); cmd != nil {
+				t.Fatal("obsolete completion scheduled work")
+			}
+			if len(m.conv.Messages) != 0 || len(m.pendingMessages) != 0 || m.conv.Stream.Active != state.active || m.taskCompletionShown(worker.GetID()) {
+				t.Fatal("obsolete completion changed conversation, pending input, or current-attempt visibility")
+			}
+			select {
+			case chain := <-provider.requests:
+				t.Fatalf("obsolete failure woke the model: %+v", chain)
+			default:
+			}
+		})
+	}
+}
+
+func TestTaskCompletionFenceKeepsGenuineNotices(t *testing.T) {
+	for _, kind := range []string{"current attempt", "unscoped Bash", "unknown task", "ordinary message"} {
+		t.Run(kind, func(t *testing.T) {
+			m, provider := noticeDeliveryModel(t)
+			m.conv.Stream.Active = true // This fixture already has a live agent session.
+			m.services.Task = task.NewManager()
+			worker := viewerWorker(m, "continued", "", time.Now())
+			worker.info.Status, worker.info.Attempt = task.StatusFailed, 2
+			worker.info.Error, worker.info.AgentSessionID = "current failure", "child"
+			info := worker.info
+			switch kind {
+			case "unscoped Bash":
+				info.ID, info.Type, info.Attempt = "bash", task.TaskTypeBash, 0
+			case "unknown task":
+				info.ID = "missing"
+			case "ordinary message":
+				info.Attempt = 1 // Quoted old completion text is not routing metadata.
+			}
+			message, _ := taskCompletionMessage(info)
+			notice := fromBrokerMessage(message)
+			if kind == "ordinary message" {
+				notice.FinishedTaskID, notice.FinishedAttempt = "", 0
+			}
+			runCmd(m.deliverNotice(notice))
+			if len(m.conv.Messages) != 1 || m.conv.Messages[0].Content != notice.Content {
+				t.Fatalf("genuine notice was hidden: %+v", m.conv.Messages)
+			}
+			assertAgentRead(t, provider)
+		})
+	}
+}
+
 func TestBackgroundNoticeAfterManualStopWaitsForUser(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.backgroundNoticesHeld = true

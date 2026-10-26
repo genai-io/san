@@ -60,7 +60,8 @@ func (t *ShellTool) RequiresPermission() bool {
 
 // PreparePermission prepares a permission request with command preview
 func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
-	if _, err := shellLifetime(params); err != nil {
+	options, err := parseShellExecutionOptions(params)
+	if err != nil {
 		return nil, err
 	}
 	command, err := tool.RequireString(params, "command")
@@ -69,7 +70,6 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 	}
 
 	description := tool.GetString(params, "description")
-	runBackground := tool.GetBool(params, "run_in_background")
 
 	// Count lines in command
 	lineCount := strings.Count(command, "\n") + 1
@@ -81,7 +81,7 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 		BashMeta: &perm.BashMetadata{
 			Command:       command,
 			Description:   description,
-			RunBackground: runBackground,
+			RunBackground: options.background,
 			LineCount:     lineCount,
 		},
 	}, nil
@@ -90,21 +90,19 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 // ExecuteApproved executes the command after user approval
 func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
-	lifetime, optionErr := shellLifetime(params)
-	if optionErr != nil {
-		return toolresult.NewErrorResult(t.Name(), optionErr.Error())
+	options, err := parseShellExecutionOptions(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
-
-	command := tool.GetString(params, "command")
+	command, err := tool.RequireString(params, "command")
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 	description := tool.GetString(params, "description")
-	runBackground := tool.GetBool(params, "run_in_background")
+	timeout := options.timeout
 
-	// Get timeout (default 120 seconds, max 600 seconds)
-	timeout := min(time.Duration(tool.GetFloat64(params, "timeout", 120000))*time.Millisecond, 600*time.Second)
-
-	// Handle background execution
-	if runBackground {
-		return t.executeBackground(ctx, command, description, cwd, timeout, lifetime)
+	if options.background {
+		return t.executeBackground(ctx, command, description, cwd, timeout, options.lifetime)
 	}
 
 	// Create context with timeout
@@ -113,7 +111,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	shell, err := t.resolve()
 	if err != nil {
-		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "")
+		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "", false)
 	}
 
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
@@ -132,7 +130,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out)
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out, false)
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -150,8 +148,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr outputCapture
-	// Count output as it streams so the UI can show a live line counter; when
-	// nothing is listening, tee returns the bare buffer and this costs nothing.
+	// Count the full interleaved stream independently of bounded model capture;
+	// the same totals drive both live progress and finished display metadata.
 	progress := &outputProgress{report: tool.BashProgressFromContext(ctx)}
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
@@ -174,11 +172,13 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount(), progress.lastTail())
+	lines, byteCount := progress.totals()
+	tail := progress.lastTail()
+	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, lines, tail, byteCount > int64(len(tail)))
 }
 
-// tail is the output's real end as it interleaved, which a failed row keeps.
-func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string) toolresult.ToolResult {
+// tail is the output's real end as it interleaved, retained for the finished row.
+func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int, tail string, tailTruncated bool) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
@@ -189,11 +189,12 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 
 	truncated := len(fullOutput) > maxShellOutputBytes
 	fullOutput = truncateShellOutput(fullOutput)
-	details := toolresult.BashDetails{LineCount: lineCount}
-	// A failed row keeps its last lines; a short output is kept whole, which a
-	// successful row shows when it fits the preview.
-	if err != nil || lineCount <= previewTailLines {
-		details.Tail = toolresult.LastLines(tail, previewTailLines)
+	// Retain the real interleaved end even when model-facing output is cut.
+	retainedTail := toolresult.LastLines(tail, previewTailLines)
+	details := toolresult.BashDetails{
+		LineCount:     lineCount,
+		Tail:          retainedTail,
+		TailTruncated: len(retainedTail) < len(tail) || tailTruncated,
 	}
 
 	// Build CC-compatible structured response for hooks
@@ -293,28 +294,6 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]any, cwd stri
 	return t.ExecuteApproved(ctx, params, cwd)
 }
 
-// shellLifetime validates options both before permission and before execution.
-func shellLifetime(params map[string]any) (task.Lifetime, error) {
-	raw, specified := params["lifetime"]
-	lifetime := task.LifetimeJob
-	if specified {
-		value, ok := raw.(string)
-		if !ok || (value != string(task.LifetimeJob) && value != string(task.LifetimeService)) {
-			return "", fmt.Errorf("lifetime must be 'job' or 'service'")
-		}
-		if !tool.GetBool(params, "run_in_background") {
-			return "", fmt.Errorf("lifetime requires run_in_background=true")
-		}
-		lifetime = task.Lifetime(value)
-	}
-	if lifetime == task.LifetimeService {
-		if _, exists := params["timeout"]; exists {
-			return "", fmt.Errorf("service lifetime cannot specify an execution timeout")
-		}
-	}
-	return lifetime, nil
-}
-
 // executeBackground runs the command in the background and returns immediately
 func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration, lifetimes ...task.Lifetime) toolresult.ToolResult {
 	lifetime := task.LifetimeJob
@@ -330,7 +309,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		}
 	}
 
-	// Services are session-owned, not tied to a foreground turn or job deadline.
+	// Services are application-managed, not tied to a foreground turn or job deadline.
 	var taskCtx context.Context
 	var cancel context.CancelFunc
 	if lifetime == task.LifetimeService {
@@ -426,7 +405,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	output := fmt.Sprintf("Task started in background.\nTask ID: %s\nPID: %d\nCommand: %s\nOutputFile: %s",
 		bgTask.ID, bgTask.PID, command, bgTask.OutputFile)
 	if lifetime == task.LifetimeService {
-		output += "\nLifetime: service (session-owned; no execution deadline). Startup is not health confirmation: explicitly run an appropriate startup health check before relying on this service. No health probe was executed automatically."
+		output += "\nExecution mode: background_service (managed by this San process; no execution deadline). Startup is not health confirmation: explicitly run an appropriate startup health check before relying on this service. No health probe was executed automatically."
 	}
 	backgroundMeta := map[string]any{
 		"lifetime":    lifetime,

@@ -452,7 +452,7 @@ func TestActivityReservesComposerAndModalSpace(t *testing.T) {
 	modal := dockedModalModel(t, "why this command is needed")
 	addTallWorkflowActivity(t, modal)
 	frame, _ = modal.viewString()
-	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "1. Allow once") || !strings.Contains(ansi.Strip(frame), "2. Deny") {
 		t.Fatalf("workflow displaced approval options:\n%s", ansi.Strip(frame))
 	}
 }
@@ -485,10 +485,10 @@ const (
 // explanation still live (not yet committed to scrollback). The batch is what
 // makes the fixture realistic: both calls get a PreTool event, so the "current"
 // call is the *last* one tracked, not the one the modal is asking about.
-// hasWaitingRow reports whether view shows the bare-star waiting row.
+// hasWaitingRow reports the fixed normal waiting copy, with or without elapsed time.
 func hasWaitingRow(view string) bool {
 	return slices.ContainsFunc(strings.Split(ansi.Strip(view), "\n"), func(line string) bool {
-		return strings.TrimSpace(line) == "✦"
+		return strings.HasPrefix(strings.TrimSpace(line), "✦ On it")
 	})
 }
 
@@ -593,7 +593,7 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 	}
 	// The options are the last thing in the modal: if they survived the cap,
 	// nothing below the chat tail was pushed off screen.
-	if !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+	if !strings.Contains(ansi.Strip(frame), "1. Allow once") || !strings.Contains(ansi.Strip(frame), "2. Deny") {
 		t.Fatalf("modal frame lost its question to the chat tail:\n%s", frame)
 	}
 }

@@ -2,6 +2,7 @@
 package app
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -91,6 +92,7 @@ func (m *model) viewString() (string, *tea.Cursor) {
 // the tail unbounded would push the modal's answer options off the bottom of the
 // screen, which is worse than showing no text at all.
 func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView string) string {
+	m.resizeApprovalPanel()
 	modal := "\n" + separator + "\n"
 	if context := m.interactionQueueContext(); context != "" {
 		modal += context + "\n"
@@ -130,6 +132,11 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 	footer, inputRow := m.renderFooter(separator)
 	indicators := m.renderChatIndicators(trackerView, footer)
 	chatSection := m.chatTailAbove(indicators+footer, m.messageRenderParams())
+	if chatSection == "" && indicators == "" && strings.HasPrefix(footer, "\n") {
+		// With no chat row left, the footer starts the frame itself.
+		footer = strings.TrimPrefix(footer, "\n")
+		inputRow--
+	}
 
 	// The footer's row offsets are relative to its own first line; the chat
 	// section above it shifts them all down.
@@ -149,15 +156,6 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	if available <= 0 {
 		return ""
 	}
-	status := conv.RenderInferenceStatus(params)
-	if status != "" {
-		// Generation is not an ordinary body line: it must remain visible when
-		// a short terminal or a history handoff clips the chat above it.
-		available--
-		if available == 0 {
-			return status
-		}
-	}
 	section := m.renderChatSection(conv.RenderActiveBody(params))
 	var content string
 	if m.handingOff() {
@@ -173,9 +171,6 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	}
 	// Empty rows go below, so the live content stays put under the conversation.
 	content += strings.Repeat("\n", available-1-strings.Count(content, "\n"))
-	if status != "" {
-		content += "\n" + status
-	}
 	return content
 }
 
@@ -237,12 +232,29 @@ func (m *model) renderFooter(separator string) (string, int) {
 	// being typed now.
 	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
 		b.WriteString("\n")
+		if m.footerHasBreathingRoom() {
+			// A quiet caption and whitespace distinguish submitted prompts from
+			// active Tasks, without another card or separator.
+			b.WriteString("\n")
+			b.WriteString(ghostTextStyle.Render(fmt.Sprintf("Pending · %d", m.userInput.Queue.Len())))
+			b.WriteString("\n")
+		}
 		b.WriteString(queuePreview)
 	}
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		// Candidates grow upward so opening them does not move the composer.
 		b.WriteString("\n")
 		b.WriteString(suggestions)
+	}
+	// Keep the single inference row below every pending/background block and
+	// directly against the input rule. Including it in the footer reserves its
+	// row before activity and the live conversation compete for space.
+	if status := conv.RenderInferenceStatus(m.messageRenderParams()); status != "" {
+		if m.footerHasBreathingRoom() {
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+		b.WriteString(status)
 	}
 	b.WriteString("\n")
 	b.WriteString(separator)
@@ -569,6 +581,12 @@ func (m model) renderModeStatus() string {
 	})
 }
 
+// Decorative grouping yields first as the composer or active workers grow.
+func (m model) footerHasBreathingRoom() bool {
+	reserved := strings.Count(m.renderInputView(), "\n") + conv.ActiveWorkerRows(m.messageRenderParams())
+	return m.env.Height-reserved >= 18 && !m.userInput.Suggestions.IsVisible()
+}
+
 func (m model) renderQueuePreview() string {
 	rawItems := m.userInput.Queue.Items()
 	if len(rawItems) == 0 {
@@ -582,7 +600,16 @@ func (m model) renderQueuePreview() string {
 		}
 	}
 
-	return strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
+	if m.footerHasBreathingRoom() {
+		return strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
+	}
+	// Tight frames keep the edited prompt (or next queued prompt) actionable.
+	// Inline the group label rather than spending a row on it or overflow.
+	label := "Pending "
+	if len(previews) > 1 {
+		label = fmt.Sprintf("Pending · %d ", len(previews))
+	}
+	return ghostTextStyle.Render(label) + strings.TrimSuffix(conv.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(label), 1, false), "\n")
 }
 
 func (m model) messageRenderParams() conv.RenderContext {
@@ -593,20 +620,21 @@ func (m model) messageRenderParams() conv.RenderContext {
 		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount),
 
 		// Streaming + tool execution
-		StreamActive:       m.conv.Stream.Active,
-		StreamWaiting:      m.conv.Stream.Waiting,
-		StreamStartedAt:    m.conv.Stream.StartedAt,
-		StreamMessageID:    m.conv.Stream.MessageID,
-		BuildingTool:       m.conv.Stream.BuildingTool,
-		Inferring:          m.conv.Stream.Inferring,
-		InferenceAttempt:   m.conv.Stream.Attempt,
-		GeneratingTool:     m.conv.Stream.GeneratingTool,
-		GeneratedBytes:     m.conv.Stream.GeneratedBytes,
-		PendingCalls:       m.conv.Tool.PendingCalls,
-		CurrentIdx:         m.conv.Tool.CurrentIdx,
-		ToolStartedAt:      m.conv.Tool.StartedAt,
-		ToolProgress:       m.conv.Tool.Progress,
-		AwaitingApprovalID: m.conv.Tool.AwaitingApprovalID,
+		StreamActive:    m.conv.Stream.Active,
+		StreamWaiting:   m.conv.Stream.Waiting,
+		StreamStartedAt: m.conv.Stream.StartedAt,
+		StreamMessageID: m.conv.Stream.MessageID,
+		BuildingTool:    m.conv.Stream.BuildingTool,
+		// Submission waiting owns the same docked row before the SDK creates
+		// an inference message; this projection does not mutate stream state.
+		Inferring:           m.conv.Stream.Inferring || m.conv.Stream.Waiting,
+		InferenceAttempt:    m.conv.Stream.Attempt,
+		InferenceLastDataAt: m.conv.Stream.LastDataAt,
+		PendingCalls:        m.conv.Tool.PendingCalls,
+		CurrentIdx:          m.conv.Tool.CurrentIdx,
+		ToolStartedAt:       m.conv.Tool.StartedAt,
+		ToolProgress:        m.conv.Tool.Progress,
+		AwaitingApprovalID:  m.conv.Tool.AwaitingApprovalID,
 
 		// Renderer env
 		Width:            m.env.Width,

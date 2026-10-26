@@ -46,7 +46,7 @@ func TestAgentRunningShellErrorsStayWithWorker(t *testing.T) {
 					once.Do(func() { close(started) })
 				}
 			})
-			input := `{"command":"tail -f example.go","timeout":1000}`
+			input := `{"command":"tail -f example.go","timeout_ms":1000}`
 			if cancelRun {
 				input = `{"command":"tail -f example.go"}`
 			}

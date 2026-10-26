@@ -8,13 +8,25 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func TestShellLifetimeValidation(t *testing.T) {
+func TestShellExecutionValidation(t *testing.T) {
 	shell := &ShellTool{}
 	for _, params := range []map[string]any{
+		{"execution_mode": "invalid"},
+		{"execution_mode": true},
+		{"execution_mode": shellBackgroundService, "timeout_ms": 1},
+		{"execution_mode": shellBackgroundJob, "run_in_background": false},
+		{"execution_mode": shellForeground, "lifetime": "service"},
+		{"timeout_ms": 1, "timeout": 2},
+		{"timeout_ms": 0},
+		{"timeout_ms": -1},
+		{"timeout_ms": 1.5},
+		{"timeout_ms": maxShellTimeoutMS + 1},
+		{"timeout_ms": "1000"},
 		{"lifetime": "invalid", "run_in_background": true},
-		{"lifetime": "job"},
+		{"lifetime": "service"},
 		{"lifetime": "service", "run_in_background": true, "timeout": 1},
 		{"lifetime": 42, "run_in_background": true},
+		{"run_in_background": "false"},
 	} {
 		params["command"] = "exit 0"
 		if _, err := shell.PreparePermission(context.Background(), params, t.TempDir()); err == nil {
@@ -24,8 +36,9 @@ func TestShellLifetimeValidation(t *testing.T) {
 			t.Fatalf("execution accepted %v", params)
 		}
 	}
-	if lifetime, err := shellLifetime(map[string]any{}); err != nil || lifetime != task.LifetimeJob {
-		t.Fatalf("default: %s %v", lifetime, err)
+	options, err := parseShellExecutionOptions(map[string]any{})
+	if err != nil || options.background || options.lifetime != task.LifetimeJob || options.timeout != 120*time.Second {
+		t.Fatalf("default: %+v %v", options, err)
 	}
 }
 

@@ -3,6 +3,7 @@ package conv
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -27,7 +28,8 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 		}
 		rendered := stripANSI(RenderToolCalls(ToolCallsParams{
 			ToolCalls: calls, ResultMap: map[string]ToolResultData{calls[first].ID: {ToolName: "Agent"}}, PendingCalls: m.Tool.PendingCalls,
-			TaskActivity: m.TaskActivity, CurrentIdx: m.Tool.CurrentIdx, Width: 100,
+			TaskActivity: m.TaskActivity, CurrentIdx: m.Tool.CurrentIdx, Width: 100, ParallelMode: true,
+			ToolStartedAt: map[string]time.Time{calls[sibling].ID: time.Now()},
 		}))
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("finishing agent %d hid sibling activity %q: %s", first, want, rendered)

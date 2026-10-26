@@ -205,8 +205,8 @@ func TestBashExecuteApproved_usesBashPromptResponderFromContext(t *testing.T) {
 		return r
 	})
 	result := (&ShellTool{}).ExecuteApproved(ctx, map[string]any{
-		"command": `read -p "Continue? [y/N] " a; echo "answer=$a"`,
-		"timeout": 2000,
+		"command":    `read -p "Continue? [y/N] " a; echo "answer=$a"`,
+		"timeout_ms": 2000,
 	}, t.TempDir())
 
 	if !result.Success {

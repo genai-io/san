@@ -226,9 +226,9 @@ func TestHistoryToolOutputRewrapsWithoutLosingContent(t *testing.T) {
 	entries := m.historyEntries(messages)
 	for _, width := range []int{80, 30, 120} {
 		text := ansi.Strip(entries[len(entries)-1].Render(width, true))
-		body := strings.NewReplacer("  ┊ ", "", "  │ ", "", "\n", "").Replace(text)
-		if !strings.Contains(body, "TAIL_SENTINEL") {
-			t.Fatalf("width %d lost the end of the result", width)
+		body := strings.NewReplacer("    │ ", "", "    └ ", "", "  ┊ ", "", "  │ ", "", "\n", "").Replace(text)
+		if !strings.Contains(body, messages[2].ToolResult.Content.Text()) {
+			t.Fatalf("width %d lost expanded result content", width)
 		}
 		for _, line := range strings.Split(text, "\n") {
 			if ansi.StringWidth(line) > width {

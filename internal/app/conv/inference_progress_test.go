@@ -17,8 +17,7 @@ func inferenceView(m *Model, width int) string {
 		Messages: m.Messages, CommittedCount: m.CommittedCount,
 		StreamActive: m.Stream.Active, StreamMessageID: m.Stream.MessageID,
 		StreamStartedAt: m.Stream.StartedAt, Inferring: m.Stream.Inferring,
-		InferenceAttempt: m.Stream.Attempt, GeneratingTool: m.Stream.GeneratingTool,
-		GeneratedBytes: m.Stream.GeneratedBytes, Width: width,
+		InferenceAttempt: m.Stream.Attempt, InferenceLastDataAt: m.Stream.LastDataAt, Width: width,
 	}))
 }
 
@@ -26,8 +25,9 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 	m, rt := NewModel(80), &streamRuntime{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
 	m.Stream.StartedAt = time.Now().Add(-112 * time.Second)
-	if view := inferenceView(&m, 80); strings.Count(view, "✦") != 1 || !strings.Contains(view, "Generating response") {
-		t.Fatalf("the first wait needs one generation indicator: %q", view)
+	m.Stream.LastDataAt = m.Stream.StartedAt
+	if view := inferenceView(&m, 80); strings.Count(view, "✦") != 1 || !strings.Contains(view, "Waiting for model") {
+		t.Fatalf("a prolonged quiet connection needs one truthful wait indicator: %q", view)
 	}
 	m.AppendStream("I will write the HTML now.", "")
 	m.AddNotice("a background task completed")
@@ -35,10 +35,16 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 		ToolCallID: "write-1", ToolName: "Write", InputBytes: 33051,
 	}})
 	view := inferenceView(&m, 80)
-	for _, want := range []string{"I will write the HTML now.", "a background task completed", "Generating Write arguments", "33051 bytes", "1m 52s"} {
+	for _, want := range []string{"I will write the HTML now.", "a background task completed", "On it · 1m 52s"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q in %q", want, view)
 		}
+	}
+	if strings.Count(view, "✦") != 1 || strings.Contains(view, "Generating") || strings.Contains(view, "bytes") || strings.Contains(view, "Waiting for model") {
+		t.Fatalf("incoming model data did not restore the quiet, single indicator: %q", view)
+	}
+	if m.Stream.GeneratingTool != "Write" || m.Stream.GeneratedBytes != 33051 {
+		t.Fatal("quieter rendering discarded actual progress evidence")
 	}
 	if len(m.Tool.PendingCalls) != 0 || len(m.Messages[0].ToolCalls) != 0 || m.Stream.BuildingTool != "" {
 		t.Fatal("generation progress installed or started an unfinished tool")
@@ -50,7 +56,7 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 	// of its immutable scrollback or the last notice's identity.
 	m.Messages[0].ContentCommittedLen = len(m.Messages[0].Content)
 	m.Messages[0].BulletEmitted = true
-	if view := inferenceView(&m, 80); !strings.Contains(view, "Generating Write arguments") {
+	if view := inferenceView(&m, 80); strings.Count(view, "✦") != 1 || !strings.Contains(view, "1m 52s") {
 		t.Fatalf("committing commentary hid the live generation: %q", view)
 	}
 }
@@ -62,7 +68,7 @@ func TestInferenceProgressClearsAtFailureRetryAndCancellation(t *testing.T) {
 	applyChunk(rt, &m, progress)
 	owner := m.Stream.MessageID
 	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("stream stalled")})
-	if m.Stream.Inferring || m.Stream.GeneratingTool != "" || m.Stream.GeneratedBytes != 0 || m.Stream.MessageID != owner {
+	if m.Stream.Inferring || !m.Stream.LastDataAt.IsZero() || m.Stream.GeneratingTool != "" || m.Stream.GeneratedBytes != 0 || m.Stream.MessageID != owner {
 		t.Fatalf("failure did not clear generation while preserving the retry owner: %+v", m.Stream)
 	}
 	applyChunk(rt, &m, progress)
@@ -75,7 +81,7 @@ func TestInferenceProgressClearsAtFailureRetryAndCancellation(t *testing.T) {
 	}
 	m.Stream.Stop()
 	applyChunk(rt, &m, progress)
-	if m.Stream.Inferring || m.Stream.GeneratedBytes != 0 || strings.Contains(inferenceView(&m, 100), "Generating response") {
+	if m.Stream.Inferring || m.Stream.GeneratedBytes != 0 || !m.Stream.LastDataAt.IsZero() || strings.Contains(inferenceView(&m, 100), "✦") {
 		t.Fatal("late progress revived a cancelled inference")
 	}
 }
@@ -96,19 +102,18 @@ func TestInferenceProgressStopsBeforeToolExecution(t *testing.T) {
 	}
 }
 
-func TestInferenceStatusIsBoundedAndFreezesUnderModal(t *testing.T) {
+func TestInferenceStatusIsBoundedAndDefersToModal(t *testing.T) {
 	p := RenderContext{StreamActive: true, Inferring: true, InferenceAttempt: 2,
-		GeneratingTool: strings.Repeat("Write", 20), GeneratedBytes: 33051,
 		StreamStartedAt: time.Now().Add(-112 * time.Second)}
-	for _, width := range []int{1, 20, 40, 80} {
+	for _, width := range []int{1, 20, 32, 40, 80, 100} {
 		p.Width = width
 		if row := RenderInferenceStatus(p); ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
 			t.Fatalf("generation row exceeds width %d: %q", width, row)
 		}
 	}
 	p.Width, p.DockedModalActive = 80, true
-	if row := stripANSI(RenderInferenceStatus(p)); !strings.Contains(row, "Waiting for your response") || strings.Contains(row, "1m") {
-		t.Fatalf("a modal must not time the user's answer as generation: %q", row)
+	if row := RenderInferenceStatus(p); row != "" {
+		t.Fatalf("a modal must own the user-facing wait without duplicate status: %q", row)
 	}
 }
 

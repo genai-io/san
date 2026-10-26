@@ -26,17 +26,16 @@ type RenderContext struct {
 	InlinedResults inlinedToolResults
 
 	// ── Streaming + in-flight tool execution ────────────────────
-	StreamActive     bool
-	StreamWaiting    bool
-	StreamStartedAt  time.Time
-	StreamMessageID  string
-	BuildingTool     string
-	Inferring        bool
-	InferenceAttempt int
-	GeneratingTool   string
-	GeneratedBytes   int
-	PendingCalls     []core.ToolCall
-	CurrentIdx       int
+	StreamActive        bool
+	StreamWaiting       bool
+	StreamStartedAt     time.Time
+	StreamMessageID     string
+	BuildingTool        string
+	Inferring           bool
+	InferenceAttempt    int
+	InferenceLastDataAt time.Time
+	PendingCalls        []core.ToolCall
+	CurrentIdx          int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
@@ -83,6 +82,10 @@ type RenderContext struct {
 	// show only here — once a message is frozen into native scrollback the
 	// key no longer reaches it.
 	Interactive bool
+
+	// waitingAtTail keeps transient waiting chrome after settled notices without
+	// moving the owning assistant's reasoning or response text.
+	waitingAtTail bool
 }
 
 // inlinedToolResults precomputes which ToolResult messages should be
@@ -265,7 +268,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 }
 
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
-	base := RenderAssistantMessage(AssistantParams{
+	params := AssistantParams{
 		Content:              msg.Content,
 		Thinking:             msg.Thinking,
 		ToolCalls:            msg.ToolCalls,
@@ -283,7 +286,15 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingDuration:     msg.ThinkingDuration,
 		WaitStartedAt:        p.StreamStartedAt,
 		SuppressWaitingRow:   p.Inferring,
-	})
+	}
+	waiting := params
+	waiting.Content = sliceFrom(waiting.Content, waiting.ContentCommittedLen)
+	if p.waitingAtTail && waiting.waitingRow() != "" {
+		// Only suppress the empty response's waiting row. Reasoning remains at
+		// its transcript position, with its original streaming ownership.
+		params.BulletEmitted = true
+	}
+	base := RenderAssistantMessage(params)
 
 	if len(msg.ToolCalls) == 0 {
 		return base
@@ -433,8 +444,9 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 		rendered := RenderToolCalls(ToolCallsParams{
 			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
-			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width,
-			Frame: p.Frame, AgentColors: p.AgentColors,
+			CurrentIdx: p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,
+			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width, SpinnerView: p.SpinnerView,
+			Frame: p.Frame, AgentColors: p.AgentColors, CompactAgentLabel: true,
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
 		})
 		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
@@ -542,13 +554,29 @@ func RenderActiveContent(p RenderContext) string {
 // the composer, even on a short terminal or during a scrollback handoff.
 func RenderActiveBody(p RenderContext) string {
 	p.Interactive = true
+	waiting := p.StreamWaiting
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		msg := p.Messages[i]
+		if msg.Role != core.ChatAssistant || !p.StreamActive || msg.ID == "" || msg.ID != p.StreamMessageID {
+			continue
+		}
+		params := AssistantParams{
+			StreamActive: true, IsLast: true,
+			Content:       sliceFrom(msg.Content, msg.ContentCommittedLen),
+			BulletEmitted: msg.BulletEmitted, ToolCalls: msg.ToolCalls,
+		}
+		if params.waitingRow() != "" {
+			waiting = true
+			p.waitingAtTail = true
+		}
+	}
 	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
 	if p.StreamActive && p.Inferring {
 		return strings.TrimRight(content, "\n")
 	}
 	// A turn between steps (one committed, the next not yet streaming) keeps
 	// its spinner, or the row would vanish and come back.
-	if p.StreamWaiting || p.StreamActive && strings.TrimSpace(content) == "" {
+	if waiting || p.StreamActive && strings.TrimSpace(content) == "" {
 		content += "\n" + RenderAssistantMessage(AssistantParams{
 			StreamActive: true, IsLast: true, Frame: p.Frame,
 			DockedModalActive: p.DockedModalActive, Width: p.Width,
@@ -561,30 +589,14 @@ func RenderActiveBody(p RenderContext) string {
 // RenderInferenceStatus is one live-only row. It is separate from assistant
 // content so the application can reserve it even when the body is clipped.
 func RenderInferenceStatus(p RenderContext) string {
-	if !p.StreamActive || !p.Inferring {
+	if !p.StreamActive || !p.Inferring || p.DockedModalActive {
 		return ""
 	}
-	mark := kit.LiveStar(p.Frame)
-	label := "Generating response"
-	if p.GeneratingTool != "" || p.GeneratedBytes > 0 {
-		label = "Generating tool arguments"
-		if p.GeneratingTool != "" {
-			label = "Generating " + p.GeneratingTool + " arguments"
-		}
-		if p.GeneratedBytes > 0 {
-			label += fmt.Sprintf(" · %d bytes", p.GeneratedBytes)
-		}
-	}
+	label := ""
 	if p.InferenceAttempt > 1 {
-		label = fmt.Sprintf("Retrying · attempt %d · %s", p.InferenceAttempt, label)
+		label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
 	}
-	if p.DockedModalActive {
-		mark = ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
-		label = "Waiting for your response"
-	} else if elapsed := formatElapsedTime(p.StreamStartedAt); elapsed != "" {
-		label += " · " + elapsed
-	}
-	return kit.TruncateText(mark+ThinkingStyle.Render(" "+label), max(1, p.Width))
+	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label)
 }
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {
@@ -593,6 +605,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		BuildingTool:       p.BuildingTool,
 		PendingCalls:       p.PendingCalls,
 		CurrentIdx:         p.CurrentIdx,
+		ToolStartedAt:      p.ToolStartedAt,
 		TaskActivity:       p.TaskActivity,
 		SpinnerView:        p.SpinnerView,
 		Frame:              p.Frame,

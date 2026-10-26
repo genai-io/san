@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -180,6 +181,18 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		}
 		return applyPostInfer(rt, m, e.Response)
 	case sdkagent.ToolUpdate:
+		if details, ok := e.Partial.Details.(toolresult.BashDetails); ok {
+			// Partial results are display-only. In particular, a delayed report
+			// must not start a completed call or move the current batch forward.
+			i := m.Tool.IndexOf(e.ID)
+			if tool.IsShellTool(e.Name) && i >= 0 && m.Tool.PendingCalls[i].Name == e.Name && !m.Tool.completed[e.ID] && !m.Tool.StartedAt[e.ID].IsZero() {
+				if m.Tool.Progress == nil {
+					m.Tool.Progress = make(map[string]ToolProgress)
+				}
+				m.Tool.Progress[e.ID] = ToolProgress{Counter: e.Partial.Content.Text(), Tail: details.Tail, LineCount: details.LineCount, TailTruncated: details.TailTruncated}
+			}
+			return nil
+		}
 		applyToolRunning(m, e.ID, e.Name)
 		return nil
 	case sdkagent.ToolEnd:
@@ -212,7 +225,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	m.Stream.Stop()
 	commitCmds := rt.CommitMessages()
 	msg := m.Append(core.ChatMessage{Role: core.ChatAssistant})
-	m.Stream = StreamState{Active: true, Inferring: true, MessageID: msg.ID, StartedAt: started}
+	m.Stream = StreamState{Active: true, Inferring: true, MessageID: msg.ID, StartedAt: started, LastDataAt: started}
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
@@ -229,6 +242,9 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 		// Progress is display-only. It must never install a pending tool call
 		// or append parameter fragments to the assistant's text.
 		if m.Stream.Inferring && chunk.Progress != nil {
+			if m.Stream.GeneratingTool != chunk.Progress.ToolName || m.Stream.GeneratedBytes != chunk.Progress.InputBytes {
+				m.Stream.LastDataAt = time.Now()
+			}
 			m.Stream.GeneratingTool = chunk.Progress.ToolName
 			m.Stream.GeneratedBytes = chunk.Progress.InputBytes
 		}
@@ -237,6 +253,9 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// The wire says which block a fragment belongs to, where San's own chunk
 	// had two named fields and could carry nothing else.
 	if chunk.Type == ai.EventBlockDelta && chunk.Block.Text != "" {
+		if m.Stream.Inferring && (chunk.Block.Type == ai.BlockText || chunk.Block.Type == ai.BlockThinking) {
+			m.Stream.LastDataAt = time.Now()
+		}
 		m.Stream.GeneratingTool = ""
 		m.Stream.GeneratedBytes = 0
 		switch chunk.Block.Type {

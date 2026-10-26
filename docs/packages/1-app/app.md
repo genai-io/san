@@ -207,17 +207,22 @@ Submitting an idle turn immediately shows the response spinner while waiting
 for the first inference event. This waiting state is display-only; the agent's
 `InferenceStart` creates the actual assistant message. Input during the wait is
 queued, and cancellation or a failed send clears the spinner.
-During an inference, an independent live generation row remains visible after
-commentary text, thinking blocks, background notices, or progressively committed
-output. The final frame budget reserves its row even on a short terminal or
-while older rows are handed to native history. SDK tool-argument progress shows
-the tool name and received byte count,
-not parameter contents, and never installs or executes a pending call. Retries
-show their actual attempt number; `InferenceEnd` retires generation progress
-before pending tools run. A stopped failed turn explicitly marks its output as
-incomplete. This status is display-only and never enters native history or the
-model conversation. Regression coverage lives in
-`conv/inference_progress_test.go` and `model_inference_lifecycle_test.go`.
+During an inference, one breathing status row reads `✦ On it · 17s`, including
+while commentary, thinking, or partial tool arguments stream. It is footer
+content, ordered below Tasks/background indicators and queued messages, directly
+against the input's top separator without a blank row between them. Roomy layouts
+use a quiet `Pending · N` caption, queued previews, and restrained whitespace to
+separate Tasks, pending prompts, and inference. Short screens inline the pending
+count and keep only the edited/next queued prompt, dropping spacing, captions,
+and extra previews before sacrificing the input or inference row. Approval and
+question panels suppress the standalone row. Genuine silence after 30 seconds
+shows `Waiting for model`; actual retries show their attempt number. Tool-input
+progress tracks liveness internally without displaying byte counts or fake phases.
+`InferenceEnd` retires generation progress before pending tools run. A stopped
+failed turn explicitly marks its output as incomplete. This status is display-only
+and never enters native history or the model conversation. Regression coverage
+includes `conv/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
+`view_inference_placement_test.go`, and `view_footer_history_test.go`.
 `Session.Send` is nonblocking and runs before the submit handler returns, so an
 Esc cannot be followed by a delayed command sending the cancelled request.
 
@@ -226,15 +231,24 @@ messages. It does not add a persistent history shortcut hint when a turn ends;
 idle Ctrl+O and `/history` still open the transcript viewer.
 
 While a tool-call batch is pending, the conversation tail docks above the
-activity/input area, with spare rows above it. Long shell commands show only
-their header and elapsed/progress detail until expanded or completed. When the
+activity/input area, with spare rows above it. Long shell commands use the shared
+lossless inset command block beneath their header. When the
 description is empty, the header uses a shortened command preview; short
 commands that fit stay on the header. This reduces the transient content xterm
 can push into native history during a narrowing and shortening resize. Tool
 headers reserve width for running detail, optional agent hints appear only when
 they fit, and expanded tool content wraps explicitly to the terminal width.
 Wrapping command bodies and string parameters preserves spaces, including
-spaces inside quoted arguments.
+spaces inside quoted arguments. Bash's configured output preview rolls over the
+last N actual output lines while running. A faint `│` output guide shares the
+command's `$` column, and omission markers belong inside that guide: `│ … (28)`
+means 28 whole output lines were omitted. Counts come from exact SDK progress
+metadata, never a rounded counter or the byte-capped tail alone. When the total
+is unknown or only part of a long row was cut, show `│ …` without guessing a
+count. The omission row is outside the N-line budget. Settled successes close
+with `└` on their last output row; running output stays open, and failures close
+on `└ failed · reason`. There is no extra line-count footer. Trailing blanks are
+real output lines, and expanded output/logs retain the full evidence.
 
 When foreground workers overflow the live tail, `conv.RenderActiveWorkers`
 reserves their identity rows and compact rows for ordinary pending tool siblings
@@ -249,6 +263,11 @@ Worker activity travels through per-call bounded buffers in `AgentToUI` and is
 applied as one poll batch. Model/mode/usage metadata is retained separately from
 recent tools; metadata is the worker's, not a fallback from the parent. Background
 progress shares the existing tracker row instead of adding a second row.
+Shell progress uses SDK `Report`/`ToolUpdate.Partial.Details` with `BashDetails`
+for exact line counts, byte-tail truncation, and recent output. It replaces the
+pending call's display snapshot without restarting its timer, adding transcript
+content, or accepting late reports for completed/foreign calls. Agent activity
+continues using the separate bounded bridge.
 
 The task tracker above the input uses one shared `Tasks` heading and shows at
 most eight task rows and one overflow summary. The heading appears only while
@@ -256,7 +275,7 @@ the tracker is visible, and shows progress only when plan items are present.
 Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
-exception status. Successful background tasks leave the tracker after their
+exception status. Terminal background tasks leave their individual tracker rows after their
 completion notice enters the conversation. Notices appear immediately during
 inference. Each inference binds to a message ID at `InferenceStart`; stream
 updates, rendering, and scrollback commits use that identity regardless of
@@ -264,8 +283,15 @@ display order. `InferenceEnd` releases the identity after final metadata arrives
 cancellation clears it immediately, and retries bind a new message. Turn end
 cannot reset a worker before its notice arrives.
 Completion notices and output records remain available. Resumed completed
-records whose workers are absent have no live notice to wait for. Failed,
-stopped, or interrupted work stays visible when idle.
+records whose workers are absent have no live notice to wait for. Announced
+failed, stopped, killed, and interrupted workers share one muted, non-actionable
+`History · N · /tasks` entry below current task identities. Stops are not labelled
+as failures, and detailed status categories belong in the expandable task viewer,
+not a combined status-word list beside the input. History shares the overflow
+summary row rather than consuming any of the eight identity slots. History alone
+needs no extra `Tasks` heading. Success-only history leaves no summary. Until
+announcement, terminal rows retain their status and final reason. Folding never
+changes task records or notices.
 Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
 when the main agent becomes idle. In-progress items take priority, followed by
 failed or interrupted items, pending items, and completed plan items. Within

@@ -196,6 +196,13 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 		return nil
 	}
 	if n.FinishedTaskID != "" {
+		// A completion can wait in the broker/UI queue while the same logical
+		// task starts a new attempt. Do not wake main with obsolete recovery work.
+		if n.FinishedAttempt > 0 && m.services.Task != nil {
+			if worker, known := m.services.Task.Get(n.FinishedTaskID); known && worker.GetStatus().Attempt > n.FinishedAttempt {
+				return nil
+			}
+		}
 		m.refreshTaskViewer()
 	}
 	if !m.conv.Stream.Active {

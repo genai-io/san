@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -141,38 +142,35 @@ func RenderAutopilotMark(note string) string {
 }
 
 // RenderUserMessage renders a user message with prompt and optional images.
+// Wrapped and explicitly entered lines align under the text, not the prompt.
 func RenderUserMessage(content, displayContent string, images []core.Attachment, mdRenderer *MDRenderer, width int) string {
-	var sb strings.Builder
 	prompt := InputPromptStyle.Render(InputPrompt)
 	if displayContent == "" {
 		displayContent = content
 	}
-
 	if len(images) > 0 && core.InlineImageTokenRe.MatchString(displayContent) {
-		sb.WriteString(lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			prompt,
-			userMsgStyle.Render(styleInlineImageTokens(displayContent)),
-		) + "\n")
-		return sb.String()
-	}
-
-	if len(images) > 0 {
+		displayContent = styleInlineImageTokens(displayContent)
+	} else if len(images) > 0 {
 		imgParts := make([]string, 0, len(images))
 		for i := range images {
 			imgParts = append(imgParts, PendingImageStyle.Render(fmt.Sprintf("[Image #%d]", i+1)))
 		}
-		imageLabel := strings.Join(imgParts, " ")
+		prompt += strings.Join(imgParts, " ")
 		if displayContent != "" {
-			sb.WriteString(prompt + imageLabel + " " + userMsgStyle.Render(displayContent) + "\n")
-		} else {
-			sb.WriteString(prompt + imageLabel + "\n")
+			prompt += " "
 		}
-	} else if displayContent != "" {
-		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, prompt, userMsgStyle.Render(displayContent)) + "\n")
 	}
-
-	return sb.String()
+	if displayContent == "" {
+		if len(images) > 0 {
+			return prompt + "\n"
+		}
+		return ""
+	}
+	if width <= 0 {
+		width = 80
+	}
+	displayContent = xansi.Wrap(strings.ReplaceAll(displayContent, "\t", "    "), max(1, width-lipgloss.Width(prompt)), " ")
+	return renderGutteredLine(prompt, strings.Repeat(" ", lipgloss.Width(prompt)), userMsgStyle, displayContent, width)
 }
 
 func styleInlineImageTokens(content string) string {
@@ -421,6 +419,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 func formatAssistantContent(params AssistantParams) string {
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		if params.Content == "" {
+			if params.SuppressWaitingRow {
+				// The independent inference status already owns the placeholder.
+				return ""
+			}
 			// Nothing new to draw (the gap right after a block commits): a lone
 			// space keeps the row, so the tail does not jump between blocks.
 			return " "
@@ -453,22 +455,45 @@ func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	return trimStyledBlankLines(rendered)
 }
 
-// waitingRow is the live "✦ 12s" row, held at the foot of the message from
-// submission until the reply's first text, even while reasoning streams above
-// it in bursts. The star needs no word beside it; it is reasoning's mark,
-// never the reply's ●, so it ends rather than turning into the reply. Timed
-// like a running tool row.
+// waitingRow is the live "✦ On it · 12s" row, held at the foot of the
+// message until the reply's first text, even while reasoning streams above
+// it. The breathing star marks UI liveness, not model progress.
 func (p AssistantParams) waitingRow() string {
 	if p.SuppressWaitingRow || !p.StreamActive || !p.IsLast || p.Content != "" || p.BulletEmitted || len(p.ToolCalls) > 0 {
 		return ""
 	}
 	if p.DockedModalActive {
-		// Parked on the user: hold still and don't time their answer.
-		return ThinkingStyle.Bold(true).Render(kit.ThinkingMark)
+		return ""
 	}
-	row := kit.LiveStar(p.Frame)
-	if elapsed := formatElapsedTime(p.WaitStartedAt); elapsed != "" {
-		row += ThinkingStyle.Render(" " + elapsed)
+	return renderModelWait(p.Frame, p.Width, p.WaitStartedAt, p.WaitStartedAt, "")
+}
+
+const quietModelWaitAfter = 30 * time.Second
+
+// The breathing mark is UI liveness, not proof of model progress. Explain a
+// quiet connection only after real model data has stopped arriving.
+func renderModelWait(frame, width int, startedAt, lastDataAt time.Time, label string) string {
+	if lastDataAt.IsZero() {
+		lastDataAt = startedAt
+	}
+	if label == "" && !lastDataAt.IsZero() && time.Since(lastDataAt) >= quietModelWaitAfter {
+		label = "Waiting for model"
+	}
+	if label == "" {
+		label = "On it"
+	}
+	if elapsed := formatElapsedTime(startedAt); elapsed != "" {
+		if label != "" {
+			label += " · "
+		}
+		label += elapsed
+	}
+	row := kit.LiveStar(frame)
+	if label != "" {
+		row += ThinkingStyle.Render(" " + label)
+	}
+	if width > 0 {
+		row = kit.TruncateText(row, width)
 	}
 	return row
 }
@@ -629,7 +654,9 @@ type ToolCallsParams struct {
 	TaskOwnerMap       map[string]string
 	MDRenderer         *MDRenderer
 	Width              int
-	Interactive        bool
+	// CompactAgentLabel reserves one row for identity in height-bounded worker views.
+	CompactAgentLabel bool
+	Interactive       bool
 }
 
 // expandHints reports whether "(ctrl+o to expand)" affordances belong on this
@@ -664,6 +691,19 @@ func (p ToolCallsParams) modalNamesNoCall() bool {
 // call can say what it is waiting for.
 func (p ToolCallsParams) parkedOnUser(toolCallID string) bool {
 	return p.awaitsApproval(toolCallID) || p.modalNamesNoCall()
+}
+
+func (p ToolCallsParams) agentExecuting(tc core.ToolCall) bool {
+	started, ok := p.ToolStartedAt[tc.ID]
+	if !ok || started.IsZero() {
+		return false
+	}
+	for i, pending := range p.PendingCalls {
+		if pending.ID == tc.ID {
+			return p.ParallelMode || i == p.CurrentIdx
+		}
+	}
+	return false
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -715,6 +755,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 		if tool.IsAgentToolName(tc.Name) {
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
+			if params.CompactAgentLabel && params.Width > 0 {
+				label = kit.TruncateText(label, max(1, params.Width-2))
+			}
 			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
@@ -725,17 +768,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
 				// subagent as working before it was allowed to spawn.
-				icon := kit.LiveDot(params.Frame)
-				if params.parkedOnUser(tc.ID) {
-					icon = "●"
+				icon := "●"
+				if params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
+					icon = kit.LiveDot(params.Frame)
 				}
-				row := renderAgentToolLine(label, params.Width, icon, color)
-				sb.WriteString(row)
-				hint := "  (ctrl+o to expand)"
-				if !params.ToolCallsExpanded && params.expandHints() && (params.Width <= 0 || lipgloss.Width(row)+lipgloss.Width(hint) <= params.Width) {
-					sb.WriteString(ThinkingStyle.Render(hint))
-				}
-				sb.WriteString("\n")
+				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color) + "\n")
 			}
 			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
@@ -782,7 +819,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 			sb.WriteString(appendRowDetail(row, detail))
 			if _, done := params.ResultMap[tc.ID]; !done && tool.IsShellTool(tc.Name) {
-				sb.WriteString(renderOutputPreview(params.ToolProgress[tc.ID].Tail, params.BashPreviewLines, params.Width))
+				progress := params.ToolProgress[tc.ID]
+				sb.WriteString(renderOutputPreview(progress.Tail, params.BashPreviewLines, params.Width,
+					toolresult.BashDetails{LineCount: progress.LineCount, TailTruncated: progress.TailTruncated}, false))
 			}
 		}
 
@@ -797,11 +836,22 @@ func RenderToolCalls(params ToolCallsParams) string {
 			sb.WriteString(renderDecision(resultData.Decision))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
 		} else if tool.IsAgentToolName(tc.Name) && tc.Name != tool.ToolSendMessage { // a message runs no agent
-			limit := maxCompactAgentToolLines
-			if params.ParallelMode {
-				limit = maxParallelAgentToolLines
+			if params.awaitsApproval(tc.ID) {
+				sb.WriteString(renderAgentLocalBody("Waiting for approval", params.Width))
+			} else if !params.agentExecuting(tc) {
+				sb.WriteString(renderAgentLocalBody("Pending", params.Width))
+			} else {
+				activity := renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width)
+				if !params.ToolCallsExpanded {
+					status := strings.TrimSpace(xansi.Strip(activity))
+					detail := xansi.Strip(runningRowDetail(tc, params))
+					if params.Width > 0 {
+						status = xansi.Truncate(status, max(1, params.Width-2-lipgloss.Width(detail)), "…")
+					}
+					activity = renderAgentLocalBody(status+detail, params.Width)
+				}
+				sb.WriteString(activity)
 			}
-			sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, limit, AgentStats{}, params.Width))
 		}
 	}
 

@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
@@ -83,10 +82,6 @@ const (
 	// Nested markers share a display column across command, body, and trailer rows.
 	nestedBodyPrefix    = "  ┊ "
 	nestedTrailerPrefix = "  └ "
-	// A shell command hangs on the dotted body rail and its output on a solid
-	// one that ends in the "└" summary, or, when every line is in view, in its
-	// last line.
-	bashOutputPrefix = "  │ "
 )
 
 func renderNestedReadResultInline(data ToolResultData) string {
@@ -139,41 +134,6 @@ func renderNestedToolBodyLine(line string, width int) string {
 	return renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolResultStyle, visibleLine(line), width)
 }
 
-// wrapAtSpaces cuts s into rows at most width wide, after the last space in
-// reach so a wrapped command reads as whole words. A word too wide for any row
-// is cut, and so is one whose break would leave the row less than half full.
-// Every character is kept, so the rows join back into the command.
-func wrapAtSpaces(s string, width int) string {
-	var sb strings.Builder
-	for xansi.StringWidth(s) > width && utf8.RuneCountInString(s) > 1 {
-		row := xansi.Truncate(s, width, "")
-		if i := strings.LastIndexByte(row, ' '); i > 0 && 2*xansi.StringWidth(row[:i+1]) >= width && !wordWiderThan(s[i+1:], width) {
-			row = row[:i+1]
-		} else if row == "" { // a character wider than the row: it takes one alone
-			_, size := utf8.DecodeRuneInString(s)
-			row = s[:size]
-		}
-		sb.WriteString(row + "\n")
-		s = s[len(row):]
-	}
-	sb.WriteString(s)
-	return sb.String()
-}
-
-// wordWiderThan reports whether the word s starts with is wider than width.
-func wordWiderThan(s string, width int) bool {
-	word, _, _ := strings.Cut(s, " ")
-	return xansi.StringWidth(word) > width
-}
-
-// commandWrapWidth is the room a command line has beside its rail.
-func commandWrapWidth(width int) int {
-	if width <= 0 {
-		width = 80
-	}
-	return max(1, width-lipgloss.Width(nestedBodyPrefix))
-}
-
 // renderGutteredLine soft-wraps one row to the terminal width so every
 // wrapped row keeps its gutter (wrapPrefix). Left to the terminal, a wrapped
 // row restarts at column 0 and the connector breaks. Tabs expand to lipgloss's
@@ -193,18 +153,67 @@ func renderGutteredLine(prefix, wrapPrefix string, style lipgloss.Style, line st
 	return sb.String()
 }
 
-// renderBashOutput hangs a shell command's output on the solid rail, wrapped.
-func renderBashOutput(content string, width int) string {
-	content = strings.TrimRight(content, "\n")
+// renderBashRow keeps the guide quieter than its content and aligned with "$".
+func renderBashRow(marker, content string, style lipgloss.Style, width int) string {
+	return strings.Repeat(" ", kit.CommandMarkerColumn(width)) +
+		lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled).Render(marker) + " " + style.Render(content) + "\n"
+}
+
+func bashOutputRoom(width int) int {
+	if width <= 0 {
+		width = 80
+	}
+	return max(1, width-1-kit.CommandMarkerColumn(width)-2)
+}
+
+func bashOutputLineCount(output string) int {
+	if output == "" {
+		return 0
+	}
+	return strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
+}
+
+// renderBashOutput wraps full output without discarding blank lines. A settled
+// result closes on its last physical row; a running body keeps the guide open.
+func renderBashOutput(content string, width int, style lipgloss.Style, closed bool) string {
 	if content == "" {
 		return ""
 	}
-
+	rows := strings.Split(xansi.Hardwrap(strings.ReplaceAll(visibleBashOutput(content), "\t", "    "), bashOutputRoom(width), true), "\n")
 	var sb strings.Builder
-	for line := range strings.SplitSeq(content, "\n") {
-		sb.WriteString(renderGutteredLine(bashOutputPrefix, bashOutputPrefix, toolResultStyle, visibleLine(line), width))
+	for i, row := range rows {
+		marker := "│"
+		if closed && i == len(rows)-1 {
+			marker = "└"
+		}
+		sb.WriteString(renderBashRow(marker, row, style, width))
 	}
 	return sb.String()
+}
+
+func visibleBashOutput(output string) string {
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = visibleLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// Counts refer only to whole omitted output rows. A byte-capped partial line
+// still needs an omission marker, but must not invent an omitted-line count.
+func renderBashOmission(output, preview string, width int, details toolresult.BashDetails) string {
+	shown := bashOutputLineCount(preview)
+	if bashOutputLineCount(output) <= shown && details.LineCount <= shown && !details.TailTruncated {
+		return ""
+	}
+	label := "…"
+	if omitted := details.LineCount - shown; omitted > 0 {
+		counted := fmt.Sprintf("… (%d)", omitted)
+		if lipgloss.Width(counted) <= bashOutputRoom(width) {
+			label = counted
+		}
+	}
+	return renderBashRow("│", label, lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled), width)
 }
 
 func renderNestedToolTrailer(summary string, style lipgloss.Style) string {
@@ -278,82 +287,68 @@ func formatReadResultSummary(content string) string {
 }
 
 func renderBashToolResultInline(data ToolResultData) string {
-	content := strings.TrimSuffix(data.Content, "\n")
-	var summary string
-	style := toolResultStyle
-	// The details count the real output; the text may be cut, or stand in
-	// "(no output)" for none.
+	content := data.Content
 	details, hasDetails := data.Details.(toolresult.BashDetails)
+	if details.TaskID != "" {
+		body := ""
+		if data.Expanded {
+			body = renderBashOutput(content, data.Width, toolResultStyle, false)
+		}
+		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolResultStyle, true)
+	}
+
+	summary := ""
 	if data.IsError {
 		content, summary = formatBashFailure(content, data.Details)
-		style = errorStyle
 	}
-	lineCount := details.LineCount
-	if !hasDetails {
-		lineCount = strings.Count(content, "\n") + 1
-	}
-	switch {
-	case data.IsError:
-	case !hasDetails:
-		summary = formatLineCount(content)
-	case details.TaskID != "":
-		// Its text is how to reach the task (Ctrl-O shows it), not output.
-		summary = "started in background · " + details.TaskID
-	case details.LineCount == 0:
-		summary, content = "no output", ""
-	default:
-		summary = formatLineCountValue(details.LineCount)
-	}
-	// The tail is the output as it interleaved, the end the row showed live.
 	tail := content
 	if hasDetails && details.Tail != "" {
 		tail = details.Tail
 	}
-	// Success is the model's to report, so a longer output folds to its count;
-	// one that fits the preview has nothing to fold, and its last line closes
-	// the row instead of a count.
-	if !data.IsError && content != "" && details.TaskID == "" && lineCount <= data.BashPreviewLines {
-		head, last := "", strings.TrimRight(tail, "\n")
-		if i := strings.LastIndexByte(last, '\n'); i >= 0 {
-			head, last = last[:i], last[i+1:]
+	if data.Expanded {
+		body := renderBashOutput(content, data.Width, toolResultStyle, !data.IsError)
+		if data.IsError {
+			return body + renderBashOutput(summary, data.Width, errorStyle, true)
 		}
-		return renderBashOutput(head, data.Width) +
-			renderGutteredLine(nestedTrailerPrefix, strings.Repeat(" ", lipgloss.Width(nestedTrailerPrefix)), toolResultStyle, visibleLine(last), data.Width)
+		if body == "" {
+			return renderBashOutput("no output", data.Width, toolResultStyle, true)
+		}
+		return body
 	}
-	var sb strings.Builder
-	switch {
-	case data.Expanded:
-		sb.WriteString(renderBashOutput(content, data.Width))
-	case data.IsError:
-		// A failure is what the user may step in on: it keeps its whole tail,
-		// wrapped, whatever the preview setting.
-		sb.WriteString(renderBashOutput(toolresult.LastLines(tail, setting.MaxBashPreviewLines), data.Width))
+	if data.IsError {
+		// Error evidence keeps its diagnostic budget and wrapping; the failure
+		// footer, not the last diagnostic, closes the result.
+		preview := toolresult.LastLines(tail, setting.MaxBashPreviewLines)
+		return renderBashOmission(tail, preview, data.Width, details) +
+			renderBashOutput(preview, data.Width, toolResultStyle, false) +
+			renderBashOutput(compactFailureReason(summary, data.Width), data.Width, errorStyle, true)
 	}
-	if data.IsError && !data.Expanded {
-		summary = compactFailureReason(summary, data.Width)
+	if hasDetails && details.LineCount == 0 || tail == "" {
+		return renderBashOutput("no output", data.Width, toolResultStyle, true)
 	}
-	sb.WriteString(renderNestedToolTrailer(summary, style))
-	return sb.String()
+	if data.BashPreviewLines <= 0 {
+		return renderBashOutput("completed", data.Width, toolResultStyle, true)
+	}
+	return renderOutputPreview(tail, data.BashPreviewLines, data.Width, details, true)
 }
 
-// renderOutputPreview draws the last n lines of a running shell command's
-// output on the solid rail. Each line is cut to the width rather than wrapped,
-// so the preview is never taller than n rows; output shorter than n shows as
-// many rows as it has.
-func renderOutputPreview(output string, n, width int) string {
-	output = strings.TrimRight(output, "\n")
-	if n <= 0 || strings.TrimSpace(output) == "" {
+// renderOutputPreview keeps the last n actual output rows. Only a completed
+// success closes its last row; live previews retain an open guide.
+func renderOutputPreview(output string, n, width int, details toolresult.BashDetails, closed bool) string {
+	if n <= 0 || output == "" {
 		return ""
 	}
-	if width <= 0 {
-		width = 80
-	}
-	room := max(1, width-lipgloss.Width(bashOutputPrefix))
+	preview := toolresult.LastLines(output, n)
 	var sb strings.Builder
-	for line := range strings.SplitSeq(toolresult.LastLines(output, n), "\n") {
-		// Plain text: an output's own color reset would end the dim tone midway.
+	sb.WriteString(renderBashOmission(output, preview, width, details))
+	lines := strings.Split(strings.TrimSuffix(preview, "\n"), "\n")
+	for i, line := range lines {
 		line = strings.ReplaceAll(xansi.Strip(visibleLine(line)), "\t", "    ")
-		sb.WriteString(toolResultStyle.Render(bashOutputPrefix+kit.TruncateText(line, room)) + "\n")
+		marker := "│"
+		if closed && i == len(lines)-1 {
+			marker = "└"
+		}
+		sb.WriteString(renderBashRow(marker, kit.TruncateText(line, bashOutputRoom(width)), toolResultStyle, width))
 	}
 	return sb.String()
 }
@@ -361,27 +356,18 @@ func renderOutputPreview(output string, n, width int) string {
 func formatBashFailure(content string, details any) (string, string) {
 	if bashDetails, ok := details.(toolresult.BashDetails); ok {
 		content = trimBashErrorSuffix(content, bashDetails.Error)
-		return content, formatBashFailureSummary(bashDetails.Error, bashDetails.LineCount)
+		return content, formatBashFailureSummary(bashDetails.Error)
 	}
-
 	if output, reason, ok := splitBashFailureContent(content); ok {
-		lineCount := 0
-		if strings.TrimSuffix(output, "\n") != "" {
-			lineCount = strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
-		}
-		return output, formatBashFailureSummary(reason, lineCount)
+		return output, formatBashFailureSummary(reason)
 	}
-
-	return content, "failed · " + formatLineCount(content)
+	return content, "failed"
 }
 
-func formatBashFailureSummary(reason string, lineCount int) string {
+func formatBashFailureSummary(reason string) string {
 	summary := "failed"
 	if reason = formatBashFailureReason(reason); reason != "" {
 		summary += " · " + reason
-	}
-	if lineCount > 0 {
-		summary += " · " + formatLineCountValue(lineCount)
 	}
 	return summary
 }
@@ -399,10 +385,14 @@ func splitBashFailureContent(content string) (output, reason string, ok bool) {
 }
 
 func trimBashErrorSuffix(content, errorMessage string) string {
-	if content == "Error: "+errorMessage {
+	withoutTerminator := strings.TrimSuffix(content, "\n")
+	if withoutTerminator == "Error: "+errorMessage {
 		return ""
 	}
-	return strings.TrimSuffix(content, "\nError: "+errorMessage)
+	if output, ok := strings.CutSuffix(withoutTerminator, "\nError: "+errorMessage); ok {
+		return output
+	}
+	return content
 }
 
 func formatBashFailureReason(reason string) string {
@@ -430,10 +420,10 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
 		if !data.CollapseDiff {
-			block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, nestedBodyPrefix)
+			block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, "  ")
 			sb.WriteString(block)
 			if details.TruncatedDiffLines > 0 {
-				sb.WriteString(truncatedStyle.Render(fmt.Sprintf(nestedBodyPrefix+"… diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+				sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 			}
 		}
 		sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
@@ -482,7 +472,7 @@ func renderFileChangeInputPreview(input, diagnostic string, width int) string {
 	if new == "" && params.Content != "" {
 		new = params.Content
 	}
-	previewWidth := width - lipgloss.Width(nestedBodyPrefix)
+	previewWidth := width - 2
 	if previewWidth <= lipgloss.Width("+ ") {
 		return ""
 	}
@@ -493,7 +483,7 @@ func renderFileChangeInputPreview(input, diagnostic string, width int) string {
 		}
 		for line := range strings.SplitSeq(preview.text, "\n") {
 			for segment := range strings.SplitSeq(xansi.Wrap(line, previewWidth-lipgloss.Width(preview.marker)-1, " "), "\n") {
-				sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+preview.marker+" "+segment) + "\n")
+				sb.WriteString(toolResultStyle.Render("  "+preview.marker+" "+segment) + "\n")
 			}
 		}
 	}
@@ -544,7 +534,25 @@ func extractTrailingParenContent(s, fallback string) string {
 }
 
 func fileChangeSummary(details toolresult.FileChangeDetails) string {
-	return fmt.Sprintf("+%d -%d", details.AddedLines, details.RemovedLines)
+	addedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
+	if details.IsNewFile {
+		lines := formatLineCountValue(details.AddedLines)
+		if details.AddedLines > 0 {
+			lines = addedStyle.Render("+" + lines)
+		}
+		return "new file · " + lines
+	}
+	var counts []string
+	if details.AddedLines > 0 {
+		counts = append(counts, addedStyle.Render(fmt.Sprintf("+%d", details.AddedLines)))
+	}
+	if details.RemovedLines > 0 {
+		counts = append(counts, errorStyle.Render(fmt.Sprintf("-%d", details.RemovedLines)))
+	}
+	if len(counts) == 0 {
+		return "no changes"
+	}
+	return strings.Join(counts, " ")
 }
 
 func renderFileChangeResultInline(data ToolResultData) string {
@@ -753,8 +761,6 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderAgentResultDetails(data, details, mdRenderer)
 	}
 	// Legacy transcripts stored the display header in the model-facing text.
-	icon := toolResultIcon(data.IsError)
-
 	var sb strings.Builder
 	content := data.Content
 
@@ -768,8 +774,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	taskID := extractField(content, "Task ID: ", "")
 	isBackground := strings.Contains(content, "started in background")
 	if isBackground && taskID != "" {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  → background (Task ID: %s)", icon, taskID)) + "\n")
-		return sb.String()
+		return renderAgentBackgroundStart(taskID, data.Width)
 	}
 
 	toolUses := extractIntField(content, "ToolUses: ")
@@ -785,16 +790,12 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	doneStats := buildDoneStats(toolUses, tokens, duration, resultModel)
 
 	if !data.Expanded {
-		resultLine := fmt.Sprintf("  %s  Done", icon)
-		if doneStats != "" {
-			resultLine += " (" + doneStats + ")"
+		body := content
+		if strings.HasPrefix(body, "Agent ") || strings.HasPrefix(body, "Agent:") || strings.HasPrefix(body, "ToolUses:") {
+			_, body, _ = strings.Cut(body, "\n\n")
+			_, body = splitByProcessCount(body, extractIntField(content, "Process: "))
 		}
-		sb.WriteString(toolResultStyle.Render(resultLine))
-		if data.Interactive {
-			sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
-		}
-		sb.WriteString("\n")
-		return sb.String()
+		return renderCompactAgentResponse(body, data.Width)
 	}
 
 	if data.ToolInput != "" {
@@ -841,15 +842,32 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 
 func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetails, mdRenderer *MDRenderer) string {
 	if details.TaskID != "" {
-		return toolResultStyle.Render(fmt.Sprintf("  %s  → background (Task ID: %s)", toolResultIcon(false), details.TaskID)) + "\n"
+		return renderAgentBackgroundStart(details.TaskID, data.Width)
+	}
+	if !data.Expanded {
+		if details.Stopped || data.IsError {
+			status, style := "Failed", errorStyle
+			if details.Stopped {
+				status, style = "Stopped", toolResultStyle
+			}
+			reason := details.Error
+			if reason == "" {
+				reason = data.Content
+			}
+			if reason != "" && !(details.Stopped && kit.IsRoutineStopReason(reason)) {
+				status += " · " + reason
+			}
+			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
+		}
+		return renderCompactAgentResponse(data.Content, data.Width)
 	}
 	status, style := "Finished", toolResultStyle
-	if data.IsError {
+	if data.IsError || details.Stopped {
 		status, style = "Failed", errorStyle
 		if details.Stopped {
 			status, style = "Stopped", toolResultStyle
 		}
-		if details.Error != "" {
+		if details.Error != "" && !(details.Stopped && kit.IsRoutineStopReason(details.Error)) {
 			status += " · " + compactFailureReason(details.Error, data.Width)
 		}
 	}
@@ -857,39 +875,83 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 		status += " (" + stats + ")"
 	}
 	var sb strings.Builder
-	if data.Expanded {
-		width := data.Width
-		if width <= 0 {
-			width = 80
-		}
-		sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), width))
-		activity := details.Activity
-		const maxActivityLines = 30
-		if len(activity) > maxActivityLines {
-			sb.WriteString(renderNestedToolBody(fmt.Sprintf("(%d earlier tool calls omitted)", len(activity)-maxActivityLines), data.Width))
-			activity = activity[len(activity)-maxActivityLines:]
-		}
-		sb.WriteString(renderNestedToolBody(strings.Join(activity, "\n"), data.Width))
-		response := data.Content
-		if mdRenderer != nil {
-			if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
-				response = strings.TrimSpace(md)
-			}
-		}
-		sb.WriteString(renderNestedToolBody(response, data.Width))
+	width := data.Width
+	if width <= 0 {
+		width = 80
 	}
-	if data.IsError && !data.Expanded {
-		status = compactFailureReason(status, data.Width)
+	sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), width))
+	activity := details.Activity
+	const maxActivityLines = 30
+	if len(activity) > maxActivityLines {
+		sb.WriteString(renderNestedToolBody(fmt.Sprintf("(%d earlier tool calls omitted)", len(activity)-maxActivityLines), data.Width))
+		activity = activity[len(activity)-maxActivityLines:]
 	}
+	sb.WriteString(renderNestedToolBody(strings.Join(activity, "\n"), data.Width))
+	response := data.Content
+	if mdRenderer != nil {
+		if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
+			response = strings.TrimSpace(md)
+		}
+	}
+	sb.WriteString(renderNestedToolBody(response, data.Width))
 	if data.Nested {
 		sb.WriteString(style.Render(nestedTrailerPrefix + status))
 	} else {
 		sb.WriteString(style.Render(fmt.Sprintf("  %s  Agent → %s", toolResultIcon(data.IsError && !details.Stopped), status)))
 	}
-	if !data.Expanded && data.Interactive {
-		sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
-	}
 	sb.WriteString("\n")
+	return sb.String()
+}
+
+func renderAgentBackgroundStart(taskID string, width int) string {
+	return renderGutteredLine(nestedTrailerPrefix, "    ", toolResultStyle, "Started in background · "+taskID, width)
+}
+
+func renderAgentLocalBody(body string, width int) string {
+	if strings.TrimSpace(body) == "" {
+		return ""
+	}
+	if width <= 0 {
+		width = 80
+	}
+	var sb strings.Builder
+	for _, line := range strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n") {
+		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
+	}
+	return sb.String()
+}
+
+// renderCompactAgentResponse uses only worker prose, never a synthesized summary.
+func renderCompactAgentResponse(response string, width int) string {
+	response = strings.TrimSpace(response)
+	// Older details do not retain inspection pointers. Only recognize the paired
+	// generated suffix when the transcript filename corroborates the agent ID.
+	parts := strings.Split(response, "\n\n")
+	if len(parts) >= 3 {
+		id, hasID := strings.CutPrefix(parts[len(parts)-2], "AgentID: ")
+		path, hasPath := strings.CutPrefix(parts[len(parts)-1], "Transcript: ")
+		if hasID && hasPath && id != "" && !strings.ContainsAny(id, " /\\\n\r") && !strings.ContainsAny(path, "\n\r") && strings.HasSuffix(path, "/"+id+".jsonl") {
+			response = strings.TrimSpace(strings.Join(parts[:len(parts)-2], "\n\n"))
+		}
+	}
+	if response == "" {
+		response = "No output"
+	}
+	if width <= 0 {
+		width = 80
+	}
+	lines := strings.Split(xansi.Wrap(response, max(1, width-2), " "), "\n")
+	omitted := len(lines) > 8
+	if omitted {
+		lines = lines[:8]
+	}
+	var sb strings.Builder
+	for _, line := range lines {
+		sb.WriteString(toolCallStyle.Render("  "+line) + "\n")
+	}
+	if omitted {
+		sb.WriteString(toolResultStyle.Render("  … more output omitted") + "\n")
+	}
 	return sb.String()
 }
 
@@ -1063,10 +1125,14 @@ func formatAgentLabel(agent agentInput) string {
 		desc = conciseAgentDescription(agent.Prompt)
 	}
 
-	if desc != "" {
-		return fmt.Sprintf("Agent - %s: %s", agent.Name, desc)
+	name := "Agent"
+	if agent.Name != "" && agent.Name != "Agent" {
+		name += " · " + agent.Name
 	}
-	return fmt.Sprintf("Agent - %s", agent.Name)
+	if desc != "" {
+		return name + " · " + desc
+	}
+	return name
 }
 
 // sendMessageLabel names a SendMessage call by its recipient and opening words.
@@ -1147,11 +1213,7 @@ func groupCallArgs(input string) string {
 }
 
 func conciseAgentDescription(desc string) string {
-	words := strings.Fields(desc)
-	if len(words) > 10 {
-		return strings.Join(words[:10], " ") + "..."
-	}
-	return kit.TruncateText(desc, 60)
+	return strings.Join(strings.Fields(desc), " ")
 }
 
 func displayAgentName(agentName, mode string) string {
@@ -1383,21 +1445,7 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
-	// Soft-wrap every command line in the call's own color, marked as the
-	// constants above describe; no command text is replaced by ellipses. Blank
-	// lines at the start are dropped.
-	seenCommand := false
-	for commandLine := range strings.SplitSeq(strings.TrimRight(command, " \t\r\n"), "\n") {
-		if strings.TrimSpace(commandLine) == "" {
-			if !seenCommand {
-				continue
-			}
-			commandLine = ""
-		}
-		seenCommand = true
-		commandLine = wrapAtSpaces(strings.ReplaceAll(commandLine, "\t", "    "), commandWrapWidth(width))
-		sb.WriteString(renderGutteredLine(nestedBodyPrefix, nestedBodyPrefix, toolCallStyle, commandLine, width))
-	}
+	sb.WriteString(kit.RenderCommandBlock(command, width))
 	return sb.String()
 }
 
@@ -1417,7 +1465,10 @@ func extractBashCommand(input string) (command, description string) {
 func renderAgentToolLine(label string, width int, iconText string, color string) string {
 	style := agentStyle(color)
 	icon := style.Width(2).Render(iconText)
-	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(truncateToolLabel(label, width)))
+	if width > 0 {
+		label = xansi.Hardwrap(label, max(1, width-2), true)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(label))
 }
 
 func agentStyle(color string) lipgloss.Style {

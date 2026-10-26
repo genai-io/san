@@ -53,20 +53,27 @@ var (
 // the item under edit (-1 = none); the selected row carries the focus bar and
 // swaps the "↑ edit" affordance for the editing keys.
 func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string {
-	if len(items) == 0 {
+	return RenderQueuePreviewLimit(items, selectedIdx, width, maxVisibleQueueItems, true)
+}
+
+// RenderQueuePreviewLimit lets the composer surrender decoration and overflow
+// rows before actionable queue content on short terminals. The edited item
+// remains inside the visible window.
+func RenderQueuePreviewLimit(items []QueuePreviewItem, selectedIdx, width, limit int, showOverflow bool) string {
+	if len(items) == 0 || limit <= 0 {
 		return ""
 	}
 
 	startIdx := 0
-	if len(items) > maxVisibleQueueItems && selectedIdx >= maxVisibleQueueItems {
-		startIdx = selectedIdx - maxVisibleQueueItems + 1
+	if len(items) > limit && selectedIdx >= limit {
+		startIdx = selectedIdx - limit + 1
 	}
-	endIdx := min(startIdx+maxVisibleQueueItems, len(items))
+	endIdx := min(startIdx+limit, len(items))
 
 	// The hint rides the row the eye is on: the selected row while editing,
 	// otherwise the row nearest the input.
 	hint := queueIdleHint
-	hintIdx := endIdx - 1
+	hintIdx := len(items) - 1
 	if selectedIdx >= 0 {
 		hint = queueEditingHint
 		hintIdx = selectedIdx
@@ -75,6 +82,7 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 	var sb strings.Builder
 	for i := startIdx; i < endIdx; i++ {
 		item := items[i]
+		text := strings.Join(strings.Fields(item.Content), " ")
 
 		gutter := " "
 		contentStyle := queueContentStyle
@@ -83,17 +91,21 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 			contentStyle = queueSelectedContentStyle
 		}
 
-		// Budget: gutter(1) + prompt + right margin(2), minus the image tag
-		// and hint when this row carries them.
-		maxContentWidth := width - 3 - lipgloss.Width(InputPrompt)
+		// Reserve the terminal's last column. Hints yield before message text.
+		maxContentWidth := max(0, width-1-lipgloss.Width(gutter)-lipgloss.Width(InputPrompt))
 		if item.HasImages {
-			maxContentWidth -= lipgloss.Width("[Image] ")
+			maxContentWidth = max(0, maxContentWidth-lipgloss.Width("[Image] "))
 		}
-		if i == hintIdx {
+		if i == hintIdx && maxContentWidth >= lipgloss.Width(text)+lipgloss.Width(hint)+2 {
 			maxContentWidth -= lipgloss.Width(hint) + 2
 		}
 
-		content := contentStyle.Render(truncateQueueContent(item.Content, maxContentWidth))
+		if maxContentWidth <= 0 {
+			text = ""
+		} else {
+			text = xansi.Truncate(text, maxContentWidth, "…")
+		}
+		content := contentStyle.Render(text)
 		if item.HasImages {
 			content = PendingImageStyle.Render("[Image] ") + content
 		}
@@ -104,25 +116,16 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 				line += strings.Repeat(" ", pad) + queueHintStyle.Render(hint)
 			}
 		}
+		line = xansi.Truncate(line, max(0, width-1), "")
 		sb.WriteString(line + "\n")
 	}
 
-	if endIdx < len(items) {
+	if showOverflow && endIdx < len(items) {
 		sb.WriteString(overflowStyle.Render(fmt.Sprintf("   +%d more below", len(items)-endIdx)) + "\n")
 	}
-	if startIdx > 0 {
+	if showOverflow && startIdx > 0 {
 		return overflowStyle.Render(fmt.Sprintf("   +%d more above", startIdx)) + "\n" + sb.String()
 	}
 
 	return sb.String()
-}
-
-// truncateQueueContent flattens a queued message to one line and truncates it
-// to maxWidth display columns (CJK-aware).
-func truncateQueueContent(s string, maxWidth int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if maxWidth < 8 {
-		maxWidth = 8
-	}
-	return xansi.Truncate(s, maxWidth, "…")
 }

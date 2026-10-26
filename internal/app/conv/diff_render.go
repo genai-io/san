@@ -19,21 +19,23 @@ import (
 // changed when a removed/added pair differs only in part of the line. It is
 // shared by the inline Edit/Write result and the approval preview.
 //
-// maxVisible caps the number of rendered rows (0 means no cap). The second
-// return value is how many diff rows were hidden by that cap.
+// maxVisible caps logical diff rows, not wrapped visual rows (0 means no cap).
+// The second return value is how many logical diff rows were hidden by that cap.
 func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) {
-	return renderFileDiffIndented(lines, width, maxVisible, "     ")
+	return renderFileDiffIndented(lines, width, maxVisible, "  ")
 }
 
 // renderFileDiffIndented renders a diff under a caller-provided transcript
-// indent. Approval previews retain RenderFileDiff's five-column layout, while
-// nested Edit and Write results align their rows with their result trailer.
+// indent. Inline results and approval previews share the two-column inset,
+// aligned with the result trailer's connector.
 func renderFileDiffIndented(lines []perm.DiffLine, width, maxVisible int, indent string) (string, int) {
 	if len(lines) == 0 {
 		return "", 0
 	}
 
-	rowWidth := max(width-lipgloss.Width(indent), 20)
+	width = max(width, 2)
+	indent = ansi.Truncate(indent, max(0, width-2), "")
+	rowWidth := width - lipgloss.Width(indent)
 	gutterWidth := diffGutterWidth(lines)
 	emphasis := computeDiffEmphasis(lines)
 
@@ -72,13 +74,15 @@ func renderFileDiffIndented(lines []perm.DiffLine, width, maxVisible int, indent
 
 		switch line.Type {
 		case perm.DiffLineMetadata:
-			sb.WriteString(indent + noticeStyle.Render(line.Content) + "\n")
+			for segment := range strings.SplitSeq(ansi.Hardwrap(diffDisplayText(line.Content), rowWidth, true), "\n") {
+				sb.WriteString(indent + noticeStyle.Render(segment) + "\n")
+			}
 		case perm.DiffLineRemoved:
 			prefix := fmt.Sprintf("%*d - ", gutterWidth, line.OldLineNo)
-			sb.WriteString(indent + renderDiffRow(prefix, line.Content, emphasis[i], removedStyle, removedStrongStyle, rowWidth) + "\n")
+			sb.WriteString(indent + strings.ReplaceAll(renderDiffRow(prefix, line.Content, emphasis[i], removedStyle, removedStrongStyle, rowWidth), "\n", "\n"+indent) + "\n")
 		case perm.DiffLineAdded:
 			prefix := fmt.Sprintf("%*d + ", gutterWidth, line.NewLineNo)
-			sb.WriteString(indent + renderDiffRow(prefix, line.Content, emphasis[i], addedStyle, addedStrongStyle, rowWidth) + "\n")
+			sb.WriteString(indent + strings.ReplaceAll(renderDiffRow(prefix, line.Content, emphasis[i], addedStyle, addedStrongStyle, rowWidth), "\n", "\n"+indent) + "\n")
 		default:
 			no := line.NewLineNo
 			if no == 0 {
@@ -86,8 +90,14 @@ func renderFileDiffIndented(lines []perm.DiffLine, width, maxVisible int, indent
 			}
 			// The prefix is digits and spaces, so its byte length is its width.
 			prefix := fmt.Sprintf("%*d   ", gutterWidth, no)
-			text := kit.TruncateText(diffDisplayText(line.Content), rowWidth-len(prefix))
-			sb.WriteString(indent + lineNoStyle.Render(prefix) + contextStyle.Render(text) + "\n")
+			prefix = ansi.Truncate(prefix, max(0, rowWidth-2), "")
+			for j, text := range strings.Split(ansi.Hardwrap(diffDisplayText(line.Content), rowWidth-len(prefix), true), "\n") {
+				gutter := prefix
+				if j > 0 {
+					gutter = strings.Repeat(" ", len(prefix))
+				}
+				sb.WriteString(indent + lineNoStyle.Render(gutter) + contextStyle.Render(text) + "\n")
+			}
 		}
 	}
 	return sb.String(), hidden
@@ -167,40 +177,40 @@ func changedSpan(oldLine, newLine string) (oldSpan, newSpan runeSpan, ok bool) {
 	return runeSpan{from: prefix, to: len(oldRunes) - suffix}, runeSpan{from: prefix, to: len(newRunes) - suffix}, true
 }
 
-// renderDiffRow draws one added/removed row: gutter+marker prefix, content
-// with an optional emphasized span, padded with the row background to the
-// full row width. The emphasis span is given in content rune positions.
+// renderDiffRow wraps added/removed content without discarding text. Continuations
+// have a blank gutter; emphasis uses expanded-content rune offsets across wraps.
 func renderDiffRow(prefix, content string, emphasis runeSpan, base, strong lipgloss.Style, rowWidth int) string {
-	prefixRunes := len([]rune(prefix))
-	full := []rune(diffDisplayText(prefix + content))
+	prefix = ansi.Truncate(prefix, max(0, rowWidth-2), "")
 	span := runeSpan{}
 	if emphasis.to > emphasis.from {
-		// diffDisplayText only rewrites tabs, and content after the prefix
-		// keeps its rune positions relative to the expanded prefix — but tab
-		// expansion inside the content shifts later runes, so recompute the
-		// span against the expanded text.
 		span = expandSpan(content, emphasis)
-		span.from += prefixRunes
-		span.to += prefixRunes
 	}
-
-	// Truncate to the row, clamping the emphasis span with it.
-	if ansi.StringWidth(string(full)) > rowWidth {
-		full = []rune(kit.TruncateText(string(full), rowWidth))
-		span.from = min(span.from, len(full))
-		span.to = min(span.to, len(full))
-	}
-
+	segments := strings.Split(ansi.Hardwrap(diffDisplayText(content), rowWidth-len(prefix), true), "\n")
 	var sb strings.Builder
-	if span.to > span.from {
-		sb.WriteString(base.Render(string(full[:span.from])))
-		sb.WriteString(strong.Render(string(full[span.from:span.to])))
-		sb.WriteString(base.Render(string(full[span.to:])))
-	} else {
-		sb.WriteString(base.Render(string(full)))
-	}
-	if pad := rowWidth - ansi.StringWidth(string(full)); pad > 0 {
-		sb.WriteString(base.Render(strings.Repeat(" ", pad)))
+	offset := 0
+	for i, segment := range segments {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		gutter := prefix
+		if i > 0 {
+			gutter = strings.Repeat(" ", len(prefix))
+		}
+		sb.WriteString(base.Render(gutter))
+		runes := []rune(segment)
+		from := max(0, min(len(runes), span.from-offset))
+		to := max(0, min(len(runes), span.to-offset))
+		if to > from {
+			sb.WriteString(base.Render(string(runes[:from])))
+			sb.WriteString(strong.Render(string(runes[from:to])))
+			sb.WriteString(base.Render(string(runes[to:])))
+		} else {
+			sb.WriteString(base.Render(segment))
+		}
+		if pad := rowWidth - len(prefix) - ansi.StringWidth(segment); pad > 0 {
+			sb.WriteString(base.Render(strings.Repeat(" ", pad)))
+		}
+		offset += len(runes)
 	}
 	return sb.String()
 }
@@ -257,7 +267,7 @@ var (
 // immutable. Only live-region results hit the cache, so it stays tiny; it
 // is dropped wholesale when it outgrows that working set.
 func RenderStoredFileDiff(unifiedDiff string, width, maxVisible int) (string, int) {
-	return renderStoredFileDiffIndented(unifiedDiff, width, maxVisible, "     ")
+	return renderStoredFileDiffIndented(unifiedDiff, width, maxVisible, "  ")
 }
 
 func renderStoredFileDiffIndented(unifiedDiff string, width, maxVisible int, indent string) (string, int) {

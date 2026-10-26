@@ -11,19 +11,13 @@ import (
 
 const maxShellOutputBytes = 30000
 
-// Keep one extra byte to detect truncation; discarded output still counts as lines.
+// Keep one extra byte to detect truncation; outputProgress counts the full stream.
 type outputCapture struct {
-	buf      bytes.Buffer
-	newlines int
-	lastByte byte
+	buf bytes.Buffer
 }
 
 func (b *outputCapture) Write(p []byte) (int, error) {
-	if len(p) > 0 {
-		b.newlines += bytes.Count(p, []byte{'\n'})
-		b.lastByte = p[len(p)-1]
-		b.buf.Write(p[:min(len(p), maxShellOutputBytes+1-b.buf.Len())])
-	}
+	b.buf.Write(p[:min(len(p), maxShellOutputBytes+1-b.buf.Len())])
 	return len(p), nil
 }
 
@@ -48,13 +42,6 @@ func countLines(s string) int {
 		return 0
 	}
 	return strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1
-}
-
-func (b *outputCapture) LineCount() int {
-	if b.buf.Len() > 0 && b.lastByte != '\n' {
-		return b.newlines + 1
-	}
-	return b.newlines
 }
 
 func truncateShellOutput(s string) string {

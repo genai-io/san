@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -46,13 +47,19 @@ func (p *QuestionPrompt) Show(req *tool.QuestionRequest, width int) {
 	p.active = true
 	p.request = req
 	p.caller = ""
-	p.width = width
+	p.Resize(width, 0)
 	p.currentQuestion = 0
 	p.selectedOption = make(map[int]int)
 	p.selected = make(map[int][]int)
 	p.customAnswers = make(map[int]string)
 	p.showingCustom = false
 	p.customInput.Reset()
+}
+
+// Resize keeps an open question inside the terminal after a window change.
+func (p *QuestionPrompt) Resize(width, _ int) {
+	p.width = max(1, width)
+	p.customInput.SetWidth(max(1, p.width-12))
 }
 
 func (p *QuestionPrompt) ShowFrom(req *tool.QuestionRequest, width int, caller string) {
@@ -384,7 +391,8 @@ func (p *QuestionPrompt) Render() string {
 	}
 
 	var sb strings.Builder
-	contentWidth := max(p.width-2, 40)
+	contentWidth := max(1, p.width-2)
+	compact := p.width < 42
 
 	currentQ := p.request.Questions[p.currentQuestion]
 
@@ -422,14 +430,16 @@ func (p *QuestionPrompt) Render() string {
 	if p.caller != "" {
 		heading = "@" + p.caller + " · " + heading
 	}
-	header := getQuestionHeaderStyle().Render(kit.TruncateText(heading, contentWidth-2))
+	header := getQuestionHeaderStyle().Render(kit.TruncateText(heading, max(1, contentWidth-2)))
 	sb.WriteString(" ")
 	sb.WriteString(header)
 	sb.WriteString("\n")
 
-	sb.WriteString(" ")
-	sb.WriteString(getQuestionTextStyle().Render(currentQ.Question))
-	sb.WriteString("\n\n")
+	question := ansi.Wrap(currentQ.Question, max(1, contentWidth-1), " ")
+	sb.WriteString(renderGutteredLine(" ", " ", getQuestionTextStyle(), question, contentWidth))
+	if !compact {
+		sb.WriteString("\n")
+	}
 
 	isMulti := currentQ.MultiSelect
 	curOption := p.selectedOption[p.currentQuestion]
@@ -470,7 +480,9 @@ func (p *QuestionPrompt) Render() string {
 		sb.WriteString(p.customRow(optionPrefix(isMulti, answered, highlighted), customIdx+1, highlighted, ""))
 	}
 
-	sb.WriteString("\n")
+	if !compact {
+		sb.WriteString("\n")
+	}
 
 	var hints []string
 	if len(p.request.Questions) > 1 {
@@ -478,9 +490,17 @@ func (p *QuestionPrompt) Render() string {
 	}
 	hints = append(hints, "\u2191/\u2193 navigate", "Space toggle", "Enter confirm", "Esc cancel")
 
-	footer := " " + strings.Join(hints, " \u00B7 ")
-	sb.WriteString(getQuestionFooterStyle().Render(footer))
-	sb.WriteString("\n")
+	footer := strings.Join(hints, " \u00B7 ")
+	if compact {
+		footer = "↑/↓ · Enter · Esc"
+		if isMulti {
+			footer += " · Space"
+		}
+		if len(p.request.Questions) > 1 {
+			footer += " · ←/→"
+		}
+	}
+	sb.WriteString(renderGutteredLine(" ", " ", getQuestionFooterStyle(), ansi.Wrap(footer, max(1, contentWidth-1), " "), contentWidth))
 
 	solidSep := strings.Repeat("\u2500", contentWidth)
 	sb.WriteString(getQuestionSeparatorStyle().Render(solidSep))

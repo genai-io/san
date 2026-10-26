@@ -117,8 +117,12 @@ func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 	msg, _ := taskCompletionMessage(worker.info)
 	m.backgroundNoticesHeld = true
 	m.Update(mainNoticeMsg{notice: fromBrokerMessage(msg)})
+	if view := ansi.Strip(m.userInput.Tasks.Render()); !strings.Contains(view, "History · 1") || strings.Contains(view, "[completed]") {
+		t.Fatalf("completion did not fold into history immediately: %s", view)
+	}
+	m.userInput.Tasks.HandleKeypress(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	if view := ansi.Strip(m.userInput.Tasks.Render()); !strings.Contains(view, "[completed]") {
-		t.Fatalf("completion did not refresh the viewer immediately: %s", view)
+		t.Fatalf("expanded history lost the completion: %s", view)
 	}
 	m.services.sessionID = "other"
 	m.Update(struct{}{})
