@@ -60,31 +60,27 @@ func TestBashCommandContinuationProduction(t *testing.T) {
 	}
 }
 
-func TestBashCommandContinuationExpandedKeepsIndent(t *testing.T) {
-	command := strings.Repeat("x", 320)
-	input, err := json.Marshal(map[string]string{"command": command})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, width := range []int{32, 40, 80, 100} {
-		got := ansi.Strip(RenderToolCalls(ToolCallsParams{
-			ToolCalls: []core.ToolCall{{ID: "shell", Name: "Bash", Input: string(input)}},
-			Width:     width, ToolCallsExpanded: true,
-		}))
-		_, body, _ := strings.Cut(got, "\n")
-		rows := strings.Split(strings.TrimSuffix(body, "\n"), "\n")
-		if rows[0] != "    command:" {
-			t.Fatalf("expanded command label changed: %q", got)
-		}
-		var restored strings.Builder
-		for _, row := range rows[1:] {
-			if !strings.HasPrefix(row, "    ") || ansi.StringWidth(row) > width {
-				t.Fatalf("width %d lost continuation alignment: %q", width, row)
+func TestBashCommandContinuationExpandedKeepsDollarPrompt(t *testing.T) {
+	for _, name := range []string{"Bash", "PowerShell"} {
+		for _, command := range []string{"pwd", strings.Repeat("x", 320), "printf 'A     B'\n  echo 中文"} {
+			input, err := json.Marshal(map[string]string{"command": command, "description": "Run\n tests"})
+			if err != nil {
+				t.Fatal(err)
 			}
-			restored.WriteString(strings.TrimPrefix(row, "    "))
-		}
-		if restored.String() != command {
-			t.Fatalf("width %d changed expanded command content: %q", width, got)
+			for _, width := range []int{32, 40, 80, 100} {
+				raw := RenderToolCalls(ToolCallsParams{
+					ToolCalls: []core.ToolCall{{ID: "shell", Name: name, Input: string(input)}},
+					Width:     width, ToolCallsExpanded: true,
+				})
+				got := ansi.Strip(raw)
+				header, body, _ := strings.Cut(raw, "\n")
+				if strings.Count(got, "$ ") != 1 || strings.Contains(got, "command:") || !strings.Contains(ansi.Strip(header), "Run tests") {
+					t.Fatalf("%s width %d lost the shared shell presentation: %q", name, width, got)
+				}
+				if body != kit.RenderCommandBlock(command, width) {
+					t.Fatalf("%s width %d changed command contents, indentation, or background: %q", name, width, got)
+				}
+			}
 		}
 	}
 }

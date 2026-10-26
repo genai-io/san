@@ -1431,10 +1431,9 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 // a full command block below the Bash header and soft-wrap without ellipses.
 func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
-	description = strings.Join(strings.Fields(description), " ")
-	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
+		labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 		commandLabel := fmt.Sprintf("%s(%s)", toolName, command)
 		if lipgloss.Width(commandLabel) <= labelWidth {
 			label := toolCallStyle.Render(commandLabel)
@@ -1443,14 +1442,16 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 			return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 		}
 	}
+	return renderShellCommandBlock(toolName, command, description, width, icon, detail)
+}
+
+func renderShellCommandBlock(toolName, command, description string, width int, icon, detail string) string {
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
 	}
-
+	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 	var sb strings.Builder
 
-	// Header line: ● Bash (description) · running detail. The command is
-	// rendered separately below without abbreviation.
 	displayName := xansi.Truncate(toolName, labelWidth, "…")
 	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
 	iconCell := toolCallStyle.Width(kit.ToolIconWidth).Render(icon)
@@ -1470,7 +1471,7 @@ func extractBashCommand(input string) (command, description string) {
 	if err := json.Unmarshal([]byte(input), &params); err != nil {
 		return "", ""
 	}
-	return params.Command, params.Description
+	return params.Command, strings.Join(strings.Fields(params.Description), " ")
 }
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {

@@ -782,6 +782,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 		} else if tc.Name == tool.ToolAskUserQuestion {
 			sb.WriteString(renderAskUserCall(tc.Input, toolCallIcon(tc, params), params.Width))
+		} else if params.ToolCallsExpanded && tool.IsShellTool(tc.Name) {
+			command, description := extractBashCommand(tc.Input)
+			sb.WriteString(renderShellCommandBlock(tc.Name, command, description, params.Width, toolCallIcon(tc, params), ""))
 		} else if params.ToolCallsExpanded {
 			toolLine := renderToolLine(tc.Name, params.Width)
 			sb.WriteString(toolLine + "\n")
