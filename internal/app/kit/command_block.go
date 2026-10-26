@@ -8,15 +8,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// CommandMarkerColumn is the shared column for shell input and output markers.
+// CommandMarkerColumn aligns shell input and output markers with the tool label.
 // Very narrow terminals reduce the inset before giving up command content.
 func CommandMarkerColumn(width int) int {
 	if width <= 0 {
 		width = 80
 	}
 	available := max(1, width-1)
-	margin := min(2, max(0, available-5))
-	return margin + min(2, max(0, available-margin-5))
+	return min(ToolIconWidth, max(0, available-5))
 }
 
 // RenderCommandBlock draws shell input as one inset rectangular surface. The
@@ -28,14 +27,13 @@ func RenderCommandBlock(command string, width int) string {
 		width = 80
 	}
 	available := max(1, width-1)
-	margin := min(2, max(0, available-5))
+	margin := CommandMarkerColumn(width)
 	blockWidth := available - margin
-	leftPad := CommandMarkerColumn(width) - margin
-	promptWidth := min(2, max(0, blockWidth-leftPad-2))
-	contentWidth := max(1, blockWidth-leftPad-promptWidth-1)
+	promptWidth := min(2, max(0, blockWidth-2))
+	contentWidth := max(1, blockWidth-promptWidth-1)
 	outer := strings.Repeat(" ", margin)
-	prefix := strings.Repeat(" ", leftPad) + ansi.Truncate("$ ", promptWidth, "")
-	continuation := strings.Repeat(" ", leftPad+promptWidth)
+	prefix := ansi.Truncate("$ ", promptWidth, "")
+	continuation := strings.Repeat(" ", promptWidth)
 	style := lipgloss.NewStyle().Foreground(CurrentTheme.Text).Background(CurrentTheme.CommandBg)
 
 	var out strings.Builder

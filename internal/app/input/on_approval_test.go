@@ -137,6 +137,9 @@ func TestApprovalCommandUsesSharedInsetSurface(t *testing.T) {
 		if full != strings.TrimSuffix(kit.RenderCommandBlock(command, width), "\n") {
 			t.Fatalf("width %d differs from the shared lossless command block: %q", width, full)
 		}
+		if !strings.HasPrefix(ansi.Strip(full), "  $   echo ") {
+			t.Fatalf("width %d adds padding before the prompt or loses source indentation: %q", width, full)
+		}
 		for _, row := range strings.Split(ansi.Strip(full), "\n") {
 			if ansi.StringWidth(row) != width-1 || !strings.HasPrefix(row, "  ") {
 				t.Fatalf("width %d has ragged or unindented preview: %q", width, row)

@@ -86,7 +86,7 @@ func TestAgentBackgroundStartUsesResultConnector(t *testing.T) {
 func TestShellFinishedTailProduction(t *testing.T) {
 	data := ToolResultData{ToolName: "Bash", Nested: true, Width: 80, BashPreviewLines: 2, Content: "model-facing prefix", Details: toolresult.BashDetails{LineCount: 100, Tail: "98\n99\n100\n"}}
 	got := xansi.Strip(RenderToolResultInline(data, nil))
-	for _, want := range []string{"    │ 99", "    └ 100", "    │ … (98)\n"} {
+	for _, want := range []string{"  │ 99", "  └ 100", "  │ … (98)\n"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q: %q", want, got)
 		}
@@ -119,7 +119,7 @@ func TestShellFinishedBlankTailDoesNotReviveEarlierOutput(t *testing.T) {
 	data := ToolResultData{ToolName: "Bash", Nested: true, Width: 80, BashPreviewLines: 1, Content: output,
 		Details: toolresult.BashDetails{LineCount: 4, Tail: toolresult.LastLines(output, 20)}}
 	got := xansi.Strip(RenderToolResultInline(data, nil))
-	if strings.Contains(got, "old") || got != "    │ … (3)\n    └ \n" {
+	if strings.Contains(got, "old") || got != "  │ … (3)\n  └ \n" {
 		t.Fatalf("blank last line revived earlier output or changed the shown count: %q", got)
 	}
 }
