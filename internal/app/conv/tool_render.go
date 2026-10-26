@@ -1161,7 +1161,7 @@ var memberPalette = []kit.AdaptiveColor{
 	{Dark: "#5EEAD4", Light: "#0F766E"}, // teal
 	{Dark: "#FCD34D", Light: "#B45309"}, // amber
 	{Dark: "#C4B5FD", Light: "#6D28D9"}, // violet
-	{Dark: "#FDA4AF", Light: "#BE123C"}, // rose
+	{Dark: "#67E8F9", Light: "#0E7490"}, // cyan; red is reserved for errors
 }
 
 // memberColor is the slot the session gave name; a name it has not placed
