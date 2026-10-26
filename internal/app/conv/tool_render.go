@@ -1515,7 +1515,7 @@ func bashPreviewLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	return max(1, width-lipgloss.Width("● "))
+	return max(1, width-kit.ToolIconWidth)
 }
 
 func maxToolLabelWidth(width int) int {
@@ -1523,5 +1523,5 @@ func maxToolLabelWidth(width int) int {
 		return 80
 	}
 	maxWidth := min(width, max(width*80/100, 50))
-	return max(1, maxWidth-lipgloss.Width("● "))
+	return max(1, maxWidth-kit.ToolIconWidth)
 }
