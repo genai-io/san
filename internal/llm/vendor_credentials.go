@@ -1,9 +1,11 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
@@ -55,7 +57,10 @@ func (credentials) Load(vendorID string) (auth.Credential, bool, error) {
 	if !ok {
 		return auth.Credential{}, false, nil
 	}
-	raw := secret.Resolve(key)
+	raw, err := storedCredential(key)
+	if err != nil {
+		return auth.Credential{}, false, err
+	}
 	if raw == "" {
 		return auth.Credential{}, false, nil
 	}
@@ -85,6 +90,31 @@ func (credentials) Load(vendorID string) (auth.Credential, bool, error) {
 	}
 }
 
+func storedCredential(key string) (string, error) {
+	store := secret.Default()
+	if store == nil {
+		return "", errors.New("llm: secret store unavailable")
+	}
+	raw, err := store.GetFresh(key)
+	if err != nil {
+		return "", err
+	}
+	// Environment credentials can bootstrap a sign-in, but cannot replace a
+	// newer refresh token already persisted by this or another process.
+	if raw == "" {
+		raw = os.Getenv(key)
+	}
+	return raw, nil
+}
+
+func (credentials) WithRefreshLock(ctx context.Context, _ string, fn func() error) error {
+	store := secret.Default()
+	if store == nil {
+		return errors.New("llm: secret store unavailable")
+	}
+	return store.WithRefreshLock(ctx, fn)
+}
+
 func (c credentials) Save(credential auth.Credential) error {
 	key, ok := storeKey(credential.Vendor)
 	if !ok {
@@ -107,7 +137,11 @@ func (c credentials) Save(credential auth.Credential) error {
 		// Keep the fields the SDK does not model, for an older San reading
 		// the same store.
 		var blob codexBlob
-		_ = json.Unmarshal([]byte(secret.Resolve(key)), &blob)
+		previous, loadErr := storedCredential(key)
+		if loadErr != nil {
+			return loadErr
+		}
+		_ = json.Unmarshal([]byte(previous), &blob)
 		blob.AccessToken = credential.Access
 		blob.RefreshToken = credential.Refresh
 		blob.ExpiresAt = credential.ExpiresAt
@@ -125,10 +159,12 @@ func (credentials) Delete(vendorID string) error {
 		return nil
 	}
 	store := secret.Default()
-	if store == nil {
-		return nil
+	if store != nil {
+		if err := store.Delete(key); err != nil {
+			return err
+		}
 	}
-	return store.Delete(key)
+	return os.Unsetenv(key)
 }
 
 func (c credentials) List() ([]string, error) {
@@ -142,3 +178,4 @@ func (c credentials) List() ([]string, error) {
 }
 
 var _ auth.Store = credentials{}
+var _ auth.RefreshLocker = credentials{}
