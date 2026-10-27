@@ -33,6 +33,7 @@ func Run(opts setting.RunOptions) error {
 	defer func() {
 		tasks := task.Default()
 		if m != nil {
+			m.userInput.Session.Selector.Cancel()
 			m.StopAgentRuntime()
 			tasks = m.services.Task
 		}

@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"fmt"
+	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -15,10 +16,22 @@ func Project(records []Record) (*Transcript, error) {
 // is how compaction is written) starts it over. History keeps every message the
 // session ever held, each once, in the order it first appeared.
 func project(records []Record, resume bool) (*Transcript, error) {
+	return projectRecords(func(yield func(Record, error) bool) {
+		for _, r := range records {
+			if !yield(r, nil) {
+				return
+			}
+		}
+	}, resume)
+}
+
+func projectRecords(records iter.Seq2[Record, error], resume bool) (*Transcript, error) {
 	t := &Transcript{}
 	seen := make(map[string]bool)
-
-	for _, r := range records {
+	for r, err := range records {
+		if err != nil {
+			return nil, err
+		}
 		switch r.Type {
 		case SessionStarted:
 			applyStarted(t, r)

@@ -22,6 +22,9 @@ func (s *Store) Records(ctx context.Context, id string) iter.Seq2[Record, error]
 		for r, err := range s.log.Records(ctx, id) {
 			var rec Record
 			if err == nil {
+				err = ctx.Err()
+			}
+			if err == nil {
 				rec, err = fromLog(r, &conv)
 			}
 			if err == nil && n == 0 && (rec.Type != SessionStarted || rec.Version != SchemaVersion) {

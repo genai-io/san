@@ -2,9 +2,9 @@
 package input
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -13,7 +13,6 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // sessionSelectedMsg is sent when a session is selected.
@@ -29,10 +28,12 @@ type SessionSelector struct {
 	nav      kit.ListNav
 	width    int
 	height   int
-	store    *session.Store
 	cwd      string
 
-	messageCache map[string]string
+	loading    bool
+	loadError  error
+	generation uint64
+	cancel     context.CancelFunc
 }
 
 // SessionState holds session selector UI state for the TUI model.
@@ -43,11 +44,7 @@ type SessionState struct {
 
 // NewSessionSelector creates a new SessionSelector.
 func NewSessionSelector() SessionSelector {
-	return SessionSelector{
-		active:       false,
-		nav:          kit.ListNav{MaxVisible: 6},
-		messageCache: make(map[string]string),
-	}
+	return SessionSelector{nav: kit.ListNav{MaxVisible: 6}}
 }
 
 func calculateSessionMaxVisible(height int) int {
@@ -62,37 +59,34 @@ func calculateSessionPreviewLength(width int) int {
 	return max(30, min(width-10, 120))
 }
 
-// EnterSelect enters session selection mode.
-func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, cwd string) error {
+type sessionsListedMsg struct {
+	generation uint64
+	sessions   []session.Summary
+	err        error
+}
+
+// EnterSelect paints immediately; disk I/O runs on the returned command.
+func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, cwd string) (tea.Cmd, error) {
 	if store == nil {
-		return fmt.Errorf("session store is required")
+		return nil, fmt.Errorf("session store is required")
 	}
+	s.Cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.active, s.loading, s.cancel = true, true, cancel
+	s.cwd = cwd
+	s.Resize(width, height)
+	generation := s.generation
+	return func() tea.Msg {
+		defer cancel()
+		sessions, err := store.ListContext(ctx)
+		return sessionsListedMsg{generation: generation, sessions: sessions, err: err}
+	}, nil
+}
 
-	sessions, err := store.List()
-	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
-	}
-	if len(sessions) == 0 {
-		return fmt.Errorf("no sessions found")
-	}
-
-	maxVis := calculateSessionMaxVisible(height)
-	*s = SessionSelector{
-		active:       true,
-		sessions:     sessions,
-		width:        width,
-		height:       height,
-		nav:          kit.ListNav{MaxVisible: maxVis},
-		store:        store,
-		cwd:          cwd,
-		messageCache: make(map[string]string),
-	}
-	s.updateFilter()
-
-	if len(s.filtered) == 0 {
-		return fmt.Errorf("no sessions match the filter")
-	}
-	return nil
+func (s *SessionSelector) Resize(width, height int) {
+	s.width, s.height = width, height
+	s.nav.MaxVisible = calculateSessionMaxVisible(height)
+	s.nav.EnsureVisible()
 }
 
 func (s *SessionSelector) IsActive() bool {
@@ -100,12 +94,17 @@ func (s *SessionSelector) IsActive() bool {
 }
 
 func (s *SessionSelector) Cancel() {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	generation := s.generation + 1
 	*s = NewSessionSelector()
+	s.generation = generation
 }
 
 func (s *SessionSelector) updateFilter() {
 	query := strings.ToLower(s.nav.Search)
-	s.filtered = make([]session.Summary, 0, len(s.sessions))
+	s.filtered = s.filtered[:0]
 
 	for _, sess := range s.sessions {
 		if query != "" && !kit.FuzzyMatch(strings.ToLower(sess.Title), query) &&
@@ -120,7 +119,7 @@ func (s *SessionSelector) updateFilter() {
 }
 
 func (s *SessionSelector) Select() tea.Cmd {
-	if len(s.filtered) == 0 || s.nav.Selected >= len(s.filtered) {
+	if s.loading || len(s.filtered) == 0 || s.nav.Selected >= len(s.filtered) {
 		return nil
 	}
 
@@ -168,100 +167,6 @@ func sessionTruncateToFirstLine(content string, maxLen int) string {
 	return kit.TruncateText(content, maxLen)
 }
 
-func (s *SessionSelector) getLastMessage(sess session.Summary) string {
-	cacheKey := sess.ID + ":last"
-	if cached, ok := s.messageCache[cacheKey]; ok {
-		return cached
-	}
-
-	if sess.LastPrompt != "" {
-		maxLen := calculateSessionPreviewLength(s.width)
-		content := sessionTruncateToFirstLine(sess.LastPrompt, maxLen)
-		s.messageCache[cacheKey] = content
-		return content
-	}
-
-	if s.store == nil {
-		return ""
-	}
-
-	fullSession, err := s.store.Read(sess.ID)
-	if err != nil {
-		return ""
-	}
-
-	for _, msg := range slices.Backward(fullSession.Messages) {
-
-		if msg.Role != ai.RoleUser && msg.Role != ai.RoleAssistant {
-			continue
-		}
-		blocks := msg.Content
-		skip := false
-		for _, block := range blocks {
-			if block.Type == ai.BlockToolResult || block.Type == ai.BlockToolCall {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
-		for _, block := range blocks {
-			if block.Type == "text" && block.Text != "" {
-				maxLen := calculateSessionPreviewLength(s.width)
-				content := sessionTruncateToFirstLine(block.Text, maxLen)
-				s.messageCache[cacheKey] = content
-				return content
-			}
-		}
-	}
-
-	return ""
-}
-
-func (s *SessionSelector) getFirstSubstantiveMessage(sess session.Summary) string {
-	cacheKey := sess.ID + ":subst"
-	if cached, ok := s.messageCache[cacheKey]; ok {
-		return cached
-	}
-
-	if s.store == nil {
-		return ""
-	}
-
-	fullSession, err := s.store.Read(sess.ID)
-	if err != nil {
-		return ""
-	}
-
-	for _, msg := range fullSession.Messages {
-		if msg.Role != ai.RoleUser {
-			continue
-		}
-		blocks := msg.Content
-		isToolResult := false
-		for _, block := range blocks {
-			if block.Type == ai.BlockToolResult {
-				isToolResult = true
-				break
-			}
-		}
-		if isToolResult {
-			continue
-		}
-		for _, block := range blocks {
-			if block.Type == "text" && len([]rune(block.Text)) >= session.MinSubstantiveLength {
-				maxLen := calculateSessionPreviewLength(s.width)
-				content := sessionTruncateToFirstLine(block.Text, maxLen)
-				s.messageCache[cacheKey] = content
-				return content
-			}
-		}
-	}
-
-	return ""
-}
-
 func (s *SessionSelector) renderSession(sess session.Summary, isSelected bool, sb *strings.Builder, boxWidth int) {
 	// RenderSelectableRow adds a 4-char left prefix for unselected rows
 	// ("  " + PaddingLeft(2)) and the same 4-char visual offset for
@@ -269,11 +174,6 @@ func (s *SessionSelector) renderSession(sess session.Summary, isSelected bool, s
 	// exactly boxWidth columns wide with metadata flush right.
 
 	displayTitle := sess.Title
-	if len([]rune(displayTitle)) < session.MinSubstantiveLength {
-		if subst := s.getFirstSubstantiveMessage(sess); subst != "" {
-			displayTitle = subst
-		}
-	}
 
 	metadata := sessionFormatCompactMetadata(sess)
 	mdWidth := lipgloss.Width(metadata)
@@ -290,7 +190,7 @@ func (s *SessionSelector) renderSession(sess session.Summary, isSelected bool, s
 	padding := strings.Repeat(" ", gap)
 	sb.WriteString(kit.RenderSelectableRow(title+padding+metadata, isSelected) + "\n")
 
-	if lastMsg := s.getLastMessage(sess); lastMsg != "" {
+	if lastMsg := sessionTruncateToFirstLine(sess.LastPrompt, calculateSessionPreviewLength(s.width)); lastMsg != "" {
 		previewStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 		sb.WriteString(previewStyle.Render(fmt.Sprintf("    %s", lastMsg)))
 	}
@@ -315,7 +215,13 @@ func (s *SessionSelector) Render() string {
 	}
 	sb.WriteString(searchStyle.Render(searchLine) + "\n\n")
 
-	if len(s.filtered) == 0 {
+	if s.loading {
+		sb.WriteString(kit.SelectorHintStyle().Render("  Loading sessions…") + "\n")
+	} else if s.loadError != nil {
+		sb.WriteString(kit.SelectorHintStyle().Render("  Failed to list sessions: "+s.loadError.Error()) + "\n")
+	} else if len(s.sessions) == 0 {
+		sb.WriteString(kit.SelectorHintStyle().Render("  No sessions found") + "\n")
+	} else if len(s.filtered) == 0 {
 		sb.WriteString(kit.SelectorHintStyle().Render("  No sessions match the filter") + "\n")
 	} else {
 		startIdx, endIdx := s.nav.VisibleRange()
@@ -360,6 +266,14 @@ func sessionFormatRelativeTime(t time.Time) string {
 // UpdateSession routes session selection messages.
 func UpdateSession(deps OverlayDeps, state *SessionState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
+	case sessionsListedMsg:
+		selector := &state.Selector
+		if selector.active && selector.generation == msg.generation {
+			selector.loading, selector.cancel = false, nil
+			selector.sessions, selector.loadError = msg.sessions, msg.err
+			selector.updateFilter()
+		}
+		return nil, true
 	case sessionSelectedMsg:
 		return handleSessionSelected(deps, msg), true
 	}
@@ -371,8 +285,6 @@ func handleSessionSelected(deps OverlayDeps, msg sessionSelectedMsg) tea.Cmd {
 		deps.Conv.AddNotice("Failed to load session: " + err.Error())
 	}
 
-	// LoadSession → restoreSessionData has already set CommittedCount to the
-	// start of the replay window, so the transcript is not reprinted wholesale
-	// here. CommitAllMessages only has to print that window.
+	// Replay the restored conversation through the normal scrollback pipeline.
 	return tea.Batch(deps.CommitAllMessages()...)
 }

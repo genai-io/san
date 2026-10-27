@@ -386,10 +386,11 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 }
 
 func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.SessionStore, c.env.Cwd); err != nil {
+	cmd, err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.SessionStore, c.env.Cwd)
+	if err != nil {
 		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
 	}
-	return "", nil, nil
+	return "", cmd, nil
 }
 
 // handleSettingsCommand opens the /settings popup (Appearance, Permissions

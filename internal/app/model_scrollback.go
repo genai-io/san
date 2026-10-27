@@ -279,8 +279,11 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
 	assistantIdx := m.conv.StreamMessageIndex()
 	params := m.messageRenderParams()
-	// What the loop below is about to take out of the frame.
-	preCommitRows := rowCount(conv.RenderActiveContent(params))
+	// Once sized, queueScrollbackPrint measures the retained rows itself.
+	preCommitRows := 0
+	if !m.env.Ready || m.env.Height <= 0 {
+		preCommitRows = rowCount(conv.RenderActiveContent(params))
+	}
 
 	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
 		msg := m.conv.Messages[i]
