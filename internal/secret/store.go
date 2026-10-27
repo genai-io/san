@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -81,6 +82,32 @@ func (s *Store) Get(key string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.data[key]
+}
+
+// GetFresh reads credentials another process may have rotated since startup.
+func (s *Store) GetFresh(key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data := map[string]string{}
+	if err := atomicfile.ReadJSON(s.path, &data); err != nil {
+		return "", err
+	}
+	s.data = data
+	return data[key], nil
+}
+
+// WithRefreshLock protects the whole refresh exchange, separately from the
+// short write lock so fn can read and save credentials while holding it.
+func (s *Store) WithRefreshLock(ctx context.Context, fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return atomicfile.WithLock(s.path+".refresh.lock", func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return fn()
+	})
 }
 
 func (s *Store) Delete(key string) error {

@@ -11,7 +11,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/creack/pty v1.1.24
-	github.com/genai-io/sdk-go v0.9.3-0.20261025063223-aac2577d391a
+	github.com/genai-io/sdk-go v0.9.3-0.20261027092338-4a32ffbd6e5c
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
@@ -35,7 +35,7 @@ require (
 	github.com/kr/pty v1.1.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.8.0 // indirect
-	github.com/openai/openai-go/v3 v3.78.0 // indirect
+	github.com/openai/openai-go/v3 v3.88.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
