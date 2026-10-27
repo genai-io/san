@@ -1,16 +1,15 @@
 # PROP-0004: ACP agent entrypoint
 
-Draft — 2026-10-26. Transport kernel prototyped in `sdk-go`; San entrypoint pending.
+Draft — 2026-10-27. Transport kernel prototyped in `sdk-go`; San entrypoint pending.
 
 ## Scope
 
-Add opt-in `san acp`: ACP v1 over stdio for external clients. Support foreground
-coding, text/resource links, tool results/diffs, approvals, session loading and
-stdio MCP. Keep existing TUI and print behavior unchanged.
+Add opt-in `san acp` without changing native TUI/print behaviour. Design for San's
+full capability set; foreground-first delivery is a milestone, not a permanent
+feature cut. Each release states what is available, extended or safely unavailable.
 
-Defer TUI-over-ACP, background/service launches, autonomous orchestration, remote
-transport and multi-session hosting. Enforce these limits at execution, not just
-by hiding controls.
+Keep one active root session per process initially; child tasks remain distinct.
+TUI-over-ACP, remote hosting and multi-client control remain out of scope.
 
 ## Architecture
 
@@ -20,33 +19,73 @@ San TUI ── native calls ─────┐
 External client ── ACP ──────┘
 ```
 
-- Proposed `internal/app/agenthost`: shared session lifetime, input preparation,
-  lifecycle effects and interaction policy; no Bubble Tea or ACP types.
-- Proposed `internal/app/acp`: protocol dispatch and safe event projection;
-  no duplicate authorization, persistence or execution logic.
-- Reuse existing services; generic ACP helpers live in `sdk-go/pkg/acp`.
-  Native transcripts stay authoritative; neither new package imports root `app`.
+- `sdk-go/pkg/acp`: transport kernel now; wire types and ordered admission/cancel next.
+- Proposed `internal/app/agenthost`: shared input, lifecycle and interaction policy,
+  composing existing services; no second engine, Bubble Tea or ACP types.
+- Proposed `internal/app/acp`: capability negotiation, projections and extensions;
+  no duplicate authorization, persistence or task scheduler.
+
+Native transcripts remain authoritative. Extract shared behaviour incrementally;
+neither app subpackage imports root `app`.
+
+## Capability map
+
+Target mappings, not implemented guarantees. Pin [ACP v1 schema-v1.26.0](https://github.com/agentclientprotocol/agent-client-protocol/tree/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/schema/v1);
+prefer its standard/optional surfaces before extensions or draft features.
+
+| San capability | ACP surface / retained behaviour |
+|---|---|
+| Text, images, file references | Content blocks and resource links; negotiate richer inputs and preserve block order |
+| Tools, Bash, diffs, large output | Tool updates, locations, diff/resource content; San executes, bounds previews and exposes full output safely |
+| Main/worker approvals | `session/request_permission`; San validates scopes, audits before execution and keeps worker grants once-only |
+| Questions / interactive Bash | Negotiated elicitation or an interaction extension; retain request/source identity; secrets require a separate safe channel, never chat/forms |
+| History, fork, rename | Standard new/load/resume/list/delete/close where supported; extensions for missing operations; restore native state without granting bypass |
+| Models, modes, personas, skills | Config options and executable command discovery; preserve native defaults and validate legacy-client mappings |
+| Subagents, tasks, workflows | Standard tool/plan summaries plus task extensions for topology, output, messaging, Stop/Kill and continuation; a plan is not a scheduler |
+| Cron, AutoPilot, groups, self-learning | Existing backend services/settings; commands/extensions for controls, explicit idle/stop/disconnect ownership |
+| Memory, compaction, tokens/cost | Backend context policy; negotiated compaction/usage updates and commands; detailed diagnostics stay San-owned |
+| MCP, plugins, hooks, trust | Existing native loading, scoped client MCP config and gated management commands; client settings never silently replace San policy |
+| Recap, side questions, queued input | Separate command/queue operations; preserve whether input enters history or wakes main; layout/scrollback stay client-owned |
+
+Extensions use a versioned `genai-io/san` capability in `_meta` and `_san/` methods,
+only after agreement. Standard summaries stay readable without an extension UI;
+missing controls are reported, not granted or disguised as user prompts.
+Carry session, turn, tool-call, task, child-session, attempt and interaction IDs as
+distinct scoped identities. Task actions revalidate the current attempt; continuing
+asks main to choose a safe action instead of directly relaunching a worker.
 
 ## Flow and invariants
 
 `initialize` → `session/new` or `session/load` → `session/prompt` →
 `session/update` and approval requests → prompt result.
 
-- Use workspace-scoped configuration; missing setup/trust fails explicitly.
-  Loading history never restores bypass grants.
-- One event consumer records/applies lifecycle effects before projection.
-  Retries must not merge abandoned output into the final answer.
-- Validate approval ownership/scope; audit before waking the gate. Unsupported
-  interactions fail closed; secrets never fall back to chat/forms.
-- Cancel settles at the real turn boundary. EOF/failure cancels pending work,
-  stops owned services and releases the writer. Reconnect loads history, not
-  process-local worker checkpoints.
-- Protocol-only stdout, diagnostics on stderr. Bound frames/output queues;
-  blocked readers must not prevent cancellation or cleanup.
+- One event owner applies shared input/hooks/context and durable effects before
+  projection; keep native history and historical diffs, reject untrusted setup.
+  Publish new-session commands only after its response; separate failed retries.
+- Admit prompts in wire order before dispatch; reject overlap without cancelling
+  the current turn. Early cancels and stale replies must not target a successor.
+- `optionId`, not `allow_always`, selects the exact grant scope; validate/audit
+  once before waking the original caller. Unsupported interactions fail closed.
+- Prompt cancel settles after unwind; hold queued input, background-to-model delivery
+  and wakeups until user continuation. Task updates stay visible; independent tasks
+  keep running. Task Stop/Kill and session close/disconnect are separate operations.
+- Close/disconnect stops owned work and releases resources; no detached execution.
+  Load replays history; resume does not. Reconcile live attempts only within a
+  surviving host; restart restores persisted state, not live checkpoints or approvals.
+- Protocol-only stdout, bounded queues/previews and safe output references;
+  blocked readers must not prevent cleanup. Never export credentials/signatures.
 
-Validate one session/prompt per process with Zed first. Orca requires separate
-launch registration. No capability is advertised before validation.
+Validate baseline, optional-capability and San-extension clients separately.
+Zed/Orca compatibility requires real tests; Orca launch registration is separate.
+
+## Implementation references
+
+Informative patterns, not a promise that every client supports their extensions:
+
+- [OpenCode](https://github.com/anomalyco/opencode/tree/6aedf36ca307f97919f39d655de13b3ad5ccd24f/packages/cli/src/acp): native-runtime facade, child-scoped tool IDs, load/replay and post-response command publication.
+- [Claude adapter](https://github.com/agentclientprotocol/claude-agent-acp/blob/0ce42f2c312d190f78024d8b4b1ae5f00d9e5939/src/tests/native-subagents.test.ts): distinct child lifecycles across reused task IDs and late events.
+- [Codex adapter](https://github.com/zed-industries/codex-acp/blob/296069e841634cd4bb9bc4515602d836e49231ec/src/thread.rs#L2412-L2523): exact approval option scopes, structured diffs and negotiated terminal display.
+- [Orca dialects](https://github.com/stablyai/orca/tree/v1.4.241/src/main/acp/acp-dialects): question, child-stop and background-kill gaps require explicit client support; do not copy vendor wire quirks.
 
 [Implementation plan](../../../notes/active/acp-agent-entrypoint.md) ·
-[ACP v1](https://agentclientprotocol.com/protocol/v1/overview) ·
-[Zed custom agents](https://zed.dev/docs/ai/external-agents.md#custom-agents)
+[ACP extensions](https://agentclientprotocol.com/protocol/v1/extensibility)
