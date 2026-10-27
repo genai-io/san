@@ -51,8 +51,25 @@ and application boundaries.
 - `internal/agent/runtime.go`: live execution and native message retention.
 
 The application creates Store at startup and injects it into slash commands.
-`/resume` lists that Store and opens the session selector. Selecting a session
-asks the application to stop Runtime and restore the selected identity.
+`san -r` and `/resume` paint the selector before listing sessions on a background
+command. `ListContext` cancels cold-cache recovery when the picker closes;
+generation checks discard late results after reopening. Filtering and terminal
+resizing remain available while loading. Selecting a session asks the application
+to stop Runtime and restore the selected identity.
+
+The picker renders cached titles and prompt previews only, including short
+explicit titles. Rendering, filtering, and navigation never read transcripts.
+Missing or stale `.meta` files rebuild through a streaming metadata projection:
+bounded user text and message IDs preserve truncation and compaction semantics,
+while audit payloads and tool output are discarded. Main-session listings stop
+at a sidechain's header, keeping that partial result in memory only. A full
+sidechain listing still reads and validates its body.
+
+Selected-session recovery also projects records as they arrive and seeds the
+writer counters in that pass, without retaining the entire audit log. Once the
+terminal size is known, scrollback commits render each message once; retained-row
+measurement supplies the frame geometry. Full history still replays into native
+scrollback through the normal print queue.
 
 ## Flow
 
@@ -168,6 +185,15 @@ seed records through the public Append contract.
 `internal/app/session_isolation_test.go` covers temporary grants, worker notices,
 and stale outboxes. Runtime pending-input tests cover failure and early shutdown;
 `internal/session/list_recovery_test.go` covers malformed and old-version neighbors.
+
+Resume performance benchmarks: `go test ./internal/transcript -run '^$' -bench BenchmarkListSummaries -benchmem`,
+`go test ./internal/app/input -run '^$' -bench BenchmarkSessionSelectorFilterAndRender -benchmem`,
+and `go test ./internal/app -run '^$' -bench BenchmarkResumeRender -benchmem`.
+`internal/transcript/replay_test.go` compares streaming restoration and summaries
+against full projection across replacement, compaction, state clearing, and model
+changes. `internal/app/input/session_selector_test.go` covers loading, cancellation,
+stale results, filtering, cached previews, and resizing.
+
 
 Run `make ci`. Always stop Runtime before closing its Session. ReadChatHistory is for
 browsing; Open restores the active context. Never write UI rows or a read result

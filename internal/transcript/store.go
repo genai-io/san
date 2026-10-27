@@ -338,16 +338,7 @@ func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, err
 		return nil, err
 	}
 
-	records, err := s.loadRecords(ctx, transcriptID)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := Project(records)
-	if err != nil {
-		return nil, err
-	}
-	s.seedCacheLocked(transcriptID, records, tx)
-	return tx, nil
+	return s.loadLocked(ctx, transcriptID)
 }
 
 // LoadHistory reads the selected chain across compaction boundaries without changing writer state.
@@ -360,11 +351,7 @@ func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	records, err := s.loadRecords(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return project(records, false)
+	return projectRecords(s.Records(ctx, id), false)
 }
 
 func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([]Summary, error) {
@@ -386,7 +373,10 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 			return nil, err
 		}
 		id := info.ID
-		item, err := s.summaryLocked(id)
+		item, err := s.summaryLocked(ctx, id, opts.IncludeSidechain)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if err != nil {
 			log.Logger().Warn("skipping unreadable session", zap.String("session", id), zap.Error(err))
 			continue
@@ -450,38 +440,42 @@ func (s *Store) warmupCachesLocked(id string) error {
 	if c.warmed {
 		return nil
 	}
-	records, err := s.loadRecords(context.Background(), id)
+	_, err := s.loadLocked(context.Background(), id)
 	if errors.Is(err, session.ErrNotFound) {
 		c.warmed = true
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	tx, err := Project(records)
-	if err != nil {
-		return err
-	}
-	s.seedCacheLocked(id, records, tx)
-	return nil
+	return err
 }
-func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
-	c := s.cacheLocked(id)
-	c.persistedIDs = make(map[string]struct{})
-	for _, r := range records {
-		if r.Message != nil {
-			c.persistedIDs[r.Message.ID] = struct{}{}
+
+// Seed writer state during replay, without retaining the audit log beside it.
+func (s *Store) loadLocked(ctx context.Context, id string) (*Transcript, error) {
+	c := &sessionCache{persistedIDs: make(map[string]struct{})}
+	records := func(yield func(Record, error) bool) {
+		for r, err := range s.Records(ctx, id) {
+			if err == nil {
+				if r.Message != nil {
+					c.persistedIDs[r.Message.ID] = struct{}{}
+				}
+				for _, m := range r.Messages {
+					c.persistedIDs[m.ID] = struct{}{}
+				}
+				if r.GitBranch != "" {
+					c.lastGitBranch = r.GitBranch
+				}
+				if r.Inference != nil {
+					c.inference = max(c.inference, r.Inference.Sequence)
+					c.exchange = max(c.exchange, r.Inference.Exchange)
+				}
+			}
+			if !yield(r, err) {
+				return
+			}
 		}
-		for _, m := range r.Messages {
-			c.persistedIDs[m.ID] = struct{}{}
-		}
-		if r.GitBranch != "" {
-			c.lastGitBranch = r.GitBranch
-		}
-		if r.Inference != nil {
-			c.inference = max(c.inference, r.Inference.Sequence)
-			c.exchange = max(c.exchange, r.Inference.Exchange)
-		}
+	}
+	tx, err := projectRecords(records, true)
+	if err != nil {
+		return nil, err
 	}
 	c.latestState = tx.State
 	c.latestState.Tasks = slices.Clone(tx.State.Tasks)
@@ -493,6 +487,11 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 	}
 	c.messages = tx.Messages
 	c.warmed = true
+	if s.sessions == nil {
+		s.sessions = make(map[string]*sessionCache)
+	}
+	s.sessions[id] = c
+	return tx, nil
 }
 
 // LastMessageID returns the active-chain leaf message ID for an existing
@@ -540,35 +539,6 @@ func (s *Store) loadRecords(ctx context.Context, id string) ([]Record, error) {
 	return records, nil
 }
 
-func (s *Store) buildSummaryLocked(transcriptID string) (Summary, error) {
-	records, err := s.loadRecords(context.Background(), transcriptID)
-	if err != nil {
-		return Summary{}, err
-	}
-	transcript, err := Project(records)
-	if err != nil {
-		return Summary{}, err
-	}
-
-	title := transcript.State.Title
-	if title == "" {
-		title = firstUserText(transcript.Messages)
-	}
-
-	return Summary{
-		ID:           transcriptID,
-		FullPath:     s.transcriptPath(transcriptID),
-		CreatedAt:    transcript.CreatedAt,
-		UpdatedAt:    transcript.UpdatedAt,
-		Title:        title,
-		LastPrompt:   coalesce(transcript.State.LastPrompt, lastUserText(transcript.Messages)),
-		MessageCount: len(transcript.Messages),
-		GitBranch:    recordGitBranch(records),
-		IsSidechain:  anySidechain(records),
-		Provider:     transcript.Provider, Model: transcript.Model,
-	}, nil
-}
-
 func firstUserText(messages []ai.Message) string {
 	for _, msg := range messages {
 		if msg.Role != "user" {
@@ -603,23 +573,6 @@ func firstTextBlock(content ai.Content) string {
 		}
 	}
 	return ""
-}
-
-func recordGitBranch(records []Record) string {
-	for _, rec := range slices.Backward(records) {
-		if rec.GitBranch != "" {
-			return rec.GitBranch
-		}
-	}
-	return ""
-}
-func anySidechain(records []Record) bool {
-	for _, rec := range records {
-		if rec.Start != nil && (rec.Start.Sidechain || rec.Start.ParentSessionID != "") {
-			return true
-		}
-	}
-	return false
 }
 
 func coalesce(values ...string) string {

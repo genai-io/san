@@ -73,7 +73,12 @@ func (s *Store) TranscriptPath(sessionID string) string {
 }
 
 func (s *Store) List() ([]Summary, error) {
-	return s.transcriptStore.List(context.Background(), s.projectID, transcript.ListOptions{})
+	return s.ListContext(context.Background())
+}
+
+// ListContext lists picker metadata and stops cold-cache recovery on cancellation.
+func (s *Store) ListContext(ctx context.Context) ([]Summary, error) {
+	return s.transcriptStore.List(ctx, s.projectID, transcript.ListOptions{})
 }
 
 func (s *Store) Delete(id string) error {

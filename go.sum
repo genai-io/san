@@ -32,8 +32,8 @@ github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
-github.com/anthropics/anthropic-sdk-go v1.82.0 h1:A82J+yHEMbQ3+7ObCagOX4tVm1uyBhELCHd2dDYZYuo=
-github.com/anthropics/anthropic-sdk-go v1.82.0/go.mod h1:GThfYqPJoaQ/6pmibCI98Cr4y5su2FXMUHn3NrSSnIc=
+github.com/anthropics/anthropic-sdk-go v1.84.0 h1:mnAhggc5H5A98JYmhQELT+j4J89PYBFKnnSvUTNwNd8=
+github.com/anthropics/anthropic-sdk-go v1.84.0/go.mod h1:GThfYqPJoaQ/6pmibCI98Cr4y5su2FXMUHn3NrSSnIc=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/autarch/testify v1.2.2 h1:9Q9V6zqhP7R6dv+zRUddv6kXKLo6ecQhnFRFWM71i1c=
@@ -121,8 +121,8 @@ github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKK
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6 h1:bVgD1ZhvGbuNMIN9zcETz7URdDrH3c3ic4Isg93n7L0=
 github.com/genai-io/bubbletea/v2 v2.1.1-0.20261021080902-3984736d55d6/go.mod h1:J2/PHiN8RLwBV2Tp4OdkuKXMKwwA+7SDqK0yX5AJ46M=
-github.com/genai-io/sdk-go v0.9.3-0.20261027092338-4a32ffbd6e5c h1:r+eScoHXcWWCVc8hUFQ56lzUlsH56OKDXhaRn56ZWnM=
-github.com/genai-io/sdk-go v0.9.3-0.20261027092338-4a32ffbd6e5c/go.mod h1:bzFjmLKhBHQD/lHjf+4wg2dmWUOupj5gd6smyR+jPWo=
+github.com/genai-io/sdk-go v0.9.3-0.20261027133355-b1eaf69e0780 h1:yY9V6BBYVFcXg7CS0C/KgTjkQ9s41zHDfyTatjfCcrs=
+github.com/genai-io/sdk-go v0.9.3-0.20261027133355-b1eaf69e0780/go.mod h1:e4GF04P0oMw7ll7d2ObhKkJ2FHVr2TPNZKN39CIP4gs=
 github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b h1:XMd4IEi7Ea1AIzmq7SytglOA+3+hgMhroAFPkqReNo0=
 github.com/genai-io/ultraviolet v0.0.0-20261021080128-f26d6ca6a24b/go.mod h1:aJDVk+WOVM1K04rdc/71PMPoUGfjxjhvXfP3Pjz1Zio=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=

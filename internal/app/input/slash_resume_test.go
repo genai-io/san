@@ -23,9 +23,10 @@ func TestResumeCommandListsInjectedStore(t *testing.T) {
 		Input: m, SessionStore: store, Width: 80, Height: 24,
 	})
 	result, cmd, handled := c.Execute(context.Background(), "/resume")
-	if !handled || result != "" || cmd != nil || !m.Session.Selector.IsActive() {
+	if !handled || result != "" || cmd == nil || !m.Session.Selector.IsActive() {
 		t.Fatalf("resume did not open the selector: handled=%v result=%q", handled, result)
 	}
+	UpdateSession(OverlayDeps{}, &m.Session, cmd())
 	selected := m.Session.Selector.Select()
 	if selected == nil {
 		t.Fatal("resume did not list the stored session")
