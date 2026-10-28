@@ -72,13 +72,13 @@ func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		return rt.OnCompacted(e)
 	default:
 		// A single event emits at most one scrollback write (extra), and
-		// ContinueOutbox never writes scrollback, so there's nothing to order —
+		// ListenForAgentEvents never writes scrollback, so there's nothing to order —
 		// tea.Batch is safe here (unlike the multi-effect batch handler, which
 		// sequences). See handleAgentEventBatch.
 		if extra := applyAgentEvent(rt, m, ev); extra != nil {
-			return tea.Batch(extra, rt.ContinueOutbox())
+			return tea.Batch(extra, rt.ListenForAgentEvents())
 		}
-		return rt.ContinueOutbox()
+		return rt.ListenForAgentEvents()
 	}
 }
 
@@ -134,12 +134,12 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 		return ordered
 	}
 	if ordered == nil {
-		return rt.ContinueOutbox()
+		return rt.ListenForAgentEvents()
 	}
-	return tea.Batch(ordered, rt.ContinueOutbox())
+	return tea.Batch(ordered, rt.ListenForAgentEvents())
 }
 
-// --- Event side-effect handlers (no ContinueOutbox) ---
+// --- Event side-effect handlers (no ListenForAgentEvents) ---
 
 func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	switch e := ev.(type) {

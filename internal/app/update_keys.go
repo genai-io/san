@@ -56,8 +56,8 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// head item was under edit (see drainTurnQueues): if the agent went
 		// idle in the meantime, dispatch the queue now.
 		if m.userInput.Queue.SelectIdx < 0 && !m.conv.Stream.Active {
-			if drain := m.drainInputQueueWhileIdle(); drain != nil {
-				return tea.Batch(c, drain), true
+			if send := m.sendNextQueuedInputIfIdle(); send != nil {
+				return tea.Batch(c, send), true
 			}
 		}
 		return c, ok

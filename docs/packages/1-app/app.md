@@ -158,7 +158,7 @@ Root files (no business logic; pure glue):
 | `update_approval.go` | Permission approval flow + bridge response. |
 | `update_input_effects.go` | Stream cancel, tool-call cancel, image paste, quit. |
 | `view.go` | `View()` — composes sub-model `View()` strings into terminal layout. |
-| `agent.go` | Agent session lifecycle helpers (`sendToAgent`, `ContinueOutbox`, `ReconfigureAgentTool`). |
+| `agent.go` | Agent session lifecycle helpers (`sendToAgent`, `ListenForAgentEvents`, `ReconfigureAgentTool`). |
 | `services.go` | The `services` struct + `newServices()` + `refreshAfterReload()`. |
 | `env.go` | `env` — app-local TUI state (provider snapshot, permissions, plan, cache). Pure state holder. |
 | `hooks.go` | Hook integration glue (LLM completer wiring). |

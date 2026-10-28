@@ -35,7 +35,7 @@ func TestSubmitDuringCompactionQueuesInput(t *testing.T) {
 			if item.Content != raw || !reflect.DeepEqual(item.Images, images) || m.userInput.Textarea.Value() != "" || len(m.userInput.Images.Pending) != 0 {
 				t.Fatal("queued input was changed or left in the composer")
 			}
-			if cmd := m.drainInputQueueWhileIdle(); cmd != nil {
+			if cmd := m.sendNextQueuedInputIfIdle(); cmd != nil {
 				t.Fatal("idle drain released input while compaction was active")
 			}
 			if _, released := m.releaseQueuedMessage(); released || m.userInput.Queue.Len() != 1 {

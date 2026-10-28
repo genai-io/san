@@ -56,7 +56,7 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
                           │
    ┌──────────────────────┼───────────────────────────────────────┐
    │  Render              ▼                                       │
-   │             ContinueOutbox tea.Cmd                           │
+   │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
    │                  Update → conv.Update → callbacks            │
@@ -163,7 +163,7 @@ routeKeypress → handleTextareaShortcut
         ├─ sendToAgent ───────────► core.Agent.Append
         │                           （任意 goroutine，永不阻塞）
         │
-        └─ 返回 ContinueOutbox cmd  （见 Path D）
+        └─ 返回 ListenForAgentEvents cmd  （见 Path D）
               这个 cmd 被 Bubble Tea 跑起来时，会从 agent 的 Outbox
               channel 读出一条事件、包成 tea.Msg 回投到 Update。
               LLM 开始流式输出后，第一条事件通常毫秒级到达。
@@ -369,10 +369,10 @@ core.Event 进 Outbox channel
    │   PreTool、PostTool、OnMessage、end-of-turn、AgentStop 等
    │
    ▼
-ContinueOutbox tea.Cmd                  agent.go: 阻塞在 channel 上，
+ListenForAgentEvents tea.Cmd            agent.go: 阻塞在 channel 上，
    │                                    读出**一条** event，返回的
    │                                    tea.Msg 里**同时**带上下一个
-   │                                    ContinueOutbox cmd。Update 把
+   │                                    ListenForAgentEvents cmd。Update 把
    │                                    那个 cmd 还给 framework，
    │                                    framework 又跑一次……如此往复
    │                                    直到事件停止到达。一次性

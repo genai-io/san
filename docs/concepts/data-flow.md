@@ -60,7 +60,7 @@ scrollback) plus `View()` (bottom UI strip).
                           │
    ┌──────────────────────┼───────────────────────────────────────┐
    │  Render              ▼                                       │
-   │             ContinueOutbox tea.Cmd                           │
+   │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
    │                  Update → conv.Update → callbacks            │
@@ -171,7 +171,7 @@ routeKeypress → handleTextareaShortcut
         ├─ sendToAgent ───────────► core.Agent.Append
         │                           (any goroutine; never blocks)
         │
-        └─ returns ContinueOutbox cmd  (see Path D)
+        └─ returns ListenForAgentEvents cmd  (see Path D)
               That cmd, when bubbletea runs it, will read one event off
               the agent's Outbox channel and produce a tea.Msg back into
               Update. The first event normally arrives within ms once
@@ -393,10 +393,10 @@ core.Event onto Outbox channel
    │   PreTool, PostTool, OnMessage, end-of-turn, AgentStop, etc.
    │
    ▼
-ContinueOutbox tea.Cmd                  agent.go: blocks on the channel,
+ListenForAgentEvents tea.Cmd            agent.go: blocks on the channel,
    │                                    reads ONE event, returns a
    │                                    tea.Msg that ALSO carries the
-   │                                    next ContinueOutbox cmd. So
+   │                                    next ListenForAgentEvents cmd. So
    │                                    Update keeps scheduling fresh
    │                                    polls until events stop arriving
    │                                    (one-shot tea.Cmds simulating a

@@ -121,7 +121,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	}
 
 	scrollPart := tea.Sequence(append(scrollbackCmds, tea.ClearScreen)...)
-	return tea.Batch(scrollPart, m.ContinueOutbox(), kit.StatusTimer(3*time.Second, token), m.drainInputQueueWhileIdle())
+	return tea.Batch(scrollPart, m.ListenForAgentEvents(), kit.StatusTimer(3*time.Second, token), m.sendNextQueuedInputIfIdle())
 }
 
 // HandleCompactResult applies a manual /compact result. It does not reset the UI
@@ -136,7 +136,7 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 		// pressing /compact on a summary used to spend a model call to
 		// summarise it again, a little worse each time.
 		m.conv.Compact.Complete("Nothing to compact — the conversation is already this short.", false)
-		return tea.Batch(append(m.CommitMessages(), m.drainInputQueueWhileIdle())...)
+		return tea.Batch(append(m.CommitMessages(), m.sendNextQueuedInputIfIdle())...)
 	}
 	if msg.Err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Err), true)

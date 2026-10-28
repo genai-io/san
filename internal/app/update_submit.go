@@ -78,7 +78,7 @@ func (m *model) enqueueInput(raw string) tea.Cmd {
 
 // dispatchSubmission runs the submission pipeline: exit shortcut →
 // prompt-hook gate → history → slash command? → otherwise send to
-// agent. Shared by the Enter handler and drainInputQueueWhileIdle.
+// agent. Shared by the Enter handler and sendNextQueuedInputIfIdle.
 func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	if input.IsExitRequest(raw) {
 		cmd, _ := m.QuitWithCancel()
@@ -193,13 +193,9 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 	return strings.TrimSpace(sb.String())
 }
 
-// drainInputQueueWhileIdle pops one queued item (if any) and runs it
-// through the normal submission pipeline. Called wherever queued input may
-// meet an idle agent: from handleStreamCancel, so input queued while a turn
-// was streaming runs right after Ctrl+C/Esc; and from routeKeypress when
-// leaving queue-edit mode, which releases a drain that drainTurnQueues held
-// during the edit; or after compaction has applied its replacement history.
-func (m *model) drainInputQueueWhileIdle() tea.Cmd {
+// sendNextQueuedInputIfIdle submits one queued input while idle, preserving
+// the composer draft. A head item under edit waits until editing ends.
+func (m *model) sendNextQueuedInputIfIdle() tea.Cmd {
 	if m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil
 	}
