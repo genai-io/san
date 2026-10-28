@@ -19,15 +19,10 @@ recovers, and the status bar shows `--`. Set one with `/context limit`. See
 
 ## Input during compaction
 
-Messages sent during automatic or manual compaction enter the pending input
-queue, with their image attachments. They remain editable and cancelable while
-the summary is being computed. Once the summary is applied (or manual
-compaction reports nothing to compact), the first queued message resumes
-automatically; later messages use the usual step/turn boundaries. Editing the
-head of the queue holds its delivery until the edit ends. An unrelated composer
-draft is preserved. If compaction fails, queued input stays available for retry
-or editing instead of being discarded or immediately retried against an
-oversized history.
+Messages and images sent during compaction enter the editable pending queue.
+Delivery resumes after compaction succeeds or reports nothing to compact;
+editing the queue head delays delivery until the edit ends. Drafts are preserved,
+and failures leave pending input available for retry.
 
 ## What compaction touches (and what it doesn't)
 
