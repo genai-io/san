@@ -21,7 +21,7 @@ import (
 )
 
 // handleSubmit is the Enter handler. Reads the textarea; if a turn is
-// already streaming, queues for later; otherwise runs the submission
+// already streaming or compacting, queues for later; otherwise runs the submission
 // pipeline.
 func (m *model) handleSubmit() tea.Cmd {
 	m.userInput.PromptSuggestion.Clear()
@@ -49,17 +49,12 @@ func (m *model) handleSubmit() tea.Cmd {
 			return tea.Batch(cmd, m.deliverNotice(mainNotice{Display: result}))
 		}
 		log.Logger().Sugar().Debugf("handleSubmit: stream active, enqueue %q", raw)
-		return m.enqueueWhileStreaming(raw)
+		return m.enqueueInput(raw)
 	}
 
-	// A manual /compact computes its summary asynchronously, then applies it
-	// in place. Accepting a message in that window would race the compaction
-	// (the summary predates the new message, so an in-place replace could drop
-	// it). Hold submission until compaction finishes; the textarea keeps the
-	// text so the user just presses Enter again.
+	// Keep input outside the history being summarized until its replacement is applied.
 	if m.conv.Compact.Active {
-		m.conv.AddNotice("Compaction in progress — please resubmit in a moment.")
-		return nil
+		return m.enqueueInput(raw)
 	}
 
 	log.Logger().Sugar().Debugf("handleSubmit: stream idle, normal submit %q", raw)
@@ -67,17 +62,17 @@ func (m *model) handleSubmit() tea.Cmd {
 	return m.dispatchSubmission(raw)
 }
 
-// enqueueWhileStreaming parks the input in the queue and resets the
-// textarea. The queued item is dequeued either by drainInputQueueWhileIdle
-// (on stream cancel / edit exit) or by drainTurnQueues (at turn boundary).
-func (m *model) enqueueWhileStreaming(raw string) tea.Cmd {
+// enqueueInput parks the input in the queue and resets the
+// textarea. Safe step/turn boundaries, cancellation, compaction completion,
+// and queue-edit exit release queued items.
+func (m *model) enqueueInput(raw string) tea.Cmd {
 	images := m.userInput.PendingImages()
 	if m.userInput.Queue.Enqueue(raw, images) < 0 {
 		m.conv.AddNotice("Input queue is full. Please wait for the current turn to complete.")
 		return nil
 	}
 	m.userInput.Reset()
-	log.Logger().Sugar().Debugf("enqueueWhileStreaming: queued %q queueLen=%d", raw, m.userInput.Queue.Len())
+	log.Logger().Sugar().Debugf("enqueueInput: queued %q queueLen=%d", raw, m.userInput.Queue.Len())
 	return nil
 }
 
@@ -203,8 +198,11 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 // meet an idle agent: from handleStreamCancel, so input queued while a turn
 // was streaming runs right after Ctrl+C/Esc; and from routeKeypress when
 // leaving queue-edit mode, which releases a drain that drainTurnQueues held
-// during the edit.
+// during the edit; or after compaction has applied its replacement history.
 func (m *model) drainInputQueueWhileIdle() tea.Cmd {
+	if m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
+		return nil
+	}
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
 		return nil

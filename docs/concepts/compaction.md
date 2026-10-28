@@ -17,6 +17,18 @@ budget: proactive compaction is skipped, the reactive *prompt-too-long* retry
 recovers, and the status bar shows `--`. Set one with `/context limit`. See
 [`reference/token-limits.md`](../reference/token-limits.md).
 
+## Input during compaction
+
+Messages sent during automatic or manual compaction enter the pending input
+queue, with their image attachments. They remain editable and cancelable while
+the summary is being computed. Once the summary is applied (or manual
+compaction reports nothing to compact), the first queued message resumes
+automatically; later messages use the usual step/turn boundaries. Editing the
+head of the queue holds its delivery until the edit ends. An unrelated composer
+draft is preserved. If compaction fails, queued input stays available for retry
+or editing instead of being discarded or immediately retried against an
+oversized history.
+
 ## What compaction touches (and what it doesn't)
 
 The three channels are treated very differently. The whole design hinges on

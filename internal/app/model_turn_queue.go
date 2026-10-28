@@ -59,7 +59,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 // Shared by the step-boundary (OnStepEnd) and turn-boundary
 // (drainTurnQueues) drains.
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
-	if m.userInput.Queue.SelectIdx == 0 {
+	if m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
 	item, ok := m.userInput.Queue.Dequeue()
