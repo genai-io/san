@@ -142,7 +142,8 @@ Task created → attempt 1 running → attempt 1 failed
   The lease closes before completion is
   announced, so the next attempt cannot race the previous writer.
 - Main sees the failure reason, partial findings, session pointer, and attempt
-  number. It can continue, take over remaining work, or report a blocker. It must
+  number. It can continue, take over remaining work, or report a blocker. The
+  notification presents these choices without recommending continuation. It must
   inspect uncertain side effects before retrying; neither message delivery nor a
   normal worker exit proves the requested task was fulfilled.
 - Running, deliberately stopped/killed, foreign-session, and missing-checkpoint

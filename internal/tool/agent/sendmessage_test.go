@@ -90,7 +90,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 	if result.Success {
 		t.Fatal("sending to an unregistered address should fail")
 	}
-	if !strings.Contains(result.Error, "spawn a new agent") {
+	if !strings.Contains(result.Error, "check the exact task ID returned by Agent") || strings.Contains(result.Error, "spawn a new agent") {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }
@@ -142,7 +142,7 @@ func TestSendMessage_KnownTaskBoundary(t *testing.T) {
 		{name: "failed stale route", status: task.StatusFailed, wantError: "same task and session"},
 		{name: "stopped stale route", status: task.StatusStopped, wantError: "cannot be resumed automatically"},
 		{name: "killed stale route", status: task.StatusKilled, wantError: "deliberately stopped"},
-		{name: "bash", status: task.StatusRunning, bash: true, wantError: "not an agent"},
+		{name: "bash", status: task.StatusRunning, bash: true, wantError: "inspect its output file and continue with the shell tools"},
 		{name: "cross session", owner: "session-a", sender: "session-b", status: task.StatusRunning, wantError: "different parent session"},
 	}
 	for _, tc := range cases {

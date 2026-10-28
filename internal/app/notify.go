@@ -135,7 +135,7 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		b.WriteString(tool.EscapeXMLText(result))
 	}
 	if info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
-		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. If safe, use Agent with resume_task_id set to this task ID and only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Otherwise take over the remaining work or report a blocker; never bypass a denied command.")
+		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. Choose whether to finish directly, continue the existing worker, or report a blocker. For a safe continuation, use Agent with resume_task_id set to this task ID and only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Never bypass a denied command.")
 	}
 	b.WriteString("\n</task-notification>")
 

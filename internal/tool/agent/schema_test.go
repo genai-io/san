@@ -21,8 +21,8 @@ func TestAgentSchemaEncouragesDirectWorkForClearScope(t *testing.T) {
 	for _, want := range []string{
 		"Handle the task directly by default",
 		"independently scoped task",
-		"parallel execution, specialized capabilities, or context isolation",
-		"outweigh the coordination cost and loss of shared context",
+		"context isolation, parallel execution, or distinct capabilities",
+		"briefing, duplicated reads, and result verification",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("Agent description should contain %q", want)

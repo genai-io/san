@@ -21,10 +21,10 @@ func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema 
 
 func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
-	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task when the benefits of parallel execution, specialized capabilities, or context isolation outweigh the coordination cost and loss of shared context.\n\n")
+	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task only when the benefits of context isolation, parallel execution, or distinct capabilities outweigh briefing, duplicated reads, and result verification.\n\n")
 	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
 		sb.WriteString(catalog)
-		sb.WriteString("\n\nUse name to select a predefined agent. Otherwise, use the default Agent.\n\n")
+		sb.WriteString("\n\nAfter deciding to delegate, use name to select a predefined agent or omit it for the default Agent. Catalog matches describe suitability, not invocation requirements.\n\n")
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")

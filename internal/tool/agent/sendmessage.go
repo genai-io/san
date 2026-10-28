@@ -107,7 +107,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q belongs to a different parent session; use a running agent task ID from this session", to))
 		}
 		if bgTask.GetType() != task.TaskTypeAgent {
-			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file or start an agent for follow-up work", to, bgTask.GetType()))
+			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file and continue with the shell tools", to, bgTask.GetType()))
 		}
 		if info.Status != task.StatusRunning {
 			return toolresult.NewErrorResult(t.Name(), terminalMessageReason(to, info.Status))
@@ -213,7 +213,7 @@ func undeliverableReason(to string) string {
 	}
 	bgTask, found := task.Default().Get(to)
 	if !found {
-		return fmt.Sprintf("no running worker is registered at %q — it has finished or was never started; spawn a new agent to continue the work", to)
+		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
 	if bgTask.GetStatus().Status == task.StatusRunning {
 		return fmt.Sprintf("worker %q is still starting up or its inbox is momentarily full — wait a moment and send again", to)

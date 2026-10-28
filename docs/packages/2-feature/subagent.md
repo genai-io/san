@@ -97,6 +97,12 @@ func ResetDefaultRegistry()           // test-only
   optional `when-to-use` hints; full charters, models, tool rules and permission
   modes stay out of the main discovery context. Disabled and persona-hidden
   definitions are omitted, and the catalog refreshes whenever schemas rebuild.
+- The Agent schema defaults to direct work. Delegation weighs context isolation,
+  parallel execution, or distinct capabilities against briefing, repeated reads,
+  and result verification. Catalog matches describe suitability after that
+  decision; they are not invocation requirements. SendMessage errors for unknown task IDs guide
+  the caller to verify the ID and existing results; shell tasks stay on the shell
+  tools rather than being redirected to a new agent.
 - Catalog discovery reflects the loaded registry, not continuous file hot-reload.
   Definition files are scanned during initialization/project-service reload;
   their bodies are loaded lazily and cached. Adding, modifying or deleting files

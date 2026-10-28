@@ -26,9 +26,11 @@ func NewAgentTool() *AgentTool {
 	return &AgentTool{}
 }
 
-func (t *AgentTool) Name() string        { return "Agent" }
-func (t *AgentTool) Description() string { return "Launch a subagent to handle complex tasks" }
-func (t *AgentTool) Icon() string        { return tool.IconAgent }
+func (t *AgentTool) Name() string { return "Agent" }
+func (t *AgentTool) Description() string {
+	return "Delegate an independently scoped task to a separate conversation"
+}
+func (t *AgentTool) Icon() string { return tool.IconAgent }
 
 // RequiresPermission returns true - Agent always requires permission
 func (t *AgentTool) RequiresPermission() bool {
