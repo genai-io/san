@@ -120,20 +120,22 @@ Task created → attempt 1 running → attempt 1 failed
   It is enabled by default in ordinary main sessions, without group membership;
   an explicit `/tools` disable is still respected.
   Acceptance does not mean the worker has read them or completed its work.
-- For new work, omit `resume_task_id` or use JSON `null`. Compatibility with
-  callers that fill every optional field also treats blank strings, `new`, and
-  `/dev/null` as explicit no-session placeholders. They create new work through
-  the normal permission gate; they never identify an existing worker. Other
-  unknown IDs, agent names, and file paths are rejected with a correction instead
-  of silently starting a new conversation.
-- When its execution has ended, `Agent(resume_task_id=<task-id>, prompt=...)`
-  explicitly continues its native conversation. The prompt contains only the new
-  instruction, not a parent-generated copy of the child's history. Continuation
-  is background-only and passes through the Agent permission gate.
+- `Agent` creates a new conversation. Both foreground and background results
+  expose a stable Task ID. Foreground executions retain their task/checkpoint
+  without sending duplicate background completion notifications.
+- `SendMessage(to=<task-id>, message=...)` is also the follow-up entrypoint for an
+  idle or recoverable failed worker. Only its owning main conversation can wake
+  it; continuation runs in the background after the Agent permission check.
+  The message contains the new instruction, not a copy of the child's history.
+  Child agents may message running peers but cannot wake idle peers.
+- `AgentStop` stops running or idle workers and prevents later messages from
+  restarting them. Execution completion releases active resources but retains
+  identity and history; there is no automatic idle expiry. Unknown IDs fail
+  without creating a replacement conversation.
 - A failure chain permits one corrective continuation. Two consecutive failed
   executions exhaust the recovery budget; report a blocker and choose a new plan
   rather than repeatedly waking main. Each continuation also has a finite step
-  budget (the original by default, or an explicit positive override). Successful
+  budget (retained from the original launch). Successful
   follow-ups reset the consecutive-failure chain.
 - Native conversation events are recorded from the start of execution, separately
   from task output logs. A healthy transcript is opened under its writer lease,

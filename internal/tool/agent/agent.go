@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -66,13 +64,9 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, fmt.Errorf("agent executor not configured")
 	}
 
-	resume, err := resumeTarget(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	if resume.ID != "" {
-		agentName, description, runBackground = resume.AgentName, resume.Description, true
-		params["_resumeAttempt"] = resume.Attempt
+	resume, _ := params["_continuation"].(continuationApproval)
+	if resume.TaskID != "" {
+		runBackground = true
 	}
 
 	// Resolve the agent definition and carry the exact config into execution so a
@@ -81,8 +75,8 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	var config tool.AgentConfigInfo
 	if resolver, supported := t.executor.(interface {
 		ContinuationConfig(string) (tool.AgentConfigInfo, error)
-	}); resume.ID != "" && supported {
-		config, err = resolver.ContinuationConfig(resume.ID)
+	}); resume.TaskID != "" && supported {
+		config, err = resolver.ContinuationConfig(resume.TaskID)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +86,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			return nil, fmt.Errorf("unknown or disabled agent: %s", agentName)
 		}
 		config = selected
-		if resume.ID == "" {
+		if resume.TaskID == "" {
 			params["_resolvedAgentConfig"] = resolvedConfig
 		} else {
 			config.PermissionMode = resume.PermissionMode
@@ -114,8 +108,8 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	// Build description
 	displayName := displayAgentLabel(config.Name)
 	desc := fmt.Sprintf("Spawn %s agent: %s", displayName, description)
-	if resume.ID != "" {
-		desc = fmt.Sprintf("Continue %s agent task %s in its original session: %s", displayName, resume.ID, description)
+	if resume.TaskID != "" {
+		desc = fmt.Sprintf("Continue %s agent task %s in its original session: %s", displayName, resume.TaskID, description)
 	}
 	if runBackground {
 		desc += " (background)"
@@ -139,10 +133,8 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 
 // Reject removed selectors rather than silently widening an old read-only request.
 func validateAgentParams(params map[string]any) error {
-	if value := params["resume_task_id"]; value != nil {
-		if _, ok := value.(string); !ok {
-			return fmt.Errorf("resume_task_id must be an existing task ID string or null; omit it for new work")
-		}
+	if _, exists := params["resume_task_id"]; exists {
+		return fmt.Errorf("Agent creates new sessions; use SendMessage with the existing task ID for follow-up work")
 	}
 	for _, field := range []string{"mode", "model"} {
 		if _, exists := params[field]; exists {
@@ -150,52 +142,6 @@ func validateAgentParams(params map[string]any) error {
 		}
 	}
 	return nil
-}
-
-// requestedResumeTaskID normalizes explicit no-session placeholders used by
-// callers that populate optional schema fields. It never turns an unknown real
-// task ID into new work, and the field is never interpreted as a file path.
-func requestedResumeTaskID(params map[string]any) string {
-	id := strings.TrimSpace(tool.GetString(params, "resume_task_id"))
-	switch strings.ToLower(id) {
-	case "", "new", "/dev/null":
-		return ""
-	default:
-		return id
-	}
-}
-
-// resumeTarget validates identity without changing task state. The executor
-// atomically claims the next attempt after permission approval.
-func resumeTarget(ctx context.Context, params map[string]any) (task.TaskInfo, error) {
-	id := requestedResumeTaskID(params)
-	if id == "" {
-		return task.TaskInfo{}, nil
-	}
-	worker, ok := task.Default().Get(id)
-	if !ok {
-		return task.TaskInfo{}, fmt.Errorf("task %q is not available for continuation. For new work, omit resume_task_id or set it to null; for continuation, use the exact Task ID returned by Agent, not an agent name or file path. No new conversation was started", id)
-	}
-	info := worker.GetStatus()
-	if sessionID := task.SessionIDFromContext(ctx); sessionID != "" && info.ParentSessionID != "" && info.ParentSessionID != sessionID {
-		return task.TaskInfo{}, fmt.Errorf("task %q belongs to a different parent session", id)
-	}
-	if info.Type != task.TaskTypeAgent {
-		return task.TaskInfo{}, fmt.Errorf("task %q is not an agent session; inspect the command failure and restart it explicitly if safe", id)
-	}
-	if info.Status == task.StatusRunning {
-		return task.TaskInfo{}, fmt.Errorf("task %q is already running; use SendMessage to add instructions", id)
-	}
-	if info.Status == task.StatusStopped || info.Status == task.StatusKilled {
-		return task.TaskInfo{}, fmt.Errorf("task %q was deliberately stopped; do not automatically resume it", id)
-	}
-	if !task.RecoveryBudgetAvailable(info.Attempts) {
-		return task.TaskInfo{}, fmt.Errorf("task %q exhausted its corrective recovery budget; report the blocker and choose a new plan", id)
-	}
-	if name := strings.TrimSpace(tool.GetString(params, "name")); name != "" && name != info.AgentName {
-		return task.TaskInfo{}, fmt.Errorf("continuation retains task %q's original agent; omit name instead of switching definitions", id)
-	}
-	return info, nil
 }
 
 // ExecuteApproved executes the agent after user approval
@@ -243,23 +189,9 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
-	resume, err := resumeTarget(ctx, params)
-	if err != nil {
-		return toolresult.NewErrorResult(t.Name(), err.Error())
-	}
-	if resume.ID != "" {
-		if approved, pinned := params["_resumeAttempt"].(int); pinned && approved != resume.Attempt {
-			return toolresult.NewErrorResult(t.Name(), "the selected execution changed while continuation approval was pending; inspect the current task before continuing")
-		}
-		agentName, description, runBackground = resume.AgentName, resume.Description, true
-	}
-
 	resolvedAgentConfig, _ := params["_resolvedAgentConfig"]
-	// New work receives a full brief. A continuation receives only the new
-	// instruction; the executor restores the original child conversation.
+	// New work receives a self-contained brief.
 	req := tool.AgentExecRequest{
-		ResumeTaskID:        resume.ID,
-		ResumeAttempt:       resume.Attempt,
 		ParentToolCallID:    core.ToolCallIDFromContext(ctx),
 		Agent:               agentName,
 		ResolvedAgentConfig: resolvedAgentConfig,
@@ -281,12 +213,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to start background agent: %v", err))
 		}
 
-		verb := "started"
-		if resume.ID != "" {
-			verb = "continued in its original session"
-		}
-		output := fmt.Sprintf("Agent %s in background.\nTask ID: %s\nDescription: %s",
-			verb, taskInfo.TaskID, description)
+		output := fmt.Sprintf("Agent started in background.\nTask ID: %s\nDescription: %s", taskInfo.TaskID, description)
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,

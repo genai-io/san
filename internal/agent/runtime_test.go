@@ -199,3 +199,7 @@ func TestToolSchemasMatchTheBuiltAgent(t *testing.T) {
 		t.Fatalf("ToolSchemas() differs from the built agent's tools:\n got %v\nwant %v", got, want)
 	}
 }
+
+func (a *controlledAgent) Pending() int { return len(a.appended) }
+
+func (a *controlledAgent) SetMaxSteps(int) {}

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/log"
@@ -292,10 +291,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 
 	// Stamp the running worker's own broker address onto the context so its
 	// SendMessage calls are attributed to it, not defaulted to "main". A
-	// background run uses its task id (and registers it below so main can
-	// message it mid-flight); a foreground run has no task id, so it borrows
-	// its hook id purely as a sender identity — nothing routes back to a
-	// foreground worker, which blocks its spawning turn.
+	// run uses its task id for both foreground and background execution.
 	agentAddr := run.req.TaskID
 	if agentAddr == "" {
 		agentAddr = run.hookID
@@ -303,18 +299,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	ctx = tool.WithAgentID(ctx, agentAddr)
 	ctx = task.WithSessionID(ctx, e.parentSessionID)
 
-	// A background subagent registers its task id with the broker for the
-	// length of the run. A routed message enters its conversation at the next
-	// step boundary, and its run does not end with one unread.
-	if run.req.TaskID != "" {
-		broker.Register(run.req.TaskID, func(m broker.Message) bool {
-			ag.Append(core.UserMessage(m.Content, nil))
-			return true
-		})
-		defer broker.Unregister(run.req.TaskID)
-	}
-
-	result, err := ag.ThinkAct(ctx)
+	result, err := runWithInbox(ctx, ag, run.req.TaskID, run.cfg.maxSteps)
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
 	// or continuation instruction again.
@@ -326,9 +311,8 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 			return result, buildErr
 		}
 		defer cleanupFallback()
-		ag = fallback
-		ag.SetMessages(messages)
-		result, err = ag.ThinkAct(ctx)
+		fallback.SetMessages(messages)
+		result, err = runWithInbox(ctx, fallback, run.req.TaskID, run.cfg.maxSteps)
 	}
 	if err != nil {
 		if result != nil {

@@ -164,7 +164,7 @@ func TestViewedContinuationOnlyAsksMainAndRejectsStaleAttempt(t *testing.T) {
 			t.Fatal("viewer launched a worker directly instead of asking main")
 		}
 		content := m.pendingMessages[0].Text()
-		for _, want := range []string{"stable", "resume_task_id", "short corrective", "provider unavailable", "do not copy the full child transcript"} {
+		for _, want := range []string{"stable", "SendMessage", "short corrective", "provider unavailable", "do not copy the full child transcript"} {
 			if !strings.Contains(content, want) {
 				t.Fatalf("continuation request lost %q: %s", want, content)
 			}

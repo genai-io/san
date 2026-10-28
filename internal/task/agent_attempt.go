@@ -38,10 +38,17 @@ func (t *AgentTask) CompleteAttempt(n int, err error) {
 
 // StopAttempt cancels only the execution selected by the caller's snapshot.
 func (t *AgentTask) StopAttempt(n int) error {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	if n != t.attempt || t.Status != StatusRunning {
-		return fmt.Errorf("attempt %d is no longer running", n)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if n != t.attempt {
+		return fmt.Errorf("attempt %d is no longer current", n)
+	}
+	t.stopRequested = true
+	if t.Status != StatusRunning {
+		if t.Status != StatusKilled {
+			t.Status = StatusStopped
+		}
+		return nil
 	}
 	if t.cancel != nil {
 		t.cancel()
@@ -110,6 +117,7 @@ func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.C
 		t.mu.Unlock()
 		return 0, fmt.Errorf("recovery budget exhausted after two consecutive failed executions; report the blocker and choose a new plan")
 	}
+	t.foreground = false
 	t.attempt++
 	n := t.attempt
 	t.Status = StatusRunning

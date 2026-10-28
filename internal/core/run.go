@@ -417,3 +417,7 @@ func (a *agent) postInfer(_ context.Context, resp *ai.Response) error {
 	a.measured.answered(resp.Usage)
 	return nil
 }
+
+func (a *agent) Pending() int { return a.inner.Pending() }
+
+func (a *agent) SetMaxSteps(n int) { sdkagent.WithMaxSteps(n)(a.inner) }

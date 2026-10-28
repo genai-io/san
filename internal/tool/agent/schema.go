@@ -28,7 +28,7 @@ func agentSchema(agentCatalog string) core.ToolSchema {
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
-	sb.WriteString("Use SendMessage for additional instructions while a worker is running. To continue an ended or failed worker, set resume_task_id to its exact existing Task ID returned by Agent and provide only a short incremental prompt: its original child session and history are restored internally, not copied through the main conversation. Continuation runs in the background and retains the original task identity and policy. Do not resume deliberately stopped workers or repeat denied commands. Inspect uncertain tool side effects before retrying; if continuation is unavailable, report the blocker rather than silently restarting from scratch.")
+	sb.WriteString("Use SendMessage with the exact Task ID returned by Agent for follow-up instructions, whether the worker is running or idle. It retains the original child session and policy. Inspect uncertain side effects before continuing failed work; never repeat denied commands.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
@@ -42,7 +42,7 @@ var agentToolParameters = map[string]any{
 	"properties": map[string]any{
 		"prompt": map[string]any{
 			"type":        "string",
-			"description": "For new work, a self-contained task brief with the goal, relevant paths, constraints, known findings, and validation plan. For continuation, only the short incremental instruction; the original child conversation is restored internally.",
+			"description": "A self-contained task brief with the goal, relevant paths, constraints, known findings, and validation plan.",
 		},
 		"description": map[string]any{
 			"type":        "string",
@@ -54,15 +54,11 @@ var agentToolParameters = map[string]any{
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
-			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true when you can continue useful independent work without this result; background completion will be notified separately. Continuation always runs in the background.",
-		},
-		"resume_task_id": map[string]any{
-			"type":        []string{"string", "null"},
-			"description": "Existing Task ID returned by Agent to continue the same child session, not an agent name or file path. For new work, omit this field or use null. Continuation retains the original task identity, agent configuration, and permission policy; omit name. Legacy no-session placeholders (empty string, new, /dev/null) are accepted as new work, but prefer omission or null. Unknown IDs are errors, never a fallback to a new conversation.",
+			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true when you can continue useful independent work without this result; background completion will be notified separately.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps. A positive value overrides the execution budget. New work defaults to the selected agent's configured budget (500 unless configured otherwise); continuation retains its original budget when omitted.",
+			"description": "Maximum number of LLM inference steps. A positive value overrides the execution budget. New work defaults to the selected agent's configured budget (500 unless configured otherwise).",
 		},
 	},
 	"required": []string{"description", "prompt"},
@@ -72,7 +68,7 @@ var agentToolParameters = map[string]any{
 func (t *AgentStopTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: t.Name(),
-		Description: `Stops a running background agent.
+		Description: `Stops an existing agent and prevents subsequent messages from restarting it. Completed or failed agents can also be stopped.
 
 Only use the exact task_id returned when that agent was started. This tool cannot stop background Bash commands; use the process-group command reported by Bash instead.`,
 		Definition: map[string]any{
@@ -80,7 +76,7 @@ Only use the exact task_id returned when that agent was started. This tool canno
 			"properties": map[string]any{
 				"task_id": map[string]any{
 					"type":        "string",
-					"description": "The exact Task ID of the running background agent to stop.",
+					"description": "The exact Task ID of the agent to stop.",
 				},
 				"reason": map[string]any{
 					"type":        "string",
@@ -96,8 +92,9 @@ Only use the exact task_id returned when that agent was started. This tool canno
 func (t *SendMessageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "SendMessage",
-		Description: `Send a message to a running subagent by its exact task ID, to "main", or to a group member by name.
-- A running subagent reads queued messages between steps. Acceptance is not an acknowledgment or task completion. An ended worker is not restarted by messaging: use Agent with resume_task_id and a short continuation prompt to restore its original task/session.
+		Description: `Send input to an existing subagent by its exact task ID, to "main", or to a group member by name.
+- Running subagents read queued messages between steps. The owning main conversation can also send input to an idle or recoverable failed agent: after permission checks it continues in the background with its original history, tools, model, and execution budget. Acceptance is not task completion.
+- Stopped/killed agents, exhausted recovery budgets, missing history, and unknown IDs are errors; no replacement agent is created. Child agents can message running peers but cannot wake idle peers. Sessions are retained for this process; completion releases execution resources, not conversation identity.
 - A background Bash process has no agent inbox; inspect its output and manage its process lifecycle instead.
 - Group members are listed in the <group> reminder. Their result says whether mail waits for a step boundary, user input, or session resume.
 - The recipient reads it as a message from you, not from its user: make it
@@ -114,7 +111,7 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 			"properties": map[string]any{
 				"to": map[string]any{
 					"type":        "string",
-					"description": "A running agent's exact task ID, \"main\", or a group member's name without \"@\".",
+					"description": "An existing agent's exact task ID, \"main\", or a group member's name without \"@\".",
 				},
 				"subject": map[string]any{
 					"type":        "string",

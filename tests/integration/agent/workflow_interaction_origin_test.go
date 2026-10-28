@@ -75,7 +75,7 @@ func TestWorkflowInteractionOriginAndRoutingIsolation(t *testing.T) {
 		select {
 		case p := <-pending:
 			s := p.source
-			if s.Workflow == nil || s.Workflow.TaskID == "" || s.Workflow.Name != "review" || s.Workflow.WorkerLabel != "" || s.TaskID != "" || s.ToolCallID != "worker-call" || s.AgentID == "" || agentIDs[s.AgentID] {
+			if s.Workflow == nil || s.Workflow.TaskID == "" || s.Workflow.Name != "review" || s.Workflow.WorkerLabel != "" || s.TaskID == "" || s.TaskID == s.Workflow.TaskID || s.ToolCallID != "worker-call" || s.AgentID == "" || agentIDs[s.AgentID] {
 				t.Fatalf("wrong workflow attribution or worker address: %+v", s)
 			}
 			agentIDs[s.AgentID] = true

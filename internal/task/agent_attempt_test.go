@@ -125,3 +125,19 @@ func TestAgentKilledAttemptCannotResume(t *testing.T) {
 		t.Fatal("killed task resumed")
 	}
 }
+
+func TestStopWinsOverSuccessfulUnwind(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	worker := NewAgentTask("stop-race", "worker", "work", ctx, cancel, "")
+	if err := worker.StopAttempt(1); err != nil {
+		t.Fatal(err)
+	}
+	worker.Complete(nil)
+	if worker.GetStatus().Status != StatusStopped {
+		t.Fatal("successful unwind revived a stopped session")
+	}
+	if _, err := worker.BeginAttempt("", context.Background(), func() {}); err == nil {
+		t.Fatal("stopped session restarted")
+	}
+}

@@ -186,7 +186,32 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 
-	return e.runPrepared(ctx, run)
+	ctx, cancel := context.WithCancel(task.WithSessionID(ctx, e.parentSessionID))
+	defer cancel()
+	worker := task.Default().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
+	run.req.TaskID = worker.GetID()
+	state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: worker.GetID()}
+	// Do not retain the completed invocation's UI callbacks.
+	state.req.OnIdentity = nil
+	state.req.OnActivity, state.req.OnQuestion = nil, nil
+	state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
+	state.req.OnToolStart, state.req.OnToolResult = nil, nil
+	run.checkpoint = state
+	worker.SetLaunchState(state)
+	worker.SetPermissionMode(string(run.cfg.permMode))
+	result, err := e.runPrepared(ctx, run)
+	if result != nil {
+		worker.SetIdentity(run.cfg.config.Name, result.AgentID)
+		worker.SetInspectionFile(result.TranscriptPath)
+		worker.AppendOutput([]byte(result.Content))
+		worker.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
+	}
+	endErr := err
+	if endErr == nil && result != nil && !result.Success {
+		endErr = fmt.Errorf("%s", result.Error)
+	}
+	worker.Complete(endErr)
+	return result, err
 }
 
 func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentResult, error) {
@@ -207,6 +232,7 @@ func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentRes
 
 // RunBackground executes an agent in the background and returns the task.
 func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
+	req.Background = true
 	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), e.parentSessionID))
 	// Resolve inherited permissions before registration and goroutine scheduling,
 	// not later when the parent may already have changed modes.
@@ -238,6 +264,10 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, fmt.Errorf("native continuation checkpoint unavailable")
 		}
+		if _, enabled := e.resolveAgentConfig(state.req.Agent); !enabled {
+			cancel()
+			return nil, fmt.Errorf("the original agent definition is now disabled")
+		}
 		if err = e.validateRequest(req); err != nil {
 			cancel()
 			return nil, err
@@ -248,6 +278,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			return nil, fmt.Errorf("selected execution changed before continuation")
 		}
 		next := state.req
+		next.Background = true
 		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
 		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
 		next.OnIdentity = req.OnIdentity
@@ -294,7 +325,11 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel,
 		)
 		state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: agentTask.GetID()}
-		state.req.OnIdentity = nil // Never retain a completed parent's display callback.
+		// Do not retain the completed invocation's UI callbacks.
+		state.req.OnIdentity = nil
+		state.req.OnActivity, state.req.OnQuestion = nil, nil
+		state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
+		state.req.OnToolStart, state.req.OnToolResult = nil, nil
 		run.checkpoint = state
 		agentTask.SetLaunchState(state)
 	}

@@ -165,6 +165,12 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	pg := NewPermissionGate(p.PermissionRules)
 	pg.SetReviewer(p.PermissionReview)
 	pg.SetHookAllowResolver(p.HookAllowResolver)
+	adaptOpts = append(adaptOpts, tool.WithPermissionCheck(func(ctx context.Context, name string, input map[string]any) (bool, string) {
+		if p.DisabledTools[name] || p.PermissionRules == nil {
+			return false, "agent execution is unavailable"
+		}
+		return pg.Check(ctx, name, input, false, "")
+	}))
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {

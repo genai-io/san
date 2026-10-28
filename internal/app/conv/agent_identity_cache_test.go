@@ -64,7 +64,7 @@ func TestAgentIdentityCacheProtectsReferences(t *testing.T) {
 		{ID: "notice", Role: core.ChatUser, Content: `<task-notification task-id="route-2" status="completed"/>`},
 		{ID: "sender", Role: core.ChatUser, Content: `<agent-message from="session-route-3">Hello</agent-message>`},
 	}
-	m.Tool.Track([]core.ToolCall{{ID: "pending-resume", Name: "Agent", Input: `{"resume_task_id":"route-4"}`}})
+	m.Tool.Track([]core.ToolCall{{ID: "pending-resume", Name: "SendMessage", Input: `{"to":"route-4"}`}})
 	after := m.AgentDisplaySnapshot()
 	for _, id := range []string{"route-0", "session-route-0", "route-1", "route-2", "session-route-3", "route-3", "route-4", "pending-resume"} {
 		if _, exists := after[id]; !exists {
@@ -74,7 +74,7 @@ func TestAgentIdentityCacheProtectsReferences(t *testing.T) {
 	if after["route-0"] != before["route-0"] || after["pending-resume"] != before["route-4"] {
 		t.Fatal("active or resumed agent changed color")
 	}
-	if len(after) > maxCachedAgentAliases+8 {
+	if len(after) > maxCachedAgentAliases+9 {
 		t.Fatalf("unreferenced aliases grew beyond allowance: %d", len(after))
 	}
 	m.Tool.Reset()
@@ -97,9 +97,9 @@ func TestAgentIdentityResumeAfterLaunchAliasEviction(t *testing.T) {
 	if _, exists := m.AgentDisplaySnapshot()["call-0"]; exists {
 		t.Fatal("obsolete launch alias should be evictable")
 	}
-	m.Tool.Track([]core.ToolCall{{ID: "resume", Name: "Agent", Input: `{"resume_task_id":"route-0"}`}})
-	applyToolRunning(&m, "resume", "Agent")
-	event := sdkagent.ToolUpdate{ID: "resume", Name: "Agent"}
+	m.Tool.Track([]core.ToolCall{{ID: "resume", Name: "SendMessage", Input: `{"to":"route-0"}`}})
+	applyToolRunning(&m, "resume", "SendMessage")
+	event := sdkagent.ToolUpdate{ID: "resume", Name: "SendMessage"}
 	event.Partial.Details = toolresult.AgentDetails{Identity: toolresult.AgentIdentity{ID: "route-0", CallID: "call-0", SessionID: "new-native"}}
 	applyAgentEvent(nil, &m, event)
 	if got := m.AgentDisplaySnapshot(); got["resume"] != original || got["new-native"] != original {

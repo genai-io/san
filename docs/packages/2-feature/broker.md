@@ -12,7 +12,7 @@ inter-agent communication, in ~60 lines.
 ## Model
 
 - An agent **Registers** an address to receive at when it starts (the main
-  conversation under `Main`, a background subagent under its task id) and
+  conversation under `Main`, a subagent execution under its stable task id) and
   **Unregisters** when it stops.
 - Anyone **Sends** a `Message` stamped with a destination (`To`). The broker
   delivers it to whoever holds that address; a message to an address no one
@@ -44,7 +44,7 @@ func Send(m Message) bool                          // routes to m.To; false when
 func Reset()                                       // test-only
 ```
 
-Addresses are unique per run — a task id (`generateShortID()`) or `Main` — so
+Addresses identify logical agents — a task id (`generateShortID()`) or `Main` — so
 an address is held by exactly one agent at a time; `Register`/`Unregister` are
 a plain add/remove on the map. The registry is a process-wide singleton, like
 `task.Default()`. The delivery function runs outside the lock and must not
@@ -63,15 +63,20 @@ notice, so a switch cannot inject an old worker's result into the new session.
 | Recipient | Registers |
 |---|---|
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
-| each background subagent (`subagent.Executor`) | its task id → `core.Agent.Append`, heard at its next step; its run does not end with one unread |
+| each active subagent execution (`subagent.Executor`) | its task id → `core.Agent.Append`, heard at its next step; its run does not end with one unread |
 
 A background task's **completion** is pushed automatically when its run ends.
 Main injects it immediately while idle, or at the next turn boundary during an
-active stream; it never polls for output. A **`SendMessage`** is best-effort:
-a subagent that has finished (or never
-takes another step) won't see it, so it is only for steering or interim notes
-— a subagent's final result comes back on its own (the tool result for a
-foreground run, the completion for a background one), never via `SendMessage`.
+active stream; it never polls for output. `SendMessage` uses this broker for active
+executions. For an idle or recoverable failed worker, the tool checks the owning
+main conversation's Agent permission and starts another background execution in
+its existing session; the broker itself neither restores sessions nor creates
+workers. Stopped/killed agents and unknown local IDs fail without replacement.
+
+Acceptance is not acknowledgment or task completion. The executor closes inbox
+acceptance atomically with its final pending-input check, preserving accepted
+input in history even on failure. Main receives a final result through the
+foreground tool result or background completion notification.
 
 ## See Also
 

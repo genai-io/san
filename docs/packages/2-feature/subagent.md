@@ -164,12 +164,17 @@ Continuation keeps its existing background execution contract.
   a failed attempt is not a failed task. Terminal results and explicit
   `SendMessage` calls are the parent communication boundary.
 - Every execution exit — success, cancel, error — fires `SubagentStop` with
-  the same invocation id `SubagentStart` carried. An ended background worker can
-  be explicitly continued with `Agent(resume_task_id=..., prompt=...)`: the
-  logical task and child-session IDs stay unchanged, a new execution attempt is
-  created, and only the new instruction is appended to its native conversation.
-  Running workers receive instructions via `SendMessage` instead. Deliberately
-  stopped/killed workers are not automatically revived.
+  the same invocation id `SubagentStart` carried. Both foreground and background
+  agents retain a task ID after their execution ends. `SendMessage(to=..., message=...)`
+  queues input while running, or starts a background continuation of an idle or
+  recoverable failed agent after checking the owning main session's Agent permission.
+  The task and child-session IDs stay unchanged. A child cannot wake idle peers.
+  `AgentStop` also closes idle sessions; stopped/killed workers cannot be revived.
+- Inbox acceptance is synchronized with execution shutdown. Accepted input is
+  processed within the original step budget or preserved in native history on
+  failure/cancellation. A closing inbox rejects input explicitly; the caller may
+  retry through `SendMessage` after completion. No successful delivery is silently
+  discarded at the final inference boundary.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
@@ -242,23 +247,19 @@ Continuation keeps its existing background execution contract.
 
 - New subagents start with fresh conversations. Supply the actual working
   directory, source paths, constraints, and expected validation in the initial
-  brief. To continue an existing worker, use `resume_task_id` and only an
-  incremental correction/follow-up: its original messages are restored inside
-  the child, not copied through the parent's context. Continuation retains the
-  original resolved worker policy, including named tool denies; approval previews
-  project that original policy rather than a subsequently reloaded definition.
-  The schema's `prompt` field distinguishes a full new-work brief from an
-  incremental continuation instruction. `resume_task_id` documents omission/null
-  for new work and strict lookup for continuation; parameter normalization stays
-  in the tool adapter, not in conversation restoration. `run_in_background` defaults
-  to false only for new work; continuation always runs in the background.
-  An omitted `max_steps` uses the selected definition's budget for new work and
-  retains the original budget for continuation; a positive value overrides it.
+  brief. `Agent` creates new sessions only; there is no `resume_task_id` parameter
+  or placeholder compatibility. Use `SendMessage` with an incremental follow-up;
+  the original messages are restored inside the child. Continuation retains the
+  original resolved tools, model, step budget, and permission policy, including
+  named tool denies; approval previews show that policy. Disabled original agent
+  definitions and disabled Agent execution cannot be bypassed by messaging.
+  `run_in_background` and `max_steps` configure new work only.
 - Real session stores record child events live before the first inference and
   reuse the same transcript during continuation. Legacy end-of-run persistence
   adapters still support new work but cannot continue it. A continuation needs
   both the durable transcript and a process-local ownership/policy checkpoint;
-  it is not yet supported after restarting the whole application. A failure chain
+  handles are retained for the process lifetime without idle expiry, and cannot
+  be used after restarting the whole application. A failure chain
   permits one corrective execution; a second consecutive failure blocks further
   continuation and requires a new plan rather than an unbounded automatic loop.
 - Custom definition and workflow policies still distinguish read-only inspection

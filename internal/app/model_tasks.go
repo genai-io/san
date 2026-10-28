@@ -189,7 +189,7 @@ func (m *model) continueViewedTask(msg input.TaskContinueMsg) tea.Cmd {
 	if info.Error != "" {
 		body += "Failure: " + info.Error + "\n"
 	}
-	body += "Choose a safe continuation based on the available summary. Use Agent with resume_task_id set to this task ID and only a short corrective/follow-up instruction. Its original conversation is restored internally; do not copy the full child transcript into the main context. Check uncertain side effects before retrying and never repeat denied commands. If continuing is unsafe or unavailable, explain the blocker instead."
+	body += "Choose a safe continuation based on the available summary. Use SendMessage with to set to this task ID and message containing only a short corrective/follow-up instruction. Its original conversation is restored internally; do not copy the full child transcript into the main context. Check uncertain side effects before retrying and never repeat denied commands. If continuing is unsafe or unavailable, explain the blocker instead."
 	content := fmt.Sprintf("<agent-message from=\"task-control\" subject=\"Continue task %s\">\n%s\n</agent-message>", html.EscapeString(info.ID), html.EscapeString(body))
 	message := m.showNoticeLine(mainNotice{FromAgent: true, Content: content})
 	return m.SubmitToAgent(message)

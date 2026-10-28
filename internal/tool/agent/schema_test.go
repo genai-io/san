@@ -52,7 +52,7 @@ func TestAgentBackgroundGuidancePreservesContinuation(t *testing.T) {
 	properties := agentToolParameters["properties"].(map[string]any)
 	background := properties["run_in_background"].(map[string]any)
 	description := background["description"].(string)
-	for _, want := range []string{"Defaults to false for new work", "useful independent work", "Continuation always runs in the background"} {
+	for _, want := range []string{"Defaults to false for new work", "useful independent work"} {
 		if !strings.Contains(description, want) {
 			t.Errorf("background description should contain %q", want)
 		}

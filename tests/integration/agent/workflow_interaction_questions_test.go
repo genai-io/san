@@ -52,7 +52,7 @@ func TestWorkflowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	for range 2 {
 		req := pollWorkerInteraction(t, bridge)
 		source := req.Source
-		if req.Question == nil || source.Workflow == nil || source.Workflow.Name != "questions" || source.Workflow.TaskID != runID || source.ParentToolCallID != "workflow-call" || source.ToolCallID != "question-call" || source.TaskID != "" || source.AgentID == "" {
+		if req.Question == nil || source.Workflow == nil || source.Workflow.Name != "questions" || source.Workflow.TaskID != runID || source.ParentToolCallID != "workflow-call" || source.ToolCallID != "question-call" || source.TaskID == "" || source.TaskID == source.Workflow.TaskID || source.AgentID == "" {
 			t.Fatalf("question lost workflow/node provenance: %+v", source)
 		}
 		if !strings.Contains(source.Label(), source.Workflow.NodeID) || !strings.Contains(source.Label(), runID) {
