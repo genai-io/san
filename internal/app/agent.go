@@ -743,7 +743,7 @@ func (m *model) ResetAgentRuntime() {
 
 func (m *model) AgentOutbox() <-chan core.Event { return m.services.Agent.Outbox() }
 
-func (m *model) ContinueOutbox() tea.Cmd {
+func (m *model) ListenForAgentEvents() tea.Cmd {
 	outbox := m.services.Agent.Outbox()
 	if outbox == nil {
 		return nil

@@ -204,7 +204,7 @@ func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	m.userInput.Images.Pending = []input.PendingImage{{ID: 2, Data: chartImage()}}
 	m.userInput.Images.NextID = 2
 
-	cmd := m.drainInputQueueWhileIdle()
+	cmd := m.sendNextQueuedInputIfIdle()
 	if cmd == nil {
 		t.Fatal("queued turn was not drained")
 	}

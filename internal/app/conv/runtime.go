@@ -58,14 +58,10 @@ type Runtime interface {
 	AgentOutbox() <-chan core.Event
 
 	// ── Transport lifetime ──────────────────────────────────────
-	// ContinueOutbox re-arms the one-shot outbox listener. Not a service but an
-	// obligation, and a divided one: conv re-arms itself after every
-	// non-terminal event, while a terminal event (OnTurn / OnStop / OnCompact)
-	// hands the decision to the host — which re-arms in OnTurnEnd and
-	// OnCompacted, and deliberately does not in OnAgentStop. Miss it on any one
-	// path and the UI stops receiving agent events with no error at all: the
-	// session simply looks frozen.
-	ContinueOutbox() tea.Cmd
+	// ListenForAgentEvents waits for the next batch of agent events.
+	// conv re-arms after ordinary events; OnTurnEnd and OnCompacted re-arm
+	// at their boundaries. OnAgentStop leaves the listener stopped.
+	ListenForAgentEvents() tea.Cmd
 }
 
 // DrainAgentOutbox blocks until at least one event is available, then greedily

@@ -158,7 +158,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		if cmd := m.startPromptSuggestion(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
-		commitCmds = append(commitCmds, m.ContinueOutbox())
+		commitCmds = append(commitCmds, m.ListenForAgentEvents())
 		return tea.Batch(commitCmds...)
 	}
 
@@ -167,7 +167,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		if cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
-		commitCmds = append(commitCmds, m.ContinueOutbox())
+		commitCmds = append(commitCmds, m.ListenForAgentEvents())
 		return tea.Batch(commitCmds...)
 	}
 
@@ -176,12 +176,12 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// deferred until handleAutopilotDecision (which fires them if it stops).
 	if cmd := m.autopilotContinueCmd(result); cmd != nil {
 		log.Logger().Sugar().Debugf("OnTurnEnd: autopilot deciding whether to continue")
-		commitCmds = append(commitCmds, cmd, m.ContinueOutbox())
+		commitCmds = append(commitCmds, cmd, m.ListenForAgentEvents())
 		return tea.Batch(commitCmds...)
 	}
 
 	log.Logger().Sugar().Debugf("OnTurnEnd: firing idle hooks async")
-	commitCmds = append(commitCmds, m.fireIdleHooksCmd(result), m.ContinueOutbox())
+	commitCmds = append(commitCmds, m.fireIdleHooksCmd(result), m.ListenForAgentEvents())
 	return tea.Batch(commitCmds...)
 }
 

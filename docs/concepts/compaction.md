@@ -17,6 +17,13 @@ budget: proactive compaction is skipped, the reactive *prompt-too-long* retry
 recovers, and the status bar shows `--`. Set one with `/context limit`. See
 [`reference/token-limits.md`](../reference/token-limits.md).
 
+## Input during compaction
+
+Messages and images sent during compaction enter the editable pending queue.
+Delivery resumes after compaction succeeds or reports nothing to compact;
+editing the queue head delays delivery until the edit ends. Drafts are preserved,
+and failures leave pending input available for retry.
+
 ## What compaction touches (and what it doesn't)
 
 The three channels are treated very differently. The whole design hinges on
