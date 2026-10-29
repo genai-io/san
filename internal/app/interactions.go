@@ -10,70 +10,39 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/conversation"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 )
 
 type interactionState struct {
-	queue      []*conv.InteractionRequest
+	queue      conversation.Queue
 	active     *conv.InteractionRequest
 	shown      bool
 	permission *perm.PermissionRequest
 }
 
 func (m *model) validInteraction(req *conv.InteractionRequest) bool {
-	return req != nil && (req.Context == nil || req.Context.Err() == nil) &&
-		(req.Owner == nil || (req.Owner == m.conv.AgentToUI && !req.Owner.Closed()))
+	return req.Valid(m.conv.AgentToUI)
 }
 
 func (m *model) enqueueInteraction(req *conv.InteractionRequest) tea.Cmd {
-	if !m.validInteraction(req) {
-		cancelInteraction(req)
+	if !m.interactions.queue.Enqueue(req, m.conv.AgentToUI) {
 		return nil
 	}
-	m.interactions.queue = append(m.interactions.queue, req)
 	defer m.refreshTaskViewer()
 	return m.advanceInteractions()
 }
 
 func cancelInteraction(req *conv.InteractionRequest) {
-	if req == nil {
-		return
-	}
-	switch {
-	case req.Permission != nil:
-		select {
-		case req.Permission.Response <- agent.PermGateResponse{Reason: "interaction cancelled"}:
-		default:
-		}
-	case req.Question != nil:
-		select {
-		case req.Question.Reply <- &tool.QuestionResponse{RequestID: req.Question.Request.ID, Cancelled: true}:
-		default:
-		}
-	case req.Secret != nil:
-		select {
-		case req.Secret.Reply <- conv.SecretPromptResponse{Cancelled: true}:
-		default:
-		}
-	}
+	req.Cancel()
 }
 
 // pruneInteractions runs only on the UI goroutine. A turn ending cancels its
 // foreground descendants, not independent background requests with live contexts.
 func (m *model) pruneInteractions() {
-	queue := m.interactions.queue[:0]
-	for _, req := range m.interactions.queue {
-		if m.validInteraction(req) {
-			queue = append(queue, req)
-		} else {
-			cancelInteraction(req)
-		}
-	}
-	queueChanged := len(queue) != len(m.interactions.queue)
-	clear(m.interactions.queue[len(queue):])
-	m.interactions.queue = queue
+	queueChanged := m.interactions.queue.Prune(m.conv.AgentToUI)
 	if req := m.interactions.active; req != nil && !m.validInteraction(req) {
 		cancelInteraction(req)
 		m.finishInteraction()
@@ -92,9 +61,7 @@ func (m *model) advanceInteractions() tea.Cmd {
 		if _, overlay := m.activeOverlay(); overlay || len(m.interactions.queue) == 0 {
 			return nil
 		}
-		m.interactions.active = m.interactions.queue[0]
-		m.interactions.queue[0] = nil
-		m.interactions.queue = m.interactions.queue[1:]
+		m.interactions.active = m.interactions.queue.Pop()
 	}
 	return m.showActiveInteraction()
 }
@@ -252,11 +219,8 @@ func (m *model) closeInteractions() {
 	m.hideTaskViewer()
 	m.conv.AgentToUI.Close()
 	cancelInteraction(m.interactions.active)
-	for _, req := range m.interactions.queue {
-		cancelInteraction(req)
-	}
+	m.interactions.queue.Cancel()
 	m.finishInteraction()
-	m.interactions.queue = nil
 }
 
 func (m *model) resetInteractions() {
