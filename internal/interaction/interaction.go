@@ -1,7 +1,7 @@
-// Package conversation owns interaction request lifetimes, not execution,
+// Package interaction owns interaction request lifetimes, not execution,
 // authorization policy, transport, or presentation. Its queue is single-owner;
 // producers communicate through the adapter's transport and buffered replies.
-package conversation
+package interaction
 
 import (
 	"context"

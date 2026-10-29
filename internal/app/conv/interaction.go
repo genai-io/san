@@ -9,14 +9,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/conversation"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // InteractionRequest keeps the TUI transport's existing message vocabulary while
-// the request contract and lifecycle belong to conversation.
-type InteractionRequest = conversation.Request
+// the request contract and lifecycle belong to interaction.
+type InteractionRequest = interaction.Request
 
 type InteractionRequestMsg struct{ Request *InteractionRequest }
 

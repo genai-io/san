@@ -12,7 +12,7 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, service wiring. |
 | `app` | `internal/app` and its subpackages | TUI shell, model composition, event routing. |
-| `feature` | Business-domain packages: conversation, agent, broker, group, llm, tool, session, transcript, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, reviewer, image | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: interaction, agent, broker, group, llm, tool, session, transcript, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, reviewer, image | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
 | `infrastructure` | `log`, `secret`, `filecache`, `markdown`, `proc`, `confdir`, `atomicfile`, `autoupdate` | Stateless helpers usable by any layer above. |
 
@@ -44,7 +44,7 @@ not by lower layers importing higher layers.
 3. `internal/core` must stay dependency-light. It should not import `app`,
    `session`, `tool` implementations, provider packages, or extension packages.
 4. Feature packages should not import `internal/app`.
-   `internal/conversation` owns only interaction request queuing, lifetime/owner
+   `internal/interaction` owns only interaction request queuing, lifetime/owner
    validation, and cancellation responses. It may use agent/tool request contracts,
    but must not import Bubble Tea or ACP. Runtime remains the execution owner;
    authorization policy, audit ordering, transport, and display stay in their

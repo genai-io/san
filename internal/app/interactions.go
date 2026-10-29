@@ -10,14 +10,14 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/conversation"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 )
 
 type interactionState struct {
-	queue      conversation.Queue
+	queue      interaction.Queue
 	active     *conv.InteractionRequest
 	shown      bool
 	permission *perm.PermissionRequest

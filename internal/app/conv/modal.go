@@ -1,7 +1,7 @@
 package conv
 
 import (
-	"github.com/genai-io/san/internal/conversation"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -17,7 +17,7 @@ func NewModalState() ModalState {
 
 // QuestionRequestMsg is the question payload and its original reply endpoint.
 // Worker attribution and lifetime belong to the enclosing InteractionRequest.
-type QuestionRequestMsg = conversation.Question
+type QuestionRequestMsg = interaction.Question
 
 // QuestionResponseMsg is sent when user answers or cancels
 type QuestionResponseMsg struct {
@@ -29,6 +29,6 @@ type QuestionResponseMsg struct {
 // SecretPromptRequestMsg is sent when an approved tool needs a secret from the
 // user. The reply value is intentionally not represented as a tool question or
 // transcript record.
-type SecretPromptRequestMsg = conversation.Secret
+type SecretPromptRequestMsg = interaction.Secret
 
-type SecretPromptResponse = conversation.SecretResponse
+type SecretPromptResponse = interaction.SecretResponse
