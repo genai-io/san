@@ -212,6 +212,30 @@ func TestBuildSubagentIdentityPreservesExplicitSubagentName(t *testing.T) {
 	}
 }
 
+func TestSubagentFinalHandoffGuidance(t *testing.T) {
+	for _, brief := range []SubagentBrief{{}, {AgentName: "reviewer", CustomPrompt: "Review the diff."}} {
+		t.Run(brief.AgentName, func(t *testing.T) {
+			prompt := Build(core.ScopeSubagent, WithSubagentIdentity(brief)).Prompt()
+			for _, want := range []string{
+				"final response is the handoff to the parent agent",
+				"does not automatically see your intermediate work",
+				"task outcome, key findings or changes, validation performed",
+				"unfinished work or blockers",
+				"Do not reply only with 'done'",
+				"For follow-ups",
+				"no fixed report template is required",
+			} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("subagent prompt missing %q", want)
+				}
+			}
+		})
+	}
+	if strings.Contains(Build(core.ScopeMain).Prompt(), "final response is the handoff to the parent agent") {
+		t.Fatal("subagent handoff guidance leaked into main prompt")
+	}
+}
+
 func TestSystemUseDropRefresh(t *testing.T) {
 	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/test"}))
 	first := sys.Prompt()

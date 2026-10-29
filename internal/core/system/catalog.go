@@ -248,6 +248,7 @@ func renderSubagentIdentity(b SubagentBrief) string {
 		sb.WriteString(body)
 		sb.WriteByte('\n')
 	}
+	sb.WriteString("\nYour final response is the handoff to the parent agent, which does not automatically see your intermediate work. Make it self-contained: briefly state the task outcome, key findings or changes, validation performed, and any unfinished work or blockers. Do not reply only with 'done' or rely on earlier progress messages. For follow-ups, explain what this execution accomplished and the current state. Match detail to the task; no fixed report template is required.\n")
 	attrs := map[string]string{}
 	if b.Mode != "" {
 		attrs["mode"] = b.Mode
