@@ -167,8 +167,8 @@ func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
 	sys := Build(core.ScopeSubagent, WithEnvironment(Environment{Cwd: "/tmp/test"}))
 	prompt := sys.Prompt()
 
-	if strings.Contains(prompt, "<behavior>") {
-		t.Error("subagent scope should not include the behavior part")
+	if !strings.Contains(prompt, cachedSubagent) || strings.Contains(prompt, "<behavior>") {
+		t.Error("subagent should use one prompt without a separate behavior section")
 	}
 }
 
@@ -209,6 +209,27 @@ func TestBuildSubagentIdentityPreservesExplicitSubagentName(t *testing.T) {
 
 	if prompt := sys.Prompt(); !strings.Contains(prompt, "You are a subagent subagent") {
 		t.Fatalf("explicit name was not preserved:\n%s", prompt)
+	}
+}
+
+func TestSubagentFinalHandoffGuidance(t *testing.T) {
+	for _, brief := range []SubagentBrief{{}, {AgentName: "reviewer", CustomPrompt: "Review the diff."}} {
+		t.Run(brief.AgentName, func(t *testing.T) {
+			prompt := Build(core.ScopeSubagent, WithSubagentIdentity(brief)).Prompt()
+			for _, want := range []string{
+				"Follow the parent's brief",
+				"self-contained account of the work, key evidence, and outcome",
+				"incomplete or unverified",
+				"omit repetitive process details",
+			} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("subagent prompt missing %q", want)
+				}
+			}
+		})
+	}
+	if strings.Contains(Build(core.ScopeMain).Prompt(), cachedSubagent) {
+		t.Fatal("subagent handoff guidance leaked into main prompt")
 	}
 }
 

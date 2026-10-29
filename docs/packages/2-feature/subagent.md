@@ -192,6 +192,12 @@ Continuation keeps its existing background execution contract.
 
 ## Results and display
 
+- The parent brief defines the task and output format. A single shared
+  `prompts/subagent.txt` asks for a self-contained result reflecting meaningful
+  work, checks, and findings, with unfinished, blocked, or unverified work disclosed.
+  There is no separate subagent behavior template; safety rules and dynamic
+  environment information use the existing harness injection.
+
 - Delegation should return usable evidence at less total effort than the parent
   doing the same work. Treat runtime state, task fulfillment, and display as
   separate concerns: a tool failure can recover, an ended turn can still report
