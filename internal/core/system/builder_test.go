@@ -167,8 +167,8 @@ func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
 	sys := Build(core.ScopeSubagent, WithEnvironment(Environment{Cwd: "/tmp/test"}))
 	prompt := sys.Prompt()
 
-	if !strings.Contains(prompt, cachedSubagentBehavior) || strings.Contains(prompt, cachedBehavior) {
-		t.Error("subagent should use its own minimal behavior, not main-agent guidelines")
+	if !strings.Contains(prompt, cachedSubagent) || strings.Contains(prompt, "<behavior>") {
+		t.Error("subagent should use one prompt without a separate behavior section")
 	}
 }
 
@@ -219,7 +219,8 @@ func TestSubagentFinalHandoffGuidance(t *testing.T) {
 			for _, want := range []string{
 				"Follow the parent's task brief and requested output format",
 				"does not automatically see your intermediate work",
-				"concise, self-contained result",
+				"self-contained result",
+				"what you did, how you checked it, and what you found",
 				"unfinished, blocked, or unverified",
 				"For follow-ups",
 			} {
@@ -229,7 +230,7 @@ func TestSubagentFinalHandoffGuidance(t *testing.T) {
 			}
 		})
 	}
-	if strings.Contains(Build(core.ScopeMain).Prompt(), cachedSubagentBehavior) {
+	if strings.Contains(Build(core.ScopeMain).Prompt(), cachedSubagent) {
 		t.Fatal("subagent handoff guidance leaked into main prompt")
 	}
 }

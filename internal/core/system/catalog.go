@@ -20,7 +20,7 @@ import (
 //
 //	prompts/identity.txt              — who you are (the "identity" part)
 //	prompts/behavior.txt              — how you work (the "behavior" part)
-//	prompts/subagent-behavior.txt     — subagent execution and handoff
+//	prompts/subagent.txt     — subagent execution and handoff
 //	prompts/rules.txt                 — safety + system reminders (the "rules" part)
 //	prompts/compact.txt               — conversation compactor prompt (standalone)
 //
@@ -46,12 +46,12 @@ var promptFS embed.FS
 
 // init-time read of every static template. Keeps Build() allocation-light.
 var (
-	cachedIdentity         = loadEmbed("prompts/identity.txt")
-	cachedSubagentBehavior = loadEmbed("prompts/subagent-behavior.txt")
-	cachedBehavior         = loadEmbed("prompts/behavior.txt")
-	cachedRules            = loadEmbed("prompts/rules.txt")
-	cachedCompact          = loadEmbed("prompts/compact.txt")
-	cachedMemory           = loadEmbed("prompts/memory.txt")
+	cachedIdentity = loadEmbed("prompts/identity.txt")
+	cachedSubagent = loadEmbed("prompts/subagent.txt")
+	cachedBehavior = loadEmbed("prompts/behavior.txt")
+	cachedRules    = loadEmbed("prompts/rules.txt")
+	cachedCompact  = loadEmbed("prompts/compact.txt")
+	cachedMemory   = loadEmbed("prompts/memory.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -112,7 +112,7 @@ func identitySection(override string) core.Section {
 // behaviorSection renders how the agent communicates and works — the merge of
 // the communication style (Tone / Updates / Behavior) and the engineering
 // defaults (Restraint / Code conventions / Error handling) for the main agent.
-// Subagents use their own minimal behavior template.
+// Subagents use a single shared prompt with their charter.
 func behaviorSection(override string) core.Section {
 	override = strings.TrimSpace(override)
 	source := core.Predefined
@@ -233,9 +233,9 @@ func renderSubagentIdentity(b SubagentBrief) string {
 	if b.Description != "" {
 		fmt.Fprintf(&sb, "Role: %s\n", b.Description)
 	}
-	if b.Mode != "" || len(b.ToolConstraints) > 0 {
-		sb.WriteByte('\n')
-	}
+	sb.WriteByte('\n')
+	sb.WriteString(cachedSubagent)
+	sb.WriteByte('\n')
 	if b.Mode != "" {
 		fmt.Fprintf(&sb, "Operational scope: %s.\n", modeDescription(b.Mode))
 	}
