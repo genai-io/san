@@ -217,12 +217,10 @@ func TestSubagentFinalHandoffGuidance(t *testing.T) {
 		t.Run(brief.AgentName, func(t *testing.T) {
 			prompt := Build(core.ScopeSubagent, WithSubagentIdentity(brief)).Prompt()
 			for _, want := range []string{
-				"Follow the parent's task brief and requested output format",
-				"does not automatically see your intermediate work",
-				"self-contained result",
-				"what you did, how you checked it, and what you found",
-				"unfinished, blocked, or unverified",
-				"For follow-ups",
+				"Follow the parent's brief",
+				"self-contained account of the work, key evidence, and outcome",
+				"incomplete or unverified",
+				"omit repetitive process details",
 			} {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("subagent prompt missing %q", want)
