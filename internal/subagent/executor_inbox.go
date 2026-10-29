@@ -30,8 +30,11 @@ func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps in
 	result, err := ag.ThinkAct(ctx)
 	mailMu.Lock()
 	for {
-		messages := ag.Messages()
-		unread := ag.Pending() > 0 || (len(messages) > 0 && messages[len(messages)-1].Role == ai.RoleUser)
+		unread := ag.Pending() > 0
+		if !unread {
+			messages := ag.Messages()
+			unread = len(messages) > 0 && messages[len(messages)-1].Role == ai.RoleUser
+		}
 		if !unread {
 			break
 		}

@@ -190,14 +190,8 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	defer cancel()
 	worker := task.Default().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
 	run.req.TaskID = worker.GetID()
-	state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: worker.GetID()}
-	// Do not retain the completed invocation's UI callbacks.
-	state.req.OnIdentity = nil
-	state.req.OnActivity, state.req.OnQuestion = nil, nil
-	state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
-	state.req.OnToolStart, state.req.OnToolResult = nil, nil
-	run.checkpoint = state
-	worker.SetLaunchState(state)
+	run.checkpoint = newContinuationState(run, e.parentSessionID, worker.GetID())
+	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
 	result, err := e.runPrepared(ctx, run)
 	if result != nil {
@@ -324,14 +318,8 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			ctx,
 			cancel,
 		)
-		state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: e.parentSessionID, taskID: agentTask.GetID()}
-		// Do not retain the completed invocation's UI callbacks.
-		state.req.OnIdentity = nil
-		state.req.OnActivity, state.req.OnQuestion = nil, nil
-		state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
-		state.req.OnToolStart, state.req.OnToolResult = nil, nil
-		run.checkpoint = state
-		agentTask.SetLaunchState(state)
+		run.checkpoint = newContinuationState(run, e.parentSessionID, agentTask.GetID())
+		agentTask.SetLaunchState(run.checkpoint)
 	}
 	agentTask.SetIdentity(identity, "")
 	agentTask.SetPermissionMode(string(run.cfg.permMode))

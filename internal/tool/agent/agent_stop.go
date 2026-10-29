@@ -74,11 +74,11 @@ func (t *AgentStopTool) execute(ctx context.Context, params map[string]any) tool
 	}
 	// Permission approval and graceful escalation stay pinned to the selected
 	// execution; an old stop request must not cancel a later continuation.
-	if attempt, pinned := params["_stopAttempt"].(int); pinned {
-		err = task.Default().KillAttempt(taskID, attempt)
-	} else {
-		err = task.Default().KillAttempt(taskID, bgTask.GetStatus().Attempt)
+	attempt, pinned := params["_stopAttempt"].(int)
+	if !pinned {
+		attempt = bgTask.GetStatus().Attempt
 	}
+	err = task.Default().KillAttempt(taskID, attempt)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to stop agent task: %v", err))
 	}
