@@ -163,18 +163,12 @@ Continuation keeps its existing background execution contract.
   adding a duplicate error row. These events do not send broker notices to main:
   a failed attempt is not a failed task. Terminal results and explicit
   `SendMessage` calls are the parent communication boundary.
-- Every execution exit — success, cancel, error — fires `SubagentStop` with
-  the same invocation id `SubagentStart` carried. Both foreground and background
-  agents retain a task ID after their execution ends. `SendMessage(to=..., message=...)`
-  queues input while running, or starts a background continuation of an idle or
-  recoverable failed agent after checking the owning main session's Agent permission.
-  The task and child-session IDs stay unchanged. A child cannot wake idle peers.
-  `AgentStop` also closes idle sessions; stopped/killed workers cannot be revived.
-- Inbox acceptance is synchronized with execution shutdown. Accepted input is
-  processed within the original step budget or preserved in native history on
-  failure/cancellation. A closing inbox rejects input explicitly; the caller may
-  retry through `SendMessage` after completion. No successful delivery is silently
-  discarded at the final inference boundary.
+- Every execution exit fires `SubagentStop` with the same invocation ID as
+  `SubagentStart`. Foreground and background agents retain a Task ID for follow-up
+  through `SendMessage`. See [task lifecycle and continuation](task.md#continuation-and-failure-handling).
+- Inbox shutdown and message acceptance share a lock. Accepted input is processed
+  within the step budget or saved in native history on failure/cancellation.
+  A closing inbox rejects new input so the sender can retry after completion.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
@@ -245,23 +239,17 @@ Continuation keeps its existing background execution contract.
 
 ## Configuration and limits
 
-- New subagents start with fresh conversations. Supply the actual working
-  directory, source paths, constraints, and expected validation in the initial
-  brief. `Agent` creates new sessions only; there is no `resume_task_id` parameter
-  or placeholder compatibility. Use `SendMessage` with an incremental follow-up;
-  the original messages are restored inside the child. Continuation retains the
-  original resolved tools, model, step budget, and permission policy, including
-  named tool denies; approval previews show that policy. Disabled original agent
-  definitions and disabled Agent execution cannot be bypassed by messaging.
-  `run_in_background` and `max_steps` configure new work only.
-- Real session stores record child events live before the first inference and
-  reuse the same transcript during continuation. Legacy end-of-run persistence
-  adapters still support new work but cannot continue it. A continuation needs
-  both the durable transcript and a process-local ownership/policy checkpoint;
-  handles are retained for the process lifetime without idle expiry, and cannot
-  be used after restarting the whole application. A failure chain
-  permits one corrective execution; a second consecutive failure blocks further
-  continuation and requires a new plan rather than an unbounded automatic loop.
+- `Agent` starts a fresh conversation. Its brief should include the working
+  directory, relevant paths, constraints, and validation plan. `run_in_background`
+  and `max_steps` configure this initial run; use `SendMessage` for follow-up.
+- Continuation restores the original policy, including tool denies, and shows it
+  in the approval preview. Messaging cannot bypass disabled Agent execution or
+  a disabled agent definition.
+- Continuation requires a healthy native transcript and the process-local
+  ownership/policy checkpoint. The transcript is recorded from the first inference
+  and reopened under a writer lease. That lease closes before completion is
+  announced, preventing concurrent writers. Stores that only save at the end of
+  a run cannot support continuation.
 - Custom definition and workflow policies still distinguish read-only inspection
   from edits and unrestricted shell execution. These are internal/configured
   constraints, not default Agent presets or model-facing selectors. An unattended

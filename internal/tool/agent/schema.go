@@ -28,7 +28,7 @@ func agentSchema(agentCatalog string) core.ToolSchema {
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
-	sb.WriteString("Use SendMessage with the exact Task ID returned by Agent for follow-up instructions, whether the worker is running or idle. It retains the original child session and policy. Inspect uncertain side effects before continuing failed work; never repeat denied commands.")
+	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
@@ -68,7 +68,7 @@ var agentToolParameters = map[string]any{
 func (t *AgentStopTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: t.Name(),
-		Description: `Stops an existing agent and prevents subsequent messages from restarting it. Completed or failed agents can also be stopped.
+		Description: `Stop a running or idle agent. Later messages cannot restart it.
 
 Only use the exact task_id returned when that agent was started. This tool cannot stop background Bash commands; use the process-group command reported by Bash instead.`,
 		Definition: map[string]any{
@@ -92,20 +92,13 @@ Only use the exact task_id returned when that agent was started. This tool canno
 func (t *SendMessageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "SendMessage",
-		Description: `Send input to an existing subagent by its exact task ID, to "main", or to a group member by name.
-- Running subagents read queued messages between steps. The owning main conversation can also send input to an idle or recoverable failed agent: after permission checks it continues in the background with its original history, tools, model, and execution budget. Acceptance is not task completion.
-- Stopped/killed agents, exhausted recovery budgets, missing history, and unknown IDs are errors; no replacement agent is created. Child agents can message running peers but cannot wake idle peers. Sessions are retained for this process; completion releases execution resources, not conversation identity.
-- A background Bash process has no agent inbox; inspect its output and manage its process lifecycle instead.
-- Group members are listed in the <group> reminder. Their result says whether mail waits for a step boundary, user input, or session resume.
-- The recipient reads it as a message from you, not from its user: make it
-  self-contained. It arrives with a From line, and the recipient's roster
-  already has your role: don't restate who you are, and skip greetings and
-  sign-offs. Keep it brief: what changed, what you need.
-- The result says when it will be read: now, between the recipient's steps,
-  at its user's next input (it holds messages), or when its session resumes
-  (offline).
-- When you were asked for something, report back when it is done or can't
-  be done. Don't send bare acknowledgements.`,
+		Description: `Send a message to an agent's exact Task ID, "main", or a group member's name.
+- Running agents queue messages between steps. Only the owning main conversation can continue an idle or recoverable failed agent, after permission checks. Continuation runs in the background with the original history, tools, model, permissions, and step budget.
+- Stopped/killed agents, exhausted recovery budgets, missing history, and unknown IDs return errors; no replacement is created. Task IDs remain usable until process exit.
+- Acceptance is not acknowledgment or completion. Verify the result before relying on it.
+- Background Bash processes have no agent inbox; inspect their output and use shell tools to manage them.
+- Group members appear in the <group> reminder. The result explains whether delivery waits for a step, user input, or session resume.
+- Keep messages brief and self-contained. They are attributed to you, not the recipient's user. Report results or blockers when asked; skip greetings and bare acknowledgments.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

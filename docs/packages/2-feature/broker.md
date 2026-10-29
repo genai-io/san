@@ -5,9 +5,8 @@ layer: feature
 
 # broker
 
-Routes messages between agents. The small piece that sits between a sender and
-a recipient so neither has to know how to reach the other — the whole of
-inter-agent communication, in ~60 lines.
+Routes messages to active agent inboxes. Session creation and continuation belong
+to the executor and tools.
 
 ## Model
 
@@ -16,7 +15,7 @@ inter-agent communication, in ~60 lines.
   **Unregisters** when it stops.
 - Anyone **Sends** a `Message` stamped with a destination (`To`). The broker
   delivers it to whoever holds that address; a message to an address no one
-  holds is dropped.
+  holds returns `false`.
 
 Direct addressing only — no topics, no broadcast, no queuing beyond the
 recipient's own. What a delivered message does (enter a subagent's
@@ -63,20 +62,17 @@ notice, so a switch cannot inject an old worker's result into the new session.
 | Recipient | Registers |
 |---|---|
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
-| each active subagent execution (`subagent.Executor`) | its task id → `core.Agent.Append`, heard at its next step; its run does not end with one unread |
+| each active subagent execution (`subagent.Executor`) | its task id → `core.Agent.Append`, queued for the next step |
 
-A background task's **completion** is pushed automatically when its run ends.
-Main injects it immediately while idle, or at the next turn boundary during an
-active stream; it never polls for output. `SendMessage` uses this broker for active
-executions. For an idle or recoverable failed worker, the tool checks the owning
-main conversation's Agent permission and starts another background execution in
-its existing session; the broker itself neither restores sessions nor creates
-workers. Stopped/killed agents and unknown local IDs fail without replacement.
+Background completion is sent to main automatically: immediately when idle, or
+at its next turn boundary. Foreground results return through the tool call.
 
-Acceptance is not acknowledgment or task completion. The executor closes inbox
-acceptance atomically with its final pending-input check, preserving accepted
-input in history even on failure. Main receives a final result through the
-foreground tool result or background completion notification.
+`SendMessage` uses the broker for running workers. For idle workers, the tool
+checks permissions and asks the executor to continue the existing session.
+See [task lifecycle and continuation](task.md#continuation-and-failure-handling).
+
+Acceptance means input was queued, not that work is complete. The executor
+preserves accepted input in history if execution fails or is canceled.
 
 ## See Also
 
