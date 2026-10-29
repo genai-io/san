@@ -38,7 +38,7 @@ type buildConfig struct {
 // Build constructs a System for the given Scope and applies the options.
 //
 // The prompt is four parts in slot order: identity (who you are), behavior
-// (how you work — main agent only), rules (safety + protocols, scope-aware),
+// (scope-specific working style), rules (safety + protocols),
 // and environment (volatile footer). Each part is a single named section, so
 // a persona can later replace a whole part by name with one file.
 func Build(scope core.Scope, opts ...Option) core.System {
@@ -57,10 +57,14 @@ func Build(scope core.Scope, opts ...Option) core.System {
 		sys.Use(identitySection(cfg.persona.Identity), caller)
 	}
 
-	// Behavior (slot 1): communication style + engineering defaults. Main
-	// agent only — subagents carry their working style in their charter.
+	// Behavior (slot 1): scope-specific execution and communication guidance.
 	if scope == core.ScopeMain {
 		sys.Use(behaviorSection(cfg.persona.Behavior), caller)
+	} else {
+		sys.Use(core.Section{
+			Slot: core.SlotBehavior, Name: "behavior", Source: core.Predefined,
+			Render: func() string { return wrap("behavior", nil, cachedSubagentBehavior) },
+		}, caller)
 	}
 
 	// Rules (slot 2): safety contract + harness protocols. Per-tool guidance

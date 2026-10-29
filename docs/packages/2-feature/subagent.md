@@ -192,6 +192,11 @@ Continuation keeps its existing background execution contract.
 
 ## Results and display
 
+- The parent brief defines the task and output format. The shared
+  `prompts/subagent-behavior.txt` adds only the handoff contract: return a concise,
+  self-contained result and disclose unfinished, blocked, or unverified work.
+  It occupies the behavior section, separate from the agent's identity and tool constraints.
+
 - Delegation should return usable evidence at less total effort than the parent
   doing the same work. Treat runtime state, task fulfillment, and display as
   separate concerns: a tool failure can recover, an ended turn can still report

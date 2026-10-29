@@ -173,8 +173,8 @@ func TestScenarioSubagentReadonly_NoMainOnlyGuidelines(t *testing.T) {
 		if strings.Contains(prompt, "do not modify files or run shell commands") {
 			t.Error("explore identity should not prohibit all shell commands")
 		}
-		if strings.Contains(prompt, "<behavior>") {
-			t.Error("subagent should NOT have the behavior part")
+		if !strings.Contains(prompt, cachedSubagentBehavior) || strings.Contains(prompt, cachedBehavior) {
+			t.Error("subagent should use its own minimal behavior, not main-agent guidelines")
 		}
 	}
 }
