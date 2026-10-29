@@ -23,6 +23,16 @@ type continuationState struct {
 	cwd, sessionID, parent, taskID string
 }
 
+func newContinuationState(run *preparedRun, parent, taskID string) *continuationState {
+	state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: parent, taskID: taskID}
+	// Do not retain the completed invocation's UI callbacks.
+	state.req.OnIdentity = nil
+	state.req.OnActivity, state.req.OnQuestion = nil, nil
+	state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
+	state.req.OnToolStart, state.req.OnToolResult = nil, nil
+	return state
+}
+
 func (e *Executor) openNative(run *preparedRun) error {
 	if run.native != nil {
 		return nil // A continuation claims its writer before beginning an attempt.

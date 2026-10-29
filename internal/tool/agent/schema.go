@@ -21,14 +21,14 @@ func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema 
 
 func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
-	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task when the benefits of parallel execution, specialized capabilities, or context isolation outweigh the coordination cost and loss of shared context.\n\n")
+	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task only when the benefits of context isolation, parallel execution, or distinct capabilities outweigh briefing, duplicated reads, and result verification.\n\n")
 	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
 		sb.WriteString(catalog)
-		sb.WriteString("\n\nUse name to select a predefined agent. Otherwise, use the default Agent.\n\n")
+		sb.WriteString("\n\nAfter deciding to delegate, use name to select a predefined agent or omit it for the default Agent. Catalog matches describe suitability, not invocation requirements.\n\n")
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
-	sb.WriteString("Use SendMessage for additional instructions while a worker is running. To continue an ended or failed worker, set resume_task_id to its exact existing Task ID returned by Agent and provide only a short incremental prompt: its original child session and history are restored internally, not copied through the main conversation. Continuation runs in the background and retains the original task identity and policy. Do not resume deliberately stopped workers or repeat denied commands. Inspect uncertain tool side effects before retrying; if continuation is unavailable, report the blocker rather than silently restarting from scratch.")
+	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
@@ -42,7 +42,7 @@ var agentToolParameters = map[string]any{
 	"properties": map[string]any{
 		"prompt": map[string]any{
 			"type":        "string",
-			"description": "For new work, a self-contained task brief with the goal, relevant paths, constraints, known findings, and validation plan. For continuation, only the short incremental instruction; the original child conversation is restored internally.",
+			"description": "A self-contained task brief with the goal, relevant paths, constraints, known findings, and validation plan.",
 		},
 		"description": map[string]any{
 			"type":        "string",
@@ -54,15 +54,11 @@ var agentToolParameters = map[string]any{
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
-			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true when you can continue useful independent work without this result; background completion will be notified separately. Continuation always runs in the background.",
-		},
-		"resume_task_id": map[string]any{
-			"type":        []string{"string", "null"},
-			"description": "Existing Task ID returned by Agent to continue the same child session, not an agent name or file path. For new work, omit this field or use null. Continuation retains the original task identity, agent configuration, and permission policy; omit name. Legacy no-session placeholders (empty string, new, /dev/null) are accepted as new work, but prefer omission or null. Unknown IDs are errors, never a fallback to a new conversation.",
+			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true when you can continue useful independent work without this result; background completion will be notified separately.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps. A positive value overrides the execution budget. New work defaults to the selected agent's configured budget (500 unless configured otherwise); continuation retains its original budget when omitted.",
+			"description": "Maximum number of LLM inference steps. A positive value overrides the execution budget. New work defaults to the selected agent's configured budget (500 unless configured otherwise).",
 		},
 	},
 	"required": []string{"description", "prompt"},
@@ -72,7 +68,7 @@ var agentToolParameters = map[string]any{
 func (t *AgentStopTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: t.Name(),
-		Description: `Stops a running background agent.
+		Description: `Stop a running or idle agent. Later messages cannot restart it.
 
 Only use the exact task_id returned when that agent was started. This tool cannot stop background Bash commands; use the process-group command reported by Bash instead.`,
 		Definition: map[string]any{
@@ -80,7 +76,7 @@ Only use the exact task_id returned when that agent was started. This tool canno
 			"properties": map[string]any{
 				"task_id": map[string]any{
 					"type":        "string",
-					"description": "The exact Task ID of the running background agent to stop.",
+					"description": "The exact Task ID of the agent to stop.",
 				},
 				"reason": map[string]any{
 					"type":        "string",
@@ -96,25 +92,19 @@ Only use the exact task_id returned when that agent was started. This tool canno
 func (t *SendMessageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "SendMessage",
-		Description: `Send a message to a running subagent by its exact task ID, to "main", or to a group member by name.
-- A running subagent reads queued messages between steps. Acceptance is not an acknowledgment or task completion. An ended worker is not restarted by messaging: use Agent with resume_task_id and a short continuation prompt to restore its original task/session.
-- A background Bash process has no agent inbox; inspect its output and manage its process lifecycle instead.
-- Group members are listed in the <group> reminder. Their result says whether mail waits for a step boundary, user input, or session resume.
-- The recipient reads it as a message from you, not from its user: make it
-  self-contained. It arrives with a From line, and the recipient's roster
-  already has your role: don't restate who you are, and skip greetings and
-  sign-offs. Keep it brief: what changed, what you need.
-- The result says when it will be read: now, between the recipient's steps,
-  at its user's next input (it holds messages), or when its session resumes
-  (offline).
-- When you were asked for something, report back when it is done or can't
-  be done. Don't send bare acknowledgements.`,
+		Description: `Send a message to an agent's exact Task ID, "main", or a group member's name.
+- Running agents queue messages between steps. Only the owning main conversation can continue an idle or recoverable failed agent, after permission checks. Continuation runs in the background with the original history, tools, model, permissions, and step budget.
+- Stopped/killed agents, exhausted recovery budgets, missing history, and unknown IDs return errors; no replacement is created. Task IDs remain usable until process exit.
+- Acceptance is not acknowledgment or completion. Verify the result before relying on it.
+- Background Bash processes have no agent inbox; inspect their output and use shell tools to manage them.
+- Group members appear in the <group> reminder. The result explains whether delivery waits for a step, user input, or session resume.
+- Keep messages brief and self-contained. They are attributed to you, not the recipient's user. Report results or blockers when asked; skip greetings and bare acknowledgments.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"to": map[string]any{
 					"type":        "string",
-					"description": "A running agent's exact task ID, \"main\", or a group member's name without \"@\".",
+					"description": "An existing agent's exact task ID, \"main\", or a group member's name without \"@\".",
 				},
 				"subject": map[string]any{
 					"type":        "string",

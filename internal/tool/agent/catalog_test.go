@@ -9,7 +9,7 @@ func TestAgentSchemaIncludesPredefinedCatalogWithoutSelectors(t *testing.T) {
 	catalog := "Available predefined agents:\n\n- reviewer: Reviews changes\n  Use when: Before merging"
 	tool := &AgentTool{}
 	schema := tool.SchemaWithAgentCatalog(catalog)
-	if !strings.Contains(schema.Description, catalog) || !strings.Contains(schema.Description, "Use name to select a predefined agent") {
+	if !strings.Contains(schema.Description, catalog) || !strings.Contains(schema.Description, "After deciding to delegate, use name to select a predefined agent") {
 		t.Fatalf("predefined agents are not discoverable: %s", schema.Description)
 	}
 	if strings.Contains(tool.Schema().Description, "Available predefined agents") {

@@ -106,49 +106,34 @@ func ResetDefaultTracker()         // test-only
 
 ## Continuation and failure handling
 
-A logical task, child conversation, and execution attempt are different identities.
-Continuing an agent retains the task ID and native child-session ID; only the
-execution attempt changes. A failed attempt is never rewritten as successful.
+`Agent` creates a session and returns a Task ID. Use that ID for follow-up
+messages and stopping, whether the initial run was foreground or background.
 
-```text
-Task created → attempt 1 running → attempt 1 failed
-                                  ↓ main chooses a safe continuation
-              same Task/session → attempt 2 running → result → parent verification
-```
+| Tool | Behavior |
+| --- | --- |
+| `Agent(prompt, ...)` | Create a new session. |
+| `SendMessage(to=task_id, message=...)` | Queue input while running; continue an idle or recoverable failed agent in the background. |
+| `AgentStop(task_id=...)` | Stop a running or idle agent and prevent further execution. |
 
-- While a worker runs, `SendMessage(to=<task-id>)` queues incremental instructions.
-  It is enabled by default in ordinary main sessions, without group membership;
-  an explicit `/tools` disable is still respected.
-  Acceptance does not mean the worker has read them or completed its work.
-- For new work, omit `resume_task_id` or use JSON `null`. Compatibility with
-  callers that fill every optional field also treats blank strings, `new`, and
-  `/dev/null` as explicit no-session placeholders. They create new work through
-  the normal permission gate; they never identify an existing worker. Other
-  unknown IDs, agent names, and file paths are rejected with a correction instead
-  of silently starting a new conversation.
-- When its execution has ended, `Agent(resume_task_id=<task-id>, prompt=...)`
-  explicitly continues its native conversation. The prompt contains only the new
-  instruction, not a parent-generated copy of the child's history. Continuation
-  is background-only and passes through the Agent permission gate.
-- A failure chain permits one corrective continuation. Two consecutive failed
-  executions exhaust the recovery budget; report a blocker and choose a new plan
-  rather than repeatedly waking main. Each continuation also has a finite step
-  budget (the original by default, or an explicit positive override). Successful
-  follow-ups reset the consecutive-failure chain.
-- Native conversation events are recorded from the start of execution, separately
-  from task output logs. A healthy transcript is opened under its writer lease,
-  restored internally, and appended to. Missing/broken history is rejected before
-  starting another attempt, avoiding a notification/recovery feedback loop.
-  The lease closes before completion is
-  announced, so the next attempt cannot race the previous writer.
-- Main sees the failure reason, partial findings, session pointer, and attempt
-  number. It can continue, take over remaining work, or report a blocker. It must
-  inspect uncertain side effects before retrying; neither message delivery nor a
-  normal worker exit proves the requested task was fulfilled.
-- Running, deliberately stopped/killed, foreign-session, and missing-checkpoint
-  tasks cannot be automatically resumed. A missing or damaged conversation must
-  not silently become a fresh conversation. Starting genuinely new work remains
-  a separate explicit Agent invocation.
+Continuation keeps the task ID, child session, history, model, tools, permissions,
+and step budget. Only the execution attempt changes; earlier results remain in
+history. Send only the new instruction—the child restores its own conversation.
+
+- Only the owning main conversation can wake an idle agent, after an Agent
+  permission check. Child agents can message running peers but cannot wake idle peers.
+  `SendMessage` is enabled by default; `/tools` can disable it.
+- After two consecutive failed attempts, continuation is blocked. A successful
+  attempt resets this count. Main can instead finish the work directly or report
+  a blocker. Check uncertain side effects before retrying; never repeat denied commands.
+- Stopped/killed agents, unknown IDs, and missing or damaged history produce an
+  error. They never silently create a replacement session.
+- Completion releases execution resources. Task identities remain until process
+  exit, without idle expiry; continuation is unavailable after restart.
+- Message acceptance is not acknowledgment or completion. Main must verify the
+  result. Foreground results return directly; background results send a notification.
+
+### Task history in the UI
+
 - `/tasks` defaults to active workers (including queued/current approvals).
   Completed, failed, stopped, killed, and interrupted workers live in a collapsed
   History section with an explicit failure count; `h` expands/collapses it.
@@ -172,10 +157,6 @@ Task created → attempt 1 running → attempt 1 failed
   attempt against the backend before execution.
 - Manual interruption holds background-driven turns until real user input;
   arriving notifications remain visible and queued rather than restarting main.
-- Continuation launch checkpoints are currently process-local. Native history is
-  durable, but reconstructing task ownership/policy after the entire San process
-  exits is not implemented. This is not a general crash-recovery scheduler or an
-  automatic dependency-DAG restart engine.
 
 ### Shell jobs and services
 

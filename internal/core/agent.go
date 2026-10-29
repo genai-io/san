@@ -50,6 +50,11 @@ type Agent interface {
 	// goroutine; under Run it also wakes an idle agent.
 	Append(msg Message)
 
+	// Pending reports input not yet incorporated into the conversation.
+	Pending() int
+	// SetMaxSteps changes the next exchange budget; call only between exchanges.
+	SetMaxSteps(int)
+
 	// ThinkAct runs one exchange and returns what it produced. Run loops on
 	// it; a subagent calls it directly after Append.
 	ThinkAct(ctx context.Context) (*Result, error)

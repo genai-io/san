@@ -33,7 +33,6 @@ func (m *Model) pruneAgentIdentities() {
 				continue
 			}
 			args := parseAgentIdentityInput(call.Input)
-			protect(args.Resume)
 			protect(args.To)
 			protect(args.TaskID)
 		}

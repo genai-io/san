@@ -21,6 +21,9 @@ execution enters through `NodeRunner` — so it can move to sdk-go as
 [`design/proposals/0001-workflow-orchestration.md`](../../design/proposals/0001-workflow-orchestration.md);
 user-facing behaviour: [`concepts/workflow.md`](../../concepts/workflow.md).
 
+The tool description explains Agent as an alternative for already-delegated
+one-off work, without directing ordinary tasks to subagents.
+
 The app's `/workflow list|show|run|stop` commands use the Workflow tool's saved
 definition paths. The command registry owns static subcommand suggestions;
 the app adds saved workflow names after `show` and `run`, then completes

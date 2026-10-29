@@ -627,3 +627,10 @@ func TestWorkflowToolExecuteRefusesATypoedAgentWithoutApproval(t *testing.T) {
 		t.Fatalf("Execute = %+v; an unapproved call must get the same checks as an approved one", res)
 	}
 }
+
+func TestWorkflowSchemaDoesNotRequireDelegation(t *testing.T) {
+	description := NewWorkflowTool().Schema().Description
+	if !strings.Contains(description, "For already-delegated work") || strings.Contains(description, "For one bounded job, or a one-off fan-out, use Agent instead") {
+		t.Fatalf("workflow schema redirects ordinary work to agents: %s", description)
+	}
+}

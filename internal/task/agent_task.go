@@ -34,6 +34,8 @@ type AgentTask struct {
 	attemptStart   time.Time
 	inspectionFile string // Native transcript fallback; never receives task-log records.
 	finishing      bool
+	stopRequested  bool
+	foreground     bool
 	attemptOutput  bytes.Buffer
 	launchState    any
 	permissionMode string           // Effective mode resolved before the worker starts.
@@ -245,6 +247,9 @@ func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText s
 		return
 	}
 	generation = t.attempt
+	if t.stopRequested && status != StatusKilled {
+		status, errText = StatusStopped, "stopped before completion"
+	}
 	t.Status = status
 	t.Error = errText
 	t.EndTime = time.Now()
@@ -259,6 +264,10 @@ func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText s
 		t.attempts[i].Output = output
 		remaining -= len(output)
 	}
+	// Completed tasks keep policy/history, not the execution context and its callbacks.
+	retired, cancelRetired := context.WithCancel(context.Background())
+	cancelRetired()
+	t.ctx, t.cancel = retired, nil
 	done := t.done
 	t.finishing = true
 	outputFile := t.OutputFile
@@ -274,7 +283,9 @@ func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText s
 		},
 	})
 
-	notifyTaskCompleted(t.GetStatus())
+	if !t.foreground {
+		notifyTaskCompleted(t.GetStatus())
+	}
 	t.mu.Lock()
 	t.finishing = false
 	close(done)

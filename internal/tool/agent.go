@@ -81,9 +81,8 @@ type AgentExecRequest struct {
 	Model               string
 	MaxSteps            int
 	Mode                string
-	// TaskID is the background-task id of this run; the executor registers it
-	// with the broker so main can message the subagent while it runs. Empty
-	// for foreground runs.
+	// TaskID is the stable task address for foreground and background runs.
+	// The executor registers its inbox only while an execution is active.
 	TaskID     string
 	OnActivity ActivityFunc
 	// ActivityMaxChars widens tool-call descriptions for views that can wrap

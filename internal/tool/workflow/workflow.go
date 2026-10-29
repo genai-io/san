@@ -89,7 +89,7 @@ func (t *WorkflowTool) Schema() core.ToolSchema {
 	var b strings.Builder
 	b.WriteString("Run a workflow: several subagent turns arranged as a graph, in the background, reporting one summary when done. " +
 		"Use it only when the same arrangement is worth keeping — a dependency order a long turn could forget, or a fan-out whose intermediate results should stay out of this conversation. " +
-		"For one bounded job, or a one-off fan-out, use Agent instead.\n\n")
+		"For already-delegated work, Agent supports a single task or a one-off fan-out without a workflow definition.\n\n")
 	if list := t.Saved(); list != "" {
 		b.WriteString("Saved workflows — pass one of these as `name`:" + list + "\n\n")
 	}

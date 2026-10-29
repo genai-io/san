@@ -55,11 +55,13 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 					return approve, "test decision"
 				}})
 				req := tool.AgentExecRequest{Prompt: "run command", ParentToolCallID: "parent-call"}
+				var taskID string
 				if background {
 					task, err := executor.RunBackground(req)
 					if err != nil {
 						t.Fatal(err)
 					}
+					taskID = task.GetID()
 					if !task.WaitForCompletion(5 * time.Second) {
 						t.Fatal("worker did not finish")
 					}
@@ -67,13 +69,15 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 					ctx, cancel := context.WithTimeout(core.WithToolCallID(context.Background(), "parent-call"), 5*time.Second)
 					defer cancel()
 					req.ParentToolCallID = ""
-					if _, err := executor.Run(ctx, req); err != nil {
+					result, err := executor.Run(ctx, req)
+					if err != nil {
 						t.Fatal(err)
 					}
+					taskID = result.Identity.ID
 				}
 				select {
 				case source := <-seen:
-					if (source.TaskID != "") != background {
+					if source.TaskID == "" || source.TaskID != taskID {
 						t.Errorf("wrong task identity: %+v", source)
 					}
 				default:

@@ -165,6 +165,13 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	pg := NewPermissionGate(p.PermissionRules)
 	pg.SetReviewer(p.PermissionReview)
 	pg.SetHookAllowResolver(p.HookAllowResolver)
+	disabledTools, hasPermissionRules := p.DisabledTools, p.PermissionRules != nil
+	adaptOpts = append(adaptOpts, tool.WithPermissionCheck(func(ctx context.Context, name string, input map[string]any) (bool, string) {
+		if disabledTools[name] || !hasPermissionRules {
+			return false, "agent execution is unavailable"
+		}
+		return pg.Check(ctx, name, input, false, "")
+	}))
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {
@@ -176,6 +183,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	p.addMCPTools(tools)
 
 	compactClient := client
+	cache := p.FileCache
 	compactFunc := func(ctx context.Context, msgs []core.Message) (string, error) {
 		text := core.BuildCompactionText(msgs)
 		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens)
@@ -191,7 +199,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		// hand along with it.
 		budget := client.ContextBudget()
 		summary = core.WithRecentRequests(summary, msgs, budget)
-		return reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), p.FileCache, budget)), nil
+		return reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), cache, budget)), nil
 	}
 
 	ag = core.NewAgent(core.Config{

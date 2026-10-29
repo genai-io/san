@@ -208,3 +208,14 @@ func (m *Manager) Kill(id string) error {
 		}
 	}
 }
+
+// CreateForegroundAgentTask retains a session without background lifecycle notices.
+func (m *Manager) CreateForegroundAgentTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+	t := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
+	t.parentSessionID = m.ownerSession(ctx)
+	t.foreground = true
+	m.mu.Lock()
+	m.tasks[id] = t
+	m.mu.Unlock()
+	return t
+}

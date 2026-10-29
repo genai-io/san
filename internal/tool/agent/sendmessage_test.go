@@ -90,7 +90,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 	if result.Success {
 		t.Fatal("sending to an unregistered address should fail")
 	}
-	if !strings.Contains(result.Error, "spawn a new agent") {
+	if !strings.Contains(result.Error, "check the exact task ID returned by Agent") || strings.Contains(result.Error, "spawn a new agent") {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }
@@ -138,11 +138,11 @@ func TestSendMessage_KnownTaskBoundary(t *testing.T) {
 		{name: "running", owner: "session-a", sender: "session-a", status: task.StatusRunning},
 		{name: "legacy sender", owner: "session-a", status: task.StatusRunning},
 		{name: "legacy owner", sender: "session-a", status: task.StatusRunning},
-		{name: "completed stale route", status: task.StatusCompleted, wantError: "resume_task_id"},
-		{name: "failed stale route", status: task.StatusFailed, wantError: "same task and session"},
-		{name: "stopped stale route", status: task.StatusStopped, wantError: "cannot be resumed automatically"},
-		{name: "killed stale route", status: task.StatusKilled, wantError: "deliberately stopped"},
-		{name: "bash", status: task.StatusRunning, bash: true, wantError: "not an agent"},
+		{name: "completed stale route", status: task.StatusCompleted, wantError: "owning main conversation"},
+		{name: "failed stale route", status: task.StatusFailed, wantError: "owning main conversation"},
+		{name: "stopped stale route", owner: "parent", sender: "parent", status: task.StatusStopped, wantError: "cannot be resumed automatically"},
+		{name: "killed stale route", owner: "parent", sender: "parent", status: task.StatusKilled, wantError: "deliberately stopped"},
+		{name: "bash", status: task.StatusRunning, bash: true, wantError: "inspect its output file and continue with the shell tools"},
 		{name: "cross session", owner: "session-a", sender: "session-b", status: task.StatusRunning, wantError: "different parent session"},
 	}
 	for _, tc := range cases {

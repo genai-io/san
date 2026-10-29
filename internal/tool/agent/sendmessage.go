@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -16,17 +17,19 @@ import (
 )
 
 // SendMessageTool routes a message to another agent through the broker:
-// main → a running subagent (by task id), or a subagent → "main". The message
+// main → an existing subagent (by task id), or a subagent → "main". The message
 // lands in the recipient's inbox and is read at its next step (a subagent) or
 // turn boundary (main). Acceptance is not an acknowledgment or completion;
-// known terminal tasks are rejected even if their broker route still exists.
-type SendMessageTool struct{}
+// idle workers continue in their original session when the parent is authorized.
+type SendMessageTool struct{ executor tool.AgentExecutor }
+
+func (t *SendMessageTool) SetExecutor(executor tool.AgentExecutor) { t.executor = executor }
 
 func NewSendMessageTool() *SendMessageTool { return &SendMessageTool{} }
 
 func (t *SendMessageTool) Name() string { return tool.ToolSendMessage }
 func (t *SendMessageTool) Description() string {
-	return "Send a message to another agent via the broker: main → a running subagent (task id), or a subagent → \"main\""
+	return "Send a message to another agent via the broker: main → an existing subagent (task id), or a subagent → \"main\""
 }
 func (t *SendMessageTool) Icon() string             { return tool.IconAgent }
 func (t *SendMessageTool) RequiresPermission() bool { return true }
@@ -100,17 +103,17 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	}
 
 	// A stale broker route must never make an inactive execution or a non-agent
-	// task messageable. Continuing a session requires an explicit Agent resume.
+	// task messageable. Idle sessions must pass the continuation gate.
 	if bgTask, found := task.Default().Get(to); found {
 		info := bgTask.GetStatus()
 		if sessionID := task.SessionIDFromContext(ctx); sessionID != "" && info.ParentSessionID != "" && sessionID != info.ParentSessionID {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q belongs to a different parent session; use a running agent task ID from this session", to))
 		}
 		if bgTask.GetType() != task.TaskTypeAgent {
-			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file or start an agent for follow-up work", to, bgTask.GetType()))
+			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file and continue with the shell tools", to, bgTask.GetType()))
 		}
 		if info.Status != task.StatusRunning {
-			return toolresult.NewErrorResult(t.Name(), terminalMessageReason(to, info.Status))
+			return t.continueWorker(ctx, info, subject, message)
 		}
 	}
 
@@ -123,6 +126,11 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		Content:   wrapAgentMessage(from, display, message),
 	})
 	if !delivered {
+		if worker, found := task.Default().Get(to); found && worker.GetType() == task.TaskTypeAgent {
+			if info := worker.GetStatus(); info.Status != task.StatusRunning {
+				return t.continueWorker(ctx, info, subject, message)
+			}
+		}
 		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to))
 	}
 
@@ -174,7 +182,7 @@ func recipientLabel(id string) string {
 	if g, ok := groupMember(id); ok {
 		return "@" + id + " in group " + g
 	}
-	return "running " + senderLabel(id)
+	return senderLabel(id)
 }
 
 // groupMember reports whether to names a member of this session's group
@@ -213,7 +221,7 @@ func undeliverableReason(to string) string {
 	}
 	bgTask, found := task.Default().Get(to)
 	if !found {
-		return fmt.Sprintf("no running worker is registered at %q — it has finished or was never started; spawn a new agent to continue the work", to)
+		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
 	if bgTask.GetStatus().Status == task.StatusRunning {
 		return fmt.Sprintf("worker %q is still starting up or its inbox is momentarily full — wait a moment and send again", to)
@@ -225,7 +233,7 @@ func terminalMessageReason(to string, status task.TaskStatus) string {
 	if status == task.StatusStopped || status == task.StatusKilled {
 		return fmt.Sprintf("worker %q was deliberately stopped (status %s); messages cannot restart it and it cannot be resumed automatically. Ask the user before starting new work", to, status)
 	}
-	return fmt.Sprintf("worker %q has no active execution (status %s); use Agent with resume_task_id=%q and a short continuation prompt to continue the same task and session. Sending a message does not restart it", to, status, to)
+	return fmt.Sprintf("worker %q has no active execution (status %s); send follow-up instructions from its owning main conversation to continue the same task and session", to, status)
 }
 
 // wrapAgentMessage tags peer mail so the recipient can tell it from real user
@@ -242,4 +250,55 @@ func wrapAgentMessage(from, subject, text string) string {
 
 func init() {
 	tool.Register(NewSendMessageTool())
+}
+
+// Keep child transcripts and output out of the parent's approval context.
+type continuationApproval struct {
+	TaskID         string `json:"task_id"`
+	Attempt        int    `json:"attempt"`
+	PermissionMode string `json:"permission_mode"`
+}
+
+func (t *SendMessageTool) continueWorker(ctx context.Context, info task.TaskInfo, subject, message string) toolresult.ToolResult {
+	fail := func(reason string) toolresult.ToolResult { return toolresult.NewErrorResult(t.Name(), reason) }
+	if tool.AgentIDFromContext(ctx) != "" || task.SessionIDFromContext(ctx) == "" || task.SessionIDFromContext(ctx) != info.ParentSessionID {
+		return fail("only the owning main conversation can continue an idle agent")
+	}
+	if info.Status == task.StatusStopped || info.Status == task.StatusKilled {
+		return fail(terminalMessageReason(info.ID, info.Status))
+	}
+	if !task.RecoveryBudgetAvailable(info.Attempts) {
+		return fail("agent exhausted its corrective recovery budget; inspect existing results and report the blocker")
+	}
+	if t.executor == nil {
+		return fail("agent executor unavailable; no new conversation was started")
+	}
+	// The typed task snapshot cannot be supplied by model JSON. The Agent gate
+	// uses it to preview the original policy and pins approval to this attempt.
+	input := map[string]any{"name": info.AgentName, "prompt": message, "description": info.Description, "run_in_background": true, "_continuation": continuationApproval{TaskID: info.ID, Attempt: info.Attempt, PermissionMode: info.PermissionMode}}
+	if allowed, reason := tool.CheckPermission(ctx, tool.ToolAgent, input); !allowed {
+		return fail(reason)
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err.Error())
+	}
+	next, err := t.executor.RunBackground(tool.AgentExecRequest{
+		ResumeTaskID: info.ID, ResumeAttempt: info.Attempt, Prompt: wrapAgentMessage(broker.Main, subject, message),
+		ParentToolCallID: core.ToolCallIDFromContext(ctx), Background: true,
+	})
+	if err != nil {
+		return fail(err.Error())
+	}
+	return toolresult.ToolResult{
+		Success: true,
+		Output:  fmt.Sprintf("Message accepted; agent %s started its next execution in the original session. Completion will be notified separately.", info.ID),
+		Details: toolresult.AgentDetails{TaskID: info.ID, Identity: next.Identity},
+		HookResponse: map[string]any{
+			"backgroundTask": map[string]any{
+				"taskId": info.ID, "agentName": info.AgentName,
+				"description": info.Description, "outputFile": next.OutputFile, "toolName": t.Name(),
+			},
+		},
+		Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon()},
+	}
 }

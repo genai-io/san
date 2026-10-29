@@ -9,7 +9,7 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-func TestRuntimeIdentityForegroundDetailsDoNotLeakToModel(t *testing.T) {
+func TestRuntimeIdentityForegroundExposesOnlyTaskRoute(t *testing.T) {
 	identity := toolresult.AgentIdentity{ID: "private-hook", Name: "private-name", CallID: "private-call", SessionID: "private-session"}
 	a := NewAgentTool()
 	a.SetExecutor(&recordingExecutor{runResult: &tool.AgentExecResult{Success: true, Content: "finding", Identity: identity}})
@@ -18,7 +18,10 @@ func TestRuntimeIdentityForegroundDetailsDoNotLeakToModel(t *testing.T) {
 	if !ok || details.Identity != identity {
 		t.Fatalf("lost identity: %#v", result.Details)
 	}
-	for _, value := range []string{identity.ID, identity.Name, identity.CallID, identity.SessionID} {
+	if !strings.Contains(result.FormatForLLM(), "Task ID: "+identity.ID) {
+		t.Fatal("foreground result has no follow-up route")
+	}
+	for _, value := range []string{identity.Name, identity.CallID, identity.SessionID} {
 		if strings.Contains(result.FormatForLLM(), value) {
 			t.Fatalf("identity leaked: %q", result.FormatForLLM())
 		}

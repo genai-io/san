@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -41,6 +42,7 @@ type adaptConfig struct {
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
 	sideEffectFn    func(string, any)
+	permissionCheck perm.PermissionFunc
 }
 
 // WithAskUser sets the handler the AskUserQuestion tool uses to ask the user.
@@ -85,7 +87,7 @@ func adaptationConfig(opts []AdaptOption) adaptConfig {
 }
 
 func adaptTool(t Tool, schema core.ToolSchema, cwd func() string, cfg adaptConfig) *toolAdapter {
-	return &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn}
+	return &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn, permissionCheck: cfg.permissionCheck}
 }
 
 // AdaptToolRegistry wraps all tools from the global registry as core.Tools.
@@ -119,12 +121,16 @@ type toolAdapter struct {
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
 	sideEffectFn    func(string, any)
+	permissionCheck perm.PermissionFunc
 }
 
 func (a *toolAdapter) Schema() core.ToolSchema { return a.schema }
 
 func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
 	input, _ := core.ParseToolInput(call.Input)
+	if a.permissionCheck != nil {
+		ctx = context.WithValue(ctx, permissionCheckKey{}, a.permissionCheck)
+	}
 	cwd := ""
 	if a.cwd != nil {
 		cwd = a.cwd()
@@ -205,4 +211,20 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 		return res, fmt.Errorf("%s", text)
 	}
 	return res, nil
+}
+
+// WithPermissionCheck lets tools gate a continuation with the parent's policy.
+func WithPermissionCheck(check perm.PermissionFunc) AdaptOption {
+	return func(c *adaptConfig) { c.permissionCheck = check }
+}
+
+type permissionCheckKey struct{}
+
+// CheckPermission fails closed outside a parent runtime with a permission gate.
+func CheckPermission(ctx context.Context, name string, input map[string]any) (bool, string) {
+	check, ok := ctx.Value(permissionCheckKey{}).(perm.PermissionFunc)
+	if !ok {
+		return false, "continuation requires the parent permission gate"
+	}
+	return check(ctx, name, input)
 }

@@ -45,7 +45,7 @@ func TestAgentIdentityOrderingRestoration(t *testing.T) {
 	if m.AgentDisplaySnapshot()["route-a"] != got["route-a"] {
 		t.Fatal("compaction lost identity")
 	}
-	m.Messages = append(m.Messages, core.ChatMessage{ID: "resume", Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "resume-call", Name: "Agent", Input: `{"resume_task_id":"route-a"}`}}})
+	m.Messages = append(m.Messages, core.ChatMessage{ID: "resume", Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "resume-call", Name: "SendMessage", Input: `{"to":"route-a"}`}}})
 	if m.AgentDisplaySnapshot()["resume-call"] != got["route-a"] {
 		t.Fatal("resume allocated identity")
 	}

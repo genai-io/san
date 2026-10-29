@@ -11,7 +11,7 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-// AgentStopTool stops a running background subagent. Bash tasks deliberately
+// AgentStopTool stops an existing subagent. Bash tasks deliberately
 // stay outside this control surface: Bash reports its process-group ID, so the
 // model can stop that command with Bash itself.
 type AgentStopTool struct{}
@@ -20,9 +20,11 @@ var _ tool.PermissionAwareTool = (*AgentStopTool)(nil)
 
 func NewAgentStopTool() *AgentStopTool { return &AgentStopTool{} }
 
-func (t *AgentStopTool) Name() string        { return tool.ToolAgentStop }
-func (t *AgentStopTool) Description() string { return "Stop a running background agent" }
-func (t *AgentStopTool) Icon() string        { return tool.IconAgent }
+func (t *AgentStopTool) Name() string { return tool.ToolAgentStop }
+func (t *AgentStopTool) Description() string {
+	return "Stop an agent and prevent further message-triggered execution"
+}
+func (t *AgentStopTool) Icon() string { return tool.IconAgent }
 
 func (t *AgentStopTool) RequiresPermission() bool { return true }
 
@@ -41,7 +43,7 @@ func (t *AgentStopTool) PreparePermission(ctx context.Context, params map[string
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: fmt.Sprintf("Stop background agent %s", taskID),
+		Description: fmt.Sprintf("Stop agent %s", taskID),
 	}, nil
 }
 
@@ -72,11 +74,11 @@ func (t *AgentStopTool) execute(ctx context.Context, params map[string]any) tool
 	}
 	// Permission approval and graceful escalation stay pinned to the selected
 	// execution; an old stop request must not cancel a later continuation.
-	if attempt, pinned := params["_stopAttempt"].(int); pinned {
-		err = task.Default().KillAttempt(taskID, attempt)
-	} else {
-		err = task.Default().Kill(taskID)
+	attempt, pinned := params["_stopAttempt"].(int)
+	if !pinned {
+		attempt = bgTask.GetStatus().Attempt
 	}
+	err = task.Default().KillAttempt(taskID, attempt)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to stop agent task: %v", err))
 	}

@@ -44,7 +44,7 @@ func TestAgentStopCancelsRunningAgent(t *testing.T) {
 	}
 }
 
-func TestAgentStopRejectsCompletedAgent(t *testing.T) {
+func TestAgentStopClosesCompletedAgent(t *testing.T) {
 	task.Initialize(task.Options{})
 	t.Cleanup(task.ResetDefaultTracker)
 
@@ -61,11 +61,11 @@ func TestAgentStopRejectsCompletedAgent(t *testing.T) {
 		"task_id": "task-stop-2",
 	}, ".")
 
-	if result.Success {
-		t.Fatal("expected failure for completed task")
+	if !result.Success || agentTask.GetStatus().Status != task.StatusStopped {
+		t.Fatalf("completed session was not stopped: %+v", result)
 	}
-	if !strings.Contains(result.Error, "already completed") {
-		t.Fatalf("unexpected error: %s", result.Error)
+	if _, err := agentTask.BeginAttempt("", context.Background(), func() {}); err == nil {
+		t.Fatal("explicitly stopped session restarted")
 	}
 }
 

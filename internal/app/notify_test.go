@@ -192,3 +192,10 @@ func TestTaskCompletionMessagePreservesFailedOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestFailedAgentNoticeWeighsContinuationAgainstDirectWork(t *testing.T) {
+	msg, ok := taskCompletionMessage(task.TaskInfo{ID: "worker", Type: task.TaskTypeAgent, Status: task.StatusFailed, AgentSessionID: "child"})
+	if !ok || !strings.Contains(msg.Content, "Choose whether to finish directly, continue the existing worker, or report a blocker") || !strings.Contains(msg.Content, "Never bypass a denied command") {
+		t.Fatalf("failure notice lost continuation tradeoff or safety guidance: %s", msg.Content)
+	}
+}

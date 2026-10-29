@@ -68,7 +68,6 @@ func (m *Model) SetAgentIdentitySession(id string) {
 
 type agentIdentityInput struct {
 	Name   string `json:"name"`
-	Resume string `json:"resume_task_id"`
 	To     string `json:"to"`
 	TaskID string `json:"task_id"`
 }
@@ -85,15 +84,18 @@ func (m *Model) reserveAgentCalls(calls []core.ToolCall) {
 	}
 	s := m.identities
 	for _, call := range calls {
-		if call.Name != tool.ToolAgent || call.ID == "" {
+		if (call.Name != tool.ToolAgent && call.Name != tool.ToolSendMessage) || call.ID == "" {
 			continue
 		}
 		if _, ok := s.displays[call.ID]; ok {
 			continue
 		}
 		args := parseAgentIdentityInput(call.Input)
-		if d, ok := s.displays[args.Resume]; args.Resume != "" && ok {
+		if d, ok := s.displays[args.To]; call.Name == tool.ToolSendMessage && ok {
 			s.put(call.ID, d)
+			continue
+		}
+		if call.Name != tool.ToolAgent {
 			continue
 		}
 		s.put(call.ID, AgentDisplay{ID: call.ID, Name: args.Name, ColorKey: s.next})

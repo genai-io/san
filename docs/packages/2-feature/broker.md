@@ -5,18 +5,17 @@ layer: feature
 
 # broker
 
-Routes messages between agents. The small piece that sits between a sender and
-a recipient so neither has to know how to reach the other — the whole of
-inter-agent communication, in ~60 lines.
+Routes messages to active agent inboxes. Session creation and continuation belong
+to the executor and tools.
 
 ## Model
 
 - An agent **Registers** an address to receive at when it starts (the main
-  conversation under `Main`, a background subagent under its task id) and
+  conversation under `Main`, a subagent execution under its stable task id) and
   **Unregisters** when it stops.
 - Anyone **Sends** a `Message` stamped with a destination (`To`). The broker
   delivers it to whoever holds that address; a message to an address no one
-  holds is dropped.
+  holds returns `false`.
 
 Direct addressing only — no topics, no broadcast, no queuing beyond the
 recipient's own. What a delivered message does (enter a subagent's
@@ -44,7 +43,7 @@ func Send(m Message) bool                          // routes to m.To; false when
 func Reset()                                       // test-only
 ```
 
-Addresses are unique per run — a task id (`generateShortID()`) or `Main` — so
+Addresses identify logical agents — a task id (`generateShortID()`) or `Main` — so
 an address is held by exactly one agent at a time; `Register`/`Unregister` are
 a plain add/remove on the map. The registry is a process-wide singleton, like
 `task.Default()`. The delivery function runs outside the lock and must not
@@ -63,15 +62,17 @@ notice, so a switch cannot inject an old worker's result into the new session.
 | Recipient | Registers |
 |---|---|
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
-| each background subagent (`subagent.Executor`) | its task id → `core.Agent.Append`, heard at its next step; its run does not end with one unread |
+| each active subagent execution (`subagent.Executor`) | its task id → `core.Agent.Append`, queued for the next step |
 
-A background task's **completion** is pushed automatically when its run ends.
-Main injects it immediately while idle, or at the next turn boundary during an
-active stream; it never polls for output. A **`SendMessage`** is best-effort:
-a subagent that has finished (or never
-takes another step) won't see it, so it is only for steering or interim notes
-— a subagent's final result comes back on its own (the tool result for a
-foreground run, the completion for a background one), never via `SendMessage`.
+Background completion is sent to main automatically: immediately when idle, or
+at its next turn boundary. Foreground results return through the tool call.
+
+`SendMessage` uses the broker for running workers. For idle workers, the tool
+checks permissions and asks the executor to continue the existing session.
+See [task lifecycle and continuation](task.md#continuation-and-failure-handling).
+
+Acceptance means input was queued, not that work is complete. The executor
+preserves accepted input in history if execution fails or is canceled.
 
 ## See Also
 

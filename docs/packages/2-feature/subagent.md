@@ -97,6 +97,12 @@ func ResetDefaultRegistry()           // test-only
   optional `when-to-use` hints; full charters, models, tool rules and permission
   modes stay out of the main discovery context. Disabled and persona-hidden
   definitions are omitted, and the catalog refreshes whenever schemas rebuild.
+- The Agent schema defaults to direct work. Delegation weighs context isolation,
+  parallel execution, or distinct capabilities against briefing, repeated reads,
+  and result verification. Catalog matches describe suitability after that
+  decision; they are not invocation requirements. SendMessage errors for unknown task IDs guide
+  the caller to verify the ID and existing results; shell tasks stay on the shell
+  tools rather than being redirected to a new agent.
 - Catalog discovery reflects the loaded registry, not continuous file hot-reload.
   Definition files are scanned during initialization/project-service reload;
   their bodies are loaded lazily and cached. Adding, modifying or deleting files
@@ -157,13 +163,12 @@ Continuation keeps its existing background execution contract.
   adding a duplicate error row. These events do not send broker notices to main:
   a failed attempt is not a failed task. Terminal results and explicit
   `SendMessage` calls are the parent communication boundary.
-- Every execution exit — success, cancel, error — fires `SubagentStop` with
-  the same invocation id `SubagentStart` carried. An ended background worker can
-  be explicitly continued with `Agent(resume_task_id=..., prompt=...)`: the
-  logical task and child-session IDs stay unchanged, a new execution attempt is
-  created, and only the new instruction is appended to its native conversation.
-  Running workers receive instructions via `SendMessage` instead. Deliberately
-  stopped/killed workers are not automatically revived.
+- Every execution exit fires `SubagentStop` with the same invocation ID as
+  `SubagentStart`. Foreground and background agents retain a Task ID for follow-up
+  through `SendMessage`. See [task lifecycle and continuation](task.md#continuation-and-failure-handling).
+- Inbox shutdown and message acceptance share a lock. Accepted input is processed
+  within the step budget or saved in native history on failure/cancellation.
+  A closing inbox rejects new input so the sender can retry after completion.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
@@ -234,27 +239,17 @@ Continuation keeps its existing background execution contract.
 
 ## Configuration and limits
 
-- New subagents start with fresh conversations. Supply the actual working
-  directory, source paths, constraints, and expected validation in the initial
-  brief. To continue an existing worker, use `resume_task_id` and only an
-  incremental correction/follow-up: its original messages are restored inside
-  the child, not copied through the parent's context. Continuation retains the
-  original resolved worker policy, including named tool denies; approval previews
-  project that original policy rather than a subsequently reloaded definition.
-  The schema's `prompt` field distinguishes a full new-work brief from an
-  incremental continuation instruction. `resume_task_id` documents omission/null
-  for new work and strict lookup for continuation; parameter normalization stays
-  in the tool adapter, not in conversation restoration. `run_in_background` defaults
-  to false only for new work; continuation always runs in the background.
-  An omitted `max_steps` uses the selected definition's budget for new work and
-  retains the original budget for continuation; a positive value overrides it.
-- Real session stores record child events live before the first inference and
-  reuse the same transcript during continuation. Legacy end-of-run persistence
-  adapters still support new work but cannot continue it. A continuation needs
-  both the durable transcript and a process-local ownership/policy checkpoint;
-  it is not yet supported after restarting the whole application. A failure chain
-  permits one corrective execution; a second consecutive failure blocks further
-  continuation and requires a new plan rather than an unbounded automatic loop.
+- `Agent` starts a fresh conversation. Its brief should include the working
+  directory, relevant paths, constraints, and validation plan. `run_in_background`
+  and `max_steps` configure this initial run; use `SendMessage` for follow-up.
+- Continuation restores the original policy, including tool denies, and shows it
+  in the approval preview. Messaging cannot bypass disabled Agent execution or
+  a disabled agent definition.
+- Continuation requires a healthy native transcript and the process-local
+  ownership/policy checkpoint. The transcript is recorded from the first inference
+  and reopened under a writer lease. That lease closes before completion is
+  announced, preventing concurrent writers. Stores that only save at the end of
+  a run cannot support continuation.
 - Custom definition and workflow policies still distinguish read-only inspection
   from edits and unrestricted shell execution. These are internal/configured
   constraints, not default Agent presets or model-facing selectors. An unattended
