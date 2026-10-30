@@ -68,7 +68,10 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 				<-r.Context().Done()
 				close(aborted)
 			}))
-			defer server.Close()
+			defer func() {
+				server.CloseClientConnections()
+				server.Close()
+			}()
 			transport := &interruptHTTPTransport{base: server.Client().Transport, exiting: make(chan struct{}), release: make(chan struct{})}
 			var releaseOnce sync.Once
 			release := func() { releaseOnce.Do(func() { close(transport.release) }) }

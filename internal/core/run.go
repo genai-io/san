@@ -71,7 +71,6 @@ type agent struct {
 }
 
 // turnHandle binds cancellation and execution completion to one ThinkAct.
-// Completion is not a mailbox, event-consumer, or persistence barrier.
 type turnHandle struct {
 	cancel context.CancelFunc
 	done   chan struct{}
