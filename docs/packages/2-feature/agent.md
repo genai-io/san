@@ -35,6 +35,7 @@ func (s *Runtime) Stop()
 func (s *Runtime) StopContext(ctx context.Context) error
 func (s *Runtime) InterruptCurrentTurn() <-chan struct{}
 func (s *Runtime) InterruptTurn()
+func (s *Runtime) CancelTurn() *core.TurnFinalization
 func (s *Runtime) Reset()
 func (s *Runtime) Messages() []core.Message
 func (s *Runtime) SetMessages(messages []core.Message)
@@ -77,8 +78,16 @@ func Default() *Runtime
 - Turn cancellation: `InterruptCurrentTurn` requests cancellation immediately and
   returns an execution-completion channel, shared by repeated calls during unwind.
   Completion is not an event/persistence barrier or a lock against successor turns.
-  Idle interrupt semantics are unchanged. `InterruptTurn` retains the TUI's 250 ms
-  bounded wait; slow tools may still be unwinding afterward.
+  Idle interrupt semantics are unchanged. `InterruptTurn` retains its legacy 250 ms
+  execution-only wait; slow tools may still be unwinding afterward.
+- Canceled-turn finalization: `CancelTurn` captures one exchange; `Wait(ctx)` waits
+  for execution and consumer cleanup plus essential message/inference/state writes.
+  `ErrTurnCompleted` denotes a natural completion race, not a save failure. TUI input
+  waits asynchronously for cleanup; manual stop holds queued/background work.
+  Queue-selection Enter explicitly resumes the queue head after cleanup, even with
+  held harness input; direct pending user input takes precedence. Edits, deletion,
+  or session replacement invalidate that deferred intent.
+  No guarantee covers audit details, normal-turn hooks, rendering, or fsync.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -93,6 +102,9 @@ func Default() *Runtime
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
 internal/agent/runtime_interrupt_test.go — completion signal and bounded wait.
+internal/core/finalization_test.go — exact receipt, blocked native writes/handling,
+                                     errors, repeated cancel, successor and shutdown.
+internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.
 internal/app/session_resume_test.go — native error retry, inactive compaction,
                                       and image-preserving model switches.

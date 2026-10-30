@@ -51,10 +51,22 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if c, ok := m.userInput.HandleSuggestionKey(msg); ok {
 		return c, ok
 	}
+	// Re-entering queue editing revokes an earlier Enter while finalization waits.
+	if m.userInput.Queue.SelectIdx >= 0 {
+		m.queueContinuation = nil
+	}
+	headBeforeEdit, _ := m.userInput.Queue.At(0)
 	if c, ok := m.userInput.HandleQueueSelectKey(msg); ok {
-		// Leaving queue-edit mode releases a drain that was held while the
-		// head item was under edit (see drainTurnQueues): if the agent went
-		// idle in the meantime, dispatch the queue now.
+		if msg.String() == "enter" {
+			if item, exists := m.userInput.Queue.At(0); exists && item.ID == headBeforeEdit.ID {
+				if m.cancellingTurn != nil {
+					m.queueContinuation = &item
+					return c, true
+				}
+				return tea.Batch(c, m.sendNextQueuedInput(true)), true
+			}
+		}
+		// Non-Enter edit exits remain automatic drains and respect a manual stop.
 		if m.userInput.Queue.SelectIdx < 0 && !m.conv.Stream.Active {
 			if send := m.sendNextQueuedInputIfIdle(); send != nil {
 				return tea.Batch(c, send), true

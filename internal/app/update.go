@@ -14,6 +14,7 @@
 package app
 
 import (
+	"reflect"
 	"strconv"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
@@ -469,6 +471,30 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.StopAgentRuntime()
 		}
 		return m, nil
+	case turnFinalizedMsg:
+		if msg.receipt != m.cancellingTurn {
+			return m, nil
+		}
+		m.cancellingTurn = nil
+		var cmds []tea.Cmd
+		if msg.err != nil && msg.err != core.ErrTurnCompleted {
+			log.Logger().Warn("cancelled turn finalization incomplete", zap.Error(msg.err))
+			if msg.outbox == m.services.Agent.Outbox() {
+				m.conv.AddNotice("Turn finalization failed: " + msg.err.Error())
+				cmds = append(cmds, m.CommitMessages()...)
+			}
+		}
+		continuation := m.queueContinuation
+		m.queueContinuation = nil
+		if len(m.pendingMessages) > 0 && !m.backgroundNoticesHeld {
+			cmds = append(cmds, m.sendPendingMessages())
+		} else if continuation != nil && msg.outbox == m.services.Agent.Outbox() {
+			// Never transfer Enter's permission to a deleted or edited successor.
+			if head, ok := m.userInput.Queue.At(0); ok && reflect.DeepEqual(head, *continuation) {
+				cmds = append(cmds, m.sendNextQueuedInput(true))
+			}
+		}
+		return m, tea.Batch(cmds...)
 	case agentSendFailedMsg:
 		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
 		if m.conv.Stream.Waiting {

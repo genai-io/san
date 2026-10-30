@@ -33,6 +33,7 @@ import (
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -160,6 +161,15 @@ func (m *model) syncMCPTools() {
 	}
 }
 
+// recordAgentEvent captures essential transcript errors before terminal delivery.
+// Tool, system and detail audit writes are best effort, not receipt guarantees.
+func recordAgentEvent(rec *session.Session, ev core.Event) {
+	rec.RecordEvent(ev)
+	if end, ok := ev.(core.TurnEnded); ok {
+		end.Result.Finalization.RecordError(rec.Err())
+	}
+}
+
 func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params := m.promptParams()
 
@@ -170,7 +180,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return params, err
 	}
 	if rec != nil {
-		onEvent = rec.RecordEvent
+		onEvent = func(ev core.Event) { recordAgentEvent(rec, ev) }
 		for _, n := range m.earlyNotices {
 			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
 				Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
@@ -553,6 +563,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
 	}
+	m.agentSession = m.services.Session
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
@@ -599,7 +610,7 @@ func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
-	if m.backgroundNoticesHeld {
+	if m.backgroundNoticesHeld || m.cancellingTurn != nil {
 		return nil
 	}
 	if !m.services.Agent.Active() {
@@ -607,6 +618,10 @@ func (m *model) sendPendingMessages() tea.Cmd {
 	}
 	if !m.conv.Stream.Active && len(m.pendingMessages) > 0 {
 		m.turnOpenedBy = m.pendingMessages[0].ID
+	}
+	if m.pendingPluginRoot != "" {
+		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
+		m.pendingPluginRoot = ""
 	}
 	for len(m.pendingMessages) > 0 {
 		next := &m.pendingMessages[0]
@@ -723,6 +738,8 @@ func (m *model) StopAgentRuntime() {
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() {
 	m.services.Agent.Reset()
+	m.cancellingTurn = nil
+	m.pendingPluginRoot = ""
 	m.backgroundNoticesHeld = false
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its

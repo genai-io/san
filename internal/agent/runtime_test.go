@@ -96,6 +96,8 @@ func (a *controlledAgent) Run(ctx context.Context) error {
 	}
 	return nil
 }
+func (a *controlledAgent) CancelTurn() *core.TurnFinalization { return nil }
+
 func (a *controlledAgent) InterruptCurrentTurn() <-chan struct{} {
 	if a.interrupt != nil {
 		return a.interrupt()

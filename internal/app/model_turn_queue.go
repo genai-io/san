@@ -28,7 +28,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	}
 	log.Logger().Sugar().Debugf("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
-	m.appendTurnState()
+	_ = m.appendTurnState() // appendTurnState logs and surfaces failures; no cancellation waiter here.
 	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -59,7 +59,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 // Shared by the step-boundary (OnStepEnd) and turn-boundary
 // (drainTurnQueues) drains.
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
-	if m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
+	if m.cancellingTurn != nil || m.backgroundNoticesHeld || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
 	item, ok := m.userInput.Queue.Dequeue()
