@@ -1,6 +1,6 @@
 # PROP-0004: ACP agent entrypoint
 
-Draft — 2026-10-27. Transport kernel prototyped in `sdk-go`; San entrypoint pending.
+Draft — updated 2026-10-29. SDK typed endpoint implemented; San entrypoint pending.
 
 ## Scope
 
@@ -13,20 +13,25 @@ TUI-over-ACP, remote hosting and multi-client control remain out of scope.
 
 ## Architecture
 
+Target flow; the shared execution boundary and ACP adapter are not implemented:
+
 ```text
 San TUI ── native calls ─────┐
-                            ├─ Session host ── agent.Runtime ── sdk-go
+                            ├─ Shared execution ── agent.Runtime ── sdk-go
 External client ── ACP ──────┘
 ```
 
-- `sdk-go/pkg/acp`: transport kernel now; wire types and ordered admission/cancel next.
-- Proposed `internal/app/agenthost`: shared input, lifecycle and interaction policy,
-  composing existing services; no second engine, Bubble Tea or ACP types.
-- Proposed `internal/app/acp`: capability negotiation, projections and extensions;
-  no duplicate authorization, persistence or task scheduler.
+- `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
+- `internal/interaction`: request queue, lifetime/owner checks and cancellation replies.
+  TUI display, authorization and audit ordering remain in `internal/app`.
+- Shared input and turn lifecycle: pending; package boundaries remain to be determined.
+  Compose existing services without a second engine, Bubble Tea or ACP types.
+- ACP adapter: pending; capability negotiation, projections and extensions,
+  without duplicate authorization, persistence or task scheduling.
 
 Native transcripts remain authoritative. Extract shared behaviour incrementally;
-neither app subpackage imports root `app`.
+shared feature packages must not import `internal/app`. The interaction extraction
+is not a complete shared execution layer.
 
 ## Capability map
 

@@ -33,6 +33,7 @@ Agent, persistence, and orchestration:
 
 | Path | Layer | Responsibility |
 | --- | --- | --- |
+| `internal/interaction` | `feature` | UI-independent interaction queue, request ownership/lifetime checks, and cancellation replies. Execution stays in agent Runtime; transport and presentation stay in app. |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
 | `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `workflow`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |

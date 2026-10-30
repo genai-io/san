@@ -9,22 +9,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// InteractionRequest owns one reply endpoint. Only the UI model queues and
-// displays it; cancellation and transport closure remain visible after polling.
-type InteractionRequest struct {
-	ID             uint64
-	Context        context.Context
-	Owner          *AgentToUI
-	Source         tool.AgentInteractionSource
-	Permission     *agent.PermGateRequest
-	PermissionView *perm.PermissionRequest
-	Question       *QuestionRequestMsg
-	Secret         *SecretPromptRequestMsg
-}
+// InteractionRequest keeps the TUI transport's existing message vocabulary while
+// the request contract and lifecycle belong to interaction.
+type InteractionRequest = interaction.Request
 
 type InteractionRequestMsg struct{ Request *InteractionRequest }
 
