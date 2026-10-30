@@ -67,10 +67,11 @@ type Agent interface {
 	// which is user-initiated mid-stream cancellation; SigStop or ctx cancel
 	// is full shutdown.
 	//
-	// The returned channel closes once that ThinkAct has actually unwound, so
-	// a caller can serialize against the agent goroutine. Called between
-	// turns, it is already closed and the interrupt is latched, so the next
-	// iteration bails instead of starting a turn nobody wanted.
+	// The returned channel closes once that ThinkAct has unwound; repeated
+	// calls during unwind return the same channel. This precedes TurnEnded
+	// emission and is not an event-consumer or persistence barrier, nor a lock
+	// against successor execution. Called between turns, it is already closed
+	// and the interrupt is latched for the next inner-loop iteration.
 	InterruptCurrentTurn() <-chan struct{}
 }
 

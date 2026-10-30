@@ -118,9 +118,8 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 
 	done := ag.InterruptCurrentTurn()
 
-	// InterruptCurrentTurn's done channel should close once ThinkAct
-	// has fully unwound — i.e. before any racing caller-side mutation
-	// of agent state can collide with the agent goroutine.
+	// Completion observes this ThinkAct only, not mailbox/event drain or an
+	// exclusive right to mutate shared agent state.
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):

@@ -240,25 +240,34 @@ func (s *Runtime) Compact(summary string) bool {
 	}
 }
 
-// interruptDrainTimeout caps how long InterruptTurn waits for the agent
-// goroutine to actually unwind its in-flight ThinkAct. Keeping this
-// tight avoids UI stalls; if the agent is still in a slow tool the
-// caller proceeds anyway — provider-side convert layers strip any
-// orphaned tool_use blocks before the next inference fires.
+// interruptDrainTimeout bounds the legacy TUI wait, not event delivery or
+// persistence. A slow cooperative tool can outlive this deadline.
 const interruptDrainTimeout = 250 * time.Millisecond
 
-// InterruptTurn cancels the agent's in-flight turn without ending its
-// Run loop and waits briefly for the turn to actually unwind. The next
-// Send goes through the same inbox channel and resumes the session in
-// place — no rebuild, no Stop/Start event pair.
-func (s *Runtime) InterruptTurn() {
+// InterruptCurrentTurn requests cancellation synchronously and returns without
+// waiting for the captured ThinkAct to unwind. Bind cancellation before scheduling
+// any asynchronous wait, so a delayed waiter cannot cancel a successor turn.
+//
+// The channel observes execution completion only: it can close before TurnEnded
+// is emitted, and does not acknowledge outbox consumption or persistence. It does
+// not prevent subsequent execution or grant exclusive access to agent state.
+// With no runtime it is already closed; between turns the core interrupt latch
+// still applies. Neither case proves that an active turn was cancelled.
+func (s *Runtime) InterruptCurrentTurn() <-chan struct{} {
 	s.mu.RLock()
-	run := s.run
-	s.mu.RUnlock()
-	if run == nil {
-		return
+	defer s.mu.RUnlock()
+	if s.run == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
 	}
-	done := run.agent.InterruptCurrentTurn()
+	return s.run.agent.InterruptCurrentTurn()
+}
+
+// InterruptTurn retains the TUI's bounded wait while leaving the mailbox alive.
+// Callers needing observable execution completion use InterruptCurrentTurn.
+func (s *Runtime) InterruptTurn() {
+	done := s.InterruptCurrentTurn()
 	timer := time.NewTimer(interruptDrainTimeout)
 	defer timer.Stop()
 	select {

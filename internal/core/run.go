@@ -52,9 +52,8 @@ type agent struct {
 
 	closed atomic.Bool // guards outbox writes after close
 
-	// turn is the in-flight ThinkAct, so InterruptCurrentTurn can cancel it and
-	// wait for it to unwind. A pointer, so swap-with-nil is an atomic claim and
-	// concurrent interrupts become no-ops.
+	// turn remains published until ThinkAct unwinds, so repeated interrupts
+	// observe the same execution completion rather than an idle channel.
 	turn atomic.Pointer[turnHandle]
 
 	// interruptPending latches an interrupt that arrived while Run was
@@ -71,11 +70,7 @@ type agent struct {
 	appended, appendedAtInterrupt atomic.Int64
 }
 
-// turnHandle binds the per-turn cancel function to a done channel so an
-// outside caller (Task.InterruptTurn) can both cancel the turn and wait
-// for ThinkAct to actually unwind before resuming work that depends on
-// the agent goroutine being quiescent (e.g. clearing pendingPermRequest
-// without racing an in-flight PermissionFunc write).
+// turnHandle binds cancellation and execution completion to one ThinkAct.
 type turnHandle struct {
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -183,13 +178,13 @@ func (a *agent) Run(ctx context.Context) error {
 //
 // The latch is checked AFTER publishing turn=h so that any concurrent
 // InterruptCurrentTurn is honored exactly once:
-//   - If InterruptCurrentTurn ran BEFORE our Store, its Swap saw turn=nil
+//   - If InterruptCurrentTurn ran BEFORE our Store, its Load saw turn=nil
 //     and set interruptPending=true; our post-Store Swap reads it.
-//   - If InterruptCurrentTurn ran AFTER our Store, its Swap saw turn=h
+//   - If InterruptCurrentTurn ran AFTER our Store, its Load saw turn=h
 //     and cancelled turnCtx; ThinkAct exits via context.Canceled.
 //
 // Cleanup (detach + close(done)) is deferred so a panic in ThinkAct still
-// releases turnCtx and signals waiters in Task.InterruptTurn.
+// releases turnCtx and signals execution-completion waiters.
 func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 	turnCtx, turnCancel := context.WithCancel(ctx)
 	h := &turnHandle{cancel: turnCancel, done: make(chan struct{})}
@@ -210,10 +205,10 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 }
 
 // InterruptCurrentTurn cancels the ctx of the currently-running ThinkAct
-// without ending Run. Returns a channel that closes when the in-flight
-// ThinkAct has fully unwound — callers that need to observe a quiescent
-// agent (e.g. before mutating shared state that the agent goroutine
-// might also touch) should wait on the channel.
+// without ending Run. The channel closes when that ThinkAct has unwound,
+// before Run emits TurnEnded. Repeated calls during unwind observe the same
+// channel. Completion neither drains events/persistence nor prevents a successor
+// from running; it does not grant exclusive access to shared state.
 //
 // When called between turns (turn pointer is nil), latches the
 // interrupt so the next inner-loop iteration bails before starting a
@@ -221,7 +216,7 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 func (a *agent) InterruptCurrentTurn() <-chan struct{} {
 	a.appendedAtInterrupt.Store(a.appended.Load())
 	a.interruptPending.Store(true)
-	if h := a.turn.Swap(nil); h != nil {
+	if h := a.turn.Load(); h != nil {
 		h.cancel()
 		return h.done
 	}
