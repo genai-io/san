@@ -94,6 +94,7 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 // app as a core.AgentStopped event.
 func (s *Runtime) execute(run *run, ctx context.Context) {
 	_ = run.agent.Run(ctx)
+	run.cancel() // release finalization waiters even after a natural mailbox stop
 
 	s.mu.Lock()
 	run.stopped = true
@@ -240,7 +241,7 @@ func (s *Runtime) Compact(summary string) bool {
 	}
 }
 
-// interruptDrainTimeout bounds the legacy TUI wait, not event delivery or
+// interruptDrainTimeout bounds the legacy execution-only wait, not event delivery or
 // persistence. A slow cooperative tool can outlive this deadline.
 const interruptDrainTimeout = 250 * time.Millisecond
 
@@ -264,7 +265,7 @@ func (s *Runtime) InterruptCurrentTurn() <-chan struct{} {
 	return s.run.agent.InterruptCurrentTurn()
 }
 
-// InterruptTurn retains the TUI's bounded wait while leaving the mailbox alive.
+// InterruptTurn retains the legacy bounded execution-only wait, leaving the mailbox alive.
 // Callers needing observable execution completion use InterruptCurrentTurn.
 func (s *Runtime) InterruptTurn() {
 	done := s.InterruptCurrentTurn()
@@ -274,6 +275,17 @@ func (s *Runtime) InterruptTurn() {
 	case <-done:
 	case <-timer.C:
 	}
+}
+
+// CancelTurn captures a turn in this run without waiting on the event consumer.
+// The returned receipt remains bound to that run after replacement.
+func (s *Runtime) CancelTurn() *core.TurnFinalization {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.run == nil {
+		return nil
+	}
+	return s.run.agent.CancelTurn()
 }
 
 func (s *Runtime) Outbox() <-chan core.Event {

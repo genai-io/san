@@ -62,9 +62,8 @@ func (m *model) handleSubmit() tea.Cmd {
 	return m.dispatchSubmission(raw)
 }
 
-// enqueueInput parks the input in the queue and resets the
-// textarea. Safe step/turn boundaries, cancellation, compaction completion,
-// and queue-edit exit release queued items.
+// enqueueInput parks input and resets the textarea. Safe boundaries and edit
+// exit drain it automatically unless cancellation holds it for explicit input.
 func (m *model) enqueueInput(raw string) tea.Cmd {
 	images := m.userInput.PendingImages()
 	if m.userInput.Queue.Enqueue(raw, images) < 0 {
@@ -196,7 +195,12 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 // sendNextQueuedInputIfIdle submits one queued input while idle, preserving
 // the composer draft. A head item under edit waits until editing ends.
 func (m *model) sendNextQueuedInputIfIdle() tea.Cmd {
-	if m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
+	return m.sendNextQueuedInput(false)
+}
+
+// Only queue-selection Enter may bypass the manual-stop hold, never the fence.
+func (m *model) sendNextQueuedInput(explicit bool) tea.Cmd {
+	if m.cancellingTurn != nil || (m.backgroundNoticesHeld && !explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil
 	}
 	item, ok := m.userInput.Queue.Dequeue()
@@ -244,6 +248,9 @@ func (m *model) submit(p pendingMessage) tea.Cmd {
 	} else if m.backgroundNoticesHeld {
 		return tea.Batch(m.CommitMessages()...)
 	}
+	if m.cancellingTurn != nil {
+		return tea.Batch(m.CommitMessages()...)
+	}
 	content := p.Text()
 	log.Logger().Sugar().Debugf("SubmitToAgent: %q", kit.TruncateText(content, 60))
 	if m.env.LLMProvider == nil {
@@ -283,7 +290,11 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 	}
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg}).ToMessage()
 	if pluginRoot != "" {
-		m.services.Agent.SetPluginRoot(pluginRoot)
+		if m.cancellingTurn != nil {
+			m.pendingPluginRoot = pluginRoot
+		} else {
+			m.services.Agent.SetPluginRoot(pluginRoot)
+		}
 	}
 	return m.SubmitToAgent(msg)
 }

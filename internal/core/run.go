@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -52,9 +53,14 @@ type agent struct {
 
 	closed atomic.Bool // guards outbox writes after close
 
+	// turnMu serializes publication, cancellation target and the idle latch.
+	// Never held across execution, event delivery, or consumer work.
+	turnMu sync.Mutex
+
 	// turn remains published until ThinkAct unwinds, so repeated interrupts
 	// observe the same execution completion rather than an idle channel.
-	turn atomic.Pointer[turnHandle]
+	turn       atomic.Pointer[turnHandle]
+	finalizing atomic.Pointer[turnHandle] // retained through terminal delivery until the next exchange
 
 	// interruptPending latches an interrupt that arrived while Run was
 	// between iterations (turn pointer was momentarily nil). The next
@@ -72,8 +78,9 @@ type agent struct {
 
 // turnHandle binds cancellation and execution completion to one ThinkAct.
 type turnHandle struct {
-	cancel context.CancelFunc
-	done   chan struct{}
+	cancel       context.CancelFunc
+	done         chan struct{}
+	finalization *TurnFinalization
 }
 
 func (a *agent) ID() string            { return a.id }
@@ -100,6 +107,8 @@ func (a *agent) Append(msg Message) {
 }
 
 func (a *agent) Run(ctx context.Context) error {
+	ctx, runDone := context.WithCancel(ctx)
+	defer runDone() // also releases receipts on SigStop or inbox closure
 	a.emit(ctx, AgentStarted{})
 
 	var runErr error
@@ -128,7 +137,11 @@ func (a *agent) Run(ctx context.Context) error {
 		// A fresh message supersedes a latched interrupt: an Esc that landed
 		// while the agent sat idle here had no turn to stop, and keeping the
 		// latch made runOneTurn swallow this message.
-		a.interruptPending.Store(false)
+		a.turnMu.Lock()
+		if a.appended.Load() > a.appendedAtInterrupt.Load() {
+			a.interruptPending.Store(false)
+		}
+		a.turnMu.Unlock()
 
 		// An exchange ends only with nothing queued, so another is owed only
 		// for a message that arrived after it had ended.
@@ -158,12 +171,7 @@ func (a *agent) Run(ctx context.Context) error {
 				// left in the conversation.
 				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
 					glog.Logger().Sugar().Debugf("agent.Run: turn interrupted by user, resuming wait")
-					// Consume the latch that triggered this cancel so the
-					// next user message can start a fresh turn. Narrow
-					// race: a brand-new Interrupt that arrives between
-					// close(h.done) and this Store can be clobbered; the
-					// 2nd Esc is treated as a duplicate of the first.
-					a.interruptPending.Store(false)
+					// The next fresh input clears the latch under turnMu.
 					break
 				}
 				runErr = err
@@ -173,34 +181,34 @@ func (a *agent) Run(ctx context.Context) error {
 	}
 }
 
-// runOneTurn runs a single ThinkAct under a per-turn cancellable ctx and
-// returns whether an interrupt was latched (instead of running the turn).
-//
-// The latch is checked AFTER publishing turn=h so that any concurrent
-// InterruptCurrentTurn is honored exactly once:
-//   - If InterruptCurrentTurn ran BEFORE our Store, its Load saw turn=nil
-//     and set interruptPending=true; our post-Store Swap reads it.
-//   - If InterruptCurrentTurn ran AFTER our Store, its Load saw turn=h
-//     and cancelled turnCtx; ThinkAct exits via context.Canceled.
-//
-// Cleanup (detach + close(done)) is deferred so a panic in ThinkAct still
-// releases turnCtx and signals execution-completion waiters.
+// runOneTurn checks the idle interrupt latch and publishes the next turn under
+// turnMu. Deferred cleanup signals execution completion even if ThinkAct panics.
 func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
-	turnCtx, turnCancel := context.WithCancel(ctx)
-	h := &turnHandle{cancel: turnCancel, done: make(chan struct{})}
-	a.turn.Store(h)
-	defer func() {
-		if a.turn.CompareAndSwap(h, nil) {
-			turnCancel()
-		}
-		close(h.done)
-	}()
-
+	a.turnMu.Lock()
 	if a.interruptPending.Swap(false) {
+		a.turnMu.Unlock()
 		return nil, nil, true
 	}
+	turnCtx, turnCancel := context.WithCancel(ctx)
+	h := &turnHandle{cancel: turnCancel, done: make(chan struct{})}
+	h.finalization = newTurnFinalization(ctx, h.done)
+	a.finalizing.Store(h)
+	a.turn.Store(h)
+	a.turnMu.Unlock()
+	defer func() {
+		a.turnMu.Lock()
+		a.turn.Store(nil)
+		turnCancel()
+		close(h.done)
+		a.turnMu.Unlock()
+	}()
 
 	result, err := a.ThinkAct(turnCtx)
+	if result != nil && result.StopReason != StopError {
+		result.Finalization = h.finalization
+	} else {
+		h.finalization.Acknowledge(errors.Join(errors.New("turn ended without terminal event"), err))
+	}
 	return result, err, false
 }
 
@@ -214,15 +222,34 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 // interrupt so the next inner-loop iteration bails before starting a
 // fresh ThinkAct, and returns an already-closed channel.
 func (a *agent) InterruptCurrentTurn() <-chan struct{} {
+	done, _ := a.cancelTurn()
+	return done
+}
+
+func (a *agent) CancelTurn() *TurnFinalization {
+	_, receipt := a.cancelTurn()
+	return receipt
+}
+
+func (a *agent) cancelTurn() (<-chan struct{}, *TurnFinalization) {
+	a.turnMu.Lock()
+	defer a.turnMu.Unlock()
 	a.appendedAtInterrupt.Store(a.appended.Load())
 	a.interruptPending.Store(true)
 	if h := a.turn.Load(); h != nil {
 		h.cancel()
-		return h.done
+		return h.done, h.finalization
 	}
 	closed := make(chan struct{})
 	close(closed)
-	return closed
+	if h := a.finalizing.Load(); h != nil {
+		select {
+		case <-h.finalization.handled:
+		default:
+			return closed, h.finalization
+		}
+	}
+	return closed, nil
 }
 
 var errStopped = errors.New("stopped")
