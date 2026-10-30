@@ -33,6 +33,8 @@ type Runtime struct { /* internal fields */ }
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
 func (s *Runtime) Stop()
 func (s *Runtime) StopContext(ctx context.Context) error
+func (s *Runtime) InterruptCurrentTurn() <-chan struct{}
+func (s *Runtime) InterruptTurn()
 func (s *Runtime) Reset()
 func (s *Runtime) Messages() []core.Message
 func (s *Runtime) SetMessages(messages []core.Message)
@@ -72,6 +74,19 @@ func Default() *Runtime
   `Stop` applies a bounded default deadline and logs a run that outlives it.
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
+- Turn cancellation: `InterruptCurrentTurn` binds cancellation synchronously and
+  returns a channel for the captured `ThinkAct`'s execution completion. Repeated
+  cancellation during unwind observes the same completion. An inactive runtime
+  returns a closed channel; an idle core agent also latches the interrupt. A
+  closed channel is therefore not evidence that an active turn was cancelled.
+  Call before scheduling an asynchronous wait, not inside the delayed waiter.
+  Completion can precede San's `TurnEnded` emission and does not acknowledge
+  application event handling or session persistence, prevent successor execution,
+  or grant exclusive access to shared state. This is **not an ACP cancel/drain
+  barrier**. The TUI still uses `InterruptTurn`'s existing 250 ms bounded wait;
+  its cleanup, queue release, interaction cancellation, and background-notice
+  policy are unchanged. Slow tools may still be unwinding when that wait ends;
+  the native mailbox serializes execution. Independent tasks are not stopped.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -85,6 +100,10 @@ func Default() *Runtime
 ```
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
+internal/agent/runtime_interrupt_test.go — inactive cancellation, observable
+                                          completion, bounded TUI wait, input identity.
+internal/core/run_interrupt_test.go — slow tool unwind, repeated cancellation,
+                                      successor safety, execution/event boundary.
 internal/app/session_resume_test.go — native error retry, inactive compaction,
                                       and image-preserving model switches.
 internal/agent/runonce_stream_test.go — headless streams exceeding the default
