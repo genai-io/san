@@ -26,6 +26,11 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		// outbox still delivers belongs to an agent that is gone, and applying
 		// it (its stop above all) would act on the new one.
 		if msg.Outbox != nil && msg.Outbox != rt.AgentOutbox() {
+			for _, ev := range append(msg.Batch, msg.Event) {
+				if end, ok := ev.(core.TurnEnded); ok {
+					end.Result.Finalization.Acknowledge(errors.New("agent outbox replaced before terminal handling"))
+				}
+			}
 			return nil, true
 		}
 		if msg.Closed && len(msg.Batch) == 0 {

@@ -108,6 +108,9 @@ func (m *model) replaceSession(opened *session.Session) {
 		m.env.SessionPermissions = setting.NewSessionPermissions()
 		m.env.ApplyModePermissions(m.env.CWD)
 		m.pendingMessages = nil
+		m.cancellingTurn = nil
+		m.queueContinuation = nil
+		m.pendingPluginRoot = ""
 		m.resetInteractions()
 		m.services.Reminder.DiscardPendingNotices()
 	}
@@ -122,11 +125,13 @@ func (m *model) replaceSession(opened *session.Session) {
 	}
 }
 
-func (m *model) appendTurnState() {
-	if err := m.appendSessionState(); err != nil {
+func (m *model) appendTurnState() error {
+	err := m.appendSessionState()
+	if err != nil {
 		log.Logger().Warn("session state append failed", zap.Error(err))
 		m.conv.AddNotice("Session was not saved: " + err.Error())
 	}
+	return err
 }
 
 // buildSessionRecord contains application state only, never the message chain.

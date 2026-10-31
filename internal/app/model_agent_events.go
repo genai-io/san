@@ -98,6 +98,12 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
+	if m.agentSession != nil && m.agentSession != m.services.Session {
+		result.Finalization.Acknowledge(errors.New("opened session replaced before turn finalization"))
+		return m.ListenForAgentEvents()
+	}
+	finalizationErr := core.ErrTurnCompleted
+	defer func() { result.Finalization.Acknowledge(finalizationErr) }()
 	// A dismissed start/resume offer comes back once the turn is over.
 	m.autopilotOfferDismissed = false
 	// Only a list the model closed out is safe to discard. An item left open —
@@ -152,9 +158,9 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// is empty for a cancelled turn). We still persist so the [Interrupted]
 	// marker and cancelled tool_result rows survive a crash/quit, and
 	// re-arm prompt suggestions for the now-idle textarea.
-	if result.StopReason == core.StopCanceled {
+	if result.StopReason == core.StopCanceled || m.cancellingTurn == result.Finalization && m.cancellingTurn != nil {
 		log.Logger().Sugar().Debugf("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
-		m.appendTurnState()
+		finalizationErr = m.appendTurnState()
 		if cmd := m.startPromptSuggestion(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
