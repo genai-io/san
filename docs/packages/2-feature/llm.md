@@ -24,33 +24,19 @@ cost for each call.
 
 ## ChatGPT subscription limits
 
-When the active route is **OpenAI → ChatGPT Subscription**, the bottom status
-line's existing right-hand cluster shows account limits, for example
-`ChatGPT 5h 80% left (2h) / week 65% left (3d)`. Parentheses are time until
-reset, not the window length. The label yields before existing status segments
-on narrow terminals; it adds no footer row and does not reorder conversation,
-tasks, pending input, inference, or the composer. API-key routes never fetch it.
+Only **OpenAI → ChatGPT Subscription** shows Codex limits in the bottom-right
+status bar: `ChatGPT 5h 80% left (2h) / week 65% left (3d)`. Parentheses show
+time until reset. The label hides on narrow terminals and other routes.
 
-Entrypoints: `ChatGPTSubscription` / `ChatGPTUsage` in `vendor_usage.go`,
-`internal/app/model_subscription_usage.go`, and `conv.RenderModeStatus`.
-The SDK's `auth.FetchCodexUsage` owns the `/backend-api/wham/usage` wire format;
-San supplies its credential store through SDK `auth.HTTPClient` (including token
-refresh and account identity). This is Codex account capacity, not a claim to
-measure every ChatGPT website model or API billing balance.
+`vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
+`internal/app/model_subscription_usage.go` refreshes asynchronously every five
+minutes with a ten-second timeout; `conv.RenderModeStatus` renders the result.
+No extra configuration is needed. Switching routes cancels pending requests and
+rejects stale replies. Missing data shows `unknown`; failures show `unavailable`.
 
-There is no extra configuration. Reads run asynchronously with a ten-second
-bound, then refresh every five minutes, caching the latest snapshot in memory.
-Switching away cancels pending work, hides the label, and fences late replies;
-returning fetches anew. Missing windows show `unknown`, failures `unavailable`,
-never a fabricated zero. Expired windows are omitted until refreshed. Window
-labels come from server durations, not primary/secondary positions. No account
-response or credentials are logged.
-
-Tests: `TestChatGPTSubscription`, `TestSubscriptionUsageLifecycle`,
-`TestFormatSubscriptionUsage`, and `TestSubscriptionUsageStatusCluster`; SDK
-`TestParseCodexUsage` and `TestFetchCodexUsage` cover wire/error handling using
-synthetic responses only. This undocumented upstream endpoint can change or be
-unavailable for some accounts; inference is independent of usage refreshes.
+The undocumented endpoint may change. These are Codex limits, not API billing
+or all ChatGPT model quotas. Tests beside these files cover route gating,
+refresh lifecycle, formatting, and narrow layouts; SDK auth tests cover parsing.
 
 ## Contract
 
