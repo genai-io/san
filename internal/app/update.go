@@ -108,6 +108,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, overlayWasActive := m.activeOverlay()
 	m.pruneInteractions()
 	model, cmd := m.dispatch(msg)
+	if refresh := m.syncSubscriptionUsage(); refresh != nil {
+		cmd = tea.Batch(cmd, refresh)
+	}
 	if refresh := m.syncGitBar(); refresh != nil {
 		cmd = tea.Batch(cmd, refresh)
 	}
@@ -161,6 +164,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateFailedMsg:
 		m.updateFailed = msg
 		return m, nil
+	case subscriptionUsageMsg:
+		return m, m.handleSubscriptionUsage(msg)
+	case subscriptionUsageTick:
+		return m, m.handleSubscriptionUsageTick(msg)
 	case gitStatusMsg:
 		return m, m.handleGitStatus(msg)
 	case gitBarTickMsg:

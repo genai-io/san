@@ -22,6 +22,22 @@ chosen provider/model, switching between them at runtime, handing the loop the
 client for a turn along with the settings that turn runs under, and tracking
 cost for each call.
 
+## ChatGPT subscription limits
+
+Only **OpenAI → ChatGPT Subscription** shows Codex limits in the bottom-right
+status bar: `ChatGPT 5h 80% left (2h) / week 65% left (3d)`. Parentheses show
+time until reset. The label hides on narrow terminals and other routes.
+
+`vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
+`internal/app/model_subscription_usage.go` refreshes asynchronously every five
+minutes with a ten-second timeout; `conv.RenderModeStatus` renders the result.
+No extra configuration is needed. Switching routes cancels pending requests and
+rejects stale replies. Missing data shows `unknown`; failures show `unavailable`.
+
+The undocumented endpoint may change. These are Codex limits, not API billing
+or all ChatGPT model quotas. Tests beside these files cover route gating,
+refresh lifecycle, formatting, and narrow layouts; SDK auth tests cover parsing.
+
 ## Contract
 
 `*Conn` is the handle to the active LLM: the connected Provider, the current
