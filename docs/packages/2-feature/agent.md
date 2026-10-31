@@ -102,8 +102,7 @@ func Default() *Runtime
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
 internal/agent/runtime_interrupt_test.go — completion signal and bounded wait.
-internal/core/finalization_test.go — exact receipt, blocked native writes/handling,
-                                     errors, repeated cancel, successor and shutdown.
+internal/core/turn_finalization_test.go — receipt identity, completion and errors.
 internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.
 internal/app/session_resume_test.go — native error retry, inactive compaction,
