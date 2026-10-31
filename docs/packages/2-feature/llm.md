@@ -22,6 +22,36 @@ chosen provider/model, switching between them at runtime, handing the loop the
 client for a turn along with the settings that turn runs under, and tracking
 cost for each call.
 
+## ChatGPT subscription limits
+
+When the active route is **OpenAI → ChatGPT Subscription**, the bottom status
+line's existing right-hand cluster shows account limits, for example
+`ChatGPT 5h 80% left (2h) / week 65% left (3d)`. Parentheses are time until
+reset, not the window length. The label yields before existing status segments
+on narrow terminals; it adds no footer row and does not reorder conversation,
+tasks, pending input, inference, or the composer. API-key routes never fetch it.
+
+Entrypoints: `ChatGPTSubscription` / `ChatGPTUsage` in `vendor_usage.go`,
+`internal/app/model_subscription_usage.go`, and `conv.RenderModeStatus`.
+The SDK's `auth.FetchCodexUsage` owns the `/backend-api/wham/usage` wire format;
+San supplies its credential store through SDK `auth.HTTPClient` (including token
+refresh and account identity). This is Codex account capacity, not a claim to
+measure every ChatGPT website model or API billing balance.
+
+There is no extra configuration. Reads run asynchronously with a ten-second
+bound, then refresh every five minutes, caching the latest snapshot in memory.
+Switching away cancels pending work, hides the label, and fences late replies;
+returning fetches anew. Missing windows show `unknown`, failures `unavailable`,
+never a fabricated zero. Expired windows are omitted until refreshed. Window
+labels come from server durations, not primary/secondary positions. No account
+response or credentials are logged.
+
+Tests: `TestChatGPTSubscription`, `TestSubscriptionUsageLifecycle`,
+`TestFormatSubscriptionUsage`, and `TestSubscriptionUsageStatusCluster`; SDK
+`TestParseCodexUsage` and `TestFetchCodexUsage` cover wire/error handling using
+synthetic responses only. This undocumented upstream endpoint can change or be
+unavailable for some accounts; inference is independent of usage refreshes.
+
 ## Contract
 
 `*Conn` is the handle to the active LLM: the connected Provider, the current

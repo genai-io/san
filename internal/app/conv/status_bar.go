@@ -207,6 +207,7 @@ type OperationModeParams struct {
 	ContextBudget     int // prompt size at which auto-compaction fires; 0 = unknown
 	ModelName         string
 	StatusMessage     string
+	SubscriptionUsage string // account limits; optional, yields first on narrow screens
 	ConversationCost  llm.CostTotal
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
@@ -338,6 +339,9 @@ func renderStatusCluster(p OperationModeParams) string {
 		segments = append(segments, statusSegment{text: notice, priority: 2})
 	}
 
+	if p.SubscriptionUsage != "" {
+		segments = append(segments, statusSegment{text: muted.Render(p.SubscriptionUsage), priority: 7})
+	}
 	survivors := fitStatusSegments(segments, p.Width, lipgloss.Width(sep))
 	return strings.Join(survivors, sep)
 }
