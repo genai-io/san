@@ -21,7 +21,7 @@ type turnFinalizedMsg struct {
 }
 
 func (m *model) handleStreamCancel() tea.Cmd {
-	m.backgroundNoticesHeld = true
+	m.pendingMessages.Hold(nil)
 	m.queueContinuation = nil
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
@@ -33,8 +33,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.conv.Stream.Stop()
 
 	cmds := m.CommitMessages()
-	if receipt != nil && m.cancellingTurn != receipt {
-		m.cancellingTurn = receipt
+	if m.pendingMessages.Hold(receipt) {
 		cmds = append(cmds, func() tea.Msg {
 			// Wait is bounded by the captured run's lifetime, not a UI deadline.
 			return turnFinalizedMsg{receipt: receipt, outbox: outbox, err: receipt.Wait(context.Background())}

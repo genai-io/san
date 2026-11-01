@@ -20,6 +20,10 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
   - [x] Native input delivery: `agent.InputQueue` owns FIFO retry retention and
     user-only recall dispatch; TUI retains admission and lifecycle gates.
     Covered by agent input tests and existing TUI queue/cancellation tests.
+  - [x] Cancellation admission: `agent.InputQueue` owns manual-stop holds and
+    matching consumer-finalization fences, enforced by delivery itself. Native
+    queue Enter still validates the selected item; compaction and hooks stay in app.
+    Covered by agent admission tests and native cancellation/queue integration tests.
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.

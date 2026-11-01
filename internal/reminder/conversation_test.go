@@ -69,7 +69,8 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 	s := reminder.New()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	s.Enqueue("first notice")
-	q := agent.InputQueue{{Message: core.UserMessage("question", nil), FromUser: true}}
+	var q agent.InputQueue
+	q.Enqueue(agent.PendingInput{Message: core.UserMessage("question", nil), FromUser: true})
 	prepare := func(msg core.Message) core.Message {
 		prepared := core.UserMessage(s.PrepareInput(msg.Text()), nil)
 		prepared.ID = msg.ID
@@ -89,7 +90,7 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 			t.Fatalf("retry input = %q; want %q once", got, text)
 		}
 	}
-	if len(q) != 0 || !s.Empty() {
+	if q.Len() != 0 || !s.Empty() {
 		t.Fatal("successful retry left pending input or reminders")
 	}
 }

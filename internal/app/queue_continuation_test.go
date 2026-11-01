@@ -24,7 +24,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			}
 			completed := make(chan turnFinalizedMsg, 1)
 			go runFinalizationCommands(m.handleStreamCancel(), completed)
-			if m.cancellingTurn == nil {
+			if m.pendingMessages.Cancelling() == nil {
 				t.Fatal("cancel did not capture finalization")
 			}
 			m.handleStopHookResult(stopHookResultMsg{Blocked: true, Reason: "held hook"})
@@ -32,7 +32,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			m.userInput.Queue.Enqueue("queued successor", nil)
 			m.sendPendingMessages()
 			m.sendNextQueuedInputIfIdle()
-			if len(m.pendingMessages) != 1 || m.pendingMessages[0].FromUser || !m.backgroundNoticesHeld {
+			if m.pendingMessages.Len() != 1 || m.pendingMessages.First().FromUser || !m.pendingMessages.Held() {
 				t.Fatal("hook did not remain held")
 			}
 			select {
@@ -75,7 +75,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 				t.Fatal("acknowledged finalization did not complete")
 			}
 			if mode == "no-enter" {
-				if !m.backgroundNoticesHeld || len(m.pendingMessages) != 1 || m.userInput.Queue.Len() != 2 {
+				if !m.pendingMessages.Held() || m.pendingMessages.Len() != 1 || m.userInput.Queue.Len() != 2 {
 					t.Fatal("finalization released held work without Enter")
 				}
 				select {
@@ -101,7 +101,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 					if count == 0 {
 						continue
 					}
-					if count != 1 || m.backgroundNoticesHeld || len(m.pendingMessages) != 0 || m.userInput.Queue.Len() != remaining {
+					if count != 1 || m.pendingMessages.Held() || m.pendingMessages.Len() != 0 || m.userInput.Queue.Len() != remaining {
 						t.Fatal("continuation not sent exactly once through user submit")
 					}
 					m.dispatch(completion)
@@ -121,10 +121,10 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 	for _, mode := range []string{"after", "during", "escape", "delete", "edit", "reenter", "stale"} {
 		t.Run(mode, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
-			m.backgroundNoticesHeld = true
+			m.pendingMessages.Hold(nil)
 			receipt := &core.TurnFinalization{}
 			if mode != "after" {
-				m.cancellingTurn = receipt
+				m.pendingMessages.Hold(receipt)
 			}
 			m.userInput.Queue.Enqueue("resume queued work", nil)
 			m.userInput.Queue.Enqueue("unrelated successor", nil)
@@ -137,7 +137,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 			}
 			m.routeKeypress(tea.KeyPressMsg{Code: key})
 			if mode != "after" {
-				if m.userInput.Queue.Len() != 2 || !m.backgroundNoticesHeld {
+				if m.userInput.Queue.Len() != 2 || !m.pendingMessages.Held() {
 					t.Fatal("Enter crossed finalization fence")
 				}
 				m.sendNextQueuedInputIfIdle()
@@ -152,7 +152,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 					m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 				}
 				if mode == "stale" {
-					m.cancellingTurn = &core.TurnFinalization{}
+					m.pendingMessages.Hold(&core.TurnFinalization{})
 				}
 				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
 			}
@@ -175,7 +175,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 				}
 			} else {
 				m.sendNextQueuedInputIfIdle()
-				if !m.backgroundNoticesHeld {
+				if !m.pendingMessages.Held() {
 					t.Fatal("automatic path released hold")
 				}
 				select {

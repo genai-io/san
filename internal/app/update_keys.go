@@ -59,7 +59,7 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if c, ok := m.userInput.HandleQueueSelectKey(msg); ok {
 		if msg.String() == "enter" {
 			if item, exists := m.userInput.Queue.At(0); exists && item.ID == headBeforeEdit.ID {
-				if m.cancellingTurn != nil {
+				if m.pendingMessages.Cancelling() != nil {
 					m.queueContinuation = &item
 					return c, true
 				}

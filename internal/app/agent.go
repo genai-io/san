@@ -571,22 +571,19 @@ type agentSendFailedMsg struct{ err error }
 type pendingMessage = agent.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
-	m.pendingMessages = append(m.pendingMessages, p)
-	if p.FromUser {
-		m.backgroundNoticesHeld = false
-	}
+	m.pendingMessages.Enqueue(p)
 	return m.sendPendingMessages()
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
-	if m.backgroundNoticesHeld || m.cancellingTurn != nil {
+	if !m.pendingMessages.CanDeliver(false) {
 		return nil
 	}
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	if !m.conv.Stream.Active && len(m.pendingMessages) > 0 {
-		m.turnOpenedBy = m.pendingMessages[0].ID
+	if !m.conv.Stream.Active && m.pendingMessages.Len() > 0 {
+		m.turnOpenedBy = m.pendingMessages.First().ID
 	}
 	if m.pendingPluginRoot != "" {
 		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
@@ -706,9 +703,8 @@ func (m *model) ResetAgentRuntime() error {
 		log.Logger().Warn("agent runtime reset incomplete", zap.Error(err))
 		return fmt.Errorf("reset agent runtime: %w", err)
 	}
-	m.cancellingTurn = nil
+	m.pendingMessages.ResetAdmission()
 	m.pendingPluginRoot = ""
-	m.backgroundNoticesHeld = false
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.

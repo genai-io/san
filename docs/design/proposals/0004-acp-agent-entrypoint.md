@@ -29,11 +29,12 @@ External client ── ACP ──────┘
   producer write errors reach turn receipts before delivery; hook/skill audits
   remain best effort. Recording never acknowledges consumer cleanup or releases
   queued work. Permission decisions and their audit ordering remain in app.
-- `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall and
-  retention of prepared input on rejection; TUI uses it after its existing gates.
+- `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
+  retry retention, manual-stop holds and consumer-finalization admission fences.
+  TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
 - `internal/reminder`: reminders and their conversation state; TUI retains lifecycle gates.
-- Shared input admission and turn lifecycle: pending. Hooks, compaction,
-  cancellation/background holds and permission policy remain in their current owners.
+- Remaining input and turn lifecycle: pending. Hooks, compaction, terminal cleanup
+  and permission policy remain in their current owners.
 - ACP adapter: pending; capability negotiation, projections and extensions,
   without duplicate authorization, persistence or task scheduling.
 
