@@ -175,13 +175,6 @@ type model struct {
 	// the next turn.
 	agentDisabledToolsSignature string
 
-	// systemRemindersSent reports whether the current conversation already
-	// carries the skills/memory reminders. The next user message attaches them
-	// while it is false; replacing the conversation resets it.
-	// TODO: derive this from the chain the model sees instead of caching it,
-	// once this can be derived from the native runtime chain.
-	systemRemindersSent bool
-
 	// turnOpenedBy is the message that started the running turn; messages
 	// that enter mid-turn belong to it.
 	turnOpenedBy string

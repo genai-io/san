@@ -82,7 +82,7 @@ Both entry points run the same core steps:
     │
     ├─▶ refresh   re-read memory from disk (refreshMemoryContext)
     │
-    └─▶ reminders DiscardPendingNotices() + systemRemindersSent = false
+    └─▶ reminders ResetConversation()
                   → skills/memory reattach on the next user message
 ```
 

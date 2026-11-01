@@ -269,7 +269,7 @@ func TestTheSessionNameIsTheMemberName(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	group.BindSession(func() string { return "s-self" })
 	m := &model{env: env{Width: 80, CWD: "/w/shop", SessionName: "API Server"}, conv: conv.NewModel(80),
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()}}
 	m.groupCommand("join shop")
 	t.Cleanup(func() { _ = group.Leave() })
 	if _, self := group.Current(); self.Name != "api-server" {
@@ -311,7 +311,7 @@ func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{conv: conv.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.NewService()}}
+	m := &model{conv: conv.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.New()}}
 	m.releaseGroupOnSwitch()
 	if g, _ := group.Current(); g != "" {
 		t.Fatalf("still in %s after the switch", g)

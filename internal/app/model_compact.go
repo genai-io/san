@@ -107,11 +107,10 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	// stale content), drop now-irrelevant one-time notices, and mark the
 	// skills/memory reminders unsent so they reattach to the next user turn.
 	m.refreshMemoryContext(m.env.CWD, "post_compact")
-	m.services.Reminder.DiscardPendingNotices()
-	m.systemRemindersSent = false
+	m.services.Reminder.ResetConversation()
 
 	// Manual /compact restores recently-accessed files as a one-time notice
-	// so they ride on the next user turn. Enqueued AFTER DiscardPendingNotices
+	// so they ride on the next user turn. Enqueued AFTER ResetConversation
 	// so it survives. Auto-compaction carries them in its summary instead.
 	if trigger == "manual" && m.env.FileCache != nil {
 		if restored, _ := m.env.FileCache.RestoreRecent(); len(restored) > 0 {

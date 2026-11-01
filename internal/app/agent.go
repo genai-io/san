@@ -542,8 +542,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	if m.systemRemindersSent && params.AutoMemory != m.agentAutoMemory {
-		// The index reminder went out once, naming the old stores.
+	if m.services.Reminder.Prepared() && params.AutoMemory != m.agentAutoMemory {
+		// The index reminder was prepared once, naming the old stores.
 		m.services.Reminder.RequeueSystemReminders()
 		if params.AutoMemory.Off() {
 			m.services.Reminder.Enqueue("Auto memory is now off: stop reading and saving memory files.")
@@ -615,7 +615,7 @@ func (m *model) startMemoryRecall(query string) {
 	if m.memoryRecall == nil || strings.TrimSpace(query) == "" || conv.IsAgentEnvelope(query) || m.agentAutoMemory.Off() {
 		return
 	}
-	if !m.systemRemindersSent || m.memoryRecall.surfaced == nil {
+	if !m.services.Reminder.Prepared() || m.memoryRecall.surfaced == nil {
 		m.memoryRecall.surfaced = map[string]bool{} // a new conversation has seen none
 	}
 	provider, info := m.resolveReviewer("")
@@ -643,13 +643,8 @@ func (m *model) endMemoryRecall() []string {
 // channel to deliver session/project context (skills, memory, one-time notices)
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(msg core.Message) core.Message {
-	if !m.systemRemindersSent {
-		m.services.Reminder.RequeueSystemReminders()
-		m.systemRemindersSent = true
-	}
-	// Reminders (the roster among them) come before held member messages, so
-	// the model reads who is who before what they said.
-	text := m.attachWaitingMessages(reminder.AttachToContent(msg.Text(), m.services.Reminder.Drain()))
+	// Reminders (the roster among them) precede held member messages.
+	text := m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg.Text()))
 	if text == msg.Text() {
 		return msg
 	}
@@ -664,7 +659,7 @@ func (m *model) attachPendingReminders(msg core.Message) core.Message {
 }
 
 // wireReminderProviders registers the harness providers attached once per
-// conversation (see systemRemindersSent). Each provider's render closure
+// conversation. Each provider's render closure
 // captures the services struct pointer so it always reads the live state
 // — that way settings reload and skill toggles surface in the next emission
 // without ever mutating the cached system prompt.
@@ -717,8 +712,7 @@ func (m *model) ResetAgentRuntime() error {
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.
-	m.services.Reminder.DiscardPendingNotices()
-	m.systemRemindersSent = false
+	m.services.Reminder.ResetConversation()
 	// Compaction must not restore the old conversation's files.
 	m.env.FileCache.Clear()
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context

@@ -30,7 +30,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	old := mustCreateSession(t, store, session.CreateOptions{ID: "old", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	history := []ai.Message{{ID: "old-message", Role: ai.RoleUser, Content: ai.TextContent("old text")}}
 	old.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
-	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewService(), Hook: hook.NewEngine(nil, "old", "", old.TranscriptPath())}, conv: conv.NewModel(80)}
+	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.New(), Hook: hook.NewEngine(nil, "old", "", old.TranscriptPath())}, conv: conv.NewModel(80)}
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.LLM = &llm.Conn{}
 	m.autopilot = new(atomic.Pointer[autopilotRuntime])

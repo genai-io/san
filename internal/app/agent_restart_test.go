@@ -162,7 +162,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()},
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()},
 		conv:     conv.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
@@ -197,10 +197,11 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	defer close(release)
 	<-started
 	m := model{
-		services:          services{Agent: sess},
-		pendingPluginRoot: "retained-plugin", systemRemindersSent: true,
+		services:              services{Agent: sess, Reminder: reminder.New()},
+		pendingPluginRoot:     "retained-plugin",
 		backgroundNoticesHeld: true,
 	}
+	m.services.Reminder.PrepareInput("first")
 	// Nil reset-only dependencies also catch premature UI/cache teardown.
 	if err := m.ResetAgentRuntime(); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ResetAgentRuntime = %v, want deadline exceeded", err)
@@ -208,13 +209,13 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	if !sess.Active() || len(sess.Messages()) != 1 || sess.Messages()[0].ID != seed[0].ID {
 		t.Fatal("failed reset lost the live conversation")
 	}
-	if m.pendingPluginRoot != "retained-plugin" || !m.systemRemindersSent || !m.backgroundNoticesHeld {
+	if m.pendingPluginRoot != "retained-plugin" || !m.services.Reminder.Prepared() || !m.backgroundNoticesHeld {
 		t.Fatal("failed reset cleared conversation UI state")
 	}
 }
 
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()

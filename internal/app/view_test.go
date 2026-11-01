@@ -309,7 +309,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	}
 	defer stopRuntime(t, m.services.Agent)
 	m.env.LLMProvider = provider
-	m.services.Reminder = reminder.NewService()
+	m.services.Reminder = reminder.New()
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.agentAutoMemory = m.autoMemory()
@@ -350,7 +350,7 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = reminder.NewService()
+	m.services.Reminder = reminder.New()
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
 	started, release := make(chan struct{}), make(chan struct{})
 	if err := m.services.Agent.Start(agent.BuildParams{

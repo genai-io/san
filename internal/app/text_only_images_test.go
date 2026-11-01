@@ -44,7 +44,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 			LLM:       &llm.Conn{},
 			Tracker:   todo.NewStore(),
 			Subagent:  subagent.NewRegistry(),
-			Reminder:  reminder.NewService(),
+			Reminder:  reminder.New(),
 			sessionID: "sess-1",
 		},
 		conv: conv.NewModel(80),

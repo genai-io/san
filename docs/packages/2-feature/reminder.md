@@ -28,32 +28,25 @@ why reminders are a separate channel from the system prompt.
 
 ## Contract
 
-This package has two contracts — one for sources (`Provider` interface)
-and one for the harness (concrete `*Service` struct).
+The harness holds a concrete `*Reminder`. Sources register an ID and render
+closure; returning an empty body skips emission.
 
 ```go
 package reminder
 
-// Provider supplies a reminder body on demand. Returning ""
-// skips emission.
-type Provider interface {
-    ID() string
-    Render() string
-}
+// Reminder holds registered providers, pending reminders and conversation state.
+type Reminder struct { /* unexported */ }
 
-func NewProvider(id string, render func() string) Provider
-
-// Service holds the runtime state: registered providers + the
-// pending-reminders queue for the next user message. Concrete struct,
-// no interface.
-type Service struct { /* unexported */ }
-
-func NewService() *Service
-func (s *Service) Register(p Provider)
-func (s *Service) Unregister(id string)
-func (s *Service) Enqueue(body string)
-func (s *Service) RequeueSystemReminders()
-// ... and a few drain/peek accessors for the harness
+func New() *Reminder
+func (s *Reminder) Register(id string, render func() string)
+func (s *Reminder) Unregister(id string)
+func (s *Reminder) Enqueue(body string)
+func (s *Reminder) RequeueSystemReminders()
+func (s *Reminder) Prepared() bool
+func (s *Reminder) PrepareInput(text string) string
+func (s *Reminder) ResetConversation()
+func (s *Reminder) RestoreHistory(messages []core.ChatMessage)
+// ... and drain/peek accessors for the harness
 
 // Standard provider IDs:
 const (
@@ -68,28 +61,10 @@ const (
 func Wrap(body string) string
 ```
 
-### Known Violations
-
-This package is the **best example** of the pattern this codebase should
-move toward:
-
-- `Provider` is a 2-method interface (`ID`, `Render`) — perfect Go style.
-- `Service` is a **concrete struct**, not a `Service` interface.
-- No singleton: callers (`internal/app`) hold a `*Service` directly.
-- `NewProvider` is a small helper for "just give me a closure-backed
-  provider" — no need to declare a new type per source.
-
-A handful of nits:
-
-- **`NewProvider` returns the interface `Provider`.** Returning a
-  concrete `providerFunc` type would be more idiomatic, but
-  `providerFunc` is unexported, so the interface return is forced.
-  Consider exporting it.
-
 ## Internals
 
-- `Service` holds `providers []Provider` + a `pending []pendingEntry`
-  queue. Mutex-protected.
+- `Reminder` holds `providers []provider`, a `pending []pendingEntry`
+  queue and `prepared`. Mutex-protected, with no singleton or interface layer.
 - `RequeueSystemReminders` is idempotent across repeated calls — it drops
   prior pending entries from the same provider before re-emitting, so
   first message → `PostCompact` → `/skills` toggle in close succession
@@ -100,22 +75,21 @@ A handful of nits:
 
 ## Lifecycle
 
-- Construction: `app.Initialize` creates the `*Service` and passes it
-  to the harness for the conversation builder.
-- Per-message: when the user submits, the harness calls
-  `DrainPending()` and wraps the bodies into the outgoing user message.
+- Construction: `app.newServices` creates the `*Reminder` with `reminder.New()`.
+- Per-message: `PrepareInput` prepares initial provider context once, sets
+  `prepared`, attaches pending reminders and drains the reminder queue.
+  `Prepared()` describes preparation, not successful delivery. The input
+  queue retains prepared text when delivery is rejected.
 - Per-event: skill toggles / memory updates call `RequeueSystemReminders`
   to refresh provider-emitted reminders.
-- Once per conversation: the harness keeps a `systemRemindersSent` flag.
-  While it is false, `attachPendingReminders` re-emits the providers onto the
-  outgoing user message and sets it. `/clear` and compaction reset it (the
-  conversation no longer carries them); a resume sets it by scanning the
-  restored transcript with `HasSystemReminder`. `/clear` and `/resume` also
-  discard pending notices, which belong to the old conversation.
+- Once per conversation: `ResetConversation` clears `prepared` and
+  discards obsolete notices after `/clear` or compaction. `RestoreHistory`
+  recognizes sourced provider markers in restored user messages on resume.
+  `/clear` and `/resume` also discard notices belonging to the old conversation.
 - On compaction: reminder blocks are **skipped, not summarized**.
   `core.BuildCompactionText` peels trailing `<system-reminder>…</system-reminder>`
   blocks from user content before the summarizer runs, then the harness calls
-  `DiscardPendingNotices` and resets `systemRemindersSent` so fresh provider
+  `ResetConversation` so fresh provider
   state reattaches to the next user turn. All providers (skills, memory-user,
   memory-project, memory-auto) and one-time notices share this lifecycle. On PostCompact
   the harness re-reads memory from disk before re-emitting, so an edited
@@ -125,6 +99,7 @@ A handful of nits:
 ## Tests
 
 ```
+internal/reminder/conversation_test.go — preparation, reset/restore, rejected-input retry.
 internal/reminder/reminder_test.go    — provider re-emission, notice
                                          queue, idempotence, wrap format.
 ```
