@@ -74,14 +74,14 @@ func TestAgentLifecycleFailureBudgetAndStoppedEvidence(t *testing.T) {
 	}
 }
 
-func TestAgentLifecycleElapsedSharesLatestActivity(t *testing.T) {
+func TestAgentLifecycleElapsedSharesTitle(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"description":"Review"}`}
 	params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
 		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)},
 		TaskActivity:  map[int][]string{0: {"Read(main.go)"}}, Width: 40}
 	got := ansi.Strip(RenderToolCalls(params))
-	if !strings.Contains(got, "  Read(main.go) · 12s\n") || strings.Count(got, "\n") != 2 {
-		t.Fatalf("timer should share the activity row: %q", got)
+	if got != "● Agent · Review · 12s\n  Read(main.go)\n" {
+		t.Fatalf("timer should share the title row: %q", got)
 	}
 	params.CurrentIdx = 1
 	if got := ansi.Strip(RenderToolCalls(params)); !strings.Contains(got, "Pending") || strings.Contains(got, "Read(") {
@@ -112,15 +112,15 @@ func TestAgentLifecycleShortLayoutKeepsStateAfterLongIdentity(t *testing.T) {
 			TaskActivity: map[int][]string{0: {"Read(main.go)"}},
 		}
 		for _, waiting := range []bool{false, true} {
-			state := "Read(main.go) · 12s"
+			state, suffix := "Read(main.go)", "… · 12s"
 			if waiting {
 				params.AwaitingApprovalID, params.DockedModalActive = call.ID, true
-				state = "Waiting for approval"
+				state, suffix = "Waiting for approval", "…"
 			}
 			view, active := RenderActiveWorkers(params, 2)
 			plain := ansi.Strip(view)
 			lines := strings.Split(plain, "\n")
-			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● Agent · reviewer · ") || !strings.HasSuffix(lines[0], "…") || lines[1] != "  "+state {
+			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● Agent · reviewer · ") || !strings.HasSuffix(lines[0], suffix) || ansi.StringWidth(lines[0]) > width || lines[1] != "  "+state {
 				t.Fatalf("width %d: wrapped identity displaced current state: %q", width, plain)
 			}
 		}
@@ -155,7 +155,11 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 			check := func(state string, absent ...string) {
 				t.Helper()
 				got := ansi.Strip(RenderToolCalls(params))
-				if !strings.HasPrefix(got, header) || !strings.Contains(got, "  "+state+"\n") {
+				wantHeader := header
+				if params.agentExecuting(call) && !params.parkedOnUser(call.ID) && len(params.ResultMap) == 0 {
+					wantHeader = appendRowDetail(ansi.Strip(renderAgentToolLine(formatAgentLabel(parseAgentInput(input)), width-6, "●", ""))+"\n", " · 12s")
+				}
+				if !strings.HasPrefix(got, wantHeader) || !strings.Contains(got, "  "+state+"\n") {
 					t.Fatalf("width %d: identity or state changed for %q: %q", width, state, got)
 				}
 				for _, text := range absent {
@@ -171,14 +175,14 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 			}
 			check("Pending")
 			params.ToolStartedAt = map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)}
-			check("Starting... · 12s", "Pending")
+			check("Starting...", "Pending")
 			params.TaskActivity = map[int][]string{0: {"Read(main.go)"}}
-			check("Read(main.go) · 12s", "Starting...")
+			check("Read(main.go)", "Starting...")
 			params.AwaitingApprovalID, params.DockedModalActive = call.ID, true
 			check("Waiting for approval", "Read(main.go)", "12s")
 			params.AwaitingApprovalID, params.DockedModalActive = "", false
 			params.TaskActivity[0] = append(params.TaskActivity[0], "Thinking...")
-			check("Thinking... · 12s", "Waiting for approval", "Read(main.go)")
+			check("Thinking...", "Waiting for approval", "Read(main.go)")
 			params.ResultMap = map[string]ToolResultData{call.ID: {
 				ToolName: "Agent", Content: "No vulnerabilities found", Details: toolresult.AgentDetails{},
 			}}

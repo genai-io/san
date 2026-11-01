@@ -770,13 +770,34 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 			label := formatAgentLabel(agent)
 			_, hasResult := params.ResultMap[tc.ID]
-			if (params.CompactAgentLabel || hasResult && !params.ToolCallsExpanded) && params.Width > 0 {
-				label = kit.TruncateText(label, max(1, params.Width-kit.ToolIconWidth))
+			rowWidth := params.Width
+			detail := ""
+			if tc.Name != tool.ToolSendMessage {
+				if result, ok := params.ResultMap[tc.ID].Details.(toolresult.AgentDetails); hasResult && ok && result.TaskID == "" && result.Duration > 0 {
+					seconds := int(result.Duration / time.Second)
+					elapsed := fmt.Sprintf("%ds", seconds)
+					if seconds >= 60 {
+						elapsed = fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
+					}
+					detail = toolResultStyle.Render(" · " + elapsed)
+				} else if !hasResult && params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
+					detail = runningRowDetail(tc, params)
+				}
+				if rowWidth > 0 {
+					// Keep the Agent identity visible before reserving its timer.
+					if lipgloss.Width(detail) > max(0, rowWidth-lipgloss.Width("● Agent")) {
+						detail = ""
+					}
+					rowWidth = max(1, rowWidth-lipgloss.Width(detail))
+				}
+			}
+			if (params.CompactAgentLabel || hasResult && !params.ToolCallsExpanded) && rowWidth > 0 {
+				label = kit.TruncateText(label, max(1, rowWidth-kit.ToolIconWidth))
 			}
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
 				sb.WriteString(renderAgentMessageLine("●", "To", to, body, params.Width, params.AgentIdentities, params.AgentColors, params.MemberColors) + "\n")
 			} else if hasResult {
-				sb.WriteString(renderAgentColoredLine(label, params.Width, "●", color) + "\n")
+				sb.WriteString(appendRowDetail(renderAgentColoredLine(label, rowWidth, "●", color)+"\n", detail))
 			} else {
 				// The live dot breathes off the frame counter; on the call a
 				// permission prompt is asking about that would advertise a
@@ -789,7 +810,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 						icon = kit.LiveDot(params.Frame)
 					}
 				}
-				sb.WriteString(renderAgentColoredLine(label, params.Width, icon, color) + "\n")
+				sb.WriteString(appendRowDetail(renderAgentColoredLine(label, rowWidth, icon, color)+"\n", detail))
 			}
 			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
@@ -866,21 +887,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if !params.agentExecuting(tc) {
 				sb.WriteString(renderAgentLocalBody("Pending", params.Width))
 			} else {
-				activity := renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width, params.AgentPreviewLines)
-				if !params.ToolCallsExpanded {
-					lines := strings.Split(strings.TrimSuffix(xansi.Strip(activity), "\n"), "\n")
-					last := len(lines) - 1
-					status := strings.TrimSpace(lines[last])
-					detail := xansi.Strip(runningRowDetail(tc, params))
-					if params.Width > 0 {
-						status = xansi.Truncate(status, max(1, params.Width-2-lipgloss.Width(detail)), "…")
-					}
-					if activity != "" || detail != "" {
-						lines[last] = "  " + status + detail
-						activity = toolResultStyle.Render(strings.Join(lines, "\n")) + "\n"
-					}
-				}
-				sb.WriteString(activity)
+				sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width, params.AgentPreviewLines))
 			}
 		}
 	}

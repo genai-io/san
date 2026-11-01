@@ -16,7 +16,7 @@ func TestAgentResultPreviewBudget(t *testing.T) {
 	for _, width := range []int{32, 40, 100} {
 		for _, structured := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/structured=%t", width, structured), func(t *testing.T) {
-				body := "First finding\n\nSecond finding\n\nThird finding\n\nFourth finding\n\nFifth finding\nHIDDEN_TAIL_SENTINEL"
+				body := "HIDDEN_HEAD_SENTINEL\n\nFirst finding\n\nSecond finding\n\nThird finding\n\nFourth finding\n\nFifth finding"
 				data := ToolResultData{AgentPreviewLines: 3, ToolName: "Agent", Content: body + "\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl", Width: width, ToolInput: `{"name":"reviewer","description":"Review security boundaries"}`}
 				if structured {
 					data.Details = toolresult.AgentDetails{ToolUses: 7, Model: "private-model", Activity: []string{"Read(private.go)"}}
@@ -25,26 +25,26 @@ func TestAgentResultPreviewBudget(t *testing.T) {
 				}
 				got := ansi.Strip(RenderToolResultInline(data, nil))
 				rows := previewNonblankRows(got)
-				if len(rows) != 3 {
-					t.Fatalf("want three nonblank physical rows, got %d: %q", len(rows), got)
+				if len(rows) != 4 {
+					t.Fatalf("want omission row and three tail rows, got %d: %q", len(rows), got)
 				}
 				for _, row := range rows {
 					if ansi.StringWidth(row) > width {
 						t.Fatalf("overflow at width %d: %q", width, row)
 					}
 				}
-				if !strings.HasSuffix(rows[2], "…") || strings.TrimSpace(strings.TrimSuffix(rows[2], "…")) == "" {
-					t.Fatalf("ellipsis must follow visible prose on final row: %q", got)
+				if strings.Join(rows, "\n") != "  … (3)\n  Third finding\n  Fourth finding\n  Fifth finding" {
+					t.Fatalf("preview must preserve the last three lines: %q", got)
 				}
-				for _, absent := range []string{"HIDDEN_TAIL_SENTINEL", "Fourth", "Fifth", "AgentID:", "Transcript:", "ToolUses:", "private-model", "private.go", "omitted", "Finished", "Done"} {
+				for _, absent := range []string{"HIDDEN_HEAD_SENTINEL", "First", "Second", "AgentID:", "Transcript:", "ToolUses:", "private-model", "private.go", "omitted", "Finished", "Done"} {
 					if strings.Contains(got, absent) {
 						t.Errorf("compact leaked %q: %q", absent, got)
 					}
 				}
 				data.Expanded = true
 				expanded := ansi.Strip(RenderToolResultInline(data, NewMDRenderer(width)))
-				if !strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(expanded, "┊", "")), ""), "HIDDEN_TAIL_SENTINEL") {
-					t.Fatalf("expanded result lost hidden tail: %q", expanded)
+				if !strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(expanded, "┊", "")), ""), "HIDDEN_HEAD_SENTINEL") {
+					t.Fatalf("expanded result lost hidden head: %q", expanded)
 				}
 			})
 		}
@@ -84,11 +84,11 @@ func TestAgentResultPreviewMarkdownAndColor(t *testing.T) {
 						t.Errorf("raw markdown %q remains: %q", marker, got)
 					}
 				}
-				if !strings.Contains(got, "Findings") || !strings.Contains(got, "Boundary") {
+				if !strings.Contains(got, "Safe outcome") || !strings.Contains(got, "Boundary") {
 					t.Fatalf("renderer lost original findings: %q", got)
 				}
 				_, body, _ := strings.Cut(got, "\n")
-				if rows := previewNonblankRows(body); len(rows) > 3 {
+				if rows := previewNonblankRows(body); len(rows) > 4 {
 					t.Fatalf("rendered markdown exceeds budget: %q", got)
 				}
 			})

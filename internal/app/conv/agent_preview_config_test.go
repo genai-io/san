@@ -29,7 +29,10 @@ func TestAgentConfiguredResultBudget(t *testing.T) {
 	for _, budget := range []int{0, 1, 3, 5} {
 		data := ToolResultData{ToolName: "Agent", Content: "one\n\ntwo\n\nthree\n\nfour\n\nfive\n\nsix", Width: 60, AgentPreviewLines: budget, Details: toolresult.AgentDetails{}}
 		got := ansi.Strip(renderTaskResultInline(data, nil))
-		want := budget
+		want := budget + 1 // Omission row does not consume the content budget.
+		if budget > 0 && !strings.HasSuffix(got, "  six\n") {
+			t.Fatalf("preview lost final output: %q", got)
+		}
 		if budget == 0 {
 			want = 1
 			if !strings.Contains(got, "Finished") {
@@ -43,6 +46,16 @@ func TestAgentConfiguredResultBudget(t *testing.T) {
 		if got := ansi.Strip(renderTaskResultInline(data, nil)); !strings.Contains(got, "six") {
 			t.Fatalf("expanded result lost output: %q", got)
 		}
+	}
+}
+
+func TestAgentResultTailAfterWrapping(t *testing.T) {
+	got := ansi.Strip(renderCompactAgentResponse("alpha bravo charlie delta echo foxtrot", 16, nil, 2))
+	if !strings.HasSuffix(got, "  echo foxtrot\n") || strings.Contains(got, "alpha") || !strings.Contains(got, "  … (") {
+		t.Fatalf("wrapped preview must retain the end, not the beginning: %q", got)
+	}
+	if strings.Count(got, "\n") != 3 {
+		t.Fatalf("want omission row plus two physical output rows: %q", got)
 	}
 }
 

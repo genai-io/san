@@ -76,8 +76,9 @@ this is set to. Ctrl-O shows every full output. Also set in `/settings` → Appe
 ### `agentPreviewLines`
 
 How many lines an Agent row previews (default `3`, clamped to `0`–`20`).
-Running agents show their latest activity; finished agents preview the start of
-their result. `0` hides the preview; expanded views still show the full content.
+Running agents show their latest activity; finished agents preview the tail of
+their result, with an omission row above longer output. Elapsed time follows the
+Agent title. `0` hides the preview; expanded views still show the full content.
 This preference is independent of `bashPreviewLines` and does not change the
 compact background tracker. Set it in `/settings` → Appearance → AGENT OUTPUT →
 Agent preview; Left / Right adjusts the count and Enter saves to

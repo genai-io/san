@@ -954,14 +954,13 @@ func renderCompactAgentResponse(response string, width int, mdRenderer *MDRender
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if len(lines) == previewLines {
-			last := len(lines) - 1
-			lines[last] = xansi.Truncate(strings.TrimRight(lines[last], " "), max(0, room-2), "") + " …"
-			break
-		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
 	var sb strings.Builder
+	if omitted := len(lines) - previewLines; omitted > 0 {
+		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n")
+		lines = lines[omitted:]
+	}
 	for _, line := range lines {
 		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
 	}
