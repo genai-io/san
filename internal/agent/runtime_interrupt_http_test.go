@@ -103,7 +103,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 			if err := runtime.Start(BuildParams{}, nil); err != nil {
 				t.Fatal(err)
 			}
-			defer func() { release(); runtime.Stop() }()
+			defer func() { release(); stopRuntime(t, runtime) }()
 			drained := make(chan struct{})
 			go func() {
 				for range runtime.Outbox() {
@@ -125,7 +125,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 			if streaming {
 				wait(chunk, "decoded first chunk")
 			}
-			done := runtime.InterruptCurrentTurn()
+			done := runtime.Cancel().ExecutionDone()
 			wait(aborted, "server request context cancellation")
 			wait(transport.exiting, "HTTP unwind")
 			select {
@@ -133,7 +133,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 				t.Fatal("ThinkAct completed before HTTP stream exited")
 			default:
 			}
-			if runtime.InterruptCurrentTurn() != done {
+			if runtime.Cancel().ExecutionDone() != done {
 				t.Fatal("lost unwinding turn handle")
 			}
 			release()
@@ -159,7 +159,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 			if !runtime.Active() {
 				t.Fatal("turn interrupt stopped runtime")
 			}
-			runtime.Stop()
+			stopRuntime(t, runtime)
 			wait(drained, "outbox shutdown")
 		})
 	}

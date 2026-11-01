@@ -12,12 +12,10 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
 )
 
 // providerTab represents which tab is active in the provider selector.
@@ -316,29 +314,22 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 }
 
 func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
-	_, err := state.Selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod)
+	p, err := llm.GetProvider(context.Background(), llm.ProviderID(msg.ProviderName), msg.AuthMethod)
+	if err == nil {
+		err = deps.SwitchProvider(p, func() error {
+			if _, err := state.Selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod); err != nil {
+				return err
+			}
+			deps.SetCurrentModel(&llm.CurrentModelInfo{
+				ModelID:    msg.ModelID,
+				Provider:   llm.ProviderID(msg.ProviderName),
+				AuthMethod: msg.AuthMethod,
+			})
+			return nil
+		})
+	}
 	if err != nil {
 		deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Error: " + err.Error()})
-		return tea.Batch(deps.CommitMessages()...)
 	}
-
-	deps.SetCurrentModel(&llm.CurrentModelInfo{
-		ModelID:    msg.ModelID,
-		Provider:   llm.ProviderID(msg.ProviderName),
-		AuthMethod: msg.AuthMethod,
-	})
-	ctx := context.Background()
-	providerRefreshConnection(deps, state, ctx, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
 	return tea.Batch(deps.CommitMessages()...)
-}
-
-func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.ProviderID, authMethod llm.AuthMethod) {
-	p, err := llm.GetProvider(ctx, providerName, authMethod)
-	if err != nil {
-		log.Logger().Warn("failed to refresh provider connection",
-			zap.String("provider", string(providerName)),
-			zap.Error(err))
-		return
-	}
-	deps.SwitchProvider(p)
 }

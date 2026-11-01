@@ -31,11 +31,9 @@ package agent
 type Runtime struct { /* internal fields */ }
 
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
-func (s *Runtime) Stop()
-func (s *Runtime) StopContext(ctx context.Context) error
-func (s *Runtime) InterruptCurrentTurn() <-chan struct{}
-func (s *Runtime) InterruptTurn()
-func (s *Runtime) Reset()
+func (s *Runtime) Stop(ctx context.Context) error
+func (s *Runtime) Cancel() *core.TurnFinalization
+func (s *Runtime) Reset(ctx context.Context) error
 func (s *Runtime) Messages() []core.Message
 func (s *Runtime) SetMessages(messages []core.Message)
 func (s *Runtime) Active() bool
@@ -70,15 +68,25 @@ func Default() *Runtime
   singleton.
 - Per-run: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
-- Termination: `StopContext` cancels and waits for the exact run generation;
-  `Stop` applies a bounded default deadline and logs a run that outlives it.
+- Termination: `Stop(ctx)` cancels and waits for the exact run generation.
+  The caller owns the deadline; the TUI allows two seconds. A deadline error
+  retains the run and history, and prevents replacement or successful teardown.
+  `Reset(ctx)` clears history only after successful shutdown, using the same context.
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
-- Turn cancellation: `InterruptCurrentTurn` requests cancellation immediately and
-  returns an execution-completion channel, shared by repeated calls during unwind.
-  Completion is not an event/persistence barrier or a lock against successor turns.
-  Idle interrupt semantics are unchanged. `InterruptTurn` retains the TUI's 250 ms
-  bounded wait; slow tools may still be unwinding afterward.
+- Turn cancellation: `Cancel()` immediately cancels and captures one exchange,
+  keeping the runtime active for later input.
+  Its receipt offers `ExecutionDone()` for execution-only completion and `Wait(ctx)`
+  for execution plus consumer cleanup and essential message/inference/state writes.
+  Neither prevents successor execution. Nil means no unfinished exchange was captured:
+  `ExecutionDone()` is already closed, while `Wait(ctx)` returns an error.
+  The between-turn interrupt latch is unchanged.
+  `ErrTurnCompleted` denotes a natural completion race, not a save failure. TUI input
+  waits asynchronously for cleanup; manual stop holds queued/background work.
+  Queue-selection Enter explicitly resumes the queue head after cleanup, even with
+  held harness input; direct pending user input takes precedence. Edits, deletion,
+  or session replacement invalidate that deferred intent.
+  No guarantee covers audit details, normal-turn hooks, rendering, or fsync.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -92,7 +100,10 @@ func Default() *Runtime
 ```
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
-internal/agent/runtime_interrupt_test.go — completion signal and bounded wait.
+internal/agent/runtime_interrupt_test.go — inactive cancellation receipt.
+internal/agent/runtime_interrupt_http_test.go — actual HTTP abort and execution unwind.
+internal/core/turn_finalization_test.go — receipt identity, completion and errors.
+internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.
 internal/app/session_resume_test.go — native error retry, inactive compaction,
                                       and image-preserving model switches.

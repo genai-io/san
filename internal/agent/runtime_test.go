@@ -13,6 +13,15 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
+func stopRuntime(t *testing.T, runtime *Runtime) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := runtime.Stop(ctx); err != nil {
+		t.Errorf("stop runtime: %v", err)
+	}
+}
+
 // stubProvider is a minimal llm.Provider that ends every turn immediately, so a
 // Runtime can start without a real backend. What it owns is reaching the
 // endpoint; the model behind it is the SDK's test double.
@@ -36,7 +45,7 @@ func TestSessionMessagesReturnsLiveChainWithIDs(t *testing.T) {
 	if err := sess.Start(BuildParams{Provider: stubProvider{}, ModelID: "m"}, seed); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer sess.Stop()
+	defer stopRuntime(t, sess)
 
 	got := sess.Messages()
 	if len(got) != 2 || got[0].ID != "u1" || got[1].ID != "a1" {
@@ -61,7 +70,7 @@ type controlledAgent struct {
 	started       chan struct{}
 	release       chan struct{}
 	ignoreContext bool
-	interrupt     func() <-chan struct{}
+	messages      []core.Message
 }
 
 func newControlledAgent(ignoreContext bool) *controlledAgent {
@@ -80,8 +89,8 @@ func (a *controlledAgent) System() core.System                            { retu
 func (a *controlledAgent) Tools() *core.Tools                             { return nil }
 func (a *controlledAgent) Inbox() chan<- core.Inbound                     { return a.inbox }
 func (a *controlledAgent) Outbox() <-chan core.Event                      { return a.outbox }
-func (a *controlledAgent) Messages() []core.Message                       { return nil }
-func (a *controlledAgent) SetMessages([]core.Message)                     {}
+func (a *controlledAgent) Messages() []core.Message                       { return a.messages }
+func (a *controlledAgent) SetMessages(messages []core.Message)            { a.messages = messages }
 func (a *controlledAgent) Append(m core.Message)                          { a.appended <- m }
 func (a *controlledAgent) ThinkAct(context.Context) (*core.Result, error) { return nil, nil }
 func (a *controlledAgent) Run(ctx context.Context) error {
@@ -96,14 +105,7 @@ func (a *controlledAgent) Run(ctx context.Context) error {
 	}
 	return nil
 }
-func (a *controlledAgent) InterruptCurrentTurn() <-chan struct{} {
-	if a.interrupt != nil {
-		return a.interrupt()
-	}
-	done := make(chan struct{})
-	close(done)
-	return done
-}
+func (a *controlledAgent) Cancel() *core.TurnFinalization { return nil }
 
 func sessionWithAgents(agents ...*controlledAgent) *Runtime {
 	next := 0
@@ -118,25 +120,34 @@ func TestSessionStopWaitsForExactRunBeforeRestart(t *testing.T) {
 	first := newControlledAgent(true)
 	second := newControlledAgent(false)
 	sess := sessionWithAgents(first, second)
+	t.Cleanup(func() {
+		select {
+		case <-first.release:
+		default:
+			close(first.release)
+		}
+		stopRuntime(t, sess)
+	})
 	if err := sess.Start(BuildParams{}, nil); err != nil {
 		t.Fatalf("Start first: %v", err)
 	}
 	<-first.started
+	original := sess.run
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if err := sess.StopContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("StopContext error = %v, want deadline exceeded", err)
+	if err := sess.Stop(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Stop error = %v, want deadline exceeded", err)
 	}
-	if !sess.Active() {
-		t.Fatal("timed-out stop cleared a runner that is still alive")
+	if !sess.Active() || sess.run != original {
+		t.Fatal("timed-out stop cleared or replaced a runner that is still alive")
 	}
 	if err := sess.Start(BuildParams{}, nil); err == nil {
 		t.Fatal("Start succeeded before the previous runner exited")
 	}
 
 	close(first.release)
-	sess.Stop() // returns once the released runner has retired
+	stopRuntime(t, sess) // returns once the released runner has retired
 	if sess.Active() {
 		t.Fatal("session remained active after its runner exited")
 	}
@@ -144,7 +155,44 @@ func TestSessionStopWaitsForExactRunBeforeRestart(t *testing.T) {
 		t.Fatalf("Start second after first exited: %v", err)
 	}
 	<-second.started
-	sess.Stop()
+	stopRuntime(t, sess)
+}
+
+func TestResetDeadlinePreservesRunAndHistory(t *testing.T) {
+	ag := newControlledAgent(true)
+	sess := sessionWithAgents(ag)
+	seed := []core.Message{core.UserMessage("retained history", nil)}
+	if err := sess.Start(BuildParams{}, seed); err != nil {
+		t.Fatal(err)
+	}
+	defer stopRuntime(t, sess)
+	defer close(ag.release)
+	original := sess.run
+	outbox := sess.Outbox()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := sess.Reset(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Reset error = %v, want deadline exceeded", err)
+	}
+	if sess.run != original || sess.Outbox() != outbox || !reflect.DeepEqual(sess.Messages(), seed) {
+		t.Fatal("failed reset changed the exact run, outbox, or history")
+	}
+	if err := sess.Start(BuildParams{}, nil); err == nil {
+		t.Fatal("reset failure allowed a successor to overlap")
+	}
+}
+
+func TestResetAfterStopDiscardsHistory(t *testing.T) {
+	sess := &Runtime{}
+	sess.SetMessages([]core.Message{core.UserMessage("old history", nil)})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := sess.Reset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(sess.Messages()) != 0 || sess.Outbox() != nil {
+		t.Fatal("successful reset retained conversation state")
+	}
 }
 
 func TestSessionSendPreservesMessageIdentity(t *testing.T) {
@@ -163,7 +211,7 @@ func TestSessionSendPreservesMessageIdentity(t *testing.T) {
 	if got.ID != want.ID || got.Text() != want.Text() {
 		t.Fatalf("delivered message = %+v, want ID %q and content %q", got, want.ID, want.Text())
 	}
-	sess.Stop()
+	stopRuntime(t, sess)
 }
 
 func TestSessionUnexpectedExitClearsLifecycle(t *testing.T) {
@@ -174,7 +222,7 @@ func TestSessionUnexpectedExitClearsLifecycle(t *testing.T) {
 	}
 	<-ag.started
 	close(ag.release)
-	sess.Stop()
+	stopRuntime(t, sess)
 	if sess.Active() {
 		t.Fatal("session remained active after its runner exited")
 	}
@@ -198,7 +246,7 @@ func TestToolSchemasMatchTheBuiltAgent(t *testing.T) {
 	if err := sess.Start(p, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer sess.Stop()
+	defer stopRuntime(t, sess)
 	if got, want := p.ToolSchemas(), sess.Tools().Schemas(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("ToolSchemas() differs from the built agent's tools:\n got %v\nwant %v", got, want)
 	}

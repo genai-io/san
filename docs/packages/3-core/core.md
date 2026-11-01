@@ -40,10 +40,14 @@ type Agent interface {
     Append(msg Message)       // queue a message; any goroutine, never blocks
     ThinkAct(ctx context.Context) (*Result, error)
     Run(ctx context.Context) error
-    InterruptCurrentTurn() <-chan struct{}
+    Cancel() *TurnFinalization
 }
 
 func NewAgent(cfg Config) Agent  // returns interface — see Note below
+
+// Receipt observations: execution only, or execution plus terminal consumer writes.
+func (f *TurnFinalization) ExecutionDone() <-chan struct{}
+func (f *TurnFinalization) Wait(ctx context.Context) error
 ```
 
 ### System

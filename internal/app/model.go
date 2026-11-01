@@ -33,6 +33,7 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
 )
@@ -40,11 +41,16 @@ import (
 const defaultWidth = 80
 
 type model struct {
-	workerMu *sync.Mutex // shared across render copies; initialized when task callbacks are wired
+	agentSession *session.Session // opened writer captured when the selected runtime started
+	workerMu     *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
 	pendingMessages []pendingMessage
 	// A manual stop holds background-driven turns until real user input arrives.
 	backgroundNoticesHeld bool
+	// Input stays pending until the cancelled turn's synchronous consumer cleanup.
+	cancellingTurn    *core.TurnFinalization
+	queueContinuation *input.QueueItem // explicit queue Enter, valid only across this cancellation fence
+	pendingPluginRoot string
 
 	// ── Sub-models (one per event source / concern) ─────────────
 	userInput input.Model // Source 1: user keyboard input

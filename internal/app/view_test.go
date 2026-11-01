@@ -307,7 +307,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer m.services.Agent.Stop()
+	defer stopRuntime(t, m.services.Agent)
 	m.env.LLMProvider = provider
 	m.services.Reminder = reminder.NewService()
 	m.agentEvolveCaps = m.selfLearnCapabilities()
@@ -364,7 +364,7 @@ func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer m.services.Agent.Stop()
+	defer stopRuntime(t, m.services.Agent)
 	defer func() {
 		select {
 		case <-release:

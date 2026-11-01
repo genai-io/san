@@ -62,8 +62,7 @@ func (r ChatRole) AIRole() (ai.Role, bool) {
 // Inbound is a control signal on an agent's inbox, acted on between turns on
 // the agent's own goroutine. Messages do not ride here: Append queues them.
 //
-// It goes away with the inbox itself, when the loop becomes pkg/agent's: there
-// a stop is Interrupt and a compaction is SetMessages, both methods.
+// Whole-run shutdown uses SigStop or Run's context; Cancel only cancels a turn.
 type Inbound struct {
 	Signal Signal
 	// Summary carries SigCompact's precomputed replacement.

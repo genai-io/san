@@ -31,14 +31,20 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		Cwd:               m.env.CWD,
 		CommitMessages:    m.CommitMessages,
 		CommitAllMessages: m.commitAllMessages,
-		SwitchProvider: func(p llm.Provider) {
-			m.StopAgentRuntime()
+		SwitchProvider: func(p llm.Provider, commitSelection func() error) error {
+			if err := m.StopAgentRuntime(); err != nil {
+				return err
+			}
+			if err := commitSelection(); err != nil {
+				return err
+			}
 			m.switchProvider(p)
 			m.ReconfigureAgentTool()
+			return nil
 		},
 		SetCurrentModel: func(info *llm.CurrentModelInfo) {
 			m.env.CurrentModel = info
-			llm.Default().SetCurrentModel(info)
+			m.services.LLM.SetCurrentModel(info)
 			// The selector cached the model's metadata (display name, token
 			// limits) through its own Store; reload the shared store so the
 			// status bar reflects the new model's name and context-window

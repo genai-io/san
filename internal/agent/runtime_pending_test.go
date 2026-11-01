@@ -45,7 +45,7 @@ func TestAcceptedInputSurvivesFailedRun(t *testing.T) {
 	}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Stop()
+	defer stopRuntime(t, rt)
 	if err := rt.Send(core.Message{ID: "first", Role: ai.RoleUser, Content: ai.TextContent("first prompt")}); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestAcceptedInputSurvivesFailedRun(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("run did not stop")
 	}
-	rt.Stop()
+	stopRuntime(t, rt)
 	if !errors.Is(lateErr, ErrRuntimeStopped) {
 		t.Fatalf("stopped mailbox accepted more input: %v", lateErr)
 	}
@@ -85,11 +85,11 @@ func TestAcceptedInputSurvivesStopBeforeFirstTurn(t *testing.T) {
 	}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Stop()
+	defer stopRuntime(t, rt)
 	if err := rt.Send(core.UserMessage("not yet read by the agent", nil)); err != nil {
 		t.Fatal(err)
 	}
-	rt.Stop()
+	stopRuntime(t, rt)
 	messages := rt.Messages()
 	if len(messages) != 1 || messages[0].ID == "" || len(recorded) != 1 || messages[0].ID != recorded[0].ID {
 		t.Fatalf("input accepted before shutdown was not recorded: history=%+v, events=%+v", messages, recorded)

@@ -5,6 +5,8 @@
 package app
 
 import (
+	"context"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/input"
@@ -12,19 +14,31 @@ import (
 	"github.com/genai-io/san/internal/image"
 )
 
+type turnFinalizedMsg struct {
+	receipt *core.TurnFinalization
+	outbox  <-chan core.Event
+	err     error
+}
+
 func (m *model) handleStreamCancel() tea.Cmd {
 	m.backgroundNoticesHeld = true
+	m.queueContinuation = nil
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
-	m.services.Agent.InterruptTurn()
+	receipt := m.services.Agent.Cancel()
+	outbox := m.services.Agent.Outbox()
 	m.pruneInteractions()
 	m.cancelPendingToolCalls()
 	m.conv.MarkStreamInterrupted()
 	m.conv.Stream.Stop()
 
 	cmds := m.CommitMessages()
-	if cmd := m.sendNextQueuedInputIfIdle(); cmd != nil {
-		cmds = append(cmds, cmd)
+	if receipt != nil && m.cancellingTurn != receipt {
+		m.cancellingTurn = receipt
+		cmds = append(cmds, func() tea.Msg {
+			// Wait is bounded by the captured run's lifetime, not a UI deadline.
+			return turnFinalizedMsg{receipt: receipt, outbox: outbox, err: receipt.Wait(context.Background())}
+		})
 	}
 	return tea.Batch(cmds...)
 }
@@ -55,7 +69,10 @@ func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 }
 
 func (m *model) QuitWithCancel() (tea.Cmd, bool) {
-	m.services.Agent.Stop()
+	if err := m.StopAgentRuntime(); err != nil {
+		m.conv.AddNotice("Cannot quit yet: " + err.Error())
+		return tea.Batch(m.CommitMessages()...), true
+	}
 	m.conv.Stream.Stop()
 	m.FireSessionEnd("prompt_input_exit")
 	// Index flush happens once at the post-Run teardown seam (see run.go), the

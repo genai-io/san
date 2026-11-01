@@ -6,12 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -94,6 +90,7 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 // app as a core.AgentStopped event.
 func (s *Runtime) execute(run *run, ctx context.Context) {
 	_ = run.agent.Run(ctx)
+	run.cancel() // release finalization waiters even after a natural mailbox stop
 
 	s.mu.Lock()
 	run.stopped = true
@@ -116,23 +113,11 @@ func (s *Runtime) execute(run *run, ctx context.Context) {
 	s.mu.Unlock()
 }
 
-const runtimeStopTimeout = 2 * time.Second
-
-// Stop performs a bounded graceful shutdown; a run that outlives the deadline
-// is logged and stays active. Callers that need a different deadline use
-// StopContext.
-func (s *Runtime) Stop() {
-	ctx, cancel := context.WithTimeout(context.Background(), runtimeStopTimeout)
-	defer cancel()
-	if err := s.StopContext(ctx); err != nil {
-		log.Logger().Warn("agent session did not stop before deadline", zap.Error(err))
-	}
-}
-
-// StopContext cancels the active run and waits for that exact generation to
+// Stop cancels the whole active run and waits for that exact generation to
 // finish. The run remains active until Run returns, so a concurrent Start can
-// never overlap the previous agent's teardown.
-func (s *Runtime) StopContext(ctx context.Context) error {
+// never overlap the previous agent's teardown. The caller owns the deadline;
+// on failure the run and conversation remain available for a later stop.
+func (s *Runtime) Stop(ctx context.Context) error {
 	s.mu.RLock()
 	run := s.run
 	s.mu.RUnlock()
@@ -187,14 +172,18 @@ func (s *Runtime) SetMessages(messages []core.Message) {
 }
 
 // Reset stops the run and discards its conversation once shutdown completes.
-func (s *Runtime) Reset() {
-	s.Stop()
+func (s *Runtime) Reset(ctx context.Context) error {
+	if err := s.Stop(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.run == nil {
-		s.messages = nil
-		s.outbox = nil
+	if s.run != nil {
+		return fmt.Errorf("agent session restarted during reset")
 	}
+	s.messages = nil
+	s.outbox = nil
+	return nil
 }
 
 // Send delivers a message to the active agent. Callers create the Message once
@@ -240,40 +229,17 @@ func (s *Runtime) Compact(summary string) bool {
 	}
 }
 
-// interruptDrainTimeout bounds the legacy TUI wait, not event delivery or
-// persistence. A slow cooperative tool can outlive this deadline.
-const interruptDrainTimeout = 250 * time.Millisecond
-
-// InterruptCurrentTurn requests cancellation synchronously and returns without
-// waiting for the captured ThinkAct to unwind. Bind cancellation before scheduling
-// any asynchronous wait, so a delayed waiter cannot cancel a successor turn.
-//
-// The channel observes execution completion only: it can close before TurnEnded
-// is emitted, and does not acknowledge outbox consumption or persistence. It does
-// not prevent subsequent execution or grant exclusive access to agent state.
-// With no runtime it is already closed; between turns the core interrupt latch
-// still applies. Neither case proves that an active turn was cancelled.
-func (s *Runtime) InterruptCurrentTurn() <-chan struct{} {
+// Cancel cancels only the current turn, keeping the runtime active for later input.
+// It returns without waiting for execution or the event consumer. The receipt stays
+// bound to the captured turn across runtime replacement; nil means no runtime or
+// no unfinished exchange was captured.
+func (s *Runtime) Cancel() *core.TurnFinalization {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.run == nil {
-		done := make(chan struct{})
-		close(done)
-		return done
+		return nil
 	}
-	return s.run.agent.InterruptCurrentTurn()
-}
-
-// InterruptTurn retains the TUI's bounded wait while leaving the mailbox alive.
-// Callers needing observable execution completion use InterruptCurrentTurn.
-func (s *Runtime) InterruptTurn() {
-	done := s.InterruptCurrentTurn()
-	timer := time.NewTimer(interruptDrainTimeout)
-	defer timer.Stop()
-	select {
-	case <-done:
-	case <-timer.C:
-	}
+	return s.run.agent.Cancel()
 }
 
 func (s *Runtime) Outbox() <-chan core.Event {

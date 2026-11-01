@@ -8,6 +8,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,6 +20,15 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
+
+func stopRuntime(t *testing.T, runtime *agent.Runtime) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := runtime.Stop(ctx); err != nil {
+		t.Errorf("stop runtime: %v", err)
+	}
+}
 
 // restartStubProvider lets the foreground Session run without contacting a
 // backend and exposes the exact message chain received by its next inference.
@@ -66,7 +76,9 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 		services: services{Agent: sess},
 		conv:     conv.NewModel(80),
 	}
-	m.StopAgentRuntime()
+	if err := m.StopAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
 	if sess.Active() {
 		t.Fatal("Session remained active after StopAgentRuntime")
 	}
@@ -100,7 +112,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 	}, got); err != nil {
 		t.Fatalf("restart Session: %v", err)
 	}
-	defer sess.Stop()
+	defer stopRuntime(t, sess)
 	restarted := sess.Messages()
 	if len(restarted) != len(live) {
 		t.Fatalf("restarted Messages() len = %d, want %d: %+v", len(restarted), len(live), restarted)
@@ -154,7 +166,9 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 		conv:     conv.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
-	m.ResetAgentRuntime()
+	if err := m.ResetAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
 	if got := m.services.Agent.Messages(); len(got) != 0 {
@@ -164,6 +178,41 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 
 // Skills/memory reminders ride on a conversation's first message only;
 // replacing the conversation drops old notices and sends them again.
+func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
+	sess := &agent.Runtime{}
+	started, release := make(chan struct{}), make(chan struct{})
+	seed := []core.Message{withID("old-user", core.UserMessage("old conversation", nil))}
+	if err := sess.Start(agent.BuildParams{
+		Provider: &restartStubProvider{}, ModelID: "m",
+		OnEvent: func(ev core.Event) {
+			if _, ok := ev.(core.AgentStarted); ok {
+				close(started)
+				<-release
+			}
+		},
+	}, seed); err != nil {
+		t.Fatal(err)
+	}
+	defer stopRuntime(t, sess)
+	defer close(release)
+	<-started
+	m := model{
+		services:          services{Agent: sess},
+		pendingPluginRoot: "retained-plugin", systemRemindersSent: true,
+		backgroundNoticesHeld: true,
+	}
+	// Nil reset-only dependencies also catch premature UI/cache teardown.
+	if err := m.ResetAgentRuntime(); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ResetAgentRuntime = %v, want deadline exceeded", err)
+	}
+	if !sess.Active() || len(sess.Messages()) != 1 || sess.Messages()[0].ID != seed[0].ID {
+		t.Fatal("failed reset lost the live conversation")
+	}
+	if m.pendingPluginRoot != "retained-plugin" || !m.systemRemindersSent || !m.backgroundNoticesHeld {
+		t.Fatal("failed reset cleared conversation UI state")
+	}
+}
+
 func TestSystemRemindersOncePerConversation(t *testing.T) {
 	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
@@ -179,7 +228,9 @@ func TestSystemRemindersOncePerConversation(t *testing.T) {
 	}
 
 	m.services.Reminder.Enqueue("old hook context")
-	m.ResetAgentRuntime()
+	if err := m.ResetAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
 	got := send("after reset")
 	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
 		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
@@ -262,7 +313,7 @@ func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer sess.Stop()
+	defer stopRuntime(t, sess)
 
 	m := model{services: services{Agent: sess}, conv: conv.NewModel(80)}
 	old := make(chan core.Event)

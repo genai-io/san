@@ -30,7 +30,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	if err := sess.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer sess.Stop()
+	defer stopRuntime(t, sess)
 
 	tools := sess.Tools()
 	if tools == nil {
