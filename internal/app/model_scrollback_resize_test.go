@@ -45,6 +45,36 @@ func TestStreamingTableRenderRetriesAtResizeWidth(t *testing.T) {
 	}
 }
 
+func TestResizeDropsOnlyReportedWholeRows(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		report tea.ResizeScrollbackMsg
+		want   string
+	}{
+		{"unknown", tea.ResizeScrollbackMsg{Lines: []string{"same"}}, "same\nsame\nabcdefgh"},
+		{"one repeated row", tea.ResizeScrollbackMsg{Known: true, Lines: []string{"same"}}, "same\nabcdefgh"},
+		{"partial row omitted", tea.ResizeScrollbackMsg{Known: true, Lines: []string{"same", "same"}}, "abcdefgh"},
+		{"partial text is not a whole row", tea.ResizeScrollbackMsg{Known: true, Lines: []string{"same", "same", "abcd"}}, "same\nsame\nabcdefgh"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := flushState{
+				visible:     scrollbackPhysicalLines("same\nsame\nabcdefgh", 0),
+				resizedFrom: 8,
+			}
+			// A narrowing can push only part of abcdefgh into history. The
+			// renderer cannot report that prefix; do not infer it or deduplicate
+			// identical text that happens to follow a reported row.
+			f.takeResizeScrollback(tc.report)
+			if got := ansi.Strip(renderScrollbackLines(f.visible)); got != tc.want {
+				t.Fatalf("retained rows = %q, want %q", got, tc.want)
+			}
+			if f.resizedFrom != 0 {
+				t.Fatal("report did not release resize hold")
+			}
+		})
+	}
+}
+
 func TestScrollbackPhysicalLinesExactWraps(t *testing.T) {
 	for _, tc := range []struct {
 		name, text  string

@@ -166,6 +166,20 @@ frame that fills the screen leaves a copy in tmux history on every full
 repaint. xterm.js, Ghostty and iTerm2 never scroll on ED 0. Verify
 scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
 
+## Resize ownership and current limits
+
+Live blocks render from conversation messages; stale-width background results
+retry before advancing commit offsets. Native history belongs to the terminal:
+San must not delete or replay it to repair a resize. Only matching whole rows in
+`ResizeScrollbackMsg` authorize dropping retained rows, never inferred duplicates.
+
+Application commit precedes native-history ownership. Settled `visible` cells
+and pending prints lack source-block identities, so they cannot relayout tables
+from source; `fitPendingRows` also preserves materialized wrap breaks after
+widening. Fixing this requires an exact source-to-history boundary, including
+partial handoffs. The renderer currently omits partially scrolled wrapped rows.
+Do not compensate by replaying whole messages or heuristically joining rows.
+
 ## Consequences
 
 - The gate is `internal/app/model_scrollback_renderer_test.go`: a vt10x
