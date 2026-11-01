@@ -42,7 +42,7 @@ func (s *Reminder) Register(id string, render func() string)
 func (s *Reminder) Unregister(id string)
 func (s *Reminder) Enqueue(body string)
 func (s *Reminder) RequeueSystemReminders()
-func (s *Reminder) ContextPrepared() bool
+func (s *Reminder) Prepared() bool
 func (s *Reminder) PrepareInput(text string) string
 func (s *Reminder) ResetConversation()
 func (s *Reminder) RestoreHistory(messages []core.ChatMessage)
@@ -64,7 +64,7 @@ func Wrap(body string) string
 ## Internals
 
 - `Reminder` holds `providers []provider`, a `pending []pendingEntry`
-  queue and `contextPrepared`. Mutex-protected, with no singleton or interface layer.
+  queue and `prepared`. Mutex-protected, with no singleton or interface layer.
 - `RequeueSystemReminders` is idempotent across repeated calls — it drops
   prior pending entries from the same provider before re-emitting, so
   first message → `PostCompact` → `/skills` toggle in close succession
@@ -77,12 +77,12 @@ func Wrap(body string) string
 
 - Construction: `app.newServices` creates the `*Reminder` with `reminder.New()`.
 - Per-message: `PrepareInput` prepares initial provider context once, sets
-  `contextPrepared`, attaches pending reminders and drains the reminder queue.
-  `ContextPrepared()` describes preparation, not successful delivery. The input
+  `prepared`, attaches pending reminders and drains the reminder queue.
+  `Prepared()` describes preparation, not successful delivery. The input
   queue retains prepared text when delivery is rejected.
 - Per-event: skill toggles / memory updates call `RequeueSystemReminders`
   to refresh provider-emitted reminders.
-- Once per conversation: `ResetConversation` clears `contextPrepared` and
+- Once per conversation: `ResetConversation` clears `prepared` and
   discards obsolete notices after `/clear` or compaction. `RestoreHistory`
   recognizes sourced provider markers in restored user messages on resume.
   `/clear` and `/resume` also discard notices belonging to the old conversation.

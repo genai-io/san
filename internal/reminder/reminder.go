@@ -58,10 +58,10 @@ type provider struct {
 //
 // All operations are safe for concurrent use.
 type Reminder struct {
-	mu              sync.Mutex
-	providers       []provider
-	pending         []pendingEntry
-	contextPrepared bool
+	mu        sync.Mutex
+	providers []provider
+	pending   []pendingEntry
+	prepared  bool
 }
 
 // pendingEntry pairs a wrapped <system-reminder> body with the ID of the

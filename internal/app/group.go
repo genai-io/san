@@ -357,7 +357,7 @@ func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
 		}
 		return m.deliverNotice(mainNotice{Display: line, Content: content})
 	}
-	if text != "" && m.services.Reminder.ContextPrepared() {
+	if text != "" && m.services.Reminder.Prepared() {
 		// Before that, the first message carries the whole roster instead.
 		m.services.Reminder.Enqueue(text)
 	}
@@ -429,7 +429,7 @@ func (m *model) releaseGroupOnSwitch() {
 	group.Release()
 	m.grp = groupState{polling: m.grp.polling}
 	m.conv.AddNotice(m.fitLines(fmt.Sprintf("Out of group %s: @%s stays with the previous session; /resume it to return", g, self.Name)))
-	if m.services.Reminder.ContextPrepared() { // otherwise no group context has been prepared
+	if m.services.Reminder.Prepared() { // otherwise no group context has been prepared
 		m.services.Reminder.Enqueue("This session is not in group " + g + group.NoSendMessage)
 	}
 }
@@ -539,7 +539,7 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		return "Could not join: " + err.Error()
 	}
 	m.reconcileMembership()
-	if m.services.Reminder.ContextPrepared() {
+	if m.services.Reminder.Prepared() {
 		// Initial context is already prepared; queue the new roster.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
@@ -569,7 +569,7 @@ func (m *model) renameMember(name, role string) string {
 	}
 	m.grp.blob = currentMembership() // renameSession's append persists it
 	_, now := group.Current()
-	if (now.Name != self.Name || now.Role != self.Role) && m.services.Reminder.ContextPrepared() {
+	if (now.Name != self.Name || now.Role != self.Role) && m.services.Reminder.Prepared() {
 		m.services.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now @%s — %s", g, now.Name, now.Role))
 	}
 	notes = append([]string{fmt.Sprintf("@%s in %s — %s", now.Name, g, now.Role)}, notes...)

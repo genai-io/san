@@ -209,7 +209,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	if !sess.Active() || len(sess.Messages()) != 1 || sess.Messages()[0].ID != seed[0].ID {
 		t.Fatal("failed reset lost the live conversation")
 	}
-	if m.pendingPluginRoot != "retained-plugin" || !m.services.Reminder.ContextPrepared() || !m.backgroundNoticesHeld {
+	if m.pendingPluginRoot != "retained-plugin" || !m.services.Reminder.Prepared() || !m.backgroundNoticesHeld {
 		t.Fatal("failed reset cleared conversation UI state")
 	}
 }

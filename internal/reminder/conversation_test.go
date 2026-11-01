@@ -17,7 +17,7 @@ func TestConversationContextLifecycle(t *testing.T) {
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return body })
 	s.Enqueue("hook context")
 	first := s.PrepareInput("first")
-	if !s.ContextPrepared() || !strings.Contains(first, body) || !strings.Contains(first, "hook context") {
+	if !s.Prepared() || !strings.Contains(first, body) || !strings.Contains(first, "hook context") {
 		t.Fatalf("first input = %q", first)
 	}
 	if got := s.PrepareInput("second"); got != "second" {
@@ -30,7 +30,7 @@ func TestConversationContextLifecycle(t *testing.T) {
 	}
 	s.Enqueue("obsolete notice")
 	s.ResetConversation()
-	if s.ContextPrepared() {
+	if s.Prepared() {
 		t.Fatal("reset retained context state")
 	}
 	body = "post compact skills"
@@ -55,8 +55,8 @@ func TestRestoreConversationContext(t *testing.T) {
 			s.Register(reminder.ProviderSkillsDirectory, func() string { return "fresh skills" })
 			s.PrepareInput("previous conversation")
 			s.RestoreHistory(tc.messages)
-			if s.ContextPrepared() != tc.want {
-				t.Fatalf("ContextPrepared = %v", s.ContextPrepared())
+			if s.Prepared() != tc.want {
+				t.Fatalf("Prepared = %v", s.Prepared())
 			}
 			if got := s.PrepareInput("next"); strings.Contains(got, "fresh skills") == tc.want {
 				t.Fatalf("restored input = %q", got)

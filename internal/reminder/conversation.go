@@ -2,15 +2,14 @@ package reminder
 
 import "github.com/genai-io/san/internal/core"
 
-// ContextPrepared reports whether initial provider context was prepared or restored.
-// Preparation attaches context to pending input; it does not confirm successful delivery.
-func (s *Reminder) ContextPrepared() bool {
+// Prepared reports whether initial reminders were prepared or restored, not delivery success.
+func (s *Reminder) Prepared() bool {
 	if s == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.contextPrepared
+	return s.prepared
 }
 
 // ResetConversation drops obsolete notices and rearms provider context after clear or compaction.
@@ -18,17 +17,17 @@ func (s *Reminder) ResetConversation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.discardPendingNoticesLocked()
-	s.contextPrepared = false
+	s.prepared = false
 }
 
 // RestoreHistory recognizes provider context in the active native conversation.
 func (s *Reminder) RestoreHistory(messages []core.ChatMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.contextPrepared = false
+	s.prepared = false
 	for _, msg := range messages {
 		if msg.Role == core.ChatUser && HasSystemReminder(msg.Content) {
-			s.contextPrepared = true
+			s.prepared = true
 			break
 		}
 	}
@@ -38,9 +37,9 @@ func (s *Reminder) RestoreHistory(messages []core.ChatMessage) {
 func (s *Reminder) PrepareInput(text string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.contextPrepared {
+	if !s.prepared {
 		s.requeueSystemRemindersLocked()
-		s.contextPrepared = true
+		s.prepared = true
 	}
 	text = AttachToContent(text, s.wrappedLocked())
 	s.pending = nil
