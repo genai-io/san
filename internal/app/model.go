@@ -65,14 +65,15 @@ type model struct {
 	suggestOwed bool
 	// drainedThisStep caps OnStepEnd to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
-	drainedThisStep bool
-	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
-	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)
-	conv            conv.Model           // Agent Outbox: conversation + output rendering
-	env             env                  // Shared app state: provider, session, permission, plan, config
-	services        services             // Domain service singletons, injected at construction
-	learnedStores   *learnedStoreContext // live cwd/settings source for /evolve inventories
-	gitBar          gitBarState          // optional local repository snapshot and poll generation
+	drainedThisStep   bool
+	selfLearnStarts   chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
+	systemInput       trigger.Model        // Source 3: system events (cron/hooks/watcher)
+	conv              conv.Model           // Agent Outbox: conversation + output rendering
+	env               env                  // Shared app state: provider, session, permission, plan, config
+	services          services             // Domain service singletons, injected at construction
+	learnedStores     *learnedStoreContext // live cwd/settings source for /evolve inventories
+	subscriptionUsage subscriptionUsageState
+	gitBar            gitBarState // optional local repository snapshot and poll generation
 
 	// welcomePending marks the startup splash as not yet frozen into scrollback.
 	// While set, the splash renders live above the input (visible from launch
@@ -212,6 +213,7 @@ func (m *model) Init() tea.Cmd {
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),
 		m.syncGitBar(),
+		m.syncSubscriptionUsage(),
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt

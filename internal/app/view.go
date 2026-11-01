@@ -542,6 +542,7 @@ func (m model) renderModeStatus() string {
 		ContextBudget:     budget,
 		ModelName:         modelName,
 		StatusMessage:     statusMessage,
+		SubscriptionUsage: m.subscriptionUsageLabel(),
 		ConversationCost:  m.env.ConversationCost,
 		Compressions:      m.env.Compressions,
 		ShowContextBar:    m.env.ShowContextBar,
