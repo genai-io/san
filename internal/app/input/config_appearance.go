@@ -129,7 +129,7 @@ type appearancePanel struct {
 	barBaseline          bool
 	gitBarBaseline       bool
 	thinkingBaseline     string
-	previewBaseline      int
+	bashPreviewBaseline  int
 	agentPreviewBaseline int
 
 	// saveErr holds the last failed persist so Render can surface it inline
@@ -149,7 +149,7 @@ func (p *appearancePanel) Enter() {
 	p.barBaseline = false
 	p.gitBarBaseline = false
 	p.thinkingBaseline = setting.DefaultThinkingDisplay
-	p.previewBaseline = setting.DefaultBashPreviewLines
+	p.bashPreviewBaseline = setting.DefaultBashPreviewLines
 	p.agentPreviewBaseline = setting.DefaultAgentPreviewLines
 	if p.settings != nil {
 		if data := p.settings.Snapshot(); data != nil {
@@ -159,7 +159,7 @@ func (p *appearancePanel) Enter() {
 			p.barBaseline = data.ShowContextBar()
 			p.gitBarBaseline = data.ShowGitBar()
 			p.thinkingBaseline = data.ThinkingDisplayMode()
-			p.previewBaseline = data.BashPreviewLineCount()
+			p.bashPreviewBaseline = data.BashPreviewLineCount()
 			p.agentPreviewBaseline = data.AgentPreviewLineCount()
 		}
 	}
@@ -256,7 +256,7 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 			p.saveErr = err
 			return nil, false
 		}
-		p.previewBaseline = opt.previewLines
+		p.bashPreviewBaseline = opt.previewLines
 		return func() tea.Msg { return BashPreviewSavedMsg{Lines: opt.previewLines} }, true
 	case kindAgentPreview:
 		if err := setting.SaveAgentPreviewLines(opt.previewLines); err != nil {
@@ -324,7 +324,7 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 	case kindThinkingDisplay:
 		return opt.thinkingDisplay == p.thinkingBaseline
 	case kindBashPreview:
-		return opt.previewLines == p.previewBaseline
+		return opt.previewLines == p.bashPreviewBaseline
 	case kindAgentPreview:
 		return opt.previewLines == p.agentPreviewBaseline
 	default:

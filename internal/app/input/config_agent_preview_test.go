@@ -60,7 +60,7 @@ func TestAppearanceAgentPreviewIndependentStepsAndSaves(t *testing.T) {
 	if msg, ok := cmd().(AgentPreviewSavedMsg); !ok || msg.Lines != 0 {
 		t.Fatalf("saved message = %#v", msg)
 	}
-	if p.Dirty() || p.options[bash].previewLines != seven || p.previewBaseline != seven {
+	if p.Dirty() || p.options[bash].previewLines != seven || p.bashPreviewBaseline != seven {
 		t.Fatal("Agent save changed Bash preference or retained dirty state")
 	}
 	saved, err := setting.NewLoader().LoadFile(filepath.Join(home, ".san", "settings.json"))
