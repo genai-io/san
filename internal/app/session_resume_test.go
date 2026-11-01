@@ -53,7 +53,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			sessionID: opened.ID(),
 			Setting:   setting.New(setting.NewData()),
-			Tracker:   todo.NewStore(), Reminder: reminder.NewService(),
+			Tracker:   todo.NewStore(), Reminder: reminder.NewManager(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.TranscriptPath()),

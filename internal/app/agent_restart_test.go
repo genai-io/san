@@ -162,7 +162,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()},
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewManager()},
 		conv:     conv.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
@@ -197,7 +197,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	defer close(release)
 	<-started
 	m := model{
-		services:              services{Agent: sess, Reminder: reminder.NewService()},
+		services:              services{Agent: sess, Reminder: reminder.NewManager()},
 		pendingPluginRoot:     "retained-plugin",
 		backgroundNoticesHeld: true,
 	}
@@ -215,7 +215,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 }
 
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewManager()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()

@@ -498,7 +498,7 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
 			initClearSessionTest(t, m.model)
 			m.services.Agent = &agent.Runtime{}
-			m.services.Reminder = reminder.NewService()
+			m.services.Reminder = reminder.NewManager()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}

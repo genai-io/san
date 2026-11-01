@@ -44,7 +44,7 @@ type services struct {
 	Plugin       *plugin.Registry
 	Agent        *agent.Runtime
 	Persona      *persona.Registry
-	Reminder     *reminder.Service
+	Reminder     *reminder.Manager
 
 	// SelfLearn groups the L1 self-learning state: the live per-session
 	// reviewer (nil when no arm is enabled — §3.1 zero-overhead guarantee)
@@ -112,7 +112,7 @@ func newServices() services {
 		Plugin:       plugin.Default(),
 		Agent:        agent.Default(),
 		Persona:      persona.Default(),
-		Reminder:     reminder.NewService(),
+		Reminder:     reminder.NewManager(),
 		SelfLearn:    SelfLearnServices{Indicator: NewSelfLearnIndicator(), Recent: NewRecentLearnLog()},
 	}
 }

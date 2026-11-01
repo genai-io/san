@@ -12,7 +12,7 @@ import (
 )
 
 func TestConversationContextLifecycle(t *testing.T) {
-	s := reminder.NewService()
+	s := reminder.NewManager()
 	body := "initial skills"
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return body })
 	s.Enqueue("hook context")
@@ -51,7 +51,7 @@ func TestRestoreConversationContext(t *testing.T) {
 		{"user", []core.ChatMessage{{Role: core.ChatUser, Content: reminder.WrapWithSource("skills", reminder.ProviderSkillsDirectory)}}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := reminder.NewService()
+			s := reminder.NewManager()
 			s.Register(reminder.ProviderSkillsDirectory, func() string { return "fresh skills" })
 			s.PrepareInput("previous conversation")
 			s.RestoreHistory(tc.messages)
@@ -66,7 +66,7 @@ func TestRestoreConversationContext(t *testing.T) {
 }
 
 func TestRejectedInputRetainsReminders(t *testing.T) {
-	s := reminder.NewService()
+	s := reminder.NewManager()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	s.Enqueue("first notice")
 	q := agent.InputQueue{{Message: core.UserMessage("question", nil), FromUser: true}}
@@ -95,7 +95,7 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 }
 
 func TestConcurrentInputPreparesContextOnce(t *testing.T) {
-	s := reminder.NewService()
+	s := reminder.NewManager()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	results := make(chan string, 20)
 	var wg sync.WaitGroup

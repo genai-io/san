@@ -29,7 +29,7 @@ why reminders are a separate channel from the system prompt.
 ## Contract
 
 This package has two contracts — one for sources (`Provider` interface)
-and one for the harness (concrete `*Service` struct).
+and one for the harness (concrete `*Manager` struct).
 
 ```go
 package reminder
@@ -43,16 +43,16 @@ type Provider interface {
 
 func NewProvider(id string, render func() string) Provider
 
-// Service holds the runtime state: registered providers + the
+// Manager holds the runtime state: registered providers + the
 // pending-reminders queue for the next user message. Concrete struct,
 // no interface.
-type Service struct { /* unexported */ }
+type Manager struct { /* unexported */ }
 
-func NewService() *Service
-func (s *Service) Register(p Provider)
-func (s *Service) Unregister(id string)
-func (s *Service) Enqueue(body string)
-func (s *Service) RequeueSystemReminders()
+func NewManager() *Manager
+func (s *Manager) Register(p Provider)
+func (s *Manager) Unregister(id string)
+func (s *Manager) Enqueue(body string)
+func (s *Manager) RequeueSystemReminders()
 // ... and a few drain/peek accessors for the harness
 
 // Standard provider IDs:
@@ -74,8 +74,8 @@ This package is the **best example** of the pattern this codebase should
 move toward:
 
 - `Provider` is a 2-method interface (`ID`, `Render`) — perfect Go style.
-- `Service` is a **concrete struct**, not a `Service` interface.
-- No singleton: callers (`internal/app`) hold a `*Service` directly.
+- `Manager` is a **concrete struct**, not a `Manager` interface.
+- No singleton: callers (`internal/app`) hold a `*Manager` directly.
 - `NewProvider` is a small helper for "just give me a closure-backed
   provider" — no need to declare a new type per source.
 
@@ -88,7 +88,7 @@ A handful of nits:
 
 ## Internals
 
-- `Service` holds `providers []Provider` + a `pending []pendingEntry`
+- `Manager` holds `providers []Provider` + a `pending []pendingEntry`
   queue. Mutex-protected.
 - `RequeueSystemReminders` is idempotent across repeated calls — it drops
   prior pending entries from the same provider before re-emitting, so
@@ -100,7 +100,7 @@ A handful of nits:
 
 ## Lifecycle
 
-- Construction: `app.Initialize` creates the `*Service` and passes it
+- Construction: `app.Initialize` creates the `*Manager` and passes it
   to the harness for the conversation builder.
 - Per-message: when the user submits, the harness calls
   `DrainPending()` and wraps the bodies into the outgoing user message.

@@ -3,7 +3,7 @@ package reminder
 import "github.com/genai-io/san/internal/core"
 
 // ContextSent reports whether provider context has been prepared in this conversation.
-func (s *Service) ContextSent() bool {
+func (s *Manager) ContextSent() bool {
 	if s == nil {
 		return false
 	}
@@ -13,7 +13,7 @@ func (s *Service) ContextSent() bool {
 }
 
 // ResetConversation drops obsolete notices and rearms provider context after clear or compaction.
-func (s *Service) ResetConversation() {
+func (s *Manager) ResetConversation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.discardPendingNoticesLocked()
@@ -21,7 +21,7 @@ func (s *Service) ResetConversation() {
 }
 
 // RestoreHistory recognizes provider context in the active native conversation.
-func (s *Service) RestoreHistory(messages []core.ChatMessage) {
+func (s *Manager) RestoreHistory(messages []core.ChatMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.contextSent = false
@@ -34,7 +34,7 @@ func (s *Service) RestoreHistory(messages []core.ChatMessage) {
 }
 
 // PrepareInput emits initial context once, then drains notices; rejected input must retain the returned text.
-func (s *Service) PrepareInput(text string) string {
+func (s *Manager) PrepareInput(text string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.contextSent {
