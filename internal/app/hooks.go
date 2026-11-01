@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -128,14 +129,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 	ctx, cancel := context.WithTimeout(ctx, m.uiHookBudget())
 	defer cancel()
 
-	outcome := m.services.Hook.Execute(ctx, hook.UserPromptSubmit, hook.HookInput{Prompt: prompt})
-	// UserPromptSubmit hooks may return additionalContext to inject into the
-	// next turn. Enqueue as a <system-reminder> so it rides on the user
-	// message that's about to go out (which is the same prompt being checked).
-	if outcome.AdditionalContext != "" {
-		m.services.Reminder.Enqueue(outcome.AdditionalContext)
-	}
-	return outcome.ShouldBlock, outcome.BlockReason
+	return agent.CheckPrompt(ctx, prompt, m.services.Hook, m.services.Reminder)
 }
 
 func (m *model) switchProvider(p llm.Provider) {

@@ -33,8 +33,13 @@ External client ── ACP ──────┘
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
 - `internal/reminder`: reminders and their conversation state; TUI retains lifecycle gates.
-- Remaining input and turn lifecycle: pending. Hooks, compaction, terminal cleanup
-  and permission policy remain in their current owners.
+- `internal/agent.CheckPrompt`: UserPromptSubmit decisions and additional-context
+  staging through the existing hook engine and reminder owner. Context stays pending
+  even on a block; delivery, not admission, prepares reminders. TUI retains its
+  fail-open hook budget, exit/slash ordering and ungated midstream queue delivery.
+  Native policy and TUI prompt-admission tests cover this boundary.
+- Remaining input and turn lifecycle: pending. Other hooks, compaction, terminal
+  cleanup and permission policy remain in their current owners.
 - ACP adapter: pending; capability negotiation, projections and extensions,
   without duplicate authorization, persistence or task scheduling.
 

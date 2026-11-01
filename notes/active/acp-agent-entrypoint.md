@@ -24,6 +24,11 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     matching consumer-finalization fences, enforced by delivery itself. Native
     queue Enter still validates the selected item; compaction and hooks stay in app.
     Covered by agent admission tests and native cancellation/queue integration tests.
+  - [x] Prompt admission: `agent.CheckPrompt` owns UserPromptSubmit decisions and
+    additional-context staging using the existing hook engine and reminder owner.
+    TUI keeps its fail-open hook budget and admission call sites; blocked context
+    remains pending for later delivery. Midstream delivery is not newly gated.
+    Covered by native policy and TUI dispatch/queue tests; no ACP adapter yet.
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.
