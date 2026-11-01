@@ -85,7 +85,8 @@ type RenderContext struct {
 
 	// waitingAtTail keeps transient waiting chrome after settled notices without
 	// moving the owning assistant's reasoning or response text.
-	waitingAtTail bool
+	waitingAtTail     bool
+	toolsAfterNotices bool
 }
 
 // inlinedToolResults precomputes which ToolResult messages should be
@@ -310,13 +311,14 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 	}
 	base := RenderAssistantMessage(params)
 
-	if len(msg.ToolCalls) == 0 {
+	if len(msg.ToolCalls) == 0 || p.toolsAfterNotices {
 		return base
 	}
+	return base + renderMessageTools(p, msg, idx)
+}
 
+func renderMessageTools(p RenderContext, msg core.ChatMessage, idx int) string {
 	var sb strings.Builder
-	sb.WriteString(base)
-
 	if msg.Content != "" {
 		sb.WriteString("\n")
 	}
@@ -421,9 +423,60 @@ func activeWorkerCalls(p RenderContext) []activeWorkerCall {
 	return calls
 }
 
+// settledNotice includes persisted agent envelopes, not ordinary user turns.
+func settledNotice(msg core.ChatMessage) bool {
+	return msg.Role == core.ChatNotice || msg.Role == core.ChatUser && msg.ToolResult == nil && IsAgentEnvelope(msg.Content)
+}
+
+// Only live tool chrome yields to following notices; transcript text stays put.
+func renderActiveMessageRange(p RenderContext) string {
+	var sb strings.Builder
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		if p.InlinedResults.IsResultInlined(i) {
+			continue
+		}
+		msg := p.Messages[i]
+		pending := false
+		for _, call := range msg.ToolCalls {
+			if _, done := p.InlinedResults.resultsFor(i)[call.ID]; done {
+				continue
+			}
+			for _, running := range p.PendingCalls {
+				if call.ID == running.ID {
+					pending = true
+				}
+			}
+		}
+		end := i + 1
+		hasNotice := false
+		if pending {
+			for end < len(p.Messages) && (settledNotice(p.Messages[end]) || p.InlinedResults.ownerOf(end) == i) {
+				hasNotice = hasNotice || settledNotice(p.Messages[end])
+				end++
+			}
+		}
+		live := p.StreamActive && msg.ID != "" && msg.ID == p.StreamMessageID
+		q := p
+		q.toolsAfterNotices = hasNotice
+		sb.WriteString(RenderMessageAt(q, i, live))
+		if q.toolsAfterNotices {
+			for j := i + 1; j < end; j++ {
+				if !p.InlinedResults.IsResultInlined(j) {
+					sb.WriteString(RenderMessageAt(p, j, false))
+				}
+			}
+			sb.WriteString("\n")
+			sb.WriteString(renderMessageTools(p, msg, i))
+			i = end - 1
+		}
+	}
+	sb.WriteString(renderPendingToolSpinnerFromParams(p, p.CommittedCount < len(p.Messages)))
+	return sb.String()
+}
+
 func latestActiveNoticeIndex(p RenderContext) int {
 	for i := len(p.Messages) - 1; i >= p.CommittedCount; i-- {
-		if p.Messages[i].Role == core.ChatNotice {
+		if settledNotice(p.Messages[i]) {
 			return i
 		}
 	}
@@ -493,7 +546,7 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 			rows = append(rows, fmt.Sprintf("  … %d %s", len(headers)-visible, omittedLabel))
 		}
 		if notice != "" {
-			rows = append(rows, notice)
+			rows = append([]string{notice}, rows...)
 		}
 		return boundedWorkerRows(rows, p.Width), true
 	}
@@ -540,7 +593,7 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 		rows = append(rows, fmt.Sprintf("  … %d detail rows omitted", total-shown))
 	}
 	if notice != "" {
-		rows = append(rows, notice)
+		rows = append([]string{notice}, rows...)
 	}
 	return boundedWorkerRows(rows, p.Width), true
 }
@@ -585,7 +638,7 @@ func RenderActiveBody(p RenderContext) string {
 			p.waitingAtTail = true
 		}
 	}
-	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
+	content := renderActiveMessageRange(p)
 	if p.StreamActive && p.Inferring {
 		return strings.TrimRight(content, "\n")
 	}
