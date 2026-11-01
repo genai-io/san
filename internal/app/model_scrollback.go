@@ -106,6 +106,7 @@ type flushState struct {
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
 // the rendered blocks back for handleFlushResult to commit to scrollback.
 type flushResultMsg struct {
+	width                int // terminal width used by the background render
 	msgID                string
 	index                int
 	thinkingCommittedLen int
@@ -208,6 +209,7 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 			printed = "\n" + strings.Join(blocks, "\n\n")
 		}
 		return flushResultMsg{
+			width:                snap.width,
 			msgID:                snap.msgID,
 			index:                snap.index,
 			thinkingCommittedLen: snap.thinkingEnd,
@@ -231,6 +233,17 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 		msg.index < m.conv.CommittedCount ||
 		m.conv.Messages[msg.index].ID != msg.msgID ||
 		m.conv.Messages[msg.index].Role != core.ChatAssistant {
+		return nil
+	}
+
+	// A resize can overtake the off-thread renderer. Rebuild from source before
+	// advancing offsets: wrapping an old table's rendered cells cannot relayout
+	// its columns, and would freeze the wrong hard breaks into retained history.
+	if msg.width != m.env.Width {
+		cmds := m.FlushStreamingBlocks()
+		if len(cmds) > 0 {
+			return cmds[0]
+		}
 		return nil
 	}
 
@@ -731,8 +744,8 @@ func isPadding(c *uv.Cell) bool {
 		c.Style.Bg == nil && c.Style.UnderlineColor == nil && c.Style.Underline == uv.UnderlineNone
 }
 
-// scrollbackPhysicalLines decomposes content exactly as Bubble Tea's
-// insertAbove accounts for it: ANSI escapes are zero-width, grapheme clusters
+// scrollbackPhysicalLines decomposes content into explicit terminal rows before
+// handing it to Bubble Tea: ANSI escapes are zero-width, grapheme clusters
 // retain their terminal width, soft wraps consume rows, and a trailing newline
 // creates a final blank row.
 func scrollbackPhysicalLines(content string, width int) []uv.Line {
@@ -747,7 +760,10 @@ func scrollbackPhysicalLines(content string, width int) []uv.Line {
 	for line := range strings.SplitSeq(content, "\n") {
 		lineWidth := ansi.StringWidth(line)
 		if width > 0 && lineWidth > width {
-			height += lineWidth / width
+			// Column division overcounts exact multiples and undercounts wide
+			// glyphs at odd widths (a two-cell glyph cannot fill the last cell).
+			// Allocate for the actual grapheme breaks or Draw truncates the tail.
+			height += strings.Count(ansi.Hardwrap(line, width, true), "\n")
 		}
 		if width <= 0 {
 			bufferWidth = max(bufferWidth, lineWidth)
