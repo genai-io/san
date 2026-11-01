@@ -500,7 +500,7 @@ scrollback。`go.mod` 中的替代依赖固定到
    Esc 按下                  在 ThinkAct/streamInfer     HTTP 流中，
    ──▶ handleStreamCancel    turn = &turnHandle{c,d}     EmitText(ctx, ch, …)
        │
-       │ 1. Agent.CancelTurn()
+       │ 1. Agent.Cancel()
        │      ├─ interruptPending.Store(true)
        │      ├─ h := turn.Load()（持有 turnMu）
        │      ├─ h.cancel()  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─▶  turnCtx.Done 触发
@@ -585,6 +585,6 @@ prompt 前缀（prompt cache 命中更稳）。
 | Conv 事件路由 | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
 | `agent.Send` / outbox 轮询 | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | 流式中断处理 | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
-| `CancelTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
-| `turn` / `CancelTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
+| `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | 底部 UI 组合 | [`internal/app/view.go`](../../internal/app/view.go) |

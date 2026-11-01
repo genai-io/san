@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -25,7 +26,7 @@ import (
 )
 
 // Run routes to either print mode or interactive TUI.
-func Run(opts setting.RunOptions) error {
+func Run(opts setting.RunOptions) (runErr error) {
 	var m *model
 	// Services belong to the application, not an individual agent turn. Keep
 	// teardown here so print-mode success and errors clean up too, while the
@@ -34,7 +35,12 @@ func Run(opts setting.RunOptions) error {
 		tasks := task.Default()
 		if m != nil {
 			m.userInput.Session.Selector.Cancel()
-			m.StopAgentRuntime()
+			if err := m.StopAgentRuntime(); err != nil {
+				// The live run still owns its services and transcript writer.
+				runErr = errors.Join(runErr, err)
+				return
+			}
+			m.closeInteractions()
 			tasks = m.services.Task
 		}
 		if tasks != nil {
@@ -84,7 +90,6 @@ func Run(opts setting.RunOptions) error {
 
 	m.flush.output = &terminalOutput{writer: os.Stdout}
 	finalModel, err := tea.NewProgram(m, tea.WithOutput(m.flush.output)).Run()
-	m.closeInteractions()
 	if outputErr := m.flush.output.Flush(); err == nil {
 		err = outputErr
 	}

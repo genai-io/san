@@ -31,10 +31,9 @@ package agent
 type Runtime struct { /* internal fields */ }
 
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
-func (s *Runtime) Stop()
-func (s *Runtime) StopContext(ctx context.Context) error
-func (s *Runtime) CancelTurn() *core.TurnFinalization
-func (s *Runtime) Reset()
+func (s *Runtime) Stop(ctx context.Context) error
+func (s *Runtime) Cancel() *core.TurnFinalization
+func (s *Runtime) Reset(ctx context.Context) error
 func (s *Runtime) Messages() []core.Message
 func (s *Runtime) SetMessages(messages []core.Message)
 func (s *Runtime) Active() bool
@@ -69,11 +68,14 @@ func Default() *Runtime
   singleton.
 - Per-run: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
-- Termination: `StopContext` cancels and waits for the exact run generation;
-  `Stop` applies a bounded default deadline and logs a run that outlives it.
+- Termination: `Stop(ctx)` cancels and waits for the exact run generation.
+  The caller owns the deadline; the TUI allows two seconds. A deadline error
+  retains the run and history, and prevents replacement or successful teardown.
+  `Reset(ctx)` clears history only after successful shutdown, using the same context.
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
-- Turn cancellation: `CancelTurn()` immediately cancels and captures one exchange.
+- Turn cancellation: `Cancel()` immediately cancels and captures one exchange,
+  keeping the runtime active for later input.
   Its receipt offers `ExecutionDone()` for execution-only completion and `Wait(ctx)`
   for execution plus consumer cleanup and essential message/inference/state writes.
   Neither prevents successor execution. Nil means no unfinished exchange was captured:

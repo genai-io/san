@@ -6,12 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -117,23 +113,11 @@ func (s *Runtime) execute(run *run, ctx context.Context) {
 	s.mu.Unlock()
 }
 
-const runtimeStopTimeout = 2 * time.Second
-
-// Stop performs a bounded graceful shutdown; a run that outlives the deadline
-// is logged and stays active. Callers that need a different deadline use
-// StopContext.
-func (s *Runtime) Stop() {
-	ctx, cancel := context.WithTimeout(context.Background(), runtimeStopTimeout)
-	defer cancel()
-	if err := s.StopContext(ctx); err != nil {
-		log.Logger().Warn("agent session did not stop before deadline", zap.Error(err))
-	}
-}
-
-// StopContext cancels the active run and waits for that exact generation to
+// Stop cancels the whole active run and waits for that exact generation to
 // finish. The run remains active until Run returns, so a concurrent Start can
-// never overlap the previous agent's teardown.
-func (s *Runtime) StopContext(ctx context.Context) error {
+// never overlap the previous agent's teardown. The caller owns the deadline;
+// on failure the run and conversation remain available for a later stop.
+func (s *Runtime) Stop(ctx context.Context) error {
 	s.mu.RLock()
 	run := s.run
 	s.mu.RUnlock()
@@ -188,14 +172,18 @@ func (s *Runtime) SetMessages(messages []core.Message) {
 }
 
 // Reset stops the run and discards its conversation once shutdown completes.
-func (s *Runtime) Reset() {
-	s.Stop()
+func (s *Runtime) Reset(ctx context.Context) error {
+	if err := s.Stop(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.run == nil {
-		s.messages = nil
-		s.outbox = nil
+	if s.run != nil {
+		return fmt.Errorf("agent session restarted during reset")
 	}
+	s.messages = nil
+	s.outbox = nil
+	return nil
 }
 
 // Send delivers a message to the active agent. Callers create the Message once
@@ -241,16 +229,17 @@ func (s *Runtime) Compact(summary string) bool {
 	}
 }
 
-// CancelTurn requests cancellation synchronously without waiting for execution or
-// the event consumer. The receipt stays bound to the captured turn across runtime
-// replacement; nil means no runtime or no unfinished exchange was captured.
-func (s *Runtime) CancelTurn() *core.TurnFinalization {
+// Cancel cancels only the current turn, keeping the runtime active for later input.
+// It returns without waiting for execution or the event consumer. The receipt stays
+// bound to the captured turn across runtime replacement; nil means no runtime or
+// no unfinished exchange was captured.
+func (s *Runtime) Cancel() *core.TurnFinalization {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.run == nil {
 		return nil
 	}
-	return s.run.agent.CancelTurn()
+	return s.run.agent.Cancel()
 }
 
 func (s *Runtime) Outbox() <-chan core.Event {

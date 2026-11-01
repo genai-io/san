@@ -166,7 +166,7 @@ func (a *agent) Run(ctx context.Context) error {
 					return nil
 				}
 				// Turn-only interrupt: parent ctx still alive, the turn's ctx
-				// was cancelled by CancelTurn. Just bail back to
+				// was cancelled by Cancel. Just bail back to
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
 				// left in the conversation.
 				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
@@ -212,10 +212,10 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 	return result, err, false
 }
 
-// CancelTurn cancels the captured exchange without ending Run. Between turns it
+// Cancel cancels the captured exchange without ending Run. Between turns it
 // latches cancellation for the next inner-loop iteration and captures any receipt
 // still awaiting terminal handling. Nil means no unfinished exchange was captured.
-func (a *agent) CancelTurn() *TurnFinalization {
+func (a *agent) Cancel() *TurnFinalization {
 	a.turnMu.Lock()
 	defer a.turnMu.Unlock()
 	a.appendedAtInterrupt.Store(a.appended.Load())

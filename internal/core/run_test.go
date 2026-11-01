@@ -86,7 +86,7 @@ func released(release <-chan struct{}) aitest.Turn {
 	}
 }
 
-func TestCancelTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
+func TestCancelReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	release := make(chan struct{}, 4)
 	llm := aitest.Always(released(release))
 	ag := NewAgent(Config{
@@ -116,14 +116,14 @@ func TestCancelTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 		return ag.(*agent).turn.Load() != nil
 	})
 
-	done := ag.CancelTurn().ExecutionDone()
+	done := ag.Cancel().ExecutionDone()
 
 	// Completion observes this ThinkAct only, not mailbox/event drain or an
 	// exclusive right to mutate shared agent state.
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("CancelTurn done channel did not close")
+		t.Fatal("Cancel done channel did not close")
 	}
 
 	// Resume by sending a second message and releasing the LLM. The
@@ -173,7 +173,7 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 	}()
 
 	// No turn in flight, so only the latch can carry this interrupt.
-	done := ag.CancelTurn().ExecutionDone()
+	done := ag.Cancel().ExecutionDone()
 	select {
 	case <-done:
 	default:
@@ -196,7 +196,7 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 }
 
 // TestIdleInterruptDoesNotEatTheNextMessage pins the other half of the latch
-// rule. CancelTurn latches unconditionally, so an Esc landing while
+// rule. Cancel latches unconditionally, so an Esc landing while
 // the agent sits idle in waitForInput left the latch set with no turn to
 // consume it — and the next user message was dropped without inferring.
 func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
@@ -221,7 +221,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	go func() { runDone <- ag.Run(ctx) }()
 
 	// Interrupt while the agent is parked in waitForInput.
-	<-ag.CancelTurn().ExecutionDone()
+	<-ag.Cancel().ExecutionDone()
 
 	ag.Append(UserMessage("answer me", nil))
 
@@ -260,7 +260,7 @@ func TestInterruptHoldsMessagesQueuedDuringTheTurn(t *testing.T) {
 	ag.Append(UserMessage("first", nil))
 	waitFor(t, "the first inference to start", func() bool { return llm.Calls() == 1 })
 	ag.Append(UserMessage("queued mid-turn", nil))
-	<-ag.CancelTurn().ExecutionDone()
+	<-ag.Cancel().ExecutionDone()
 
 	time.Sleep(100 * time.Millisecond)
 	if n := llm.Calls(); n != 1 {

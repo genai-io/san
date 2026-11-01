@@ -86,8 +86,8 @@ type SlashCommandEnv struct {
 	ReloadAfterPluginChange func() error
 	AppendSessionState      func() error
 	ReconfigureAgentTool    func()
-	StopAgentRuntime        func()
-	ResetAgentRuntime       func()
+	StopAgentRuntime        func() error
+	ResetAgentRuntime       func() error
 	ClearSession            func() error
 	ClearScrollback         func(tea.Cmd) tea.Cmd
 	FireSessionEnd          func(reason string)
@@ -269,7 +269,9 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 	if cmdName != "exit" && cmdName != "quit" {
 		return "", nil, false
 	}
-	c.env.StopAgentRuntime()
+	if err := c.env.StopAgentRuntime(); err != nil {
+		return "Cannot quit yet: " + err.Error(), nil, true
+	}
 	c.env.Conversation.Stream.Stop()
 	c.env.FireSessionEnd("prompt_input_exit")
 	return "", tea.Quit, true
@@ -337,9 +339,8 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 		if err := c.env.ClearSession(); err != nil {
 			return "", nil, err
 		}
-	} else {
-		c.env.ResetAgentRuntime()
-
+	} else if err := c.env.ResetAgentRuntime(); err != nil {
+		return "", nil, err
 	}
 	c.env.Conversation.Stream.Stop()
 	c.env.Tool.Reset()

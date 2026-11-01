@@ -545,7 +545,9 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 			m.autoMemory() == m.agentAutoMemory {
 			return nil, nil
 		}
-		m.StopAgentRuntime()
+		if err := m.StopAgentRuntime(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Rebuild the subagent executor alongside the main agent so it inherits the
@@ -730,14 +732,27 @@ func (m *model) wireReminderProviders() {
 	})
 }
 
-func (m *model) StopAgentRuntime() {
-	m.services.Agent.Stop()
+const agentStopTimeout = 2 * time.Second
+
+func (m *model) StopAgentRuntime() error {
+	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
+	defer cancel()
+	if err := m.services.Agent.Stop(ctx); err != nil {
+		log.Logger().Warn("agent runtime shutdown incomplete", zap.Error(err))
+		return fmt.Errorf("stop agent runtime: %w", err)
+	}
 	m.teardownSelfLearn()
+	return nil
 }
 
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
-func (m *model) ResetAgentRuntime() {
-	m.services.Agent.Reset()
+func (m *model) ResetAgentRuntime() error {
+	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
+	defer cancel()
+	if err := m.services.Agent.Reset(ctx); err != nil {
+		log.Logger().Warn("agent runtime reset incomplete", zap.Error(err))
+		return fmt.Errorf("reset agent runtime: %w", err)
+	}
 	m.cancellingTurn = nil
 	m.pendingPluginRoot = ""
 	m.backgroundNoticesHeld = false
@@ -752,6 +767,7 @@ func (m *model) ResetAgentRuntime() {
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.
 	m.teardownSelfLearn()
+	return nil
 }
 
 // ============================================================

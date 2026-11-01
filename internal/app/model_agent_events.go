@@ -201,7 +201,10 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 	}
 	m.pruneInteractions()
 	commitCmds := m.CommitMessages()
-	m.StopAgentRuntime()
+	if stopErr := m.StopAgentRuntime(); stopErr != nil {
+		m.conv.AddNotice(stopErr.Error())
+		return tea.Batch(append(commitCmds, m.CommitMessages()...)...)
+	}
 	// An unattended run must survive a failed turn: schedule the copilot to look
 	// at the failure and decide whether the mission can resume. No-op outside
 	// AutoPilot, and it still hands back when the error needs a human.

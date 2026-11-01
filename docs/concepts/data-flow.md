@@ -532,7 +532,7 @@ follow-up user message resumes the same session through `Append`.
    Esc key                   in ThinkAct/streamInfer     mid HTTP stream,
    ──▶ handleStreamCancel    turn = &turnHandle{c,d}     EmitText(ctx, ch, …)
        │
-       │ 1. Agent.CancelTurn()
+       │ 1. Agent.Cancel()
        │      ├─ interruptPending.Store(true)
        │      ├─ h := turn.Load() (under turnMu)
        │      ├─ h.cancel()  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─▶  turnCtx.Done() fires
@@ -623,6 +623,6 @@ prompt cache behaviour).
 | Conv event router | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
 | `agent.Send` / outbox poll | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | Cancel mid-stream | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
-| `CancelTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
-| `turn` / `CancelTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
+| `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | Bottom UI compose | [`internal/app/view.go`](../../internal/app/view.go) |

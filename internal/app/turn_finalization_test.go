@@ -103,7 +103,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			if m.userInput.Queue.Len() != 1 || llm.Calls() != 1 {
 				t.Fatal("cancel released queued input before terminal cleanup")
 			}
-			receipt := m.services.Agent.CancelTurn()
+			receipt := m.services.Agent.Cancel()
 			if receipt == nil {
 				t.Fatal("missing receipt")
 			}

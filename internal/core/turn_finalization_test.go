@@ -38,7 +38,7 @@ func TestTurnFinalizationExecutionDone(t *testing.T) {
 	}
 }
 
-func TestCancelTurnAcrossPublication(t *testing.T) {
+func TestCancelAcrossPublication(t *testing.T) {
 	for range 100 {
 		ag := NewAgent(Config{Client: testClient(aitest.Always(aitest.Hangs())), System: NewSystem(), Tools: NewTools(), OutboxBuf: -1}).(*agent)
 		previousDone := make(chan struct{})
@@ -49,7 +49,7 @@ func TestCancelTurnAcrossPublication(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		start := make(chan struct{})
 		captured := make(chan *TurnFinalization, 1)
-		go func() { <-start; captured <- ag.CancelTurn() }()
+		go func() { <-start; captured <- ag.Cancel() }()
 		close(start)
 		result, _, interrupted := ag.runOneTurn(ctx)
 		receipt := <-captured
@@ -99,7 +99,7 @@ func TestTurnFinalizationRequiresExecutionAndHandling(t *testing.T) {
 	}
 }
 
-func TestCancelTurnFinalizationExactEvent(t *testing.T) {
+func TestCancelFinalizationExactEvent(t *testing.T) {
 	llm := aitest.Always(aitest.Hangs())
 	ag := NewAgent(Config{ID: "test", Client: testClient(llm), System: NewSystem(), Tools: NewTools()})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -116,8 +116,8 @@ func TestCancelTurnFinalizationExactEvent(t *testing.T) {
 	}()
 	ag.Append(UserMessage("first", nil))
 	waitFor(t, "first inference", func() bool { return llm.Calls() == 1 })
-	first := ag.CancelTurn()
-	if first == nil || ag.CancelTurn() != first {
+	first := ag.Cancel()
+	if first == nil || ag.Cancel() != first {
 		t.Fatal("repeated cancel changed receipt")
 	}
 	var end Result
@@ -136,7 +136,7 @@ func TestCancelTurnFinalizationExactEvent(t *testing.T) {
 	}
 	ag.Append(UserMessage("second", nil))
 	waitFor(t, "second inference", func() bool { return llm.Calls() == 2 })
-	second := ag.CancelTurn()
+	second := ag.Cancel()
 	if second == first {
 		t.Fatal("successor reused receipt")
 	}
@@ -161,7 +161,7 @@ func TestCancelTurnFinalizationExactEvent(t *testing.T) {
 	<-runDone
 }
 
-func TestCancelTurnFinalizationWaitsForProducerWrite(t *testing.T) {
+func TestCancelFinalizationWaitsForProducerWrite(t *testing.T) {
 	llm := aitest.Always(aitest.Hangs())
 	writing, release := make(chan struct{}), make(chan struct{})
 	writeErr := errors.New("native record write failed")
@@ -185,7 +185,7 @@ func TestCancelTurnFinalizationWaitsForProducerWrite(t *testing.T) {
 	}()
 	ag.Append(UserMessage("first", nil))
 	waitFor(t, "inference", func() bool { return llm.Calls() == 1 })
-	f := ag.CancelTurn()
+	f := ag.Cancel()
 	select {
 	case <-writing:
 	case <-ctx.Done():
@@ -213,7 +213,7 @@ func TestNaturalRunShutdownReleasesUnacknowledgedReceipt(t *testing.T) {
 			go func() { done <- ag.Run(context.Background()) }()
 			ag.Append(UserMessage("work", nil))
 			waitFor(t, "inference", func() bool { return llm.Calls() == 1 })
-			receipt := ag.CancelTurn()
+			receipt := ag.Cancel()
 			if closeInbox {
 				close(ag.inbox)
 			} else {
@@ -244,7 +244,7 @@ func TestCancelAfterNaturalCompletionCapturesSameReceipt(t *testing.T) {
 	ag.Append(UserMessage("work", nil))
 	for ev := range ag.Outbox() {
 		if end, ok := ev.(TurnEnded); ok {
-			f := ag.CancelTurn()
+			f := ag.Cancel()
 			if f != end.Result.Finalization {
 				t.Fatal("wrong receipt after execution")
 			}

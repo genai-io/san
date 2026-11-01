@@ -40,7 +40,7 @@ type Agent interface {
     Append(msg Message)       // queue a message; any goroutine, never blocks
     ThinkAct(ctx context.Context) (*Result, error)
     Run(ctx context.Context) error
-    CancelTurn() *TurnFinalization
+    Cancel() *TurnFinalization
 }
 
 func NewAgent(cfg Config) Agent  // returns interface — see Note below

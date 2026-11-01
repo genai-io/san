@@ -158,9 +158,8 @@ func (m *model) loadSessionByID(id string) error {
 	}
 
 	// Finish pending writes before reading, including a resume of this same ID.
-	m.StopAgentRuntime()
-	if m.services.Agent.Active() {
-		return fmt.Errorf("previous agent is still stopping")
+	if err := m.StopAgentRuntime(); err != nil {
+		return err
 	}
 	if m.workerMu != nil {
 		m.workerMu.Lock()
@@ -300,9 +299,8 @@ func (m *model) forkSession() (string, error) {
 	if m.sessionID() == "" {
 		return "", fmt.Errorf("no active session to fork")
 	}
-	m.StopAgentRuntime()
-	if m.services.Agent.Active() {
-		return "", fmt.Errorf("agent is still stopping")
+	if err := m.StopAgentRuntime(); err != nil {
+		return "", err
 	}
 	if m.workerMu != nil {
 		m.workerMu.Lock()
@@ -338,9 +336,8 @@ func (m *model) renameSession(name, role string) (string, error) {
 
 // clearSession starts a fresh durable identity after retiring the previous writer.
 func (m *model) clearSession() error {
-	m.ResetAgentRuntime()
-	if m.services.Agent.Active() {
-		return fmt.Errorf("agent is still stopping")
+	if err := m.ResetAgentRuntime(); err != nil {
+		return err
 	}
 	if m.workerMu != nil {
 		m.workerMu.Lock()

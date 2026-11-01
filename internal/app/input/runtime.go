@@ -16,7 +16,9 @@ type OverlayDeps struct {
 	CommitMessages    func() []tea.Cmd
 	CommitAllMessages func() []tea.Cmd
 
-	SwitchProvider          func(llm.Provider)
+	// SwitchProvider stops the runtime before committing selection state, then
+	// installs and configures the provider using the committed model.
+	SwitchProvider          func(llm.Provider, func() error) error
 	SetCurrentModel         func(*llm.CurrentModelInfo)
 	ReloadModelStore        func()
 	ClearCachedInstructions func()

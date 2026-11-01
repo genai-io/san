@@ -68,7 +68,11 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 	m.services.Agent.SetMessages(history.Messages)
 	m.conv.Messages = history.ChatRows()
 	t.Cleanup(func() { _ = m.services.Session.Close() })
-	t.Cleanup(m.StopAgentRuntime)
+	t.Cleanup(func() {
+		if err := m.StopAgentRuntime(); err != nil {
+			t.Error(err)
+		}
+	})
 	return m, store
 }
 

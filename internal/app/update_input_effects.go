@@ -25,7 +25,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.queueContinuation = nil
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
-	receipt := m.services.Agent.CancelTurn()
+	receipt := m.services.Agent.Cancel()
 	outbox := m.services.Agent.Outbox()
 	m.pruneInteractions()
 	m.cancelPendingToolCalls()
@@ -69,7 +69,10 @@ func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 }
 
 func (m *model) QuitWithCancel() (tea.Cmd, bool) {
-	m.services.Agent.Stop()
+	if err := m.StopAgentRuntime(); err != nil {
+		m.conv.AddNotice("Cannot quit yet: " + err.Error())
+		return tea.Batch(m.CommitMessages()...), true
+	}
 	m.conv.Stream.Stop()
 	m.FireSessionEnd("prompt_input_exit")
 	// Index flush happens once at the post-Run teardown seam (see run.go), the

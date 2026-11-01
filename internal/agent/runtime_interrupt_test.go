@@ -7,7 +7,7 @@ import (
 
 func TestRuntimeCancelInactive(t *testing.T) {
 	runtime := &Runtime{}
-	receipt := runtime.CancelTurn()
+	receipt := runtime.Cancel()
 	if receipt != nil {
 		t.Fatal("inactive runtime captured a turn")
 	}

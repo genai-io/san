@@ -475,7 +475,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// leave the toggle pending; ensureAgentRuntime will see the updated
 		// store the next time it actually rebuilds.
 		if m.services.Agent.Active() && !m.conv.Stream.Active {
-			m.StopAgentRuntime()
+			if err := m.StopAgentRuntime(); err != nil {
+				m.conv.AddNotice(err.Error())
+				return m, tea.Batch(m.CommitMessages()...)
+			}
 		}
 		return m, nil
 	case turnFinalizedMsg:

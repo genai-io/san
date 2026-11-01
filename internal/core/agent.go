@@ -21,8 +21,9 @@ import (
 // Hooks are app-layer only (hook.Engine), not part of the agent core.
 //
 // Lifecycle control:
-//   - Graceful stop: send Message{Signal: SigStop} to Inbox
-//   - Immediate stop: cancel the context passed to Run
+//   - Graceful whole-run stop: send Inbound{Signal: SigStop} to Inbox
+//   - Immediate whole-run stop: cancel the context passed to Run
+//   - Current turn only: Cancel, retaining Run for later input
 type Agent interface {
 	ID() string
 	System() System
@@ -63,12 +64,12 @@ type Agent interface {
 	// until none is queued, repeat. Returns on ctx cancellation or SigStop.
 	Run(ctx context.Context) error
 
-	// CancelTurn cancels the in-flight ThinkAct without ending Run and returns
+	// Cancel cancels the in-flight ThinkAct without ending Run and returns
 	// its receipt. Repeated calls during unwind capture the same exchange.
 	// Nil means no unfinished exchange was captured; the between-turn interrupt
 	// latch still applies. Observe execution with ExecutionDone or terminal
 	// consumer/write outcome with Wait; neither prevents successor execution.
-	CancelTurn() *TurnFinalization
+	Cancel() *TurnFinalization
 }
 
 // Gate is asked before a tool runs: it may refuse the call, rewrite the
