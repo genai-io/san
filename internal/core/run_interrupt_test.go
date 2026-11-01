@@ -49,8 +49,8 @@ func TestInterruptCompletionWaitsForToolButNotTurnEnded(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("tool did not start")
 	}
-	first := ag.InterruptCurrentTurn()
-	second := ag.InterruptCurrentTurn()
+	first := ag.CancelTurn().ExecutionDone()
+	second := ag.CancelTurn().ExecutionDone()
 	if first != second {
 		t.Fatal("repeated interrupt lost the unwinding turn")
 	}
@@ -101,7 +101,7 @@ func TestInterruptCompletionWaitsForToolButNotTurnEnded(t *testing.T) {
 	if ag.turn.Load() != successor {
 		t.Fatal("old completion affected successor")
 	}
-	third := ag.InterruptCurrentTurn()
+	third := ag.CancelTurn().ExecutionDone()
 	if third == first {
 		t.Fatal("successor reused old completion")
 	}

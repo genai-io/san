@@ -500,9 +500,9 @@ scrollback。`go.mod` 中的替代依赖固定到
    Esc 按下                  在 ThinkAct/streamInfer     HTTP 流中，
    ──▶ handleStreamCancel    turn = &turnHandle{c,d}     EmitText(ctx, ch, …)
        │
-       │ 1. Agent.InterruptTurn()
+       │ 1. Agent.CancelTurn()
        │      ├─ interruptPending.Store(true)
-       │      ├─ h := turn.Swap(nil)
+       │      ├─ h := turn.Load()（持有 turnMu）
        │      ├─ h.cancel()  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─▶  turnCtx.Done 触发
        │      │                                       streamInfer 返回
        │      │                                       execTools Phase 3 break
@@ -510,7 +510,7 @@ scrollback。`go.mod` 中的替代依赖固定到
        │      │                                       ctx.Done → 不泄漏
        │      │                                       ThinkAct 返回
        │      │                                       close(h.done) ──┐
-       │      └─ <-h.done   （≤ 250 ms）◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
+       │      └─ 返回 receipt；ExecutionDone() 观察执行结束 ◀ ─ ─ ─ ─┘
        │
        │ 2. conv 侧 UI 更新（仅显示，不回写 agent）
        │      ├─ 隐藏弹窗 / 清空 pending 问题
@@ -518,10 +518,10 @@ scrollback。`go.mod` 中的替代依赖固定到
        │      ├─ MarkStreamInterrupted    → 当前归属消息的 ⏸ 徽章
        │      └─ Stream.Stop              → 清除推理绑定的消息 ID
        │
-       │ 3. CommitMessages + drainInputQueueAfterCancel
+       │ 3. 异步 Wait(ctx)，等待终止清理与必要写入
        │
        │                          内循环 break（识别 turn cancel），
-       │                          interruptPending.Store(false)，
+       │                          保留 latch，直到新输入到达，
        │                          emit TurnEnded{StopCanceled}
        │
        │   ◀── TurnEnded ─────────┤
@@ -560,9 +560,9 @@ conv 同步回 agent——两边各自维护自己的副本和 ID。能做到这
 
 | 机制 | 它在保护什么 |
 |---|---|
-| `turn atomic.Pointer[turnHandle]` | "当前活动 turn 的手柄"。`Swap(nil)` 让 cancel 原子化，避免两次打断重复 cancel 下一轮。 |
+| `turnMu` + `turn atomic.Pointer[turnHandle]` | 串行化发布与取消；执行退出前保留手柄，重复取消捕获同一轮。 |
 | `interruptPending atomic.Bool` | "两轮之间"打断的备忘录（此刻 `turn` 短暂为 nil），Run 内循环下次开头读到则直接 break 回 `waitForInput`，不会偷跑一轮 ThinkAct。 |
-| `turnHandle.done` chan + 250 ms 上限 | UI 等 ThinkAct 真正 unwind 后再返回用户——避免 spinner / modal 状态和 agent 最后几个 ctx-cancelled 的 emit 抢着收尾。上限是给"不响应 ctx 的工具"留的保险；正常情况微秒级。 |
+| `TurnFinalization` 回执 | `ExecutionDone()` 只观察执行结束；`Wait(ctx)` 还等待终止事件消费者确认并返回必要写入的错误。nil 表示未捕获轮次：执行已结束，但 `Wait` 返回错误。两者都不阻止后续轮次。 |
 
 为什么和旧实现差别大：旧的 cancel 路径直接 `Agent.Stop`，杀掉 goroutine，
 下一条用户消息时整个 agent 重建一遍——一次 `buildAgent`、一份新的
@@ -585,6 +585,6 @@ prompt 前缀（prompt cache 命中更稳）。
 | Conv 事件路由 | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
 | `agent.Send` / outbox 轮询 | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | 流式中断处理 | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
-| `InterruptTurn` | [`internal/agent/session.go`](../../internal/agent/session.go) |
-| `turn` / `InterruptCurrentTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
+| `CancelTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `turn` / `CancelTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | 底部 UI 组合 | [`internal/app/view.go`](../../internal/app/view.go) |

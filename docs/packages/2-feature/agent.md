@@ -33,8 +33,6 @@ type Runtime struct { /* internal fields */ }
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
 func (s *Runtime) Stop()
 func (s *Runtime) StopContext(ctx context.Context) error
-func (s *Runtime) InterruptCurrentTurn() <-chan struct{}
-func (s *Runtime) InterruptTurn()
 func (s *Runtime) CancelTurn() *core.TurnFinalization
 func (s *Runtime) Reset()
 func (s *Runtime) Messages() []core.Message
@@ -75,13 +73,12 @@ func Default() *Runtime
   `Stop` applies a bounded default deadline and logs a run that outlives it.
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
-- Turn cancellation: `InterruptCurrentTurn` requests cancellation immediately and
-  returns an execution-completion channel, shared by repeated calls during unwind.
-  Completion is not an event/persistence barrier or a lock against successor turns.
-  Idle interrupt semantics are unchanged. `InterruptTurn` retains its legacy 250 ms
-  execution-only wait; slow tools may still be unwinding afterward.
-- Canceled-turn finalization: `CancelTurn` captures one exchange; `Wait(ctx)` waits
-  for execution and consumer cleanup plus essential message/inference/state writes.
+- Turn cancellation: `CancelTurn()` immediately cancels and captures one exchange.
+  Its receipt offers `ExecutionDone()` for execution-only completion and `Wait(ctx)`
+  for execution plus consumer cleanup and essential message/inference/state writes.
+  Neither prevents successor execution. Nil means no unfinished exchange was captured:
+  `ExecutionDone()` is already closed, while `Wait(ctx)` returns an error.
+  The between-turn interrupt latch is unchanged.
   `ErrTurnCompleted` denotes a natural completion race, not a save failure. TUI input
   waits asynchronously for cleanup; manual stop holds queued/background work.
   Queue-selection Enter explicitly resumes the queue head after cleanup, even with
@@ -101,7 +98,8 @@ func Default() *Runtime
 ```
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
-internal/agent/runtime_interrupt_test.go — completion signal and bounded wait.
+internal/agent/runtime_interrupt_test.go — inactive cancellation receipt.
+internal/agent/runtime_interrupt_http_test.go — actual HTTP abort and execution unwind.
 internal/core/turn_finalization_test.go — receipt identity, completion and errors.
 internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.

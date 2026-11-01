@@ -26,6 +26,19 @@ func newTurnFinalization(ctx context.Context, execution <-chan struct{}) *TurnFi
 	return &TurnFinalization{execution: execution, run: ctx, handled: make(chan struct{})}
 }
 
+// ExecutionDone closes when the captured ThinkAct unwinds, before terminal event
+// delivery. It does not acknowledge consumer writes or prevent successor execution.
+// A nil receipt means no turn was captured and returns an already-closed channel;
+// unlike Wait, this is not evidence of successful finalization.
+func (f *TurnFinalization) ExecutionDone() <-chan struct{} {
+	if f == nil {
+		done := make(chan struct{})
+		close(done)
+		return done
+	}
+	return f.execution
+}
+
 // RecordError preserves producer-side persistence errors before event delivery.
 func (f *TurnFinalization) RecordError(err error) {
 	if f == nil || err == nil {
@@ -58,6 +71,7 @@ func (f *TurnFinalization) Acknowledge(err error) {
 
 // Wait requires both execution unwind and terminal handling. Missing delivery
 // cannot succeed: shutdown or the caller's deadline returns an error instead.
+// A nil receipt returns an error because no turn was captured.
 func (f *TurnFinalization) Wait(ctx context.Context) error {
 	if f == nil {
 		return errors.New("no turn to finalize")

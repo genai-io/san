@@ -63,20 +63,11 @@ type Agent interface {
 	// until none is queued, repeat. Returns on ctx cancellation or SigStop.
 	Run(ctx context.Context) error
 
-	// InterruptCurrentTurn cancels the in-flight ThinkAct without ending Run,
-	// which is user-initiated mid-stream cancellation; SigStop or ctx cancel
-	// is full shutdown.
-	//
-	// The returned channel closes once that ThinkAct has unwound; repeated
-	// calls during unwind return the same channel. This precedes TurnEnded
-	// emission and is not an event-consumer or persistence barrier, nor a lock
-	// against successor execution. Called between turns, it is already closed
-	// and the interrupt is latched for the next inner-loop iteration.
-	InterruptCurrentTurn() <-chan struct{}
-
-	// CancelTurn captures the exact turn's consumer acknowledgment as well as
-	// execution unwind. Nil means no unfinished exchange was captured; the
-	// between-turn interrupt latch still applies.
+	// CancelTurn cancels the in-flight ThinkAct without ending Run and returns
+	// its receipt. Repeated calls during unwind capture the same exchange.
+	// Nil means no unfinished exchange was captured; the between-turn interrupt
+	// latch still applies. Observe execution with ExecutionDone or terminal
+	// consumer/write outcome with Wait; neither prevents successor execution.
 	CancelTurn() *TurnFinalization
 }
 

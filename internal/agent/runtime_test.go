@@ -61,7 +61,6 @@ type controlledAgent struct {
 	started       chan struct{}
 	release       chan struct{}
 	ignoreContext bool
-	interrupt     func() <-chan struct{}
 }
 
 func newControlledAgent(ignoreContext bool) *controlledAgent {
@@ -97,15 +96,6 @@ func (a *controlledAgent) Run(ctx context.Context) error {
 	return nil
 }
 func (a *controlledAgent) CancelTurn() *core.TurnFinalization { return nil }
-
-func (a *controlledAgent) InterruptCurrentTurn() <-chan struct{} {
-	if a.interrupt != nil {
-		return a.interrupt()
-	}
-	done := make(chan struct{})
-	close(done)
-	return done
-}
 
 func sessionWithAgents(agents ...*controlledAgent) *Runtime {
 	next := 0

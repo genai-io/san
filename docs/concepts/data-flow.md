@@ -532,9 +532,9 @@ follow-up user message resumes the same session through `Append`.
    Esc key                   in ThinkAct/streamInfer     mid HTTP stream,
    ──▶ handleStreamCancel    turn = &turnHandle{c,d}     EmitText(ctx, ch, …)
        │
-       │ 1. Agent.InterruptTurn()
+       │ 1. Agent.CancelTurn()
        │      ├─ interruptPending.Store(true)
-       │      ├─ h := turn.Swap(nil)
+       │      ├─ h := turn.Load() (under turnMu)
        │      ├─ h.cancel()  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─▶  turnCtx.Done() fires
        │      │                                       streamInfer returns
        │      │                                       execTools Phase 3 breaks
@@ -542,7 +542,7 @@ follow-up user message resumes the same session through `Append`.
        │      │                                       ctx.Done → no leak
        │      │                                       ThinkAct returns
        │      │                                       close(h.done) ──┐
-       │      └─ <-h.done   (≤ 250 ms)  ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
+       │      └─ return receipt; ExecutionDone() observes unwind ◀ ─ ─┘
        │
        │ 2. conv-side UI updates (display only — never sync into agent)
        │      ├─ hide modals / drain pending questions
@@ -550,10 +550,10 @@ follow-up user message resumes the same session through `Append`.
        │      ├─ MarkStreamInterrupted   → ⏸ badge on the owned message
        │      └─ Stream.Stop             → clear the inference identity
        │
-       │ 3. CommitMessages + drainInputQueueAfterCancel
+       │ 3. Wait(ctx) asynchronously for terminal cleanup and required writes
        │
        │                          inner break (turn cancel detected),
-       │                          interruptPending.Store(false),
+       │                          latch retained until fresh input,
        │                          TurnEnded{StopCanceled} emitted
        │
        │   ◀── TurnEnded ─────────┤
@@ -596,9 +596,9 @@ Three pieces carry the cancel safely:
 
 | Mechanism | What it protects |
 |---|---|
-| `turn atomic.Pointer[turnHandle]` | The "live turn handle" — `Swap(nil)` makes the cancel atomic so two interrupts can't double-cancel the next turn. |
+| `turnMu` + `turn atomic.Pointer[turnHandle]` | Serializes publication and cancellation; the handle remains published through unwind so repeated cancellation captures the same turn. |
 | `interruptPending atomic.Bool` | Latches an interrupt that lands between turns (when `turn` is momentarily nil), so the next iteration of Run's inner loop bails to `waitForInput` instead of running an unwanted ThinkAct. |
-| `turnHandle.done` chan + 250 ms timeout | Lets the UI wait for ThinkAct to actually unwind before returning to the user — keeps spinner / modal state from racing the agent's last few ctx-cancelled emits. The timeout is a backstop for a tool that ignores ctx; in practice the wait is sub-millisecond. |
+| `TurnFinalization` receipt | `ExecutionDone()` observes execution only; `Wait(ctx)` also requires terminal consumer acknowledgment and reports required-write errors. Nil means no captured turn: execution is already done, but `Wait` fails. Neither observation prevents a successor. |
 
 Why this matters versus the pre-rewrite path: the old cancel called
 `Agent.Stop`, killed the goroutine, and rebuilt the entire agent on the
@@ -623,6 +623,6 @@ prompt cache behaviour).
 | Conv event router | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
 | `agent.Send` / outbox poll | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | Cancel mid-stream | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
-| `InterruptTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
-| `turn` / `InterruptCurrentTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
+| `CancelTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
+| `turn` / `CancelTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | Bottom UI compose | [`internal/app/view.go`](../../internal/app/view.go) |

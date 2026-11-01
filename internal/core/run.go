@@ -166,7 +166,7 @@ func (a *agent) Run(ctx context.Context) error {
 					return nil
 				}
 				// Turn-only interrupt: parent ctx still alive, the turn's ctx
-				// was cancelled by InterruptCurrentTurn. Just bail back to
+				// was cancelled by CancelTurn. Just bail back to
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
 				// left in the conversation.
 				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
@@ -212,44 +212,26 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 	return result, err, false
 }
 
-// InterruptCurrentTurn cancels the ctx of the currently-running ThinkAct
-// without ending Run. The channel closes when that ThinkAct has unwound,
-// before Run emits TurnEnded. Repeated calls during unwind observe the same
-// channel. Completion neither drains events/persistence nor prevents a successor
-// from running; it does not grant exclusive access to shared state.
-//
-// When called between turns (turn pointer is nil), latches the
-// interrupt so the next inner-loop iteration bails before starting a
-// fresh ThinkAct, and returns an already-closed channel.
-func (a *agent) InterruptCurrentTurn() <-chan struct{} {
-	done, _ := a.cancelTurn()
-	return done
-}
-
+// CancelTurn cancels the captured exchange without ending Run. Between turns it
+// latches cancellation for the next inner-loop iteration and captures any receipt
+// still awaiting terminal handling. Nil means no unfinished exchange was captured.
 func (a *agent) CancelTurn() *TurnFinalization {
-	_, receipt := a.cancelTurn()
-	return receipt
-}
-
-func (a *agent) cancelTurn() (<-chan struct{}, *TurnFinalization) {
 	a.turnMu.Lock()
 	defer a.turnMu.Unlock()
 	a.appendedAtInterrupt.Store(a.appended.Load())
 	a.interruptPending.Store(true)
 	if h := a.turn.Load(); h != nil {
 		h.cancel()
-		return h.done, h.finalization
+		return h.finalization
 	}
-	closed := make(chan struct{})
-	close(closed)
 	if h := a.finalizing.Load(); h != nil {
 		select {
 		case <-h.finalization.handled:
 		default:
-			return closed, h.finalization
+			return h.finalization
 		}
 	}
-	return closed, nil
+	return nil
 }
 
 var errStopped = errors.New("stopped")

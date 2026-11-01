@@ -241,44 +241,9 @@ func (s *Runtime) Compact(summary string) bool {
 	}
 }
 
-// interruptDrainTimeout bounds the legacy execution-only wait, not event delivery or
-// persistence. A slow cooperative tool can outlive this deadline.
-const interruptDrainTimeout = 250 * time.Millisecond
-
-// InterruptCurrentTurn requests cancellation synchronously and returns without
-// waiting for the captured ThinkAct to unwind. Bind cancellation before scheduling
-// any asynchronous wait, so a delayed waiter cannot cancel a successor turn.
-//
-// The channel observes execution completion only: it can close before TurnEnded
-// is emitted, and does not acknowledge outbox consumption or persistence. It does
-// not prevent subsequent execution or grant exclusive access to agent state.
-// With no runtime it is already closed; between turns the core interrupt latch
-// still applies. Neither case proves that an active turn was cancelled.
-func (s *Runtime) InterruptCurrentTurn() <-chan struct{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.run == nil {
-		done := make(chan struct{})
-		close(done)
-		return done
-	}
-	return s.run.agent.InterruptCurrentTurn()
-}
-
-// InterruptTurn retains the legacy bounded execution-only wait, leaving the mailbox alive.
-// Callers needing observable execution completion use InterruptCurrentTurn.
-func (s *Runtime) InterruptTurn() {
-	done := s.InterruptCurrentTurn()
-	timer := time.NewTimer(interruptDrainTimeout)
-	defer timer.Stop()
-	select {
-	case <-done:
-	case <-timer.C:
-	}
-}
-
-// CancelTurn captures a turn in this run without waiting on the event consumer.
-// The returned receipt remains bound to that run after replacement.
+// CancelTurn requests cancellation synchronously without waiting for execution or
+// the event consumer. The receipt stays bound to the captured turn across runtime
+// replacement; nil means no runtime or no unfinished exchange was captured.
 func (s *Runtime) CancelTurn() *core.TurnFinalization {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -9,6 +9,35 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
+func TestTurnFinalizationExecutionDone(t *testing.T) {
+	var missing *TurnFinalization
+	select {
+	case <-missing.ExecutionDone():
+	default:
+		t.Fatal("nil receipt execution is not complete")
+	}
+	if err := missing.Wait(context.Background()); err == nil {
+		t.Fatal("nil receipt finalized successfully")
+	}
+
+	execution := make(chan struct{})
+	f := newTurnFinalization(context.Background(), execution)
+	if f.ExecutionDone() != execution || f.ExecutionDone() != f.ExecutionDone() {
+		t.Fatal("execution channel identity changed")
+	}
+	f.Acknowledge(nil)
+	select {
+	case <-f.ExecutionDone():
+		t.Fatal("acknowledgment fabricated execution completion")
+	default:
+	}
+	close(execution)
+	<-f.ExecutionDone()
+	if err := f.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCancelTurnAcrossPublication(t *testing.T) {
 	for range 100 {
 		ag := NewAgent(Config{Client: testClient(aitest.Always(aitest.Hangs())), System: NewSystem(), Tools: NewTools(), OutboxBuf: -1}).(*agent)

@@ -125,7 +125,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 			if streaming {
 				wait(chunk, "decoded first chunk")
 			}
-			done := runtime.InterruptCurrentTurn()
+			done := runtime.CancelTurn().ExecutionDone()
 			wait(aborted, "server request context cancellation")
 			wait(transport.exiting, "HTTP unwind")
 			select {
@@ -133,7 +133,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 				t.Fatal("ThinkAct completed before HTTP stream exited")
 			default:
 			}
-			if runtime.InterruptCurrentTurn() != done {
+			if runtime.CancelTurn().ExecutionDone() != done {
 				t.Fatal("lost unwinding turn handle")
 			}
 			release()
