@@ -29,6 +29,12 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     TUI keeps its fail-open hook budget and admission call sites; blocked context
     remains pending for later delivery. Midstream delivery is not newly gated.
     Covered by native policy and TUI dispatch/queue tests; no ACP adapter yet.
+  - [x] Human permissions: `interaction.PreparePermission` and `Permission` share
+    tool validation/previews, grant eligibility, worker once-only scope, audit
+    snapshots and exactly-once replies fenced by context, owner and displayed view.
+    TUI supplies presentation, session grants and persistence notices; config,
+    hook and reviewer decisions are unchanged. Shared gate and native renderer
+    tests cover cancellation, replacement, scopes and audit-before-execution.
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.

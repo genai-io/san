@@ -26,6 +26,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
@@ -435,15 +436,7 @@ func escalationReason(judgeReason string, err error) string {
 // marshalPermInput serializes the tool args for a permission audit record.
 // Errors are logged but not propagated — audit must never block the decider.
 func marshalPermInput(args map[string]any) json.RawMessage {
-	if len(args) == 0 {
-		return nil
-	}
-	data, err := json.Marshal(args)
-	if err != nil {
-		log.Logger().Warn("perm input marshal failed", zap.Error(err))
-		return nil
-	}
-	return data
+	return interaction.PermissionInput(args)
 }
 
 // firstValidDuration returns the first value that parses as a time.Duration
@@ -753,78 +746,12 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	}), conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
 
-// permDetail serializes the *derived* permission context — fields the
-// resolver computed or looked up beyond the raw tool args. Anything that is
-// already a verbatim echo of req.Input (Bash command/description, Skill
-// args/name, the file_path that auditors can read straight from input) is
-// stripped so the audit record doesn't double-store the same values.
-func permDetail(req *perm.PermissionRequest) json.RawMessage {
-	if req == nil {
-		return nil
-	}
-	var payload any
-	switch {
-	case req.SkillMeta != nil:
-		m := req.SkillMeta
-		payload = struct {
-			Description string   `json:"description,omitempty"`
-			ScriptCount int      `json:"scriptCount,omitempty"`
-			RefCount    int      `json:"refCount,omitempty"`
-			Scripts     []string `json:"scripts,omitempty"`
-			References  []string `json:"references,omitempty"`
-		}{m.Description, m.ScriptCount, m.RefCount, m.Scripts, m.References}
-	case req.BashMeta != nil:
-		payload = struct {
-			LineCount int `json:"lineCount,omitempty"`
-		}{req.BashMeta.LineCount}
-	case req.AgentMeta != nil:
-		payload = req.AgentMeta
-	case req.DiffMeta != nil:
-		payload = req.DiffMeta
-	default:
-		return nil
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		log.Logger().Warn("perm detail marshal failed", zap.Error(err))
-		return nil
-	}
-	return data
-}
-
 // ============================================================
 // Agent tool configuration
 // ============================================================
 
 func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.PermissionRequest, error) {
-	permReq := &perm.PermissionRequest{
-		ToolName:    req.ToolName,
-		Description: req.Description,
-	}
-	ctx := req.Context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if resolved, ok := tool.Get(req.ToolName); ok {
-		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
-			rich, err := pat.PreparePermission(ctx, req.Input, m.env.CWD)
-			if err != nil {
-				return nil, err
-			}
-			if rich != nil {
-				permReq = rich
-			}
-		}
-	}
-	permReq.ID = req.RequestID
-	permReq.WorkingDirectory = m.env.CWD
-	permReq.PermissionMode = m.env.SessionMode()
-	permReq.AllowRules = m.services.Setting.AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
-	// Session grants sit below allow rules, so neither would take effect here.
-	if !m.services.Setting.SessionGrantTakesEffect(req.ToolName, req.Input, m.env.SessionPermissions) {
-		permReq.OnceOnly = true
-	}
-	return permReq, nil
+	return interaction.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.services.Setting, m.env.SessionPermissions)
 }
 
 func (m *model) ReconfigureAgentTool() {

@@ -1,5 +1,5 @@
-// Package interaction owns interaction request lifetimes, not execution,
-// authorization policy, transport, or presentation. Its queue is single-owner;
+// Package interaction owns request lifetimes and human-permission resolution,
+// not execution, transport, or presentation. Its queue and approvals are single-owner;
 // producers communicate through the adapter's transport and buffered replies.
 package interaction
 
