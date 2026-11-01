@@ -32,12 +32,12 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 			kit.InitTheme(theme)
 			for _, width := range []int{32, 40, 100} {
 				call := core.ToolCall{ID: "spawn", Name: "Agent", Input: `{"name":"reviewer","description":"Check"}`}
-				params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width,
+				params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width,
 					AgentIdentities: identities, ToolStartedAt: map[string]time.Time{call.ID: time.Now()}}
 				header := renderAgentColoredLine("Agent · reviewer · Check", width, "●", memberPalette[slot])
 				live := RenderToolCalls(params)
 				spinner := RenderPendingToolSpinner(PendingToolSpinnerParams{
-					PendingCalls: params.PendingCalls, CurrentIdx: 0, Width: width,
+					PendingCalls: params.PendingCalls, CurrentIdx: 0, Width: width, AgentPreviewLines: params.AgentPreviewLines,
 					AgentIdentities: identities, ToolStartedAt: params.ToolStartedAt,
 				})
 				if spinner != live {

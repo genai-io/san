@@ -35,7 +35,8 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "contextBar": true,
   "gitBar": true,
   "thinkingDisplay": "collapsed",
-  "bashPreviewLines": 3
+  "bashPreviewLines": 3,
+  "agentPreviewLines": 3
 }
 ```
 
@@ -71,6 +72,18 @@ terminal width. Once it finishes, a successful command keeps an output that
 fits in these lines and folds a longer one to its line count, since the model
 reports what it found; a failed one keeps its last 20 lines, wrapped, whatever
 this is set to. Ctrl-O shows every full output. Also set in `/settings` → Appearance → Shell output.
+
+### `agentPreviewLines`
+
+How many lines an Agent row previews (default `3`, clamped to `0`–`20`).
+Running agents show their latest activity; finished agents preview the tail of
+their result, with an omission row above longer output. Elapsed time follows the
+Agent title. `0` hides the preview; expanded views still show the full content.
+This preference is independent of `bashPreviewLines` and does not change the
+compact background tracker. Set it in `/settings` → Appearance → AGENT OUTPUT →
+Agent preview; Left / Right adjusts the count and Enter saves to
+`~/.san/settings.json`. Changes affect subsequent rendering, not already-committed
+native scrollback.
 
 ### `thinkingDisplay`
 

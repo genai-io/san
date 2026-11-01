@@ -14,7 +14,7 @@ import (
 
 func TestAgentLifecycleCompactResponse(t *testing.T) {
 	for _, width := range []int{32, 40} {
-		data := ToolResultData{Content: "Actual useful finding\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl", Width: width}
+		data := ToolResultData{AgentPreviewLines: 3, Content: "Actual useful finding\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl", Width: width}
 		got := ansi.Strip(renderAgentResultDetails(data, toolresult.AgentDetails{}, nil))
 		if !strings.Contains(got, "Actual useful finding") || strings.Contains(got, "Transcript:") || strings.Contains(got, "Finished") {
 			t.Fatalf("unexpected response: %q", got)
@@ -30,7 +30,7 @@ func TestAgentLifecycleCompactResponse(t *testing.T) {
 func TestAgentLifecycleResponseWrapsWords(t *testing.T) {
 	const response = "Finding: permission boundaries hold. Validation passed. No changes required."
 	for _, width := range []int{32, 40, 100} {
-		got := ansi.Strip(renderAgentResultDetails(ToolResultData{Content: response, Width: width}, toolresult.AgentDetails{}, nil))
+		got := ansi.Strip(renderAgentResultDetails(ToolResultData{AgentPreviewLines: 5, Content: response, Width: width}, toolresult.AgentDetails{}, nil))
 		if strings.Join(strings.Fields(got), " ") != response {
 			t.Fatalf("width %d split response words: %q", width, got)
 		}
@@ -47,7 +47,7 @@ func TestAgentLifecyclePreservesTranscriptProse(t *testing.T) {
 		"Finding\n\nTranscript: this paragraph is a finding",
 		"Finding\n\nAgentID: worker\n\nTranscript: /tmp/unrelated.jsonl",
 	} {
-		got := ansi.Strip(renderAgentResultDetails(ToolResultData{Content: prose, Width: 80}, toolresult.AgentDetails{}, nil))
+		got := ansi.Strip(renderAgentResultDetails(ToolResultData{AgentPreviewLines: 3, Content: prose, Width: 80}, toolresult.AgentDetails{}, nil))
 		if !strings.Contains(got, "Transcript:") {
 			t.Fatalf("worker prose was stripped: %q", got)
 		}
@@ -74,14 +74,14 @@ func TestAgentLifecycleFailureBudgetAndStoppedEvidence(t *testing.T) {
 	}
 }
 
-func TestAgentLifecycleElapsedSharesLatestActivity(t *testing.T) {
+func TestAgentLifecycleElapsedSharesTitle(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"description":"Review"}`}
-	params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
+	params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
 		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)},
 		TaskActivity:  map[int][]string{0: {"Read(main.go)"}}, Width: 40}
 	got := ansi.Strip(RenderToolCalls(params))
-	if !strings.Contains(got, "  Read(main.go) · 12s\n") || strings.Count(got, "\n") != 2 {
-		t.Fatalf("timer should share the activity row: %q", got)
+	if got != "● Agent · Review · 12s\n  Read(main.go)\n" {
+		t.Fatalf("timer should share the title row: %q", got)
 	}
 	params.CurrentIdx = 1
 	if got := ansi.Strip(RenderToolCalls(params)); !strings.Contains(got, "Pending") || strings.Contains(got, "Read(") {
@@ -91,7 +91,7 @@ func TestAgentLifecycleElapsedSharesLatestActivity(t *testing.T) {
 
 func TestAgentLifecycleShortLayoutKeepsExecutionActivity(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"description":"Security review"}`}
-	params := RenderContext{Width: 40, StreamActive: true,
+	params := RenderContext{AgentPreviewLines: 1, Width: 40, StreamActive: true,
 		Messages:     []core.ChatMessage{{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}}},
 		PendingCalls: []core.ToolCall{call}, ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)},
 		TaskActivity: map[int][]string{0: {"Read(main.go)"}},
@@ -106,21 +106,21 @@ func TestAgentLifecycleShortLayoutKeepsExecutionActivity(t *testing.T) {
 func TestAgentLifecycleShortLayoutKeepsStateAfterLongIdentity(t *testing.T) {
 	for _, width := range []int{32, 40} {
 		call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"name":"reviewer","description":"Review execution and approval consistency"}`}
-		params := RenderContext{Width: width, StreamActive: true,
+		params := RenderContext{AgentPreviewLines: 1, Width: width, StreamActive: true,
 			Messages:     []core.ChatMessage{{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}}},
 			PendingCalls: []core.ToolCall{call}, ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)},
 			TaskActivity: map[int][]string{0: {"Read(main.go)"}},
 		}
 		for _, waiting := range []bool{false, true} {
-			state := "Read(main.go) · 12s"
+			state, suffix := "Read(main.go)", "… · 12s"
 			if waiting {
 				params.AwaitingApprovalID, params.DockedModalActive = call.ID, true
-				state = "Waiting for approval"
+				state, suffix = "Waiting for approval", "…"
 			}
 			view, active := RenderActiveWorkers(params, 2)
 			plain := ansi.Strip(view)
 			lines := strings.Split(plain, "\n")
-			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● Agent · reviewer · ") || !strings.HasSuffix(lines[0], "…") || lines[1] != "  "+state {
+			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● Agent · reviewer · ") || !strings.HasSuffix(lines[0], suffix) || ansi.StringWidth(lines[0]) > width || lines[1] != "  "+state {
 				t.Fatalf("width %d: wrapped identity displaced current state: %q", width, plain)
 			}
 		}
@@ -150,12 +150,16 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 			`{"name":"审查员","description":"检查执行链路"}`,
 		} {
 			call := core.ToolCall{ID: "worker", Name: "Agent", Input: input}
-			params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width}
+			params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width}
 			header := ansi.Strip(renderAgentToolLine(formatAgentLabel(parseAgentInput(input)), width, "●", "")) + "\n"
 			check := func(state string, absent ...string) {
 				t.Helper()
 				got := ansi.Strip(RenderToolCalls(params))
-				if !strings.HasPrefix(got, header) || !strings.Contains(got, "  "+state+"\n") {
+				wantHeader := header
+				if params.agentExecuting(call) && !params.parkedOnUser(call.ID) && len(params.ResultMap) == 0 {
+					wantHeader = appendRowDetail(ansi.Strip(renderAgentToolLine(formatAgentLabel(parseAgentInput(input)), width-6, "●", ""))+"\n", " · 12s")
+				}
+				if !strings.HasPrefix(got, wantHeader) || !strings.Contains(got, "  "+state+"\n") {
 					t.Fatalf("width %d: identity or state changed for %q: %q", width, state, got)
 				}
 				for _, text := range absent {
@@ -171,14 +175,14 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 			}
 			check("Pending")
 			params.ToolStartedAt = map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)}
-			check("Starting... · 12s", "Pending")
+			check("Starting...", "Pending")
 			params.TaskActivity = map[int][]string{0: {"Read(main.go)"}}
-			check("Read(main.go) · 12s", "Starting...")
+			check("Read(main.go)", "Starting...")
 			params.AwaitingApprovalID, params.DockedModalActive = call.ID, true
 			check("Waiting for approval", "Read(main.go)", "12s")
 			params.AwaitingApprovalID, params.DockedModalActive = "", false
 			params.TaskActivity[0] = append(params.TaskActivity[0], "Thinking...")
-			check("Thinking... · 12s", "Waiting for approval", "Read(main.go)")
+			check("Thinking...", "Waiting for approval", "Read(main.go)")
 			params.ResultMap = map[string]ToolResultData{call.ID: {
 				ToolName: "Agent", Content: "No vulnerabilities found", Details: toolresult.AgentDetails{},
 			}}
@@ -207,7 +211,7 @@ func TestAgentLifecycleFallbackMatchesInline(t *testing.T) {
 			{name: "long current activity", started: true, activity: []string{"Read(" + strings.Repeat("long-path/", 10) + "main.go)"}},
 		} {
 			t.Run(state.name+"/"+strconv.Itoa(width), func(t *testing.T) {
-				params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width,
+				params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width,
 					TaskActivity: map[int][]string{0: state.activity}}
 				if state.started {
 					params.ToolStartedAt = map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)}
@@ -215,7 +219,7 @@ func TestAgentLifecycleFallbackMatchesInline(t *testing.T) {
 				inline := ansi.Strip(RenderToolCalls(params))
 				fallback := ansi.Strip(RenderPendingToolSpinner(PendingToolSpinnerParams{
 					PendingCalls: params.PendingCalls, ToolStartedAt: params.ToolStartedAt,
-					TaskActivity: params.TaskActivity, Width: width,
+					TaskActivity: params.TaskActivity, Width: width, AgentPreviewLines: params.AgentPreviewLines,
 				}))
 				if fallback != inline {
 					t.Fatalf("fallback changed Agent identity or state:\ninline:   %q\nfallback: %q", inline, fallback)
@@ -226,7 +230,7 @@ func TestAgentLifecycleFallbackMatchesInline(t *testing.T) {
 }
 
 func TestAgentLifecycleStoppedWithoutError(t *testing.T) {
-	got := ansi.Strip(renderAgentResultDetails(ToolResultData{Content: "context canceled", Width: 40}, toolresult.AgentDetails{Stopped: true}, nil))
+	got := ansi.Strip(renderAgentResultDetails(ToolResultData{AgentPreviewLines: 3, Content: "context canceled", Width: 40}, toolresult.AgentDetails{Stopped: true}, nil))
 	if got != "  Stopped\n" {
 		t.Fatalf("unexpected stopped result: %q", got)
 	}

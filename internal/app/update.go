@@ -408,6 +408,21 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Shell output preview: " + preview)
 		return m, nil
+	case input.AgentPreviewSavedMsg:
+		// Applies to future rendering; committed native scrollback is immutable.
+		m.env.AgentPreviewLines = msg.Lines
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after agent-preview save failed", zap.Error(err))
+		}
+		preview := "off"
+		switch {
+		case msg.Lines == 1:
+			preview = "1 line"
+		case msg.Lines > 1:
+			preview = strconv.Itoa(msg.Lines) + " lines"
+		}
+		m.conv.AddNotice("Agent preview: " + preview)
+		return m, nil
 	case input.AutoUpdateSavedMsg:
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after auto-update save failed", zap.Error(err))

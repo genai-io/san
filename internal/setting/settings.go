@@ -110,6 +110,9 @@ type Data struct {
 	// row shows, while it runs and after; 0 shows none. Nil means
 	// DefaultBashPreviewLines. Read via Data.BashPreviewLineCount().
 	BashPreviewLines *int `json:"bashPreviewLines,omitempty"`
+	// AgentPreviewLines bounds the activity preview on Agent rows independently
+	// of shell output. Nil means DefaultAgentPreviewLines; zero hides the preview.
+	AgentPreviewLines *int `json:"agentPreviewLines,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -440,6 +443,20 @@ const (
 	DefaultBashPreviewLines = 3
 	MaxBashPreviewLines     = 20
 )
+
+// Agent preview limits are independent of shell output preview preferences.
+const (
+	DefaultAgentPreviewLines = 3
+	MaxAgentPreviewLines     = 20
+)
+
+// AgentPreviewLineCount resolves AgentPreviewLines, clamped to [0, MaxAgentPreviewLines].
+func (s *Data) AgentPreviewLineCount() int {
+	if s == nil || s.AgentPreviewLines == nil {
+		return DefaultAgentPreviewLines
+	}
+	return min(max(*s.AgentPreviewLines, 0), MaxAgentPreviewLines)
+}
 
 // BashPreviewLineCount resolves BashPreviewLines, clamped to [0, MaxBashPreviewLines].
 func (s *Data) BashPreviewLineCount() int {
@@ -834,6 +851,7 @@ func (s *Data) Clone() *Data {
 	dst.ContextBar = clonePtr(s.ContextBar)
 	dst.GitBar = clonePtr(s.GitBar)
 	dst.BashPreviewLines = clonePtr(s.BashPreviewLines)
+	dst.AgentPreviewLines = clonePtr(s.AgentPreviewLines)
 	empty := NewData() // the maps are never nil on a clone
 	dst.Env, dst.EnabledPlugins, dst.DisabledTools, dst.Hooks = empty.Env, empty.EnabledPlugins, empty.DisabledTools, empty.Hooks
 	maps.Copy(dst.Env, s.Env)

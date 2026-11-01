@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -39,7 +41,7 @@ func renderAgentActivity(activity []string) string {
 	return sb.String()
 }
 
-func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, width int) string {
+func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, width, previewLines int) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -55,7 +57,35 @@ func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, t
 	if expanded {
 		return renderAgentActivity(activity)
 	}
-	return renderAgentActivityCompact(activity, width)
+	return renderAgentActivityPreview(activity, width, previewLines)
+}
+
+func renderAgentActivityPreview(activity []string, width, previewLines int) string {
+	previewLines = min(max(previewLines, 0), setting.MaxAgentPreviewLines)
+	if previewLines == 0 {
+		return ""
+	}
+	if previewLines == 1 {
+		return renderAgentActivityCompact(activity, width)
+	}
+	if width <= 0 {
+		width = 80
+	}
+	var lines []string
+	for _, entry := range activity {
+		if strings.TrimSpace(entry) == "" || activityMetadataKey(entry) != "" {
+			continue
+		}
+		text := xansi.Strip(agentStatus([]string{entry}))
+		lines = append(lines, strings.Split(xansi.Hardwrap(text, max(1, width-2), true), "\n")...)
+	}
+	if len(lines) == 0 {
+		lines = []string{"Starting..."}
+	}
+	if len(lines) > previewLines {
+		lines = lines[len(lines)-previewLines:]
+	}
+	return renderAgentLocalBody(strings.Join(lines, "\n"), width)
 }
 
 func renderAgentActivityCompact(activity []string, width int) string {
@@ -139,7 +169,8 @@ type PendingToolSpinnerParams struct {
 	AgentColors     map[string]string
 	AgentIdentities map[string]AgentDisplay
 	// Width is the terminal width for label truncation.
-	Width int
+	Width             int
+	AgentPreviewLines int
 	// SuppressAgentLabel avoids duplicating the active agent title when the
 	// assistant message already rendered it above the activity lines.
 	SuppressAgentLabel bool
@@ -174,7 +205,8 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 					ToolCalls: []core.ToolCall{tc}, PendingCalls: params.PendingCalls,
 					CurrentIdx: params.CurrentIdx, ToolStartedAt: params.ToolStartedAt,
 					TaskActivity: params.TaskActivity, Frame: params.Frame,
-					AgentIdentities: params.AgentIdentities, AgentColors: params.AgentColors, Width: params.Width,
+					AgentPreviewLines: params.AgentPreviewLines,
+					AgentIdentities:   params.AgentIdentities, AgentColors: params.AgentColors, Width: params.Width,
 				})
 			}
 		}

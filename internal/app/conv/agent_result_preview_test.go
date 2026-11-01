@@ -16,8 +16,8 @@ func TestAgentResultPreviewBudget(t *testing.T) {
 	for _, width := range []int{32, 40, 100} {
 		for _, structured := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/structured=%t", width, structured), func(t *testing.T) {
-				body := "First finding\n\nSecond finding\n\nThird finding\n\nFourth finding\n\nFifth finding\nHIDDEN_TAIL_SENTINEL"
-				data := ToolResultData{ToolName: "Agent", Content: body + "\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl", Width: width, ToolInput: `{"name":"reviewer","description":"Review security boundaries"}`}
+				body := "HIDDEN_HEAD_SENTINEL\n\nFirst finding\n\nSecond finding\n\nThird finding\n\nFourth finding\n\nFifth finding"
+				data := ToolResultData{AgentPreviewLines: 3, ToolName: "Agent", Content: body + "\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl", Width: width, ToolInput: `{"name":"reviewer","description":"Review security boundaries"}`}
 				if structured {
 					data.Details = toolresult.AgentDetails{ToolUses: 7, Model: "private-model", Activity: []string{"Read(private.go)"}}
 				} else {
@@ -26,25 +26,25 @@ func TestAgentResultPreviewBudget(t *testing.T) {
 				got := ansi.Strip(RenderToolResultInline(data, nil))
 				rows := previewNonblankRows(got)
 				if len(rows) != 4 {
-					t.Fatalf("want four nonblank physical rows, got %d: %q", len(rows), got)
+					t.Fatalf("want omission row and three tail rows, got %d: %q", len(rows), got)
 				}
 				for _, row := range rows {
 					if ansi.StringWidth(row) > width {
 						t.Fatalf("overflow at width %d: %q", width, row)
 					}
 				}
-				if !strings.HasSuffix(rows[3], "…") || strings.TrimSpace(strings.TrimSuffix(rows[3], "…")) == "" {
-					t.Fatalf("ellipsis must follow visible prose on final row: %q", got)
+				if strings.Join(rows, "\n") != "  … (3)\n  Third finding\n  Fourth finding\n  Fifth finding" {
+					t.Fatalf("preview must preserve the last three lines: %q", got)
 				}
-				for _, absent := range []string{"HIDDEN_TAIL_SENTINEL", "Fifth", "AgentID:", "Transcript:", "ToolUses:", "private-model", "private.go", "omitted", "Finished", "Done"} {
+				for _, absent := range []string{"HIDDEN_HEAD_SENTINEL", "First", "Second", "AgentID:", "Transcript:", "ToolUses:", "private-model", "private.go", "omitted", "Finished", "Done"} {
 					if strings.Contains(got, absent) {
 						t.Errorf("compact leaked %q: %q", absent, got)
 					}
 				}
 				data.Expanded = true
 				expanded := ansi.Strip(RenderToolResultInline(data, NewMDRenderer(width)))
-				if !strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(expanded, "┊", "")), ""), "HIDDEN_TAIL_SENTINEL") {
-					t.Fatalf("expanded result lost hidden tail: %q", expanded)
+				if !strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(expanded, "┊", "")), ""), "HIDDEN_HEAD_SENTINEL") {
+					t.Fatalf("expanded result lost hidden head: %q", expanded)
 				}
 			})
 		}
@@ -65,7 +65,7 @@ func TestAgentResultPreviewMarkdownAndColor(t *testing.T) {
 		for _, width := range []int{32, 40, 100} {
 			t.Run(fmt.Sprintf("%s/%d", theme, width), func(t *testing.T) {
 				call := core.ToolCall{ID: "a", Name: "Agent", Input: `{"name":"reviewer","description":"Security review"}`}
-				params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, Width: width, MDRenderer: NewMDRenderer(width), ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Plain finding", Details: toolresult.AgentDetails{}}}}
+				params := ToolCallsParams{AgentPreviewLines: 3, ToolCalls: []core.ToolCall{call}, Width: width, MDRenderer: NewMDRenderer(width), ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Plain finding", Details: toolresult.AgentDetails{}}}}
 				raw := RenderToolCalls(params)
 				if !strings.Contains(raw, toolResultStyle.Render("  Plain finding")) || toolResultStyle.Render("  Plain finding") == toolCallStyle.Render("  Plain finding") {
 					t.Errorf("actual preview must use dim result color, not header color: %q", raw)
@@ -77,14 +77,14 @@ func TestAgentResultPreviewMarkdownAndColor(t *testing.T) {
 						t.Fatalf("header lost distinct ANSI styling: %q", first)
 					}
 				}
-				params.ResultMap["a"] = ToolResultData{ToolName: "Agent", Content: "## Findings\n\n**Boundary** uses `guard` correctly.\n\n- Safe outcome", Details: toolresult.AgentDetails{}}
+				params.ResultMap["a"] = ToolResultData{AgentPreviewLines: 3, ToolName: "Agent", Content: "## Findings\n\n**Boundary** uses `guard` correctly.\n\n- Safe outcome", Details: toolresult.AgentDetails{}}
 				got := ansi.Strip(RenderToolCalls(params))
 				for _, marker := range []string{"##", "**", "`"} {
 					if strings.Contains(got, marker) {
 						t.Errorf("raw markdown %q remains: %q", marker, got)
 					}
 				}
-				if !strings.Contains(got, "Findings") || !strings.Contains(got, "Boundary") {
+				if !strings.Contains(got, "Safe outcome") || !strings.Contains(got, "Boundary") {
 					t.Fatalf("renderer lost original findings: %q", got)
 				}
 				_, body, _ := strings.Cut(got, "\n")
@@ -100,7 +100,7 @@ func TestAgentResultPreviewIdentityExpansion(t *testing.T) {
 	const description = "Review execution and approval consistency across all permission boundaries"
 	call := core.ToolCall{ID: "a", Name: "Agent", Input: `{"name":"reviewer","description":"` + description + `"}`}
 	for _, width := range []int{32, 40, 100} {
-		params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, Width: width, ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Useful result", Details: toolresult.AgentDetails{}}}}
+		params := ToolCallsParams{AgentPreviewLines: 3, ToolCalls: []core.ToolCall{call}, Width: width, ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Useful result", Details: toolresult.AgentDetails{}}}}
 		got := ansi.Strip(RenderToolCalls(params))
 		header, body, _ := strings.Cut(got, "\n")
 		if !strings.HasPrefix(header, "● Agent · reviewer · Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "Useful result" {
@@ -131,7 +131,7 @@ func TestParallelAgentResultPreviewOrderAndSpacing(t *testing.T) {
 			messages = append(messages, core.ChatMessage{Role: core.ChatUser, ToolDetails: toolresult.AgentDetails{}, ToolResult: &core.ToolResult{ToolCallID: id, ToolName: "Agent", Content: ai.TextContent("Finding " + id)}})
 		}
 		messages = append(messages, core.ChatMessage{Role: core.ChatAssistant, Content: "Parent conclusion"})
-		ctx := RenderContext{Width: width, Messages: messages, MDRenderer: NewMDRenderer(width), InlinedResults: PrecomputeInlinedResults(messages, 0)}
+		ctx := RenderContext{AgentPreviewLines: 3, Width: width, Messages: messages, MDRenderer: NewMDRenderer(width), InlinedResults: PrecomputeInlinedResults(messages, 0)}
 		got := ansi.Strip(RenderMessageRange(ctx, 0, len(messages), false))
 		last := -1
 		for _, id := range []string{"A", "B", "C"} {

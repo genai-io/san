@@ -33,6 +33,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.GitBar = coalescePtr(overlay.GitBar, base.GitBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
 	result.BashPreviewLines = coalescePtr(overlay.BashPreviewLines, base.BashPreviewLines)
+	result.AgentPreviewLines = coalescePtr(overlay.AgentPreviewLines, base.AgentPreviewLines)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)

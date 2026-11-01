@@ -572,6 +572,12 @@ func SaveBashPreviewLines(n int) error {
 	return updateSettingsFile(ScopeUser, func(d *Data) { d.BashPreviewLines = &n })
 }
 
+// SaveAgentPreviewLines persists the Agent activity preview's line count to
+// ~/.san/settings.json, explicitly, so 0 (no preview) survives a reload.
+func SaveAgentPreviewLines(n int) error {
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.AgentPreviewLines = &n })
+}
+
 // SaveAutoUpdate persists whether background auto-update is on to
 // ~/.san/settings.json, as an explicit value so turning it off sticks.
 func SaveAutoUpdate(on bool) error {

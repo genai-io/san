@@ -110,6 +110,7 @@ func applyStartupSettings(environment *env, settings *setting.Data, cwd string, 
 	environment.ShowGitBar = settings.ShowGitBar()
 	environment.ThinkingDisplay = settings.ThinkingDisplayMode()
 	environment.BashPreviewLines = settings.BashPreviewLineCount()
+	environment.AgentPreviewLines = settings.AgentPreviewLineCount()
 	environment.AutoPilot = settings.AutoPilot.Clone()
 }
 
