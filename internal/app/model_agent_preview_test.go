@@ -10,9 +10,9 @@ import (
 
 func TestStartupAgentPreviewPreference(t *testing.T) {
 	cwd := t.TempDir()
-	for _, n := range []int{-1, 0, 7, 99} {
+	for _, n := range []*int{nil, new(-1), new(0), new(7), new(99)} {
 		settings := setting.NewData()
-		settings.AgentPreviewLines = &n
+		settings.AgentPreviewLines = n
 		environment := env{SessionPermissions: setting.NewSessionPermissions()}
 		applyStartupSettings(&environment, settings, cwd, true, hook.NewEngine(settings, "", cwd, ""))
 		if environment.AgentPreviewLines != settings.AgentPreviewLineCount() || environment.BashPreviewLines != setting.DefaultBashPreviewLines {

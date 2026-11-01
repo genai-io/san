@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	agenttool "github.com/genai-io/san/internal/tool/agent"
@@ -56,7 +57,8 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if len(loaded.ChatRows()) != 2 || loaded.ChatRows()[1].ToolDetails == nil {
 		t.Fatalf("agent details lost on resume: %+v", loaded.ChatRows())
 	}
-	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.ChatRows()[1].ToolResult.Content.Text(), Details: loaded.ChatRows()[1].ToolDetails, Width: 100}
+	// Rendering receives the resolved preference; zero explicitly hides previews.
+	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.ChatRows()[1].ToolResult.Content.Text(), Details: loaded.ChatRows()[1].ToolDetails, Width: 100, AgentPreviewLines: setting.NewData().AgentPreviewLineCount()}
 	collapsed := ansi.Strip(conv.RenderToolResultInline(data, nil))
 	if !strings.Contains(collapsed, "Verified finding") {
 		t.Fatalf("resumed UI lost its result: %q", collapsed)
