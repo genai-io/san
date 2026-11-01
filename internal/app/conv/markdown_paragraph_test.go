@@ -146,6 +146,146 @@ func TestMDRendererCJKParagraphLeavesOtherBlocksNative(t *testing.T) {
 	}
 }
 
+func TestMDRendererCJKKeycapPreservesFinalCharacter(t *testing.T) {
+	text := strings.Repeat("中1️⃣文 ", 13)
+	out, err := NewMDRenderer(80).Render(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := func(s string) string { return strings.Join(strings.Fields(xansi.Strip(s)), "") }
+	if compact(out) != compact(text) {
+		t.Fatalf("keycap paragraph lost text: %q", out)
+	}
+}
+
+func TestWrapParagraphASCIIStartGraphemes(t *testing.T) {
+	for _, cluster := range []string{"1️⃣", "#️⃣", "e\u0301"} {
+		for _, width := range []int{3, 13, 78} {
+			t.Run(fmt.Sprintf("%s/%d", cluster, width), func(t *testing.T) {
+				text := strings.Repeat("中"+cluster+"文 ", 13)
+				out := wrapParagraph(text, width)
+				compact := func(s string) string { return strings.Join(strings.Fields(s), "") }
+				if compact(out) != compact(text) {
+					t.Fatalf("text changed: %q", out)
+				}
+				if strings.Count(out, cluster) != 13 {
+					t.Fatalf("split grapheme: %q", out)
+				}
+				for _, row := range strings.Split(out, "\n") {
+					if xansi.StringWidth(row) > width {
+						t.Errorf("overflow at width %d: %q", width, row)
+					}
+				}
+			})
+		}
+	}
+	// Also exercise emergency breaks inside a single oversized English word.
+	text := strings.Repeat("a1️⃣", 20)
+	out := wrapParagraph(text, 5)
+	if strings.ReplaceAll(out, "\n", "") != text || strings.Count(out, "1️⃣") != 20 {
+		t.Fatalf("split oversized word grapheme: %q", out)
+	}
+}
+
+func TestWrapParagraphLongStyledText(t *testing.T) {
+	const open = "\x1b]8;id=test;https://example.com\x1b\\"
+	const close = "\x1b]8;;\x1b\\"
+	text := strings.Repeat("中文", 30000)
+	out := wrapParagraph("\x1b[1m\x1b[38;2;12;34;56m"+open+text+close+"\x1b[0m", 80)
+	if strings.ReplaceAll(xansi.Strip(out), "\n", "") != text {
+		t.Fatal("long paragraph lost text")
+	}
+	rows := strings.Split(out, "\n")
+	if len(rows) != 1500 {
+		t.Fatalf("got %d rows, want 1500", len(rows))
+	}
+	for _, row := range rows {
+		if !strings.HasPrefix(row, "\x1b[1m\x1b[38;2;12;34;56m"+open) || !strings.HasSuffix(row, close+"\x1b[0m") {
+			t.Fatalf("row is not independently styled: %q", row)
+		}
+	}
+}
+
+func TestWrapParagraphLeadingWhitespace(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"  ab", "  ab"}, // Keep indentation when it fits.
+		{" abcd", "abcd"},
+		{"  abcde", "abcd\ne"},
+		{"     abcd中文", "abcd\n中文"},
+	} {
+		if got := wrapParagraph(tc.input, 4); got != tc.want {
+			t.Errorf("wrapParagraph(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+
+	r := NewMDRenderer(40)
+	word := strings.Repeat("a", 40)
+	out, err := r.Render("`  " + word + "  `中文")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := paragraphRows(out)
+	if len(rows) != 2 || strings.TrimSpace(rows[0]) != word || strings.TrimSpace(rows[1]) != "中文" {
+		t.Fatalf("leading code whitespace changed content or added a row: %q", out)
+	}
+	for _, row := range rows {
+		if xansi.StringWidth(row) > r.width {
+			t.Errorf("leading whitespace overflow: %q", row)
+		}
+	}
+}
+
+func TestWrapParagraphEmptyAndHardBreaks(t *testing.T) {
+	for _, text := range []string{"", "\x1b[1m\x1b[0m", "\n", "\n\n", "中文\n", "中文\n\n文字", " \t\n中文"} {
+		if got := wrapParagraph(text, 4); got != text {
+			t.Errorf("wrapParagraph(%q) = %q", text, got)
+		}
+	}
+	const styled = "\x1b[31m中文\n文字\x1b[0m"
+	const want = "\x1b[31m中文\x1b[0m\n\x1b[31m文字\x1b[0m"
+	if got := wrapParagraph(styled, 4); got != want {
+		t.Fatalf("hard break lost row isolation: %q", got)
+	}
+	const transition = "\x1b[31m中文\x1b[0m\x1b[32m文字\x1b[0m"
+	rows := strings.Split(wrapParagraph(transition, 4), "\n")
+	if len(rows) != 2 || !strings.HasPrefix(rows[1], "\x1b[32m") || strings.Contains(rows[1], "\x1b[31m") {
+		t.Fatalf("reset leaked prior style: %q", rows)
+	}
+}
+
+func TestWrapParagraphPartialStyleReset(t *testing.T) {
+	out := wrapParagraph("\x1b[1;31m中文\x1b[22m文字中文\x1b[0m", 4)
+	rows := strings.Split(out, "\n")
+	if len(rows) != 3 {
+		t.Fatalf("unexpected rows: %q", out)
+	}
+	for _, row := range rows[1:] {
+		if !strings.HasPrefix(row, "\x1b[1;31m\x1b[22m") || !strings.HasSuffix(row, "\x1b[0m") {
+			t.Fatalf("lost partial SGR reset: %q", row)
+		}
+	}
+}
+
+func BenchmarkWrapParagraph(b *testing.B) {
+	for _, size := range []int{6000, 60000} {
+		for _, styled := range []bool{false, true} {
+			b.Run(fmt.Sprintf("CJK%d/styled=%t", size, styled), func(b *testing.B) {
+				unit := "中文"
+				if styled {
+					unit = "\x1b[1m\x1b]8;;https://example.com\x1b\\中文\x1b]8;;\x1b\\\x1b[0m"
+				}
+				input := strings.Repeat(unit, size/2)
+				b.ReportAllocs()
+				b.SetBytes(int64(len(input)))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					wrapParagraph(input, 80)
+				}
+			})
+		}
+	}
+}
+
 func TestMDRendererCJKReferenceParagraphStaysNative(t *testing.T) {
 	r := NewMDRenderer(40)
 	src := "中文 [引用][ref] " + strings.Repeat("内容", 30) + "\n\n[ref]: https://example.com"

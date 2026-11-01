@@ -76,37 +76,147 @@ func paragraphCJK(r rune) bool {
 	return isCJK(r) || unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
-// wrapParagraph uses Unicode's legal line boundaries, not whitespace-only
-// words. ANSI slicing keeps styles and OSC hyperlinks intact, and Hardwrap
-// splits only grapheme boundaries when a single word exceeds the whole width.
+// wrapParagraph lays out plain-text byte ranges, then copies the styled input
+// once. Display-column slicing is both quadratic and unsafe when the slicing
+// and measuring APIs disagree about an ASCII-start grapheme (such as a keycap).
 func wrapParagraph(styled string, width int) string {
-	var output []string
-	for _, line := range strings.Split(styled, "\n") {
-		plain := xansi.Strip(line)
-		if strings.TrimSpace(plain) == "" {
-			output = append(output, line)
+	if width <= 0 {
+		return styled
+	}
+	type row struct{ start, end int }
+	var rows []row
+	plain := xansi.Strip(styled)
+	offset := 0
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.TrimSpace(line) == "" {
+			rows = append(rows, row{offset, offset + len(line)})
+			offset += len(line) + 1
 			continue
 		}
-		start, end, visibleEnd := 0, 0, 0
+		start, end, columns := 0, 0, 0
 		flush := func() {
-			output = append(output, xansi.Hardwrap(xansi.Cut(line, start, visibleEnd), width, false))
-			start = end
+			rows = append(rows, row{offset + start, offset + end})
 		}
-		state := -1
-		for len(plain) > 0 {
-			var segment string
-			segment, plain, _, state = uniseg.FirstLineSegmentInString(plain, state)
-			segmentWidth := xansi.StringWidth(segment)
-			trimmedWidth := xansi.StringWidth(strings.TrimRight(segment, " \t"))
-			if end > start && end-start+trimmedWidth > width {
-				flush()
+		rest, state, pos := line, -1, 0
+		for len(rest) > 0 {
+			segment := rest
+			length, boundary := 0, uniseg.LineDontBreak
+			for len(rest) > 0 && boundary == uniseg.LineDontBreak {
+				var cluster string
+				var boundaries int
+				cluster, rest, boundaries, state = uniseg.StepString(rest, state)
+				length += len(cluster)
+				boundary = boundaries & uniseg.MaskLine
 			}
-			visibleEnd = end + trimmedWidth
-			end += segmentWidth
+			segment = segment[:length]
+			visible := strings.TrimRight(segment, " \t")
+			segmentWidth := xansi.StringWidth(visible)
+			if columns+segmentWidth > width {
+				if end > start {
+					flush()
+				}
+				// Discard leading wrap whitespace rather than emit an empty
+				// row when indentation alone makes the next word overflow.
+				start, columns = pos, 0
+			}
+			// Only an oversized word needs emergency grapheme breaks. Use the
+			// same grapheme width API as StringWidth, including ASCII starters.
+			if segmentWidth > width {
+				for text, at := visible, pos; len(text) > 0; {
+					cluster, cells := xansi.FirstGraphemeCluster(text, xansi.GraphemeWidth)
+					if at > start && columns+cells > width {
+						end = at
+						flush()
+						start, columns = at, 0
+					}
+					columns += cells
+					at += len(cluster)
+					text = text[len(cluster):]
+				}
+			} else {
+				columns += segmentWidth
+			}
+			end = pos + len(visible)
+			columns += xansi.StringWidth(segment[len(visible):])
+			pos += len(segment)
+			if boundary == uniseg.LineMustBreak && len(rest) > 0 {
+				flush()
+				start, end, columns = pos, pos, 0
+			}
 		}
 		if end > start {
 			flush()
 		}
+		offset += len(line) + 1
 	}
-	return strings.Join(output, "\n")
+
+	var out strings.Builder
+	out.Grow(len(styled))
+	var style paragraphStyle
+	position, current := 0, 0
+	for len(styled) > 0 {
+		// Decode only escape sequences, never text: DecodeSequence treats
+		// printable ASCII as individual bytes, not complete graphemes.
+		if styled[0] == '\x1b' {
+			sequence, _, n, _ := xansi.DecodeSequence(styled, xansi.NormalState, nil)
+			out.WriteString(sequence)
+			style.consume(sequence)
+			styled = styled[n:]
+			continue
+		}
+		for current+1 < len(rows) && position >= rows[current+1].start {
+			style.newline(&out)
+			current++
+		}
+		if position >= rows[current].start && position < rows[current].end {
+			out.WriteByte(styled[0])
+		}
+		position++
+		styled = styled[1:]
+	}
+	// A final empty source line has no text byte to trigger its boundary.
+	for current+1 < len(rows) {
+		style.newline(&out)
+		current++
+	}
+	return out.String()
+}
+
+// Glamour resets SGR between styled spans. Retain the intervening sequences so
+// partial resets and extended colors replay exactly, and isolate each row from
+// gutters/padding (and from viewport clipping of preceding rows).
+type paragraphStyle struct {
+	sgr  string
+	link string
+}
+
+func (s *paragraphStyle) consume(sequence string) {
+	if strings.HasPrefix(sequence, "\x1b[") && strings.HasSuffix(sequence, "m") {
+		if sequence == "\x1b[m" || sequence == "\x1b[0m" {
+			s.sgr = ""
+		} else {
+			s.sgr += sequence
+		}
+	}
+	if strings.HasPrefix(sequence, "\x1b]8;") {
+		payload := strings.TrimSuffix(strings.TrimSuffix(sequence[4:], "\x1b\\"), "\a")
+		_, url, ok := strings.Cut(payload, ";")
+		if ok && url != "" {
+			s.link = sequence
+		} else {
+			s.link = ""
+		}
+	}
+}
+
+func (s *paragraphStyle) newline(out *strings.Builder) {
+	if s.link != "" {
+		out.WriteString("\x1b]8;;\x1b\\")
+	}
+	if s.sgr != "" {
+		out.WriteString("\x1b[0m")
+	}
+	out.WriteByte('\n')
+	out.WriteString(s.sgr)
+	out.WriteString(s.link)
 }

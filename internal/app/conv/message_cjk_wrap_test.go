@@ -8,6 +8,31 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestAssistantCJKKeycapsPreserveText(t *testing.T) {
+	for _, keycap := range []string{"1️⃣", "#️⃣"} {
+		for _, width := range []int{48, 64, 80} {
+			t.Run(fmt.Sprintf("%s/%d", keycap, width), func(t *testing.T) {
+				text := strings.Repeat("中"+keycap+"文 ", 13)
+				md := NewMDRenderer(width)
+				for name, rendered := range map[string]string{
+					"message":    RenderAssistantMessage(AssistantParams{Content: text, Width: width, MDRenderer: md}),
+					"scrollback": RenderCommittedContentBlock(text, true, md),
+				} {
+					plain := strings.TrimPrefix(ansi.Strip(rendered), "● ")
+					if strings.Join(strings.Fields(plain), "") != strings.Join(strings.Fields(text), "") {
+						t.Errorf("%s lost keycap paragraph content: %q", name, plain)
+					}
+					for _, row := range strings.Split(rendered, "\n") {
+						if ansi.StringWidth(row) > width {
+							t.Errorf("%s exceeds width %d: %q", name, width, row)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestAssistantCJKParagraphUsesAvailableWidth(t *testing.T) {
 	const text = "梳理时发现几条提交路径的 Hook 行为不同，不能直接把 Hook 塞进所有消息入口，否则会改变 TUI 行为。另外，临时工作区被外部清理了，目前没有产生代码修改。我会换用新的隔离目录继续，保留现有路径差异，并用测试固定这些边界。"
 	for _, width := range []int{140, 160, 180} {
