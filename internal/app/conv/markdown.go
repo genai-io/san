@@ -48,6 +48,9 @@ func trimStyledBlankLines(s string) string {
 type MDRenderer struct {
 	mu       sync.Mutex
 	renderer *glamour.TermRenderer
+	// paragraphRenderer preserves hard breaks and disables glamour's wrapping
+	// and width padding so ordinary CJK prose can use Unicode line boundaries.
+	paragraphRenderer *glamour.TermRenderer
 	// blockQuoteRenderer renders blockquote inner content: dimmed, and narrowed by the
 	// "│ " prefix so glamour wraps to a width that leaves room for it. We render
 	// blockquotes ourselves (see renderBlockQuote) because glamour's native
@@ -103,11 +106,15 @@ func buildGlamourRenderer(width int, dark bool, documentColor *string) *glamour.
 		style.Document.Color = documentColor
 	}
 
-	r, err := glamour.NewTermRenderer(
+	options := []glamour.TermRendererOption{
 		glamour.WithStyles(style),
 		glamour.WithWordWrap(width),
 		glamour.WithChromaFormatter("terminal256"),
-	)
+	}
+	if width == 0 {
+		options = append(options, glamour.WithPreservedNewLines())
+	}
+	r, err := glamour.NewTermRenderer(options...)
 	if err != nil {
 		fallback := styles.DarkStyle
 		if !dark {
@@ -131,6 +138,7 @@ func (r *MDRenderer) rebuildIfNeeded() {
 func (r *MDRenderer) buildRenderers(dark bool) {
 	textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
 	r.renderer = buildGlamourRenderer(r.width, dark, nil)
+	r.paragraphRenderer = buildGlamourRenderer(0, dark, nil)
 	r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
 	r.darkBg = dark
 	// Rendered output is tied to this width/background; drop any stale entries.
@@ -177,7 +185,7 @@ func (r *MDRenderer) Render(content string) (string, error) {
 		case segList:
 			parts = append(parts, r.renderList(seg.content))
 		default:
-			rendered, err := r.renderer.Render(seg.content)
+			rendered, err := r.renderPlain(seg.content)
 			if err != nil {
 				parts = append(parts, seg.content)
 			} else {
@@ -962,7 +970,8 @@ func normalizeLineBreaks(content string) string {
 				!strings.HasPrefix(prevTrimmed, "```") && !strings.HasPrefix(prevTrimmed, "~~~") &&
 				!strings.HasPrefix(prev, "    ") && !strings.HasPrefix(prev, "\t") &&
 				!isMarkdownStructural(prevTrimmed) &&
-				!strings.HasSuffix(prev, "  ") {
+				!strings.HasSuffix(prev, "  ") &&
+				(len(prev)-len(strings.TrimRight(prev, "\\")))%2 == 0 {
 				// Don't insert a space between CJK lines — Chinese/Japanese/Korean
 				// text doesn't use spaces between words.
 				sep := " "

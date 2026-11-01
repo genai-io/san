@@ -221,7 +221,7 @@ entries to inline. See "Tool calls and inlined results" below.
 ## Markdown via MDRenderer
 
 [`internal/app/conv/markdown.go`](../../internal/app/conv/markdown.go)
-wraps [glamour](https://github.com/charmbracelet/glamour). Five
+wraps [glamour](https://github.com/charmbracelet/glamour). These
 behaviors are intentional and not glamour defaults:
 
 | Concern | Behavior |
@@ -230,6 +230,7 @@ behaviors are intentional and not glamour defaults:
 | Background | Auto-detects dark vs light. `rebuildIfNeeded()` rebuilds inside `Render` if the terminal flipped themes. |
 | Tables | Pulled out before glamour sees them; rendered with lipgloss table primitives for full border control. |
 | Soft line breaks | LLMs hard-wrap at ~80 cols. Soft-wrapped paragraphs get joined before glamour so it can re-wrap at the real width. |
+| CJK paragraphs | Top-level Chinese/Japanese/Korean paragraphs use Unicode line boundaries. Segments with reference-link definitions retain native rendering to preserve link resolution. |
 | Inline tokens | A custom inline-markdown pass styles things glamour handles poorly (e.g. backticks inside other formatting). |
 
 Width matters: glamour computes column widths from its configured
