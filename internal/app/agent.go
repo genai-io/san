@@ -568,17 +568,11 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 // message needs no round trip.
 type agentSendFailedMsg struct{ err error }
 
-// pendingMessage is input waiting for the agent. Only the user's own message
-// picks memories: a harness message (notice, hook) would waste the pick, and
-// mid-turn it would cancel the one the user's message started.
-type pendingMessage struct {
-	core.Message
-	fromUser bool
-}
+type pendingMessage = agent.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
 	m.pendingMessages = append(m.pendingMessages, p)
-	if p.fromUser {
+	if p.FromUser {
 		m.backgroundNoticesHeld = false
 	}
 	return m.sendPendingMessages()
@@ -598,17 +592,8 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
 		m.pendingPluginRoot = ""
 	}
-	for len(m.pendingMessages) > 0 {
-		next := &m.pendingMessages[0]
-		if next.fromUser {
-			m.startMemoryRecall(next.Text())
-		}
-		next.Message = m.attachPendingReminders(next.Message)
-		// Keep rejected input in native form so the next submission can retry it.
-		if err := m.services.Agent.Send(next.Message); err != nil {
-			return func() tea.Msg { return agentSendFailedMsg{err: err} }
-		}
-		m.pendingMessages = m.pendingMessages[1:]
+	if err := m.pendingMessages.Deliver(m.services.Agent.Send, m.attachPendingReminders, m.startMemoryRecall); err != nil {
+		return func() tea.Msg { return agentSendFailedMsg{err: err} }
 	}
 	if !m.conv.Stream.Active {
 		m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: time.Now()}

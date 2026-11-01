@@ -28,6 +28,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -44,7 +45,7 @@ type model struct {
 	agentSession *session.Session // opened writer captured when the selected runtime started
 	workerMu     *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
-	pendingMessages []pendingMessage
+	pendingMessages agent.InputQueue
 	// A manual stop holds background-driven turns until real user input arrives.
 	backgroundNoticesHeld bool
 	// Input stays pending until the cancelled turn's synchronous consumer cleanup.

@@ -156,7 +156,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				m.services.Agent.SetPluginRoot("old-plugin")
 				m.skillUsedThisTurn = true
 				m.pendingPluginRoot = "next-plugin"
-				m.sendToAgent(pendingMessage{Message: core.UserMessage("explicit continuation", nil), fromUser: true})
+				m.sendToAgent(pendingMessage{Message: core.UserMessage("explicit continuation", nil), FromUser: true})
 				if len(m.pendingMessages) != 1 || llm.Calls() != 1 {
 					t.Fatal("explicit continuation crossed cleanup fence")
 				}

@@ -237,13 +237,13 @@ func (m *model) sendNextQueuedInput(explicit bool) tea.Cmd {
 // On no-provider or ensureAgentRuntime failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
-	return m.submit(pendingMessage{Message: msg, fromUser: true})
+	return m.submit(pendingMessage{Message: msg, FromUser: true})
 }
 
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
 	m.pendingMessages = append(m.pendingMessages, p)
-	if p.fromUser {
+	if p.FromUser {
 		m.backgroundNoticesHeld = false
 	} else if m.backgroundNoticesHeld {
 		return tea.Batch(m.CommitMessages()...)

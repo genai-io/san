@@ -29,8 +29,10 @@ External client ── ACP ──────┘
   producer write errors reach turn receipts before delivery; hook/skill audits
   remain best effort. Recording never acknowledges consumer cleanup or releases
   queued work. Permission decisions and their audit ordering remain in app.
-- Shared input and turn lifecycle: pending; package boundaries remain to be determined.
-  Compose existing services without a second engine, Bubble Tea or ACP types.
+- `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall and
+  retention of prepared input on rejection; TUI uses it after its existing gates.
+- Shared input admission and turn lifecycle: pending. Hooks, compaction,
+  cancellation/background holds and permission policy remain in their current owners.
 - ACP adapter: pending; capability negotiation, projections and extensions,
   without duplicate authorization, persistence or task scheduling.
 

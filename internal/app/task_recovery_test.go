@@ -134,7 +134,7 @@ func TestBackgroundNoticeAfterManualStopWaitsForUser(t *testing.T) {
 	if cmd := m.sendPendingMessages(); cmd != nil {
 		t.Fatal("automatic queue drain bypassed manual stop")
 	}
-	runCmd(m.sendToAgent(pendingMessage{Message: core.UserMessage("Continue with the pending result", nil), fromUser: true}))
+	runCmd(m.sendToAgent(pendingMessage{Message: core.UserMessage("Continue with the pending result", nil), FromUser: true}))
 	if m.backgroundNoticesHeld || len(m.pendingMessages) != 0 {
 		t.Fatal("real user input did not release retained notifications")
 	}
