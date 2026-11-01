@@ -24,6 +24,11 @@ External client ── ACP ──────┘
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
 - `internal/interaction`: request queue, lifetime/owner checks and cancellation replies.
   TUI display, authorization and audit ordering remain in `internal/app`.
+- `internal/session`: shared execution recording via `Session.RecordEvent`,
+  `RecordHookAudit` and `RecordSkillStateChange`, wired natively by TUI. Essential
+  producer write errors reach turn receipts before delivery; hook/skill audits
+  remain best effort. Recording never acknowledges consumer cleanup or releases
+  queued work. Permission decisions and their audit ordering remain in app.
 - Shared input and turn lifecycle: pending; package boundaries remain to be determined.
   Compose existing services without a second engine, Bubble Tea or ACP types.
 - ACP adapter: pending; capability negotiation, projections and extensions,

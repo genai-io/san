@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/san/internal/transcript"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -13,7 +14,14 @@ import (
 
 // RecordEvent adapts native agent events into the same Append path as
 // application records. The runtime captures this opened session, never a mutable ID.
+// Install it as the producer's event observer, before terminal delivery: TurnEnded
+// transfers essential write failures to its receipt, but never acknowledges it.
+// Consumer cleanup and required state writes still own finalization.
 func (r *Session) RecordEvent(ev core.Event) {
+	if end, ok := ev.(core.TurnEnded); ok {
+		end.Result.Finalization.RecordError(r.Err())
+		return
+	}
 	if r == nil || r.store == nil || r.sessionID == "" {
 		return
 	}
@@ -51,6 +59,23 @@ func (r *Session) RecordEvent(ev core.Event) {
 	case core.Compacted:
 		r.recordCompaction(e)
 	}
+}
+
+// RecordHookAudit is the hook engine's audit callback for this opened identity.
+// Hook audit writes remain best effort; they are not turn receipt guarantees.
+func (r *Session) RecordHookAudit(a hook.HookFiredAudit) {
+	_ = r.Append(context.Background(), transcript.Record{Type: transcript.HookFired, Hook: &transcript.HookRecord{
+		Event: a.Event, Source: a.Source, Matcher: a.Matcher, Outcome: a.Outcome,
+		Reason: a.Reason, LatencyMs: a.Duration.Milliseconds(),
+	}})
+}
+
+// RecordSkillStateChange is the skill registry's state-change observer for this
+// opened identity. Like hook audit, skill audit writes are best effort.
+func (r *Session) RecordSkillStateChange(name, previous, current, caller string) {
+	_ = r.Append(context.Background(), transcript.Record{Type: transcript.SkillStateChanged, Skill: &transcript.SkillRecord{
+		Name: name, Previous: previous, Current: current, Caller: caller,
+	}})
 }
 
 // recordCompaction persists the compaction boundary. The summary message itself is
