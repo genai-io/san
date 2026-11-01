@@ -26,14 +26,12 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/group"
-	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/reviewer"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -161,15 +159,6 @@ func (m *model) syncMCPTools() {
 	}
 }
 
-// recordAgentEvent captures essential transcript errors before terminal delivery.
-// Tool, system and detail audit writes are best effort, not receipt guarantees.
-func recordAgentEvent(rec *session.Session, ev core.Event) {
-	rec.RecordEvent(ev)
-	if end, ok := ev.(core.TurnEnded); ok {
-		end.Result.Finalization.RecordError(rec.Err())
-	}
-}
-
 func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params := m.promptParams()
 
@@ -180,31 +169,15 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return params, err
 	}
 	if rec != nil {
-		onEvent = func(ev core.Event) { recordAgentEvent(rec, ev) }
+		onEvent = rec.RecordEvent
 		for _, n := range m.earlyNotices {
 			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
 				Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
 					AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
 		}
 		m.earlyNotices = nil
-		m.services.Hook.SetAuditCallback(func(a hook.HookFiredAudit) {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.HookFired, Hook: &transcript.HookRecord{
-				Event:     a.Event,
-				Source:    a.Source,
-				Matcher:   a.Matcher,
-				Outcome:   a.Outcome,
-				Reason:    a.Reason,
-				LatencyMs: a.Duration.Milliseconds(),
-			}})
-		})
-		m.services.Skill.SetStateChangeObserver(func(name, previous, current, caller string) {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.SkillStateChanged, Skill: &transcript.SkillRecord{
-				Name:     name,
-				Previous: previous,
-				Current:  current,
-				Caller:   caller,
-			}})
-		})
+		m.services.Hook.SetAuditCallback(rec.RecordHookAudit)
+		m.services.Skill.SetStateChangeObserver(rec.RecordSkillStateChange)
 	}
 
 	// Build the autopilot judge into the atomic slot so /autopilot Save can

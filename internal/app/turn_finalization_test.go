@@ -55,7 +55,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			m.agentSession = opened
 			p := &finalizationProvider{client: llm.Client()}
 			if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", OnEvent: func(ev core.Event) {
-				recordAgentEvent(opened, ev)
+				opened.RecordEvent(ev)
 				if _, ok := ev.(core.TurnEnded); ok && mode == "natural" {
 					close(naturalEnd)
 				}
@@ -77,7 +77,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			if mode == "essential-write-failed" {
 				// A malformed essential message exercises the real recorder/store
 				// failure path, not a synthetic receipt.RecordError call.
-				recordAgentEvent(opened, sdkagent.MessageAdded{Message: ai.UserMessage("missing ID")})
+				opened.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("missing ID")})
 			}
 			if mode == "natural" {
 				select {
