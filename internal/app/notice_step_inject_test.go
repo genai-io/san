@@ -101,7 +101,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 			Agent:    sess,
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),
-			Reminder: reminder.NewManager(),
+			Reminder: reminder.New(),
 		},
 		conv: conv.NewModel(80),
 	}, provider

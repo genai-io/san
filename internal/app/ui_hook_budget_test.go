@@ -26,7 +26,7 @@ func modelWithPromptHook(t *testing.T, command string) *model {
 	return &model{
 		services: services{
 			Hook:     hook.NewEngine(data, "test-session", t.TempDir(), ""),
-			Reminder: reminder.NewManager(),
+			Reminder: reminder.New(),
 			Setting:  setting.New(data),
 		},
 	}

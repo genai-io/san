@@ -77,6 +77,6 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 Model citizens for what `feature` packages should look like — minimal interface,
 concrete return types, no kitchen-sink `Service`:
 
-- [`reminder`](2-feature/reminder.md) — concrete `*Manager` struct, small 2-method `Provider` interface.
+- [`reminder`](2-feature/reminder.md) — concrete `*Reminder` struct with closure-backed providers.
 - [`search`](2-feature/search.md) — pure consumer-defined `Provider`, no singleton.
 - [`worktree`](2-feature/worktree.md) — two functions, no types.

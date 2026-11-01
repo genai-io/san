@@ -54,7 +54,7 @@ type services struct {
     Plugin    plugin.Service
     Agent     agent.Service
     Identity  *identity.Registry
-    Reminder  *reminder.Manager
+    Reminder  *reminder.Reminder
 }
 ```
 

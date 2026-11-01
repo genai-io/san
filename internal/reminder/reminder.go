@@ -45,9 +45,9 @@ type provider struct {
 	render func() string
 }
 
-// Manager is the runtime API the harness uses to manage reminders.
+// Reminder holds the runtime state for reminders.
 //
-// The manager tracks conversation emission and two reminder collections:
+// It tracks conversation context preparation and two reminder collections:
 //
 //   - providers: long-lived sources that emit once per conversation and
 //     again when their content changes (e.g. skills, memory).
@@ -57,11 +57,11 @@ type provider struct {
 //     provider are one-time notices (see Enqueue).
 //
 // All operations are safe for concurrent use.
-type Manager struct {
-	mu          sync.Mutex
-	providers   []provider
-	pending     []pendingEntry
-	contextSent bool
+type Reminder struct {
+	mu              sync.Mutex
+	providers       []provider
+	pending         []pendingEntry
+	contextPrepared bool
 }
 
 // pendingEntry pairs a wrapped <system-reminder> body with the ID of the
@@ -73,14 +73,14 @@ type pendingEntry struct {
 	wrapped    string // already wrapped in <system-reminder>
 }
 
-// NewManager creates an empty reminder manager.
-func NewManager() *Manager {
-	return &Manager{}
+// New creates an empty Reminder.
+func New() *Reminder {
+	return &Reminder{}
 }
 
 // Register adds a provider whose output RequeueSystemReminders emits.
 // Re-registering an existing id replaces the old provider.
-func (s *Manager) Register(id string, render func() string) {
+func (s *Reminder) Register(id string, render func() string) {
 	p := provider{id: id, render: render}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,7 +95,7 @@ func (s *Manager) Register(id string, render func() string) {
 
 // Unregister removes the provider with the given ID. Missing IDs are silently
 // ignored.
-func (s *Manager) Unregister(id string) {
+func (s *Reminder) Unregister(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, existing := range s.providers {
@@ -113,7 +113,7 @@ func (s *Manager) Unregister(id string) {
 //
 // Empty bodies are dropped silently. Notices persist independently of
 // RequeueSystemReminders — the latter only touches provider-emitted entries.
-func (s *Manager) Enqueue(body string) {
+func (s *Reminder) Enqueue(body string) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return
@@ -128,13 +128,13 @@ func (s *Manager) Enqueue(body string) {
 // Enqueue (providerID==""). Used by /compact, /clear and /resume: the output
 // that produced these notices is no longer in the conversation the model
 // sees. Provider entries are preserved.
-func (s *Manager) DiscardPendingNotices() {
+func (s *Reminder) DiscardPendingNotices() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.discardPendingNoticesLocked()
 }
 
-func (s *Manager) discardPendingNoticesLocked() {
+func (s *Reminder) discardPendingNoticesLocked() {
 	if len(s.pending) == 0 {
 		return
 	}
@@ -163,13 +163,13 @@ func (s *Manager) discardPendingNoticesLocked() {
 // source="skills-directory">…`) so trace/audit can attribute who injected
 // what without parsing the body itself. Models treat unknown attributes
 // transparently — the model-visible meaning is unchanged.
-func (s *Manager) RequeueSystemReminders() {
+func (s *Reminder) RequeueSystemReminders() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requeueSystemRemindersLocked()
 }
 
-func (s *Manager) requeueSystemRemindersLocked() {
+func (s *Reminder) requeueSystemRemindersLocked() {
 	if len(s.providers) == 0 {
 		return
 	}
@@ -196,7 +196,7 @@ func (s *Manager) requeueSystemRemindersLocked() {
 }
 
 // Drain returns all pending reminders (already wrapped) and clears the queue.
-func (s *Manager) Drain() []string {
+func (s *Reminder) Drain() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := s.wrappedLocked()
@@ -207,7 +207,7 @@ func (s *Manager) Drain() []string {
 // Pending returns the queued reminders (already wrapped) without clearing the
 // queue. Use it to inspect what the next user message will carry; use Drain
 // when you are the one attaching them.
-func (s *Manager) Pending() []string {
+func (s *Reminder) Pending() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.wrappedLocked()
@@ -216,7 +216,7 @@ func (s *Manager) Pending() []string {
 // wrappedLocked returns the queue's wire strings. Shared by Drain and Pending
 // so the two views of the same queue cannot disagree about what an entry
 // renders as. Caller holds s.mu.
-func (s *Manager) wrappedLocked() []string {
+func (s *Reminder) wrappedLocked() []string {
 	if len(s.pending) == 0 {
 		return nil
 	}
@@ -228,7 +228,7 @@ func (s *Manager) wrappedLocked() []string {
 }
 
 // Empty reports whether there are no pending reminders.
-func (s *Manager) Empty() bool {
+func (s *Reminder) Empty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.pending) == 0

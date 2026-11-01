@@ -42,10 +42,10 @@ func TestWrapNonEmpty(t *testing.T) {
 	}
 }
 
-func TestManagerEnqueueAndDrain(t *testing.T) {
-	s := NewManager()
+func TestReminderEnqueueAndDrain(t *testing.T) {
+	s := New()
 	if !s.Empty() {
-		t.Fatal("new manager should be empty")
+		t.Fatal("new reminder should be empty")
 	}
 
 	s.Enqueue("first")
@@ -63,12 +63,12 @@ func TestManagerEnqueueAndDrain(t *testing.T) {
 		t.Errorf("second reminder missing body: %q", out[1])
 	}
 	if !s.Empty() {
-		t.Error("manager should be empty after Drain")
+		t.Error("reminder should be empty after Drain")
 	}
 }
 
-func TestManagerProviderRegistration(t *testing.T) {
-	s := NewManager()
+func TestReminderProviderRegistration(t *testing.T) {
+	s := New()
 
 	rendered := 0
 	s.Register("skills", func() string {
@@ -87,8 +87,8 @@ func TestManagerProviderRegistration(t *testing.T) {
 	}
 }
 
-func TestManagerProviderReplaceByID(t *testing.T) {
-	s := NewManager()
+func TestReminderProviderReplaceByID(t *testing.T) {
+	s := New()
 	s.Register("skills", func() string { return "old" })
 	s.Register("skills", func() string { return "new" })
 
@@ -102,8 +102,8 @@ func TestManagerProviderReplaceByID(t *testing.T) {
 	}
 }
 
-func TestManagerProviderEmptyOutput(t *testing.T) {
-	s := NewManager()
+func TestReminderProviderEmptyOutput(t *testing.T) {
+	s := New()
 	s.Register("skills", func() string { return "" })
 	s.Register("memory", func() string { return "stuff" })
 
@@ -117,8 +117,8 @@ func TestManagerProviderEmptyOutput(t *testing.T) {
 	}
 }
 
-func TestManagerUnregister(t *testing.T) {
-	s := NewManager()
+func TestReminderUnregister(t *testing.T) {
+	s := New()
 	s.Register("a", func() string { return "alpha" })
 	s.Register("b", func() string { return "beta" })
 
@@ -156,14 +156,14 @@ func TestAttachToContentMultiple(t *testing.T) {
 	}
 }
 
-// TestManagerFullSessionLifecycle simulates the harness flow end-to-end: a
+// TestReminderFullSessionLifecycle simulates the harness flow end-to-end: a
 // session starts, providers (skills + memory) get enqueued, the user types a
 // message, attached reminders ride along; on PostCompact the same providers
 // re-emit so the LLM doesn't lose context. This is what the model wires up
 // across hooks.go (SessionStart), model.go (PostCompact), and agent.go
 // (sendToAgent).
-func TestManagerFullSessionLifecycle(t *testing.T) {
-	s := NewManager()
+func TestReminderFullSessionLifecycle(t *testing.T) {
+	s := New()
 
 	skillsBody := "Use the Skill tool to invoke these capabilities:\n\n- git: Git workflow"
 	memoryBody := "<memory scope=\"user\">\nAlways use tabs.\n</memory>"
@@ -206,11 +206,11 @@ func TestManagerFullSessionLifecycle(t *testing.T) {
 	}
 }
 
-// TestManagerProviderReflectsLatestState verifies that providers are queried
+// TestReminderProviderReflectsLatestState verifies that providers are queried
 // on every emission, so changes between SessionStart and PostCompact (e.g.
 // the user toggled a skill in the middle) are picked up.
-func TestManagerProviderReflectsLatestState(t *testing.T) {
-	s := NewManager()
+func TestReminderProviderReflectsLatestState(t *testing.T) {
+	s := New()
 	state := "v1"
 	s.Register("skills", func() string { return state })
 
@@ -227,12 +227,12 @@ func TestManagerProviderReflectsLatestState(t *testing.T) {
 	}
 }
 
-// TestManagerRequeueSystemRemindersIsIdempotent guards against the slow-growing
+// TestReminderRequeueSystemRemindersIsIdempotent guards against the slow-growing
 // duplicate-emission leak: SessionStart → PostCompact → /skills toggle in
 // close succession should produce one emission per provider, not three.
 // One-time notices (Enqueue) must survive a re-emission unmolested.
-func TestManagerRequeueSystemRemindersIsIdempotent(t *testing.T) {
-	s := NewManager()
+func TestReminderRequeueSystemRemindersIsIdempotent(t *testing.T) {
+	s := New()
 	s.Register("skills-directory", func() string { return "skills body" })
 	s.Register("memory-user", func() string { return "user mem" })
 
@@ -266,8 +266,8 @@ func TestManagerRequeueSystemRemindersIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestManagerConcurrentAccess(t *testing.T) {
-	s := NewManager()
+func TestReminderConcurrentAccess(t *testing.T) {
+	s := New()
 
 	var wg sync.WaitGroup
 	for i := range 50 {
@@ -289,7 +289,7 @@ func TestManagerConcurrentAccess(t *testing.T) {
 // user turn has to be recoverable from that turn's content, with the emitting
 // provider intact, so /context can attribute those bytes to the right source.
 func TestBlocksRecoversAttachedReminders(t *testing.T) {
-	s := NewManager()
+	s := New()
 	s.Register(ProviderSkillsDirectory, func() string { return "skills body" })
 	s.Register(ProviderMemoryProject, func() string { return "project memory body" })
 	s.RequeueSystemReminders()
@@ -331,7 +331,7 @@ func TestBlocksIgnoresMalformedTags(t *testing.T) {
 // Pending has to leave the queue intact — /context inspects what the next turn
 // will carry, it does not consume it.
 func TestPendingDoesNotDrain(t *testing.T) {
-	s := NewManager()
+	s := New()
 	s.Enqueue("queued")
 
 	if got := s.Pending(); len(got) != 1 {

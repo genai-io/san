@@ -542,8 +542,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	if m.services.Reminder.ContextSent() && params.AutoMemory != m.agentAutoMemory {
-		// The index reminder went out once, naming the old stores.
+	if m.services.Reminder.ContextPrepared() && params.AutoMemory != m.agentAutoMemory {
+		// The index reminder was prepared once, naming the old stores.
 		m.services.Reminder.RequeueSystemReminders()
 		if params.AutoMemory.Off() {
 			m.services.Reminder.Enqueue("Auto memory is now off: stop reading and saving memory files.")
@@ -615,7 +615,7 @@ func (m *model) startMemoryRecall(query string) {
 	if m.memoryRecall == nil || strings.TrimSpace(query) == "" || conv.IsAgentEnvelope(query) || m.agentAutoMemory.Off() {
 		return
 	}
-	if !m.services.Reminder.ContextSent() || m.memoryRecall.surfaced == nil {
+	if !m.services.Reminder.ContextPrepared() || m.memoryRecall.surfaced == nil {
 		m.memoryRecall.surfaced = map[string]bool{} // a new conversation has seen none
 	}
 	provider, info := m.resolveReviewer("")
