@@ -189,8 +189,9 @@ type beginNativeHistoryCommitsMsg struct{}
 
 type nativeHistoryModel struct {
 	model
-	started   bool
-	committed chan struct{}
+	started      bool
+	committed    chan struct{}
+	extraContent string // optional resize-prepared payload exercised by the history gate
 	// printFrameHeight is the frame height a print is sized against — measured
 	// from the latest View, which need not match the frame the terminal shows.
 	printFrameHeight int
@@ -223,6 +224,7 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nativeBash + "8",
 		}, "\n"), 0)
 		m.flush.queueScrollbackPrint(nativeEdit, 0)
+		m.flush.queueScrollbackPrint(m.extraContent, 0)
 		return m, first
 	case scrollbackPrintReadyMsg:
 		frame, capacity := m.View(), nativeHistoryHeight-m.printFrameHeight
@@ -334,7 +336,25 @@ func TestFullScreenFrameCommitLeavesNoStaleFrameInNativeHistory(t *testing.T) {
 	runNativeHistoryCommits(t, m)
 }
 
-func runNativeHistoryCommits(t *testing.T, m *nativeHistoryModel) {
+// vt10x does not reflow on resize. Exercise San's wide/narrow/wide payload
+// preparation, then the real renderer's native-history insertion separately.
+func TestRewrappedCommandReachesNativeHistoryIntact(t *testing.T) {
+	command := "$ printf " + strings.Repeat("中", 20)
+	content := command
+	for _, width := range []int{80, 3, 80} {
+		content = renderScrollbackLines(scrollbackPhysicalLines(content, width))
+	}
+	m := newNativeHistoryModel()
+	m.extraContent = content
+	all := runNativeHistoryCommits(t, m)
+	compact := strings.NewReplacer(" ", "", "\n", "", "\r", "").Replace(all)
+	want := strings.ReplaceAll(command, " ", "")
+	if strings.Count(compact, want) != 1 || strings.Count(all, "中") != 20 {
+		t.Fatalf("rewrapped command lost or repeated text in terminal: %q", all)
+	}
+}
+
+func runNativeHistoryCommits(t *testing.T, m *nativeHistoryModel) string {
 	t.Helper()
 	terminal := newTerminalHistoryState(nativeHistoryWidth, nativeHistoryHeight)
 	program := tea.NewProgram(
@@ -417,6 +437,7 @@ func runNativeHistoryCommits(t *testing.T, m *nativeHistoryModel) {
 		}
 		previous = at
 	}
+	return all
 }
 
 type fixedComposerCommitMsg string

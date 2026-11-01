@@ -335,7 +335,7 @@ func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
 	}{
 		{name: "ANSI styling", content: "\x1b[31mred\x1b[0m", width: 4, rows: 1, plain: "red"},
 		{name: "soft wrap", content: "abcde", width: 4, rows: 2, plain: "abcd\ne"},
-		{name: "exact-width wrap", content: "abcdefgh", width: 4, rows: 3, plain: "abcd\nefgh\n"},
+		{name: "exact-width wrap", content: "abcdefgh", width: 4, rows: 2, plain: "abcd\nefgh"},
 		{name: "wide graphemes", content: "界界界", width: 4, rows: 2, plain: "界界\n界"},
 		{name: "emoji graphemes", content: "🏳️‍🌈🏳️‍🌈🏳️‍🌈", width: 4, rows: 2, plain: "🏳️‍🌈🏳️‍🌈\n🏳️‍🌈"},
 		{name: "trailing newline", content: "a\n", width: 4, rows: 2, plain: "a\n"},
@@ -421,7 +421,7 @@ func TestScrollbackRemainingRowsRewrapAfterResize(t *testing.T) {
 		chunks = append(chunks, chunk)
 		flush.finishScrollbackPrint(id)
 	}
-	if got := ansi.Strip(strings.Join(chunks, "\n")); got != "abcd\nef\ng\nla\nst\n!\n" {
+	if got := ansi.Strip(strings.Join(chunks, "\n")); got != "abcd\nef\ng\nla\nst\n!" {
 		t.Fatalf("resized chunks = %q", got)
 	}
 }
