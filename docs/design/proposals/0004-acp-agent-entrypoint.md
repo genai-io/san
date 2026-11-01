@@ -31,8 +31,7 @@ External client ── ACP ──────┘
   queued work. Permission decisions and their audit ordering remain in app.
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall and
   retention of prepared input on rejection; TUI uses it after its existing gates.
-- `internal/reminder.Service`: first-input context emission, native-history detection
-  and reset/compaction rearming; TUI still supplies providers and lifecycle gates.
+- `internal/reminder`: reminders and their conversation state; TUI retains lifecycle gates.
 - Shared input admission and turn lifecycle: pending. Hooks, compaction,
   cancellation/background holds and permission policy remain in their current owners.
 - ACP adapter: pending; capability negotiation, projections and extensions,
