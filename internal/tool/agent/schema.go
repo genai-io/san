@@ -21,7 +21,7 @@ func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema 
 
 func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
-	sb.WriteString("Handle the task directly by default. Delegate an independently scoped task only when the benefits of context isolation, parallel execution, or distinct capabilities outweigh briefing, duplicated reads, and result verification.\n\n")
+	sb.WriteString("Work directly by default. Delegate when the expected benefit outweighs the handoff and coordination cost.\n\n")
 	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
 		sb.WriteString(catalog)
 		sb.WriteString("\n\nAfter deciding to delegate, use name to select a predefined agent or omit it for the default Agent. Catalog matches describe suitability, not invocation requirements.\n\n")

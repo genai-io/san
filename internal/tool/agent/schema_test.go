@@ -16,13 +16,11 @@ func TestAgentToolSchemaMatchesBuilder(t *testing.T) {
 	}
 }
 
-func TestAgentSchemaEncouragesDirectWorkForClearScope(t *testing.T) {
+func TestAgentSchemaWeighsDelegationBenefitAgainstCost(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
-		"Handle the task directly by default",
-		"independently scoped task",
-		"context isolation, parallel execution, or distinct capabilities",
-		"briefing, duplicated reads, and result verification",
+		"Work directly by default",
+		"Delegate when the expected benefit outweighs the handoff and coordination cost",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("Agent description should contain %q", want)
