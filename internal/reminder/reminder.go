@@ -47,7 +47,7 @@ type provider struct {
 
 // Service is the runtime API the harness uses to manage reminders.
 //
-// The service holds two pieces of state:
+// The service tracks conversation emission and two reminder collections:
 //
 //   - providers: long-lived sources that emit once per conversation and
 //     again when their content changes (e.g. skills, memory).
@@ -58,9 +58,10 @@ type provider struct {
 //
 // All operations are safe for concurrent use.
 type Service struct {
-	mu        sync.Mutex
-	providers []provider
-	pending   []pendingEntry
+	mu          sync.Mutex
+	providers   []provider
+	pending     []pendingEntry
+	contextSent bool
 }
 
 // pendingEntry pairs a wrapped <system-reminder> body with the ID of the
@@ -130,6 +131,10 @@ func (s *Service) Enqueue(body string) {
 func (s *Service) DiscardPendingNotices() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.discardPendingNoticesLocked()
+}
+
+func (s *Service) discardPendingNoticesLocked() {
 	if len(s.pending) == 0 {
 		return
 	}
@@ -161,7 +166,10 @@ func (s *Service) DiscardPendingNotices() {
 func (s *Service) RequeueSystemReminders() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.requeueSystemRemindersLocked()
+}
 
+func (s *Service) requeueSystemRemindersLocked() {
 	if len(s.providers) == 0 {
 		return
 	}

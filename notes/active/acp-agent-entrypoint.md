@@ -20,6 +20,9 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
   - [x] Native input delivery: `agent.InputQueue` owns FIFO retry retention and
     user-only recall dispatch; TUI retains admission and lifecycle gates.
     Covered by agent input tests and existing TUI queue/cancellation tests.
+  - [x] Reminder conversation policy: `reminder.Service` owns first-input emission,
+    native-history detection and reset/compaction rearming; TUI retains lifecycle gates.
+    Covered by reminder lifecycle, rejected-input retry and native TUI tests.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.
 - [ ] **Acceptance:** baseline-only, richer ACP and San-extension profiles;

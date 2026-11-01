@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"go.uber.org/zap"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -205,9 +203,7 @@ func (m *model) restoreHistory(sess *session.History) {
 	m.conv.Messages = m.services.SessionStore.ChatRows(sess)
 	m.earlyNotices = nil
 	m.services.Agent.SetMessages(sess.Messages)
-	m.systemRemindersSent = slices.ContainsFunc(m.conv.Messages, func(msg core.ChatMessage) bool {
-		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
-	})
+	m.services.Reminder.RestoreHistory(m.conv.Messages)
 	m.conv.CommittedCount = 0
 
 	m.env.SessionName = sess.Metadata.Title
