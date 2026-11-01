@@ -32,7 +32,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			m.userInput.Queue.Enqueue("queued successor", nil)
 			m.sendPendingMessages()
 			m.sendNextQueuedInputIfIdle()
-			if len(m.pendingMessages) != 1 || m.pendingMessages[0].fromUser || !m.backgroundNoticesHeld {
+			if len(m.pendingMessages) != 1 || m.pendingMessages[0].FromUser || !m.backgroundNoticesHeld {
 				t.Fatal("hook did not remain held")
 			}
 			select {
@@ -48,7 +48,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 				m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 			}
 			if mode == "direct" {
-				m.sendToAgent(pendingMessage{Message: core.UserMessage("direct continuation", nil), fromUser: true})
+				m.sendToAgent(pendingMessage{Message: core.UserMessage("direct continuation", nil), FromUser: true})
 			}
 			if m.userInput.Queue.Len() != 2 {
 				t.Fatal("queue crossed finalization fence")

@@ -90,7 +90,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		Images:         images,
 	})
 	message, _ := chat.ToMessage()
-	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, fromUser: true}))...), true
+	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, FromUser: true}))...), true
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
