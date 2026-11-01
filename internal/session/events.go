@@ -12,11 +12,9 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// RecordEvent adapts native agent events into the same Append path as
-// application records. The runtime captures this opened session, never a mutable ID.
-// Install it as the producer's event observer, before terminal delivery: TurnEnded
-// transfers essential write failures to its receipt, but never acknowledges it.
-// Consumer cleanup and required state writes still own finalization.
+// RecordEvent records native events for this opened session before producer delivery.
+// TurnEnded transfers essential write failures to its receipt without acknowledging
+// consumer cleanup or required state writes.
 func (r *Session) RecordEvent(ev core.Event) {
 	if end, ok := ev.(core.TurnEnded); ok {
 		end.Result.Finalization.RecordError(r.Err())
@@ -61,8 +59,7 @@ func (r *Session) RecordEvent(ev core.Event) {
 	}
 }
 
-// RecordHookAudit is the hook engine's audit callback for this opened identity.
-// Hook audit writes remain best effort; they are not turn receipt guarantees.
+// RecordHookAudit records best-effort hook audit for this opened session.
 func (r *Session) RecordHookAudit(a hook.HookFiredAudit) {
 	_ = r.Append(context.Background(), transcript.Record{Type: transcript.HookFired, Hook: &transcript.HookRecord{
 		Event: a.Event, Source: a.Source, Matcher: a.Matcher, Outcome: a.Outcome,
@@ -70,8 +67,7 @@ func (r *Session) RecordHookAudit(a hook.HookFiredAudit) {
 	}})
 }
 
-// RecordSkillStateChange is the skill registry's state-change observer for this
-// opened identity. Like hook audit, skill audit writes are best effort.
+// RecordSkillStateChange records best-effort skill audit for this opened session.
 func (r *Session) RecordSkillStateChange(name, previous, current, caller string) {
 	_ = r.Append(context.Background(), transcript.Record{Type: transcript.SkillStateChanged, Skill: &transcript.SkillRecord{
 		Name: name, Previous: previous, Current: current, Caller: caller,
