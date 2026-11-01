@@ -200,7 +200,7 @@ func (m *model) sendNextQueuedInputIfIdle() tea.Cmd {
 
 // Only queue-selection Enter may bypass the manual-stop hold, never the fence.
 func (m *model) sendNextQueuedInput(explicit bool) tea.Cmd {
-	if m.cancellingTurn != nil || (m.backgroundNoticesHeld && !explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
+	if !m.pendingMessages.CanDeliver(explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil
 	}
 	item, ok := m.userInput.Queue.Dequeue()
@@ -242,13 +242,8 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
-	m.pendingMessages = append(m.pendingMessages, p)
-	if p.FromUser {
-		m.backgroundNoticesHeld = false
-	} else if m.backgroundNoticesHeld {
-		return tea.Batch(m.CommitMessages()...)
-	}
-	if m.cancellingTurn != nil {
+	m.pendingMessages.Enqueue(p)
+	if !m.pendingMessages.CanDeliver(false) {
 		return tea.Batch(m.CommitMessages()...)
 	}
 	content := p.Text()
@@ -290,7 +285,7 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 	}
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg}).ToMessage()
 	if pluginRoot != "" {
-		if m.cancellingTurn != nil {
+		if m.pendingMessages.Cancelling() != nil {
 			m.pendingPluginRoot = pluginRoot
 		} else {
 			m.services.Agent.SetPluginRoot(pluginRoot)

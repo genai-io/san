@@ -158,7 +158,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// is empty for a cancelled turn). We still persist so the [Interrupted]
 	// marker and cancelled tool_result rows survive a crash/quit, and
 	// re-arm prompt suggestions for the now-idle textarea.
-	if result.StopReason == core.StopCanceled || m.cancellingTurn == result.Finalization && m.cancellingTurn != nil {
+	if result.StopReason == core.StopCanceled || m.pendingMessages.Cancelling() == result.Finalization && m.pendingMessages.Cancelling() != nil {
 		log.Logger().Sugar().Debugf("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
 		finalizationErr = m.appendTurnState()
 		if cmd := m.startPromptSuggestion(); cmd != nil {

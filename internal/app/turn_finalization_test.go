@@ -157,7 +157,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				m.skillUsedThisTurn = true
 				m.pendingPluginRoot = "next-plugin"
 				m.sendToAgent(pendingMessage{Message: core.UserMessage("explicit continuation", nil), FromUser: true})
-				if len(m.pendingMessages) != 1 || llm.Calls() != 1 {
+				if m.pendingMessages.Len() != 1 || llm.Calls() != 1 {
 					t.Fatal("explicit continuation crossed cleanup fence")
 				}
 			}
@@ -176,13 +176,13 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("async command did not complete after handling")
 			}
-			if m.cancellingTurn != nil {
+			if m.pendingMessages.Cancelling() != nil {
 				t.Fatal("submission fence not released")
 			}
 			if m.userInput.Queue.Len() != 1 {
 				t.Fatal("terminal finalization released held queued input")
 			}
-			if mode != "saved" && !m.backgroundNoticesHeld {
+			if mode != "saved" && !m.pendingMessages.Held() {
 				t.Fatal("cancellation released background hold")
 			}
 			if mode == "saved" {

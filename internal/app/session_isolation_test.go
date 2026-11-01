@@ -81,7 +81,7 @@ func TestWorkerCompletionStaysInOriginalSession(t *testing.T) {
 		t.Fatalf("old worker emitted a notice into the new session: %+v", n)
 	default:
 	}
-	if len(m.conv.Messages) != before || len(m.pendingMessages) != 0 || m.conv.Stream.Active || len(m.services.Tracker.List()) != 0 {
+	if len(m.conv.Messages) != before || m.pendingMessages.Len() != 0 || m.conv.Stream.Active || len(m.services.Tracker.List()) != 0 {
 		t.Fatal("old worker changed the new session's conversation or tasks")
 	}
 }

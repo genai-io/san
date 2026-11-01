@@ -115,7 +115,7 @@ func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 
 	worker.info.Status = task.StatusCompleted
 	msg, _ := taskCompletionMessage(worker.info)
-	m.backgroundNoticesHeld = true
+	m.pendingMessages.Hold(nil)
 	m.Update(mainNoticeMsg{notice: fromBrokerMessage(msg)})
 	if view := ansi.Strip(m.userInput.Tasks.Render()); !strings.Contains(view, "History · 1") || strings.Contains(view, "[completed]") {
 		t.Fatalf("completion did not fold into history immediately: %s", view)
@@ -140,7 +140,7 @@ func TestTaskViewerOrdinaryMailDoesNotRefreshSnapshots(t *testing.T) {
 	m.openTasks()
 	counted.statusReads, counted.outputReads = 0, 0
 	worker.info.Description = "not-yet-polled"
-	m.backgroundNoticesHeld = true
+	m.pendingMessages.Hold(nil)
 	m.Update(mainNoticeMsg{notice: fromBrokerMessage(broker.Message{From: "counted", Content: "Interim findings"})})
 	// The conversation tracker may read status while committing the notice;
 	// neither the viewer's output fallback nor its cached rows should refresh.

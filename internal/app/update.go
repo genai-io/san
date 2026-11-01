@@ -497,10 +497,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case turnFinalizedMsg:
-		if msg.receipt != m.cancellingTurn {
+		if !m.pendingMessages.Finalize(msg.receipt) {
 			return m, nil
 		}
-		m.cancellingTurn = nil
 		var cmds []tea.Cmd
 		if msg.err != nil && msg.err != core.ErrTurnCompleted {
 			log.Logger().Warn("cancelled turn finalization incomplete", zap.Error(msg.err))
@@ -511,7 +510,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		continuation := m.queueContinuation
 		m.queueContinuation = nil
-		if len(m.pendingMessages) > 0 && !m.backgroundNoticesHeld {
+		if m.pendingMessages.Len() > 0 && m.pendingMessages.CanDeliver(false) {
 			cmds = append(cmds, m.sendPendingMessages())
 		} else if continuation != nil && msg.outbox == m.services.Agent.Outbox() {
 			// Never transfer Enter's permission to a deleted or edited successor.

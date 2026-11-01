@@ -74,12 +74,15 @@ func TestObsoleteTaskCompletionDoesNotWakeMain(t *testing.T) {
 			worker.info.Error, worker.info.AgentSessionID = "obsolete attempt failed", "child"
 			message, _ := taskCompletionMessage(worker.info)
 			worker.info.Status, worker.info.Attempt = task.StatusRunning, 2
-			m.conv.Stream.Active, m.backgroundNoticesHeld = state.active, state.held
+			m.conv.Stream.Active = state.active
+			if state.held {
+				m.pendingMessages.Hold(nil)
+			}
 
 			if cmd := m.deliverNotice(fromBrokerMessage(message)); cmd != nil {
 				t.Fatal("obsolete completion scheduled work")
 			}
-			if len(m.conv.Messages) != 0 || len(m.pendingMessages) != 0 || m.conv.Stream.Active != state.active || m.taskCompletionShown(worker.GetID()) {
+			if len(m.conv.Messages) != 0 || m.pendingMessages.Len() != 0 || m.conv.Stream.Active != state.active || m.taskCompletionShown(worker.GetID()) {
 				t.Fatal("obsolete completion changed conversation, pending input, or current-attempt visibility")
 			}
 			select {
@@ -125,17 +128,17 @@ func TestTaskCompletionFenceKeepsGenuineNotices(t *testing.T) {
 
 func TestBackgroundNoticeAfterManualStopWaitsForUser(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
-	m.backgroundNoticesHeld = true
+	m.pendingMessages.Hold(nil)
 	runCmd(m.deliverNotice(taskNotice()))
 	assertNoticeShown(t, m)
-	if m.conv.Stream.Active || len(m.pendingMessages) != 1 {
-		t.Fatalf("background notice restarted the stopped conversation: streaming=%v pending=%d", m.conv.Stream.Active, len(m.pendingMessages))
+	if m.conv.Stream.Active || m.pendingMessages.Len() != 1 {
+		t.Fatalf("background notice restarted the stopped conversation: streaming=%v pending=%d", m.conv.Stream.Active, m.pendingMessages.Len())
 	}
 	if cmd := m.sendPendingMessages(); cmd != nil {
 		t.Fatal("automatic queue drain bypassed manual stop")
 	}
 	runCmd(m.sendToAgent(pendingMessage{Message: core.UserMessage("Continue with the pending result", nil), FromUser: true}))
-	if m.backgroundNoticesHeld || len(m.pendingMessages) != 0 {
+	if m.pendingMessages.Held() || m.pendingMessages.Len() != 0 {
 		t.Fatal("real user input did not release retained notifications")
 	}
 	assertAgentRead(t, provider)
@@ -155,15 +158,15 @@ func TestViewedContinuationOnlyAsksMainAndRejectsStaleAttempt(t *testing.T) {
 		}
 		m.continueViewedTask(action)
 		if stale {
-			if len(m.pendingMessages) != 0 || !m.userInput.Tasks.IsActive() {
+			if m.pendingMessages.Len() != 0 || !m.userInput.Tasks.IsActive() {
 				t.Fatal("stale continuation action affected a replacement execution")
 			}
 			continue
 		}
-		if len(m.pendingMessages) != 1 || m.userInput.Tasks.IsActive() || worker.info.Status != task.StatusFailed {
+		if m.pendingMessages.Len() != 1 || m.userInput.Tasks.IsActive() || worker.info.Status != task.StatusFailed {
 			t.Fatal("viewer launched a worker directly instead of asking main")
 		}
-		content := m.pendingMessages[0].Text()
+		content := m.pendingMessages.First().Text()
 		for _, want := range []string{"stable", "SendMessage", "short corrective", "provider unavailable", "do not copy the full child transcript"} {
 			if !strings.Contains(content, want) {
 				t.Fatalf("continuation request lost %q: %s", want, content)

@@ -11,15 +11,15 @@ import (
 func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 	for _, failAt := range []int{0, 1, 2} {
 		t.Run([]string{"first", "middle", "last"}[failAt], func(t *testing.T) {
-			q := InputQueue{
+			q := InputQueue{items: []PendingInput{
 				{Message: core.UserMessage("user", nil), FromUser: true},
 				{Message: core.UserMessage("notice", nil)},
 				{Message: core.UserMessage("next user", nil), FromUser: true},
-			}
+			}}
 			for i, id := range []string{"user", "notice", "next-user"} {
-				q[i].ID = id
+				q.items[i].ID = id
 			}
-			original := append(InputQueue(nil), q...)
+			original := append([]PendingInput(nil), q.items...)
 			rejected := errors.New("runtime unavailable")
 			var accepted []string
 			var recalled []string
@@ -44,11 +44,11 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 			if err := q.Deliver(send, prepare, recall); !errors.Is(err, rejected) {
 				t.Fatalf("delivery error = %v", err)
 			}
-			if len(q) != 3-failAt || q[0].ID != original[failAt].ID || len(q[0].Content) != 2 {
+			if q.Len() != 3-failAt || q.items[0].ID != original[failAt].ID || len(q.items[0].Content) != 2 {
 				t.Fatalf("rejected prepared input not retained: %+v", q)
 			}
 			for i := failAt + 1; i < len(original); i++ {
-				if !reflect.DeepEqual(q[i-failAt], original[i]) {
+				if !reflect.DeepEqual(q.items[i-failAt], original[i]) {
 					t.Fatal("delivery touched input after rejection")
 				}
 			}
@@ -63,7 +63,7 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 			if !reflect.DeepEqual(order, wantOrder) || !reflect.DeepEqual(recalled, wantRecall) {
 				t.Fatalf("order=%v recall=%v", order, recalled)
 			}
-			retained := q[0].Message
+			retained := q.items[0].Message
 			if err := q.Deliver(func(msg core.Message) error {
 				if len(accepted) == failAt && !reflect.DeepEqual(msg, retained) {
 					t.Fatal("retry lost prepared native message")
@@ -73,7 +73,7 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 			}, func(msg core.Message) core.Message { return msg }, recall); err != nil {
 				t.Fatal(err)
 			}
-			if len(q) != 0 || !reflect.DeepEqual(accepted, []string{original[0].ID, original[1].ID, original[2].ID}) {
+			if q.Len() != 0 || !reflect.DeepEqual(accepted, []string{original[0].ID, original[1].ID, original[2].ID}) {
 				t.Fatalf("retry duplicated or reordered input: %v", accepted)
 			}
 		})

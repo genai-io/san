@@ -45,11 +45,7 @@ type model struct {
 	agentSession *session.Session // opened writer captured when the selected runtime started
 	workerMu     *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
-	pendingMessages agent.InputQueue
-	// A manual stop holds background-driven turns until real user input arrives.
-	backgroundNoticesHeld bool
-	// Input stays pending until the cancelled turn's synchronous consumer cleanup.
-	cancellingTurn    *core.TurnFinalization
+	pendingMessages   agent.InputQueue
 	queueContinuation *input.QueueItem // explicit queue Enter, valid only across this cancellation fence
 	pendingPluginRoot string
 
