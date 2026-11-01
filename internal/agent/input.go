@@ -2,18 +2,16 @@ package agent
 
 import "github.com/genai-io/san/internal/core"
 
-// PendingInput distinguishes user prompts from harness continuations for memory recall.
+// PendingInput marks user input for memory recall.
 type PendingInput struct {
 	core.Message
 	FromUser bool
 }
 
-// InputQueue retains admitted native input until Runtime.Send accepts it.
-// The application owner serializes access and applies lifecycle gates before delivery.
+// InputQueue holds unsent input. The caller serializes access and gates delivery.
 type InputQueue []PendingInput
 
-// Deliver preserves FIFO order and prepared input on rejection. Preparation and
-// recall run on each attempt; harness messages never replace the user's recall.
+// Deliver sends FIFO, retaining rejected input. Retries rerun prepare and user recall.
 func (q *InputQueue) Deliver(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string)) error {
 	for len(*q) > 0 {
 		next := &(*q)[0]
