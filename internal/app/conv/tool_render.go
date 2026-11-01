@@ -795,7 +795,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 			_, body, _ = strings.Cut(body, "\n\n")
 			_, body = splitByProcessCount(body, extractIntField(content, "Process: "))
 		}
-		return renderCompactAgentResponse(body, data.Width, mdRenderer)
+		return renderCompactAgentResponse(body, data.Width, mdRenderer, data.AgentPreviewLines)
 	}
 
 	if data.ToolInput != "" {
@@ -859,7 +859,7 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 			}
 			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
 		}
-		return renderCompactAgentResponse(data.Content, data.Width, mdRenderer)
+		return renderCompactAgentResponse(data.Content, data.Width, mdRenderer, data.AgentPreviewLines)
 	}
 	status, style := "Finished", toolResultStyle
 	if data.IsError || details.Stopped {
@@ -921,10 +921,12 @@ func renderAgentLocalBody(body string, width int) string {
 	return sb.String()
 }
 
-const maxAgentPreviewLines = 4
-
 // renderCompactAgentResponse uses only worker prose, never a synthesized summary.
-func renderCompactAgentResponse(response string, width int, mdRenderer *MDRenderer) string {
+func renderCompactAgentResponse(response string, width int, mdRenderer *MDRenderer, previewLines int) string {
+	previewLines = min(max(previewLines, 0), setting.MaxAgentPreviewLines)
+	if previewLines == 0 {
+		return renderAgentLocalBody("Finished", width)
+	}
 	response = strings.TrimSpace(response)
 	// Older details do not retain inspection pointers. Only recognize the paired
 	// generated suffix when the transcript filename corroborates the agent ID.
@@ -947,12 +949,12 @@ func renderCompactAgentResponse(response string, width int, mdRenderer *MDRender
 		response = "No output"
 	}
 	room := max(1, width-3)
-	lines := make([]string, 0, maxAgentPreviewLines)
+	lines := make([]string, 0, previewLines)
 	for line := range strings.SplitSeq(xansi.Wrap(response, room, " "), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if len(lines) == maxAgentPreviewLines {
+		if len(lines) == previewLines {
 			last := len(lines) - 1
 			lines[last] = xansi.Truncate(strings.TrimRight(lines[last], " "), max(0, room-2), "") + " …"
 			break

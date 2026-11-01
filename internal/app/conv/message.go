@@ -641,6 +641,8 @@ type ToolCallsParams struct {
 	ToolProgress map[string]ToolProgress
 	// BashPreviewLines is how many last output lines a shell row shows.
 	BashPreviewLines int
+	// AgentPreviewLines bounds the Agent activity and result preview.
+	AgentPreviewLines int
 	// AwaitingApprovalID is the call parked on a permission prompt: announced,
 	// but not allowed to run yet.
 	AwaitingApprovalID string
@@ -718,7 +720,9 @@ type ToolResultData struct {
 	Width       int
 	// BashPreviewLines is how many lines a finished shell result may show unfolded.
 	BashPreviewLines int
-	Details          any
+	// AgentPreviewLines bounds the Agent activity and result preview.
+	AgentPreviewLines int
+	Details           any
 	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
 	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.
@@ -850,6 +854,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			resultData.Interactive = params.expandHints()
 			resultData.Width = params.Width
 			resultData.BashPreviewLines = params.BashPreviewLines
+			resultData.AgentPreviewLines = params.AgentPreviewLines
 			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
@@ -861,14 +866,19 @@ func RenderToolCalls(params ToolCallsParams) string {
 			} else if !params.agentExecuting(tc) {
 				sb.WriteString(renderAgentLocalBody("Pending", params.Width))
 			} else {
-				activity := renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width)
+				activity := renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, params.Width, params.AgentPreviewLines)
 				if !params.ToolCallsExpanded {
-					status := strings.TrimSpace(xansi.Strip(activity))
+					lines := strings.Split(strings.TrimSuffix(xansi.Strip(activity), "\n"), "\n")
+					last := len(lines) - 1
+					status := strings.TrimSpace(lines[last])
 					detail := xansi.Strip(runningRowDetail(tc, params))
 					if params.Width > 0 {
 						status = xansi.Truncate(status, max(1, params.Width-2-lipgloss.Width(detail)), "…")
 					}
-					activity = renderAgentLocalBody(status+detail, params.Width)
+					if activity != "" || detail != "" {
+						lines[last] = "  " + status + detail
+						activity = toolResultStyle.Render(strings.Join(lines, "\n")) + "\n"
+					}
 				}
 				sb.WriteString(activity)
 			}

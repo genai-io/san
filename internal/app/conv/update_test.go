@@ -28,7 +28,7 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 		}
 		rendered := stripANSI(RenderToolCalls(ToolCallsParams{
 			ToolCalls: calls, ResultMap: map[string]ToolResultData{calls[first].ID: {ToolName: "Agent"}}, PendingCalls: m.Tool.PendingCalls,
-			TaskActivity: m.TaskActivity, CurrentIdx: m.Tool.CurrentIdx, Width: 100, ParallelMode: true,
+			TaskActivity: m.TaskActivity, CurrentIdx: m.Tool.CurrentIdx, Width: 100, ParallelMode: true, AgentPreviewLines: 1,
 			ToolStartedAt: map[string]time.Time{calls[sibling].ID: time.Now()},
 		}))
 		if !strings.Contains(rendered, want) {

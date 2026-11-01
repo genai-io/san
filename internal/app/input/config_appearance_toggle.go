@@ -26,6 +26,8 @@ func (p *appearancePanel) resetBarChoices() {
 			p.options[i].barOn = p.gitBarBaseline
 		case kindBashPreview:
 			p.options[i].previewLines = p.previewBaseline
+		case kindAgentPreview:
+			p.options[i].previewLines = p.agentPreviewBaseline
 		}
 	}
 }

@@ -15,9 +15,9 @@ func TestLiveAgentErrorsAreBoundedUntilExpanded(t *testing.T) {
 	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"prompt":"Review"}`}
 	activity := map[int][]string{0: {"Read(main.go) failed: " + strings.Repeat("诊断 details\n", 1000)}}
 	for _, width := range []int{30, 80} {
-		params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, ToolStartedAt: map[string]time.Time{call.ID: time.Now()}, TaskActivity: activity, Width: width}
+		params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, ToolStartedAt: map[string]time.Time{call.ID: time.Now()}, TaskActivity: activity, Width: width}
 		collapsed := stripANSI(RenderToolCalls(params))
-		spinner := stripANSI(RenderPendingToolSpinner(PendingToolSpinnerParams{PendingCalls: params.PendingCalls, ToolStartedAt: params.ToolStartedAt, TaskActivity: activity, Width: width}))
+		spinner := stripANSI(RenderPendingToolSpinner(PendingToolSpinnerParams{AgentPreviewLines: params.AgentPreviewLines, PendingCalls: params.PendingCalls, ToolStartedAt: params.ToolStartedAt, TaskActivity: activity, Width: width}))
 		for _, view := range []string{collapsed, spinner} {
 			if strings.Count(view, "\n") > 6 || !strings.Contains(view, "failed") {
 				t.Fatalf("width %d: live error occupies %d lines or loses its status", width, strings.Count(view, "\n"))
@@ -88,7 +88,7 @@ func TestStructuredAgentFailureKeepsActivityAndPartialResults(t *testing.T) {
 func TestCompletedAgentMetadataRequiresExpansion(t *testing.T) {
 	for _, nested := range []bool{false, true} {
 		for _, structured := range []bool{false, true} {
-			data := ToolResultData{ToolName: "Agent", Nested: nested, Width: 80,
+			data := ToolResultData{AgentPreviewLines: 3, ToolName: "Agent", Nested: nested, Width: 80,
 				Content: "Agent: Explore\nToolUses: 3\nTokens: 125\nDuration: 2.7s\nModel: test-model\n\nFinding"}
 			if structured {
 				data.Content = "Finding"

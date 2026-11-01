@@ -33,6 +33,7 @@ func TestCloneCopiesEveryField(t *testing.T) {
 		GitBar:                  &yes,
 		ThinkingDisplay:         ThinkingDisplayCollapsed,
 		BashPreviewLines:        &three,
+		AgentPreviewLines:       &three,
 		Persona:                 "ml-researcher",
 		SelfLearn:               SelfLearnSettings{Skills: SelfLearnSkills{DenyCreate: true}, Strategy: "custom"},
 		AutoPilot:               AutoPilotSettings{Model: "openai/gpt"},

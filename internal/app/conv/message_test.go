@@ -911,11 +911,12 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 		Input: `{"name":"Explore","description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
-		ToolCalls:     []core.ToolCall{call},
-		ResultMap:     map[string]ToolResultData{},
-		PendingCalls:  []core.ToolCall{call},
-		CurrentIdx:    0,
-		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
+		ToolCalls:         []core.ToolCall{call},
+		ResultMap:         map[string]ToolResultData{},
+		PendingCalls:      []core.ToolCall{call},
+		CurrentIdx:        0,
+		AgentPreviewLines: 1,
+		ToolStartedAt:     map[string]time.Time{"tc-1": time.Now()},
 		TaskActivity: map[int][]string{
 			0: {
 				"Mode: explore · max 100 turns",
@@ -943,7 +944,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 		t.Fatalf("RenderToolCalls() = %q, default should omit runtime metadata", rendered)
 	}
 	if strings.Contains(rendered, "Read(internal/tool/schema_agent.go)") {
-		t.Fatalf("RenderToolCalls() = %q, want only the latest three tool calls", rendered)
+		t.Fatalf("RenderToolCalls() = %q, want only the latest tool call", rendered)
 	}
 	for _, want := range []string{"Grep(renderAgentActivityInline)"} {
 		if !strings.Contains(rendered, want) {
@@ -959,11 +960,12 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
-		ToolCalls:     []core.ToolCall{call},
-		ResultMap:     map[string]ToolResultData{},
-		PendingCalls:  []core.ToolCall{call},
-		CurrentIdx:    0,
-		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
+		ToolCalls:         []core.ToolCall{call},
+		ResultMap:         map[string]ToolResultData{},
+		PendingCalls:      []core.ToolCall{call},
+		CurrentIdx:        0,
+		AgentPreviewLines: 1,
+		ToolStartedAt:     map[string]time.Time{"tc-1": time.Now()},
 		TaskActivity: map[int][]string{
 			0: {
 				"Mode: explore · max 100 turns",
@@ -991,11 +993,12 @@ func TestRenderToolCallsRetainsActivityModelForExpansion(t *testing.T) {
 		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
 	}
 	params := ToolCallsParams{
-		ToolCalls:     []core.ToolCall{call},
-		ResultMap:     map[string]ToolResultData{},
-		PendingCalls:  []core.ToolCall{call},
-		CurrentIdx:    0,
-		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
+		ToolCalls:         []core.ToolCall{call},
+		ResultMap:         map[string]ToolResultData{},
+		PendingCalls:      []core.ToolCall{call},
+		CurrentIdx:        0,
+		AgentPreviewLines: 1,
+		ToolStartedAt:     map[string]time.Time{"tc-1": time.Now()},
 		TaskActivity: map[int][]string{
 			0: {
 				"Model: gpt-5.5",
@@ -1028,11 +1031,12 @@ func TestRenderToolCallsRetainsActivityUsageForExpansion(t *testing.T) {
 		Input: `{"name":"general-purpose","description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
-		ToolCalls:     []core.ToolCall{call},
-		ResultMap:     map[string]ToolResultData{},
-		PendingCalls:  []core.ToolCall{call},
-		CurrentIdx:    0,
-		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
+		ToolCalls:         []core.ToolCall{call},
+		ResultMap:         map[string]ToolResultData{},
+		PendingCalls:      []core.ToolCall{call},
+		CurrentIdx:        0,
+		AgentPreviewLines: 1,
+		ToolStartedAt:     map[string]time.Time{"tc-1": time.Now()},
 		TaskActivity: map[int][]string{
 			0: {
 				"Model: kimi-k2.6",

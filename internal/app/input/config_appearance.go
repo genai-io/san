@@ -1,16 +1,21 @@
-// /settings Appearance panel: three preference groups navigated as one list.
+// /settings Appearance panel: preference groups navigated as one list.
 // Theme and thinking use radio choices; the status bars use compact toggles.
 //
 //   - COLOR THEME — light / dark / auto. Applied live and persisted to the
 //     user-level settings file.
+//
 //   - STATUS BAR — independent context-usage and Git-information toggles.
 //     Both default off; left/right previews Off/On, Enter applies the row.
+//
 //   - THINKING — full / collapsed / hidden. How the model's reasoning is
 //     drawn. Full by default (the reasoning streams as before); collapsed
 //     drops the body everywhere and shows one "✦ Thought for 3.2s" line
 //     instead.
+//
 //   - SHELL OUTPUT — how many of a shell command's last output lines its row
 //     shows while running and after a failure; left/right steps 0–20.
+//
+//   - AGENT OUTPUT — independent activity and result preview, 0–20 lines.
 //
 // All are personal preferences, so — unlike Self-Learning — they have no
 // project scope; selecting a row persists to the user settings file.
@@ -61,6 +66,11 @@ type BashPreviewSavedMsg struct {
 	Lines int
 }
 
+// AgentPreviewSavedMsg is emitted after persisting the Agent preview line count.
+type AgentPreviewSavedMsg struct {
+	Lines int
+}
+
 // appearanceKind tags which setting a row applies when selected.
 type appearanceKind int
 
@@ -70,6 +80,7 @@ const (
 	kindGitBar
 	kindThinkingDisplay
 	kindBashPreview
+	kindAgentPreview
 )
 
 // appearanceOption is one selectable row. section heads the group it belongs
@@ -101,6 +112,7 @@ func appearanceOptions() []appearanceOption {
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
 		{section: "SHELL OUTPUT", kind: kindBashPreview, label: "Preview lines", desc: "Last lines while a command runs"},
+		{section: "AGENT OUTPUT", kind: kindAgentPreview, label: "Agent preview", desc: "Activity and result preview lines"},
 	}
 }
 
@@ -113,11 +125,12 @@ type appearancePanel struct {
 	// Baselines are the values persisted on disk, marked "● current" in their
 	// group. A group is "dirty" while the cursor hovers a row that diverges
 	// from its baseline.
-	themeBaseline    string
-	barBaseline      bool
-	gitBarBaseline   bool
-	thinkingBaseline string
-	previewBaseline  int
+	themeBaseline        string
+	barBaseline          bool
+	gitBarBaseline       bool
+	thinkingBaseline     string
+	previewBaseline      int
+	agentPreviewBaseline int
 
 	// saveErr holds the last failed persist so Render can surface it inline
 	// instead of silently swallowing it. Cleared on navigation / re-entry.
@@ -137,6 +150,7 @@ func (p *appearancePanel) Enter() {
 	p.gitBarBaseline = false
 	p.thinkingBaseline = setting.DefaultThinkingDisplay
 	p.previewBaseline = setting.DefaultBashPreviewLines
+	p.agentPreviewBaseline = setting.DefaultAgentPreviewLines
 	if p.settings != nil {
 		if data := p.settings.Snapshot(); data != nil {
 			if data.Theme != "" {
@@ -146,6 +160,7 @@ func (p *appearancePanel) Enter() {
 			p.gitBarBaseline = data.ShowGitBar()
 			p.thinkingBaseline = data.ThinkingDisplayMode()
 			p.previewBaseline = data.BashPreviewLineCount()
+			p.agentPreviewBaseline = data.AgentPreviewLineCount()
 		}
 	}
 	p.resetBarChoices()
@@ -178,6 +193,10 @@ func (p *appearancePanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		switch opt := &p.options[p.cursor]; {
 		case isAppearanceBar(*opt):
 			opt.barOn = more
+		case opt.kind == kindAgentPreview && more:
+			opt.previewLines = min(opt.previewLines+1, setting.MaxAgentPreviewLines)
+		case opt.kind == kindAgentPreview:
+			opt.previewLines = max(opt.previewLines-1, 0)
 		case opt.kind == kindBashPreview && more:
 			opt.previewLines = min(opt.previewLines+1, setting.MaxBashPreviewLines)
 		case opt.kind == kindBashPreview:
@@ -239,6 +258,13 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		}
 		p.previewBaseline = opt.previewLines
 		return func() tea.Msg { return BashPreviewSavedMsg{Lines: opt.previewLines} }, true
+	case kindAgentPreview:
+		if err := setting.SaveAgentPreviewLines(opt.previewLines); err != nil {
+			p.saveErr = err
+			return nil, false
+		}
+		p.agentPreviewBaseline = opt.previewLines
+		return func() tea.Msg { return AgentPreviewSavedMsg{Lines: opt.previewLines} }, true
 	}
 	return nil, false
 }
@@ -247,7 +273,7 @@ func (p *appearancePanel) HintLine() string {
 	if isAppearanceBar(p.options[p.cursor]) {
 		return keycap("↑↓") + " move  " + keycap("←→") + " off/on  " + keycap("enter") + " apply"
 	}
-	if p.options[p.cursor].kind == kindBashPreview {
+	if p.options[p.cursor].kind == kindBashPreview || p.options[p.cursor].kind == kindAgentPreview {
 		return keycap("↑↓") + " move  " + keycap("←→") + " fewer/more  " + keycap("enter") + " apply"
 	}
 	return radioHintLine()
@@ -299,6 +325,8 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 		return opt.thinkingDisplay == p.thinkingBaseline
 	case kindBashPreview:
 		return opt.previewLines == p.previewBaseline
+	case kindAgentPreview:
+		return opt.previewLines == p.agentPreviewBaseline
 	default:
 		return opt.theme == p.themeBaseline
 	}

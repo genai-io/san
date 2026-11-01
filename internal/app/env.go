@@ -62,6 +62,8 @@ type env struct {
 	// BashPreviewLines is the resolved setting.Data.BashPreviewLineCount: how
 	// many last output lines a shell row shows.
 	BashPreviewLines int
+	// AgentPreviewLines is the resolved Agent activity preview line count.
+	AgentPreviewLines int
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	// Two views of one posture, kept in step by ApplyModePermissions.

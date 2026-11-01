@@ -55,6 +55,8 @@ type RenderContext struct {
 	ThinkingDisplay string
 	// BashPreviewLines is how many last output lines a shell row shows.
 	BashPreviewLines int
+	// AgentPreviewLines bounds the Agent activity and result preview.
+	AgentPreviewLines int
 
 	// ── Per-tick UI state ───────────────────────────────────────
 	SpinnerView  string
@@ -340,6 +342,7 @@ func renderMessageTools(p RenderContext, msg core.ChatMessage, idx int) string {
 		ToolStartedAt:      p.ToolStartedAt,
 		ToolProgress:       p.ToolProgress,
 		BashPreviewLines:   p.BashPreviewLines,
+		AgentPreviewLines:  p.AgentPreviewLines,
 		AwaitingApprovalID: p.AwaitingApprovalID,
 		ModelName:          p.ModelName,
 		InputTokens:        p.InputTokens,
@@ -512,7 +515,8 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 		rendered := RenderToolCalls(ToolCallsParams{
 			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
-			CurrentIdx: p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,
+			AgentPreviewLines: p.AgentPreviewLines,
+			CurrentIdx:        p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,
 			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width, SpinnerView: p.SpinnerView,
 			Frame: p.Frame, AgentIdentities: p.AgentIdentities, AgentColors: p.AgentColors, CompactAgentLabel: true,
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
@@ -681,5 +685,6 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		AgentColors:        p.AgentColors,
 		Width:              p.Width,
 		SuppressAgentLabel: suppressAgentLabel,
+		AgentPreviewLines:  p.AgentPreviewLines,
 	})
 }
