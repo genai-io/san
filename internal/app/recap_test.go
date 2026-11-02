@@ -197,7 +197,8 @@ func TestRecapSkipsRunningTurn(t *testing.T) {
 		t.Fatal("coming back during a running turn must skip the recap")
 	}
 	m.conv.Stream.Active = false
-	m.handleStopHookResult(stopHookResultMsg{Result: core.Result{StopReason: core.StopEndTurn}})
+	m.pendingStopHook = &pendingStopHook{}
+	m.handleStopHookResult(stopHookResultMsg{pending: m.pendingStopHook, Result: core.Result{StopReason: core.StopEndTurn}})
 	if len(m.conv.Messages) != n {
 		t.Fatal("finishing the turn must not show the skipped recap")
 	}

@@ -143,7 +143,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.LastCtrlC = time.Time{}
 			return nil, true
 		}
-		if m.conv.Stream.Active {
+		if m.conv.Stream.Active || m.pendingStopHook != nil {
 			m.userInput.LastCtrlC = time.Time{}
 			return m.handleStreamCancel(), true
 		}
@@ -183,7 +183,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.Suggestions.Hide()
 			return nil, true
 		}
-		if m.conv.Stream.Active {
+		if m.conv.Stream.Active || m.pendingStopHook != nil {
 			return m.handleStreamCancel(), true
 		}
 		return nil, true

@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/session"
 )
 
 func (m *model) fireStopFailureHook(lastAssistantContent string, err error) {
@@ -42,13 +43,22 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	})
 }
 
+// pendingStopHook identifies the pending decision and its session/runtime.
+type pendingStopHook struct {
+	session *session.Session
+	outbox  <-chan core.Event
+}
+
 type stopHookResultMsg struct {
+	pending *pendingStopHook
 	Blocked bool
 	Reason  string
 	Result  core.Result
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
+	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
+	m.pendingStopHook = pending
 	hookEngine := m.services.Hook
 
 	lastContent := core.LastAssistantChatContent(m.conv.Messages)
@@ -72,7 +82,7 @@ func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 			Message:          "Claude is waiting for your input",
 			NotificationType: "idle_prompt",
 		})
-		return stopHookResultMsg{Blocked: blocked, Reason: reason, Result: result}
+		return stopHookResultMsg{pending: pending, Blocked: blocked, Reason: reason, Result: result}
 	}
 }
 

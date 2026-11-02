@@ -242,6 +242,7 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
+	m.pendingStopHook = nil
 	m.pendingMessages.Enqueue(p)
 	if !m.pendingMessages.CanDeliver(false) {
 		return tea.Batch(m.CommitMessages()...)

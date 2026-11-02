@@ -36,6 +36,11 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     admission, handoff consumption and workspace callbacks; worker-local handoffs,
     model-result paging, recording and compaction remain unchanged. Native tests
     cover effect/hook payloads and ordering, hook errors and stale/cancelled results.
+  - Native prerequisite: delayed Stop-hook outcomes are fenced to their idle
+    decision, opened session and runtime outbox, and discarded after input,
+    cancellation or teardown. Native command/dispatch regressions cover stale
+    blocks and successes. This is not shared completion: normal receipts still
+    exclude idle-hook persistence, and failure/autopilot policy remains in app.
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.

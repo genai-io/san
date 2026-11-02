@@ -108,6 +108,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		result.Finalization.Acknowledge(errors.New("opened session replaced before turn finalization"))
 		return m.ListenForAgentEvents()
 	}
+	m.pendingStopHook = nil
 	finalizationErr := core.ErrTurnCompleted
 	defer func() { result.Finalization.Acknowledge(finalizationErr) }()
 	// A dismissed start/resume offer comes back once the turn is over.

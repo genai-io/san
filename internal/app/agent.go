@@ -564,6 +564,7 @@ type agentSendFailedMsg struct{ err error }
 type pendingMessage = agent.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
+	m.pendingStopHook = nil
 	m.pendingMessages.Enqueue(p)
 	return m.sendPendingMessages()
 }
@@ -678,6 +679,7 @@ func (m *model) wireReminderProviders() {
 const agentStopTimeout = 2 * time.Second
 
 func (m *model) StopAgentRuntime() error {
+	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
 	if err := m.services.Agent.Stop(ctx); err != nil {
@@ -690,6 +692,7 @@ func (m *model) StopAgentRuntime() error {
 
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() error {
+	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
 	if err := m.services.Agent.Reset(ctx); err != nil {
