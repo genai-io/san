@@ -25,8 +25,8 @@ cost for each call.
 ## ChatGPT subscription limits
 
 Only **OpenAI → ChatGPT Subscription** shows Codex limits in the bottom-right
-status bar: `ChatGPT 5h 80% left (2h) / week 65% left (3d)`. Parentheses show
-time until reset. The label hides on narrow terminals and other routes.
+status bar: `ChatGPT 5h 90% left · resets in 2h / week 65% left · resets in 3d`.
+The label hides on narrow terminals and other routes.
 
 `vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
 `internal/app/model_subscription_usage.go` refreshes asynchronously every five
@@ -146,6 +146,17 @@ the same lock. Environment blobs (`OPENAI_CHATGPT_AUTH` and
 precedence afterward. API-key environment precedence is unchanged. A terminal
 refresh error requires removing the subscription credential in `/models` and
 signing in again; retrying the expired token cannot recover it.
+
+## Copilot account quota
+
+`copilot_quota.go` provides `FetchCopilotQuota(ctx)`, querying GitHub's internal
+`/copilot_internal/user` endpoint with the existing GitHub OAuth credential and
+an eight-second timeout. No extra configuration is needed.
+
+Snapshots retain quota buckets and reset dates, not inferred dollars or request
+counts. Keep unavailable, no quota, exhausted, and unlimited distinct: this
+internal API may change or fail. `copilot_quota_test.go` covers decoding and
+request failures without real credentials.
 
 ## Model data
 

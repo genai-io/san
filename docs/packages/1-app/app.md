@@ -339,6 +339,17 @@ pending, and completed plan items; rendering leaves task records intact.
 - On `/plugin install`, `/models`, etc.: `ReloadPluginBackedState()`
   re-initializes the affected services and calls `refreshAfterReload`.
 
+## Copilot quota status
+
+`copilot_quota.go` shows account quota in the shared subscription status slot:
+`Copilot Chat 100% left · resets in 28d`. Available finite premium quota takes
+precedence over Chat. Date-only resets display `resets Dec 1`.
+
+Fetching is asynchronous, Copilot-only, and cached for two minutes; no settings
+are required. The label hides on narrow terminals. Tests in
+`copilot_quota_test.go` cover formatting, refresh, and status integration.
+See [Copilot account quota](../2-feature/llm.md#copilot-account-quota) for API semantics.
+
 ## Tests
 
 The root package has focused lifecycle/state tests and broader coverage through

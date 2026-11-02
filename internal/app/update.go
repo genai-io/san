@@ -147,6 +147,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return model, tea.Quit
 		}
 	}
+	if refresh := m.refreshCopilotQuota(time.Now()); refresh != nil {
+		cmd = tea.Batch(cmd, refresh)
+	}
 	return model, cmd
 }
 
@@ -157,6 +160,16 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.HandlePermGate(msg.Request)
+	case copilotQuotaTick:
+		return m, copilotQuotaTicker()
+	case copilotQuotaMsg:
+		m.copilotQuota.pending = false
+		m.copilotQuota.next = time.Now().Add(copilotQuotaTTL)
+		m.copilotQuota.quota = msg.quota
+		if msg.err != nil {
+			m.copilotQuota.quota.Snapshots = nil
+		}
+		return m, nil
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
 		return m, m.handleSubmit()

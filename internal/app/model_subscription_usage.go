@@ -82,6 +82,9 @@ func (m *model) handleSubscriptionUsageTick(msg subscriptionUsageTick) tea.Cmd {
 }
 
 func (m model) subscriptionUsageLabel() string {
+	if m.usesCopilot() {
+		return m.copilotQuotaLabel()
+	}
 	if !llm.ChatGPTSubscription(m.env.CurrentModel) || !m.subscriptionUsage.active {
 		return ""
 	}
@@ -113,7 +116,7 @@ func formatSubscriptionUsage(usage auth.CodexUsage, now time.Time) string {
 		}
 		text := fmt.Sprintf("%s %.0f%% left", label, 100-w.UsedPercent)
 		if !w.ResetsAt.IsZero() {
-			text += " (" + compactUsageDuration(w.ResetsAt.Sub(now)) + ")"
+			text += " · resets in " + compactUsageDuration(w.ResetsAt.Sub(now))
 		}
 		parts = append(parts, text)
 	}
