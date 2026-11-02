@@ -65,19 +65,51 @@ func TestSubscriptionUsageLifecycle(t *testing.T) {
 	}
 }
 
+func TestCompactUsageDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"zero", 0, "<1m"},
+		{"subsecond", time.Nanosecond, "<1m"},
+		{"below minute", time.Minute - time.Nanosecond, "<1m"},
+		{"minute", time.Minute, "1m"},
+		{"minutes with seconds", 35*time.Minute + 59*time.Second, "35m"},
+		{"below hour", time.Hour - time.Nanosecond, "59m"},
+		{"hour", time.Hour, "1h"},
+		{"hour with seconds", time.Hour + 59*time.Second, "1h"},
+		{"hours and minutes", 2*time.Hour + 35*time.Minute + 59*time.Second, "2h 35m"},
+		{"below day", 24*time.Hour - time.Nanosecond, "23h 59m"},
+		{"day", 24 * time.Hour, "1d"},
+		{"day with minutes", 24*time.Hour + 59*time.Minute + 59*time.Second, "1d"},
+		{"day and hour", 25 * time.Hour, "1d 1h"},
+		{"28 days", 28 * 24 * time.Hour, "28d"},
+		{"691 hours", 691 * time.Hour, "28d 19h"},
+		{"691 hours with seconds", 691*time.Hour + 59*time.Second, "28d 19h"},
+		{"691 hours with minutes and seconds", 691*time.Hour + 35*time.Minute + 59*time.Second, "28d 19h"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := compactUsageDuration(tc.d); got != tc.want {
+				t.Fatalf("compactUsageDuration(%s) = %q, want %q", tc.d, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFormatSubscriptionUsage(t *testing.T) {
 	now := time.Unix(2000000000, 0)
 	usage := auth.CodexUsage{Windows: []auth.CodexUsageWindow{
 		{Duration: 7 * 24 * time.Hour, UsedPercent: 100, ResetsAt: now.Add(48 * time.Hour)},
 		{Duration: 5 * time.Hour, UsedPercent: 0},
 	}}
-	if got := formatSubscriptionUsage(usage, now); got != "ChatGPT week 0% left · resets in 2d / 5h 100% left" {
+	if got := formatSubscriptionUsage(usage, now); got != "ChatGPT week 0% left (2d) / 5h 100% left" {
 		t.Fatal(got)
 	}
 	example := auth.CodexUsage{Windows: []auth.CodexUsageWindow{
-		{Duration: 5 * time.Hour, UsedPercent: 10, ResetsAt: now.Add(2 * time.Hour)},
+		{Duration: 5 * time.Hour, UsedPercent: 10, ResetsAt: now.Add(2*time.Hour + 35*time.Minute + 59*time.Second)},
 	}}
-	if got := formatSubscriptionUsage(example, now); got != "ChatGPT 5h 90% left · resets in 2h" {
+	if got := formatSubscriptionUsage(example, now); got != "ChatGPT 5h 90% left (2h 35m)" {
 		t.Fatal(got)
 	}
 	if got := formatSubscriptionUsage(auth.CodexUsage{}, now); got != "ChatGPT limits unknown" {
