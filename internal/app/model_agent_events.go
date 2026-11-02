@@ -152,12 +152,9 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 
-	// User-initiated cancel surfaces here as a Result with StopCanceled now
-	// that ThinkAct returns a phantom Result on context.Canceled. It precedes
-	// the queue drain because draining submits a fresh turn — the input queue,
-	// a cron prompt, an async hook or a parked agent notice — which is how Esc
-	// stopped one inference and left the loop running. Each queue has its own
-	// later drain, so holding them here loses nothing.
+	// Cancellation must finish cleanup and persistence before admitting another
+	// turn. turnFinalizedMsg resumes explicitly queued user input after the
+	// receipt settles; it does not drain cron/hook queues or revive autopilot.
 	//
 	// Stop / idle-notification hooks would otherwise fire on every Esc —
 	// confusing for the user and for hooks that template result.Content (which
