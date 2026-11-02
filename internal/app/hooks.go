@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/session"
 )
 
 func (m *model) fireStopFailureHook(lastAssistantContent string, err error) {
@@ -42,13 +43,22 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	})
 }
 
+// stopHookScope identifies one idle decision, including turns sharing an outbox.
+type stopHookScope struct {
+	session *session.Session
+	outbox  <-chan core.Event
+}
+
 type stopHookResultMsg struct {
+	scope   *stopHookScope
 	Blocked bool
 	Reason  string
 	Result  core.Result
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
+	scope := &stopHookScope{session: m.services.Session, outbox: m.AgentOutbox()}
+	m.pendingStopHook = scope
 	hookEngine := m.services.Hook
 
 	lastContent := core.LastAssistantChatContent(m.conv.Messages)
@@ -72,7 +82,7 @@ func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 			Message:          "Claude is waiting for your input",
 			NotificationType: "idle_prompt",
 		})
-		return stopHookResultMsg{Blocked: blocked, Reason: reason, Result: result}
+		return stopHookResultMsg{scope: scope, Blocked: blocked, Reason: reason, Result: result}
 	}
 }
 

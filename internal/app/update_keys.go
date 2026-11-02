@@ -143,7 +143,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.LastCtrlC = time.Time{}
 			return nil, true
 		}
-		if m.conv.Stream.Active {
+		if m.conv.Stream.Active || m.pendingStopHook != nil {
 			m.userInput.LastCtrlC = time.Time{}
 			return m.handleStreamCancel(), true
 		}
@@ -171,6 +171,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 
 	case "esc":
+		if m.pendingStopHook != nil {
+			return m.handleStreamCancel(), true
+		}
 		if m.missionOfferVisible() {
 			m.autopilotOfferDismissed = true
 			return nil, true

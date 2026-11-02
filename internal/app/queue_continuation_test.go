@@ -31,7 +31,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			if m.pendingMessages.Cancelling() == nil {
 				t.Fatal("cancel did not capture finalization")
 			}
-			m.handleStopHookResult(stopHookResultMsg{Blocked: true, Reason: "held hook"})
+			m.sendToAgent(pendingMessage{Message: core.UserMessage("held hook", nil)})
 			if mode != "no-enter" && mode != "background-only" {
 				m.userInput.Queue.Enqueue("queued head", nil)
 				m.userInput.Queue.Enqueue("queued successor", nil)

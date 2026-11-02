@@ -20,6 +20,14 @@ import (
 )
 
 func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
+	if msg.scope == nil || msg.scope != m.pendingStopHook {
+		return nil
+	}
+	m.pendingStopHook = nil
+	if msg.scope.session != m.services.Session || msg.scope.outbox != m.AgentOutbox() ||
+		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
+		return nil
+	}
 	if msg.Blocked {
 		log.Logger().Sugar().Debugf("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason

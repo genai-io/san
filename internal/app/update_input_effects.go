@@ -21,6 +21,7 @@ type turnFinalizedMsg struct {
 }
 
 func (m *model) handleStreamCancel() tea.Cmd {
+	m.pendingStopHook = nil
 	m.pendingMessages.Hold(nil)
 	m.queueContinuation = nil
 	// The truncated reply and the cancelled tool results already tell the
