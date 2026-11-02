@@ -228,7 +228,10 @@ includes `conv/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
 Esc cannot be followed by a delayed command sending the cancelled request.
 
 The footer keeps the model, reasoning effort, usage, and temporary status
-messages. It does not add a persistent history shortcut hint when a turn ends;
+messages, separated by ` · `:
+`gpt-5 (high) · 32.0k/128.0k · ChatGPT 5h 75% left (2h 35m) / week 50% left (3d)`.
+Reset countdowns use readable days/hours or hours/minutes, with at most two units.
+It does not add a persistent history shortcut hint when a turn ends;
 idle Ctrl+O and `/history` still open the transcript viewer.
 
 While a tool-call batch is pending, the conversation tail docks above the
@@ -342,8 +345,8 @@ pending, and completed plan items; rendering leaves task records intact.
 ## Copilot quota status
 
 `copilot_quota.go` shows account quota in the shared subscription status slot:
-`Copilot Chat 100% left · resets in 28d`. Available finite premium quota takes
-precedence over Chat. Date-only resets display `resets Dec 1`.
+`gpt-4.1 · 12.0k/128.0k · Copilot Chat 75% left (28d 19h)`. Available finite
+premium quota takes precedence over Chat. Date-only resets display `(Dec 1)`.
 
 Fetching is asynchronous, Copilot-only, and cached for two minutes; no settings
 are required. The label hides on narrow terminals. Tests in

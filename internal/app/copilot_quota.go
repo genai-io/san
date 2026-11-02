@@ -87,11 +87,11 @@ func formatCopilotQuotaReset(quota llm.CopilotQuota, now time.Time) (suffix stri
 		if !reset.After(now) {
 			return "", true
 		}
-		return " · resets in " + compactUsageDuration(reset.Sub(now)), false
+		return " (" + compactUsageDuration(reset.Sub(now)) + ")", false
 	}
 	// A date-only fallback does not establish a reset time or timezone.
 	if reset, err := time.Parse(time.DateOnly, quota.ResetDate); err == nil {
-		return " · resets " + reset.Format("Jan 2"), false
+		return " (" + reset.Format("Jan 2") + ")", false
 	}
 	return "", false
 }
