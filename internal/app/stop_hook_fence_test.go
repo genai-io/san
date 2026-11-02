@@ -120,7 +120,7 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 				}
 				msg := finish()
 				if change == "nil-identity" {
-					msg.scope = nil
+					msg.pending = nil
 				}
 				current := m.pendingStopHook
 				beforeRows, beforePending, beforeQueue := len(m.conv.Messages), m.pendingMessages.Len(), m.userInput.Queue.Len()

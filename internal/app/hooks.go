@@ -43,22 +43,22 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	})
 }
 
-// stopHookScope identifies one idle decision, including turns sharing an outbox.
-type stopHookScope struct {
+// pendingStopHook identifies the pending decision and its session/runtime.
+type pendingStopHook struct {
 	session *session.Session
 	outbox  <-chan core.Event
 }
 
 type stopHookResultMsg struct {
-	scope   *stopHookScope
+	pending *pendingStopHook
 	Blocked bool
 	Reason  string
 	Result  core.Result
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
-	scope := &stopHookScope{session: m.services.Session, outbox: m.AgentOutbox()}
-	m.pendingStopHook = scope
+	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
+	m.pendingStopHook = pending
 	hookEngine := m.services.Hook
 
 	lastContent := core.LastAssistantChatContent(m.conv.Messages)
@@ -82,7 +82,7 @@ func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 			Message:          "Claude is waiting for your input",
 			NotificationType: "idle_prompt",
 		})
-		return stopHookResultMsg{scope: scope, Blocked: blocked, Reason: reason, Result: result}
+		return stopHookResultMsg{pending: pending, Blocked: blocked, Reason: reason, Result: result}
 	}
 }
 

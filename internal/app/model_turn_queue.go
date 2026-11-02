@@ -20,11 +20,11 @@ import (
 )
 
 func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
-	if msg.scope == nil || msg.scope != m.pendingStopHook {
+	if msg.pending == nil || msg.pending != m.pendingStopHook {
 		return nil
 	}
 	m.pendingStopHook = nil
-	if msg.scope.session != m.services.Session || msg.scope.outbox != m.AgentOutbox() ||
+	if msg.pending.session != m.services.Session || msg.pending.outbox != m.AgentOutbox() ||
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
