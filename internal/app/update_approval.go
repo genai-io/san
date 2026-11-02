@@ -19,9 +19,7 @@ import (
 
 type permissionDecision = interaction.PermissionDecision
 
-// permDecisionFor maps the user's approve/reject bool to the transcript
-// decision enum. Shared by the config-decided fast path (agent.go) and the
-// user-decided ask path (this file).
+// permDecisionFor maps config decisions to the shared transcript enum.
 func permDecisionFor(approved bool) string {
 	return interaction.PermissionDecisionFor(approved)
 }
@@ -54,8 +52,7 @@ func (m *model) recordPermission(record transcript.Record) {
 	}
 }
 
-// saveAllowRules persists an "Always allow"; a failed save leaves this one
-// approval. Returns the command that shows the outcome.
+// saveAllowRules attempts persistence and reports the outcome without revoking approval.
 func (m *model) saveAllowRules(rules []string) tea.Cmd {
 	notice := "Always allowed " + strings.Join(rules, ", ")
 	if path, err := m.services.Setting.AddLocalAllowRules(m.env.CWD, rules); err != nil {

@@ -22,17 +22,13 @@ External client ── ACP ──────┘
 ```
 
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
-- `internal/interaction`: request queue, lifetime/owner checks and cancellation replies;
-  human-permission preparation, grant eligibility, worker once-only scope, audit
-  snapshots and exactly-once resolution before waking the caller. TUI supplies
-  presentation and grant/persistence callbacks; config, hook and reviewer policy
-  remains in its existing owners. Adapters serialize presentation and resolution,
-  map only offered options and pass the current owner on every reply.
+- `internal/interaction`: request lifecycle and human-permission preparation,
+  scopes and audit-before-reply; see [dependency rules](../../reference/dependency-rules.md#rules).
 - `internal/session`: shared execution recording via `Session.RecordEvent`,
   `RecordHookAudit` and `RecordSkillStateChange`, wired natively by TUI. Essential
   producer write errors reach turn receipts before delivery; hook/skill audits
   remain best effort. Recording never acknowledges consumer cleanup or releases
-  queued work. Human-permission audit ordering belongs to `interaction.Permission`.
+  queued work.
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.

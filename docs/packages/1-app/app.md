@@ -76,14 +76,9 @@ Each response must match the active request. Cancellation retires only its
 caller; reset and shutdown close the transport logically and reject late delivery.
 Worker permission metadata comes from its backend-prepared context, not the
 parent's cwd or grants. Only once/reject is offered for worker approvals.
-`interaction.PreparePermission` derives native tool previews and grant eligibility;
-`interaction.Permission` snapshots scope/audit data, rejects stale or duplicate
-replies, and records decisions before waking the caller. The TUI supplies option
-labels, session-grant and persistence callbacks, and save-failure notices. Callers
-serialize presentation/replies and pass the current owner; protocol adapters must
-map only options they offered. Audit failures remain best effort, not a new gate.
-Shared permission tests cover scopes, cancellation and replacement through the
-hooked gate; native tests retain invalid-shell rejection and FIFO advancement.
+`interaction.PreparePermission` and `Permission` handle preparation and resolution
+under the [shared contract](../../reference/dependency-rules.md#rules). TUI supplies
+option labels, grant/audit callbacks and persistence notices.
 `interactions_renderer_test.go` drives real modal keys and verifies that worker
 tool execution and the next inference receive the decision/answer.
 

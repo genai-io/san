@@ -61,7 +61,7 @@ func NewPermission(req *Request, owner Owner, view *perm.PermissionRequest, opti
 }
 
 // Resolve validates identity and scope, applies grants, and audits before waking the caller.
-// Persistence failure remains an approval once; the adapter reports the save outcome.
+// Persistence outcomes do not change approval; the adapter reports them without rollback.
 func (p *Permission) Resolve(owner Owner, d PermissionDecision, allowTool func(string), persist func([]string)) bool {
 	if p == nil || p.resolved || !p.request.Valid(owner) || d.Request != p.view {
 		return false

@@ -8,7 +8,7 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
   response barriers ([sdk-go#97](https://github.com/genai-io/sdk-go/pull/97),
   [sdk-go#98](https://github.com/genai-io/sdk-go/pull/98)); native Go tests.
 - [x] **Interaction lifecycle:** `internal/interaction` owns request queuing,
-  validity checks and cancellation; presentation and authorization remain in app.
+  validity checks and cancellation; presentation remains in app.
 - [ ] **Shared execution:** extract input and turn policy/lifecycle without losing
   the proposal's capability map, worker interactions, task fencing or native state.
   Determine remaining package boundaries from the full execution flow.
@@ -29,12 +29,8 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     TUI keeps its fail-open hook budget and admission call sites; blocked context
     remains pending for later delivery. Midstream delivery is not newly gated.
     Covered by native policy and TUI dispatch/queue tests; no ACP adapter yet.
-  - [x] Human permissions: `interaction.PreparePermission` and `Permission` share
-    tool validation/previews, grant eligibility, worker once-only scope, audit
-    snapshots and exactly-once replies fenced by context, owner and displayed view.
-    TUI supplies presentation, session grants and persistence notices; config,
-    hook and reviewer decisions are unchanged. Shared gate and native renderer
-    tests cover cancellation, replacement, scopes and audit-before-execution.
+  - [x] Human permissions: shared preparation and resolution in `internal/interaction`,
+    wired into TUI; see [ownership contract](../../docs/reference/dependency-rules.md#rules).
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.
