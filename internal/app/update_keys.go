@@ -171,9 +171,6 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 
 	case "esc":
-		if m.pendingStopHook != nil {
-			return m.handleStreamCancel(), true
-		}
 		if m.missionOfferVisible() {
 			m.autopilotOfferDismissed = true
 			return nil, true
@@ -186,7 +183,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.Suggestions.Hide()
 			return nil, true
 		}
-		if m.conv.Stream.Active {
+		if m.conv.Stream.Active || m.pendingStopHook != nil {
 			return m.handleStreamCancel(), true
 		}
 		return nil, true

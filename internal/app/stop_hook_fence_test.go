@@ -145,6 +145,60 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 	}
 }
 
+func TestPendingStopHookKeyPrecedence(t *testing.T) {
+	for _, scenario := range []string{"mission-offer", "ghost-suggestion", "plain-escape", "ctrl-c-draft"} {
+		t.Run(scenario, func(t *testing.T) {
+			m, _ := compactQueueModel(t)
+			finish := pendingStopOutcome(t, m, true)
+			pending := m.pendingStopHook
+			key := tea.KeyPressMsg{Code: tea.KeyEscape}
+			switch scenario {
+			case "mission-offer":
+				m.env.SessionPermissions.SetMode(setting.ModeAutoPilot)
+				m.env.AutoPilot.Mission = "run the tests"
+				if !m.missionOfferVisible() {
+					t.Fatal("mission offer must be visible before Escape")
+				}
+			case "ghost-suggestion":
+				m.userInput.PromptSuggestion.Text = "run the tests"
+			case "ctrl-c-draft":
+				key = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+				m.userInput.Textarea.SetValue("draft")
+				m.userInput.LastCtrlC = time.Now()
+			}
+			if m.conv.Stream.Active || m.pendingMessages.Held() || pending == nil {
+				t.Fatal("expected an idle pending hook without an input hold")
+			}
+			cmd, handled := m.routeKeypress(key)
+			if !handled {
+				t.Fatal("key was not handled")
+			}
+			if scenario != "plain-escape" {
+				if cmd != nil || m.pendingStopHook != pending || m.pendingMessages.Held() {
+					t.Fatal("first key cancelled the hook instead of dismissing composer content")
+				}
+				if m.missionOfferVisible() || m.userInput.PromptSuggestion.Text != "" || m.userInput.Textarea.Value() != "" {
+					t.Fatal("first key did not dismiss composer content")
+				}
+				if scenario == "ctrl-c-draft" && !m.userInput.LastCtrlC.IsZero() {
+					t.Fatal("clearing the draft must disarm exit")
+				}
+				if _, handled := m.routeKeypress(key); !handled {
+					t.Fatal("second key was not handled")
+				}
+			}
+			if m.pendingStopHook != nil || !m.pendingMessages.Held() {
+				t.Fatal("key without composer content must cancel the pending hook and hold input")
+			}
+			msg := finish()
+			before := len(m.conv.Messages)
+			if _, cmd := m.dispatch(msg); cmd != nil || len(m.conv.Messages) != before {
+				t.Fatal("cancelled hook outcome was applied")
+			}
+		})
+	}
+}
+
 func TestLiveStopOutcomeConsumedOnce(t *testing.T) {
 	for _, blocked := range []bool{false, true} {
 		t.Run(fmt.Sprint(blocked), func(t *testing.T) {
