@@ -351,11 +351,11 @@ selection triggers an immediate fetch when the cache is expired. No render or
 chat inference performs network work.
 
 The compact English label follows ChatGPT's provider/bucket convention:
-`Copilot Chat 100% left (2h)` for a free account resetting in two hours;
+`Copilot Chat 100% left · ↻ 28d` for a free account resetting in 28 days;
 a finite, available premium bucket takes precedence when present. Unlimited,
 no quota, and unavailable have distinct labels. Valid RFC3339 reset timestamps
-use the shared compact countdown in parentheses; an elapsed reset makes the
-cached allowance unknown until refreshed. A date-only fallback appends `(Dec 1)`
+use the shared ` · ↻ ` compact countdown suffix; an elapsed reset makes the
+cached allowance unknown until refreshed. A date-only fallback appends ` · ↻ Dec 1`
 without inventing a time or timezone. Missing/invalid reset fields and unavailable
 quota omit the reset suffix. Quota is not session cost
 and has no inferred monetary/request units. Like other optional status segments,

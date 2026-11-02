@@ -71,7 +71,13 @@ func TestFormatSubscriptionUsage(t *testing.T) {
 		{Duration: 7 * 24 * time.Hour, UsedPercent: 100, ResetsAt: now.Add(48 * time.Hour)},
 		{Duration: 5 * time.Hour, UsedPercent: 0},
 	}}
-	if got := formatSubscriptionUsage(usage, now); got != "ChatGPT week 0% left (2d) / 5h 100% left" {
+	if got := formatSubscriptionUsage(usage, now); got != "ChatGPT week 0% left · ↻ 2d / 5h 100% left" {
+		t.Fatal(got)
+	}
+	example := auth.CodexUsage{Windows: []auth.CodexUsageWindow{
+		{Duration: 5 * time.Hour, UsedPercent: 10, ResetsAt: now.Add(2 * time.Hour)},
+	}}
+	if got := formatSubscriptionUsage(example, now); got != "ChatGPT 5h 90% left · ↻ 2h" {
 		t.Fatal(got)
 	}
 	if got := formatSubscriptionUsage(auth.CodexUsage{}, now); got != "ChatGPT limits unknown" {

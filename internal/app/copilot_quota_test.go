@@ -48,13 +48,14 @@ func TestCopilotQuotaResetLabel(t *testing.T) {
 	for _, tc := range []struct {
 		name, timestamp, date, suffix string
 	}{
-		{"timestamp preferred", "2026-12-01T00:00:00Z", "2026-12-02", " (2h)"},
-		{"offset timestamp", "2026-12-01T02:30:00+02:30", "", " (2h)"},
-		{"days", "2026-12-02T22:00:00Z", "", " (2d)"},
-		{"minutes", "2026-11-30T22:30:00Z", "", " (30m)"},
-		{"less than a minute", "2026-11-30T22:00:30Z", "", " (1m)"},
-		{"date only", "", "2026-12-01", " (Dec 1)"},
-		{"invalid timestamp falls back", "invalid", "2026-12-01", " (Dec 1)"},
+		{"timestamp preferred", "2026-12-01T00:00:00Z", "2026-12-02", " · ↻ 2h"},
+		{"offset timestamp", "2026-12-01T02:30:00+02:30", "", " · ↻ 2h"},
+		{"days", "2026-12-02T22:00:00Z", "", " · ↻ 2d"},
+		{"28 days", "2026-12-28T22:00:00Z", "", " · ↻ 28d"},
+		{"minutes", "2026-11-30T22:30:00Z", "", " · ↻ 30m"},
+		{"less than a minute", "2026-11-30T22:00:30Z", "", " · ↻ 1m"},
+		{"date only", "", "2026-12-01", " · ↻ Dec 1"},
+		{"invalid timestamp falls back", "invalid", "2026-12-01", " · ↻ Dec 1"},
 		{"invalid fields", "invalid", "2026-02-30", ""},
 		{"missing fields", "", "", ""},
 	} {
@@ -100,7 +101,7 @@ func TestCopilotSharedSubscriptionUsageLabel(t *testing.T) {
 		Snapshots: map[string]llm.CopilotQuotaSnapshot{"chat": {Unlimited: true}},
 		ResetDate: "2026-12-01",
 	}
-	want := "Copilot Chat unlimited (Dec 1)"
+	want := "Copilot Chat unlimited · ↻ Dec 1"
 	if got := m.subscriptionUsageLabel(); got != want {
 		t.Fatalf("shared slot = %q, want %q", got, want)
 	}
