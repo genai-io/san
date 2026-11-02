@@ -82,6 +82,9 @@ func (m *model) handleSubscriptionUsageTick(msg subscriptionUsageTick) tea.Cmd {
 }
 
 func (m model) subscriptionUsageLabel() string {
+	if m.usesCopilot() {
+		return m.copilotQuotaLabel()
+	}
 	if !llm.ChatGPTSubscription(m.env.CurrentModel) || !m.subscriptionUsage.active {
 		return ""
 	}

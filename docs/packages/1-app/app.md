@@ -339,6 +339,29 @@ pending, and completed plan items; rendering leaves task records intact.
 - On `/plugin install`, `/models`, etc.: `ReloadPluginBackedState()`
   re-initializes the affected services and calls `refreshAfterReload`.
 
+## Copilot quota status
+
+`copilot_quota.go` connects `llm.FetchCopilotQuota` to the existing bottom
+status line through `OperationModeParams.SubscriptionUsage`, the same optional
+slot used for ChatGPT limits. Only a selected Copilot provider triggers fetching or displays
+quota. A Bubble Tea command performs the bounded network operation; the UI
+loop keeps the result (including failures) for two minutes and suppresses
+concurrent fetches. A minute tick keeps idle sessions fresh, and provider
+selection triggers an immediate fetch when the cache is expired. No render or
+chat inference performs network work.
+
+The compact English label is `Copilot · Chat 100% left` for a free account;
+a finite, available premium bucket takes precedence when present. Unlimited,
+no quota, and unavailable have distinct labels. Valid reset timestamps append
+` · resets Dec 1, 00:00 UTC` (converted to UTC); a date-only fallback appends
+` · resets Dec 1` without inventing a time or timezone. Missing/invalid reset
+fields and unavailable quota omit the reset suffix. Quota is not session cost
+and has no inferred monetary/request units. Like other optional status segments,
+it drops as a whole on narrow terminals. No new settings are required.
+`copilot_quota_test.go` covers these labels, reset timestamp/date fallbacks,
+status integration/width dropping, provider gating, in-flight suppression, and
+cache expiry.
+
 ## Tests
 
 The root package has focused lifecycle/state tests and broader coverage through

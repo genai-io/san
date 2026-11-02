@@ -147,6 +147,25 @@ precedence afterward. API-key environment precedence is unchanged. A terminal
 refresh error requires removing the subscription credential in `/models` and
 signing in again; retrying the expired token cannot recover it.
 
+## Copilot account quota
+
+`copilot_quota.go` exposes the read-only `FetchCopilotQuota(ctx)` entrypoint.
+It loads San's existing GitHub OAuth credential via `credentials.Load`, then
+GETs GitHub's `/copilot_internal/user` with `Authorization: token`, JSON Accept,
+and the Copilot Chat user agent. The inference bearer is not used. Requests
+have an eight-second deadline, refuse redirects, and never surface response
+bodies or credentials in errors. There is no new configuration.
+
+The response retains separate chat, completions, and premium snapshots and
+reset dates. Missing numeric/has-quota fields stay unknown; no-quota is not
+exhaustion, and unlimited is distinct from zero. These are provider allowance
+figures, not dollars or inferred request counts. The internal GitHub endpoint
+can change or fail; callers must display unavailable rather than zero.
+The TUI owns a two-minute in-memory cache and asynchronous refresh, separate
+from inference and session cost. `copilot_quota_test.go` exercises the real
+response shape, unlimited, missing/malformed data, HTTP failure, and cancellation
+against `httptest`, without accessing real credentials.
+
 ## Model data
 
 The SDK's catalog says how to reach a vendor and speak its protocol — endpoint,

@@ -123,6 +123,8 @@ type model struct {
 	// next turn ends or the panel saves.
 	autopilotOfferDismissed bool
 
+	copilotQuota copilotQuotaState
+
 	// updateInstalled / updateFailed record the background auto-update's
 	// outcome: the release now on disk (the status line asks for a restart),
 	// or the release that could not be installed (a warning at exit points to
@@ -210,6 +212,7 @@ func (m *model) Init() tea.Cmd {
 		refreshModelData(),
 		m.syncGitBar(),
 		m.syncSubscriptionUsage(),
+		func() tea.Msg { return copilotQuotaTick{} },
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt
