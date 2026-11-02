@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 
@@ -11,9 +10,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/interaction"
-	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 type interactionState struct {
@@ -21,6 +18,7 @@ type interactionState struct {
 	active     *conv.InteractionRequest
 	shown      bool
 	permission *perm.PermissionRequest
+	approval   *interaction.Permission
 }
 
 func (m *model) validInteraction(req *conv.InteractionRequest) bool {
@@ -141,18 +139,12 @@ func (m *model) showActiveInteraction() tea.Cmd {
 			}
 		}
 		m.interactions.permission = view
-		if req.Source.AgentID != "" {
-			view.OnceOnly = true
-			view.AllowRules = nil
-		}
 		m.syncApprovalToolState()
-		if rec := m.services.Session; rec != nil {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
-				RequestID: req.Permission.RequestID, Tool: req.Permission.ToolName,
-				Input: marshalPermInput(req.Permission.Input), Detail: interactionPermissionDetail(req, view),
-				OptionsOffered: input.BuildApprovalOptions(view), Source: transcript.PermissionSourceAsk,
-				Mode: req.Source.PermissionMode,
-			}})
+		m.interactions.approval = interaction.NewPermission(req, m.conv.AgentToUI, view,
+			input.BuildApprovalOptions, m.recordPermission)
+		if m.interactions.approval == nil {
+			m.finishInteraction()
+			return m.advanceInteractions()
 		}
 		m.userInput.Approval.Show(view, m.env.Width, m.env.Height)
 		m.resizeApprovalPanel()
@@ -180,18 +172,6 @@ func (m *model) resizeApprovalPanel() {
 	m.userInput.Approval.Resize(max(1, m.env.Width-1), max(1, m.env.Height-reserved))
 }
 
-func interactionPermissionDetail(req *conv.InteractionRequest, view *perm.PermissionRequest) json.RawMessage {
-	detail := permDetail(view)
-	if req.Source.AgentID == "" {
-		return detail
-	}
-	data, _ := json.Marshal(struct {
-		Agent      tool.AgentInteractionSource `json:"agent"`
-		Permission json.RawMessage             `json:"permission,omitempty"`
-	}{req.Source, detail})
-	return data
-}
-
 func (m *model) finishInteraction() {
 	if req := m.interactions.active; req != nil {
 		switch {
@@ -207,6 +187,7 @@ func (m *model) finishInteraction() {
 	finished := m.interactions.active
 	m.interactions.active = nil
 	m.interactions.permission = nil
+	m.interactions.approval = nil
 	m.interactions.shown = false
 	if finished != nil && finished == m.tasks.review {
 		m.resumeTaskViewer()

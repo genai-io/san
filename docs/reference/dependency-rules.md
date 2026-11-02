@@ -44,12 +44,14 @@ not by lower layers importing higher layers.
 3. `internal/core` must stay dependency-light. It should not import `app`,
    `session`, `tool` implementations, provider packages, or extension packages.
 4. Feature packages should not import `internal/app`.
-   `internal/interaction` owns only interaction request queuing, lifetime/owner
-   validation, and cancellation responses. It may use agent/tool request contracts,
-   but must not import Bubble Tea or ACP. Runtime remains the execution owner;
-   authorization policy, audit ordering, transport, and display stay in their
-   existing adapters. Adapter identity fences session generations; request contexts
-   distinguish foreground cancellation from independent background work.
+   `internal/interaction` owns request lifetimes and human-permission preparation,
+   scopes and audit-before-reply, not execution, transport or presentation. It may
+   use agent/tool, settings and transcript contracts, but not Bubble Tea or ACP.
+   Rule, hook and reviewer policy stays with its existing owners. Adapters serialize
+   each approval, map only offered options and pass the current session owner.
+   Owner identity fences session generations; request contexts preserve independent
+   background lifetimes. Audit callbacks are best effort, not durability guarantees;
+   grant persistence is nontransactional and cancellation does not roll back grants.
 5. Extension packages should own their registries and loaders. Cross-extension
    composition belongs in `internal/app` or a narrow integration function.
 6. Tool implementation packages under `internal/tool/*` should remain adapters.

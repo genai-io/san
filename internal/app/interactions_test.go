@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -20,6 +21,7 @@ func interactionModel() *model {
 	m := fixedComposerModel(80, 24)
 	m.services.Session = nil
 	m.services.Task = task.NewManager()
+	m.env.SessionPermissions = setting.NewSessionPermissions()
 	return m
 }
 
