@@ -93,9 +93,13 @@ func Default() *Runtime
   Stop-hook input; `Run` uses engine-owned timeout, fail-open and audit policy.
   After rejecting stale results, the host calls `StopDecision.Finish`: state must
   be recorded before a block becomes a continuation or success becomes idle.
-  This second state write captures changes while hooks were pending. These are
-  synchronous host callbacks, not a new runtime or receipt contract. Failures do
-  not install a global input hold; later explicit input still follows admission.
+  Both checkpoints call the recorder, but the native transcript store drops
+  unchanged state patches before opening a writer. An ordinary idle turn adds
+  at most one state record, not two. The post-hook checkpoint records any changed
+  state and still detects a closed or failed session when state is unchanged.
+  These are synchronous host callbacks, not a new runtime or receipt contract.
+  Failures do not install a global input hold; later explicit input still follows
+  admission.
   TUI retains cleanup, session/outbox identity, queue sources, AutoPilot execution,
   suggestions and recap. Cancellation and runtime failure use their separate paths.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
@@ -110,7 +114,8 @@ func Default() *Runtime
 
 ```
 internal/agent/completion_test.go — recording/successor order and Stop-hook policy.
-internal/app/completion_test.go — native successor ordering and recording failures.
+internal/app/completion_test.go — native state-record counts, successor ordering,
+                                  changed post-hook state and recording failures.
 internal/app/stop_hook_fence_test.go — delayed outcomes and exact lifetime fencing.
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.

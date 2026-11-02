@@ -1,13 +1,17 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -22,6 +26,99 @@ func attachTurnSession(t *testing.T, m *model) {
 	m.services.Session = opened
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	t.Cleanup(func() { _ = opened.Close() })
+}
+
+// Count on-disk native records, not calls to appendTurnState: the transcript
+// store drops unchanged state patches before acquiring a writer.
+func turnStateRecordCount(t *testing.T, m *model) int {
+	t.Helper()
+	data, err := os.ReadFile(m.services.Session.TranscriptPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var envelope struct {
+			Data struct {
+				Type string `json:"type"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope.Data.Type == "session.state.patched" {
+			count++
+		}
+	}
+	return count
+}
+
+func TestNormalIdleTurnStateRecordCount(t *testing.T) {
+	for _, scenario := range []string{"no-hooks", "allow", "block", "changed-while-pending", "closed-while-pending"} {
+		t.Run(scenario, func(t *testing.T) {
+			m, _ := compactQueueModel(t)
+			m.env.SessionName = "completed state"
+			called := false
+			if scenario != "no-hooks" {
+				m.services.Hook.AddSessionFunctionHook(hook.Stop, "", hook.FunctionHook{
+					Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
+						called = true
+						return hook.HookOutput{Continue: new(scenario != "block"), StopReason: "more work"}, nil
+					},
+				})
+			}
+			before := turnStateRecordCount(t, m)
+			m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
+			if m.pendingStopHook == nil || turnStateRecordCount(t, m) != before+1 {
+				t.Fatal("completion did not record state before scheduling the Stop check")
+			}
+			check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
+			if scenario == "changed-while-pending" {
+				m.env.SessionName = "changed state"
+			}
+			if scenario == "closed-while-pending" {
+				if err := m.services.Session.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			decision := check.Run(t.Context())
+			m.handleStopHookResult(stopHookResultMsg{pending: m.pendingStopHook,
+				Blocked: decision.Blocked, Reason: decision.Reason})
+			if called != (scenario != "no-hooks") {
+				t.Fatal("Stop hook was not evaluated as configured")
+			}
+			if scenario == "block" {
+				deadline := time.After(3 * time.Second)
+			waitContinuation:
+				for {
+					select {
+					case ev := <-m.AgentOutbox():
+						if _, ok := ev.(core.TurnEnded); ok {
+							break waitContinuation
+						}
+					case <-deadline:
+						t.Fatal("hook continuation did not finish")
+					}
+				}
+			}
+			want := 1
+			if scenario == "changed-while-pending" {
+				want = 2
+			}
+			if got := turnStateRecordCount(t, m) - before; got != want {
+				t.Fatalf("native state records = %d, want %d", got, want)
+			}
+			if scenario == "closed-while-pending" {
+				found := false
+				for _, row := range m.conv.Messages {
+					found = found || strings.HasPrefix(row.Content, "Session was not saved:")
+				}
+				if !found {
+					t.Fatal("unchanged state bypassed the closed-session error")
+				}
+			}
+		})
+	}
 }
 
 func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
