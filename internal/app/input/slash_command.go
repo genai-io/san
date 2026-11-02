@@ -92,6 +92,7 @@ type SlashCommandEnv struct {
 	ClearScrollback         func(tea.Cmd) tea.Cmd
 	FireSessionEnd          func(reason string)
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
+	BeginCompact            func()
 	SpinnerTickCmd          func() tea.Cmd
 	OpenHistory             func() tea.Cmd
 	OpenTasks               func() tea.Cmd
@@ -761,12 +762,18 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	if c.env.Conversation.Stream.Active {
 		return "Cannot compact while streaming.", nil, nil
 	}
+	if c.env.Conversation.Compact.Active {
+		return "Compaction is already in progress.", nil, nil
+	}
 	request := c.env.BuildCompactRequest(strings.TrimSpace(args), "manual")
 	if len(request.Messages) == 0 {
 		return "No active LLM session. Send a message first to initialize the client.", nil, nil
 	}
 	if len(request.Messages) < core.MinMessagesToCompact {
 		return "Not enough conversation history to compact.", nil, nil
+	}
+	if c.env.BeginCompact != nil {
+		c.env.BeginCompact()
 	}
 	c.env.Conversation.Compact.Active = true
 	c.env.Conversation.Compact.SummaryFocus = request.SummaryFocus

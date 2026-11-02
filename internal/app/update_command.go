@@ -54,6 +54,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ClearSession:            m.clearSession,
 		FireSessionEnd:          m.FireSessionEnd,
 		BuildCompactRequest:     m.BuildCompactRequest,
+		BeginCompact:            func() { m.pendingStopHook = nil },
 		SpinnerTickCmd:          m.SpinnerTickCmd,
 		ResetCronQueue:          m.ResetCronQueue,
 		ForkSession:             m.forkSession,
