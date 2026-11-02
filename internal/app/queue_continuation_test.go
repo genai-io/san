@@ -11,7 +11,7 @@ import (
 )
 
 func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
-	for _, mode := range []string{"head", "nonhead", "no-enter", "direct"} {
+	for _, mode := range []string{"head", "nonhead", "no-enter", "queued-during", "direct", "background-only"} {
 		t.Run(mode, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			if err := m.services.Agent.Send(core.UserMessage("initial work", nil)); err != nil {
@@ -22,14 +22,21 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("initial inference did not start")
 			}
+			if mode == "no-enter" {
+				m.userInput.Queue.Enqueue("queued head", nil)
+				m.userInput.Queue.Enqueue("queued successor", nil)
+			}
 			completed := make(chan turnFinalizedMsg, 1)
 			go runFinalizationCommands(m.handleStreamCancel(), completed)
 			if m.pendingMessages.Cancelling() == nil {
 				t.Fatal("cancel did not capture finalization")
 			}
 			m.handleStopHookResult(stopHookResultMsg{Blocked: true, Reason: "held hook"})
-			m.userInput.Queue.Enqueue("queued head", nil)
-			m.userInput.Queue.Enqueue("queued successor", nil)
+			if mode != "no-enter" && mode != "background-only" {
+				m.userInput.Queue.Enqueue("queued head", nil)
+				m.userInput.Queue.Enqueue("queued successor", nil)
+			}
+			m.systemInput.CronQueue = []string{"scheduled work"}
 			m.sendPendingMessages()
 			m.sendNextQueuedInputIfIdle()
 			if m.pendingMessages.Len() != 1 || m.pendingMessages.First().FromUser || !m.pendingMessages.Held() {
@@ -40,7 +47,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 				t.Fatal("held hook woke agent before Enter")
 			default:
 			}
-			if mode != "no-enter" {
+			if mode != "no-enter" && mode != "queued-during" && mode != "background-only" {
 				m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
 				if mode != "nonhead" {
 					m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
@@ -50,9 +57,14 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			if mode == "direct" {
 				m.sendToAgent(pendingMessage{Message: core.UserMessage("direct continuation", nil), FromUser: true})
 			}
-			if m.userInput.Queue.Len() != 2 {
+			queued := 2
+			if mode == "background-only" {
+				queued = 0
+			}
+			if m.userInput.Queue.Len() != queued {
 				t.Fatal("queue crossed finalization fence")
 			}
+			m.userInput.Textarea.SetValue("unrelated draft")
 			outbox := m.services.Agent.Outbox()
 			deadline := time.After(2 * time.Second)
 		drain:
@@ -74,13 +86,19 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			case <-deadline:
 				t.Fatal("acknowledged finalization did not complete")
 			}
-			if mode == "no-enter" {
-				if !m.pendingMessages.Held() || m.pendingMessages.Len() != 1 || m.userInput.Queue.Len() != 2 {
-					t.Fatal("finalization released held work without Enter")
+			if m.userInput.Textarea.Value() != "unrelated draft" {
+				t.Fatal("finalization lost the composer draft")
+			}
+			if len(m.systemInput.CronQueue) != 1 {
+				t.Fatal("cancellation drained scheduled work")
+			}
+			if mode == "background-only" {
+				if !m.pendingMessages.Held() || m.pendingMessages.Len() != 1 {
+					t.Fatal("finalization released background work without user input")
 				}
 				select {
 				case <-provider.requests:
-					t.Fatal("held hook independently woke agent")
+					t.Fatal("background work independently woke agent")
 				case <-time.After(20 * time.Millisecond):
 				}
 				return
@@ -156,7 +174,7 @@ func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
 				}
 				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
 			}
-			wantSend := mode == "after" || mode == "during"
+			wantSend := mode == "after" || mode == "during" || mode == "escape" || mode == "reenter"
 			if wantSend {
 				select {
 				case request := <-provider.requests:

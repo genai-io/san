@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -46,6 +47,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 	for _, mode := range []string{"saved", "natural", "essential-write-failed", "write-failed", "session-replaced", "outbox-replaced"} {
 		t.Run(mode, func(t *testing.T) {
 			m, store := resumedModel(t, []core.Message{core.UserMessage("history", nil)})
+			m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
 			llm := aitest.Always(aitest.Hangs())
 			if mode == "natural" {
 				llm = aitest.Always(aitest.Says("done"))
@@ -88,7 +90,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			}
 			// Queue BEFORE cancellation; executing the returned commands must not
 			// release it or install a successor ahead of terminal cleanup.
-			m.userInput.Queue.Enqueue("held until later input", nil)
+			m.userInput.Queue.Enqueue("held until cancellation finalizes", nil)
 			cmd := m.handleStreamCancel()
 			if cmd == nil {
 				t.Fatal("cancel did not schedule finalization wait")
@@ -179,10 +181,14 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			if m.pendingMessages.Cancelling() != nil {
 				t.Fatal("submission fence not released")
 			}
-			if m.userInput.Queue.Len() != 1 {
-				t.Fatal("terminal finalization released held queued input")
+			wantQueued := 1
+			if mode == "natural" {
+				wantQueued = 0 // queued user intent resumes after successful cleanup
 			}
-			if mode != "saved" && !m.pendingMessages.Held() {
+			if m.userInput.Queue.Len() != wantQueued {
+				t.Fatal("terminal finalization released the wrong queued input")
+			}
+			if mode != "saved" && mode != "natural" && !m.pendingMessages.Held() {
 				t.Fatal("cancellation released background hold")
 			}
 			if mode == "saved" {
