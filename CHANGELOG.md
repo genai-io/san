@@ -3,6 +3,58 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.1] - 2026-11-02
+
+### Added
+- Share turn completion with record-before-continue ordering ([@yanmxa](https://github.com/yanmxa) in [#717](https://github.com/genai-io/san/pull/717))
+- Show Copilot quota and reset time ([@yanmxa](https://github.com/yanmxa) in [#709](https://github.com/genai-io/san/pull/709))
+- Configure Agent activity and result previews ([@yanmxa](https://github.com/yanmxa) in [#705](https://github.com/genai-io/san/pull/705))
+- Show ChatGPT subscription limits in status bar ([@yanmxa](https://github.com/yanmxa) in [#697](https://github.com/genai-io/san/pull/697))
+- Simplify delegation and continue sessions through SendMessage ([@yanmxa](https://github.com/yanmxa) in [#692](https://github.com/genai-io/san/pull/692))
+- Refine task controls, approvals, and tool output ([@yanmxa](https://github.com/yanmxa) in [#679](https://github.com/genai-io/san/pull/679))
+- Recover background workers in their original sessions ([@yanmxa](https://github.com/yanmxa) in [#680](https://github.com/genai-io/san/pull/680))
+- Show memory use at the consuming step ([@yanmxa](https://github.com/yanmxa) in [#675](https://github.com/genai-io/san/pull/675))
+- Keep short and failed output visible; align multi-line commands; Ctrl+O expands every result ([@yanmxa](https://github.com/yanmxa) in [#669](https://github.com/genai-io/san/pull/669))
+### Changed
+- Bump github.com/yuin/goldmark from 1.7.17 to 1.8.7 in the go-minor-and-patch group ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#715](https://github.com/genai-io/san/pull/715))
+- Share foreground tool result policy ([@yanmxa](https://github.com/yanmxa) in [#710](https://github.com/genai-io/san/pull/710))
+- Share human permission resolution ([@yanmxa](https://github.com/yanmxa) in [#708](https://github.com/genai-io/san/pull/708))
+- Share prompt admission and context staging ([@yanmxa](https://github.com/yanmxa) in [#706](https://github.com/genai-io/san/pull/706))
+- Share cancellation-aware input admission ([@yanmxa](https://github.com/yanmxa) in [#704](https://github.com/genai-io/san/pull/704))
+- Share conversation context policy ([@yanmxa](https://github.com/yanmxa) in [#703](https://github.com/genai-io/san/pull/703))
+- Share native pending input delivery ([@yanmxa](https://github.com/yanmxa) in [#701](https://github.com/genai-io/san/pull/701))
+- Share execution recording outside the TUI ([@yanmxa](https://github.com/yanmxa) in [#699](https://github.com/genai-io/san/pull/699))
+- Simplify delegation guidance to benefit versus cost ([@yanmxa](https://github.com/yanmxa) in [#700](https://github.com/genai-io/san/pull/700))
+- Move request lifecycle out of TUI ([@yanmxa](https://github.com/yanmxa) in [#694](https://github.com/genai-io/san/pull/694))
+- Stream metadata and history without blocking the picker ([@yanmxa](https://github.com/yanmxa) in [#690](https://github.com/genai-io/san/pull/690))
+- Define incremental agent entrypoint plan ([@yanmxa](https://github.com/yanmxa) in [#688](https://github.com/genai-io/san/pull/688))
+- Bump golang.org/x/image from 0.45.0 to 0.47.0 in the go-minor-and-patch group ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#683](https://github.com/genai-io/san/pull/683))
+- Use the same ※ marker throughout recap ([@yanmxa](https://github.com/yanmxa) in [#676](https://github.com/genai-io/san/pull/676))
+- Show question answers as a conversation ([@yanmxa](https://github.com/yanmxa) in [#674](https://github.com/genai-io/san/pull/674))
+- Simplify recap presentation ([@yanmxa](https://github.com/yanmxa) in [#671](https://github.com/genai-io/san/pull/671))
+### Fixed
+- Fence delayed Stop hook outcomes ([@yanmxa](https://github.com/yanmxa) in [#712](https://github.com/genai-io/san/pull/712))
+- Resume queued user input after cancellation ([@yanmxa](https://github.com/yanmxa) in [#714](https://github.com/genai-io/san/pull/714))
+- Keep delegation context lightweight ([@yanmxa](https://github.com/yanmxa) in [#711](https://github.com/genai-io/san/pull/711))
+- Keep quota resets compact and readable ([@yanmxa](https://github.com/yanmxa) in [#713](https://github.com/genai-io/san/pull/713))
+- Avoid premature wrapping in CJK paragraphs ([@yanmxa](https://github.com/yanmxa) in [#707](https://github.com/genai-io/san/pull/707))
+- Show completion notices above live agent activity ([@yanmxa](https://github.com/yanmxa) in [#702](https://github.com/genai-io/san/pull/702))
+- Preserve history rendering across resize ([@yanmxa](https://github.com/yanmxa) in [#698](https://github.com/genai-io/san/pull/698))
+- Wait for cancelled turn finalization ([@yanmxa](https://github.com/yanmxa) in [#696](https://github.com/genai-io/san/pull/696))
+- Expose current turn cancellation completion ([@yanmxa](https://github.com/yanmxa) in [#695](https://github.com/genai-io/san/pull/695))
+- Define a minimal final handoff contract ([@yanmxa](https://github.com/yanmxa) in [#693](https://github.com/genai-io/san/pull/693))
+- Queue messages during compaction ([@yanmxa](https://github.com/yanmxa) in [#691](https://github.com/genai-io/san/pull/691))
+- Coordinate subscription credential rotation ([@yanmxa](https://github.com/yanmxa) in [#689](https://github.com/genai-io/san/pull/689))
+- Keep Agent identities and colors stable ([@yanmxa](https://github.com/yanmxa) in [#686](https://github.com/genai-io/san/pull/686))
+- Show queue counts only for hidden messages ([@yanmxa](https://github.com/yanmxa) in [#682](https://github.com/genai-io/san/pull/682))
+- Clarify Agent results and align expanded commands ([@yanmxa](https://github.com/yanmxa) in [#684](https://github.com/genai-io/san/pull/684))
+- Clarify delegation tradeoffs and background execution ([@yanmxa](https://github.com/yanmxa) in [#685](https://github.com/genai-io/san/pull/685))
+- Align shell blocks with tool labels ([@yanmxa](https://github.com/yanmxa) in [#681](https://github.com/genai-io/san/pull/681))
+- Guard invalid pending Agent selection ([@yanmxa](https://github.com/yanmxa) in [#678](https://github.com/genai-io/san/pull/678))
+- Keep inference progress visible until generation ends ([@yanmxa](https://github.com/yanmxa) in [#677](https://github.com/genai-io/san/pull/677))
+- Preserve image context and normalize oversized inputs ([@yanmxa](https://github.com/yanmxa) in [#673](https://github.com/genai-io/san/pull/673))
+- Avoid repeated recap after resuming a session ([@yanmxa](https://github.com/yanmxa) in [#672](https://github.com/genai-io/san/pull/672))
+- Keep a later reasoning item's summary on its own paragraph ([@yanmxa](https://github.com/yanmxa) in [#670](https://github.com/genai-io/san/pull/670))
 ## [v1.25.0] - 2026-10-23
 
 ### Added

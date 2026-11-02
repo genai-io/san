@@ -16,7 +16,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-var version = "1.25.0"
+var version = "1.25.1"
 
 // buildTime and commit are set at build time via -X ldflags.
 // When built directly with go build (without ldflags), they remain empty.
