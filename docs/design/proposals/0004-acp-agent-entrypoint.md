@@ -45,11 +45,8 @@ External client ── ACP ──────┘
   TUI admits current, non-duplicate results and consumes handoffs before calling;
   worker handoffs stay run-local. Result filtering, recording and compaction are
   not moved. The ACP adapter must supply equivalent admission and workspace wiring.
-- `internal/agent.EndTurn`, `StopCheck` and `StopDecision.Finish`: normal-turn
-  state-before-successor ordering and Stop-hook decisions. State write failure
-  stops the current boundary; queue and AutoPilot execution remain host callbacks.
-  TUI rejects stale hook outcomes before post-hook recording or continuation.
-  Cancellation receipts and runtime-failure recovery are unchanged.
+- `internal/agent`: shared normal-turn recording and Stop decisions;
+  see [completion policy](../../packages/2-feature/agent.md).
 - Remaining input and turn lifecycle: pending. Other hooks, compaction, terminal
   cleanup and permission policy remain in their current owners.
 - ACP adapter: pending; capability negotiation, projections and extensions,

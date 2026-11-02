@@ -87,21 +87,11 @@ func Default() *Runtime
   held harness input; direct pending user input takes precedence. Edits, deletion,
   or session replacement invalidate that deferred intent.
   No guarantee covers audit details, normal-turn hooks, rendering, or fsync.
-- Normal completion: `EndTurn(TurnCallbacks)` records application state before
-  trying queued input, then AutoPilot, then scheduling idle hooks. A recording
-  error stops this boundary without consuming queued input. `StopCheck` snapshots
-  Stop-hook input; `Run` uses engine-owned timeout, fail-open and audit policy.
-  After rejecting stale results, the host calls `StopDecision.Finish`: state must
-  be recorded before a block becomes a continuation or success becomes idle.
-  Both checkpoints call the recorder, but the native transcript store drops
-  unchanged state patches before opening a writer. An ordinary idle turn adds
-  at most one state record, not two. The post-hook checkpoint records any changed
-  state and still detects a closed or failed session when state is unchanged.
-  These are synchronous host callbacks, not a new runtime or receipt contract.
-  Failures do not install a global input hold; later explicit input still follows
-  admission.
-  TUI retains cleanup, session/outbox identity, queue sources, AutoPilot execution,
-  suggestions and recap. Cancellation and runtime failure use their separate paths.
+- Normal completion: `EndTurn` records state before queued input or AutoPilot.
+  `StopCheck` runs the hook; `StopDecision.Finish` records before finishing or
+  continuing. Failed recording stops that boundary; unchanged state is not rewritten.
+  TUI owns cleanup and stale-result checks. Cancellation/failure paths and receipt
+  guarantees are unchanged; recording errors do not create a global input hold.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an

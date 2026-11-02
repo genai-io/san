@@ -41,12 +41,8 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     cancellation or teardown. Native command/dispatch regressions cover stale
     blocks and successes. This is not shared completion: normal receipts still
     exclude idle-hook persistence, and failure/autopilot policy remains in app.
-  - [x] Normal completion policy: `agent.EndTurn` records state before queued
-    input or AutoPilot admission; Stop checks and post-hook recording/continuation
-    decisions are shared. A recording error stops that boundary. TUI retains
-    cleanup, queue sources, AutoPilot execution and stale-result fencing; normal
-    receipts still exclude idle hooks. Cancellation/failure paths remain separate.
-    Native tests cover recording order, failed writes, hook outcomes and stale results.
+  - [x] Normal completion: shared record-before-continue and Stop decisions;
+    see [completion policy](../../docs/packages/2-feature/agent.md).
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.
