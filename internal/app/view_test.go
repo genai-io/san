@@ -257,6 +257,7 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 	for _, height := range []int{24, 40} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := fixedComposerModel(80, height)
+			attachTurnSession(t, m)
 			m.services.Agent = &agent.Runtime{}
 			m.welcomePending = true
 			deliver := func(event core.Event) {

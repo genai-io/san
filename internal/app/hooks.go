@@ -59,30 +59,10 @@ type stopHookResultMsg struct {
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
 	m.pendingStopHook = pending
-	hookEngine := m.services.Hook
-
-	lastContent := core.LastAssistantChatContent(m.conv.Messages)
-	hasStopHooks := hookEngine.HasHooks(hook.Stop)
-	stopHookActive := hookEngine.StopHookActive()
-
+	check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 	return func() tea.Msg {
-		var blocked bool
-		var reason string
-		if hasStopHooks {
-			outcome := hookEngine.Execute(context.Background(), hook.Stop, hook.HookInput{
-				LastAssistantMessage: lastContent,
-				StopHookActive:       stopHookActive,
-			})
-			if outcome.ShouldBlock {
-				blocked = true
-				reason = outcome.BlockReason
-			}
-		}
-		hookEngine.ExecuteAsync(hook.Notification, hook.HookInput{
-			Message:          "Claude is waiting for your input",
-			NotificationType: "idle_prompt",
-		})
-		return stopHookResultMsg{pending: pending, Blocked: blocked, Reason: reason, Result: result}
+		decision := check.Run(context.Background())
+		return stopHookResultMsg{pending: pending, Blocked: decision.Blocked, Reason: decision.Reason, Result: result}
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
@@ -28,15 +29,16 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
-	if msg.Blocked {
-		log.Logger().Sugar().Debugf("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
-		blockMsg := "Stop hook blocked: " + msg.Reason
-		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg}).ToMessage()
+	decision := agent.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason}
+	continuation, err := decision.Finish(m.appendTurnState)
+	if err != nil {
+		return nil // appendTurnState surfaces the recording failure.
+	}
+	if continuation != "" {
+		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: continuation}).ToMessage()
 		return m.sendToAgent(pendingMessage{Message: providerMsg})
 	}
-	log.Logger().Sugar().Debugf("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
-	_ = m.appendTurnState() // appendTurnState logs and surfaces failures; no cancellation waiter here.
 	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
