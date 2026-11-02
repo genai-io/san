@@ -1,9 +1,4 @@
-// Side effects triggered by tool calls: cwd-changing tools (Bash, worktree),
-// file-touching tools (Write/Edit/Read), and large-output persistence
-// (oversized ToolResult.Content gets paged out to a blob and replaced with a
-// preview + reference). Background tasks are not tracked from here — they are
-// tracked from the task manager's lifecycle notifications (wireTaskLifecycle),
-// which fire early enough that a task cannot finish before its entry exists.
+// Large tool output persistence. Workspace result effects live in agent.PostTool.
 package app
 
 import (
@@ -13,37 +8,8 @@ import (
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
-
-func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
-	resp, ok := sideEffect.(map[string]any)
-	if !ok {
-		return
-	}
-	switch toolName {
-	case tool.ToolBash, tool.ToolPowerShell:
-		if newCwd := kit.MapString(resp, "cwd"); newCwd != "" {
-			m.changeCwd(newCwd)
-		}
-	case "Write", "Edit":
-		if filePath := kit.MapString(resp, "filePath"); filePath != "" {
-			m.fireFileChanged(filePath, toolName)
-			m.reloadPersonasIfChanged(filePath)
-			if m.env.FileCache != nil {
-				m.env.FileCache.Touch(filePath)
-			}
-		}
-	case "Read":
-		if fileData, ok := resp["file"].(map[string]any); ok {
-			if filePath := kit.MapString(fileData, "filePath"); filePath != "" && m.env.FileCache != nil {
-				m.env.FileCache.Touch(filePath)
-			}
-		}
-	}
-}
 
 // filterOversizedResult keeps a result too large for the window out of the conversation:
 // the full text goes to the session store and the model is told a preview plus

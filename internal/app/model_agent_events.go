@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -84,10 +85,15 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	}
 
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
-	if sideEffect != nil {
-		m.applyToolSideEffects(tr.ToolName, sideEffect)
-	}
-	m.firePostToolHook(tr, sideEffect)
+	agent.PostTool(tr, sideEffect, m.services.Hook, agent.WorkspaceCallbacks{
+		ChangeCwd:      m.changeCwd,
+		ReloadPersonas: m.reloadPersonasIfChanged,
+		TouchFile: func(path string) {
+			if m.env.FileCache != nil {
+				m.env.FileCache.Touch(path)
+			}
+		},
+	})
 
 	return &core.ToolResult{
 		ToolCallID: tr.ToolCallID,
