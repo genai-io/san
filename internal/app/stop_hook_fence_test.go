@@ -134,7 +134,8 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 					t.Fatal(err)
 				}
 				if cmd != nil || len(m.conv.Messages) != beforeRows || m.pendingMessages.Len() != beforePending || m.userInput.Queue.Len() != beforeQueue || string(before) != string(after) {
-					t.Fatal("stale result changed conversation, persistence or queues")
+					t.Fatalf("stale result changed state: cmd=%v rows=%d->%d pending=%d->%d queue=%d->%d\ntranscript before (%d bytes):\n%s\ntranscript after (%d bytes):\n%s",
+						cmd != nil, beforeRows, len(m.conv.Messages), beforePending, m.pendingMessages.Len(), beforeQueue, m.userInput.Queue.Len(), len(before), before, len(after), after)
 				}
 				if (change == "next-turn" || change == "nil-identity") && m.pendingStopHook != current {
 					t.Fatal("old result cleared current decision")
