@@ -7,6 +7,7 @@ explanations here.
 ## Primary Entrypoints
 
 - `../README.md` — product overview, installation, usage.
+- [Feature overview](features.md) — capability list with one reference per feature.
 - `../AGENTS.md` — short agent and contributor navigation guide.
 - `concepts/architecture.md` — system-level overview and primitives.
 - `packages/index.md` — per-package design pages (grouped by layer).
