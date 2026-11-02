@@ -45,6 +45,11 @@ func SetDefaultRegistry(r *Registry)  // test-only
 func ResetDefaultRegistry()           // test-only
 ```
 
+## Agent delegation
+
+Delegate only for a clear benefit and with little need for prior conversation
+context; otherwise work directly.
+
 ## Shell arguments
 
 The model-facing `Bash` interface requires `command` (string) and accepts:
