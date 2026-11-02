@@ -106,6 +106,7 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 
 func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	m, _ := noticeDeliveryModel(t)
+	attachTurnSession(t, m)
 	m.services.Hook = hook.NewEngine(setting.NewData(), "", t.TempDir(), "")
 	m.env.Width = 80
 	m.services.Task = task.NewManager()

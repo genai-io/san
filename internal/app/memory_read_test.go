@@ -91,6 +91,7 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := fixedComposerModel(80, 40)
+			attachTurnSession(t, m)
 			m.services.Agent = &agent.Runtime{}
 			m.services.Tool = tool.NewRegistry()
 			m.pendingDecisions = &sync.Map{}

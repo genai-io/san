@@ -87,6 +87,11 @@ func Default() *Runtime
   held harness input; direct pending user input takes precedence. Edits, deletion,
   or session replacement invalidate that deferred intent.
   No guarantee covers audit details, normal-turn hooks, rendering, or fsync.
+- Normal completion: `EndTurn` records state before queued input or AutoPilot.
+  `StopCheck` runs the hook; `StopDecision.Finish` records before finishing or
+  continuing. Failed recording stops that boundary; unchanged state is not rewritten.
+  TUI owns cleanup and stale-result checks. Cancellation/failure paths and receipt
+  guarantees are unchanged; recording errors do not create a global input hold.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -98,6 +103,10 @@ func Default() *Runtime
 ## Tests
 
 ```
+internal/agent/completion_test.go — recording/successor order and Stop-hook policy.
+internal/app/completion_test.go — native state-record counts, successor ordering,
+                                  changed post-hook state and recording failures.
+internal/app/stop_hook_fence_test.go — delayed outcomes and exact lifetime fencing.
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
 internal/agent/runtime_interrupt_test.go — inactive cancellation receipt.
