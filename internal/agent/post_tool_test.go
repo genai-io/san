@@ -13,7 +13,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestProcessToolResult(t *testing.T) {
+func TestPostTool(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		effect any
@@ -50,7 +50,7 @@ func TestProcessToolResult(t *testing.T) {
 					}})
 				}
 				tr := core.ToolResult{ToolCallID: "call", ToolName: tc.name, Content: ai.TextContent("result text"), IsError: failed}
-				ProcessToolResult(tr, tc.effect, engine, ToolResultEffects{
+				PostTool(tr, tc.effect, engine, WorkspaceCallbacks{
 					ChangeCwd:      func(p string) { effects = append(effects, "cwd:"+p); engine.SetCwd(p) },
 					ReloadPersonas: func(p string) { effects = append(effects, "reload:"+p) },
 					TouchFile:      func(p string) { effects = append(effects, "touch:"+p) },

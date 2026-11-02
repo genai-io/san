@@ -403,9 +403,8 @@ Repaint zone now shows:
 
 ```
 event:           sdkagent.ToolEnd{ID:"tc-1", Result: {Content:"file1\nfile2"}}
-m.ProcessToolResult(tr):
-  applyToolSideEffects(...)
-  firePostToolHook(...)
+m.OnToolResult(tr):
+  agent.PostTool(tr, sideEffect, hooks, workspace)
   (the agent appends the ToolResult as a user-role message)
 
 conv.Messages:   [user "list files",

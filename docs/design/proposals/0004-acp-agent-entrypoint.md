@@ -38,7 +38,7 @@ External client ── ACP ──────┘
   even on a block; delivery, not admission, prepares reminders. TUI retains its
   fail-open hook budget, exit/slash ordering and ungated midstream queue delivery.
   Native policy and TUI prompt-admission tests cover this boundary.
-- `internal/agent.ProcessToolResult`: foreground workspace-effect dispatch and
+- `internal/agent.PostTool`: foreground workspace-effect dispatch and
   PostToolUse/Failure payloads, scheduled after synchronous workspace callbacks.
   FileChanged is scheduled before persona reload and cache touch; detached hooks
   retain engine-owned execution/audit ordering, not completion ordering between hooks.

@@ -361,9 +361,8 @@ RenderToolCalls(ToolCallsParams{
 
 ```
 event:           sdkagent.ToolEnd{ID:"tc-1", Result: {Content:"file1\nfile2"}}
-m.ProcessToolResult(tr):
-  applyToolSideEffects(...)
-  firePostToolHook(...)
+m.OnToolResult(tr):
+  agent.PostTool(tr, sideEffect, hooks, workspace)
   （agent 把 ToolResult 作为 user-role message append 进来）
 
 conv.Messages:   [user "list files",

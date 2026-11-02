@@ -85,7 +85,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	}
 
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
-	agent.ProcessToolResult(tr, sideEffect, m.services.Hook, agent.ToolResultEffects{
+	agent.PostTool(tr, sideEffect, m.services.Hook, agent.WorkspaceCallbacks{
 		ChangeCwd:      m.changeCwd,
 		ReloadPersonas: m.reloadPersonasIfChanged,
 		TouchFile: func(path string) {

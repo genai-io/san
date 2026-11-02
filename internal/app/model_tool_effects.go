@@ -1,4 +1,4 @@
-// Large tool output persistence. Workspace result effects live in agent.ProcessToolResult.
+// Large tool output persistence. Workspace result effects live in agent.PostTool.
 package app
 
 import (

@@ -31,7 +31,7 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     Covered by native policy and TUI dispatch/queue tests; no ACP adapter yet.
   - [x] Human permissions: shared preparation and resolution in `internal/interaction`,
     wired into TUI; see [ownership contract](../../docs/reference/dependency-rules.md#rules).
-  - [x] Foreground result policy: `agent.ProcessToolResult` dispatches workspace
+  - [x] Foreground result policy: `agent.PostTool` dispatches workspace
     handoffs and PostToolUse/Failure hooks in native order. TUI keeps outbox/cancel
     admission, handoff consumption and workspace callbacks; worker-local handoffs,
     model-result paging, recording and compaction remain unchanged. Native tests
