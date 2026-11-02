@@ -350,12 +350,14 @@ concurrent fetches. A minute tick keeps idle sessions fresh, and provider
 selection triggers an immediate fetch when the cache is expired. No render or
 chat inference performs network work.
 
-The compact English label is `Copilot · Chat 100% left` for a free account;
+The compact English label follows ChatGPT's provider/bucket convention:
+`Copilot Chat 100% left (2h)` for a free account resetting in two hours;
 a finite, available premium bucket takes precedence when present. Unlimited,
-no quota, and unavailable have distinct labels. Valid reset timestamps append
-` · resets Dec 1, 00:00 UTC` (converted to UTC); a date-only fallback appends
-` · resets Dec 1` without inventing a time or timezone. Missing/invalid reset
-fields and unavailable quota omit the reset suffix. Quota is not session cost
+no quota, and unavailable have distinct labels. Valid RFC3339 reset timestamps
+use the shared compact countdown in parentheses; an elapsed reset makes the
+cached allowance unknown until refreshed. A date-only fallback appends `(Dec 1)`
+without inventing a time or timezone. Missing/invalid reset fields and unavailable
+quota omit the reset suffix. Quota is not session cost
 and has no inferred monetary/request units. Like other optional status segments,
 it drops as a whole on narrow terminals. No new settings are required.
 `copilot_quota_test.go` covers these labels, reset timestamp/date fallbacks,

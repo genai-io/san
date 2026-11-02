@@ -47,10 +47,10 @@ func (m *model) copilotQuotaLabel() string {
 	if !m.usesCopilot() {
 		return ""
 	}
-	return formatCopilotQuota(m.copilotQuota.quota)
+	return formatCopilotQuota(m.copilotQuota.quota, time.Now())
 }
 
-func formatCopilotQuota(quota llm.CopilotQuota) string {
+func formatCopilotQuota(quota llm.CopilotQuota, now time.Time) string {
 	// Prefer a finite premium allowance when present, otherwise the Chat bucket
 	// (free accounts may have no premium allowance at all).
 	name := "Chat"
@@ -58,11 +58,15 @@ func formatCopilotQuota(quota llm.CopilotQuota) string {
 	if premium, exists := quota.Snapshots["premium_interactions"]; exists && premium.HasQuota != nil && *premium.HasQuota && !premium.Unlimited {
 		name, q, ok = "Premium", premium, true
 	}
-	prefix := "Copilot · " + name + " "
+	prefix := "Copilot " + name + " "
 	if !ok {
-		return "Copilot · quota unavailable"
+		return "Copilot quota unavailable"
 	}
-	reset := formatCopilotQuotaReset(quota)
+	reset, expired := formatCopilotQuotaReset(quota, now)
+	if expired {
+		// Like ChatGPT windows, a reset invalidates the cached allowance.
+		return "Copilot quota unknown"
+	}
 	if q.Unlimited {
 		return prefix + "unlimited" + reset
 	}
@@ -75,16 +79,19 @@ func formatCopilotQuota(quota llm.CopilotQuota) string {
 	if q.Remaining != nil && *q.Remaining >= 0 {
 		return prefix + fmt.Sprintf("%g left", *q.Remaining) + reset
 	}
-	return "Copilot · quota unavailable"
+	return "Copilot quota unavailable"
 }
 
-func formatCopilotQuotaReset(quota llm.CopilotQuota) string {
+func formatCopilotQuotaReset(quota llm.CopilotQuota, now time.Time) (suffix string, expired bool) {
 	if reset, err := time.Parse(time.RFC3339, quota.ResetDateUTC); err == nil {
-		return " · resets " + reset.UTC().Format("Jan 2, 15:04 UTC")
+		if !reset.After(now) {
+			return "", true
+		}
+		return " (" + compactUsageDuration(reset.Sub(now)) + ")", false
 	}
 	// A date-only fallback does not establish a reset time or timezone.
 	if reset, err := time.Parse(time.DateOnly, quota.ResetDate); err == nil {
-		return " · resets " + reset.Format("Jan 2")
+		return " (" + reset.Format("Jan 2") + ")", false
 	}
-	return ""
+	return "", false
 }
