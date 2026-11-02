@@ -21,12 +21,12 @@ func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema 
 
 func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
-	sb.WriteString("Work directly by default. Delegate when the expected benefit outweighs the handoff and coordination cost.\n\n")
+	sb.WriteString("Work directly by default. Delegate only when it offers a clear benefit and needs little prior conversation context.\n\n")
 	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
 		sb.WriteString(catalog)
 		sb.WriteString("\n\nAfter deciding to delegate, use name to select a predefined agent or omit it for the default Agent. Catalog matches describe suitability, not invocation requirements.\n\n")
 	}
-	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
+	sb.WriteString("Brief the agent with only task-local context: the goal, relevant paths, constraints, and known findings. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
 	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work.")
 

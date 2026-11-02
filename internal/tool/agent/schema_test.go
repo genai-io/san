@@ -16,11 +16,11 @@ func TestAgentToolSchemaMatchesBuilder(t *testing.T) {
 	}
 }
 
-func TestAgentSchemaWeighsDelegationBenefitAgainstCost(t *testing.T) {
+func TestAgentSchemaRequiresBenefitAndContextIndependence(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
 		"Work directly by default",
-		"Delegate when the expected benefit outweighs the handoff and coordination cost",
+		"Delegate only when it offers a clear benefit and needs little prior conversation context",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("Agent description should contain %q", want)
@@ -31,7 +31,7 @@ func TestAgentSchemaWeighsDelegationBenefitAgainstCost(t *testing.T) {
 func TestAgentSchemaRetainsDelegationGuidance(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
-		"all context it needs",
+		"only task-local context",
 		"Include the validation plan",
 		"report the failed tool and reason",
 		"When delegating multiple independent tasks, launch them concurrently",
