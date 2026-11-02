@@ -341,28 +341,14 @@ pending, and completed plan items; rendering leaves task records intact.
 
 ## Copilot quota status
 
-`copilot_quota.go` connects `llm.FetchCopilotQuota` to the existing bottom
-status line through `OperationModeParams.SubscriptionUsage`, the same optional
-slot used for ChatGPT limits. Only a selected Copilot provider triggers fetching or displays
-quota. A Bubble Tea command performs the bounded network operation; the UI
-loop keeps the result (including failures) for two minutes and suppresses
-concurrent fetches. A minute tick keeps idle sessions fresh, and provider
-selection triggers an immediate fetch when the cache is expired. No render or
-chat inference performs network work.
+`copilot_quota.go` shows account quota in the shared subscription status slot:
+`Copilot Chat 100% left · resets in 28d`. Available finite premium quota takes
+precedence over Chat. Date-only resets display `resets Dec 1`.
 
-The compact English label follows ChatGPT's provider/bucket convention:
-`Copilot Chat 100% left · resets in 28d` for a free account resetting in 28 days;
-a finite, available premium bucket takes precedence when present. Unlimited,
-no quota, and unavailable have distinct labels. Valid RFC3339 reset timestamps
-use the shared ` · resets in ` compact countdown suffix; an elapsed reset makes the
-cached allowance unknown until refreshed. A date-only fallback appends ` · resets Dec 1`
-without inventing a time or timezone. Missing/invalid reset fields and unavailable
-quota omit the reset suffix. Quota is not session cost
-and has no inferred monetary/request units. Like other optional status segments,
-it drops as a whole on narrow terminals. No new settings are required.
-`copilot_quota_test.go` covers these labels, reset timestamp/date fallbacks,
-status integration/width dropping, provider gating, in-flight suppression, and
-cache expiry.
+Fetching is asynchronous, Copilot-only, and cached for two minutes; no settings
+are required. The label hides on narrow terminals. Tests in
+`copilot_quota_test.go` cover formatting, refresh, and status integration.
+See [Copilot account quota](../2-feature/llm.md#copilot-account-quota) for API semantics.
 
 ## Tests
 

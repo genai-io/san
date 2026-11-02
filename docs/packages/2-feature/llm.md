@@ -26,7 +26,7 @@ cost for each call.
 
 Only **OpenAI → ChatGPT Subscription** shows Codex limits in the bottom-right
 status bar: `ChatGPT 5h 90% left · resets in 2h / week 65% left · resets in 3d`.
-The `resets in` suffix shows time until reset. The label hides on narrow terminals and other routes.
+The label hides on narrow terminals and other routes.
 
 `vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
 `internal/app/model_subscription_usage.go` refreshes asynchronously every five
@@ -149,22 +149,14 @@ signing in again; retrying the expired token cannot recover it.
 
 ## Copilot account quota
 
-`copilot_quota.go` exposes the read-only `FetchCopilotQuota(ctx)` entrypoint.
-It loads San's existing GitHub OAuth credential via `credentials.Load`, then
-GETs GitHub's `/copilot_internal/user` with `Authorization: token`, JSON Accept,
-and the Copilot Chat user agent. The inference bearer is not used. Requests
-have an eight-second deadline, refuse redirects, and never surface response
-bodies or credentials in errors. There is no new configuration.
+`copilot_quota.go` provides `FetchCopilotQuota(ctx)`, querying GitHub's internal
+`/copilot_internal/user` endpoint with the existing GitHub OAuth credential and
+an eight-second timeout. No extra configuration is needed.
 
-The response retains separate chat, completions, and premium snapshots and
-reset dates. Missing numeric/has-quota fields stay unknown; no-quota is not
-exhaustion, and unlimited is distinct from zero. These are provider allowance
-figures, not dollars or inferred request counts. The internal GitHub endpoint
-can change or fail; callers must display unavailable rather than zero.
-The TUI owns a two-minute in-memory cache and asynchronous refresh, separate
-from inference and session cost. `copilot_quota_test.go` exercises the real
-response shape, unlimited, missing/malformed data, HTTP failure, and cancellation
-against `httptest`, without accessing real credentials.
+Snapshots retain quota buckets and reset dates, not inferred dollars or request
+counts. Keep unavailable, no quota, exhausted, and unlimited distinct: this
+internal API may change or fail. `copilot_quota_test.go` covers decoding and
+request failures without real credentials.
 
 ## Model data
 
