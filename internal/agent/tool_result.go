@@ -16,11 +16,8 @@ type ToolResultEffects struct {
 	TouchFile      func(string)
 }
 
-// ProcessToolResult applies an admitted foreground result's workspace effects,
-// then schedules its PostToolUse/Failure hook. The caller owns session/outbox and
-// cancellation fencing, and consumes the matching tool handoff exactly once.
-// This is not a result filter: it does not alter model history or rendered output.
-// Workers retain their own handoffs and must not apply these to the root workspace.
+// ProcessToolResult applies foreground workspace effects before scheduling PostTool hooks.
+// The caller rejects stale/cancelled results and consumes each handoff once; workers stay separate.
 func ProcessToolResult(tr core.ToolResult, sideEffect any, hooks *hook.Engine, effects ToolResultEffects) {
 	if resp, ok := sideEffect.(map[string]any); ok {
 		switch tr.ToolName {
