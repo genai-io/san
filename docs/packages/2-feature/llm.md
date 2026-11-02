@@ -25,8 +25,8 @@ cost for each call.
 ## ChatGPT subscription limits
 
 Only **OpenAI → ChatGPT Subscription** shows Codex limits in the bottom-right
-status bar: `ChatGPT 5h 90% left · ↻ 2h / week 65% left · ↻ 3d`. The `↻` suffix shows
-time until reset. The label hides on narrow terminals and other routes.
+status bar: `ChatGPT 5h 90% left · resets in 2h / week 65% left · resets in 3d`.
+The `resets in` suffix shows time until reset. The label hides on narrow terminals and other routes.
 
 `vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
 `internal/app/model_subscription_usage.go` refreshes asynchronously every five

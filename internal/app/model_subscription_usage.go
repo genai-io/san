@@ -116,7 +116,7 @@ func formatSubscriptionUsage(usage auth.CodexUsage, now time.Time) string {
 		}
 		text := fmt.Sprintf("%s %.0f%% left", label, 100-w.UsedPercent)
 		if !w.ResetsAt.IsZero() {
-			text += " · ↻ " + compactUsageDuration(w.ResetsAt.Sub(now))
+			text += " · resets in " + compactUsageDuration(w.ResetsAt.Sub(now))
 		}
 		parts = append(parts, text)
 	}
