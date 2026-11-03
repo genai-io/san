@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/transcript"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -31,28 +32,26 @@ func mainSessionFixture(t *testing.T) MainSession {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rec.Close() })
-	return MainSession{Recorder: rec, Store: store, Settings: setting.NewData(), Permissions: setting.NewSessionPermissions()}
+	return MainSession{Session: rec, Store: store}
 }
 
-func TestMainSessionRequiresOpenedOwnerAndPolicy(t *testing.T) {
+func TestMainSessionRequiresOpenedOwner(t *testing.T) {
 	mainSession := mainSessionFixture(t)
 	for _, change := range []func(*MainSession){
-		func(r *MainSession) { r.Recorder = nil },
+		func(r *MainSession) { r.Session = nil },
 		func(r *MainSession) { r.Store = nil },
-		func(r *MainSession) { r.Settings = nil },
 		func(r *MainSession) { r.Store = mainSessionFixture(t).Store },
-		func(r *MainSession) { r.Permissions = nil },
 	} {
 		invalid := mainSession
 		change(&invalid)
-		if _, err := BuildMainParams(BuildParams{}, invalid); err == nil {
+		if err := invalid.Validate(); err == nil {
 			t.Fatal("accepted incomplete main session")
 		}
 	}
-	if err := mainSession.Recorder.Close(); err != nil {
+	if err := mainSession.Session.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := BuildMainParams(BuildParams{}, mainSession); err == nil {
+	if err := mainSession.Validate(); err == nil {
 		t.Fatal("accepted closed recorder")
 	}
 }
@@ -67,15 +66,16 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			mainSession := mainSessionFixture(t)
-			data := mainSession.Settings.(*setting.Data)
+			data := setting.NewData()
 			const toolName = "mcp__fixture__output"
 			if allow {
 				data.Permissions.Allow = []string{toolName}
 			} else {
 				data.Permissions.Deny = []string{toolName}
 			}
-			mainSession.Hooks = hook.NewEngine(data, mainSession.Recorder.ID(), t.TempDir(), mainSession.Recorder.TranscriptPath())
-			mainSession.Hooks.AddSessionFunctionHook(hook.PreToolUse, toolName, hook.FunctionHook{
+			hooks := hook.NewEngine(data, mainSession.Session.ID(), t.TempDir(), mainSession.Session.TranscriptPath())
+			hooks.SetAuditCallback(mainSession.Session.RecordHookAudit)
+			hooks.AddSessionFunctionHook(hook.PreToolUse, toolName, hook.FunctionHook{
 				Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
 					return hook.HookOutput{}, nil
 				},
@@ -90,9 +90,16 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 				aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "call-1", Name: toolName, Input: `{}`})}, StopReason: ai.StopToolUse}),
 				aitest.Says("finished"),
 			)
-			params, err := BuildMainParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture}}, mainSession)
-			if err != nil {
+			if err := mainSession.Validate(); err != nil {
 				t.Fatal(err)
+			}
+			policy := PermissionPolicy{Settings: data, Session: setting.NewSessionPermissions(),
+				Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
+			}
+			params := BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture},
+				SessionID: mainSession.Session.ID(), OnEvent: mainSession.Session.RecordEvent,
+				HookEngine: hooks, PermissionRules: policy.Decide, CanApproveByHook: policy.CanApproveByHook,
+				ResultFilter: ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter,
 			}
 			runtime := &Runtime{}
 			if err := runtime.Start(params, nil); err != nil {
@@ -110,17 +117,17 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 					if _, ok := ev.(core.TurnEnded); !ok {
 						continue
 					}
-					if err := mainSession.Recorder.Err(); err != nil {
+					if err := mainSession.Session.Err(); err != nil {
 						t.Fatal(err)
 					}
-					history, err := mainSession.Store.Read(mainSession.Recorder.ID())
+					history, err := mainSession.Store.Read(mainSession.Session.ID())
 					if err != nil {
 						t.Fatal(err)
 					}
 					if len(history.Messages) < 4 {
 						t.Fatalf("terminal event preceded transcript writes: %d messages", len(history.Messages))
 					}
-					bytes, err := os.ReadFile(mainSession.Recorder.TranscriptPath())
+					bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -130,7 +137,7 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 					if !strings.Contains(string(bytes), "hook.fired") {
 						t.Fatal("missing hook audit")
 					}
-					blob := filepath.Join(filepath.Dir(filepath.Dir(mainSession.Recorder.TranscriptPath())), "blobs", "tool-result", mainSession.Recorder.ID(), "call-1")
+					blob := filepath.Join(filepath.Dir(filepath.Dir(mainSession.Session.TranscriptPath())), "blobs", "tool-result", mainSession.Session.ID(), "call-1")
 					if allow {
 						if calls.Load() != 1 {
 							t.Fatalf("executions = %d", calls.Load())
@@ -166,13 +173,14 @@ func TestMainSessionPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
 	pick := &Recall{ready: make(chan struct{}), memories: []system.Memory{{Path: memoryPath}}}
 	close(pick.ready)
 	var current atomic.Pointer[Recall]
-	mainSession.Recall = current.Load
-	params, err := BuildMainParams(BuildParams{}, mainSession)
-	if err != nil {
+	if err := mainSession.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	owner := mainSession.Recorder.ID()
-	mainSession.Recorder = mainSessionFixture(t).Recorder
+	params := BuildParams{ResultFilter: WithRecall(
+		ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter, current.Load,
+	)}
+	owner := mainSession.Session.ID()
+	mainSession.Session = mainSessionFixture(t).Session
 	current.Store(pick)
 	out, err := params.ResultFilter(context.Background(), sdkagent.PostToolContext{
 		Call: ai.ToolCall{ID: "call-recall"}, Result: sdkagent.TextResult(strings.Repeat("x", 100_001)),
@@ -193,7 +201,8 @@ func TestMainSessionPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
 func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 	mainSession := mainSessionFixture(t)
 	const name = "mcp__fixture__approval"
-	mainSession.Settings.(*setting.Data).Permissions.Ask = []string{name}
+	data := setting.NewData()
+	data.Permissions.Ask = []string{name}
 	var calls atomic.Int32
 	fixture := sdkagent.ToolFunc(name, "needs approval", func(context.Context, struct{}) (sdkagent.Result, error) {
 		calls.Add(1)
@@ -203,9 +212,13 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 		Content:    ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "cancel-call", Name: name, Input: `{}`})},
 		StopReason: ai.StopToolUse,
 	}))
-	params, err := BuildMainParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", MCPTools: []core.Tool{fixture}}, mainSession)
-	if err != nil {
+	if err := mainSession.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	policy := PermissionPolicy{Settings: data, Session: setting.NewSessionPermissions()}
+	params := BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", MCPTools: []core.Tool{fixture},
+		SessionID: mainSession.Session.ID(), OnEvent: mainSession.Session.RecordEvent,
+		PermissionRules: policy.Decide, CanApproveByHook: policy.CanApproveByHook,
 	}
 	runtime := &Runtime{}
 	if err := runtime.Start(params, nil); err != nil {
@@ -250,7 +263,7 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 			if calls.Load() != 0 {
 				t.Fatal("late approval executed tool")
 			}
-			if err := mainSession.Recorder.Err(); err != nil {
+			if err := mainSession.Session.Err(); err != nil {
 				t.Fatal(err)
 			}
 			return
@@ -262,10 +275,12 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 
 func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 	mainSession := mainSessionFixture(t)
-	mainSession.Permissions = &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
+	policy := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot},
+		Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
+	}
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	mainSession.Review = func() PermissionReview {
+	review := func() PermissionReview {
 		return PermissionReview{Engaged: true, Enabled: true,
 			Judge: func(context.Context, reviewer.Request) (reviewer.Verdict, error) {
 				close(entered)
@@ -274,9 +289,14 @@ func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 			},
 		}
 	}
-	params, err := BuildMainParams(BuildParams{Provider: stubProvider{}, ModelID: "fake"}, mainSession)
-	if err != nil {
+	if err := mainSession.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	params := BuildParams{Provider: stubProvider{}, ModelID: "fake", PermissionRules: policy.Decide,
+		CanApproveByHook: policy.CanApproveByHook,
+		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
+			return policy.Review(ctx, name, args, reason, review())
+		},
 	}
 	_, gate, err := buildAgent(params)
 	if err != nil {
@@ -306,7 +326,7 @@ func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 	if d := params.PermissionRules("Bash", args); !d.Reviewable {
 		t.Fatalf("late approval changed session policy: %+v", d)
 	}
-	bytes, err := os.ReadFile(mainSession.Recorder.TranscriptPath())
+	bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 // nothing.
 func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
 	mainSession := mainSessionFixture(t)
-	pager := ResultPager{Store: mainSession.Store, SessionID: mainSession.Recorder.ID()}
+	pager := ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}
 	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult(strings.Repeat("x", 100_000))})
 	if err != nil || out != nil {
 		t.Fatal("threshold result was rewritten")
