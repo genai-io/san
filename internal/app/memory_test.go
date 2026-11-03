@@ -1,9 +1,10 @@
 package app
 
 import (
+	"testing"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
-	"testing"
 )
 
 // The turn's memory changes use the same hollow-star marker as reads and
