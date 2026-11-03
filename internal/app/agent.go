@@ -200,7 +200,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params.MaxTokens = maxTokens
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
 	params.FileCache = m.env.FileCache
-	params.CWDFunc = func() string { return m.env.CWD }
+	params.CWDFunc = func() string { return m.autopilot.Load().cwd }
 
 	bridge := m.conv.AgentToUI
 	params.AskUser = func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
@@ -241,7 +241,6 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
-	cwd, underGit := m.env.CWD, m.env.IsGit
 	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
 		rt := m.autopilot.Load()
 		if rt == nil {
@@ -249,7 +248,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		}
 		return policy.Review(ctx, name, args, reason, agent.PermissionReview{
 			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
-			CWD: cwd, UnderGit: underGit, Mission: rt.cfg.ActiveMission(),
+			CWD: rt.cwd, UnderGit: rt.underGit, Mission: rt.cfg.ActiveMission(),
 			Judge: rt.judge.Permission, Observe: m.recordDecision,
 		})
 	}
