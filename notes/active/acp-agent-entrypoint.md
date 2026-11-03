@@ -47,6 +47,11 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
     recording and post-compaction context reset; see [agent lifecycle](../../docs/packages/2-feature/agent.md#lifecycle).
     TUI retains admission/projection/queue release; manual admission invalidates
     pending Stop decisions. Automatic summarization and worker compaction are unchanged.
+  - [x] Execution permissions: `agent.PermissionPolicy` composes static rules,
+    auto-memory exceptions, hook waivers and reviewer safety/budget/exact grants
+    with audits. TUI and print use it; human resolution stays in `interaction`.
+    Native tests cover fail-closed review and late cancelled approvals. Service/tool
+    assembly, result paging/recall and background/lifetime admission remain in app.
   - [x] Reminder state: managed by `internal/reminder`, reused by TUI.
 - [ ] **Adapter:** add standard/optional projections first, then negotiated task
   controls and command/config management; explicitly gate unfinished capabilities.

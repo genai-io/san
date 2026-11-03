@@ -19,11 +19,6 @@ import (
 
 type permissionDecision = interaction.PermissionDecision
 
-// permDecisionFor maps config decisions to the shared transcript enum.
-func permDecisionFor(approved bool) string {
-	return interaction.PermissionDecisionFor(approved)
-}
-
 func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	pending := m.interactions.active
 	if !m.validInteraction(pending) || pending.Permission == nil || !m.interactions.shown || decision.Request != m.interactions.permission {

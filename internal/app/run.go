@@ -22,7 +22,6 @@ import (
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // Run routes to either print mode or interactive TUI.
@@ -261,13 +260,7 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		Persona:       parts,
 		DisabledTools: setting.WithDefaultDisabledTools(settings.DisabledTools),
 		// Headless uses the same effective policy; prompts become refusals.
-		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
-			if permitAutoMemoryWrite(memory, name, args, settings.DenyRule) {
-				return agentpkg.PermDecisionResult{Decision: perm.Permit, Reason: "auto memory", ToolName: name}
-			}
-			d := settings.HasPermissionToUseTool(name, args, headless)
-			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
-		},
+		PermissionRules: (agentpkg.PermissionPolicy{Settings: settings, Session: headless, AutoMemory: memory}).Decide,
 	}, nil
 }
 
