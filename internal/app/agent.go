@@ -6,7 +6,6 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -32,7 +31,6 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
-	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -226,104 +224,23 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		m.memoryRecall = &memoryRecall{surfaced: map[string]bool{}}
 	}
 	params.ResultFilter = agent.WithRecall(m.filterOversizedResult, m.memoryRecall.current.Load)
-	params.PermissionRules = func(name string, args map[string]any) agent.PermDecisionResult {
-		var decision setting.PermissionDecision
-		if permitAutoMemoryWrite(params.AutoMemory, name, args, m.services.Setting.DenyRule) {
-			decision = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
-		} else {
-			decision = m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
-		}
-		mode := m.env.SessionMode()
-		input := marshalPermInput(args)
-		switch decision.Behavior {
-		case perm.Permit:
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
-				Tool: name, Input: input, Decision: permDecisionFor(true), Source: transcript.PermissionSourceConfig,
-				Reason: decision.Reason, Mode: mode,
-			}})
-			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
-		case perm.Reject:
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
-				Tool: name, Input: input, Decision: permDecisionFor(false), Source: transcript.PermissionSourceConfig,
-				Reason: decision.Reason, Mode: mode,
-			}})
-			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
-		default:
-			return agent.PermDecisionResult{
-				Decision:    perm.Prompt,
-				Reason:      decision.Reason,
-				ToolName:    name,
-				Description: decision.Reason,
-				RequestID:   core.NewMessageID(),
-				Reviewable:  decision.Reviewable,
-			}
-		}
+	policy := agent.PermissionPolicy{
+		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
+		Audit: func(record transcript.Record) { _ = rec.Append(context.Background(), record) },
 	}
-
+	params.PermissionRules = policy.Decide
 	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
-		// Steers are read live via the synchronized snapshot (agent goroutine)
-		// so a mid-session toggle takes effect.
-		if !m.autopilotEngaged() {
+		rt := m.autopilot.Load()
+		if rt == nil {
 			return agent.PermReviewResult{}
 		}
-		cfg := m.liveAutopilotConfig()
-		// Defense in depth: no steer may approve an unrecoverable action —
-		// circuit-breaker tier included — even if one somehow reaches here.
-		// The recoverable git tier is deliberately not checked — weighing it
-		// is exactly what the judge is for.
-		if r := setting.CircuitBreakerReason(name, args); r != "" {
-			m.recordDecision(ctx, false, r)
-			return agent.PermReviewResult{}
-		}
-		if r := setting.UnrecoverableReason(name, args); r != "" {
-			m.recordDecision(ctx, false, r)
-			return agent.PermReviewResult{}
-		}
-		// Permission steer: delegate gray-zone prompts to the judge. Off ⇒ every
-		// gray-zone call escalates to the human.
-		if !cfg.Steers.PermissionOn() {
-			return agent.PermReviewResult{}
-		}
-		rev := m.autopilot.Load().judge
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		verdict, err := rev.Permission(ctx, reviewer.Request{
-			ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.ActiveMission(),
-			UnderGit: m.env.IsGit,
+		return policy.Review(ctx, name, args, reason, agent.PermissionReview{
+			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
+			CWD: m.env.CWD, UnderGit: m.env.IsGit, Mission: rt.cfg.ActiveMission(),
+			Judge: rt.judge.Permission, Observe: m.recordDecision,
 		})
-		log.Logger().Debug("auto-review verdict",
-			zap.String("tool", name),
-			zap.Bool("allow", err == nil && verdict.Allow),
-			zap.String("reason", verdict.Reason),
-			zap.Error(err))
-		if err != nil || !verdict.Allow {
-			m.recordDecision(ctx, false, escalationReason(verdict.Reason, err))
-			return agent.PermReviewResult{} // fail closed → escalate to human
-		}
-		if rec != nil {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
-				Tool: name, Input: marshalPermInput(args), Decision: permDecisionFor(true),
-				Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
-			}})
-		}
-		// Cache the approval as a session grant so an identical repeat hits the
-		// static fast path instead of the judge, shrinking the gray zone over
-		// the session. Only exact rules: a call no rule covers exactly asks the
-		// judge again. Safe to write here: the agent goroutine is the only
-		// mutator (the human-approval writer runs only while it is parked).
-		for _, rule := range setting.ExactAllowRules(name, args) {
-			m.env.SessionPermissions.AllowPattern(rule)
-		}
-		// Tally it and stash the decision so the renderer can draw it inline
-		// under the tool call the judge just let through (the status-bar count
-		// alone doesn't say what was approved or why).
-		m.recordDecision(ctx, true, verdict.Reason)
-		return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
 	}
-
-	params.HookAllowResolver = func(name string, args map[string]any) bool {
-		return m.services.Setting.ResolveHookAllow(name, args, m.env.SessionPermissions)
-	}
+	params.CanApproveByHook = policy.CanApproveByHook
 
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle
@@ -421,22 +338,6 @@ func (m *model) TakeReviewDecision(callID string) *core.ReviewDecision {
 	}
 	decision := v.(core.ReviewDecision)
 	return &decision
-}
-
-// escalationReason is the one-line explanation shown when the judge sends a
-// gray-zone call back to the user: the judge's own reason, or a generic note
-// when it could not reach a decision (error / timeout / unparseable reply).
-func escalationReason(judgeReason string, err error) string {
-	if err != nil || judgeReason == "" {
-		return "autopilot unavailable — asking you"
-	}
-	return judgeReason
-}
-
-// marshalPermInput serializes the tool args for a permission audit record.
-// Errors are logged but not propagated — audit must never block the decider.
-func marshalPermInput(args map[string]any) json.RawMessage {
-	return interaction.PermissionInput(args)
 }
 
 // firstValidDuration returns the first value that parses as a time.Duration

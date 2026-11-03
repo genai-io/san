@@ -1009,7 +1009,7 @@ func TestSafeToolAllowlist(t *testing.T) {
 	}
 }
 
-func TestResolveHookAllow(t *testing.T) {
+func TestCanApproveByHook(t *testing.T) {
 	settings := &Data{
 		Permissions: PermissionSettings{
 			Allow: []string{"Bash(git:*)"},
@@ -1093,9 +1093,9 @@ func TestResolveHookAllow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := settings.ResolveHookAllow(tt.toolName, tt.args, nil)
+			got := settings.CanApproveByHook(tt.toolName, tt.args, nil)
 			if got != tt.want {
-				t.Errorf("ResolveHookAllow(%q, %v) = %v, want %v", tt.toolName, tt.args, got, tt.want)
+				t.Errorf("CanApproveByHook(%q, %v) = %v, want %v", tt.toolName, tt.args, got, tt.want)
 			}
 		})
 	}
@@ -1106,10 +1106,10 @@ func TestResolveHookAllow(t *testing.T) {
 // allow against, so it cannot certify the waiver. Failing open here would hand a
 // permissive hook a gate-free path on exactly the call HasPermissionToUseTool
 // would have prompted on.
-func TestSettingsResolveHookAllowFailsClosedWithoutData(t *testing.T) {
+func TestSettingsCanApproveByHookFailsClosedWithoutData(t *testing.T) {
 	settings := &Settings{}
 
-	if settings.ResolveHookAllow("Bash", map[string]any{"command": "rm -rf /tmp/test"}, nil) {
+	if settings.CanApproveByHook("Bash", map[string]any{"command": "rm -rf /tmp/test"}, nil) {
 		t.Error("no settings loaded: the hook allow was honored, bypassing the gate")
 	}
 	if got := settings.HasPermissionToUseTool("Bash", map[string]any{"command": "rm -rf /tmp/test"}, nil); got.Behavior != perm.Prompt {

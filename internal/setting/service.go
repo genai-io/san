@@ -238,7 +238,7 @@ func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, 
 	return s.data.HasPermissionToUseTool(toolName, args, session)
 }
 
-func (s *Settings) ResolveHookAllow(toolName string, args map[string]any, session *SessionPermissions) bool {
+func (s *Settings) CanApproveByHook(toolName string, args map[string]any, session *SessionPermissions) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
@@ -248,7 +248,7 @@ func (s *Settings) ResolveHookAllow(toolName string, args map[string]any, sessio
 		// prompts for the same reason.
 		return false
 	}
-	return s.data.ResolveHookAllow(toolName, args, session)
+	return s.data.CanApproveByHook(toolName, args, session)
 }
 
 func (s *Settings) AlwaysAllowRules(toolName string, args map[string]any, session *SessionPermissions) []string {

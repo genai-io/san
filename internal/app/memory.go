@@ -1,7 +1,6 @@
 package app
 
 import (
-	"path/filepath"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -10,7 +9,6 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/tool"
 )
 
 // autoMemory is the auto-memory stores the main agent maintains, zero when
@@ -20,49 +18,6 @@ func (m *model) autoMemory() system.MemoryStores {
 		return system.MemoryStores{}
 	}
 	return setting.MemoryStoresFor(m.env.CWD)
-}
-
-// autoMemoryStore returns the store a Write/Edit call targets with a markdown
-// file, or "": the agent maintains its stores without prompting. Symlinks are
-// resolved so a link cannot carry the write outside the store.
-func autoMemoryStore(s system.MemoryStores, toolName string, args map[string]any) string {
-	if toolName != "Write" && toolName != "Edit" {
-		return ""
-	}
-	path, _ := args["file_path"].(string)
-	if !strings.HasSuffix(path, ".md") || !filepath.IsAbs(path) {
-		return ""
-	}
-	for _, dir := range []string{s.User, s.Project} {
-		if dir != "" && setting.WithinDirectory(path, dir) {
-			return dir
-		}
-	}
-	return ""
-}
-
-// permitAutoMemoryWrite reports whether a call is the agent keeping its own
-// memory — a Write/Edit, or a plain `rm` of memory files — which needs no
-// approval in any mode, headless and don't-ask included, where a prompt would
-// become a refusal. Only a deny rule stops it.
-func permitAutoMemoryWrite(s system.MemoryStores, toolName string, args map[string]any, denyRule func(string, map[string]any) string) bool {
-	return (autoMemoryStore(s, toolName, args) != "" || removesOnlyMemory(s, toolName, args)) && denyRule(toolName, args) == ""
-}
-
-// removesOnlyMemory reports whether a Bash call is a plain `rm` whose every
-// target is a memory file, checked as a write to it would be.
-func removesOnlyMemory(s system.MemoryStores, toolName string, args map[string]any) bool {
-	cmd, _ := args["command"].(string)
-	files, ok := setting.RemovedFiles(cmd)
-	if toolName != tool.ToolBash || !ok {
-		return false
-	}
-	for _, f := range files {
-		if autoMemoryStore(s, tool.ToolWrite, map[string]any{"file_path": f}) == "" {
-			return false
-		}
-	}
-	return true
 }
 
 // memoryLine is the turn's memory changes in one quiet line under the answer,

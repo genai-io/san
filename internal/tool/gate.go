@@ -40,9 +40,9 @@ func Permission(check perm.PermissionFunc) core.Gate {
 // enough on its own.
 type HookAwareChecker interface {
 	Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string)
-	// HonorsHookAllow reports whether a PreToolUse hook's "allow" is enough to
-	// skip Check for this call. False sends the call through the gate anyway.
-	HonorsHookAllow(name string, input map[string]any) bool
+	// CanApproveByHook checks eligibility, not approval, and does not invoke hooks.
+	// False sends the call through Check even when a hook answered "allow".
+	CanApproveByHook(name string, input map[string]any) bool
 }
 
 // HookedPermission is Permission with the PreToolUse hooks in front of it.
@@ -82,8 +82,8 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker) core.Gate {
 			// "ask" outranks it, because prompting is the safe resolution when
 			// two hooks disagree; so does a deny rule, the circuit breaker,
 			// either confirmation tier or an explicit ask rule, which is what
-			// HonorsHookAllow reports on.
-			waived := allowByHook && !forceAsk && check.HonorsHookAllow(c.Call.Name, input)
+			// CanApproveByHook reports on.
+			waived := allowByHook && !forceAsk && check.CanApproveByHook(c.Call.Name, input)
 			if !waived {
 				if allow, reason := check.Check(ctx, c.Call.Name, input, forceAsk, permissionReason); !allow {
 					return sdkagent.Decision{Block: true, Reason: reason}, nil

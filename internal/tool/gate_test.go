@@ -62,7 +62,7 @@ type fakeHookAwareChecker struct {
 	forcePrompt bool
 	reason      string
 	allow       bool
-	// refuseHookAllow makes the checker answer HonorsHookAllow with false, the
+	// refuseHookAllow makes the checker answer CanApproveByHook with false, the
 	// way the real gate does for a deny rule, the circuit breaker, a
 	// confirmation tier or an explicit ask rule.
 	refuseHookAllow bool
@@ -78,7 +78,7 @@ func (c *fakeHookAwareChecker) Check(ctx context.Context, name string, input map
 	return false, "should not be used"
 }
 
-func (c *fakeHookAwareChecker) HonorsHookAllow(name string, input map[string]any) bool {
+func (c *fakeHookAwareChecker) CanApproveByHook(name string, input map[string]any) bool {
 	return !c.refuseHookAllow
 }
 

@@ -76,9 +76,10 @@ Hooks sit on either side of this gate rather than inside it:
 
 - A **`PreToolUse`** hook runs before the gate. It can block the call,
   rewrite the input, force a prompt, or answer `allow`. An `allow` only
-  waives the routine prompt — `setting.ResolveHookAllow` re-checks it, so a
+  waives the routine prompt — `setting.CanApproveByHook` re-checks it, so a
   deny rule, the circuit breaker, either confirmation tier or an explicit
-  ask rule still sends the call through the gate.
+  ask rule still sends the call through the gate. This boolean checks eligibility;
+  it neither invokes a hook nor approves the call.
 - A **`PermissionRequest`** hook fires when a call has reached a prompt.
 
 The pipeline lives in `internal/setting/permission.go`. Bash gets special
@@ -226,8 +227,8 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 - Rule parser + Bash AST: `internal/setting/bash_ast.go`.
 - Approval modal flow: `internal/agent/permission.go` (`PermissionGate`).
 - Gray-zone judge: `internal/reviewer/`.
-- Hook-allow invariant: `internal/setting/permission.go` → `ResolveHookAllow`,
-  applied in `internal/tool/pretool_hook.go`.
+- Hook-allow invariant: `internal/setting/permission.go` → `CanApproveByHook`,
+  applied in `internal/tool/gate.go`.
 - Subagent permission resolution: `internal/subagent/executor.go`.
 - Hook integration: `internal/hook/executor.go` → `applyPermissionDecision`.
 
