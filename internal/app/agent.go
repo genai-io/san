@@ -162,21 +162,17 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params := m.promptParams()
 
 	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
-	var onEvent func(core.Event)
 	rec, err := m.openCurrentSession()
 	if err != nil {
 		return params, err
 	}
 	if rec != nil {
-		onEvent = rec.RecordEvent
 		for _, n := range m.earlyNotices {
 			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
 				Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
 					AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
 		}
 		m.earlyNotices = nil
-		m.services.Hook.SetAuditCallback(rec.RecordHookAudit)
-		m.services.Skill.SetStateChangeObserver(rec.RecordSkillStateChange)
 	}
 
 	// Build the autopilot judge into the atomic slot so /autopilot Save can
@@ -195,14 +191,11 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	)
 
 	params.Provider = m.env.LLMProvider
-	params.SessionID = rec.ID()
 	params.ModelID = m.env.GetModelID()
 	params.MaxTokens = maxTokens
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
-	params.OnEvent = onEvent
 	params.FileCache = m.env.FileCache
 	params.CWDFunc = func() string { return m.env.CWD }
-	params.HookEngine = m.services.Hook
 
 	bridge := m.conv.AgentToUI
 	params.AskUser = func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
@@ -223,29 +216,25 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if m.memoryRecall == nil {
 		m.memoryRecall = &memoryRecall{surfaced: map[string]bool{}}
 	}
-	params.ResultFilter = agent.WithRecall(m.filterOversizedResult, m.memoryRecall.current.Load)
-	policy := agent.PermissionPolicy{
-		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
-		Audit: func(record transcript.Record) { _ = rec.Append(context.Background(), record) },
-	}
-	params.PermissionRules = policy.Decide
-	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
-		rt := m.autopilot.Load()
-		if rt == nil {
-			return agent.PermReviewResult{}
-		}
-		return policy.Review(ctx, name, args, reason, agent.PermissionReview{
-			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
-			CWD: m.env.CWD, UnderGit: m.env.IsGit, Mission: rt.cfg.ActiveMission(),
-			Judge: rt.judge.Permission, Observe: m.recordDecision,
-		})
-	}
-	params.CanApproveByHook = policy.CanApproveByHook
-
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle
-
-	return params, nil
+	return agent.BuildRootParams(params, agent.RootSession{
+		Recorder: rec, Store: m.services.SessionStore,
+		Settings: m.services.Setting, Permissions: m.env.SessionPermissions,
+		Hooks: m.services.Hook, Skills: m.services.Skill,
+		Recall: m.memoryRecall.current.Load,
+		Review: func() agent.PermissionReview {
+			rt := m.autopilot.Load()
+			if rt == nil {
+				return agent.PermissionReview{}
+			}
+			return agent.PermissionReview{
+				Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
+				CWD: m.env.CWD, UnderGit: m.env.IsGit, Mission: rt.cfg.ActiveMission(),
+				Judge: rt.judge.Permission, Observe: m.recordDecision,
+			}
+		},
+	})
 }
 
 // resolveReviewerModel picks the provider and model for the auto-review judge.

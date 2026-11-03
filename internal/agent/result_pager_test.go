@@ -1,9 +1,10 @@
-package app
+package agent
 
 import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -12,9 +13,30 @@ import (
 // A result the window can hold is passed through untouched: nil means "leave
 // it alone", and returning a copy instead would rewrite every tool call for
 // nothing.
+func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
+	root := rootFixture(t)
+	pager := ResultPager{Store: root.Store, SessionID: root.Recorder.ID()}
+	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult(strings.Repeat("x", 100_000))})
+	if err != nil || out != nil {
+		t.Fatal("threshold result was rewritten")
+	}
+	out, err = pager.Filter(context.Background(), sdkagent.PostToolContext{
+		Call:   ai.ToolCall{ID: "../invalid"},
+		Result: sdkagent.Result{Content: ai.TextContent(strings.Repeat("界", 40_000)), Details: "kept"},
+	})
+	if err != nil || out == nil {
+		t.Fatalf("filter: %v, %v", out, err)
+	}
+	text := out.Content.Text()
+	if !utf8.ValidString(text) || !strings.HasPrefix(text, strings.Repeat("界", 3333)+"\n\n") ||
+		!strings.Contains(text, "Output truncated from 120000 bytes — full content not persisted") || out.Details != "kept" {
+		t.Fatal("preview boundary, failure diagnostic or result metadata changed")
+	}
+}
+
 func TestAResultThatFitsIsLeftAlone(t *testing.T) {
-	m := &model{}
-	out, err := m.filterOversizedResult(context.Background(), sdkagent.PostToolContext{
+	pager := ResultPager{}
+	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{
 		Result: sdkagent.Result{Content: ai.TextContent(strings.Repeat("x", 1000))},
 	})
 	if err != nil || out != nil {
@@ -26,9 +48,9 @@ func TestAResultThatFitsIsLeftAlone(t *testing.T) {
 // the guard used to edit the copy the interface draws, which stopped reaching
 // the model once the agent held its own conversation.
 func TestAResultTooLargeIsReplacedForTheModel(t *testing.T) {
-	m := &model{}
+	pager := ResultPager{}
 	full := strings.Repeat("y", 200_000)
-	out, err := m.filterOversizedResult(context.Background(), sdkagent.PostToolContext{
+	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{
 		Call:   ai.ToolCall{ID: "tc-1"},
 		Result: sdkagent.Result{Content: ai.TextContent(full)},
 	})

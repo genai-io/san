@@ -55,7 +55,26 @@ func Default() *Runtime
   The native message chain survives both deliberate stops and unexpected exits;
   resume can seed it before the first run. `Reset` clears it after shutdown.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
-  permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
+  permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
+  stamp the tool-call ID before hooks, reviewer and human approval run, matching
+  subagent gates (tool execution wrappers alone run too late to identify approval).
+- `root.go` exposes `BuildRootParams(BuildParams, RootSession)`: prompt, workspace,
+  provider and transport inputs stay in `BuildParams`; the opened recorder/store,
+  settings, permission owner, hook engine, skill registry and live review/recall
+  snapshots are supplied explicitly. TUI construction uses this same entrypoint.
+  It rejects missing/closed owners and mismatched stores before binding callbacks,
+  then installs synchronous native recording, permission audits, deny-aware hook
+  authorization and paging followed by recall. These fields replace any corresponding
+  low-level callbacks in the input params. Hooks and skills remain caller-owned,
+  single-session services; stop their work before rebinding them to another session.
+- `result_pager.go` owns the main-agent output policy: text above 100,000 bytes is
+  persisted under the captured session owner, with a UTF-8-safe 10,000-byte preview.
+  Failed persistence explicitly says the full content was not saved. Result metadata
+  and the existing blob handoff format are unchanged; recall is attached after paging.
+  This is shared native assembly, not an ACP endpoint or a complete headless host:
+  callers still drain events, handle human permissions, manage recall/background work,
+  record application state and stop/close their resources. Successful runtime stop
+  does not prove persistence; inspect the recorder and honor turn finalization.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
 - `permission_policy.go` supplies `PermissionPolicy.Decide`, `Review` and
@@ -128,6 +147,9 @@ func Default() *Runtime
 ## Tests
 
 ```
+internal/agent/root_test.go — production root/runtime tool turns, allow/deny, hook audits,
+                              transcript-before-terminal ordering, live recall and cancelled review.
+internal/agent/result_pager_test.go — threshold, UTF-8 preview, metadata and persistence failure.
 internal/agent/permission_policy_test.go — rule/reviewer/hook composition, exact grants,
                                           audit ordering and cancelled verdicts.
 internal/agent/permission_memory_test.go — memory containment and deny precedence.
