@@ -40,6 +40,9 @@ type CompactResult struct {
 // Run preserves PreCompact's advisory context, including on a hook block or error.
 // The caller's context owns both hook execution and the model request.
 func (r CompactRequest) Run() CompactResult {
+	if err := r.Ctx.Err(); err != nil {
+		return CompactResult{Err: err}
+	}
 	focus := r.SummaryFocus
 	if r.HookEngine != nil {
 		outcome := r.HookEngine.Execute(r.Ctx, hook.PreCompact, hook.HookInput{
@@ -51,6 +54,9 @@ func (r CompactRequest) Run() CompactResult {
 			}
 			focus += outcome.AdditionalContext
 		}
+	}
+	if err := r.Ctx.Err(); err != nil {
+		return CompactResult{Err: err}
 	}
 	summary, count, err := CompactConversation(r.Ctx, r.Client, r.Messages, focus)
 	return CompactResult{Summary: summary, OriginalCount: count, Trigger: r.Trigger, Err: err}

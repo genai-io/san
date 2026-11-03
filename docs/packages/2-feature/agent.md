@@ -100,6 +100,14 @@ func Default() *Runtime
   manual compaction. TUI retains provider adaptation, admission, projection and
   queue release. Accepted manual compaction invalidates pending Stop decisions,
   even if summarization later fails; overlapping manual requests are rejected.
+  The app's `pendingCompaction` owns a cancellable request context and captures
+  the opened recording owner, session ID and runtime outbox. Results carry that
+  exact context identity and are checked before any UI, history or queue effect.
+  Runtime stop/reset/start, session replacement and user cancellation retire the
+  request; Escape/empty Ctrl+C keep their existing overlay/draft precedence and
+  hold queued input until explicit continuation. Automatic compaction remains
+  runtime-owned. Cancellation reaches PreCompact and the summary HTTP request;
+  it does not guarantee remote vendor cancellation or billing rollback.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -113,6 +121,8 @@ func Default() *Runtime
 ```
 internal/agent/compaction_test.go — hook/summary context, failures, replay and reminder reset.
 internal/app/compact_stop_test.go — delayed Stop decisions across manual compaction.
+internal/app/compact_lifetime_test.go — HTTP/hook cancellation, stale request fencing,
+                                        writer replacement and input precedence.
 internal/agent/completion_test.go — recording/successor order and Stop-hook policy.
 internal/app/completion_test.go — native state-record counts, successor ordering,
                                   changed post-hook state and recording failures.

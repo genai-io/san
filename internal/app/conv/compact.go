@@ -2,6 +2,7 @@
 package conv
 
 import (
+	"context"
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
@@ -10,10 +11,12 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// CompactResultMsg is sent when a compaction operation completes.
-type CompactResultMsg = agent.CompactResult
-
-type CompactRequest = agent.CompactRequest
+// CompactResultMsg carries the caller context as the exact request identity.
+// A cancelled request may still complete; the app must fence it before effects.
+type CompactResultMsg struct {
+	agent.CompactResult
+	Context context.Context
+}
 
 const PhaseSummarizing = "Summarizing conversation history"
 
@@ -71,6 +74,6 @@ func RenderCompactStatus(_ int, spinnerView string, state CompactState) string {
 	}
 }
 
-func CompactCmd(req CompactRequest) tea.Cmd {
-	return func() tea.Msg { return req.Run() }
+func CompactCmd(req agent.CompactRequest) tea.Cmd {
+	return func() tea.Msg { return CompactResultMsg{CompactResult: req.Run(), Context: req.Ctx} }
 }

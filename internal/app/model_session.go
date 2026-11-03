@@ -112,6 +112,7 @@ func (m *model) replaceSession(opened *session.Session) {
 		m.services.Reminder.DiscardPendingNotices()
 	}
 	if previous := m.services.Session; previous != opened {
+		m.cancelManualCompaction()
 		_ = previous.Close()
 	}
 	m.services.Session = opened

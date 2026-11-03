@@ -17,18 +17,47 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
-func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
+// pendingCompaction is owned only by the UI goroutine. The command captures
+// its context and immutable request input, never the model or its live owner.
+type pendingCompaction struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	session   *session.Session
+	sessionID string
+	outbox    <-chan core.Event
+}
+
+func (m *model) cancelManualCompaction() {
+	if p := m.pendingCompaction; p != nil {
+		p.cancel()
+		m.pendingCompaction = nil
+		m.conv.Compact.Clear()
+	}
+}
+
+func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest {
 	client := m.buildLLMClient()
-	return conv.CompactRequest{
-		Ctx:    context.Background(),
+	messages := client.RequestMessages(m.services.Agent.Messages())
+	ctx := context.Background()
+	// Rejected short requests never acquire a lifetime or disturb the UI.
+	if len(messages) >= core.MinMessagesToCompact {
+		m.cancelManualCompaction()
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		m.pendingCompaction = &pendingCompaction{ctx: ctx, cancel: cancel,
+			session: m.services.Session, sessionID: m.sessionID(), outbox: m.AgentOutbox()}
+	}
+	return agent.CompactRequest{
+		Ctx:    ctx,
 		Client: client,
 		// Summarization runs on the active model, so the chain has to clear the
 		// same bar as an agent turn: a text-only provider rejects image parts,
 		// and the conversation keeps images even when the model can't read them.
-		Messages:     client.RequestMessages(m.services.Agent.Messages()),
+		Messages:     messages,
 		SummaryFocus: focus,
 		HookEngine:   m.services.Hook,
 		Trigger:      trigger,
@@ -115,6 +144,15 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 // Only when there is no active agent does it drive OnCompacted directly so the
 // next session start still seeds the summary.
 func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
+	p := m.pendingCompaction
+	if p == nil || msg.Context != p.ctx || p.ctx.Err() != nil ||
+		p.session != m.services.Session || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {
+		return nil
+	}
+	// Release ownership before opening an inactive transcript (which replaces
+	// the nil recording owner). Validation precedes even error presentation.
+	p.cancel()
+	m.pendingCompaction = nil
 	if errors.Is(msg.Err, agent.ErrNothingToCompact) {
 		// Not a failure: there was nothing to do. Saying so is the point —
 		// pressing /compact on a summary used to spend a model call to
@@ -145,7 +183,7 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
-	summary, info, err := agent.RecordManualCompaction(opened, msg)
+	summary, info, err := agent.RecordManualCompaction(opened, msg.CompactResult)
 	if err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)

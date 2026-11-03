@@ -24,6 +24,10 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.pendingStopHook = nil
 	m.pendingMessages.Hold(nil)
 	m.queueContinuation = nil
+	if m.pendingCompaction != nil {
+		m.cancelManualCompaction()
+		return tea.Batch(m.CommitMessages()...)
+	}
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
 	receipt := m.services.Agent.Cancel()
