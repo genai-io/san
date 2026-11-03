@@ -39,8 +39,8 @@ func gatedTools(t *testing.T, data *setting.Data) (core.Gate, *PermissionGate) {
 		decision := data.HasPermissionToUseTool(name, args, nil)
 		return PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
 	})
-	gate.SetHookAllowResolver(func(name string, args map[string]any) bool {
-		return data.ResolveHookAllow(name, args, nil)
+	gate.SetHookAllowCheck(func(name string, args map[string]any) bool {
+		return data.CanApproveByHook(name, args, nil)
 	})
 	t.Cleanup(gate.Close)
 	return tool.HookedPermission(allowingHook{}, gate), gate

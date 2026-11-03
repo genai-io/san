@@ -216,11 +216,9 @@ func coerceAsk(decision PermissionDecision, session *SessionPermissions) Permiss
 	return decision
 }
 
-// ResolveHookAllow checks if a hook's "allow" decision should be honored.
-// Returns false if a deny rule, a safety check (either tier), or an explicit
-// ask rule overrides the hook's decision. This implements the safety
-// invariant: deny rules > safety checks > ask rules > hook allow.
-func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *SessionPermissions) bool {
+// CanApproveByHook checks hook approval eligibility without invoking a hook or approving.
+// Precedence is deny rules > safety checks > explicit ask rules > hook approval.
+func (s *Data) CanApproveByHook(toolName string, args map[string]any, session *SessionPermissions) bool {
 	// Same reason HasPermissionToUseTool snapshots: this runs on the agent
 	// goroutine, and the working directories it reads below are rewritten by
 	// the UI goroutine whenever the user cycles the mode mid-turn.

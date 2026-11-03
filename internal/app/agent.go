@@ -240,7 +240,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 			Judge: rt.judge.Permission, Observe: m.recordDecision,
 		})
 	}
-	params.HookAllowResolver = policy.HonorsHookAllow
+	params.CanApproveByHook = policy.CanApproveByHook
 
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle

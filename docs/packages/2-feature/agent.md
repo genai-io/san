@@ -59,7 +59,7 @@ func Default() *Runtime
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
 - `permission_policy.go` supplies `PermissionPolicy.Decide`, `Review` and
-  `HonorsHookAllow` to native `BuildParams`. TUI and print share settings rules and
+  `CanApproveByHook` to native `BuildParams`. TUI and print share settings rules and
   deny-aware auto-memory maintenance. TUI supplies a live reviewer/config snapshot;
   the policy enforces safety guards, a 30-second review budget, fail-closed human
   escalation, exact session grants and best-effort decision audits before return.

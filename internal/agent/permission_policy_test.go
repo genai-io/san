@@ -33,19 +33,19 @@ func TestPermissionPolicyRules(t *testing.T) {
 	if len(records) != 1 || records[0].Permission.Decision != "reject" || records[0].Permission.Source != transcript.PermissionSourceConfig || records[0].Permission.Mode != session.CurrentMode().PersistenceName() {
 		t.Fatalf("audit: %+v", records)
 	}
-	if p.HonorsHookAllow("Bash", args) {
+	if p.CanApproveByHook("Bash", args) {
 		t.Fatal("hook bypassed deny")
 	}
 	data.Permissions.Deny = nil
 	data.Permissions.Ask = []string{"Bash"}
-	if p.HonorsHookAllow("Bash", args) {
+	if p.CanApproveByHook("Bash", args) {
 		t.Fatal("hook bypassed explicit ask")
 	}
 	data.Permissions.Ask = nil
-	if !p.HonorsHookAllow("Bash", args) {
+	if !p.CanApproveByHook("Bash", args) {
 		t.Fatal("routine hook allow rejected")
 	}
-	if p.HonorsHookAllow("Bash", map[string]any{"command": "rm -rf /"}) {
+	if p.CanApproveByHook("Bash", map[string]any{"command": "rm -rf /"}) {
 		t.Fatal("hook bypassed breaker")
 	}
 	session.ShouldAvoidPrompts = true
@@ -55,7 +55,7 @@ func TestPermissionPolicyRules(t *testing.T) {
 	if d := (PermissionPolicy{}).Decide("Read", nil); d.Decision != perm.Reject {
 		t.Fatal("missing policy allowed")
 	}
-	if (PermissionPolicy{}).HonorsHookAllow("Read", nil) {
+	if (PermissionPolicy{}).CanApproveByHook("Read", nil) {
 		t.Fatal("missing policy honored hook")
 	}
 }

@@ -20,7 +20,7 @@ import (
 type PermissionSettings interface {
 	DenyRule(string, map[string]any) string
 	HasPermissionToUseTool(string, map[string]any, *setting.SessionPermissions) setting.PermissionDecision
-	ResolveHookAllow(string, map[string]any, *setting.SessionPermissions) bool
+	CanApproveByHook(string, map[string]any, *setting.SessionPermissions) bool
 }
 
 // PermissionPolicy binds execution authorization to one session. Callers serialize
@@ -51,8 +51,9 @@ func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionR
 		Description: d.Reason, RequestID: core.NewMessageID(), Reviewable: d.Reviewable}
 }
 
-func (p PermissionPolicy) HonorsHookAllow(name string, args map[string]any) bool {
-	return p.Settings != nil && p.Session != nil && p.Settings.ResolveHookAllow(name, args, p.Session)
+// CanApproveByHook checks hook approval eligibility; it does not invoke a hook or approve.
+func (p PermissionPolicy) CanApproveByHook(name string, args map[string]any) bool {
+	return p.Settings != nil && p.Session != nil && p.Settings.CanApproveByHook(name, args, p.Session)
 }
 
 // PermissionReview is a live snapshot supplied for each gray-zone decision.

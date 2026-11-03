@@ -39,14 +39,10 @@ type PermReviewResult struct {
 // broken or slow judge can never silently approve.
 type PermReviewFunc func(ctx context.Context, name string, input map[string]any, reason string) PermReviewResult
 
-// PermHookAllowFunc reports whether a PreToolUse hook's "allow" may stand for
-// this call. It backs the safety invariant deny rules > safety checks > ask
-// rules > hook allow: the hook can waive the routine prompt, but a deny rule,
-// the circuit breaker, either confirmation tier or an explicit ask rule
-// outranks it, and the call goes through the gate as if the hook had said
-// nothing. A hook cannot vouch for a call the user or the breaker has already
-// ruled on.
-type PermHookAllowFunc func(name string, args map[string]any) bool
+// PermHookApprovalFunc checks eligibility for a PreToolUse hook's approval;
+// it neither invokes a hook nor approves the call. Precedence is deny rules >
+// safety checks (circuit breaker and confirmation tiers) > explicit ask > hook approval.
+type PermHookApprovalFunc func(name string, args map[string]any) bool
 
 // PermGateRequest is a pending permission request sent to the TUI for approval.
 //
@@ -80,12 +76,12 @@ type PermGateResponse struct {
 // through a channel pair. The agent side blocks on the response; the TUI
 // side receives requests and sends back decisions.
 type PermissionGate struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	requests    chan *PermGateRequest
-	decideFn    PermDecisionFunc
-	reviewFn    PermReviewFunc    // optional; judges reviewable gray-zone prompts
-	hookAllowFn PermHookAllowFunc // optional; vets a PreToolUse hook's "allow"
+	ctx            context.Context
+	cancel         context.CancelFunc
+	requests       chan *PermGateRequest
+	decideFn       PermDecisionFunc
+	reviewFn       PermReviewFunc       // optional; judges reviewable gray-zone prompts
+	hookAllowCheck PermHookApprovalFunc // optional; checks hook approval eligibility
 }
 
 func NewPermissionGate(decideFn PermDecisionFunc) *PermissionGate {
@@ -104,22 +100,18 @@ func (pg *PermissionGate) SetReviewer(fn PermReviewFunc) {
 	pg.reviewFn = fn
 }
 
-// SetHookAllowResolver installs the resolver that vets a PreToolUse hook's
-// "allow" against the settings. A nil fn fails closed: a gate with no resolver
-// has no rules to check the hook against, so it cannot certify the waiver and
-// every call goes through the gate.
-func (pg *PermissionGate) SetHookAllowResolver(fn PermHookAllowFunc) {
-	pg.hookAllowFn = fn
+// SetHookAllowCheck installs the hook approval eligibility check. Nil fails closed.
+func (pg *PermissionGate) SetHookAllowCheck(fn PermHookApprovalFunc) {
+	pg.hookAllowCheck = fn
 }
 
-// HonorsHookAllow reports whether a PreToolUse hook's "allow" is enough to skip
-// the gate for this call, on the precedence PermHookAllowFunc documents. A gate
-// with no resolver answers no.
-func (pg *PermissionGate) HonorsHookAllow(name string, input map[string]any) bool {
-	if pg.hookAllowFn == nil {
+// CanApproveByHook checks eligibility for hook approval without invoking a hook
+// or approving the call. A gate with no check fails closed.
+func (pg *PermissionGate) CanApproveByHook(name string, input map[string]any) bool {
+	if pg.hookAllowCheck == nil {
 		return false
 	}
-	return pg.hookAllowFn(name, input)
+	return pg.hookAllowCheck(name, input)
 }
 
 func (pg *PermissionGate) PermissionFunc() perm.PermissionFunc {
