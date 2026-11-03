@@ -218,7 +218,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	}
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle
-	return agent.BuildRootParams(params, agent.RootSession{
+	return agent.BuildPrimaryParams(params, agent.PrimarySession{
 		Recorder: rec, Store: m.services.SessionStore,
 		Settings: m.services.Setting, Permissions: m.env.SessionPermissions,
 		Hooks: m.services.Hook, Skills: m.services.Skill,

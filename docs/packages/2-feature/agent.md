@@ -58,7 +58,7 @@ func Default() *Runtime
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
   stamp the tool-call ID before hooks, reviewer and human approval run, matching
   subagent gates (tool execution wrappers alone run too late to identify approval).
-- `root.go` exposes `BuildRootParams(BuildParams, RootSession)`: prompt, workspace,
+- `primary.go` exposes `BuildPrimaryParams(BuildParams, PrimarySession)`: prompt, workspace,
   provider and transport inputs stay in `BuildParams`; the opened recorder/store,
   settings, permission owner, hook engine, skill registry and live review/recall
   snapshots are supplied explicitly. TUI construction uses this same entrypoint.
@@ -147,7 +147,7 @@ func Default() *Runtime
 ## Tests
 
 ```
-internal/agent/root_test.go — production root/runtime tool turns, allow/deny, hook audits,
+internal/agent/primary_test.go — production primary/runtime tool turns, allow/deny, hook audits,
                               transcript-before-terminal ordering, live recall and cancelled review.
 internal/agent/result_pager_test.go — threshold, UTF-8 preview, metadata and persistence failure.
 internal/agent/permission_policy_test.go — rule/reviewer/hook composition, exact grants,
