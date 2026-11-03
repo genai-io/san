@@ -67,6 +67,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 	for _, trigger := range []string{"manual", "auto", "nothing"} {
 		t.Run(trigger, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
+			request := m.BuildCompactRequest("", "manual")
 			m.OnCompactStart(len(m.conv.Messages))
 			m.userInput.Textarea.SetValue("look at [Image #1]")
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
@@ -80,7 +81,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			const summary = "both files read"
 			switch trigger {
 			case "manual":
-				m.HandleCompactResult(conv.CompactResultMsg{Summary: summary})
+				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Summary: summary}})
 				if m.userInput.Queue.Len() != 2 {
 					t.Fatal("manual input was released before the replacement reached the UI")
 				}
@@ -102,7 +103,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				m.OnCompacted(core.Compacted{Summary: summary, Trigger: trigger})
 				m.OnCompactEnd(sdkagent.CompactionEnd{})
 			case "nothing":
-				m.HandleCompactResult(conv.CompactResultMsg{Err: agent.ErrNothingToCompact})
+				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Err: agent.ErrNothingToCompact}})
 			}
 
 			select {
@@ -176,13 +177,14 @@ func TestFailedCompactionKeepsQueuedInput(t *testing.T) {
 	for _, trigger := range []string{"manual", "auto"} {
 		t.Run(trigger, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
+			request := m.BuildCompactRequest("", "manual")
 			m.OnCompactStart(3)
 			m.userInput.Textarea.SetValue("look at [Image #1]")
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
 			m.handleSubmit()
 			failure := errors.New("summary failed")
 			if trigger == "manual" {
-				m.HandleCompactResult(conv.CompactResultMsg{Err: failure})
+				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Err: failure}})
 			} else {
 				m.OnCompactEnd(sdkagent.CompactionEnd{Err: failure})
 			}

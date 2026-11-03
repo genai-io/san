@@ -528,6 +528,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	}
 	coreMessages := m.services.Agent.Messages()
 
+	m.cancelManualCompaction()
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
 	}
@@ -679,6 +680,7 @@ func (m *model) wireReminderProviders() {
 const agentStopTimeout = 2 * time.Second
 
 func (m *model) StopAgentRuntime() error {
+	m.cancelManualCompaction()
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
@@ -692,6 +694,7 @@ func (m *model) StopAgentRuntime() error {
 
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() error {
+	m.cancelManualCompaction()
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()

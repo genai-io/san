@@ -42,9 +42,10 @@ import (
 const defaultWidth = 80
 
 type model struct {
-	pendingStopHook *pendingStopHook // current idle decision; invalidated by input, cancellation or teardown
-	agentSession    *session.Session // opened writer captured when the selected runtime started
-	workerMu        *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
+	pendingCompaction *pendingCompaction
+	pendingStopHook   *pendingStopHook // current idle decision; invalidated by input, cancellation or teardown
+	agentSession      *session.Session // opened writer captured when the selected runtime started
+	workerMu          *sync.Mutex      // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
 	pendingMessages   agent.InputQueue
 	queueContinuation *input.QueueItem // explicit queue Enter, valid only across this cancellation fence

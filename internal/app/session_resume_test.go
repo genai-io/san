@@ -283,7 +283,8 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T) {
 	history := parallelResultChain()
 	m, store := resumedModel(t, history)
-	m.HandleCompactResult(conv.CompactResultMsg{Summary: "both files read", OriginalCount: len(history)})
+	request := m.BuildCompactRequest("", "manual")
+	m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Summary: "both files read", OriginalCount: len(history)}})
 	seed := m.services.Agent.Messages()
 	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary("both files read") {
 		t.Fatalf("inactive compaction retained old inference context: %+v", seed)
