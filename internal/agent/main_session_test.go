@@ -20,7 +20,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func primaryFixture(t *testing.T) PrimarySession {
+func mainSessionFixture(t *testing.T) MainSession {
 	t.Helper()
 	store, err := session.NewStoreWithDir(t.TempDir())
 	if err != nil {
@@ -31,51 +31,51 @@ func primaryFixture(t *testing.T) PrimarySession {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rec.Close() })
-	return PrimarySession{Recorder: rec, Store: store, Settings: setting.NewData(), Permissions: setting.NewSessionPermissions()}
+	return MainSession{Recorder: rec, Store: store, Settings: setting.NewData(), Permissions: setting.NewSessionPermissions()}
 }
 
-func TestPrimaryRequiresOpenedOwnerAndPolicy(t *testing.T) {
-	primary := primaryFixture(t)
-	for _, change := range []func(*PrimarySession){
-		func(r *PrimarySession) { r.Recorder = nil },
-		func(r *PrimarySession) { r.Store = nil },
-		func(r *PrimarySession) { r.Settings = nil },
-		func(r *PrimarySession) { r.Store = primaryFixture(t).Store },
-		func(r *PrimarySession) { r.Permissions = nil },
+func TestMainSessionRequiresOpenedOwnerAndPolicy(t *testing.T) {
+	mainSession := mainSessionFixture(t)
+	for _, change := range []func(*MainSession){
+		func(r *MainSession) { r.Recorder = nil },
+		func(r *MainSession) { r.Store = nil },
+		func(r *MainSession) { r.Settings = nil },
+		func(r *MainSession) { r.Store = mainSessionFixture(t).Store },
+		func(r *MainSession) { r.Permissions = nil },
 	} {
-		invalid := primary
+		invalid := mainSession
 		change(&invalid)
-		if _, err := BuildPrimaryParams(BuildParams{}, invalid); err == nil {
-			t.Fatal("accepted incomplete primary")
+		if _, err := BuildMainParams(BuildParams{}, invalid); err == nil {
+			t.Fatal("accepted incomplete main session")
 		}
 	}
-	if err := primary.Recorder.Close(); err != nil {
+	if err := mainSession.Recorder.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := BuildPrimaryParams(BuildParams{}, primary); err == nil {
+	if _, err := BuildMainParams(BuildParams{}, mainSession); err == nil {
 		t.Fatal("accepted closed recorder")
 	}
 }
 
 // No TUI, replacement builder, or substitute gate: run the production runtime
 // through a streamed tool turn and read the native transcript at its boundary.
-func TestPrimaryRuntimePermissionPagingAndRecording(t *testing.T) {
+func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 	for _, allow := range []bool{true, false} {
 		name := "deny"
 		if allow {
 			name = "allow"
 		}
 		t.Run(name, func(t *testing.T) {
-			primary := primaryFixture(t)
-			data := primary.Settings.(*setting.Data)
+			mainSession := mainSessionFixture(t)
+			data := mainSession.Settings.(*setting.Data)
 			const toolName = "mcp__fixture__output"
 			if allow {
 				data.Permissions.Allow = []string{toolName}
 			} else {
 				data.Permissions.Deny = []string{toolName}
 			}
-			primary.Hooks = hook.NewEngine(data, primary.Recorder.ID(), t.TempDir(), primary.Recorder.TranscriptPath())
-			primary.Hooks.AddSessionFunctionHook(hook.PreToolUse, toolName, hook.FunctionHook{
+			mainSession.Hooks = hook.NewEngine(data, mainSession.Recorder.ID(), t.TempDir(), mainSession.Recorder.TranscriptPath())
+			mainSession.Hooks.AddSessionFunctionHook(hook.PreToolUse, toolName, hook.FunctionHook{
 				Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
 					return hook.HookOutput{}, nil
 				},
@@ -90,7 +90,7 @@ func TestPrimaryRuntimePermissionPagingAndRecording(t *testing.T) {
 				aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "call-1", Name: toolName, Input: `{}`})}, StopReason: ai.StopToolUse}),
 				aitest.Says("finished"),
 			)
-			params, err := BuildPrimaryParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture}}, primary)
+			params, err := BuildMainParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture}}, mainSession)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,17 +110,17 @@ func TestPrimaryRuntimePermissionPagingAndRecording(t *testing.T) {
 					if _, ok := ev.(core.TurnEnded); !ok {
 						continue
 					}
-					if err := primary.Recorder.Err(); err != nil {
+					if err := mainSession.Recorder.Err(); err != nil {
 						t.Fatal(err)
 					}
-					history, err := primary.Store.Read(primary.Recorder.ID())
+					history, err := mainSession.Store.Read(mainSession.Recorder.ID())
 					if err != nil {
 						t.Fatal(err)
 					}
 					if len(history.Messages) < 4 {
 						t.Fatalf("terminal event preceded transcript writes: %d messages", len(history.Messages))
 					}
-					bytes, err := os.ReadFile(primary.Recorder.TranscriptPath())
+					bytes, err := os.ReadFile(mainSession.Recorder.TranscriptPath())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -130,7 +130,7 @@ func TestPrimaryRuntimePermissionPagingAndRecording(t *testing.T) {
 					if !strings.Contains(string(bytes), "hook.fired") {
 						t.Fatal("missing hook audit")
 					}
-					blob := filepath.Join(filepath.Dir(filepath.Dir(primary.Recorder.TranscriptPath())), "blobs", "tool-result", primary.Recorder.ID(), "call-1")
+					blob := filepath.Join(filepath.Dir(filepath.Dir(mainSession.Recorder.TranscriptPath())), "blobs", "tool-result", mainSession.Recorder.ID(), "call-1")
 					if allow {
 						if calls.Load() != 1 {
 							t.Fatalf("executions = %d", calls.Load())
@@ -157,8 +157,8 @@ func TestPrimaryRuntimePermissionPagingAndRecording(t *testing.T) {
 	}
 }
 
-func TestPrimaryPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
-	primary := primaryFixture(t)
+func TestMainSessionPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
+	mainSession := mainSessionFixture(t)
 	memoryPath := filepath.Join(t.TempDir(), "memory.md")
 	if err := os.WriteFile(memoryPath, []byte("remember-this-fact"), 0600); err != nil {
 		t.Fatal(err)
@@ -166,13 +166,13 @@ func TestPrimaryPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
 	pick := &Recall{ready: make(chan struct{}), memories: []system.Memory{{Path: memoryPath}}}
 	close(pick.ready)
 	var current atomic.Pointer[Recall]
-	primary.Recall = current.Load
-	params, err := BuildPrimaryParams(BuildParams{}, primary)
+	mainSession.Recall = current.Load
+	params, err := BuildMainParams(BuildParams{}, mainSession)
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner := primary.Recorder.ID()
-	primary.Recorder = primaryFixture(t).Recorder
+	owner := mainSession.Recorder.ID()
+	mainSession.Recorder = mainSessionFixture(t).Recorder
 	current.Store(pick)
 	out, err := params.ResultFilter(context.Background(), sdkagent.PostToolContext{
 		Call: ai.ToolCall{ID: "call-recall"}, Result: sdkagent.TextResult(strings.Repeat("x", 100_001)),
@@ -190,10 +190,10 @@ func TestPrimaryPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
 	}
 }
 
-func TestPrimaryRuntimeCancelRetiresHumanApproval(t *testing.T) {
-	primary := primaryFixture(t)
+func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
+	mainSession := mainSessionFixture(t)
 	const name = "mcp__fixture__approval"
-	primary.Settings.(*setting.Data).Permissions.Ask = []string{name}
+	mainSession.Settings.(*setting.Data).Permissions.Ask = []string{name}
 	var calls atomic.Int32
 	fixture := sdkagent.ToolFunc(name, "needs approval", func(context.Context, struct{}) (sdkagent.Result, error) {
 		calls.Add(1)
@@ -203,7 +203,7 @@ func TestPrimaryRuntimeCancelRetiresHumanApproval(t *testing.T) {
 		Content:    ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "cancel-call", Name: name, Input: `{}`})},
 		StopReason: ai.StopToolUse,
 	}))
-	params, err := BuildPrimaryParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", MCPTools: []core.Tool{fixture}}, primary)
+	params, err := BuildMainParams(BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", MCPTools: []core.Tool{fixture}}, mainSession)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestPrimaryRuntimeCancelRetiresHumanApproval(t *testing.T) {
 			if calls.Load() != 0 {
 				t.Fatal("late approval executed tool")
 			}
-			if err := primary.Recorder.Err(); err != nil {
+			if err := mainSession.Recorder.Err(); err != nil {
 				t.Fatal(err)
 			}
 			return
@@ -260,12 +260,12 @@ func TestPrimaryRuntimeCancelRetiresHumanApproval(t *testing.T) {
 	}
 }
 
-func TestPrimaryCancelledReviewerCannotGrant(t *testing.T) {
-	primary := primaryFixture(t)
-	primary.Permissions = &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
+func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
+	mainSession := mainSessionFixture(t)
+	mainSession.Permissions = &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	primary.Review = func() PermissionReview {
+	mainSession.Review = func() PermissionReview {
 		return PermissionReview{Engaged: true, Enabled: true,
 			Judge: func(context.Context, reviewer.Request) (reviewer.Verdict, error) {
 				close(entered)
@@ -274,7 +274,7 @@ func TestPrimaryCancelledReviewerCannotGrant(t *testing.T) {
 			},
 		}
 	}
-	params, err := BuildPrimaryParams(BuildParams{Provider: stubProvider{}, ModelID: "fake"}, primary)
+	params, err := BuildMainParams(BuildParams{Provider: stubProvider{}, ModelID: "fake"}, mainSession)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestPrimaryCancelledReviewerCannotGrant(t *testing.T) {
 	if d := params.PermissionRules("Bash", args); !d.Reviewable {
 		t.Fatalf("late approval changed session policy: %+v", d)
 	}
-	bytes, err := os.ReadFile(primary.Recorder.TranscriptPath())
+	bytes, err := os.ReadFile(mainSession.Recorder.TranscriptPath())
 	if err != nil {
 		t.Fatal(err)
 	}

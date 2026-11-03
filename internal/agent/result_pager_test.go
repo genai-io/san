@@ -14,8 +14,8 @@ import (
 // it alone", and returning a copy instead would rewrite every tool call for
 // nothing.
 func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
-	primary := primaryFixture(t)
-	pager := ResultPager{Store: primary.Store, SessionID: primary.Recorder.ID()}
+	mainSession := mainSessionFixture(t)
+	pager := ResultPager{Store: mainSession.Store, SessionID: mainSession.Recorder.ID()}
 	out, err := pager.Filter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult(strings.Repeat("x", 100_000))})
 	if err != nil || out != nil {
 		t.Fatal("threshold result was rewritten")
