@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -30,7 +30,7 @@ func TestCompact_SummarizesConversation(t *testing.T) {
 		core.AssistantMessage("you're welcome", "", nil),
 	}
 
-	summary, count, err := conv.CompactConversation(context.Background(), c, msgs, "")
+	summary, count, err := agent.CompactConversation(context.Background(), c, msgs, "")
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestCompact_WithFocus(t *testing.T) {
 		core.UserMessage("and run them", nil),
 	}
 
-	_, _, err := conv.CompactConversation(context.Background(), c, msgs, "testing")
+	_, _, err := agent.CompactConversation(context.Background(), c, msgs, "testing")
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}
@@ -87,8 +87,8 @@ func TestAConversationTooShortToShortenIsRefused(t *testing.T) {
 			c, fake := newFakeClient(
 				llm.CompletionResponse{Content: ai.TextContent("a summary nobody asked for"), StopReason: ai.StopEndTurn},
 			)
-			_, count, err := conv.CompactConversation(context.Background(), c, tc.msgs, "")
-			if !errors.Is(err, conv.ErrNothingToCompact) {
+			_, count, err := agent.CompactConversation(context.Background(), c, tc.msgs, "")
+			if !errors.Is(err, agent.ErrNothingToCompact) {
 				t.Fatalf("err = %v, want ErrNothingToCompact", err)
 			}
 			if count != len(tc.msgs) {
@@ -112,7 +112,7 @@ func TestCompact_WithoutOptionalSections_LeavesPromptPlain(t *testing.T) {
 		core.UserMessage("what did you find", nil),
 	}
 
-	_, _, err := conv.CompactConversation(context.Background(), c, msgs, "")
+	_, _, err := agent.CompactConversation(context.Background(), c, msgs, "")
 	if err != nil {
 		t.Fatalf("CompactConversation() error: %v", err)
 	}

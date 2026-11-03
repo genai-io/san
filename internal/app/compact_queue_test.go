@@ -102,7 +102,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				m.OnCompacted(core.Compacted{Summary: summary, Trigger: trigger})
 				m.OnCompactEnd(sdkagent.CompactionEnd{})
 			case "nothing":
-				m.HandleCompactResult(conv.CompactResultMsg{Err: conv.ErrNothingToCompact})
+				m.HandleCompactResult(conv.CompactResultMsg{Err: agent.ErrNothingToCompact})
 			}
 
 			select {

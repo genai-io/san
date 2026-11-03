@@ -92,6 +92,14 @@ func Default() *Runtime
   continuing. Failed recording stops that boundary; unchanged state is not rewritten.
   TUI owns cleanup and stale-result checks. Cancellation/failure paths and receipt
   guarantees are unchanged; recording errors do not create a global input hold.
+- Compaction: `CompactRequest.Run` owns manual PreCompact context and summarization
+  on the caller's context and selected client. `RecordManualCompaction` records an
+  inactive conversation's native summary/boundary before the caller replaces its
+  chain; live replacement still belongs to the SDK loop. `PostCompact` schedules
+  the hook, refreshes memory, resets reminders and restores recent files only for
+  manual compaction. TUI retains provider adaptation, admission, projection and
+  queue release. Accepted manual compaction invalidates pending Stop decisions,
+  even if summarization later fails; overlapping manual requests are rejected.
 - Headless execution: `RunOnce` builds the same prompt, tools, and permission
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
@@ -103,6 +111,8 @@ func Default() *Runtime
 ## Tests
 
 ```
+internal/agent/compaction_test.go — hook/summary context, failures, replay and reminder reset.
+internal/app/compact_stop_test.go — delayed Stop decisions across manual compaction.
 internal/agent/completion_test.go — recording/successor order and Stop-hook policy.
 internal/app/completion_test.go — native state-record counts, successor ordering,
                                   changed post-hook state and recording failures.
