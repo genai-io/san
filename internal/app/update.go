@@ -288,9 +288,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case memberMsg:
 		return m, m.handleMemberMsg(msg)
-	case groupJoinMsg:
-		m.conv.AddNotice(m.finishJoin(msg))
-		return m, tea.Batch(m.CommitMessages()...)
+	case groupControlMsg:
+		if text := m.handleGroupControl(msg); text != "" {
+			m.conv.AddNotice(text)
+			return m, tea.Batch(m.CommitMessages()...)
+		}
+		return m, nil
 	case input.MissionRefinedMsg:
 		// The /autopilot Mission editor's refined text arrived; hand it to the
 		// panel to replace the draft (or surface an error under the editor).

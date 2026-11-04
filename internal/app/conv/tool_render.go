@@ -1204,33 +1204,6 @@ func renderIdentityMessageLine(icon, dir, name, body string, width int, tone kit
 	return head + bodyStyle.Render(" "+kit.TruncateText(body, room)) + note
 }
 
-// groupCallArgs names a Group call by what it does, e.g. "join shop as web".
-func groupCallArgs(input string) string {
-	var p struct {
-		Action, Group, As string
-		Hold              bool
-	}
-	_ = json.Unmarshal([]byte(input), &p)
-	parts := []string{p.Action}
-	switch p.Action {
-	case "join":
-		parts = append(parts, p.Group)
-		if p.As != "" {
-			parts = append(parts, "as", p.As)
-		}
-		if p.Hold {
-			parts = append(parts, "holding")
-		}
-	case "hold":
-		if p.Hold {
-			parts = append(parts, "on")
-		} else {
-			parts = append(parts, "off")
-		}
-	}
-	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
-}
-
 func conciseAgentDescription(desc string) string {
 	return strings.Join(strings.Fields(desc), " ")
 }
@@ -1367,8 +1340,8 @@ func formatToolResultSize(toolName, content string) string {
 		return toolresult.FormatSize(int64(len(content)))
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
-	case tool.ToolSendMessage, tool.ToolGroup:
-		// Their first clause is the outcome, e.g. "Sent · reading now".
+	case tool.ToolSendMessage:
+		// The first clause is the outcome, e.g. "Sent · reading now".
 		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
 		first, _, _ = strings.Cut(first, "; ")
 		return strings.TrimSuffix(first, ".")

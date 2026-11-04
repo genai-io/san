@@ -24,6 +24,15 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 	return core.ToolSchema{}, false
 }
 
+func TestGroupControlIsNotAModelTool(t *testing.T) {
+	if _, ok := tool.Get("Group"); ok {
+		t.Fatal("group control must not register a model tool")
+	}
+	if _, ok := findSchema(tool.GetManageableToolSchemasWith(tool.SchemaOptions{}), "Group"); ok {
+		t.Fatal("group control must not appear in the tool catalog")
+	}
+}
+
 func TestManageableToolsIncludeConditionalEvolve(t *testing.T) {
 	if _, ok := findSchema(tool.GetToolSchemas(), tool.ToolEvolve); ok {
 		t.Fatal("Evolve must remain conditional in the model-facing default schemas")

@@ -85,11 +85,54 @@ the fixes depend on all four reports. Reviewers receive the diff commands and
 paths and inspect source through their own effective tools. Blocked coverage
 is reported explicitly rather than retried with source pasted by the parent.
 
+## Group control
+
+Use `/group` directly; no skill or tool needs enabling. Join the same group
+from two sessions (the group is created if needed):
+
+```text
+/group join backend --as api --role API development
+/group join backend --as tests --role Testing
+```
+
+Members can then communicate through `SendMessage`.
+
+| Command | Purpose |
+| --- | --- |
+| `/group` | Current status and help |
+| `/group members` / `/group list` | Current members / all groups |
+| `/group leave` | Leave the group |
+| `/group hold on` / `/group hold off` | Hold member messages until your next input / process immediately |
+| `/group kick tests` | Remove a member |
+| `/group disband backend` | Disband the group |
+
+### Member lifecycle
+
+Membership belongs to a session, not a terminal process. A session joins one
+group at a time; leave before joining another.
+
+| Stage | Behavior |
+| --- | --- |
+| Join | Creates the group if absent; assigns a member name and role. |
+| Collaborate | Members see `idle`, `working`, or `approval` status. Messages wait in the recipient's inbox; `hold` controls automatic processing. |
+| Update identity | `/name api --role API development` updates the session and member name/role without leaving or losing queued messages. |
+| Go offline | Closing a saved session or switching away keeps its membership and inbox. Offline members remain listed and can receive messages. An unsaved session leaves on exit. |
+| Resume | `/resume` of the original session reclaims its membership if it still exists and is not online elsewhere. A different or forked session does not inherit membership. |
+| Leave or remove | `/group leave` or `/group kick <member>` removes membership and its inbox. Resume does not undo removal; joining again is explicit. The last member leaving removes the group. |
+| Disband | `/group disband <group>` removes all memberships and inboxes. Members detect the removal; resume does not recreate the group. |
+
+Natural language also works: `/group Join backend as api, responsible for API development`.
+It requires a connected model and runs in an isolated context with only the
+request and current membership, not the main conversation or tools. Explicit
+commands run without model inference, and `/group` works while the main agent
+is busy. Kick and disband always require explicit commands.
+
 ## Tests
 
 ```
 internal/command/registry_test.go    — name lookup, fuzzy matching,
                                         custom + built-in precedence.
+internal/app/group_control_test.go  — isolated requests, validation, stale results.
 internal/command/arguments_test.go   — quoted values, unfinished fields,
                                         Unicode byte ranges, generated argument round trips.
 ```

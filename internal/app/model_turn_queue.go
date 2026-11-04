@@ -8,6 +8,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -71,6 +72,19 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !m.pendingMessages.CanDeliver(false) || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
+	}
+	if head, ok := m.userInput.Queue.At(0); ok {
+		fields := strings.Fields(head.Content)
+		if len(fields) > 0 && fields[0] == "/group" {
+			// A queued control request stays local, just like a direct side command.
+			m.userInput.Queue.Dequeue()
+			text, cmd, _ := m.executeCommand(context.Background(), head.Content)
+			if text != "" {
+				m.conv.AddNotice(text)
+			}
+			next, _ := m.releaseQueuedMessage()
+			return tea.Batch(append(m.CommitMessages(), cmd, next)...), true
+		}
 	}
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {

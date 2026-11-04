@@ -160,11 +160,10 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 	}
 }
 
-// IsSideCommand reports whether input is /btw or /recap, side requests that
-// run even mid-turn.
+// IsSideCommand reports requests that run outside the main agent, even mid-turn.
 func IsSideCommand(input string) bool {
 	name, _, ok := command.ParseCommand(input)
-	return ok && (name == "btw" || name == "recap")
+	return ok && (name == "btw" || name == "recap" || name == "group")
 }
 
 func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {

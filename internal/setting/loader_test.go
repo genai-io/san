@@ -48,7 +48,7 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 	}
 
 	// Optional tools ship disabled and can be enabled explicitly.
-	for _, name := range []string{"AgentStop", "Workflow", "Group", "Evolve"} {
+	for _, name := range []string{"AgentStop", "Workflow", "Evolve"} {
 		if !IsDefaultDisabledTool(name) || !WithDefaultDisabledTools(nil)[name] {
 			t.Fatalf("%s should be disabled by default", name)
 		}

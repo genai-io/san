@@ -37,7 +37,7 @@ func (m *model) handleSubmit() tea.Cmd {
 	if m.conv.Stream.Active {
 		// A workflow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
-		// /btw and /recap exist to be asked while the agent works.
+		// Side commands, including group control, run outside the main turn.
 		if input.IsWorkflowStopCommand(raw) || input.IsSideCommand(raw) {
 			m.userInput.RecordSubmission(m.env.CWD, raw)
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
