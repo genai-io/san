@@ -32,14 +32,14 @@ func TestBuildParamsBashHelpIsLocalToSchemas(t *testing.T) {
 	if !strings.Contains(before, "updates the session working directory") {
 		t.Fatal("default help lost session directory behavior")
 	}
-	custom := bashHelp(BuildParams{BashCWDHelp: help})
+	custom := bashHelp(BuildParams{BashDirHelp: help})
 	if !strings.Contains(custom, help) || strings.Contains(custom, "updates the session working directory") {
 		t.Fatal(custom)
 	}
 	if after := bashHelp(BuildParams{}); after != before {
 		t.Fatal("schema override mutated default help")
 	}
-	for _, schema := range (BuildParams{BashCWDHelp: help, DisabledTools: map[string]bool{"Bash": true}}).Schemas() {
+	for _, schema := range (BuildParams{BashDirHelp: help, DisabledTools: map[string]bool{"Bash": true}}).Schemas() {
 		if schema.Name == "Bash" {
 			t.Fatal("help override restored disabled tool")
 		}
@@ -66,9 +66,9 @@ func TestBuildParamsConversationToolState(t *testing.T) {
 		var response any
 		ended := false
 		p := BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: dir,
-			FileObservations: tc.views,
-			PermissionRules:  func(string, map[string]any) PermDecisionResult { return PermDecisionResult{Decision: perm.Permit} },
-			OnToolHookResponse: func(id string, payload any) {
+			FileViews:       tc.views,
+			PermissionRules: func(string, map[string]any) PermDecisionResult { return PermDecisionResult{Decision: perm.Permit} },
+			ToolResponse: func(id string, payload any) {
 				if id != "owned-call" {
 					t.Errorf("call ID = %q", id)
 				}
