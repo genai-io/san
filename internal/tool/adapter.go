@@ -73,9 +73,10 @@ func WithToolContext(fn func(context.Context) context.Context) AdaptOption {
 	return func(c *adaptConfig) { c.toolContext = fn }
 }
 
-// WithSideEffectHandler routes handoffs to their owning run instead of the
-// default main-agent store. Tool call IDs are not unique across conversations.
-func WithSideEffectHandler(fn func(string, any)) AdaptOption {
+// WithSideEffectHandler routes native ToolResult.HookResponse payloads to their
+// owning host instead of the default main-agent store. Called synchronously
+// before ToolEnd; fn must be concurrency-safe. Call IDs can repeat across hosts.
+func WithSideEffectHandler(fn func(toolCallID string, response any)) AdaptOption {
 	return func(c *adaptConfig) { c.sideEffectFn = fn }
 }
 

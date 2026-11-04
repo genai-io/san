@@ -18,8 +18,8 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestACPFixedCWDSchema(t *testing.T) {
-	for _, schema := range (agent.BuildParams{FixedCWD: true}).Schemas() {
+func TestACPBashCWDHelp(t *testing.T) {
+	for _, schema := range (agent.BuildParams{BashCWDHelp: acpBashCWDHelp}).Schemas() {
 		if schema.Name == "Bash" {
 			if strings.Contains(schema.Description, "updates the session working directory") || !strings.Contains(schema.Description, "subsequent commands start in the original session working directory") {
 				t.Fatal(schema.Description)

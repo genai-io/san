@@ -51,6 +51,11 @@ type BuildParams struct {
 	// when auto memory is off.
 	AutoMemory system.MemoryStores
 
+	// BashCWDHelp replaces the Bash schema's session-directory sentence. It is
+	// help text only: CWD/CWDFunc and the host's PostTool handling own behavior.
+	// Empty keeps the default help for hosts that apply directory changes.
+	BashCWDHelp string
+
 	// ExtraTools are caller-built conditional tool schemas appended to the
 	// toolset (e.g. the self-learning Evolve trigger, injected only when
 	// self-learning is active). Nil ⇒ no extra tools.
@@ -87,10 +92,16 @@ type BuildParams struct {
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
 	FileCache *filecache.Cache
-	// FileViews and SideEffect own native tool state for isolated hosts.
-	FileViews  *fs.FileViews
-	SideEffect func(string, any)
-	FixedCWD   bool
+	// FileObservations tracks versions observed by this conversation for the
+	// Read-before-Edit/Write checks, not cached content. Reuse across runtime
+	// restarts; nil uses the TUI's process-default observations.
+	FileObservations *fs.FileViews
+
+	// OnToolHookResponse receives a native ToolResult.HookResponse synchronously
+	// before ToolEnd. The host retains it by call ID until PostTool consumes it.
+	// Responses are tool-specific payloads, not model output or SDK Details.
+	// Must be concurrency-safe; nil uses the TUI's default handoff store.
+	OnToolHookResponse func(toolCallID string, response any)
 }
 
 // System returns the system prompt these params build. Exported so a caller
@@ -114,11 +125,11 @@ func (p BuildParams) Schemas() []core.ToolSchema {
 		AgentCatalog: p.AgentCatalog,
 		ExtraTools:   p.ExtraTools,
 	}).Tools()
-	if p.FixedCWD {
+	if p.BashCWDHelp != "" {
 		for i := range schemas {
 			if schemas[i].Name == "Bash" {
-				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful cd updates the session working directory", "cd affects only this command; subsequent commands start in the original session working directory")
-				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful Set-Location (cd) updates the session working directory", "Set-Location (cd) affects only this command; subsequent commands start in the original session working directory")
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful cd updates the session working directory", p.BashCWDHelp)
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful Set-Location (cd) updates the session working directory", p.BashCWDHelp)
 			}
 		}
 	}
@@ -167,14 +178,14 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
 	toolContext := func(ctx context.Context) context.Context {
-		if p.FileViews != nil {
-			return fs.WithFileViews(ctx, p.FileViews)
+		if p.FileObservations != nil {
+			return fs.WithFileViews(ctx, p.FileObservations)
 		}
 		return ctx
 	}
 	adaptOpts = append(adaptOpts, tool.WithToolContext(toolContext))
-	if p.SideEffect != nil {
-		adaptOpts = append(adaptOpts, tool.WithSideEffectHandler(p.SideEffect))
+	if p.OnToolHookResponse != nil {
+		adaptOpts = append(adaptOpts, tool.WithSideEffectHandler(p.OnToolHookResponse))
 	}
 	if p.AskUser != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(p.AskUser))

@@ -58,6 +58,17 @@ func Default() *Runtime
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
   stamp the tool-call ID before hooks, reviewer and human approval run, matching
   subagent gates (tool execution wrappers alone run too late to identify approval).
+  `FileObservations` binds the conversation's observed file versions to tool and
+  permission contexts for read-before-write checks; it is distinct from the
+  compaction `FileCache`. Hosts retain it across runtime restarts.
+  `OnToolHookResponse(toolCallID, response)` hands native tool-specific hook
+  payloads to the host synchronously before ToolEnd. Hosts provide concurrency-safe
+  storage and consume each response during PostTool; ACP owns a map per session
+  because call IDs can collide across sessions. Nil keeps the TUI defaults for
+  both dependencies. These are runtime wiring, not `MainSession` persistence.
+  `BashCWDHelp` is only a schema sentence override, with empty preserving TUI help.
+  ACP supplies command-local directory wording; actual directory behavior remains
+  with `CWD`/`CWDFunc` and the host's handling (or ignoring) of directory handoffs.
 - `main_session.go` pairs only the opened `Session` and full-result `Store`.
   `MainSession.Validate` rejects missing/closed owners and mismatched stores without
   mutating services. Native session APIs provide recording; `ResultPager` captures

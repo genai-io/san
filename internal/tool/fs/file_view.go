@@ -16,11 +16,11 @@ type fileStamp struct {
 	size    int64
 }
 
-// fileViews records, per cleaned absolute path, the file state the model
-// last observed. Edit and Write consult it to enforce the contract their
-// schemas promise: modifying a file "requires a current view" — the file
-// must have been read (or written) before it is modified, and one that
-// changed on disk since must be re-read. Without this, an edit against an
+// FileViews records, per cleaned absolute path, the file state the model
+// last observed in a conversation, not file contents. Edit and Write consult it
+// to enforce the contract their schemas promise: modifying a file "requires a
+// current view" — the file must have been read (or written) before it is modified,
+// and one that changed on disk since must be re-read. Without this, an edit against an
 // outdated view surfaces as a confusing "old_string was not found" failure
 // instead of naming the real cause.
 type FileViews struct {

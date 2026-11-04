@@ -64,6 +64,9 @@ type acpHost struct {
 	sessions map[protocol.SessionID]*acpSession
 }
 
+// ACP does not apply shell directory handoffs to the session's CWD.
+const acpBashCWDHelp = "Directory changes affect only this command; subsequent commands start in the original session working directory"
+
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
@@ -117,9 +120,9 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
 	}
 	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: h.model,
-		MaxTokens: setting.DefaultMaxTokens,
-		FileViews: fs.NewFileViews(), FixedCWD: true,
-		SideEffect: func(id string, value any) { s.sideEffects.Store(id, value) },
+		MaxTokens:        setting.DefaultMaxTokens,
+		FileObservations: fs.NewFileViews(), BashCWDHelp: acpBashCWDHelp,
+		OnToolHookResponse: func(toolCallID string, response any) { s.sideEffects.Store(toolCallID, response) },
 		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
 			if acpBackgroundCall(name, args) {
 				return agent.PermDecisionResult{Decision: perm.Reject, Reason: "ACP supports foreground commands only"}
