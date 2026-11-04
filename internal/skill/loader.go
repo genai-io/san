@@ -98,7 +98,7 @@ func (l *loader) pluginPaths() (user, project []searchPath) {
 // loadAll loads all skills from all directories.
 // Higher priority scopes override lower priority ones with the same name.
 func (l *loader) loadAll() (map[string]*Skill, error) {
-	skills := builtinSkills()
+	skills := make(map[string]*Skill)
 
 	for _, sp := range l.getSearchPaths() {
 		confdir.WalkFiles(sp.path, func(path string) {

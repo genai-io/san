@@ -31,9 +31,6 @@ func (r *Registry) LoadPersona(skillDirs []string, states map[string]string) {
 	var loaded []personaSkill
 	for _, s := range bundled {
 		fn := s.FullName()
-		if existing := r.skills[fn]; existing != nil && existing.Scope == ScopeBuiltin {
-			continue // Built-in command names cannot be shadowed.
-		}
 		loaded = append(loaded, personaSkill{fullName: fn, shadowed: r.skills[fn]})
 		s.State = bundledState(states, s)
 		r.skills[fn] = s

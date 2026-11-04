@@ -2,7 +2,6 @@ package app
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -16,9 +15,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/kit/suggest"
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
-	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 )
 
@@ -27,6 +24,7 @@ import (
 // for the main loop. The group package owns the files.
 
 const groupUsage = `Usage:
+  /group <request>                                           manage membership in an isolated context
   /group members                                             who is in your group
   /group list                                                every group
   /group join [group] [--as NAME] [--role TEXT] [--hold]     join, creating the group if needed
@@ -37,6 +35,7 @@ const groupUsage = `Usage:
 
 // groupState is what the main loop keeps about this session's group.
 type groupState struct {
+	control    *groupControlRequest
 	blob       string                 // the membership as last persisted; "" outside a group
 	name       string                 // the group blob names
 	roster     map[string]rosterEntry // by session ID; nil until the first read
@@ -68,8 +67,8 @@ type memberMsg struct {
 	inbox    []group.Message
 }
 
-// groupJoinMsg carries a /group join whose name or role had to be summarized.
-type groupJoinMsg struct {
+// groupJoinOptions contains explicit or deterministically defaulted join arguments.
+type groupJoinOptions struct {
 	group, name, role string
 	hold              bool
 }
@@ -102,9 +101,7 @@ func groupTick(stamp, fullRead time.Time, known map[string]rosterEntry) tea.Cmd 
 
 func (m *model) nextGroupTick() tea.Cmd { return groupTick(m.grp.stamp, m.grp.fullRead, m.grp.roster) }
 
-// startGroupPolling starts the loop once this session is in a group, however
-// it got there: /group join, the Group tool, or a resume. Update calls it
-// after every message; outside a group it costs one lock and does nothing.
+// startGroupPolling starts one polling loop after joining or resuming a group.
 func (m *model) startGroupPolling() tea.Cmd {
 	if m.grp.polling {
 		return nil
@@ -389,13 +386,13 @@ func currentMembership() string {
 	return string(data)
 }
 
-// reconcileMembership follows the membership wherever it changed — /group, the
-// Group tool, a kick seen on disk: the session record and the roster the loop compares against.
+// reconcileMembership persists membership changes and resets the polling roster.
 func (m *model) reconcileMembership() {
 	blob := currentMembership()
 	if blob == m.grp.blob {
 		return
 	}
+	m.cancelGroupControl()
 	g, _ := group.Current()
 	if blob == "" {
 		m.grp = groupState{polling: m.grp.polling}
@@ -409,6 +406,7 @@ func (m *model) reconcileMembership() {
 // exitGroup takes the member offline at exit. A session that was never saved
 // can't be resumed, so its member would stay offline for good: it leaves.
 func (m *model) exitGroup() {
+	m.cancelGroupControl()
 	if path := m.sessionTranscriptPath(); path != "" {
 		if _, err := os.Stat(path); err == nil {
 			group.Release()
@@ -422,6 +420,7 @@ func (m *model) exitGroup() {
 // ran before /fork or /resume: the membership stays with that session, offline
 // until it is resumed. Both the person and the model are told.
 func (m *model) releaseGroupOnSwitch() {
+	m.cancelGroupControl()
 	g, self := group.Current()
 	if g == "" || self.SessionID == m.sessionID() {
 		return
@@ -450,10 +449,41 @@ func (m *model) rejoinGroup(blob string) {
 }
 
 func (m *model) groupCommand(args string) (string, tea.Cmd) {
-	sub, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+	m.cancelGroupControl()
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return m.fitLines(group.Listing()) + "\n" + groupUsage, nil
+	}
+	sub, rest, _ := strings.Cut(args, " ")
 	rest = strings.TrimSpace(rest)
+	// Only exact native syntax bypasses the isolated interpreter. In particular,
+	// prose beginning with "leave" must not silently become a leave command.
 	switch sub {
-	case "", "members":
+	case "members", "list", "leave":
+		if rest != "" {
+			return m.resolveGroupControl(args)
+		}
+	case "kick", "disband":
+		if len(strings.Fields(rest)) != 1 {
+			return "Use an explicit /group " + sub + " <name> command.", nil
+		}
+	case "join":
+		if !validGroupJoinSyntax(rest) {
+			return m.resolveGroupControl(args)
+		}
+	case "hold":
+		if rest != "on" && rest != "off" {
+			return m.resolveGroupControl(args)
+		}
+	default:
+		return m.resolveGroupControl(args)
+	}
+	return m.groupNativeCommand(sub, rest)
+}
+
+func (m *model) groupNativeCommand(sub, rest string) (string, tea.Cmd) {
+	switch sub {
+	case "members":
 		return m.fitLines(group.Listing()), nil
 	case "list":
 		return group.GroupsListing(), nil
@@ -517,22 +547,12 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	if !group.ValidName(name) {
 		return fmt.Sprintf("Invalid group name %q: use letters, digits, - or _.", name), nil
 	}
-	msgs := m.conv.ConvertToProvider()
-	provider, model, cwd, session := m.env.LLMProvider, m.env.GetModelID(), m.env.CWD, m.env.SessionName
-	if (member != "" && role != "") || len(msgs) == 0 { // given, or nothing to summarize
-		gotName, gotRole := group.Fallback(session, cwd)
-		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), hold: hold}), nil
-	}
-	return m.fitLines(fmt.Sprintf("Joining %s — naming this session…", name)), func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		defer cancel()
-		gotName, gotRole := describeSession(ctx, provider, model, msgs, cwd, session)
-		return groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), hold: hold}
-	}
+	gotName, gotRole := group.Fallback(m.env.SessionName, m.env.CWD)
+	return m.finishJoin(groupJoinOptions{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), hold: hold}), nil
 }
 
 // finishJoin joins and reports the outcome; it runs on the UI goroutine.
-func (m *model) finishJoin(msg groupJoinMsg) string {
+func (m *model) finishJoin(msg groupJoinOptions) string {
 	name := group.FreeName(msg.group, cmp.Or(group.NameFrom(msg.name), "session"))
 	self, err := group.Join(msg.group, group.Member{Name: name, Role: msg.role, Hold: msg.hold, Cwd: m.env.CWD})
 	if err != nil {
@@ -647,45 +667,6 @@ func parseGroupJoin(args string) (name, member, role string, hold bool) {
 		}
 	}
 	return cmp.Or(name, group.DefaultName), member, role, hold
-}
-
-const describeSessionPrompt = `You name a coding session that is joining a group of collaborating sessions.
-Read the conversation and answer with exactly two lines, nothing else:
-name: <a 1-3 word kebab-case handle for what this session works on>
-role: <at most 10 words on what this session owns, in the conversation's language>`
-
-// describeSession summarizes the conversation into a member name and role,
-// falling back to the session name or directory when there is nothing to go on.
-func describeSession(ctx context.Context, provider llm.Provider, model string, msgs []core.Message, cwd, session string) (name, role string) {
-	name, role = group.Fallback(session, cwd)
-	if provider == nil || len(msgs) == 0 {
-		return name, role
-	}
-	text := kit.TruncateKeepEnd(core.BuildCompactionText(msgs), 12000)
-	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-		Model:        model,
-		SystemPrompt: describeSessionPrompt,
-		Messages:     []core.Message{core.UserMessage(text, nil)},
-		MaxTokens:    600,
-	})
-	if err != nil {
-		return name, role
-	}
-	for line := range strings.SplitSeq(resp.Content.Text(), "\n") {
-		key, value, _ := strings.Cut(line, ":")
-		value = strings.TrimSpace(value)
-		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "name":
-			if n := group.NameFrom(value); n != "" {
-				name = n
-			}
-		case "role":
-			if value != "" {
-				role = value
-			}
-		}
-	}
-	return name, role
 }
 
 // groupSuggestions completes /group: its subcommands, then what each takes.

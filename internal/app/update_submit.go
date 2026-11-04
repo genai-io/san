@@ -37,7 +37,7 @@ func (m *model) handleSubmit() tea.Cmd {
 	if m.conv.Stream.Active {
 		// A workflow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
-		// /btw and /recap exist to be asked while the agent works.
+		// Side commands, including group control, run outside the main turn.
 		if input.IsWorkflowStopCommand(raw) || input.IsSideCommand(raw) {
 			m.userInput.RecordSubmission(m.env.CWD, raw)
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
@@ -253,11 +253,6 @@ func (m *model) submit(p pendingMessage) tea.Cmd {
 		return m.notifyNoProvider()
 	}
 
-	// A queued invocation must not change the tools of a running turn.
-	if m.conv.Stream.Active {
-		return m.sendPendingMessages()
-	}
-	m.groupSkillTurn = m.pendingMessages.First().FromUser && m.pendingMessages.First().GroupSkill
 	startCmd, err := m.ensureAgentRuntime()
 	if err != nil {
 		m.conv.AddNotice("Failed to start agent: " + err.Error())
@@ -285,7 +280,6 @@ func (m *model) notifyNoProvider() tea.Cmd {
 // (if the skill came from a plugin) is set on the agent so hooks/tools
 // fired during the turn see PLUGIN_ROOT pointing at that plugin.
 func (m *model) HandleSkillInvocation() tea.Cmd {
-	groupSkill := m.userInput.Skill.PendingFullName == "group"
 	displayMsg, fullMsg, pluginRoot := m.userInput.Skill.ConsumeInvocation()
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
@@ -298,5 +292,5 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 			m.services.Agent.SetPluginRoot(pluginRoot)
 		}
 	}
-	return m.submit(pendingMessage{Message: msg, FromUser: true, GroupSkill: groupSkill})
+	return m.SubmitToAgent(msg)
 }

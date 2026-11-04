@@ -160,11 +160,10 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 	}
 }
 
-// IsSideCommand reports whether input is /btw or /recap, side requests that
-// run even mid-turn.
+// IsSideCommand reports requests that run outside the main agent, even mid-turn.
 func IsSideCommand(input string) bool {
 	name, _, ok := command.ParseCommand(input)
-	return ok && (name == "btw" || name == "recap")
+	return ok && (name == "btw" || name == "recap" || name == "group")
 }
 
 func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {
@@ -493,17 +492,8 @@ func (c *SlashCommandController) handleTrustCommand(context.Context, string) (st
 }
 
 func (c *SlashCommandController) handleGroupCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	sub, _, _ := strings.Cut(strings.TrimSpace(args), " ")
-	switch sub {
-	case "members", "list", "kick", "disband":
-		out, cmd := c.env.GroupCommand(args)
-		return out, cmd, nil
-	}
-	sk, ok := lookupSkill(c.env.Skill, "group")
-	if !ok {
-		return "The group skill is disabled or unavailable.", nil, nil
-	}
-	return c.executeSkillSlashCommand(sk, args), c.env.HandleSkillInvocation(), nil
+	out, cmd := c.env.GroupCommand(args)
+	return out, cmd, nil
 }
 
 // handleEvolveCommand opens the /evolve popup — the self-learning

@@ -374,14 +374,9 @@ func firstValidDuration(vals ...string) time.Duration {
 // additionally hold SendMessage on so their members remain reachable.
 func (m *model) disabledTools() map[string]bool {
 	disabled := maps.Clone(m.services.Setting.DisabledTools())
-	if disabled == nil {
-		disabled = make(map[string]bool)
-	}
 	for name := range toolsHeldOn() {
 		delete(disabled, name)
 	}
-	// Membership alone must not let the model change its own membership.
-	disabled[tool.ToolGroup] = !m.groupSkillTurn
 	return disabled
 }
 
@@ -493,36 +488,21 @@ func (m *model) sendPendingMessages() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	var startCmd tea.Cmd
 	if !m.conv.Stream.Active && m.pendingMessages.Len() > 0 {
-		next := m.pendingMessages.First()
-		groupSkill := next.FromUser && next.GroupSkill
-		if m.groupSkillTurn != groupSkill {
-			m.groupSkillTurn = groupSkill
-			var err error
-			startCmd, err = m.ensureAgentRuntime()
-			if err != nil {
-				m.groupSkillTurn = !groupSkill
-				m.conv.AddNotice("Failed to start agent: " + err.Error())
-				return tea.Batch(m.CommitMessages()...)
-			}
-		}
-		m.turnOpenedBy = next.ID
+		m.turnOpenedBy = m.pendingMessages.First().ID
 	}
 	if m.pendingPluginRoot != "" {
 		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
 		m.pendingPluginRoot = ""
 	}
-	if err := m.pendingMessages.DeliverEligible(m.services.Agent.Send, m.attachPendingReminders, m.startMemoryRecall, func(p pendingMessage) bool {
-		return (p.FromUser && p.GroupSkill) == m.groupSkillTurn
-	}); err != nil {
-		return tea.Batch(startCmd, func() tea.Msg { return agentSendFailedMsg{err: err} })
+	if err := m.pendingMessages.Deliver(m.services.Agent.Send, m.attachPendingReminders, m.startMemoryRecall); err != nil {
+		return func() tea.Msg { return agentSendFailedMsg{err: err} }
 	}
 	if !m.conv.Stream.Active {
 		m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: time.Now()}
-		return tea.Batch(startCmd, m.conv.Spinner.Tick)
+		return m.conv.Spinner.Tick
 	}
-	return startCmd
+	return nil
 }
 
 // memoryRecall is the pick running beside the current turn, read by the

@@ -64,10 +64,6 @@ func (t *SkillTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, fmt.Errorf("skill is disabled: %s", sk.FullName())
 	}
 
-	if sk.DisableModelInvocation {
-		return nil, fmt.Errorf("skill is user-only; invoke /%s directly", sk.FullName())
-	}
-
 	// Build description
 	desc := fmt.Sprintf("Load skill: %s", sk.FullName())
 	if args != "" {
@@ -128,10 +124,6 @@ func (t *SkillTool) execute(ctx context.Context, params map[string]any, cwd stri
 	// Check if skill is enabled
 	if !sk.IsEnabled() {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("skill is disabled: %s", sk.FullName()))
-	}
-
-	if sk.DisableModelInvocation {
-		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("skill is user-only; invoke /%s directly", sk.FullName()))
 	}
 
 	if alreadyInlined(ctx, sk.FullName()) {

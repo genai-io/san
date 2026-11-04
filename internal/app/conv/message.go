@@ -857,9 +857,6 @@ func RenderToolCalls(params ToolCallsParams) string {
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
-				if tc.Name == tool.ToolGroup {
-					args = groupCallArgs(tc.Input)
-				}
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))

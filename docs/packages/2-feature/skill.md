@@ -95,13 +95,6 @@ func ResetDefaultRegistry()           // test-only
   message; enable-only skills surface as slash commands but stay out of
   the model's awareness entirely.
 
-## Built-in group skill
-
-`/group join shop`, `/group leave`, and `/group hold on` invoke a built-in,
-user-only skill. It stays hidden from the model until invoked, and the `Group`
-tool is available only for that turn. Loaded instructions remain in history.
-`/group members`, `list`, `kick`, and `disband` remain native commands.
-
 ## Lifecycle
 
 - Construction: `Initialize(Options{CWD})` at app startup, before

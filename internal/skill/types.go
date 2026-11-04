@@ -60,9 +60,6 @@ const (
 	// ScopePersona is the selected persona's skills/ — loaded in-memory at the
 	// highest priority and never persisted to skills.json.
 	ScopePersona
-
-	// ScopeBuiltin is a bundled skill whose name is reserved by the application.
-	ScopeBuiltin
 )
 
 // String returns the display name for the scope.
@@ -80,8 +77,6 @@ func (s SkillScope) String() string {
 		return "project-plugin"
 	case ScopeProject:
 		return "project"
-	case ScopeBuiltin:
-		return "builtin"
 	case ScopePersona:
 		return "persona"
 	default:
@@ -97,20 +92,16 @@ type Skill struct {
 	Description  string   `yaml:"description"`
 	AllowedTools []string `yaml:"allowed-tools"`
 	ArgumentHint string   `yaml:"argument-hint"`
-	// DisableModelInvocation restricts a skill to explicit user invocation,
-	// regardless of its persisted state.
-	DisableModelInvocation bool `yaml:"disable-model-invocation"`
 	// Origin marks provenance. Absent/empty means "user-created" (the
 	// default); other producers may set a non-empty value to mark the
 	// source so downstream consumers can scope writes by provenance.
 	Origin string `yaml:"origin,omitempty"`
 
 	// Runtime fields
-	InlineInstructions string     `yaml:"-"` // Bundled instructions, without a disk file
-	FilePath           string     // Full path to the skill file
-	SkillDir           string     // Directory containing the skill
-	Scope              SkillScope // Where the skill was loaded from
-	State              SkillState // Current state (persisted separately)
+	FilePath string     // Full path to the skill file
+	SkillDir string     // Directory containing the skill
+	Scope    SkillScope // Where the skill was loaded from
+	State    SkillState // Current state (persisted separately)
 
 	// Resource directories (Agent Skills spec)
 	Scripts    []string // Files in scripts/ directory
@@ -133,15 +124,12 @@ func (s *Skill) IsEnabled() bool {
 
 // IsActive returns true if the skill is active (model aware).
 func (s *Skill) IsActive() bool {
-	return s.State == StateActive && !s.DisableModelInvocation
+	return s.State == StateActive
 }
 
-// Instructions returns bundled instructions, or reads file-backed instructions
-// from disk each time so modifications to SKILL.md are immediately reflected.
+// Instructions returns the full skill instructions, reading from disk each time.
+// This ensures modifications to SKILL.md files are immediately reflected.
 func (s *Skill) Instructions() string {
-	if s.InlineInstructions != "" {
-		return s.InlineInstructions
-	}
 	if s.FilePath == "" {
 		return ""
 	}

@@ -8,6 +8,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -75,11 +76,14 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if head, ok := m.userInput.Queue.At(0); ok {
 		fields := strings.Fields(head.Content)
 		if len(fields) > 0 && fields[0] == "/group" {
-			// Membership changes need their own toolset, never a mid-turn injection.
-			if m.conv.Stream.Active {
-				return nil, false
+			// A queued control request stays local, just like a direct side command.
+			m.userInput.Queue.Dequeue()
+			text, cmd, _ := m.executeCommand(context.Background(), head.Content)
+			if text != "" {
+				m.conv.AddNotice(text)
 			}
-			return m.sendNextQueuedInputIfIdle(), true
+			next, _ := m.releaseQueuedMessage()
+			return tea.Batch(append(m.CommitMessages(), cmd, next)...), true
 		}
 	}
 	item, ok := m.userInput.Queue.Dequeue()
@@ -114,10 +118,6 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
-	// Inputs requiring a different toolset stayed out of the previous turn.
-	if m.pendingMessages.Len() > 0 && m.pendingMessages.CanDeliver(false) {
-		return m.sendPendingMessages(), true
-	}
 	// Drain ONE user message per call so each gets its own agent response.
 	// The agent's inner loop also drains one inbox message at a time,
 	// producing one TurnEnded per queued message. Leaving edit mode re-kicks a

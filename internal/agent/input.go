@@ -6,8 +6,6 @@ import "github.com/genai-io/san/internal/core"
 type PendingInput struct {
 	core.Message
 	FromUser bool
-	// GroupSkill records an explicit user invocation across queued delivery.
-	GroupSkill bool
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
@@ -75,19 +73,11 @@ func (q *InputQueue) ResetAdmission() {
 
 // Deliver sends FIFO, retaining rejected input. Retries rerun prepare and user recall.
 func (q *InputQueue) Deliver(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string)) error {
-	return q.DeliverEligible(send, prepare, recall, func(PendingInput) bool { return true })
-}
-
-// DeliverEligible sends FIFO until canDeliver returns false, retaining that input and everything after it.
-func (q *InputQueue) DeliverEligible(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string), canDeliver func(PendingInput) bool) error {
 	if !q.CanDeliver(false) {
 		return nil
 	}
 	for len(q.items) > 0 {
 		next := &q.items[0]
-		if !canDeliver(*next) {
-			return nil
-		}
 		if next.FromUser {
 			recall(next.Text())
 		}

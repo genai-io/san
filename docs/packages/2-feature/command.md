@@ -85,11 +85,19 @@ the fixes depend on all four reports. Reviewers receive the diff commands and
 paths and inspect source through their own effective tools. Blocked coverage
 is reported explicitly rather than retried with source pasted by the parent.
 
+## Group control
+
+`/group join shop`, `leave`, and `hold on` run directly. Natural-language requests
+use an isolated completion with only the request and current membership; the app
+validates and applies its result. No Group tool or control prompt enters the main
+agent. `/group kick` and `disband` require explicit commands.
+
 ## Tests
 
 ```
 internal/command/registry_test.go    — name lookup, fuzzy matching,
                                         custom + built-in precedence.
+internal/app/group_control_test.go  — isolated requests, validation, stale results.
 internal/command/arguments_test.go   — quoted values, unfinished fields,
                                         Unicode byte ranges, generated argument round trips.
 ```

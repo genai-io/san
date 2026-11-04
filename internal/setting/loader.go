@@ -446,8 +446,6 @@ var defaultDisabledTools = map[string]bool{
 	// its schema is the longest of any tool and lists every saved workflow, and
 	// a model that has it will reach for it where one Agent call would do.
 	"Workflow": true,
-	// Group is exposed by the app only during an explicit /group skill turn.
-	"Group": true,
 	// Self-learning is opt-in; saving /evolve capabilities enables its trigger.
 	"Evolve": true,
 }

@@ -179,9 +179,6 @@ type model struct {
 	// that enter mid-turn belong to it.
 	turnOpenedBy string
 
-	// groupSkillTurn exposes membership tools only for an explicit /group invocation.
-	groupSkillTurn bool
-
 	// memoryRecall is shared with the agent goroutine, made with the agent.
 	memoryRecall *memoryRecall
 
