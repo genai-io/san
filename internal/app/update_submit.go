@@ -253,6 +253,11 @@ func (m *model) submit(p pendingMessage) tea.Cmd {
 		return m.notifyNoProvider()
 	}
 
+	// A queued invocation must not change the tools of a running turn.
+	if m.conv.Stream.Active {
+		return m.sendPendingMessages()
+	}
+	m.groupSkillTurn = m.pendingMessages.First().FromUser && m.pendingMessages.First().GroupSkill
 	startCmd, err := m.ensureAgentRuntime()
 	if err != nil {
 		m.conv.AddNotice("Failed to start agent: " + err.Error())
@@ -280,6 +285,7 @@ func (m *model) notifyNoProvider() tea.Cmd {
 // (if the skill came from a plugin) is set on the agent so hooks/tools
 // fired during the turn see PLUGIN_ROOT pointing at that plugin.
 func (m *model) HandleSkillInvocation() tea.Cmd {
+	groupSkill := m.userInput.Skill.PendingFullName == "group"
 	displayMsg, fullMsg, pluginRoot := m.userInput.Skill.ConsumeInvocation()
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
@@ -292,5 +298,5 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 			m.services.Agent.SetPluginRoot(pluginRoot)
 		}
 	}
-	return m.SubmitToAgent(msg)
+	return m.submit(pendingMessage{Message: msg, FromUser: true, GroupSkill: groupSkill})
 }

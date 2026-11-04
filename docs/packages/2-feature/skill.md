@@ -95,6 +95,24 @@ func ResetDefaultRegistry()           // test-only
   message; enable-only skills surface as slash commands but stay out of
   the model's awareness entirely.
 
+## Built-in group skill
+
+`/group` loads a bundled, user-only skill into the conversation. For example,
+`/group join shop`, `/group leave`, and `/group hold on` ask the model to
+manage this session's membership. The skill is enabled by default but excluded
+from the model's skill directory; `disable-model-invocation` also rejects
+model-initiated `Skill` calls, even if its saved state is `active`.
+
+`internal/app/input` routes these invocations through the normal skill flow.
+`internal/app` exposes the `Group` executor only for that invocation's turn,
+then removes it when the next ordinary turn starts. Joining a group enables
+`SendMessage`, not `Group`. Existing permission checks still apply.
+`/group members`, `list`, `kick`, and `disband` remain native commands.
+
+Tests: `go test ./internal/skill ./internal/tool/skill ./internal/app ./internal/app/input`.
+The skill is hidden before invocation, not after: its loaded instructions and
+results remain in the conversation history.
+
 ## Lifecycle
 
 - Construction: `Initialize(Options{CWD})` at app startup, before

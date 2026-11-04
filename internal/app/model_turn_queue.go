@@ -72,6 +72,16 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !m.pendingMessages.CanDeliver(false) || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
+	if head, ok := m.userInput.Queue.At(0); ok {
+		fields := strings.Fields(head.Content)
+		if len(fields) > 0 && fields[0] == "/group" {
+			// Membership changes need their own toolset, never a mid-turn injection.
+			if m.conv.Stream.Active {
+				return nil, false
+			}
+			return m.sendNextQueuedInputIfIdle(), true
+		}
+	}
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
 		return nil, false
@@ -104,6 +114,10 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
+	// Inputs requiring a different toolset stayed out of the previous turn.
+	if m.pendingMessages.Len() > 0 && m.pendingMessages.CanDeliver(false) {
+		return m.sendPendingMessages(), true
+	}
 	// Drain ONE user message per call so each gets its own agent response.
 	// The agent's inner loop also drains one inbox message at a time,
 	// producing one TurnEnded per queued message. Leaving edit mode re-kicks a

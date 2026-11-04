@@ -80,6 +80,29 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 	}
 }
 
+func TestInputQueueAdmissionRetainsSkillBoundary(t *testing.T) {
+	var q InputQueue
+	q.Enqueue(PendingInput{Message: core.UserMessage("ordinary", nil), FromUser: true})
+	q.Enqueue(PendingInput{Message: core.UserMessage("/group join shop", nil), FromUser: true, GroupSkill: true})
+	q.Enqueue(PendingInput{Message: core.UserMessage("following", nil), FromUser: true})
+	var sent []string
+	send := func(msg core.Message) error { sent = append(sent, msg.Text()); return nil }
+	prepare := func(msg core.Message) core.Message { return msg }
+	for _, groupTurn := range []bool{false, true, false} {
+		if err := q.DeliverWhile(send, prepare, func(string) {}, func(p PendingInput) bool {
+			return p.GroupSkill == groupTurn
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(sent) == 1 && (!q.First().GroupSkill || q.Len() != 2) {
+			t.Fatal("queued skill metadata or following input lost")
+		}
+	}
+	if q.Len() != 0 || !reflect.DeepEqual(sent, []string{"ordinary", "/group join shop", "following"}) {
+		t.Fatalf("delivery reordered or dropped input: %v", sent)
+	}
+}
+
 func TestEmptyInputQueueDoesNotCallDelivery(t *testing.T) {
 	var q InputQueue
 	if err := q.Deliver(nil, nil, nil); err != nil {

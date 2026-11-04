@@ -493,8 +493,17 @@ func (c *SlashCommandController) handleTrustCommand(context.Context, string) (st
 }
 
 func (c *SlashCommandController) handleGroupCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	out, cmd := c.env.GroupCommand(args)
-	return out, cmd, nil
+	sub, _, _ := strings.Cut(strings.TrimSpace(args), " ")
+	switch sub {
+	case "members", "list", "kick", "disband":
+		out, cmd := c.env.GroupCommand(args)
+		return out, cmd, nil
+	}
+	sk, ok := lookupSkill(c.env.Skill, "group")
+	if !ok {
+		return "The group skill is disabled or unavailable.", nil, nil
+	}
+	return c.executeSkillSlashCommand(sk, args), c.env.HandleSkillInvocation(), nil
 }
 
 // handleEvolveCommand opens the /evolve popup — the self-learning
