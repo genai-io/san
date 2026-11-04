@@ -159,25 +159,26 @@ func (m *model) syncMCPTools() {
 }
 
 func (m *model) buildAgentParams() (agent.BuildParams, error) {
+	if m.services.Setting == nil || m.env.SessionPermissions == nil {
+		return agent.BuildParams{}, fmt.Errorf("main-session runtime requires a permission policy")
+	}
 	params := m.promptParams()
 
 	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
-	var onEvent func(core.Event)
 	rec, err := m.openCurrentSession()
 	if err != nil {
 		return params, err
 	}
-	if rec != nil {
-		onEvent = rec.RecordEvent
-		for _, n := range m.earlyNotices {
-			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
-				Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
-					AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
-		}
-		m.earlyNotices = nil
-		m.services.Hook.SetAuditCallback(rec.RecordHookAudit)
-		m.services.Skill.SetStateChangeObserver(rec.RecordSkillStateChange)
+	owner := agent.MainSession{Session: rec, Store: m.services.SessionStore}
+	if err := owner.Validate(); err != nil {
+		return params, err
 	}
+	for _, n := range m.earlyNotices {
+		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
+			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
+				AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
+	}
+	m.earlyNotices = nil
 
 	// Build the autopilot judge into the atomic slot so /autopilot Save can
 	// hot-swap it mid-session; the closures below Load it per call.
@@ -195,14 +196,11 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	)
 
 	params.Provider = m.env.LLMProvider
-	params.SessionID = rec.ID()
 	params.ModelID = m.env.GetModelID()
 	params.MaxTokens = maxTokens
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
-	params.OnEvent = onEvent
 	params.FileCache = m.env.FileCache
-	params.CWDFunc = func() string { return m.env.CWD }
-	params.HookEngine = m.services.Hook
+	params.CWDFunc = func() string { return m.autopilot.Load().cwd }
 
 	bridge := m.conv.AgentToUI
 	params.AskUser = func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
@@ -223,12 +221,26 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if m.memoryRecall == nil {
 		m.memoryRecall = &memoryRecall{surfaced: map[string]bool{}}
 	}
-	params.ResultFilter = agent.WithRecall(m.filterOversizedResult, m.memoryRecall.current.Load)
+	params.StreamFirstChunkTimeout = streamFirstChunk
+	params.StreamIdleTimeout = streamIdle
+	// Bind extension audits here, where the application owns their lifecycle.
+	// Session validation and agent construction never rebind shared services.
+	params.SessionID = rec.ID()
+	params.OnEvent = rec.RecordEvent
+	if hooks := m.services.Hook; hooks != nil {
+		hooks.SetSession(rec.ID(), rec.TranscriptPath())
+		hooks.SetAuditCallback(rec.RecordHookAudit)
+		params.HookEngine = hooks
+	}
+	if skills := m.services.Skill; skills != nil {
+		skills.SetStateChangeObserver(rec.RecordSkillStateChange)
+	}
 	policy := agent.PermissionPolicy{
 		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
 		Audit: func(record transcript.Record) { _ = rec.Append(context.Background(), record) },
 	}
 	params.PermissionRules = policy.Decide
+	params.CanApproveByHook = policy.CanApproveByHook
 	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
 		rt := m.autopilot.Load()
 		if rt == nil {
@@ -236,15 +248,14 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		}
 		return policy.Review(ctx, name, args, reason, agent.PermissionReview{
 			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
-			CWD: m.env.CWD, UnderGit: m.env.IsGit, Mission: rt.cfg.ActiveMission(),
+			CWD: rt.cwd, UnderGit: rt.underGit, Mission: rt.cfg.ActiveMission(),
 			Judge: rt.judge.Permission, Observe: m.recordDecision,
 		})
 	}
-	params.CanApproveByHook = policy.CanApproveByHook
-
-	params.StreamFirstChunkTimeout = streamFirstChunk
-	params.StreamIdleTimeout = streamIdle
-
+	params.ResultFilter = agent.WithRecall(
+		agent.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter,
+		m.memoryRecall.current.Load,
+	)
 	return params, nil
 }
 

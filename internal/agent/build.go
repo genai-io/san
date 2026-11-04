@@ -202,6 +202,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		return reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), cache, budget)), nil
 	}
 
+	permissionGate := tool.HookedPermission(p.HookEngine, pg)
 	ag = core.NewAgent(core.Config{
 		ID:              "main",
 		Client:          client.TurnClient,
@@ -210,11 +211,13 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		ContextBudget:   client.ContextBudget,
 		System:          sys,
 		Tools:           tools,
-		Gate:            tool.HookedPermission(p.HookEngine, pg),
-		ResultFilter:    p.ResultFilter,
-		CompactFunc:     compactFunc,
-		OnEvent:         p.OnEvent,
-		OutboxBuf:       outboxBuf,
+		Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
+			return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+		},
+		ResultFilter: p.ResultFilter,
+		CompactFunc:  compactFunc,
+		OnEvent:      p.OnEvent,
+		OutboxBuf:    outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,

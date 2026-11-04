@@ -17,6 +17,9 @@ func (m *model) changeCwd(newCwd string) {
 	oldCwd := m.env.CWD
 	m.env.CWD = newCwd
 	m.env.IsGit = m.services.Setting.IsGitRepo(newCwd)
+	// Publish only after both facts are resolved. The running agent's tools
+	// and reviewer must see the new workspace without waiting for a rebuild.
+	m.refreshAutopilotSnapshot()
 	m.userInput.HandleCwdChange(newCwd)
 	m.env.ClearCachedInstructions()
 	m.refreshMemoryContext(newCwd, "cwd_changed")

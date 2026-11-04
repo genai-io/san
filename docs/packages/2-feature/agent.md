@@ -55,7 +55,24 @@ func Default() *Runtime
   The native message chain survives both deliberate stops and unexpected exits;
   resume can seed it before the first run. `Reset` clears it after shutdown.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
-  permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
+  permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
+  stamp the tool-call ID before hooks, reviewer and human approval run, matching
+  subagent gates (tool execution wrappers alone run too late to identify approval).
+- `main_session.go` pairs only the opened `Session` and full-result `Store`.
+  `MainSession.Validate` rejects missing/closed owners and mismatched stores without
+  mutating services. Native session APIs provide recording; `ResultPager` captures
+  the validated store and session ID. `internal/app.buildAgentParams` explicitly
+  binds recording, permission policy, hook/skill audits and live review/recall to
+  `BuildParams`, the sole runtime configuration. Stop extension work before rebinding
+  its session callbacks; the builder does not own extension lifetimes.
+- `result_pager.go` owns the main-agent output policy: text above 100,000 bytes is
+  persisted under the captured session owner, with a UTF-8-safe 10,000-byte preview.
+  Failed persistence explicitly says the full content was not saved. Result metadata
+  and the existing blob handoff format are unchanged; recall is attached after paging.
+  These native components are not an ACP endpoint or a complete headless host:
+  callers still drain events, handle human permissions, manage recall/background work,
+  record application state and stop/close their resources. Successful runtime stop
+  does not prove persistence; inspect the recorder and honor turn finalization.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
 - `permission_policy.go` supplies `PermissionPolicy.Decide`, `Review` and
@@ -128,6 +145,11 @@ func Default() *Runtime
 ## Tests
 
 ```
+internal/app/main_session_test.go — TUI composition, native permission/hook/skill audits,
+                                   allow/deny paging and host callback preservation.
+internal/agent/main_session_test.go — production main-session/runtime tool turns, allow/deny, hook audits,
+                              transcript-before-terminal ordering, live recall and cancelled review.
+internal/agent/result_pager_test.go — threshold, UTF-8 preview, metadata and persistence failure.
 internal/agent/permission_policy_test.go — rule/reviewer/hook composition, exact grants,
                                           audit ordering and cancelled verdicts.
 internal/agent/permission_memory_test.go — memory containment and deny precedence.
