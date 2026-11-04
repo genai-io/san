@@ -87,10 +87,30 @@ is reported explicitly rather than retried with source pasted by the parent.
 
 ## Group control
 
-`/group join shop`, `leave`, and `hold on` run directly. Natural-language requests
-use an isolated completion with only the request and current membership; the app
-validates and applies its result. No Group tool or control prompt enters the main
-agent. `/group kick` and `disband` require explicit commands.
+Use `/group` directly; no skill or tool needs enabling. Join the same group
+from two sessions (the group is created if needed):
+
+```text
+/group join backend --as api --role API development
+/group join backend --as tests --role Testing
+```
+
+Members can then communicate through `SendMessage`.
+
+| Command | Purpose |
+| --- | --- |
+| `/group` | Current status and help |
+| `/group members` / `/group list` | Current members / all groups |
+| `/group leave` | Leave the group |
+| `/group hold on` / `/group hold off` | Hold member messages until your next input / process immediately |
+| `/group kick tests` | Remove a member |
+| `/group disband backend` | Disband the group |
+
+Natural language also works: `/group Join backend as api, responsible for API development`.
+It requires a connected model and runs in an isolated context with only the
+request and current membership, not the main conversation or tools. Explicit
+commands run without model inference, and `/group` works while the main agent
+is busy. Kick and disband always require explicit commands.
 
 ## Tests
 
