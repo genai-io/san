@@ -41,19 +41,28 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if err := ctx.Err(); err != nil {
 		return response, err
 	}
-	if err := s.runtime.Start(s.params, s.runtime.Messages()); err != nil {
-		return response, err
+	if !s.runtime.Active() {
+		if err := s.runtime.Start(s.params, s.runtime.Messages()); err != nil {
+			return response, err
+		}
 	}
 	gate := s.runtime.PermissionGate()
+	permissionsCtx, cancelPermissions := context.WithCancel(ctx)
 	permissionsDone := make(chan struct{})
-	go s.permissions(turn, gate, permissionsDone)
+	go s.permissions(permissionsCtx, turn, gate, permissionsDone)
+	finished := false
+	var stopping chan struct{}
 	defer func() {
-		gate.Close()
-		err = errors.Join(err, s.runtime.Stop(context.Background()))
+		if stopping != nil {
+			<-stopping
+		}
+		if !finished || err != nil {
+			gate.Close()
+			err = errors.Join(err, s.runtime.Stop(context.Background()))
+		}
+		cancelPermissions()
 		<-permissionsDone
-		s.sideEffects.Clear() // stopped runtime can no longer publish handoffs
-		// Runtime shutdown may record an input accepted before its first
-		// inference. Include those final writes in the protocol response fence.
+		s.sideEffects.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
 	msg := core.UserMessage(s.reminders.PrepareInput(text.String()), nil)
@@ -72,7 +81,11 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			if receipt == nil {
 				// Cancellation can precede mailbox admission. Drain while shutdown joins
 				// rather than returning with an accepted input still owned by the runtime.
-				go func() { _ = s.runtime.Stop(context.Background()) }()
+				stopping = make(chan struct{})
+				go func() {
+					_ = s.runtime.Stop(context.Background())
+					close(stopping)
+				}()
 			}
 		case event, ok := <-s.runtime.Outbox():
 			if !ok {
@@ -100,6 +113,10 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				} else {
 					e.Result.Finalization.Acknowledge(recordErr)
 				}
+				if e.Result.Finalization != nil {
+					recordErr = errors.Join(recordErr, e.Result.Finalization.Wait(context.Background()))
+				}
+				finished = true
 				if receipt != nil {
 					recordErr = errors.Join(recordErr, receipt.Wait(context.Background()))
 				}

@@ -60,5 +60,50 @@ Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
   main until user continuation, and same-host versus restarted replay.
   Test against independent clients; verify Zed/Orca separately and measure resources.
 
+## Dependent runtime milestone (PR #723 base)
+
+ACP now keeps one native runtime per session. Prompt receivers have a turn-local
+context; cancelling one does not close the session permission gate. Every terminal
+turn acknowledges and joins its finalization receipt before returning. Failed
+turns and pre-admission cancellation still stop/join the runtime; session close
+resets history before shutting down hooks and closing recording. TUI is unchanged.
+Tests cover receiver reuse, cancel then next turn, independent concurrent sessions,
+automatic compaction over ACP, and blocked-output disconnect callback joins.
+
+The pinned SDK's `Turn.SendUpdate` uses connection lifetime and waits for the
+write; `RequestPermission` also waits for the frame before observing cancellation.
+A blocked writer still prevents prompt-only cancellation from draining/finalizing.
+This needs an SDK transport/API solution (including its turn work/response fence),
+not a detached host goroutine or optimistic queue. No SDK patch or module replace
+is included. Disconnect remains tested with an interruptible `WriteCloser`.
+Keep this work Draft until #723 merges; slow-reader cancellation remains open.
+
+Reproduce the paired native benchmark (no provider/network latency):
+
+```sh
+go test ./internal/app -run '^$' -bench BenchmarkACPPrompt -benchmem -benchtime=100x -count=3
+```
+
+Go 1.26.9, darwin/arm64, Apple M5, default GOMAXPROCS=10. Median results:
+
+| History messages | Restart ms/op | Reuse ms/op | Restart B/op | Reuse B/op | Restart allocs/op | Reuse allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 14.010 | 18.131 | 693255 | 508621 | 10611 | 9465 |
+| 100 | 18.945 | 18.446 | 864574 | 716388 | 11035 | 10283 |
+| 1000 | 19.928 | 19.835 | 2961331 | 2609206 | 18253 | 17503 |
+
+Restart is an in-process reproduction of the former stop/start boundary, not a
+separate checkout measurement. Fixed history setup is excluded; protocol pipes,
+native model preparation, recording and lifecycle are included. Reuse reduces
+allocations but does **not** establish an overall latency win (empty history is
+slower). These are allocation counts, not a heap-retention profile. Session-close
+tests verify runtime/history release; comprehensive long-lived heap profiling is
+still open.
+
+Editor acceptance is not run: Cursor and VS Code are installed, but no Zed or
+identified ACP client extension was found in VS Code's extension list. No app,
+extension or credentials were installed/configured. Simulated-provider tests are
+not real editor or vendor acceptance.
+
 Kernel review: [sdk-go#93](https://github.com/genai-io/sdk-go/pull/93).
 No release or San dependency change yet; stop if this needs a broad TUI rewrite.

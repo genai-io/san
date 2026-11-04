@@ -174,6 +174,13 @@ func (h *acpHost) prompt(ctx context.Context, turn *acp.Turn, req protocol.Promp
 
 // close runs after the endpoint has joined all session callbacks.
 func (s *acpSession) close() error {
+	if gate := s.runtime.PermissionGate(); gate != nil {
+		gate.Close()
+	}
+	if err := s.runtime.Reset(context.Background()); err != nil {
+		return err
+	}
+	s.sideEffects.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})

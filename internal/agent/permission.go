@@ -203,10 +203,17 @@ func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (boo
 }
 
 func (pg *PermissionGate) Recv() (*PermGateRequest, bool) {
-	if pg.ctx.Err() != nil {
+	return pg.RecvContext(context.Background())
+}
+
+// RecvContext lets a turn release its receiver without closing the session gate.
+func (pg *PermissionGate) RecvContext(ctx context.Context) (*PermGateRequest, bool) {
+	if pg.ctx.Err() != nil || ctx.Err() != nil {
 		return nil, false
 	}
 	select {
+	case <-ctx.Done():
+		return nil, false
 	case <-pg.ctx.Done():
 		return nil, false
 	case req := <-pg.requests:
