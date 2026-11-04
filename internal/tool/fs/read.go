@@ -83,7 +83,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	n, _ := file.Read(header)
 	if n > 0 {
 		if bytes.IndexByte(header[:n], 0) >= 0 {
-			recordFileRead(filePath, info)
+			recordFileRead(filePath, info, ctx)
 			binaryNote := "Binary file detected: " + filePath
 			if isImagePath(filePath) {
 				// Tool results are text-only for now, so be honest about the
@@ -151,7 +151,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		return toolresult.NewErrorResult(t.Name(), "error reading file: "+err.Error())
 	}
 
-	recordFileRead(filePath, info)
+	recordFileRead(filePath, info, ctx)
 
 	duration := time.Since(start)
 

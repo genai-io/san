@@ -51,6 +51,11 @@ type BuildParams struct {
 	// when auto memory is off.
 	AutoMemory system.MemoryStores
 
+	// BashDirHelp replaces the Bash schema's session-directory sentence. It is
+	// help text only: CWD/CWDFunc and the host's PostTool handling own behavior.
+	// Empty keeps the default help for hosts that apply directory changes.
+	BashDirHelp string
+
 	// ExtraTools are caller-built conditional tool schemas appended to the
 	// toolset (e.g. the self-learning Evolve trigger, injected only when
 	// self-learning is active). Nil ⇒ no extra tools.
@@ -87,6 +92,14 @@ type BuildParams struct {
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
 	FileCache *filecache.Cache
+	// FileViews tracks read versions for Read-before-Edit/Write checks, not content.
+	// Hosts retain it across runtime rebuilds; nil uses the TUI's default views.
+	FileViews *fs.FileViews
+
+	// ToolResponse receives native ToolResult.HookResponse payloads, not model
+	// output or SDK Details, synchronously before ToolEnd. Hosts retain them by
+	// call ID until PostTool. Must be concurrency-safe; nil uses the TUI store.
+	ToolResponse func(callID string, response any)
 }
 
 // System returns the system prompt these params build. Exported so a caller
@@ -105,11 +118,20 @@ func (p BuildParams) System() core.System {
 // MCP tools are not included — they arrive as ready-made core.Tools rather
 // than schemas, and are wired in separately.
 func (p BuildParams) Schemas() []core.ToolSchema {
-	return (&tool.Set{
+	schemas := (&tool.Set{
 		Disabled:     p.DisabledTools,
 		AgentCatalog: p.AgentCatalog,
 		ExtraTools:   p.ExtraTools,
 	}).Tools()
+	if p.BashDirHelp != "" {
+		for i := range schemas {
+			if schemas[i].Name == "Bash" {
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful cd updates the session working directory", p.BashDirHelp)
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful Set-Location (cd) updates the session working directory", p.BashDirHelp)
+			}
+		}
+	}
+	return schemas
 }
 
 // ToolSchemas returns the tool definitions an agent built from p sends, MCP
@@ -153,6 +175,16 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
+	toolContext := func(ctx context.Context) context.Context {
+		if p.FileViews != nil {
+			return fs.WithFileViews(ctx, p.FileViews)
+		}
+		return ctx
+	}
+	adaptOpts = append(adaptOpts, tool.WithToolContext(toolContext))
+	if p.ToolResponse != nil {
+		adaptOpts = append(adaptOpts, tool.WithSideEffectHandler(p.ToolResponse))
+	}
 	if p.AskUser != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(p.AskUser))
 	}
@@ -212,7 +244,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		System:          sys,
 		Tools:           tools,
 		Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
-			return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+			return permissionGate(core.WithToolCallID(toolContext(ctx), call.Call.ID), call)
 		},
 		ResultFilter: p.ResultFilter,
 		CompactFunc:  compactFunc,

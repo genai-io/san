@@ -82,6 +82,50 @@ option labels, grant/audit callbacks and persistence notices.
 `interactions_renderer_test.go` drives real modal keys and verifies that worker
 tool execution and the next inference receive the decision/answer.
 
+### ACP stdio host
+
+`san acp` enters `RunACP` without constructing a Bubble Tea model. Stdout is
+reserved for SDK ACP frames; diagnostics use stderr. The SDK owns initialization,
+request admission, session cancellation, transport limits and response barriers.
+`acp.go` composes independent native sessions, settings policies, hooks, reminders
+and result stores. `acp_turn.go` consumes native runtime events and translates
+streaming text and tool progress. `acp_permission.go` offers only allow-once and
+reject-once; unknown, cancelled and failed responses never authorize a tool.
+Native deny rules and hook-approval eligibility remain authoritative.
+
+Each ACP session owns its file-observation store across prompts. Tool contexts
+carry that store; native TUI/subagent callers retain their existing default.
+Native HookResponse handoffs use an owner-local consuming store, not SDK display
+Details or process-global call IDs. Write/Edit therefore fire FileChanged and
+populate that session's compaction file cache exactly once per handoff. Shell cwd
+is fixed per session: `cd` affects only the current command, never another call.
+On disconnect, the host joins runtimes, runs SessionEnd, then cancels and joins
+all detached hooks (including completion audit callbacks) before closing the
+transcript. In-process function hooks must honor cancellation; shutdown waits
+for their cleanup rather than closing a writer under them. Regression coverage:
+`acp_native_test.go`, `fs/file_view_owner_test.go`, and `hook/shutdown_test.go`.
+
+The selected native provider/model is used for all connection-local sessions.
+Each absolute session cwd loads its own trusted settings and instruction files.
+UserPromptSubmit, pre/post-tool hooks, automatic compaction context restoration,
+Stop continuations and SessionEnd use native helpers. Terminal handling records
+session state and acknowledges the native receipt before admitting a successor;
+disconnect joins callbacks and runtimes before closing transcript writers.
+
+This first host supports text prompts and Read/Write/Edit/Glob/Grep plus foreground
+Bash, subject to disabled tools and native policy. The session cwd is fixed; a
+shell `cd` applies to that command, not later commands. Background execution,
+TUI questions/secrets, skills/plugins/subagents, client-supplied MCP servers,
+non-text content, resume/load and mode/model switching are not supported or
+advertised. It is not a replacement transport for the TUI. Existing native
+sessions remain available on disk, but ACP session IDs are connection-local.
+
+`TestACP*` exercises actual SDK connections with a scripted provider: text/tool
+streaming, allow/deny/unknown permission choices, native deny versus hook allow,
+consecutive turns, session separation, inference/permission cancellation,
+disconnect, prompt/Stop hooks and essential recording failures. Run
+`go test -race ./internal/app -run '^TestACP'` for focused coverage.
+
 ### Known Violations
 
 - **`services` snapshots 16 singletons via `Default()` at construction.**
