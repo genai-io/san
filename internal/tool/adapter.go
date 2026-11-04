@@ -41,6 +41,7 @@ type adaptConfig struct {
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
+	toolContext     func(context.Context) context.Context
 	sideEffectFn    func(string, any)
 	permissionCheck perm.PermissionFunc
 }
@@ -67,6 +68,11 @@ func WithBashPromptResponderProvider(fn BashPromptResponderProvider) AdaptOption
 	return func(c *adaptConfig) { c.promptResponder = fn }
 }
 
+// WithToolContext supplies owner-scoped values without replacing cancellation.
+func WithToolContext(fn func(context.Context) context.Context) AdaptOption {
+	return func(c *adaptConfig) { c.toolContext = fn }
+}
+
 // WithSideEffectHandler routes handoffs to their owning run instead of the
 // default main-agent store. Tool call IDs are not unique across conversations.
 func WithSideEffectHandler(fn func(string, any)) AdaptOption {
@@ -87,7 +93,7 @@ func adaptationConfig(opts []AdaptOption) adaptConfig {
 }
 
 func adaptTool(t Tool, schema core.ToolSchema, cwd func() string, cfg adaptConfig) *toolAdapter {
-	return &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn, permissionCheck: cfg.permissionCheck}
+	return &toolAdapter{toolContext: cfg.toolContext, inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn, permissionCheck: cfg.permissionCheck}
 }
 
 // AdaptToolRegistry wraps all tools from the global registry as core.Tools.
@@ -120,6 +126,7 @@ type toolAdapter struct {
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
+	toolContext     func(context.Context) context.Context
 	sideEffectFn    func(string, any)
 	permissionCheck perm.PermissionFunc
 }
@@ -127,6 +134,9 @@ type toolAdapter struct {
 func (a *toolAdapter) Schema() core.ToolSchema { return a.schema }
 
 func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
+	if a.toolContext != nil {
+		ctx = a.toolContext(ctx)
+	}
 	input, _ := core.ParseToolInput(call.Input)
 	if a.permissionCheck != nil {
 		ctx = context.WithValue(ctx, permissionCheckKey{}, a.permissionCheck)

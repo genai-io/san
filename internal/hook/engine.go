@@ -52,15 +52,21 @@ type Engine struct {
 	auditCallback AuditCallback
 	envProvider   func(context.Context) []string
 
-	mu         sync.RWMutex
-	store      *hookStore
-	status     *statusTracker
-	detachedWg sync.WaitGroup // tracks fire-and-forget goroutines
+	mu             sync.RWMutex
+	store          *hookStore
+	status         *statusTracker
+	detachedWg     sync.WaitGroup // tracks fire-and-forget goroutines
+	detachedMu     sync.Mutex
+	detachedCtx    context.Context
+	detachedCancel context.CancelFunc
+	closed         bool
 }
 
 // NewEngine creates a new hook execution engine.
 func NewEngine(settings *setting.Data, sessionID, cwd, transcriptPath string) *Engine {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
+		detachedCtx: ctx, detachedCancel: cancel,
 		settings:       settings,
 		sessionID:      sessionID,
 		cwd:            cwd,
@@ -172,8 +178,8 @@ func (e *Engine) Execute(ctx context.Context, event EventType, input HookInput) 
 	for _, hook := range hooks {
 		if hook.Command != nil && (hook.Command.Async || hook.Command.AsyncRewake) {
 			hookCopy, inputCopy := hook, input
-			e.detachedWg.Go(func() {
-				e.executeDetachedHook(context.Background(), hookCopy, inputCopy)
+			e.launchDetached(func() {
+				e.executeDetachedHook(e.detachedCtx, hookCopy, inputCopy)
 			})
 			// Emit at launch; the detached goroutine re-emits with the real
 			// outcome when it finishes. Two records make the lifecycle visible.
@@ -257,9 +263,28 @@ func (e *Engine) ExecuteAsync(event EventType, input HookInput) {
 	hooks := e.getMatchingHooks(event, &input)
 	for _, hook := range hooks {
 		hookCopy, inputCopy := hook, input
-		e.detachedWg.Go(func() {
-			e.executeDetachedHook(context.Background(), hookCopy, inputCopy)
+		e.launchDetached(func() {
+			e.executeDetachedHook(e.detachedCtx, hookCopy, inputCopy)
 		})
+	}
+}
+
+// Shutdown stops detached admission, cancels pending work, and joins completion
+// callbacks (including audit). Owners must stop synchronous callers first and
+// keep writers alive until this returns. Function hooks must honor cancellation.
+func (e *Engine) Shutdown() {
+	e.detachedMu.Lock()
+	e.closed = true
+	e.detachedCancel()
+	e.detachedMu.Unlock()
+	e.detachedWg.Wait()
+}
+
+func (e *Engine) launchDetached(fn func()) {
+	e.detachedMu.Lock()
+	defer e.detachedMu.Unlock()
+	if !e.closed {
+		e.detachedWg.Go(fn)
 	}
 }
 

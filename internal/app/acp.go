@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/fs"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
@@ -66,12 +67,13 @@ type acpHost struct {
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
-	data       agent.MainSession
-	params     agent.BuildParams
-	runtime    agent.Runtime
-	hooks      *hook.Engine
-	reminders  *reminder.Reminder
-	lastPrompt string
+	data        agent.MainSession
+	params      agent.BuildParams
+	runtime     agent.Runtime
+	hooks       *hook.Engine
+	reminders   *reminder.Reminder
+	lastPrompt  string
+	sideEffects sync.Map
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
@@ -116,6 +118,8 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	}
 	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: h.model,
 		MaxTokens: setting.DefaultMaxTokens,
+		FileViews: fs.NewFileViews(), FixedCWD: true,
+		SideEffect: func(id string, value any) { s.sideEffects.Store(id, value) },
 		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
 			if acpBackgroundCall(name, args) {
 				return agent.PermDecisionResult{Decision: perm.Reject, Reason: "ACP supports foreground commands only"}
@@ -144,6 +148,7 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 		s.reminders.Enqueue(outcome.AdditionalContext)
 	}
 	if err := ctx.Err(); err != nil {
+		s.hooks.Shutdown()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
@@ -169,6 +174,7 @@ func (s *acpSession) close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})
+	s.hooks.Shutdown()
 	return s.data.Session.Close()
 }
 

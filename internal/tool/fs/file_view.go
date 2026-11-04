@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,28 +23,49 @@ type fileStamp struct {
 // changed on disk since must be re-read. Without this, an edit against an
 // outdated view surfaces as a confusing "old_string was not found" failure
 // instead of naming the real cause.
-var (
-	fileViewsMu sync.Mutex
-	fileViews   = map[string]fileStamp{}
-)
+type FileViews struct {
+	mu    sync.Mutex
+	views map[string]fileStamp
+}
+
+var defaultFileViews = NewFileViews()
+
+type fileViewsKey struct{}
+
+func NewFileViews() *FileViews { return &FileViews{views: make(map[string]fileStamp)} }
+
+// WithFileViews binds observations to a conversation, without resetting other owners.
+func WithFileViews(ctx context.Context, views *FileViews) context.Context {
+	return context.WithValue(ctx, fileViewsKey{}, views)
+}
+
+func observations(contexts []context.Context) *FileViews {
+	if len(contexts) != 0 {
+		if views, ok := contexts[0].Value(fileViewsKey{}).(*FileViews); ok && views != nil {
+			return views
+		}
+	}
+	return defaultFileViews
+}
 
 func fileViewKey(filePath string) string { return filepath.Clean(filePath) }
 
 // recordFileRead remembers the on-disk state of filePath at read time.
-func recordFileRead(filePath string, info os.FileInfo) {
-	fileViewsMu.Lock()
-	defer fileViewsMu.Unlock()
-	fileViews[fileViewKey(filePath)] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+func recordFileRead(filePath string, info os.FileInfo, contexts ...context.Context) {
+	store := observations(contexts)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.views[fileViewKey(filePath)] = fileStamp{modTime: info.ModTime(), size: info.Size()}
 }
 
 // RecordFileWritten refreshes the view right after Edit, Write or the app
 // changed the file, so that change doesn't read as an external modification.
-func RecordFileWritten(filePath string) {
+func RecordFileWritten(filePath string, contexts ...context.Context) {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return
 	}
-	recordFileRead(filePath, info)
+	recordFileRead(filePath, info, contexts...)
 }
 
 // ResetFileViews forgets every recorded observation. The app calls it when
@@ -51,9 +73,9 @@ func RecordFileWritten(filePath string) {
 // session), so "observed this session" keeps meaning the current
 // conversation rather than the process lifetime.
 func ResetFileViews() {
-	fileViewsMu.Lock()
-	defer fileViewsMu.Unlock()
-	clear(fileViews)
+	defaultFileViews.mu.Lock()
+	defer defaultFileViews.mu.Unlock()
+	clear(defaultFileViews.views)
 }
 
 // Viewed reports whether the model's view of filePath is current, so showing
@@ -76,10 +98,11 @@ const (
 // observation of it. Edit distinguishes stale from none: a stale view may
 // still be edited when old_string matches unambiguously (the result carries
 // a warning), while a never-observed file is always rejected.
-func viewOf(filePath string) (fileView, error) {
-	fileViewsMu.Lock()
-	stamp, seen := fileViews[fileViewKey(filePath)]
-	fileViewsMu.Unlock()
+func viewOf(filePath string, contexts ...context.Context) (fileView, error) {
+	store := observations(contexts)
+	store.mu.Lock()
+	stamp, seen := store.views[fileViewKey(filePath)]
+	store.mu.Unlock()
 	if !seen {
 		return viewNone, nil
 	}
@@ -97,8 +120,8 @@ func viewOf(filePath string) (fileView, error) {
 // and otherwise reports how current the observation is. Edit uses it
 // directly — it tolerates viewStale with its own soft path — so the
 // never-read policy and its model-facing message live here alone.
-func requireObservedView(filePath string) (fileView, error) {
-	view, err := viewOf(filePath)
+func requireObservedView(filePath string, contexts ...context.Context) (fileView, error) {
+	view, err := viewOf(filePath, contexts...)
 	if err != nil {
 		return view, err
 	}
@@ -112,8 +135,8 @@ func requireObservedView(filePath string) (fileView, error) {
 // this session and be unchanged on disk since. Write uses it for overwrites
 // — replacing a whole file from a stale view would silently destroy the
 // unseen changes, so unlike Edit there is no soft path.
-func requireCurrentView(filePath string) error {
-	view, err := requireObservedView(filePath)
+func requireCurrentView(filePath string, contexts ...context.Context) error {
+	view, err := requireObservedView(filePath, contexts...)
 	if err != nil {
 		return err
 	}

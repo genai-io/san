@@ -51,6 +51,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		gate.Close()
 		err = errors.Join(err, s.runtime.Stop(context.Background()))
 		<-permissionsDone
+		s.sideEffects.Clear() // stopped runtime can no longer publish handoffs
 		// Runtime shutdown may record an input accepted before its first
 		// inference. Include those final writes in the protocol response fence.
 		err = errors.Join(err, s.recordState())
@@ -127,7 +128,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			case core.Compacted:
 				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.params.FileCache, s.refreshMemory)
 			case sdkagent.ToolEnd:
-				agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, e.Result.Details, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.params.FileCache.Touch})
+				s.postTool(e)
 			}
 			if ctx.Err() == nil && transportErr == nil {
 				if update, ok := acpEvent(event); ok {
@@ -139,6 +140,11 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			}
 		}
 	}
+}
+
+func (s *acpSession) postTool(e sdkagent.ToolEnd) {
+	handoff, _ := s.sideEffects.LoadAndDelete(e.ID)
+	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.params.FileCache.Touch})
 }
 
 func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {

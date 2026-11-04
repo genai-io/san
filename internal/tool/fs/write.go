@@ -62,7 +62,7 @@ func (t *WriteTool) PreparePermission(ctx context.Context, params map[string]any
 		diffMeta = perm.GeneratePreview(filePath, content, true)
 	} else {
 		// Overwriting: the model must hold a current view of what it destroys.
-		if err := requireCurrentView(filePath); err != nil {
+		if err := requireCurrentView(filePath, ctx); err != nil {
 			return nil, &tool.ToolError{Message: err.Error()}
 		}
 		// Existing file: generate actual diff to show what will change
@@ -112,7 +112,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	// model to hold a current view, and the result carries a diff against it.
 	oldContent := ""
 	if !isNewFile {
-		if err := requireCurrentView(filePath); err != nil {
+		if err := requireCurrentView(filePath, ctx); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
 		old, readErr := os.ReadFile(filePath)
@@ -131,7 +131,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	if err := atomicfile.WriteFile(filePath, []byte(content), mode); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
-	RecordFileWritten(filePath)
+	RecordFileWritten(filePath, ctx)
 
 	duration := time.Since(start)
 

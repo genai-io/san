@@ -52,7 +52,7 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
-	if _, err := requireObservedView(filePath); err != nil {
+	if _, err := requireObservedView(filePath, ctx); err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
 	}
 	newContent, _, err := applyEdit(string(content), edit)
@@ -81,7 +81,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
-	view, err := requireObservedView(filePath)
+	view, err := requireObservedView(filePath, ctx)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -102,7 +102,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err := atomicfile.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
-	RecordFileWritten(filePath)
+	RecordFileWritten(filePath, ctx)
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
 	storedDiff, truncatedDiffLines := perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines)

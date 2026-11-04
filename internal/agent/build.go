@@ -87,6 +87,10 @@ type BuildParams struct {
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
 	FileCache *filecache.Cache
+	// FileViews and SideEffect own native tool state for isolated hosts.
+	FileViews  *fs.FileViews
+	SideEffect func(string, any)
+	FixedCWD   bool
 }
 
 // System returns the system prompt these params build. Exported so a caller
@@ -105,11 +109,20 @@ func (p BuildParams) System() core.System {
 // MCP tools are not included — they arrive as ready-made core.Tools rather
 // than schemas, and are wired in separately.
 func (p BuildParams) Schemas() []core.ToolSchema {
-	return (&tool.Set{
+	schemas := (&tool.Set{
 		Disabled:     p.DisabledTools,
 		AgentCatalog: p.AgentCatalog,
 		ExtraTools:   p.ExtraTools,
 	}).Tools()
+	if p.FixedCWD {
+		for i := range schemas {
+			if schemas[i].Name == "Bash" {
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful cd updates the session working directory", "cd affects only this command; subsequent commands start in the original session working directory")
+				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful Set-Location (cd) updates the session working directory", "Set-Location (cd) affects only this command; subsequent commands start in the original session working directory")
+			}
+		}
+	}
+	return schemas
 }
 
 // ToolSchemas returns the tool definitions an agent built from p sends, MCP
@@ -153,6 +166,16 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
+	toolContext := func(ctx context.Context) context.Context {
+		if p.FileViews != nil {
+			return fs.WithFileViews(ctx, p.FileViews)
+		}
+		return ctx
+	}
+	adaptOpts = append(adaptOpts, tool.WithToolContext(toolContext))
+	if p.SideEffect != nil {
+		adaptOpts = append(adaptOpts, tool.WithSideEffectHandler(p.SideEffect))
+	}
 	if p.AskUser != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(p.AskUser))
 	}
@@ -212,7 +235,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		System:          sys,
 		Tools:           tools,
 		Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
-			return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+			return permissionGate(core.WithToolCallID(toolContext(ctx), call.Call.ID), call)
 		},
 		ResultFilter: p.ResultFilter,
 		CompactFunc:  compactFunc,

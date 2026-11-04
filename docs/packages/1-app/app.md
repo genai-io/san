@@ -93,6 +93,18 @@ streaming text and tool progress. `acp_permission.go` offers only allow-once and
 reject-once; unknown, cancelled and failed responses never authorize a tool.
 Native deny rules and hook-approval eligibility remain authoritative.
 
+Each ACP session owns its file-observation store across prompts. Tool contexts
+carry that store; native TUI/subagent callers retain their existing default.
+Native HookResponse handoffs use an owner-local consuming store, not SDK display
+Details or process-global call IDs. Write/Edit therefore fire FileChanged and
+populate that session's compaction file cache exactly once per handoff. Shell cwd
+is fixed per session: `cd` affects only the current command, never another call.
+On disconnect, the host joins runtimes, runs SessionEnd, then cancels and joins
+all detached hooks (including completion audit callbacks) before closing the
+transcript. In-process function hooks must honor cancellation; shutdown waits
+for their cleanup rather than closing a writer under them. Regression coverage:
+`acp_native_test.go`, `fs/file_view_owner_test.go`, and `hook/shutdown_test.go`.
+
 The selected native provider/model is used for all connection-local sessions.
 Each absolute session cwd loads its own trusted settings and instruction files.
 UserPromptSubmit, pre/post-tool hooks, automatic compaction context restoration,
