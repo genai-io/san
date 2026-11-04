@@ -98,12 +98,18 @@ San configures the SDK's `Limits.WriteTimeout` to 30 seconds per active frame
 previews. This is not a per-turn deadline. A stalled update, permission request
 or response shuts down the whole connection, cancels every session and joins
 callbacks before closing native resources; failed delivery remains uncertain.
-The Unix CLI duplicates stdio, enables nonblocking I/O before registering with
-Go's poller and rejects streams without deadline support. Raw inherited blocking
-`os.Stdin`/`os.Stdout` cannot safely promise Close interrupts I/O. Non-Unix ACP
-stdio is unavailable until an interruptible adapter exists. Tests cover actual
-full OS pipes as well as short-budget host shutdown. External editors and live
-vendors have not been validated.
+The CLI owns duplicates of stdin/stdout; the inherited originals must not be
+used concurrently. Unix requires pipes or sockets, enables nonblocking I/O before
+registering with Go's poller and verifies deadline support. `O_NONBLOCK` is shared
+with the original descriptors and deliberately not restored while I/O may be
+active. Windows accepts pipes: overlapped handles require Go deadline support;
+synchronous inherited pipes use locked OS threads and `CancelSynchronousIo`.
+Close retries cancellation across the syscall-entry race and joins the operation
+before releasing its handle; there are no detached I/O pumps. Consoles and regular
+files are not ACP transports. Tests cover full OS pipes, healthy framing, EOF,
+interrupted I/O and short-budget host shutdown; native Windows CI runs the Windows
+adapter tests (cross-compilation alone does not validate cancellation). External
+editors and live vendors have not been validated.
 
 Each ACP session owns its file-observation store across prompts. Tool contexts
 carry that store; native TUI/subagent callers retain their existing default.
