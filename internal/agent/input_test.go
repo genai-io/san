@@ -89,7 +89,7 @@ func TestInputQueueAdmissionRetainsSkillBoundary(t *testing.T) {
 	send := func(msg core.Message) error { sent = append(sent, msg.Text()); return nil }
 	prepare := func(msg core.Message) core.Message { return msg }
 	for _, groupTurn := range []bool{false, true, false} {
-		if err := q.DeliverWhile(send, prepare, func(string) {}, func(p PendingInput) bool {
+		if err := q.DeliverEligible(send, prepare, func(string) {}, func(p PendingInput) bool {
 			return p.GroupSkill == groupTurn
 		}); err != nil {
 			t.Fatal(err)

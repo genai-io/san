@@ -513,7 +513,7 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
 		m.pendingPluginRoot = ""
 	}
-	if err := m.pendingMessages.DeliverWhile(m.services.Agent.Send, m.attachPendingReminders, m.startMemoryRecall, func(p pendingMessage) bool {
+	if err := m.pendingMessages.DeliverEligible(m.services.Agent.Send, m.attachPendingReminders, m.startMemoryRecall, func(p pendingMessage) bool {
 		return (p.FromUser && p.GroupSkill) == m.groupSkillTurn
 	}); err != nil {
 		return tea.Batch(startCmd, func() tea.Msg { return agentSendFailedMsg{err: err} })

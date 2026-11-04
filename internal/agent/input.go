@@ -75,17 +75,17 @@ func (q *InputQueue) ResetAdmission() {
 
 // Deliver sends FIFO, retaining rejected input. Retries rerun prepare and user recall.
 func (q *InputQueue) Deliver(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string)) error {
-	return q.DeliverWhile(send, prepare, recall, func(PendingInput) bool { return true })
+	return q.DeliverEligible(send, prepare, recall, func(PendingInput) bool { return true })
 }
 
-// DeliverWhile retains the head and all following input when admit rejects it.
-func (q *InputQueue) DeliverWhile(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string), admit func(PendingInput) bool) error {
+// DeliverEligible sends FIFO until canDeliver returns false, retaining that input and everything after it.
+func (q *InputQueue) DeliverEligible(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string), canDeliver func(PendingInput) bool) error {
 	if !q.CanDeliver(false) {
 		return nil
 	}
 	for len(q.items) > 0 {
 		next := &q.items[0]
-		if !admit(*next) {
+		if !canDeliver(*next) {
 			return nil
 		}
 		if next.FromUser {
