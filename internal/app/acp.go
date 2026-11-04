@@ -26,8 +26,15 @@ import (
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
 
+// acpWriteTimeout is a per-active-frame budget, not a prompt deadline. A local
+// editor should drain even a 64 KiB tool preview well within 30 seconds. Expiry
+// sacrifices the connection (all sessions), rather than claiming delivery.
+const acpWriteTimeout = 30 * time.Second
+
 // RunACP serves the native agent over ACP. The SDK owns framing, request
 // admission and cancellation; this host owns native session resources.
+// Closing input/output must interrupt active I/O; raw blocking standard file
+// descriptors do not satisfy this contract. The CLI supplies pollable streams.
 func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string) error {
 	llm.Initialize()
 	provider, model, err := resolveProvider(ctx)
@@ -35,23 +42,31 @@ func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, ver
 		return err
 	}
 	host := &acpHost{provider: provider, model: model, sessions: make(map[protocol.SessionID]*acpSession)}
-	endpoint, err := acp.NewAgent(ctx, input, output, acp.AgentHandlers{
-		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
-			return protocol.InitializeResponse{ProtocolVersion: 1, AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
-		},
-		CreateSession: host.create,
-		Prompt:        host.prompt,
-	}, acp.AgentOptions{})
+	endpoint, err := host.start(ctx, input, output, version, acpWriteTimeout)
 	if err != nil {
 		return err
 	}
+	return host.wait(endpoint)
+}
+
+func (h *acpHost) start(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string, writeTimeout time.Duration) (*acp.Agent, error) {
+	return acp.NewAgent(ctx, input, output, acp.AgentHandlers{
+		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
+			return protocol.InitializeResponse{ProtocolVersion: 1, AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
+		},
+		CreateSession: h.create,
+		Prompt:        h.prompt,
+	}, acp.AgentOptions{Limits: acp.Limits{WriteTimeout: writeTimeout}})
+}
+
+func (h *acpHost) wait(endpoint *acp.Agent) error {
 	<-endpoint.Done()
 	// Wait joins callbacks before any session writer is closed.
-	err = endpoint.Wait(context.Background())
+	err := endpoint.Wait(context.Background())
 	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
 		err = nil
 	}
-	for _, s := range host.sessions {
+	for _, s := range h.sessions {
 		err = errors.Join(err, s.close())
 	}
 	return err
@@ -177,15 +192,13 @@ func (s *acpSession) close() error {
 	if gate := s.runtime.PermissionGate(); gate != nil {
 		gate.Close()
 	}
-	if err := s.runtime.Reset(context.Background()); err != nil {
-		return err
-	}
+	err := s.runtime.Reset(context.Background())
 	s.sideEffects.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})
 	s.hooks.Shutdown()
-	return s.data.Session.Close()
+	return errors.Join(err, s.data.Session.Close())
 }
 
 func (s *acpSession) refreshMemory() {

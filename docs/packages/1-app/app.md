@@ -93,6 +93,18 @@ streaming text and tool progress. `acp_permission.go` offers only allow-once and
 reject-once; unknown, cancelled and failed responses never authorize a tool.
 Native deny rules and hook-approval eligibility remain authoritative.
 
+San configures the SDK's `Limits.WriteTimeout` to 30 seconds per active frame
+(excluding queue wait), ample for a local editor draining bounded 64 KiB tool
+previews. This is not a per-turn deadline. A stalled update, permission request
+or response shuts down the whole connection, cancels every session and joins
+callbacks before closing native resources; failed delivery remains uncertain.
+The Unix CLI duplicates stdio, enables nonblocking I/O before registering with
+Go's poller and rejects streams without deadline support. Raw inherited blocking
+`os.Stdin`/`os.Stdout` cannot safely promise Close interrupts I/O. Non-Unix ACP
+stdio is unavailable until an interruptible adapter exists. Tests cover actual
+full OS pipes as well as short-budget host shutdown. External editors and live
+vendors have not been validated.
+
 Each ACP session owns its file-observation store across prompts. Tool contexts
 carry that store; native TUI/subagent callers retain their existing default.
 Native HookResponse handoffs use an owner-local consuming store, not SDK display

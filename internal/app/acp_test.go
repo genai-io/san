@@ -36,9 +36,15 @@ type acpFixture struct {
 	ctx      context.Context
 	mu       sync.Mutex
 	updates  []protocol.SessionNotification
+	stopped  chan error
 }
 
 func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
+	t.Helper()
+	return newACPFixtureWithTimeout(t, driver, permission, acpWriteTimeout, wrap...)
+}
+
+func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
@@ -52,12 +58,7 @@ func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.
 		writer = wrap(writer)
 	}
 	var err error
-	f.endpoint, err = acp.NewAgent(ctx, input, writer, acp.AgentHandlers{
-		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
-			return protocol.InitializeResponse{ProtocolVersion: 1}, nil
-		},
-		CreateSession: f.host.create, Prompt: f.host.prompt,
-	}, acp.AgentOptions{})
+	f.endpoint, err = f.host.start(ctx, input, writer, "test", budget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +84,8 @@ func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.stopped = make(chan error, 1)
+	go func() { f.stopped <- f.host.wait(f.endpoint); close(f.stopped) }()
 	t.Cleanup(func() {
 		_ = f.client.Close()
 		_ = f.endpoint.Close()
@@ -94,8 +97,13 @@ func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.
 			t.Error("ACP callbacks did not unwind")
 			return
 		}
+		select {
+		case <-f.stopped:
+		case <-wait.Done():
+			t.Error("ACP host did not close sessions")
+			return
+		}
 		for _, s := range f.host.sessions {
-			_ = s.close()
 			if s.runtime.Active() || len(s.runtime.Messages()) != 0 {
 				t.Error("runtime retained after session close")
 			}
@@ -399,9 +407,15 @@ func TestACPCancelPermissionAndDisconnect(t *testing.T) {
 			cwd := t.TempDir()
 			path := filepath.Join(cwd, "never")
 			input, _ := json.Marshal(map[string]string{"file_path": path, "content": "no"})
-			driver := aitest.New(aitest.Asks(ai.ToolCall{ID: "wait", Name: "Write", Input: string(input)}), aitest.Says("after cancel"))
+			nextPath := filepath.Join(cwd, "approved-next")
+			nextInput, _ := json.Marshal(map[string]string{"file_path": nextPath, "content": "yes"})
+			driver := aitest.New(aitest.Asks(ai.ToolCall{ID: "wait", Name: "Write", Input: string(input)}),
+				aitest.Asks(ai.ToolCall{ID: "next", Name: "Write", Input: string(nextInput)}), aitest.Says("after cancel"))
 			waiting := make(chan struct{})
-			f := newACPFixture(t, driver, func(ctx context.Context, _ protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error) {
+			f := newACPFixture(t, driver, func(ctx context.Context, req protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error) {
+				if req.ToolCall.ToolCallID == "next" {
+					return acpChoice("allow_once"), nil
+				}
 				close(waiting)
 				<-ctx.Done()
 				return protocol.RequestPermissionResponse{}, ctx.Err()
@@ -439,6 +453,9 @@ func TestACPCancelPermissionAndDisconnect(t *testing.T) {
 			if !disconnect {
 				if _, err := f.prompt(id, "continue"); err != nil {
 					t.Fatal(err)
+				}
+				if data, err := os.ReadFile(nextPath); err != nil || string(data) != "yes" {
+					t.Fatalf("successor permission/tool failed: %q, %v", data, err)
 				}
 			}
 		})
