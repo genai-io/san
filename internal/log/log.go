@@ -92,6 +92,19 @@ func Init() error {
 	return nil
 }
 
+// Stderr configures process logging for a protocol host. Call before starting
+// application goroutines; stdout is reserved for protocol frames.
+func Stderr() {
+	mu.Lock()
+	defer mu.Unlock()
+	level := zapcore.WarnLevel
+	if debugEnabled() {
+		level = zapcore.DebugLevel
+	}
+	logger = zap.New(zapcore.NewCore(zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()), zapcore.Lock(os.Stderr), level))
+	initialized = true
+}
+
 // Logger returns the underlying zap logger
 func Logger() *zap.Logger {
 	if logger == nil {
