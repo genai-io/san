@@ -106,6 +106,21 @@ Members can then communicate through `SendMessage`.
 | `/group kick tests` | Remove a member |
 | `/group disband backend` | Disband the group |
 
+### Member lifecycle
+
+Membership belongs to a session, not a terminal process. A session joins one
+group at a time; leave before joining another.
+
+| Stage | Behavior |
+| --- | --- |
+| Join | Creates the group if absent; assigns a member name and role. |
+| Collaborate | Members see `idle`, `working`, or `approval` status. Messages wait in the recipient's inbox; `hold` controls automatic processing. |
+| Update identity | `/name api --role API development` updates the session and member name/role without leaving or losing queued messages. |
+| Go offline | Closing a saved session or switching away keeps its membership and inbox. Offline members remain listed and can receive messages. An unsaved session leaves on exit. |
+| Resume | `/resume` of the original session reclaims its membership if it still exists and is not online elsewhere. A different or forked session does not inherit membership. |
+| Leave or remove | `/group leave` or `/group kick <member>` removes membership and its inbox. Resume does not undo removal; joining again is explicit. The last member leaving removes the group. |
+| Disband | `/group disband <group>` removes all memberships and inboxes. Members detect the removal; resume does not recreate the group. |
+
 Natural language also works: `/group Join backend as api, responsible for API development`.
 It requires a connected model and runs in an isolated context with only the
 request and current membership, not the main conversation or tools. Explicit
