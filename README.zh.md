@@ -26,15 +26,12 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 ## 为什么选 San
 
-**小** —— 你的第一句话之前，只有约 2.3k token 的框架开销；剩下的上下文窗口全留给你的正事。落到磁盘上是一个 12 MB 的二进制、零运行时依赖 —— 笔记本、CI runner、`scratch` 容器，丢进去就能跑。
-
-**快** —— ~0.01s 冷启动，一次完整的工具调用任务端到端 ~3.3s。你等的是模型，不是客户端（[基准测试](#基准测试san-vs-claude-code)）。
-
-**更少预设的 Agent 框架** —— 自由选择模型，用自己的 [system prompt](docs/concepts/harness-channels.md)、[persona](docs/concepts/persona.md) 和工具塑造 Agent 行为，通过 skills、plugins、MCP servers 和 hooks 扩展能力。
-
-**协作与编排** —— 通过本地[会话组](docs/design/proposals/0003-session-groups.zh.md)进行跨会话通信，并行[委派 Agent 任务](docs/packages/2-feature/subagent.md)，以及运行动态[工作流](docs/packages/2-feature/workflow.md)。
-
-**控制与可观测性** —— 通过[权限策略](docs/concepts/permission-model.md)决定 Agent 哪些操作无需询问，用 [Inspector](docs/packages/2-feature/inspector.md)检查对话与工具执行过程。
+| | 核心能力 |
+|---|---|
+| **小而快** | 单个原生二进制、零运行时依赖，保持精简的上下文开销。[基准测试](#基准测试san-vs-claude-code) |
+| **更少预设的 Agent 框架** | 自由选择模型，用自己的 system prompt、persona 和工具塑造 Agent 行为。[定制说明](docs/concepts/harness-channels.md) |
+| **协作与编排** | 本地会话组跨会话通信、并行 Agent 任务委派与动态工作流。[功能清单](docs/features.md) |
+| **控制与可观测性** | 设置 Agent 权限，检查对话与工具执行过程。[权限](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md) |
 
 [功能清单](docs/features.md) · [架构与总览图](docs/concepts/architecture.md)
 
@@ -61,12 +58,8 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-在 Windows 上，San 用 PowerShell 执行命令（有 pwsh 就用 pwsh，没有就用系统自带的 Windows PowerShell）；可以用 `SAN_SHELL=bash`、`powershell` 或某个可执行文件路径指定。两者都装了时，另一个也可用，在 `/tools` 里打开即可。
-
-升级直接重新执行同样的命令;通过 Homebrew 安装的用 `brew upgrade san`。
-
 <details>
-<summary><b>其他方式</b></summary>
+<summary><b>其他安装方式与卸载</b></summary>
 
 **卸载**
 
@@ -97,7 +90,18 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 
 </details>
 
+<details>
+<summary><b>更新</b></summary>
+
+- **自动更新：** 后台安装新版本，状态栏提示重启。
+- **手动更新：** 运行 `san update`；Homebrew 安装使用 `brew upgrade san`。
+- **关闭自动更新：** 在 `/settings` › General 中设置，或设置 `SAN_DISABLE_AUTOUPDATE=1`。
+
+</details>
+
 ## 使用
+
+运行 `san`，按提示选择模型并添加 API key。
 
 ```bash
 san                          # 交互模式
@@ -121,6 +125,14 @@ san --resume                 # 选择历史会话恢复
 [`docs/guides/getting-started.md`](docs/guides/getting-started.md)
 
 ### 配置文件
+
+<details>
+<summary><b>Shell 与模型目录</b></summary>
+
+- **Windows Shell：** 默认使用 PowerShell，优先选择 `pwsh`，否则使用 Windows PowerShell。通过 `SAN_SHELL=bash`、`powershell` 或可执行文件路径覆盖；两种 Shell 都安装时，可在 `/tools` 中启用另一种。
+- **模型目录：** 模型列表、上下文窗口与价格每天从 models.dev 刷新。设置 `SAN_DISABLE_MODEL_REFRESH=1` 可跳过刷新，在 `~/.san/models.json` 中覆盖具体值。[数据来源](https://models.dev)
+
+</details>
 
 <details>
 <summary><b>凭据</b></summary>

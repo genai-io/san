@@ -28,15 +28,12 @@ stays yours to change.
 
 ## Why San
 
-**Small** — ~2.3k tokens of harness reach the model before your first message; the rest of the context window goes to your work. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
-
-**Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
-
-**A less opinionated harness** — Choose your models and shape agent behavior with your own [system prompts](docs/concepts/harness-channels.md), [personas](docs/concepts/persona.md), and tools. Extend it with skills, plugins, MCP servers, and hooks.
-
-**Coordination and orchestration** — Cross-session communication through local [session groups](docs/design/proposals/0003-session-groups.md), parallel [agent delegation](docs/packages/2-feature/subagent.md), and dynamic [workflows](docs/packages/2-feature/workflow.md).
-
-**Control and visibility** — Choose how much agents may do without asking through [permissions](docs/concepts/permission-model.md), and inspect conversations and tool execution with [Inspector](docs/packages/2-feature/inspector.md).
+| | What you get |
+|---|---|
+| **Small and fast** | One native binary, zero runtime dependencies, and lean context overhead. [Benchmarks](#benchmark-san-vs-claude-code). |
+| **A less opinionated harness** | Choose your models and shape behavior with your own system prompts, personas, and tools. [Customization](docs/concepts/harness-channels.md) |
+| **Coordination and orchestration** | Cross-session communication through local session groups, parallel agent delegation, and dynamic workflows. [Features](docs/features.md) |
+| **Control and visibility** | Set agent permissions and inspect conversations and tool execution. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md) |
 
 [Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
 
@@ -63,12 +60,8 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-On Windows, San runs commands under PowerShell (pwsh if present, else the built-in Windows PowerShell); set `SAN_SHELL=bash`, `powershell`, or a path to choose. With both installed, the other one is available too — turn it on in `/tools`.
-
-Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; turn background updates off in `/settings` › General (or set `SAN_DISABLE_AUTOUPDATE=1`). Model lineups, context windows and prices come from [models.dev](https://models.dev), refreshed daily (`SAN_DISABLE_MODEL_REFRESH=1` to skip); correct any of them in `~/.san/models.json`.
-
 <details>
-<summary><b>Other methods</b></summary>
+<summary><b>Other installation methods and uninstall</b></summary>
 
 **Uninstall**
 
@@ -99,7 +92,18 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 
 </details>
 
+<details>
+<summary><b>Updates</b></summary>
+
+- **Automatic:** new releases install in the background; the status line prompts you to restart.
+- **Manual:** run `san update`, or `brew upgrade san` for Homebrew installations.
+- **Disable automatic updates:** use `/settings` › General or set `SAN_DISABLE_AUTOUPDATE=1`.
+
+</details>
+
 ## Usage
+
+Run `san`, then choose a model and add its API key when prompted.
 
 ```bash
 san                          # interactive
@@ -123,6 +127,14 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 [`docs/guides/getting-started.md`](docs/guides/getting-started.md)
 
 ### Configuration
+
+<details>
+<summary><b>Shell and model catalog</b></summary>
+
+- **Windows shell:** PowerShell by default (`pwsh` if available, otherwise Windows PowerShell). Set `SAN_SHELL=bash`, `powershell`, or an executable path to override it. When both shells are installed, enable the other in `/tools`.
+- **Model catalog:** model lineups, context windows, and prices refresh daily from models.dev. Set `SAN_DISABLE_MODEL_REFRESH=1` to skip refreshes; override values in `~/.san/models.json`. [Source](https://models.dev)
+
+</details>
 
 <details>
 <summary><b>Credentials</b></summary>
