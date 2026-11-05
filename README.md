@@ -22,8 +22,6 @@
   <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">Open the full-quality intro ↗</a></sub>
 </div>
 
-San is an open-source terminal runtime for AI agents.
-
 ## Why San
 
 - **Small and fast** — A single native Go binary with minimal context overhead. No Node.js or Python required.

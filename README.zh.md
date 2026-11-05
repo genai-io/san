@@ -22,8 +22,6 @@
   <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">打开高清完整版 ↗</a></sub>
 </div>
 
-San 是面向 AI Agent 的开源终端运行时。
-
 ## 为什么选 San
 
 - **小而快** —— 单个原生 Go 二进制，保持精简的上下文开销，无需 Node.js 或 Python。
