@@ -28,10 +28,10 @@ stays yours to change.
 
 ## Why San
 
-- **Small and fast** — Native execution, zero runtime dependencies, and minimal context overhead. [Benchmarks](#benchmark-san-vs-claude-code)
-- **A less opinionated harness** — A model-agnostic runtime with a consistent interface for shaping agent behavior through system prompts, personas, skills, and tools. [Customization](docs/concepts/harness-channels.md) · [Skills](docs/packages/2-feature/skill.md) · [Auto memory](docs/concepts/auto-memory.md) · [Self-learning](docs/packages/2-feature/selflearn.md)
-- **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows. [Features](docs/features.md#agent-and-session-collaboration)
-- **Control and visibility** — Configure execution permissions and inspect model context and tool calls. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
+- **Small and fast** — Native execution, zero runtime dependencies, and minimal context overhead.
+- **A less opinionated harness** — A model-agnostic runtime with a consistent interface for shaping agent behavior through system prompts, personas, skills, and tools.
+- **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows.
+- **Control and visibility** — Configure execution permissions and inspect model context and tool calls.
 
 [Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
 
@@ -42,8 +42,7 @@ stays yours to change.
 **Homebrew (macOS / Linux)**
 
 ```bash
-brew tap genai-io/san
-brew install san
+brew install genai-io/san/san
 ```
 
 **macOS / Linux**
@@ -94,7 +93,7 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 <summary><b>Updates</b></summary>
 
 - **Automatic:** new releases install in the background; the status line prompts you to restart.
-- **Manual:** run `san update`, or `brew upgrade san` for Homebrew installations.
+- **Manual:** run `san update`, or `brew update && brew upgrade genai-io/san/san` for Homebrew installations. The Homebrew formula syncs daily, so newly published releases may take time to appear.
 - **Disable automatic updates:** use `/settings` › General or set `SAN_DISABLE_AUTOUPDATE=1`.
 
 </details>
@@ -111,90 +110,7 @@ san --continue               # resume the latest session
 san --resume                 # pick a past session to resume
 ```
 
-Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> --help` for each.
-
-| What | How |
-|---|---|
-| Model · thinking budget | `/models` · `Ctrl+T` |
-| Permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
-| Long-running work · learning | `/autopilot` · `/goal` · `/evolve` |
-| Message your other sessions | `/group join` · `/group members` · `/group hold on\|off` |
-| All slash commands | `/help` |
-| Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
-
-[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
-
-### Configuration
-
-<details>
-<summary><b>Shell and model catalog</b></summary>
-
-- **Windows shell:** PowerShell by default (`pwsh` if available, otherwise Windows PowerShell). Set `SAN_SHELL=bash`, `powershell`, or an executable path to override it. When both shells are installed, enable the other in `/tools`.
-- **Model catalog:** model lineups, context windows, and prices refresh daily from models.dev. Set `SAN_DISABLE_MODEL_REFRESH=1` to skip refreshes; override values in `~/.san/models.json`. [Source](https://models.dev)
-
-</details>
-
-<details>
-<summary><b>Credentials</b></summary>
-
-| Service | Variable |
-|:--------|:---------|
-| **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/models`) |
-| **GitHub Copilot** (all Copilot models) | a Copilot subscription (sign in via `/models`) |
-| **Google** (Gemini) | `GOOGLE_API_KEY`, or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal) (`gcloud auth application-default login` + `GOOGLE_CLOUD_PROJECT`) |
-| **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
-| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
-| **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
-| **MiniMax** | `MINIMAX_API_KEY` |
-| **Z.ai** (GLM / GLM Coding Plan) | `BIGMODEL_API_KEY` |
-| **SenseNova** | `SENSENOVA_API_KEY` |
-| **Mimo** | `MIMO_API_KEY` |
-| **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
-| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
-| **Agnes-AI** | `AGNESAI_API_KEY` |
-| **Exa** search | _none_ (default) |
-| **Tavily** search | `TAVILY_API_KEY` |
-| **Brave** search | `BRAVE_API_KEY` |
-| **Serper** search | `SERPER_API_KEY` |
-
-</details>
-
-<details>
-<summary><b>Config files &amp; layout</b></summary>
-
-Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions follow the [AGENTS.md](https://agents.md) standard: `~/.san/AGENTS.md`, every `AGENTS.md` from the repository root down to the working directory (the nearest one wins), and a git-ignored `AGENTS.local.md` at the root.
-
-User-level (`~/.san/`):
-
-```
-providers.json    # Provider connections and current model
-models.json       # Your corrections to model windows, prices and reasoning efforts
-settings.json     # Permissions, hooks, env, active persona
-skills.json       # Skill states
-personas/         # Persona bundles: system prompt parts, skills, settings
-skills/           # Custom skill definitions
-agents/           # Agent definitions
-commands/         # Custom slash commands
-plugins/          # Installed plugins
-projects/         # Session transcripts + indexes
-```
-
-Project-level (`.san/`):
-
-```
-settings.json       # Permissions, hooks, disabled tools
-mcp.json            # MCP server definitions (team shared)
-mcp.local.json      # MCP server definitions (personal, git-ignored)
-personas/           # Project-scoped persona bundles (override user-level)
-agents/*.md         # Subagent definitions
-skills/*/SKILL.md   # Skills
-commands/*.md       # Slash commands
-plugins/            # Project-level plugins
-plugins-local/      # Local plugins (git-ignored)
-```
-
-</details>
+Use `san --help` for CLI options and `/help` for interactive commands.
 
 ## Benchmark: San vs Claude Code
 
@@ -216,6 +132,8 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 
 ## Documentation
 
+- [Getting started](docs/guides/getting-started.md) — usage and interactive controls
+- [Configuration](docs/reference/configuration.md) — shell, models, credentials, and config files
 - [Documentation Index](docs/index.md) — map of architecture, features, operations, and references
 - [Architecture](docs/concepts/architecture.md) — architecture entrypoint and reading order
 - [Package Map](docs/reference/package-map.md) — package ownership and dependency boundaries

@@ -26,10 +26,10 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 ## 为什么选 San
 
-- **小而快** —— 原生执行、零运行时依赖、精简的上下文开销。[基准测试](#基准测试san-vs-claude-code)
-- **更少预设的 Agent 框架** —— 不绑定模型厂商，通过统一接口，使用 system prompt、persona、skills 和工具塑造 Agent 行为。[定制说明](docs/concepts/harness-channels.md) · [技能](docs/packages/2-feature/skill.md) · [自动记忆](docs/concepts/auto-memory.md) · [自学习](docs/packages/2-feature/selflearn.md)
-- **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。[功能清单](docs/features.md#agent-and-session-collaboration)
-- **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。[权限](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
+- **小而快** —— 原生执行、零运行时依赖、精简的上下文开销。
+- **更少预设的 Agent 框架** —— 不绑定模型厂商，通过统一接口，使用 system prompt、persona、skills 和工具塑造 Agent 行为。
+- **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。
+- **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。
 
 [功能清单](docs/features.md) · [架构与总览图](docs/concepts/architecture.md)
 
@@ -40,8 +40,7 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 **Homebrew (macOS / Linux)**
 
 ```bash
-brew tap genai-io/san
-brew install san
+brew install genai-io/san/san
 ```
 
 **macOS / Linux**
@@ -92,7 +91,7 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 <summary><b>更新</b></summary>
 
 - **自动更新：** 后台安装新版本，状态栏提示重启。
-- **手动更新：** 运行 `san update`；Homebrew 安装使用 `brew upgrade san`。
+- **手动更新：** 运行 `san update`；Homebrew 安装使用 `brew update && brew upgrade genai-io/san/san`。Homebrew 配方每天同步，新版本发布后可能稍有延迟。
 - **关闭自动更新：** 在 `/settings` › General 中设置，或设置 `SAN_DISABLE_AUTOUPDATE=1`。
 
 </details>
@@ -109,90 +108,7 @@ san --continue               # 恢复最近的会话
 san --resume                 # 选择历史会话恢复
 ```
 
-子命令：`inspector` · `agent` · `plugin` · `mcp` —— 各自运行 `san <command> --help` 查看。
-
-| 操作 | 命令 / 快捷键 |
-|---|---|
-| 模型 · thinking 级别 | `/models` · `Ctrl+T` |
-| 权限模式 | `Shift+Tab`（询问 · 自动接受 · 自动审查） |
-| 长任务 · 自我学习 | `/autopilot` · `/goal` · `/evolve` |
-| 给其他会话发消息 | `/group join` · `/group members` · `/group hold on\|off` |
-| 全部 slash 命令 | `/help` |
-| 快捷键 | `Enter` 发送 · `Alt+Enter` 换行 · `Esc` 停止 · `Ctrl+O` 展开工具 · `Ctrl+C` 取消 · `Ctrl+D` 退出 |
-
-[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
-
-### 配置文件
-
-<details>
-<summary><b>Shell 与模型目录</b></summary>
-
-- **Windows Shell：** 默认使用 PowerShell，优先选择 `pwsh`，否则使用 Windows PowerShell。通过 `SAN_SHELL=bash`、`powershell` 或可执行文件路径覆盖；两种 Shell 都安装时，可在 `/tools` 中启用另一种。
-- **模型目录：** 模型列表、上下文窗口与价格每天从 models.dev 刷新。设置 `SAN_DISABLE_MODEL_REFRESH=1` 可跳过刷新，在 `~/.san/models.json` 中覆盖具体值。[数据来源](https://models.dev)
-
-</details>
-
-<details>
-<summary><b>凭据</b></summary>
-
-| 服务 | 环境变量 |
-|:--------|:---------|
-| **Anthropic** (Claude) | `ANTHROPIC_API_KEY` 或 [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** (GPT, o 系列, Codex) | `OPENAI_API_KEY`，或使用 ChatGPT 订阅（通过 `/models` 登录） |
-| **GitHub Copilot**（Copilot 全部模型） | 使用 Copilot 订阅（通过 `/models` 登录） |
-| **Google** (Gemini) | `GOOGLE_API_KEY`，或 [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal)（`gcloud auth application-default login` + `GOOGLE_CLOUD_PROJECT`） |
-| **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
-| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
-| **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
-| **MiniMax** | `MINIMAX_API_KEY` |
-| **Z.ai** (GLM / GLM Coding Plan) | `BIGMODEL_API_KEY` |
-| **SenseNova** | `SENSENOVA_API_KEY` |
-| **Mimo** | `MIMO_API_KEY` |
-| **Volcengine**（Ark） | `VOLCENGINE_API_KEY` |
-| **Ollama** (本地) | `OLLAMA_BASE_URL`（默认 `http://localhost:11434/v1`） |
-| **Agnes-AI** | `AGNESAI_API_KEY` |
-| **Exa** 搜索 | _无需_（默认） |
-| **Tavily** 搜索 | `TAVILY_API_KEY` |
-| **Brave** 搜索 | `BRAVE_API_KEY` |
-| **Serper** 搜索 | `SERPER_API_KEY` |
-
-</details>
-
-<details>
-<summary><b>配置文件与目录结构</b></summary>
-
-配置从 `~/.san/`（用户级）与 `<项目>/.san/`（项目级）加载，项目级覆盖用户级。项目指令遵循 [AGENTS.md](https://agents.md) 行业标准：`~/.san/AGENTS.md`，从仓库根目录到当前工作目录沿途每一层的 `AGENTS.md`（越近的越优先），以及根目录下不入库的 `AGENTS.local.md`。
-
-用户级（`~/.san/`）：
-
-```
-providers.json    # 提供商连接信息与当前模型
-models.json       # 你对模型窗口、价格、推理档位的修正（models.dev 格式，按厂商分组）
-settings.json     # 权限、hooks、env、当前 persona
-skills.json       # 技能状态
-personas/         # persona 包：系统 prompt 片段、技能、设置
-skills/           # 自定义技能定义
-agents/           # agent 定义
-commands/         # 自定义 slash 命令
-plugins/          # 已安装插件
-projects/         # 会话记录与索引
-```
-
-项目级（`.san/`）：
-
-```
-settings.json       # 权限、hooks、禁用工具
-mcp.json            # MCP server 定义（团队共享）
-mcp.local.json      # MCP server 定义（个人，git-ignored）
-personas/           # 项目级 persona 包（覆盖用户级）
-agents/*.md         # Subagent 定义
-skills/*/SKILL.md   # 技能
-commands/*.md       # Slash 命令
-plugins/            # 项目级插件
-plugins-local/      # 本地插件（git-ignored）
-```
-
-</details>
+使用 `san --help` 查看命令行选项，使用 `/help` 查看交互命令。
 
 ## 基准测试：San vs Claude Code
 
@@ -214,6 +130,8 @@ plugins-local/      # 本地插件（git-ignored）
 
 ## 文档
 
+- [快速上手](docs/guides/getting-started.md) —— 使用方式与交互操作
+- [配置](docs/reference/configuration.md) —— Shell、模型、凭据与配置文件
 - [文档索引](docs/index.md) —— 架构、特性、运维、参考资料的入口
 - [架构](docs/concepts/architecture.md) —— 架构入口与阅读顺序
 - [包结构图](docs/reference/package-map.md) —— 包归属与依赖边界

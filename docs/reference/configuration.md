@@ -1,5 +1,60 @@
 # Configuration System
 
+## Shell and model catalog
+
+- **Windows shell:** PowerShell by default (`pwsh` if available, otherwise Windows PowerShell). Override with `SAN_SHELL=bash`, `powershell`, or an executable path. When both shells are installed, enable the other in `/tools`.
+- **Model catalog:** model lineups, context windows, and prices refresh daily from models.dev. Set `SAN_DISABLE_MODEL_REFRESH=1` to skip refreshes; override values in `~/.san/models.json`. [Source](https://models.dev)
+
+## Credentials
+
+Choose a provider in `/models`. OpenAI and GitHub Copilot also support subscription sign-in there.
+
+| Service | Environment variable |
+|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Google | `GOOGLE_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Moonshot | `MOONSHOT_API_KEY` |
+| Alibaba | `DASHSCOPE_API_KEY` |
+| MiniMax | `MINIMAX_API_KEY` |
+| Z.ai | `BIGMODEL_API_KEY` |
+| SenseNova | `SENSENOVA_API_KEY` |
+| Mimo | `MIMO_API_KEY` |
+| Volcengine | `VOLCENGINE_API_KEY` |
+| Ollama | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
+| Agnes-AI | `AGNESAI_API_KEY` |
+| Exa search | None (default) |
+| Tavily search | `TAVILY_API_KEY` |
+| Brave search | `BRAVE_API_KEY` |
+| Serper search | `SERPER_API_KEY` |
+
+Anthropic and Google also support Vertex AI. For Google, use
+`gcloud auth application-default login` with `GOOGLE_CLOUD_PROJECT`.
+[Claude on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) · [Google setup](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal)
+
+## Config files and layout
+
+User configuration lives in `~/.san/`; project configuration in `.san/` overrides
+it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-directory
+`AGENTS.md` files (nearest wins), and the root's git-ignored `AGENTS.local.md`.
+
+| File or directory | Purpose | Scope |
+|---|---|---|
+| `providers.json` | Provider connections and current model | User |
+| `models.json` | Model windows, prices, and reasoning overrides | User |
+| `settings.json` | Permissions, hooks, environment, persona, disabled tools | User / project |
+| `skills.json` | Skill states | User / project |
+| `personas/` | Prompt, skill, agent, and settings bundles | User / project |
+| `skills/` | Skill definitions (`*/SKILL.md`) | User / project |
+| `agents/` | Agent definitions (`*.md`) | User / project |
+| `commands/` | Custom slash commands | User / project |
+| `plugins/` | Installed plugins | User / project |
+| `projects/` | Session transcripts and indexes | User |
+| `mcp.json` | Shared MCP server definitions | Project |
+| `mcp.local.json` | Personal MCP definitions, git-ignored | Project |
+| `plugins-local/` | Local plugins, git-ignored | Project |
+
 ## Overview
 
 Configuration is loaded from multiple files at different scopes. Higher-priority files override lower-priority ones.
