@@ -22,10 +22,10 @@ func agentIdentityColor(identity AgentDisplay, configured map[string]string) kit
 
 func renderAgentMessageLine(icon, dir, id, body string, width int, identities map[string]AgentDisplay, configured map[string]string, members map[string]int) string {
 	if identity, ok := identities[id]; ok {
-		return renderIdentityMessageLine(icon, dir, AgentDisplayName(identity, identities), body, width, agentIdentityColor(identity, configured), toolResultStyle)
+		return renderIdentityMessageLine(icon, dir, AgentDisplayName(identity, identities), body, width, agentIdentityColor(identity, configured), toolCallStyle)
 	}
 	if _, member := members[id]; member || id == "main" {
 		return renderMemberLine(icon, dir, id, body, width, members)
 	}
-	return renderIdentityMessageLine(icon, dir, shortAgentDisplayID(id), body, width, memberColor(id, members), toolResultStyle)
+	return renderIdentityMessageLine(icon, dir, shortAgentDisplayID(id), body, width, memberColor(id, members), toolCallStyle)
 }

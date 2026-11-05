@@ -294,7 +294,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 		if data.Expanded {
 			body = renderBashOutput(content, data.Width, toolResultStyle, false)
 		}
-		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolResultStyle, true)
+		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolCallStyle, true)
 	}
 
 	summary := ""

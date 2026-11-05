@@ -72,12 +72,9 @@ var (
 			Foreground(kit.CurrentTheme.TextDim).
 			PaddingLeft(2)
 
-	// A message relayed in from a background agent (subagent completion / interim
-	// report). Uses the agent tone (Success, matching agentLabelStyle and the
-	// default agentColor) with a "◆" marker so it reads as an inbound agent
-	// message, distinct from the dim system notices around it.
+	// Notices without a structured identity use a neutral marker.
 	agentNoticeStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Success)
+				Foreground(kit.CurrentTheme.TextDim)
 
 	// A /btw exchange is an aside: its mark is muted so it never reads as part
 	// of the turn it was asked beside.
@@ -582,9 +579,7 @@ func RenderSideAnswer(question, answer string, width int, md *MDRenderer) string
 	return mark + strings.Join(lines, "\n"+indent) + "\n" + RenderCommittedContentBlock(answer, false, md) + "\n"
 }
 
-// RenderAgentNotice renders a background-agent notice (a subagent completion or
-// interim report) — a "◆" marker plus the "<description> <status>" line in the
-// accent tone, so it stands out from the dim system notices as an agent message.
+// RenderAgentNotice renders an unstructured notice without guessing its outcome.
 func RenderAgentNotice(content string, width int, colors map[string]int) string {
 	// A group member's message mirrors "To @api": "From @api: <subject>", or
 	// just "From @api" when it came without one; a " · note" may follow.
@@ -594,11 +589,12 @@ func RenderAgentNotice(content string, width int, colors map[string]int) string 
 			name, body = n, " · "+note
 		}
 		if name != "" && !strings.Contains(name, " ") {
-			return renderMemberLine("◆", "From", name, body, width, colors) + "\n"
+			return renderMemberLine("●", "From", name, body, width, colors) + "\n"
 		}
 	}
 	content = strings.Join(strings.Fields(content), " ")
-	return agentNoticeStyle.Render(kit.TruncateText("◆ "+content, max(1, width))) + "\n"
+	line := agentNoticeStyle.Render("●") + toolCallStyle.Render(" "+content)
+	return kit.TruncateText(line, max(1, width)) + "\n"
 }
 
 // renderDecision renders the auto-review outcome as a one-line annotation
@@ -817,6 +813,15 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 		} else if tc.Name == tool.ToolAskUserQuestion {
 			sb.WriteString(renderAskUserCall(tc.Input, toolCallIcon(tc, params), params.Width))
+		} else if result, ok := params.ResultMap[tc.ID].Details.(toolresult.BashDetails); tool.IsShellTool(tc.Name) && ok && result.TaskID != "" {
+			command, description := extractBashCommand(tc.Input)
+			label := tc.Name
+			if description != "" {
+				label += " · " + description
+			}
+			label = kit.TruncateText(label, max(1, params.Width-kit.ToolIconWidth))
+			sb.WriteString(renderAgentColoredLine(label, params.Width, "●", backgroundIdentityColor(result.TaskID)) + "\n")
+			sb.WriteString(kit.RenderCommandBlock(command, params.Width))
 		} else if params.ToolCallsExpanded && tool.IsShellTool(tc.Name) {
 			command, description := extractBashCommand(tc.Input)
 			sb.WriteString(renderShellCommandBlock(tc.Name, command, description, params.Width, toolCallIcon(tc, params), ""))

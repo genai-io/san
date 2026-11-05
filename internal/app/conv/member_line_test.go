@@ -8,6 +8,20 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 )
 
+func TestBackgroundNoticeUsesAccentOnlyOnMarker(t *testing.T) {
+	content := "Tests finished · exit 0"
+	want := agentNoticeStyle.Render("●") + toolCallStyle.Render(" "+content) + "\n"
+	if got := RenderAgentNotice(content, 80, nil); got != want {
+		t.Fatalf("notice should use an neutral marker and normal body: %q", got)
+	}
+	for _, width := range []int{1, 2, 12, 40} {
+		got := strings.TrimSuffix(RenderAgentNotice(content, width, nil), "\n")
+		if lipgloss.Width(got) > width || strings.Contains(got, "\n") {
+			t.Fatalf("width %d: notice overflowed: %q", width, got)
+		}
+	}
+}
+
 func TestMemberLinesFitOneLineAndKeepTheNote(t *testing.T) {
 	body := strings.Repeat("字段名和单位都要对齐 ", 10) + " · waits for you"
 	for _, width := range []int{40, 49, 120} {
@@ -25,9 +39,9 @@ func TestMemberLinesFitOneLineAndKeepTheNote(t *testing.T) {
 // out of the body.
 func TestMemberLinesWithoutASubject(t *testing.T) {
 	for in, want := range map[string]string{
-		"From @api · waits for you": "◆ From @api · waits for you",
-		"From @api":                 "◆ From @api",
-		"From @api: schema changed": "◆ From @api: schema changed",
+		"From @api · waits for you": "● From @api · waits for you",
+		"From @api":                 "● From @api",
+		"From @api: schema changed": "● From @api: schema changed",
 	} {
 		if got := strings.TrimSpace(xansi.Strip(RenderAgentNotice(in, 80, nil))); got != want {
 			t.Errorf("RenderAgentNotice(%q) = %q, want %q", in, got, want)
