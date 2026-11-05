@@ -22,49 +22,23 @@
   <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">Open the full-quality intro ↗</a></sub>
 </div>
 
-San is an open-source terminal agent runtime: one native Go binary, no Node.js
-or Python. Everything the model touches — prompt, tools, providers, extensions —
-stays yours to change.
-
 ## Why San
 
-Three properties, and San refuses to trade any one of them for the others.
+- **Small and fast** — A single native Go binary with minimal context overhead. No Node.js or Python required.
+- **A less opinionated harness** — A model-agnostic runtime with a consistent interface for shaping agent behavior through system prompts, personas, skills, and tools.
+- **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows.
+- **Control and visibility** — Configure execution permissions and inspect model context and tool calls.
 
-**Small** — ~2.3k tokens of harness reach the model before your first message; the rest of the context window goes to your work. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
-
-**Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
-
-**Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
+[Features](docs/features.md) · [Architecture](docs/concepts/architecture.md)
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
-
-## Open architecture
-
-<details>
-<summary><b>Overview diagram</b></summary>
-
-<div align="center">
-  <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
-</div>
-
-</details>
-
-**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Ollama, and a dozen more; the web search backend of your choice; extensions of every kind — skills, subagents, MCP servers, plugins, hooks.
-
-**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt ([how](docs/concepts/harness-channels.md)), bundle it into a persona you can switch, give autopilot a goal, set the strategy self-learning follows.
-
-**Coordinate** — more than one agent at a time. Subagents run in parallel, each on the model that suits it; workflows arrange them as a graph ([how](docs/design/proposals/0001-workflow-orchestration.md)); and sessions on one machine join a group to message each other back and forth — anything that can wait holds for you ([session groups](docs/design/proposals/0003-session-groups.md)).
-
-**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run exactly as the model saw it.
-
 
 ## Installation
 
 **Homebrew (macOS / Linux)**
 
 ```bash
-brew tap genai-io/san
-brew install san
+brew install genai-io/san/san
 ```
 
 **macOS / Linux**
@@ -79,12 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-On Windows, San runs commands under PowerShell (pwsh if present, else the built-in Windows PowerShell); set `SAN_SHELL=bash`, `powershell`, or a path to choose. With both installed, the other one is available too — turn it on in `/tools`.
-
-Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; turn background updates off in `/settings` › General (or set `SAN_DISABLE_AUTOUPDATE=1`). Model lineups, context windows and prices come from [models.dev](https://models.dev), refreshed daily (`SAN_DISABLE_MODEL_REFRESH=1` to skip); correct any of them in `~/.san/models.json`.
-
 <details>
-<summary><b>Other methods</b></summary>
+<summary><b>Other installation methods and uninstall</b></summary>
 
 **Uninstall**
 
@@ -115,7 +85,18 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 
 </details>
 
+<details>
+<summary><b>Updates</b></summary>
+
+- **Automatic:** new releases install in the background; the status line prompts you to restart.
+- **Manual:** run `san update`, or `brew update && brew upgrade genai-io/san/san` for Homebrew installations. The Homebrew formula syncs daily, so newly published releases may take time to appear.
+- **Disable automatic updates:** use `/settings` › General or set `SAN_DISABLE_AUTOUPDATE=1`.
+
+</details>
+
 ## Usage
+
+Run `san`, then choose a model and add its API key when prompted.
 
 ```bash
 san                          # interactive
@@ -125,82 +106,7 @@ san --continue               # resume the latest session
 san --resume                 # pick a past session to resume
 ```
 
-Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> --help` for each.
-
-| What | How |
-|---|---|
-| Model · thinking budget | `/models` · `Ctrl+T` |
-| Permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
-| Long-running work · learning | `/autopilot` · `/goal` · `/evolve` |
-| Message your other sessions | `/group join` · `/group members` · `/group hold on\|off` |
-| All slash commands | `/help` |
-| Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
-
-[`docs/guides/getting-started.md`](docs/guides/getting-started.md)
-
-### Configuration
-
-<details>
-<summary><b>Credentials</b></summary>
-
-| Service | Variable |
-|:--------|:---------|
-| **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/models`) |
-| **GitHub Copilot** (all Copilot models) | a Copilot subscription (sign in via `/models`) |
-| **Google** (Gemini) | `GOOGLE_API_KEY`, or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-multimodal) (`gcloud auth application-default login` + `GOOGLE_CLOUD_PROJECT`) |
-| **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
-| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
-| **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
-| **MiniMax** | `MINIMAX_API_KEY` |
-| **Z.ai** (GLM / GLM Coding Plan) | `BIGMODEL_API_KEY` |
-| **SenseNova** | `SENSENOVA_API_KEY` |
-| **Mimo** | `MIMO_API_KEY` |
-| **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
-| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
-| **Agnes-AI** | `AGNESAI_API_KEY` |
-| **Exa** search | _none_ (default) |
-| **Tavily** search | `TAVILY_API_KEY` |
-| **Brave** search | `BRAVE_API_KEY` |
-| **Serper** search | `SERPER_API_KEY` |
-
-</details>
-
-<details>
-<summary><b>Config files &amp; layout</b></summary>
-
-Settings load from `~/.san/` and `<project>/.san/`, with project settings overriding user settings. Project instructions follow the [AGENTS.md](https://agents.md) standard: `~/.san/AGENTS.md`, every `AGENTS.md` from the repository root down to the working directory (the nearest one wins), and a git-ignored `AGENTS.local.md` at the root.
-
-User-level (`~/.san/`):
-
-```
-providers.json    # Provider connections and current model
-models.json       # Your corrections to model windows, prices and reasoning efforts
-settings.json     # Permissions, hooks, env, active persona
-skills.json       # Skill states
-personas/         # Persona bundles: system prompt parts, skills, settings
-skills/           # Custom skill definitions
-agents/           # Agent definitions
-commands/         # Custom slash commands
-plugins/          # Installed plugins
-projects/         # Session transcripts + indexes
-```
-
-Project-level (`.san/`):
-
-```
-settings.json       # Permissions, hooks, disabled tools
-mcp.json            # MCP server definitions (team shared)
-mcp.local.json      # MCP server definitions (personal, git-ignored)
-personas/           # Project-scoped persona bundles (override user-level)
-agents/*.md         # Subagent definitions
-skills/*/SKILL.md   # Skills
-commands/*.md       # Slash commands
-plugins/            # Project-level plugins
-plugins-local/      # Local plugins (git-ignored)
-```
-
-</details>
+Use `san --help` for CLI options and `/help` for interactive commands.
 
 ## Benchmark: San vs Claude Code
 
@@ -222,16 +128,10 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 
 ## Documentation
 
-- [Documentation Index](docs/index.md) — map of architecture, features, operations, and references
-- [Architecture](docs/concepts/architecture.md) — architecture entrypoint and reading order
-- [Package Map](docs/reference/package-map.md) — package ownership and dependency boundaries
-- [Personas](docs/concepts/persona.md) — bundled system prompt, skills, agents, and settings
-- [System Prompt](docs/concepts/harness-channels.md) — Slot model, persona, skill/agent injection
-- [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
-- [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
-- [Workflows](docs/design/proposals/0001-workflow-orchestration.md) · [Session groups](docs/design/proposals/0003-session-groups.md) — subagents as a graph; sessions that message each other
-- [Inspector](docs/packages/2-feature/inspector.md) — local web UI for transcript replay and debugging
-- Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
+- [Get started](docs/index.md#get-started) — setup, configuration, commands, and permissions.
+- [Features](docs/features.md) — capabilities and detailed documentation.
+- [Customize and extend](docs/index.md#customize-and-extend) — prompts, personas, skills, and integrations.
+- [Develop and contribute](docs/index.md#develop-and-contribute) — architecture, development, and design.
 
 ## Related Projects
 
