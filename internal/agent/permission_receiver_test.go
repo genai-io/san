@@ -11,7 +11,7 @@ func TestPermissionReceiverLifetime(t *testing.T) {
 	defer gate.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan bool, 1)
-	go func() { _, ok := gate.RecvContext(ctx); done <- ok }()
+	go func() { _, ok := gate.WaitRequest(ctx); done <- ok }()
 	cancel()
 	select {
 	case ok := <-done:
@@ -25,7 +25,7 @@ func TestPermissionReceiverLifetime(t *testing.T) {
 	defer stop()
 	request := &PermGateRequest{Context: next}
 	gate.requests <- request
-	if got, ok := gate.RecvContext(next); !ok || got != request {
+	if got, ok := gate.WaitRequest(next); !ok || got != request {
 		t.Fatal("turn cancellation closed session gate")
 	}
 }

@@ -18,7 +18,7 @@ import (
 func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
 	defer close(done)
 	for {
-		req, ok := gate.RecvContext(ctx)
+		req, ok := gate.WaitRequest(ctx)
 		if !ok {
 			return
 		}

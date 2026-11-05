@@ -203,11 +203,11 @@ func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (boo
 }
 
 func (pg *PermissionGate) Recv() (*PermGateRequest, bool) {
-	return pg.RecvContext(context.Background())
+	return pg.WaitRequest(context.Background())
 }
 
-// RecvContext lets a turn release its receiver without closing the session gate.
-func (pg *PermissionGate) RecvContext(ctx context.Context) (*PermGateRequest, bool) {
+// WaitRequest waits for a permission request until ctx is cancelled or the gate closes.
+func (pg *PermissionGate) WaitRequest(ctx context.Context) (*PermGateRequest, bool) {
 	if pg.ctx.Err() != nil || ctx.Err() != nil {
 		return nil, false
 	}
