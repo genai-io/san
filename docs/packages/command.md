@@ -141,5 +141,5 @@ internal/command/arguments_test.go   — quoted values, unfinished fields,
 
 - Code: `internal/command/`
 - Related: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md) (dynamic providers), [`packages/plugin.md`](plugin.md)
-- Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md)
+- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md)
 - Layer: `feature`

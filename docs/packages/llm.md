@@ -16,7 +16,7 @@ row in `vendor_table.go`, not a package.
 ## Purpose
 
 The agent loop streams through the SDK's own client (see
-[`packages/core.md`](../3-core/core.md)). This package owns *reaching an
+[`packages/core.md`](core.md)). This package owns *reaching an
 endpoint and choosing one* — discovering providers, persisting the user's
 chosen provider/model, switching between them at runtime, handing the loop the
 client for a turn along with the settings that turn runs under, and tracking
@@ -233,6 +233,6 @@ internal/llm/vendor_live_test.go — one real turn per configured vendor,
 ## See Also
 
 - Code: `internal/llm/`
-- Primitive: [`packages/core.md`](../3-core/core.md) (`LLM` interface)
+- Primitive: [`packages/core.md`](core.md) (`LLM` interface)
 - Cost tracking surfaced via [`packages/session.md`](session.md) writer.
 - Layer: `feature`

@@ -150,5 +150,5 @@ internal/plugin/marketplace_manifest_test.go — 清单 source 解析、
 
 - 代码：`internal/plugin/`
 - 消费者：[`packages/skill.md`](skill.md)、[`packages/subagent.md`](subagent.md)、[`packages/command.md`](command.md)、[`packages/mcp.md`](mcp.md)、[`packages/hook.md`](hook.md)、[`packages/setting.md`](setting.md)
-- 概念：[`concepts/extension-model.md`](../../concepts/extension-model.md)
+- 概念：[`concepts/extension-model.md`](../concepts/extension-model.md)
 - 层级：`feature`

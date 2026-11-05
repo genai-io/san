@@ -108,7 +108,7 @@ internal/app/print_test.go               — effective print-mode tools and perm
 ## See Also
 
 - Code: `internal/setting/`
-- Reference: [`reference/configuration.md`](../../reference/configuration.md)
-- Concepts: [`concepts/permission-model.md`](../../concepts/permission-model.md)
+- Reference: [`reference/configuration.md`](../reference/configuration.md)
+- Concepts: [`concepts/permission-model.md`](../concepts/permission-model.md)
 - Permission consumers: [`packages/tool.md`](tool.md), [`packages/hook.md`](hook.md)
 - Layer: `feature`

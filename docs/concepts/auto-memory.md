@@ -271,5 +271,5 @@ go test ./internal/app/conv ./internal/app ./internal/app/kit
 
 - [`concepts/harness-channels.md`](harness-channels.md) — reminders and the
   AGENTS.md memory beside this one.
-- [`packages/reminder.md`](../packages/2-feature/reminder.md) — the
+- [`packages/reminder.md`](../packages/reminder.md) — the
   `memory-auto` and `memory-recall` sources.

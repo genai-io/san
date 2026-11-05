@@ -156,7 +156,7 @@ One subagent-specific rule composes with the pipeline:
   tool is parent-only, so a subagent never sees its schema; there is no
   spawn-permission logic on the subagent side at all. `SendMessage` (main ↔ a
   running subagent) follows the ordinary mode pipeline like any other tool.
-  See [`packages/broker.md`](../packages/2-feature/broker.md).
+  See [`packages/broker.md`](../packages/broker.md).
 
 ## The Gray Zone: Auto-Review
 
@@ -193,7 +193,7 @@ is shown. The hook can:
   session).
 - Rewrite the tool args (e.g. canonicalize a path).
 
-See [`packages/hook.md`](../packages/2-feature/hook.md) for the request/response
+See [`packages/hook.md`](../packages/hook.md) for the request/response
 shape, and `PermissionUpdate` in `internal/hook/types.go` for the
 mutation payload.
 
@@ -234,5 +234,5 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 
 ## See Also
 
-- Packages: [`setting`](../packages/2-feature/setting.md), [`tool`](../packages/2-feature/tool.md), [`agent`](../packages/2-feature/agent.md), [`subagent`](../packages/2-feature/subagent.md), [`hook`](../packages/2-feature/hook.md)
+- Packages: [`setting`](../packages/setting.md), [`tool`](../packages/tool.md), [`agent`](../packages/agent.md), [`subagent`](../packages/subagent.md), [`hook`](../packages/hook.md)
 - Compatibility note for Claude Code rule files: [`reference/claude-permission-compat.md`](../reference/claude-permission-compat.md)

@@ -62,7 +62,7 @@ Each sub-model package (`conv/`, `input/`, `trigger/`, `kit/`) defines its
 own narrow `Runtime` interface. Root implements those via adapter methods
 on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
-[`broker`](../2-feature/broker.md), which the root opens as `broker.Main`.
+[`broker`](broker.md), which the root opens as `broker.Main`.
 
 ### Human interactions
 
@@ -77,7 +77,7 @@ caller; reset and shutdown close the transport logically and reject late deliver
 Worker permission metadata comes from its backend-prepared context, not the
 parent's cwd or grants. Only once/reject is offered for worker approvals.
 `interaction.PreparePermission` and `Permission` handle preparation and resolution
-under the [shared contract](../../reference/dependency-rules.md#rules). TUI supplies
+under the [shared contract](../reference/dependency-rules.md#rules). TUI supplies
 option labels, grant/audit callbacks and persistence notices.
 `interactions_renderer_test.go` drives real modal keys and verifies that worker
 tool execution and the next inference receive the decision/answer.
@@ -236,7 +236,7 @@ Sub-model packages:
 |---|---|---|
 | `app/input/` | Source 1 (user keyboard) | Textarea, selectors, approval modals, slash command dispatch. Big surface (37 files, `on_*.go` per component). |
 | `app/conv/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
-| [`broker`](../2-feature/broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
+| [`broker`](broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
 | `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 
@@ -378,7 +378,7 @@ pending, and completed plan items; rendering leaves task records intact.
 - **Configuration:** `/settings` → Appearance → STATUS BAR groups Context usage
   and Git information in compact Off / On controls. Left / Right previews; Enter
   saves the focused preference. `gitBar` defaults off; `input.GitBarSavedMsg`
-  reloads the effective setting. See [configuration](../../reference/configuration.md).
+  reloads the effective setting. See [configuration](../reference/configuration.md).
 - **Flow:** `model_git_bar.go` reads through `proc.ReadGitStatus` in a bounded
   `tea.Cmd`; `conv.RenderGitBar` draws a plain-text snapshot beneath the normal
   status line. `renderFooter` accounts for its height and composer cursor.
@@ -414,7 +414,7 @@ premium quota takes precedence over Chat. Date-only resets display `(Dec 1)`.
 Fetching is asynchronous, Copilot-only, and cached for two minutes; no settings
 are required. The label hides on narrow terminals. Tests in
 `copilot_quota_test.go` cover formatting, refresh, and status integration.
-See [Copilot account quota](../2-feature/llm.md#copilot-account-quota) for API semantics.
+See [Copilot account quota](llm.md#copilot-account-quota) for API semantics.
 
 ## Tests
 
@@ -445,8 +445,8 @@ internal/app/input/on_textarea_test.go         — textarea behavior.
 ## See Also
 
 - Code: `internal/app/`
-- End-to-end data flow (keystroke → agent → render): [`concepts/data-flow.md`](../../concepts/data-flow.md)
-- Rendering pipeline (View(), Markdown, tool blocks): [`concepts/rendering.md`](../../concepts/rendering.md)
-- Underlying primitive: [`packages/core.md`](../3-core/core.md) (`Agent` interface)
-- Foreground session wrapper: [`packages/agent.md`](../2-feature/agent.md)
+- End-to-end data flow (keystroke → agent → render): [`concepts/data-flow.md`](../concepts/data-flow.md)
+- Rendering pipeline (View(), Markdown, tool blocks): [`concepts/rendering.md`](../concepts/rendering.md)
+- Underlying primitive: [`packages/core.md`](core.md) (`Agent` interface)
+- Foreground session wrapper: [`packages/agent.md`](agent.md)
 - Layer: `app` — top of the stack, may import any feature package.

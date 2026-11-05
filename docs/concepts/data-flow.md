@@ -244,7 +244,7 @@ agent turn ends) drains them.
 
 `m.mainNotices` carries notices bound for the main loop: subagent completions,
 interim messages (`SendMessage to="main"`), and self-learn notices. Agent
-mail routes through the process-wide [`broker`](../packages/2-feature/broker.md);
+mail routes through the process-wide [`broker`](../packages/broker.md);
 the main loop opens `broker.Main` and forwards onto this channel.
 
 ### Drain at turn boundary

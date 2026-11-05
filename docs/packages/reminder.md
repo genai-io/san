@@ -23,7 +23,7 @@ cache — currently:
 - memory recall (the auto memories picked for one message; no provider, attached to a tool result by `agent.WithRecall`)
 - one-time notices (queued from hooks or commands)
 
-See [`concepts/harness-channels.md`](../../concepts/harness-channels.md) for
+See [`concepts/harness-channels.md`](../concepts/harness-channels.md) for
 why reminders are a separate channel from the system prompt.
 
 ## Contract
@@ -94,7 +94,7 @@ func Wrap(body string) string
   memory-project, memory-auto) and one-time notices share this lifecycle. On PostCompact
   the harness re-reads memory from disk before re-emitting, so an edited
   memory file re-injects its latest content. See
-  [`concepts/compaction.md`](../../concepts/compaction.md).
+  [`concepts/compaction.md`](../concepts/compaction.md).
 
 ## Tests
 
@@ -107,6 +107,6 @@ internal/reminder/reminder_test.go    — provider re-emission, notice
 ## See Also
 
 - Code: `internal/reminder/`
-- Concepts: [`concepts/harness-channels.md`](../../concepts/harness-channels.md), [`concepts/extension-model.md`](../../concepts/extension-model.md)
-- Memory commands: [`reference/slash-commands.md`](../../reference/slash-commands.md) (`/memory`)
+- Concepts: [`concepts/harness-channels.md`](../concepts/harness-channels.md), [`concepts/extension-model.md`](../concepts/extension-model.md)
+- Memory commands: [`reference/slash-commands.md`](../reference/slash-commands.md) (`/memory`)
 - Layer: `feature`

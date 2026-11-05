@@ -129,7 +129,7 @@ internal/tool/fs/shell_output_test.go — bounded capture and complete backgroun
 ## See Also
 
 - Code: `internal/tool/`
-- Primitive: [`packages/core.md`](../3-core/core.md) (`Tool` and `Tools` interfaces)
-- Permission gate: [`packages/setting.md`](setting.md), [`concepts/permission-model.md`](../../concepts/permission-model.md)
+- Primitive: [`packages/core.md`](core.md) (`Tool` and `Tools` interfaces)
+- Permission gate: [`packages/setting.md`](setting.md), [`concepts/permission-model.md`](../concepts/permission-model.md)
 - MCP-registered tools: [`packages/mcp.md`](mcp.md)
 - Layer: `feature`

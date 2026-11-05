@@ -46,9 +46,9 @@ External client ── ACP ──────┘
   worker handoffs stay run-local. Result filtering, recording and compaction are
   not moved. The ACP adapter must supply equivalent admission and workspace wiring.
 - `internal/agent`: shared normal-turn recording, Stop decisions and compaction
-  policy; see [agent lifecycle](../../packages/2-feature/agent.md#lifecycle).
+  policy; see [agent lifecycle](../../packages/agent.md#lifecycle).
 - `internal/agent.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
-  authorization composition; see [execution policy](../../packages/2-feature/agent.md#internals).
+  authorization composition; see [execution policy](../../packages/agent.md#internals).
 - Remaining input and turn lifecycle: pending. Runtime assembly (result paging,
   service/tool construction and interaction wiring), background-source admission,
   compaction admission/projection and terminal cleanup remain in app.

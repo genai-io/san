@@ -79,6 +79,6 @@ test runner; `make ci` includes them alongside the Go tests.
 ## See Also
 
 - Code: `internal/inspector/`, `internal/inspector/ui/`
-- User guide: [`docs/inspector.md`](../../guides/inspector.md)
+- User guide: [`guides/inspector.md`](../guides/inspector.md)
 - Source data: [`packages/session.md`](session.md) (`internal/transcript`)
 - Layer: `feature`

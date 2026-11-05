@@ -22,7 +22,7 @@
 - [Skills](guides/writing-a-skill.md) — write reusable task procedures.
 - [Subagents](guides/writing-a-subagent.md) — define specialized agents.
 - [Plugins](guides/writing-a-plugin.md) — package extensions.
-- [MCP](packages/2-feature/mcp.md) · [Hooks](packages/2-feature/hook.md) · [Providers](guides/writing-a-provider.md) — integrate tools, automation, and models.
+- [MCP](packages/mcp.md) · [Hooks](packages/hook.md) · [Providers](guides/writing-a-provider.md) — integrate tools, automation, and models.
 
 ## Develop and contribute
 

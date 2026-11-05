@@ -18,8 +18,8 @@ task. The package owns the format (frontmatter, one mermaid block, one
 the parent conversation receives. It imports nothing from San — node
 execution enters through `NodeRunner` — so it can move to sdk-go as
 `pkg/agent/flow` once the schema settles. Design and rationale:
-[`design/proposals/0001-workflow-orchestration.md`](../../design/proposals/0001-workflow-orchestration.md);
-user-facing behaviour: [`concepts/workflow.md`](../../concepts/workflow.md).
+[`design/proposals/0001-workflow-orchestration.md`](../design/proposals/0001-workflow-orchestration.md);
+user-facing behaviour: [`concepts/workflow.md`](../concepts/workflow.md).
 
 The tool description explains Agent as an alternative for already-delegated
 one-off work, without directing ordinary tasks to subagents.
@@ -175,4 +175,4 @@ tests/integration/workflow/workflow_test.go — the same tool through the real s
 - Related packages: [`subagent`](subagent.md) (what runs a node),
   [`task`](task.md) (the background task a run lives under),
   [`tool`](tool.md) (registration and the parent-only rule)
-- Concepts: [`concepts/workflow.md`](../../concepts/workflow.md)
+- Concepts: [`concepts/workflow.md`](../concepts/workflow.md)

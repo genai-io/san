@@ -5,7 +5,7 @@ subset + permission mode that the foreground agent can spawn via the
 `Agent` tool. Foreground subagents return a tool result; background ones notify
 the main conversation when done.
 
-For the system-level design see [`packages/subagent.md`](../packages/2-feature/subagent.md)
+For the system-level design see [`packages/subagent.md`](../packages/subagent.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 ## Where to Put It
@@ -96,7 +96,7 @@ controls what happens when a tool call would normally `ask`:
 Subagents cannot spawn subagents. `SendMessage(to="main", ...)` follows the
 normal mode rules.
 
-See [`packages/broker.md`](../packages/2-feature/broker.md)
+See [`packages/broker.md`](../packages/broker.md)
 for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
 for the full decision pipeline.
 
@@ -167,11 +167,11 @@ A background subagent registers with the broker while running:
 
 ## See Also
 
-- [`packages/broker.md`](../packages/2-feature/broker.md) —
+- [`packages/broker.md`](../packages/broker.md) —
   how the main conversation and its subagents message each other.
-- [`packages/subagent.md`](../packages/2-feature/subagent.md) — registry +
+- [`packages/subagent.md`](../packages/subagent.md) — registry +
   executor design.
-- [`packages/agent.md`](../packages/2-feature/agent.md) — foreground agent
+- [`packages/agent.md`](../packages/agent.md) — foreground agent
   lifecycle.
 - [`concepts/extension-model.md`](../concepts/extension-model.md).
 - [`concepts/permission-model.md`](../concepts/permission-model.md).

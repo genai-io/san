@@ -613,8 +613,8 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 ## 参考资料
 
 - `notes/active/persona-system.md` — Persona 目录遵循的 persona 设计规范
-- [`core.Agent`](../../packages/3-core/core.md) — 底层 Agent 原语
-- [`packages/subagent.md`](../../packages/2-feature/subagent.md) — 子 Agent 机制
-- [`packages/skill.md`](../../packages/2-feature/skill.md) — 技能加载
+- [`core.Agent`](../../packages/core.md) — 底层 Agent 原语
+- [`packages/subagent.md`](../../packages/subagent.md) — 子 Agent 机制
+- [`packages/skill.md`](../../packages/skill.md) — 技能加载
 - [`concepts/permission-model.md`](../../concepts/permission-model.md) — 权限模型
 - [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — 分层包架构

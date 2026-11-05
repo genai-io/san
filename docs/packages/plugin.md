@@ -158,5 +158,5 @@ internal/plugin/marketplace_manifest_test.go — manifest source parsing,
 
 - Code: `internal/plugin/`
 - Consumers: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md), [`packages/command.md`](command.md), [`packages/mcp.md`](mcp.md), [`packages/hook.md`](hook.md), [`packages/setting.md`](setting.md)
-- Concepts: [`concepts/extension-model.md`](../../concepts/extension-model.md)
+- Concepts: [`concepts/extension-model.md`](../concepts/extension-model.md)
 - Layer: `feature`

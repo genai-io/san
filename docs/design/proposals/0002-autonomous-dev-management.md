@@ -633,8 +633,8 @@ directly adopt them or use them as design references.
 ## References
 
 - `notes/active/persona-system.md` — persona design spec that Persona directories follow
-- [`core.Agent`](../../packages/3-core/core.md) — underlying agent primitive
-- [`packages/subagent.md`](../../packages/2-feature/subagent.md) — sub-agent mechanism
-- [`packages/skill.md`](../../packages/2-feature/skill.md) — skill loading
+- [`core.Agent`](../../packages/core.md) — underlying agent primitive
+- [`packages/subagent.md`](../../packages/subagent.md) — sub-agent mechanism
+- [`packages/skill.md`](../../packages/skill.md) — skill loading
 - [`concepts/permission-model.md`](../../concepts/permission-model.md) — permission model
 - [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — layered package architecture

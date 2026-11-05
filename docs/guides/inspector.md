@@ -7,7 +7,7 @@ responses, tool calls, system events, and harness state — as an
 inspectable timeline. Think of it as "conversation forensics" for your
 agent runs.
 
-![Inspector UI](images/inspector.png)
+![Inspector UI](../images/inspector.png)
 
 ## Quick Start
 
@@ -175,7 +175,7 @@ directly for scripting:
 
 ## See Also
 
-- [Package design doc](../packages/2-feature/inspector.md) — internals and contracts
-- [Session transcripts](../packages/2-feature/session.md) — the JSONL format on disk
+- [Package design doc](../packages/inspector.md) — internals and contracts
+- [Session transcripts](../packages/session.md) — the JSONL format on disk
 - [Compaction](../concepts/compaction.md) — how context window compaction
   interacts with transcript replay

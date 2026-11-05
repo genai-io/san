@@ -9,7 +9,7 @@ own business logic.
 Documented together because each surface is small and the role is the
 same.
 
-Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../../reference/dependency-rules.md)).
+Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../reference/dependency-rules.md)).
 
 ## `internal/log`
 
@@ -48,7 +48,7 @@ func (s *Store) Keys() []string
   threat model is local multi-user isolation, not at-rest secrecy.
 - `Set` and `Delete` re-read the file under `secrets.json.lock` and merge,
   so concurrent San processes keep each other's keys (atomic write).
-- Consumer: [`packages/llm.md`](../2-feature/llm.md) for provider API keys.
+- Consumer: [`packages/llm.md`](llm.md) for provider API keys.
 - Code: `internal/secret/`.
 
 ## `internal/filecache`
@@ -74,7 +74,7 @@ func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per fi
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
   `internal/app/conv/compact.go` (build on compaction). See also
-  [`../concepts/harness-channels.md`](../../concepts/harness-channels.md).
+  [`../concepts/harness-channels.md`](../concepts/harness-channels.md).
 - Code: `internal/filecache/`.
 
 ## `internal/markdown`
@@ -94,8 +94,8 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 ```
 
 - Stateless, concurrent-safe (each call opens its own file).
-- Consumers: [`skill.md`](../2-feature/skill.md), [`subagent.md`](../2-feature/subagent.md),
-  `persona`, [`command.md`](../2-feature/command.md). Every skill / agent /
+- Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
+  `persona`, [`command.md`](command.md). Every skill / agent /
   persona / command file is parsed through it on `san` startup.
 - Code: `internal/markdown/`.
 
@@ -208,7 +208,7 @@ func Cleanup()
   ed25519 signature against the public key built into the binary
   (`verify.go`), then hashes the archive as it downloads and refuses a
   mismatch. TLS proves who served the bytes; the signature proves who
-  published them. Key setup and rotation: [`../../operations/release.md`](../../operations/release.md).
+  published them. Key setup and rotation: [`../operations/release.md`](../operations/release.md).
 - On POSIX the swap is one atomic rename, so the path always names a whole
   binary; Windows cannot replace a running executable, so there the old one is
   moved aside first. `Cleanup`, run in the background at every TUI launch,
@@ -218,5 +218,5 @@ func Cleanup()
 
 ## See Also
 
-- Layer: [`../reference/dependency-rules.md`](../../reference/dependency-rules.md)
-- Package map: [`../reference/package-map.md`](../../reference/package-map.md)
+- Layer: [`../reference/dependency-rules.md`](../reference/dependency-rules.md)
+- Package map: [`../reference/package-map.md`](../reference/package-map.md)

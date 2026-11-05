@@ -5,7 +5,7 @@ streaming loop and no conversion code — those belong to
 [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go), which speaks four wire
 protocols and covers every vendor San reaches through
 the `vendor_*` files in
-[`internal/llm`](../packages/2-feature/llm.md).
+[`internal/llm`](../packages/llm.md).
 
 Most vendors need no code at all, because most of them ship an endpoint
 speaking somebody else's protocol: OpenAI Chat Completions covers the majority,
@@ -109,5 +109,5 @@ SAN_SDK_LIVE=1 go test ./internal/llm/ -run TestLive -v
 
 ## See Also
 
-- [`packages/llm.md`](../packages/2-feature/llm.md) — the package design.
+- [`packages/llm.md`](../packages/llm.md) — the package design.
 - [SDK reference](https://pkg.go.dev/github.com/genai-io/sdk-go/pkg/ai).

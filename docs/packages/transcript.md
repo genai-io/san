@@ -93,4 +93,4 @@ attachment identifiers must be single path components.
 - Product adapter: [session](session.md)
 - Running conversation: [agent](agent.md)
 - Replay UI: [inspector](inspector.md)
-- [Dependency rules](../../reference/dependency-rules.md)
+- [Dependency rules](../reference/dependency-rules.md)

@@ -204,4 +204,4 @@ back at the end of a turn.
 - [Agent runtime](agent.md)
 - [Native transcript log](transcript.md)
 - [Inspector](inspector.md)
-- [Package map](../../reference/package-map.md)
+- [Package map](../reference/package-map.md)

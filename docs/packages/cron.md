@@ -81,5 +81,5 @@ internal/cron/cross_instance_test.go — shared persistence, deletion and write 
 ## See Also
 
 - Code: `internal/cron/`
-- Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md) (`/loop`, `/schedule`)
+- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md) (`/loop`, `/schedule`)
 - Layer: `feature`
