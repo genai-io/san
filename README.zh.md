@@ -26,35 +26,19 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 ## 为什么选 San
 
-**三** —— 三个特性，谁也不为谁让路。
-
 **小** —— 你的第一句话之前，只有约 2.3k token 的框架开销；剩下的上下文窗口全留给你的正事。落到磁盘上是一个 12 MB 的二进制、零运行时依赖 —— 笔记本、CI runner、`scratch` 容器，丢进去就能跑。
 
 **快** —— ~0.01s 冷启动，一次完整的工具调用任务端到端 ~3.3s。你等的是模型，不是客户端（[基准测试](#基准测试san-vs-claude-code)）。
 
-**开** —— 模型、skills、subagents、MCP servers，想接就接；system prompt、Autopilot 的目标、自我学习的策略，都由你来写；`san inspector` 回放任意一次运行。
+**更少预设的 Agent 框架** —— 自由选择模型，用自己的 [system prompt](docs/concepts/harness-channels.md)、[persona](docs/concepts/persona.md) 和工具塑造 Agent 行为，通过 skills、plugins、MCP servers 和 hooks 扩展能力。
+
+**协作与编排** —— 通过本地[会话组](docs/design/proposals/0003-session-groups.zh.md)进行跨会话通信，并行[委派 Agent 任务](docs/packages/2-feature/subagent.md)，以及运行动态[工作流](docs/packages/2-feature/workflow.md)。
+
+**控制与可观测性** —— 通过[权限策略](docs/concepts/permission-model.md)决定 Agent 哪些操作无需询问，用 [Inspector](docs/packages/2-feature/inspector.md)检查对话与工具执行过程。
+
+[功能清单](docs/features.md) · [架构与总览图](docs/concepts/architecture.md)
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
-
-## 开放架构
-
-<details>
-<summary><b>总览图</b></summary>
-
-<div align="center">
-  <img src="assets/san.png" alt="San —— 可插拔模型、搜索后端、人设、技能与扩展，以及自我进化的 Agent" width="100%">
-</div>
-
-</details>
-
-**接** —— 没有一块是焊死的。模型可选 Anthropic、OpenAI、Google、DeepSeek、Ollama 等十余家；联网搜索后端任选；扩展涵盖 skills、subagents、MCP servers、plugins、hooks。
-
-**写** —— Agent 怎么做事，是你能改的文本，不是编死在二进制里的东西。拼装 system prompt（[原理](docs/concepts/harness-channels.md)），打包成可随时切换的 persona，给 Autopilot 一个目标，为自我学习定一套策略。
-
-**协** —— 不止一个 agent 在干活。subagents 并行跑，各用最合适的模型；workflow 把它们编排成一张图（[原理](docs/design/proposals/0001-workflow-orchestration.zh.md)）；同一台机器上的多个会话加入同一个组，彼此来回发消息 —— 能等的事先替你扣着（[会话组](docs/design/proposals/0003-session-groups.zh.md)）。
-
-**看** —— 没有一步是暗箱。San 能自作主张到什么程度由你定，subagent 继承同一个选择（[权限模型](docs/concepts/permission-model.md)）；Inspector 回放任意一次运行，模型看到的一切原样呈现。
-
 
 ## 安装
 

@@ -28,35 +28,19 @@ stays yours to change.
 
 ## Why San
 
-Three properties, and San refuses to trade any one of them for the others.
-
 **Small** — ~2.3k tokens of harness reach the model before your first message; the rest of the context window goes to your work. On disk, one 12 MB binary with zero runtime deps — it drops onto a laptop, a CI runner, or a `scratch` container.
 
 **Fast** — ~0.01s cold start, and a full tool-use task returns in ~3.3s end to end. What you wait on is the model, not the client ([benchmark](#benchmark-san-vs-claude-code)).
 
-**Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
+**A less opinionated harness** — Choose your models and shape agent behavior with your own [system prompts](docs/concepts/harness-channels.md), [personas](docs/concepts/persona.md), and tools. Extend it with skills, plugins, MCP servers, and hooks.
+
+**Coordination and orchestration** — Cross-session communication through local [session groups](docs/design/proposals/0003-session-groups.md), parallel [agent delegation](docs/packages/2-feature/subagent.md), and dynamic [workflows](docs/packages/2-feature/workflow.md).
+
+**Control and visibility** — Choose how much agents may do without asking through [permissions](docs/concepts/permission-model.md), and inspect conversations and tool execution with [Inspector](docs/packages/2-feature/inspector.md).
+
+[Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
-
-## Open architecture
-
-<details>
-<summary><b>Overview diagram</b></summary>
-
-<div align="center">
-  <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
-</div>
-
-</details>
-
-**Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Ollama, and a dozen more; the web search backend of your choice; extensions of every kind — skills, subagents, MCP servers, plugins, hooks.
-
-**Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt ([how](docs/concepts/harness-channels.md)), bundle it into a persona you can switch, give autopilot a goal, set the strategy self-learning follows.
-
-**Coordinate** — more than one agent at a time. Subagents run in parallel, each on the model that suits it; workflows arrange them as a graph ([how](docs/design/proposals/0001-workflow-orchestration.md)); and sessions on one machine join a group to message each other back and forth — anything that can wait holds for you ([session groups](docs/design/proposals/0003-session-groups.md)).
-
-**Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run exactly as the model saw it.
-
 
 ## Installation
 

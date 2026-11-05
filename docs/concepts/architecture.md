@@ -10,6 +10,12 @@ This page is the system-level overview. For per-package design see
 see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
 [`reference/package-map.md`](../reference/package-map.md).
 
+## Overview diagram
+
+![San — pluggable models, search backends, personas, skills and extensions, and a self-evolving agent](../../assets/san.png)
+
+For a grouped capability list, see the [feature overview](../features.md).
+
 ## Primitives
 
 1. **Agent** — an LLM-in-a-loop: messages in through `Append`, events out on an `Outbox` channel. Contracts
