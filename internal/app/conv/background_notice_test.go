@@ -38,9 +38,19 @@ func TestBackgroundIdentityAndSeverity(t *testing.T) {
 			}
 		}
 		for _, status := range []string{"completed", "failed", "interrupted", "timeout", "timed_out", "stopped", "killed", "unknown"} {
+			wantColor := kit.CurrentTheme.Text
+			switch status {
+			case "completed":
+				wantColor = kit.CurrentTheme.Success
+			case "failed":
+				wantColor = kit.CurrentTheme.Error
+			case "interrupted", "timeout", "timed_out":
+				wantColor = kit.CurrentTheme.Warning
+			}
+			wantStatus := lipgloss.NewStyle().Foreground(wantColor).Render(status)
 			e := parseAgentEnvelope(`<task-notification task-id="task-a12" status="` + status + `" description="Run tests">Error: provider unavailable</task-notification>`)
 			view := e.render(100, nil)
-			if !strings.Contains(view, identity.Render("●")) || !strings.Contains(view, identity.Render("Run tests")) || !strings.Contains(view, backgroundStatusStyle(status).Render(status)) {
+			if !strings.Contains(view, identity.Render("●")) || !strings.Contains(view, identity.Render("Run tests")) || !strings.Contains(view, wantStatus) {
 				t.Fatalf("%s: identity/status lost: %q", status, view)
 			}
 			if strings.Contains(ansi.Strip(view), "provider unavailable") && !strings.Contains(view, toolCallStyle.Render(" · provider unavailable")) {
@@ -64,6 +74,16 @@ func TestBackgroundIdentityAndSeverity(t *testing.T) {
 		unknown := RenderAgentNotice("failed is just a word in this report", 100, nil)
 		if !strings.Contains(unknown, toolCallStyle.Render(" failed is just a word in this report")) {
 			t.Fatalf("unstructured prose gained severity: %q", unknown)
+		}
+	}
+}
+
+func TestBackgroundShellCallDefaultWidth(t *testing.T) {
+	input := `{"command":"go test ./...","description":"Run tests"}`
+	want := renderBackgroundShellCall("Bash", input, "task-a12", 80)
+	for _, width := range []int{0, -1} {
+		if got := renderBackgroundShellCall("Bash", input, "task-a12", width); got != want {
+			t.Fatalf("width %d should use the default, got %q", width, got)
 		}
 	}
 }

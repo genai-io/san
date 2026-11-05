@@ -16,6 +16,20 @@ func backgroundIdentityColor(id string) kit.AdaptiveColor {
 	return memberColor(id, nil)
 }
 
+func renderBackgroundShellCall(toolName, input, taskID string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+	command, description := extractBashCommand(input)
+	label := toolName
+	if description != "" {
+		label += " · " + description
+	}
+	label = kit.TruncateText(label, max(1, width-kit.ToolIconWidth))
+	header := renderAgentColoredLine(label, width, "●", backgroundIdentityColor(taskID))
+	return header + "\n" + kit.RenderCommandBlock(command, width)
+}
+
 func backgroundStatusStyle(status string) lipgloss.Style {
 	color := kit.CurrentTheme.Text
 	switch status {

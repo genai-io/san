@@ -814,14 +814,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 		} else if tc.Name == tool.ToolAskUserQuestion {
 			sb.WriteString(renderAskUserCall(tc.Input, toolCallIcon(tc, params), params.Width))
 		} else if result, ok := params.ResultMap[tc.ID].Details.(toolresult.BashDetails); tool.IsShellTool(tc.Name) && ok && result.TaskID != "" {
-			command, description := extractBashCommand(tc.Input)
-			label := tc.Name
-			if description != "" {
-				label += " · " + description
-			}
-			label = kit.TruncateText(label, max(1, params.Width-kit.ToolIconWidth))
-			sb.WriteString(renderAgentColoredLine(label, params.Width, "●", backgroundIdentityColor(result.TaskID)) + "\n")
-			sb.WriteString(kit.RenderCommandBlock(command, params.Width))
+			sb.WriteString(renderBackgroundShellCall(tc.Name, tc.Input, result.TaskID, params.Width))
 		} else if params.ToolCallsExpanded && tool.IsShellTool(tc.Name) {
 			command, description := extractBashCommand(tc.Input)
 			sb.WriteString(renderShellCommandBlock(tc.Name, command, description, params.Width, toolCallIcon(tc, params), ""))
