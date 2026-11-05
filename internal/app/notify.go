@@ -65,8 +65,7 @@ func fromBrokerMessage(m broker.Message) mainNotice {
 // roughly a third as many characters — ~6.6K.
 const maxTaskOutputInNotification = 20000
 
-// taskCompletionMessage builds the broker message a finished task sends to the
-// "main" address, or (_, false) if the task is not in a terminal state.
+// taskCompletionMessage addresses a terminal result to its launching agent.
 func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	status := formatStatus(info.Status)
 	if status == "" {
@@ -143,10 +142,14 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if info.OutputError != "" {
 		subject += " · output log unavailable"
 	}
+	recipient := info.OwnerAgentID
+	if recipient == "" {
+		recipient = broker.Main
+	}
 	return broker.Message{
 		SessionID: info.ParentSessionID,
 		From:      info.ID,
-		To:        broker.Main,
+		To:        recipient,
 		Subject:   subject,
 		Content:   b.String(),
 		TaskCompletion: &broker.TaskCompletion{

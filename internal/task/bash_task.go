@@ -17,6 +17,7 @@ import (
 // It implements the BackgroundTask interface
 type BashTask struct {
 	parentSessionID string // fixed before registration
+	ownerAgentID    string // fixed before registration
 
 	ID          string    // Unique task ID
 	Command     string    // The command being executed
@@ -341,6 +342,7 @@ func (t *BashTask) GetStatus() TaskInfo {
 
 	return TaskInfo{
 		ParentSessionID: t.parentSessionID,
+		OwnerAgentID:    t.ownerAgentID,
 
 		ID:          t.ID,
 		Type:        TaskTypeBash,

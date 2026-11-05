@@ -83,6 +83,9 @@ func ResetDefaultTracker()         // test-only
   agent use the manager's selected session. Switching sessions does not transfer
   old workers' notices or lifecycle updates into the new conversation. The task
   registry and output logs remain available for inspection.
+- Background Bash also captures `OwnerAgentID` before registration. Child results
+  return to that agent independently of the selected UI session; main-owned work
+  keeps the existing main notification path.
 - Terminal notifications carry the error reason and any partial output
   together. Output above the notification's inline-size limit points at a
   healthy task log, including when the task failed or was stopped; the failure

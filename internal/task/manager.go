@@ -44,6 +44,7 @@ func (m *Manager) CreateBashTask(ctx context.Context, cmd *exec.Cmd, command, de
 	id := NewID()
 	task := NewBashTask(id, command, description, cmd, cancel, m.outputPath(id))
 	task.parentSessionID = m.ownerSession(ctx)
+	task.ownerAgentID = OwnerAgentIDFromContext(ctx)
 	m.RegisterTask(task)
 	return task
 }
