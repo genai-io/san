@@ -60,7 +60,7 @@ func TestACPStdioHealthyFrames(t *testing.T) {
 	// Small complete frames fit the pipe. Verify ordering and the JSON payload,
 	// rather than merely observing that a write returned.
 	for i := range 10 {
-		if err := conn.Notify(ctx, "test", i); err != nil {
+		if err := conn.Notify(ctx, "test", map[string]int{"sequence": i}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -71,9 +71,11 @@ func TestACPStdioHealthyFrames(t *testing.T) {
 		}
 		var frame struct {
 			Method string `json:"method"`
-			Params int    `json:"params"`
+			Params struct {
+				Sequence int `json:"sequence"`
+			} `json:"params"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil || frame.Method != "test" || frame.Params != i {
+		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil || frame.Method != "test" || frame.Params.Sequence != i {
 			t.Fatalf("frame %d = %s (%v)", i, scanner.Bytes(), err)
 		}
 	}
@@ -110,7 +112,7 @@ func TestACPStdioWriteTimeout(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("callback did not start")
 	}
-	if err := conn.Notify(ctx, "test", strings.Repeat("x", 512<<10)); !errors.Is(err, acp.ErrWriteTimeout) {
+	if err := conn.Notify(ctx, "test", map[string]string{"text": strings.Repeat("x", 512<<10)}); !errors.Is(err, acp.ErrWriteTimeout) {
 		t.Fatalf("partial/blocked frame acknowledged: %v", err)
 	}
 	if err := conn.Wait(ctx); !errors.Is(err, acp.ErrWriteTimeout) {
