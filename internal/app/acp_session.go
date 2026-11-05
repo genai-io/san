@@ -109,5 +109,8 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			}
 		}
 	}
+	if err := s.sendCommands(turn); err != nil {
+		return response, err
+	}
 	return protocol.LoadSessionResponse{Modes: created.Modes, ConfigOptions: created.ConfigOptions}, s.data.Session.Err()
 }

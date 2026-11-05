@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
@@ -21,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/fs"
 	"github.com/genai-io/san/internal/transcript"
@@ -100,6 +102,8 @@ type acpSession struct {
 	mcp         *mcp.Manager
 	policy      *setting.SessionPermissions
 	mode        setting.OperationMode
+	commands    *command.Registry
+	agents      *subagent.Registry
 	models      []llm.ModelInfo
 }
 
@@ -167,6 +171,17 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
 	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
+	s.commands = acpCommands(req.CWD, plugins)
+	var agentPaths []subagent.PluginAgentPath
+	for _, p := range plugins.AgentPaths() {
+		agentPaths = append(agentPaths, subagent.PluginAgentPath{Path: p.Path, Namespace: p.Namespace})
+	}
+	s.agents, err = subagent.Load(req.CWD, agentPaths)
+	if err != nil {
+		_ = servers.Close()
+		_ = opened.Close()
+		return protocol.NewSessionResponse{}, err
+	}
 	tasks := task.NewManager()
 	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
 	if err := s.data.Validate(); err != nil {
@@ -195,7 +210,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
 	}
 	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
-		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins,
+		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
 		ToolResponse: func(callID string, response any) { s.sideEffects.Store(callID, response) },
@@ -210,7 +225,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	s.params.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
 	for _, schema := range s.params.Schemas() {
 		switch schema.Name {
-		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill":
+		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent":
 		default:
 			s.params.DisabledTools[schema.Name] = true
 		}

@@ -53,6 +53,7 @@ type BuildParams struct {
 	Tasks         *task.Manager   // nil retains the native default
 	Skills        *skill.Registry // nil retains the native default
 	Plugins       *plugin.Registry
+	PluginRoot    func() string // optional session-owned invocation scope
 
 	// AutoMemory is the auto-memory stores the main agent maintains; zero
 	// when auto memory is off.
@@ -193,6 +194,9 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		}
 		if p.Plugins != nil {
 			ctx = plugin.WithRegistry(ctx, p.Plugins)
+			if p.PluginRoot != nil {
+				ctx = plugin.WithRoot(ctx, p.PluginRoot())
+			}
 			ctx = fs.WithShellEnv(ctx, plugin.PluginEnv(ctx))
 		}
 		if p.Skills != nil {

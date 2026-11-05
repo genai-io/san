@@ -49,6 +49,23 @@ func ClearPluginAgentPaths() {
 	additionalAgentPaths = nil
 }
 
+// Load creates an independent catalog without consulting global plugin paths.
+func Load(cwd string, plugins []PluginAgentPath) (*Registry, error) {
+	r := NewRegistry()
+	if err := r.InitStores(cwd); err != nil {
+		return nil, err
+	}
+	home, _ := os.UserHomeDir()
+	paths := []agentSearchPath{{path: filepath.Join(confdir.Dir(cwd), "agents")}, {path: filepath.Join(confdir.Dir(home), "agents")}, {path: filepath.Join(cwd, ".claude", "agents")}, {path: filepath.Join(home, ".claude", "agents")}}
+	for _, p := range plugins {
+		paths = append(paths, agentSearchPath{path: p.Path, namespace: p.Namespace})
+	}
+	for _, p := range slices.Backward(paths) {
+		r.loadDir(p.path, p.namespace)
+	}
+	return r, nil
+}
+
 // LoadAgents loads agent definitions from standard locations.
 // Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
 // Priority when the same agent name appears in several locations:
@@ -82,6 +99,10 @@ func LoadAgents(cwd string) {
 // loadAgentsFromDirWithNamespace loads agents with an optional namespace prefix.
 // The path can be either a directory (scanned for .md files) or a direct file path.
 func loadAgentsFromDirWithNamespace(path string, namespace string) {
+	defaultRegistry.loadDir(path, namespace)
+}
+
+func (r *Registry) loadDir(path string, namespace string) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return
@@ -90,7 +111,7 @@ func loadAgentsFromDirWithNamespace(path string, namespace string) {
 	// If path is a file, load it directly
 	if !info.IsDir() {
 		if strings.HasSuffix(path, ".md") {
-			loadAgentFromFileWithNamespace(path, namespace)
+			r.loadFile(path, namespace)
 		}
 		return
 	}
@@ -112,12 +133,16 @@ func loadAgentsFromDirWithNamespace(path string, namespace string) {
 		}
 
 		filePath := filepath.Join(path, name)
-		loadAgentFromFileWithNamespace(filePath, namespace)
+		r.loadFile(filePath, namespace)
 	}
 }
 
 // loadAgentFromFileWithNamespace loads an agent with optional namespace.
 func loadAgentFromFileWithNamespace(filePath string, namespace string) {
+	defaultRegistry.loadFile(filePath, namespace)
+}
+
+func (r *Registry) loadFile(filePath string, namespace string) {
 	config, err := parseAgentFile(filePath)
 	if err != nil {
 		log.Logger().Debug("Failed to parse agent file",
@@ -132,7 +157,7 @@ func loadAgentFromFileWithNamespace(filePath string, namespace string) {
 			config.Source = "plugin"
 		}
 
-		defaultRegistry.Register(config)
+		r.Register(config)
 		log.Logger().Info("Loaded agent",
 			zap.String("name", config.Name),
 			zap.String("source", filePath))

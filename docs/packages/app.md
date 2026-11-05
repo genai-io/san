@@ -131,7 +131,7 @@ session state and acknowledges the native receipt before admitting a successor;
 disconnect joins callbacks and runtimes before closing transcript writers.
 
 The host supports text prompts and Read/Write/Edit/Glob/Grep, foreground and
-background Bash, TaskOutput/TaskStop and Skill, subject to disabled tools and
+background Bash, TaskOutput/TaskStop, Agent and Skill, subject to disabled tools and
 native policy. `acp_extensions.go` loads
 independent skill/plugin registries and native plus client-supplied MCP servers.
 Plugin skill paths, hooks, subprocess environment and MCP contributions use those
@@ -174,9 +174,26 @@ hooks, MCP and transcripts. Terminal display status is not a cleanup receipt.
 Task output is bounded in memory and is not restored by session/load. Poll results
 enter the native transcript; unpolled output is connection-local.
 
-**Incomplete capability work:** subagent execution, plugin commands/agent
-definitions, structured questions, command prompts and masked secret input remain
-unavailable. The vendored ACP schema includes `elicitation/create` with form/URL
+`acp_agents.go` binds the native subagent executor to the session task pool,
+agent catalog and parent permission policy. Foreground workers are prompt-bound
+and use the current permission receiver. Background workers never retain an ACP
+Turn: native rule permits execute, unresolved human approvals deny. Child allow
+or bypass settings cannot override parent deny rules. Worker Bash is foreground
+only (no nested detached processes); hook-forced approvals conservatively deny.
+Worker sessions/transcripts, lifecycle/tool hooks, file observations, plugin
+environment and task cleanup remain native. Global broker messaging, AgentStop,
+continuation and automatic worker wakeups are not exposed; TaskOutput/TaskStop
+provide the supported inspection and cancellation surface.
+
+`acp_commands.go` loads a session-owned native command catalog including plugin
+commands. Only prompt commands execute, with the native invocation wrapper and
+plugin-root scope; TUI management commands fail explicitly. Standard
+`available_commands_update` is sent on prompts (the SDK creation handler has no
+notification receiver). Agent definitions load from native project/user/plugin
+paths with native priority and enablement, without mutating default registries.
+
+**Incomplete capability work:** structured questions, interactive shell prompts
+and masked secret input remain unavailable. The vendored ACP schema includes `elicitation/create` with form/URL
 modes and client elicitation capabilities, but this SDK endpoint and San host do
 not yet implement that exchange. Structured questions are an implementation gap,
 not an absence from the protocol. AskUserQuestion is excluded and Bash has no
@@ -194,8 +211,9 @@ full native parity or a replacement transport for the TUI.
 | Bash background job/service | Explicit launch; connection-owned pool and disconnect join | Real subprocess loopback tests, including concurrent sessions and denied launches |
 | TaskOutput, TaskStop | Pool-bound status/results and cancellation; ordinary tool updates and policy | Owner success/foreign rejection, explicit stop and disconnect tests |
 | Skill, MCP | Session registries; native/client MCP ownership | Skill and local HTTP MCP protocol tests |
-| Agent, AgentStop, SendMessage | Not offered | Native executor still uses global task paths; parent-policy and background interaction wiring incomplete |
-| Plugin prompt commands/agent definitions | Not offered | Independent command/agent registry loading and execution incomplete |
+| Agent | Native foreground/background workers; parent policy and session pool | Protocol launch/completion, foreground approvals, headless/parent deny, foreign stop and disconnect reaping |
+| AgentStop, SendMessage | Not offered; use TaskStop | Messaging, continuation and global broker integration intentionally unavailable |
+| Plugin prompt commands/agent definitions | Independent native catalogs; commands expand native instructions | Plugin discovery, command execution/history, standard command updates and cross-session isolation |
 | AskUserQuestion | Not offered | Schema supports elicitation; endpoint and host mapping missing |
 | Interactive command prompts/secrets | No responder | No negotiated safe secret-input channel; do not substitute chat |
 | WebFetch/WebSearch, planning tracker, Workflow, Cron, Evolve | Excluded by ACP allowlist | Not validated or represented as supported native parity |

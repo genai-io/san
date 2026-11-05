@@ -52,6 +52,10 @@ type Executor struct {
 	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
+	tasks                      *task.Manager
+	permission                 func(bool) perm.PermissionFunc
+	toolContext                func(context.Context, string) context.Context
+	postTool                   func(core.ToolResult, any)
 }
 
 type SubagentSessionStore interface {
@@ -81,6 +85,23 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
 	}
+}
+
+// ConfigureOwner binds a host's worker resources before launching any runs.
+// Permission must enforce the parent policy even for child bypass/allow rules.
+// Background policies must never retain a prompt-scoped transport receiver.
+func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(bool) perm.PermissionFunc, toolContext func(context.Context, string) context.Context) {
+	e.tasks, e.registry, e.permission, e.toolContext = tasks, registry, permission, toolContext
+}
+
+// SetPostTool observes owned handoffs before they are consumed by worker CWD handling.
+func (e *Executor) SetPostTool(post func(core.ToolResult, any)) { e.postTool = post }
+
+func (e *Executor) taskPool() *task.Manager {
+	if e.tasks != nil {
+		return e.tasks
+	}
+	return task.Default()
 }
 
 // SetInteractions configures UI forwarding before any workers are launched.
@@ -188,7 +209,7 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 	ctx, cancel := context.WithCancel(task.WithSessionID(ctx, e.parentSessionID))
 	defer cancel()
-	worker := task.Default().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
+	worker := e.taskPool().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
 	run.req.TaskID = worker.GetID()
 	run.checkpoint = newContinuationState(run, e.parentSessionID, worker.GetID())
 	worker.SetLaunchState(run.checkpoint)
@@ -241,7 +262,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, fmt.Errorf("native continuation requires live session persistence")
 		}
-		found, ok := task.Default().Get(req.ResumeTaskID)
+		found, ok := e.taskPool().Get(req.ResumeTaskID)
 		if ok {
 			agentTask, ok = found.(*task.AgentTask)
 		}
@@ -311,7 +332,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	identity := run.cfg.config.Name
 
 	if agentTask == nil {
-		agentTask = task.Default().CreateAgentTask(
+		agentTask = e.taskPool().CreateAgentTask(
 			generateShortID(),
 			identity,
 			req.Description,
@@ -326,13 +347,19 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 
 	run.req.TaskID = agentTask.GetID()
 	run.reportIdentity() // Report on the spawning call, before returning the launch.
+	if e.tasks != nil {
+		// Owned background runs cannot retain the spawning call's reporters.
+		run.req.OnIdentity, run.req.OnQuestion = nil, nil
+		run.req.OnTextDelta, run.req.OnTextEnd = nil, nil
+		run.req.OnToolStart, run.req.OnToolResult = nil, nil
+	}
 	run.req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
 		agentTask.SetLiveView(msg)
 	}
 
 	generation := agentTask.GetStatus().Attempt
-	go func() {
+	e.taskPool().Run(func() {
 		defer cancel()
 
 		result, err := e.runPrepared(ctx, run)
@@ -375,7 +402,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		} else {
 			agentTask.CompleteAttempt(generation, fmt.Errorf("%s", result.Error))
 		}
-	}()
+	})
 
 	return agentTask, nil
 }
@@ -528,7 +555,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), disabled, mcpGetter)
-	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil)
+	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil || e.permission != nil)
 	brief := rc.brief
 	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
 	brief.ToolGuidance = fileReadToolGuidance(schemas, rc.permMode)
@@ -543,6 +570,13 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	run.system = sys
 	var ag core.Agent
 	adaptOpts := []tool.AdaptOption{
+		tool.WithToolContext(func(ctx context.Context) context.Context {
+			ctx = task.WithManager(task.WithSessionID(ctx, e.parentSessionID), e.taskPool())
+			if e.toolContext != nil {
+				ctx = e.toolContext(ctx, rc.config.SourceFile)
+			}
+			return ctx
+		}),
 		tool.WithSideEffectHandler(run.storeSideEffect),
 		tool.WithMessagesGetterProvider(func() []core.Message {
 			if ag == nil {
@@ -572,8 +606,29 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		prompt = e.interactionApproval(run)
 	}
 	permFn := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, prompt)
+	if e.permission != nil {
+		// The owner authorizes every call, including safe tools and child allow
+		// rules. Child constraints may narrow but never widen parent policy.
+		parent := e.permission(run.req.Background)
+		constraints := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, func(context.Context, string, map[string]any) (bool, string) { return true, "owner review" })
+		permFn = func(ctx context.Context, name string, input map[string]any) (bool, string) {
+			if ok, reason := constraints(ctx, name, input); !ok {
+				return false, reason
+			}
+			if parent == nil {
+				return false, "owner permission policy unavailable"
+			}
+			return parent(ctx, name, input)
+		}
+	}
 	permissionGate := tool.Permission(permFn)
+	if e.permission != nil {
+		permissionGate = tool.HookedPermission(e.hooks, ownedPermission{check: permFn})
+	}
 	gate := core.Gates(activity(onToolExec), func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
+		if e.toolContext != nil {
+			ctx = e.toolContext(ctx, rc.config.SourceFile)
+		}
 		return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
 	})
 

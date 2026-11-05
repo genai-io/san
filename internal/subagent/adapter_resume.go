@@ -11,7 +11,7 @@ import (
 // review. A reloaded definition or changed parent mode must not misrepresent
 // what continuing an existing child session will actually execute.
 func (a *ExecutorAdapter) ContinuationConfig(taskID string) (tool.AgentConfigInfo, error) {
-	worker, exists := task.Default().Get(taskID)
+	worker, exists := a.taskPool().Get(taskID)
 	if !exists {
 		return tool.AgentConfigInfo{}, fmt.Errorf("continuation task %q is unavailable", taskID)
 	}

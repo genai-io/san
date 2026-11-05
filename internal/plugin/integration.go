@@ -22,12 +22,22 @@ func (r *Registry) SkillPaths() []PluginPath {
 
 // GetPluginAgentPaths returns all agent file paths from enabled plugins.
 func GetPluginAgentPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Agents })
+	return defaultRegistry.AgentPaths()
+}
+
+// AgentPaths returns this registry's enabled agent definitions.
+func (r *Registry) AgentPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Agents })
 }
 
 // GetPluginCommandPaths returns all command file paths from enabled plugins.
 func GetPluginCommandPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Commands })
+	return defaultRegistry.CommandPaths()
+}
+
+// CommandPaths returns this registry's enabled command definitions.
+func (r *Registry) CommandPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Commands })
 }
 
 // collectPluginPaths collects paths from enabled plugins using a getter function.
@@ -151,6 +161,11 @@ func mcpServerNameSafe(name string) string {
 // rootKey is the context-key type used to attach an active plugin root.
 type rootKey struct{}
 
+// WithRoot binds invocation scope without using the process-global fallback.
+func WithRoot(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, rootKey{}, root)
+}
+
 // RootFromContext returns the active plugin root attached to ctx, if any.
 func RootFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
@@ -199,10 +214,15 @@ func activePluginRoot(ctx context.Context) string {
 // FindPluginRootForPath returns the plugin root that contains the given path,
 // or "" if no enabled plugin matches.
 func FindPluginRootForPath(path string) string {
+	return defaultRegistry.RootForPath(path)
+}
+
+// RootForPath resolves a definition within this session's enabled plugins.
+func (r *Registry) RootForPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		if strings.HasPrefix(path, p.Path+"/") || path == p.Path {
 			return p.Path
 		}

@@ -36,6 +36,12 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if strings.TrimSpace(text.String()) == "" {
 		return response, fmt.Errorf("empty prompt")
 	}
+	prompt, pluginRoot, err := s.commandPrompt(text.String())
+	if err != nil {
+		return response, err
+	}
+	s.runtime.SetPluginRoot(pluginRoot)
+	ctx = plugin.WithRoot(ctx, pluginRoot)
 	hookCtx, cancelHook := context.WithTimeout(ctx, 5*time.Second)
 	blocked, reason := agent.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
 	cancelHook()
@@ -46,6 +52,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return response, err
 	}
 	if !s.runtime.Active() {
+		s.configureAgents()
 		if err := s.runtime.Start(s.params, s.runtime.Messages()); err != nil {
 			return response, err
 		}
@@ -69,7 +76,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		s.sideEffects.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
-	msg := core.UserMessage(s.reminders.PrepareInput(text.String()), nil)
+	msg := core.UserMessage(s.reminders.PrepareInput(prompt), nil)
 	if err := s.runtime.Send(msg); err != nil {
 		return response, err
 	}
@@ -139,6 +146,9 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				}
 				if e.Result.StopReason == core.StopRefused {
 					stop = protocol.StopReasonRefusal
+				}
+				if ctx.Err() == nil && transportErr == nil {
+					transportErr = s.sendCommands(turn)
 				}
 				return protocol.PromptResponse{StopReason: stop}, errors.Join(recordErr, transportErr)
 			case core.AgentStopped:
