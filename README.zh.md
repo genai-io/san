@@ -22,11 +22,11 @@
   <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">打开高清完整版 ↗</a></sub>
 </div>
 
-San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不需要 Node.js 或 Python。模型碰到的一切 —— prompt、工具、provider、扩展 —— 都留给你替换。
+San 是面向 AI Agent 的开源终端运行时。
 
 ## 为什么选 San
 
-- **小而快** —— 原生执行、零运行时依赖、精简的上下文开销。
+- **小而快** —— 单个原生 Go 二进制，保持精简的上下文开销，无需 Node.js 或 Python。
 - **更少预设的 Agent 框架** —— 不绑定模型厂商，通过统一接口，使用 system prompt、persona、skills 和工具塑造 Agent 行为。
 - **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。
 - **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。
