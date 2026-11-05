@@ -28,12 +28,10 @@ stays yours to change.
 
 ## Why San
 
-| | What you get |
-|---|---|
-| **Small and fast** | One native binary, zero runtime dependencies, and lean context overhead. [Benchmarks](#benchmark-san-vs-claude-code). |
-| **A less opinionated harness** | Choose your models and shape behavior with your own system prompts, personas, and tools. [Customization](docs/concepts/harness-channels.md) |
-| **Coordination and orchestration** | Cross-session communication through local session groups, parallel agent delegation, and dynamic workflows. [Features](docs/features.md) |
-| **Control and visibility** | Set agent permissions and inspect conversations and tool execution. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md) |
+- **Small and fast** — One native binary, zero runtime dependencies, and lean context overhead. [Benchmarks](#benchmark-san-vs-claude-code)
+- **A less opinionated harness** — Choose your models and shape behavior with your own system prompts, personas, and tools. [Customization](docs/concepts/harness-channels.md)
+- **Multi-agent coordination** — Parallel subagents with two-way messaging, local session groups, and dynamic workflows. [Features](docs/features.md#agent-and-session-collaboration)
+- **Control and visibility** — Set agent permissions and inspect conversations and tool execution. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
 
 [Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
 
