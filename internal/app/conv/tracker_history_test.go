@@ -24,7 +24,7 @@ func TestTrackerHistoryWaitsForFailureNotice(t *testing.T) {
 	}
 	shown = true
 	after := ansi.Strip(RenderTrackerList(params))
-	if after != "  History · 1 · /tasks\n" {
+	if strings.Join(strings.Fields(after), " ") != "Tasks · 1 past task /tasks" || strings.Count(after, "\n") != 1 {
 		t.Fatalf("announced failure did not become one quiet row: %q", after)
 	}
 	if item := store.List()[0]; todo.BackgroundStatusDetail(item) != "failed" || todo.BackgroundError(item) != info.Error {
@@ -52,18 +52,39 @@ func TestTrackerHistoryIsSecondaryToCurrentWork(t *testing.T) {
 			}
 		}
 		plain := ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: width, Executing: func(*todo.Item) bool { return true }}))
-		for _, want := range []string{"Current review", "Pending plan", "History · 30 · /tasks"} {
+		for _, want := range []string{"Current review", "Pending plan", "30 past tasks", "/tasks"} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("width %d lost %q:\n%s", width, want, plain)
 			}
 		}
-		if strings.Index(plain, "History") < strings.Index(plain, "Pending plan") || strings.Contains(plain, "Past work") || strings.Contains(plain, "failed/stopped") {
+		if strings.Index(plain, "30 past tasks") < strings.Index(plain, "Pending plan") || strings.Contains(plain, "Past work") || strings.Contains(plain, "failed/stopped") {
 			t.Fatalf("history displaced or cluttered current work:\n%s", plain)
 		}
 		for _, row := range strings.Split(plain, "\n") {
 			if ansi.StringWidth(row) > width {
 				t.Fatalf("summary overflowed width %d: %q", width, row)
 			}
+		}
+	}
+}
+
+func TestTrackerHistoryHintAlignment(t *testing.T) {
+	store := todo.NewStore()
+	info := task.TaskInfo{ID: "old", Description: "Old work", Status: task.StatusRunning}
+	todo.TrackWorker(store, info)
+	info.Status = task.StatusStopped
+	todo.CompleteWorker(store, info)
+	for _, width := range []int{1, 16, 24, 32, 80} {
+		row := strings.TrimSuffix(ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: width})), "\n")
+		if ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
+			t.Fatalf("width %d: history should fit one row: %q", width, row)
+		}
+		if width >= 32 {
+			if !strings.HasPrefix(row, "  Tasks · 1 past task") || !strings.HasSuffix(row, "/tasks") || ansi.StringWidth(row) != width-2 {
+				t.Fatalf("width %d: hint not right-aligned: %q", width, row)
+			}
+		} else if strings.Contains(row, "/") {
+			t.Fatalf("width %d: clipped command hint: %q", width, row)
 		}
 	}
 }
@@ -76,7 +97,7 @@ func TestTrackerHistoryDoesNotCallStopsFailures(t *testing.T) {
 		info.Status = status
 		todo.CompleteWorker(store, info)
 	}
-	if plain := ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32})); plain != "  History · 3 · /tasks\n" {
+	if plain := ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32})); strings.Join(strings.Fields(plain), " ") != "Tasks · 3 past tasks /tasks" {
 		t.Fatalf("stopped/interrupted history was noisy or labelled failure: %q", plain)
 	}
 	success := todo.NewStore()

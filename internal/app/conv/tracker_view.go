@@ -151,12 +151,22 @@ func RenderTrackerList(params TrackerListParams) string {
 	// Share the overflow row rather than spending any of the eight task slots.
 	folded := strings.TrimSuffix(renderFoldedLine(hidden), "\n")
 	if history > 0 {
-		label := fmt.Sprintf("History · %d · /tasks", history)
+		label := kit.Plural(history, "past task")
+		if len(items) == 0 {
+			label = "Tasks · " + label
+		}
 		prefix := "  "
 		if folded != "" && params.Width > lipgloss.Width(label)+5 {
 			prefix = kit.TruncateText(folded, params.Width-lipgloss.Width(label)-3) + " · "
 		}
-		folded = prefix + mutedStyle.Render(label)
+		left := prefix + mutedStyle.Render(label)
+		const hint = "/tasks"
+		gap := params.Width - lipgloss.Width(left) - len(hint) - 2
+		if gap >= 2 {
+			folded = left + strings.Repeat(" ", gap) + mutedStyle.Render(hint)
+		} else {
+			folded = left
+		}
 	}
 	if folded != "" {
 		sb.WriteString(kit.TruncateText(folded, max(1, params.Width)) + "\n")

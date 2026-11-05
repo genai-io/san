@@ -250,13 +250,13 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			count:         11,
 			status:        todo.StatusCompleted,
 			overrides:     map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
-			wantSummaries: []string{"History · 4", "/tasks"},
+			wantSummaries: []string{"4 past tasks", "/tasks"},
 		},
 		{
 			name:          "many failed agents",
 			count:         11,
 			status:        "failed",
-			wantSummaries: []string{"History · 11", "/tasks"},
+			wantSummaries: []string{"11 past tasks", "/tasks"},
 		},
 		{
 			name:          "hidden failures stay in the summary",
@@ -264,7 +264,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			status:        todo.StatusInProgress,
 			overrides:     map[int]string{11: "failed"},
 			wantIDs:       []string{"3", "4", "5", "6", "7", "8", "9", "10"},
-			wantSummaries: []string{"2 more in progress", "History · 1", "/tasks"},
+			wantSummaries: []string{"2 more in progress", "1 past task", "/tasks"},
 		},
 	}
 	rowRE := regexp.MustCompile(`\bTask (\d+)\b`)
