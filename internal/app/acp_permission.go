@@ -15,10 +15,10 @@ import (
 
 // Permissions are deliberately once-only. No transport response can change
 // native deny/ask precedence or install a persistent grant.
-func (s *acpSession) permissions(turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
+func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
 	defer close(done)
 	for {
-		req, ok := gate.Recv()
+		req, ok := gate.WaitRequest(ctx)
 		if !ok {
 			return
 		}

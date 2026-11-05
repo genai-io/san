@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/sdk-go/pkg/acp"
@@ -24,7 +25,9 @@ type acpTestProvider struct{ client *ai.Client }
 
 func (p acpTestProvider) Client(string, map[string]string) (*ai.Client, error) { return p.client, nil }
 func (acpTestProvider) Name() string                                           { return "acp-test" }
-func (acpTestProvider) ListModels(context.Context) ([]llm.ModelInfo, error)    { return nil, nil }
+func (acpTestProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
+	return []llm.ModelInfo{{ID: "test", ContextWindow: 200000}}, nil
+}
 
 type acpFixture struct {
 	host     *acpHost
@@ -33,9 +36,15 @@ type acpFixture struct {
 	ctx      context.Context
 	mu       sync.Mutex
 	updates  []protocol.SessionNotification
+	stopped  chan error
 }
 
-func newACPFixture(t *testing.T, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error)) *acpFixture {
+func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
+	t.Helper()
+	return newACPFixtureWithTimeout(t, driver, permission, acpWriteTimeout, wrap...)
+}
+
+func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
@@ -44,13 +53,12 @@ func newACPFixture(t *testing.T, driver *aitest.Driver, permission func(context.
 	f := &acpFixture{ctx: ctx, host: &acpHost{provider: acpTestProvider{driver.Client()}, model: "test", sessions: make(map[protocol.SessionID]*acpSession)}}
 	input, send := io.Pipe()
 	recv, output := io.Pipe()
+	var writer io.WriteCloser = output
+	for _, wrap := range wrap {
+		writer = wrap(writer)
+	}
 	var err error
-	f.endpoint, err = acp.NewAgent(ctx, input, output, acp.AgentHandlers{
-		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
-			return protocol.InitializeResponse{ProtocolVersion: 1}, nil
-		},
-		CreateSession: f.host.create, Prompt: f.host.prompt,
-	}, acp.AgentOptions{})
+	f.endpoint, err = f.host.start(ctx, input, writer, "test", budget)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +84,8 @@ func newACPFixture(t *testing.T, driver *aitest.Driver, permission func(context.
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.stopped = make(chan error, 1)
+	go func() { f.stopped <- f.host.wait(f.endpoint); close(f.stopped) }()
 	t.Cleanup(func() {
 		_ = f.client.Close()
 		_ = f.endpoint.Close()
@@ -87,11 +97,16 @@ func newACPFixture(t *testing.T, driver *aitest.Driver, permission func(context.
 			t.Error("ACP callbacks did not unwind")
 			return
 		}
+		select {
+		case <-f.stopped:
+		case <-wait.Done():
+			t.Error("ACP host did not close sessions")
+			return
+		}
 		for _, s := range f.host.sessions {
-			if s.runtime.Active() {
-				t.Error("runtime survived endpoint shutdown")
+			if s.runtime.Active() || len(s.runtime.Messages()) != 0 {
+				t.Error("runtime retained after session close")
 			}
-			_ = s.close()
 		}
 	})
 	if _, err := f.client.Initialize(ctx, protocol.InitializeRequest{ProtocolVersion: 1}); err != nil {
@@ -100,7 +115,7 @@ func newACPFixture(t *testing.T, driver *aitest.Driver, permission func(context.
 	return f
 }
 
-func (f *acpFixture) session(t *testing.T, cwd string) protocol.SessionID {
+func (f *acpFixture) session(t testing.TB, cwd string) protocol.SessionID {
 	t.Helper()
 	res, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
 	if err != nil {
@@ -113,6 +128,45 @@ func (f *acpFixture) prompt(id protocol.SessionID, text string) (protocol.Prompt
 }
 func acpChoice(id string) protocol.RequestPermissionResponse {
 	return protocol.RequestPermissionResponse{Outcome: protocol.RequestPermissionOutcome{Value: protocol.RequestPermissionOutcomeSelectedVariant{Outcome: "selected", OptionID: protocol.PermissionOptionID(id)}}}
+}
+
+func TestACPAutoCompaction(t *testing.T) {
+	driver := aitest.New(
+		aitest.Replies(ai.Response{Content: ai.TextContent("initial"), Usage: ai.Usage{Input: 500000}}),
+		aitest.Says("compact summary"), aitest.Says("after compact"), aitest.Says("next"),
+	)
+	f := newACPFixture(t, driver, nil)
+	id := f.session(t, t.TempDir())
+	f.host.mu.Lock()
+	s := f.host.sessions[id]
+	f.host.mu.Unlock()
+	compacted := make(chan core.Compacted, 1)
+	record := s.params.OnEvent
+	s.params.OnEvent = func(event core.Event) {
+		record(event)
+		if event, ok := event.(core.Compacted); ok {
+			compacted <- event
+		}
+	}
+	for _, prompt := range []string{"first", "second", "third"} {
+		if _, err := f.prompt(id, prompt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case event := <-compacted:
+		if event.Trigger != "auto" {
+			t.Fatalf("trigger = %q", event.Trigger)
+		}
+	default:
+		t.Fatal("automatic compaction did not run")
+	}
+	if driver.Calls() != 4 {
+		t.Fatalf("model calls = %d", driver.Calls())
+	}
+	if !strings.Contains(s.runtime.Messages()[0].Text(), "compact summary") {
+		t.Fatal("compacted history not retained")
+	}
 }
 
 func TestACPCancelInference(t *testing.T) {
@@ -156,8 +210,18 @@ func TestACPCancelInference(t *testing.T) {
 	default:
 		t.Fatal("response preceded inference unwind")
 	}
+	f.host.mu.Lock()
+	s := f.host.sessions[id]
+	f.host.mu.Unlock()
+	gate := s.runtime.PermissionGate()
+	if gate == nil {
+		t.Fatal("cancel discarded session runtime")
+	}
 	if _, err := f.prompt(id, "next"); err != nil {
 		t.Fatal(err)
+	}
+	if s.runtime.PermissionGate() != gate {
+		t.Fatal("next prompt rebuilt session runtime")
 	}
 }
 
@@ -306,8 +370,8 @@ func TestACPToolPermissionAndConsecutiveTurns(t *testing.T) {
 			f.host.mu.Lock()
 			first, second := f.host.sessions[id], f.host.sessions[other]
 			f.host.mu.Unlock()
-			if first.runtime.Active() || second.runtime.Active() {
-				t.Fatal("runtime not joined before response")
+			if !first.runtime.Active() || !second.runtime.Active() {
+				t.Fatal("session runtime not retained between prompts")
 			}
 			if len(first.runtime.Messages()) <= len(second.runtime.Messages()) {
 				t.Fatal("conversation not retained or isolated")
@@ -343,9 +407,15 @@ func TestACPCancelPermissionAndDisconnect(t *testing.T) {
 			cwd := t.TempDir()
 			path := filepath.Join(cwd, "never")
 			input, _ := json.Marshal(map[string]string{"file_path": path, "content": "no"})
-			driver := aitest.New(aitest.Asks(ai.ToolCall{ID: "wait", Name: "Write", Input: string(input)}), aitest.Says("after cancel"))
+			nextPath := filepath.Join(cwd, "approved-next")
+			nextInput, _ := json.Marshal(map[string]string{"file_path": nextPath, "content": "yes"})
+			driver := aitest.New(aitest.Asks(ai.ToolCall{ID: "wait", Name: "Write", Input: string(input)}),
+				aitest.Asks(ai.ToolCall{ID: "next", Name: "Write", Input: string(nextInput)}), aitest.Says("after cancel"))
 			waiting := make(chan struct{})
-			f := newACPFixture(t, driver, func(ctx context.Context, _ protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error) {
+			f := newACPFixture(t, driver, func(ctx context.Context, req protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error) {
+				if req.ToolCall.ToolCallID == "next" {
+					return acpChoice("allow_once"), nil
+				}
 				close(waiting)
 				<-ctx.Done()
 				return protocol.RequestPermissionResponse{}, ctx.Err()
@@ -383,6 +453,9 @@ func TestACPCancelPermissionAndDisconnect(t *testing.T) {
 			if !disconnect {
 				if _, err := f.prompt(id, "continue"); err != nil {
 					t.Fatal(err)
+				}
+				if data, err := os.ReadFile(nextPath); err != nil || string(data) != "yes" {
+					t.Fatalf("successor permission/tool failed: %q, %v", data, err)
 				}
 			}
 		})

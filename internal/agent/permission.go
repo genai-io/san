@@ -203,10 +203,17 @@ func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (boo
 }
 
 func (pg *PermissionGate) Recv() (*PermGateRequest, bool) {
-	if pg.ctx.Err() != nil {
+	return pg.WaitRequest(context.Background())
+}
+
+// WaitRequest waits for a permission request until ctx is cancelled or the gate closes.
+func (pg *PermissionGate) WaitRequest(ctx context.Context) (*PermGateRequest, bool) {
+	if pg.ctx.Err() != nil || ctx.Err() != nil {
 		return nil, false
 	}
 	select {
+	case <-ctx.Done():
+		return nil, false
 	case <-pg.ctx.Done():
 		return nil, false
 	case req := <-pg.requests:

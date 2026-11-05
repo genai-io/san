@@ -18,7 +18,17 @@ func init() {
 			log.Stderr()
 			ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			return app.RunACP(ctx, os.Stdin, os.Stdout, version)
+			input, err := acpStdio(os.Stdin)
+			if err != nil {
+				return err
+			}
+			defer input.Close()
+			output, err := acpStdio(os.Stdout)
+			if err != nil {
+				return err
+			}
+			defer output.Close()
+			return app.RunACP(ctx, input, output, version)
 		},
 	})
 }
