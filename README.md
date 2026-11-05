@@ -28,10 +28,10 @@ stays yours to change.
 
 ## Why San
 
-- **Small and fast** — One native binary, zero runtime dependencies, and lean context overhead. [Benchmarks](#benchmark-san-vs-claude-code)
-- **A less opinionated harness** — Choose your models and shape behavior with your own system prompts, personas, skills, and tools. [Customization](docs/concepts/harness-channels.md) · [Skills](docs/packages/2-feature/skill.md)
-- **Multi-agent coordination** — Interactive subagents, cross-session communication, and dynamic workflows. [Features](docs/features.md#agent-and-session-collaboration)
-- **Control and visibility** — Set agent permissions and inspect conversations and tool execution. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
+- **Small and fast** — Native execution, zero runtime dependencies, and minimal context overhead. [Benchmarks](#benchmark-san-vs-claude-code)
+- **Customizable harness** — Choose models and define agent behavior through system prompts, personas, skills, and tools. [Customization](docs/concepts/harness-channels.md) · [Skills](docs/packages/2-feature/skill.md)
+- **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows. [Features](docs/features.md#agent-and-session-collaboration)
+- **Control and visibility** — Configure execution permissions and inspect model context and tool calls. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
 
 [Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
 

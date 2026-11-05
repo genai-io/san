@@ -26,10 +26,10 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 ## 为什么选 San
 
-- **小而快** —— 单个原生二进制、零运行时依赖，保持精简的上下文开销。[基准测试](#基准测试san-vs-claude-code)
-- **更少预设的 Agent 框架** —— 自由选择模型，用自己的 system prompt、persona、skills 和工具塑造 Agent 行为。[定制说明](docs/concepts/harness-channels.md) · [技能](docs/packages/2-feature/skill.md)
-- **多 Agent 协作** —— 子 Agent 交互、跨会话通信与动态工作流。[功能清单](docs/features.md#agent-and-session-collaboration)
-- **控制与可观测性** —— 设置 Agent 权限，检查对话与工具执行过程。[权限](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
+- **小而快** —— 原生执行、零运行时依赖、精简的上下文开销。[基准测试](#基准测试san-vs-claude-code)
+- **可定制的 Agent 框架** —— 自由选择模型，通过 system prompt、persona、skills 和工具定义 Agent 行为。[定制说明](docs/concepts/harness-channels.md) · [技能](docs/packages/2-feature/skill.md)
+- **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。[功能清单](docs/features.md#agent-and-session-collaboration)
+- **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。[权限](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
 
 [功能清单](docs/features.md) · [架构与总览图](docs/concepts/architecture.md)
 
