@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 )
@@ -71,8 +70,8 @@ func (e agentEnvelope) summary(width int) string {
 		description := strings.Join(strings.Fields(e.description), " ")
 		if status != "" || description != "" {
 			line := status
-			if reason, ok := strings.CutPrefix(strings.TrimSpace(e.body), "Error: "); ok && (status == "failed" || status == "stopped" || status == "killed") {
-				reason, _, _ = strings.Cut(html.UnescapeString(reason), "\n")
+			if reason, ok := strings.CutPrefix(e.text(), "Error: "); ok && (status == "failed" || status == "stopped" || status == "killed" || status == "interrupted" || status == "timeout" || status == "timed_out") {
+				reason, _, _ = strings.Cut(reason, "\n")
 				if status == "failed" || !kit.IsRoutineStopReason(reason) {
 					line += " · " + strings.Join(strings.Fields(reason), " ")
 				}
@@ -105,7 +104,7 @@ func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 	}
 	if e.kind == envelopeMessage && e.attributed && e.from != "" {
 		body := strings.Join(strings.Fields(e.text()), " ")
-		return renderAgentMessageLine("◆", "From", e.from, body, p.Width, p.AgentIdentities, p.AgentColors, p.MemberColors) + "\n"
+		return renderAgentMessageLine("●", "From", e.from, body, p.Width, p.AgentIdentities, p.AgentColors, p.MemberColors) + "\n"
 	}
 	if e.kind == envelopeTask && e.attributed {
 		identity, found := p.AgentIdentities[e.taskID]
@@ -113,14 +112,11 @@ func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 			identity, found = p.AgentIdentities[e.agentID]
 		}
 		if found {
-			name := kit.TruncateText(AgentDisplayName(identity, p.AgentIdentities), max(1, p.Width/2-2))
-			head := lipgloss.NewStyle().Foreground(agentIdentityColor(identity, p.AgentColors)).Render("◆ " + name)
-			room := max(1, p.Width-ansi.StringWidth(head)-3)
-			style := toolResultStyle
-			if e.status == "failed" {
-				style = errorStyle
+			name := AgentDisplayName(identity, p.AgentIdentities)
+			if e.description != "" && e.description != name {
+				name += " · " + e.description
 			}
-			return head + toolResultStyle.Render(" · ") + style.Render(e.summary(room+2)) + "\n"
+			return e.renderTaskNotice(p.Width, name, agentIdentityColor(identity, p.AgentColors))
 		}
 	}
 	return e.render(p.Width, p.MemberColors)
@@ -131,16 +127,7 @@ func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 func (e agentEnvelope) render(width int, colors map[string]int) string {
 	summary := e.summary(width)
 	if e.kind == envelopeTask && e.attributed {
-		var style lipgloss.Style
-		switch e.status {
-		case "failed":
-			style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-		case "stopped", "killed":
-			style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-		default:
-			return RenderAgentNotice(summary, width, colors)
-		}
-		return style.Render(kit.TruncateText("◆ "+summary, max(1, width))) + "\n"
+		return e.renderTaskNotice(width, e.description, backgroundIdentityColor(e.taskID))
 	}
 	return RenderAgentNotice(summary, width, colors)
 }

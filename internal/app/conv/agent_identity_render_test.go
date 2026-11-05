@@ -68,12 +68,10 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 				}
 				notice := parseAgentEnvelope(`<task-notification task-id="worker-route" status="failed" description="Check limits">Error: provider unavailable</task-notification>`).renderWithIdentity(ctx)
 				identityStyle := lipgloss.NewStyle().Foreground(memberPalette[slot])
-				if !strings.Contains(notice, identityStyle.Render("◆ reviewer")) || !strings.Contains(ansi.Strip(notice), "failed") {
+				if !strings.Contains(notice, identityStyle.Render("●")) || !strings.Contains(ansi.Strip(notice), "reviewer") || !strings.Contains(ansi.Strip(notice), "failed") {
 					t.Fatalf("%s width %d: failure changed identity or lost outcome: %q", theme, width, notice)
 				}
-				_, outcome, _ := strings.Cut(notice, toolResultStyle.Render(" · "))
-				outcome = strings.TrimSuffix(outcome, "\n")
-				if outcome != errorStyle.Render(ansi.Strip(outcome)) {
+				if !strings.Contains(notice, backgroundStatusStyle("failed").Render("failed")) {
 					t.Fatalf("failure lost its separate error color: %q", notice)
 				}
 				for _, view := range []string{mail, received, notice} {

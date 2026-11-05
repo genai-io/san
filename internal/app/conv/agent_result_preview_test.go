@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,65 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func TestAgentPreviewExcludesGeneratedTaskIDFromBudget(t *testing.T) {
+	for _, suffix := range []string{"", "\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl"} {
+		for _, width := range []int{32, 80} {
+			response := "First finding\n\nSecond finding\n\nThird finding\n\nFourth finding"
+			content := response + "\n\nTask ID: task-123" + suffix
+			data := ToolResultData{ToolName: "Agent", Content: content, Width: width, AgentPreviewLines: 3,
+				Details: toolresult.AgentDetails{Response: &response, Identity: toolresult.AgentIdentity{ID: "task-123"}}}
+			got := ansi.Strip(RenderToolResultInline(data, nil))
+			if got != "  … (1)\n  Second finding\n  Third finding\n  Fourth finding\n" {
+				t.Fatalf("metadata consumed the preview budget: %q", got)
+			}
+			if data.Content != content {
+				t.Fatal("preview changed the model's result")
+			}
+			encoded, err := json.Marshal(data.Details)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var restored toolresult.AgentDetails
+			if err := json.Unmarshal(encoded, &restored); err != nil {
+				t.Fatal(err)
+			}
+			data.Details = restored
+			if resumed := ansi.Strip(RenderToolResultInline(data, nil)); resumed != got {
+				t.Fatalf("persisted response changed preview: %q", resumed)
+			}
+			data.Expanded = true
+			expanded := ansi.Strip(RenderToolResultInline(data, nil))
+			if !strings.Contains(expanded, "Task ID: task-123") {
+				t.Fatalf("expanded result lost its task ID: %q", expanded)
+			}
+		}
+	}
+}
+
+func TestAgentPreviewPreservesTaskIDInProse(t *testing.T) {
+	for _, content := range []string{
+		"Task ID: task-123\nThis is a finding",
+		"Finding\n\nTask ID: another-task",
+		"Finding mentions Task ID: task-123",
+		"Finding\n\nTask ID: task-123",
+		"Finding\n\nAgentID: child\n\nTranscript: /tmp/child.jsonl",
+	} {
+		data := ToolResultData{ToolName: "Agent", Content: content + "\n\nTask ID: task-123", Width: 80, AgentPreviewLines: 5,
+			Details: toolresult.AgentDetails{Response: &content}}
+		got := ansi.Strip(RenderToolResultInline(data, nil))
+		want := ansi.Strip(renderAgentResponsePreview(content, 80, nil, 5))
+		if got != want {
+			t.Fatalf("changed worker prose: %q, want %q", got, want)
+		}
+	}
+	empty := ""
+	data := ToolResultData{ToolName: "Agent", Content: "Task ID: task-123", Width: 80, AgentPreviewLines: 3,
+		Details: toolresult.AgentDetails{Response: &empty}}
+	if got := ansi.Strip(RenderToolResultInline(data, nil)); got != "  No output\n" {
+		t.Fatalf("metadata-only result should not become prose: %q", got)
+	}
+}
 
 func TestAgentResultPreviewBudget(t *testing.T) {
 	for _, width := range []int{32, 40, 100} {

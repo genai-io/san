@@ -294,7 +294,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 		if data.Expanded {
 			body = renderBashOutput(content, data.Width, toolResultStyle, false)
 		}
-		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolResultStyle, true)
+		return body + renderBashOutput("started in background · "+details.TaskID, data.Width, toolCallStyle, true)
 	}
 
 	summary := ""
@@ -859,6 +859,9 @@ func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetai
 			}
 			return style.Render("  "+compactFailureReason(status, data.Width)) + "\n"
 		}
+		if details.Response != nil {
+			return renderAgentResponsePreview(*details.Response, data.Width, mdRenderer, data.AgentPreviewLines)
+		}
 		return renderCompactAgentResponse(data.Content, data.Width, mdRenderer, data.AgentPreviewLines)
 	}
 	status, style := "Finished", toolResultStyle
@@ -921,12 +924,8 @@ func renderAgentLocalBody(body string, width int) string {
 	return sb.String()
 }
 
-// renderCompactAgentResponse uses only worker prose, never a synthesized summary.
+// renderCompactAgentResponse supports saved results without structured prose.
 func renderCompactAgentResponse(response string, width int, mdRenderer *MDRenderer, previewLines int) string {
-	previewLines = min(max(previewLines, 0), setting.MaxAgentPreviewLines)
-	if previewLines == 0 {
-		return renderAgentLocalBody("Finished", width)
-	}
 	response = strings.TrimSpace(response)
 	// Older details do not retain inspection pointers. Only recognize the paired
 	// generated suffix when the transcript filename corroborates the agent ID.
@@ -937,6 +936,15 @@ func renderCompactAgentResponse(response string, width int, mdRenderer *MDRender
 		if hasID && hasPath && id != "" && !strings.ContainsAny(id, " /\\\n\r") && !strings.ContainsAny(path, "\n\r") && strings.HasSuffix(path, "/"+id+".jsonl") {
 			response = strings.TrimSpace(strings.Join(parts[:len(parts)-2], "\n\n"))
 		}
+	}
+	return renderAgentResponsePreview(response, width, mdRenderer, previewLines)
+}
+
+// renderAgentResponsePreview budgets only rendered worker prose, not metadata.
+func renderAgentResponsePreview(response string, width int, mdRenderer *MDRenderer, previewLines int) string {
+	previewLines = min(max(previewLines, 0), setting.MaxAgentPreviewLines)
+	if previewLines == 0 {
+		return renderAgentLocalBody("Finished", width)
 	}
 	if width <= 0 {
 		width = 80

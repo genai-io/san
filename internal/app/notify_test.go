@@ -17,7 +17,7 @@ func TestStoppedNotificationKeepsOneConciseDisplayLine(t *testing.T) {
 		m := commitTestModel()
 		m.showNoticeLine(fromBrokerMessage(msg))
 		view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, 0))
-		if strings.TrimSpace(view) != "◆ Security review stopped" {
+		if strings.TrimSpace(view) != "● Security review stopped · worker" {
 			t.Fatalf("stop has redundant type, detail, or completion row: %q", view)
 		}
 		if !strings.Contains(msg.Content, "Error: "+reason) {
@@ -99,7 +99,7 @@ func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
 	m := &model{conv: conv.NewModel(100)}
 	m.showNoticeLine(fromBrokerMessage(msg))
 	view := conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
-	if !strings.Contains(view, description+" completed") {
+	if !strings.Contains(ansi.Strip(view), description+" completed") {
 		t.Fatalf("escaped description did not round-trip through display: %q", view)
 	}
 }

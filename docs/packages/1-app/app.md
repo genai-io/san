@@ -318,8 +318,9 @@ with `└` on their last output row; running output stays open, and failures clo
 on `└ failed · reason`. There is no extra line-count footer. Trailing blanks are
 real output lines, and expanded output/logs retain the full evidence.
 
-Completed Agent blocks retain their identity and show up to four dim, nonblank
-Markdown preview rows with inline truncation; expansion keeps the full result.
+Completed Agent blocks show the configured tail of worker prose; routing metadata
+such as Task ID does not count toward preview rows. Expansion keeps the full result.
+Older records use the legacy preview.
 Expanded shell calls use the same `$` command block; other expanded parameters
 keep continuation lines aligned with their values.
 

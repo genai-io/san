@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
@@ -120,7 +121,7 @@ func taskNotice() mainNotice {
 func assertNoticeShown(t *testing.T, m *model) {
 	t.Helper()
 	for i := range m.conv.Messages {
-		if strings.Contains(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, i), "research completed") {
+		if strings.Contains(ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, i)), "research completed") {
 			return
 		}
 	}
@@ -183,7 +184,7 @@ func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
 	m.deliverNotice(taskNotice())
 
 	view := conv.RenderActiveContent(m.messageRenderParams())
-	if !strings.Contains(view, "research completed") || !hasWaitingRow(view) {
+	if !strings.Contains(ansi.Strip(view), "research completed") || !hasWaitingRow(view) {
 		t.Fatalf("completion must be visible while inference is still running:\n%s", view)
 	}
 	if m.conv.CommittedCount != 0 {
