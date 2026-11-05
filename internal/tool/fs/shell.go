@@ -364,11 +364,12 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 
 	// Register with task manager
 	ctx = task.WithOwnerAgentID(ctx, tool.AgentIDFromContext(ctx))
-	bgTask := task.Default().CreateBashTask(ctx, cmd, command, description, cancel)
+	manager := task.FromContext(ctx)
+	bgTask := manager.CreateBashTask(ctx, cmd, command, description, cancel)
 	bgTask.SetLifetime(lifetime)
 
-	// Start goroutine to collect output and wait for completion
-	go func() {
+	// Track process reaping and output draining independently of terminal status.
+	manager.Run(func() {
 		defer cancel()
 
 		defer outputPipe.Close()
@@ -398,7 +399,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 
 		// Mark task as complete
 		bgTask.CompleteWithContext(exitCode, err, contextErr, timeout)
-	}()
+	})
 
 	// Report how to stop the detached command. Where the platform gives the
 	// child a signalable process group (see proc.GroupLeaderPID), a later Bash

@@ -26,6 +26,7 @@ const gracefulStopTimeout = 2 * time.Second
 // found" for work the model ran minutes ago. What each task holds is bounded
 // instead, by appendCapped.
 type Manager struct {
+	work      sync.WaitGroup
 	mu        sync.RWMutex
 	tasks     map[string]BackgroundTask
 	outputDir string

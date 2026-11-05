@@ -21,8 +21,8 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/fs"
-	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
@@ -167,6 +167,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
 	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
+	tasks := task.NewManager()
 	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
 	if err := s.data.Validate(); err != nil {
 		_ = servers.Close()
@@ -198,16 +199,10 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
 		ToolResponse: func(callID string, response any) { s.sideEffects.Store(callID, response) },
-		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
-			if acpBackgroundCall(name, args) {
-				return agent.PermDecisionResult{Decision: perm.Reject, Reason: "ACP supports foreground commands only"}
-			}
-			return policy.Decide(name, args)
-		},
-		CanApproveByHook: func(name string, args map[string]any) bool {
-			return !acpBackgroundCall(name, args) && policy.CanApproveByHook(name, args)
-		},
-		HookEngine: s.hooks, OnEvent: opened.RecordEvent,
+		Tasks:        tasks, NativeTools: tasks.Tools(),
+		PermissionRules:  policy.Decide,
+		CanApproveByHook: policy.CanApproveByHook,
+		HookEngine:       s.hooks, OnEvent: opened.RecordEvent,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   policy.AutoMemory, FileCache: filecache.New(),
 	}
@@ -258,6 +253,10 @@ func (s *acpSession) close() error {
 		gate.Close()
 	}
 	err := s.runtime.Reset(context.Background())
+	if s.params.Tasks != nil {
+		s.params.Tasks.Cancel()
+		s.params.Tasks.Join()
+	}
 	s.sideEffects.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -286,15 +285,6 @@ func (s *acpSession) refreshMemory() {
 func (s *acpSession) recordState() error {
 	return s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
 		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.mode.PersistenceName())}})
-}
-
-func acpBackgroundCall(name string, args map[string]any) bool {
-	if name != "Bash" {
-		return false
-	}
-	background, _ := args["run_in_background"].(bool)
-	mode, _ := args["execution_mode"].(string)
-	return background || (mode != "" && mode != "foreground")
 }
 
 func acpText(text string) protocol.ContentBlock {

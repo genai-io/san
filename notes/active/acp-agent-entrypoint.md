@@ -7,11 +7,18 @@ Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
 - SDK owns typed ACP v1 framing, admission, cancellation and response barriers.
 - San composes native foreground sessions, shared input/permission/completion
   policy, recording, hooks and compaction without constructing the TUI.
-- Text prompts and Read/Write/Edit/Glob/Grep/foreground Bash are supported.
-  Background work, questions/secrets, extensions, client-supplied MCP,
-  resume/load, non-text input and mode/model switching remain unsupported.
-- Remaining proposal acceptance includes richer capability profiles, background
-  lifetimes, replay and independent client/editor validation. See the
+- Text prompts and Read/Write/Edit/Glob/Grep/Skill, native plus client MCP,
+  session/load replay, normal/auto-accept modes and configured-provider model
+  selection are implemented. Optional handlers still require the unpublished SDK
+  worktree dependency; the committed go.mod is not yet sufficient.
+- Background shell jobs/services now use a session-owned native task pool, with
+  TaskOutput/TaskStop and cancellation plus execution-cleanup join on disconnect.
+  Status/output is polled through standard tool calls, not pushed asynchronously.
+- Subagent execution, plugin commands/agent definitions and non-text input remain
+  incomplete. Questions/command prompts/secrets are unavailable without a safe
+  negotiated interaction surface; permission choices are not secret input.
+- This remains an incomplete full-capability implementation. Independent
+  client/editor validation is also outstanding. See the
   [host documentation](../../docs/packages/app.md#acp-stdio-host).
 
 ## Runtime retention and bounded writes (PR #725)

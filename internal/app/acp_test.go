@@ -288,7 +288,7 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cwd, ".san"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cwd, ".san", "settings.local.json"), []byte(`{"permissions":{"deny":["Write(**)"]},"disabledTools":{"Read":true}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(cwd, ".san", "settings.local.json"), []byte(`{"permissions":{"deny":["Write(**)"]},"disabledTools":{"Read":true,"TaskOutput":true}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(cwd, "forbidden")
@@ -313,8 +313,8 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	f.host.mu.Lock()
 	s := f.host.sessions[id]
 	f.host.mu.Unlock()
-	for _, schema := range s.params.Schemas() {
-		if schema.Name == "Read" {
+	for _, schema := range s.params.ToolSchemas() {
+		if schema.Name == "Read" || schema.Name == "TaskOutput" {
 			t.Error("disabled tool exposed")
 		}
 	}
@@ -324,8 +324,8 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	if _, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: "relative", MCPServers: []protocol.MCPServer{}}); err == nil {
 		t.Error("relative cwd accepted")
 	}
-	if s.params.CanApproveByHook("Bash", map[string]any{"execution_mode": "background_service"}) {
-		t.Error("hook can enable unsupported background work")
+	if s.params.CanApproveByHook("Write", map[string]any{"file_path": path, "content": "no"}) {
+		t.Error("hook can bypass native deny")
 	}
 }
 

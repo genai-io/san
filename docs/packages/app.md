@@ -130,8 +130,9 @@ Stop continuations and SessionEnd use native helpers. Terminal handling records
 session state and acknowledges the native receipt before admitting a successor;
 disconnect joins callbacks and runtimes before closing transcript writers.
 
-The host supports text prompts and Read/Write/Edit/Glob/Grep, foreground Bash and
-Skill, subject to disabled tools and native policy. `acp_extensions.go` loads
+The host supports text prompts and Read/Write/Edit/Glob/Grep, foreground and
+background Bash, TaskOutput/TaskStop and Skill, subject to disabled tools and
+native policy. `acp_extensions.go` loads
 independent skill/plugin registries and native plus client-supplied MCP servers.
 Plugin skill paths, hooks, subprocess environment and MCP contributions use those
 registries, not the TUI defaults. Native workspace trust still applies. Client
@@ -158,12 +159,46 @@ applied, and retain permission, file observation, extension and conversation
 owners. Cross-provider switching is not supported. No switch cancels an active
 prompt. `transcript.StatePatch.Model` records selection even before an inference.
 
-**Incomplete capability work:** subagents, background launch/status/results/cancel,
-plugin commands/agent definitions, structured questions, command prompts and masked
-secret input remain unavailable. Background shell calls are rejected, not detached.
-There is no durable background-task policy. Secrets must never be requested via
-ordinary chat. Non-text prompts and session list/resume-without-replay are not
-advertised. This is not full native parity or a replacement transport for the TUI.
+Each session has a native `task.Manager`. Shell adapters select it from their
+owner-scoped context, never by replacing the TUI default. Explicit
+`background_job` and `background_service` launches pass the same native permission
+and hook gate as foreground Bash. Jobs retain native deadlines; services have no
+execution deadline. Prompt cancellation does not cancel previously launched tasks.
+`TaskOutput` lists that session's tasks or returns one status/output snapshot;
+`TaskStop` requests cancellation through the ordinary tool permission gate. Updates
+are standard ACP tool-call updates when these tools run, not unsolicited task
+completion notifications. There is no task protocol extension or automatic wakeup.
+Disconnect first stops launch admission and joins runtime callbacks, then cancels
+**all** session tasks and joins process reaping/output draining before closing
+hooks, MCP and transcripts. Terminal display status is not a cleanup receipt.
+Task output is bounded in memory and is not restored by session/load. Poll results
+enter the native transcript; unpolled output is connection-local.
+
+**Incomplete capability work:** subagent execution, plugin commands/agent
+definitions, structured questions, command prompts and masked secret input remain
+unavailable. The vendored ACP schema includes `elicitation/create` with form/URL
+modes and client elicitation capabilities, but this SDK endpoint and San host do
+not yet implement that exchange. Structured questions are an implementation gap,
+not an absence from the protocol. AskUserQuestion is excluded and Bash has no
+interactive responder. No safe secret-input mapping is implemented; clients must
+not be asked to put secrets into ordinary chat or permission labels. Non-text
+prompts and session list/resume-without-replay are not advertised. This is not
+full native parity or a replacement transport for the TUI.
+
+### ACP tool validation matrix
+
+| Tool surface | Actual ACP behavior | Validation / remaining gap |
+| --- | --- | --- |
+| Read, Write, Edit, Glob, Grep | Native gated execution; session-owned file observations | Native deny, hook precedence, recording and session tests |
+| Bash foreground | Native execution with fixed session cwd | Native ACP and shell tests |
+| Bash background job/service | Explicit launch; connection-owned pool and disconnect join | Real subprocess loopback tests, including concurrent sessions and denied launches |
+| TaskOutput, TaskStop | Pool-bound status/results and cancellation; ordinary tool updates and policy | Owner success/foreign rejection, explicit stop and disconnect tests |
+| Skill, MCP | Session registries; native/client MCP ownership | Skill and local HTTP MCP protocol tests |
+| Agent, AgentStop, SendMessage | Not offered | Native executor still uses global task paths; parent-policy and background interaction wiring incomplete |
+| Plugin prompt commands/agent definitions | Not offered | Independent command/agent registry loading and execution incomplete |
+| AskUserQuestion | Not offered | Schema supports elicitation; endpoint and host mapping missing |
+| Interactive command prompts/secrets | No responder | No negotiated safe secret-input channel; do not substitute chat |
+| WebFetch/WebSearch, planning tracker, Workflow, Cron, Evolve | Excluded by ACP allowlist | Not validated or represented as supported native parity |
 
 **Pending dependency:** these optional endpoint handlers and generated wire types
 require SDK commit `1a5b94c` on the unmerged `feat/acp-capabilities` branch. Normal
@@ -178,7 +213,10 @@ streaming, allow/deny/unknown permission choices, native deny versus hook allow,
 consecutive turns, session separation, inference/permission cancellation,
 disconnect, prompt/Stop hooks and essential recording failures. Capability tests
 also exercise native load/replay, safe modes, durable model selection, isolated
-Skill execution and permission-gated MCP against a local HTTP fixture. These are
+Skill execution and permission-gated MCP against a local HTTP fixture.
+`acp_tasks_test.go` launches real shell jobs/services through loopback ACP, checks
+output/status and cross-session rejection, and verifies explicit cancellation and
+disconnect join. These are
 simulated provider/client tests, not editor or live-vendor acceptance. Run
 `go test -race ./internal/app -run '^TestACP'` for focused coverage.
 
