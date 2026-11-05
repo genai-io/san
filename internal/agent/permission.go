@@ -114,6 +114,14 @@ func (pg *PermissionGate) CanApproveByHook(name string, input map[string]any) bo
 	return pg.hookAllowCheck(name, input)
 }
 
+// WithRules shares the prompt receiver but uses call-scoped authorization rules.
+// The original gate remains unchanged for concurrent calls in other scopes.
+func (pg *PermissionGate) WithRules(decide PermDecisionFunc) *PermissionGate {
+	scoped := *pg
+	scoped.decideFn = decide
+	return &scoped
+}
+
 func (pg *PermissionGate) PermissionFunc() perm.PermissionFunc {
 	return func(ctx context.Context, name string, input map[string]any) (bool, string) {
 		return pg.Check(ctx, name, input, false, "")

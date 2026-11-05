@@ -97,20 +97,21 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
-	input       acpInput
-	data        agent.MainSession
-	params      agent.BuildParams
-	runtime     agent.Runtime
-	hooks       *hook.Engine
-	reminders   *reminder.Reminder
-	lastPrompt  string
-	sideEffects sync.Map
-	mcp         *mcp.Manager
-	policy      *setting.SessionPermissions
-	mode        setting.OperationMode
-	commands    *command.Registry
-	agents      *subagent.Registry
-	models      []llm.ModelInfo
+	input            acpInput
+	data             agent.MainSession
+	params           agent.BuildParams
+	runtime          agent.Runtime
+	hooks            *hook.Engine
+	reminders        *reminder.Reminder
+	lastPrompt       string
+	sideEffects      sync.Map
+	mcp              *mcp.Manager
+	policy           *setting.SessionPermissions
+	permissionPolicy func(string) agent.PermissionPolicy
+	mode             setting.OperationMode
+	commands         *command.Registry
+	agents           *subagent.Registry
+	models           []llm.ModelInfo
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
@@ -215,6 +216,12 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if setting.New(settings).AutoMemory() {
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
 	}
+	s.permissionPolicy = func(cwd string) agent.PermissionPolicy {
+		scoped := policy
+		scoped.Settings = setting.ScopedPermissions{Data: settings, CWD: cwd}
+		return scoped
+	}
+	policy = s.permissionPolicy(req.CWD)
 	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),

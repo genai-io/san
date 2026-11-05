@@ -8,6 +8,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -20,7 +21,8 @@ import (
 // until background workers finish cleanup, preserving their policy and hooks.
 func (s *acpSession) configureAgents() {
 	e := subagent.NewExecutor(s.params.Provider, s.params.CWD, s.params.ModelID, s.hooks)
-	e.ConfigureOwner(s.params.Tasks, s.agents, func(background bool) perm.PermissionFunc {
+	e.ConfigureOwner(s.params.Tasks, s.agents, func(background bool, cwd string) perm.PermissionFunc {
+		policy := s.permissionPolicy(cwd)
 		return func(ctx context.Context, name string, input map[string]any) (bool, string) {
 			if name == "Bash" {
 				if mode, _ := input["execution_mode"].(string); mode != "" && mode != "foreground" {
@@ -29,11 +31,14 @@ func (s *acpSession) configureAgents() {
 			}
 			if !background {
 				if gate := s.runtime.PermissionGate(); gate != nil {
-					return gate.Check(ctx, name, input, false, "")
+					// Keep original spelling for rule matching, but show the human
+					// the actual execution path when approval is required.
+					rules := func(string, map[string]any) agent.PermDecisionResult { return policy.Decide(name, input) }
+					return gate.WithRules(rules).Check(ctx, name, setting.PermissionPaths(name, input, cwd), false, "")
 				}
 				return false, "parent prompt is unavailable"
 			}
-			decision := s.params.PermissionRules(name, input)
+			decision := policy.Decide(name, input)
 			if decision.Decision == perm.Permit {
 				return true, decision.Reason
 			}
@@ -58,6 +63,7 @@ func (s *acpSession) configureAgents() {
 	e.SetDisabledTools(s.params.DisabledTools)
 	e.SetMCPDependencies(s.mcp)
 	e.SetSkillsDirectory(s.params.Skills.PromptSection())
+	e.SetSkillResolver(s.params.Skills.SkillInvocationPrompt)
 	e.SetParentPermissionMode(func() subagent.PermissionMode { return subagent.InheritedPermissionMode(s.policy.CurrentMode()) })
 	worker := agenttool.NewAgentTool()
 	worker.SetExecutor(subagent.NewExecutorAdapter(e))
@@ -65,6 +71,6 @@ func (s *acpSession) configureAgents() {
 	schema.Description += " ACP supports foreground workers and session-owned background workers. Background requests requiring human approval are denied; use TaskOutput and TaskStop to inspect or cancel."
 	// Foreground workers inherit the prompt-owned responder through their context.
 	// RunBackground starts with a fresh context and cannot retain this channel.
-	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithAskUser(s.params.AskUser), tool.WithBashPromptResponderProvider(s.params.BashPromptResponder)))
+	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithSideEffectHandler(s.params.ToolResponse), tool.WithAskUser(s.params.AskUser), tool.WithBashPromptResponderProvider(s.params.BashPromptResponder)))
 	s.params.AgentCatalog = s.agents.AgentCatalog
 }

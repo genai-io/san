@@ -34,6 +34,8 @@ type ProviderResolver interface {
 	Resolve(ctx context.Context, provider llm.ProviderID) (llm.Provider, error)
 }
 
+type executionDirectoryKey struct{}
+
 // Executor runs agent LLM loops
 type Executor struct {
 	interactions               tool.AgentInteractions
@@ -49,11 +51,12 @@ type Executor struct {
 	parentSessionID            string               // Parent session ID for linking subagent sessions
 	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
+	skillPrompt                func(string) string  // owner's preloaded skill resolver; nil uses the TUI registry
 	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 	tasks                      *task.Manager
-	permission                 func(bool) perm.PermissionFunc
+	permission                 func(bool, string) perm.PermissionFunc
 	toolContext                func(context.Context, string) context.Context
 	postTool                   func(core.ToolResult, any)
 }
@@ -90,7 +93,7 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 // ConfigureOwner binds a host's worker resources before launching any runs.
 // Permission must enforce the parent policy even for child bypass/allow rules.
 // Background policies must never retain a prompt-scoped transport receiver.
-func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(bool) perm.PermissionFunc, toolContext func(context.Context, string) context.Context) {
+func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(bool, string) perm.PermissionFunc, toolContext func(context.Context, string) context.Context) {
 	e.tasks, e.registry, e.permission, e.toolContext = tasks, registry, permission, toolContext
 }
 
@@ -569,7 +572,14 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	)
 	run.system = sys
 	var ag core.Agent
+	var callDirs sync.Map
 	adaptOpts := []tool.AdaptOption{
+		tool.WithExecutionCWD(func(ctx context.Context) (string, error) {
+			if cwd, ok := callDirs.LoadAndDelete(core.ToolCallIDFromContext(ctx)); ok {
+				return cwd.(string), nil
+			}
+			return "", fmt.Errorf("worker execution directory was not authorized")
+		}),
 		tool.WithToolContext(func(ctx context.Context) context.Context {
 			ctx = task.WithManager(task.WithSessionID(ctx, e.parentSessionID), e.taskPool())
 			if e.toolContext != nil {
@@ -609,12 +619,13 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	if e.permission != nil {
 		// The owner authorizes every call, including safe tools and child allow
 		// rules. Child constraints may narrow but never widen parent policy.
-		parent := e.permission(run.req.Background)
 		constraints := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, func(context.Context, string, map[string]any) (bool, string) { return true, "owner review" })
 		permFn = func(ctx context.Context, name string, input map[string]any) (bool, string) {
 			if ok, reason := constraints(ctx, name, input); !ok {
 				return false, reason
 			}
+			cwd, _ := ctx.Value(executionDirectoryKey{}).(string)
+			parent := e.permission(run.req.Background, cwd)
 			if parent == nil {
 				return false, "owner permission policy unavailable"
 			}
@@ -629,7 +640,13 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		if e.toolContext != nil {
 			ctx = e.toolContext(ctx, rc.config.SourceFile)
 		}
-		return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+		cwd := run.currentCwd()
+		ctx = context.WithValue(ctx, executionDirectoryKey{}, cwd)
+		decision, err := permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+		if err == nil && !decision.Block {
+			callDirs.Store(call.Call.ID, cwd)
+		}
+		return decision, err
 	})
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
