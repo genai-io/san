@@ -158,6 +158,10 @@ pinned stable `session/set_config_option` surface, not the legacy experimental
 applied, and retain permission, file observation, extension and conversation
 owners. Cross-provider switching is not supported. No switch cancels an active
 prompt. `transcript.StatePatch.Model` records selection even before an inference.
+Background worker inference models are captured by their executor, but parent
+permission mode and the shared hook engine's default completion model remain
+live session state. Immutable worker policy/hook snapshots across idle config
+changes are a remaining review item; do not claim full worker-config isolation.
 
 Each session has a native `task.Manager`. Shell adapters select it from their
 owner-scoped context, never by replacing the TUI default. Explicit
@@ -192,15 +196,30 @@ plugin-root scope; TUI management commands fail explicitly. Standard
 notification receiver). Agent definitions load from native project/user/plugin
 paths with native priority and enablement, without mutating default registries.
 
-**Incomplete capability work:** structured questions, interactive shell prompts
-and masked secret input remain unavailable. The vendored ACP schema includes `elicitation/create` with form/URL
-modes and client elicitation capabilities, but this SDK endpoint and San host do
-not yet implement that exchange. Structured questions are an implementation gap,
-not an absence from the protocol. AskUserQuestion is excluded and Bash has no
-interactive responder. No safe secret-input mapping is implemented; clients must
-not be asked to put secrets into ordinary chat or permission labels. Non-text
-prompts and session list/resume-without-replay are not advertised. This is not
-full native parity or a replacement transport for the TUI.
+`acp_input.go` enables native AskUserQuestion and foreground Bash prompt replies
+only when `initialize.clientCapabilities.elicitation.form` is present. It uses
+standard `elicitation/create` forms: each question has a titled single-select
+`oneOf`, stable option IDs and a separate optional Other text field. Returned
+fields, selections and Other combinations are validated before producing native
+answers; decline/cancel become a cancelled question. Native question IDs stay
+local and transport request IDs correlate each response. Parallel sessions have
+independent adapters. Foreground workers forward questions; headless background
+workers drop their question callback, and background shells never acquire the
+interactive responder. Prompt exit clears the adapter's Turn after callbacks
+join. Tool deadlines, prompt cancellation and disconnect unblock active input.
+
+On Unix, main-agent native Bash prompt detection routes ordinary input through a single
+string form; decline, malformed input or cancellation supplies no answer. Worker
+shell execution remains headless (foreground workers can forward structured
+questions, not shell stdin prompts). This
+is line input, not a terminal UI or arbitrary keystroke transport. Password/secret
+prompts fail closed: the pinned schema has **no password format or masked-input
+semantics**, and URL elicitation does not deliver a secret to local stdin. San
+never requests a secret via a form, chat, or permission label. Ordinary forms
+warn users not to enter secrets. The SDK includes typed URL flows and completion
+notifications for applications that own an out-of-band flow; San does not create
+such a flow. Non-text prompts and session list/resume-without-replay remain
+unadvertised. This is not full native parity or a replacement transport for the TUI.
 
 ### ACP tool validation matrix
 
@@ -214,12 +233,13 @@ full native parity or a replacement transport for the TUI.
 | Agent | Native foreground/background workers; parent policy and session pool | Protocol launch/completion, foreground approvals, headless/parent deny, foreign stop and disconnect reaping |
 | AgentStop, SendMessage | Not offered; use TaskStop | Messaging, continuation and global broker integration intentionally unavailable |
 | Plugin prompt commands/agent definitions | Independent native catalogs; commands expand native instructions | Plugin discovery, command execution/history, standard command updates and cross-session isolation |
-| AskUserQuestion | Not offered | Schema supports elicitation; endpoint and host mapping missing |
-| Interactive command prompts/secrets | No responder | No negotiated safe secret-input channel; do not substitute chat |
+| AskUserQuestion | Negotiated standard forms; option sets plus Other free text | Actual protocol/native tool tests: absent capability, choices, decline/cancel, malformed/unknown fields and options, parallel isolation |
+| Interactive command prompts | Negotiated ordinary-input forms for foreground Unix Bash | Real subprocess/ACP tests; cancellation and disconnect; no terminal UI |
+| Secret input | Explicitly unsupported; responder declines without sending a form | Pinned schema lacks masked-input semantics; real password-prompt test confirms zero elicitations |
 | WebFetch/WebSearch, planning tracker, Workflow, Cron, Evolve | Excluded by ACP allowlist | Not validated or represented as supported native parity |
 
 **Pending dependency:** these optional endpoint handlers and generated wire types
-require SDK commit `1a5b94c` on the unmerged `feat/acp-capabilities` branch. Normal
+require SDK commit `9b492a4` on the unmerged `feat/acp-capabilities` branch. Normal
 `go.mod` remains
 pinned to `v0.9.3-0.20261104152117-dc6d82c0e541`; this development branch therefore
 requires an alternate modfile replacing SDK with the reviewed local SDK worktree.

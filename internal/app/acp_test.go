@@ -45,6 +45,10 @@ func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.
 }
 
 func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
+	return newACPFixtureOptions(t, driver, permission, budget, protocol.InitializeRequest{ProtocolVersion: 1}, nil, wrap...)
+}
+
+func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, init protocol.InitializeRequest, elicit func(context.Context, protocol.CreateElicitationRequest) (protocol.CreateElicitationResponse, error), wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
@@ -63,7 +67,10 @@ func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission fu
 		t.Fatal(err)
 	}
 	f.client, err = acp.New(ctx, recv, send, acp.Handlers{
-		Request: func(ctx context.Context, _ *acp.Conn, method string, params json.RawMessage) (any, error) {
+		Request: func(ctx context.Context, c *acp.Conn, method string, params json.RawMessage) (any, error) {
+			if method == "elicitation/create" {
+				return acp.ElicitationHandler(elicit)(ctx, c, method, params)
+			}
 			var req protocol.RequestPermissionRequest
 			if err := json.Unmarshal(params, &req); err != nil {
 				return nil, err
@@ -109,7 +116,7 @@ func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission fu
 			}
 		}
 	})
-	if _, err := f.client.Initialize(ctx, protocol.InitializeRequest{ProtocolVersion: 1}); err != nil {
+	if _, err := f.client.Initialize(ctx, init); err != nil {
 		t.Fatal(err)
 	}
 	return f

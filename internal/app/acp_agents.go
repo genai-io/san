@@ -63,6 +63,6 @@ func (s *acpSession) configureAgents() {
 	worker.SetExecutor(subagent.NewExecutorAdapter(e))
 	schema := worker.Schema()
 	schema.Description += " ACP supports foreground workers and session-owned background workers. Background requests requiring human approval are denied; use TaskOutput and TaskStop to inspect or cancel."
-	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }))
+	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithAskUser(s.params.AskUser)))
 	s.params.AgentCatalog = s.agents.AgentCatalog
 }

@@ -14,9 +14,14 @@ Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
 - Background shell jobs/services now use a session-owned native task pool, with
   TaskOutput/TaskStop and cancellation plus execution-cleanup join on disconnect.
   Status/output is polled through standard tool calls, not pushed asynchronously.
-- Subagent execution, plugin commands/agent definitions and non-text input remain
-  incomplete. Questions/command prompts/secrets are unavailable without a safe
-  negotiated interaction surface; permission choices are not secret input.
+- Native foreground/background subagents, plugin prompt commands and agent
+  catalogs are implemented with session-owned resources. Structured questions
+  and ordinary foreground Unix Bash prompts use negotiated standard elicitation
+  forms. Unsupported clients receive no interactive tools/responder. Background
+  work cannot retain a question transport; permissions never double as questions.
+- Secret prompts explicitly decline without sending a form: the pinned schema
+  has no password/masked-input semantics. URL flows are typed in SDK but no San
+  out-of-band credential flow is implemented. Non-text input remains unsupported.
 - This remains an incomplete full-capability implementation. Independent
   client/editor validation is also outstanding. See the
   [host documentation](../../docs/packages/app.md#acp-stdio-host).

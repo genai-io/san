@@ -55,7 +55,11 @@ func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, ver
 
 func (h *acpHost) start(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string, writeTimeout time.Duration) (*acp.Agent, error) {
 	return acp.NewAgent(ctx, input, output, acp.AgentHandlers{
-		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
+		Initialize: func(_ context.Context, req protocol.InitializeRequest) (protocol.InitializeResponse, error) {
+			h.mu.Lock()
+			caps := req.ClientCapabilities.Value.Elicitation
+			h.forms = caps.Present && !caps.Null && caps.Value.Form.Present && !caps.Value.Form.Null
+			h.mu.Unlock()
 			return protocol.InitializeResponse{ProtocolVersion: 1, AgentCapabilities: protocol.Some(protocol.AgentCapabilities{LoadSession: protocol.Some(true), MCPCapabilities: protocol.Some(protocol.MCPCapabilities{HTTP: protocol.Some(true), SSE: protocol.Some(true)})}), AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
 		},
 		CreateSession:          h.create,
@@ -80,6 +84,7 @@ func (h *acpHost) wait(endpoint *acp.Agent) error {
 }
 
 type acpHost struct {
+	forms    bool
 	provider llm.Provider
 	model    string
 	mu       sync.Mutex
@@ -92,6 +97,7 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
+	input       acpInput
 	data        agent.MainSession
 	params      agent.BuildParams
 	runtime     agent.Runtime
@@ -225,10 +231,18 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	s.params.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
 	for _, schema := range s.params.Schemas() {
 		switch schema.Name {
+		case "AskUserQuestion":
+			if !h.forms {
+				s.params.DisabledTools[schema.Name] = true
+			}
 		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent":
 		default:
 			s.params.DisabledTools[schema.Name] = true
 		}
+	}
+	if h.forms {
+		s.params.AskUser = s.input.ask
+		s.params.BashPromptResponder = s.input.responder
 	}
 	s.refreshMemory()
 	source := "startup"

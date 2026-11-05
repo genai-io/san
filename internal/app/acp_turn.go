@@ -19,6 +19,8 @@ import (
 )
 
 func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (response protocol.PromptResponse, err error) {
+	s.input.set(turn)
+	defer s.input.set(nil)
 	if s.params.Plugins != nil {
 		ctx = plugin.WithRegistry(ctx, s.params.Plugins)
 	}
