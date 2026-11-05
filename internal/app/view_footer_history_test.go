@@ -11,6 +11,33 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
+func TestHistoryOnlyFooterSitsAgainstInference(t *testing.T) {
+	m := modelWithInferenceProgress(24)
+	m.env.Width = 80
+	m.conv.ShowTasks = true
+	m.services.Task = task.NewManager()
+	worker := viewerWorker(m, "old", "", time.Now())
+	todo.TrackWorker(m.services.Tracker, worker.info)
+	worker.info.Status = task.StatusStopped
+	todo.CompleteWorker(m.services.Tracker, worker.info)
+	m.taskCompletionsShown = map[string]bool{taskCompletionKey(worker.GetID(), 0): true}
+	view := m.View()
+	plain := ansi.Strip(view.Content)
+	rows := strings.Split(plain, "\n")
+	for i, row := range rows {
+		if strings.Contains(row, "Tasks · 1 past task") {
+			if i+2 >= len(rows) || !strings.Contains(rows[i+1], "On it") || !strings.HasPrefix(rows[i+2], "─") {
+				t.Fatalf("history should sit directly above inference and input:\n%s", plain)
+			}
+			if len(rows) != 24 || view.Cursor == nil || view.Cursor.Position.Y != 21 {
+				t.Fatalf("composer moved: rows=%d cursor=%+v", len(rows), view.Cursor)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing history summary:\n%s", plain)
+}
+
 func TestFooterIntegratedHistoryQueueAndInferenceOrder(t *testing.T) {
 	for _, width := range []int{100, 40, 32} {
 		for _, height := range []int{24, 12, 8} {
