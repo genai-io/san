@@ -2,7 +2,7 @@
 name: qa
 description: >-
   Regression test a San feature by name. Looks for a feature doc in docs/reference/ or
-  docs/packages/2-feature/, runs automated Go tests and interactive tmux tests, then
+  docs/packages/, runs automated Go tests and interactive tmux tests, then
   produces a pass/fail report.
   Use this skill when the user says "qa", "regression test", "test feature X", "verify feature",
   or references a feature name like "agent", "cli-startup", "loop".
@@ -32,7 +32,7 @@ Run automated and interactive regression tests for a San feature by name.
 Look for the feature in this order:
 
 1. `docs/reference/<feature>.md` — reference docs, may have **Automated Tests** and **Interactive Tests (tmux)** sections
-2. `docs/packages/2-feature/<feature>.md` — feature package docs, has a `## Tests` section
+2. `docs/packages/<feature>.md` — feature package docs, has a `## Tests` section
 
 Read the file. Extract:
 - **Automated Tests** section — the `go test` commands and known test cases (from reference docs).

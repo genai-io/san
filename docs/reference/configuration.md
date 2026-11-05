@@ -165,7 +165,7 @@ Reasoning that is suppressed is never drawn in either surface: the value is read
 by both the live view and the scrollback flush, so there is no path that leaks
 the body.
 
-Because committed scrollback is immutable ([ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)),
+Because committed scrollback is immutable ([ADR-0002](../design/decision-0002-native-scrollback-commit-protocol.md)),
 changing this takes effect from that point on: reasoning already on screen stays
 as it was drawn. There is no `ctrl+o`-style expansion of a collapsed block for
 the same reason.

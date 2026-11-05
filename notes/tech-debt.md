@@ -47,8 +47,8 @@ This file tracks structural follow-ups that are not tied to a single feature.
 - ~~`docs/guides/` only contains `explore-mode.md`.~~ Added
   `getting-started.md`, `writing-a-skill.md`, `writing-a-subagent.md`,
   `writing-a-plugin.md`.
-- ~~`docs/design/decisions/` is empty.~~ Added
-  `0001-layered-package-architecture.md`.
+- ~~No architecture decision records.~~ Added
+  `docs/design/decision-0001-layered-package-architecture.md`.
 - ~~Infrastructure packages (`log`, `secret`, `filecache`, `markdown`)
   have no `docs/packages/*.md` page.~~ Added all four.
 

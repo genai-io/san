@@ -8,7 +8,7 @@
 // frame's current extent, so a row that leaves the screen stays exactly as it
 // was last drawn. Scrollback cannot be rewritten. The full
 // protocol — the invariants and the one site that enforces each — is
-// docs/design/decisions/0002-native-scrollback-commit-protocol.md; read it
+// docs/design/decision-0002-native-scrollback-commit-protocol.md; read it
 // before changing how a print measures, freezes, or shrinks the frame.
 package app
 

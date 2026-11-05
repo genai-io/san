@@ -4,40 +4,40 @@
 
 - [Auto memory](concepts/auto-memory.md)
 - [Project instructions](concepts/harness-channels.md)
-- [Self-learning](packages/2-feature/selflearn.md)
+- [Self-learning](packages/selflearn.md)
 
 ## Agent and session collaboration
 
-- [Subagents](packages/2-feature/subagent.md)
-- [Agent messaging](packages/2-feature/broker.md)
-- [Session groups](design/proposals/0003-session-groups.md)
-- [Workflows](packages/2-feature/workflow.md)
+- [Subagents](packages/subagent.md)
+- [Agent messaging](packages/broker.md)
+- [Session groups](design/proposal-0003-session-groups.md)
+- [Workflows](packages/workflow.md)
 
 ## Sessions, tasks, and automation
 
-- [Sessions](packages/2-feature/session.md)
-- [Tasks and processes](packages/2-feature/task.md)
+- [Sessions](packages/session.md)
+- [Tasks and processes](packages/task.md)
 - [Autopilot](guides/autopilot.md)
-- [Scheduling](packages/2-feature/cron.md)
+- [Scheduling](packages/cron.md)
 
 ## Tools and extensions
 
-- [Built-in tools](packages/2-feature/tool.md)
-- [Web search](packages/2-feature/search.md)
-- [Skills](packages/2-feature/skill.md)
-- [Plugins](packages/2-feature/plugin.md)
-- [MCP](packages/2-feature/mcp.md)
-- [Hooks](packages/2-feature/hook.md)
-- [Commands](packages/2-feature/command.md)
+- [Built-in tools](packages/tool.md)
+- [Web search](packages/search.md)
+- [Skills](packages/skill.md)
+- [Plugins](packages/plugin.md)
+- [MCP](packages/mcp.md)
+- [Hooks](packages/hook.md)
+- [Commands](packages/command.md)
 
 ## Models, behavior, and permissions
 
-- [Models and providers](packages/2-feature/llm.md)
+- [Models and providers](packages/llm.md)
 - [Personas](concepts/persona.md)
-- [Settings](packages/2-feature/setting.md)
+- [Settings](packages/setting.md)
 - [Permissions](concepts/permission-model.md)
 
 ## Interaction and inspection
 
 - [CLI](guides/getting-started.md)
-- [Inspector](packages/2-feature/inspector.md)
+- [Inspector](packages/inspector.md)

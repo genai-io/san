@@ -65,7 +65,8 @@ commands change. Do not duplicate them here.
 - Add or update docs in the same change as architecture or workflow changes.
 - Each feature document should list purpose, entrypoints, core packages, flow,
   configuration, tests, and common pitfalls.
-- Architecture decision records live in `docs/design/decisions/`.
+- Proposals and architecture decision records live directly in `docs/design/`,
+  named `proposal-NNNN-topic.md` and `decision-NNNN-topic.md`.
 - File naming rules live in `docs/reference/file-naming.md`.
 - Active plans live in `notes/active/`; completed plans move to
   `notes/completed/`.

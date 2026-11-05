@@ -1,0 +1,145 @@
+---
+package: github.com/genai-io/san/internal/command
+layer: feature
+---
+
+# command
+
+Registry for slash commands: built-in handlers (`/help`, `/models`,
+`/identity`, …), dynamic provider-supplied entries, builtin prompt
+commands embedded in the binary (`/simplify`), and user-defined markdown
+commands under `commands/` directories. Resolves names, fuzzy prefixes,
+and plugin-scoped command paths; a user or project command shadows a
+builtin prompt command of the same name.
+
+## Purpose
+
+Slash commands are the user-input side of the TUI's command palette. This
+package owns the unified lookup surface: `Get("help")`, `List()`,
+fuzzy matching for top-level commands, one-level-at-a-time matching for
+built-in subcommands, and the registry of custom commands loaded from disk.
+
+## Contract
+
+Slash command registry. Combines built-in handlers, dynamic providers (skill/agent surfaces), and custom markdown commands. The package exposes `*Registry` directly — no Service interface.
+
+```go
+package command
+
+// Registry is the opaque handle. Type exported; fields unexported.
+type Registry struct { /* internal fields */ }
+
+func (s *Registry) Get(name string) (Info, bool)
+func (s *Registry) List() []Info
+func (s *Registry) ListCustom() []CustomCommand
+func (s *Registry) Matching(prefix string) []Info
+func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool)
+func (s *Registry) BuiltinNames() map[string]Info
+func (s *Registry) CustomCommands() []Info
+
+// Quoted arguments shared by execution, completion, and generated commands.
+func ScanArguments(args string) ([]Argument, error)
+func SplitArguments(args string) ([]string, error)
+func QuoteArgument(value string) string
+
+// Package-level access
+func Initialize(opts Options)
+func Default() *Registry
+func SetDefaultRegistry(s *Registry)  // test-only
+func ResetDefaultRegistry()          // test-only
+```
+
+
+## Internals
+
+- `service` (`service.go`) — concrete implementation, holds cwd, dynamic
+  provider functions, and a plugin-command-path callback.
+- `registry.go` — combines three sources at query time:
+  - **Built-ins** registered from `builtin/` subpackage at init.
+  - **Dynamic** — `DynamicProviders` callbacks returning `Info` slices
+    (used by skill/agent slash-command surfaces).
+  - **Custom** — markdown files under `~/.san/commands/` and
+    `<project>/.san/commands/`, plus plugin-scoped paths returned by
+    `PluginCommandPaths`.
+- `Info` carries name, description, namespace, source path.
+- `subcommands.go` — static command paths and descriptions for the slash
+  palette. The app adds suggestions that require live state: `/group` values
+  and saved names after `/workflow show` or `/workflow run`. Each handler
+  still owns execution and argument validation.
+- `arguments.go` — quote-aware argument parsing with source ranges for
+  completion. Scanning preserves unfinished quoted fields; execution rejects
+  unfinished quotes. Generated arguments use the same quoting rules.
+
+## Lifecycle
+
+- Construction: `Initialize(Options{CWD, DynamicProviders, PluginCommandPaths})`
+  at app startup, after `skill` and `subagent` are initialized so their
+  dynamic providers are wired in.
+- Reload on plugin reload: callers re-call `Initialize` with refreshed
+  provider closures.
+
+The built-in `/simplify` requests four read-only foreground Agent calls in one
+batch. The agent runtime runs them concurrently and joins the batch before
+the parent infers again; background notification turns are unnecessary because
+the fixes depend on all four reports. Reviewers receive the diff commands and
+paths and inspect source through their own effective tools. Blocked coverage
+is reported explicitly rather than retried with source pasted by the parent.
+
+## Group control
+
+Use `/group` directly; no skill or tool needs enabling. Join the same group
+from two sessions (the group is created if needed):
+
+```text
+/group join backend --as api --role API development
+/group join backend --as tests --role Testing
+```
+
+Members can then communicate through `SendMessage`.
+
+| Command | Purpose |
+| --- | --- |
+| `/group` | Current status and help |
+| `/group members` / `/group list` | Current members / all groups |
+| `/group leave` | Leave the group |
+| `/group hold on` / `/group hold off` | Hold member messages until your next input / process immediately |
+| `/group kick tests` | Remove a member |
+| `/group disband backend` | Disband the group |
+
+### Member lifecycle
+
+Membership belongs to a session, not a terminal process. A session joins one
+group at a time; leave before joining another.
+
+| Stage | Behavior |
+| --- | --- |
+| Join | Creates the group if absent; assigns a member name and role. |
+| Collaborate | Members see `idle`, `working`, or `approval` status. Messages wait in the recipient's inbox; `hold` controls automatic processing. |
+| Update identity | `/name api --role API development` updates the session and member name/role without leaving or losing queued messages. |
+| Go offline | Closing a saved session or switching away keeps its membership and inbox. Offline members remain listed and can receive messages. An unsaved session leaves on exit. |
+| Resume | `/resume` of the original session reclaims its membership if it still exists and is not online elsewhere. A different or forked session does not inherit membership. |
+| Leave or remove | `/group leave` or `/group kick <member>` removes membership and its inbox. Resume does not undo removal; joining again is explicit. The last member leaving removes the group. |
+| Disband | `/group disband <group>` removes all memberships and inboxes. Members detect the removal; resume does not recreate the group. |
+
+Natural language also works: `/group Join backend as api, responsible for API development`.
+It requires a connected model and runs in an isolated context with only the
+request and current membership, not the main conversation or tools. Explicit
+commands run without model inference, and `/group` works while the main agent
+is busy. Kick and disband always require explicit commands.
+
+## Tests
+
+```
+internal/command/registry_test.go    — name lookup, fuzzy matching,
+                                        custom + built-in precedence.
+internal/app/group_control_test.go  — isolated requests, validation, stale results.
+internal/command/arguments_test.go   — quoted values, unfinished fields,
+                                        Unicode byte ranges, generated argument round trips.
+```
+
+## See Also
+
+- Code: `internal/command/`
+- Related: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md) (dynamic providers), [`packages/plugin.md`](plugin.md)
+- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md)
+- Layer: `feature`

@@ -233,7 +233,7 @@ handleSubmit → dispatchSubmission
 
 `m.mainNotices` 承载发给主循环的通知：subagent 完成、中途消息
 （`SendMessage to="main"`）、self-learn 通知。agent 之间的消息走进程级的
-[`broker`](../packages/2-feature/broker.md)；主循环注册 `broker.Main`，
+[`broker`](../packages/broker.md)；主循环注册 `broker.Main`，
 把收到的转到这个 channel 上。
 
 ### 回合边界排空
