@@ -18,7 +18,7 @@ task. The package owns the format (frontmatter, one mermaid block, one
 the parent conversation receives. It imports nothing from San — node
 execution enters through `NodeRunner` — so it can move to sdk-go as
 `pkg/agent/flow` once the schema settles. Design and rationale:
-[`design/proposals/0001-workflow-orchestration.md`](../design/proposals/0001-workflow-orchestration.md);
+[`design/proposal-0001-workflow-orchestration.md`](../design/proposal-0001-workflow-orchestration.md);
 user-facing behaviour: [`concepts/workflow.md`](../concepts/workflow.md).
 
 The tool description explains Agent as an alternative for already-delegated

@@ -1,6 +1,6 @@
 # ACP implementation plan
 
-Design: [PROP-0004](../../docs/design/proposals/0004-acp-agent-entrypoint.md).
+Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
 
 ## Current scope
 

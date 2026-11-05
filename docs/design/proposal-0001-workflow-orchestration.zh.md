@@ -1,6 +1,6 @@
 # PROP-0001：子 Agent 工作流编排
 
-> 英文版：[`0001-workflow-orchestration.md`](0001-workflow-orchestration.md)
+> 英文版：[`proposal-0001-workflow-orchestration.md`](proposal-0001-workflow-orchestration.md)
 
 ## 状态
 
@@ -543,13 +543,13 @@ sdk-go 作为 `pkg/agent/flow`，补齐 SDK 架构文档描述的那条阶梯：
 
 ## 参考
 
-- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) —— 分层规则，
+- [`ADR-0001`](decision-0001-layered-package-architecture.md) —— 分层规则，
   以及本功能必须满足的 package-map 登记要求。
-- [`concepts/permission-model.md`](../../concepts/permission-model.md) ——
+- [`concepts/permission-model.md`](../concepts/permission-model.md) ——
   每个节点都要穿过的那道闸门。
-- [`concepts/extension-model.md`](../../concepts/extension-model.md) ——
+- [`concepts/extension-model.md`](../concepts/extension-model.md) ——
   agent、skill、command 是怎么定义的；工作流沿用同一形状。
-- [`reference/package-map.md`](../../reference/package-map.md) ——
+- [`reference/package-map.md`](../reference/package-map.md) ——
   `internal/workflow` 需要登记的地方。
 - Anthropic，《Building Effective Agents》—— 设计第 3 节使用的模式词汇，
   以及它对 workflow 与 agent 的区分。

@@ -219,9 +219,9 @@ Do not compensate by replaying whole messages or heuristically joining rows.
 
 ## References
 
-- [`internal/app/model_scrollback.go`](../../../internal/app/model_scrollback.go)
+- [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go)
   — the print queue, chunking, and the frozen frame.
-- [`internal/app/model_scrollback_renderer_test.go`](../../../internal/app/model_scrollback_renderer_test.go)
+- [`internal/app/model_scrollback_renderer_test.go`](../../internal/app/model_scrollback_renderer_test.go)
   — the native-history gate.
 - `genai-io/bubbletea` branch `san`: the renderer patches on top of upstream.
 - xterm.js `Buffer._reflowSmaller`: the cursor bump per split and the

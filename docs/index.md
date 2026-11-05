@@ -41,8 +41,9 @@
 
 Keep README focused on the product and quick start. Update feature and package
 docs alongside code changes; update the package map and dependency rules when
-ownership or layers change. Use concepts for cross-cutting explanations, proposals
-for designs, and decision records for durable architectural choices.
+ownership or layers change. Use concepts for cross-cutting explanations. Keep
+proposals (`proposal-NNNN-topic.md`) and decision records (`decision-NNNN-topic.md`)
+directly in `docs/design/` for designs and durable architectural choices.
 
 Work plans belong in `notes/active/` and `notes/completed/`, not in the user-facing
 documentation. Known follow-ups live in `notes/tech-debt.md`.

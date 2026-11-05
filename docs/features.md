@@ -10,7 +10,7 @@
 
 - [Subagents](packages/subagent.md)
 - [Agent messaging](packages/broker.md)
-- [Session groups](design/proposals/0003-session-groups.md)
+- [Session groups](design/proposal-0003-session-groups.md)
 - [Workflows](packages/workflow.md)
 
 ## Sessions, tasks, and automation

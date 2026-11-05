@@ -23,7 +23,7 @@ External client ── ACP ──────┘
 
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
 - `internal/interaction`: request lifecycle and human-permission preparation,
-  scopes and audit-before-reply; see [dependency rules](../../reference/dependency-rules.md#rules).
+  scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
 - `internal/session`: shared execution recording via `Session.RecordEvent`,
   `RecordHookAudit` and `RecordSkillStateChange`, wired natively by TUI. Essential
   producer write errors reach turn receipts before delivery; hook/skill audits
@@ -46,9 +46,9 @@ External client ── ACP ──────┘
   worker handoffs stay run-local. Result filtering, recording and compaction are
   not moved. The ACP adapter must supply equivalent admission and workspace wiring.
 - `internal/agent`: shared normal-turn recording, Stop decisions and compaction
-  policy; see [agent lifecycle](../../packages/agent.md#lifecycle).
+  policy; see [agent lifecycle](../packages/agent.md#lifecycle).
 - `internal/agent.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
-  authorization composition; see [execution policy](../../packages/agent.md#internals).
+  authorization composition; see [execution policy](../packages/agent.md#internals).
 - Remaining input and turn lifecycle: pending. Runtime assembly (result paging,
   service/tool construction and interaction wiring), background-source admission,
   compaction admission/projection and terminal cleanup remain in app.
@@ -118,5 +118,5 @@ Informative patterns, not a promise that every client supports their extensions:
 - [Codex adapter](https://github.com/zed-industries/codex-acp/blob/296069e841634cd4bb9bc4515602d836e49231ec/src/thread.rs#L2412-L2523): exact approval option scopes, structured diffs and negotiated terminal display.
 - [Orca dialects](https://github.com/stablyai/orca/tree/v1.4.241/src/main/acp/acp-dialects): question, child-stop and background-kill gaps require explicit client support; do not copy vendor wire quirks.
 
-[Implementation plan](../../../notes/active/acp-agent-entrypoint.md) ·
+[Implementation plan](../../notes/active/acp-agent-entrypoint.md) ·
 [ACP extensions](https://agentclientprotocol.com/protocol/v1/extensibility)

@@ -1,6 +1,6 @@
 # PROP-0002：自主开发管理团队
 
-> 英文版：[`0002-autonomous-dev-management.md`](0002-autonomous-dev-management.md)
+> 英文版：[`proposal-0002-autonomous-dev-management.md`](proposal-0002-autonomous-dev-management.md)
 
 ## 状态
 
@@ -613,8 +613,8 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 ## 参考资料
 
 - `notes/active/persona-system.md` — Persona 目录遵循的 persona 设计规范
-- [`core.Agent`](../../packages/core.md) — 底层 Agent 原语
-- [`packages/subagent.md`](../../packages/subagent.md) — 子 Agent 机制
-- [`packages/skill.md`](../../packages/skill.md) — 技能加载
-- [`concepts/permission-model.md`](../../concepts/permission-model.md) — 权限模型
-- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — 分层包架构
+- [`core.Agent`](../packages/core.md) — 底层 Agent 原语
+- [`packages/subagent.md`](../packages/subagent.md) — 子 Agent 机制
+- [`packages/skill.md`](../packages/skill.md) — 技能加载
+- [`concepts/permission-model.md`](../concepts/permission-model.md) — 权限模型
+- [`ADR-0001`](decision-0001-layered-package-architecture.md) — 分层包架构

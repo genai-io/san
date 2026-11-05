@@ -21,6 +21,8 @@ agents.
 - Standard root files keep conventional uppercase names: `README.md`,
   `CONTRIBUTING.md`, `CHANGELOG.md`, `AGENTS.md`.
 - Skill definitions keep the required `SKILL.md` name.
+- Design proposals and decisions use independent numbered series in `docs/design/`:
+  `proposal-NNNN-topic.md` and `decision-NNNN-topic.md`, with `.zh.md` translations.
 - Versioned manuals may include semantic versions, for example
   `manual-v1.17.md`.
 - Generated or external-compatibility templates may keep their required names,

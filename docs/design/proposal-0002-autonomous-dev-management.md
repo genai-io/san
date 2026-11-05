@@ -1,6 +1,6 @@
 # PROP-0002: Autonomous Development Management Team
 
-> 中文版：[`0002-autonomous-dev-management.zh.md`](0002-autonomous-dev-management.zh.md)
+> 中文版：[`proposal-0002-autonomous-dev-management.zh.md`](proposal-0002-autonomous-dev-management.zh.md)
 
 ## Status
 
@@ -633,8 +633,8 @@ directly adopt them or use them as design references.
 ## References
 
 - `notes/active/persona-system.md` — persona design spec that Persona directories follow
-- [`core.Agent`](../../packages/core.md) — underlying agent primitive
-- [`packages/subagent.md`](../../packages/subagent.md) — sub-agent mechanism
-- [`packages/skill.md`](../../packages/skill.md) — skill loading
-- [`concepts/permission-model.md`](../../concepts/permission-model.md) — permission model
-- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — layered package architecture
+- [`core.Agent`](../packages/core.md) — underlying agent primitive
+- [`packages/subagent.md`](../packages/subagent.md) — sub-agent mechanism
+- [`packages/skill.md`](../packages/skill.md) — skill loading
+- [`concepts/permission-model.md`](../concepts/permission-model.md) — permission model
+- [`ADR-0001`](decision-0001-layered-package-architecture.md) — layered package architecture

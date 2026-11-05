@@ -448,7 +448,7 @@ CommittedCount = 3                           // 追上
 （否则 `insertAbove` 会在旧几何下把实时行滚进历史），按新宽度重建 markdown
 渲染器，然后交给 Bubble Tea 重画底部条。它**不会**重新打印已 commit 的消息：
 终端自己会重排它已经持有的内容，而滚到屏幕顶部的行再也收不回来——见
-[ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)，
+[ADR-0002](../design/decision-0002-native-scrollback-commit-protocol.md)，
 其不变式 6 覆盖了重画依赖的换行算术。
 
 最近的已完成行尚未进入原生历史。缩放会重排这些渲染行，按输入框上方的

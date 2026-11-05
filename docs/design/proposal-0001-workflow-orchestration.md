@@ -598,13 +598,13 @@ speculative.
 
 ## References
 
-- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — layering
+- [`ADR-0001`](decision-0001-layered-package-architecture.md) — layering
   and the package-map requirement this feature must satisfy.
-- [`concepts/permission-model.md`](../../concepts/permission-model.md) — the
+- [`concepts/permission-model.md`](../concepts/permission-model.md) — the
   gate every node passes through.
-- [`concepts/extension-model.md`](../../concepts/extension-model.md) — how
+- [`concepts/extension-model.md`](../concepts/extension-model.md) — how
   agents, skills and commands are defined; workflows follow the same shape.
-- [`reference/package-map.md`](../../reference/package-map.md) — where
+- [`reference/package-map.md`](../reference/package-map.md) — where
   `internal/workflow` must be registered.
 - Anthropic, *Building Effective Agents* — the pattern vocabulary used in
   Design 3, and its distinction between workflows and agents.

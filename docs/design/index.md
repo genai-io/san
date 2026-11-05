@@ -26,19 +26,15 @@ sizable feature usually has both a proposal and a notes plan.
 
 ## Proposals
 
-| Page | Status | What it proposes |
-|---|---|---|
-| [`0001-workflow-orchestration`](proposals/0001-workflow-orchestration.md) | Draft | Subagent workflows: an acyclic graph defined in markdown, with a mermaid flowchart for topology. (中文: `.zh.md`) |
-| [`0002-autonomous-dev-management`](proposals/0002-autonomous-dev-management.md) | Draft | A team of personas that manages the project end to end. (中文: `.zh.md`) |
-| [`0003-session-groups`](proposals/0003-session-groups.md) | Implemented | Sessions on one machine join a group and message each other; membership follows the session across restarts, and each member is active or passive. (中文: `.zh.md`) |
-| [`0004-acp-agent-entrypoint`](proposals/0004-acp-agent-entrypoint.md) | Draft | Standard ACP plus negotiated San capabilities over shared session behaviour; keep the native TUI and runtime intact. |
+- [Workflow orchestration](proposal-0001-workflow-orchestration.md) · [中文](proposal-0001-workflow-orchestration.zh.md) — Draft. Subagent workflows defined in markdown.
+- [Autonomous development management](proposal-0002-autonomous-dev-management.md) · [中文](proposal-0002-autonomous-dev-management.zh.md) — Draft. A persona team that manages the project end to end.
+- [Session groups](proposal-0003-session-groups.md) · [中文](proposal-0003-session-groups.zh.md) — Implemented. Local sessions join groups and message each other.
+- [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Draft. Standard ACP and negotiated San capabilities over shared session behaviour.
 
 ## Decision records
 
-| Page | Status | What it settled |
-|---|---|---|
-| [`0001-layered-package-architecture`](decisions/0001-layered-package-architecture.md) | Accepted | Five layers, enforced dependency direction, one contract page per package. |
-| [`0002-native-scrollback-commit-protocol`](decisions/0002-native-scrollback-commit-protocol.md) | Accepted | The invariants that keep live frame rows out of native scrollback, and the one site that enforces each. |
+- [Layered package architecture](decision-0001-layered-package-architecture.md) — Accepted. Five layers, dependency direction, and per-package contracts.
+- [Native scrollback commit protocol](decision-0002-native-scrollback-commit-protocol.md) — Accepted. Invariants that keep live frame rows out of native scrollback.
 
 ## Principles
 
@@ -47,9 +43,10 @@ documentation.
 
 ## Conventions
 
-Number both series from `0001` independently; a proposal that later earns an
-ADR does not share its number. Translations are co-located with a `.zh.md`
-suffix next to the English page, the same rule the rest of `docs/` follows.
+Keep both series directly in `docs/design/`, named `proposal-NNNN-topic.md`
+and `decision-NNNN-topic.md`. Number each series from `0001` independently;
+a proposal that later earns an ADR does not share its number. Translations
+are co-located with a `.zh.md` suffix next to the English page.
 
 ### Proposal template
 

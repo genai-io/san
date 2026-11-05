@@ -1,6 +1,6 @@
 // Package workflow parses and runs a workflow: a declarative acyclic graph
 // whose nodes are one subagent turn each, written as markdown with a mermaid
-// flowchart for the topology (docs/design/proposals/0001-workflow-orchestration.md).
+// flowchart for the topology (docs/design/proposal-0001-workflow-orchestration.md).
 //
 // The package imports nothing from San. Node execution enters through the
 // NodeRunner seam so the host decides what a node is; the package can move to

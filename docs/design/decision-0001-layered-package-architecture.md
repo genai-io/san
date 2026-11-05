@@ -32,15 +32,15 @@ specification docs:
 
 1. **Five layers**, dependency direction strictly `cmd → app → feature
    → core → infrastructure`. Layer assignment for every package
-   recorded in [`reference/package-map.md`](../../reference/package-map.md);
+   recorded in [`reference/package-map.md`](../reference/package-map.md);
    rules and the layer membership table in
-   [`reference/dependency-rules.md`](../../reference/dependency-rules.md).
+   [`reference/dependency-rules.md`](../reference/dependency-rules.md).
    Enforced by `tools/layercheck`, wired into `make lint`.
 
 2. **One `docs/packages/<pkg>.md` page per Go package with a non-trivial
    public surface.** The filename matches the package name with no
    suffix. Pages must follow
-   [`packages/TEMPLATE.md`](../../packages/TEMPLATE.md) and include a
+   [`packages/TEMPLATE.md`](../packages/TEMPLATE.md) and include a
    verbatim copy of the package's public Go interface in a `Contract`
    section. Seven small-interface rules govern what may live in
    `Contract`.
@@ -53,7 +53,7 @@ specification docs:
    | Look up a fact | `reference/` |
    | Accomplish a task | `guides/` |
    | Maintain the repo | `operations/` |
-   | Know why a decision was made | `design/decisions/` |
+   | Know why a decision was made | `design/decision-*.md` |
 
 4. **Cross-cutting topics that don't fit a single package live in
    `concepts/`** (extension model, harness channels, permission model).
@@ -86,10 +86,10 @@ specification docs:
 
 - **Writing discipline required.** Each new package needs a page; each
   contract change needs a doc change. The
-  [`packages/TEMPLATE.md`](../../packages/TEMPLATE.md) is the friction
+  [`packages/TEMPLATE.md`](../packages/TEMPLATE.md) is the friction
   surface that keeps quality consistent.
-- **Documentation gaps are now visible.** Empty `guides/` and
-  `decisions/` directories make the "missing" content obvious. (Most
+- **Documentation gaps are now visible.** Missing guides and decision
+  records make the gaps obvious. (Most
   of the initial gaps were filled in the same PR; the rest tracked in
   `notes/tech-debt.md`.)
 - **`tools/layercheck` becomes load-bearing.** Updates to package
@@ -115,17 +115,17 @@ Full road map in `notes/tech-debt.md`.
 
 ## References
 
-- [`docs/concepts/architecture.md`](../../concepts/architecture.md) — the new
+- [`docs/concepts/architecture.md`](../concepts/architecture.md) — the new
   system-level overview.
-- [`docs/packages/TEMPLATE.md`](../../packages/TEMPLATE.md) — the
+- [`docs/packages/TEMPLATE.md`](../packages/TEMPLATE.md) — the
   binding template for new package pages.
-- [`docs/packages/index.md`](../../packages/index.md) — index of every
+- [`docs/packages/index.md`](../packages/index.md) — index of every
   per-package page.
-- [`docs/reference/dependency-rules.md`](../../reference/dependency-rules.md)
+- [`docs/reference/dependency-rules.md`](../reference/dependency-rules.md)
   — layer rules.
-- [`docs/reference/package-map.md`](../../reference/package-map.md) —
+- [`docs/reference/package-map.md`](../reference/package-map.md) —
   package-to-layer assignment.
-- [`tools/layercheck/main.go`](../../../tools/layercheck/main.go) —
+- [`tools/layercheck/main.go`](../../tools/layercheck/main.go) —
   mechanical enforcement.
 - OpenAI's "Harness Engineering" post (Feb 2026) — the broader frame
   that motivated this approach.

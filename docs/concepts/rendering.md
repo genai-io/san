@@ -491,7 +491,7 @@ scroll live rows into history under the old geometry), rebuilds the markdown
 renderer at the new width, and lets Bubble Tea repaint the bottom strip. It does
 not reprint committed messages: the terminal rewraps what it already holds on its
 own, and a row that reached the top of the screen cannot be taken back — see
-[ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md), whose
+[ADR-0002](../design/decision-0002-native-scrollback-commit-protocol.md), whose
 invariant 6 covers the rewrap arithmetic the redraw depends on.
 
 Recent settled rows have not entered native history yet. Resize rewraps these
