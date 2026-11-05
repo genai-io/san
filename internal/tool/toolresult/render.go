@@ -58,6 +58,8 @@ type AgentIdentity struct {
 
 // AgentDetails keeps display metadata out of the parent model's result text.
 type AgentDetails struct {
+	// Response is worker prose without routing metadata; nil marks older results.
+	Response     *string
 	Identity     AgentIdentity
 	Model        string
 	ToolUses     int

@@ -18,6 +18,9 @@ func TestRuntimeIdentityForegroundExposesOnlyTaskRoute(t *testing.T) {
 	if !ok || details.Identity != identity {
 		t.Fatalf("lost identity: %#v", result.Details)
 	}
+	if details.Response == nil || *details.Response != "finding" {
+		t.Fatalf("display response contains routing metadata: %#v", details.Response)
+	}
 	if !strings.Contains(result.FormatForLLM(), "Task ID: "+identity.ID) {
 		t.Fatal("foreground result has no follow-up route")
 	}

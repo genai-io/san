@@ -269,6 +269,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Error:        result.Error,
 		HookResponse: buildAgentHookResponse(result, agentName, prompt),
 		Details: toolresult.AgentDetails{
+			Response: &result.Content,
 			Identity: result.Identity,
 			Model:    result.Model, ToolUses: result.ToolUses,
 			InputTokens: result.TotalInputTokens, OutputTokens: result.TotalOutputTokens,
