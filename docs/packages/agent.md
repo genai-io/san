@@ -66,6 +66,9 @@ func Default() *Runtime
   storage and consume each response during PostTool; ACP owns a map per session
   because call IDs can collide across sessions. Nil keeps the TUI defaults for
   both dependencies. These are runtime wiring, not `MainSession` persistence.
+  `Skills` and `Plugins` optionally bind per-session registries to tool/gate
+  contexts and subprocess environments. Nil preserves native TUI defaults;
+  the host loads these registries and owns their hooks and MCP lifetimes.
   `BashDirHelp` is only a schema sentence override, with empty preserving TUI help.
   ACP supplies command-local directory wording; actual directory behavior remains
   with `CWD`/`CWDFunc` and the host's handling (or ignoring) of directory handoffs.

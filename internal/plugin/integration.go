@@ -12,7 +12,12 @@ import (
 
 // GetPluginSkillPaths returns all skill directory paths from enabled plugins.
 func GetPluginSkillPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Skills })
+	return defaultRegistry.SkillPaths()
+}
+
+// SkillPaths returns this registry's enabled skill directories.
+func (r *Registry) SkillPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Skills })
 }
 
 // GetPluginAgentPaths returns all agent file paths from enabled plugins.
@@ -27,8 +32,12 @@ func GetPluginCommandPaths() []PluginPath {
 
 // collectPluginPaths collects paths from enabled plugins using a getter function.
 func collectPluginPaths(getPaths func(*Plugin) []string) []PluginPath {
+	return defaultRegistry.collectPaths(getPaths)
+}
+
+func (r *Registry) collectPaths(getPaths func(*Plugin) []string) []PluginPath {
 	var paths []PluginPath
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		for _, path := range getPaths(p) {
 			paths = append(paths, PluginPath{
 				Path:      path,
@@ -50,9 +59,14 @@ type PluginPath struct {
 // GetPluginHooks returns all hooks from enabled plugins in setting.Hook format.
 // This can be merged with the application's settings.Hooks.
 func GetPluginHooks() map[string][]setting.Hook {
+	return defaultRegistry.Hooks()
+}
+
+// Hooks returns this registry's enabled hook contributions.
+func (r *Registry) Hooks() map[string][]setting.Hook {
 	result := make(map[string][]setting.Hook)
 
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		if p.Components.Hooks == nil {
 			continue
 		}
@@ -92,8 +106,13 @@ type PluginMCPServer struct {
 
 // GetPluginMCPServers returns all MCP servers from enabled plugins.
 func GetPluginMCPServers() []PluginMCPServer {
+	return defaultRegistry.MCPServers()
+}
+
+// MCPServers returns this registry's enabled MCP contributions.
+func (r *Registry) MCPServers() []PluginMCPServer {
 	var servers []PluginMCPServer
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		for name, cfg := range p.Components.MCP {
 			servers = append(servers, PluginMCPServer{
 				Name:   mcpServerNameSafe(p.Name() + ":" + name),
@@ -166,6 +185,11 @@ func activePluginRoot(ctx context.Context) string {
 	if r, ok := RootFromContext(ctx); ok {
 		return r
 	}
+	if ctx != nil {
+		if _, scoped := ctx.Value(registryKey{}).(*Registry); scoped {
+			return ""
+		}
+	}
 	if fn, ok := rootProvider.Load().(func() string); ok && fn != nil {
 		return fn()
 	}
@@ -204,7 +228,7 @@ func FindPluginRootForPath(path string) string {
 //
 //     SAN_PLUGIN_ROOT=<path>   CLAUDE_PLUGIN_ROOT=<path>
 func PluginEnv(ctx context.Context) []string {
-	enabled := defaultRegistry.ListEnabled()
+	enabled := registryFromContext(ctx).ListEnabled()
 	if len(enabled) == 0 {
 		return nil
 	}

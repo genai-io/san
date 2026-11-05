@@ -40,6 +40,8 @@ type ServerConfig struct {
 
 	// Scope indicates where this config was loaded from
 	Scope Scope `json:"-"`
+	// CWD is the host-owned subprocess directory, never persisted as configuration.
+	CWD string `json:"-"`
 }
 
 // GetType returns the transport type, defaulting to stdio if not set

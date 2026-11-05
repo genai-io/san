@@ -12,12 +12,16 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (response protocol.PromptResponse, err error) {
+	if s.params.Plugins != nil {
+		ctx = plugin.WithRegistry(ctx, s.params.Plugins)
+	}
 	if err := s.data.Validate(); err != nil {
 		return response, err
 	}

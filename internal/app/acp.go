@@ -16,6 +16,8 @@ import (
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -52,10 +54,13 @@ func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, ver
 func (h *acpHost) start(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string, writeTimeout time.Duration) (*acp.Agent, error) {
 	return acp.NewAgent(ctx, input, output, acp.AgentHandlers{
 		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
-			return protocol.InitializeResponse{ProtocolVersion: 1, AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
+			return protocol.InitializeResponse{ProtocolVersion: 1, AgentCapabilities: protocol.Some(protocol.AgentCapabilities{LoadSession: protocol.Some(true), MCPCapabilities: protocol.Some(protocol.MCPCapabilities{HTTP: protocol.Some(true), SSE: protocol.Some(true)})}), AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
 		},
-		CreateSession: h.create,
-		Prompt:        h.prompt,
+		CreateSession:          h.create,
+		LoadSession:            h.load,
+		SetSessionMode:         h.setMode,
+		SetSessionConfigOption: h.setConfig,
+		Prompt:                 h.prompt,
 	}, acp.AgentOptions{Limits: acp.Limits{WriteTimeout: writeTimeout}})
 }
 
@@ -92,9 +97,17 @@ type acpSession struct {
 	reminders   *reminder.Reminder
 	lastPrompt  string
 	sideEffects sync.Map
+	mcp         *mcp.Manager
+	policy      *setting.SessionPermissions
+	mode        setting.OperationMode
+	models      []llm.ModelInfo
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
+	return h.open(ctx, req, "")
+}
+
+func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resumeID string) (protocol.NewSessionResponse, error) {
 	if !filepath.IsAbs(req.CWD) {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be absolute")
 	}
@@ -105,9 +118,6 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	if !info.IsDir() {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be a directory")
 	}
-	if len(req.MCPServers) != 0 {
-		return protocol.NewSessionResponse{}, fmt.Errorf("ACP-supplied MCP servers are not supported")
-	}
 	settings, err := setting.LoadForCwd(req.CWD)
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
@@ -116,26 +126,76 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	opened, err := store.Create(session.CreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+	var opened *session.Session
+	var history *session.History
+	if resumeID == "" {
+		opened, err = store.Create(session.CreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Provider: h.provider.Name(), Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+	} else {
+		opened, history, err = store.Open(resumeID)
+	}
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New()}
+	modelID := h.model
+	models, _ := h.provider.ListModels(ctx)
+	found := false
+	for _, m := range models {
+		if m.ID == h.model {
+			found = true
+		}
+	}
+	if !found {
+		models = append(models, llm.ModelInfo{ID: h.model, Name: h.model})
+	}
+	if history != nil && history.Metadata.Model != "" {
+		found = false
+		for _, m := range models {
+			if m.ID == history.Metadata.Model {
+				found = true
+			}
+		}
+		if !found || (history.Metadata.Provider != "" && history.Metadata.Provider != h.provider.Name()) {
+			_ = opened.Close()
+			return protocol.NewSessionResponse{}, fmt.Errorf("saved model is unavailable from the configured provider")
+		}
+		modelID = history.Metadata.Model
+	}
+	plugins, skills, servers, err := acpExtensions(ctx, req.CWD, settings, req.MCPServers)
+	if err != nil {
+		_ = opened.Close()
+		return protocol.NewSessionResponse{}, err
+	}
+	ctx = plugin.WithRegistry(ctx, plugins)
+	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
+	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
 	if err := s.data.Validate(); err != nil {
+		_ = servers.Close()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.TranscriptPath())
 	s.hooks.SetAuditCallback(opened.RecordHookAudit)
-	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), h.model)
+	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
+	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), modelID)
 	audit := func(rec transcript.Record) { _ = opened.Append(context.Background(), rec) }
 	policy := agent.PermissionPolicy{Settings: setting.New(settings), Session: setting.NewSessionPermissions(), Audit: audit}
 	policy.Session.AddWorkingDirectory(req.CWD)
+	s.policy = policy.Session
+	if history != nil {
+		s.runtime.SetMessages(history.Messages)
+		s.reminders.RestoreHistory(store.ChatRows(history))
+		s.lastPrompt = history.Metadata.LastPrompt
+		if history.Metadata.Mode == "auto-accept" {
+			s.mode = setting.ModeAutoAccept
+		}
+		s.policy.SetMode(s.mode)
+	}
 	if setting.New(settings).AutoMemory() {
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
 	}
-	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: h.model,
-		MaxTokens: setting.DefaultMaxTokens,
+	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
+		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins,
+		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
 		ToolResponse: func(callID string, response any) { s.sideEffects.Store(callID, response) },
 		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
@@ -155,18 +215,23 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	s.params.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
 	for _, schema := range s.params.Schemas() {
 		switch schema.Name {
-		case "Read", "Write", "Edit", "Bash", "Glob", "Grep":
+		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill":
 		default:
 			s.params.DisabledTools[schema.Name] = true
 		}
 	}
 	s.refreshMemory()
-	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: "startup", Model: h.model})
+	source := "startup"
+	if history != nil {
+		source = "resume"
+	}
+	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: source, Model: modelID})
 	if outcome.AdditionalContext != "" {
 		s.reminders.Enqueue(outcome.AdditionalContext)
 	}
 	if err := ctx.Err(); err != nil {
 		s.hooks.Shutdown()
+		_ = servers.Close()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
@@ -174,7 +239,7 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	h.mu.Lock()
 	h.sessions[id] = s
 	h.mu.Unlock()
-	return protocol.NewSessionResponse{SessionID: id}, nil
+	return protocol.NewSessionResponse{SessionID: id, Modes: protocol.Some(s.modes()), ConfigOptions: protocol.Some(s.configOptions())}, nil
 }
 
 func (h *acpHost) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (protocol.PromptResponse, error) {
@@ -198,6 +263,9 @@ func (s *acpSession) close() error {
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})
 	s.hooks.Shutdown()
+	if s.mcp != nil {
+		err = errors.Join(err, s.mcp.Close())
+	}
 	return errors.Join(err, s.data.Session.Close())
 }
 
@@ -217,7 +285,7 @@ func (s *acpSession) refreshMemory() {
 
 func (s *acpSession) recordState() error {
 	return s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new("normal")}})
+		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.mode.PersistenceName())}})
 }
 
 func acpBackgroundCall(name string, args map[string]any) bool {

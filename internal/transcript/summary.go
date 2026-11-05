@@ -141,6 +141,7 @@ func summaryRecord(r session.Record, messages *[]ai.Message) (Record, error) {
 		Fork      *SessionFork  `json:"fork"`
 		State     *struct {
 			Title      *string `json:"title"`
+			Model      *string `json:"model"`
 			LastPrompt *string `json:"lastPrompt"`
 		} `json:"state"`
 		Inference *struct {
@@ -154,7 +155,7 @@ func summaryRecord(r session.Record, messages *[]ai.Message) (Record, error) {
 	rec := Record{Type: r.Name, SessionID: fields.SessionID, Time: fields.Time, Version: fields.Version,
 		GitBranch: fields.GitBranch, Start: fields.Start, Fork: fields.Fork}
 	if fields.State != nil {
-		rec.State = &StatePatch{Title: fields.State.Title, LastPrompt: fields.State.LastPrompt}
+		rec.State = &StatePatch{Title: fields.State.Title, LastPrompt: fields.State.LastPrompt, Model: fields.State.Model}
 		if rec.State.Title != nil {
 			rec.State.Title = new(preview(*rec.State.Title))
 		}

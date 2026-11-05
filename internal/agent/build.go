@@ -12,8 +12,10 @@ import (
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -46,6 +48,8 @@ type BuildParams struct {
 
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
+	Skills        *skill.Registry // nil retains the native default
+	Plugins       *plugin.Registry
 
 	// AutoMemory is the auto-memory stores the main agent maintains; zero
 	// when auto memory is off.
@@ -176,6 +180,13 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
 	toolContext := func(ctx context.Context) context.Context {
+		if p.Plugins != nil {
+			ctx = plugin.WithRegistry(ctx, p.Plugins)
+			ctx = fs.WithShellEnv(ctx, plugin.PluginEnv(ctx))
+		}
+		if p.Skills != nil {
+			ctx = skill.WithRegistry(ctx, p.Skills)
+		}
 		if p.FileViews != nil {
 			return fs.WithFileViews(ctx, p.FileViews)
 		}

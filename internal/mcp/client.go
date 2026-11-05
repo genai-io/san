@@ -58,6 +58,7 @@ func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 	return func(ctx context.Context, onToolsChanged func()) (conn, error) {
 		server := sdkmcp.Server{
 			Command: config.Command,
+			Dir:     config.CWD,
 			Args:    config.Args,
 			Env:     config.Env,
 			URL:     config.URL,

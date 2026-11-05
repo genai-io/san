@@ -123,25 +123,63 @@ transcript. In-process function hooks must honor cancellation; shutdown waits
 for their cleanup rather than closing a writer under them. Regression coverage:
 `acp_native_test.go`, `fs/file_view_owner_test.go`, and `hook/shutdown_test.go`.
 
-The selected native provider/model is used for all connection-local sessions.
+The configured provider supplies the initial model and the session's model choices.
 Each absolute session cwd loads its own trusted settings and instruction files.
 UserPromptSubmit, pre/post-tool hooks, automatic compaction context restoration,
 Stop continuations and SessionEnd use native helpers. Terminal handling records
 session state and acknowledges the native receipt before admitting a successor;
 disconnect joins callbacks and runtimes before closing transcript writers.
 
-This first host supports text prompts and Read/Write/Edit/Glob/Grep plus foreground
-Bash, subject to disabled tools and native policy. The session cwd is fixed; a
-shell `cd` applies to that command, not later commands. Background execution,
-TUI questions/secrets, skills/plugins/subagents, client-supplied MCP servers,
-non-text content, resume/load and mode/model switching are not supported or
-advertised. It is not a replacement transport for the TUI. Existing native
-sessions remain available on disk, but ACP session IDs are connection-local.
+The host supports text prompts and Read/Write/Edit/Glob/Grep, foreground Bash and
+Skill, subject to disabled tools and native policy. `acp_extensions.go` loads
+independent skill/plugin registries and native plus client-supplied MCP servers.
+Plugin skill paths, hooks, subprocess environment and MCP contributions use those
+registries, not the TUI defaults. Native workspace trust still applies. Client
+MCP configuration is an explicit connection-local contribution: it is never saved,
+conflicting native names fail, and calls use the same gate, hooks and transcript
+as built-in tools. Stdio children use the session cwd. Disconnect joins calls,
+then closes MCP clients; failed startup closes partial connections. Tool schemas
+are captured at session setup (live MCP schema refresh is not yet reflected).
+
+`acp_session.go` implements `session/load` using the native writer lease and
+selected conversation, restores last prompt and reminder delivery state, and
+replays display history before admission. This preserves compaction and native
+message identities rather than reconstructing model context from UI text. A
+saved bypass/autopilot mode never grants that posture. Loaded native sessions
+with unsupported saved providers/models fail instead of silently changing models.
+History display is text/tool oriented; image and opaque reasoning rendering is
+not implemented, though the native chain retains those blocks.
+
+`session/set_mode` offers only normal and native auto-accept. Explicit deny/ask
+rules remain authoritative. `acp_config.go` offers model selection through the
+pinned stable `session/set_config_option` surface, not the legacy experimental
+`session/set_model`. Changes are admitted only while idle, persist before being
+applied, and retain permission, file observation, extension and conversation
+owners. Cross-provider switching is not supported. No switch cancels an active
+prompt. `transcript.StatePatch.Model` records selection even before an inference.
+
+**Incomplete capability work:** subagents, background launch/status/results/cancel,
+plugin commands/agent definitions, structured questions, command prompts and masked
+secret input remain unavailable. Background shell calls are rejected, not detached.
+There is no durable background-task policy. Secrets must never be requested via
+ordinary chat. Non-text prompts and session list/resume-without-replay are not
+advertised. This is not full native parity or a replacement transport for the TUI.
+
+**Pending dependency:** these optional endpoint handlers and generated wire types
+require SDK commit `1a5b94c` on the unmerged `feat/acp-capabilities` branch. Normal
+`go.mod` remains
+pinned to `v0.9.3-0.20261104152117-dc6d82c0e541`; this development branch therefore
+requires an alternate modfile replacing SDK with the reviewed local SDK worktree.
+Do not publish this San change until that prerequisite is available and pinned.
+No replacement is committed.
 
 `TestACP*` exercises actual SDK connections with a scripted provider: text/tool
 streaming, allow/deny/unknown permission choices, native deny versus hook allow,
 consecutive turns, session separation, inference/permission cancellation,
-disconnect, prompt/Stop hooks and essential recording failures. Run
+disconnect, prompt/Stop hooks and essential recording failures. Capability tests
+also exercise native load/replay, safe modes, durable model selection, isolated
+Skill execution and permission-gated MCP against a local HTTP fixture. These are
+simulated provider/client tests, not editor or live-vendor acceptance. Run
 `go test -race ./internal/app -run '^TestACP'` for focused coverage.
 
 ### Known Violations
