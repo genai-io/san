@@ -29,7 +29,7 @@ stays yours to change.
 ## Why San
 
 - **Small and fast** — Native execution, zero runtime dependencies, and minimal context overhead. [Benchmarks](#benchmark-san-vs-claude-code)
-- **Customizable harness** — Choose models and define agent behavior through system prompts, personas, skills, and tools. [Customization](docs/concepts/harness-channels.md) · [Skills](docs/packages/2-feature/skill.md)
+- **A less opinionated harness** — Choose models and define agent behavior through system prompts, personas, skills, and tools. [Customization](docs/concepts/harness-channels.md) · [Skills](docs/packages/2-feature/skill.md) · [Auto memory](docs/concepts/auto-memory.md) · [Self-learning](docs/packages/2-feature/selflearn.md)
 - **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows. [Features](docs/features.md#agent-and-session-collaboration)
 - **Control and visibility** — Configure execution permissions and inspect model context and tool calls. [Permissions](docs/concepts/permission-model.md) · [Inspector](docs/packages/2-feature/inspector.md)
 
