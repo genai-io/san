@@ -241,13 +241,10 @@ unadvertised. This is not full native parity or a replacement transport for the 
 | Secret input | Explicitly unsupported; responder declines without sending a form | Pinned schema lacks masked-input semantics; real password-prompt test confirms zero elicitations |
 | WebFetch/WebSearch, planning tracker, Workflow, Cron, Evolve | Excluded by ACP allowlist | Not validated or represented as supported native parity |
 
-**Pending dependency:** these optional endpoint handlers and generated wire types
-require SDK commit `9b492a4` on the unmerged `feat/acp-capabilities` branch. Normal
-`go.mod` remains
-pinned to `v0.9.3-0.20261104152117-dc6d82c0e541`; this development branch therefore
-requires an alternate modfile replacing SDK with the reviewed local SDK worktree.
-Do not publish this San change until that prerequisite is available and pinned.
-No replacement is committed.
+**SDK dependency:** optional endpoint handlers and generated wire types use
+`v0.9.3-0.20261105135203-9b492a4c4e6f`, pinned in `go.mod`. This public commit is
+remotely resolvable without a local SDK replacement or alternate modfile.
+[sdk-go#103](https://github.com/genai-io/sdk-go/pull/103) remains pending merge.
 
 `TestACP*` exercises actual SDK connections with a scripted provider: text/tool
 streaming, allow/deny/unknown permission choices, native deny versus hook allow,

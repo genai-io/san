@@ -11,8 +11,9 @@ Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
   session/load replay, normal/auto-accept modes and configured-provider model
   selection are implemented. Model/mode changes require both prompt admission
   and all owned background tasks/worker cleanup to be idle; busy rejection leaves
-  policy, hook defaults and persisted state unchanged. Optional handlers still require the unpublished SDK
-  worktree dependency; the committed go.mod is not yet sufficient.
+  policy, hook defaults and persisted state unchanged. Optional handlers use the
+  publicly resolvable SDK commit pinned in go.mod; [sdk-go#103](https://github.com/genai-io/sdk-go/pull/103)
+  remains pending merge. No local SDK replacement is required.
 - Background shell jobs/services now use a session-owned native task pool, with
   TaskOutput/TaskStop and cancellation plus execution-cleanup join on disconnect.
   Status/output is polled through standard tool calls, not pushed asynchronously.
