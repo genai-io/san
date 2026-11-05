@@ -33,7 +33,7 @@ stays yours to change.
 - **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows.
 - **Control and visibility** — Configure execution permissions and inspect model context and tool calls.
 
-[Feature overview](docs/features.md) · [Architecture and diagram](docs/concepts/architecture.md)
+[Features](docs/features.md) · [Architecture](docs/concepts/architecture.md)
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -132,18 +132,10 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 
 ## Documentation
 
-- [Getting started](docs/guides/getting-started.md) — usage and interactive controls
-- [Configuration](docs/reference/configuration.md) — shell, models, credentials, and config files
-- [Documentation Index](docs/index.md) — map of architecture, features, operations, and references
-- [Architecture](docs/concepts/architecture.md) — architecture entrypoint and reading order
-- [Package Map](docs/reference/package-map.md) — package ownership and dependency boundaries
-- [Personas](docs/concepts/persona.md) — bundled system prompt, skills, agents, and settings
-- [System Prompt](docs/concepts/harness-channels.md) — Slot model, persona, skill/agent injection
-- [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
-- [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
-- [Workflows](docs/design/proposals/0001-workflow-orchestration.md) · [Session groups](docs/design/proposals/0003-session-groups.md) — subagents as a graph; sessions that message each other
-- [Inspector](docs/packages/2-feature/inspector.md) — local web UI for transcript replay and debugging
-- Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
+- [Get started](docs/index.md#get-started) — setup, configuration, commands, and permissions.
+- [Features](docs/features.md) — capabilities and detailed documentation.
+- [Customize and extend](docs/index.md#customize-and-extend) — prompts, personas, skills, and integrations.
+- [Develop and contribute](docs/index.md#develop-and-contribute) — architecture, development, and design.
 
 ## Related Projects
 

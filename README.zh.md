@@ -31,7 +31,7 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 - **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。
 - **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。
 
-[功能清单](docs/features.md) · [架构与总览图](docs/concepts/architecture.md)
+[功能](docs/features.md) · [架构](docs/concepts/architecture.md)
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 
@@ -130,18 +130,10 @@ san --resume                 # 选择历史会话恢复
 
 ## 文档
 
-- [快速上手](docs/guides/getting-started.md) —— 使用方式与交互操作
-- [配置](docs/reference/configuration.md) —— Shell、模型、凭据与配置文件
-- [文档索引](docs/index.md) —— 架构、特性、运维、参考资料的入口
-- [架构](docs/concepts/architecture.md) —— 架构入口与阅读顺序
-- [包结构图](docs/reference/package-map.md) —— 包归属与依赖边界
-- [人设 Persona](docs/concepts/persona.md) —— 打包的系统 prompt、技能、agent 与设置
-- [系统 Prompt](docs/concepts/harness-channels.md) —— Slot 模型、persona、技能/agent 注入
-- [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
-- [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
-- [Workflow](docs/design/proposals/0001-workflow-orchestration.zh.md) · [会话组](docs/design/proposals/0003-session-groups.zh.md) —— 把 subagents 编排成图；会话之间互相发消息
-- [Inspector](docs/packages/2-feature/inspector.md) —— 本地 Web UI，用于转录回放与调试
-- 每个包的设计文档见 [`docs/packages/`](docs/packages/)，从[包索引](docs/packages/index.md)开始
+- [开始使用](docs/index.md#get-started) —— 安装、配置、命令与权限。
+- [功能](docs/features.md) —— 功能清单与详细文档。
+- [定制与扩展](docs/index.md#customize-and-extend) —— 提示词、persona、技能与集成。
+- [开发与贡献](docs/index.md#develop-and-contribute) —— 架构、开发流程与设计。
 
 ## 相关项目
 

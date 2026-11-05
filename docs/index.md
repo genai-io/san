@@ -1,70 +1,48 @@
-# Documentation Index
+# Documentation
 
-This directory is the durable knowledge base for San. Keep `README.md`
-concise, use `AGENTS.md` as the short navigation map, and put lasting
-explanations here.
+## Get started
 
-## Primary Entrypoints
+- [Getting started](guides/getting-started.md) — installation, first run, and everyday usage.
+- [Configuration](reference/configuration.md) — models, credentials, shell, and config files.
+- [Commands](reference/slash-commands.md) — interactive command reference.
+- [Permissions](concepts/permission-model.md) — approvals and execution modes.
 
-- `../README.md` — product overview, installation, usage.
-- [Feature overview](features.md) — capability list with one reference per feature.
-- `../AGENTS.md` — short agent and contributor navigation guide.
-- `concepts/architecture.md` — system-level overview and primitives.
-- `packages/index.md` — per-package design pages (grouped by layer).
-- `concepts/index.md` · `guides/index.md` · `reference/index.md` ·
-  `operations/index.md` — each category's own index.
+## Features
 
-## By Reader Goal
+- [Feature overview](features.md) — capabilities grouped by module, with links to details.
+- [Auto memory](concepts/auto-memory.md) — persistent memory and recall.
+- [Multi-agent collaboration](features.md#agent-and-session-collaboration) — subagents, messaging, session groups, and workflows.
+- [Autopilot](guides/autopilot.md) — goal-driven execution.
+- [Inspector](guides/inspector.md) — inspect and replay runs.
 
-- `concepts/architecture.md` — primitives, runtime model, layer model.
-- `concepts/index.md` — cross-cutting concepts that span multiple packages
-  (data flow, rendering, extension model, harness channels, permission
-  model).
-- `packages/index.md` — one page per Go package, grouped by layer; each has
-  a Contract section with the package's public Go interface.
+## Customize and extend
 
-### Look up a fact
+- [System prompts](concepts/harness-channels.md) — shape agent instructions and context.
+- [Personas](concepts/persona.md) — bundle prompts, skills, agents, and settings.
+- [Skills](guides/writing-a-skill.md) — write reusable task procedures.
+- [Subagents](guides/writing-a-subagent.md) — define specialized agents.
+- [Plugins](guides/writing-a-plugin.md) — package extensions.
+- [MCP](packages/2-feature/mcp.md) · [Hooks](packages/2-feature/hook.md) · [Providers](guides/writing-a-provider.md) — integrate tools, automation, and models.
 
-- `reference/index.md` — full reference index. Common lookups:
-- `reference/slash-commands.md` — all slash commands.
-- `reference/configuration.md` — config files and field reference.
-- `reference/dependency-rules.md` — layer / import rules.
-- `reference/package-map.md` — package-to-layer assignment.
-- `reference/claude-permission-compat.md` — Claude-Code-compatible
-  permission rule syntax.
-- `reference/token-limits.md`, `reference/cost-tracking.md`,
-  `reference/cli-startup.md`, `reference/loop.md`,
-  `reference/file-naming.md`.
+## Develop and contribute
 
-- `guides/index.md` — task how-tos: getting started, the inspector, explore
-  mode, and writing skills / subagents / plugins / providers.
-- `operations/index.md` — build, test, release, troubleshoot, benchmark, and
-  the small-footprint rationale.
+- [Development](operations/development.md) — build, test, and contribute.
+- [Architecture](concepts/architecture.md) — overview diagram and runtime design.
+- [Package map](reference/package-map.md) · [Package details](packages/index.md) — code ownership and implementation.
+- [Dependency rules](reference/dependency-rules.md) · [Design principles](design/principles.md) — engineering conventions.
+- [Design history](design/index.md) — proposals and decisions.
+- [Benchmarks](operations/benchmark.md) — performance measurements.
 
-### Know why a decision was made
+## Full indexes
 
-- `design/principles.md` — engineering principles for structure and docs.
-- `design/proposals/` — design proposals for work not yet built.
-- `design/decisions/` — architecture decision records (ADRs).
+[Guides](guides/index.md) · [Concepts](concepts/index.md) · [Reference](reference/index.md) · [Operations](operations/index.md) · [Packages](packages/index.md)
 
-## Work-in-Progress Plans
+## Maintaining these docs
 
-Plans live at the repo root under `notes/` (not in `docs/`):
+Keep README focused on the product and quick start. Update feature and package
+docs alongside code changes; update the package map and dependency rules when
+ownership or layers change. Use concepts for cross-cutting explanations, proposals
+for designs, and decision records for durable architectural choices.
 
-- `notes/active/` — active restructuring or feature plans.
-- `notes/completed/` — completed plans kept for historical context.
-- `notes/tech-debt.md` — known structural debt and follow-up candidates.
-
-A `notes/` plan is an execution checklist: what is being done, in what order,
-what is finished. A `design/proposals/` page is the argument for doing it at
-all — motivation, alternatives, risks, open questions. A sizable feature
-usually has both.
-
-## Update Policy
-
-When code changes, update the relevant package page in `packages/` in the
-same pull request. When a new top-level package is added or a package
-moves, update `reference/package-map.md` and `reference/dependency-rules.md`
-together. New cross-cutting concept ⇒ a page in `concepts/`. Design for work not yet
-built ⇒ a proposal in `design/proposals/`; once it ships, the durable part
-⇒ an ADR in `design/decisions/`.
+Work plans belong in `notes/active/` and `notes/completed/`, not in the user-facing
+documentation. Known follow-ups live in `notes/tech-debt.md`.
