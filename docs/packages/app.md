@@ -158,10 +158,13 @@ pinned stable `session/set_config_option` surface, not the legacy experimental
 applied, and retain permission, file observation, extension and conversation
 owners. Cross-provider switching is not supported. No switch cancels an active
 prompt. `transcript.StatePatch.Model` records selection even before an inference.
-Background worker inference models are captured by their executor, but parent
-permission mode and the shared hook engine's default completion model remain
-live session state. Immutable worker policy/hook snapshots across idle config
-changes are a remaining review item; do not claim full worker-config isolation.
+Idle includes all owned background tasks and their execution cleanup, even after
+terminal display status. Both mode and model changes return `Session busy`
+without changing live or persisted state until cleanup finishes. The SDK excludes
+prompt/launch and configuration admission across this check and mutation; workers
+cannot spawn nested agents or background Bash. This preserves the live parent
+permission policy and shared hook completion model without duplicating hook
+engines or weakening deny rules.
 
 Each session has a native `task.Manager`. Shell adapters select it from their
 owner-scoped context, never by replacing the TUI default. Explicit
@@ -208,10 +211,10 @@ workers drop their question callback, and background shells never acquire the
 interactive responder. Prompt exit clears the adapter's Turn after callbacks
 join. Tool deadlines, prompt cancellation and disconnect unblock active input.
 
-On Unix, main-agent native Bash prompt detection routes ordinary input through a single
-string form; decline, malformed input or cancellation supplies no answer. Worker
-shell execution remains headless (foreground workers can forward structured
-questions, not shell stdin prompts). This
+On Unix, main-agent and foreground-worker native Bash prompt detection routes
+ordinary input through the prompt-owned responder and a single string form;
+decline, malformed input or cancellation supplies no answer. Background workers
+start with a fresh context and remain headless. This
 is line input, not a terminal UI or arbitrary keystroke transport. Password/secret
 prompts fail closed: the pinned schema has **no password format or masked-input
 semantics**, and URL elicitation does not deliver a secret to local stdin. San

@@ -16,8 +16,8 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// Rebuilt only with the idle parent runtime. Existing background workers retain
-// their executor and model, not the ACP Turn or an expired permission receiver.
+// Rebuilt only with the idle parent runtime. Configuration changes are rejected
+// until background workers finish cleanup, preserving their policy and hooks.
 func (s *acpSession) configureAgents() {
 	e := subagent.NewExecutor(s.params.Provider, s.params.CWD, s.params.ModelID, s.hooks)
 	e.ConfigureOwner(s.params.Tasks, s.agents, func(background bool) perm.PermissionFunc {
@@ -63,6 +63,8 @@ func (s *acpSession) configureAgents() {
 	worker.SetExecutor(subagent.NewExecutorAdapter(e))
 	schema := worker.Schema()
 	schema.Description += " ACP supports foreground workers and session-owned background workers. Background requests requiring human approval are denied; use TaskOutput and TaskStop to inspect or cancel."
-	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithAskUser(s.params.AskUser)))
+	// Foreground workers inherit the prompt-owned responder through their context.
+	// RunBackground starts with a fresh context and cannot retain this channel.
+	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithAskUser(s.params.AskUser), tool.WithBashPromptResponderProvider(s.params.BashPromptResponder)))
 	s.params.AgentCatalog = s.agents.AgentCatalog
 }

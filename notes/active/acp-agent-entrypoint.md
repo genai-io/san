@@ -9,7 +9,9 @@ Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
   policy, recording, hooks and compaction without constructing the TUI.
 - Text prompts and Read/Write/Edit/Glob/Grep/Skill, native plus client MCP,
   session/load replay, normal/auto-accept modes and configured-provider model
-  selection are implemented. Optional handlers still require the unpublished SDK
+  selection are implemented. Model/mode changes require both prompt admission
+  and all owned background tasks/worker cleanup to be idle; busy rejection leaves
+  policy, hook defaults and persisted state unchanged. Optional handlers still require the unpublished SDK
   worktree dependency; the committed go.mod is not yet sufficient.
 - Background shell jobs/services now use a session-owned native task pool, with
   TaskOutput/TaskStop and cancellation plus execution-cleanup join on disconnect.

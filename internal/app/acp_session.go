@@ -27,6 +27,9 @@ func (h *acpHost) setMode(ctx context.Context, req protocol.SetSessionModeReques
 	if s == nil {
 		return protocol.SetSessionModeResponse{}, fmt.Errorf("unknown session")
 	}
+	if err := s.requireConfigIdle(); err != nil {
+		return protocol.SetSessionModeResponse{}, err
+	}
 	var mode setting.OperationMode
 	switch req.ModeID {
 	case "normal":

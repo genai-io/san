@@ -23,10 +23,19 @@ func FromContext(ctx context.Context) *Manager {
 // The owner must stop admitting launches before calling Join.
 func (m *Manager) Run(run func()) {
 	m.work.Add(1)
+	m.active.Add(1)
 	go func() {
 		defer m.work.Done()
+		defer m.active.Add(-1)
 		run()
 	}()
+}
+
+// Idle reports whether all tasks and their execution cleanup have finished.
+// The owner must exclude launch admission while checking and using this result;
+// terminal task status alone does not imply that its worker has returned.
+func (m *Manager) Idle() bool {
+	return m.active.Load() == 0 && len(m.ListRunning()) == 0
 }
 
 // Join waits for all execution cleanup registered with Run.

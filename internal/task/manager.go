@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,7 @@ const gracefulStopTimeout = 2 * time.Second
 // instead, by appendCapped.
 type Manager struct {
 	work      sync.WaitGroup
+	active    atomic.Int64
 	mu        sync.RWMutex
 	tasks     map[string]BackgroundTask
 	outputDir string
