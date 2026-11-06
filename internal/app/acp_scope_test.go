@@ -25,8 +25,7 @@ func TestACPExecutionDirectoryPermissions(t *testing.T) {
 				t.Run(fmt.Sprintf("worker=%t/outside=%t/background=%t", worker, outside, background), func(t *testing.T) {
 					cwd, target := t.TempDir(), t.TempDir()
 					if outside && !background {
-						// Reproduce the bypass: a relative path used to be checked
-						// against process cwd, which is inside the parent's scope.
+						// Catch relative paths incorrectly authorized against process CWD.
 						var err error
 						cwd, err = os.Getwd()
 						if err != nil {

@@ -47,8 +47,7 @@ func TestACPAgentSkillAndResponseOwners(t *testing.T) {
 	})
 	ids := make(map[string]protocol.SessionID)
 	responses := make(map[string]chan any)
-	// All registries and response owners coexist on one host, with the same agent
-	// definition, skill name and model call ID in every session.
+	// Reuse agent, skill and call IDs across sessions to expose ownership leaks.
 	for _, owner := range owners {
 		cwd := t.TempDir()
 		files := map[string]string{".san/agents/local-worker.md": "---\nname: local-worker\ndescription: local worker\nskills:\n  - local\n---\nDo the requested task.\n"}

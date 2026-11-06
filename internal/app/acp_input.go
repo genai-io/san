@@ -13,9 +13,8 @@ import (
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
 
-// Only joined foreground tools reach this session-local adapter. Background
-// workers drop OnQuestion and background shells never resolve a responder.
-// Clearing the slot at prompt exit leaves no transport in the runtime.
+// Foreground tools must join before prompt exit clears the turn; background
+// workers and shells must never use this adapter.
 type acpInput struct {
 	mu   sync.Mutex
 	turn *acp.Turn
@@ -120,7 +119,6 @@ func (i *acpInput) ask(ctx context.Context, req *tool.QuestionRequest) (*tool.Qu
 	return response, nil
 }
 
-// The responder captures no Turn: it is resolved only on foreground shell paths.
 func (i *acpInput) responder(context.Context) tool.BashPromptResponder { return i }
 func (i *acpInput) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
 	content, cancelled, err := acpForm(ctx, i.current(), "Command: "+command+"\n"+prompt+"\nDo not enter passwords or secrets.", map[string]any{"answer": map[string]any{"type": "string", "title": "Input"}}, []string{"answer"})

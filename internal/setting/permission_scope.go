@@ -37,8 +37,7 @@ func (s ScopedPermissions) prepare(name string, args map[string]any) (*Data, map
 		return s.Data, resolved
 	}
 	data := *s.Data
-	// A rule matching the original spelling still applies to this call. Preserve
-	// the native policy's ordering rather than combining two policy decisions.
+	// Preserve original-path matches without changing deny/ask/allow precedence.
 	extend := func(rules []string) []string {
 		for _, pattern := range rules {
 			if MatchesToolPattern(name, args, BuildRule(name, args), pattern) {

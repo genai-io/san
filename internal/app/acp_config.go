@@ -62,7 +62,6 @@ func (h *acpHost) setConfig(ctx context.Context, request protocol.SetSessionConf
 		return protocol.SetSessionConfigOptionResponse{}, err
 	}
 	if id != s.params.ModelID {
-		// Validate the model before stopping the idle runtime.
 		if _, err := s.params.Provider.Client(id, nil); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, fmt.Errorf("selected model is unavailable")
 		}

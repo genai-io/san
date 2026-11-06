@@ -11,8 +11,7 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
-// Tools exposes only this pool. Hosts apply their normal permission gate and
-// disabled-tool policy; no model-supplied owner or global task lookup is used.
+// Tools exposes only this pool; hosts must enforce permissions and disabled tools.
 func (m *Manager) Tools() []core.Tool {
 	return []core.Tool{
 		sdkagent.ToolFunc("TaskOutput", "Read background task status and collected output. Omit task_id to list this session's tasks. Tasks live only for this connection.", func(ctx context.Context, input struct {

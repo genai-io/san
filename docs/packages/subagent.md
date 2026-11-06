@@ -130,20 +130,13 @@ Continuation keeps its existing background execution contract.
   turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
-- Each tool call snapshots its execution directory at authorization. The adapter
-  uses that snapshot even if another call in the same batch changes worker cwd.
-  ACP owner policy resolves Read/Write/Edit paths against this directory, retains
-  relative and absolute configured rule matches, and requires confirmation for
-  writes outside the parent's working directories even in accept-edits mode.
-  Background workers fail closed when confirmation is needed. No process chdir
-  is involved. Protocol regressions live in `acp_scope_test.go` and
-  `acp_scope_batch_test.go`.
-- ACP injects `SetSkillResolver` from its session registry for definition-level
-  preloaded skills, independently of the discovery directory. Missing skills do
-  not fall back to global state; an unconfigured resolver retains TUI behavior.
-  Agent hook-response handoffs likewise use the owning session's callback.
-  `acp_agent_owners_test.go` covers preloaded bodies and structured PostToolUse
-  payloads for repeated tool-call IDs across owners.
+- Tool authorization and execution share a cwd snapshot, unaffected by sibling
+  calls. ACP matches relative/absolute file rules there; writes outside the parent's
+  working directories require confirmation even in accept-edits mode. Background
+  workers deny when confirmation is needed.
+- ACP supplies session-owned preloaded skills via `SetSkillResolver` and a
+  hook-response callback. Missing skills never fall back to global state;
+  leaving the resolver unset preserves TUI behavior.
 - Background permissions are resolved before task registration and goroutine
   scheduling, and recorded internally as `agent.permissions`. Later parent-mode
   changes affect new runs, not a worker already launched. The main Agent tool

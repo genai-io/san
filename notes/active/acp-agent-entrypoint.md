@@ -7,27 +7,12 @@ Design: [PROP-0004](../../docs/design/proposal-0004-acp-agent-entrypoint.md).
 - SDK owns typed ACP v1 framing, admission, cancellation and response barriers.
 - San composes native foreground sessions, shared input/permission/completion
   policy, recording, hooks and compaction without constructing the TUI.
-- Text prompts and Read/Write/Edit/Glob/Grep/Skill, native plus client MCP,
-  session/load replay, normal/auto-accept modes and configured-provider model
-  selection are implemented. Model/mode changes require both prompt admission
-  and all owned background tasks/worker cleanup to be idle; busy rejection leaves
-  policy, hook defaults and persisted state unchanged. Optional handlers use the
-  publicly resolvable SDK commit pinned in go.mod; [sdk-go#103](https://github.com/genai-io/sdk-go/pull/103)
-  remains pending merge. No local SDK replacement is required.
-- Background shell jobs/services now use a session-owned native task pool, with
-  TaskOutput/TaskStop and cancellation plus execution-cleanup join on disconnect.
-  Status/output is polled through standard tool calls, not pushed asynchronously.
-- Native foreground/background subagents, plugin prompt commands and agent
-  catalogs are implemented with session-owned resources. Structured questions
-  and ordinary foreground Unix Bash prompts use negotiated standard elicitation
-  forms. Unsupported clients receive no interactive tools/responder. Background
-  work cannot retain a question transport; permissions never double as questions.
-- Secret prompts explicitly decline without sending a form: the pinned schema
-  has no password/masked-input semantics. URL flows are typed in SDK but no San
-  out-of-band credential flow is implemented. Non-text input remains unsupported.
-- This remains an incomplete full-capability implementation. Independent
-  client/editor validation is also outstanding. See the
-  [host documentation](../../docs/packages/app.md#acp-stdio-host).
+- Supports text/file tools, foreground/background Bash and subagents,
+  TaskOutput/TaskStop, skills/plugins, native/client MCP, load/replay and idle-only
+  mode/model changes. Negotiated forms support questions and foreground Unix
+  shell input, not secrets. Non-text input remains unsupported.
+- See [host capabilities and limits](../../docs/packages/app.md#acp-stdio-host).
+  Independent client/editor validation remains outstanding.
 
 ## Runtime retention and bounded writes (PR #725)
 

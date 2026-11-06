@@ -4,8 +4,7 @@ import "context"
 
 type managerKey struct{}
 
-// WithManager binds tool execution to its owner's task pool. It preserves the
-// request's cancellation; background work is joined separately by the owner.
+// WithManager binds the owner's task pool without changing request cancellation.
 func WithManager(ctx context.Context, manager *Manager) context.Context {
 	return context.WithValue(ctx, managerKey{}, manager)
 }
@@ -18,9 +17,7 @@ func FromContext(ctx context.Context) *Manager {
 	return Default()
 }
 
-// Run tracks execution cleanup, not the task's display status. Kill may mark a
-// task terminal before its process has been reaped or its output drained.
-// The owner must stop admitting launches before calling Join.
+// Run tracks cleanup beyond terminal task status, including reaping and draining.
 func (m *Manager) Run(run func()) {
 	m.work.Add(1)
 	m.active.Add(1)
@@ -31,14 +28,12 @@ func (m *Manager) Run(run func()) {
 	}()
 }
 
-// Idle reports whether all tasks and their execution cleanup have finished.
-// The owner must exclude launch admission while checking and using this result;
-// terminal task status alone does not imply that its worker has returned.
+// Idle includes execution cleanup. Exclude launches while checking and using it.
 func (m *Manager) Idle() bool {
 	return m.active.Load() == 0 && len(m.ListRunning()) == 0
 }
 
-// Join waits for all execution cleanup registered with Run.
+// Join waits for Run cleanup. Stop admitting launches before calling it.
 func (m *Manager) Join() { m.work.Wait() }
 
 // Cancel cancels every task in this pool, including services and finite jobs.

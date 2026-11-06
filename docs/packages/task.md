@@ -109,21 +109,15 @@ func ResetDefaultTracker()         // test-only
 
 ## Connection-owned execution
 
-Hosts may inject a pool with `task.WithManager`; shell execution resolves
-`task.FromContext`, falling back to the existing native default. `BuildParams.Tasks`
-installs that context with the launching session ID. `Manager.Tools` supplies
-TaskOutput/TaskStop bound to that pool; hosts must apply their normal permission
-and disabled-tool policy. These tools are opt-in and do not change the TUI toolset.
+`BuildParams.Tasks` installs a session pool via `task.WithManager`;
+`task.FromContext` falls back to the native default. `Manager.Tools` provides
+opt-in TaskOutput/TaskStop tools; hosts must enforce permission and disabled-tool
+rules. The TUI toolset is unchanged.
 
-`Manager.Run` tracks the shell collector through process reaping and output drain.
-After stopping launch admission, connection owners call `Cancel` then `Join` before
-closing resources. `Join` is not safe concurrently with new launch admission.
-`IsRunning` and `WaitForCompletion` are display/task-state observations, not proof
-that a killed process has been reaped. Existing subagent runners are not registered
-with `Run`; this API does not yet make native subagents connection-owned.
-
-ACP tests in `internal/app/acp_tasks_test.go` exercise real shell launch, output,
-session isolation, cancellation and disconnect through the protocol adapter.
+`Manager.Run` tracks shell execution through reaping and output drain. Stop new
+launches, then `Cancel` and `Join` before closing resources; `IsRunning` and
+`WaitForCompletion` do not prove cleanup. Subagent runners need separate lifecycle
+tracking. Protocol tests: `internal/app/acp_tasks_test.go`.
 
 ## Continuation and failure handling
 

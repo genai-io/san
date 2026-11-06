@@ -15,8 +15,7 @@ func TestScopedPermissions(t *testing.T) {
 	for _, name := range []string{"Read", "Write", "Edit"} {
 		for _, path := range []string{"result.txt", filepath.Join(cwd, "result.txt")} {
 			for _, pattern := range []string{"result.txt", filepath.Join(cwd, "result.txt")} {
-				// A relative deny matches relative model input; absolute denies also
-				// match the resolved path without changing the original model arguments.
+				// Relative rules match only relative input.
 				if filepath.IsAbs(path) && !filepath.IsAbs(pattern) {
 					continue
 				}

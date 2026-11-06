@@ -150,8 +150,6 @@ func (p BuildParams) ToolSchemas() []core.ToolSchema {
 	return tools.Schemas()
 }
 
-// addTools registers host-owned native and MCP tools, honoring disabled-tool
-// policy for both. Built-in schemas are filtered separately by tool.Set.
 func (p BuildParams) addTools(tools *core.Tools) {
 	for _, t := range p.NativeTools {
 		if !p.DisabledTools[t.Schema().Name] {

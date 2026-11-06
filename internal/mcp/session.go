@@ -54,8 +54,7 @@ func (r *Manager) ConnectAll(ctx context.Context) error {
 	return nil
 }
 
-// Close joins the owned clients instead of scheduling detached disconnects.
-// Call after all connects and tool calls have joined.
+// Close joins owned clients. Call only after connects and tool calls have joined.
 func (r *Manager) Close() error {
 	r.mu.Lock()
 	clients := r.clients
