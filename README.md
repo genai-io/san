@@ -35,15 +35,13 @@
 
 ## Installation
 
-**Homebrew (macOS / Linux)**
+**macOS / Linux** — choose one:
 
 ```bash
+# Homebrew
 brew install genai-io/san/san
-```
 
-**macOS / Linux**
-
-```bash
+# Or use the install script
 curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
 
@@ -54,7 +52,7 @@ irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
 <details>
-<summary><b>Other installation methods and uninstall</b></summary>
+<summary><b>Other installation methods, updates and uninstall</b></summary>
 
 **Uninstall**
 
@@ -83,10 +81,7 @@ go build -o san ./cmd/san
 mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ```
 
-</details>
-
-<details>
-<summary><b>Updates</b></summary>
+**Updates**
 
 - **Automatic:** new releases install in the background; the status line prompts you to restart.
 - **Manual:** run `san update`, or `brew update && brew upgrade genai-io/san/san` for Homebrew installations. The Homebrew formula syncs daily, so newly published releases may take time to appear.
