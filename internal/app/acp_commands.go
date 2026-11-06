@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/plugin"
@@ -37,9 +38,17 @@ func (s *acpSession) commandPrompt(text string) (string, string, error) {
 }
 
 func (s *acpSession) sendCommands(turn *acp.Turn) error {
+	catalog := s.commands.CustomCommands()
+	if s.advertisedCommands != nil && slices.Equal(s.advertisedCommands, catalog) {
+		return nil
+	}
 	var commands []protocol.AvailableCommand
-	for _, c := range s.commands.CustomCommands() {
+	for _, c := range catalog {
 		commands = append(commands, protocol.AvailableCommand{Name: c.Name, Description: c.Description})
 	}
-	return turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAvailableCommandsUpdateVariant{SessionUpdate: "available_commands_update", AvailableCommands: commands}}})
+	if err := turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAvailableCommandsUpdateVariant{SessionUpdate: "available_commands_update", AvailableCommands: commands}}}); err != nil {
+		return err
+	}
+	s.advertisedCommands = catalog
+	return nil
 }

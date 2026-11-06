@@ -108,6 +108,7 @@ type acpSession struct {
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
 	commands           *command.Registry
+	advertisedCommands []command.Info
 	agents             *subagent.Registry
 	models             []llm.ModelInfo
 }

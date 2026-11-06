@@ -1,15 +1,66 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
+
+func TestACPCommandCatalogUpdates(t *testing.T) {
+	f := newACPFixture(t, aitest.Always(aitest.Says("done")), nil)
+	cwd := t.TempDir()
+	id := f.session(t, cwd)
+	s := f.host.sessions[id]
+	check := func(id protocol.SessionID, want int) {
+		t.Helper()
+		if _, err := f.prompt(id, "hello"); err != nil {
+			t.Fatal(err)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		got := 0
+		for _, u := range f.updates {
+			if _, ok := u.Update.Value.(protocol.SessionUpdateAvailableCommandsUpdateVariant); ok && u.SessionID == id {
+				got++
+			}
+		}
+		if got != want {
+			t.Fatalf("command updates = %d, want %d", got, want)
+		}
+	}
+	check(id, 1)
+	check(id, 1)
+	if err := s.runtime.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	check(id, 1)
+	check(f.session(t, t.TempDir()), 1)
+
+	path := filepath.Join(cwd, ".san", "commands", "check.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for i, description := range []string{"First description", "Changed description"} {
+		if err := os.WriteFile(path, []byte("---\ndescription: "+description+"\n---\nCheck the project\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		s.commands = command.NewRegistry(command.Options{CWD: cwd})
+		check(id, i+2)
+		check(id, i+2)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	s.commands = command.NewRegistry(command.Options{CWD: cwd})
+	check(id, 4)
+}
 
 func TestACPPluginCommandsAndAgents(t *testing.T) {
 	var seen atomic.Bool

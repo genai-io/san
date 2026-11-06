@@ -142,7 +142,7 @@ and TaskOutput/TaskStop, subject to disabled tools and native permission rules.
   native workspace trust. Client MCP config is not saved; conflicting native
   names fail. Stdio servers use the session cwd; schemas are fixed at setup.
   Only prompt commands execute, including plugin commands; TUI management
-  commands fail. Command availability is sent on prompts.
+  commands fail. Command availability is sent initially and when metadata changes.
 - **Load** (`acp_session.go`): `session/load` restores the native conversation
   under its writer lease and replays text/tool history. Image and opaque reasoning
   blocks are retained but not rendered. Unsupported saved providers/models fail;
