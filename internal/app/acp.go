@@ -104,7 +104,7 @@ type acpSession struct {
 	hooks              *hook.Engine
 	reminders          *reminder.Reminder
 	lastPrompt         string
-	sideEffects        sync.Map
+	toolResponses      sync.Map
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
 	commands           *command.Registry
@@ -217,7 +217,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
-		ToolResponse: func(callID string, response any) { s.sideEffects.Store(callID, response) },
+		ToolResponse: func(callID string, response any) { s.toolResponses.Store(callID, response) },
 		Tasks:        tasks, NativeTools: tasks.Tools(),
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
@@ -284,7 +284,7 @@ func (s *acpSession) close() error {
 		s.runtimeBuildParams.Tasks.Cancel()
 		s.runtimeBuildParams.Tasks.Join()
 	}
-	s.sideEffects.Clear()
+	s.toolResponses.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})

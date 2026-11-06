@@ -75,7 +75,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		}
 		cancelPermissions()
 		<-permissionsDone
-		s.sideEffects.Clear() // finalization has joined tool callbacks
+		s.toolResponses.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
 	msg := core.UserMessage(s.reminders.PrepareInput(prompt), nil)
@@ -176,7 +176,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 }
 
 func (s *acpSession) postTool(e sdkagent.ToolEnd) {
-	handoff, _ := s.sideEffects.LoadAndDelete(e.ID)
+	handoff, _ := s.toolResponses.LoadAndDelete(e.ID)
 	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 }
 
