@@ -244,6 +244,10 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString("\n")
 		b.WriteString(status)
 	}
+	if notice := m.renderUpdateNotice(); notice != "" {
+		b.WriteString("\n")
+		b.WriteString(notice)
+	}
 	b.WriteString("\n")
 	b.WriteString(separator)
 	b.WriteString("\n")
@@ -262,6 +266,24 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString(gitBar)
 	}
 	return b.String(), inputRow
+}
+
+func (m model) renderUpdateNotice() string {
+	if m.updateInstalled == "" {
+		return ""
+	}
+	width := max(0, m.env.Width-1)
+	label := "Restart to update"
+	version := "v" + m.updateInstalled + " installed · "
+	if lipgloss.Width(label+version) > width {
+		version = ""
+	}
+	if lipgloss.Width(label) > width {
+		return ""
+	}
+	notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(version) +
+		lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render(label)
+	return strings.Repeat(" ", width-lipgloss.Width(notice)) + notice
 }
 
 func (m model) renderInputView() string {
@@ -555,7 +577,6 @@ func (m model) renderModeStatus() string {
 		ReviewApprovals:   reviewApprovals,
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,
-		UpdateInstalled:   m.updateInstalled,
 		ModeHint:          time.Now().Before(m.modeHintUntil),
 		Group:             m.grp.name,
 		GroupSelf:         m.groupSelfName(),

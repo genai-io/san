@@ -215,7 +215,6 @@ type OperationModeParams struct {
 	ReviewApprovals   int      // auto-review approvals this session, shown next to the mode
 	ReviewEscalations int      // auto-review escalations to the user this session
 	AutopilotThinking bool     // the copilot is mid-decision — show "thinking…" on the mode indicator
-	UpdateInstalled   string   // release installed on disk this session, "" for none
 	Group             string   // this session's group, "" outside one
 	GroupSelf         string   // this session's member name in it
 	GroupHold         bool     // this member holds the others' messages
@@ -333,10 +332,6 @@ func renderStatusCluster(p OperationModeParams) string {
 	}
 	if !p.ConversationCost.IsZero() {
 		segments = append(segments, statusSegment{text: muted.Render(kit.FormatCostTotal(p.ConversationCost)), priority: 6})
-	}
-	if p.UpdateInstalled != "" {
-		notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render("✓ v" + p.UpdateInstalled + " installed · restart to update")
-		segments = append(segments, statusSegment{text: notice, priority: 2})
 	}
 
 	if p.SubscriptionUsage != "" {
