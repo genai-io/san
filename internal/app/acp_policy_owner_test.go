@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -30,6 +32,38 @@ func TestACPModeUsesSessionPolicy(t *testing.T) {
 	}
 	if history.Metadata.Mode != "auto-accept" {
 		t.Fatalf("persisted mode = %q", history.Metadata.Mode)
+	}
+}
+
+func TestACPDirectoryPoliciesShareLivePermissions(t *testing.T) {
+	f := newACPFixture(t, aitest.New(aitest.Says("done")), nil)
+	cwd := t.TempDir()
+	id := f.session(t, cwd)
+	permissions := f.host.sessions[id].permissions
+	parent := permissions.ForDirectory(cwd)
+	worker := permissions.ForDirectory(t.TempDir())
+	if parent.Session != permissions.SessionPermissions || worker.Session != parent.Session {
+		t.Fatal("directory policies do not share the session grant owner")
+	}
+
+	permissions.SetMode(setting.ModeAutoAccept)
+	args := map[string]any{"file_path": "shared.txt", "content": "test"}
+	if got := parent.Decide("Write", args).Decision; got != perm.Permit {
+		t.Fatalf("parent did not observe mode change: %v", got)
+	}
+	if got := worker.Decide("Write", args).Decision; got != perm.Prompt {
+		t.Fatalf("worker lost execution-directory boundary: %v", got)
+	}
+
+	permissions.AllowPattern("Bash(make test)")
+	for _, policy := range []agent.PermissionPolicy{parent, worker} {
+		if got := policy.Decide("Bash", map[string]any{"command": "make test"}).Decision; got != perm.Permit {
+			t.Fatalf("existing directory policy did not observe grant: %v", got)
+		}
+	}
+	permissions.SetMode(setting.ModeNormal)
+	if got := parent.Decide("Write", args).Decision; got != perm.Prompt {
+		t.Fatalf("existing directory policy retained stale mode: %v", got)
 	}
 }
 

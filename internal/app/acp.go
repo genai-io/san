@@ -97,20 +97,19 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
-	input                   acpInput
-	nativeSession           agent.MainSession
-	runtimeBuildParams      agent.BuildParams // retained across runtime rebuilds
-	runtime                 agent.Runtime
-	hooks                   *hook.Engine
-	reminders               *reminder.Reminder
-	lastPrompt              string
-	sideEffects             sync.Map
-	mcp                     *mcp.Manager
-	permissions             *setting.SessionPermissions         // sole grant and mode owner
-	permissionsForDirectory func(string) agent.PermissionPolicy // directory-scoped rules sharing permissions
-	commands                *command.Registry
-	agents                  *subagent.Registry
-	models                  []llm.ModelInfo
+	input              acpInput
+	nativeSession      agent.MainSession
+	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
+	runtime            agent.Runtime
+	hooks              *hook.Engine
+	reminders          *reminder.Reminder
+	lastPrompt         string
+	sideEffects        sync.Map
+	mcp                *mcp.Manager
+	permissions        *acpPermissions
+	commands           *command.Registry
+	agents             *subagent.Registry
+	models             []llm.ModelInfo
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
@@ -200,9 +199,8 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
 	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), modelID)
 	audit := func(rec transcript.Record) { _ = opened.Append(context.Background(), rec) }
-	policy := agent.PermissionPolicy{Settings: setting.New(settings), Session: setting.NewSessionPermissions(), Audit: audit}
-	policy.Session.AddWorkingDirectory(req.CWD)
-	s.permissions = policy.Session
+	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings, audit: audit}
+	s.permissions.AddWorkingDirectory(req.CWD)
 	if history != nil {
 		s.runtime.SetMessages(history.Messages)
 		s.reminders.RestoreHistory(store.ChatRows(history))
@@ -212,14 +210,9 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		}
 	}
 	if setting.New(settings).AutoMemory() {
-		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
+		s.permissions.autoMemory = setting.MemoryStoresFor(req.CWD)
 	}
-	s.permissionsForDirectory = func(cwd string) agent.PermissionPolicy {
-		scoped := policy
-		scoped.Settings = setting.ScopedPermissions{Data: settings, CWD: cwd}
-		return scoped
-	}
-	policy = s.permissionsForDirectory(req.CWD)
+	policy := s.permissions.ForDirectory(req.CWD)
 	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),

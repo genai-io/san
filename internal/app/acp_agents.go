@@ -21,7 +21,7 @@ import (
 func (s *acpSession) configureAgents() {
 	e := subagent.NewExecutor(s.runtimeBuildParams.Provider, s.runtimeBuildParams.CWD, s.runtimeBuildParams.ModelID, s.hooks)
 	e.ConfigureOwner(s.runtimeBuildParams.Tasks, s.agents, func(background bool, cwd string) perm.PermissionFunc {
-		policy := s.permissionsForDirectory(cwd)
+		policy := s.permissions.ForDirectory(cwd)
 		return func(ctx context.Context, name string, input map[string]any) (bool, string) {
 			if name == "Bash" {
 				if mode, _ := input["execution_mode"].(string); mode != "" && mode != "foreground" {
