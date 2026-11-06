@@ -130,6 +130,13 @@ Continuation keeps its existing background execution contract.
   turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
+- Tool authorization and execution share a cwd snapshot, unaffected by sibling
+  calls. ACP matches relative/absolute file rules there; writes outside the parent's
+  working directories require confirmation even in accept-edits mode. Background
+  workers deny when confirmation is needed.
+- ACP supplies session-owned preloaded skills via `SetSkillResolver` and a
+  hook-response callback. Missing skills never fall back to global state;
+  leaving the resolver unset preserves TUI behavior.
 - Background permissions are resolved before task registration and goroutine
   scheduling, and recorded internally as `agent.permissions`. Later parent-mode
   changes affect new runs, not a worker already launched. The main Agent tool

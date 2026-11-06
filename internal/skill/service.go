@@ -27,6 +27,11 @@ type Options struct {
 // Initialize loads skills from all sources, applies persisted states,
 // and installs the result as the package-level *Registry.
 func Initialize(opts Options) {
+	setDefaultRegistry(Load(opts))
+}
+
+// Load creates an independent registry without replacing the TUI default.
+func Load(opts Options) *Registry {
 	cwd := opts.CWD
 	loader := newLoader(cwd)
 	loader.pluginSkillPaths = opts.PluginSkillPaths
@@ -52,7 +57,7 @@ func Initialize(opts Options) {
 		}
 	}
 
-	setDefaultRegistry(registry)
+	return registry
 }
 
 // Default returns the package-level *Registry. Returns an empty

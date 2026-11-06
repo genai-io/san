@@ -15,7 +15,7 @@ import (
 
 // Permissions are deliberately once-only. No transport response can change
 // native deny/ask precedence or install a persistent grant.
-func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
+func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Turn, gate *agent.PermissionGate, done chan<- struct{}) {
 	defer close(done)
 	for {
 		req, ok := gate.WaitRequest(ctx)
@@ -28,7 +28,7 @@ func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agen
 		// Hook-forced prompts have not visited the rules decider. A forced
 		// question must not let the client waive a native deny or host limit.
 		if req.RequestID == "" {
-			decision := s.params.PermissionRules(req.ToolName, req.Input)
+			decision := s.runtimeBuildParams.PermissionRules(req.ToolName, req.Input)
 			if decision.Decision == perm.Reject {
 				select {
 				case req.Response <- agent.PermGateResponse{Reason: decision.Reason}:
@@ -41,7 +41,7 @@ func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agen
 		input, _ := json.Marshal(req.Input)
 		record := transcript.PermissionRecord{RequestID: req.RequestID, Tool: req.ToolName, Input: input,
 			Source: transcript.PermissionSourceAsk, OptionsOffered: []string{"allow_once", "reject_once"}}
-		_ = s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &record})
+		_ = s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &record})
 		response, err := turn.RequestPermission(protocol.RequestPermissionRequest{
 			ToolCall: protocol.ToolCallUpdate{ToolCallID: protocol.ToolCallID(req.ToolCallID), Title: protocol.Some(req.ToolName), RawInput: protocol.Some(json.RawMessage(input))},
 			Options: []protocol.PermissionOption{
@@ -60,7 +60,7 @@ func (s *acpSession) permissions(ctx context.Context, turn *acp.Turn, gate *agen
 		}
 		record.Source, record.Scope, record.Reason = transcript.PermissionSourceUser, "once", reason
 		record.Decision = interaction.PermissionDecisionFor(allow)
-		_ = s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &record})
+		_ = s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &record})
 		select {
 		case req.Response <- agent.PermGateResponse{Allow: allow, Reason: reason}:
 		case <-req.Context.Done():

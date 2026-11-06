@@ -44,6 +44,12 @@ type adaptConfig struct {
 	toolContext     func(context.Context) context.Context
 	sideEffectFn    func(string, any)
 	permissionCheck perm.PermissionFunc
+	executionCWD    func(context.Context) (string, error)
+}
+
+// WithExecutionCWD supplies a call-scoped directory captured during authorization.
+func WithExecutionCWD(fn func(context.Context) (string, error)) AdaptOption {
+	return func(c *adaptConfig) { c.executionCWD = fn }
 }
 
 // WithAskUser sets the handler the AskUserQuestion tool uses to ask the user.
@@ -94,7 +100,7 @@ func adaptationConfig(opts []AdaptOption) adaptConfig {
 }
 
 func adaptTool(t Tool, schema core.ToolSchema, cwd func() string, cfg adaptConfig) *toolAdapter {
-	return &toolAdapter{toolContext: cfg.toolContext, inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn, permissionCheck: cfg.permissionCheck}
+	return &toolAdapter{executionCWD: cfg.executionCWD, toolContext: cfg.toolContext, inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn, permissionCheck: cfg.permissionCheck}
 }
 
 // AdaptToolRegistry wraps all tools from the global registry as core.Tools.
@@ -130,6 +136,7 @@ type toolAdapter struct {
 	toolContext     func(context.Context) context.Context
 	sideEffectFn    func(string, any)
 	permissionCheck perm.PermissionFunc
+	executionCWD    func(context.Context) (string, error)
 }
 
 func (a *toolAdapter) Schema() core.ToolSchema { return a.schema }
@@ -143,7 +150,13 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 		ctx = context.WithValue(ctx, permissionCheckKey{}, a.permissionCheck)
 	}
 	cwd := ""
-	if a.cwd != nil {
+	if a.executionCWD != nil {
+		var err error
+		cwd, err = a.executionCWD(ctx)
+		if err != nil {
+			return agent.Result{}, err
+		}
+	} else if a.cwd != nil {
 		cwd = a.cwd()
 	}
 	if a.messagesGetter != nil {

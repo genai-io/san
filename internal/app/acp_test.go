@@ -45,11 +45,15 @@ func newACPFixture(t testing.TB, driver *aitest.Driver, permission func(context.
 }
 
 func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
+	return newACPFixtureOptions(t, driver, permission, budget, protocol.InitializeRequest{ProtocolVersion: 1}, nil, wrap...)
+}
+
+func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error), budget time.Duration, init protocol.InitializeRequest, elicit func(context.Context, protocol.CreateElicitationRequest) (protocol.CreateElicitationResponse, error), wrap ...func(io.WriteCloser) io.WriteCloser) *acpFixture {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	t.Cleanup(cancel)
+	// Connection lifetime must not consume individual requests' timeout budgets.
+	ctx := t.Context()
 	f := &acpFixture{ctx: ctx, host: &acpHost{provider: acpTestProvider{driver.Client()}, model: "test", sessions: make(map[protocol.SessionID]*acpSession)}}
 	input, send := io.Pipe()
 	recv, output := io.Pipe()
@@ -63,7 +67,10 @@ func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission fu
 		t.Fatal(err)
 	}
 	f.client, err = acp.New(ctx, recv, send, acp.Handlers{
-		Request: func(ctx context.Context, _ *acp.Conn, method string, params json.RawMessage) (any, error) {
+		Request: func(ctx context.Context, c *acp.Conn, method string, params json.RawMessage) (any, error) {
+			if method == "elicitation/create" {
+				return acp.ElicitationHandler(elicit)(ctx, c, method, params)
+			}
 			var req protocol.RequestPermissionRequest
 			if err := json.Unmarshal(params, &req); err != nil {
 				return nil, err
@@ -109,7 +116,9 @@ func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission fu
 			}
 		}
 	})
-	if _, err := f.client.Initialize(ctx, protocol.InitializeRequest{ProtocolVersion: 1}); err != nil {
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := f.client.Initialize(initCtx, init); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -117,14 +126,18 @@ func newACPFixtureWithTimeout(t testing.TB, driver *aitest.Driver, permission fu
 
 func (f *acpFixture) session(t testing.TB, cwd string) protocol.SessionID {
 	t.Helper()
-	res, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
+	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	defer cancel()
+	res, err := f.client.CreateSession(ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return res.SessionID
 }
 func (f *acpFixture) prompt(id protocol.SessionID, text string) (protocol.PromptResponse, error) {
-	return f.client.Prompt(f.ctx, protocol.PromptRequest{SessionID: id, Prompt: []protocol.ContentBlock{acpText(text)}})
+	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	defer cancel()
+	return f.client.Prompt(ctx, protocol.PromptRequest{SessionID: id, Prompt: []protocol.ContentBlock{acpText(text)}})
 }
 func acpChoice(id string) protocol.RequestPermissionResponse {
 	return protocol.RequestPermissionResponse{Outcome: protocol.RequestPermissionOutcome{Value: protocol.RequestPermissionOutcomeSelectedVariant{Outcome: "selected", OptionID: protocol.PermissionOptionID(id)}}}
@@ -141,8 +154,8 @@ func TestACPAutoCompaction(t *testing.T) {
 	s := f.host.sessions[id]
 	f.host.mu.Unlock()
 	compacted := make(chan core.Compacted, 1)
-	record := s.params.OnEvent
-	s.params.OnEvent = func(event core.Event) {
+	record := s.runtimeBuildParams.OnEvent
+	s.runtimeBuildParams.OnEvent = func(event core.Event) {
 		record(event)
 		if event, ok := event.(core.Compacted); ok {
 			compacted <- event
@@ -241,7 +254,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if failRecord {
 				// Fail recording after admission validation, before execution writes.
 				s.hooks.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
-					return hook.HookOutput{}, s.data.Session.Close()
+					return hook.HookOutput{}, s.nativeSession.Session.Close()
 				}})
 				if _, err := f.prompt(id, "hello"); err == nil {
 					t.Fatal("successful response hid essential recording failure")
@@ -272,7 +285,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if !strings.Contains(string(data), "workspace instruction") || !strings.Contains(string(data), "prompt hook instruction") {
 				t.Fatal("native preparation missing instructions")
 			}
-			history, err := s.data.Store.Read(string(id))
+			history, err := s.nativeSession.Store.Read(string(id))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -288,7 +301,7 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cwd, ".san"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cwd, ".san", "settings.local.json"), []byte(`{"permissions":{"deny":["Write(**)"]},"disabledTools":{"Read":true}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(cwd, ".san", "settings.local.json"), []byte(`{"permissions":{"deny":["Write(**)"]},"disabledTools":{"Read":true,"TaskOutput":true}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(cwd, "forbidden")
@@ -313,8 +326,8 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	f.host.mu.Lock()
 	s := f.host.sessions[id]
 	f.host.mu.Unlock()
-	for _, schema := range s.params.Schemas() {
-		if schema.Name == "Read" {
+	for _, schema := range s.runtimeBuildParams.ToolSchemas() {
+		if schema.Name == "Read" || schema.Name == "TaskOutput" {
 			t.Error("disabled tool exposed")
 		}
 	}
@@ -324,8 +337,8 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	if _, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: "relative", MCPServers: []protocol.MCPServer{}}); err == nil {
 		t.Error("relative cwd accepted")
 	}
-	if s.params.CanApproveByHook("Bash", map[string]any{"execution_mode": "background_service"}) {
-		t.Error("hook can enable unsupported background work")
+	if s.runtimeBuildParams.CanApproveByHook("Write", map[string]any{"file_path": path, "content": "no"}) {
+		t.Error("hook can bypass native deny")
 	}
 }
 

@@ -12,13 +12,19 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (response protocol.PromptResponse, err error) {
-	if err := s.data.Validate(); err != nil {
+	s.input.set(turn)
+	defer s.input.set(nil)
+	if s.runtimeBuildParams.Plugins != nil {
+		ctx = plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins)
+	}
+	if err := s.nativeSession.Validate(); err != nil {
 		return response, err
 	}
 	var text strings.Builder
@@ -32,6 +38,12 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if strings.TrimSpace(text.String()) == "" {
 		return response, fmt.Errorf("empty prompt")
 	}
+	prompt, pluginRoot, err := s.commandPrompt(text.String())
+	if err != nil {
+		return response, err
+	}
+	s.runtime.SetPluginRoot(pluginRoot)
+	ctx = plugin.WithRoot(ctx, pluginRoot)
 	hookCtx, cancelHook := context.WithTimeout(ctx, 5*time.Second)
 	blocked, reason := agent.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
 	cancelHook()
@@ -42,14 +54,15 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return response, err
 	}
 	if !s.runtime.Active() {
-		if err := s.runtime.Start(s.params, s.runtime.Messages()); err != nil {
+		s.configureAgents()
+		if err := s.runtime.Start(s.runtimeBuildParams, s.runtime.Messages()); err != nil {
 			return response, err
 		}
 	}
 	gate := s.runtime.PermissionGate()
 	permissionsCtx, cancelPermissions := context.WithCancel(ctx)
 	permissionsDone := make(chan struct{})
-	go s.permissions(permissionsCtx, turn, gate, permissionsDone)
+	go s.handlePermissionRequests(permissionsCtx, turn, gate, permissionsDone)
 	finished := false
 	var stopping chan struct{}
 	defer func() {
@@ -62,10 +75,10 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		}
 		cancelPermissions()
 		<-permissionsDone
-		s.sideEffects.Clear() // finalization has joined tool callbacks
+		s.toolResponses.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
-	msg := core.UserMessage(s.reminders.PrepareInput(text.String()), nil)
+	msg := core.UserMessage(s.reminders.PrepareInput(prompt), nil)
 	if err := s.runtime.Send(msg); err != nil {
 		return response, err
 	}
@@ -89,7 +102,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			}
 		case event, ok := <-s.runtime.Outbox():
 			if !ok {
-				return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(transportErr, s.data.Session.Err())
+				return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(transportErr, s.nativeSession.Session.Err())
 			}
 			switch e := event.(type) {
 			case core.TurnEnded:
@@ -136,14 +149,17 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				if e.Result.StopReason == core.StopRefused {
 					stop = protocol.StopReasonRefusal
 				}
+				if ctx.Err() == nil && transportErr == nil {
+					transportErr = s.sendCommands(turn)
+				}
 				return protocol.PromptResponse{StopReason: stop}, errors.Join(recordErr, transportErr)
 			case core.AgentStopped:
 				if e.Err != nil && ctx.Err() == nil {
 					s.hooks.ExecuteAsync(hook.StopFailure, hook.HookInput{Error: e.Err.Error()})
 				}
-				return response, errors.Join(e.Err, transportErr, s.data.Session.Err())
+				return response, errors.Join(e.Err, transportErr, s.nativeSession.Session.Err())
 			case core.Compacted:
-				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.params.FileCache, s.refreshMemory)
+				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
 			case sdkagent.ToolEnd:
 				s.postTool(e)
 			}
@@ -160,8 +176,8 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 }
 
 func (s *acpSession) postTool(e sdkagent.ToolEnd) {
-	handoff, _ := s.sideEffects.LoadAndDelete(e.ID)
-	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.params.FileCache.Touch})
+	handoff, _ := s.toolResponses.LoadAndDelete(e.ID)
+	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 }
 
 func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {

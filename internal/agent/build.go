@@ -12,8 +12,11 @@ import (
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -46,6 +49,11 @@ type BuildParams struct {
 
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
+	NativeTools   []core.Tool     // host-owned tools, subject to the same permission gate
+	Tasks         *task.Manager   // nil retains the native default
+	Skills        *skill.Registry // nil retains the native default
+	Plugins       *plugin.Registry
+	PluginRoot    func() string // optional session-owned invocation scope
 
 	// AutoMemory is the auto-memory stores the main agent maintains; zero
 	// when auto memory is off.
@@ -138,13 +146,16 @@ func (p BuildParams) Schemas() []core.ToolSchema {
 // tools included, in the order it sends them.
 func (p BuildParams) ToolSchemas() []core.ToolSchema {
 	tools := tool.AdaptToolRegistry(p.Schemas(), func() string { return p.CWD })
-	p.addMCPTools(tools)
+	p.addTools(tools)
 	return tools.Schemas()
 }
 
-// addMCPTools registers p's MCP tools. Built-in tools are filtered by
-// tool.Set{Disabled}; MCP tools honor the /tool panel's disable here.
-func (p BuildParams) addMCPTools(tools *core.Tools) {
+func (p BuildParams) addTools(tools *core.Tools) {
+	for _, t := range p.NativeTools {
+		if !p.DisabledTools[t.Schema().Name] {
+			tools.Add(t, "native:"+t.Schema().Name)
+		}
+	}
 	for _, t := range p.MCPTools {
 		if p.DisabledTools[t.Schema().Name] {
 			continue
@@ -176,6 +187,19 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
 	toolContext := func(ctx context.Context) context.Context {
+		if p.Tasks != nil {
+			ctx = task.WithManager(task.WithSessionID(ctx, p.SessionID), p.Tasks)
+		}
+		if p.Plugins != nil {
+			ctx = plugin.WithRegistry(ctx, p.Plugins)
+			if p.PluginRoot != nil {
+				ctx = plugin.WithRoot(ctx, p.PluginRoot())
+			}
+			ctx = fs.WithShellEnvProvider(ctx, plugin.PluginEnv)
+		}
+		if p.Skills != nil {
+			ctx = skill.WithRegistry(ctx, p.Skills)
+		}
 		if p.FileViews != nil {
 			return fs.WithFileViews(ctx, p.FileViews)
 		}
@@ -212,7 +236,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		return ag.Messages()
 	}))
 	tools := tool.AdaptToolRegistry(schemas, cwdFunc, adaptOpts...)
-	p.addMCPTools(tools)
+	p.addTools(tools)
 
 	compactClient := client
 	cache := p.FileCache

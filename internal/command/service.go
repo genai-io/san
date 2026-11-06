@@ -18,7 +18,12 @@ type Options struct {
 
 // Initialize creates and installs the package-level *Registry.
 func Initialize(opts Options) {
-	defaultRegistry = &Registry{
+	defaultRegistry = NewRegistry(opts)
+}
+
+// NewRegistry creates a session-owned command catalog without changing defaults.
+func NewRegistry(opts Options) *Registry {
+	return &Registry{
 		cwd:                  opts.CWD,
 		dynamicInfoProviders: opts.DynamicProviders,
 		pluginCommandPaths:   opts.PluginCommandPaths,

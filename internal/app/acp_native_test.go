@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
@@ -16,6 +17,7 @@ import (
 	"github.com/genai-io/san/internal/tool/fs"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 func TestACPBashDirHelp(t *testing.T) {
@@ -30,20 +32,49 @@ func TestACPBashDirHelp(t *testing.T) {
 	t.Fatal("missing Bash schema")
 }
 
+func TestACPToolResponsesCleanup(t *testing.T) {
+	for _, boundary := range []string{"turn", "disconnect"} {
+		t.Run(boundary, func(t *testing.T) {
+			f := newACPFixture(t, aitest.New(aitest.Says("done")), nil)
+			id := f.session(t, t.TempDir())
+			s := f.host.sessions[id]
+			s.toolResponses.Store("unconsumed", "result")
+			if boundary == "turn" {
+				if _, err := f.prompt(id, "hello"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := f.client.Close(); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-f.stopped:
+				case <-time.After(5 * time.Second):
+					t.Fatal("session cleanup did not finish")
+				}
+			}
+			s.toolResponses.Range(func(key, _ any) bool {
+				t.Errorf("retained tool response: %v", key)
+				return true
+			})
+		})
+	}
+}
+
 func TestACPNativeHandoffOwners(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 2 {
 		wg.Go(func() {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "created")
-			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), params: agent.BuildParams{FileCache: filecache.New()}}
+			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), runtimeBuildParams: agent.BuildParams{FileCache: filecache.New()}}
 			changed := make(chan string, 2)
 			s.hooks.AddSessionFunctionHook(hook.FileChanged, "", hook.FunctionHook{Callback: func(_ context.Context, in hook.HookInput) (hook.HookOutput, error) {
 				changed <- in.FilePath
 				return hook.HookOutput{}, nil
 			}})
 			views := fs.NewFileViews()
-			opts := []tool.AdaptOption{tool.WithSideEffectHandler(func(id string, v any) { s.sideEffects.Store(id, v) }), tool.WithToolContext(func(ctx context.Context) context.Context { return fs.WithFileViews(ctx, views) })}
+			opts := []tool.AdaptOption{tool.WithSideEffectHandler(func(id string, v any) { s.toolResponses.Store(id, v) }), tool.WithToolContext(func(ctx context.Context) context.Context { return fs.WithFileViews(ctx, views) })}
 			adapted := tool.AdaptTool(&fs.WriteTool{}, core.ToolSchema{Name: "Write"}, func() string { return dir }, opts...)
 			result, err := adapted.Run(core.WithToolCallID(context.Background(), "collision"), ai.ToolCall{ID: "collision", Input: `{"file_path":"created","content":"owned content"}`})
 			if err != nil {
@@ -64,10 +95,10 @@ func TestACPNativeHandoffOwners(t *testing.T) {
 			} else if got := <-changed; got != path {
 				t.Errorf("wrong owner path: %s", got)
 			}
-			if _, ok := s.sideEffects.Load("collision"); ok {
+			if _, ok := s.toolResponses.Load("collision"); ok {
 				t.Error("handoff not consumed")
 			}
-			files, _ := s.params.FileCache.RestoreRecent()
+			files, _ := s.runtimeBuildParams.FileCache.RestoreRecent()
 			if len(files) != 1 || files[0].FilePath != path {
 				t.Errorf("restore: %+v", files)
 			}

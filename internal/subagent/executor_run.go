@@ -271,6 +271,10 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 				run.native.RecordEvent(ev)
 			}
 		}
+		if event, ok := ev.(sdkagent.ToolEnd); ok && e.postTool != nil {
+			effect, _ := run.sideEffects.Load(event.ID)
+			e.postTool(core.ToolResult{ToolCallID: event.ID, ToolName: event.Name, Content: event.Result.Content, IsError: event.Err != nil}, effect)
+		}
 		run.forwardEvent(ctx, ev)
 	}
 	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, onEvent)
@@ -299,7 +303,12 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	ctx = tool.WithAgentID(ctx, agentAddr)
 	ctx = task.WithSessionID(ctx, e.parentSessionID)
 
-	result, err := runWithInbox(ctx, ag, run.req.TaskID, run.cfg.maxSteps)
+	inboxID := run.req.TaskID
+	if e.tasks != nil {
+		// Session-owned hosts do not publish worker addresses in the TUI broker.
+		inboxID = ""
+	}
+	result, err := runWithInbox(ctx, ag, inboxID, run.cfg.maxSteps)
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
 	// or continuation instruction again.
@@ -312,7 +321,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		}
 		defer cleanupFallback()
 		fallback.SetMessages(messages)
-		result, err = runWithInbox(ctx, fallback, run.req.TaskID, run.cfg.maxSteps)
+		result, err = runWithInbox(ctx, fallback, inboxID, run.cfg.maxSteps)
 	}
 	if err != nil {
 		if result != nil {

@@ -107,6 +107,18 @@ func ResetDefaultTracker()         // test-only
   row remains diagnostic after restart. Tool progress puts the tool name and
   failure reason before the command preview; full diagnostics remain in the log.
 
+## Connection-owned execution
+
+`BuildParams.Tasks` installs a session pool via `task.WithManager`;
+`task.FromContext` falls back to the native default. `Manager.Tools` provides
+opt-in TaskOutput/TaskStop tools; hosts must enforce permission and disabled-tool
+rules. The TUI toolset is unchanged.
+
+`Manager.Run` tracks shell execution through reaping and output drain. Stop new
+launches, then `Cancel` and `Join` before closing resources; `IsRunning` and
+`WaitForCompletion` do not prove cleanup. Subagent runners need separate lifecycle
+tracking. Protocol tests: `internal/app/acp_tasks_test.go`.
+
 ## Continuation and failure handling
 
 `Agent` creates a session and returns a Task ID. Use that ID for follow-up

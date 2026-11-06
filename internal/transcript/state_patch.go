@@ -64,7 +64,7 @@ func (p StatePatch) changesFrom(current State) (*StatePatch, error) {
 			p.Tasks = tasks
 		}
 	}
-	if p.Title == nil && p.LastPrompt == nil && p.Mode == nil && p.AutoPilot == nil && p.Group == nil && p.Tasks == nil {
+	if p.Model == nil && p.Title == nil && p.LastPrompt == nil && p.Mode == nil && p.AutoPilot == nil && p.Group == nil && p.Tasks == nil {
 		return nil, nil
 	}
 	return &p, nil

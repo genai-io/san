@@ -76,6 +76,9 @@ func projectRecords(records iter.Seq2[Record, error], resume bool) (*Transcript,
 				return nil, fmt.Errorf("state payload is required")
 			}
 			r.State.applyTo(&t.State)
+			if r.State.Model != nil {
+				t.Model = *r.State.Model
+			}
 			if t.ID == "" {
 				t.ID = r.SessionID
 			}

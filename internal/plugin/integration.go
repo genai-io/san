@@ -12,23 +12,37 @@ import (
 
 // GetPluginSkillPaths returns all skill directory paths from enabled plugins.
 func GetPluginSkillPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Skills })
+	return defaultRegistry.SkillPaths()
+}
+
+// SkillPaths returns this registry's enabled skill directories.
+func (r *Registry) SkillPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Skills })
 }
 
 // GetPluginAgentPaths returns all agent file paths from enabled plugins.
 func GetPluginAgentPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Agents })
+	return defaultRegistry.AgentPaths()
+}
+
+// AgentPaths returns this registry's enabled agent definitions.
+func (r *Registry) AgentPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Agents })
 }
 
 // GetPluginCommandPaths returns all command file paths from enabled plugins.
 func GetPluginCommandPaths() []PluginPath {
-	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Commands })
+	return defaultRegistry.CommandPaths()
 }
 
-// collectPluginPaths collects paths from enabled plugins using a getter function.
-func collectPluginPaths(getPaths func(*Plugin) []string) []PluginPath {
+// CommandPaths returns this registry's enabled command definitions.
+func (r *Registry) CommandPaths() []PluginPath {
+	return r.collectPaths(func(p *Plugin) []string { return p.Components.Commands })
+}
+
+func (r *Registry) collectPaths(getPaths func(*Plugin) []string) []PluginPath {
 	var paths []PluginPath
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		for _, path := range getPaths(p) {
 			paths = append(paths, PluginPath{
 				Path:      path,
@@ -50,9 +64,14 @@ type PluginPath struct {
 // GetPluginHooks returns all hooks from enabled plugins in setting.Hook format.
 // This can be merged with the application's settings.Hooks.
 func GetPluginHooks() map[string][]setting.Hook {
+	return defaultRegistry.Hooks()
+}
+
+// Hooks returns this registry's enabled hook contributions.
+func (r *Registry) Hooks() map[string][]setting.Hook {
 	result := make(map[string][]setting.Hook)
 
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		if p.Components.Hooks == nil {
 			continue
 		}
@@ -73,11 +92,16 @@ func GetPluginHooks() map[string][]setting.Hook {
 // MergePluginHooksIntoSettings merges plugin hooks into application settings.
 // Plugin hooks are appended after the existing hooks for each event.
 func MergePluginHooksIntoSettings(settings *setting.Data) {
+	defaultRegistry.MergeHooksIntoSettings(settings)
+}
+
+// MergeHooksIntoSettings appends this registry's hooks after existing hooks.
+func (r *Registry) MergeHooksIntoSettings(settings *setting.Data) {
 	if settings.Hooks == nil {
 		settings.Hooks = make(map[string][]setting.Hook)
 	}
 
-	pluginHooks := GetPluginHooks()
+	pluginHooks := r.Hooks()
 	for event, hooks := range pluginHooks {
 		settings.Hooks[event] = append(settings.Hooks[event], hooks...)
 	}
@@ -92,8 +116,13 @@ type PluginMCPServer struct {
 
 // GetPluginMCPServers returns all MCP servers from enabled plugins.
 func GetPluginMCPServers() []PluginMCPServer {
+	return defaultRegistry.MCPServers()
+}
+
+// MCPServers returns this registry's enabled MCP contributions.
+func (r *Registry) MCPServers() []PluginMCPServer {
 	var servers []PluginMCPServer
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		for name, cfg := range p.Components.MCP {
 			servers = append(servers, PluginMCPServer{
 				Name:   mcpServerNameSafe(p.Name() + ":" + name),
@@ -132,6 +161,11 @@ func mcpServerNameSafe(name string) string {
 // rootKey is the context-key type used to attach an active plugin root.
 type rootKey struct{}
 
+// WithRoot binds invocation scope without using the process-global fallback.
+func WithRoot(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, rootKey{}, root)
+}
+
 // RootFromContext returns the active plugin root attached to ctx, if any.
 func RootFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
@@ -166,6 +200,11 @@ func activePluginRoot(ctx context.Context) string {
 	if r, ok := RootFromContext(ctx); ok {
 		return r
 	}
+	if ctx != nil {
+		if _, scoped := ctx.Value(registryKey{}).(*Registry); scoped {
+			return ""
+		}
+	}
 	if fn, ok := rootProvider.Load().(func() string); ok && fn != nil {
 		return fn()
 	}
@@ -175,10 +214,15 @@ func activePluginRoot(ctx context.Context) string {
 // FindPluginRootForPath returns the plugin root that contains the given path,
 // or "" if no enabled plugin matches.
 func FindPluginRootForPath(path string) string {
+	return defaultRegistry.RootForPath(path)
+}
+
+// RootForPath resolves a definition within this session's enabled plugins.
+func (r *Registry) RootForPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	for _, p := range defaultRegistry.ListEnabled() {
+	for _, p := range r.ListEnabled() {
 		if strings.HasPrefix(path, p.Path+"/") || path == p.Path {
 			return p.Path
 		}
@@ -204,7 +248,7 @@ func FindPluginRootForPath(path string) string {
 //
 //     SAN_PLUGIN_ROOT=<path>   CLAUDE_PLUGIN_ROOT=<path>
 func PluginEnv(ctx context.Context) []string {
-	enabled := defaultRegistry.ListEnabled()
+	enabled := registryFromContext(ctx).ListEnabled()
 	if len(enabled) == 0 {
 		return nil
 	}

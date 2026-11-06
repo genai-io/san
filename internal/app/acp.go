@@ -12,15 +12,19 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/fs"
-	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
@@ -51,10 +55,17 @@ func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, ver
 
 func (h *acpHost) start(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string, writeTimeout time.Duration) (*acp.Agent, error) {
 	return acp.NewAgent(ctx, input, output, acp.AgentHandlers{
-		Initialize: func(context.Context, protocol.InitializeRequest) (protocol.InitializeResponse, error) {
-			return protocol.InitializeResponse{ProtocolVersion: 1, AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
+		Initialize: func(_ context.Context, req protocol.InitializeRequest) (protocol.InitializeResponse, error) {
+			h.mu.Lock()
+			caps := req.ClientCapabilities.Value.Elicitation
+			h.forms = caps.Present && !caps.Null && caps.Value.Form.Present && !caps.Value.Form.Null
+			h.mu.Unlock()
+			return protocol.InitializeResponse{ProtocolVersion: 1, AgentCapabilities: protocol.Some(protocol.AgentCapabilities{LoadSession: protocol.Some(true), MCPCapabilities: protocol.Some(protocol.MCPCapabilities{HTTP: protocol.Some(true), SSE: protocol.Some(true)})}), AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
 		},
 		CreateSession: h.create,
+		LoadSession:   h.load,
+		SetMode:       h.setMode,
+		SetConfig:     h.setConfig,
 		Prompt:        h.prompt,
 	}, acp.AgentOptions{Limits: acp.Limits{WriteTimeout: writeTimeout}})
 }
@@ -73,6 +84,7 @@ func (h *acpHost) wait(endpoint *acp.Agent) error {
 }
 
 type acpHost struct {
+	forms    bool
 	provider llm.Provider
 	model    string
 	mu       sync.Mutex
@@ -85,16 +97,27 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
-	data        agent.MainSession
-	params      agent.BuildParams
-	runtime     agent.Runtime
-	hooks       *hook.Engine
-	reminders   *reminder.Reminder
-	lastPrompt  string
-	sideEffects sync.Map
+	input              acpInput
+	nativeSession      agent.MainSession
+	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
+	runtime            agent.Runtime
+	hooks              *hook.Engine
+	reminders          *reminder.Reminder
+	lastPrompt         string
+	toolResponses      sync.Map
+	mcp                *mcp.Manager
+	permissions        *acpPermissions
+	commands           *command.Registry
+	lastSentCommands   []command.Info // Last successful notification; skips unchanged command lists.
+	agents             *subagent.Registry
+	models             []llm.ModelInfo
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
+	return h.open(ctx, req, "")
+}
+
+func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resumeID string) (protocol.NewSessionResponse, error) {
 	if !filepath.IsAbs(req.CWD) {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be absolute")
 	}
@@ -105,9 +128,6 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	if !info.IsDir() {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be a directory")
 	}
-	if len(req.MCPServers) != 0 {
-		return protocol.NewSessionResponse{}, fmt.Errorf("ACP-supplied MCP servers are not supported")
-	}
 	settings, err := setting.LoadForCwd(req.CWD)
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
@@ -116,57 +136,121 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	opened, err := store.Create(session.CreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+	var opened *session.Session
+	var history *session.History
+	if resumeID == "" {
+		opened, err = store.Create(session.CreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Provider: h.provider.Name(), Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+	} else {
+		opened, history, err = store.Open(resumeID)
+	}
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New()}
-	if err := s.data.Validate(); err != nil {
+	modelID := h.model
+	models, _ := h.provider.ListModels(ctx)
+	found := false
+	for _, m := range models {
+		if m.ID == h.model {
+			found = true
+		}
+	}
+	if !found {
+		models = append(models, llm.ModelInfo{ID: h.model, Name: h.model})
+	}
+	if history != nil && history.Metadata.Model != "" {
+		found = false
+		for _, m := range models {
+			if m.ID == history.Metadata.Model {
+				found = true
+			}
+		}
+		if !found || (history.Metadata.Provider != "" && history.Metadata.Provider != h.provider.Name()) {
+			_ = opened.Close()
+			return protocol.NewSessionResponse{}, fmt.Errorf("saved model is unavailable from the configured provider")
+		}
+		modelID = history.Metadata.Model
+	}
+	plugins, skills, servers, err := acpExtensions(ctx, req.CWD, settings, req.MCPServers)
+	if err != nil {
+		_ = opened.Close()
+		return protocol.NewSessionResponse{}, err
+	}
+	ctx = plugin.WithRegistry(ctx, plugins)
+	s := &acpSession{nativeSession: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
+	s.commands = acpCommands(req.CWD, plugins)
+	s.agents, err = subagent.Load(req.CWD, agentPathsFromPlugins(plugins.AgentPaths()))
+	if err != nil {
+		_ = servers.Close()
+		_ = opened.Close()
+		return protocol.NewSessionResponse{}, err
+	}
+	tasks := task.NewManager()
+	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
+	if err := s.nativeSession.Validate(); err != nil {
+		_ = servers.Close()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.TranscriptPath())
 	s.hooks.SetAuditCallback(opened.RecordHookAudit)
-	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), h.model)
+	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
+	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), modelID)
 	audit := func(rec transcript.Record) { _ = opened.Append(context.Background(), rec) }
-	policy := agent.PermissionPolicy{Settings: setting.New(settings), Session: setting.NewSessionPermissions(), Audit: audit}
-	policy.Session.AddWorkingDirectory(req.CWD)
-	if setting.New(settings).AutoMemory() {
-		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
+	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings, audit: audit}
+	s.permissions.AddWorkingDirectory(req.CWD)
+	if history != nil {
+		s.runtime.SetMessages(history.Messages)
+		s.reminders.RestoreHistory(store.ChatRows(history))
+		s.lastPrompt = history.Metadata.LastPrompt
+		if history.Metadata.Mode == "auto-accept" {
+			s.permissions.SetMode(setting.ModeAutoAccept)
+		}
 	}
-	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: h.model,
-		MaxTokens: setting.DefaultMaxTokens,
+	if setting.New(settings).AutoMemory() {
+		s.permissions.autoMemory = setting.MemoryStoresFor(req.CWD)
+	}
+	policy := s.permissions.ForDirectory(req.CWD)
+	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
+		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
+		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
-		ToolResponse: func(callID string, response any) { s.sideEffects.Store(callID, response) },
-		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
-			if acpBackgroundCall(name, args) {
-				return agent.PermDecisionResult{Decision: perm.Reject, Reason: "ACP supports foreground commands only"}
-			}
-			return policy.Decide(name, args)
-		},
-		CanApproveByHook: func(name string, args map[string]any) bool {
-			return !acpBackgroundCall(name, args) && policy.CanApproveByHook(name, args)
-		},
-		HookEngine: s.hooks, OnEvent: opened.RecordEvent,
+		ToolResponse: func(callID string, response any) { s.toolResponses.Store(callID, response) },
+		Tasks:        tasks, NativeTools: tasks.Tools(),
+		PermissionRules:  policy.Decide,
+		CanApproveByHook: policy.CanApproveByHook,
+		HookEngine:       s.hooks, OnEvent: opened.RecordEvent,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   policy.AutoMemory, FileCache: filecache.New(),
 	}
 	// Tools requiring the TUI or process-global extension state are not offered.
-	s.params.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
-	for _, schema := range s.params.Schemas() {
+	s.runtimeBuildParams.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
+	for _, schema := range s.runtimeBuildParams.Schemas() {
 		switch schema.Name {
-		case "Read", "Write", "Edit", "Bash", "Glob", "Grep":
+		case "AskUserQuestion":
+			if !h.forms {
+				s.runtimeBuildParams.DisabledTools[schema.Name] = true
+			}
+		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent":
 		default:
-			s.params.DisabledTools[schema.Name] = true
+			s.runtimeBuildParams.DisabledTools[schema.Name] = true
 		}
 	}
+	if h.forms {
+		s.runtimeBuildParams.AskUser = s.input.ask
+		s.runtimeBuildParams.BashPromptResponder = s.input.responder
+	}
 	s.refreshMemory()
-	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: "startup", Model: h.model})
+	source := "startup"
+	if history != nil {
+		source = "resume"
+	}
+	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: source, Model: modelID})
 	if outcome.AdditionalContext != "" {
 		s.reminders.Enqueue(outcome.AdditionalContext)
 	}
 	if err := ctx.Err(); err != nil {
 		s.hooks.Shutdown()
+		_ = servers.Close()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
@@ -174,7 +258,7 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (p
 	h.mu.Lock()
 	h.sessions[id] = s
 	h.mu.Unlock()
-	return protocol.NewSessionResponse{SessionID: id}, nil
+	return protocol.NewSessionResponse{SessionID: id, Modes: protocol.Some(s.modes()), ConfigOptions: protocol.Some(s.configOptions())}, nil
 }
 
 func (h *acpHost) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (protocol.PromptResponse, error) {
@@ -193,17 +277,24 @@ func (s *acpSession) close() error {
 		gate.Close()
 	}
 	err := s.runtime.Reset(context.Background())
-	s.sideEffects.Clear()
+	if s.runtimeBuildParams.Tasks != nil {
+		s.runtimeBuildParams.Tasks.Cancel()
+		s.runtimeBuildParams.Tasks.Join()
+	}
+	s.toolResponses.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	s.hooks.Execute(ctx, hook.SessionEnd, hook.HookInput{Reason: "connection_closed"})
 	s.hooks.Shutdown()
-	return errors.Join(err, s.data.Session.Close())
+	if s.mcp != nil {
+		err = errors.Join(err, s.mcp.Close())
+	}
+	return errors.Join(err, s.nativeSession.Session.Close())
 }
 
 func (s *acpSession) refreshMemory() {
 	var user, project []string
-	for _, file := range system.LoadMemoryFiles(s.params.CWD) {
+	for _, file := range system.LoadMemoryFiles(s.runtimeBuildParams.CWD) {
 		if file.Level == "global" {
 			user = append(user, file.Content)
 		} else {
@@ -216,17 +307,8 @@ func (s *acpSession) refreshMemory() {
 }
 
 func (s *acpSession) recordState() error {
-	return s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new("normal")}})
-}
-
-func acpBackgroundCall(name string, args map[string]any) bool {
-	if name != "Bash" {
-		return false
-	}
-	background, _ := args["run_in_background"].(bool)
-	mode, _ := args["execution_mode"].(string)
-	return background || (mode != "" && mode != "foreground")
+	return s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
+		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.permissions.CurrentMode().PersistenceName())}})
 }
 
 func acpText(text string) protocol.ContentBlock {

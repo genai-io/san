@@ -46,14 +46,14 @@ func (t *SkillTool) PreparePermission(ctx context.Context, params map[string]any
 	args := tool.GetString(params, "args")
 
 	// Find skill in registry
-	if skill.DefaultIfInit() == nil {
+	if skill.FromContext(ctx) == nil {
 		return nil, fmt.Errorf("skill registry not initialized")
 	}
 
-	sk, ok := skill.Default().Get(skillName)
+	sk, ok := skill.FromContext(ctx).Get(skillName)
 	if !ok {
 		// Try to find by partial match
-		sk = skill.Default().FindByPartialName(skillName)
+		sk = skill.FromContext(ctx).FindByPartialName(skillName)
 		if sk == nil {
 			return nil, fmt.Errorf("skill not found: %s", skillName)
 		}
@@ -108,14 +108,14 @@ func (t *SkillTool) execute(ctx context.Context, params map[string]any, cwd stri
 	args := tool.GetString(params, "args")
 
 	// Find skill in registry
-	if skill.DefaultIfInit() == nil {
+	if skill.FromContext(ctx) == nil {
 		return toolresult.NewErrorResult(t.Name(), "skill registry not initialized")
 	}
 
-	sk, ok := skill.Default().Get(skillName)
+	sk, ok := skill.FromContext(ctx).Get(skillName)
 	if !ok {
 		// Try to find by partial match
-		sk = skill.Default().FindByPartialName(skillName)
+		sk = skill.FromContext(ctx).FindByPartialName(skillName)
 		if sk == nil {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("skill not found: %s", skillName))
 		}

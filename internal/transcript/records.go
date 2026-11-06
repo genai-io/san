@@ -93,6 +93,7 @@ type Record struct {
 // StatePatch updates selected fields; nil leaves a field unchanged.
 // A non-nil pointer to an empty value explicitly clears it.
 type StatePatch struct {
+	Model      *string      `json:"model,omitempty"`
 	Title      *string      `json:"title,omitempty"`
 	LastPrompt *string      `json:"lastPrompt,omitempty"`
 	Mode       *string      `json:"mode,omitempty"`
