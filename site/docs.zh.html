@@ -14,33 +14,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#top">跳到正文</a>
 
-<nav id="nav">
+<nav id="nav" aria-label="主导航">
   <div class="wrap">
-    <span class="logo"><a href="index.zh.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="切换菜单" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="index.zh.html">San<span class="spark">三</span></a></span>
+    <button class="nav-toggle" aria-label="切换菜单" aria-controls="nav-links" aria-expanded="false">菜单</button>
     <div class="nav-links" id="nav-links">
-      <a href="index.zh.html#why">为什么</a>
-      <a href="index.zh.html#benchmark">基准</a>
+      <a href="index.zh.html#why">为什么选 San</a>
+      <a href="index.zh.html#benchmark">基准测试</a>
       <a href="index.zh.html#community">社区</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">介绍</a>
-      <a href="getting-started.zh.html">开始</a>
-      <a href="docs.zh.html">文档</a>
+      <a href="getting-started.zh.html">快速开始</a>
+      <a href="docs.zh.html" aria-current="page">文档</a>
       <span class="lang-switch">
-        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-label"></span>
-          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
-        </button>
-        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+        <button class="lang-btn" id="lang-btn" aria-controls="lang-menu" aria-expanded="false"><span id="lang-label">中文</span><span aria-hidden="true">⌄</span></button>
+        <div class="lang-menu" id="lang-menu"><a href="docs.html" lang="en" hreflang="en">EN</a><a href="docs.zh.html" lang="zh" hreflang="zh">中文</a></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">GitHub</a>
     </div>
   </div>
 </nav>
 
+<main id="top">
 <header class="page-hero">
   <div class="wrap">
+    <span class="kicker">参考手册 / 02</span>
     <h1>文档</h1>
     <p>从第一个提示词到内部原理，应有尽有。</p>
   </div>
@@ -51,16 +50,16 @@
     <div class="grid">
 
       <div class="card doc-card">
-        <h3>从这里开始</h3>
+        <h2>从这里开始</h2>
         <ul>
           <li><a href="getting-started.zh.html">开始</a></li>
-          <li><a href="https://github.com/genai-io/san/blob/main/docs/architecture.md">架构概览</a></li>
+          <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/architecture.md">架构概览</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/development.md">本地开发</a></li>
         </ul>
       </div>
 
       <div class="card doc-card">
-        <h3>指南</h3>
+        <h2>指南</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/guides/writing-a-skill.md">编写技能</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/guides/writing-a-subagent.md">编写子智能体</a></li>
@@ -69,7 +68,7 @@
       </div>
 
       <div class="card doc-card">
-        <h3>概念</h3>
+        <h2>概念</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/persona.md">角色</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">通信通道与身份</a></li>
@@ -81,7 +80,7 @@
       </div>
 
       <div class="card doc-card">
-        <h3>参考</h3>
+        <h2>参考</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/slash-commands.md">斜杠命令</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/configuration.md">配置</a></li>
@@ -92,16 +91,16 @@
       </div>
 
       <div class="card doc-card">
-        <h3>架构与包</h3>
+        <h2>架构与包</h2>
         <ul>
-          <li><a href="https://github.com/genai-io/san/blob/main/docs/architecture.md">架构</a></li>
+          <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/architecture.md">架构</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/packages/index.md">包索引</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/dependency-rules.md">依赖规则</a></li>
         </ul>
       </div>
 
       <div class="card doc-card">
-        <h3>运维</h3>
+        <h2>运维</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/testing.md">测试</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">基准测试</a></li>
@@ -123,9 +122,10 @@
   </div>
 </section>
 
+</main>
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> San · Apache 2.0</span>
+    <span>© <span id="year">2026</span> San · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="docs.zh.html">文档</a> ·
@@ -134,53 +134,6 @@
   </div>
 </footer>
 
-<script>
-  document.getElementById('year').innerText = new Date().getFullYear();
-
-  function toggleNav(btn) {
-    const nav = document.getElementById('nav');
-    const open = nav.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open);
-  }
-  document.querySelectorAll('#nav-links a').forEach(a =>
-    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
-  const nav = document.getElementById('nav');
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  // Language switcher — custom dropdown
-  (function() {
-    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
-    const PAGES = new Set(['index', 'getting-started', 'docs']);
-    const page = location.pathname.split('/').pop() || 'index.html';
-    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
-      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
-    const m = page.match(/\.([a-z]{2})\.html$/);
-    const cur = m ? m[1] : 'en';
-    const label = document.getElementById('lang-label');
-    const menu = document.getElementById('lang-menu');
-    const btn = document.getElementById('lang-btn');
-    if (!label || !menu || !btn) return;
-    label.textContent = LANGS[cur].label;
-    Object.entries(LANGS).forEach(([code, lang]) => {
-      const opt = document.createElement('button');
-      opt.textContent = lang.label;
-      opt.dataset.code = code;
-      if (code === cur) opt.classList.add('active');
-      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
-      menu.appendChild(opt);
-    });
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const open = this.getAttribute('aria-expanded') === 'true';
-      this.setAttribute('aria-expanded', !open);
-      menu.classList.toggle('open');
-    });
-    document.addEventListener('click', function () {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-  })();
-</script>
+<script src="site.js"></script>
 </body>
 </html>

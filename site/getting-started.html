@@ -14,33 +14,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#top">Skip to content</a>
 
-<nav id="nav">
+<nav id="nav" aria-label="Main navigation">
   <div class="wrap">
-    <span class="logo"><a href="index.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="index.html">San<span class="spark">三</span></a></span>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-links" aria-expanded="false">Menu</button>
     <div class="nav-links" id="nav-links">
-      <a href="index.html#why">Why</a>
+      <a href="index.html#why">Why San</a>
       <a href="index.html#benchmark">Benchmark</a>
       <a href="index.html#community">Community</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">Intro</a>
-      <a href="getting-started.html">Start</a>
+      <a href="getting-started.html" aria-current="page">Get started</a>
       <a href="docs.html">Docs</a>
       <span class="lang-switch">
-        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-label"></span>
-          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
-        </button>
-        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+        <button class="lang-btn" id="lang-btn" aria-controls="lang-menu" aria-expanded="false"><span id="lang-label">EN</span><span aria-hidden="true">⌄</span></button>
+        <div class="lang-menu" id="lang-menu"><a href="getting-started.html" lang="en" hreflang="en">EN</a><a href="getting-started.zh.html" lang="zh" hreflang="zh">中文</a></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">GitHub</a>
     </div>
   </div>
 </nav>
 
+<main id="top">
 <header class="page-hero">
   <div class="wrap">
+    <span class="kicker">Field guide / 01</span>
     <h1>Getting Started</h1>
     <p>From install to your first prompt in a couple of minutes.</p>
   </div>
@@ -53,33 +52,39 @@
       <div class="step">
         <div class="num">1</div>
         <div class="step-body">
-          <h3>Install</h3>
-          <p>One command. Re-run anytime to upgrade.</p>
+          <h2>Install</h2>
+          <p>Choose an installation method. To update, run <code>san update</code>, or <code>brew update &amp;&amp; brew upgrade genai-io/san/san</code> for Homebrew installations.</p>
+          <p style="margin-top:14px;"><b>Homebrew</b></p>
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="install-cmd-brew">brew install genai-io/san/san</code>
+            <button class="copy-btn" data-copy="install-cmd-brew" aria-live="polite">Copy</button>
+          </div>
           <p style="margin-top:14px;"><b>macOS / Linux</b></p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd', this)">Copy</button>
+            <button class="copy-btn" data-copy="install-cmd" aria-live="polite">Copy</button>
           </div>
           <p style="margin-top:14px;"><b>Windows (PowerShell)</b></p>
           <div class="cmd">
             <span class="prompt">&gt;</span>
             <code id="install-cmd-win">irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd-win', this)">Copy</button>
+            <button class="copy-btn" data-copy="install-cmd-win" aria-live="polite">Copy</button>
           </div>
-          <p style="margin-top:14px;">Prefer Go? <code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
+          <p style="margin-top:14px;">Prefer Go (1.26.9+)? <code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
         </div>
       </div>
 
       <div class="step">
         <div class="num">2</div>
         <div class="step-body">
-          <h3>Launch &amp; pick a theme</h3>
+          <h2>Launch &amp; pick a theme</h2>
           <p>Start San by running <code class="inline">san</code>. On first launch you'll pick a color theme — choose one, and you're ready to connect a model.</p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="run-cmd">san</code>
-            <button class="copy-btn" onclick="copyEl('run-cmd', this)">Copy</button>
+            <button class="copy-btn" data-copy="run-cmd" aria-live="polite">Copy</button>
           </div>
         </div>
       </div>
@@ -87,10 +92,10 @@
       <div class="step">
         <div class="num">3</div>
         <div class="step-body">
-          <h3>Connect a model</h3>
+          <h2>Connect a model</h2>
           <p>Type <code class="inline">/models</code> to open model settings, then:</p>
           <ol class="substeps">
-            <li>In the <b>Provider</b> pane on the right, paste your API key — this loads that provider's available models.</li>
+            <li>Choose a <b>provider</b> and add its API key when prompted. OpenAI and GitHub Copilot also support subscription sign-in.</li>
             <li>Wait for the provider's models to finish loading.</li>
             <li>Pick the model you want from the <b>Model</b> list, and start coding.</li>
           </ol>
@@ -111,9 +116,10 @@
   </div>
 </section>
 
+</main>
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> San · Apache 2.0</span>
+    <span>© <span id="year">2026</span> San · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="https://github.com/genai-io/san/tree/main/docs">Docs</a> ·
@@ -122,61 +128,6 @@
   </div>
 </footer>
 
-<script>
-  function copyEl(id, btn) {
-    const text = document.getElementById(id).innerText;
-    navigator.clipboard.writeText(text).then(() => {
-      const old = btn.innerText;
-      btn.innerText = 'Copied!';
-      setTimeout(() => btn.innerText = old, 1500);
-    });
-  }
-  document.getElementById('year').innerText = new Date().getFullYear();
-
-  function toggleNav(btn) {
-    const nav = document.getElementById('nav');
-    const open = nav.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open);
-  }
-  document.querySelectorAll('#nav-links a').forEach(a =>
-    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
-  const nav = document.getElementById('nav');
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  // Language switcher — custom dropdown
-  (function() {
-    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
-    const PAGES = new Set(['index', 'getting-started', 'docs']);
-    const page = location.pathname.split('/').pop() || 'index.html';
-    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
-      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
-    const m = page.match(/\.([a-z]{2})\.html$/);
-    const cur = m ? m[1] : 'en';
-    const label = document.getElementById('lang-label');
-    const menu = document.getElementById('lang-menu');
-    const btn = document.getElementById('lang-btn');
-    if (!label || !menu || !btn) return;
-    label.textContent = LANGS[cur].label;
-    Object.entries(LANGS).forEach(([code, lang]) => {
-      const opt = document.createElement('button');
-      opt.textContent = lang.label;
-      opt.dataset.code = code;
-      if (code === cur) opt.classList.add('active');
-      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
-      menu.appendChild(opt);
-    });
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const open = this.getAttribute('aria-expanded') === 'true';
-      this.setAttribute('aria-expanded', !open);
-      menu.classList.toggle('open');
-    });
-    document.addEventListener('click', function () {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-  })();
-</script>
+<script src="site.js"></script>
 </body>
 </html>
