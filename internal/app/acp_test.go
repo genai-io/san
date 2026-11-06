@@ -52,8 +52,8 @@ func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(c
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	t.Cleanup(cancel)
+	// Connection lifetime must not consume individual requests' timeout budgets.
+	ctx := t.Context()
 	f := &acpFixture{ctx: ctx, host: &acpHost{provider: acpTestProvider{driver.Client()}, model: "test", sessions: make(map[protocol.SessionID]*acpSession)}}
 	input, send := io.Pipe()
 	recv, output := io.Pipe()
@@ -116,7 +116,9 @@ func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(c
 			}
 		}
 	})
-	if _, err := f.client.Initialize(ctx, init); err != nil {
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := f.client.Initialize(initCtx, init); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -124,14 +126,18 @@ func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(c
 
 func (f *acpFixture) session(t testing.TB, cwd string) protocol.SessionID {
 	t.Helper()
-	res, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
+	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	defer cancel()
+	res, err := f.client.CreateSession(ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return res.SessionID
 }
 func (f *acpFixture) prompt(id protocol.SessionID, text string) (protocol.PromptResponse, error) {
-	return f.client.Prompt(f.ctx, protocol.PromptRequest{SessionID: id, Prompt: []protocol.ContentBlock{acpText(text)}})
+	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	defer cancel()
+	return f.client.Prompt(ctx, protocol.PromptRequest{SessionID: id, Prompt: []protocol.ContentBlock{acpText(text)}})
 }
 func acpChoice(id string) protocol.RequestPermissionResponse {
 	return protocol.RequestPermissionResponse{Outcome: protocol.RequestPermissionOutcome{Value: protocol.RequestPermissionOutcomeSelectedVariant{Outcome: "selected", OptionID: protocol.PermissionOptionID(id)}}}
