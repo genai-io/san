@@ -236,17 +236,14 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString("\n")
 		b.WriteString(suggestions)
 	}
-	// Reserve inference space before allocating chat and activity rows.
-	if status := conv.RenderInferenceStatus(m.messageRenderParams()); status != "" {
-		if m.footerHasBreathingRoom() {
-			b.WriteString("\n")
-		}
+	// Task status owns the row; update information uses only the space left.
+	status := conv.RenderInferenceStatus(m.messageRenderParams())
+	if status != "" && m.footerHasBreathingRoom() {
+		b.WriteString("\n")
+	}
+	if status = m.withUpdateNotice(status); status != "" {
 		b.WriteString("\n")
 		b.WriteString(status)
-	}
-	if notice := m.renderUpdateNotice(); notice != "" {
-		b.WriteString("\n")
-		b.WriteString(notice)
 	}
 	b.WriteString("\n")
 	b.WriteString(separator)
@@ -268,22 +265,26 @@ func (m *model) renderFooter(separator string) (string, int) {
 	return b.String(), inputRow
 }
 
-func (m model) renderUpdateNotice() string {
+func (m model) withUpdateNotice(status string) string {
 	if m.updateInstalled == "" {
-		return ""
+		return status
 	}
 	width := max(0, m.env.Width-1)
+	available := width
+	if status != "" {
+		available -= lipgloss.Width(status) + 3
+	}
 	label := "Restart to update"
 	version := "v" + m.updateInstalled + " installed · "
-	if lipgloss.Width(label+version) > width {
+	if lipgloss.Width(label+version) > available {
 		version = ""
 	}
-	if lipgloss.Width(label) > width {
-		return ""
+	if lipgloss.Width(label) > available {
+		return status
 	}
 	notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(version) +
 		lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render(label)
-	return strings.Repeat(" ", width-lipgloss.Width(notice)) + notice
+	return status + strings.Repeat(" ", width-lipgloss.Width(status)-lipgloss.Width(notice)) + notice
 }
 
 func (m model) renderInputView() string {
