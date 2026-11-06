@@ -51,7 +51,7 @@ type Executor struct {
 	parentSessionID            string               // Parent session ID for linking subagent sessions
 	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
-	skillPrompt                func(string) string  // owner's preloaded skill resolver; nil uses the TUI registry
+	resolveSkill               func(string) string  // nil uses the TUI registry
 	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
@@ -634,7 +634,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	}
 	permissionGate := tool.Permission(permFn)
 	if e.permission != nil {
-		permissionGate = tool.HookedPermission(e.hooks, ownedPermission{check: permFn})
+		permissionGate = tool.HookedPermission(e.hooks, workerPermission{check: permFn})
 	}
 	gate := core.Gates(activity(onToolExec), func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 		if e.toolContext != nil {

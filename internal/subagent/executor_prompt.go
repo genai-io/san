@@ -32,7 +32,7 @@ func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode, sche
 
 // SetSkillResolver binds preloaded skills to the same owner as runtime Skill calls.
 // A configured resolver returning an empty body never falls back to global skills.
-func (e *Executor) SetSkillResolver(resolve func(string) string) { e.skillPrompt = resolve }
+func (e *Executor) SetSkillResolver(resolve func(string) string) { e.resolveSkill = resolve }
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
 // It bundles the charter and preloaded skills. buildAgent adds the constraints
@@ -43,7 +43,7 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 	// Preloaded skills are static configuration on AgentConfig.Skills. We
 	// inline their bodies into CustomPrompt so they sit in the identity slot
 	// — they are part of "who this agent is", not a runtime invocation.
-	resolve := e.skillPrompt
+	resolve := e.resolveSkill
 	if resolve == nil && skill.DefaultIfInit() != nil {
 		resolve = skill.Default().SkillInvocationPrompt
 	}

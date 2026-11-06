@@ -9,11 +9,9 @@ import (
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
 
-// requireConfigIdle extends the SDK's exclusive configuration admission to work
-// that outlives a prompt. The SDK excludes prompts (and other configuration) for
-// this entire handler, so no tool can launch between this check and mutation.
-// ACP workers cannot launch agents or background Bash themselves. Count cleanup,
-// not just terminal task status: hooks and policy remain live until Run returns.
+// SDK admission excludes prompts and configuration changes through this handler;
+// workers cannot launch nested agents or background Bash. Wait for cleanup, not
+// just terminal task status, before changing policy or hooks.
 func (s *acpSession) requireConfigIdle() error {
 	if !s.params.Tasks.Idle() {
 		return &acp.Error{Code: -32001, Message: "Session busy: background tasks or worker cleanup are still active"}
@@ -64,8 +62,7 @@ func (h *acpHost) setConfig(ctx context.Context, request protocol.SetSessionConf
 		return protocol.SetSessionConfigOptionResponse{}, err
 	}
 	if id != s.params.ModelID {
-		// Validate construction before stopping the idle runtime. Permission policy,
-		// native history, reminders and observed file versions keep their owners.
+		// Validate the model before stopping the idle runtime.
 		if _, err := s.params.Provider.Client(id, nil); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, fmt.Errorf("selected model is unavailable")
 		}

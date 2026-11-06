@@ -17,8 +17,7 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// Rebuilt only with the idle parent runtime. Configuration changes are rejected
-// until background workers finish cleanup, preserving their policy and hooks.
+// Rebuild only while idle, after background worker cleanup.
 func (s *acpSession) configureAgents() {
 	e := subagent.NewExecutor(s.params.Provider, s.params.CWD, s.params.ModelID, s.hooks)
 	e.ConfigureOwner(s.params.Tasks, s.agents, func(background bool, cwd string) perm.PermissionFunc {
@@ -31,8 +30,7 @@ func (s *acpSession) configureAgents() {
 			}
 			if !background {
 				if gate := s.runtime.PermissionGate(); gate != nil {
-					// Keep original spelling for rule matching, but show the human
-					// the actual execution path when approval is required.
+					// Match submitted paths; display resolved paths for approval.
 					rules := func(string, map[string]any) agent.PermDecisionResult { return policy.Decide(name, input) }
 					return gate.WithRules(rules).Check(ctx, name, setting.PermissionPaths(name, input, cwd), false, "")
 				}
@@ -69,8 +67,7 @@ func (s *acpSession) configureAgents() {
 	worker.SetExecutor(subagent.NewExecutorAdapter(e))
 	schema := worker.Schema()
 	schema.Description += " ACP supports foreground workers and session-owned background workers. Background requests requiring human approval are denied; use TaskOutput and TaskStop to inspect or cancel."
-	// Foreground workers inherit the prompt-owned responder through their context.
-	// RunBackground starts with a fresh context and cannot retain this channel.
+	// Only foreground workers inherit the prompt responder; RunBackground starts a fresh context.
 	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithSideEffectHandler(s.params.ToolResponse), tool.WithAskUser(s.params.AskUser), tool.WithBashPromptResponderProvider(s.params.BashPromptResponder)))
 	s.params.AgentCatalog = s.agents.AgentCatalog
 }
