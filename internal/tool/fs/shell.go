@@ -363,6 +363,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	childOutput.Close()
 
 	// Register with task manager
+	ctx = task.WithOwnerAgentID(ctx, tool.AgentIDFromContext(ctx))
 	bgTask := task.Default().CreateBashTask(ctx, cmd, command, description, cancel)
 	bgTask.SetLifetime(lifetime)
 

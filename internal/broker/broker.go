@@ -10,10 +10,10 @@
 //   - Send routes a Message to its To address. A message to an address no one
 //     holds is dropped, like a call to a number that's no longer in service.
 //
-// That is the whole broker — a map guarded by a mutex, with direct addressing:
-// no topics, no broadcast, no queuing beyond the recipient's own inbox. What a
-// delivered message does (land in a subagent's inbox, wake the main loop) is
-// the recipient's business, kept out of here so the broker only routes.
+// SendCompletion additionally retains task completion mail for an absent or
+// rejecting owner until it registers again. Retention is process-local; there
+// are no topics, broadcasts, fallback recipients, or agent startup side effects.
+// What delivered mail does is the recipient's business.
 package broker
 
 import "sync"
@@ -48,22 +48,39 @@ type TaskCompletion struct {
 // apart from "silently discarded".
 type Deliver func(Message) bool
 
+// A distinct registration lets a rejected delivery notice replacement while
+// its callback was running, without comparing functions or holding mu.
+type registration struct {
+	deliver Deliver
+}
+
+type completionMail struct {
+	messages []Message // includes the in-flight head, for pending deduplication
+	draining bool
+}
+
 var (
-	mu     sync.RWMutex
-	routes = map[string]Deliver{}
+	mu      sync.RWMutex
+	routes  = map[string]*registration{}
+	pending = map[string]*completionMail{}
 )
 
-// Register makes deliver the recipient for addr. Addresses are unique per run
-// (a task id, or Main), so an address is registered by exactly one agent at a
-// time.
+// Register makes deliver the recipient for addr, replacing any prior recipient,
+// and flushes retained completion mail in order. A rejection leaves the remaining
+// mail pending for a later registration. Deliver must not block.
 func Register(addr string, deliver Deliver) {
 	mu.Lock()
-	routes[addr] = deliver
+	routes[addr] = &registration{deliver: deliver}
+	mail := pending[addr]
 	mu.Unlock()
+	if mail != nil {
+		flushCompletions(addr, mail)
+	}
 }
 
 // Unregister removes addr's recipient. It is idempotent — unregistering an
-// address no one holds is a no-op.
+// address no one holds is a no-op. An already-running delivery can still finish;
+// a closed recipient must reject it so completion mail remains pending.
 func Unregister(addr string) {
 	mu.Lock()
 	delete(routes, addr)
@@ -82,12 +99,84 @@ func Send(m Message) bool {
 	if !ok {
 		return false
 	}
-	return deliver(m)
+	return deliver.deliver(m)
 }
 
-// Reset removes every registration. Test-only.
+// SendCompletion accepts structured completion mail for a non-Main owner.
+// True means accepted for delivery or process-lifetime retention, not necessarily
+// delivered. Absent/rejecting owners retain mail until Register; no fallback or
+// auto-start occurs. Pending duplicates (owner, session, task, attempt) coalesce.
+func SendCompletion(m Message) bool {
+	if m.TaskCompletion == nil || m.To == "" || m.To == Main {
+		return false
+	}
+	// Retained metadata belongs to the broker, not the caller or recipient.
+	completion := *m.TaskCompletion
+	m.TaskCompletion = &completion
+	mu.Lock()
+	mail := pending[m.To]
+	if mail == nil {
+		mail = &completionMail{}
+		pending[m.To] = mail
+	}
+	for _, queued := range mail.messages {
+		if queued.SessionID == m.SessionID && *queued.TaskCompletion == completion {
+			mu.Unlock()
+			return true
+		}
+	}
+	mail.messages = append(mail.messages, m)
+	mu.Unlock()
+	flushCompletions(m.To, mail)
+	return true
+}
+
+// One drainer per owner preserves FIFO order, including across replacement
+// registrations. Callbacks may reenter the broker; they never run under mu.
+func flushCompletions(addr string, mail *completionMail) {
+	mu.Lock()
+	if pending[addr] != mail || mail.draining {
+		mu.Unlock()
+		return
+	}
+	mail.draining = true
+	for {
+		route := routes[addr]
+		if route == nil || len(mail.messages) == 0 {
+			mail.draining = false
+			if len(mail.messages) == 0 {
+				delete(pending, addr)
+			}
+			mu.Unlock()
+			return
+		}
+		m := mail.messages[0]
+		completion := *m.TaskCompletion
+		m.TaskCompletion = &completion
+		mu.Unlock()
+		accepted := route.deliver(m)
+		mu.Lock()
+		if pending[addr] != mail { // Reset detached this in-flight queue.
+			mu.Unlock()
+			return
+		}
+		if accepted {
+			mail.messages[0] = Message{}
+			mail.messages = mail.messages[1:]
+		} else if routes[addr] == route {
+			mail.draining = false
+			mu.Unlock()
+			return
+		}
+		// If Register raced a rejection, retry against the new registration.
+		// Its flush saw draining=true, so this drainer owns that retry.
+	}
+}
+
+// Reset removes every registration and pending completion. Test-only.
 func Reset() {
 	mu.Lock()
-	routes = map[string]Deliver{}
+	routes = map[string]*registration{}
+	pending = map[string]*completionMail{}
 	mu.Unlock()
 }

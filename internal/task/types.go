@@ -114,6 +114,7 @@ type TaskInfo struct {
 	Attempt         int
 	Attempts        []AttemptInfo
 	ParentSessionID string
+	OwnerAgentID    string // Empty identifies the main agent.
 
 	// Common fields
 	ID          string

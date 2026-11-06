@@ -17,10 +17,10 @@ to the executor and tools.
   delivers it to whoever holds that address; a message to an address no one
   holds returns `false`.
 
-Direct addressing only — no topics, no broadcast, no queuing beyond the
-recipient's own. What a delivered message does (enter a subagent's
-conversation, wake the main loop) is the recipient's business, kept out of this
-package so the broker only routes.
+- **SendCompletion** retains undelivered child-owned task results in process memory
+  until that same owner registers again. It never redirects to main or starts an agent.
+
+Direct addressing only; ordinary `Send` remains unqueued.
 
 ## Contract
 
@@ -40,6 +40,7 @@ type Message struct {
 func Register(addr string, deliver func(Message) bool) // add a recipient
 func Unregister(addr string)                      // remove it (idempotent)
 func Send(m Message) bool                          // routes to m.To; false when no one holds it
+func SendCompletion(m Message) bool                // delivered or retained for its child owner
 func Reset()                                       // test-only
 ```
 
@@ -56,7 +57,7 @@ notice, so a switch cannot inject an old worker's result into the new session.
 
 | Sender | Sends |
 |---|---|
-| task lifecycle (`app`) | a background task's completion to `Main` |
+| task lifecycle (`app`) | a completion to its launching agent; unowned work goes to `Main` |
 | `SendMessage` tool | main → a running subagent, or a subagent → `Main` |
 
 | Recipient | Registers |
@@ -64,8 +65,8 @@ notice, so a switch cannot inject an old worker's result into the new session.
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
 | each active subagent execution (`subagent.Executor`) | its task id → `core.Agent.Append`, queued for the next step |
 
-Background completion is sent to main automatically: immediately when idle, or
-at its next turn boundary. Foreground results return through the tool call.
+Child-owned Bash completions enter only the child's context, not main's chat or
+tracker. Foreground results return through the tool call.
 
 `SendMessage` uses the broker for running workers. For idle workers, the tool
 checks permissions and asks the executor to continue the existing session.

@@ -240,22 +240,31 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			// while the goroutine that can complete the task is only started
 			// afterwards. Reading it off the tool result instead let a
 			// short-lived task complete an entry that did not exist yet.
-			todo.TrackWorker(trackerSvc, info)
+			if info.OwnerAgentID == "" {
+				todo.TrackWorker(trackerSvc, info)
+			}
 		},
 		onCompleted: func(info task.TaskInfo) {
 			m.workerMu.Lock()
-			defer m.workerMu.Unlock()
-			if info.ParentSessionID != "" && info.ParentSessionID != m.services.Task.SessionID() {
+			selected := info.ParentSessionID == "" || info.ParentSessionID == m.services.Task.SessionID()
+			if selected {
+				fireHook(hook.TaskCompleted, info)
+				if info.OwnerAgentID == "" {
+					todo.CompleteWorker(trackerSvc, info)
+				}
+			}
+			m.workerMu.Unlock()
+
+			// Child delivery is independent of the currently displayed main session.
+			if info.OwnerAgentID == "" && !selected {
 				return
 			}
-			fireHook(hook.TaskCompleted, info)
-			todo.CompleteWorker(trackerSvc, info)
-
-			// A finished subagent sends its result to the "main" address —
-			// the same broker path a running subagent uses for interim
-			// messages, so main has one arrival channel for everything.
 			if msg, ok := taskCompletionMessage(info); ok {
-				broker.Send(msg)
+				if info.OwnerAgentID != "" {
+					broker.SendCompletion(msg)
+				} else {
+					broker.Send(msg)
+				}
 			}
 		},
 	})
