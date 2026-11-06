@@ -39,7 +39,7 @@ func (s *acpSession) commandPrompt(text string) (string, string, error) {
 
 func (s *acpSession) sendCommands(turn *acp.Turn) error {
 	catalog := s.commands.CustomCommands()
-	if s.advertisedCommands != nil && slices.Equal(s.advertisedCommands, catalog) {
+	if s.lastSentCommands != nil && slices.Equal(s.lastSentCommands, catalog) {
 		return nil
 	}
 	var commands []protocol.AvailableCommand
@@ -49,6 +49,6 @@ func (s *acpSession) sendCommands(turn *acp.Turn) error {
 	if err := turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAvailableCommandsUpdateVariant{SessionUpdate: "available_commands_update", AvailableCommands: commands}}}); err != nil {
 		return err
 	}
-	s.advertisedCommands = catalog
+	s.lastSentCommands = catalog
 	return nil
 }

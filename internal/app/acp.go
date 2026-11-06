@@ -108,7 +108,7 @@ type acpSession struct {
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
 	commands           *command.Registry
-	advertisedCommands []command.Info
+	lastSentCommands   []command.Info // Last successful notification; skips unchanged command lists.
 	agents             *subagent.Registry
 	models             []llm.ModelInfo
 }
