@@ -3,6 +3,22 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.1] - 2026-11-06
+
+### Added
+- Serve ACP sessions over stdio with native extensions, workers, and session controls ([@yanmxa](https://github.com/yanmxa) in [#723](https://github.com/genai-io/san/pull/723), [#729](https://github.com/genai-io/san/pull/729)).
+- Show Copilot and ChatGPT subscription limits; configure Agent activity previews ([@yanmxa](https://github.com/yanmxa) in [#709](https://github.com/genai-io/san/pull/709), [#697](https://github.com/genai-io/san/pull/697), [#705](https://github.com/genai-io/san/pull/705)).
+- Continue delegated sessions through SendMessage and recover background workers in their original sessions ([@yanmxa](https://github.com/yanmxa) in [#692](https://github.com/genai-io/san/pull/692), [#680](https://github.com/genai-io/san/pull/680)).
+
+### Changed
+- Share agent execution, permission, and compaction policies across entrypoints; reuse ACP runtimes ([@yanmxa](https://github.com/yanmxa) in [#717](https://github.com/genai-io/san/pull/717), [#718](https://github.com/genai-io/san/pull/718), [#721](https://github.com/genai-io/san/pull/721), [#725](https://github.com/genai-io/san/pull/725)).
+- Stream session history loading and simplify task controls, tool output, and documentation ([@yanmxa](https://github.com/yanmxa) in [#690](https://github.com/genai-io/san/pull/690), [#679](https://github.com/genai-io/san/pull/679), [#669](https://github.com/genai-io/san/pull/669), [#728](https://github.com/genai-io/san/pull/728)).
+
+### Fixed
+- Route background Bash results to the owning agent and keep task identity and status consistent ([@yanmxa](https://github.com/yanmxa) in [#730](https://github.com/genai-io/san/pull/730), [#727](https://github.com/genai-io/san/pull/727)).
+- Preserve queued input across cancellation and compaction; fence stale hooks and compaction requests ([@yanmxa](https://github.com/yanmxa) in [#714](https://github.com/genai-io/san/pull/714), [#691](https://github.com/genai-io/san/pull/691), [#712](https://github.com/genai-io/san/pull/712), [#720](https://github.com/genai-io/san/pull/720)).
+- Correct CJK wrapping, resized history, image context, and subscription credential rotation ([@yanmxa](https://github.com/yanmxa) in [#707](https://github.com/genai-io/san/pull/707), [#698](https://github.com/genai-io/san/pull/698), [#673](https://github.com/genai-io/san/pull/673), [#689](https://github.com/genai-io/san/pull/689)).
+
 ## [v1.25.0] - 2026-10-23
 
 ### Added
