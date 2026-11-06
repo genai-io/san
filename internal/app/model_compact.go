@@ -64,19 +64,8 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 	}
 }
 
-// OnCompactStart mirrors the auto-compaction start (emitted by the agent just
-// before its blocking summarization call) into the UI. Manual /compact sets
-// this state itself in handleCompactCommand; auto-compaction would otherwise run
-// several seconds with no feedback — the "Compacting N messages…" line and the
-// spinner make that window visible instead of looking frozen. The stream state
-// is stopped so the progress line reads clean, without a competing "thinking…"
-// indicator. OnCompactEnd clears it.
-// OnCompactEnd closes what OnCompactStart opened, and it is the only thing
-// that closes it: the loop emits this whichever way the shortening went. The
-// path that made it necessary is a prompt the provider already called too long
-// — a summarizer that fails there ends the turn, so there is no next inference
-// to fall through to, and the indicator that gates the composer and autopilot
-// would stay up with nothing left to take it down.
+// OnCompactEnd clears automatic progress on both success and failure. A failed
+// summarization can end the turn without another inference to clear the status.
 func (m *model) OnCompactEnd(sdkagent.CompactionEnd) tea.Cmd {
 	m.conv.Compact.Clear()
 	return nil
@@ -85,6 +74,8 @@ func (m *model) OnCompactEnd(sdkagent.CompactionEnd) tea.Cmd {
 func (m *model) OnCompactStart(count int) tea.Cmd {
 	m.conv.Stream.Stop()
 	m.conv.Compact.Active = true
+	m.conv.Compact.AutoContinue = true
+	m.conv.Compact.StartedAt = time.Now()
 	m.conv.Compact.Phase = conv.PhaseSummarizing
 	m.conv.Compact.Count = count
 	return m.conv.Spinner.Tick

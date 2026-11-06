@@ -78,6 +78,34 @@ func TestInferencePlacementModalSuppressesStandaloneRow(t *testing.T) {
 	}
 }
 
+func TestCompactionPlacementAndRecovery(t *testing.T) {
+	for _, width := range []int{32, 100} {
+		m := modelWithInferenceProgress(12)
+		m.env.Width = width
+		m.OnCompactStart(83)
+		m.userInput.Queue.Enqueue("queued-message", nil)
+		frame, _ := m.renderNormalView(strings.Repeat("─", width-1), "Tasks · background")
+		plain := ansi.Strip(frame)
+		lines := strings.Split(plain, "\n")
+		if strings.Count(plain, "Compacting context") != 1 || strings.Contains(plain, "On it") {
+			t.Fatalf("compaction must own one status row:\n%s", plain)
+		}
+		for i, line := range lines {
+			if strings.Contains(line, "Compacting context") && (i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "─")) {
+				t.Fatalf("compaction not directly above composer:\n%s", plain)
+			}
+		}
+		m.conv.Modal.Question.Show(&tool.QuestionRequest{Questions: []tool.Question{{Question: "Continue?"}}}, width)
+		if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "Compacting context") {
+			t.Fatalf("compaction competes with modal:\n%s", frame)
+		}
+		m.OnCompactEnd(sdkagent.CompactionEnd{})
+		if m.conv.Compact.Active || m.conv.Compact.AutoContinue || !m.conv.Compact.StartedAt.IsZero() {
+			t.Fatal("compaction left stale recovery status")
+		}
+	}
+}
+
 func TestInferencePlacementRemovedOnCompletion(t *testing.T) {
 	m := modelWithInferenceProgress(12)
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Response: &ai.Response{Content: ai.TextContent("done")}}})

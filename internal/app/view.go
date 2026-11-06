@@ -237,7 +237,11 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString(suggestions)
 	}
 	// Task status owns the row; update information uses only the space left.
-	status := conv.RenderInferenceStatus(m.messageRenderParams())
+	params := m.messageRenderParams()
+	status := conv.RenderInferenceStatus(params)
+	if m.conv.Compact.Active && !params.DockedModalActive {
+		status = conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact)
+	}
 	if status != "" && m.footerHasBreathingRoom() {
 		b.WriteString("\n")
 	}
@@ -351,13 +355,10 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 		parts = append(parts, "\n"+strings.TrimSuffix(trackerView, "\n"))
 	}
 
-	if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact); compactView != "" {
-		// Surrounded by blank rows, like the self-learning indicator below
-		// and for the same two reasons: what sits above is the committed
-		// scrollback, where every turn is separated from what follows by a
-		// blank row, and what sits below is the input bar, which a live row
-		// should not be nailed to.
-		parts = append(parts, "", compactView, "")
+	if !m.conv.Compact.Active {
+		if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact); compactView != "" {
+			parts = append(parts, "", compactView, "")
+		}
 	}
 
 	if live := m.btwLive(); live != "" {
