@@ -45,7 +45,7 @@ func (s *acpSession) configureAgents() {
 	}, func(ctx context.Context, source string) context.Context {
 		ctx = plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins)
 		ctx = plugin.WithRoot(ctx, s.runtimeBuildParams.Plugins.RootForPath(source))
-		ctx = fs.WithShellEnv(ctx, plugin.PluginEnv(ctx))
+		ctx = fs.WithShellEnvProvider(ctx, plugin.PluginEnv)
 		ctx = skill.WithRegistry(ctx, s.runtimeBuildParams.Skills)
 		return fs.WithFileViews(ctx, s.runtimeBuildParams.FileViews)
 	})

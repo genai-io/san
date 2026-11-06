@@ -17,12 +17,7 @@ func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supp
 	if err := plugins.Load(ctx, cwd); err != nil {
 		return nil, nil, nil, err
 	}
-	if settings.Hooks == nil {
-		settings.Hooks = make(map[string][]setting.Hook)
-	}
-	for event, hooks := range plugins.Hooks() {
-		settings.Hooks[event] = append(settings.Hooks[event], hooks...)
-	}
+	plugins.MergeHooksIntoSettings(settings)
 	skills := skill.Load(skill.Options{CWD: cwd, PluginSkillPaths: func() []skill.PluginSkillPath {
 		var paths []skill.PluginSkillPath
 		for _, p := range plugins.SkillPaths() {

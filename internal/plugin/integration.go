@@ -40,11 +40,6 @@ func (r *Registry) CommandPaths() []PluginPath {
 	return r.collectPaths(func(p *Plugin) []string { return p.Components.Commands })
 }
 
-// collectPluginPaths collects paths from enabled plugins using a getter function.
-func collectPluginPaths(getPaths func(*Plugin) []string) []PluginPath {
-	return defaultRegistry.collectPaths(getPaths)
-}
-
 func (r *Registry) collectPaths(getPaths func(*Plugin) []string) []PluginPath {
 	var paths []PluginPath
 	for _, p := range r.ListEnabled() {
@@ -97,11 +92,16 @@ func (r *Registry) Hooks() map[string][]setting.Hook {
 // MergePluginHooksIntoSettings merges plugin hooks into application settings.
 // Plugin hooks are appended after the existing hooks for each event.
 func MergePluginHooksIntoSettings(settings *setting.Data) {
+	defaultRegistry.MergeHooksIntoSettings(settings)
+}
+
+// MergeHooksIntoSettings appends this registry's hooks after existing hooks.
+func (r *Registry) MergeHooksIntoSettings(settings *setting.Data) {
 	if settings.Hooks == nil {
 		settings.Hooks = make(map[string][]setting.Hook)
 	}
 
-	pluginHooks := GetPluginHooks()
+	pluginHooks := r.Hooks()
 	for event, hooks := range pluginHooks {
 		settings.Hooks[event] = append(settings.Hooks[event], hooks...)
 	}

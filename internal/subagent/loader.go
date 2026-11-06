@@ -55,14 +55,7 @@ func Load(cwd string, plugins []PluginAgentPath) (*Registry, error) {
 	if err := r.InitStores(cwd); err != nil {
 		return nil, err
 	}
-	home, _ := os.UserHomeDir()
-	paths := []agentSearchPath{{path: filepath.Join(confdir.Dir(cwd), "agents")}, {path: filepath.Join(confdir.Dir(home), "agents")}, {path: filepath.Join(cwd, ".claude", "agents")}, {path: filepath.Join(home, ".claude", "agents")}}
-	for _, p := range plugins {
-		paths = append(paths, agentSearchPath{path: p.Path, namespace: p.Namespace})
-	}
-	for _, p := range slices.Backward(paths) {
-		r.loadDir(p.path, p.namespace)
-	}
+	r.loadAgents(cwd, plugins)
 	return r, nil
 }
 
@@ -78,6 +71,16 @@ func Load(cwd string, plugins []PluginAgentPath) (*Registry, error) {
 // Registry.Register overwrites by name, so sources load lowest-priority
 // first — the highest-priority definition lands last and wins.
 func LoadAgents(cwd string) {
+	additionalAgentPathsMu.Lock()
+	plugins := make([]PluginAgentPath, len(additionalAgentPaths))
+	for i, p := range additionalAgentPaths {
+		plugins[i] = PluginAgentPath{Path: p.path, Namespace: p.namespace}
+	}
+	additionalAgentPathsMu.Unlock()
+	defaultRegistry.loadAgents(cwd, plugins)
+}
+
+func (r *Registry) loadAgents(cwd string, plugins []PluginAgentPath) {
 	homeDir, _ := os.UserHomeDir()
 
 	priorityOrdered := []agentSearchPath{
@@ -86,22 +89,15 @@ func LoadAgents(cwd string) {
 		{path: filepath.Join(cwd, ".claude", "agents")},
 		{path: filepath.Join(homeDir, ".claude", "agents")},
 	}
-	additionalAgentPathsMu.Lock()
-	priorityOrdered = append(priorityOrdered, additionalAgentPaths...)
-	additionalAgentPathsMu.Unlock()
-
+	for _, p := range plugins {
+		priorityOrdered = append(priorityOrdered, agentSearchPath{path: p.Path, namespace: p.Namespace})
+	}
 	for _, sp := range slices.Backward(priorityOrdered) {
-
-		loadAgentsFromDirWithNamespace(sp.path, sp.namespace)
+		r.loadDir(sp.path, sp.namespace)
 	}
 }
 
-// loadAgentsFromDirWithNamespace loads agents with an optional namespace prefix.
-// The path can be either a directory (scanned for .md files) or a direct file path.
-func loadAgentsFromDirWithNamespace(path string, namespace string) {
-	defaultRegistry.loadDir(path, namespace)
-}
-
+// loadDir accepts a directory of .md files or a direct file path.
 func (r *Registry) loadDir(path string, namespace string) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -135,11 +131,6 @@ func (r *Registry) loadDir(path string, namespace string) {
 		filePath := filepath.Join(path, name)
 		r.loadFile(filePath, namespace)
 	}
-}
-
-// loadAgentFromFileWithNamespace loads an agent with optional namespace.
-func loadAgentFromFileWithNamespace(filePath string, namespace string) {
-	defaultRegistry.loadFile(filePath, namespace)
 }
 
 func (r *Registry) loadFile(filePath string, namespace string) {

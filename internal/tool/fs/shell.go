@@ -542,6 +542,12 @@ func WithShellEnv(ctx context.Context, env []string) context.Context {
 	return context.WithValue(ctx, shellEnvKey{}, append([]string{}, env...))
 }
 
+// WithShellEnvProvider supplies session-owned environment evaluated only for shell execution.
+// An empty result does not fall back to the global provider.
+func WithShellEnvProvider(ctx context.Context, fn func(context.Context) []string) context.Context {
+	return context.WithValue(ctx, shellEnvKey{}, fn)
+}
+
 func shellEnv(ctx context.Context) []string {
 	env := os.Environ()
 	// Nudge common tools onto their non-interactive path so they fail fast
@@ -560,10 +566,17 @@ func shellEnv(ctx context.Context) []string {
 	if _, ok := os.LookupEnv("NO_COLOR"); !ok {
 		env = append(env, "NO_COLOR=1")
 	}
-	if scoped, ok := ctx.Value(shellEnvKey{}).([]string); ok {
+	switch scoped := ctx.Value(shellEnvKey{}).(type) {
+	case []string:
 		env = append(env, scoped...)
-	} else if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
-		env = append(env, fn(ctx)...)
+	case func(context.Context) []string:
+		if scoped != nil {
+			env = append(env, scoped(ctx)...)
+		}
+	default:
+		if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
+			env = append(env, fn(ctx)...)
+		}
 	}
 	return env
 }

@@ -169,7 +169,10 @@ func pluginCommandPaths() []command.PluginCommandPath {
 }
 
 func pluginAgentPaths() []subagent.PluginAgentPath {
-	pPaths := plugin.GetPluginAgentPaths()
+	return agentPathsFromPlugins(plugin.GetPluginAgentPaths())
+}
+
+func agentPathsFromPlugins(pPaths []plugin.PluginPath) []subagent.PluginAgentPath {
 	paths := make([]subagent.PluginAgentPath, len(pPaths))
 	for i, p := range pPaths {
 		paths[i] = subagent.PluginAgentPath{

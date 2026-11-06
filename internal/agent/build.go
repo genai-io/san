@@ -195,7 +195,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 			if p.PluginRoot != nil {
 				ctx = plugin.WithRoot(ctx, p.PluginRoot())
 			}
-			ctx = fs.WithShellEnv(ctx, plugin.PluginEnv(ctx))
+			ctx = fs.WithShellEnvProvider(ctx, plugin.PluginEnv)
 		}
 		if p.Skills != nil {
 			ctx = skill.WithRegistry(ctx, p.Skills)
