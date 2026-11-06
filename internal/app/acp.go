@@ -62,11 +62,11 @@ func (h *acpHost) start(ctx context.Context, input io.ReadCloser, output io.Writ
 			h.mu.Unlock()
 			return protocol.InitializeResponse{ProtocolVersion: 1, AgentCapabilities: protocol.Some(protocol.AgentCapabilities{LoadSession: protocol.Some(true), MCPCapabilities: protocol.Some(protocol.MCPCapabilities{HTTP: protocol.Some(true), SSE: protocol.Some(true)})}), AgentInfo: protocol.Some(protocol.Implementation{Name: "san", Version: version})}, nil
 		},
-		CreateSession:          h.create,
-		LoadSession:            h.load,
-		SetSessionMode:         h.setMode,
-		SetSessionConfigOption: h.setConfig,
-		Prompt:                 h.prompt,
+		CreateSession: h.create,
+		LoadSession:   h.load,
+		SetMode:       h.setMode,
+		SetConfig:     h.setConfig,
+		Prompt:        h.prompt,
 	}, acp.AgentOptions{Limits: acp.Limits{WriteTimeout: writeTimeout}})
 }
 
