@@ -39,7 +39,7 @@ func TestACPBackgroundOutputAndOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.host.mu.Lock()
-	pool, other := f.host.sessions[a].params.Tasks, f.host.sessions[b].params.Tasks
+	pool, other := f.host.sessions[a].runtimeBuildParams.Tasks, f.host.sessions[b].runtimeBuildParams.Tasks
 	f.host.mu.Unlock()
 	pool.Join()
 	jobs := pool.List()
@@ -93,7 +93,7 @@ func TestACPBackgroundDenied(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.host.mu.Lock()
-			pool := f.host.sessions[id].params.Tasks
+			pool := f.host.sessions[id].runtimeBuildParams.Tasks
 			f.host.mu.Unlock()
 			if len(pool.List()) != 0 {
 				t.Fatal("denied launch created a task")
@@ -131,7 +131,7 @@ func TestACPBackgroundConcurrentSessions(t *testing.T) {
 	var tasks []task.BackgroundTask
 	for _, id := range ids {
 		f.host.mu.Lock()
-		pool := f.host.sessions[id].params.Tasks
+		pool := f.host.sessions[id].runtimeBuildParams.Tasks
 		f.host.mu.Unlock()
 		pool.Join()
 		jobs := pool.List()
@@ -173,7 +173,7 @@ func TestACPBackgroundCancelAndDisconnect(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.host.mu.Lock()
-			pool := f.host.sessions[sessionID].params.Tasks
+			pool := f.host.sessions[sessionID].runtimeBuildParams.Tasks
 			f.host.mu.Unlock()
 			jobs := pool.List()
 			if len(jobs) != 1 || !jobs[0].IsRunning() {

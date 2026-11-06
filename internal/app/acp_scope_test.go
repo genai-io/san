@@ -88,7 +88,7 @@ func TestACPExecutionDirectoryPermissions(t *testing.T) {
 					f.host.mu.Lock()
 					s := f.host.sessions[id]
 					f.host.mu.Unlock()
-					s.params.Tasks.Join()
+					s.runtimeBuildParams.Tasks.Join()
 					_, err := os.Stat(filepath.Join(target, "scoped.txt"))
 					if (err == nil) != !outside {
 						t.Fatalf("write exists=%v outside=%v", err == nil, outside)

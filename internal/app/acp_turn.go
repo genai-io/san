@@ -21,10 +21,10 @@ import (
 func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (response protocol.PromptResponse, err error) {
 	s.input.set(turn)
 	defer s.input.set(nil)
-	if s.params.Plugins != nil {
-		ctx = plugin.WithRegistry(ctx, s.params.Plugins)
+	if s.runtimeBuildParams.Plugins != nil {
+		ctx = plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins)
 	}
-	if err := s.data.Validate(); err != nil {
+	if err := s.nativeSession.Validate(); err != nil {
 		return response, err
 	}
 	var text strings.Builder
@@ -55,14 +55,14 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	}
 	if !s.runtime.Active() {
 		s.configureAgents()
-		if err := s.runtime.Start(s.params, s.runtime.Messages()); err != nil {
+		if err := s.runtime.Start(s.runtimeBuildParams, s.runtime.Messages()); err != nil {
 			return response, err
 		}
 	}
 	gate := s.runtime.PermissionGate()
 	permissionsCtx, cancelPermissions := context.WithCancel(ctx)
 	permissionsDone := make(chan struct{})
-	go s.permissions(permissionsCtx, turn, gate, permissionsDone)
+	go s.handlePermissionRequests(permissionsCtx, turn, gate, permissionsDone)
 	finished := false
 	var stopping chan struct{}
 	defer func() {
@@ -102,7 +102,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 			}
 		case event, ok := <-s.runtime.Outbox():
 			if !ok {
-				return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(transportErr, s.data.Session.Err())
+				return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(transportErr, s.nativeSession.Session.Err())
 			}
 			switch e := event.(type) {
 			case core.TurnEnded:
@@ -157,9 +157,9 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				if e.Err != nil && ctx.Err() == nil {
 					s.hooks.ExecuteAsync(hook.StopFailure, hook.HookInput{Error: e.Err.Error()})
 				}
-				return response, errors.Join(e.Err, transportErr, s.data.Session.Err())
+				return response, errors.Join(e.Err, transportErr, s.nativeSession.Session.Err())
 			case core.Compacted:
-				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.params.FileCache, s.refreshMemory)
+				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
 			case sdkagent.ToolEnd:
 				s.postTool(e)
 			}
@@ -177,7 +177,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 
 func (s *acpSession) postTool(e sdkagent.ToolEnd) {
 	handoff, _ := s.sideEffects.LoadAndDelete(e.ID)
-	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.params.FileCache.Touch})
+	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 }
 
 func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {

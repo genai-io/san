@@ -60,8 +60,8 @@ func TestACPAgentExecution(t *testing.T) {
 			f.host.mu.Lock()
 			s := f.host.sessions[id]
 			f.host.mu.Unlock()
-			s.params.Tasks.Join()
-			jobs := s.params.Tasks.List()
+			s.runtimeBuildParams.Tasks.Join()
+			jobs := s.runtimeBuildParams.Tasks.List()
 			if len(jobs) != 1 {
 				t.Fatalf("jobs=%d approvals=%d updates=%+v", len(jobs), approvals.Load(), f.updates)
 			}
@@ -115,7 +115,7 @@ func TestACPAgentPermissionOwnership(t *testing.T) {
 				f.host.mu.Lock()
 				s := f.host.sessions[id]
 				f.host.mu.Unlock()
-				s.params.Tasks.Join()
+				s.runtimeBuildParams.Tasks.Join()
 				_, err := os.Stat(filepath.Join(cwd, "result.txt"))
 				want := !background && !deny
 				if (err == nil) != want {
@@ -163,7 +163,7 @@ func TestACPAgentDisconnectReaps(t *testing.T) {
 		t.Fatal("worker never started")
 	}
 	f.host.mu.Lock()
-	pool := f.host.sessions[id].params.Tasks
+	pool := f.host.sessions[id].runtimeBuildParams.Tasks
 	f.host.mu.Unlock()
 	_ = f.client.Close()
 	select {

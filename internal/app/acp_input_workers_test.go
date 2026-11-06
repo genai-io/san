@@ -35,7 +35,7 @@ func TestACPWorkerQuestions(t *testing.T) {
 			if _, err := f.prompt(id, "delegate"); err != nil {
 				t.Fatal(err)
 			}
-			f.host.sessions[id].params.Tasks.Join()
+			f.host.sessions[id].runtimeBuildParams.Tasks.Join()
 			want := int32(1)
 			if background {
 				want = 0

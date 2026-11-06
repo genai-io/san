@@ -33,7 +33,7 @@ func (s *acpSession) commandPrompt(text string) (string, string, error) {
 	if body == "" {
 		return "", "", fmt.Errorf("command /%s has no instructions", name)
 	}
-	return "<command-name>" + c.FullName() + "</command-name>\n\n" + command.WrapInvocation(c.FullName(), body) + "\n\n" + text, s.params.Plugins.RootForPath(c.FilePath), nil
+	return "<command-name>" + c.FullName() + "</command-name>\n\n" + command.WrapInvocation(c.FullName(), body) + "\n\n" + text, s.runtimeBuildParams.Plugins.RootForPath(c.FilePath), nil
 }
 
 func (s *acpSession) sendCommands(turn *acp.Turn) error {

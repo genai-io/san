@@ -21,10 +21,10 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 	id := f.session(t, t.TempDir())
 	s := f.host.sessions[id]
 	release := make(chan struct{})
-	defer s.params.Tasks.Join()
+	defer s.runtimeBuildParams.Tasks.Join()
 	defer close(release)
-	worker := s.params.Tasks.CreateAgentTask("worker", "test", "cleanup", context.Background(), func() {})
-	s.params.Tasks.Run(func() { <-release })
+	worker := s.runtimeBuildParams.Tasks.CreateAgentTask("worker", "test", "cleanup", context.Background(), func() {})
+	s.runtimeBuildParams.Tasks.Run(func() { <-release })
 	modelReq := protocol.SetSessionConfigOptionRequest{Value: protocol.SetSessionConfigOptionRequestValueIDVariant{SessionID: id, ConfigID: "model", Value: "other"}}
 	modeReq := protocol.SetSessionModeRequest{SessionID: id, ModeID: "auto-accept"}
 	checkRejected := func() {
@@ -39,10 +39,10 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 				t.Fatalf("expected busy, got %v", err)
 			}
 		}
-		if s.params.ModelID != "test" || s.policy.CurrentMode() != setting.ModeNormal {
+		if s.runtimeBuildParams.ModelID != "test" || s.permissions.CurrentMode() != setting.ModeNormal {
 			t.Fatal("rejected configuration mutated live policy/model")
 		}
-		history, err := s.data.Store.Read(string(id))
+		history, err := s.nativeSession.Store.Read(string(id))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 	worker.Complete(nil)
 	checkRejected() // Display terminal is not execution-cleanup completion.
 	release <- struct{}{}
-	s.params.Tasks.Join()
+	s.runtimeBuildParams.Tasks.Join()
 	var modelRes protocol.SetSessionConfigOptionResponse
 	var modeRes protocol.SetSessionModeResponse
 	if err := f.client.Call(f.ctx, "session/set_config_option", modelReq, &modelRes); err != nil {
@@ -63,7 +63,7 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 	if err := f.client.Call(f.ctx, "session/set_mode", modeReq, &modeRes); err != nil {
 		t.Fatal(err)
 	}
-	if s.params.ModelID != "other" || s.policy.CurrentMode() != setting.ModeAutoAccept {
+	if s.runtimeBuildParams.ModelID != "other" || s.permissions.CurrentMode() != setting.ModeAutoAccept {
 		t.Fatal("idle configuration not applied")
 	}
 }
@@ -107,7 +107,7 @@ func TestACPConfigurationCannotWidenRunningWorkerPolicy(t *testing.T) {
 		t.Fatal("mode changed with live worker")
 	}
 	release <- struct{}{}
-	f.host.sessions[id].params.Tasks.Join()
+	f.host.sessions[id].runtimeBuildParams.Tasks.Join()
 	if _, err := os.Stat(filepath.Join(cwd, "result.txt")); !os.IsNotExist(err) {
 		t.Fatalf("worker write escaped original policy: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestACPConfigurationExcludedDuringPrompt(t *testing.T) {
 		}
 	}
 	s := f.host.sessions[id]
-	if s.params.ModelID != "test" || s.policy.CurrentMode() != setting.ModeNormal {
+	if s.runtimeBuildParams.ModelID != "test" || s.permissions.CurrentMode() != setting.ModeNormal {
 		t.Fatal("foreground configuration leaked")
 	}
 }

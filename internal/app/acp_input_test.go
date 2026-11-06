@@ -81,7 +81,7 @@ func TestACPQuestionsWithoutCapability(t *testing.T) {
 	f := newACPFixture(t, driver, nil)
 	id := f.session(t, t.TempDir())
 	s := f.host.sessions[id]
-	if !s.params.DisabledTools["AskUserQuestion"] || s.params.AskUser != nil || s.params.BashPromptResponder != nil {
+	if !s.runtimeBuildParams.DisabledTools["AskUserQuestion"] || s.runtimeBuildParams.AskUser != nil || s.runtimeBuildParams.BashPromptResponder != nil {
 		t.Fatal("unnegotiated interaction exposed")
 	}
 	if _, err := f.prompt(id, "hello"); err != nil {

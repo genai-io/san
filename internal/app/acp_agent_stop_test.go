@@ -49,7 +49,7 @@ func TestACPAgentStopOwnership(t *testing.T) {
 		t.Fatal("worker not started")
 	}
 	f.host.mu.Lock()
-	pool := f.host.sessions[own].params.Tasks
+	pool := f.host.sessions[own].runtimeBuildParams.Tasks
 	f.host.mu.Unlock()
 	jobs := pool.List()
 	if len(jobs) != 1 {

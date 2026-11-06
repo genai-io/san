@@ -36,7 +36,7 @@ func TestACPNativeHandoffOwners(t *testing.T) {
 		wg.Go(func() {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "created")
-			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), params: agent.BuildParams{FileCache: filecache.New()}}
+			s := &acpSession{hooks: hook.NewEngine(&setting.Data{}, "owner", dir, ""), runtimeBuildParams: agent.BuildParams{FileCache: filecache.New()}}
 			changed := make(chan string, 2)
 			s.hooks.AddSessionFunctionHook(hook.FileChanged, "", hook.FunctionHook{Callback: func(_ context.Context, in hook.HookInput) (hook.HookOutput, error) {
 				changed <- in.FilePath
@@ -67,7 +67,7 @@ func TestACPNativeHandoffOwners(t *testing.T) {
 			if _, ok := s.sideEffects.Load("collision"); ok {
 				t.Error("handoff not consumed")
 			}
-			files, _ := s.params.FileCache.RestoreRecent()
+			files, _ := s.runtimeBuildParams.FileCache.RestoreRecent()
 			if len(files) != 1 || files[0].FilePath != path {
 				t.Errorf("restore: %+v", files)
 			}

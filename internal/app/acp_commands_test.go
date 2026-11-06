@@ -42,7 +42,7 @@ func TestACPPluginCommandsAndAgents(t *testing.T) {
 	if _, err := f.prompt(id, "/demo:check arguments"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := s.data.Store.Read(string(id))
+	history, err := s.nativeSession.Store.Read(string(id))
 	if err != nil {
 		t.Fatal(err)
 	}

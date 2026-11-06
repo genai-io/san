@@ -154,8 +154,8 @@ func TestACPAutoCompaction(t *testing.T) {
 	s := f.host.sessions[id]
 	f.host.mu.Unlock()
 	compacted := make(chan core.Compacted, 1)
-	record := s.params.OnEvent
-	s.params.OnEvent = func(event core.Event) {
+	record := s.runtimeBuildParams.OnEvent
+	s.runtimeBuildParams.OnEvent = func(event core.Event) {
 		record(event)
 		if event, ok := event.(core.Compacted); ok {
 			compacted <- event
@@ -254,7 +254,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if failRecord {
 				// Fail recording after admission validation, before execution writes.
 				s.hooks.AddSessionFunctionHook(hook.UserPromptSubmit, "", hook.FunctionHook{Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
-					return hook.HookOutput{}, s.data.Session.Close()
+					return hook.HookOutput{}, s.nativeSession.Session.Close()
 				}})
 				if _, err := f.prompt(id, "hello"); err == nil {
 					t.Fatal("successful response hid essential recording failure")
@@ -285,7 +285,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if !strings.Contains(string(data), "workspace instruction") || !strings.Contains(string(data), "prompt hook instruction") {
 				t.Fatal("native preparation missing instructions")
 			}
-			history, err := s.data.Store.Read(string(id))
+			history, err := s.nativeSession.Store.Read(string(id))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -326,7 +326,7 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	f.host.mu.Lock()
 	s := f.host.sessions[id]
 	f.host.mu.Unlock()
-	for _, schema := range s.params.ToolSchemas() {
+	for _, schema := range s.runtimeBuildParams.ToolSchemas() {
 		if schema.Name == "Read" || schema.Name == "TaskOutput" {
 			t.Error("disabled tool exposed")
 		}
@@ -337,7 +337,7 @@ func TestACPNativeDenyAndUnsupportedInput(t *testing.T) {
 	if _, err := f.client.CreateSession(f.ctx, protocol.NewSessionRequest{CWD: "relative", MCPServers: []protocol.MCPServer{}}); err == nil {
 		t.Error("relative cwd accepted")
 	}
-	if s.params.CanApproveByHook("Write", map[string]any{"file_path": path, "content": "no"}) {
+	if s.runtimeBuildParams.CanApproveByHook("Write", map[string]any{"file_path": path, "content": "no"}) {
 		t.Error("hook can bypass native deny")
 	}
 }

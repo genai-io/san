@@ -50,7 +50,7 @@ func TestACPWorkerShellInput(t *testing.T) {
 				if _, err := f.prompt(id, "delegate"); err != nil {
 					t.Fatal(err)
 				}
-				f.host.sessions[id].params.Tasks.Join()
+				f.host.sessions[id].runtimeBuildParams.Tasks.Join()
 				want := int32(0)
 				if !background && !secret {
 					want = 1

@@ -14,7 +14,7 @@ import (
 )
 
 func (s *acpSession) modes() protocol.SessionModeState {
-	return protocol.SessionModeState{CurrentModeID: protocol.SessionModeID(s.policy.CurrentMode().PersistenceName()), AvailableModes: []protocol.SessionMode{
+	return protocol.SessionModeState{CurrentModeID: protocol.SessionModeID(s.permissions.CurrentMode().PersistenceName()), AvailableModes: []protocol.SessionMode{
 		{ID: "normal", Name: "Normal", Description: protocol.Some("Native permission rules and interactive approvals")},
 		{ID: "auto-accept", Name: "Auto-accept", Description: protocol.Some("Native auto-accept rules; explicit deny and ask rules still apply")},
 	}}
@@ -42,11 +42,11 @@ func (h *acpHost) setMode(ctx context.Context, req protocol.SetSessionModeReques
 	if err := ctx.Err(); err != nil {
 		return protocol.SetSessionModeResponse{}, err
 	}
-	// The endpoint admits this only while idle. Persist before changing policy.
-	if err := s.data.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Mode: new(mode.PersistenceName())}}); err != nil {
+	// The endpoint admits this only while idle. Persist before changing the permission mode.
+	if err := s.nativeSession.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Mode: new(mode.PersistenceName())}}); err != nil {
 		return protocol.SetSessionModeResponse{}, err
 	}
-	s.policy.SetMode(mode)
+	s.permissions.SetMode(mode)
 	return protocol.SetSessionModeResponse{}, nil
 }
 
@@ -66,7 +66,7 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			err = errors.Join(err, s.close())
 		}
 	}()
-	rows, err := s.data.Store.ReadChatHistory(string(req.SessionID))
+	rows, err := s.nativeSession.Store.ReadChatHistory(string(req.SessionID))
 	if err != nil {
 		return response, err
 	}
@@ -114,5 +114,5 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 	if err := s.sendCommands(turn); err != nil {
 		return response, err
 	}
-	return protocol.LoadSessionResponse{Modes: created.Modes, ConfigOptions: created.ConfigOptions}, s.data.Session.Err()
+	return protocol.LoadSessionResponse{Modes: created.Modes, ConfigOptions: created.ConfigOptions}, s.nativeSession.Session.Err()
 }

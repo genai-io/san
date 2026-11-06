@@ -77,8 +77,8 @@ func TestACPWriteTimeout(t *testing.T) {
 			}
 			receipts := make(chan *core.TurnFinalization, 1)
 			s := f.host.sessions[ids[0]]
-			record := s.params.OnEvent
-			s.params.OnEvent = func(event core.Event) {
+			record := s.runtimeBuildParams.OnEvent
+			s.runtimeBuildParams.OnEvent = func(event core.Event) {
 				record(event)
 				if end, ok := event.(core.TurnEnded); ok {
 					receipts <- end.Result.Finalization

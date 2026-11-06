@@ -125,6 +125,10 @@ for their cleanup rather than closing a writer under them. Regression coverage:
 
 The configured provider supplies the initial model and the session's model choices.
 Each absolute session cwd loads its own trusted settings and instruction files.
+In `acpSession`, `nativeSession` pairs the native transcript session and result store;
+`runtimeBuildParams` retains runtime construction inputs across rebuilds.
+`permissions` owns session grants and mode; `permissionsForDirectory` builds
+policies with directory-scoped rules sharing that same permission state.
 UserPromptSubmit, pre/post-tool hooks, automatic compaction context restoration,
 Stop continuations and SessionEnd use native helpers. Terminal handling records
 session state and acknowledges the native receipt before admitting a successor;

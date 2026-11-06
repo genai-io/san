@@ -75,7 +75,7 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	if err := f.client.Call(f.ctx, "session/set_mode", protocol.SetSessionModeRequest{SessionID: req.SessionID, ModeID: "auto-accept"}, &modeResponse); err != nil {
 		t.Fatal(err)
 	}
-	if s.policy.CurrentMode() != setting.ModeAutoAccept {
+	if s.permissions.CurrentMode() != setting.ModeAutoAccept {
 		t.Fatal("mode not applied")
 	}
 	if _, err := f.prompt(req.SessionID, "continue"); err != nil {
@@ -104,16 +104,16 @@ func TestACPModelSwitchPreservesOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := f.host.sessions[id]
-	policy, views, skills := s.policy, s.params.FileViews, s.params.Skills
+	permissions, views, skills := s.permissions, s.runtimeBuildParams.FileViews, s.runtimeBuildParams.Skills
 	var res protocol.SetSessionConfigOptionResponse
 	req := protocol.SetSessionConfigOptionRequest{Value: protocol.SetSessionConfigOptionRequestValueIDVariant{SessionID: id, ConfigID: "model", Value: "other"}}
 	if err := f.client.Call(f.ctx, "session/set_config_option", req, &res); err != nil {
 		t.Fatal(err)
 	}
-	if s.params.ModelID != "other" || s.policy != policy || s.params.FileViews != views || s.params.Skills != skills || len(s.runtime.Messages()) < 2 {
+	if s.runtimeBuildParams.ModelID != "other" || s.permissions != permissions || s.runtimeBuildParams.FileViews != views || s.runtimeBuildParams.Skills != skills || len(s.runtime.Messages()) < 2 {
 		t.Fatal("switch lost session owners")
 	}
-	history, err := s.data.Store.Read(string(id))
+	history, err := s.nativeSession.Store.Read(string(id))
 	if err != nil || history.Metadata.Model != "other" {
 		t.Fatalf("selection not durable: %v", err)
 	}
@@ -139,13 +139,13 @@ func TestACPSkillUsesSessionRegistry(t *testing.T) {
 	}
 	id := f.session(t, cwd)
 	other := f.session(t, t.TempDir())
-	if f.host.sessions[other].params.Skills.FindByPartialName("local") != nil {
+	if f.host.sessions[other].runtimeBuildParams.Skills.FindByPartialName("local") != nil {
 		t.Fatal("skill leaked across sessions")
 	}
 	if _, err := f.prompt(id, "load the local skill"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.host.sessions[id].data.Store.Read(string(id))
+	history, err := f.host.sessions[id].nativeSession.Store.Read(string(id))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestACPClientMCPPermissionAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := f.session(t, t.TempDir())
-	if len(f.host.sessions[other].params.MCPTools) != 0 {
+	if len(f.host.sessions[other].runtimeBuildParams.MCPTools) != 0 {
 		t.Fatal("MCP tools leaked")
 	}
 	if _, err := f.prompt(created.SessionID, "ping"); err != nil {

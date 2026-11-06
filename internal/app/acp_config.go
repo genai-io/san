@@ -13,7 +13,7 @@ import (
 // workers cannot launch nested agents or background Bash. Wait for cleanup, not
 // just terminal task status, before changing policy or hooks.
 func (s *acpSession) requireConfigIdle() error {
-	if !s.params.Tasks.Idle() {
+	if !s.runtimeBuildParams.Tasks.Idle() {
 		return &acp.Error{Code: -32001, Message: "Session busy: background tasks or worker cleanup are still active"}
 	}
 	return nil
@@ -30,7 +30,7 @@ func (s *acpSession) configOptions() []protocol.SessionConfigOption {
 	}
 	return []protocol.SessionConfigOption{{Value: protocol.SessionConfigOptionSelectVariant{
 		ID: "model", Name: "Model", Type: "select", Category: protocol.Some(protocol.SessionConfigOptionCategory("model")),
-		CurrentValue: protocol.SessionConfigValueID(s.params.ModelID), Options: protocol.SessionConfigSelectOptions{Value: options},
+		CurrentValue: protocol.SessionConfigValueID(s.runtimeBuildParams.ModelID), Options: protocol.SessionConfigSelectOptions{Value: options},
 	}}}
 }
 
@@ -61,18 +61,18 @@ func (h *acpHost) setConfig(ctx context.Context, request protocol.SetSessionConf
 	if err := ctx.Err(); err != nil {
 		return protocol.SetSessionConfigOptionResponse{}, err
 	}
-	if id != s.params.ModelID {
-		if _, err := s.params.Provider.Client(id, nil); err != nil {
+	if id != s.runtimeBuildParams.ModelID {
+		if _, err := s.runtimeBuildParams.Provider.Client(id, nil); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, fmt.Errorf("selected model is unavailable")
 		}
 		if err := s.runtime.Stop(ctx); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, err
 		}
-		if err := s.data.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Model: new(id)}}); err != nil {
+		if err := s.nativeSession.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Model: new(id)}}); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, err
 		}
-		s.params.ModelID = id
-		s.hooks.SetLLMCompleter(buildHookCompleter(s.params.Provider), id)
+		s.runtimeBuildParams.ModelID = id
+		s.hooks.SetLLMCompleter(buildHookCompleter(s.runtimeBuildParams.Provider), id)
 	}
 	return protocol.SetSessionConfigOptionResponse{ConfigOptions: s.configOptions()}, nil
 }

@@ -97,20 +97,20 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
 type acpSession struct {
-	input            acpInput
-	data             agent.MainSession
-	params           agent.BuildParams // retained across runtime rebuilds
-	runtime          agent.Runtime
-	hooks            *hook.Engine
-	reminders        *reminder.Reminder
-	lastPrompt       string
-	sideEffects      sync.Map
-	mcp              *mcp.Manager
-	policy           *setting.SessionPermissions // sole grant and mode owner
-	permissionPolicy func(string) agent.PermissionPolicy
-	commands         *command.Registry
-	agents           *subagent.Registry
-	models           []llm.ModelInfo
+	input                   acpInput
+	nativeSession           agent.MainSession
+	runtimeBuildParams      agent.BuildParams // retained across runtime rebuilds
+	runtime                 agent.Runtime
+	hooks                   *hook.Engine
+	reminders               *reminder.Reminder
+	lastPrompt              string
+	sideEffects             sync.Map
+	mcp                     *mcp.Manager
+	permissions             *setting.SessionPermissions         // sole grant and mode owner
+	permissionsForDirectory func(string) agent.PermissionPolicy // directory-scoped rules sharing permissions
+	commands                *command.Registry
+	agents                  *subagent.Registry
+	models                  []llm.ModelInfo
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
@@ -176,7 +176,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
-	s := &acpSession{data: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
+	s := &acpSession{nativeSession: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
 	s.commands = acpCommands(req.CWD, plugins)
 	var agentPaths []subagent.PluginAgentPath
 	for _, p := range plugins.AgentPaths() {
@@ -190,7 +190,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	tasks := task.NewManager()
 	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
-	if err := s.data.Validate(); err != nil {
+	if err := s.nativeSession.Validate(); err != nil {
 		_ = servers.Close()
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
@@ -202,25 +202,25 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	audit := func(rec transcript.Record) { _ = opened.Append(context.Background(), rec) }
 	policy := agent.PermissionPolicy{Settings: setting.New(settings), Session: setting.NewSessionPermissions(), Audit: audit}
 	policy.Session.AddWorkingDirectory(req.CWD)
-	s.policy = policy.Session
+	s.permissions = policy.Session
 	if history != nil {
 		s.runtime.SetMessages(history.Messages)
 		s.reminders.RestoreHistory(store.ChatRows(history))
 		s.lastPrompt = history.Metadata.LastPrompt
 		if history.Metadata.Mode == "auto-accept" {
-			s.policy.SetMode(setting.ModeAutoAccept)
+			s.permissions.SetMode(setting.ModeAutoAccept)
 		}
 	}
 	if setting.New(settings).AutoMemory() {
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
 	}
-	s.permissionPolicy = func(cwd string) agent.PermissionPolicy {
+	s.permissionsForDirectory = func(cwd string) agent.PermissionPolicy {
 		scoped := policy
 		scoped.Settings = setting.ScopedPermissions{Data: settings, CWD: cwd}
 		return scoped
 	}
-	policy = s.permissionPolicy(req.CWD)
-	s.params = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
+	policy = s.permissionsForDirectory(req.CWD)
+	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
@@ -233,21 +233,21 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		AutoMemory:   policy.AutoMemory, FileCache: filecache.New(),
 	}
 	// Tools requiring the TUI or process-global extension state are not offered.
-	s.params.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
-	for _, schema := range s.params.Schemas() {
+	s.runtimeBuildParams.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
+	for _, schema := range s.runtimeBuildParams.Schemas() {
 		switch schema.Name {
 		case "AskUserQuestion":
 			if !h.forms {
-				s.params.DisabledTools[schema.Name] = true
+				s.runtimeBuildParams.DisabledTools[schema.Name] = true
 			}
 		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent":
 		default:
-			s.params.DisabledTools[schema.Name] = true
+			s.runtimeBuildParams.DisabledTools[schema.Name] = true
 		}
 	}
 	if h.forms {
-		s.params.AskUser = s.input.ask
-		s.params.BashPromptResponder = s.input.responder
+		s.runtimeBuildParams.AskUser = s.input.ask
+		s.runtimeBuildParams.BashPromptResponder = s.input.responder
 	}
 	s.refreshMemory()
 	source := "startup"
@@ -287,9 +287,9 @@ func (s *acpSession) close() error {
 		gate.Close()
 	}
 	err := s.runtime.Reset(context.Background())
-	if s.params.Tasks != nil {
-		s.params.Tasks.Cancel()
-		s.params.Tasks.Join()
+	if s.runtimeBuildParams.Tasks != nil {
+		s.runtimeBuildParams.Tasks.Cancel()
+		s.runtimeBuildParams.Tasks.Join()
 	}
 	s.sideEffects.Clear()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -299,12 +299,12 @@ func (s *acpSession) close() error {
 	if s.mcp != nil {
 		err = errors.Join(err, s.mcp.Close())
 	}
-	return errors.Join(err, s.data.Session.Close())
+	return errors.Join(err, s.nativeSession.Session.Close())
 }
 
 func (s *acpSession) refreshMemory() {
 	var user, project []string
-	for _, file := range system.LoadMemoryFiles(s.params.CWD) {
+	for _, file := range system.LoadMemoryFiles(s.runtimeBuildParams.CWD) {
 		if file.Level == "global" {
 			user = append(user, file.Content)
 		} else {
@@ -317,8 +317,8 @@ func (s *acpSession) refreshMemory() {
 }
 
 func (s *acpSession) recordState() error {
-	return s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.policy.CurrentMode().PersistenceName())}})
+	return s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
+		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.permissions.CurrentMode().PersistenceName())}})
 }
 
 func acpText(text string) protocol.ContentBlock {

@@ -19,9 +19,9 @@ import (
 
 // Rebuild only while idle, after background worker cleanup.
 func (s *acpSession) configureAgents() {
-	e := subagent.NewExecutor(s.params.Provider, s.params.CWD, s.params.ModelID, s.hooks)
-	e.ConfigureOwner(s.params.Tasks, s.agents, func(background bool, cwd string) perm.PermissionFunc {
-		policy := s.permissionPolicy(cwd)
+	e := subagent.NewExecutor(s.runtimeBuildParams.Provider, s.runtimeBuildParams.CWD, s.runtimeBuildParams.ModelID, s.hooks)
+	e.ConfigureOwner(s.runtimeBuildParams.Tasks, s.agents, func(background bool, cwd string) perm.PermissionFunc {
+		policy := s.permissionsForDirectory(cwd)
 		return func(ctx context.Context, name string, input map[string]any) (bool, string) {
 			if name == "Bash" {
 				if mode, _ := input["execution_mode"].(string); mode != "" && mode != "foreground" {
@@ -43,31 +43,31 @@ func (s *acpSession) configureAgents() {
 			return false, "headless worker: " + decision.Reason
 		}
 	}, func(ctx context.Context, source string) context.Context {
-		ctx = plugin.WithRegistry(ctx, s.params.Plugins)
-		ctx = plugin.WithRoot(ctx, s.params.Plugins.RootForPath(source))
+		ctx = plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins)
+		ctx = plugin.WithRoot(ctx, s.runtimeBuildParams.Plugins.RootForPath(source))
 		ctx = fs.WithShellEnv(ctx, plugin.PluginEnv(ctx))
-		ctx = skill.WithRegistry(ctx, s.params.Skills)
-		return fs.WithFileViews(ctx, s.params.FileViews)
+		ctx = skill.WithRegistry(ctx, s.runtimeBuildParams.Skills)
+		return fs.WithFileViews(ctx, s.runtimeBuildParams.FileViews)
 	})
 	e.SetPostTool(func(result core.ToolResult, effect any) {
-		agent.PostTool(result, effect, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.params.FileCache.Touch})
+		agent.PostTool(result, effect, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 	})
 	var instructions []string
-	for _, file := range system.LoadMemoryFiles(s.params.CWD) {
+	for _, file := range system.LoadMemoryFiles(s.runtimeBuildParams.CWD) {
 		instructions = append(instructions, file.Content)
 	}
 	e.SetProjectInstructions(strings.Join(instructions, "\n\n"))
-	e.SetSessionStore(s.data.Store, s.params.SessionID)
-	e.SetDisabledTools(s.params.DisabledTools)
+	e.SetSessionStore(s.nativeSession.Store, s.runtimeBuildParams.SessionID)
+	e.SetDisabledTools(s.runtimeBuildParams.DisabledTools)
 	e.SetMCPDependencies(s.mcp)
-	e.SetSkillsDirectory(s.params.Skills.PromptSection())
-	e.SetSkillResolver(s.params.Skills.SkillInvocationPrompt)
-	e.SetParentPermissionMode(func() subagent.PermissionMode { return subagent.InheritedPermissionMode(s.policy.CurrentMode()) })
+	e.SetSkillsDirectory(s.runtimeBuildParams.Skills.PromptSection())
+	e.SetSkillResolver(s.runtimeBuildParams.Skills.SkillInvocationPrompt)
+	e.SetParentPermissionMode(func() subagent.PermissionMode { return subagent.InheritedPermissionMode(s.permissions.CurrentMode()) })
 	worker := agenttool.NewAgentTool()
 	worker.SetExecutor(subagent.NewExecutorAdapter(e))
 	schema := worker.Schema()
 	schema.Description += " ACP supports foreground workers and session-owned background workers. Background requests requiring human approval are denied; use TaskOutput and TaskStop to inspect or cancel."
 	// Only foreground workers inherit the prompt responder; RunBackground starts a fresh context.
-	s.params.NativeTools = append(s.params.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.params.CWD }, tool.WithSideEffectHandler(s.params.ToolResponse), tool.WithAskUser(s.params.AskUser), tool.WithBashPromptResponderProvider(s.params.BashPromptResponder)))
-	s.params.AgentCatalog = s.agents.AgentCatalog
+	s.runtimeBuildParams.NativeTools = append(s.runtimeBuildParams.Tasks.Tools(), tool.AdaptTool(worker, schema, func() string { return s.runtimeBuildParams.CWD }, tool.WithSideEffectHandler(s.runtimeBuildParams.ToolResponse), tool.WithAskUser(s.runtimeBuildParams.AskUser), tool.WithBashPromptResponderProvider(s.runtimeBuildParams.BashPromptResponder)))
+	s.runtimeBuildParams.AgentCatalog = s.agents.AgentCatalog
 }
