@@ -99,16 +99,15 @@ const acpBashDirHelp = "Directory changes affect only this command; subsequent c
 type acpSession struct {
 	input            acpInput
 	data             agent.MainSession
-	params           agent.BuildParams
+	params           agent.BuildParams // retained across runtime rebuilds
 	runtime          agent.Runtime
 	hooks            *hook.Engine
 	reminders        *reminder.Reminder
 	lastPrompt       string
 	sideEffects      sync.Map
 	mcp              *mcp.Manager
-	policy           *setting.SessionPermissions
+	policy           *setting.SessionPermissions // sole grant and mode owner
 	permissionPolicy func(string) agent.PermissionPolicy
-	mode             setting.OperationMode
 	commands         *command.Registry
 	agents           *subagent.Registry
 	models           []llm.ModelInfo
@@ -209,9 +208,8 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		s.reminders.RestoreHistory(store.ChatRows(history))
 		s.lastPrompt = history.Metadata.LastPrompt
 		if history.Metadata.Mode == "auto-accept" {
-			s.mode = setting.ModeAutoAccept
+			s.policy.SetMode(setting.ModeAutoAccept)
 		}
-		s.policy.SetMode(s.mode)
 	}
 	if setting.New(settings).AutoMemory() {
 		policy.AutoMemory = setting.MemoryStoresFor(req.CWD)
@@ -320,7 +318,7 @@ func (s *acpSession) refreshMemory() {
 
 func (s *acpSession) recordState() error {
 	return s.data.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.mode.PersistenceName())}})
+		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.policy.CurrentMode().PersistenceName())}})
 }
 
 func acpText(text string) protocol.ContentBlock {

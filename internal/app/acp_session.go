@@ -14,7 +14,7 @@ import (
 )
 
 func (s *acpSession) modes() protocol.SessionModeState {
-	return protocol.SessionModeState{CurrentModeID: protocol.SessionModeID(s.mode.PersistenceName()), AvailableModes: []protocol.SessionMode{
+	return protocol.SessionModeState{CurrentModeID: protocol.SessionModeID(s.policy.CurrentMode().PersistenceName()), AvailableModes: []protocol.SessionMode{
 		{ID: "normal", Name: "Normal", Description: protocol.Some("Native permission rules and interactive approvals")},
 		{ID: "auto-accept", Name: "Auto-accept", Description: protocol.Some("Native auto-accept rules; explicit deny and ask rules still apply")},
 	}}
@@ -47,7 +47,6 @@ func (h *acpHost) setMode(ctx context.Context, req protocol.SetSessionModeReques
 		return protocol.SetSessionModeResponse{}, err
 	}
 	s.policy.SetMode(mode)
-	s.mode = mode
 	return protocol.SetSessionModeResponse{}, nil
 }
 

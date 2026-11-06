@@ -39,7 +39,7 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 				t.Fatalf("expected busy, got %v", err)
 			}
 		}
-		if s.params.ModelID != "test" || s.mode != setting.ModeNormal || s.policy.CurrentMode() != setting.ModeNormal {
+		if s.params.ModelID != "test" || s.policy.CurrentMode() != setting.ModeNormal {
 			t.Fatal("rejected configuration mutated live policy/model")
 		}
 		history, err := s.data.Store.Read(string(id))

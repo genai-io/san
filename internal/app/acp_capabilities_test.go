@@ -75,7 +75,7 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	if err := f.client.Call(f.ctx, "session/set_mode", protocol.SetSessionModeRequest{SessionID: req.SessionID, ModeID: "auto-accept"}, &modeResponse); err != nil {
 		t.Fatal(err)
 	}
-	if s.mode != setting.ModeAutoAccept {
+	if s.policy.CurrentMode() != setting.ModeAutoAccept {
 		t.Fatal("mode not applied")
 	}
 	if _, err := f.prompt(req.SessionID, "continue"); err != nil {

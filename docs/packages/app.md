@@ -146,7 +146,9 @@ and TaskOutput/TaskStop, subject to disabled tools and native permission rules.
 - **Configuration** (`acp_config.go`): `session/set_mode` offers normal and
   auto-accept, preserving explicit deny/ask rules. `session/set_config_option`
   selects models within the configured provider; `session/set_model` and
-  cross-provider switching are unsupported. Changes persist before taking effect.
+  cross-provider switching are unsupported. SessionPermissions alone owns the mode;
+  protocol responses and transcript patches read it directly. Changes persist before
+  taking effect.
   Active prompts or background work (including cleanup) return `Session busy`
   without changing live or saved state.
 - **Background work**: Bash accepts `background_job` (native deadlines) and
