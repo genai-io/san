@@ -193,9 +193,9 @@ func Cleanup()
   nothing — and only when `Managed()` says the binary is in `InstallDir()`
   (`~/.local/bin`, or `%LOCALAPPDATA%\san\bin` on Windows), so a Homebrew,
   `go install`, package-manager, or dev-build binary is never replaced behind
-  its owner's back. Success shows `✓ vX.Y.Z installed · restart to update` in
-  the status line; a failed install is one warning line at exit pointing to
-  `san update`; a failed version check (offline) is silent. The session
+  its owner's back. Success shows `vX.Y.Z installed · Restart to update` right-aligned
+  above the input, sharing the task-status row without displacing it. A failed
+  install warns at exit with `san update`; an offline check is silent. The session
   itself is never touched. `SAN_DISABLE_AUTOUPDATE=1` turns the check off;
   `san update` still works.
 - `Newer` only accepts plain `X.Y.Z`, so a dev build (`git describe` suffix,
