@@ -45,11 +45,11 @@ func TestFailedInferencePreservesIdentityForRetry(t *testing.T) {
 	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("provider unavailable"), Response: &ai.Response{Content: ai.Content{{
 		Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{ID: "discarded", Name: "Read"},
 	}}}})
-	if m.Stream.MessageID != owner || len(m.Tool.PendingCalls) != 0 || len(m.Messages) != 2 || m.Messages[1].Content != "Inference attempt 1 failed: provider unavailable" {
-		t.Fatalf("failed attempt accepted tools or hid its error: %+v", m)
+	if m.Stream.MessageID != owner || len(m.Tool.PendingCalls) != 0 || len(m.Messages) != 1 {
+		t.Fatalf("failed attempt accepted tools or added a persistent error: %+v", m)
 	}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 2})
-	if len(m.Messages) != 2 || m.Messages[0].Content != "Inference attempt 1 failed: provider unavailable" || m.Stream.MessageID == owner {
+	if len(m.Messages) != 1 || m.Stream.MessageID == owner {
 		t.Fatalf("retry did not replace its failed inference: %+v", m)
 	}
 }
