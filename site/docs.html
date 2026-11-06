@@ -14,33 +14,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#top">Skip to content</a>
 
-<nav id="nav">
+<nav id="nav" aria-label="Main navigation">
   <div class="wrap">
-    <span class="logo"><a href="index.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="index.html">San<span class="spark">三</span></a></span>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-links" aria-expanded="false">Menu</button>
     <div class="nav-links" id="nav-links">
-      <a href="index.html#why">Why</a>
+      <a href="index.html#why">Why San</a>
       <a href="index.html#benchmark">Benchmark</a>
       <a href="index.html#community">Community</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">Intro</a>
-      <a href="getting-started.html">Start</a>
-      <a href="docs.html">Docs</a>
+      <a href="getting-started.html">Get started</a>
+      <a href="docs.html" aria-current="page">Docs</a>
       <span class="lang-switch">
-        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-label"></span>
-          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
-        </button>
-        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+        <button class="lang-btn" id="lang-btn" aria-controls="lang-menu" aria-expanded="false"><span id="lang-label">EN</span><span aria-hidden="true">⌄</span></button>
+        <div class="lang-menu" id="lang-menu"><a href="docs.html" lang="en" hreflang="en">EN</a><a href="docs.zh.html" lang="zh" hreflang="zh">中文</a></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">GitHub</a>
     </div>
   </div>
 </nav>
 
+<main id="top">
 <header class="page-hero">
   <div class="wrap">
+    <span class="kicker">Field guide / 02</span>
     <h1>Documentation</h1>
     <p>Everything from your first prompt to the internals.</p>
   </div>
@@ -51,16 +50,16 @@
     <div class="grid">
 
       <div class="card doc-card">
-        <h3>Start here</h3>
+        <h2>Start here</h2>
         <ul>
           <li><a href="getting-started.html">Getting Started</a></li>
-          <li><a href="https://github.com/genai-io/san/blob/main/docs/architecture.md">Architecture overview</a></li>
+          <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/architecture.md">Architecture overview</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/development.md">Local development</a></li>
         </ul>
       </div>
 
       <div class="card doc-card">
-        <h3>Guides</h3>
+        <h2>Guides</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/guides/writing-a-skill.md">Writing a skill</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/guides/writing-a-subagent.md">Writing a subagent</a></li>
@@ -69,7 +68,7 @@
       </div>
 
       <div class="card doc-card">
-        <h3>Concepts</h3>
+        <h2>Concepts</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/persona.md">Personas</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">Harness channels &amp; identity</a></li>
@@ -81,7 +80,7 @@
       </div>
 
       <div class="card doc-card">
-        <h3>Reference</h3>
+        <h2>Reference</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/slash-commands.md">Slash commands</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/configuration.md">Configuration</a></li>
@@ -92,16 +91,16 @@
       </div>
 
       <div class="card doc-card">
-        <h3>Architecture &amp; packages</h3>
+        <h2>Architecture &amp; packages</h2>
         <ul>
-          <li><a href="https://github.com/genai-io/san/blob/main/docs/architecture.md">Architecture</a></li>
+          <li><a href="https://github.com/genai-io/san/blob/main/docs/concepts/architecture.md">Architecture</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/packages/index.md">Package index</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/reference/dependency-rules.md">Dependency rules</a></li>
         </ul>
       </div>
 
       <div class="card doc-card">
-        <h3>Operations</h3>
+        <h2>Operations</h2>
         <ul>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/testing.md">Testing</a></li>
           <li><a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Benchmark</a></li>
@@ -123,9 +122,10 @@
   </div>
 </section>
 
+</main>
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> San · Apache 2.0</span>
+    <span>© <span id="year">2026</span> San · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="docs.html">Docs</a> ·
@@ -134,53 +134,6 @@
   </div>
 </footer>
 
-<script>
-  document.getElementById('year').innerText = new Date().getFullYear();
-
-  function toggleNav(btn) {
-    const nav = document.getElementById('nav');
-    const open = nav.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open);
-  }
-  document.querySelectorAll('#nav-links a').forEach(a =>
-    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
-  const nav = document.getElementById('nav');
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  // Language switcher — custom dropdown
-  (function() {
-    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
-    const PAGES = new Set(['index', 'getting-started', 'docs']);
-    const page = location.pathname.split('/').pop() || 'index.html';
-    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
-      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
-    const m = page.match(/\.([a-z]{2})\.html$/);
-    const cur = m ? m[1] : 'en';
-    const label = document.getElementById('lang-label');
-    const menu = document.getElementById('lang-menu');
-    const btn = document.getElementById('lang-btn');
-    if (!label || !menu || !btn) return;
-    label.textContent = LANGS[cur].label;
-    Object.entries(LANGS).forEach(([code, lang]) => {
-      const opt = document.createElement('button');
-      opt.textContent = lang.label;
-      opt.dataset.code = code;
-      if (code === cur) opt.classList.add('active');
-      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
-      menu.appendChild(opt);
-    });
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const open = this.getAttribute('aria-expanded') === 'true';
-      this.setAttribute('aria-expanded', !open);
-      menu.classList.toggle('open');
-    });
-    document.addEventListener('click', function () {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-  })();
-</script>
+<script src="site.js"></script>
 </body>
 </html>

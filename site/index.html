@@ -4,560 +4,142 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>San — Minimal overhead. Maximum agent.</title>
-<meta name="description" content="San is an open-source terminal agent runtime: one 12 MB Go binary, ~2.3k tokens of harness, no Node.js or Python. Prompt, tools, providers and extensions all stay yours to change.">
+<meta name="description" content="An open-source terminal agent in one native binary. Choose your model, shape its behavior, and coordinate agents with control and visibility.">
 <meta property="og:title" content="San — Minimal overhead. Maximum agent.">
-<meta property="og:description" content="Lean context, native speed, open all the way down. An open-source terminal agent runtime in one 12 MB Go binary.">
+<meta property="og:description" content="A lightweight, model-agnostic terminal agent. Open source, configurable, and built for collaboration.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://genai-io.github.io/san/">
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="icon" href="san.png">
 <link rel="stylesheet" href="style.css">
+<script src="site.js" defer></script>
 </head>
 <body>
-
-<nav id="nav">
+<a class="skip-link" href="#top">Skip to content</a>
+<nav id="nav" aria-label="Main navigation">
   <div class="wrap">
-    <span class="logo"><a href="#top">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="#top">San<span class="spark">三</span></a></span>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-controls="nav-links" aria-expanded="false">Menu</button>
     <div class="nav-links" id="nav-links">
-      <a href="#why">Why</a>
-      <a href="#benchmark">Benchmark</a>
-      <a href="#community">Community</a>
+      <a href="#why">Why San</a><a href="#benchmark">Benchmark</a><a href="#community">Community</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">Intro</a>
-      <a href="getting-started.html">Start</a>
-      <a href="docs.html">Docs</a>
+      <a href="getting-started.html">Get started</a><a href="docs.html">Docs</a>
       <span class="lang-switch">
-        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-label"></span>
-          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
-        </button>
-        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+        <button class="lang-btn" id="lang-btn" aria-controls="lang-menu" aria-expanded="false"><span id="lang-label">EN</span><span aria-hidden="true">⌄</span></button>
+        <div class="lang-menu" id="lang-menu"><a href="index.html" lang="en" hreflang="en">EN</a><a href="index.zh.html" lang="zh" hreflang="zh">中文</a></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">GitHub</a>
     </div>
   </div>
 </nav>
-
-<header class="hero" id="top">
-  <div class="wrap">
+<main id="top">
+<header class="hero">
+  <div class="wrap hero-layout">
     <div class="hero-head">
-      <span class="kicker load-up d1">Open source · Apache-2.0</span>
-      <h1 class="load-up d2">Minimal overhead.<br>Maximum <em>agent</em>.</h1>
-      <p class="sub load-up d3">San is an open-source terminal agent runtime: one native Go binary, no Node.js or Python. Everything the model touches — prompt, tools, providers, extensions — stays yours to change.</p>
-      <div class="metrics load-up d4">
-        <span><b>~0.01s</b> cold start</span>
-        <span><b>~12 MB</b> binary</span>
-        <span><b>~2.3k</b> tokens of harness</span>
-        <span><b>zero</b> runtime deps</span>
+      <span class="kicker">Open-source terminal agent</span>
+      <h1>Minimal overhead.<br>Maximum <em>agent</em>.</h1>
+      <p class="sub">One native binary. Your choice of model. Shape agent behavior and coordinate work across agents, with control at every step.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="getting-started.html">Get started</a>
+        <a class="text-link" href="#intro">Watch the intro →</a>
       </div>
     </div>
-
-    <div class="install load-up d5">
-      <div class="install-tabs" role="tablist" aria-label="Install method">
-        <button class="install-tab active" role="tab" aria-selected="true" data-cmd="curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash">curl</button>
-        <button class="install-tab" role="tab" aria-selected="false" data-cmd="irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex">powershell</button>
-        <button class="install-tab" role="tab" aria-selected="false" data-cmd="go install github.com/genai-io/san/cmd/san@latest">go install</button>
+    <div class="hero-install">
+      <p class="install-heading">Start with San</p>
+      <div class="install">
+        <div class="install-tabs" role="tablist" aria-label="Install method">
+          <button class="install-tab active" id="tab-brew" role="tab" aria-controls="install-panel" aria-selected="true" data-cmd="brew install genai-io/san/san">Homebrew</button>
+          <button class="install-tab" id="tab-script" role="tab" aria-controls="install-panel" aria-selected="false" tabindex="-1" data-cmd="curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash">Script</button>
+          <button class="install-tab" id="tab-windows" role="tab" aria-controls="install-panel" aria-selected="false" tabindex="-1" data-cmd="irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex">Windows</button>
+          <button class="install-tab" id="tab-go" role="tab" aria-controls="install-panel" aria-selected="false" tabindex="-1" data-cmd="go install github.com/genai-io/san/cmd/san@latest">Go</button>
+        </div>
+        <div class="install-body" id="install-panel" role="tabpanel" aria-labelledby="tab-brew" tabindex="0">
+          <code id="install-cmd">brew install genai-io/san/san</code>
+          <button class="copy-btn" data-copy="install-cmd" aria-live="polite">Copy</button>
+        </div>
       </div>
-      <div class="install-body">
-        <span class="prompt">$</span>
-        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-        <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
-      </div>
-    </div>
-
-    <div class="hero-actions load-up d6">
-      <a class="btn btn-primary" href="getting-started.html">Get started</a>
-      <a class="btn btn-ghost" href="intro.html">Watch the intro</a>
-      <a class="btn btn-ghost" href="https://github.com/genai-io/san">GitHub</a>
-    </div>
-
-    <div class="badges load-up d6">
-      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="Release"></a>
-      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=0d9488&labelColor=f1efe9" alt="Stars"></a>
-      <img src="https://img.shields.io/badge/license-Apache%202.0-0d9488?style=flat-square&labelColor=f1efe9" alt="License">
+      <p class="install-note">macOS, Linux &amp; Windows · Apache 2.0<br><a href="https://github.com/genai-io/san/releases">Releases and downloads</a></p>
     </div>
   </div>
 </header>
-
-<section id="demo" style="padding-top: 24px;">
-  <div class="wrap wide">
-    <div class="stage-tabs" role="tablist" aria-label="Demo">
-      <button class="stage-tab active" role="tab" aria-selected="true" data-stage="intro">Watch the intro</button>
-      <button class="stage-tab" role="tab" aria-selected="false" data-stage="turn">Run a turn</button>
+<section id="intro" class="intro-section" aria-labelledby="intro-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">A quick introduction</span>
+      <h2 class="section-title" id="intro-title">Meet San in 70 seconds.</h2>
+      <p class="section-sub">From choosing a model to working across agents. The original comic tour, at your pace. Model names and limits are illustrative; <a href="#benchmark">performance figures are version-specific</a>.</p>
     </div>
-
-    <div id="stage-intro">
-      <div class="intro-embed">
-        <iframe src="intro.html" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
-      </div>
-      <p class="panel-cap"><a href="intro.html" target="_blank" rel="noopener">Open the full-quality intro ↗</a> · 70s, no sound</p>
+    <div class="intro-player" id="intro-player">
+      <img class="intro-poster" src="intro-poster.webp" width="1280" height="720" alt="San — a lightweight, open-source terminal agent" loading="lazy">
     </div>
-
-    <div id="stage-turn" hidden>
-      <div class="term">
-        <div class="term-bar">
-          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <span class="where">san — ~/acme-api</span>
-          <span class="model">◆ <b>sonnet-4-6</b></span>
-        </div>
-        <div class="term-out" id="term-out"></div>
-        <div class="term-ask">
-          <form class="term-line" id="term-form" autocomplete="off">
-            <span class="q">❯</span>
-            <input id="term-in" type="text" placeholder="ask San something…" aria-label="Ask San something">
-            <span class="enter">↵ run</span>
-          </form>
-          <div class="term-chips" id="term-chips"></div>
-        </div>
-      </div>
-      <p class="panel-cap">Scripted turn, example repo · what a real San run looks like</p>
+    <div class="intro-actions">
+      <a class="btn btn-primary" href="intro.html" id="intro-play" aria-controls="intro-player"><span aria-hidden="true">▶&nbsp;</span> Watch intro · 70s</a>
+      <button class="btn btn-ghost" id="intro-pause" type="button" hidden>Pause</button>
+      <button class="btn btn-ghost" id="intro-replay" type="button" hidden>Replay</button>
+      <a class="text-link" href="intro.html">Open standalone ↗</a>
+      <span class="intro-status" id="intro-status" role="status"></span>
     </div>
   </div>
 </section>
-
 <section id="why">
   <div class="wrap">
     <div class="section-head">
       <span class="kicker">Why San</span>
-      <h2 class="section-title">Minimal overhead,<br><em>not a minimal agent</em>.</h2>
-      <p class="section-sub">Three properties — 小 small, 快 fast, 开 open — and San refuses to trade any one of them for the others. Three strokes, one 三.</p>
+      <h2 class="section-title">Less framework. More room to work.</h2>
+      <p class="section-sub">Lightweight by design, adaptable to your workflow. The essentials for capable agents, without prescribing how you use them.</p>
     </div>
-
     <div class="trigram">
       <article class="stroke">
-        <div class="rail">
-          <span class="glyph" aria-hidden="true">一</span>
-          <span class="name">Small</span>
-        </div>
-        <div class="body">
-          <h3>The context window is for your work</h3>
-          <p>What the harness sends before your first message stays small, so the window belongs to the task at hand. On disk it is one file that needs nothing else installed.</p>
-          <dl class="rows">
-            <dt>harness context</dt><dd>~2.3k tokens</dd>
-            <dt>binary</dt><dd>12 MB <span class="dim">· macos · linux · windows</span></dd>
-            <dt>runtime deps</dt><dd>none</dd>
-          </dl>
-          <div class="pills">
-            <span class="pill"><span class="ico">💻</span> Laptop</span>
-            <span class="pill"><span class="ico">☁️</span> Cloud VM</span>
-            <span class="pill"><span class="ico">📟</span> ARM edge</span>
-            <span class="pill"><span class="ico">🐳</span> Container</span>
-            <span class="pill"><span class="ico">⚙️</span> CI step</span>
-            <span class="pill"><span class="ico">🔒</span> Air-gapped host</span>
-          </div>
-          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">Why small matters</a></p>
-        </div>
+        <div class="rail"><span class="glyph">01</span><span class="name">Lightweight</span></div>
+        <div class="body"><h3>Small footprint. Fast start.</h3><p>One native Go binary, no Node.js or Python runtime. A ~12 MB download and ~2.3k tokens of harness context leave more resources for your task.</p><p class="more"><a href="#benchmark">See measurements and versions →</a></p></div>
       </article>
-
       <article class="stroke">
-        <div class="rail">
-          <span class="glyph" aria-hidden="true">二</span>
-          <span class="name">Fast</span>
-        </div>
-        <div class="body">
-          <h3>What you wait on is the model</h3>
-          <p>Native Go, so nothing boots before you type: no interpreter, no <code>node_modules</code> to read off disk. What you wait on is the model.</p>
-          <dl class="rows">
-            <dt>cold start</dt><dd>~0.01s</dd>
-            <dt>simple task</dt><dd>~2.4s</dd>
-            <dt>tool-use task</dt><dd>~3.3s</dd>
-            <dt>memory</dt><dd>~32 MB idle <span class="dim">· ~39 MB under load</span></dd>
-          </dl>
-          <p class="more"><a href="#benchmark">See the numbers</a></p>
-        </div>
+        <div class="rail"><span class="glyph">02</span><span class="name">Your harness</span></div>
+        <div class="body"><h3>Your model. Your way of working.</h3><p>A model-agnostic runtime with configurable system prompts, personas, skills, and tools. Shape agent behavior without adopting someone else's workflow.</p><p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">Compose the system prompt →</a></p></div>
       </article>
-
       <article class="stroke">
-        <div class="rail">
-          <span class="glyph" aria-hidden="true">三</span>
-          <span class="name">Open</span>
-        </div>
-        <div class="body">
-          <h3>Open all the way down</h3>
-          <p>What the model sees and what it may do are both yours to write — and to replay afterwards.</p>
-          <div class="trio">
-            <div class="facet">
-              <h4>Plug in</h4>
-              <p>Anthropic, OpenAI, Google, DeepSeek, Ollama and a dozen more providers; the search backend of your choice; skills, plugins, MCP servers, subagents, workflows and hooks, all unmodified. Sessions join a group and message each other.</p>
-              <div class="keys"><span>/models</span><span>/search</span><span>/group</span></div>
-            </div>
-            <div class="facet">
-              <h4>Write</h4>
-              <p>Compose the system prompt, bundle it into a persona you can switch, hand autopilot a goal, set the strategy self-learning follows.</p>
-              <div class="keys"><span>/identity</span><span>/goal</span><span>/evolve</span></div>
-            </div>
-            <div class="facet">
-              <h4>Oversee</h4>
-              <p>You choose how much San may do without asking, and subagents inherit that choice. The inspector replays a run exactly as the model saw it.</p>
-              <div class="keys"><span>Shift+Tab</span><span>san inspector</span></div>
-            </div>
-          </div>
-          <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/concepts/harness-channels.md">Compose the system prompt</a></p>
-        </div>
+        <div class="rail"><span class="glyph">03</span><span class="name">Collaboration</span></div>
+        <div class="body"><h3>One task. More than one agent.</h3><p>Delegate to subagents, exchange messages across sessions, and assemble dynamic workflows. Split the work without losing the thread.</p><div class="keys"><span>/group</span></div></div>
+      </article>
+      <article class="stroke">
+        <div class="rail"><span class="glyph">04</span><span class="name">Control &amp; inspection</span></div>
+        <div class="body"><h3>Decide what runs. See what happened.</h3><p>Configure execution permissions and inspect model context and tool calls. Set the agent's scope, then review the run rather than guessing.</p><div class="keys"><span>Shift+Tab</span><span>san inspector</span></div></div>
       </article>
     </div>
+    <p class="more"><a href="https://github.com/genai-io/san/blob/main/docs/features.md">All features</a> · <a href="https://github.com/genai-io/san/blob/main/docs/concepts/architecture.md">Architecture</a></p>
   </div>
 </section>
-
 <section id="benchmark" class="band">
   <div class="wrap">
-    <div class="section-head">
-      <span class="kicker">Benchmark</span>
-      <h2 class="section-title">Small and fast, <em>measured</em>.</h2>
-      <p class="section-sub">Against Claude Code v2.1.112 on Apple Silicon, same model (<span class="mono">claude-sonnet-4-6</span>), same tasks.</p>
-    </div>
-    <div class="bench-wrap reveal">
+    <div class="section-head"><span class="kicker">Benchmark</span><h2 class="section-title">A smaller runtime, measured.</h2><p class="section-sub">Against Claude Code on Apple Silicon, with the same model (<code>claude-sonnet-4-6</code>) and tasks. Results are specific to the versions below.</p></div>
+    <div class="bench-wrap" tabindex="0" role="region" aria-label="Benchmark comparison">
       <table>
-        <thead>
-          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Advantage</th></tr>
-        </thead>
+        <thead><tr><th scope="col">Metric</th><th scope="col">San</th><th scope="col">Claude Code</th><th scope="col">Comparison</th></tr></thead>
         <tbody>
-          <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller</td></tr>
+          <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller¹</td></tr>
           <tr><td>Disk footprint</td><td>38 MB</td><td>175 MB</td><td class="adv">4.6× smaller</td></tr>
-          <tr><td>Startup time</td><td>~0.01s</td><td>~0.20s</td><td class="adv">20× faster</td></tr>
+          <tr><td>Startup time (<code>version</code>)</td><td>~0.01s</td><td>~0.20s</td><td class="adv">20× faster</td></tr>
           <tr><td>Startup memory</td><td>~32 MB</td><td>~189 MB</td><td class="adv">5.8× less</td></tr>
           <tr><td>Simple task</td><td>~2.4s / 39 MB</td><td>~10.4s / 286 MB</td><td class="adv">4.3× faster</td></tr>
           <tr><td>Tool-use task</td><td>~3.3s / 39 MB</td><td>~26.0s / 285 MB</td><td class="adv">7.9× faster</td></tr>
-          <tr><td>Harness context</td><td>~2.3k tokens</td><td>~20.9k tokens</td><td class="adv">~9× leaner</td></tr>
+          <tr><td>Harness context²</td><td>~2.3k tokens</td><td>~20.9k tokens</td><td class="adv">~9× leaner</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="bench-note">Comparable feature sets — San runs Claude Code's skills, plugins and MCP servers unmodified — so the gap is client-side overhead, not capability. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Method and how to reproduce →</a></p>
+    <p class="bench-note">Task figures are wall time / peak RSS in print mode; network and API latency vary. Startup measures the <code>version</code> command, not time to an interactive prompt. ¹ Download comparison excludes the additional Node runtime. ² Harness context is system prompt + tool schemas on an empty first turn, measured separately on San v1.22.0 vs Claude Code v2.1.220. All other rows are from the San v1.13.2 / Claude Code v2.1.112 run. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Method and reproduction →</a></p>
   </div>
 </section>
-
 <section id="community">
   <div class="wrap">
-    <div class="section-head">
-      <span class="kicker">Community</span>
-      <h2 class="section-title">Two ways <em>in</em>.</h2>
-      <p class="section-sub">WeChat for the Chinese community, Slack for everyone else.</p>
-    </div>
-    <div class="community-row reveal">
-      <div class="community-card">
-        <h3>WeChat</h3>
-        <p class="community-copy">关注公众号「极客外传」· 回复 <span class="mono">san</span> 或 <span class="mono">三</span> 入群</p>
-      </div>
-      <div class="community-card">
-        <h3>Slack</h3>
-        <p class="community-copy"><a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join us on Slack</a></p>
-      </div>
+    <div class="section-head"><span class="kicker">Community</span><h2 class="section-title">Build with us.</h2><p class="section-sub">Share workflows, ask questions, and help shape San.</p></div>
+    <div class="community-row">
+      <div class="community-card"><h3>WeChat</h3><p class="community-copy">关注公众号「极客外传」· 回复 san 或 三 入群</p></div>
+      <div class="community-card"><h3>Slack</h3><p class="community-copy"><a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">Join the conversation →</a></p></div>
     </div>
   </div>
 </section>
-
-<footer>
-  <div class="wrap">
-    <span class="brand">© <span id="year"></span> <span class="san">San 三</span> · Apache 2.0</span>
-    <span>
-      <a href="https://github.com/genai-io/san">GitHub</a> ·
-      <a href="https://github.com/genai-io/san/tree/main/docs">Docs</a> ·
-      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">Contributing</a>
-    </span>
-  </div>
-</footer>
-
-<script>
-  // Copy install command
-  function copyInstall(btn) {
-    const text = document.getElementById('install-cmd').innerText;
-    navigator.clipboard.writeText(text).then(() => {
-      const old = btn.innerText;
-      btn.innerText = 'Copied';
-      setTimeout(() => btn.innerText = old, 1500);
-    });
-  }
-  document.getElementById('year').innerText = new Date().getFullYear();
-
-  // Install method tabs — each tab carries its own command
-  document.querySelectorAll('.install-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.install-tab').forEach(t => {
-        t.classList.toggle('active', t === tab);
-        t.setAttribute('aria-selected', t === tab);
-      });
-      document.getElementById('install-cmd').innerText = tab.dataset.cmd;
-    });
-  });
-
-  // Mobile nav toggle
-  function toggleNav(btn) {
-    const nav = document.getElementById('nav');
-    const open = nav.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open);
-  }
-  // Close the mobile menu after tapping a link
-  document.querySelectorAll('#nav-links a').forEach(a =>
-    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
-
-  // Nav gains a hairline rule once the page scrolls
-  const nav = document.getElementById('nav');
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-
-  // Scroll-triggered reveals
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
-
-  // Scroll-spy: highlight the active in-page nav link
-  const spyLinks = [...document.querySelectorAll('#nav-links a[href^="#"]')];
-  const sections = spyLinks
-    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
-    .filter(Boolean);
-  const spy = new IntersectionObserver((entries) => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        spyLinks.forEach(l => l.classList.toggle('active',
-          l.getAttribute('href') === '#' + e.target.id));
-      }
-    });
-  }, { rootMargin: '-45% 0px -50% 0px' });
-  sections.forEach(s => spy.observe(s));
-
-  // The intro is a fixed 1280x720 page embedded as an iframe; scale the whole
-  // iframe to the container width so the full animated stage is always shown.
-  (function () {
-    const box = document.querySelector('.intro-embed');
-    if (!box) return;
-    const frame = box.querySelector('iframe');
-    // the box has no width while its tab is hidden — leave the scale alone
-    const scaleFrame = () => {
-      if (!box.clientWidth) return;
-      frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
-    };
-    scaleFrame();
-    new ResizeObserver(scaleFrame).observe(box);
-  })();
-
-  // The demo slot: one tab per demo view
-  document.querySelectorAll('.stage-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.stage-tab').forEach(t => {
-        const on = t === tab;
-        t.classList.toggle('active', on);
-        t.setAttribute('aria-selected', on);
-        document.getElementById('stage-' + t.dataset.stage).hidden = !on;
-      });
-    });
-  });
-
-  // A San turn, played out in the terminal: the ask, one row per tool, then
-  // what San said. The turns are scripted — typing anything says so plainly
-  // rather than inventing an answer.
-  (function () {
-    const out   = document.getElementById('term-out');
-    const form  = document.getElementById('term-form');
-    const input = document.getElementById('term-in');
-    const chips = document.getElementById('term-chips');
-    if (!out) return;
-
-    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const TURNS = [
-      {
-        chip: 'add an endpoint',
-        ask: 'add a /healthz endpoint with a test',
-        steps: [
-          { tool: 'bash',  arg: 'rg -n "func register" internal/server', meta: '3 hits · 9ms' },
-          { tool: 'read',  arg: 'internal/server/router.go',             meta: '148 lines · 11ms' },
-          { tool: 'edit',  arg: 'internal/server/router.go',             meta: '+9 −0' },
-          { tool: 'write', arg: 'internal/server/healthz_test.go',       meta: '+24' },
-          { tool: 'bash',  arg: 'go test ./internal/server',             meta: 'ok · 0.42s', wait: 800 },
-          { say: ['/healthz now sits with the other routes in router.go. It reports the build revision, and returns 503 while the database pool is still warming — so a rolling deploy will not send traffic to a cold process. The test covers both states.'] },
-          { done: '5 tools · 2.1s · 118 tok/s' },
-        ],
-      },
-      {
-        chip: 'chase a flaky test',
-        ask: 'TestQueueDrain fails about one run in twenty — why?',
-        steps: [
-          { tool: 'bash', arg: 'rg -n "TestQueueDrain" internal/queue',        meta: '1 hit · 7ms' },
-          { tool: 'read', arg: 'internal/queue/drain_test.go',                 meta: '96 lines · 9ms' },
-          { tool: 'read', arg: 'internal/queue/drain.go',                      meta: '212 lines · 10ms' },
-          { say: ['The test sleeps 10ms and then asserts on q.pending. Drain() only clears the last batch once its ticker fires again, and that ticker runs every 5ms — so on a loaded machine the second tick lands after the assertion and one item is still pending. The sleep is the bug, not the drainer.'] },
-          { tool: 'edit', arg: 'internal/queue/drain_test.go',                 meta: '+4 −2' },
-          { tool: 'bash', arg: 'go test -run TestQueueDrain -count 50',        meta: '50/50 ok · 1.2s', wait: 900 },
-          { done: '5 tools · 4.7s' },
-        ],
-      },
-      {
-        chip: 'explain the codebase',
-        ask: 'what does this service do? three lines, no fluff',
-        steps: [
-          { tool: 'bash', arg: 'rg --files -g "*.go"',        meta: '38 files · 6ms' },
-          { tool: 'read', arg: 'cmd/api/main.go',             meta: '64 lines · 7ms' },
-          { tool: 'read', arg: 'internal/order/service.go',   meta: '241 lines · 9ms' },
-          { say: [
-            'An HTTP order service: cmd/api wires the config, a Postgres pool and the router, then hands every request to internal/order.',
-            'An order and its line items are written in one transaction; taking payment is a separate step, driven off an outbox table.',
-            'Retries, the reconciler and the metrics endpoint all hang off that outbox — so the write path stays a single round trip.',
-          ] },
-          { done: '3 tools · 1.6s' },
-        ],
-      },
-    ];
-
-    const FALLBACK = [
-      { say: [
-        'This terminal is scripted — there is no model and no repo behind the page, so that one it cannot answer.',
-        'Install San and ask it inside your own project:',
-      ] },
-      { cmd: 'curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash' },
-      { say: ['Or run one of the scripted turns below.'] },
-    ];
-
-    const sleep = (ms) => new Promise(done => setTimeout(done, still ? 0 : ms));
-    const toBottom = () => { out.scrollTop = out.scrollHeight; };
-
-    function addRow(kind) {
-      const el = document.createElement('div');
-      el.className = 'row ' + kind;
-      out.appendChild(el);
-      toBottom();
-      return el;
-    }
-    function addSpan(parent, kind, text) {
-      const el = document.createElement('span');
-      el.className = kind;
-      el.textContent = text;
-      parent.appendChild(el);
-      return el;
-    }
-
-    // San streams, so the answer arrives a character at a time behind a caret
-    async function stream(el, text, alive) {
-      const node = document.createTextNode('');
-      el.appendChild(node);
-      if (still) { node.data = text; return; }
-      const caret = addSpan(el, 'caret', '');
-      for (let i = 1; i <= text.length; i++) {
-        if (!alive()) { caret.remove(); return; }
-        node.data = text.slice(0, i);
-        if (i % 2 === 0) { await sleep(9); toBottom(); }
-      }
-      caret.remove();
-    }
-
-    async function playTool(step, alive) {
-      const el = addRow('tool');
-      const mark = addSpan(el, 'spin', '✦');
-      addSpan(el, 'tn', step.tool);
-      const rest = addSpan(el, 'rest', '');
-      addSpan(rest, 'arg', step.arg);
-      await sleep(step.wait || 340);
-      if (!alive()) return;
-      mark.textContent = '⏺';
-      mark.classList.add('settled');
-      addSpan(rest, 'meta' + (/^[+−]/.test(step.meta) ? ' diff' : ''), step.meta);
-    }
-
-    async function playSay(lines, alive) {
-      for (let i = 0; i < lines.length; i++) {
-        if (!alive()) return;
-        const el = addRow(i === 0 ? 'say' : 'say cont');
-        if (i === 0) addSpan(el, 'mk', '●');
-        await stream(addSpan(el, 'text', ''), lines[i], alive);
-      }
-    }
-
-    function playCmd(command) {
-      const el = addRow('cmd');
-      addSpan(el, 'prompt', '$');
-      el.appendChild(document.createTextNode(command));
-    }
-
-    function playDone(summary) {
-      const el = addRow('done');
-      addSpan(el, 'ok', '✓');
-      el.appendChild(document.createTextNode(' done · ' + summary));
-    }
-
-    let generation = 0;
-
-    async function play(turn) {
-      const mine = ++generation;
-      const alive = () => mine === generation;
-
-      out.textContent = '';
-      const asked = addRow('you');
-      addSpan(asked, 'q', '❯');
-      asked.appendChild(document.createTextNode(turn.ask));
-      await sleep(380);
-
-      for (const step of turn.steps) {
-        if (!alive()) return;
-        if (step.tool)      await playTool(step, alive);
-        else if (step.say)  await playSay(step.say, alive);
-        else if (step.cmd)  playCmd(step.cmd);
-        else if (step.done) playDone(step.done);
-        toBottom();
-        await sleep(90);
-      }
-    }
-
-    TURNS.forEach(turn => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'term-chip';
-      chip.textContent = turn.chip;
-      chip.addEventListener('click', () => play(turn));
-      chips.appendChild(chip);
-    });
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const asked = input.value.trim();
-      if (!asked) return;
-      input.value = '';
-      play({ ask: asked, steps: FALLBACK });
-    });
-
-    // the terminal sits behind a tab, so the first turn waits for that tab to
-    // open — once only, so coming back keeps whatever is already on screen
-    document.querySelector('.stage-tab[data-stage="turn"]')
-      .addEventListener('click', () => play(TURNS[0]), { once: true });
-  })();
-
-  // Language switcher — custom dropdown
-  (function() {
-    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
-    const PAGES = new Set(['index', 'getting-started', 'docs']);
-    const page = location.pathname.split('/').pop() || 'index.html';
-    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
-      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
-    const m = page.match(/\.([a-z]{2})\.html$/);
-    const cur = m ? m[1] : 'en';
-    const label = document.getElementById('lang-label');
-    const menu = document.getElementById('lang-menu');
-    const btn = document.getElementById('lang-btn');
-    if (!label || !menu || !btn) return;
-    label.textContent = LANGS[cur].label;
-    Object.entries(LANGS).forEach(([code, lang]) => {
-      const opt = document.createElement('button');
-      opt.textContent = lang.label;
-      opt.dataset.code = code;
-      if (code === cur) opt.classList.add('active');
-      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
-      menu.appendChild(opt);
-    });
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const open = this.getAttribute('aria-expanded') === 'true';
-      this.setAttribute('aria-expanded', !open);
-      menu.classList.toggle('open');
-    });
-    document.addEventListener('click', function () {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-  })();
-</script>
+</main>
+<footer><div class="wrap"><span>© <span id="year">2026</span> San · Apache 2.0</span><span><a href="https://github.com/genai-io/san">GitHub</a> · <a href="docs.html">Docs</a> · <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">Contributing</a></span></div></footer>
 </body>
 </html>

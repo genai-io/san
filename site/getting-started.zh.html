@@ -14,33 +14,32 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#top">跳到正文</a>
 
-<nav id="nav">
+<nav id="nav" aria-label="主导航">
   <div class="wrap">
-    <span class="logo"><a href="index.zh.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="切换菜单" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="index.zh.html">San<span class="spark">三</span></a></span>
+    <button class="nav-toggle" aria-label="切换菜单" aria-controls="nav-links" aria-expanded="false">菜单</button>
     <div class="nav-links" id="nav-links">
-      <a href="index.zh.html#why">为什么</a>
-      <a href="index.zh.html#benchmark">基准</a>
+      <a href="index.zh.html#why">为什么选 San</a>
+      <a href="index.zh.html#benchmark">基准测试</a>
       <a href="index.zh.html#community">社区</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">介绍</a>
-      <a href="getting-started.zh.html">开始</a>
+      <a href="getting-started.zh.html" aria-current="page">快速开始</a>
       <a href="docs.zh.html">文档</a>
       <span class="lang-switch">
-        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-label"></span>
-          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
-        </button>
-        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+        <button class="lang-btn" id="lang-btn" aria-controls="lang-menu" aria-expanded="false"><span id="lang-label">中文</span><span aria-hidden="true">⌄</span></button>
+        <div class="lang-menu" id="lang-menu"><a href="getting-started.html" lang="en" hreflang="en">EN</a><a href="getting-started.zh.html" lang="zh" hreflang="zh">中文</a></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">GitHub</a>
     </div>
   </div>
 </nav>
 
+<main id="top">
 <header class="page-hero">
   <div class="wrap">
+    <span class="kicker">上手手册 / 01</span>
     <h1>快速开始</h1>
     <p>从安装到发出第一个提示词，只需几分钟。</p>
   </div>
@@ -53,33 +52,39 @@
       <div class="step">
         <div class="num">1</div>
         <div class="step-body">
-          <h3>安装</h3>
-          <p>一条命令即可。随时重新运行以升级。</p>
+          <h2>安装</h2>
+          <p>选择一种安装方式。更新时运行 <code>san update</code>；Homebrew 安装则使用 <code>brew update &amp;&amp; brew upgrade genai-io/san/san</code>。</p>
+          <p style="margin-top:14px;"><b>Homebrew</b></p>
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="install-cmd-brew">brew install genai-io/san/san</code>
+            <button class="copy-btn" data-copy="install-cmd-brew" aria-live="polite">复制</button>
+          </div>
           <p style="margin-top:14px;"><b>macOS / Linux</b></p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd', this)">复制</button>
+            <button class="copy-btn" data-copy="install-cmd" aria-live="polite">复制</button>
           </div>
           <p style="margin-top:14px;"><b>Windows (PowerShell)</b></p>
           <div class="cmd">
             <span class="prompt">&gt;</span>
             <code id="install-cmd-win">irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd-win', this)">复制</button>
+            <button class="copy-btn" data-copy="install-cmd-win" aria-live="polite">复制</button>
           </div>
-          <p style="margin-top:14px;">更偏好 Go？<code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
+          <p style="margin-top:14px;">更偏好 Go（需 1.26.9+）？<code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
         </div>
       </div>
 
       <div class="step">
         <div class="num">2</div>
         <div class="step-body">
-          <h3>启动并选择主题</h3>
+          <h2>启动并选择主题</h2>
           <p>运行 <code class="inline">san</code> 启动 San。首次启动时你需选择一个配色主题——选择后即可连接模型。</p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="run-cmd">san</code>
-            <button class="copy-btn" onclick="copyEl('run-cmd', this)">复制</button>
+            <button class="copy-btn" data-copy="run-cmd" aria-live="polite">复制</button>
           </div>
         </div>
       </div>
@@ -87,10 +92,10 @@
       <div class="step">
         <div class="num">3</div>
         <div class="step-body">
-          <h3>连接模型</h3>
+          <h2>连接模型</h2>
           <p>输入 <code class="inline">/models</code> 打开模型设置，然后：</p>
           <ol class="substeps">
-            <li>在右侧的<b>提供商</b>面板中粘贴你的 API 密钥——这将加载该提供商的所有可用模型。</li>
+            <li>选择<b>提供商</b>，按提示添加 API 密钥。OpenAI 和 GitHub Copilot 也支持订阅账号登录。</li>
             <li>等待提供商模型列表加载完成。</li>
             <li>从<b>模型</b>列表中选择你想要的模型，开始编码。</li>
           </ol>
@@ -111,9 +116,10 @@
   </div>
 </section>
 
+</main>
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> San · Apache 2.0</span>
+    <span>© <span id="year">2026</span> San · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="https://github.com/genai-io/san/tree/main/docs">文档</a> ·
@@ -122,61 +128,6 @@
   </div>
 </footer>
 
-<script>
-  function copyEl(id, btn) {
-    const text = document.getElementById(id).innerText;
-    navigator.clipboard.writeText(text).then(() => {
-      const old = btn.innerText;
-      btn.innerText = '已复制！';
-      setTimeout(() => btn.innerText = old, 1500);
-    });
-  }
-  document.getElementById('year').innerText = new Date().getFullYear();
-
-  function toggleNav(btn) {
-    const nav = document.getElementById('nav');
-    const open = nav.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open);
-  }
-  document.querySelectorAll('#nav-links a').forEach(a =>
-    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
-  const nav = document.getElementById('nav');
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-  // Language switcher — custom dropdown
-  (function() {
-    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
-    const PAGES = new Set(['index', 'getting-started', 'docs']);
-    const page = location.pathname.split('/').pop() || 'index.html';
-    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
-      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
-    const m = page.match(/\.([a-z]{2})\.html$/);
-    const cur = m ? m[1] : 'en';
-    const label = document.getElementById('lang-label');
-    const menu = document.getElementById('lang-menu');
-    const btn = document.getElementById('lang-btn');
-    if (!label || !menu || !btn) return;
-    label.textContent = LANGS[cur].label;
-    Object.entries(LANGS).forEach(([code, lang]) => {
-      const opt = document.createElement('button');
-      opt.textContent = lang.label;
-      opt.dataset.code = code;
-      if (code === cur) opt.classList.add('active');
-      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
-      menu.appendChild(opt);
-    });
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const open = this.getAttribute('aria-expanded') === 'true';
-      this.setAttribute('aria-expanded', !open);
-      menu.classList.toggle('open');
-    });
-    document.addEventListener('click', function () {
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-  })();
-</script>
+<script src="site.js"></script>
 </body>
 </html>

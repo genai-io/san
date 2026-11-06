@@ -14,17 +14,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:#f5f3ee; --bg-deep:#f5f3ee;
-  --ink:#15181d; --text:#15181d; --dim:#586069; --mute:#817e75;
-  --line:#15181d; --win:#fffefb; --winbar:#f8f6f1; --chip:#f1efe9;
-  --accent:#0d9488; --accent-strong:#0b7d72;
-  --accent-soft:rgba(13,148,136,.10); --accent-line:rgba(13,148,136,.30);
+  /* Site light palette mirrors style.css; README exports stay self-contained. */
+  --bg:#f6f5f1; --bg-deep:#f6f5f1;
+  --ink:#252722; --text:#252722; --dim:#60635b; --mute:#60635b;
+  --line:#252722; --win:#f6f5f1; --winbar:#eeede7; --chip:#eeede7;
+  --accent:#116b5f; --accent-strong:#116b5f;
+  --accent-soft:rgba(17,107,95,.10); --accent-line:rgba(17,107,95,.30);
   --shadow:4px 4px 0 var(--ink);
 }
 :root[data-variant="readme"] {
   --bg:#ffffff; --bg-deep:#ffffff;
   --ink:#1f2328; --text:#1f2328; --dim:#59636e; --mute:#59636e;
   --line:#1f2328; --win:#ffffff; --winbar:#f6f8fa; --chip:#f6f8fa;
+  --accent:#0d9488; --accent-strong:#0b7d72;
+  --accent-soft:rgba(13,148,136,.10); --accent-line:rgba(13,148,136,.30);
 }
 :root[data-theme="dark"] {
   --bg:#0d1117; --bg-deep:#0d1117;
@@ -215,6 +218,8 @@
   .timeline .fill{height:100%;width:0;background:var(--accent);border-radius:2px}
   .hud{display:none;position:absolute;right:72px;bottom:8px;font-size:10.5px;color:var(--mute);z-index:6}
 
+  /* Shared comic identity: the site and README use the same lettering and motion. */
+  :root {
   /* ── comic: ink outlines, offset shadows, a plain page-colored canvas ── */
   .win,.stat,.node,.tile,.bin{border:2.5px solid var(--ink)!important;border-radius:10px!important;box-shadow:6px 6px 0 var(--ink)!important}
   .bar{border-bottom:2.5px solid var(--ink)!important;color:var(--ink)}
@@ -277,6 +282,8 @@ html, body, #stage { background:var(--bg); }
 .platforms, .stickers span { color:var(--win); background:var(--ink); }
 .mail rect { fill:var(--win); }
 .dot { filter:none; }
+  }
+
 .prompt, .accent, .add, .status .on, .lst .st.on,
 .grp .k, .loopl, .wn.done::after, .install .p, .site b, .ticks span.on {
   color:var(--accent-strong);
@@ -287,11 +294,25 @@ html, body, #stage { background:var(--bg); }
 .hud button { border:0; background:none; font:inherit; color:var(--dim); padding:4px 0; cursor:pointer; }
 .hud button:hover { color:var(--accent-strong); }
 .hud button:focus-visible { outline:1px solid var(--accent); outline-offset:4px; }
-[data-variant="readme"] .hud { display:none; }
+[data-variant="readme"] .hud, [data-embed="true"] .hud { display:none; }
+body > .hud { position:fixed; left:24px; right:24px; bottom:12px; font:13px Geist,sans-serif; }
+body > .hud button { min-height:44px; padding:8px 16px; border:1.5px solid var(--ink); border-radius:3px; color:var(--ink); background:var(--bg); font-size:14px; }
+:root[data-variant="site"][data-embed="false"] .frame { padding-bottom:68px; }
+@media (max-width:480px) { body > .hud { left:16px; right:16px; } #play-hint { display:none; } }
+:root[data-variant="site"][data-embed="false"] body { display:block; overflow:auto; }
+:root[data-variant="site"][data-embed="false"] .frame { height:min(56.25vw, calc(100dvh - 250px)); min-height:160px; padding:0; }
+body > .hud { position:static; max-width:1120px; margin:16px auto; padding:0 20px; flex-wrap:wrap; gap:12px; }
+.player-actions { gap:12px; flex-wrap:wrap; }
+.chapter-select { min-height:44px; max-width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--dim); border-radius:3px; font:14px Geist,sans-serif; padding:8px; }
+.chapter-copy { max-width:1120px; margin:auto; padding:12px 20px 24px; font:16px/1.6 Geist,system-ui,sans-serif; }
+.chapter-copy h1 { font-size:20px; margin-bottom:8px; }
+.chapter-copy small { display:block; margin-top:12px; font-size:13px; color:var(--dim); }
+.chapter-copy a { color:var(--accent-strong); }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
 </style>
 </head>
 <body>
-<div class="frame"><div id="stage">
+<div class="frame"><div id="stage" aria-hidden="true">
   <div class="brand">SAN<b>✦</b></div>
 
   <div class="caption" id="caption">
@@ -308,8 +329,8 @@ html, body, #stage { background:var(--bg); }
       <div class="logo r" id="i-logo">SAN<span class="sp">✦</span></div>
       <div class="tag r" id="i-tag">Minimal overhead. <em>Maximum agent.</em></div>
       <div class="stats">
-        <div class="stat r" id="i-s1"><b>0.01s</b><span>cold start</span></div>
-        <div class="stat r" id="i-s2"><b>12 MB</b><span>one native binary</span></div>
+        <div class="stat r" id="i-s1"><b>0.01s</b><span>version command</span></div>
+        <div class="stat r" id="i-s2"><b>12 MB</b><span>compressed download</span></div>
         <div class="stat r" id="i-s3"><b>2.3k</b><span>tokens of harness</span></div>
       </div>
     </div>
@@ -515,7 +536,7 @@ html, body, #stage { background:var(--bg); }
       </svg>
       <div class="bin r" id="dp-bin">
         <div class="bin-n">SAN<span class="accent">✦</span></div>
-        <div class="bin-d">one binary · 12 MB · zero deps</div>
+        <div class="bin-d">~12 MB download · no runtime deps</div>
       </div>
       <div class="node r" id="dp-1" style="left:276px;top:16px"><b>macOS</b><span>Apple silicon · Intel</span></div>
       <div class="node r" id="dp-2" style="left:436px;top:55px"><b>Cloud VM</b><span>ssh in, run san</span></div>
@@ -560,25 +581,39 @@ html, body, #stage { background:var(--bg); }
 
   <div class="ticks" id="ticks"></div>
   <div class="timeline"><div class="fill" id="fill"></div></div>
-  <div class="hud"><div class="player-actions"><button id="play-toggle" type="button">Pause</button><button id="play-restart" type="button">Replay</button></div><span>click pause · R restart</span></div>
+  <div class="hud"><div class="player-actions"><button id="play-toggle" type="button">Pause</button><button id="play-restart" type="button">Replay</button></div><span id="play-hint">Space pause · R restart</span></div>
 </div></div>
 
+<noscript><style>.frame{display:none}body{display:block;overflow:auto}</style><div class="chapter-copy"><h1>San — an open-source terminal agent</h1><p>One native binary. Choose your model, delegate to agents, and inspect their work. JavaScript is needed to play this comic.</p><p><a href="index.html">Read the overview</a> · <a href="index.zh.html">中文版</a></p></div></noscript>
 <script>
 const $ = id => document.getElementById(id);
 const root = document.documentElement;
 const params = new URLSearchParams(location.search);
+root.lang = params.get('lang') === 'zh' ? 'zh' : 'en';
+const labels = params.get('lang') === 'zh' ? { play:'播放', pause:'暂停', replay:'重播', hint:'空格 暂停 · R 重播' } : { play:'Play', pause:'Pause', replay:'Replay', hint:'Space pause · R restart' };
+$('play-toggle').textContent = params.has('t') ? labels.play : labels.pause;
+$('play-restart').textContent = labels.replay;
+$('play-hint').textContent = labels.hint;
 root.dataset.variant = params.get('variant') === 'readme' ? 'readme' : 'site';
+root.dataset.embed = params.has('embed') ? 'true' : 'false';
 const theme = params.get('theme');
 root.dataset.theme = theme === 'dark' || theme === 'light' ? theme
   : root.dataset.variant === 'readme' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-let SEEK = params.has('t') ? parseFloat(params.get('t')) : null;   // freeze a frame for screenshots
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let SEEK = params.has('t') ? (Number(params.get('t')) || 0) : reducedMotion.matches ? 3.6 : null;
+$('play-toggle').textContent = SEEK !== null ? labels.play : labels.pause;
 if (SEEK !== null) document.head.insertAdjacentHTML('beforeend', '<style>*,*::before,*::after{transition:none!important;animation:none!important}</style>');  // a frozen frame shows end states, not a half-finished fade
 
 const scenes = [...document.querySelectorAll('.scene')].map(el => ({ el, id: el.id, start: +el.dataset.start, dur: +el.dataset.dur, pace: +(el.dataset.pace || 1) }));
 const TOTAL = Math.max(...scenes.map(s => s.start + s.dur));
 const HOLD = 1.0, SPEED = 1.0;
 
-function fit(){ $('stage').style.transform = `scale(${Math.min(innerWidth/1280, innerHeight/720)})`; }
+const standalone = root.dataset.variant === 'site' && !params.has('embed');
+if (standalone) document.body.appendChild(document.querySelector('.hud'));
+function fit(){
+  const viewport = document.querySelector('.frame');
+  $('stage').style.transform = `scale(${Math.min(viewport.clientWidth/1280, viewport.clientHeight/720)})`;
+}
 addEventListener('resize', fit); fit();
 
 const CAPS = {
@@ -587,9 +622,48 @@ const CAPS = {
   workflow: {k:'Workflows', t:'Agents, <em>by recipe</em>', d:['<b>Saved</b> — <code>.san/workflows/</code>','<b>Ordered</b> — steps run as a graph','<b>Mixed</b> — a model per step','<b>Lean</b> — only the summary returns']},
   groups:   {k:'Session groups', t:'Sessions that <em>talk</em>', d:['<b>Group</b> — <code>/group join shop</code>','<b>Message</b> — members reach each other','<b>Review</b> — peers check and correct work','<b>Hold</b> — messages wait for you','<b>Local</b> — plain files, no server']},
   learn:    {k:'Self-learning', t:'Learns as <em>you work</em>', d:['<b>Review</b> — after each session','<b>Remember</b> — writes memory','<b>Improve</b> — tunes skills','<b>Yours</b> — plain files to edit']},
-  deploy:   {k:'Runs anywhere', t:'One binary, <em>everywhere</em>', d:['<b>Small</b> — ~12 MB, zero deps','<b>Desktop</b> — macOS · Linux · Windows','<b>Edge</b> — Pi, Jetson, industrial PCs','<b>Server</b> — cloud VMs, containers, CI','<b>Offline</b> — pair with a local model']},
+  deploy:   {k:'Runs anywhere', t:'One binary, <em>everywhere</em>', d:['<b>Small</b> — ~12 MB download','<b>Desktop</b> — macOS · Linux · Windows','<b>Edge</b> — Pi, Jetson, industrial PCs','<b>Server</b> — cloud VMs, containers, CI','<b>Offline</b> — pair with a local model']},
   open:     {k:'Open all the way down', t:'Yours to <em>change</em>', d:['<b>Prompts</b> — written by you','<b>Tools</b> — add or remove','<b>Providers</b> — plug in any','<b>Binary</b> — nothing baked in']},
 };
+const chapterText = params.get('lang') === 'zh' ? [
+  '认识 San：一个原生二进制里的开源终端 Agent，精简开销，把资源留给任务。',
+  '选择模型：通过 /models 连接提供商，使用云端或本地模型，随时切换。',
+  '子 Agent：并行委派任务，为每个 Agent 选择合适的模型，再汇总结果。',
+  '工作流：把步骤保存为图，支持并行审查和反复修改，只返回所需的总结。',
+  '会话组：用 /group 连接本地会话，交换消息、互相审查；hold 模式让消息等待你处理。',
+  '自学习：回顾会话，将经验保存为可查看、可编辑的记忆与技能。',
+  '跨平台：原生运行于 macOS、Linux 和 Windows；配合本地模型也可离线工作。',
+  '开放扩展：自定义提示词、工具与提供商，通过权限和 Inspector 检查执行过程。',
+  '开始使用：安装 San，连接模型，按你的方式组织 Agent。开源，Apache 2.0 许可。',
+] : [
+  'Meet San: an open-source terminal agent in one native binary, leaving more resources for your task.',
+  'Choose a model: connect providers with /models, use cloud or local models, and switch when you need to.',
+  'Subagents: delegate work in parallel, choose a model for each agent, and bring the results back together.',
+  'Workflows: save steps as a graph for parallel review or repeated revision; return only the summary you need.',
+  'Session groups: connect local sessions with /group to exchange messages and review work. Hold messages until you are ready.',
+  'Self-learning: review sessions and keep lessons in memory and skills that you can inspect and edit.',
+  'Runs anywhere: a native binary for macOS, Linux, and Windows. Pair with a local model to work offline.',
+  'Open to change: customize prompts, tools, and providers. Use permissions and Inspector to control and inspect execution.',
+  'Get started: install San, connect a model, and organize agents your way. Open source under Apache 2.0.',
+];
+let chapterIndex = -1;
+let chapterCopy, chapterSelect;
+if (standalone) {
+  const copy = document.createElement('main');
+  copy.className = 'chapter-copy';
+  const isZh = params.get('lang') === 'zh';
+  copy.lang = isZh ? 'zh' : 'en';
+  copy.innerHTML = `<h1>${isZh ? 'San 动画介绍' : 'Meet San'}</h1><p id="chapter-copy"></p><small>${isZh ? '英文漫画演示；模型名称与额度仅为示例，实际以提供商为准。性能数据对应特定测量版本。' : 'Illustrative demo: model names and limits depend on the provider. Performance figures are from specific measured versions.'} <a href="index${isZh ? '.zh' : ''}.html#benchmark">${isZh ? '查看基准测试' : 'Benchmark details'}</a> · <a href="getting-started${isZh ? '.zh' : ''}.html">${isZh ? '快速开始' : 'Get started'}</a></small>`;
+  document.body.appendChild(copy);
+  chapterCopy = $('chapter-copy');
+  chapterSelect = document.createElement('select');
+  chapterSelect.className = 'chapter-select';
+  chapterSelect.setAttribute('aria-label', isZh ? '选择章节（暂停播放）' : 'Choose chapter (pauses playback)');
+  const names = isZh ? ['认识 San','选择模型','子 Agent','工作流','会话组','自学习','跨平台','开放扩展','开始使用'] : ['Meet San','Models','Subagents','Workflows','Session groups','Self-learning','Platforms','Extensions','Get started'];
+  scenes.forEach((scene, index) => chapterSelect.add(new Option(`${index + 1}. ${names[index]}`, String(index))));
+  chapterSelect.addEventListener('change', () => window.sanIntro.seek(scenes[+chapterSelect.value].start + .8));
+  document.querySelector('.player-actions').appendChild(chapterSelect);
+}
 const TICKS = [
   {t:0,l:'San'},{t:5,l:'models'},{t:8.4,l:'agents'},{t:12,l:'workflows'},
   {t:27.2,l:'groups'},{t:42.7,l:'learns'},{t:50.3,l:'anywhere'},{t:57,l:'open'},{t:63.4,l:'github'},
@@ -849,6 +923,13 @@ function renderTimeline(time){
     s.el.style.transform = on ? `translateY(${(1 - op) * 10}px)` : '';
     if (on) { act = { id: s.id, el: s.el, lt, dur: s.dur }; RUN[s.id](lt * s.pace); }   // pace: the scene's inner timeline runs faster than its slot
   });
+  const index = Math.max(0, scenes.findLastIndex(scene => t >= scene.start));
+  if (index !== chapterIndex) {
+    chapterIndex = index;
+    if (chapterCopy) chapterCopy.textContent = chapterText[index];
+    if (chapterSelect) chapterSelect.value = String(index);
+    dispatchEvent(new CustomEvent('sanintrochapter', { detail: chapterText[index] }));
+  }
   const cap = act && CAPS[act.id];
   if (cap && act.id !== curCap) { $('cap-k').innerHTML = `<span class="kn">${String(Object.keys(CAPS).indexOf(act.id) + 1).padStart(2, '0')}</span>${cap.k}`; $('cap-t').innerHTML = cap.t; $('cap-d').innerHTML = cap.d.map(x => `<li>${x.replace('</b> — ', '</b><span>')}</span></li>`).join(''); curCap = act.id; }
   if (cap) {   // a lone window is never shorter than the caption beside it
@@ -873,21 +954,37 @@ function frame(now){
 // The GIF exporter renders the same scenes and motion as live playback.
 window.sanIntro = Object.freeze({
   duration: TOTAL,
-  seek(seconds){ SEEK = clamp(Number(seconds) || 0, 0, TOTAL); renderTimeline(SEEK); },
+  seek(seconds){ SEEK = clamp(Number(seconds) || 0, 0, TOTAL); renderTimeline(SEEK); $('play-toggle').textContent = labels.play; },
+  play(){ if (paused || SEEK !== null) togglePlayback(); },
+  pause(){ if (!paused && SEEK === null) togglePlayback(); },
+  restart: restartPlayback,
+  get paused(){ return paused || SEEK !== null; },
+  get time(){ return t; },
+  get caption(){ return chapterText[Math.max(0, chapterIndex)]; },
 });
+reducedMotion.addEventListener('change', event => { if (event.matches) window.sanIntro.pause(); });
 requestAnimationFrame(frame);
 
 function togglePlayback(){
-  paused = !paused;
-  if (paused) pausedAt = performance.now();
-  else if (base !== null) base += performance.now() - pausedAt;
-  $('play-toggle').textContent = paused ? 'Play' : 'Pause';
+  if (SEEK !== null) {
+    SEEK = null;
+    base = performance.now() - t / SPEED * 1000;
+    paused = false;
+  } else {
+    paused = !paused;
+    if (paused) pausedAt = performance.now();
+    else if (base !== null) base += performance.now() - pausedAt;
+  }
+  $('play-toggle').textContent = paused ? labels.play : labels.pause;
 }
-function restartPlayback(){ base = null; t = 0; paused = false; $('play-toggle').textContent = 'Pause'; }
+function restartPlayback(){ SEEK = null; base = null; t = 0; paused = false; $('play-toggle').textContent = labels.pause; }
 $('stage').addEventListener('click', togglePlayback);
 $('play-toggle').addEventListener('click', e => { e.stopPropagation(); togglePlayback(); });
 $('play-restart').addEventListener('click', e => { e.stopPropagation(); restartPlayback(); });
 addEventListener('keydown', e => {
+  // Let focused controls keep native Space/Enter activation (especially Replay).
+  if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey ||
+      e.target.closest('button, a, input, textarea, select, [contenteditable]')) return;
   if (e.key === 'r' || e.key === 'R') { restartPlayback(); }
   if (e.key === ' ') { e.preventDefault(); $('stage').click(); }
 });
