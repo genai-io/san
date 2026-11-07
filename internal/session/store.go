@@ -65,23 +65,12 @@ func NewStoreWithDir(dir string) (*Store, error) {
 	}, nil
 }
 
-// NewSQLiteStoreWithDir opens the experimental storage backend in dir/sessions.db.
-// It does not import JSONL or select a runtime backend; file-based hook/inspection
-// integrations must not use it until they support explicit transcript export.
-func NewSQLiteStoreWithDir(dir string) (*Store, error) {
-	txStore, err := transcript.NewSQLiteStore(dir, ProjectID(dir))
-	if err != nil {
-		return nil, err
-	}
-	return &Store{cwd: dir, projectID: ProjectID(dir), projectDir: dir, transcriptStore: txStore}, nil
-}
-
-// Close releases backend resources after all opened sessions have closed.
+// Close releases store resources after all opened sessions have closed.
 func (s *Store) Close() error {
 	return s.transcriptStore.Close()
 }
 
-// TranscriptPath is empty for storage backends without a JSONL file.
+// TranscriptPath returns the session's JSONL path.
 func (s *Store) TranscriptPath(sessionID string) string {
 	if s.transcriptStore != nil {
 		return s.transcriptStore.TranscriptPath(sessionID)

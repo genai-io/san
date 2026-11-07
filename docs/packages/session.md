@@ -8,11 +8,9 @@ layer: feature
 Owns durable conversation identity and the opened Session that writes its transcript.
 The application owns which session is selected. `agent.Runtime` owns execution.
 
-JSONL remains the runtime default. An opt-in SQLite storage constructor shares the
-existing record semantics; it does not migrate old logs or enable TUI/ACP selection.
-The [session management design](../design/proposal-0005-session-management.md)
-separates this experiment from the proposed project/workspace model, event schema,
-new APIs and eventual migration.
+Sessions persist as JSONL through sdk-go's file store. The
+[session management design](../design/proposal-0005-session-management.md)
+describes proposed changes separately from the current implementation.
 
 ## Responsibilities and names
 
@@ -142,19 +140,10 @@ Transcripts are sdk-go `pkg/session` logs with schema version `4` and SDK-native
 payloads. Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
-### Experimental SQLite storage
-
-`NewSQLiteStoreWithDir(dir)` opens `dir/sessions.db` through sdk-go, preserving the
-current message/truncate/application codec and attachment layout. It neither imports
-nor falls back to JSONL in that directory. Close all Session handles, then call
-`Store.Close()` to release database resources. `NewStore` and `NewStoreWithDir`
-continue selecting JSONL.
-
-This is a storage API opt-in, not a runtime flag: `TranscriptPath` is empty for
-SQLite. Hook and task/inspector consumers expecting a live JSONL path still need an
-export/query contract before runtime selection can safely change. SQLite native
-Save batches are atomic; San's compound compaction/fork flows retain their current
-multi-call behavior. The new target event/identity design is not yet implemented.
+`NewStore` selects the working-directory partition; `NewStoreWithDir` uses an
+explicit directory. Both store JSONL transcripts. Close all Session handles before
+calling `Store.Close()`. `TranscriptPath` supplies the live JSONL path used by
+hooks and inspection consumers.
 
 ## Lifecycle and failure handling
 
@@ -194,13 +183,15 @@ and releases ownership. SDK `Open` does not restore a San session identity.
 
 San's opened `Session`, event adaptation, titles, tasks, groups, and UI projections
 remain product responsibilities. SDK saves use native message structs and record
-a truncate to the unchanged prefix followed by changed messages. SDK `OpenSQLite`
-selects its optional SQLite backend; `Stat` provides backend-neutral identity and
-per-session metadata, `Store.Close` releases backend resources, and `Writer.Sync`
-lets tests compare explicit JSONL durability with SQLite FULL commits.
+a truncate to the unchanged prefix followed by changed messages. SDK `Stat`
+provides identity and per-session size/modification metadata. SDK `Store.Close`
+is a no-op for file stores; writers must close separately. `Writer.Sync` explicitly
+syncs pending writes.
 
 ## Tests and pitfalls
 
+`jsonl_lifecycle_test.go` covers native fidelity, compaction/history, cross-store
+lease handoff, and fork asset ownership after source deletion.
 Session/native/event tests cover message roundtrips, write failure, request
 configuration, compaction, notice position, lease handoff, and fork ownership.
 `internal/app/session_resume_test.go` covers parallel tool results across retry,
