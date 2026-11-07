@@ -109,6 +109,8 @@ func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 		Cwd:       cmd.Cwd,
 		Version:   SchemaVersion,
 		Start: &SessionStart{
+			ProjectID:       s.projectID,
+			Workspace:       cmd.Workspace,
 			Provider:        cmd.Provider,
 			Model:           cmd.Model,
 			MaxTokens:       cmd.MaxTokens,

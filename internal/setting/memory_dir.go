@@ -58,7 +58,7 @@ func expandMemoryDir(dir, home string) string {
 
 // SaveMemoryDirectory sets autoMemoryDirectory for scope's store, clearing it
 // when dir is "": ScopeUser writes ~/.san/settings.json, ScopeProject cwd's
-// settings.local.json (the main checkout's in a worktree), which must stay
+// settings.local.json in the target worktree, which must stay
 // untracked for the value to count.
 func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
 	home, _ := os.UserHomeDir()
@@ -67,7 +67,7 @@ func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
 	}
 	path := filepath.Join(confdir.Dir(home), "settings.json")
 	if scope == ScopeProject {
-		path = filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
+		path = filepath.Join(confdir.Dir(cwd), "settings.local.json")
 		if !UntrackedInRepo(path) {
 			return fmt.Errorf("settings.local.json is tracked by git or outside a repository, so it cannot move this project's memory")
 		}

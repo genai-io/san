@@ -79,10 +79,22 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 | 7 | CLI arguments / environment variables |
 | 8 | `managed-settings.json` (read-only system policy) |
 
-For linked Git worktrees, the loader also reads the main checkout's
+For Git repositories, project `settings.json` files (San and Claude compatibility)
+are read from the **original main checkout**, including on first launch in a
+linked worktree or a repository subdirectory. Divergent branch-local copies are
+not alternative shared settings authorities. Non-Git directories use the exact
+working directory, without searching ancestors. Missing or mismatched main-checkout
+metadata causes settings resolution to fail rather than select a linked checkout.
+Project-scope settings writes use that same shared source.
+
+Local settings are read from the target working directory. For linked Git
+worktrees, the loader also reads the main checkout's corresponding
 `.claude/settings.local.json` and `.san/settings.local.json`, in that order,
-after the worktree-local settings files. Existing trust filtering still applies;
-this file-resolution behavior is not defined by the proposed database hierarchy.
+after the worktree-local settings files, preserving existing precedence. New local
+permission and memory-directory writes stay in the target working directory.
+Existing trust filtering (including eligibility of untracked local files) still
+applies. Existing trust policy covers a repository and its worktrees; project
+registration itself does not grant trust or restore historical authorizations.
 
 **settings.json schema:**
 

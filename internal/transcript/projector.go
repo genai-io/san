@@ -130,6 +130,8 @@ func applyStarted(t *Transcript, r Record) {
 		t.UpdatedAt = r.Time
 	}
 	if r.Start != nil {
+		t.ProjectID = r.Start.ProjectID
+		t.Workspace = r.Start.Workspace
 		t.Provider = r.Start.Provider
 		t.Model = r.Start.Model
 		t.ParentSessionID = r.Start.ParentSessionID
