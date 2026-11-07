@@ -8,10 +8,11 @@ layer: feature
 Owns durable conversation identity and the opened Session that writes its transcript.
 The application owns which session is selected. `agent.Runtime` owns execution.
 
-This page describes the current file-backed implementation. The proposed
-[session management and SQLite design](../design/proposal-0005-session-management.md)
-defines project/workspace ownership, target APIs, schema, and phased migration;
-none of those storage changes are implemented yet.
+JSONL remains the runtime default. An opt-in SQLite storage constructor shares the
+existing record semantics; it does not migrate old logs or enable TUI/ACP selection.
+The [session management design](../design/proposal-0005-session-management.md)
+separates this experiment from the proposed project/workspace model, event schema,
+new APIs and eventual migration.
 
 ## Responsibilities and names
 
@@ -141,6 +142,20 @@ Transcripts are sdk-go `pkg/session` logs with schema version `4` and SDK-native
 payloads. Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
+### Experimental SQLite storage
+
+`NewSQLiteStoreWithDir(dir)` opens `dir/sessions.db` through sdk-go, preserving the
+current message/truncate/application codec and attachment layout. It neither imports
+nor falls back to JSONL in that directory. Close all Session handles, then call
+`Store.Close()` to release database resources. `NewStore` and `NewStoreWithDir`
+continue selecting JSONL.
+
+This is a storage API opt-in, not a runtime flag: `TranscriptPath` is empty for
+SQLite. Hook and task/inspector consumers expecting a live JSONL path still need an
+export/query contract before runtime selection can safely change. SQLite native
+Save batches are atomic; San's compound compaction/fork flows retain their current
+multi-call behavior. The new target event/identity design is not yet implemented.
+
 ## Lifecycle and failure handling
 
 - IDs must be single path components; deletion claims the writer lease and rejects
@@ -179,8 +194,10 @@ and releases ownership. SDK `Open` does not restore a San session identity.
 
 San's opened `Session`, event adaptation, titles, tasks, groups, and UI projections
 remain product responsibilities. SDK saves use native message structs and record
-a truncate to the unchanged prefix followed by changed messages. A generic SQLite
-backend is proposed, not present in this dependency.
+a truncate to the unchanged prefix followed by changed messages. SDK `OpenSQLite`
+selects its optional SQLite backend; `Stat` provides backend-neutral identity and
+per-session metadata, `Store.Close` releases backend resources, and `Writer.Sync`
+lets tests compare explicit JSONL durability with SQLite FULL commits.
 
 ## Tests and pitfalls
 
