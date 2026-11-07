@@ -41,8 +41,8 @@ Each event row belongs to exactly one session. Its `type` selects the typed
 `payload`; the categories above are not separate tables. Messages are event
 content, not the entire event model. `message` owns native conversation appends;
 `compaction` owns its native summary. `tool.completed` adds execution/presentation
-metadata, not a second copy
-of tool-result content. Parent/fork links relate sessions; they do not share mutable event rows.
+metadata, not a second copy of tool-result content. Parent/fork links relate
+sessions; they do not share mutable event rows.
 History and Snapshot are views of the same events, not independent saved copies.
 Event means a durable persistence fact here, not every transient streaming/runtime
 notification. `Event` is the proposed storage envelope; current code still uses
@@ -50,28 +50,72 @@ notification. `Event` is the proposed storage envelope; current code still uses
 Use bare event names for single complete facts (`message`, `compaction`, `config`,
 `state`); add an action/phase suffix only when distinct phases or actions must be
 distinguished, such as `inference.started`. Other event families keep their names
-above. Session ownership is
-already in `session_id`. These are target names, not the current codec. Import maps legacy
-types explicitly while preserving their meaning. Archive belongs to state; current
+above. Session ownership is already in `session_id`. These are target names, not
+the current codec. Import maps legacy types explicitly while preserving their
+meaning. Archive belongs to state; current
 execution cwd belongs to session state, not home-workspace identity.
 
-### Recording contract: complete facts, minimal duplication
+### Event application: boundaries and actions
 
-Persist an event when it changes recoverable state, contributes user-visible
-history, or explains a consequential execution/security outcome. Do not record
-every runtime notification. Each type needs a producer, consumer and minimum
-payload; a type without one of those has not justified persistence.
+The ownership path is projects → workspaces → sessions → session_events, through
+project_id, workspace_id and session_id respectively. Each event belongs to one
+session, not directly to a project. User/project configuration stays with its
+existing owner; the session stream records only session overrides and execution
+facts. An event without a defined payload, owner and consumer is not admitted.
 
-| Event family | Minimum durable information |
+```text
+Live command → validate event + prepare deterministic projection
+             → transaction: append event + update derived summaries
+             → commit → publish projection → live coordinator reconciles if needed
+
+Resume → read committed events → same projection rules → restore final state
+       → resolve current configuration/trust before execution
+```
+
+“Trigger” below means the deterministic effect of applying a committed event.
+It does not mean dispatching another command. Replay never calls a model, executes
+a tool/Hook, prompts for permission or appends the same event again. Configuration
+and cwd changes are reconciled by the live coordinator after commit; resume
+reconciles final state once, not every intermediate historical transition.
+
+| Event | Payload boundary | Actions when applied | Does not do |
+| --- | --- | --- | --- |
+| `session.created` | Identity, initial location and non-secret defaults | Initialize session projection and starting values | Start an agent or create a project |
+| `session.forked` | Source identity/sequence and new identity | Attach provenance to the prepared child; clear inherited group hint | Copy files or fork again during replay |
+| `message` | Ordered native messages with stable IDs | Index messages, append to history and active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
+| `compaction` | Complete native summary, source sequence and retained IDs | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
+| `config` | Typed session preference patch | Update session overrides; invalidate effective-config cache for next resolution | Change user/project files, history or current in-flight request |
+| `state` | Typed session status patch | Update named state fields and their list/display projections; mark execution environment stale on cwd change | Replace messages, change home workspace or grant authority |
+| `inference.started` | Attempt ID, input IDs and non-secret effective settings | Register an unfinished attempt and its request provenance | Make a model request |
+| `inference.completed` / `inference.failed` | Same attempt ID, outcome, usage/error | Close attempt and update audit/usage; actual output is owned by message events | Duplicate output or automatically retry |
+| `tool.started` | Call/attempt ID and argument references | Register unfinished tool execution | Authorize or run the tool |
+| `tool.completed` / `tool.failed` | Same IDs, outcome and execution/display details | Close attempt and attach details to the call; results stay in native messages/assets | Copy result bodies or repeat side effects |
+| `permission.requested` | Request/call identity and scoped request | Add a pending audit entry | Open a prompt during replay |
+| `permission.decided` | Request identity, decision, scope and reason | Resolve audit entry | Restore a historical grant as current authorization |
+| `hook.completed` | Hook identity, trigger, outcome and bounded reason | Add execution audit | Run the Hook or apply its side effects again |
+| `system.updated` | Named historical instruction-section delta | Update replay's instruction catalogue for request inspection | Override current instruction files or inject into messages |
+| `tools.updated` | Historical tool-definition delta | Update replay's tool catalogue for request inspection | Install tools or enable their execution |
+| `skill.updated` | Historical skill activation delta | Update skill audit view | Load a skill or write present-day settings |
+| `notice.added` | Durable notice and message position | Add a display-history annotation | Modify model context or duplicate transient status text |
+
+### Config versus state
+
+| Owner | Allowed field families |
 | --- | --- |
-| `session.created` / `session.forked` | Identity, initial location/settings, parent or fixed fork provenance |
-| `message` | Append an ordered native message list with stable IDs; one message is a one-element list |
-| `compaction` | `operation_id`, `source_seq`, full native `summary` with stable ID and provider content, ordered `retained_message_ids`; one complete successful transition |
-| `config` / `state` | Only changed typed fields; distinguish absent from explicit clearing |
-| `inference.started` / `inference.completed` / `inference.failed` | Attempt ID, input message IDs and non-secret request settings; outcome, usage and bounded error details |
-| `tool.started` / `tool.completed` / `tool.failed` | Call/attempt IDs, execution outcome and necessary timing/presentation fields; arguments/results reference native messages or assets |
-| `permission.requested` / `permission.decided`, `hook.completed` | Correlation, scoped decision/outcome and bounded reason; no duplicate prompts or tool payloads |
-| `system.updated`, `tools.updated`, `skill.updated`, `notice.added` | Changed definitions/state or meaningful notice with its message position; unchanged definitions are not repeated per inference |
+| `config` | Model/provider selection, generation options, operation mode, autopilot policy/limits |
+| `state` | Title, archive marker, durable todos/progress, current execution cwd, group restoration hint |
+| Other events/owners | Messages and compaction; actual per-request settings/usage; live processes, authorization and real group membership |
+
+Config means intended future behavior; state means the session's current facts.
+Each field has exactly one owner. Split autopilot policy from progress; never store
+an opaque whole autopilot object in both. Neither patch accepts arbitrary keys.
+Absent leaves unchanged; explicit clear removes an override or resets a field
+according to its typed contract; an unchanged patch produces no event. Config/state
+replay restores intent/facts, not live permissions. Existing mixed StatePatch fields
+must be mapped explicitly; last-prompt preview is derived from messages, not another
+independent state setter. No catch-all context/settings event is introduced.
+
+### Recording contract: complete facts, minimal duplication
 
 Persist inference/tool start before dispatch and correlate the terminal outcome;
 retries have distinct attempt IDs. Cancellation is an explicit outcome, not success.
@@ -436,6 +480,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Child history and fork; parent deletion | Independent identity/assets; history does not imply a live task |
 | Repeated/failed compaction, retry and invalid references | One atomic event; old-projector context/history parity; unchanged state/config/assets; reject unresolved IDs |
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
+| Config/state patches and mixed legacy fields | One typed owner per field; reject unknown keys; derive preview rather than duplicate it |
+| Replaying every event type | Same projected state without model/tool/Hook calls, permission prompts or new events |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
 | Interrupted calls, retry and repeated identical input | Starts/outcomes correlate; unknown execution stays unknown; distinct actions survive deduplication |
