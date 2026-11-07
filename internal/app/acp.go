@@ -128,11 +128,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if !info.IsDir() {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be a directory")
 	}
-	settings, err := setting.LoadForCwd(req.CWD)
-	if err != nil {
-		return protocol.NewSessionResponse{}, err
-	}
-	store, err := session.NewStore(req.CWD)
+	store, err := session.OpenStore(ctx, req.CWD)
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
@@ -144,6 +140,19 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		opened, history, err = store.Open(resumeID)
 	}
 	if err != nil {
+		return protocol.NewSessionResponse{}, err
+	}
+	if history != nil {
+		if err := validateResumeDirectory(history.Metadata.Cwd, req.CWD); err != nil {
+			_ = opened.Close()
+			_ = store.Close()
+			return protocol.NewSessionResponse{}, err
+		}
+	}
+	settings, err := setting.LoadForCwd(req.CWD)
+	if err != nil {
+		_ = opened.Close()
+		_ = store.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	modelID := h.model

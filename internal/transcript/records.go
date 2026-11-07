@@ -104,6 +104,8 @@ type StatePatch struct {
 
 // SessionStart describes a new identity and its initial runtime configuration.
 type SessionStart struct {
+	ProjectID       string `json:"projectId,omitempty"`
+	Workspace       string `json:"workspace,omitempty"`
 	Provider        string `json:"provider,omitempty"`
 	Model           string `json:"model,omitempty"`
 	MaxTokens       int    `json:"maxTokens,omitempty"`

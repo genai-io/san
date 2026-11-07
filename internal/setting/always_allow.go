@@ -97,11 +97,11 @@ func (s *Data) SessionGrantTakesEffect(toolName string, args map[string]any, ses
 
 // addLocalAllowRules appends rules to permissions.allow in the project's
 // .san/settings.local.json — the personal, highest-priority layer, so a grant
-// is never committed for the whole team; worktrees share the main checkout's.
+// is never committed for the whole team; writes stay in the target worktree.
 // Only that key is touched; a file that does not parse is left alone. Returns
 // the file's path.
 func addLocalAllowRules(cwd string, rules []string) (string, error) {
-	path := filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
+	path := filepath.Join(confdir.Dir(cwd), "settings.local.json")
 	var doc map[string]any
 	if err := atomicfile.ReadJSON(path, &doc); err != nil {
 		return path, err

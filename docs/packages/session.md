@@ -8,13 +8,19 @@ layer: feature
 Owns durable conversation identity and the opened Session that writes its transcript.
 The application owns which session is selected. `agent.Runtime` owns execution.
 
+Sessions persist as JSONL through sdk-go's file store. The
+[session management design](../design/proposal-0005-session-management.md)
+describes proposed changes separately from the current implementation.
+
 ## Responsibilities and names
 
-- **Store** manages multiple sessions in one project: create, open, read, list,
-  fork, delete, and store attachments. It does not run an agent or own the current
-  selection. `Create` creates a new identity; `Open` acquires an existing
+- **Store** manages multiple sessions in one registered project:
+  create, open, read, list, fork, delete, and store attachments. Git common-directory
+  identity groups linked worktrees; non-Git projects use the exact startup path.
+  Legacy cwd-hash partitions remain separate. Store does not run an agent or
+  own the current selection. `Create` creates a new identity; `Open` acquires an existing
   identity's writer lease before restoring it. `Read` reads without opening a
-  writer, for queries. `ReadChatHistory` includes the selected pre-compaction branch
+  writer, for queries. `ReadChatHistory` includes pre-compaction messages
   for display. `Fork` returns an opened child and its restored history.
 - **Session** is one opened identity, fixed until `Close`. It owns the writer
   lease, ordered appends, inference/exchange positions, and persistence failures.
@@ -40,8 +46,9 @@ and application boundaries.
 
 ## Entrypoints and core packages
 
-- `store.go`: `NewStore`, `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
+- `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
+- `project.go`: locked project registration, legacy partition lookup and workspace validation.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
 - `events.go`: `RecordEvent`, inference spans, compaction and native event
   adaptation. Internal method names describe the event being persisted.
@@ -96,8 +103,10 @@ patch operations are removed. The transcript computes their actual differences a
 unchanged fields. State records contain application data; native conversation
 records contain messages. State appends happen in order on the application loop.
 Git branch annotations are recorded with inference requests on the agent goroutine,
-keeping Git subprocesses off the UI loop. Appends sync durable records before
-returning. Listing refreshes derived summaries lazily.
+keeping Git subprocesses off the UI loop. Changed conversation saves sync before
+returning; application records sync on a subsequent changed conversation save
+or writer close. A no-op save does not flush them. Listing refreshes derived
+summaries lazily.
 Unreadable or unsupported transcripts are logged and skipped during listing;
 opening one explicitly still reports its error. Other sessions remain available.
 
@@ -121,7 +130,8 @@ through their own opened Session.
 ## Storage and configuration
 
 ```text
-~/.san/projects/<24-hex-workdir-hash>/
+~/.san/projects/<project-id>/
+  project.json                         # new registrations only
   transcripts/<session-id>.jsonl
   transcripts/<session-id>.jsonl.meta
   blobs/tool-result/<session-id>/<tool-call-id>
@@ -133,8 +143,30 @@ Transcripts are sdk-go `pkg/session` logs with schema version `4` and SDK-native
 payloads. Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
+`OpenStore(ctx, cwd)` registers a stable project ID or reuses an existing registration.
+Git subdirectories/worktrees share one project; clones and submodules do not. Non-Git
+child directories are distinct projects. Existing exact-cwd hash partitions with logs
+win over registration and are never merged or moved automatically. Registration is
+cross-process serialized; lock waiting is not cancellable, and atomic file publication
+is not a power-loss durability guarantee. Changed kind/configuration source and corrupt
+registrations require explicit repair; identical-path repository replacement is not detected.
+
+`CreateOptions.Workspace` defaults to the captured checkout/root. An explicit workspace
+must belong to the same project; it does not change project ownership or grant trust.
+New start records persist project/workspace identity; legacy missing fields stay unknown.
+The settings owner resolves shared configuration from the original main checkout.
+`NewStoreWithDir` remains an explicit-directory construction path for embedding/tests.
+Close all Session handles before `Store.Close()`. `TranscriptPath` supplies the live
+JSONL path used by hooks and inspection consumers. Trash and automatic retention remain
+proposed; current Delete still removes files immediately.
+
 ## Lifecycle and failure handling
 
+- Resume checks a known saved cwd against the requested/runtime directory using
+  canonical paths (including symlinks). A mismatch or missing saved directory fails
+  before replacing selection; reopen in the saved directory. Implicit directory
+  switching is not implemented. Unknown legacy cwd remains readable. A rejected
+  switch preserves the old lease and permissions, not a stopped runtime's execution.
 - IDs must be single path components; deletion claims the writer lease and rejects
   active sessions. Resume and clear reset session-specific autopilot state.
 - A writer lease is held from Open/Create until Close, including idle resume.
@@ -163,18 +195,23 @@ are disposable derived summaries. Earlier schema versions are rejected; no migra
 
 ## SDK Go responsibilities
 
-SDK `session.Session` follows the same resource and naming rules: typed `Append`,
-`RecordEvent` adaptation, `Err`, and `Close`; its Store contract supplies a
-writer claim before restore. SDK `session.Read` is a query without an opened
-writer. SDK `session.Create` creates a new identity and `session.Open` restores an existing
-one. SDK returns native `[]ai.Message`; it does not know San's titles, tasks,
-groups, or UI projections. These remain application records in San.
+The pinned sdk-go `pkg/session` exposes `Open(dir)` to open a directory-backed
+Store, `Store.Load(ctx, id)` to read native messages, and `Store.Writer(ctx, id)`
+to acquire a writer. `Writer.Save(messages)` persists conversation changes;
+`Writer.Append(name, data)` appends application records; `Writer.Close()` syncs
+and releases ownership. SDK `Open` does not restore a San session identity.
 
-`EntryConversationReplaced` records a complete native conversation in `Messages`.
-Storage implementations share the same native message structs.
+San's opened `Session`, event adaptation, titles, tasks, groups, and UI projections
+remain product responsibilities. SDK saves use native message structs and record
+a truncate to the unchanged prefix followed by changed messages. SDK `Stat`
+provides identity and per-session size/modification metadata. SDK `Store.Close`
+is a no-op for file stores; writers must close separately. `Writer.Sync` explicitly
+syncs pending writes.
 
 ## Tests and pitfalls
 
+`jsonl_lifecycle_test.go` covers native fidelity, compaction/history, cross-store
+lease handoff, and fork asset ownership after source deletion.
 Session/native/event tests cover message roundtrips, write failure, request
 configuration, compaction, notice position, lease handoff, and fork ownership.
 `internal/app/session_resume_test.go` covers parallel tool results across retry,
