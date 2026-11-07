@@ -95,9 +95,9 @@ not filled with invented defaults. Exact Go types are an SDK-alignment gate.
 
 | Event | Typed payload fields | Actions when applied | Does not do |
 | --- | --- | --- | --- |
-| `session.create` | workspace_id, initial_cwd, agent_id, sidechain; parent_session_id?, fork_source_id?, fork_source_seq?, initial_config? | Initialize identity and projection; attach fork provenance and clear inherited group hint | Start an agent, create a project or repeat file copying |
-| `message.append` | messages: nonempty ordered native-message list | Index messages; append history/active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
-| `compaction.apply` | operation_id, source_seq, summary: native message, retained_message_ids: ordered list | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
+| `session.create` | workspace_id, initial_cwd, agent_id, sidechain; parent_session_id?, fork_source_id?, fork_source_seq?, initial_config? | Initialize identity and projection; attach fork provenance | Start an agent, create a project or repeat file copying |
+| `message.append` | messages: nonempty ordered native-message list; producer_ref? | Index messages; append history/active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
+| `compaction.apply` | operation_id, source_seq, summary: native message, retained_message_ids: ordered list; producer_ref? | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
 | `config.update` | patch: ConfigPatch | Update session overrides; invalidate next effective-config resolution | Modify User/Project files, history or an in-flight request |
 | `state.update` | patch: StatePatch | Update named state and summaries; mark environment stale on cwd change | Replace messages, change home workspace or grant authority |
 | `inference.start` | attempt_id, turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | Register unfinished attempt and actual non-secret request provenance | Make a model request |
@@ -124,16 +124,27 @@ Generation options and autopilot policy use versioned, allowlisted product field
 not arbitrary provider JSON. StatePatch allows title, archived_at, todos,
 autopilot_progress, execution_cwd and group_hint. Nested values are typed; group_hint
 is only group/member identity for reclaim, not roster or permission authority.
-Patch fields distinguish absent, set and clear; false/zero/empty are explicit values,
-not an implicit clear. Unchanged patches and definition deltas are no-ops.
+Patch fields distinguish absent (unchanged), set and clear; clear removes an override
+or resets a field according to its typed contract. False/zero/empty are explicit
+values, not an implicit clear. Reject unknown or cross-owner fields.
+Unchanged patches and definition deltas are no-ops.
 
 ### Validation and correlation
 
-- Creation identity must not exist; fork_source_id and fork_source_seq are either
-  both absent or both valid. Initial defaults are typed configuration, not secrets.
-  Fork/import must not replay a source's creation as a second creation of the child.
+- Creation is the first event, at seq 1, and its identity must not exist;
+  fork_source_id and fork_source_seq are either both absent or identify an existing
+  nonempty source prefix. Initial defaults are typed configuration, not secrets.
+  Fork constructs one child creation using the rules below, not a second creation.
 - Native message IDs are nonempty and unique; same ID with different content is a
   conflict. Compaction validates its source and references as specified below.
+- producer_ref is a typed reference to the producing inference.start or tool.start
+  event, required for newly recorded inference/tool-generated message batches and
+  inference-generated summaries.
+  A batch has one producer; split mixed producers. User input has no execution producer.
+  Validate the referenced attempt and native tool-call IDs; never infer causality
+  from timestamps or adjacency. Reuse an equivalent native reference if available,
+  rather than maintaining two authorities. Legacy unknown provenance stays explicitly
+  unknown through the compatibility mapping.
 - Finish records match an existing start in the same session and execution family;
   tool call IDs also match. outcome is success/failure/cancelled. Failure needs a
   bounded structured error; cancellation needs a reason. Unknown results have no
@@ -176,8 +187,7 @@ introduced for it. Its summary-generation request may have inference audit recor
 These remain separate typed events: desired future behavior versus current session
 facts. Session config overrides do not duplicate User/Project settings. An annotation
 is neither: it is durable display commentary, such as a failed group-rejoin note.
-It has no model role or state patch. Derive text already explained by another event
-instead of storing another annotation; do not persist progress indicators.
+It has no model role or state patch and follows the recording admission rule below.
 
 | Owner | Allowed field families |
 | --- | --- |
@@ -187,19 +197,30 @@ instead of storing another annotation; do not persist progress indicators.
 
 Config means intended future behavior; state means the session's current facts.
 Each field has exactly one owner. Split autopilot policy from progress; never store
-an opaque whole autopilot object in both. Neither patch accepts arbitrary keys.
-Absent leaves unchanged; explicit clear removes an override or resets a field
-according to its typed contract; an unchanged patch produces no event. Config/state
-replay restores intent/facts, not live permissions. Existing mixed StatePatch fields
+an opaque whole autopilot object in both. Patch validation follows the typed contract
+above. Config/state replay restores intent/facts, not live permissions. Existing mixed StatePatch fields
 must be mapped explicitly; last-prompt preview is derived from messages, not another
 independent state setter. No catch-all context/settings event is introduced.
 
 ### Recording contract: complete facts, minimal duplication
 
+Admit an event only if it adds a durable conversation fact, an accepted config/state
+change, a necessary execution/authorization audit fact, or non-reconstructible
+historical commentary. It needs a defined producer, consumer and replay meaning.
+Being observable at runtime is not sufficient. Starts, failures, cancellations and
+permission denials remain meaningful: they explain attempted work and recovery
+uncertainty even without changing active context. This is not a general debug log.
+
 Commit inference/tool start before dispatch. This boundary is separate from a
 durable assistant tool call, which may exist before execution is authorized.
 If required start persistence fails, do not dispatch. Adapters must establish
 these target guarantees rather than assume current callbacks already provide them.
+When completed output and its terminal outcome are known together, commit output
+and finish in one Append batch. Earlier complete messages may already be committed;
+their producer reference does not imply that the attempt finished. After a crash,
+keep such output and leave the attempt unknown until reconciled; never dispatch it
+on replay. Derive attempt outputs from immutable producer references, not a second
+output list on finish events. Audited compaction uses the ordering specified below.
 
 Do not store token deltas, spinner/progress ticks, picker navigation, repeated reads,
 empty patches, unchanged snapshots or reconstructible UI text. Final native messages
@@ -288,8 +309,8 @@ func (s *Session) Close() error
 | `History` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
 | `Snapshot` | Immutable committed context, application state and recovery positions; no UI rows or live resources |
 | `ForkOptions` | Optional destination workspace and source sequence; otherwise capture latest committed prefix |
-| `CompactionChange` | `source_seq` (expected current prefix), stable `operation_id`, full native `summary` with stable ID/provider content, ordered `retained_message_ids` |
-| `Append` / `Compact` | One shared atomic write implementation; Compact validates the completed transition |
+| `CompactionChange` | `source_seq` (expected current prefix), stable `operation_id`, full native `summary` with stable ID/provider content, ordered `retained_message_ids`, `producer_ref` for a generated summary |
+| `Append` / `Compact` | One shared atomic write implementation and compaction validation; Append also batches compaction with its inference finish, while Compact wraps a single transition |
 | `Archive` / `Delete` | Archive appends state; hard deletion requires ownership and rejects an active writer |
 | `Close` | Wait for in-flight writes and release ownership exactly once |
 
@@ -477,15 +498,24 @@ and completion events:
 | Payload field | Meaning |
 | --- | --- |
 | `operation_id` | Stable operation identity for idempotent retry |
-| `source_seq` | Committed session version captured before summary generation |
+| `source_seq` | Committed session version captured before summary generation, after its inference start if audited |
 | `summary` | Complete native summary message, including stable ID, role, content and provider fields |
 | `retained_message_ids` | IDs retained in original active-sequence order; no duplicated message bodies |
+| `producer_ref` | Producing inference start for generated summaries; follows the shared provenance contract |
 
 Project active context as summary followed by referenced messages. References must
 resolve to immutable messages in the same session at the source version, including
 valid earlier summaries. Index the new summary for History without another message
 event. Preserve original text, tool results, images, signatures, content ordering
 and IDs; do not leave orphaned tool results.
+
+For audited generation, serialize input capture and inference.start persistence,
+then take the resulting committed prefix as source_seq before dispatch. On accepted
+success, one Append transaction validates that prefix and appends compaction.apply
+followed by inference.finish. Compare against the tail before the batch, not its
+final sequence. The audit start is already in the captured prefix; finish cannot
+invalidate its own apply. Any intervening write makes the result stale under this
+conservative rule. No separate context-version field is needed initially.
 
 Before commit, validate unchanged source version, conflict-free summary identity,
 existing unique references, order and native tool-call/result consistency.
@@ -496,12 +526,16 @@ operation ID conflicts. Check prior commitment before rejecting stale source
 versions. Reject results from retired session/runtime owners.
 
 Failure, cancellation or no-op compaction commits no compaction event and leaves
-context unchanged; execution records may still explain failures. After a committed
-crash, resume restores the result even if the UI never displayed it. Reconcile
+context unchanged. Inference finish describes generation, not acceptance: a generated
+summary rejected as stale may still have a successful inference outcome. Record a
+known outcome without apply when needed; do not persist unused summary content just
+for audit. If the apply/finish transaction fails, neither event is published; reconcile
+ambiguous commitment before separately recording the known inference outcome.
+After a committed crash, resume restores the result even if the UI never displayed it. Reconcile
 ambiguous commit outcomes before retrying or accepting new writes. Auto, manual,
-inactive-runtime and consecutive compactions share this rule. Fork copies the
-chosen prefix and required references so child IDs resolve locally; later compaction
-in either session cannot affect the other. Never delete old assets during compaction.
+inactive-runtime and consecutive compactions share this rule. Fork follows the
+construction rules below so retained IDs resolve locally and each session compacts
+independently. Never delete old assets during compaction.
 Checkpoints only accelerate replay and replace neither originals nor compaction
 events. No dedicated compactions table is needed.
 
@@ -529,12 +563,31 @@ already established by this documentation.
   an SDK-supported mechanism not bound to JSONL paths. Close/process death release
   ownership. Never hold a transaction across inference, tools or approval, or use
   unfenced timestamp-only leases. External tool execution is not exactly-once.
-- Publish assets atomically before references. Fork protects a fixed source prefix
-  against deletion, copies assets and rewrites references before publishing the
-  child. Clear inherited group membership. Cleanup excludes in-progress operations
-  and is retryable. Delete commits before asset reclamation.
+- Publish assets atomically before references. Cleanup excludes in-progress
+  operations and is retryable. Delete commits before asset reclamation.
 - Back up a consistent SQLite snapshot and referenced assets together. Copying only
   the main database file during WAL writes is insufficient.
+
+### Fork construction
+
+Fork protects a fixed, nonempty committed source prefix against deletion until the
+child is published. Replace the source creation at seq 1 with one child creation;
+do not prepend it. Child identity/home-workspace options and fork provenance are
+new; preserve the source initial configuration as the seed for inherited replay.
+Copy subsequent events in their original sequence positions and retain session-local
+message/event/attempt IDs. Rebind references to the child namespace, including any
+reference to the replaced creation. Event-sequence anchors and historical compaction
+source_seq values keep their positions; fork_source_seq alone denotes the source
+session's prefix. Copy assets and rewrite their references before publication.
+
+After projecting the inherited prefix, append child-local state patches for explicit
+destination adjustments and, if set, clear group_hint. Do not filter historical
+patches or rely on creation-time clearing. These patches must change a value; no
+empty cleanup event is needed. Publish the creation, inherited events, final patches
+and derived summaries atomically. Copying is validated import, not fresh command
+dispatch: historical attempts remain history and unfinished ones are never restarted.
+A fresh child replay must equal the Fork result, have no inherited group hint, and
+resolve all content references without the source session, even after its deletion.
 
 ## Ownership boundary and rollout
 
@@ -573,8 +626,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Move, missing directory, path reuse, cross-project `cd` | Inspectable history; explicit reconciliation; execution policy refreshed |
 | TUI/headless/ACP and competing processes | Validated cwd and common single-writer ownership |
 | Group switch/rejected reclaim; late background completion | No resurrected membership or cross-session callbacks |
-| Child history and fork; parent deletion | Independent identity/assets; history does not imply a live task |
-| Repeated/failed compaction, retry and invalid references | One atomic event; old-projector context/history parity; unchanged state/config/assets; reject unresolved IDs |
+| Child history and fork; parent/source deletion | Independent identity/assets; fresh replay equals Fork result, preserves local sequence references and clears inherited group hint; no implied live task |
+| Repeated/failed/audited compaction, retry and invalid references | One atomic transition with one apply and its pending inference finish; own audit does not cause staleness; intervening writes reject apply; context/history parity and unchanged config/state/assets |
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
 | Config/state patches and mixed legacy fields | One typed owner per field; reject unknown keys; derive preview rather than duplicate it |
 | Replaying every event type | Same projected state without model/tool/Hook calls, permission prompts or new events |
@@ -582,8 +635,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Durable annotations versus derived UI text | Preserve meaningful anchored commentary without model injection or duplicate rendering events |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
-| Interrupted calls, retry and repeated identical input | One start/finish pair per attempt when outcome is known; outcome required; unknown attempts stay unknown; distinct actions survive deduplication |
-| Streaming/progress and unchanged state | Complete final messages without per-token events, empty patches or repeated snapshots |
+| Interrupted calls, retry and repeated identical input | Output identifies its producer; committed output without finish remains recoverable but outcome unknown; known outcomes close the matching attempt; distinct actions survive deduplication |
+| Event admission, streaming/progress and unchanged state | Preserve new durable facts and necessary failure/denial audit; no per-token events, empty patches, repeated snapshots or derivable annotations |
 | Import, repeated import, export and rollback | Preserved IDs/content and one writable authority |
 
 Use existing session/transcript/app tests as the baseline. Check picker responsiveness
