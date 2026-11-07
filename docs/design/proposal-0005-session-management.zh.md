@@ -28,6 +28,8 @@ Project 1 ── N Workspace 1 ── N Session
                                             ├─ inference.finish
                                             ├─ tool.start
                                             ├─ tool.finish
+                                            ├─ delegation.start
+                                            ├─ delegation.finish
                                             ├─ permission.request
                                             ├─ permission.decide
                                             ├─ hook.finish
@@ -77,26 +79,28 @@ Resume → 读取已提交事件 → 相同的投影规则 → 恢复最终状�
 
 ### 事件信息契约
 
-每个事件都使用下文表定义的封装字段：`session_id`、`seq`、`id`、`type`、
-`schema_version`、`created_at`、`payload`。ID 在提交请求前分配；seq 在事务提交时分配，
-绝不从时间戳推断。载荷不重复封装字段。下文后缀 `?` 表示可选，其他字段均必填。
-原生消息、工具定义和待办保留现有 SDK/产品模式，不简化为文本。
-未知的可选字段应省略，不填入虚构默认值。具体 Go 类型须通过 SDK 对齐检查。
+每个事件使用下文表定义的封装：身份/顺序、类型/版本/时间、可选的关联、因果、投递和结果列，
+以及类型化载荷。ID 在提交请求前分配；seq 在事务提交时分配，绝不从时间戳推断。
+载荷不重复封装字段。下文后缀 `?` 表示可选，其他载荷字段均必填；
+各类型的封装字段要求见关联契约。原生消息、工具定义和待办保留 SDK/产品模式，不简化为文本。
+未知的可选值应省略，不填入虚构默认值。具体 Go 类型须通过 SDK 对齐检查。
 
 | 事件 | 类型化载荷字段 | 应用后的动作 | 不做什么 |
 | --- | --- | --- | --- |
 | `session.create` | workspace_id, initial_cwd, agent_id, sidechain；parent_session_id?, fork_source_id?, fork_source_seq?, initial_config? | 初始化身份和投影；关联分叉来源 | 不启动 agent、不创建项目、不再次复制文件 |
-| `message.append` | messages：非空、有序的原生消息列表；producer_ref? | 建立消息索引，追加历史及有效消息序列，派生预览/计数 | 不调用模型，不执行消息中的工具调用 |
-| `compaction.apply` | operation_id, source_seq, summary：原生消息, retained_message_ids：有序列表；producer_ref? | 索引摘要，有效序列切换为「摘要 + 保留消息」 | 不删除历史/资源，不修改 config/state |
+| `message.append` | messages：非空、有序的原生消息列表；source_message_ids?（与接收的原生消息逐项对齐的源 ID） | 建立消息索引，追加历史及有效消息序列，派生预览/计数 | 不调用模型，不执行消息中的工具调用 |
+| `compaction.apply` | source_seq, summary：原生消息, retained_message_ids：有序列表 | 索引摘要，有效序列切换为「摘要 + 保留消息」 | 不删除历史/资源，不修改 config/state |
 | `config.update` | patch: ConfigPatch | 更新会话覆盖项，使下次有效配置解析失效重算 | 不修改用户/项目文件、历史或进行中的请求 |
 | `state.update` | patch: StatePatch | 更新指定状态及摘要；cwd 改变时标记环境待刷新 | 不替换消息、不改变归属工作区、不授予权限 |
-| `inference.start` | attempt_id, turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | 登记未结束的尝试及实际使用的非秘密请求来源信息 | 不请求模型 |
-| `inference.finish` | attempt_id, outcome；stop_reason?, usage?, duration_ms?, error?, reason? | 结束尝试，更新审计/用量；输出保留在消息事件中 | 不复制输出、不自动重试 |
-| `tool.start` | call_id, attempt_id, input_ref；inference_attempt_id? | 登记未结束的执行；input_ref 标识持久化的调用及参数 | 不授权、不执行工具 |
-| `tool.finish` | call_id, attempt_id, outcome；duration_ms?, error?, reason?, details? | 结束尝试，关联类型化执行/展示详情；结果正文保留在消息/资源中 | 不复制结果正文、不重复副作用 |
-| `permission.request` | request_id, operation_ref, scope | 增加关联受保护操作的待决审计项 | 回放时不弹出请求 |
-| `permission.decide` | request_id, decision, scope；reason? | 完成对应请求的审计项 | 不把历史授权恢复为当前授权 |
-| `hook.finish` | invocation_id, hook_name, trigger, outcome；duration_ms?, reason?, effect_refs? | 记录已知 Hook 结果及单独持久化的效果引用 | 不执行 Hook，不再次应用其效果 |
+| `inference.start` | turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | 登记未结束的尝试及实际使用的非秘密请求来源信息 | 不请求模型 |
+| `inference.finish` | stop_reason?, usage?, duration_ms?, error?, reason? | 结束尝试，更新审计/用量；输出保留在消息事件中 | 不复制输出、不自动重试 |
+| `tool.start` | call_id, input_ref | 登记未结束的执行；input_ref 标识持久化的调用及参数 | 不授权、不执行工具 |
+| `tool.finish` | call_id；duration_ms?, error?, reason?, details? | 结束尝试，关联类型化执行/展示详情；结果正文保留在消息/资源中 | 不复制结果正文、不重复副作用 |
+| `delegation.start` | child_session_id, input_ref | 登记一次已接纳的子会话执行/继续执行及其输入 | 回放时不启动子会话，不复制其事件流 |
+| `delegation.finish` | error?, reason? | 结束委派尝试；存在已接纳结果时通过因果引用关联 | 不终结子会话，不重复结果正文 |
+| `permission.request` | operation_ref, scope | 增加关联受保护操作的待决审计项 | 回放时不弹出请求 |
+| `permission.decide` | decision, scope；reason? | 完成对应请求的审计项 | 不把历史授权恢复为当前授权 |
+| `hook.finish` | hook_name, trigger；duration_ms?, reason?, effect_refs? | 记录已知 Hook 结果及单独持久化的效果引用 | 不执行 Hook，不再次应用其效果 |
 | `instruction.update` | upsert：具名指令片段, remove：片段名称；source? | 更新请求摘要所引用的历史指令目录 | 不覆盖当前指令文件，不注入消息 |
 | `toolset.update` | upsert：原生工具定义, remove：工具名称；source? | 更新请求摘要所引用的历史工具目录 | 不安装工具、不启用执行 |
 | `skill.update` | changes：具名、类型化的技能启用状态；source? | 更新已观察到的启用历史，供检查 | 不加载技能、不编辑偏好 |
@@ -104,7 +108,7 @@ Resume → 读取已提交事件 → 相同的投影规则 → 恢复最终状�
 
 生产方明确划分：Store.Create/Fork 负责身份；已接纳消息的适配层负责消息；
 Session.Compact 负责压缩；设置/会话管理方负责补丁；模型/工具执行适配层负责尝试记录；
-审批和 Hook 管理方负责各自审计；请求准备阶段负责指令/工具集合变更；
+审批和 Hook 管理方负责各自审计；委派协调方负责子会话执行事实；请求准备阶段负责指令/工具集合变更；
 技能启用流程负责已观察到的技能变更；应用功能负责注释。渲染器只消费数据，绝不是持久化来源。
 
 ConfigPatch 允许 provider、model、generation_options、mode 和 autopilot_policy。
@@ -115,31 +119,90 @@ StatePatch 允许 title、archived_at、todos、autopilot_progress、execution_c
 false/零/空值是显式值，不隐含清空。拒绝未知或跨归属字段。
 未变化的补丁和定义增量不产生操作。
 
+### 关联与来源
+
+通用查询/校验字段作为列，不埋在载荷中：
+
+| 封装字段 | 含义与必需用法 |
+| --- | --- |
+| `correlation_id` | 会话内单次操作身份：inference/tool/delegation start/finish、permission request/decide、hook finish 和 compaction apply 必填。配对事件共用；执行重试使用新 ID，持久化重试保留原 ID。无关事件为空。 |
+| `cause_session_id`, `cause_event_id` | 一个直接因果事件，两者同时存在或同时缺省。生成的消息/摘要指向生产方 start；接收消息指向源内容，委派输入则指向 delegation.start。沿引用追溯，不复制整条路径。 |
+| `delivery_id` | 跨会话消息接纳时必填；标识一次已接纳批次，重投时保持稳定。其他事件为空。 |
+| `outcome` | 仅 inference/tool/delegation/hook finish 必填：success/failure/cancelled。权限决定仍在其类型化载荷中。 |
+
+Correlation 不是全局追踪 ID。它替代载荷中事件自身操作的 attempt/request/invocation/operation ID；
+原生 call_id 和 turn_id 仍是类型化载荷字段。压缩有自身 correlation，不同于其 cause 指向的推理。
+因果列替代 producer_ref，而非复制它。事件可以没有 cause，例如直接用户输入；不得虚构。
+类型、本地消息角色和因果链共同标识来源，无需冗余的来源类别列。
+事件专属的输入/内容引用仍在类型化载荷中；单个直接原因不等于完整依赖图。
+
 ### 校验与关联
 
 - 创建必须是 seq 1 的首个事件，身份必须尚不存在；fork_source_id 和 fork_source_seq
   要么都省略，要么指向已有的非空源前缀。初始默认值是类型化配置，不含秘密。
   Fork 按下文规则构造唯一的子会话创建事件，不再追加第二次创建。
 - 原生消息 ID 非空且唯一；同一 ID 对应不同内容即冲突。压缩按下文规则验证源版本和引用。
-- producer_ref 是指向生产方 inference.start 或 tool.start 事件的类型化引用，
-  新记录的推理/工具生成消息批次及推理生成摘要必须提供。每批只有一个生产方；混合生产方须拆批。用户输入没有执行生产方。
-  校验引用的尝试及原生工具调用 ID；绝不从时间戳或相邻位置推断因果。
-  原生格式已有等价引用时应复用，不维护两个权威来源。旧记录的未知来源经兼容映射后仍明确为未知。
-- 完成记录必须匹配同一会话、同一执行类别中已有的开始记录；工具调用 ID 也必须匹配。
-  outcome 为 success/failure/cancelled。失败需要有界的结构化错误，取消需要原因。
-  未知结果不得伪造完成记录。重复提交相同结果具有幂等性；冲突则失败。
-- 权限决定必须匹配请求 ID；decision 为 allow/deny/cancelled，作用域不能超出请求。
-  Hook 结果使用 success/failure/cancelled；派发确认不等于已知完成结果。
-  Hook 效果只能通过其自身事件/管理方改变状态，不能通过回放 hook.finish 应用。
-- 消息/事件/资源引用有明确类型，不是任意路径。引用必须解析到同一会话已提交的前缀，
-  或同一事务中已验证的更早条目；父会话/分叉来源是明确允许的跨会话例外。
-  input_ref 包含不可变的调用名称/参数，指向原生调用或已持久化的调用资源。
-  引用缺失必须失败，不能静默丢弃。
+- 推理/工具生成的消息批次及摘要必须通过因果列指向生产方 start。每批只有一个 cause；混合来源须拆批。
+  按该次执行校验原生工具调用 ID。因果与内容一同不可变，绝不从时间戳或相邻位置推断。
+  旧记录的未知来源经兼容映射后仍明确为未知。
+- Start/finish 按同一会话、同一执行类别中的 correlation_id 匹配；工具调用 ID 也必须匹配。
+  每次操作只允许一个 start、至多一个终止结果。不同操作复用 correlation 即冲突。
+  失败需要有界的结构化错误，取消需要原因。未知结果不得伪造 finish。
+  重复提交相同结果具有幂等性；结果冲突则失败。
+- 权限决定必须匹配请求 correlation ID；decision 为 allow/deny/cancelled，作用域不能超出请求。
+  Hook 派发确认不等于已知完成结果。Hook 效果只能通过其自身事件/管理方改变状态，不能通过回放应用。
+- 本地 cause 及必需的消息/事件/资源引用必须解析到已提交前缀，或同一事务中已验证的更早条目。
+  外部因果来源及父会话/分叉身份是明确允许的跨会话例外。可信适配层在接纳时校验外部 cause；
+  导入时不可用的来源需要显式兼容映射，不得伪造引用。回放在本地解析内容，不要求外部 cause 仍存在。
+  input_ref 标识不可变的调用名称/参数，指向原生调用或已持久化的调用资源。
+  必需内容缺失必须失败；外部来源删除可能中断追溯，但绝不删除本地已接纳内容。
 - 指令/工具集合更新使用唯一名称、互不相交的 upsert/remove 集合及类型化内容；
   空的初始目录是已知值，不代表历史缺失。请求摘要必须能解析到已记录的目录版本。
   技能变更的名称唯一、状态经过校验。不要在每次调用中复制未变定义。
 - 未知类型/版本或无效字段在提交前拒绝。无实际变化的命令不产生事件。
   缺少必填字段的旧记录需要显式兼容映射，保留当时已知信息；不得为适配模式而伪造执行事实。
+
+### 委派与跨会话输入
+
+子 agent 拥有独立会话/事件流。父子关系标识会话；一次 delegation correlation 标识一次执行或继续执行，
+而非子会话的整个生命周期。父会话只记录协调事实及实际接纳的内容：
+
+```text
+父会话：tool.start → delegation.start
+                         │ cause
+                         ▼
+子会话：session.create / 已接纳输入 → inference/tool/message 事件
+                                                       │ 结果内容
+                                                       ▼
+父会话：message.append ──────────────────────→ delegation.finish
+        cause = 子会话内容                     cause = 已接纳结果
+        delivery_id = 接收凭据                  correlation = delegation.start
+```
+
+提交 delegation.start 前先分配目标子会话 ID，派发前创建/认领子会话；创建失败可能留下无对应会话的预留 ID。
+执行前校验当前父级/任务/子会话所有权。新子会话的创建或已有子会话接纳的继续执行输入，
+都以父会话 delegation start 为因果引用。工具派发确认不等于委派完成。每次继续执行使用新的 delegation correlation。
+已知完成、失败或取消会结束该次尝试；崩溃后在核实前保持未知，绝不能因此在回放时启动工作。
+结果消息与 delegation.finish 同时已知时一并提交；finish 引用本地已接纳结果，不再复制正文。
+没有结果正文时，无需为 finish 虚构消息。
+
+跨会话内容使用 message.append，不另设接收消息类型。接收方以新的、稳定的接收方本地消息 ID，
+保存已接纳内容及独立保留的资源。对于原生消息输入，source_message_ids 将每条本地消息映射到
+因果源事件中的原始 ID；保留提供方字段和工具调用身份，不再复制一份源正文。
+上下文顺序、推理输入和压缩使用本地 ID。重投复用已接纳 ID；真正的新投递即使源内容相同也分配新 ID。
+这是消息接纳，不是保留源本地消息身份的无损导入。
+
+Cause 指向上游内容事件；例外是委派输入，指向 delegation.start 并解析其不可变 input_ref。
+一次投递是一批同源内容；同一源事件的多次投递使用不同 delivery ID。可信传输层分配抗碰撞的 delivery ID，
+重试时保留，并验证来源/会话所有权；消息文本不能声明权限。同一接收方/delivery 且内容和来源相同，
+返回已有接纳结果；正文或 cause 改变即冲突，即使使用新的事件 ID。原子接纳后才能确认。
+接纳不表示模型已消费；实际使用内容由推理输入 ID 决定。本地转换后的内容引用本地生产方，
+再通过其输入引用追溯已接纳来源；不能声称是原样副本。
+
+传输层/群组收件箱负责路由、重试和投递保证。会话历史记录接纳事实，不另建队列，也不记录每次收发通知。
+不隐含跨会话事务或恰好一次执行。延迟结果路由至原会话 writer，而非 UI 当前选择或分叉会话。
+来源删除后仍保留其身份用于追溯，但追溯可能到此为止。不持久化心跳、进度或转发的子会话事件流；
+回放绝不重发消息、授予权限或取得子会话所有权。
 
 ### 合并规则
 
@@ -182,8 +245,8 @@ Autopilot 策略和进展必须分开，不能把整个不透明对象同时放�
 调用消息可能在获准执行前就已存在。必要的开始事件无法提交时，不执行操作。
 适配层必须建立这些目标保证，不能假设当前回调已经具备。
 完整输出和终止结果同时已知时，在一个 Append 批次中提交输出及 finish。
-较早的完整消息可能已经提交；生产方引用不意味着尝试已结束。崩溃后保留这些输出，
-在核实前让尝试保持未知；回放绝不再次派发。尝试的输出从不可变生产方引用派生，
+较早的完整消息可能已经提交；因果引用不意味着尝试已结束。崩溃后保留这些输出，
+在核实前让尝试保持未知；回放绝不再次派发。尝试的输出从不可变因果引用派生，
 不在 finish 事件中另存输出列表。带审计的压缩遵循下文顺序。
 
 不保存逐 token 增量、加载/进度刷新、选择器导航、重复读取、空补丁、
@@ -255,7 +318,7 @@ func (s *Session) Close() error
 
 | 类型 / 操作 | 必需行为 |
 | --- | --- |
-| `CreateOptions` | 工作区 ID、初始 cwd、可选 ID/父会话及不含秘密的初始设置 |
+| `CreateOptions` | 工作区 ID、初始 cwd、可选 ID/父会话及不含秘密的初始设置；委派创建必须成对提供 `cause_session_id` / `cause_event_id`，由 Create 校验并持久化 |
 | `Create` / `Open` | 返回持有写入所有权的句柄；Open 先认领，再加载一致的投影 |
 | `Get` / `List` | 读取摘要而不认领写入所有权，包括由其他进程持有的会话 |
 | `SessionQuery` | 项目/工作区/父会话/群组/sidechain/归档筛选、有界条数上限、不透明游标 |
@@ -263,7 +326,7 @@ func (s *Session) Close() error
 | `History` | 该固定前缀的展示投影，包含压缩前历史；附件以引用提供 |
 | `Snapshot` | 不可变的已提交上下文、应用状态和恢复位置；不含 UI 行或活跃资源 |
 | `ForkOptions` | 可选目标工作区和源序号；否则捕获最新已提交前缀 |
-| `CompactionChange` | `source_seq`（预期当前前缀）、稳定 `operation_id`、含稳定 ID/提供方内容的完整原生 `summary`、有序 `retained_message_ids`、生成摘要的 `producer_ref` |
+| `CompactionChange` | `source_seq`（预期当前前缀）、压缩操作的稳定 `correlation_id`、含稳定 ID/提供方内容的完整原生 `summary`、有序 `retained_message_ids`、生成摘要的因果身份 |
 | `Append` / `Compact` | 共用原子写入实现及压缩校验；Append 还可将压缩及其推理 finish 合批，Compact 则封装单次转换 |
 | `Archive` / `Delete` | 归档追加状态；硬删除需要所有权，并拒绝存在活跃写入者的会话 |
 | `Close` | 等待进行中的写入，且仅释放一次所有权 |
@@ -303,7 +366,8 @@ TUI、无界面模式和 ACP 共用所有权规则。ACP 在构建服务前验�
 | --- | --- |
 | 项目描述和工作区注册 | `projects` / `workspaces` |
 | 会话身份和查询摘要 | `sessions`；摘要派生自记录 |
-| 原生消息、压缩、会话覆盖项、待办、历史注释和审计 | 类型化的 `session_events.payload` |
+| 操作/因果/投递身份及终止结果 | `session_events` 的一等列；单一权威来源，不在载荷中镜像 |
+| 原生消息、压缩内容、会话覆盖项、待办、历史注释和审计详情 | 类型化的 `session_events.payload` |
 | 用户默认值及提供方/技能选择 | 现有用户文件，包括 `~/.san/settings.json` |
 | 共享项目设置和指令 | 现有项目文件，包括 `.san/settings.json` |
 | 本地/worktree/persona 覆盖项 | 现有作用域文件及解析器 |
@@ -393,10 +457,24 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 | `type` | TEXT | 事件类型标识 |
 | `schema_version` | INTEGER CHECK > 0 | 载荷编解码版本 |
 | `created_at` | INTEGER | 事件时间，不是排序键 |
-| `payload` | TEXT, validated JSON | 完整的事件专属内容 |
+| `correlation_id` | TEXT ? | 会话内操作身份，由其生命周期事件共用 |
+| `cause_session_id` | TEXT ? | 直接因果事件所在会话；历史身份，不表示所有权 |
+| `cause_event_id` | TEXT ? | cause_session_id 内的事件 ID；与该列成对 |
+| `delivery_id` | TEXT ? | 一次已接纳跨会话消息批次的稳定传输身份 |
+| `outcome` | TEXT ? CHECK success/failure/cancelled | 已知执行终止结果；其他类型为空 |
+| `payload` | TEXT, validated JSON | 仅含事件专属内容，不重复封装字段 |
 
-主键 `(session_id, seq)`；唯一约束 `(session_id, id)`。无编解码要求时，不在载荷中重复封装字段。
-原生消息 ID 不同于记录 ID。编解码器必须保留签名、加密推理、图像/内容顺序、工具 ID
+主键 `(session_id, seq)`；唯一约束 `(session_id, id)`、`(session_id, delivery_id)` 和
+`(session_id, type, correlation_id)`（空值不冲突）。最后一项防止重复 start/终止记录；
+应用校验还禁止不同操作类别复用 correlation。索引 `(session_id, correlation_id, seq)` 用于操作查询，
+`(cause_session_id, cause_event_id)` 用于反向追溯。两个 cause 列必须同时为空或同时非空。
+提交前按类型校验必填/禁止的列。外部 cause 身份刻意不设删除外键：
+历史来源绝不级联删除、清空或阻止删除。本地引用完整性由追加/导入校验保证，而非回放时获取外部数据。
+
+将共用身份、去重、因果查询和终止状态字段提升为列；原生内容、作用域、输入引用、补丁和诊断仍在类型化载荷中。
+不要为每个可选字段推测性加列。项目/工作区身份通过关联会话获取，不复制到每个事件。
+原生消息 ID 不同于事件 ID；原生角色不是另一套封装 actor/source 字段。
+编解码器必须保留签名、加密推理、图像/内容顺序、工具 ID
 及受支持的提供方字段。当前 `Record.Message`/`Messages` 使用 `json:"-"`；
 直接序列化 Record 会丢失消息。通过经验证的无损导入映射保留旧替换语义，
 而非在目标模型中增加替换事件；引入消息父子树是单独的决策。
@@ -429,13 +507,13 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 
 一次成功压缩只提交一个 `compaction.apply` 事件，不再拆成替换和完成事件：
 
+封装中的 correlation 标识压缩操作，用于幂等重试；因果列标识生成摘要的推理 start。两者均不在载荷中重复。
+
 | payload 字段 | 含义 |
 | --- | --- |
-| `operation_id` | 稳定操作 ID，用于幂等重试 |
 | `source_seq` | 生成摘要前捕获的已提交会话版本；若有审计，则在其推理 start 提交后捕获 |
 | `summary` | 完整原生摘要消息，包括稳定消息 ID、角色、内容及提供方字段 |
 | `retained_message_ids` | 按原有效序列顺序保留的消息 ID，不复制正文 |
-| `producer_ref` | 生成摘要的推理 start，遵循统一来源契约 |
 
 投影结果为「摘要 + 引用的保留消息」。引用必须指向同一会话源版本中已有的不可变消息，
 包括仍有效的先前压缩摘要；新摘要进入消息索引和 History，无需另写一条消息事件。
@@ -487,9 +565,11 @@ Fork 遵循下文构造规则，保留的 ID 在本地解析，各会话独立�
 Fork 保护固定、非空的已提交源前缀免遭删除，直至子会话发布。
 用唯一的子会话创建事件原位替换 seq 1 的源创建事件，不在前面插入。
 子会话身份、归属工作区选项及分叉来源使用新值；保留源初始配置，作为继承回放的起点。
-后续事件按原序号位置复制，保留会话内消息/事件/尝试 ID。引用重新绑定到子会话命名空间，
-包括指向被替换创建事件的引用。事件序号锚点和历史压缩 source_seq 保持原位置；
-只有 fork_source_seq 表示来源会话的前缀。发布前复制资源并改写引用。
+后续事件按原序号位置复制，保留会话内 message/event/correlation/delivery ID。
+仅当因果对的会话是分叉来源、且事件属于复制前缀时，才重新绑定到子会话，包括指向被替换创建事件的引用。
+外部来源保持不变。本地事件序号锚点和历史压缩 source_seq 保持原位置；fork_source_seq 表示来源前缀。
+发布前复制资源并改写本地内容引用。复制的委派目标是历史身份：不得改变真实子会话的父级、
+继承其执行所有权或重定向结果。
 
 投影继承前缀后，追加子会话本地状态补丁，应用显式目标调整，并在 group_hint 已设置时清空它。
 不得过滤历史补丁，也不能依赖创建时清空。这些补丁必须实际改变值，无需空的清理事件。
@@ -525,7 +605,9 @@ San 负责身份解析、配置/信任、应用记录和投影。定义 SDK/San 
 | 根目录、嵌套 cwd、克隆/worktree 和旧分区 | 身份可预测；无静默合并或信任继承 |
 | 移动、目录缺失、路径复用、跨项目 `cd` | 历史可查阅；显式协调；刷新执行策略 |
 | TUI/无界面模式/ACP 和竞争进程 | cwd 经验证，共用单写入者所有权 |
-| 群组切换/重新认领被拒；后台延迟完成 | 不恢复失效成员关系，无跨会话回调 |
+| 群组切换/重新认领被拒；后台延迟完成 | 不恢复失效成员关系，不错误路由回调 |
+| 委派开始、继续执行、崩溃和分叉 | 每次执行一个 correlation；派发确认不等于 finish；未完成尝试保持未知；复制历史不授予子会话所有权 |
+| 跨会话投递、重投和来源删除 | 原子本地接纳后才确认；同一投递/内容具有幂等性，内容/cause 改变即冲突；来源删除后已接纳内容仍保留；回放绝不重发 |
 | 子会话历史和分叉；父/来源会话删除 | 独立身份/资源；从头回放等于 Fork 结果，保留本地序号引用并清空继承的群组提示；不暗示活跃任务 |
 | 重复/失败/带审计的压缩、重试和无效引用 | 一次原子转换含一个 apply 及其待提交的推理 finish；自身审计不导致过期，中途写入则拒绝 apply；上下文/历史等价，配置/状态/资源不变 |
 | 配置变更和权限撤销 | 正确的作用域写入，恢复时采用当前安全策略 |
