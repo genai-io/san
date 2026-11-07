@@ -18,17 +18,22 @@ Project 1 ── N Workspace 1 ── N Session
                                   ├─ parent_session_id → 父 agent 会话
                                   ├─ fork_source_id    → 来源会话
                                   └─ 1 ── N Events（session_events，按 seq 排序）
-                                            ├─ 会话：session.created / session.forked
-                                            ├─ 消息：message
-                                            │    └─ 追加有序原生消息列表
-                                            ├─ 压缩：compaction
-                                            │    └─ 完整原生摘要 + 源序号 + 有序保留消息 ID
-                                            ├─ 配置/状态：config / state
-                                            │    └─ 会话覆盖项 / 标题、待办、群组恢复提示
-                                            ├─ 推理：inference.started / completed / failed
-                                            └─ 工具/审计：tool.started / completed / failed、
-                                                 annotation、permission.requested / decided、
-                                                 hook.completed、system.updated、tools.updated、skill.updated
+                                            ├─ session.created
+                                            ├─ message.appended
+                                            ├─ compaction.applied
+                                            ├─ config.updated
+                                            ├─ state.updated
+                                            ├─ annotation.added
+                                            ├─ inference.started
+                                            ├─ inference.finished
+                                            ├─ tool.started
+                                            ├─ tool.finished
+                                            ├─ permission.requested
+                                            ├─ permission.decided
+                                            ├─ hook.finished
+                                            ├─ instruction.updated
+                                            ├─ toolset.updated
+                                            └─ skill.updated
 
 Events ── 投影器 ──┬─ History：展示历史，包含压缩前消息
                   ├─ Snapshot：活跃上下文及持久状态，用于 resume
@@ -36,16 +41,16 @@ Events ── 投影器 ──┬─ History：展示历史，包含压缩前消
 ```
 
 每行事件只属于一个 Session，由 `type` 决定类型化的 `payload`；上面的分类不是独立的表。
-消息是事件内容的一种，不代表全部事件。`message` 保存追加的原生对话内容，
-`compaction` 保存其原生摘要；
-`tool.completed` 补充执行/展示元数据，不重复保存工具结果正文。
+消息是事件内容的一种，不代表全部事件。`message.appended` 保存追加的原生对话内容，
+`compaction.applied` 保存其原生摘要；
+`tool.finished` 补充执行/展示元数据，不重复保存工具结果正文。
 父子关系和分叉关系连接的是 Session，不共享可变事件行。
 History 和 Snapshot 是同一份事件的不同视图，不是各自保存一套数据。
 这里的 Event 指持久化事实，并非每个流式 token 或 runtime 临时通知。
 `Event` 是拟议存储封装；当前代码仍使用 `transcript.Record`，需要明确适配，不能直接改名。
-名称能唯一表达语义即可：`message`、`compaction`、`config`、`state` 不加冗余动作后缀。
-只有需要区分阶段时才保留后缀，如 `inference.started`；Session 归属由 `session_id` 表达。
-这是目标命名，不是当前编码格式；导入时必须明确映射旧类型并保留语义。
+类型平铺，统一为 `<noun>.<past-participle>`，表达已发生的事实；命令使用动词原形（Append、Compact、Update）。
+Applied 表示已接受状态转换；finished 表示执行已有终止结果，不一定成功。
+Session 归属已由 `session_id` 表达。这是目标命名，不是当前编码格式；导入时必须明确映射旧类型并保留语义。
 归档属于状态；当前执行 cwd 属于会话状态，不改变归属工作区身份。
 
 ### 事件应用：边界与动作
@@ -71,23 +76,34 @@ Resume → 读取已提交事件 → 相同的投影规则 → 恢复最终状�
 
 | 事件 | 载荷边界 | 应用后触发的动作 | 不做什么 |
 | --- | --- | --- | --- |
-| `session.created` | 身份、初始位置及非敏感默认值 | 初始化会话投影和起始值 | 不启动 agent，不创建项目 |
-| `session.forked` | 源身份/序号、新身份 | 为已准备好的子会话关联来源，清空继承的群组提示 | 回放时不复制文件、不再次分叉 |
-| `message` | 带稳定 ID 的有序原生消息 | 建立消息索引，追加历史及有效消息序列，派生预览/计数 | 不调用模型，不执行消息中的工具调用 |
-| `compaction` | 完整原生摘要、源序号、保留消息 ID | 索引摘要，有效序列切换为「摘要 + 保留消息」 | 不删除历史/附件，不修改 config/state |
-| `config` | 类型化的会话偏好补丁 | 更新会话覆盖项，使有效配置缓存在下次解析前失效 | 不修改用户/项目文件、历史或进行中的请求 |
-| `state` | 类型化的会话状态补丁 | 更新指定状态及列表/展示投影；cwd 改变时标记执行环境待刷新 | 不替换消息、不改变归属工作区、不授予权限 |
+| `session.created` | 新身份、初始位置/默认值；分叉时另带源会话/序号 | 初始化投影；存在分叉来源时关联来源并清空继承的群组提示 | 不启动 agent、不创建项目，回放时不再次复制文件 |
+| `message.appended` | 带稳定 ID 的有序原生消息 | 建立消息索引，追加历史及有效消息序列，派生预览/计数 | 不调用模型，不执行消息中的工具调用 |
+| `compaction.applied` | 完整原生摘要、源序号、保留消息 ID | 索引摘要，有效序列切换为「摘要 + 保留消息」 | 不删除历史/附件，不修改 config/state |
+| `config.updated` | 类型化的会话偏好补丁 | 更新会话覆盖项，使有效配置缓存在下次解析前失效 | 不修改用户/项目文件、历史或进行中的请求 |
+| `state.updated` | 类型化的会话状态补丁 | 更新指定状态及列表/展示投影；cwd 改变时标记执行环境待刷新 | 不替换消息、不改变归属工作区、不授予权限 |
 | `inference.started` | 尝试 ID、输入消息 ID、非敏感有效设置 | 登记未结束的推理尝试及请求来源 | 不请求模型 |
-| `inference.completed` / `inference.failed` | 同一尝试 ID、结果、用量/错误 | 结束尝试，更新审计/用量；实际输出归消息事件 | 不复制输出、不自动重试 |
+| `inference.finished` | 同一尝试 ID、必填结果（success/failure/cancelled）、用量/错误 | 结束尝试，更新审计/用量；实际输出归消息事件 | 不复制输出、不自动重试 |
 | `tool.started` | 调用/尝试 ID、参数引用 | 登记未结束的工具执行 | 不授权、不执行工具 |
-| `tool.completed` / `tool.failed` | 同一组 ID、结果、执行/展示详情 | 结束尝试，关联调用详情；结果保留在原生消息/资源中 | 不复制结果正文、不重复副作用 |
+| `tool.finished` | 同一组 ID、必填结果（success/failure/cancelled）、执行/展示详情 | 结束尝试，关联调用详情；结果保留在原生消息/资源中 | 不复制结果正文、不重复副作用 |
 | `permission.requested` | 请求/调用身份及限定作用域的请求 | 增加待决审计项 | 回放时不弹出请求 |
 | `permission.decided` | 请求身份、决定、作用域、原因 | 完成对应审计项 | 不把历史授权恢复为当前授权 |
-| `hook.completed` | Hook 身份、触发原因、结果及有界原因 | 增加执行审计 | 不执行 Hook，不再次应用其副作用 |
-| `system.updated` | 具名历史指令片段的变更 | 更新回放的指令目录，供请求检查 | 不覆盖当前指令文件，不注入消息 |
-| `tools.updated` | 历史工具定义变更 | 更新回放的工具目录，供请求检查 | 不安装工具、不启用执行 |
+| `hook.finished` | Hook 身份、触发原因、结果及有界原因 | 增加执行审计 | 不执行 Hook，不再次应用其副作用 |
+| `instruction.updated` | 具名历史指令片段的变更 | 更新回放的指令目录，供请求检查 | 不覆盖当前指令文件，不注入消息 |
+| `toolset.updated` | 历史工具定义变更 | 更新回放的工具目录，供请求检查 | 不安装工具、不启用执行 |
 | `skill.updated` | 历史技能启用状态变更 | 更新技能审计视图 | 不加载技能、不写当前设置 |
-| `annotation` | 持久说明文本及消息/事件锚点 | 增加仅供展示的历史注释 | 不进入模型上下文、不改变会话状态、不触发执行 |
+| `annotation.added` | 持久说明文本及消息/事件锚点 | 增加仅供展示的历史注释 | 不进入模型上下文、不改变会话状态、不触发执行 |
+
+### 合并规则
+
+创建与分叉共用一次创建转换：分叉来源是 session.created 的可选数据，不重复产生创建事件。
+成功、失败、取消共用一次 finished 转换，结果字段必填；重试保留独立尝试 ID，
+冲突的终止结果不能覆盖已知结果。Started 表示已接纳尝试、准备派发，不证明远端已收到请求。
+只有 started、没有 finished 的尝试保持未知，不能伪造失败。
+事件保持平铺，不引入通用 type/phase/action 封装。
+
+保留配置意图与状态事实、工具执行与工具集合定义、指令定义与展示注释的区别。
+技能历史记录供检查的实际启用状态，不是另一份可编辑偏好。
+压缩仍只有一个 applied 事件，不增加开始/完成或替换事件；其摘要生成请求可以有推理审计记录。
 
 ### Config 与 state 的边界
 
@@ -97,8 +113,8 @@ Annotation 不属于这两者，它是持久展示说明，例如重新加入群
 
 | 归属 | 允许的字段范围 |
 | --- | --- |
-| `config` | 模型/提供方选择、生成参数、操作模式、autopilot 策略/限制 |
-| `state` | 标题、归档标记、持久待办/进展、当前执行 cwd、群组恢复提示 |
+| `config.updated` | 模型/提供方选择、生成参数、操作模式、autopilot 策略/限制 |
+| `state.updated` | 标题、归档标记、持久待办/进展、当前执行 cwd、群组恢复提示 |
 | 其他事件/管理方 | 消息与压缩、每次请求实际设置/用量、活跃进程、授权及真实群组成员关系 |
 
 Config 表达后续运行意图，state 表达会话当前事实，每个字段只有一个归属。
@@ -110,9 +126,7 @@ Autopilot 策略和进展必须分开，不能把整个不透明对象同时放�
 
 ### 记录契约：事实完整，重复最少
 
-推理/工具执行前先持久化开始事件，并关联最终结果；重试使用不同尝试 ID。
-取消必须明确记录为结果，不能算作成功。只有开始、没有结果表示中断/未知，
-不能推断为确定失败或可安全自动重试。执行边界不同于持久化的助手工具调用消息：
+推理/工具执行前先持久化开始事件。执行边界不同于持久化的助手工具调用消息：
 调用消息可能在获准执行前就已存在。必要的开始事件无法提交时，不执行操作。
 适配层必须建立这些目标保证，不能假设当前回调已经具备。
 
@@ -204,7 +218,7 @@ Session 是可恢复的对话，不是一次程序启动或 agent 运行，因�
 
 | 操作 | 持久化影响 | 能否 resume？ |
 | --- | --- | --- |
-| 创建 / 分叉 | 通过 session.created / session.forked 建立身份及来源 | 能 |
+| 创建 / 分叉 | 通过 session.created（分叉包含源身份/序号） 建立身份及来源 | 能 |
 | Open / Close | 取得/释放 writer；Close 仅关闭当前句柄，不终结对话 | 能 |
 | 执行完成 / 取消 | 记录已知推理/工具结果，消息保留 | 能 |
 | 崩溃 | 无法保证写入结束事件；未完成尝试在确认前保持未知 | 能，需恢复检查 |
@@ -357,7 +371,7 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 模型摘要本身可能遗漏细节；这里保证的是持久化原文无损，不承诺摘要或模型理解无损。
 `Session.Compact` 使用共享追加路径；摘要生成在 SQL 事务之外完成。
 
-一次成功压缩只提交一个 `compaction` 事件，不再拆成替换和完成事件：
+一次成功压缩只提交一个 `compaction.applied` 事件，不再拆成替换和完成事件：
 
 | payload 字段 | 含义 |
 | --- | --- |
@@ -443,7 +457,7 @@ San 负责身份解析、配置/信任、应用记录和投影。定义 SDK/San 
 | 持久注释与派生 UI 文案 | 保留有意义且带锚点的说明，不注入模型，不重复写展示事件 |
 | 展示历史、图像和并行工具 | 完整浏览，不扩大恢复后的模型上下文 |
 | 崩溃、重复写入、清理和错误检查点 | 一致的记录/摘要；可恢复缓存；显式失败 |
-| 调用中断、重试和内容相同的重复输入 | 开始/结果可关联；未知执行保持未知；去重不丢失独立动作 |
+| 调用中断、重试和内容相同的重复输入 | 已知结果的尝试配对 started/finished，结果必填；未知尝试保持未知；去重不丢失独立动作 |
 | 流式/进度通知和未变状态 | 最终消息完整，无逐 token 事件、空补丁或重复快照 |
 | 导入、重复导入、导出和回滚 | 保留 ID/内容，只有一个可写权威来源 |
 

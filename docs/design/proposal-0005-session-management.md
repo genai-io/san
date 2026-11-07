@@ -20,17 +20,22 @@ Project 1 ── N Workspace 1 ── N Session
                                   ├─ parent_session_id → parent agent session
                                   ├─ fork_source_id    → source session
                                   └─ 1 ── N Events (session_events, ordered by seq)
-                                            ├─ Session: session.created / session.forked
-                                            ├─ Messages: message
-                                            │    └─ Append an ordered native message list
-                                            ├─ Compaction: compaction
-                                            │    └─ Complete native summary + ordered retained message IDs
-                                            ├─ Config/state: config / state
-                                            │    └─ Session overrides / title, todos, group hint
-                                            ├─ Inference: inference.started / completed / failed
-                                            └─ Tool/audit: tool.started / completed / failed,
-                                                 annotation, permission.requested / decided,
-                                                 hook.completed, system.updated, tools.updated, skill.updated
+                                            ├─ session.created
+                                            ├─ message.appended
+                                            ├─ compaction.applied
+                                            ├─ config.updated
+                                            ├─ state.updated
+                                            ├─ annotation.added
+                                            ├─ inference.started
+                                            ├─ inference.finished
+                                            ├─ tool.started
+                                            ├─ tool.finished
+                                            ├─ permission.requested
+                                            ├─ permission.decided
+                                            ├─ hook.finished
+                                            ├─ instruction.updated
+                                            ├─ toolset.updated
+                                            └─ skill.updated
 
 Events ── projector ──┬─ History: display history, including pre-compaction messages
                      ├─ Snapshot: active context + durable state for resume
@@ -39,21 +44,20 @@ Events ── projector ──┬─ History: display history, including pre-com
 
 Each event row belongs to exactly one session. Its `type` selects the typed
 `payload`; the categories above are not separate tables. Messages are event
-content, not the entire event model. `message` owns native conversation appends;
-`compaction` owns its native summary. `tool.completed` adds execution/presentation
+content, not the entire event model. `message.appended` owns native conversation appends;
+`compaction.applied` owns its native summary. `tool.finished` adds execution/presentation
 metadata, not a second copy of tool-result content. Parent/fork links relate
 sessions; they do not share mutable event rows.
 History and Snapshot are views of the same events, not independent saved copies.
 Event means a durable persistence fact here, not every transient streaming/runtime
 notification. `Event` is the proposed storage envelope; current code still uses
 `transcript.Record` and requires an explicit adapter, not a blind type rename.
-Use bare event names for single complete facts (`message`, `compaction`, `config`,
-`state`); add an action/phase suffix only when distinct phases or actions must be
-distinguished, such as `inference.started`. Other event families keep their names
-above. Session ownership is already in `session_id`. These are target names, not
-the current codec. Import maps legacy types explicitly while preserving their
-meaning. Archive belongs to state; current
-execution cwd belongs to session state, not home-workspace identity.
+Types are flat `<noun>.<past-participle>` facts; commands use imperative verbs
+(Append, Compact, Update). Applied means an accepted state transition; finished
+means a terminal execution outcome, not necessarily success. Session ownership is
+already in `session_id`. These are target names, not the current codec. Import maps
+legacy types explicitly while preserving meaning. Archive belongs to state;
+current execution cwd belongs to session state, not home-workspace identity.
 
 ### Event application: boundaries and actions
 
@@ -80,23 +84,38 @@ reconciles final state once, not every intermediate historical transition.
 
 | Event | Payload boundary | Actions when applied | Does not do |
 | --- | --- | --- | --- |
-| `session.created` | Identity, initial location and non-secret defaults | Initialize session projection and starting values | Start an agent or create a project |
-| `session.forked` | Source identity/sequence and new identity | Attach provenance to the prepared child; clear inherited group hint | Copy files or fork again during replay |
-| `message` | Ordered native messages with stable IDs | Index messages, append to history and active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
-| `compaction` | Complete native summary, source sequence and retained IDs | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
-| `config` | Typed session preference patch | Update session overrides; invalidate effective-config cache for next resolution | Change user/project files, history or current in-flight request |
-| `state` | Typed session status patch | Update named state fields and their list/display projections; mark execution environment stale on cwd change | Replace messages, change home workspace or grant authority |
+| `session.created` | New identity, initial location/defaults; optional source session/sequence for a fork | Initialize projection; attach fork provenance and clear inherited group hint when present | Start an agent, create a project or repeat file copying during replay |
+| `message.appended` | Ordered native messages with stable IDs | Index messages, append to history and active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
+| `compaction.applied` | Complete native summary, source sequence and retained IDs | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
+| `config.updated` | Typed session preference patch | Update session overrides; invalidate effective-config cache for next resolution | Change user/project files, history or current in-flight request |
+| `state.updated` | Typed session status patch | Update named state fields and their list/display projections; mark execution environment stale on cwd change | Replace messages, change home workspace or grant authority |
 | `inference.started` | Attempt ID, input IDs and non-secret effective settings | Register an unfinished attempt and its request provenance | Make a model request |
-| `inference.completed` / `inference.failed` | Same attempt ID, outcome, usage/error | Close attempt and update audit/usage; actual output is owned by message events | Duplicate output or automatically retry |
+| `inference.finished` | Same attempt ID, required outcome (success/failure/cancelled), usage/error | Close attempt and update audit/usage; actual output is owned by message events | Duplicate output or automatically retry |
 | `tool.started` | Call/attempt ID and argument references | Register unfinished tool execution | Authorize or run the tool |
-| `tool.completed` / `tool.failed` | Same IDs, outcome and execution/display details | Close attempt and attach details to the call; results stay in native messages/assets | Copy result bodies or repeat side effects |
+| `tool.finished` | Same IDs, required outcome (success/failure/cancelled), execution/display details | Close attempt and attach details to the call; results stay in native messages/assets | Copy result bodies or repeat side effects |
 | `permission.requested` | Request/call identity and scoped request | Add a pending audit entry | Open a prompt during replay |
 | `permission.decided` | Request identity, decision, scope and reason | Resolve audit entry | Restore a historical grant as current authorization |
-| `hook.completed` | Hook identity, trigger, outcome and bounded reason | Add execution audit | Run the Hook or apply its side effects again |
-| `system.updated` | Named historical instruction-section delta | Update replay's instruction catalogue for request inspection | Override current instruction files or inject into messages |
-| `tools.updated` | Historical tool-definition delta | Update replay's tool catalogue for request inspection | Install tools or enable their execution |
+| `hook.finished` | Hook identity, trigger, outcome and bounded reason | Add execution audit | Run the Hook or apply its side effects again |
+| `instruction.updated` | Named historical instruction-section delta | Update replay's instruction catalogue for request inspection | Override current instruction files or inject into messages |
+| `toolset.updated` | Historical tool-definition delta | Update replay's tool catalogue for request inspection | Install tools or enable their execution |
 | `skill.updated` | Historical skill activation delta | Update skill audit view | Load a skill or write present-day settings |
-| `annotation` | Durable explanatory text and message/event anchor | Add a display-only history annotation | Enter model context, change session state or trigger execution |
+| `annotation.added` | Durable explanatory text and message/event anchor | Add a display-only history annotation | Enter model context, change session state or trigger execution |
+
+### Consolidation rules
+
+Creation and fork share one creation transition; fork provenance is optional data
+on session.created, not another creation event. Successful, failed and cancelled
+attempts share one finished transition with a required outcome; retries retain
+separate attempt IDs and no conflicting terminal result may overwrite a known one.
+Started means the attempt was admitted before dispatch, not proof of remote receipt.
+A started attempt without a finished result remains unknown, never fabricated as
+failure. This is a flat event catalogue, not a generic type/phase/action envelope.
+
+Keep config intent separate from state facts; tool execution separate from toolset
+definitions; instruction definitions separate from display annotations. Skill
+history records observed activation for inspection, not another editable preference.
+A compaction has just one applied event; no start/finish or replacement events are
+introduced for it. Its summary-generation request may have inference audit records.
 
 ### Config versus state
 
@@ -108,8 +127,8 @@ instead of storing another annotation; do not persist progress indicators.
 
 | Owner | Allowed field families |
 | --- | --- |
-| `config` | Model/provider selection, generation options, operation mode, autopilot policy/limits |
-| `state` | Title, archive marker, durable todos/progress, current execution cwd, group restoration hint |
+| `config.updated` | Model/provider selection, generation options, operation mode, autopilot policy/limits |
+| `state.updated` | Title, archive marker, durable todos/progress, current execution cwd, group restoration hint |
 | Other events/owners | Messages and compaction; actual per-request settings/usage; live processes, authorization and real group membership |
 
 Config means intended future behavior; state means the session's current facts.
@@ -123,13 +142,10 @@ independent state setter. No catch-all context/settings event is introduced.
 
 ### Recording contract: complete facts, minimal duplication
 
-Persist inference/tool start before dispatch and correlate the terminal outcome;
-retries have distinct attempt IDs. Cancellation is an explicit outcome, not success.
-A start without an outcome means interrupted/unknown, not proven failure or a safe
-automatic retry. This execution boundary is separate from a durable assistant tool
-call, which may exist before execution is authorized. If the required start cannot
-be committed, do not dispatch the operation. Adapter work must establish these
-target guarantees rather than assume current callbacks already provide them.
+Commit inference/tool start before dispatch. This boundary is separate from a
+durable assistant tool call, which may exist before execution is authorized.
+If required start persistence fails, do not dispatch. Adapters must establish
+these target guarantees rather than assume current callbacks already provide them.
 
 Do not store token deltas, spinner/progress ticks, picker navigation, repeated reads,
 empty patches, unchanged snapshots or reconstructible UI text. Final native messages
@@ -230,7 +246,7 @@ Its lifetime is therefore not a mandatory created/ended pair.
 
 | Operation | Durable effect | May resume? |
 | --- | --- | --- |
-| Create / Fork | Establish identity/provenance via session.created / session.forked | Yes |
+| Create / Fork | Establish identity/provenance via session.created (fork includes source identity/sequence) | Yes |
 | Open / Close | Acquire/release writer; Close retires only that handle, not the conversation | Yes |
 | Finish / cancel execution | Record known inference/tool outcomes; messages remain | Yes |
 | Crash | No reliable end event; incomplete attempts stay unknown until reconciled | Yes, with recovery checks |
@@ -401,7 +417,7 @@ remain intact. Model summaries may omit details: storage must be lossless, but
 lossless summaries or model comprehension are not promised. `Session.Compact` uses
 the shared append path; generate the summary outside any SQL transaction.
 
-A successful compaction commits one `compaction` event, not separate replacement
+A successful compaction commits one `compaction.applied` event, not separate replacement
 and completion events:
 
 | Payload field | Meaning |
@@ -512,7 +528,7 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Durable annotations versus derived UI text | Preserve meaningful anchored commentary without model injection or duplicate rendering events |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
-| Interrupted calls, retry and repeated identical input | Starts/outcomes correlate; unknown execution stays unknown; distinct actions survive deduplication |
+| Interrupted calls, retry and repeated identical input | One started/finished pair per attempt when outcome is known; outcome required; unknown attempts stay unknown; distinct actions survive deduplication |
 | Streaming/progress and unchanged state | Complete final messages without per-token events, empty patches or repeated snapshots |
 | Import, repeated import, export and rollback | Preserved IDs/content and one writable authority |
 
