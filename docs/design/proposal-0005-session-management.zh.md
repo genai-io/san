@@ -18,16 +18,17 @@ Project 1 ── N Workspace 1 ── N Session
                                   ├─ parent_session_id → 父 agent 会话
                                   ├─ fork_source_id    → 来源会话
                                   └─ 1 ── N Events（session_events，按 seq 排序）
-                                            ├─ 生命周期：session.started / session.forked
-                                            ├─ 消息：message.appended
-                                            │    └─ 原生用户 / 助手 / 工具结果内容
-                                            ├─ 上下文：conversation.replaced / session.compacted
-                                            │    └─ 摘要及保留消息 / 摘要 ID 及源序号
-                                            ├─ 状态：session.state.patched
-                                            │    └─ 标题、模型/模式覆盖、待办、群组恢复提示
-                                            ├─ 推理：inference.requested / responded / failed
-                                            └─ 展示/审计：notice.added、tool.completed、
-                                                 permission.*、hook.fired、system.*、tool.*、skill.*
+                                            ├─ 会话：session.created / session.forked
+                                            ├─ 消息：messages.appended / messages.replaced
+                                            │    └─ 追加或替换有序原生消息列表
+                                            ├─ 压缩：compaction.completed
+                                            │    └─ 摘要 ID 及源序号；正文归消息所有
+                                            ├─ 配置/状态：config.updated / state.updated
+                                            │    └─ 会话覆盖项 / 标题、待办、群组恢复提示
+                                            ├─ 推理：inference.started / completed / failed
+                                            └─ 工具/审计：tool.started / completed / failed、
+                                                 notice.added、permission.requested / decided、
+                                                 hook.completed、system.updated、tools.updated、skill.updated
 
 Events ── 投影器 ──┬─ History：展示历史，包含压缩前消息
                   ├─ Snapshot：活跃上下文及持久状态，用于 resume
@@ -35,13 +36,47 @@ Events ── 投影器 ──┬─ History：展示历史，包含压缩前消
 ```
 
 每行事件只属于一个 Session，由 `type` 决定类型化的 `payload`；上面的分类不是独立的表。
-消息是事件内容的一种，不代表全部事件。`message.appended` 保存原生对话内容；
-`tool.completed` 补充展示细节，不是第二份工具结果权威来源。
+消息是事件内容的一种，不代表全部事件。`messages.appended` 保存原生对话内容；
+`tool.completed` 补充执行/展示元数据，不重复保存工具结果正文。
 父子关系和分叉关系连接的是 Session，不共享可变事件行。
 History 和 Snapshot 是同一份事件的不同视图，不是各自保存一套数据。
 这里的 Event 指持久化事实，并非每个流式 token 或 runtime 临时通知。
 `Event` 是拟议存储封装；当前代码仍使用 `transcript.Record`，需要明确适配，不能直接改名。
-图中的事件名用于说明现有语义，并非完整枚举；归档和执行 cwd 恢复所需的类型化载荷须在实现前确定。
+事件统一按 `<object>.<past-tense action>` 命名；Session 归属已由 `session_id` 表达。
+这是目标命名，不是当前编码格式；导入时必须明确映射旧类型并保留语义。
+归档属于状态；当前执行 cwd 属于会话状态，不改变归属工作区身份。
+
+### 记录契约：事实完整，重复最少
+
+事件只有在改变可恢复状态、构成用户可见历史，或解释重要执行/安全结果时才持久化，
+不是每个 runtime 通知都落库。每种类型必须有生产方、消费方和最小载荷；
+缺少其中任意一项，就没有充分理由保存。
+
+| 事件族 | 最小持久化信息 |
+| --- | --- |
+| `session.created` / `session.forked` | 身份、初始位置/设置、父会话或固定的分叉来源 |
+| `messages.appended` / `messages.replaced` | 带稳定 ID 的有序原生消息列表；单条消息就是单元素列表 |
+| `compaction.completed` | 操作 ID、源序号和摘要消息 ID，不另存摘要正文 |
+| `config.updated` / `state.updated` | 仅变化的类型化字段；区分未提供与显式清空 |
+| `inference.started` / `inference.completed` / `inference.failed` | 尝试 ID、输入消息 ID 和非敏感请求设置；结果、用量和有界错误详情 |
+| `tool.started` / `tool.completed` / `tool.failed` | 调用/尝试 ID、执行结果及必要的耗时/展示字段；参数和结果引用原生消息或资源 |
+| `permission.requested` / `permission.decided`, `hook.completed` | 关联标识、限定作用域的决策/结果及有界原因；不复制提示词或工具载荷 |
+| `system.updated`, `tools.updated`, `skill.updated`, `notice.added` | 变化的定义/状态，或有意义的通知及其消息位置；不在每次推理时重复未变化的定义 |
+
+推理/工具执行前先持久化开始事件，并关联最终结果；重试使用不同尝试 ID。
+取消必须明确记录为结果，不能算作成功。只有开始、没有结果表示中断/未知，
+不能推断为确定失败或可安全自动重试。执行边界不同于持久化的助手工具调用消息：
+调用消息可能在获准执行前就已存在。必要的开始事件无法提交时，不执行操作。
+适配层必须建立这些目标保证，不能假设当前回调已经具备。
+
+不保存逐 token 增量、加载/进度刷新、选择器导航、重复读取、空补丁、
+未变化的快照或可重建的 UI 文案；最终原生消息仍须完整。
+真实重复操作和内容相同的用户消息都要保留：只按事件/操作 ID 对重试去重，
+不能仅按文本或时间戳去重。消息批次按原生消息身份去重。
+替换事件携带所需的完整有效消息序列，这是有意保存的快照，不是另建消息表的理由。
+排除密钥、凭据及无界诊断转储，保留有界诊断和必要资源引用。
+
+### 归属规则
 
 | 概念 | 负责内容 |
 | --- | --- |
@@ -259,8 +294,8 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 | 产物 | 存储 |
 | --- | --- |
 | 原始消息和引用资源 | 保留记录/文件，用于历史、查阅、分叉和导出 |
-| 完整的原生摘要和保留消息 | `session_events`：`conversation.replaced` 载荷 |
-| 摘要 ID 和源序号 | `session_events`：`session.compacted` 载荷 |
+| 完整的原生摘要和保留消息 | `session_events`：`messages.replaced` 载荷 |
+| 摘要 ID 和源序号 | `session_events`：`compaction.completed` 载荷 |
 | 尚未完成的摘要 token | runtime 内存；绝不作为有效恢复状态 |
 
 Compact 接受固定源序号和稳定操作 ID。验证来源未变，再将替换、边界和摘要作为一个批次提交。
@@ -323,6 +358,8 @@ San 负责身份解析、配置/信任、应用记录和投影。定义 SDK/San 
 | 配置变更和权限撤销 | 正确的作用域写入，恢复时采用当前安全策略 |
 | 展示历史、图像和并行工具 | 完整浏览，不扩大恢复后的模型上下文 |
 | 崩溃、重复写入、清理和错误检查点 | 一致的记录/摘要；可恢复缓存；显式失败 |
+| 调用中断、重试和内容相同的重复输入 | 开始/结果可关联；未知执行保持未知；去重不丢失独立动作 |
+| 流式/进度通知和未变状态 | 最终消息完整，无逐 token 事件、空补丁或重复快照 |
 | 导入、重复导入、导出和回滚 | 保留 ID/内容，只有一个可写权威来源 |
 
 以现有 session/transcript/app 测试为基线。优化前检查选择器响应速度和回放成本。
