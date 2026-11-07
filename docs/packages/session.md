@@ -8,13 +8,19 @@ layer: feature
 Owns durable conversation identity and the opened Session that writes its transcript.
 The application owns which session is selected. `agent.Runtime` owns execution.
 
+This page describes the current file-backed implementation. The proposed
+[session management and SQLite design](../design/proposal-0005-session-management.md)
+defines project/workspace ownership, target APIs, schema, and phased migration;
+none of those storage changes are implemented yet.
+
 ## Responsibilities and names
 
-- **Store** manages multiple sessions in one project: create, open, read, list,
-  fork, delete, and store attachments. It does not run an agent or own the current
-  selection. `Create` creates a new identity; `Open` acquires an existing
+- **Store** manages multiple sessions in one working-directory-keyed partition:
+  create, open, read, list, fork, delete, and store attachments. The current
+  project ID hashes cwd, not repository identity. It does not run an agent or
+  own the current selection. `Create` creates a new identity; `Open` acquires an existing
   identity's writer lease before restoring it. `Read` reads without opening a
-  writer, for queries. `ReadChatHistory` includes the selected pre-compaction branch
+  writer, for queries. `ReadChatHistory` includes pre-compaction messages
   for display. `Fork` returns an opened child and its restored history.
 - **Session** is one opened identity, fixed until `Close`. It owns the writer
   lease, ordered appends, inference/exchange positions, and persistence failures.
@@ -96,8 +102,10 @@ patch operations are removed. The transcript computes their actual differences a
 unchanged fields. State records contain application data; native conversation
 records contain messages. State appends happen in order on the application loop.
 Git branch annotations are recorded with inference requests on the agent goroutine,
-keeping Git subprocesses off the UI loop. Appends sync durable records before
-returning. Listing refreshes derived summaries lazily.
+keeping Git subprocesses off the UI loop. Changed conversation saves sync before
+returning; application records sync on a subsequent changed conversation save
+or writer close. A no-op save does not flush them. Listing refreshes derived
+summaries lazily.
 Unreadable or unsupported transcripts are logged and skipped during listing;
 opening one explicitly still reports its error. Other sessions remain available.
 
@@ -163,15 +171,16 @@ are disposable derived summaries. Earlier schema versions are rejected; no migra
 
 ## SDK Go responsibilities
 
-SDK `session.Session` follows the same resource and naming rules: typed `Append`,
-`RecordEvent` adaptation, `Err`, and `Close`; its Store contract supplies a
-writer claim before restore. SDK `session.Read` is a query without an opened
-writer. SDK `session.Create` creates a new identity and `session.Open` restores an existing
-one. SDK returns native `[]ai.Message`; it does not know San's titles, tasks,
-groups, or UI projections. These remain application records in San.
+The pinned sdk-go `pkg/session` exposes `Open(dir)` to open a directory-backed
+Store, `Store.Load(ctx, id)` to read native messages, and `Store.Writer(ctx, id)`
+to acquire a writer. `Writer.Save(messages)` persists conversation changes;
+`Writer.Append(name, data)` appends application records; `Writer.Close()` syncs
+and releases ownership. SDK `Open` does not restore a San session identity.
 
-`EntryConversationReplaced` records a complete native conversation in `Messages`.
-Storage implementations share the same native message structs.
+San's opened `Session`, event adaptation, titles, tasks, groups, and UI projections
+remain product responsibilities. SDK saves use native message structs and record
+a truncate to the unchanged prefix followed by changed messages. A generic SQLite
+backend is proposed, not present in this dependency.
 
 ## Tests and pitfalls
 

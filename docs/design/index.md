@@ -30,6 +30,7 @@ sizable feature usually has both a proposal and a notes plan.
 - [Autonomous development management](proposal-0002-autonomous-dev-management.md) · [中文](proposal-0002-autonomous-dev-management.zh.md) — Draft. A persona team that manages the project end to end.
 - [Session groups](proposal-0003-session-groups.md) · [中文](proposal-0003-session-groups.zh.md) — Implemented. Local sessions join groups and message each other.
 - [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Draft. Standard ACP and negotiated San capabilities over shared session behaviour.
+- [Session management and SQLite persistence](proposal-0005-session-management.md) — Draft. Project/workspace ownership, minimal session APIs, normalized storage, and incremental migration.
 
 ## Decision records
 

@@ -57,6 +57,13 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 
 ## Overview
 
+Configuration files remain authoritative. The proposed
+[session management design](../design/proposal-0005-session-management.md)
+separates project/workspace identity from configuration scope; it does not copy
+merged settings or credentials into a second editable database authority.
+Session overrides and historical request settings are not substitutes for current
+permission and workspace-trust checks.
+
 Configuration is loaded from multiple files at different scopes. Higher-priority files override lower-priority ones.
 
 **Load priority** (lowest → highest):
@@ -71,6 +78,11 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 | 6 | `./.san/settings.local.json` |
 | 7 | CLI arguments / environment variables |
 | 8 | `managed-settings.json` (read-only system policy) |
+
+For linked Git worktrees, the loader also reads the main checkout's
+`.claude/settings.local.json` and `.san/settings.local.json`, in that order,
+after the worktree-local settings files. Existing trust filtering still applies;
+this file-resolution behavior is not defined by the proposed database hierarchy.
 
 **settings.json schema:**
 
