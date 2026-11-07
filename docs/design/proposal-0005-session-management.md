@@ -29,7 +29,7 @@ Project 1 ── N Workspace 1 ── N Session
                                             │    └─ Session overrides / title, todos, group hint
                                             ├─ Inference: inference.started / completed / failed
                                             └─ Tool/audit: tool.started / completed / failed,
-                                                 notice.added, permission.requested / decided,
+                                                 annotation, permission.requested / decided,
                                                  hook.completed, system.updated, tools.updated, skill.updated
 
 Events ── projector ──┬─ History: display history, including pre-compaction messages
@@ -96,9 +96,15 @@ reconciles final state once, not every intermediate historical transition.
 | `system.updated` | Named historical instruction-section delta | Update replay's instruction catalogue for request inspection | Override current instruction files or inject into messages |
 | `tools.updated` | Historical tool-definition delta | Update replay's tool catalogue for request inspection | Install tools or enable their execution |
 | `skill.updated` | Historical skill activation delta | Update skill audit view | Load a skill or write present-day settings |
-| `notice.added` | Durable notice and message position | Add a display-history annotation | Modify model context or duplicate transient status text |
+| `annotation` | Durable explanatory text and message/event anchor | Add a display-only history annotation | Enter model context, change session state or trigger execution |
 
 ### Config versus state
+
+These remain separate typed events: desired future behavior versus current session
+facts. Session config overrides do not duplicate User/Project settings. An annotation
+is neither: it is durable display commentary, such as a failed group-rejoin note.
+It has no model role or state patch. Derive text already explained by another event
+instead of storing another annotation; do not persist progress indicators.
 
 | Owner | Allowed field families |
 | --- | --- |
@@ -217,6 +223,26 @@ func (s *Session) Close() error
 | `Archive` / `Delete` | Archive appends state; hard deletion requires ownership and rejects an active writer |
 | `Close` | Wait for in-flight writes and release ownership exactly once |
 
+### Session lifetime versus execution lifetime
+
+A Session is a resumable conversation, not one program invocation or agent run.
+Its lifetime is therefore not a mandatory created/ended pair.
+
+| Operation | Durable effect | May resume? |
+| --- | --- | --- |
+| Create / Fork | Establish identity/provenance via session.created / session.forked | Yes |
+| Open / Close | Acquire/release writer; Close retires only that handle, not the conversation | Yes |
+| Finish / cancel execution | Record known inference/tool outcomes; messages remain | Yes |
+| Crash | No reliable end event; incomplete attempts stay unknown until reconciled | Yes, with recovery checks |
+| Archive / unarchive | State patch changes visibility, not writability or history | Yes |
+| Delete | Explicitly remove the session/events and reclaim assets; not an end event | No |
+
+Do not infer execution liveness from a last event. Runtime reports live execution;
+the lease only determines ownership, including while idle.
+No session.ended event is defined initially. A future terminal event would require
+an explicit rule forbidding further writes and defining reopening, not merely a
+shutdown notification. Execution telemetry must not permanently end a session.
+
 Already-open sessions archive through their own Append. `Archive(..., false)`
 restores visibility. Project/workspace deletion is restricted while children exist;
 archive does not delete history. Parent relationships must be acyclic.
@@ -238,7 +264,7 @@ unsupported schema, corruption, cancellation and storage errors.
 | --- | --- |
 | Project description and workspace registration | `projects` / `workspaces` |
 | Session identity and query summaries | `sessions`; summaries derive from records |
-| Native messages, compaction, session overrides, todos, notices and audit | Typed `session_events.payload` |
+| Native messages, compaction, session overrides, todos, annotations and audit | Typed `session_events.payload` |
 | User defaults and provider/skill choices | Existing user files, including `~/.san/settings.json` |
 | Shared project settings and instructions | Existing project files, including `.san/settings.json` |
 | Local/worktree/persona overrides | Existing scoped files and resolver |
@@ -482,6 +508,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
 | Config/state patches and mixed legacy fields | One typed owner per field; reject unknown keys; derive preview rather than duplicate it |
 | Replaying every event type | Same projected state without model/tool/Hook calls, permission prompts or new events |
+| Close/reopen, finish/cancel, archive and crash | Preserve resumable identity; no fabricated terminal event; unknown attempts remain unknown |
+| Durable annotations versus derived UI text | Preserve meaningful anchored commentary without model injection or duplicate rendering events |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
 | Interrupted calls, retry and repeated identical input | Starts/outcomes correlate; unknown execution stays unknown; distinct actions survive deduplication |
