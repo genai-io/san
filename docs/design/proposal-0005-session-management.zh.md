@@ -400,6 +400,21 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | `skill.state.changed` | `skills.update` |
 | `notice.added` | `annotation.add`（`afterMessageId` → `after_message`） |
 
+## 交付计划
+
+已合并的代码（#737、#738）实现的是上一版草案。下面每一片都是独立 PR，在最后一片之前 runtime 仍写 schema 4。
+
+| # | 分片 | 替换 / 新增 |
+| --- | --- | --- |
+| 1 | 事件模型 | 18 类、全局事件 ID 与 `source_id` → 13 类、`seq` 身份、`source` 引用、词汇、目录与 `context.compact` 载荷 |
+| 2 | 校验与投影器 | 按位置的引用检查；关卡、未完成调用与版本规则；Context / State / History 投影 |
+| 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
+| 4 | attrs 与缓存 | `attrs.json`、`cache/summaries/`、大小 + 批次哈希有效性、按偏移的事件分页 |
+| 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、回收站 manifest、保留、GC |
+| 6 | runtime 切换 | 生产者写事件；以前缀复制分叉；恢复与 ACP 校验；带一致性门禁的 schema-4 转换 |
+
+第 1–2 片要求移植 #737 的测试，而不是删除。
+
 ## 备选方案
 
 - **全局唯一事件 ID**（上一版草案）。需要分配、跨分区冲突检查，并在分叉时改写所有本地引用。

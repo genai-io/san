@@ -480,6 +480,22 @@ fields the old records lack are left absent.
 | `skill.state.changed` | `skills.update` |
 | `notice.added` | `annotation.add` (`afterMessageId` → `after_message`) |
 
+## Delivery plan
+
+Merged code (#737, #738) implements the previous draft. Each slice below is an
+independent PR that keeps runtime writing schema 4 until the last one.
+
+| # | Slice | Replaces / adds |
+| --- | --- | --- |
+| 1 | Event model | 18 types, global event IDs and `source_id` → 13 types, `seq` identity, `source` refs, vocabulary, catalogue and `context.compact` payloads |
+| 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
+| 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
+| 4 | Attrs and cache | `attrs.json`, `cache/summaries/`, size + batch-hash validity, event pages by offset |
+| 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, trash manifests, retention, GC |
+| 6 | Runtime cutover | Producers write events; fork by prefix copy; resume and ACP checks; schema-4 conversion with parity gate |
+
+Slices 1–2 are gated by #737's tests being ported, not deleted.
+
 ## Alternatives considered
 
 - **Globally unique event IDs** (previous draft). They require allocation,
