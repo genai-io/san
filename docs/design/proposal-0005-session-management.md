@@ -30,6 +30,8 @@ Project 1 ── N Workspace 1 ── N Session
                                             ├─ inference.finish
                                             ├─ tool.start
                                             ├─ tool.finish
+                                            ├─ delegation.start
+                                            ├─ delegation.finish
                                             ├─ permission.request
                                             ├─ permission.decide
                                             ├─ hook.finish
@@ -85,28 +87,31 @@ reconciles final state once, not every intermediate historical transition.
 
 ### Event information contract
 
-Every event has the table envelope defined below: `session_id`, `seq`, `id`,
-`type`, `schema_version`, `created_at`, `payload`. IDs are allocated before submit;
-seq is assigned at commit, never inferred from timestamps. Payload does not repeat
-the envelope. A suffix `?` below means optional; otherwise fields are required.
-Native messages, tool definitions and todos retain their existing SDK/product
-schemas rather than being reduced to text. Optional fields are omitted when unknown,
-not filled with invented defaults. Exact Go types are an SDK-alignment gate.
+Every event uses the table envelope below: identity/order, type/version/time,
+optional correlation, cause, delivery and outcome columns, plus typed payload.
+IDs are allocated before submit; seq is assigned at commit, never inferred from
+timestamps. Payload does not duplicate envelope fields. A suffix `?` below means
+optional; otherwise payload fields are required. Envelope requirements by type are
+specified in the correlation contract. Native messages, tool definitions and todos
+retain their SDK/product schemas rather than being reduced to text. Unknown optional
+values are absent, not invented defaults. Exact Go types are an SDK-alignment gate.
 
 | Event | Typed payload fields | Actions when applied | Does not do |
 | --- | --- | --- | --- |
 | `session.create` | workspace_id, initial_cwd, agent_id, sidechain; parent_session_id?, fork_source_id?, fork_source_seq?, initial_config? | Initialize identity and projection; attach fork provenance | Start an agent, create a project or repeat file copying |
-| `message.append` | messages: nonempty ordered native-message list; producer_ref? | Index messages; append history/active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
-| `compaction.apply` | operation_id, source_seq, summary: native message, retained_message_ids: ordered list; producer_ref? | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
+| `message.append` | messages: nonempty ordered native-message list; source_message_ids? (aligned source IDs for received native messages) | Index messages; append history/active sequence; derive preview/counts | Invoke the model or execute embedded tool calls |
+| `compaction.apply` | source_seq, summary: native message, retained_message_ids: ordered list | Index summary; switch active sequence to summary + retained messages | Delete history/assets or alter config/state |
 | `config.update` | patch: ConfigPatch | Update session overrides; invalidate next effective-config resolution | Modify User/Project files, history or an in-flight request |
 | `state.update` | patch: StatePatch | Update named state and summaries; mark environment stale on cwd change | Replace messages, change home workspace or grant authority |
-| `inference.start` | attempt_id, turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | Register unfinished attempt and actual non-secret request provenance | Make a model request |
-| `inference.finish` | attempt_id, outcome; stop_reason?, usage?, duration_ms?, error?, reason? | Close attempt and update audit/usage; output stays in message events | Duplicate output or automatically retry |
-| `tool.start` | call_id, attempt_id, input_ref; inference_attempt_id? | Register unfinished execution; input_ref identifies the durable invocation and arguments | Authorize or run the tool |
-| `tool.finish` | call_id, attempt_id, outcome; duration_ms?, error?, reason?, details? | Close attempt and attach typed execution/display details; result body stays in messages/assets | Copy result bodies or repeat side effects |
-| `permission.request` | request_id, operation_ref, scope | Add pending audit entry linked to the protected operation | Open a prompt during replay |
-| `permission.decide` | request_id, decision, scope; reason? | Resolve the request's audit entry | Restore a historical grant as current authorization |
-| `hook.finish` | invocation_id, hook_name, trigger, outcome; duration_ms?, reason?, effect_refs? | Record known Hook outcome and references to separately persisted effects | Run Hook or apply effects again |
+| `inference.start` | turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | Register unfinished attempt and actual non-secret request provenance | Make a model request |
+| `inference.finish` | stop_reason?, usage?, duration_ms?, error?, reason? | Close attempt and update audit/usage; output stays in message events | Duplicate output or automatically retry |
+| `tool.start` | call_id, input_ref | Register unfinished execution; input_ref identifies the durable invocation and arguments | Authorize or run the tool |
+| `tool.finish` | call_id; duration_ms?, error?, reason?, details? | Close attempt and attach typed execution/display details; result body stays in messages/assets | Copy result bodies or repeat side effects |
+| `delegation.start` | child_session_id, input_ref | Register one accepted child execution/continuation and its input | Launch a child during replay or copy its event stream |
+| `delegation.finish` | error?, reason? | Close the delegated attempt; link accepted result through its cause when present | End the child session or duplicate its result body |
+| `permission.request` | operation_ref, scope | Add pending audit entry linked to the protected operation | Open a prompt during replay |
+| `permission.decide` | decision, scope; reason? | Resolve the request's audit entry | Restore a historical grant as current authorization |
+| `hook.finish` | hook_name, trigger; duration_ms?, reason?, effect_refs? | Record known Hook outcome and references to separately persisted effects | Run Hook or apply effects again |
 | `instruction.update` | upsert: named instruction sections, remove: section names; source? | Update historical instruction catalogue used by request digests | Override current instruction files or inject messages |
 | `toolset.update` | upsert: native tool definitions, remove: tool names; source? | Update historical tool catalogue used by request digests | Install tools or enable execution |
 | `skill.update` | changes: named, typed skill activation states; source? | Update observed activation history for inspection | Load skills or edit preferences |
@@ -115,9 +120,9 @@ not filled with invented defaults. Exact Go types are an SDK-alignment gate.
 Producers are explicit: Store.Create/Fork for identity; accepted-message adapters
 for messages; Session.Compact for compaction; settings/session owners for patches;
 model/tool execution adapters for attempt records; approval and Hook owners for
-their audit; request preparation for instruction/toolset changes; skill activation
-for observed skill changes; application features for annotations. Renderers are
-consumers, never persistence sources.
+their audit; delegation coordinators for child execution facts; request preparation
+for instruction/toolset changes; skill activation for observed skill changes;
+application features for annotations. Renderers are consumers, never persistence sources.
 
 ConfigPatch allows provider, model, generation_options, mode and autopilot_policy.
 Generation options and autopilot policy use versioned, allowlisted product fields,
@@ -129,6 +134,26 @@ or resets a field according to its typed contract. False/zero/empty are explicit
 values, not an implicit clear. Reject unknown or cross-owner fields.
 Unchanged patches and definition deltas are no-ops.
 
+### Correlation and provenance
+
+Generic query/validation fields are columns, not buried in payload:
+
+| Envelope fields | Meaning and required use |
+| --- | --- |
+| `correlation_id` | One operation identity within a session: required for inference/tool/delegation start/finish, permission request/decide, hook finish and compaction apply. Pairs share it; execution retries get new IDs, persistence retries keep theirs. Null on unrelated events. |
+| `cause_session_id`, `cause_event_id` | One immediate causal event, both present or both absent. Generated messages/summaries reference their producing start; received messages reference source content, or delegation.start for delegated input. Follow links rather than copying a trace path. |
+| `delivery_id` | Required on cross-session message acceptance; identifies one accepted batch and remains stable on redelivery. Null on other events. |
+| `outcome` | Required only on inference/tool/delegation/hook finish: success/failure/cancelled. Permission decision stays in its typed payload. |
+
+Correlation is not a global trace ID. It replaces payload attempt/request/invocation/
+operation IDs for the event's own operation; native call_id and turn_id remain typed
+payload fields. Compaction has its own correlation, distinct from the inference
+identified by its cause. Causal columns replace producer_ref rather than mirror it.
+An event may have no cause, for example direct user input; never invent one. Type,
+local message role and the causal chain identify origin without a redundant source-kind
+column. Event-specific input/content references remain typed payload: one immediate
+cause is not a complete dependency graph.
+
 ### Validation and correlation
 
 - Creation is the first event, at seq 1, and its identity must not exist;
@@ -137,27 +162,28 @@ Unchanged patches and definition deltas are no-ops.
   Fork constructs one child creation using the rules below, not a second creation.
 - Native message IDs are nonempty and unique; same ID with different content is a
   conflict. Compaction validates its source and references as specified below.
-- producer_ref is a typed reference to the producing inference.start or tool.start
-  event, required for newly recorded inference/tool-generated message batches and
-  inference-generated summaries.
-  A batch has one producer; split mixed producers. User input has no execution producer.
-  Validate the referenced attempt and native tool-call IDs; never infer causality
-  from timestamps or adjacency. Reuse an equivalent native reference if available,
-  rather than maintaining two authorities. Legacy unknown provenance stays explicitly
-  unknown through the compatibility mapping.
-- Finish records match an existing start in the same session and execution family;
-  tool call IDs also match. outcome is success/failure/cancelled. Failure needs a
-  bounded structured error; cancellation needs a reason. Unknown results have no
-  fabricated finish. Repeating an identical result is idempotent; conflicts fail.
-- Permission decisions match request IDs; decision is allow/deny/cancelled. Scope
-  cannot expand the request. Hook outcomes use success/failure/cancelled; a dispatch
-  acknowledgement is not a known finish. A Hook effect changes state only through
-  its own event/owner, not by replaying hook.finish.
-- Message/event/asset references are typed, not arbitrary paths. They resolve to
-  the same session's committed prefix or validated earlier entries in the same
-  transaction; parent/fork provenance is the explicit cross-session exception.
-  input_ref includes an immutable invocation name/arguments, either a native call
-  or a persisted invocation asset. Missing references fail, never silently vanish.
+- Generated inference/tool message batches and summaries must name their producing
+  start through the causal columns. A batch has one cause; split mixed origins.
+  Validate native tool-call IDs against that execution. Causes are immutable alongside
+  content, never inferred from timestamps or adjacency. Legacy unknown provenance
+  stays explicitly unknown through the compatibility mapping.
+- Start/finish match correlation_id in the same session and execution family; tool
+  call IDs also match. Admit one start and at most one terminal result per operation.
+  Reusing a correlation for a different operation conflicts. Failure needs a bounded
+  structured error; cancellation needs a reason. Unknown results have no fabricated
+  finish. Repeating an identical result is idempotent; conflicting outcomes fail.
+- Permission decisions match request correlation IDs; decision is allow/deny/cancelled.
+  Scope cannot expand the request. A Hook dispatch acknowledgement is not a known
+  finish. A Hook effect changes state only through its own event/owner, not replay.
+- Local causes and required message/event/asset references resolve to the committed
+  prefix or validated earlier entries in the same transaction. Foreign causal
+  provenance and parent/fork identities are explicit cross-session exceptions.
+  Trusted adapters validate foreign causes at acceptance; imported unavailable
+  provenance requires an explicit compatibility mapping, not a fabricated reference.
+  Replay resolves content locally and never requires a foreign cause to remain alive.
+  input_ref identifies immutable invocation name/arguments, either a native call or
+  persisted invocation asset. Missing required content fails; foreign-source deletion
+  may limit tracing but never deletes locally accepted content.
 - Instruction/toolset updates use unique names, disjoint upsert/remove sets and
   typed content; empty initial catalogues are known values, not missing history.
   Request digests must resolve to their recorded catalogue version. Skill changes
@@ -165,6 +191,63 @@ Unchanged patches and definition deltas are no-ops.
 - Reject unknown type/version or invalid fields before commit. No-op commands emit
   no event. Legacy records lacking required fields need an explicit compatibility
   mapping preserving what was known; never fabricate execution facts to fit a schema.
+
+### Delegation and cross-session input
+
+A subagent owns its own session/event stream. Parent ancestry identifies the session;
+one delegation correlation identifies one execution or continuation, not the child's
+lifetime. The parent records only coordination facts and content actually accepted:
+
+```text
+Parent: tool.start → delegation.start
+                         │ cause
+                         ▼
+Child:  session.create / accepted input → inference/tool/message events
+                                                       │ result content
+                                                       ▼
+Parent: message.append ───────────────────────→ delegation.finish
+        cause = child content                   cause = accepted result
+        delivery_id = receipt                   correlation = delegation.start
+```
+
+Allocate the target child ID before committing delegation.start, then create/claim
+the child before dispatch; a failed creation may leave the reserved ID without a
+session. Validate current parent/task/child ownership before execution. A new child's
+creation, or an existing child's accepted continuation input, causally references the
+parent delegation start. Tool dispatch acknowledgement is not delegation completion.
+Each continuation has a fresh delegation correlation. Known completion, failure or
+cancellation closes that attempt; a crash leaves it unknown until reconciled, never
+a reason for replay to launch work. Result messages and delegation.finish commit
+together when known together; finish references the locally accepted result, not
+another copy of its body. If there is no result body, finish needs no invented message.
+
+Cross-session content uses message.append, not a second received-message type. The
+receiver stores the accepted content and independently retained assets under new,
+stable receiver-local message IDs. For native-message input, source_message_ids maps
+each local message to its original ID within the causal source event; retain provider
+fields and tool-call identities, not a second copy of the source body. Context order,
+inference inputs and compaction use local IDs. Redelivery reuses the accepted IDs;
+a genuinely new delivery gets new ones even for identical source content. This is
+message acceptance, not a lossless import that preserves source-local message identity.
+
+The cause identifies the upstream content event, except delegated input references
+delegation.start and resolves its immutable input_ref. One delivery is one same-origin
+batch; multiple deliveries of one source event have distinct delivery IDs. The trusted
+transport allocates collision-resistant delivery IDs, retains them across retries and
+validates source/session ownership; message text cannot assert authority. Same
+receiver/delivery plus identical content and provenance returns the existing acceptance;
+a changed body or cause conflicts, even with a new event ID. Acknowledge only after
+atomic acceptance. Acceptance does not imply model consumption; inference input IDs
+determine what was used. Locally transformed content references its local producer,
+whose input references lead to the accepted source; do not claim it is an exact copy.
+
+Transport/group inbox owns routing, retry and delivery guarantees. Session history
+records acceptance, not a parallel queue or every send/receive notification. No
+cross-session transaction or exactly-once execution is implied. Late results are
+routed to the original session's writer, never the selected UI or a fork. Source
+identity survives deletion as provenance, but tracing may stop there. Heartbeats,
+progress and forwarded child event streams are not persisted; replay never resends
+messages, grants authority or takes ownership of a child.
 
 ### Consolidation rules
 
@@ -217,9 +300,9 @@ If required start persistence fails, do not dispatch. Adapters must establish
 these target guarantees rather than assume current callbacks already provide them.
 When completed output and its terminal outcome are known together, commit output
 and finish in one Append batch. Earlier complete messages may already be committed;
-their producer reference does not imply that the attempt finished. After a crash,
+their causal reference does not imply that the attempt finished. After a crash,
 keep such output and leave the attempt unknown until reconciled; never dispatch it
-on replay. Derive attempt outputs from immutable producer references, not a second
+on replay. Derive attempt outputs from immutable causal references, not a second
 output list on finish events. Audited compaction uses the ordering specified below.
 
 Do not store token deltas, spinner/progress ticks, picker navigation, repeated reads,
@@ -301,7 +384,7 @@ func (s *Session) Close() error
 
 | Type / operation | Required behavior |
 | --- | --- |
-| `CreateOptions` | Workspace ID, initial cwd, optional ID/parent and non-secret initial settings |
+| `CreateOptions` | Workspace ID, initial cwd, optional ID/parent and non-secret initial settings; paired `cause_session_id` / `cause_event_id` required for delegated creation, validated and persisted by Create |
 | `Create` / `Open` | Return a writer-owned handle; Open claims before loading a consistent projection |
 | `Get` / `List` | Read summaries without claiming a writer, including sessions owned by other processes |
 | `SessionQuery` | Project/workspace/parent/group/sidechain/archive filters, bounded limit, opaque cursor |
@@ -309,7 +392,7 @@ func (s *Session) Close() error
 | `History` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
 | `Snapshot` | Immutable committed context, application state and recovery positions; no UI rows or live resources |
 | `ForkOptions` | Optional destination workspace and source sequence; otherwise capture latest committed prefix |
-| `CompactionChange` | `source_seq` (expected current prefix), stable `operation_id`, full native `summary` with stable ID/provider content, ordered `retained_message_ids`, `producer_ref` for a generated summary |
+| `CompactionChange` | `source_seq` (expected current prefix), stable `correlation_id` for the compaction operation, full native `summary` with stable ID/provider content, ordered `retained_message_ids`, causal identity for a generated summary |
 | `Append` / `Compact` | One shared atomic write implementation and compaction validation; Append also batches compaction with its inference finish, while Compact wraps a single transition |
 | `Archive` / `Delete` | Archive appends state; hard deletion requires ownership and rejects an active writer |
 | `Close` | Wait for in-flight writes and release ownership exactly once |
@@ -355,7 +438,8 @@ unsupported schema, corruption, cancellation and storage errors.
 | --- | --- |
 | Project description and workspace registration | `projects` / `workspaces` |
 | Session identity and query summaries | `sessions`; summaries derive from records |
-| Native messages, compaction, session overrides, todos, annotations and audit | Typed `session_events.payload` |
+| Operation/cause/delivery identities and terminal outcomes | First-class `session_events` columns; one authority, no payload mirrors |
+| Native messages, compaction content, session overrides, todos, annotations and audit details | Typed `session_events.payload` |
 | User defaults and provider/skill choices | Existing user files, including `~/.san/settings.json` |
 | Shared project settings and instructions | Existing project files, including `.san/settings.json` |
 | Local/worktree/persona overrides | Existing scoped files and resolver |
@@ -453,10 +537,28 @@ setter; do not drop current filtering behavior to minimize column count.
 | `type` | TEXT | Event discriminator |
 | `schema_version` | INTEGER CHECK > 0 | Payload codec version |
 | `created_at` | INTEGER | Event time, not ordering key |
-| `payload` | TEXT, validated JSON | Complete event-specific content |
+| `correlation_id` | TEXT ? | Session-scoped operation identity shared by its lifecycle events |
+| `cause_session_id` | TEXT ? | Session containing the immediate causal event; historical identity, not ownership |
+| `cause_event_id` | TEXT ? | Event ID within cause_session_id; paired with that column |
+| `delivery_id` | TEXT ? | Stable transport identity for one accepted cross-session message batch |
+| `outcome` | TEXT ? CHECK success/failure/cancelled | Known execution terminal outcome; null for other types |
+| `payload` | TEXT, validated JSON | Event-specific content only; no duplicate envelope fields |
 
-PK `(session_id, seq)`; UNIQUE `(session_id, id)`. Do not repeat the envelope in
-payload without a codec requirement. Native message IDs differ from record IDs.
+PK `(session_id, seq)`; UNIQUE `(session_id, id)`, `(session_id, delivery_id)` and
+`(session_id, type, correlation_id)` (null values do not conflict). The last constraint
+prevents duplicate starts/terminals; application validation also forbids correlation
+reuse across different operation families. Index `(session_id, correlation_id, seq)`
+for operation lookup and `(cause_session_id, cause_event_id)` for reverse tracing.
+Require both cause columns null or both nonnull. Validate required/forbidden columns
+by type before commit. Foreign cause identities deliberately have no deletion FK:
+never cascade, clear or block deletion through historical provenance. Local reference
+integrity is enforced by append/import validation, not by fetching foreign data on replay.
+
+Promote shared identity, deduplication, causal lookup and terminal-status fields;
+keep native content, scope, input references, patches and diagnostics typed in payload.
+Do not add speculative columns for every optional field. Project/workspace identity
+is obtained through the session join, not copied onto every event. Native message
+IDs differ from event IDs; native role is not another envelope actor/source field.
 The codec must preserve signatures, encrypted reasoning, image/content order,
 tool IDs and supported provider fields. Current `Record.Message`/`Messages` use
 `json:"-"`; directly marshaling Record would lose messages. Preserve current
@@ -495,13 +597,14 @@ the shared append path; generate the summary outside any SQL transaction.
 A successful compaction commits one `compaction.apply` event, not separate replacement
 and completion events:
 
+The envelope correlation identifies the compaction for idempotent retry; causal
+columns identify its generating inference start. Neither is duplicated in payload.
+
 | Payload field | Meaning |
 | --- | --- |
-| `operation_id` | Stable operation identity for idempotent retry |
 | `source_seq` | Committed session version captured before summary generation, after its inference start if audited |
 | `summary` | Complete native summary message, including stable ID, role, content and provider fields |
 | `retained_message_ids` | IDs retained in original active-sequence order; no duplicated message bodies |
-| `producer_ref` | Producing inference start for generated summaries; follows the shared provenance contract |
 
 Project active context as summary followed by referenced messages. References must
 resolve to immutable messages in the same session at the source version, including
@@ -575,10 +678,13 @@ child is published. Replace the source creation at seq 1 with one child creation
 do not prepend it. Child identity/home-workspace options and fork provenance are
 new; preserve the source initial configuration as the seed for inherited replay.
 Copy subsequent events in their original sequence positions and retain session-local
-message/event/attempt IDs. Rebind references to the child namespace, including any
-reference to the replaced creation. Event-sequence anchors and historical compaction
-source_seq values keep their positions; fork_source_seq alone denotes the source
-session's prefix. Copy assets and rewrite their references before publication.
+message/event/correlation/delivery IDs. Rebind a causal pair only when its session is
+the fork source and its event belongs to the copied prefix, including references to
+the replaced creation. Foreign provenance stays unchanged. Local event-sequence
+anchors and historical compaction source_seq values keep their positions;
+fork_source_seq denotes the source prefix. Copy assets and rewrite local content
+references before publication. Copied delegation targets are historical identities:
+do not reparent real children, inherit their execution ownership or redirect results.
 
 After projecting the inherited prefix, append child-local state patches for explicit
 destination adjustments and, if set, clear group_hint. Do not filter historical
@@ -625,7 +731,9 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Roots, nested cwd, clones/worktrees and legacy partitions | Predictable identity; no silent merging or trust inheritance |
 | Move, missing directory, path reuse, cross-project `cd` | Inspectable history; explicit reconciliation; execution policy refreshed |
 | TUI/headless/ACP and competing processes | Validated cwd and common single-writer ownership |
-| Group switch/rejected reclaim; late background completion | No resurrected membership or cross-session callbacks |
+| Group switch/rejected reclaim; late background completion | No resurrected membership or misrouted callbacks |
+| Delegation start, continuation, crash and fork | One correlation per execution; dispatch acknowledgement is not finish; unfinished attempts remain unknown; copied history grants no child ownership |
+| Cross-session delivery, redelivery and source deletion | Atomic local acceptance before acknowledgement; same delivery/content is idempotent, changed content/cause conflicts; accepted content survives source deletion; replay never resends |
 | Child history and fork; parent/source deletion | Independent identity/assets; fresh replay equals Fork result, preserves local sequence references and clears inherited group hint; no implied live task |
 | Repeated/failed/audited compaction, retry and invalid references | One atomic transition with one apply and its pending inference finish; own audit does not cause staleness; intervening writes reject apply; context/history parity and unchanged config/state/assets |
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
