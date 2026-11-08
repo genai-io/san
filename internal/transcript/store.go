@@ -26,7 +26,6 @@ type Store struct {
 	baseDir   string
 	projectID string
 	log       *session.Store
-	sqlite    bool
 
 	// sessions holds per-transcript caches keyed by session ID. Populated
 	// lazily on first access via warmupCachesLocked, which does one forward
@@ -62,18 +61,7 @@ func NewStore(baseDir, projectID string) (*Store, error) {
 	return &Store{baseDir: baseDir, projectID: projectID, log: sessions}, nil
 }
 
-// NewSQLiteStore opens an experimental SDK-backed store without importing JSONL.
-// It shares the existing record codec and projector; it does not implement the
-// proposed event taxonomy or project/workspace migration.
-func NewSQLiteStore(baseDir, projectID string) (*Store, error) {
-	backend, err := session.OpenSQLite(filepath.Join(baseDir, "sessions.db"))
-	if err != nil {
-		return nil, fmt.Errorf("open SQLite transcripts: %w", err)
-	}
-	return &Store{baseDir: baseDir, projectID: projectID, log: backend, sqlite: true}, nil
-}
-
-// Exists checks storage identity, independently of the backend's file layout.
+// Exists checks whether the transcript is present.
 func (s *Store) Exists(ctx context.Context, id string) (bool, error) {
 	if err := ValidateStorageID(id); err != nil {
 		return false, err
@@ -85,7 +73,7 @@ func (s *Store) Exists(ctx context.Context, id string) (bool, error) {
 	return err == nil, err
 }
 
-// Close releases backend resources. Session owners must close their handles first.
+// Close releases store resources. Session owners must close their handles first.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -445,20 +433,14 @@ func (s *Store) Delete(ctx context.Context, transcriptID string) error {
 	s.summaryMu.Lock()
 	defer s.summaryMu.Unlock()
 	delete(s.summaries, transcriptID)
-	if s.sqlite {
-		return nil
-	}
 	return os.RemoveAll(s.summaryPath(transcriptID))
 }
 
 func (s *Store) transcriptPath(transcriptID string) string {
-	if s.sqlite {
-		return "" // No JSONL file exists; callers must read through the store.
-	}
 	return filepath.Join(s.baseDir, "transcripts", transcriptID+".jsonl")
 }
 
-// TranscriptPath returns the JSONL path, or empty for the SQLite backend.
+// TranscriptPath returns the JSONL path.
 func (s *Store) TranscriptPath(transcriptID string) string {
 	return s.transcriptPath(transcriptID)
 }

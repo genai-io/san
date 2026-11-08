@@ -38,7 +38,7 @@ func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includ
 		s.summaries = make(map[string]summaryCache)
 	}
 	c, ok := s.summaries[id]
-	if !ok && !s.sqlite {
+	if !ok {
 		data, _ := os.ReadFile(s.summaryPath(id))
 		_ = json.Unmarshal(data, &c)
 	}
@@ -57,14 +57,12 @@ func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includ
 	item.Title = preview(item.Title)
 	item.LastPrompt = preview(item.LastPrompt)
 	c = summaryCache{Size: info.Size, ModifiedAt: info.ModTime, Item: item}
-	if !s.sqlite {
-		data, err := json.Marshal(c)
-		if err != nil {
-			return Summary{}, err
-		}
-		// A failed cache write never makes an intact transcript inaccessible.
-		_ = atomicfile.Write(s.summaryPath(id), data, 0600)
+	data, err := json.Marshal(c)
+	if err != nil {
+		return Summary{}, err
 	}
+	// A failed cache write never makes an intact transcript inaccessible.
+	_ = atomicfile.Write(s.summaryPath(id), data, 0600)
 	s.summaries[id] = c
 	return item, nil
 }

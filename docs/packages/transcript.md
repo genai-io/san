@@ -7,11 +7,9 @@ layer: feature
 
 Owns the native append-only event log and its derived projections.
 
-JSONL remains the default. `NewSQLiteStore` is an opt-in storage experiment using
-sdk-go's SQLite backend and the same native record codec/projector. It does not
-import old logs or implement the target event taxonomy in the
-[session management proposal](../design/proposal-0005-session-management.md).
-Runtime hooks and inspection paths remain JSONL-only; there is no CLI backend switch.
+Transcripts use sdk-go's JSONL file store. The
+[session management proposal](../design/proposal-0005-session-management.md)
+describes future changes, not the current storage contract.
 
 ## Purpose
 
@@ -34,7 +32,6 @@ value clears. Task metadata is copied into its durable JSON form before caching.
 
 ```go
 func NewStore(baseDir, projectID string) (*Store, error)
-func NewSQLiteStore(baseDir, projectID string) (*Store, error)
 func (s *Store) Exists(ctx context.Context, id string) (bool, error)
 func (s *Store) Close() error
 func (s *Store) Claim(id string) (func() error, error)
@@ -68,9 +65,8 @@ func Project(records []Record) (*Transcript, error)
   derived caches on every claim, so inference/exchange counters and state
   reflect intervening writes by other processes.
 - JSONL `transcripts/<id>.jsonl` has a derived `<id>.jsonl.meta`. SDK `Stat`/`Info`
-  supplies per-session size and modification time for cache validation, never the
-  shared database file's mtime. Listing reuses SDK metadata rather than statting twice.
-  SQLite summaries are currently memory-only and rebuild on a cold summary cache.
+  supplies per-session size and modification time for cache validation.
+  Listing reuses SDK metadata rather than statting twice.
 - Schema version `4` is declared on `session.started`; a log that does not open
   with it is rejected without migration. Fork writes the source's records into
   the child with attachment references rewritten to the child's blobs; the
@@ -78,8 +74,7 @@ func Project(records []Record) (*Transcript, error)
 
 ## Lifecycle
 
-`NewStore` binds a project directory; `NewSQLiteStore` opens `sessions.db` in an
-explicit directory, without reading neighboring JSONL logs. Writer/projection caches
+`NewStore` binds a project directory. Writer/projection caches
 use the store mutex. Listing has a separate summary-cache mutex, and read-only history
 replay does not acquire the writer-cache mutex. This avoids blocking appends behind a
 cold listing; writer-cache operations are still serialized, not per-session sharded.
@@ -88,19 +83,19 @@ returned idempotent release function closes it. Callers hold that lease while
 writing a conversation; a write outside one takes the writer for that write.
 JSONL changed conversation saves sync before returning; application appends sync on
 a subsequent changed save or writer close, not another application append or no-op
-save. SQLite uses WAL and FULL synchronous transactions, including application
-appends. SDK Save's truncate/suffix is atomic in SQLite; San's multi-call compaction
-and fork protocols are unchanged and are not yet one SQL transaction.
+save. SDK `Writer.Sync` provides an explicit durability boundary for pending
+application records. San's compaction and fork flows remain multi-call operations.
 Delete refuses a held session. Identifiers must be single path components.
 Close all leases before `Store.Close`; a busy close leaves owners intact.
-`TranscriptPath` returns empty for SQLite, never a fictitious JSONL path.
+`TranscriptPath` returns the session's JSONL path.
 
 ## Tests
 
-- `backend_test.go` runs native fidelity, history/replacement, state, metadata,
-  lease handoff and fork cases against both backends. `store_concurrency_test.go`
-  checks read/cache lock separation. `backend_bench_test.go` compares durable
-  writes, replay, warm/persisted/rebuilt summaries, fork and parallel Load.
+- `jsonl_lifecycle_test.go` covers native fidelity, history/replacement, state,
+  metadata invalidation, identity validation and lease handoff.
+  `store_concurrency_test.go` checks read/cache lock separation.
+  `jsonl_bench_test.go` measures explicitly synced application writes, replay,
+  warm/persisted/rebuilt summaries and parallel read-only history.
 - `store_test.go` and `events_shape_test.go` cover the on-disk shapes, append
   deduplication, compaction, fork, and load.
 - `recovery_test.go` covers writer leases, cache refresh across stores, summary
