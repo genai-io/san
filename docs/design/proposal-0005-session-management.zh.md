@@ -8,10 +8,19 @@
 
 | 交付 | 状态 |
 | --- | --- |
-| [实现 #737](https://github.com/genai-io/san/pull/737) | 未合入：项目/worktree 身份、当前检出配置、schema 4 身份/缓存升级；18 类类型化事件及纯投影器是尚未接入的基础代码。 |
-| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 未合入：可选批次提交及推理/工具/输出接纳边界。完整行可见不证明 Sync 已完成；Commit 成功才确认文件同步。 |
+| [实现 #737](https://github.com/genai-io/san/pull/737) | 未合入：项目/worktree 身份、当前检出配置、schema 4 身份/缓存升级；18 类事件模型/投影器、私有类型化持久化及公开有界原始 Events 读取。未切换 runtime。 |
+| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 已合入 `4bc968c`：可选批次提交及推理/工具/输出接纳边界。完整行可见不证明 Sync 已完成；Commit 成功才确认文件同步。 |
 | 现有持久化 | SDK 原生记录/truncate；Hooks/inspector 保持 JSONL；不迁移旧分区、不双写。 |
-| 下述目标 | 新事件写入、完整生产方接入/API、回收站及保留仍待完成；基础代码不等于格式切换。 |
+| 下述目标 | runtime 事件写入、完整生产方接入/API、回收站及保留仍待完成；私有持久化不等于格式切换。 |
+
+### 当前切片与目标 API
+
+下述 API 契约、18 类事件表及图示描述的是**目标**。
+未合入切片的 runtime 写入仍使用 schema 4，类型化写入仍为私有。
+公开 `Store.Events` 返回原始事件（每页默认 100、最多 500），
+每页重放完整固定前缀；有界输出不代表有界工作量。
+筛选、生命周期代次绑定及完整 runtime 接入仍是目标，而非当前 API。
+持久化、重试及创建限制详见 [#737](https://github.com/genai-io/san/pull/737) 中的实现文档。
 
 ## 身份、目录与配置
 

@@ -8,10 +8,20 @@ Draft — 2026-11-07. Design only: storage-neutral API over files/JSONL; no SQLi
 
 | Delivery | Status |
 | --- | --- |
-| [Implementation #737](https://github.com/genai-io/san/pull/737) | Unmerged: project/worktree identity, checkout-local settings, schema-4 identity/cache upgrades; typed 18-event model and pure projector are unintegrated groundwork. |
-| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Unmerged: opt-in committed batches and inference/tool/output admission. Complete-line visibility is not proof of completed Sync; successful Commit acknowledges file Sync. |
+| [Implementation #737](https://github.com/genai-io/san/pull/737) | Unmerged: project/worktree identity, checkout-local settings, schema-4 identity/cache upgrades; 18-event model/projector, private typed persistence and public bounded raw Events reader. No runtime cutover. |
+| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged at `4bc968c`: opt-in committed batches and inference/tool/output admission. Complete-line visibility is not proof of completed Sync; successful Commit acknowledges file Sync. |
 | Existing persistence | SDK native records/truncate; Hooks/inspector retain JSONL integration; no legacy partition migration or dual-write. |
-| Target below | New event writes, complete producer integration/API, trash and retention remain gated; the groundwork is not a format cutover. |
+| Target below | Runtime event writes, complete producer integration/API, trash and retention remain gated; private persistence is not a format cutover. |
+
+### Current slice versus target API
+
+The API contracts, 18-event table and diagrams below describe the **target**.
+The unmerged slice keeps runtime writes on schema 4; typed writes remain private.
+Public `Store.Events` returns raw events (default 100, maximum 500 per page),
+replaying the full pinned prefix on every page; bounded output is not bounded work.
+Filters, lifecycle-generation binding and full runtime integration remain targets,
+not current APIs. See the implementation docs in [#737](https://github.com/genai-io/san/pull/737)
+for persistence, retry and creation limitations.
 
 ## Identity, directories and configuration
 
