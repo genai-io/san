@@ -101,7 +101,7 @@ func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read("recap-test")
+	history, err := store.Read("recap-test", session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -75,7 +75,7 @@ func TestNativeBackgroundContinuation(t *testing.T) {
 	if !strings.Contains(text.String(), "Inspect original task") || !strings.Contains(text.String(), "Check it now") || !strings.Contains(text.String(), "previously discovered evidence") {
 		t.Fatalf("native history missing: %s", text.String())
 	}
-	h, err := store.Read(first.AgentSessionID)
+	h, err := store.Read(first.AgentSessionID, session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

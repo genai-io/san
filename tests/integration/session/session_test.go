@@ -67,7 +67,7 @@ func TestSession_SaveAndLoad(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read("test-1")
+	loaded, err := store.Read("test-1", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestSession_Delete(t *testing.T) {
 		t.Fatalf("Delete() error: %v", err)
 	}
 
-	_, err := store.Read("to-delete")
+	_, err := store.Read("to-delete", session.ReadOptions{})
 	if err == nil {
 		t.Error("expected error loading deleted session")
 	}
@@ -166,7 +166,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 	}
 
 	// Load and verify all 3 entries are present
-	loaded, err := store.Read("append-test")
+	loaded, err := store.Read("append-test", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 		t.Fatalf("first Save() error: %v", err)
 	}
 
-	first, err := store.Read("metadata-update-test")
+	first, err := store.Read("metadata-update-test", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("first Load() error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 		t.Fatalf("second Save() error: %v", err)
 	}
 
-	second, err := store.Read("metadata-update-test")
+	second, err := store.Read("metadata-update-test", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("second Load() error: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read("message-types-roundtrip")
+	loaded, err := store.Read("message-types-roundtrip", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read(sessionID)
+	loaded, err := store.Read(sessionID, session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 	}
 
 	// Simulate "-c": load the session and verify messages are in order.
-	loaded, err := store.Read("continue-test")
+	loaded, err := store.Read("continue-test", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() (continue) error: %v", err)
 	}
@@ -469,7 +469,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 		t.Fatalf("Save #2: %v", err)
 	}
 
-	loaded, err := store.Read("save-twice")
+	loaded, err := store.Read("save-twice", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store2.Read("restart-group")
+	loaded, err := store2.Read("restart-group", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -560,7 +560,7 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store.Read("clear-tasks")
+	loaded, err := store.Read("clear-tasks", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

@@ -514,7 +514,8 @@ a width change.
 
 Native scrollback stays immutable. Idle Ctrl+O and `/history` instead open the
 existing transcript overlay in the alternate screen. `model_history.go` reads
-`session.Store.ReadChatHistory` asynchronously; the transcript projector keeps
+`session.Store.Read` with `ReadOptions{FullHistory: true}` asynchronously, then
+projects display rows with `Store.ChatRows`. The transcript projector keeps
 each historical message once, including messages preceding conversation
 replacements and compaction.
 The normal conversion and tool-result blob hydration also apply. Before a

@@ -92,8 +92,9 @@ func TestJSONLSessionLifecycle(t *testing.T) {
 	if !reflect.DeepEqual(history.Messages, []ai.Message{summary}) {
 		t.Fatalf("resume after compaction = %+v", history.Messages)
 	}
-	rows, err := c.ReadChatHistory("source")
+	full, err := c.Read("source", ReadOptions{FullHistory: true})
 	requireStoreOK(t, err)
+	rows := c.ChatRows(full)
 	if len(rows) != 3 {
 		t.Fatalf("display history has %d rows, want 3", len(rows))
 	}
@@ -134,7 +135,7 @@ func TestJSONLForkOwnsAssetsAndConversation(t *testing.T) {
 	}
 	fork.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "fork-only", Role: ai.RoleUser, Content: ai.TextContent("independent")}})
 	requireStoreOK(t, fork.Err())
-	original, err := store.Read("source")
+	original, err := store.Read("source", ReadOptions{})
 	requireStoreOK(t, err)
 	if !reflect.DeepEqual(original.Messages, messages) {
 		t.Fatalf("fork changed source: %+v", original.Messages)

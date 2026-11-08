@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
@@ -66,11 +67,11 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			err = errors.Join(err, s.close())
 		}
 	}()
-	rows, err := s.nativeSession.Store.ReadChatHistory(string(req.SessionID))
+	history, err := s.nativeSession.Store.Read(string(req.SessionID), session.ReadOptions{FullHistory: true})
 	if err != nil {
 		return response, err
 	}
-	for _, row := range rows {
+	for _, row := range s.nativeSession.Store.ChatRows(history) {
 		if err = ctx.Err(); err != nil {
 			return response, err
 		}

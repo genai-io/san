@@ -23,7 +23,7 @@ func TestCreateWorkspaceMetadataRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	history, err := store.Read("identity")
+	history, err := store.Read("identity", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

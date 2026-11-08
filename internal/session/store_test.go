@@ -39,7 +39,7 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 	}
 
 	// Load and verify title
-	loaded, err := store.Read(id)
+	loaded, err := store.Read(id, ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
@@ -76,7 +76,7 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 	}
 
 	// Load and verify new title
-	loaded, err := store.Read(id)
+	loaded, err := store.Read(id, ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
@@ -141,7 +141,7 @@ func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
 				_ = opened.Close()
 				t.Fatal("opened unsafe ID")
 			}
-			if _, err := store.Read(id); err == nil {
+			if _, err := store.Read(id, ReadOptions{}); err == nil {
 				t.Fatal("read unsafe ID")
 			}
 			if err := store.Delete(id); err == nil {
@@ -192,7 +192,7 @@ func TestDeleteRejectsLiveWriterAcrossStores(t *testing.T) {
 	if err := other.Delete("s"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Read("s"); !errors.Is(err, sdksession.ErrNotFound) {
+	if _, err := store.Read("s", ReadOptions{}); !errors.Is(err, sdksession.ErrNotFound) {
 		t.Fatalf("deleted transcript remains: %v", err)
 	}
 }

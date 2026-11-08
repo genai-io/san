@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
@@ -26,7 +27,7 @@ func TestACPModeUsesSessionPolicy(t *testing.T) {
 	if err := s.recordState(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := s.nativeSession.Store.Read(string(id))
+	history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

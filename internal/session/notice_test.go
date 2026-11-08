@@ -30,7 +30,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "From @web: done", Agent: true}})
 	add("m2", ai.RoleAssistant, "hello")
 
-	sess, err := store.Read("s")
+	sess, err := store.Read("s", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

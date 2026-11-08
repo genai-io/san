@@ -81,7 +81,7 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	if _, err := f.prompt(req.SessionID, "continue"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read(id)
+	history, err := store.Read(id, session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestACPModelSwitchPreservesOwners(t *testing.T) {
 	if s.runtimeBuildParams.ModelID != "other" || s.permissions != permissions || s.runtimeBuildParams.FileViews != views || s.runtimeBuildParams.Skills != skills || len(s.runtime.Messages()) < 2 {
 		t.Fatal("switch lost session owners")
 	}
-	history, err := s.nativeSession.Store.Read(string(id))
+	history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
 	if err != nil || history.Metadata.Model != "other" {
 		t.Fatalf("selection not durable: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestACPSkillUsesSessionRegistry(t *testing.T) {
 	if _, err := f.prompt(id, "load the local skill"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.host.sessions[id].nativeSession.Store.Read(string(id))
+	history, err := f.host.sessions[id].nativeSession.Store.Read(string(id), session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

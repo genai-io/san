@@ -20,8 +20,10 @@ describes proposed changes separately from the current implementation.
   Legacy cwd-hash partitions remain separate. Store does not run an agent or
   own the current selection. `Create` creates a new identity; `Open` acquires an existing
   identity's writer lease before restoring it. `Read` reads without opening a
-  writer, for queries. `ReadChatHistory` includes pre-compaction messages
-  for display. `Fork` returns an opened child and its restored history.
+  writer, returning native `History`. `Read(id, ReadOptions{})` selects active context;
+  `ReadOptions{FullHistory: true}` includes pre-compaction messages on the selected
+  branch. Display callers separately use `Store.ChatRows(history)` for projection
+  and asset hydration. `Fork` returns an opened child and its restored history.
 - **Session** is one opened identity, fixed until `Close`. It owns the writer
   lease, ordered appends, inference/exchange positions, and persistence failures.
   `Append` accepts a typed transcript record. `RecordEvent` adapts native
@@ -46,7 +48,7 @@ and application boundaries.
 
 ## Entrypoints and core packages
 
-- `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
+- `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadOptions`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
 - `project.go`: locked project registration, legacy partition lookup and workspace validation.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
@@ -319,9 +321,9 @@ changes. `internal/app/input/session_selector_test.go` covers loading, cancellat
 stale results, filtering, cached previews, and resizing.
 
 
-Run `make ci`. Always stop Runtime before closing its Session. ReadChatHistory is for
-browsing; Open restores the active context. Never write UI rows or a read result
-back at the end of a turn.
+Run `make ci`. Always stop Runtime before closing its Session. Full-history reads are
+for browsing; `Open` always restores active context with zero `ReadOptions`. Never
+write UI rows or a read result back at the end of a turn.
 
 ## See also
 

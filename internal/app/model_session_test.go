@@ -58,7 +58,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	}
 	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new-message", Role: ai.RoleUser, Content: ai.TextContent("new text")}})
 	for sessionID, want := range map[string]string{"old": "old-message", id: "new-message"} {
-		got, err := store.Read(sessionID)
+		got, err := store.Read(sessionID, session.ReadOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

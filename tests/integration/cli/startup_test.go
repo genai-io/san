@@ -247,7 +247,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 
 	// 4. Reload the original and confirm it is unchanged.
 	time.Sleep(10 * time.Millisecond) // ensure timestamps differ
-	reloaded, err := store.Read("source-session")
+	reloaded, err := store.Read("source-session", session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(source-session): %v", err)
 	}
@@ -256,7 +256,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 5. Reload the fork and confirm it has the extra entry.
-	reloadedFork, err := store.Read(forked.Metadata.ID)
+	reloadedFork, err := store.Read(forked.Metadata.ID, session.ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(forked): %v", err)
 	}

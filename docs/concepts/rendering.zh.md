@@ -466,7 +466,8 @@ CommittedCount = 3                           // 追上
 ## 查看运行结束后的工具结果
 
 终端的原生历史保持不变。空闲时按 Ctrl+O，或输入 `/history`，会在备用屏幕
-打开现有历史查看器。`model_history.go` 异步读取 `session.Store.ReadChatHistory`；
+打开现有历史查看器。`model_history.go` 使用 `ReadOptions{FullHistory: true}`
+异步调用 `session.Store.Read`，再通过 `Store.ChatRows` 生成显示行；
 投影器按首次出现的顺序保留每条历史消息，包括对话替换及上下文压缩前的消息。
 消息转换和工具结果文件的加载复用恢复会话的逻辑。会话尚未保存时，使用当前
 对话；其他读取失败会明确显示，避免把缺少早期消息的内容误当成完整历史。
