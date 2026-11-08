@@ -22,7 +22,8 @@ import (
 type Loader struct {
 	userDir      string
 	projectDir   string
-	projectRoot  string
+	projectRoot  string // target cwd, for local overrides
+	configErr    error
 	claudeCompat bool
 	// untrusted keeps only the restrictive parts of project settings; see
 	// IsWorkspaceTrusted.
@@ -47,21 +48,7 @@ func (l *Loader) dir(scope Scope) string {
 
 // NewLoader creates a loader with default paths (~/.san, .san) and Claude compatibility enabled.
 func NewLoader() *Loader {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Logger().Warn("failed to determine home directory, user-level settings will be unavailable", zap.Error(err))
-	}
-	userDir := ""
-	if homeDir != "" {
-		userDir = confdir.Dir(homeDir)
-	}
-	return &Loader{
-		userDir:      userDir,
-		projectDir:   confdir.Dir("."),
-		projectRoot:  ".",
-		claudeCompat: true,
-		untrusted:    !IsWorkspaceTrusted("."),
-	}
+	return NewLoaderForCwd(".")
 }
 
 // NewLoaderWithOptions creates a loader with custom options.
@@ -84,10 +71,12 @@ func NewLoaderForCwd(cwd string) *Loader {
 	if homeDir != "" {
 		userDir = confdir.Dir(homeDir)
 	}
+	root, configErr := confdir.ConfigRoot(cwd)
 	return &Loader{
 		userDir:      userDir,
-		projectDir:   confdir.Dir(cwd),
-		projectRoot:  cwd,
+		projectDir:   confdir.Dir(root),
+		projectRoot:  absPath(cwd),
+		configErr:    configErr,
 		claudeCompat: true,
 		untrusted:    !IsWorkspaceTrusted(cwd),
 	}
@@ -101,6 +90,9 @@ func NewLoaderForCwd(cwd string) *Loader {
 //  5. .claude/settings.local.json
 //  6. .san/settings.local.json
 func (l *Loader) Load() (*Data, error) {
+	if l.configErr != nil {
+		return nil, l.configErr
+	}
 	homeDir, _ := os.UserHomeDir()
 
 	// Two-phase loading: first load Claude-compat settings, then San-native.
@@ -190,19 +182,24 @@ type settingsSource struct {
 // projectSettingsFiles lists the project's settings files, lowest priority
 // first: .claude/settings.json, .san/settings.json and their .local twins.
 func (l *Loader) projectSettingsFiles() []settingsSource {
+	if l.configErr != nil {
+		return nil
+	}
 	var files []settingsSource
 	for _, local := range []bool{false, true} {
 		name := "settings.json"
+		dir := l.projectDir
 		if local {
 			name = "settings.local.json"
+			dir = confdir.Dir(l.projectRoot)
 		}
 		if l.claudeCompat {
-			files = append(files, settingsSource{path: filepath.Join(l.projectRoot, ".claude", name), claudeCompat: true, project: true, local: local})
+			files = append(files, settingsSource{path: filepath.Join(filepath.Dir(dir), ".claude", name), claudeCompat: true, project: true, local: local})
 		}
-		files = append(files, settingsSource{path: filepath.Join(l.projectDir, name), project: true, local: local})
+		files = append(files, settingsSource{path: filepath.Join(dir, name), project: true, local: local})
 	}
-	// A linked worktree also reads the main checkout's local files, last, since
-	// that is where grants are saved.
+	// Preserve the existing main-checkout local overlay after target-local files.
+	// New local writes stay in the target; legacy shared overrides still apply.
 	if shared := confdir.LocalDir(l.projectRoot); shared != confdir.Dir(absPath(l.projectRoot)) {
 		if l.claudeCompat {
 			files = append(files, settingsSource{path: filepath.Join(filepath.Dir(shared), ".claude", "settings.local.json"), claudeCompat: true, project: true, local: true})
@@ -306,7 +303,11 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error {
 // disabling at a lower-priority level cannot override an enable at a
 // higher-priority one.)
 func updateSettingsFile(scope Scope, mutate func(*Data)) error {
-	path := filepath.Join(NewLoader().dir(scope), "settings.json")
+	loader := NewLoader()
+	if scope == ScopeProject && loader.configErr != nil {
+		return loader.configErr
+	}
+	path := filepath.Join(loader.dir(scope), "settings.json")
 
 	existing := NewData()
 	if err := atomicfile.ReadJSON(path, existing); err != nil {
@@ -488,6 +489,9 @@ func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
 // DisabledToolsAt returns disabled tools from a single settings file (not merged).
 func DisabledToolsAt(scope Scope) map[string]bool {
 	loader := NewLoader()
+	if scope == ScopeProject && loader.configErr != nil {
+		return make(map[string]bool)
+	}
 	path := filepath.Join(loader.dir(scope), "settings.json")
 	s, err := loader.LoadFile(path)
 	if err != nil || s.DisabledTools == nil {
@@ -505,6 +509,9 @@ func PersonaAt(cwd string, scope Scope) string {
 		loader = NewLoaderForCwd(cwd)
 	}
 	dir := loader.dir(scope)
+	if scope == ScopeProject && loader.configErr != nil {
+		return ""
+	}
 	if dir == "" {
 		return ""
 	}
@@ -591,6 +598,9 @@ func SaveAutoMemory(on bool, scope Scope) error {
 // that file leaves it unset.
 func AutoMemoryAt(scope Scope) *bool {
 	loader := NewLoader()
+	if scope == ScopeProject && loader.configErr != nil {
+		return nil
+	}
 	s, err := loader.LoadFile(filepath.Join(loader.dir(scope), "settings.json"))
 	if err != nil {
 		return nil
@@ -620,6 +630,9 @@ func SavePersonaAt(cwd, name string, scope Scope) error {
 		loader = NewLoaderForCwd(cwd)
 	}
 	dir := loader.dir(scope)
+	if scope == ScopeProject && loader.configErr != nil {
+		return loader.configErr
+	}
 	if dir == "" {
 		return os.ErrNotExist
 	}

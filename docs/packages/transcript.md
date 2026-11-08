@@ -66,7 +66,11 @@ func Project(records []Record) (*Transcript, error)
   reflect intervening writes by other processes.
 - JSONL `transcripts/<id>.jsonl` has a derived `<id>.jsonl.meta`. SDK `Stat`/`Info`
   supplies per-session size and modification time for cache validation.
-  Listing reuses SDK metadata rather than statting twice.
+  Listing reuses SDK metadata rather than statting twice. Cache format version 1
+  rebuilds older summaries once without rewriting logs.
+- New `session.started` payloads include optional `projectId` and `workspace`.
+  Store supplies project identity; projection, metadata and summaries preserve both
+  fields. Missing legacy fields remain unknown, and same-project forks retain them.
 - Schema version `4` is declared on `session.started`; a log that does not open
   with it is rejected without migration. Fork writes the source's records into
   the child with attachment references rewritten to the child's blobs; the

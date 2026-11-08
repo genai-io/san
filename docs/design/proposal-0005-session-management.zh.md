@@ -8,9 +8,11 @@
 SQLite 实验实现及驱动依赖从本次交付中移除，只保留历史测量作为选型依据。
 本次保留通用文件存储能力，不引入数据库迁移或后端选择 UI。
 
-当前作用域存储使用 SDK 原生记录编解码及 transcript/truncate 语义，尚未实现
-Project → Session → Events 模型、全部 18 类事件、下文目标 API 或已提交批次保证。
-Runtime hooks 和 inspector 仍依赖 JSONL 路径；本次不改变这些运行集成。
+已实现第一阶段：`OpenStore` 项目注册、Git worktree 共享归属与项目设置、非 Git 精确路径归属，
+以及 schema 4 中可选的项目/workspace 身份字段与摘要缓存升级。旧 cwd 分区不自动迁移。
+当前仍使用 SDK 原生记录及 transcript/truncate 语义；18 类新事件、完整目标 API、
+原子批次、回收站和自动保留策略尚未实现。Runtime hooks 和 inspector 保持现有 JSONL 集成。
+新格式切换前须先补齐 SDK 原子批次和可阻断执行的持久化接纳边界，不能仅重命名旧事件。
 
 每项事实只有一个权威来源。持久化对话变化、必要执行/权限审计及不可重建说明，
 而非通用 runtime 日志。摘要和索引必须可重建。
@@ -58,6 +60,10 @@ Runtime 负责执行和取消；持久待办、权限决定及群组提示不是
   应用允许的目标 worktree 本地覆盖。分支内副本不是另一共享权威；
   注册只保存来源位置，不另存可编辑的设置副本。
 
+当前已接入 settings.json 的共享来源及目标局部写入；MCP、插件、技能和指令文件仍由
+各自既有加载器处理，统一来源适配尚未完成，不声称所有项目文件已经共享。注册锁等待
+目前不支持中途取消，注册原子发布不承诺断电持久性；路径完全不变的仓库替换无法自动识别。
+
 保留当前用户 → 项目 → 本地解析、兼容来源、linked-worktree 主检出本地覆盖、
 persona 及逐字段合并规则，详见[配置](../reference/configuration.md)。
 写入选择一个作用域，仅更新其字段，跨进程协调并拒绝只读来源；不能写回合并结果。
@@ -67,9 +73,9 @@ persona 及逐字段合并规则，详见[配置](../reference/configuration.md)
 缺失模型/提供方须明确报错或选择替代项。配置文件与事件之间不承诺事务；
 历史不复制秘密、安全权威或整棵设置树。
 
-当前布局按精确 cwd 的哈希分区，日志为 `transcripts/<sid>.jsonl`，摘要为
-`transcripts/<sid>.jsonl.meta`，附件按类型及会话隔离。目标布局保留这些路径约定，
-仅为新注册项目使用稳定 ID，并增加项目注册文件和回收站：
+旧布局按精确 cwd 的哈希分区，日志为 `transcripts/<sid>.jsonl`，摘要为
+`transcripts/<sid>.jsonl.meta`，附件按类型及会话隔离。新注册已使用稳定 ID 和项目文件，
+保留原日志/附件路径约定；回收站仍是目标布局的一部分：
 
 ```text
 ~/.san/
@@ -85,7 +91,7 @@ persona 及逐字段合并规则，详见[配置](../reference/configuration.md)
         └── trash/<sid>/                  # 删除代次、恢复清单及完整保留数据
 ```
 
-`project.json` 和 `trash/` 是拟议新增，不是当前已有能力。项目注册文件可扫描重建查询索引；
+`project.json` 已用于新注册；`trash/` 仍属拟议。项目注册文件可扫描重建查询索引；
 索引不是另一身份来源。旧 `<cwd-hash>` 分区不自动改名或搬迁。
 同一项目的 worktree 共用该目录，以 Session.workspace 区分；父子会话日志同级，
 靠 parent_session_id 关联。回收站保留日志、附件和必要元数据；转换须可恢复，不能假设多文件移动原子。

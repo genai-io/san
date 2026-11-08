@@ -8,6 +8,8 @@ import (
 )
 
 type Transcript struct {
+	ProjectID       string
+	Workspace       string
 	ID              string
 	ParentSessionID string
 	Cwd             string
@@ -39,6 +41,8 @@ type State struct {
 }
 
 type Summary struct {
+	ProjectID string
+	Workspace string
 	Provider  string
 	Model     string
 	ID        string

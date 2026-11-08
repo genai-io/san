@@ -9,10 +9,13 @@ files/JSONL. The SQLite experiment implementation and driver dependencies are re
 from this delivery; historical measurements remain as the selection rationale.
 Retain generic file-storage capabilities, without database migration or a backend-selection UI.
 
-Current scoped stores use the SDK native record codec and transcript/truncate
-semantics. They do not yet implement the Project → Session → Events model, all
-18 events, target APIs or committed-batch guarantees below. Runtime hooks and the
-inspector still depend on JSONL paths; this change preserves those integrations.
+The first stage implements `OpenStore` project registration, shared Git worktree
+ownership/settings, exact non-Git directory identity, and optional project/workspace
+fields in schema 4 with upgraded summary caches. Legacy cwd partitions are not migrated.
+The SDK native record and transcript/truncate semantics remain: the 18-event format,
+full target API, atomic batches, trash and automatic retention are not implemented.
+Hooks and the inspector retain their JSONL integration. New-format cutover first needs
+SDK atomic batches and error-returning durable admission before execution, not event renaming.
 
 The design keeps one authority per fact. Persist durable conversation changes,
 necessary execution/permission audit and non-reconstructible commentary, not a
@@ -66,6 +69,12 @@ The existing configuration module resolves and retains `config_root`:
   Branch-local copies are not alternate shared authorities; registration stores a
   source location, not a second editable settings copy.
 
+Shared settings.json sources and target-local writes are implemented. MCP, plugins,
+skills and instruction files still use their existing loaders; unified routing remains
+pending, not all project files are shared. Registration lock waits cannot yet be
+cancelled mid-wait, atomic publication does not promise power-loss durability, and
+repository replacement preserving identical paths cannot be automatically detected.
+
 Preserve current user → project → local resolution, compatibility sources,
 linked-worktree main-checkout local overrides, persona and field-specific merges.
 See [configuration](../reference/configuration.md). Writes select one scope, update
@@ -77,10 +86,10 @@ uses current policy and credentials, never historical grants. Missing providers/
 need an explicit error or replacement. No transaction spans configuration files and
 events; do not copy secrets, security authority or the full settings tree into history.
 
-Current storage is partitioned by exact-cwd hash, with `transcripts/<sid>.jsonl`,
+Legacy storage is partitioned by exact-cwd hash, with `transcripts/<sid>.jsonl`,
 `transcripts/<sid>.jsonl.meta` summaries and assets isolated by type and session.
-The target retains these conventions, using stable IDs for newly registered projects
-and adding project registration and trash:
+New registrations now use stable IDs and project files while retaining the log/asset
+path conventions; trash remains part of the target layout:
 
 ```text
 ~/.san/
@@ -96,7 +105,7 @@ and adding project registration and trash:
         └── trash/<sid>/                  # Deletion generation, manifest and retained data
 ```
 
-`project.json` and `trash/` are proposed additions, not existing capabilities. Scanning
+`project.json` is implemented for new registrations; `trash/` remains proposed. Scanning
 project registrations can rebuild lookup indexes; indexes are not another identity
 authority. Existing `<cwd-hash>` partitions are not automatically renamed or moved.
 Worktrees of one project share this directory, distinguished by Session.workspace;

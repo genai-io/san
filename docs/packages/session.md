@@ -14,9 +14,10 @@ describes proposed changes separately from the current implementation.
 
 ## Responsibilities and names
 
-- **Store** manages multiple sessions in one working-directory-keyed partition:
-  create, open, read, list, fork, delete, and store attachments. The current
-  project ID hashes cwd, not repository identity. It does not run an agent or
+- **Store** manages multiple sessions in one registered project:
+  create, open, read, list, fork, delete, and store attachments. Git common-directory
+  identity groups linked worktrees; non-Git projects use the exact startup path.
+  Legacy cwd-hash partitions remain separate. Store does not run an agent or
   own the current selection. `Create` creates a new identity; `Open` acquires an existing
   identity's writer lease before restoring it. `Read` reads without opening a
   writer, for queries. `ReadChatHistory` includes pre-compaction messages
@@ -45,8 +46,9 @@ and application boundaries.
 
 ## Entrypoints and core packages
 
-- `store.go`: `NewStore`, `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
+- `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadChatHistory`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
+- `project.go`: locked project registration, legacy partition lookup and workspace validation.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
 - `events.go`: `RecordEvent`, inference spans, compaction and native event
   adaptation. Internal method names describe the event being persisted.
@@ -128,7 +130,8 @@ through their own opened Session.
 ## Storage and configuration
 
 ```text
-~/.san/projects/<24-hex-workdir-hash>/
+~/.san/projects/<project-id>/
+  project.json                         # new registrations only
   transcripts/<session-id>.jsonl
   transcripts/<session-id>.jsonl.meta
   blobs/tool-result/<session-id>/<tool-call-id>
@@ -140,13 +143,30 @@ Transcripts are sdk-go `pkg/session` logs with schema version `4` and SDK-native
 payloads. Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
-`NewStore` selects the working-directory partition; `NewStoreWithDir` uses an
-explicit directory. Both store JSONL transcripts. Close all Session handles before
-calling `Store.Close()`. `TranscriptPath` supplies the live JSONL path used by
-hooks and inspection consumers.
+`OpenStore(ctx, cwd)` registers a stable project ID or reuses an existing registration.
+Git subdirectories/worktrees share one project; clones and submodules do not. Non-Git
+child directories are distinct projects. Existing exact-cwd hash partitions with logs
+win over registration and are never merged or moved automatically. Registration is
+cross-process serialized; lock waiting is not cancellable, and atomic file publication
+is not a power-loss durability guarantee. Changed kind/configuration source and corrupt
+registrations require explicit repair; identical-path repository replacement is not detected.
+
+`CreateOptions.Workspace` defaults to the captured checkout/root. An explicit workspace
+must belong to the same project; it does not change project ownership or grant trust.
+New start records persist project/workspace identity; legacy missing fields stay unknown.
+The settings owner resolves shared configuration from the original main checkout.
+`NewStoreWithDir` remains an explicit-directory construction path for embedding/tests.
+Close all Session handles before `Store.Close()`. `TranscriptPath` supplies the live
+JSONL path used by hooks and inspection consumers. Trash and automatic retention remain
+proposed; current Delete still removes files immediately.
 
 ## Lifecycle and failure handling
 
+- Resume checks a known saved cwd against the requested/runtime directory using
+  canonical paths (including symlinks). A mismatch or missing saved directory fails
+  before replacing selection; reopen in the saved directory. Implicit directory
+  switching is not implemented. Unknown legacy cwd remains readable. A rejected
+  switch preserves the old lease and permissions, not a stopped runtime's execution.
 - IDs must be single path components; deletion claims the writer lease and rejects
   active sessions. Resume and clear reset session-specific autopilot state.
 - A writer lease is held from Open/Create until Close, including idle resume.

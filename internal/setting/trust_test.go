@@ -2,7 +2,6 @@ package setting
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -66,14 +65,12 @@ func TestUntrustedProjectSettingsKeepOnlyRestrictions(t *testing.T) {
 // linked worktrees, but not a repository nested inside it.
 func TestTrustCoversWorktreesNotNestedRepos(t *testing.T) {
 	trustHome(t)
-	main := t.TempDir()
-	if err := exec.Command("git", "init", "-q", main).Run(); err != nil {
-		t.Skip("git unavailable:", err)
-	}
-	wt := t.TempDir()
-	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "feature")+"\n")
+	main, wt := configWorktree(t)
 	nested := filepath.Join(main, "vendor", "lib")
-	writeFile(t, filepath.Join(nested, ".git", "HEAD"), "ref: refs/heads/main\n")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configGit(t, nested, "init", "-q")
 
 	if IsWorkspaceTrusted(wt) {
 		t.Fatal("trusted before anything was granted")
@@ -108,23 +105,25 @@ func TestTrustOverridesAndHome(t *testing.T) {
 	}
 }
 
-// A linked worktree shares the main checkout's settings.local.json: grants
-// saved from the worktree land there, and the main checkout's apply.
+// A linked worktree inherits main-checkout local settings, but new grants
+// stay in the target checkout and do not leak back to main.
 func TestWorktreeSharesLocalSettings(t *testing.T) {
 	trustHome(t)
-	main := t.TempDir()
-	if err := exec.Command("git", "init", "-q", main).Run(); err != nil {
-		t.Skip("git unavailable:", err)
-	}
-	wt := t.TempDir()
-	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "feature")+"\n")
+	main, wt := configWorktree(t)
 	writeFile(t, filepath.Join(main, ".san", "settings.local.json"), `{"permissions": {"allow": ["Bash(make:*)"]}}`)
 
 	if _, err := addLocalAllowRules(wt, []string{"Bash(go test:*)"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(wt, ".san", "settings.local.json")); err == nil {
-		t.Error("grant written to the worktree instead of the main checkout")
+	if _, err := os.Stat(filepath.Join(wt, ".san", "settings.local.json")); err != nil {
+		t.Error("grant not written to target worktree")
+	}
+	mainData, err := LoadForCwd(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(mainData.Permissions.Allow, "Bash(go test:*)") {
+		t.Fatal("target grant leaked to main")
 	}
 	d, err := LoadForCwd(wt)
 	if err != nil {

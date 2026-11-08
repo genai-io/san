@@ -469,7 +469,9 @@ func TestAutoMemoryDirSharedAcrossWorktrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	wt := t.TempDir()
-	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+filepath.Join(main, ".git", "worktrees", "feature")+"\n")
+	gitdir := filepath.Join(main, ".git", "worktrees", "feature")
+	writeFile(t, filepath.Join(gitdir, "commondir"), "../..\n")
+	writeFile(t, filepath.Join(wt, ".git"), "gitdir: "+gitdir+"\n")
 	sub := filepath.Join(main, "internal", "pkg")
 	link := filepath.Join(t.TempDir(), "link") // e.g. macOS /tmp → /private/tmp
 	if err := os.Symlink(main, link); err != nil {
