@@ -11,8 +11,9 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | Piece | Status |
 | --- | --- |
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged: committed batches (`Writer.Commit`, `Store.Batches`). |
-| [#737](https://github.com/genai-io/san/pull/737) | Open: project/worktree identity, checkout-local settings, typed events behind a private writer. Runtime still writes schema 4. |
-| Runtime cutover, lifecycle (trash/retention), legacy conversion | Not started; specified below. |
+| [#737](https://github.com/genai-io/san/pull/737) | Merged: project/worktree identity, checkout-local settings, typed events behind a private writer, using the previous draft's 18-type model. It converges to this design before any runtime cutover. Runtime still writes schema 4. |
+| [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
+| Runtime cutover, lifecycle (trash/retention) | Not started; specified below. The cutover is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 
@@ -21,7 +22,7 @@ Project  (one per Git repository, or per directory outside Git)
   ├── Session  (a resumable conversation; workspace = the checkout it runs in)
   │     ├── events     append-only, authoritative, single writer
   │     ├── attrs      user intent: renamed title, archive, pin (optional)
-  │     └── blobs      content referenced by events (images, large tool outputs)
+  │     └── blobs      content referenced by events (images, large tool outputs, standalone requests)
   └── cache            derived summaries only; deleting it is always safe
 ```
 
@@ -52,8 +53,7 @@ normalization as trust checks. The project directory is
 `~/.san/projects/<hash(kind + key)>/`. `project.json` inside it records the key
 and a display name; it is descriptive, not an identity registry. A moved
 repository therefore gets a new project; relinking an old one is an explicit
-command, never automatic. Legacy `<hash(cwd)>` partitions stay readable where
-they are; nothing is moved or merged.
+command, never automatic.
 
 Each session fixes `project`, `workspace` and `initial_cwd` at creation. The
 current working directory is session state (`execution_cwd`); changing it
@@ -77,18 +77,21 @@ Configuration does not move into session storage:
 ```text
 ~/.san/projects/<project>/
   project.json                     key, display name
-  transcripts/<sid>.jsonl          events (sdk-go batch mode)
-  transcripts/<sid>.jsonl.lock     writer lock (sdk-go)
-  transcripts/<sid>.attrs.json     user intent (authoritative; absent = defaults)
-  cache/summaries/<sid>.json       list-row summary (derived)
-  blobs/<sid>/                     content-addressed by sha256
-  trash/<sid>/                     deleted sessions: manifest + moved files
-  legacy/<sid>.jsonl               schema-4 originals kept after conversion
+  sessions/<sid>/                  everything authoritative about one session
+    events.jsonl                   events (sdk-go batch mode)
+    events.jsonl.lock              writer lock (sdk-go)
+    attrs.json                     user intent (absent = defaults)
+    blobs/                         content-addressed by sha256
+  cache/<sid>.json                 list-row summary (derived)
+  trash/<sid>/                     a deleted session directory, moved whole
 ```
 
-Parent and child sessions are peers in `transcripts/`; the link lives in the
-child's `session.create`. Files whose names start with `.` are staging and are
-ignored by discovery.
+Directories group data by what happens when it is lost. `sessions/` and
+`trash/` hold authoritative data; `cache/` is disposable. A session is one
+directory, so deleting, restoring, forking and backing it up each handle one
+unit, and a rename of that directory is atomic. Parent and child sessions are
+peers in `sessions/`; the link lives in the child's `session.create`. Names
+starting with `.` are staging and are ignored by discovery.
 
 ## Events
 
@@ -137,7 +140,7 @@ have one meaning each:
 | | `session.update` | `config?`: provider, model, generation options, mode, autopilot policy. `state?`: generated title, todos, execution_cwd, autopilot progress, group hint | `config` applies to the next request; `state` replaces fields. |
 | Conversation | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
 | | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
-| Model calls | `inference.start` | `purpose` (turn/compaction/reviewer/title/…), `turn_id?`, `request` (provider, model, options), `instructions_digest`, `toolset_digest`, `input_digest?` | Opens one model call; each retry is its own call. Output messages name it as `source`. |
+| Model calls | `inference.start` | `purpose`, `turn_id?`, `request` (provider, model, options), `input` (`conversation {append?}` or `standalone`), `instructions_digest?`, `toolset_digest?` | Opens one model call; each retry is its own call. See [Model calls](#model-calls). |
 | | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
 | Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/grant/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. `grant` means an earlier session-scoped approval; grants are never restored on resume, so such calls ask again. |
 | | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details of a call that ran. The result body is the tool-result message. A call that did not pass the gate has only its decision and an error tool-result message. |
@@ -165,13 +168,64 @@ Payload rules:
   writes. The session stays readable for display, with such events shown as
   opaque.
 
-A `turn` request is reconstructed from projections, not copied into the event:
-the context, instructions and toolset as projected just before its
-`inference.start`, which the digests verify. Storage stays linear in
-conversation length, and catalogue changes keep their timing and cause. Other
-purposes send something else (compaction sends the compaction prompt over
-reminder-stripped text, with no tools), so for them the event records only
-`input_digest` and promises no reconstruction.
+### Model calls
+
+San records every model call it makes, so usage and cost are complete and
+every request can be rebuilt. A call is `inference.start` plus
+`inference.finish`. Its result goes into the event that owns it, and that
+event names the call as `source`.
+
+To rebuild a request, the event must say what the model was sent. Calls fall
+into two kinds:
+
+| Kind | What the model was sent | What `inference.start` records | Example |
+| --- | --- | --- | --- |
+| Conversation call | This session's own conversation at that moment (context, system prompt, tools), plus a few messages added for this call only | `input.conversation {append?}`: just the added messages. The rest is already in the events; `instructions_digest` and `toolset_digest` check it. | A normal turn appends nothing. `/btw` appends the question. |
+| Standalone call | A request built separately, with its own prompt and inputs | `input.standalone`: digest of an exact copy of the request, stored once in `blobs/` | The reviewer is sent its own prompt plus the tool call under review. |
+
+The boundary is mechanical. A call is a conversation call only if all three
+hold:
+
+1. its messages start with the session's context exactly as projected, and
+   anything added for the call comes after it, never inserted or edited;
+2. its system prompt and tools match the projected instructions and toolset,
+   checked by digest when `inference.start` is committed;
+3. it goes through the same request-time adaptation as a turn (tool-pairing
+   repair, provider adaptation) and nothing else.
+
+Anything else is standalone: summarizing text built from the conversation, a
+different prompt, a subset of tools, or a context not yet recorded. Provider,
+model and options never decide the kind; both kinds record them in `request`.
+The kind follows from the request, not from the purpose: the table below lists
+each purpose's usual kind, and a call whose digests do not match at commit is
+recorded as standalone. For example, a side call made before the runtime has
+started builds its own system prompt, so it is standalone.
+
+Conversation calls are frequent and carry the whole conversation, so copying
+each one would store the conversation again on every call; referring to the
+events stores it once. Standalone calls are small or rare and their shape
+belongs to the code that built them, so an exact copy is the only way to
+rebuild them after that code changes.
+
+A conversation call reads the conversation and commits its `inference.start`
+in one critical section, so no message can be appended in between. Side calls
+send the tools only so the prompt cache matches; the tools never run.
+
+| Purpose | Usual kind | Messages appended | Result recorded as |
+| --- | --- | --- | --- |
+| `turn` | Conversation | None | `message.append` |
+| `btw` (side question) | Conversation | Placeholders for in-flight work, the question | `annotation.add` |
+| `recap` | Conversation | Placeholders, the recap prompt | `annotation.add` |
+| `suggest` | Conversation | Placeholders, the suggestion prompt | Nothing; accepted text later arrives as user input |
+| `compaction` | Standalone | — | `context.compact` |
+| `reviewer` | Standalone | — | `permission.decide {by: reviewer}` |
+| `hook` (prompt hooks) | Standalone | — | `hook.finish` |
+| `autopilot` | Standalone | — | `session.update` (progress) or `message.append` (next instruction) |
+| `group` (interpreting `/group`) | Standalone | — | `session.update` (group hint) or `annotation.add` |
+
+A new purpose declares its kind and result event before it ships; standalone
+is the default. Agents that run their own loop (subagents, self-learning
+review) record in their own sessions.
 
 ### Commit rules
 
@@ -205,7 +259,7 @@ Every other operation that seems to change it is covered elsewhere:
 | `/clear` | A new session (`Create`). The old one stays intact and resumable. No `context.clear`: one session holds one conversation. |
 | Rewind or edit an earlier message (not implemented today) | `Fork` at the `seq` before that message, then `message.append` in the fork. The source is never rewritten, so no `context.rewind` is needed. |
 | Interrupted turn leaving tool calls without results | Nothing. Context keeps them; request building repairs tool pairing (`ai.Repair`) every time. |
-| Loading context into the runtime on resume, fork or subagent continuation | Nothing. The runtime receives the projection; a replacement equal to the projection is not an event. Schema 4 records it as `conversation.replaced`. |
+| Loading context into the runtime on resume, fork or subagent continuation | Nothing. The runtime receives the projection; a replacement equal to the projection is not an event. |
 | Subagent model fallback | `session.update.config`; context unchanged. |
 | Provider adaptation of a request (e.g. images for text-only models) | Nothing. A pure function of context and request config. |
 
@@ -217,7 +271,7 @@ A pure projector folds committed events into:
 - **State** — effective overrides, session state and the three catalogues.
 - **History** — every message ever held plus audit and annotations, for display
   and inspection. Pre-compaction messages stay here.
-- **Summary** — the list-row data cached in `cache/summaries/`.
+- **Summary** — the list-row data cached in `cache/`.
 
 Resume is `Open → project → resolve current settings and trust → start runtime`.
 TUI, headless and ACP share it; ACP checks the requested cwd against the restored
@@ -265,9 +319,9 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 
 Fork at `seq N` of a source session:
 
-1. Under a staging name, write `session.create { fork: {source, N} }` followed by
+1. Under a staging directory, write `session.create { fork: {source, N} }` followed by
    a verbatim copy of events `2..N`, and copy the referenced blobs.
-2. Clear the group hint; publish by renaming the events file into place.
+2. Clear the group hint; publish by renaming the staging directory into `sessions/`.
 
 Positions and native message IDs are unchanged, so no reference is rewritten.
 The fork is independent: deleting the source never breaks it, and unfinished
@@ -276,7 +330,7 @@ operations in the copied prefix stay unfinished.
 ### Compaction
 
 ```text
-commit [inference.start {purpose: compaction}]   capture: context at seq S
+commit [inference.start {compaction, standalone}] capture: context at seq S
 generate summary of that context                 (no lock; turns are paused)
 commit [context.compact { summary, through: S }, inference.finish]
 
@@ -353,7 +407,7 @@ interfaces, and generic pieces move into sdk-go.
 
 Two kinds of session data exist, and they are stored apart:
 
-| | `transcripts/<sid>.attrs.json` | `cache/summaries/<sid>.json` |
+| | `sessions/<sid>/attrs.json` | `cache/<sid>.json` |
 | --- | --- | --- |
 | Holds | User intent: `title` (renamed), `archived_at`, `pinned` | Projection of events for the list: title, last prompt, counts, workspace, parent, last activity |
 | Derivable from events | No | Yes |
@@ -382,14 +436,14 @@ live/archived --Delete / retention--> trash --7 days--> purged
 ```
 
 - **Delete** requires the writer lock (an open session cannot be deleted) and a
-  non-pinned session. It writes `trash/<sid>/manifest.json` first (files,
-  deleted_at), then renames the events file, attrs and blobs into `trash/<sid>/`
-  and drops the cached summary. On
-  startup, a manifest with unmoved files is rolled forward. Children and forks
-  are independent sessions and are not touched.
-- **Restore** reverses the moves. It fails if the ID already exists live; it
-  never overwrites or renames.
-- **Purge** removes trash directories past their deadline, manifest last.
+  non-pinned session. It writes `deleted.json` (`deleted_at`) into the session
+  directory, renames the directory to `trash/<sid>/` in one step, and drops the
+  cached summary. Children and forks are independent sessions and are not
+  touched. A crash leaves the session either live or trashed, never split.
+- **Restore** renames the directory back. It fails if the ID already exists
+  live; it never overwrites or renames.
+- **Purge** renames a directory past its deadline to `trash/.purging-<sid>/` and
+  then removes it; a leftover `.purging-` directory is finished on the next run.
 - **Clean** runs retention and purge, bounded per run, after the UI is
   interactive. `DryRun` reports what would happen without writing. Automatic
   retention acts only on the current workspace unless configured project-wide.
@@ -399,34 +453,49 @@ live/archived --Delete / retention--> trash --7 days--> purged
 Reads of trashed sessions require `visibility=trash`; `Open`, `Fork` and
 `Append` reject them until restored.
 
-## Migration from schema 4
+## Compatibility
 
-New sessions use typed events. Schema-4 transcripts remain readable through an
-adapter and are converted on first resume, under the writer lock:
+This is a breaking change, made on purpose: carrying the old format would need
+mapping rules that can invent or drop facts, a parity gate and a second reader,
+and every rule above would have to say "unless legacy". After the cutover San
+reads and writes only the layout above. Sessions written by earlier versions
+(`transcripts/`, `<hash(cwd)>` partitions) are neither read nor converted; they
+stay on disk untouched and the user may delete them. Forward, an unknown event
+`type` or a newer `v` blocks resume (see [Events](#events)).
 
-1. Map records with the table below into a staging events file, copying blobs.
-2. Verify the projected context and history match the legacy reader.
-3. Move the original to `legacy/<sid>.jsonl` and publish the new events under the
-   same session ID, so parent links and group membership stay valid.
+## Delivery plan
 
-If verification fails, the session stays read-only in legacy form and can be
-continued as a fork of its legacy context. Conversion never invents facts:
-fields the old records lack are left absent.
+Merged code (#737, #738) implements the previous draft. Each slice below is an
+independent PR that keeps runtime writing the current format until the last one,
+which removes it.
 
-| Schema 4 | Target |
-| --- | --- |
-| `session.started`, `session.forked` | `session.create` |
-| SDK message / `message.appended` | `message.append` |
-| SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Equal to the current context (resume reload): dropped. Anything else blocks conversion. |
-| `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state); `lastPrompt` dropped as derivable |
-| `inference.requested` / `responded` / `failed` | `inference.start {purpose: turn}` / `inference.finish`; `messageIds` dropped (the context before the event) |
-| `system.section.added/removed` | `instructions.update` set/remove; `caller` → `cause` |
-| `tool.added/removed` | `toolset.update` set/remove; `caller` → `cause` |
-| `tool.completed` | `tool.finish` |
-| `permission.required` + `permission.decided` | One `permission.decide`; the request's options and detail become `asked`. A request without a decision is dropped (the call never ran). |
-| `hook.fired` | `hook.finish` when its outcome is terminal; async-only dropped |
-| `skill.state.changed` | `skills.update` |
-| `notice.added` | `annotation.add` (`afterMessageId` → `after_message`) |
+| # | Slice | Replaces / adds |
+| --- | --- | --- |
+| 1 | Event model | 18 types, global event IDs and `source_id` → 13 types, `seq` identity, `source` refs, vocabulary, catalogue and `context.compact` payloads |
+| 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
+| 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
+| 4 | Attrs and cache | `attrs.json`, `cache/`, size + batch-hash validity, event pages by offset |
+| 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
+| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the schema-4 records, projector, `internal/transcript` and the legacy-partition lookup in `project.go` |
+
+Slices 1–2 are gated by #737's tests being ported, not deleted.
+
+Slice 6 changes paths, not only formats. Every consumer of the old flat path moves
+to the session directory: `Session.TranscriptPath` and its hook-facing path,
+discovery and listing in `session`, the inspector (`cmd/san/inspector.go`,
+`internal/inspector`), and `transcript.Store`. Each session directory is opened as
+its own sdk-go store with the fixed ID `events`, which keeps sdk-go's batch format,
+writer lock and recovery unchanged (verified: one writer per directory, and the
+directory renames cleanly once closed). All of `sessions/`, `trash/` and `cache/`
+must be on one filesystem, which is what makes the renames atomic.
+
+Code layout follows the same split. `internal/session` owns the product Store
+and Session; its typed-event code is grouped by responsibility in files
+(`event_model`, `event_validation`, `event_projector`, `event_storage`,
+`event_query`) rather than a new package, as the event model has no consumer
+outside `session`. `internal/transcript` is deleted in slice 6; what it still
+does that the new model needs (summaries, recovery) moves into `session`.
+Generic pieces (batch framing, writer lock) stay in sdk-go.
 
 ## Alternatives considered
 
@@ -440,10 +509,12 @@ fields the old records lack are left absent.
   which it may run, the child's `session.create` and `tool.finish.child_session`
   record delegation, and `permission.decide.asked` keeps what the person was
   shown. Every scenario they covered maps to the commit rules above.
-- **Prompt and tool definitions as blobs per request.** Self-describing, but it
-  loses when and why a catalogue changed (an MCP server connecting, a skill
-  being enabled). Delta events keep the cause and stay linear in size; the
-  digests on `inference.start` still verify each request.
+- **An exact copy of every request.** Exact, but each turn's copy repeats the
+  whole conversation (quadratic storage) and loses when and why a catalogue
+  changed. Copies are kept only for standalone calls.
+- **Recording only main-loop calls** (today's behaviour). Usage and cost would miss
+  compaction, reviewer, hook and side calls, and their results would have no
+  provenance.
 - **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.
 - **A generic `context.replace`, or `context.clear` / `context.rewind`.** San's
@@ -464,9 +535,10 @@ fields the old records lack are left absent.
   once the in-memory cache was lost (JSONL had persisted summaries), and the
   binary grew 3.8 MB. Not worth a second storage engine; revisit only with new
   evidence, after optimizing summary caching and replay allocations.
-- **In-place migration or dual writes.** sdk-go forbids mixing legacy and batch
-  records in one file, and dual writes double the failure modes. Convert once,
-  keep the original.
+- **Reading, converting or dual-writing the old format.** Conversion must map
+  records that lack starts, links or outcomes, so it either invents facts or
+  blocks; dual writes double the failure modes; sdk-go forbids mixing the two
+  record kinds in one file. Not carrying it keeps every rule unconditional.
 
 ## Validation
 
@@ -475,11 +547,11 @@ fields the old records lack are left absent.
 - Events: every event type round-trips; native provider fields survive; replay has
   no side effects; batch retries are idempotent and conflicts fail.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
-  mid-restore, mid-conversion. Each recovers to a committed state.
+  mid-restore. Each recovers to a committed state.
 - Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
-- Requests: for `turn`, the context and catalogues projected before each
-  `inference.start` match its digests; resume reload and request-time repair
-  write no events.
+- Model calls: every purpose rebuilds its exact request (conversation calls
+  from events matching the digests, standalone calls from their copy); summed usage matches
+  provider usage; resume reload and request-time repair write no events.
 - Gate: every tool call has exactly one decision; denied calls get an error
   result and no `tool.finish`; session grants are not restored.
 - Versions: an unknown type or newer `v` blocks resume but still displays.
@@ -488,15 +560,12 @@ fields the old records lack are left absent.
 - Fork independence after source deletion; subagent late results.
 - Lifecycle: pin and busy guards, trash deadline, retention off by default, GC
   keeps unknown files.
-- Legacy: conversion parity on real schema-4 sessions, including compactions and
-  replaced conversations.
+- Cutover: no schema-4 reader remains; an old project directory is ignored, not misread.
 
 ## Open questions
 
 - Exact payload Go types, and which parts (envelope, projector, batch helpers)
   belong in sdk-go.
 - `relink` UX for moved repositories.
-- Whether non-`turn` model calls (reviewer, title, recall, recap) should all be
-  recorded for complete usage and cost. Today only main-loop calls are.
 - Whether the summary cache should become one per-project index once listing
   large projects is measured.
