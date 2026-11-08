@@ -21,11 +21,11 @@ Project 1 ── N Workspace 1 ── N Session
                                   ├─ fork_source_id    → source session
                                   └─ 1 ── N Events (session_events, ordered by seq)
                                             ├─ Session: session.created / session.forked
-                                            ├─ Messages: messages.appended / messages.replaced
-                                            │    └─ Append or replace an ordered native message list
-                                            ├─ Compaction: compaction.completed
-                                            │    └─ Summary ID + source seq; text belongs to messages
-                                            ├─ Config/state: config.updated / state.updated
+                                            ├─ Messages: message
+                                            │    └─ Append an ordered native message list
+                                            ├─ Compaction: compaction
+                                            │    └─ Complete native summary + ordered retained message IDs
+                                            ├─ Config/state: config / state
                                             │    └─ Session overrides / title, todos, group hint
                                             ├─ Inference: inference.started / completed / failed
                                             └─ Tool/audit: tool.started / completed / failed,
@@ -39,15 +39,19 @@ Events ── projector ──┬─ History: display history, including pre-com
 
 Each event row belongs to exactly one session. Its `type` selects the typed
 `payload`; the categories above are not separate tables. Messages are event
-content, not the entire event model. `messages.appended` owns native conversation
-content; `tool.completed` adds execution/presentation metadata, not a second copy
+content, not the entire event model. `message` owns native conversation appends;
+`compaction` owns its native summary. `tool.completed` adds execution/presentation
+metadata, not a second copy
 of tool-result content. Parent/fork links relate sessions; they do not share mutable event rows.
 History and Snapshot are views of the same events, not independent saved copies.
 Event means a durable persistence fact here, not every transient streaming/runtime
 notification. `Event` is the proposed storage envelope; current code still uses
 `transcript.Record` and requires an explicit adapter, not a blind type rename.
-Event names follow `<object>.<past-tense action>`; Session ownership is already
-in `session_id`. These are target names, not the current codec. Import maps legacy
+Use bare event names for single complete facts (`message`, `compaction`, `config`,
+`state`); add an action/phase suffix only when distinct phases or actions must be
+distinguished, such as `inference.started`. Other event families keep their names
+above. Session ownership is
+already in `session_id`. These are target names, not the current codec. Import maps legacy
 types explicitly while preserving their meaning. Archive belongs to state; current
 execution cwd belongs to session state, not home-workspace identity.
 
@@ -61,9 +65,9 @@ payload; a type without one of those has not justified persistence.
 | Event family | Minimum durable information |
 | --- | --- |
 | `session.created` / `session.forked` | Identity, initial location/settings, parent or fixed fork provenance |
-| `messages.appended` / `messages.replaced` | Ordered native message list with stable IDs; one message is a one-element list |
-| `compaction.completed` | Operation ID, source sequence and summary message ID; no second summary text |
-| `config.updated` / `state.updated` | Only changed typed fields; distinguish absent from explicit clearing |
+| `message` | Append an ordered native message list with stable IDs; one message is a one-element list |
+| `compaction` | `operation_id`, `source_seq`, full native `summary` with stable ID and provider content, ordered `retained_message_ids`; one complete successful transition |
+| `config` / `state` | Only changed typed fields; distinguish absent from explicit clearing |
 | `inference.started` / `inference.completed` / `inference.failed` | Attempt ID, input message IDs and non-secret request settings; outcome, usage and bounded error details |
 | `tool.started` / `tool.completed` / `tool.failed` | Call/attempt IDs, execution outcome and necessary timing/presentation fields; arguments/results reference native messages or assets |
 | `permission.requested` / `permission.decided`, `hook.completed` | Correlation, scoped decision/outcome and bounded reason; no duplicate prompts or tool payloads |
@@ -81,9 +85,10 @@ Do not store token deltas, spinner/progress ticks, picker navigation, repeated r
 empty patches, unchanged snapshots or reconstructible UI text. Final native messages
 remain complete. Preserve genuine repeated actions and identical user messages:
 deduplicate retries by event/operation ID, never solely by text or timestamps.
-Message batches deduplicate by native message identity. Replacements carry the full
-required active sequence; this intentional snapshot is not a reason to create a
-parallel messages table. Secrets, credentials and unbounded diagnostic dumps are
+Message batches deduplicate by native message identity; conflicting content for an
+existing identity is invalid. Compaction references immutable retained messages,
+not a duplicated active-context snapshot or a parallel messages table.
+Secrets, credentials and unbounded diagnostic dumps are
 excluded; retain bounded diagnostics and necessary asset references instead.
 
 ### Ownership rules
@@ -163,7 +168,7 @@ func (s *Session) Close() error
 | `History` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
 | `Snapshot` | Immutable committed context, application state and recovery positions; no UI rows or live resources |
 | `ForkOptions` | Optional destination workspace and source sequence; otherwise capture latest committed prefix |
-| `CompactionChange` | Expected source sequence, stable operation ID, native summary and ordered retained messages |
+| `CompactionChange` | `source_seq` (expected current prefix), stable `operation_id`, full native `summary` with stable ID/provider content, ordered `retained_message_ids` |
 | `Append` / `Compact` | One shared atomic write implementation; Compact validates the completed transition |
 | `Archive` / `Delete` | Archive appends state; hard deletion requires ownership and rejects an active writer |
 | `Close` | Wait for in-flight writes and release ownership exactly once |
@@ -173,7 +178,7 @@ restores visibility. Project/workspace deletion is restricted while children exi
 archive does not delete history. Parent relationships must be acyclic.
 
 Project history before paginating display entries: isolated raw event pages cannot
-reconstruct replacements. Never resume from UI history. List is a live keyset
+reconstruct compaction context transitions. Never resume from UI history. List is a live keyset
 listing ordered by `(updated_at, id)`, not a cross-request snapshot.
 
 Resume coordinates Open → projection → current configuration/trust → runtime.
@@ -294,7 +299,8 @@ payload without a codec requirement. Native message IDs differ from record IDs.
 The codec must preserve signatures, encrypted reasoning, image/content order,
 tool IDs and supported provider fields. Current `Record.Message`/`Messages` use
 `json:"-"`; directly marshaling Record would lose messages. Preserve current
-replacement semantics; introducing a message-parent tree is a separate decision.
+legacy replacement semantics through a proven lossless import mapping, not a
+replacement event in the target model. A message-parent tree is a separate decision.
 
 ### `session_checkpoints` — future option, outside phase one
 
@@ -320,33 +326,54 @@ are separate contracts; database schema migrations need a version ledger.
 
 ## Compaction: first-phase session capability
 
-Compaction changes active context; checkpointing only accelerates recovery.
-`Session.Compact` is required from the first phase and uses the shared append path.
-Summary generation belongs to the agent/runtime, outside any SQL transaction.
+Compaction changes active messages only; existing history, config, state and assets
+remain intact. Model summaries may omit details: storage must be lossless, but
+lossless summaries or model comprehension are not promised. `Session.Compact` uses
+the shared append path; generate the summary outside any SQL transaction.
 
-| Artifact | Storage |
+A successful compaction commits one `compaction` event, not separate replacement
+and completion events:
+
+| Payload field | Meaning |
 | --- | --- |
-| Original messages and referenced assets | Retained records/files for history, inspection, fork and export |
-| Completed native summary and retained messages | `session_events`: `messages.replaced` payload |
-| Summary ID and source sequence | `session_events`: `compaction.completed` payload |
-| Partial summary tokens | Runtime memory; never accepted recovery state |
+| `operation_id` | Stable operation identity for idempotent retry |
+| `source_seq` | Committed session version captured before summary generation |
+| `summary` | Complete native summary message, including stable ID, role, content and provider fields |
+| `retained_message_ids` | IDs retained in original active-sequence order; no duplicated message bodies |
 
-Compact accepts a fixed source sequence and stable operation ID. Validate that
-the source is unchanged, then commit replacement, boundary and summaries in one
-batch. Derive stable record IDs from the operation ID: identical retries succeed,
-conflicting reuse fails. Check for an already committed operation before rejecting
-a stale source sequence. Reject results from retired session/runtime owners.
+Project active context as summary followed by referenced messages. References must
+resolve to immutable messages in the same session at the source version, including
+valid earlier summaries. Index the new summary for History without another message
+event. Preserve original text, tool results, images, signatures, content ordering
+and IDs; do not leave orphaned tool results.
 
-The boundary references the summary already in the replacement; do not duplicate
-its text in another record or table. Import must also support the existing
-summary-append/boundary/truncate form and preserve native message IDs.
+Before commit, validate unchanged source version, conflict-free summary identity,
+existing unique references, order and native tool-call/result consistency.
+Reject missing, cross-session or future references. Commit the event and derived
+summaries/sequence in one transaction; publish the memory projection afterward.
+Identical operation/content retries add no event; different content under the same
+operation ID conflicts. Check prior commitment before rejecting stale source
+versions. Reject results from retired session/runtime owners.
 
-Failure before commit leaves the old context intact; commit before a crash makes
-the new context authoritative even if never rendered. Consecutive compactions
-retain earlier history and deduplicate native message IDs. Auto, manual and
-inactive-runtime compaction use the same transition. Fork copies the chosen
-prefix and compaction state independently. Compaction never deletes old assets;
-retention/redaction is a separate policy. No dedicated `compactions` table is needed.
+Failure, cancellation or no-op compaction commits no compaction event and leaves
+context unchanged; execution records may still explain failures. After a committed
+crash, resume restores the result even if the UI never displayed it. Reconcile
+ambiguous commit outcomes before retrying or accepting new writes. Auto, manual,
+inactive-runtime and consecutive compactions share this rule. Fork copies the
+chosen prefix and required references so child IDs resolve locally; later compaction
+in either session cannot affect the other. Never delete old assets during compaction.
+Checkpoints only accelerate replay and replace neither originals nor compaction
+events. No dedicated compactions table is needed.
+
+Explicit import mappings must preserve legacy summary-append/boundary/truncate
+context, full history, native IDs and inspector provenance. Never relabel generic
+noncompaction replacements as compaction. Fresh imports or child snapshots may use
+message appends only after equivalence is demonstrated. Otherwise reject that
+import, retain originals and block cutover until a lossless mapping is defined;
+never silently discard records. Compare old/new projector context, history and
+references, including repeated compaction, failure/retry, missing references,
+resume and fork. These are acceptance contracts, not implementation guarantees
+already established by this documentation.
 
 ## Consistency and lifecycle
 
@@ -387,7 +414,9 @@ with queries/export; JSONL remains interchange, not a second writable authority.
    behavior cases against both backends during development.
 4. **Import and cut over:** exclusively own sources, preserve IDs/assets and old
    files, record import progress/provenance, and verify retries rather than overwrite.
-   Report corrupt/unsupported sessions individually. Never silently merge projects.
+   Report corrupt/unsupported sessions individually. Require verified lossless legacy
+   mappings and old-projector parity before cutover; retain unmapped sources without
+   claiming full compatibility. Never silently merge projects.
 5. **Optimize:** measure before adding checkpoints/indexes; retire legacy writers
    after verified cutover and update package documentation.
 
@@ -405,7 +434,7 @@ from original records rather than guessing whether they mean ancestry or fork.
 | TUI/headless/ACP and competing processes | Validated cwd and common single-writer ownership |
 | Group switch/rejected reclaim; late background completion | No resurrected membership or cross-session callbacks |
 | Child history and fork; parent deletion | Independent identity/assets; history does not imply a live task |
-| Replacement, repeated/failed compaction and retry | Correct native context, atomic transition, preserved original history |
+| Repeated/failed compaction, retry and invalid references | One atomic event; old-projector context/history parity; unchanged state/config/assets; reject unresolved IDs |
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
