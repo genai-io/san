@@ -39,7 +39,6 @@ type pendingInference struct {
 
 // CreateOptions describes a new session; ID is assigned when omitted.
 type CreateOptions struct {
-	Workspace       string
 	ID              string
 	AgentID         string
 	Provider        string
@@ -61,7 +60,7 @@ func newSession(store *transcript.Store, opts CreateOptions) (*Session, error) {
 	}
 	if err := store.Start(context.Background(), transcript.StartCommand{
 		SessionID: opts.ID, AgentID: opts.AgentID, Provider: opts.Provider,
-		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd, Workspace: opts.Workspace,
+		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd,
 		ParentSessionID: opts.ParentSessionID, Sidechain: opts.Sidechain, Time: opts.CreatedAt,
 	}); err != nil {
 		return nil, errors.Join(err, release())

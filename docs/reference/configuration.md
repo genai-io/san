@@ -57,13 +57,6 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 
 ## Overview
 
-Configuration files remain authoritative. The proposed
-[session management design](../design/proposal-0005-session-management.md)
-separates project/workspace identity from configuration scope; it does not copy
-merged settings or credentials into a second editable database authority.
-Session overrides and historical request settings are not substitutes for current
-permission and workspace-trust checks.
-
 Configuration is loaded from multiple files at different scopes. Higher-priority files override lower-priority ones.
 
 **Load priority** (lowest → highest):
@@ -78,23 +71,6 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 | 6 | `./.san/settings.local.json` |
 | 7 | CLI arguments / environment variables |
 | 8 | `managed-settings.json` (read-only system policy) |
-
-For Git repositories, project `settings.json` files (San and Claude compatibility)
-are read from the **original main checkout**, including on first launch in a
-linked worktree or a repository subdirectory. Divergent branch-local copies are
-not alternative shared settings authorities. Non-Git directories use the exact
-working directory, without searching ancestors. Missing or mismatched main-checkout
-metadata causes settings resolution to fail rather than select a linked checkout.
-Project-scope settings writes use that same shared source.
-
-Local settings are read from the target working directory. For linked Git
-worktrees, the loader also reads the main checkout's corresponding
-`.claude/settings.local.json` and `.san/settings.local.json`, in that order,
-after the worktree-local settings files, preserving existing precedence. New local
-permission and memory-directory writes stay in the target working directory.
-Existing trust filtering (including eligibility of untracked local files) still
-applies. Existing trust policy covers a repository and its worktrees; project
-registration itself does not grant trust or restore historical authorizations.
 
 **settings.json schema:**
 

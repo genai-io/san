@@ -3,7 +3,6 @@ package transcript
 import "time"
 
 type StartCommand struct {
-	Workspace       string
 	SessionID       string
 	Cwd             string
 	Provider        string

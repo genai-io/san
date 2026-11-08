@@ -4,11 +4,11 @@
 
 ## 状态与范围
 
-草案 — 2026-11-07。目标是以文件/JSONL 实现存储中立的会话/事件 API。
-SQLite 实验实现及驱动依赖从本次交付中移除，只保留历史测量作为选型依据。
-本次保留通用文件存储能力，不引入数据库迁移或后端选择 UI。
+草案 — 2026-11-07。本 PR 仅评审设计，目标是以文件/JSONL 实现存储中立的会话/事件 API。
+不采用 SQLite，只保留历史测量作为选型依据，不引入数据库迁移或后端选择 UI。
 
-已实现第一阶段：`OpenStore` 项目注册、Git worktree 共享归属与项目设置、非 Git 精确路径归属，
+配套[实现 PR #737](https://github.com/genai-io/san/pull/737) 尚未合入；下文实现状态指该分支，
+不是本设计 PR 或主分支的新增能力。第一阶段包括 `OpenStore` 项目注册、Git worktree 共享归属与项目设置、非 Git 精确路径归属，
 以及 schema 4 中可选的项目/workspace 身份字段与摘要缓存升级。旧 cwd 分区不自动迁移。
 当前仍使用 SDK 原生记录及 transcript/truncate 语义；18 类新事件、完整目标 API、
 原子批次、回收站和自动保留策略尚未实现。Runtime hooks 和 inspector 保持现有 JSONL 集成。

@@ -13,11 +13,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/session"
 )
 
-// summaryCacheVersion versions derived metadata independently of the transcript schema.
-const summaryCacheVersion = 1
-
 type summaryCache struct {
-	Version    int       `json:"cacheVersion"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modifiedAt"`
 	Item       Summary   `json:"summary"`
@@ -27,17 +23,10 @@ type summaryCache struct {
 func (s *Store) summaryPath(id string) string { return s.transcriptPath(id) + ".meta" }
 
 func (s *Store) summaryLocked(ctx context.Context, id string, includeSidechain bool) (Summary, error) {
-	s.summaryMu.Lock()
-	defer s.summaryMu.Unlock()
-	info, err := s.log.Stat(ctx, id)
+	info, err := os.Stat(s.transcriptPath(id))
 	if err != nil {
 		return Summary{}, err
 	}
-	return s.summaryInfoLocked(ctx, info, includeSidechain)
-}
-
-func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includeSidechain bool) (Summary, error) {
-	id := info.ID
 	if s.summaries == nil {
 		s.summaries = make(map[string]summaryCache)
 	}
@@ -46,7 +35,7 @@ func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includ
 		data, _ := os.ReadFile(s.summaryPath(id))
 		_ = json.Unmarshal(data, &c)
 	}
-	if c.Version == summaryCacheVersion && c.Item.ID == id && c.Size == info.Size && c.ModifiedAt.Equal(info.ModTime) && (!c.headerOnly || !includeSidechain) {
+	if c.Item.ID == id && c.Size == info.Size() && c.ModifiedAt.Equal(info.ModTime()) && (!c.headerOnly || !includeSidechain) {
 		s.summaries[id] = c
 		return c.Item, nil
 	}
@@ -55,12 +44,12 @@ func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includ
 		return Summary{}, err
 	}
 	if item.IsSidechain && !includeSidechain {
-		s.summaries[id] = summaryCache{Version: summaryCacheVersion, Size: info.Size, ModifiedAt: info.ModTime, Item: item, headerOnly: true}
+		s.summaries[id] = summaryCache{Size: info.Size(), ModifiedAt: info.ModTime(), Item: item, headerOnly: true}
 		return item, nil // Do not persist a partial summary.
 	}
 	item.Title = preview(item.Title)
 	item.LastPrompt = preview(item.LastPrompt)
-	c = summaryCache{Version: summaryCacheVersion, Size: info.Size, ModifiedAt: info.ModTime, Item: item}
+	c = summaryCache{Size: info.Size(), ModifiedAt: info.ModTime(), Item: item}
 	data, err := json.Marshal(c)
 	if err != nil {
 		return Summary{}, err
@@ -120,7 +109,6 @@ func (s *Store) buildSummary(ctx context.Context, id string, includeSidechain bo
 		return Summary{}, err
 	}
 	return Summary{
-		ProjectID: tx.ProjectID, Workspace: tx.Workspace,
 		ID: id, FullPath: s.transcriptPath(id), CreatedAt: tx.CreatedAt, UpdatedAt: tx.UpdatedAt,
 		Title:        coalesce(tx.State.Title, firstUserText(tx.Messages)),
 		LastPrompt:   coalesce(tx.State.LastPrompt, lastUserText(tx.Messages)),

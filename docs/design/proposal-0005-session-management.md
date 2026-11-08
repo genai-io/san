@@ -4,12 +4,14 @@
 
 ## Status and scope
 
-Draft — 2026-11-07. The target is a storage-neutral session/event API backed by
-files/JSONL. The SQLite experiment implementation and driver dependencies are removed
-from this delivery; historical measurements remain as the selection rationale.
-Retain generic file-storage capabilities, without database migration or a backend-selection UI.
+Draft — 2026-11-07. This PR reviews design only: a storage-neutral session/event API
+backed by files/JSONL. SQLite is not selected; historical measurements remain as the
+rationale, without database migration or a backend-selection UI.
 
-The first stage implements `OpenStore` project registration, shared Git worktree
+The companion [implementation PR #737](https://github.com/genai-io/san/pull/737) is
+not yet merged. Implementation status below refers to that branch, not capabilities
+added by this design PR or already on main. Its first stage implements `OpenStore`
+project registration, shared Git worktree
 ownership/settings, exact non-Git directory identity, and optional project/workspace
 fields in schema 4 with upgraded summary caches. Legacy cwd partitions are not migrated.
 The SDK native record and transcript/truncate semantics remain: the 18-event format,

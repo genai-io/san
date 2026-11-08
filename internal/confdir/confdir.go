@@ -5,10 +5,8 @@
 package confdir
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -37,118 +35,37 @@ func RepoRoot(cwd string) string {
 	}
 }
 
-// MainRepoRoot returns the original checkout when its metadata is available.
-// Call ConfigRoot when failure must not silently select another settings source.
+// MainRepoRoot is RepoRoot with a linked worktree (whose .git is a
+// "gitdir: <main>/.git/worktrees/<name>" file) mapped back to the main
+// checkout, so every worktree of a repository shares one key. Symlinks are
+// resolved: git records the gitdir resolved, and one checkout must give one key.
 func MainRepoRoot(cwd string) string {
-	root := RepoRoot(canonical(cwd))
+	root := mainRepoRoot(cwd)
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		return real
+	}
+	return root
+}
+
+func mainRepoRoot(cwd string) string {
+	root := RepoRoot(cwd)
 	data, err := os.ReadFile(filepath.Join(root, ".git"))
 	if err != nil {
-		return canonical(root)
+		return root // a directory (main checkout) or no repository
 	}
 	gitdir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
 	if !ok {
-		return canonical(root)
+		return root
 	}
-	gitdir = strings.TrimSpace(gitdir)
+	gitdir = filepath.Clean(strings.TrimSpace(gitdir))
 	if !filepath.IsAbs(gitdir) {
 		gitdir = filepath.Join(root, gitdir)
 	}
-	// Normal worktrees need no subprocess on this hot trust/memory path.
-	if common, err := os.ReadFile(filepath.Join(gitdir, "commondir")); err == nil {
-		dir := strings.TrimSpace(string(common))
-		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(gitdir, dir)
-		}
-		dir = canonical(dir)
-		if filepath.Base(dir) == ".git" {
-			return canonical(filepath.Dir(dir))
-		}
-		// Separate Git directories cannot identify the checkout by ancestry.
-		if main, err := ConfigRoot(cwd); err == nil {
-			return main
-		}
+	// <main>/.git/worktrees/<name> → <main>
+	if filepath.Base(filepath.Dir(gitdir)) == "worktrees" {
+		return filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
 	}
-	return canonical(root)
-}
-
-func canonical(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return real
-	}
-	return path
-}
-
-// ConfigRoot resolves the original main checkout, not the Git common directory.
-// Git's first worktree record identifies it even with --separate-git-dir. Outside
-// Git the exact cwd is used, never an ancestor containing configuration files.
-// Missing or invalid repository metadata is an error, not a branch-local fallback.
-func ConfigRoot(cwd string) (string, error) {
-	cwd = canonical(cwd)
-	root := RepoRoot(cwd)
-	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
-		return cwd, nil
-	}
-	top, err := gitOutput(root, "rev-parse", "--show-toplevel")
-	if err != nil || canonical(strings.TrimSpace(string(top))) != canonical(root) {
-		return "", fmt.Errorf("invalid repository metadata at %s", root)
-	}
-	out, err := gitOutput(root, "worktree", "list", "--porcelain", "-z")
-	if err != nil {
-		return "", fmt.Errorf("resolve shared configuration for %s: %w", cwd, err)
-	}
-	first, _, _ := strings.Cut(string(out), "\x00")
-	main, ok := strings.CutPrefix(first, "worktree ")
-	if !ok || !filepath.IsAbs(main) {
-		return "", fmt.Errorf("resolve shared configuration for %s: invalid main worktree", cwd)
-	}
-	main = canonical(main)
-	common, err := gitOutput(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil {
-		return "", fmt.Errorf("resolve Git common directory for %s: %w", root, err)
-	}
-	commonDir := canonical(strings.TrimSpace(string(common)))
-	// Separate Git directories and submodules can list their metadata directory
-	// as the first worktree. core.worktree is based at that common directory.
-	if main == commonDir {
-		worktree, err := gitOutput(root, "config", "--get", "core.worktree")
-		if err != nil || strings.TrimSpace(string(worktree)) == "" {
-			return "", fmt.Errorf("shared configuration checkout is ambiguous: %s", main)
-		}
-		main = strings.TrimSpace(string(worktree))
-		if !filepath.IsAbs(main) {
-			main = filepath.Join(commonDir, main)
-		}
-		main = canonical(main)
-	}
-	if info, err := os.Stat(main); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("shared configuration checkout unavailable: %s", main)
-	}
-	mainTop, topErr := gitOutput(main, "rev-parse", "--show-toplevel")
-	if topErr != nil || canonical(strings.TrimSpace(string(mainTop))) != main {
-		return "", fmt.Errorf("shared configuration checkout is ambiguous: %s", main)
-	}
-	mainCommon, mainErr := gitOutput(main, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil || mainErr != nil || canonical(strings.TrimSpace(string(common))) != canonical(strings.TrimSpace(string(mainCommon))) {
-		return "", fmt.Errorf("shared configuration checkout no longer belongs to repository: %s", main)
-	}
-	return main, nil
-}
-
-func gitOutput(root string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
-	// Repository selection must come from cwd, not inherited Git overrides.
-	for _, env := range os.Environ() {
-		key, _, _ := strings.Cut(env, "=")
-		switch key {
-		case "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE":
-			continue
-		}
-		cmd.Env = append(cmd.Env, env)
-	}
-	return cmd.Output()
+	return root
 }
 
 // LocalDir holds cwd's personal, untracked config (settings.local.json,

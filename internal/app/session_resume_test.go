@@ -37,8 +37,7 @@ func (*failedTurnProvider) Client(string, map[string]string) (*ai.Client, error)
 func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	cwd := t.TempDir()
-	store, err := session.NewStoreWithDir(cwd)
+	store, err := session.NewStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +61,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 		conv:      conv.NewModel(80),
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
 	}
-	m.env.CWD = cwd
+	m.env.CWD = t.TempDir()
 	m.env.FileCache = filecache.New()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}

@@ -150,34 +150,6 @@ func (m *model) buildSessionRecord() *transcript.Record {
 		}}
 }
 
-// validateResumeDirectory rejects implicit execution-directory changes. A missing
-// legacy cwd is unknown, not evidence that the session belongs to another path.
-// This check does not grant trust or change the runtime's working directory.
-func validateResumeDirectory(saved, requested string) error {
-	if saved == "" {
-		return nil
-	}
-	canonical := func(path string) (string, error) {
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			return "", err
-		}
-		return filepath.EvalSymlinks(absolute)
-	}
-	persisted, err := canonical(saved)
-	if err != nil {
-		return fmt.Errorf("cannot validate saved session directory %q: %w; restore that directory before resuming", saved, err)
-	}
-	current, err := canonical(requested)
-	if err != nil {
-		return fmt.Errorf("cannot validate requested session directory %q: %w", requested, err)
-	}
-	if persisted != current {
-		return fmt.Errorf("session directory mismatch: saved directory %q differs from requested directory %q; reopen San in the saved directory to resume (implicit directory switching is not supported)", saved, requested)
-	}
-	return nil
-}
-
 func (m *model) loadSessionByID(id string) error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
@@ -205,13 +177,6 @@ func (m *model) loadSessionByID(id string) error {
 		opened, sess, err = m.services.SessionStore.Open(id)
 	}
 	if err != nil {
-		return err
-	}
-
-	if err := validateResumeDirectory(sess.Metadata.Cwd, m.env.CWD); err != nil {
-		if opened != m.services.Session {
-			_ = opened.Close()
-		}
 		return err
 	}
 

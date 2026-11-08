@@ -34,10 +34,7 @@ type Store struct {
 	// at once.
 	sessions map[string]*sessionCache
 
-	writers map[string]*session.Writer
-
-	// Summary reads can replay cold logs without blocking unrelated appends.
-	summaryMu sync.Mutex
+	writers   map[string]*session.Writer
 	summaries map[string]summaryCache
 }
 
@@ -61,28 +58,6 @@ func NewStore(baseDir, projectID string) (*Store, error) {
 	return &Store{baseDir: baseDir, projectID: projectID, log: sessions}, nil
 }
 
-// Exists checks whether the transcript is present.
-func (s *Store) Exists(ctx context.Context, id string) (bool, error) {
-	if err := ValidateStorageID(id); err != nil {
-		return false, err
-	}
-	_, err := s.log.Stat(ctx, id)
-	if errors.Is(err, session.ErrNotFound) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
-// Close releases store resources. Session owners must close their handles first.
-func (s *Store) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.writers) != 0 {
-		return session.ErrBusy
-	}
-	return s.log.Close()
-}
-
 // Start writes a new session's first record.
 func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 	if err := ValidateStorageID(cmd.SessionID); err != nil {
@@ -93,10 +68,8 @@ func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if info, err := s.log.Stat(ctx, cmd.SessionID); err == nil && info.Size > 0 {
+	if info, err := os.Stat(s.transcriptPath(cmd.SessionID)); err == nil && info.Size() > 0 {
 		return nil // already started
-	} else if err != nil && !errors.Is(err, session.ErrNotFound) {
-		return err
 	}
 	w, done, err := s.writerLocked(cmd.SessionID)
 	if err != nil {
@@ -109,8 +82,6 @@ func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
 		Cwd:       cmd.Cwd,
 		Version:   SchemaVersion,
 		Start: &SessionStart{
-			ProjectID:       s.projectID,
-			Workspace:       cmd.Workspace,
 			Provider:        cmd.Provider,
 			Model:           cmd.Model,
 			MaxTokens:       cmd.MaxTokens,
@@ -291,7 +262,7 @@ func (s *Store) Fork(ctx context.Context, cmd ForkCommand) (err error) {
 	if err := ValidateStorageID(cmd.NewSessionID); err != nil {
 		return err
 	}
-	if exists, err := s.Exists(ctx, cmd.NewSessionID); err != nil {
+	if exists, err := fileExists(s.transcriptPath(cmd.NewSessionID)); err != nil {
 		return err
 	} else if exists {
 		return fmt.Errorf("fork destination %s already exists", cmd.NewSessionID)
@@ -375,6 +346,8 @@ func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error)
 	if err := ValidateStorageID(id); err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -388,8 +361,8 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 	if projectID != "" && s.projectID != "" && projectID != s.projectID {
 		return []Summary{}, nil
 	}
-	s.summaryMu.Lock()
-	defer s.summaryMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	infos, err := s.log.List(ctx)
 	if err != nil {
 		return nil, err
@@ -400,7 +373,7 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 			return nil, err
 		}
 		id := info.ID
-		item, err := s.summaryInfoLocked(ctx, info, opts.IncludeSidechain)
+		item, err := s.summaryLocked(ctx, id, opts.IncludeSidechain)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -432,8 +405,6 @@ func (s *Store) Delete(ctx context.Context, transcriptID string) error {
 		return fmt.Errorf("delete transcript: %w", err)
 	}
 	delete(s.sessions, transcriptID)
-	s.summaryMu.Lock()
-	defer s.summaryMu.Unlock()
 	delete(s.summaries, transcriptID)
 	return os.RemoveAll(s.summaryPath(transcriptID))
 }
@@ -442,7 +413,6 @@ func (s *Store) transcriptPath(transcriptID string) string {
 	return filepath.Join(s.baseDir, "transcripts", transcriptID+".jsonl")
 }
 
-// TranscriptPath returns the JSONL path.
 func (s *Store) TranscriptPath(transcriptID string) string {
 	return s.transcriptPath(transcriptID)
 }
@@ -612,4 +582,15 @@ func coalesce(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
