@@ -16,18 +16,44 @@ allowed only with a defined source and rebuild rule.
 ## Model and ownership
 
 ```text
-Project 1 ── N Workspace 1 ── N Session 1 ── N Record
-                                  ├─ parent: agent ancestry
-                                  └─ fork source: history provenance
-Records ── projector ── active context / display history / application state
+Project 1 ── N Workspace 1 ── N Session
+                                  ├─ parent_session_id → parent agent session
+                                  ├─ fork_source_id    → source session
+                                  └─ 1 ── N Events (session_events, ordered by seq)
+                                            ├─ Lifecycle: session.started / session.forked
+                                            ├─ Messages: message.appended
+                                            │    └─ Native user / assistant / tool-result content
+                                            ├─ Context: conversation.replaced / session.compacted
+                                            │    └─ Summary + retained messages / summary ID + source seq
+                                            ├─ State: session.state.patched
+                                            │    └─ Title, model/mode overrides, todos, group hint
+                                            ├─ Inference: inference.requested / responded / failed
+                                            └─ Presentation/audit: notice.added, tool.completed,
+                                                 permission.*, hook.fired, system.*, tool.*, skill.*
+
+Events ── projector ──┬─ History: display history, including pre-compaction messages
+                     ├─ Snapshot: active context + durable state for resume
+                     └─ Summary: rebuildable session-list metadata
 ```
+
+Each event row belongs to exactly one session. Its `type` selects the typed
+`payload`; the categories above are not separate tables. Messages are event
+content, not the entire event model. `message.appended` owns native conversation
+content; `tool.completed` adds presentation details rather than a second tool-result
+authority. Parent/fork links relate sessions; they do not share mutable event rows.
+History and Snapshot are views of the same events, not independent saved copies.
+Event means a durable persistence fact here, not every transient streaming/runtime
+notification. `Event` is the proposed storage envelope; current code still uses
+`transcript.Record` and requires an explicit adapter, not a blind type rename.
+The event names illustrate existing semantics, not an exhaustive enum; archive
+and restored-cwd changes need typed payloads defined before implementation.
 
 | Concept | Owns |
 | --- | --- |
 | Project | Stable logical identity, name and description |
 | Workspace | Local directory/checkout and project association |
 | Session | Durable conversation, home workspace and write ownership |
-| Record | Immutable ordered conversation and application events |
+| Event | Immutable ordered conversation and application fact |
 | Projection | Rebuildable interpretation of a committed record prefix |
 | Runtime | Execution, cancellation and process-local resources |
 
@@ -69,15 +95,19 @@ type SessionStore interface {
     Open(context.Context, string) (*Session, error)
     Get(context.Context, string) (Summary, error)
     List(context.Context, SessionQuery) (SessionPage, error)
-    ReadRecords(context.Context, string, RecordQuery) (RecordPage, error)
-    ReadHistory(context.Context, string, HistoryQuery) (HistoryPage, error)
+    History(context.Context, string, HistoryQuery) (HistoryPage, error)
     Fork(context.Context, string, ForkOptions) (*Session, error)
     Archive(context.Context, string, bool) error
     Delete(context.Context, string) error
 }
 
+// Internal storage capability for replay, inspection and export.
+type EventReader interface {
+    Events(context.Context, string, EventQuery) (EventPage, error)
+}
+
 func (s *Session) ID() string
-func (s *Session) Append(ctx context.Context, records ...Record) error
+func (s *Session) Append(ctx context.Context, events ...Event) error
 func (s *Session) Compact(ctx context.Context, change CompactionChange) error
 func (s *Session) Snapshot() (Projection, error)
 func (s *Session) Close() error
@@ -89,8 +119,8 @@ func (s *Session) Close() error
 | `Create` / `Open` | Return a writer-owned handle; Open claims before loading a consistent projection |
 | `Get` / `List` | Read summaries without claiming a writer, including sessions owned by other processes |
 | `SessionQuery` | Project/workspace/parent/group/sidechain/archive filters, bounded limit, opaque cursor |
-| `ReadRecords` | Ordered raw events; cursor binds filters and fixed `ThroughSeq` so appends do not disturb pagination |
-| `ReadHistory` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
+| `Events` | Ordered raw events; cursor binds filters and fixed `ThroughSeq` so appends do not disturb pagination |
+| `History` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
 | `Snapshot` | Immutable committed context, application state and recovery positions; no UI rows or live resources |
 | `ForkOptions` | Optional destination workspace and source sequence; otherwise capture latest committed prefix |
 | `CompactionChange` | Expected source sequence, stable operation ID, native summary and ordered retained messages |
@@ -119,7 +149,7 @@ unsupported schema, corruption, cancellation and storage errors.
 | --- | --- |
 | Project description and workspace registration | `projects` / `workspaces` |
 | Session identity and query summaries | `sessions`; summaries derive from records |
-| Native messages, compaction, session overrides, todos, notices and audit | Typed `session_records.payload` |
+| Native messages, compaction, session overrides, todos, notices and audit | Typed `session_events.payload` |
 | User defaults and provider/skill choices | Existing user files, including `~/.san/settings.json` |
 | Shared project settings and instructions | Existing project files, including `.san/settings.json` |
 | Local/worktree/persona overrides | Existing scoped files and resolver |
@@ -207,13 +237,13 @@ Finalize model/preview/group/sidechain summary columns against existing queries
 before implementation. Every derived column has a projector and no independent
 setter; do not drop current filtering behavior to minimize column count.
 
-### `session_records`
+### `session_events`
 
 | Column | Type / constraint | Meaning |
 | --- | --- | --- |
 | `session_id` | TEXT FK sessions, DELETE CASCADE | Owning conversation |
 | `seq` | INTEGER CHECK > 0 | Commit order within session |
-| `id` | TEXT | Stable record identity |
+| `id` | TEXT | Stable event identity |
 | `type` | TEXT | Event discriminator |
 | `schema_version` | INTEGER CHECK > 0 | Payload codec version |
 | `created_at` | INTEGER | Event time, not ordering key |
@@ -226,7 +256,10 @@ tool IDs and supported provider fields. Current `Record.Message`/`Messages` use
 `json:"-"`; directly marshaling Record would lose messages. Preserve current
 replacement semantics; introducing a message-parent tree is a separate decision.
 
-### `session_checkpoints` — optional
+### `session_checkpoints` — future option, outside phase one
+
+Retained as a future schema reference, not an initial table or resume dependency.
+Phase one restores from events; compaction is fully supported without checkpoints.
 
 | Column | Type / constraint | Meaning |
 | --- | --- | --- |
@@ -254,8 +287,8 @@ Summary generation belongs to the agent/runtime, outside any SQL transaction.
 | Artifact | Storage |
 | --- | --- |
 | Original messages and referenced assets | Retained records/files for history, inspection, fork and export |
-| Completed native summary and retained messages | `session_records`: `conversation.replaced` payload |
-| Summary ID and source sequence | `session_records`: `session.compacted` payload |
+| Completed native summary and retained messages | `session_events`: `conversation.replaced` payload |
+| Summary ID and source sequence | `session_events`: `session.compacted` payload |
 | Partial summary tokens | Runtime memory; never accepted recovery state |
 
 Compact accepts a fixed source sequence and stable operation ID. Validate that

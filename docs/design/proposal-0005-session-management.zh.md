@@ -14,18 +14,41 @@
 ## 模型与归属
 
 ```text
-Project 1 ── N Workspace 1 ── N Session 1 ── N Record
-                                  ├─ parent: agent ancestry
-                                  └─ fork source: history provenance
-Records ── projector ── active context / display history / application state
+Project 1 ── N Workspace 1 ── N Session
+                                  ├─ parent_session_id → 父 agent 会话
+                                  ├─ fork_source_id    → 来源会话
+                                  └─ 1 ── N Events（session_events，按 seq 排序）
+                                            ├─ 生命周期：session.started / session.forked
+                                            ├─ 消息：message.appended
+                                            │    └─ 原生用户 / 助手 / 工具结果内容
+                                            ├─ 上下文：conversation.replaced / session.compacted
+                                            │    └─ 摘要及保留消息 / 摘要 ID 及源序号
+                                            ├─ 状态：session.state.patched
+                                            │    └─ 标题、模型/模式覆盖、待办、群组恢复提示
+                                            ├─ 推理：inference.requested / responded / failed
+                                            └─ 展示/审计：notice.added、tool.completed、
+                                                 permission.*、hook.fired、system.*、tool.*、skill.*
+
+Events ── 投影器 ──┬─ History：展示历史，包含压缩前消息
+                  ├─ Snapshot：活跃上下文及持久状态，用于 resume
+                  └─ Summary：可重建的会话列表摘要
 ```
+
+每行事件只属于一个 Session，由 `type` 决定类型化的 `payload`；上面的分类不是独立的表。
+消息是事件内容的一种，不代表全部事件。`message.appended` 保存原生对话内容；
+`tool.completed` 补充展示细节，不是第二份工具结果权威来源。
+父子关系和分叉关系连接的是 Session，不共享可变事件行。
+History 和 Snapshot 是同一份事件的不同视图，不是各自保存一套数据。
+这里的 Event 指持久化事实，并非每个流式 token 或 runtime 临时通知。
+`Event` 是拟议存储封装；当前代码仍使用 `transcript.Record`，需要明确适配，不能直接改名。
+图中的事件名用于说明现有语义，并非完整枚举；归档和执行 cwd 恢复所需的类型化载荷须在实现前确定。
 
 | 概念 | 负责内容 |
 | --- | --- |
 | Project | 稳定的逻辑身份、名称和描述 |
 | Workspace | 本地目录/检出及其项目关联 |
 | Session | 持久会话、归属工作区和写入所有权 |
-| Record | 不可变、有序的对话与应用事件 |
+| Event | 不可变、有序的对话与应用事实 |
 | Projection | 对已提交记录前缀的可重建解释 |
 | Runtime | 执行、取消和进程内资源 |
 
@@ -60,15 +83,19 @@ type SessionStore interface {
     Open(context.Context, string) (*Session, error)
     Get(context.Context, string) (Summary, error)
     List(context.Context, SessionQuery) (SessionPage, error)
-    ReadRecords(context.Context, string, RecordQuery) (RecordPage, error)
-    ReadHistory(context.Context, string, HistoryQuery) (HistoryPage, error)
+    History(context.Context, string, HistoryQuery) (HistoryPage, error)
     Fork(context.Context, string, ForkOptions) (*Session, error)
     Archive(context.Context, string, bool) error
     Delete(context.Context, string) error
 }
 
+// Internal storage capability for replay, inspection and export.
+type EventReader interface {
+    Events(context.Context, string, EventQuery) (EventPage, error)
+}
+
 func (s *Session) ID() string
-func (s *Session) Append(ctx context.Context, records ...Record) error
+func (s *Session) Append(ctx context.Context, events ...Event) error
 func (s *Session) Compact(ctx context.Context, change CompactionChange) error
 func (s *Session) Snapshot() (Projection, error)
 func (s *Session) Close() error
@@ -80,8 +107,8 @@ func (s *Session) Close() error
 | `Create` / `Open` | 返回持有写入所有权的句柄；Open 先认领，再加载一致的投影 |
 | `Get` / `List` | 读取摘要而不认领写入所有权，包括由其他进程持有的会话 |
 | `SessionQuery` | 项目/工作区/父会话/群组/sidechain/归档筛选、有界条数上限、不透明游标 |
-| `ReadRecords` | 有序原始事件；游标绑定筛选条件和固定的 `ThroughSeq`，避免追加影响分页 |
-| `ReadHistory` | 该固定前缀的展示投影，包含压缩前历史；附件以引用提供 |
+| `Events` | 有序原始事件；游标绑定筛选条件和固定的 `ThroughSeq`，避免追加影响分页 |
+| `History` | 该固定前缀的展示投影，包含压缩前历史；附件以引用提供 |
 | `Snapshot` | 不可变的已提交上下文、应用状态和恢复位置；不含 UI 行或活跃资源 |
 | `ForkOptions` | 可选目标工作区和源序号；否则捕获最新已提交前缀 |
 | `CompactionChange` | 预期源序号、稳定操作 ID、原生摘要和有序保留消息 |
@@ -106,7 +133,7 @@ TUI、无界面模式和 ACP 共用所有权规则。ACP 在构建服务前验�
 | --- | --- |
 | 项目描述和工作区注册 | `projects` / `workspaces` |
 | 会话身份和查询摘要 | `sessions`；摘要派生自记录 |
-| 原生消息、压缩、会话覆盖项、待办、通知和审计 | 类型化的 `session_records.payload` |
+| 原生消息、压缩、会话覆盖项、待办、通知和审计 | 类型化的 `session_events.payload` |
 | 用户默认值及提供方/技能选择 | 现有用户文件，包括 `~/.san/settings.json` |
 | 共享项目设置和指令 | 现有项目文件，包括 `.san/settings.json` |
 | 本地/worktree/persona 覆盖项 | 现有作用域文件及解析器 |
@@ -186,13 +213,13 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 实现前依据现有查询确定模型/预览/群组/sidechain 摘要列。
 每个派生列都有投影器，不设独立 setter；不得为减少列数而丢弃现有筛选行为。
 
-### `session_records`
+### `session_events`
 
 | 列 | 类型 / 约束 | 含义 |
 | --- | --- | --- |
 | `session_id` | TEXT FK sessions, DELETE CASCADE | 所属会话 |
 | `seq` | INTEGER CHECK > 0 | 会话内提交顺序 |
-| `id` | TEXT | 稳定记录身份 |
+| `id` | TEXT | 稳定事件身份 |
 | `type` | TEXT | 事件类型标识 |
 | `schema_version` | INTEGER CHECK > 0 | 载荷编解码版本 |
 | `created_at` | INTEGER | 事件时间，不是排序键 |
@@ -203,7 +230,10 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 及受支持的提供方字段。当前 `Record.Message`/`Messages` 使用 `json:"-"`；
 直接序列化 Record 会丢失消息。保留当前替换语义；引入消息父子树是单独的决策。
 
-### `session_checkpoints` — 可选
+### `session_checkpoints` — 后续选项，不属于第一阶段
+
+仅保留未来表结构参考，初期不建表，resume 不依赖它。
+第一阶段从事件恢复，压缩能力不需要检查点也必须完整支持。
 
 | 列 | 类型 / 约束 | 含义 |
 | --- | --- | --- |
@@ -229,8 +259,8 @@ JSON 载荷带类型和版本，不是任意元数据容器。
 | 产物 | 存储 |
 | --- | --- |
 | 原始消息和引用资源 | 保留记录/文件，用于历史、查阅、分叉和导出 |
-| 完整的原生摘要和保留消息 | `session_records`：`conversation.replaced` 载荷 |
-| 摘要 ID 和源序号 | `session_records`：`session.compacted` 载荷 |
+| 完整的原生摘要和保留消息 | `session_events`：`conversation.replaced` 载荷 |
+| 摘要 ID 和源序号 | `session_events`：`session.compacted` 载荷 |
 | 尚未完成的摘要 token | runtime 内存；绝不作为有效恢复状态 |
 
 Compact 接受固定源序号和稳定操作 ID。验证来源未变，再将替换、边界和摘要作为一个批次提交。
