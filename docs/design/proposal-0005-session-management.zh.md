@@ -12,7 +12,7 @@
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 已合并：提交批次（`Writer.Commit`、`Store.Batches`）。 |
 | [#737](https://github.com/genai-io/san/pull/737) | 已合并：项目/worktree 身份、检出本地配置、私有 writer 后的类型化事件，采用上一版草案的 18 类模型。在任何 runtime 切换前收敛到本设计。runtime 仍写 schema 4。 |
 | [#738](https://github.com/genai-io/san/pull/738) | 已合并：core 中可选的 SDK 准入边界。 |
-| runtime 切换、生命周期（回收站/保留）、旧格式转换 | 未开始；规格见下文。 |
+| runtime 切换、生命周期（回收站/保留） | 未开始；规格见下文。切换是破坏性变更（见[兼容性](#兼容性)）。 |
 
 ## 模型
 
@@ -46,7 +46,6 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
 路径取绝对路径、解析符号链接、保留大小写，与信任检查使用同一套规范化。项目目录为
 `~/.san/projects/<hash(kind + key)>/`，其中 `project.json` 记录键和显示名；它只是描述信息，
 不是身份注册表。因此仓库移动后得到新项目；关联旧项目须显式命令，绝不自动进行。
-旧的 `<hash(cwd)>` 分区原地保持可读，不移动、不合并。
 
 每个会话在创建时固定 `project`、`workspace` 和 `initial_cwd`。当前工作目录是会话状态
 （`execution_cwd`）；改变它会按新位置刷新工具、设置和信任，但绝不把会话移到别的项目。
@@ -72,14 +71,11 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
     blobs/                         按 sha256 内容寻址
   cache/<sid>.json                 列表行摘要（派生）
   trash/<sid>/                     整个移入的已删除会话目录
-  transcripts/<sid>.jsonl          schema-4 会话，转换后只读
 ```
 
-目录按“丢失后果”分组：`sessions/` 与 `trash/` 是权威数据，`cache/` 可丢弃，`transcripts/` 是原样保留的旧格式。
-一个会话就是一个目录，因此删除、恢复、分叉、备份都只处理一个单元，目录重命名是原子的。`sessions/` 中的会话
-遮蔽 `transcripts/` 中同 ID 的文件。父子会话在 `sessions/` 中平级；关联记录在子会话的 `session.create` 中。
-以 `.` 开头的名字是暂存，发现时忽略。
-以 `.` 开头的文件是暂存文件，发现时忽略。
+目录按“丢失后果”分组：`sessions/` 与 `trash/` 是权威数据，`cache/` 可丢弃。一个会话就是一个目录，
+因此删除、恢复、分叉、备份都只处理一个单元，目录重命名是原子的。父子会话在 `sessions/` 中平级；
+关联记录在子会话的 `session.create` 中。以 `.` 开头的名字是暂存，发现时忽略。
 
 ## 事件
 
@@ -214,7 +210,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 | `/clear` | 新会话（`Create`）。旧会话保持完整、可恢复。不设 `context.clear`：一个会话只承载一段对话。 |
 | 回退或编辑之前的消息（目前未实现） | 在该消息之前的 `seq` 处 `Fork`，再在分叉中 `message.append`。源会话从不被改写，因此不需要 `context.rewind`。 |
 | 中断的轮次留下没有结果的工具调用 | 不记录。上下文保留它们；每次构建请求时修复工具配对（`ai.Repair`）。 |
-| 恢复、分叉或子 agent 续跑时把上下文加载进 runtime | 不记录。runtime 接收投影；与投影相同的替换不是事件。schema 4 会把它记成 `conversation.replaced`。 |
+| 恢复、分叉或子 agent 续跑时把上下文加载进 runtime | 不记录。runtime 接收投影；与投影相同的替换不是事件。 |
 | 子 agent 模型回退 | `session.update.config`；上下文不变。 |
 | 请求的 provider 适配（如纯文本模型的图片处理） | 不记录。它是上下文与请求配置的纯函数。 |
 
@@ -378,34 +374,16 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 读取回收站中的会话需要 `visibility=trash`；`Open`、`Fork`、`Append` 在恢复前拒绝它们。
 
-## 从 schema 4 迁移
+## 兼容性
 
-新会话使用类型化事件。schema-4 transcript 通过适配器保持可读，并在首次恢复时、持有 writer 锁的情况下转换：
-
-1. 按下表把记录映射到暂存目录 `sessions/.<sid>/`，并复制 blob。
-2. 验证投影出的上下文和历史与旧读取器一致。
-3. 把暂存目录重命名为 `sessions/<sid>/` 发布，会话 ID 不变，使父链接和群组成员关系保持有效。原件仍在 `transcripts/` 中，不动，被新目录遮蔽。
-
-验证失败时，会话以旧格式保持只读，可作为其旧上下文的分叉继续。转换从不虚构事实：旧记录缺少的字段保持缺省。
-
-| Schema 4 | 目标 |
-| --- | --- |
-| `session.started`、`session.forked` | `session.create` |
-| SDK message / `message.appended` | `message.append` |
-| SDK truncate + 重新保存的消息（`conversation.replaced`） | 有 `session.compacted` 指向摘要：`context.compact`。写入空上下文（子 agent 记录）：`message.append`。与当前上下文相同（恢复时重新加载）：丢弃。其他情况阻止转换。 |
-| `session.state.patched` | `session.update`（model/mode/autopilot → config；title/tasks/group → state）；`lastPrompt` 可推导，丢弃 |
-| `inference.requested` / `responded` / `failed` | `inference.start {purpose: turn}` / `inference.finish`；丢弃 `messageIds`（即事件之前的上下文） |
-| `system.section.added/removed` | `instructions.update` set/remove；`caller` → `cause` |
-| `tool.added/removed` | `toolset.update` set/remove；`caller` → `cause` |
-| `tool.completed` | `tool.finish` |
-| `permission.required` + `permission.decided` | 合为一条 `permission.decide`；请求中的选项和细节成为 `asked`。没有裁决的请求丢弃（该调用从未运行）。 |
-| `hook.fired` | 结局为终态时映射为 `hook.finish`；仅异步派发的丢弃 |
-| `skill.state.changed` | `skills.update` |
-| `notice.added` | `annotation.add`（`afterMessageId` → `after_message`） |
+这是有意为之的破坏性变更：保留旧格式需要可能虚构或丢失事实的映射规则、一致性门禁和第二套读取器，
+上文每条规则也都得加上“除非是旧格式”。切换之后 San 只读写上述布局。早期版本写下的会话
+（`transcripts/`、`<hash(cwd)>` 分区）既不读取也不转换，原样留在磁盘上，用户可自行删除。
+向前方面，未知的事件 `type` 或更新的 `v` 会阻止恢复（见[事件](#事件)）。
 
 ## 交付计划
 
-已合并的代码（#737、#738）实现的是上一版草案。下面每一片都是独立 PR，在最后一片之前 runtime 仍写 schema 4。
+已合并的代码（#737、#738）实现的是上一版草案。下面每一片都是独立 PR，在最后一片之前 runtime 仍写当前格式，最后一片将其移除。
 
 | # | 分片 | 替换 / 新增 |
 | --- | --- | --- |
@@ -414,21 +392,19 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
 | 4 | attrs 与缓存 | `attrs.json`、`cache/`、大小 + 批次哈希有效性、按偏移的事件分页 |
 | 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
-| 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；带一致性门禁的 schema-4 转换 |
+| 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；删除 schema-4 记录、投影器、`internal/transcript` 以及 `project.go` 中的旧分区查找 |
 
 第 1–2 片要求移植 #737 的测试，而不是删除。
 
 第 6 片改变的是路径，不只是格式。所有使用旧平铺路径的地方都要迁到会话目录：`Session.TranscriptPath` 及其
 对 hook 暴露的路径、`session` 中的发现与列表、检查器（`cmd/san/inspector.go`、`internal/inspector`）以及
 `transcript.Store`。每个会话目录作为独立的 sdk-go store 打开，固定 ID 为 `events`，因此 sdk-go 的批次格式、
-writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关闭后目录可直接重命名）。发现时先查
-`sessions/<sid>/`，再回退到 `transcripts/<sid>.jsonl`，同一个会话不会出现两次。`sessions/`、`trash/`、`cache/`
+writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关闭后目录可直接重命名）。`sessions/`、`trash/`、`cache/`
 必须在同一文件系统上，这是重命名原子性的前提。
 
 代码布局遵循同样的划分。`internal/session` 负责产品层 Store 与 Session；其类型化事件代码按职责分文件
 （`event_model`、`event_validation`、`event_projector`、`event_storage`、`event_query`），而不是新建包，
-因为事件模型在 `session` 之外没有使用方。`internal/transcript` 保留 schema 4 与 sdk-go 封装，第 6 片落地后
-收缩为旧格式读取器。通用部分（批次封装、writer 锁）留在 sdk-go。
+因为事件模型在 `session` 之外没有使用方。`internal/transcript` 在第 6 片中删除，其仍被新模型需要的部分（摘要、恢复）并入 `session`。通用部分（批次封装、writer 锁）留在 sdk-go。
 
 ## 备选方案
 
@@ -440,7 +416,7 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
   它们覆盖的每个场景都对应到上面的提交规则。
 - **每次调用都存请求精确副本。** 精确，但每一轮的副本都重复整段对话（存储平方增长），且丢失目录何时、
   为何变化。只有独立调用才存副本。
-- **只记录主循环调用**（schema 4）。用量和成本会漏掉压缩、reviewer、hook 和旁路调用，其结果也没有溯源。
+- **只记录主循环调用**（当前行为）。用量和成本会漏掉压缩、reviewer、hook 和旁路调用，其结果也没有溯源。
 - **归档与固定作为事件。** 这会要求持有 writer 锁才能整理在别处打开的会话；它们也不是对话事实。
 - **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
   `/clear` 新建会话，回退或编辑更适合用保持源会话完整的分叉来表达（见[上下文操作](#上下文操作)）。
@@ -452,13 +428,14 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
   回放 1,000 条消息慢约 20%，列出 100 个会话在缓存热时快 3.5 倍、内存缓存丢失后慢 25 倍
   （JSONL 有持久化摘要），二进制增大 3.8 MB。不值得引入第二个存储引擎；只有在优化摘要缓存和
   回放分配之后、出现新证据时再考虑。
-- **原地迁移或双写。** sdk-go 禁止在同一文件中混用旧记录与批次，双写会使故障模式翻倍。转换一次，保留原件。
+- **读取、转换或双写旧格式。** 转换要映射缺少 start、链接或结局的记录，要么虚构事实要么被阻止；双写使故障模式翻倍；
+  sdk-go 也禁止在同一文件中混用两种记录。不背负它，每条规则才能无条件成立。
 
 ## 验证
 
 - 身份：worktree 共享项目；clone、submodule 和非 Git 子目录不共享；配置保持检出本地。
 - 事件：每种事件类型往返无损；原生 provider 字段保留；回放无副作用；批次重试幂等、冲突失败。
-- 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途、转换中途，均恢复到已提交状态。
+- 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途，均恢复到已提交状态。
 - 压缩：`through` 边界、连续压缩、失败时上下文不变。
 - 模型调用：每种用途都能重建精确请求（对话调用由事件重建且与摘要值一致，独立调用取自副本）；用量汇总与 provider 一致；恢复重新加载和请求时修复不写事件。
 - 关卡：每个工具调用恰有一个裁决；被拒绝的调用有错误结果、没有 `tool.finish`；会话授权不会恢复。
@@ -466,7 +443,7 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
 - 中断的工具：无裁决 → 从未运行；已允许无 finish → 结局未知；都不重试。
 - 删除源后分叉仍独立；子 agent 延迟结果。
 - 生命周期：固定与忙碌保护、回收站期限、保留默认关闭、GC 保留未知文件。
-- 旧格式：在真实 schema-4 会话上验证转换一致性，包括压缩和替换过的对话。
+- 切换：不再保留 schema-4 读取器；旧项目目录被忽略，而不是被误读。
 
 ## 未决问题
 

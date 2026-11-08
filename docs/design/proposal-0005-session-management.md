@@ -13,7 +13,7 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged: committed batches (`Writer.Commit`, `Store.Batches`). |
 | [#737](https://github.com/genai-io/san/pull/737) | Merged: project/worktree identity, checkout-local settings, typed events behind a private writer, using the previous draft's 18-type model. It converges to this design before any runtime cutover. Runtime still writes schema 4. |
 | [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
-| Runtime cutover, lifecycle (trash/retention), legacy conversion | Not started; specified below. |
+| Runtime cutover, lifecycle (trash/retention) | Not started; specified below. The cutover is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 
@@ -53,8 +53,7 @@ normalization as trust checks. The project directory is
 `~/.san/projects/<hash(kind + key)>/`. `project.json` inside it records the key
 and a display name; it is descriptive, not an identity registry. A moved
 repository therefore gets a new project; relinking an old one is an explicit
-command, never automatic. Legacy `<hash(cwd)>` partitions stay readable where
-they are; nothing is moved or merged.
+command, never automatic.
 
 Each session fixes `project`, `workspace` and `initial_cwd` at creation. The
 current working directory is session state (`execution_cwd`); changing it
@@ -85,17 +84,14 @@ Configuration does not move into session storage:
     blobs/                         content-addressed by sha256
   cache/<sid>.json                 list-row summary (derived)
   trash/<sid>/                     a deleted session directory, moved whole
-  transcripts/<sid>.jsonl          schema-4 sessions, read-only once converted
 ```
 
 Directories group data by what happens when it is lost. `sessions/` and
-`trash/` hold authoritative data, `cache/` is disposable, and `transcripts/` is
-the legacy format, left untouched. A session is one directory, so deleting,
-restoring, forking and backing it up each handle one unit, and a rename of that
-directory is atomic. A session in `sessions/` shadows a same-ID file in
-`transcripts/`. Parent and child sessions are peers in `sessions/`; the link
-lives in the child's `session.create`. Names starting with `.` are staging and
-are ignored by discovery.
+`trash/` hold authoritative data; `cache/` is disposable. A session is one
+directory, so deleting, restoring, forking and backing it up each handle one
+unit, and a rename of that directory is atomic. Parent and child sessions are
+peers in `sessions/`; the link lives in the child's `session.create`. Names
+starting with `.` are staging and are ignored by discovery.
 
 ## Events
 
@@ -263,7 +259,7 @@ Every other operation that seems to change it is covered elsewhere:
 | `/clear` | A new session (`Create`). The old one stays intact and resumable. No `context.clear`: one session holds one conversation. |
 | Rewind or edit an earlier message (not implemented today) | `Fork` at the `seq` before that message, then `message.append` in the fork. The source is never rewritten, so no `context.rewind` is needed. |
 | Interrupted turn leaving tool calls without results | Nothing. Context keeps them; request building repairs tool pairing (`ai.Repair`) every time. |
-| Loading context into the runtime on resume, fork or subagent continuation | Nothing. The runtime receives the projection; a replacement equal to the projection is not an event. Schema 4 records it as `conversation.replaced`. |
+| Loading context into the runtime on resume, fork or subagent continuation | Nothing. The runtime receives the projection; a replacement equal to the projection is not an event. |
 | Subagent model fallback | `session.update.config`; context unchanged. |
 | Provider adaptation of a request (e.g. images for text-only models) | Nothing. A pure function of context and request config. |
 
@@ -457,40 +453,21 @@ live/archived --Delete / retention--> trash --7 days--> purged
 Reads of trashed sessions require `visibility=trash`; `Open`, `Fork` and
 `Append` reject them until restored.
 
-## Migration from schema 4
+## Compatibility
 
-New sessions use typed events. Schema-4 transcripts remain readable through an
-adapter and are converted on first resume, under the writer lock:
-
-1. Map records with the table below into a staging directory `sessions/.<sid>/`, copying blobs.
-2. Verify the projected context and history match the legacy reader.
-3. Publish by renaming the staging directory to `sessions/<sid>/`, under the same
-   session ID so parent links and group membership stay valid. The original
-   stays in `transcripts/`, untouched, and is shadowed by the new directory.
-
-If verification fails, the session stays read-only in legacy form and can be
-continued as a fork of its legacy context. Conversion never invents facts:
-fields the old records lack are left absent.
-
-| Schema 4 | Target |
-| --- | --- |
-| `session.started`, `session.forked` | `session.create` |
-| SDK message / `message.appended` | `message.append` |
-| SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Equal to the current context (resume reload): dropped. Anything else blocks conversion. |
-| `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state); `lastPrompt` dropped as derivable |
-| `inference.requested` / `responded` / `failed` | `inference.start {purpose: turn}` / `inference.finish`; `messageIds` dropped (the context before the event) |
-| `system.section.added/removed` | `instructions.update` set/remove; `caller` → `cause` |
-| `tool.added/removed` | `toolset.update` set/remove; `caller` → `cause` |
-| `tool.completed` | `tool.finish` |
-| `permission.required` + `permission.decided` | One `permission.decide`; the request's options and detail become `asked`. A request without a decision is dropped (the call never ran). |
-| `hook.fired` | `hook.finish` when its outcome is terminal; async-only dropped |
-| `skill.state.changed` | `skills.update` |
-| `notice.added` | `annotation.add` (`afterMessageId` → `after_message`) |
+This is a breaking change, made on purpose: carrying the old format would need
+mapping rules that can invent or drop facts, a parity gate and a second reader,
+and every rule above would have to say "unless legacy". After the cutover San
+reads and writes only the layout above. Sessions written by earlier versions
+(`transcripts/`, `<hash(cwd)>` partitions) are neither read nor converted; they
+stay on disk untouched and the user may delete them. Forward, an unknown event
+`type` or a newer `v` blocks resume (see [Events](#events)).
 
 ## Delivery plan
 
 Merged code (#737, #738) implements the previous draft. Each slice below is an
-independent PR that keeps runtime writing schema 4 until the last one.
+independent PR that keeps runtime writing the current format until the last one,
+which removes it.
 
 | # | Slice | Replaces / adds |
 | --- | --- | --- |
@@ -499,7 +476,7 @@ independent PR that keeps runtime writing schema 4 until the last one.
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
 | 4 | Attrs and cache | `attrs.json`, `cache/`, size + batch-hash validity, event pages by offset |
 | 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
-| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; schema-4 conversion with parity gate |
+| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the schema-4 records, projector, `internal/transcript` and the legacy-partition lookup in `project.go` |
 
 Slices 1–2 are gated by #737's tests being ported, not deleted.
 
@@ -509,18 +486,16 @@ discovery and listing in `session`, the inspector (`cmd/san/inspector.go`,
 `internal/inspector`), and `transcript.Store`. Each session directory is opened as
 its own sdk-go store with the fixed ID `events`, which keeps sdk-go's batch format,
 writer lock and recovery unchanged (verified: one writer per directory, and the
-directory renames cleanly once closed). Discovery checks `sessions/<sid>/` first and
-falls back to `transcripts/<sid>.jsonl`; a session never appears twice. All of
-`sessions/`, `trash/` and `cache/` must be on one filesystem, which is what makes
-the renames atomic.
+directory renames cleanly once closed). All of `sessions/`, `trash/` and `cache/`
+must be on one filesystem, which is what makes the renames atomic.
 
 Code layout follows the same split. `internal/session` owns the product Store
 and Session; its typed-event code is grouped by responsibility in files
 (`event_model`, `event_validation`, `event_projector`, `event_storage`,
 `event_query`) rather than a new package, as the event model has no consumer
-outside `session`. `internal/transcript` keeps schema 4 and the sdk-go wrapper,
-and shrinks to the legacy reader once slice 6 lands. Generic pieces (batch
-framing, writer lock) stay in sdk-go.
+outside `session`. `internal/transcript` is deleted in slice 6; what it still
+does that the new model needs (summaries, recovery) moves into `session`.
+Generic pieces (batch framing, writer lock) stay in sdk-go.
 
 ## Alternatives considered
 
@@ -537,7 +512,7 @@ framing, writer lock) stay in sdk-go.
 - **An exact copy of every request.** Exact, but each turn's copy repeats the
   whole conversation (quadratic storage) and loses when and why a catalogue
   changed. Copies are kept only for standalone calls.
-- **Recording only main-loop calls** (schema 4). Usage and cost would miss
+- **Recording only main-loop calls** (today's behaviour). Usage and cost would miss
   compaction, reviewer, hook and side calls, and their results would have no
   provenance.
 - **Archive and pin as events.** That would require the writer lock to organize
@@ -560,9 +535,10 @@ framing, writer lock) stay in sdk-go.
   once the in-memory cache was lost (JSONL had persisted summaries), and the
   binary grew 3.8 MB. Not worth a second storage engine; revisit only with new
   evidence, after optimizing summary caching and replay allocations.
-- **In-place migration or dual writes.** sdk-go forbids mixing legacy and batch
-  records in one file, and dual writes double the failure modes. Convert once,
-  keep the original.
+- **Reading, converting or dual-writing the old format.** Conversion must map
+  records that lack starts, links or outcomes, so it either invents facts or
+  blocks; dual writes double the failure modes; sdk-go forbids mixing the two
+  record kinds in one file. Not carrying it keeps every rule unconditional.
 
 ## Validation
 
@@ -571,7 +547,7 @@ framing, writer lock) stay in sdk-go.
 - Events: every event type round-trips; native provider fields survive; replay has
   no side effects; batch retries are idempotent and conflicts fail.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
-  mid-restore, mid-conversion. Each recovers to a committed state.
+  mid-restore. Each recovers to a committed state.
 - Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
 - Model calls: every purpose rebuilds its exact request (conversation calls
   from events matching the digests, standalone calls from their copy); summed usage matches
@@ -584,8 +560,7 @@ framing, writer lock) stay in sdk-go.
 - Fork independence after source deletion; subagent late results.
 - Lifecycle: pin and busy guards, trash deadline, retention off by default, GC
   keeps unknown files.
-- Legacy: conversion parity on real schema-4 sessions, including compactions and
-  replaced conversations.
+- Cutover: no schema-4 reader remains; an old project directory is ignored, not misread.
 
 ## Open questions
 
