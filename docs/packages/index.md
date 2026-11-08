@@ -27,7 +27,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 | [subagent](subagent.md) | Subagent definitions and execution |
 | [task](task.md) | Background tasks and progress |
 | [tool](tool.md) | Tool schemas and execution |
-| [transcript](transcript.md) | Event logs and recovery |
+| [transcript](transcript.md) | Events and recovery |
 | [workflow](workflow.md) | Multi-agent workflow scheduling |
 
 Use package names for filenames and `.zh.md` for translations.
