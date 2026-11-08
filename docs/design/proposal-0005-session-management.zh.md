@@ -21,7 +21,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
   ├── Session  (可恢复的对话；workspace = 它运行的检出目录)
   │     ├── events     只追加、权威、单 writer
   │     ├── attrs      用户意图：改过的标题、归档、固定（可选）
-  │     └── blobs      事件引用的内容（图片、大型工具输出、请求正文）
+  │     └── blobs      事件引用的内容（图片、大型工具输出、独立调用的请求）
   └── cache            只含派生摘要；随时可删
 ```
 
@@ -119,7 +119,7 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | | `session.update` | `config?`：provider、model、生成选项、模式、autopilot 策略。`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint | `config` 作用于下一次请求；`state` 按字段替换。 |
 | 对话 | `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
 | | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
-| 模型调用 | `inference.start` | `purpose`、`turn_id?`、`request`（provider、model、选项）、`input`（`prefix {extra?}` 或 `body`）、`instructions_digest?`、`toolset_digest?` | 打开一次模型调用；每次重试都是独立调用。见[模型调用](#模型调用)。 |
+| 模型调用 | `inference.start` | `purpose`、`turn_id?`、`request`（provider、model、选项）、`input`（`conversation {append?}` 或 `standalone`）、`instructions_digest?`、`toolset_digest?` | 打开一次模型调用；每次重试都是独立调用。见[模型调用](#模型调用)。 |
 | | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
 | 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/reviewer）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。 |
 | | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 已运行调用的结局与展示细节。结果正文在工具结果消息中。未通过关卡的调用只有裁决和一条错误工具结果消息。 |
@@ -142,33 +142,35 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 
 ### 模型调用
 
-San 发起的每次模型调用都会记录，因此用量和成本完整，每个请求都能重建。一次调用是 `inference.start`
-加 `inference.finish`；其结果落在拥有它的事件中，该事件以 `source` 指向这次调用。
+San 记录自己发起的每次模型调用，因此用量和成本完整，每个请求都能重建。一次调用是 `inference.start`
+加 `inference.finish`。调用结果写进拥有它的事件，该事件以 `source` 指向这次调用。
 
-请求用两种输入模式之一描述：
+要重建请求，事件必须说明模型收到了什么。调用分两类：
 
-| 模式 | 请求是 | `inference.start` 记录 |
-| --- | --- | --- |
-| `prefix` | 当前对话：事件之前投影出的上下文、instructions 和 toolset，后接 `extra` 消息 | `input.prefix {extra?}`、`instructions_digest`、`toolset_digest` |
-| `body` | 其他所有情况 | `input.body`：精确请求（system、messages、tools）的摘要，内容在 `blobs/` 中只存一次 |
+| 类别 | 模型收到的内容 | `inference.start` 记录什么 | 例子 |
+| --- | --- | --- | --- |
+| 对话调用 | 本会话此刻的对话本身（上下文、系统提示、工具），再加几条只为这次调用追加的消息 | `input.conversation {append?}`：只记追加的消息。其余内容已在事件中，由 `instructions_digest` 和 `toolset_digest` 校验。 | 普通一轮不追加；`/btw` 追加那个问题。 |
+| 独立调用 | 单独构建的请求，有自己的提示和输入 | `input.standalone`：请求精确副本的摘要，副本在 `blobs/` 中只存一次 | reviewer 收到的是它自己的提示加待审的工具调用。 |
 
-`prefix` 让频繁且庞大的调用保持线性存储，并保留目录何时、为何变化；`body` 让其余调用精确可重建，
-不依赖以后的程序如何构建它。`prefix` 调用在提交其 `inference.start` 的同一临界区内捕获前缀，
-因此中间不会插入任何追加。非 `turn` 前缀中的工具只为命中提示缓存而发送，从不运行。
+对话调用频繁且携带整段对话，若每次都复制，等于每次调用都把对话再存一遍；引用事件则只存一次。
+独立调用小或少见，其形状属于构建它的代码，只有存精确副本，才能在那段代码改变后仍能重建。
 
-| 用途 | 模式 | 结果记录为 |
-| --- | --- | --- |
-| `turn` | `prefix` | `message.append` |
-| `btw`（旁路提问） | `prefix`；extra = 进行中占位 + 问题 | `annotation.add` |
-| `recap` | `prefix`；extra = 占位 + recap 提示 | `annotation.add` |
-| `suggest` | `prefix`；extra = 占位 + 建议提示 | 不记录；被采纳的文本之后作为用户输入到达 |
-| `compaction` | `body` | `context.compact` |
-| `reviewer` | `body` | `permission.decide {by: reviewer}` |
-| `hook`（prompt hook） | `body` | `hook.finish` |
-| `autopilot` | `body` | `session.update`（进度）或 `message.append`（下一条指令） |
-| `group`（解释 `/group`） | `body` | `session.update`（group hint）或 `annotation.add` |
+对话调用在同一临界区内读取对话并提交其 `inference.start`，因此中间不会插入任何消息。旁路调用发送工具
+只是为了命中提示缓存，工具从不运行。
 
-新用途上线前须声明其模式和结果事件；默认是 `body`。自带循环的 agent（子 agent、自学习复审）记录在各自的会话中。
+| 用途 | 类别 | 追加的消息 | 结果记录为 |
+| --- | --- | --- | --- |
+| `turn` | 对话 | 无 | `message.append` |
+| `btw`（旁路提问） | 对话 | 进行中工作的占位、问题 | `annotation.add` |
+| `recap` | 对话 | 占位、recap 提示 | `annotation.add` |
+| `suggest` | 对话 | 占位、建议提示 | 不记录；被采纳的文本之后作为用户输入到达 |
+| `compaction` | 独立 | — | `context.compact` |
+| `reviewer` | 独立 | — | `permission.decide {by: reviewer}` |
+| `hook`（prompt hook） | 独立 | — | `hook.finish` |
+| `autopilot` | 独立 | — | `session.update`（进度）或 `message.append`（下一条指令） |
+| `group`（解释 `/group`） | 独立 | — | `session.update`（group hint）或 `annotation.add` |
+
+新用途上线前须声明其类别和结果事件；默认是独立调用。自带循环的 agent（子 agent、自学习复审）记录在各自的会话中。
 
 ### 提交规则
 
@@ -258,7 +260,7 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 ### 压缩
 
 ```text
-commit [inference.start {compaction, body}]      capture: context at seq S
+commit [inference.start {compaction, standalone}] capture: context at seq S
 generate summary of that context                 (no lock; turns are paused)
 commit [context.compact { summary, through: S }, inference.finish]
 
@@ -395,8 +397,8 @@ live/archived --Delete / retention--> trash --7 days--> purged
   已确定的事实：assistant 消息记录了调用，`permission.decide allow` 标记了它可以运行的时刻，子会话的
   `session.create` 与 `tool.finish.child_session` 记录了委派，`permission.decide.asked` 保留了展示给人的内容。
   它们覆盖的每个场景都对应到上面的提交规则。
-- **每次调用都存请求正文。** 精确，但 `turn` 正文每次都重复整个对话（存储平方增长），且丢失目录何时、
-  为何变化。只有在投影无法描述请求时才使用正文。
+- **每次调用都存请求精确副本。** 精确，但每一轮的副本都重复整段对话（存储平方增长），且丢失目录何时、
+  为何变化。只有独立调用才存副本。
 - **只记录主循环调用**（schema 4）。用量和成本会漏掉压缩、reviewer、hook 和旁路调用，其结果也没有溯源。
 - **归档与固定作为事件。** 这会要求持有 writer 锁才能整理在别处打开的会话；它们也不是对话事实。
 - **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
@@ -417,7 +419,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - 事件：每种事件类型往返无损；原生 provider 字段保留；回放无副作用；批次重试幂等、冲突失败。
 - 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途、转换中途，均恢复到已提交状态。
 - 压缩：`through` 边界、连续压缩、失败时上下文不变。
-- 模型调用：每种用途都能重建精确请求（`prefix` 由投影重建且与摘要值一致，`body` 取自 blob）；用量汇总与 provider 一致；恢复重新加载和请求时修复不写事件。
+- 模型调用：每种用途都能重建精确请求（对话调用由事件重建且与摘要值一致，独立调用取自副本）；用量汇总与 provider 一致；恢复重新加载和请求时修复不写事件。
 - 关卡：每个工具调用恰有一个裁决；被拒绝的调用有错误结果、没有 `tool.finish`；会话授权不会恢复。
 - 版本：未知类型或更新的 `v` 阻止恢复但仍可展示。
 - 中断的工具：无裁决 → 从未运行；已允许无 finish → 结局未知；都不重试。

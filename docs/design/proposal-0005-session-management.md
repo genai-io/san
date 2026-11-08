@@ -22,7 +22,7 @@ Project  (one per Git repository, or per directory outside Git)
   ├── Session  (a resumable conversation; workspace = the checkout it runs in)
   │     ├── events     append-only, authoritative, single writer
   │     ├── attrs      user intent: renamed title, archive, pin (optional)
-  │     └── blobs      content referenced by events (images, large tool outputs, request bodies)
+  │     └── blobs      content referenced by events (images, large tool outputs, standalone requests)
   └── cache            derived summaries only; deleting it is always safe
 ```
 
@@ -138,7 +138,7 @@ have one meaning each:
 | | `session.update` | `config?`: provider, model, generation options, mode, autopilot policy. `state?`: generated title, todos, execution_cwd, autopilot progress, group hint | `config` applies to the next request; `state` replaces fields. |
 | Conversation | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
 | | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
-| Model calls | `inference.start` | `purpose`, `turn_id?`, `request` (provider, model, options), `input` (`prefix {extra?}` or `body`), `instructions_digest?`, `toolset_digest?` | Opens one model call; each retry is its own call. See [Model calls](#model-calls). |
+| Model calls | `inference.start` | `purpose`, `turn_id?`, `request` (provider, model, options), `input` (`conversation {append?}` or `standalone`), `instructions_digest?`, `toolset_digest?` | Opens one model call; each retry is its own call. See [Model calls](#model-calls). |
 | | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
 | Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/grant/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. `grant` means an earlier session-scoped approval; grants are never restored on resume, so such calls ask again. |
 | | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details of a call that ran. The result body is the tool-result message. A call that did not pass the gate has only its decision and an error tool-result message. |
@@ -168,40 +168,44 @@ Payload rules:
 
 ### Model calls
 
-Every model call San makes is recorded, so usage and cost are complete and
+San records every model call it makes, so usage and cost are complete and
 every request can be rebuilt. A call is `inference.start` plus
-`inference.finish`; its result lands in the event that owns it, which names the
-call as `source`.
+`inference.finish`. Its result goes into the event that owns it, and that
+event names the call as `source`.
 
-A request is described in one of two input modes:
+To rebuild a request, the event must say what the model was sent. Calls fall
+into two kinds:
 
-| Mode | The request is | `inference.start` records |
-| --- | --- | --- |
-| `prefix` | The conversation as it stands: context, instructions and toolset projected just before the event, followed by `extra` messages | `input.prefix {extra?}`, `instructions_digest`, `toolset_digest` |
-| `body` | Anything else | `input.body`: digest of the exact request (system, messages, tools), stored once in `blobs/` |
+| Kind | What the model was sent | What `inference.start` records | Example |
+| --- | --- | --- | --- |
+| Conversation call | This session's own conversation at that moment (context, system prompt, tools), plus a few messages added for this call only | `input.conversation {append?}`: just the added messages. The rest is already in the events; `instructions_digest` and `toolset_digest` check it. | A normal turn appends nothing. `/btw` appends the question. |
+| Standalone call | A request built separately, with its own prompt and inputs | `input.standalone`: digest of an exact copy of the request, stored once in `blobs/` | The reviewer is sent its own prompt plus the tool call under review. |
 
-`prefix` keeps the frequent, large calls linear in storage and preserves when
-and why catalogues changed; `body` makes every other call exact, independent of
-how a later binary would build it. A `prefix` call captures its prefix in the
-same critical section that commits its `inference.start`, so no append can slip
-between them. Tools in a non-`turn` prefix are sent for the prompt cache and
-never run.
+Conversation calls are frequent and carry the whole conversation, so copying
+each one would store the conversation again on every call; referring to the
+events stores it once. Standalone calls are small or rare and their shape
+belongs to the code that built them, so an exact copy is the only way to
+rebuild them after that code changes.
 
-| Purpose | Mode | Result recorded as |
-| --- | --- | --- |
-| `turn` | `prefix` | `message.append` |
-| `btw` (side question) | `prefix`; extra = in-flight placeholders + question | `annotation.add` |
-| `recap` | `prefix`; extra = placeholders + recap prompt | `annotation.add` |
-| `suggest` | `prefix`; extra = placeholders + suggestion prompt | Nothing; accepted text arrives later as user input |
-| `compaction` | `body` | `context.compact` |
-| `reviewer` | `body` | `permission.decide {by: reviewer}` |
-| `hook` (prompt hooks) | `body` | `hook.finish` |
-| `autopilot` | `body` | `session.update` (progress) or `message.append` (next instruction) |
-| `group` (interpreting `/group`) | `body` | `session.update` (group hint) or `annotation.add` |
+A conversation call reads the conversation and commits its `inference.start`
+in one critical section, so no message can be appended in between. Side calls
+send the tools only so the prompt cache matches; the tools never run.
 
-A new purpose declares its mode and result event before it ships; `body` is the
-default. Agents that run their own loop (subagents, self-learning review)
-record in their own sessions.
+| Purpose | Kind | Messages appended | Result recorded as |
+| --- | --- | --- | --- |
+| `turn` | Conversation | None | `message.append` |
+| `btw` (side question) | Conversation | Placeholders for in-flight work, the question | `annotation.add` |
+| `recap` | Conversation | Placeholders, the recap prompt | `annotation.add` |
+| `suggest` | Conversation | Placeholders, the suggestion prompt | Nothing; accepted text later arrives as user input |
+| `compaction` | Standalone | — | `context.compact` |
+| `reviewer` | Standalone | — | `permission.decide {by: reviewer}` |
+| `hook` (prompt hooks) | Standalone | — | `hook.finish` |
+| `autopilot` | Standalone | — | `session.update` (progress) or `message.append` (next instruction) |
+| `group` (interpreting `/group`) | Standalone | — | `session.update` (group hint) or `annotation.add` |
+
+A new purpose declares its kind and result event before it ships; standalone
+is the default. Agents that run their own loop (subagents, self-learning
+review) record in their own sessions.
 
 ### Commit rules
 
@@ -306,7 +310,7 @@ operations in the copied prefix stay unfinished.
 ### Compaction
 
 ```text
-commit [inference.start {compaction, body}]      capture: context at seq S
+commit [inference.start {compaction, standalone}] capture: context at seq S
 generate summary of that context                 (no lock; turns are paused)
 commit [context.compact { summary, through: S }, inference.finish]
 
@@ -470,9 +474,9 @@ fields the old records lack are left absent.
   which it may run, the child's `session.create` and `tool.finish.child_session`
   record delegation, and `permission.decide.asked` keeps what the person was
   shown. Every scenario they covered maps to the commit rules above.
-- **A request body for every call.** Exact, but `turn` bodies repeat the whole
-  conversation each time (quadratic storage) and lose when and why a catalogue
-  changed. Bodies are used only where no projection describes the request.
+- **An exact copy of every request.** Exact, but each turn's copy repeats the
+  whole conversation (quadratic storage) and loses when and why a catalogue
+  changed. Copies are kept only for standalone calls.
 - **Recording only main-loop calls** (schema 4). Usage and cost would miss
   compaction, reviewer, hook and side calls, and their results would have no
   provenance.
@@ -509,8 +513,8 @@ fields the old records lack are left absent.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
   mid-restore, mid-conversion. Each recovers to a committed state.
 - Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
-- Model calls: every purpose rebuilds its exact request (`prefix` from
-  projections matching the digests, `body` from its blob); summed usage matches
+- Model calls: every purpose rebuilds its exact request (conversation calls
+  from events matching the digests, standalone calls from their copy); summed usage matches
   provider usage; resume reload and request-time repair write no events.
 - Gate: every tool call has exactly one decision; denied calls get an error
   result and no `tool.finish`; session grants are not restored.
