@@ -42,7 +42,7 @@ func TestOpenHoldsTheLeaseBeforeRestoringHistory(t *testing.T) {
 		}
 	}
 	appendMessage(owner, "m1")
-	if _, err := b.Read("s"); err != nil {
+	if _, err := b.Read("s", ReadOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if opened, _, err := b.Open("s"); err == nil {
@@ -67,7 +67,7 @@ func TestOpenHoldsTheLeaseBeforeRestoringHistory(t *testing.T) {
 	}
 	opened.RecordEvent(sdkagent.MessagesReplaced{Messages: history.Messages})
 	appendMessage(opened, "m3")
-	got, err := b.Read("s")
+	got, err := b.Read("s", ReadOptions{})
 	if err != nil || len(got.Messages) != 3 {
 		t.Fatalf("history lost: %+v, %v", got, err)
 	}
@@ -225,7 +225,7 @@ func TestRepeatedMessageDoesNotMoveTheParentPosition(t *testing.T) {
 			t.Fatalf("notice position=%s", record.Notice.AfterMessageID)
 		}
 	}
-	got, err := store.Read("s")
+	got, err := store.Read("s", ReadOptions{})
 	if err != nil || len(got.Messages) != 3 {
 		t.Fatalf("history=%+v, %v", got, err)
 	}
@@ -248,7 +248,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 		}
 	}
 	before := len(readAllRecords(t, store.projectDir, "s"))
-	history, err := store.Read("s")
+	history, err := store.Read("s", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Tasks: new([]todo.Item{}), Group: new("")}}); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := store.Read("s")
+	restored, err := store.Read("s", ReadOptions{})
 	if err != nil || len(restored.Tasks) != 0 || restored.Metadata.Group != "" {
 		t.Fatalf("state not cleared: %+v, %v", restored, err)
 	}

@@ -35,7 +35,7 @@ func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
 		t.Fatal(history)
 	}
 	reopened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new turn")}})
-	got, err := store.Read("original")
+	got, err := store.Read("original", ReadOptions{})
 	if err != nil || len(got.Messages) != 2 || got.Messages[1].ID != "new" {
 		t.Fatalf("history: %+v, %v", got, err)
 	}
@@ -61,11 +61,11 @@ func TestForkSessionWritesToItsOwnTranscript(t *testing.T) {
 	}
 	defer func() { _ = opened.Close() }()
 	opened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "after", Role: ai.RoleUser, Content: ai.TextContent("after")}})
-	parent, err := store.Read("parent")
+	parent, err := store.Read("parent", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := store.Read(fork.Metadata.ID)
+	child, err := store.Read(fork.Metadata.ID, ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

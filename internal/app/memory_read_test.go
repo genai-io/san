@@ -55,7 +55,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
-	history, err := store.Read("memory-anchor")
+	history, err := store.Read("memory-anchor", session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

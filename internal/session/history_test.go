@@ -18,7 +18,7 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap := &History{
-		Metadata: Metadata{ID: "history-test"},
+		Metadata: Metadata{ID: "history-test", Title: "Custom history", Mode: "plan", Group: "team", Provider: "test", Model: "model", ParentSessionID: "parent"},
 		Messages: []core.Message{
 			{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("run a command")},
 			{ID: "call", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "tc", Name: "Bash", Input: `{"command":"test"}`})}},
@@ -35,19 +35,40 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if err := store.transcriptStore.Append(context.Background(), transcript.Record{SessionID: snap.Metadata.ID, Time: time.Now(), Type: transcript.SessionCompacted, Compaction: &transcript.Compaction{MessageID: "summary"}}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Read(snap.Metadata.ID)
+	resumed, err := store.Read(snap.Metadata.ID, ReadOptions{})
 	if err != nil || len(resumed.Messages) != 1 || resumed.Messages[0].ID != "summary" {
 		t.Fatalf("resume should still stop at compaction: %+v, %v", resumed, err)
 	}
-	history, err := store.ReadChatHistory(snap.Metadata.ID)
+	full, err := store.Read(snap.Metadata.ID, ReadOptions{FullHistory: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !reflect.DeepEqual(full.Messages, snap.Messages) {
+		t.Fatalf("full read changed native messages: %+v", full.Messages)
+	}
+	// MessageCount describes the selected messages; all other metadata is preserved.
+	wantMetadata := resumed.Metadata
+	wantMetadata.MessageCount = len(snap.Messages)
+	if !reflect.DeepEqual(full.Metadata, wantMetadata) {
+		t.Fatalf("full read changed metadata: got=%+v want=%+v", full.Metadata, wantMetadata)
+	}
+	history := store.ChatRows(full)
 	if len(history) != 4 || history[2].ToolResult == nil || history[2].ToolResult.ToolName != "Bash" || history[2].ToolResult.Content.Text() != "full output\nLAST_LINE" {
 		t.Fatalf("history lost the compacted full result: %+v", history)
 	}
+	if !reflect.DeepEqual(full.Messages, snap.Messages) {
+		t.Fatal("display hydration changed native history")
+	}
 	// Reading history must not change the persisted resume boundary.
-	resumed, err = store.Read(snap.Metadata.ID)
+	opened, restored, err := store.Open(snap.Metadata.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Close()
+	if !reflect.DeepEqual(restored, resumed) {
+		t.Fatalf("Open restored full history instead of active context: %+v", restored)
+	}
+	resumed, err = store.Read(snap.Metadata.ID, ReadOptions{})
 	if err != nil || len(resumed.Messages) != 1 {
 		t.Fatalf("reading history changed resume: %+v, %v", resumed, err)
 	}

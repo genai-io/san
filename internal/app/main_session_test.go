@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -101,7 +102,7 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 							t.Fatalf("missing %s audit", marker)
 						}
 					}
-					history, err := store.Read(rec.ID())
+					history, err := store.Read(rec.ID(), session.ReadOptions{})
 					if err != nil || len(history.Messages) < 4 {
 						t.Fatalf("native history: %v", err)
 					}

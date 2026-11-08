@@ -37,7 +37,7 @@ func TestAgentIdentitySurvivesResumeAndForkWithoutModelLeak(t *testing.T) {
 			t.Fatal("identity leaked into model result")
 		}
 	}
-	h, err := store.Read("identity-source")
+	h, err := store.Read("identity-source", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

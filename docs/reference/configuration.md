@@ -57,6 +57,13 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 
 ## Overview
 
+Configuration files remain authoritative. Shared session project identity is separate
+from configuration scope: linked Git worktrees share a session namespace, not a forced
+settings source. San does not copy merged settings or credentials into a second
+editable database authority.
+Session overrides and historical request settings are not substitutes for current
+permission and workspace-trust checks.
+
 Configuration is loaded from multiple files at different scopes. Higher-priority files override lower-priority ones.
 
 **Load priority** (lowest → highest):
@@ -71,6 +78,28 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 | 6 | `./.san/settings.local.json` |
 | 7 | CLI arguments / environment variables |
 | 8 | `managed-settings.json` (read-only system policy) |
+
+For Git repositories, project `settings.json` files (San and Claude compatibility)
+are read from the **current checkout root**, including when launched in a repository
+subdirectory. Checked-out branch settings are respected. Non-Git directories use
+the exact working directory, without searching ancestors. Relative paths and
+symlinks resolve to the same checkout. Project-scope `settings.json` writes use that
+same root. No files are copied or synchronized, and a missing project file does not
+fall back to the original main checkout. Main-checkout configuration availability
+does not block a valid linked worktree; session identity requires only its valid
+Git metadata.
+
+Local settings are read from the target working directory. For linked Git
+worktrees, the loader also reads the main checkout's corresponding
+`.claude/settings.local.json` and `.san/settings.local.json`, in that order,
+after the worktree-local settings files, preserving existing precedence. Existing
+local permission-grant and memory-directory writes also retain this main-checkout
+`LocalDir` behavior; shared project identity does not introduce or remove that
+compatibility policy. Nonstandard metadata that cannot identify a conventional
+main checkout conservatively uses the current checkout for this helper.
+Existing trust filtering (including eligibility of untracked local files) still
+applies. Existing trust policy covers a repository and its worktrees; project
+registration itself does not grant trust or restore historical authorizations.
 
 **settings.json schema:**
 

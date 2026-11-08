@@ -21,6 +21,15 @@ through `Caller`.
 Config lives at `<project>/.san/mcp.json` (San) or
 `<project>/.claude/mcp_servers.json` (Claude-compat).
 
+When launched at a worktree root, native project configuration comes from that
+worktree's `.san/mcp.json`, not the main checkout's copy. Git-tracked configuration
+is available when present in the checked-out commit; uncommitted/ignored files are
+not automatically shared, and subsequent edits are independent. Missing project
+configuration does not trigger a main-checkout fallback. User-level configuration
+and the existing `mcp.local.json` compatibility precedence remain unchanged.
+Workspace trust still gates project servers; loading configuration does not connect
+or execute them. Session-owned MCP processes use the session's execution directory.
+
 ## Contract
 
 The package has four natural roles. Two surface as small interfaces;
@@ -124,6 +133,7 @@ that callers narrow to.
 
 ```
 internal/mcp/config_test.go               — config parse/merge.
+internal/mcp/worktree_config_test.go      — checked-out config, isolated edits, trust and runtime cwd.
 internal/mcp/registry_connecting_test.go  — connect/disconnect cycles.
 internal/mcp/hooks_test.go                — lifecycle hook emission.
 ```

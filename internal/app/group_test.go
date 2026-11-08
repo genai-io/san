@@ -38,11 +38,11 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
 	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	saved, err := store.ReadChatHistory("group-batch")
+	history, err := store.Read("group-batch", session.ReadOptions{FullHistory: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, messages := range [][]core.ChatMessage{m.conv.Messages, saved} {
+	for _, messages := range [][]core.ChatMessage{m.conv.Messages, store.ChatRows(history)} {
 		view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: messages, Width: 80}, 0))
 		for _, want := range []string{"From @api: API ready", "(+1 more)", "unattended 2"} {
 			if !strings.Contains(view, want) {

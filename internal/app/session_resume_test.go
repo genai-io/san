@@ -37,7 +37,8 @@ func (*failedTurnProvider) Client(string, map[string]string) (*ai.Client, error)
 func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	store, err := session.NewStoreWithDir(t.TempDir())
+	cwd := t.TempDir()
+	store, err := session.NewStoreWithDir(cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 		conv:      conv.NewModel(80),
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
 	}
-	m.env.CWD = t.TempDir()
+	m.env.CWD = cwd
 	m.env.FileCache = filecache.New()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
@@ -274,7 +275,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("retry never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s")
+	loaded, err := store.Read("s", session.ReadOptions{})
 	if err != nil || len(loaded.Messages) < 5 || !reflect.DeepEqual(loaded.Messages[:3], history) {
 		t.Fatalf("retry corrupted the durable history: %+v, %v", loaded, err)
 	}
@@ -292,7 +293,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	if len(m.conv.Messages) != 1 || m.conv.Messages[0].ID != seed[0].ID {
 		t.Fatal("UI and native summary have different identities")
 	}
-	loaded, err := store.Read("s")
+	loaded, err := store.Read("s", session.ReadOptions{})
 	if err != nil || !reflect.DeepEqual(loaded.Messages, seed) {
 		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
 	}
@@ -302,8 +303,12 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
-	rows, err := store.ReadChatHistory("s")
-	if err != nil || len(rows) != len(session.ChatRows(history))+1 {
+	full, err := store.Read("s", session.ReadOptions{FullHistory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := store.ChatRows(full)
+	if len(rows) != len(session.ChatRows(history))+1 {
 		t.Fatalf("starting after compaction erased browsable history: %+v, %v", rows, err)
 	}
 }
@@ -329,7 +334,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 		t.Fatal("text-only turn never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s")
+	loaded, err := store.Read("s", session.ReadOptions{})
 	if err != nil || len(loaded.Messages) < 3 || !reflect.DeepEqual(loaded.Messages[:2], history) {
 		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
 	}
@@ -373,7 +378,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 		t.Fatal("turn after rename never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s")
+	loaded, err := store.Read("s", session.ReadOptions{})
 	if err != nil || loaded.Metadata.Title != "renamed" || len(loaded.Messages) < 3 || loaded.Messages[2].ID != "after-name" {
 		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
 	}
@@ -405,12 +410,12 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
 				t.Fatalf("session switch changed the source membership: %+v", members)
 			}
-			source, err := store.Read("s")
+			source, err := store.Read("s", session.ReadOptions{})
 			if err != nil || source.Metadata.Group == "" {
 				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
 			}
 			if action == "fork" {
-				forked, err := store.Read(m.sessionID())
+				forked, err := store.Read(m.sessionID(), session.ReadOptions{})
 				if err != nil || forked.Metadata.Group != "" {
 					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
 				}

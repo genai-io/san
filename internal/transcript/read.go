@@ -17,6 +17,14 @@ import (
 // ConversationReplaced carrying the messages it keeps.
 func (s *Store) Records(ctx context.Context, id string) iter.Seq2[Record, error] {
 	return func(yield func(Record, error) bool) {
+		if err := ValidateStorageID(id); err != nil {
+			yield(Record{}, err)
+			return
+		}
+		if err := s.legacyFormat(ctx, id); err != nil {
+			yield(Record{}, err)
+			return
+		}
 		n := 0
 		var conv []ai.Message
 		for r, err := range s.log.Records(ctx, id) {

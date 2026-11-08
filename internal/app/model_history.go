@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 )
 
 type historyLoadedMsg struct {
@@ -28,7 +29,13 @@ func (m *model) openHistory() tea.Cmd {
 	if m.sessionID() != "" {
 		msg.sessionID = m.sessionID()
 		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
-			load = store.ReadChatHistory
+			load = func(id string) ([]core.ChatMessage, error) {
+				history, err := store.Read(id, session.ReadOptions{FullHistory: true})
+				if err != nil {
+					return nil, err
+				}
+				return store.ChatRows(history), nil
+			}
 		}
 	}
 	return func() tea.Msg {

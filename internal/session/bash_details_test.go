@@ -36,7 +36,7 @@ func TestBashTailSurvivesResumeAndFork(t *testing.T) {
 			t.Fatal("native result changed")
 		}
 	}
-	history, err := store.Read("source")
+	history, err := store.Read("source", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

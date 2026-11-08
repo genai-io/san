@@ -40,7 +40,7 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 		rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 	}
 
-	loaded, err := store.Read(sessionID)
+	loaded, err := store.Read(sessionID, ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 	if err := store.importHistory(&History{Metadata: Metadata{ID: sessionID}, Messages: loaded.Messages}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	again, err := store.Read(sessionID)
+	again, err := store.Read(sessionID, ReadOptions{})
 	if err != nil {
 		t.Fatalf("Load again: %v", err)
 	}

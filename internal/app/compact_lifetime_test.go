@@ -155,17 +155,19 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				m.OnCompactStart(99)
 				pending := m.pendingCompaction
 				before := m.services.Agent.Messages()
-				rows, err := store.ReadChatHistory(m.sessionID())
+				history, err := store.Read(m.sessionID(), session.ReadOptions{FullHistory: true})
 				if err != nil {
 					t.Fatal(err)
 				}
+				rows := store.ChatRows(history)
 				if cmd := m.HandleCompactResult(msg); cmd != nil {
 					t.Fatal("stale result produced command")
 				}
-				afterRows, err := store.ReadChatHistory(m.sessionID())
+				afterHistory, err := store.Read(m.sessionID(), session.ReadOptions{FullHistory: true})
 				if err != nil {
 					t.Fatal(err)
 				}
+				afterRows := store.ChatRows(afterHistory)
 				if m.pendingCompaction != pending || !m.conv.Compact.Active || m.conv.Compact.LastResult != "" || m.env.Compressions != 0 || !reflect.DeepEqual(before, m.services.Agent.Messages()) || !reflect.DeepEqual(rows, afterRows) {
 					t.Fatal("stale result altered current state or recording")
 				}
@@ -241,7 +243,7 @@ func TestManualCompactionCompletedResultOwnership(t *testing.T) {
 			if m.pendingCompaction != nil || request.Ctx.Err() == nil {
 				t.Fatal("completed request retained ownership")
 			}
-			loaded, err := store.Read("s")
+			loaded, err := store.Read("s", session.ReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -305,7 +307,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 					t.Fatal("failed recording replaced history")
 				}
 			} else {
-				loaded, err := store.Read("unopened")
+				loaded, err := store.Read("unopened", session.ReadOptions{})
 				if err != nil || len(loaded.Messages) != 1 || !reflect.DeepEqual(loaded.Messages, m.services.Agent.Messages()) {
 					t.Fatalf("unopened summary was not recorded: %v", err)
 				}
