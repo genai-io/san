@@ -181,6 +181,24 @@ into two kinds:
 | Conversation call | This session's own conversation at that moment (context, system prompt, tools), plus a few messages added for this call only | `input.conversation {append?}`: just the added messages. The rest is already in the events; `instructions_digest` and `toolset_digest` check it. | A normal turn appends nothing. `/btw` appends the question. |
 | Standalone call | A request built separately, with its own prompt and inputs | `input.standalone`: digest of an exact copy of the request, stored once in `blobs/` | The reviewer is sent its own prompt plus the tool call under review. |
 
+The boundary is mechanical. A call is a conversation call only if all three
+hold:
+
+1. its messages start with the session's context exactly as projected, and
+   anything added for the call comes after it, never inserted or edited;
+2. its system prompt and tools match the projected instructions and toolset,
+   checked by digest when `inference.start` is committed;
+3. it goes through the same request-time adaptation as a turn (tool-pairing
+   repair, provider adaptation) and nothing else.
+
+Anything else is standalone: summarizing text built from the conversation, a
+different prompt, a subset of tools, or a context not yet recorded. Provider,
+model and options never decide the kind; both kinds record them in `request`.
+The kind follows from the request, not from the purpose: the table below lists
+each purpose's usual kind, and a call whose digests do not match at commit is
+recorded as standalone. For example, a side call made before the runtime has
+started builds its own system prompt, so it is standalone.
+
 Conversation calls are frequent and carry the whole conversation, so copying
 each one would store the conversation again on every call; referring to the
 events stores it once. Standalone calls are small or rare and their shape
@@ -191,7 +209,7 @@ A conversation call reads the conversation and commits its `inference.start`
 in one critical section, so no message can be appended in between. Side calls
 send the tools only so the prompt cache matches; the tools never run.
 
-| Purpose | Kind | Messages appended | Result recorded as |
+| Purpose | Usual kind | Messages appended | Result recorded as |
 | --- | --- | --- | --- |
 | `turn` | Conversation | None | `message.append` |
 | `btw` (side question) | Conversation | Placeholders for in-flight work, the question | `annotation.add` |
