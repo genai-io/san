@@ -140,14 +140,15 @@ new typed Event batches -> ApplyEventBatch -> immutable Projection
 ReplayEventBatches --------------------------^ (preserves batch boundaries)
 ```
 
-- `event_model.go`: the 18 typed payload families, strict codec and tri-state patches.
+- `event_model.go`: the 13 typed payload families (identified by `seq`, linked by `source`), strict codec and tri-state patches. See [PROP-0005](../design/proposal-0005-session-management.md).
 - `event_validation.go`: `EventValidationContext`, `ForeignEventEvidence`, retained
   validation merging, validated event transitions and reference checks. `mergeValidation` preserves its inputs;
   `mergeReplayValidation` mutates only exclusively owned replay state.
 - `event_projector.go`: `ApplyEventBatch`, `ReplayEventBatches` and immutable
   `Projection` accessors. Native `ai.Message`/`ai.Schema` remain intact; full message
-  history stays separate from active context. Compaction validates the pre-batch
-  tail, retained order and native call/result pairing. Accessors detach snapshots.
+  history stays separate from active context. `context.compact` keeps messages appended after
+  `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
+  allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
 
 The unmerged persistence slice in `event_storage.go` adds private
@@ -199,10 +200,9 @@ closing that race requires a future SDK exclusive-create primitive.
 
 Open and reads replay the log; live preparation may copy accumulated projection
 and evidence. Large histories and many small batches therefore carry CPU,
-allocation and memory costs even for small pages. `InputRef` currently addresses
-local native message/call content, not arbitrary invocation bodies. Tests include
-`event_model_test.go`, `event_storage_test.go`, `event_storage_safety_test.go`,
-`event_query_test.go`, `event_validation_test.go` and `event_projector_test.go`;
+allocation and memory costs even for small pages. Tests include
+`event_model_test.go` (codec, validation, projection), `event_storage_test.go`,
+`event_storage_safety_test.go` and `event_query_test.go`;
 `event_projector_bench_test.go` covers replay/preparation costs.
 
 ## Storage and configuration

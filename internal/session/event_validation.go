@@ -1,31 +1,51 @@
 package session
 
 import (
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"math"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+const (
+	maxReason  = 4096
+	maxDetails = 1 << 20
+)
+
 // ForeignEventEvidence is acceptance-time provenance supplied by a trusted
 // adapter, not permission to execute anything. Keep this evidence alongside the
-// committed prefix for replay: replay must not consult a surviving foreign log.
+// committed prefix for replay: replay must not consult a surviving foreign session.
 type ForeignEventEvidence struct {
-	SessionID  string
 	Type       EventType
 	MessageIDs []string
 }
 
+// foreignKey addresses an event of another session in EventValidationContext.
+func foreignKey(session string, seq uint64) string {
+	return session + "#" + strconv.FormatUint(seq, 10)
+}
+func parseForeignKey(key string) (string, uint64, bool) {
+	i := strings.LastIndexByte(key, '#')
+	if i < 1 {
+		return "", 0, false
+	}
+	seq, err := strconv.ParseUint(key[i+1:], 10, 64)
+	return key[:i], seq, err == nil && seq > 0
+}
+
 // EventValidationContext contains only caller-validated facts. The caller owns
-// global ID collision checks, project/trust/asset validation, and persistence of
-// this acceptance evidence. ParentAncestors must include the parent itself;
-// ForkPrefixes binds source session IDs to verified available prefix lengths.
-// This projector neither obtains evidence nor manufactures missing starts.
+// project/trust/asset validation and persistence of this acceptance evidence.
+// ForeignEvents is keyed by foreignKey. ParentAncestors must include the parent
+// itself; ForkPrefixes binds source session IDs to verified prefix lengths.
+// This projector neither obtains evidence nor manufactures missing events.
 type EventValidationContext struct {
 	ForeignEvents   map[string]ForeignEventEvidence
 	ParentAncestors map[string][]string
@@ -41,7 +61,6 @@ func mergeValidation(prior, current EventValidationContext) (EventValidationCont
 }
 
 // mergeReplayValidation requires exclusively owned output, discarded on any error.
-// Mutating its evidence maps avoids copying all prior facts once per batch.
 func mergeReplayValidation(out, current EventValidationContext) (EventValidationContext, error) {
 	if out.ForeignEvents == nil {
 		out.ForeignEvents = map[string]ForeignEventEvidence{}
@@ -63,18 +82,19 @@ func mergeReplayValidation(out, current EventValidationContext) (EventValidation
 		}
 		return true
 	}
-	for id, fact := range current.ForeignEvents {
-		if !validID(id) || !validID(fact.SessionID) || !knownEventType(fact.Type) || !uniqueIDs(fact.MessageIDs) {
-			return out, fmt.Errorf("malformed foreign evidence %q", id)
+	for key, fact := range current.ForeignEvents {
+		session, _, ok := parseForeignKey(key)
+		if !ok || !validID(session) || !knownEventType(fact.Type) || !uniqueIDs(fact.MessageIDs) {
+			return out, fmt.Errorf("malformed foreign evidence %q", key)
 		}
 		if len(fact.MessageIDs) > 0 && fact.Type != EventMessageAppend {
 			return out, fmt.Errorf("non-message evidence has messages")
 		}
-		if old, ok := out.ForeignEvents[id]; ok && !reflect.DeepEqual(old, fact) {
-			return out, fmt.Errorf("contradictory foreign evidence %q", id)
+		if old, ok := out.ForeignEvents[key]; ok && !reflect.DeepEqual(old, fact) {
+			return out, fmt.Errorf("contradictory foreign evidence %q", key)
 		}
 		fact.MessageIDs = slices.Clone(fact.MessageIDs)
-		out.ForeignEvents[id] = fact
+		out.ForeignEvents[key] = fact
 	}
 	for id, ancestors := range current.ParentAncestors {
 		if !validID(id) || len(ancestors) == 0 || !uniqueIDs(ancestors) || !slices.Contains(ancestors, id) {
@@ -98,344 +118,336 @@ func mergeReplayValidation(out, current EventValidationContext) (EventValidation
 }
 
 func invalidEvent(format string, args ...any) error { return fmt.Errorf(format, args...) }
-func (p *Projection) apply(e Event, tail uint64, validation EventValidationContext) error {
-	if e.ID == "" || e.SessionID == "" || e.Seq != uint64(len(p.data.Events))+1 {
-		return invalidEvent("invalid identity or noncontiguous sequence")
+
+// source resolves an event's provenance link to the type and message IDs it names.
+func (p *Projection) source(e Event, validation EventValidationContext) (EventType, []string, bool, error) {
+	if e.Source == nil {
+		return "", nil, false, nil
+	}
+	if e.Source.Seq == 0 {
+		return "", nil, false, invalidEvent("source needs a seq")
+	}
+	if e.Source.Session == "" {
+		src := p.event(e.Source.Seq)
+		if src == nil {
+			return "", nil, false, invalidEvent("unresolved source")
+		}
+		return src.Type, p.messageIDsOf(src), true, nil
+	}
+	if e.Source.Session == p.data.SessionID {
+		return "", nil, false, invalidEvent("source names its own session explicitly")
+	}
+	f, ok := validation.ForeignEvents[foreignKey(e.Source.Session, e.Source.Seq)]
+	if !ok {
+		return "", nil, false, invalidEvent("unresolved foreign source")
+	}
+	return f.Type, f.MessageIDs, true, nil
+}
+func (p *Projection) messageIDsOf(e *Event) []string {
+	switch v := e.Payload.(type) {
+	case *MessageAppendPayload:
+		ids := make([]string, len(v.Messages))
+		for i, m := range v.Messages {
+			ids[i] = m.ID
+		}
+		return ids
+	case *ContextCompactPayload:
+		return []string{v.Summary.ID}
+	}
+	return nil
+}
+
+// closeInference ties an inference.finish to its unfinished local start.
+func (p *Projection) closeInference(e Event) (*InferenceStartPayload, error) {
+	if e.Source == nil || e.Source.Session != "" {
+		return nil, invalidEvent("finish needs a local source")
+	}
+	start := p.event(e.Source.Seq)
+	if start == nil || start.Type != EventInferenceStart {
+		return nil, invalidEvent("finish source must be inference.start")
+	}
+	if _, done := p.data.Terminals[start.Seq]; done {
+		return nil, invalidEvent("duplicate terminal result")
+	}
+	p.data.Terminals[start.Seq] = e.Seq
+	return start.Payload.(*InferenceStartPayload), nil
+}
+
+func (p *Projection) apply(e Event, validation EventValidationContext) error {
+	if e.Seq != uint64(len(p.data.Events))+1 {
+		return invalidEvent("noncontiguous sequence")
 	}
 	if e.SchemaVersion != 1 {
 		return invalidEvent("unsupported schema version %d", e.SchemaVersion)
 	}
-	if e.CreatedAt < 0 {
-		return invalidEvent("negative created_at")
+	if e.Time < 0 {
+		return invalidEvent("negative time")
 	}
-	if len(p.data.Events) > 0 && e.SessionID != p.data.Events[0].SessionID {
-		return invalidEvent("session mismatch")
+	if (e.Seq == 1) != (e.Type == EventSessionCreate) {
+		return invalidEvent("session.create must be exactly the first event")
 	}
-	if e.Seq == 1 && e.Type != EventSessionCreate {
-		return invalidEvent("first event must create session")
-	}
-	if _, exists := validation.ForeignEvents[e.ID]; exists {
-		return invalidEvent("event ID collides with foreign evidence")
-	}
-	if e.SourceID != "" {
-		if p.event(e.SourceID) == nil {
-			f, ok := validation.ForeignEvents[e.SourceID]
-			if !ok || f.SessionID == "" || f.SessionID == e.SessionID || !knownEventType(f.Type) {
-				return invalidEvent("unresolved source_id")
-			}
-		}
-	}
-	finish := e.Type == EventInferenceFinish || e.Type == EventToolFinish || e.Type == EventDelegationFinish || e.Type == EventHookFinish
-	if finish {
-		if e.Outcome != OutcomeSuccess && e.Outcome != OutcomeFailure && e.Outcome != OutcomeCancelled {
-			return invalidEvent("invalid terminal outcome")
-		}
-	} else if e.Outcome != "" {
-		return invalidEvent("unexpected outcome")
+	srcType, _, srcLocal, err := p.source(e, validation)
+	if err != nil {
+		return err
 	}
 	switch v := e.Payload.(type) {
 	case *SessionCreatePayload:
-		if e.Seq != 1 || v.ProjectID == "" || v.AgentID == "" || !filepath.IsAbs(v.Workspace) || !filepath.IsAbs(v.InitialCWD) {
+		if v.ProjectID == "" || v.AgentID == "" || !filepath.IsAbs(v.Workspace) || !filepath.IsAbs(v.InitialCWD) {
 			return invalidEvent("invalid creation identity")
 		}
-		if v.ParentSessionID != "" {
-			ancestors, ok := validation.ParentAncestors[v.ParentSessionID]
-			if !ok || !slices.Contains(ancestors, v.ParentSessionID) || slices.Contains(ancestors, e.SessionID) {
+		if v.Parent != nil {
+			ancestors, ok := validation.ParentAncestors[v.Parent.Session]
+			if !ok || !slices.Contains(ancestors, v.Parent.Session) || slices.Contains(ancestors, p.data.SessionID) {
 				return invalidEvent("unvalidated or cyclic parent")
 			}
 		}
-		if (v.ForkSourceID == "") != (v.ForkSourceSeq == 0) {
-			return invalidEvent("incomplete fork provenance")
-		}
-		if v.ForkSourceID != "" && (v.ForkSourceID == e.SessionID || validation.ForkPrefixes[v.ForkSourceID] < v.ForkSourceSeq) {
+		if f := v.Fork; f != nil && (f.Session == p.data.SessionID || f.Seq == 0 || validation.ForkPrefixes[f.Session] < f.Seq) {
 			return invalidEvent("unvalidated fork prefix")
 		}
-		if v.InitialConfig != nil {
-			if err := validateEventConfig(*v.InitialConfig); err != nil {
+		if v.Config != nil {
+			if err := validateEventConfig(*v.Config); err != nil {
 				return err
 			}
-			p.data.Config = *v.InitialConfig
+			p.data.Config = *v.Config
 		}
 		p.data.Identity = *v
 		cwd := v.InitialCWD
 		p.data.State.ExecutionCWD = &cwd
-	case *MessageAppendPayload:
-		if e.SourceID != "" {
-			t := validation.ForeignEvents[e.SourceID].Type
-			if source := p.event(e.SourceID); source != nil {
-				t = source.Type
-			}
-			if t != EventInferenceStart && t != EventToolStart && t != EventDelegationStart && t != EventMessageAppend && t != EventCompactionApply {
-				return invalidEvent("invalid message source family")
-			}
+	case *SessionUpdatePayload:
+		if v.Config == nil && v.State == nil {
+			return invalidEvent("empty session update")
 		}
-		if len(v.Messages) == 0 {
-			return invalidEvent("empty message batch")
+		beforeConfig, beforeState := eventCopy(p.data.Config), eventCopy(p.data.State)
+		if v.Config != nil {
+			applyConfigPatch(&p.data.Config, *v.Config)
 		}
-		if len(v.SourceMessageIDs) > 0 {
-			if e.SourceID == "" || len(v.SourceMessageIDs) != len(v.Messages) {
-				return invalidEvent("unaligned source message IDs")
-			}
-			sourceIDs := p.sourceMessageIDs(e.SourceID, validation)
-			for _, id := range v.SourceMessageIDs {
-				if id == "" || !slices.Contains(sourceIDs, id) {
-					return invalidEvent("unresolved source message ID")
-				}
-			}
+		if v.State != nil {
+			applyStatePatch(&p.data.State, *v.State)
 		}
-		for _, m := range v.Messages {
-			if m.Role == ai.RoleAssistant && e.SourceID == "" {
-				return invalidEvent("assistant message needs explicit provenance")
-			}
-			if err := p.addMessage(m); err != nil {
-				return err
-			}
-			p.data.ActiveIDs = append(p.data.ActiveIDs, m.ID)
-		}
-	case *CompactionApplyPayload:
-		if v.SourceSeq == 0 || v.SourceSeq != tail {
-			return invalidEvent("stale compaction source tail")
-		}
-		if e.SourceID != "" {
-			source := p.event(e.SourceID)
-			if source == nil || source.Type != EventInferenceStart {
-				return invalidEvent("summary source must be local inference.start")
-			}
-		}
-		last := -1
-		for _, id := range v.RetainedMessageIDs {
-			// Search only the unconsumed suffix: validating a subsequence is
-			// linear in the active history, not retained IDs times history.
-			offset := slices.Index(p.data.ActiveIDs[last+1:], id)
-			if offset < 0 {
-				return invalidEvent("retained IDs must be unique active subsequence")
-			}
-			last += offset + 1
-		}
-		if err := p.addMessage(v.Summary); err != nil {
-			return err
-		}
-		active := append([]string{v.Summary.ID}, v.RetainedMessageIDs...)
-		if err := p.validateToolPairs(active); err != nil {
-			return err
-		}
-		p.data.ActiveIDs = active
-	case *ConfigUpdatePayload:
-		before := eventCopy(p.data.Config)
-		applyConfigPatch(&p.data.Config, v.Patch)
-		if reflect.DeepEqual(before, p.data.Config) {
-			return invalidEvent("empty or unchanged config patch")
+		if reflect.DeepEqual(beforeConfig, p.data.Config) && reflect.DeepEqual(beforeState, p.data.State) {
+			return invalidEvent("unchanged session update")
 		}
 		if err := validateEventConfig(p.data.Config); err != nil {
 			return err
 		}
-	case *StateUpdatePayload:
-		before := eventCopy(p.data.State)
-		applyStatePatch(&p.data.State, v.Patch)
-		if reflect.DeepEqual(before, p.data.State) {
-			return invalidEvent("empty or unchanged state patch")
+		return validateEventState(p.data.State)
+	case *MessageAppendPayload:
+		if len(v.Messages) == 0 {
+			return invalidEvent("empty message batch")
 		}
-		if err := validateEventState(p.data.State); err != nil {
+		if e.Source != nil && srcType != EventInferenceStart && srcType != EventMessageAppend && srcType != EventContextCompact {
+			return invalidEvent("invalid message source family")
+		}
+		for _, m := range v.Messages {
+			if m.Role == ai.RoleAssistant && e.Source == nil {
+				return invalidEvent("assistant message needs explicit provenance")
+			}
+			if err := p.addMessage(m, e.Seq); err != nil {
+				return err
+			}
+			p.data.ActiveIDs = append(p.data.ActiveIDs, m.ID)
+		}
+	case *ContextCompactPayload:
+		if v.Through == 0 || v.Through >= e.Seq {
+			return invalidEvent("compaction through must name a committed event")
+		}
+		if e.Source != nil {
+			start, ok := p.event(e.Source.Seq).Payload.(*InferenceStartPayload)
+			if !srcLocal || !ok || start.Purpose != PurposeCompaction {
+				return invalidEvent("summary source must be a local compaction inference.start")
+			}
+		}
+		if err := p.addMessage(v.Summary, e.Seq); err != nil {
 			return err
 		}
+		active := []string{v.Summary.ID}
+		for _, id := range p.data.ActiveIDs {
+			if p.data.MessageSeq[id] > v.Through {
+				active = append(active, id)
+			}
+		}
+		if err := p.validateToolPairs(active); err != nil {
+			return err
+		}
+		p.data.ActiveIDs = active
 	case *InferenceStartPayload:
-		if v.TurnID == "" {
-			return invalidEvent("missing turn ID")
-		}
-		ids := map[string]bool{}
-		for _, id := range v.InputMessageIDs {
-			if p.message(id).ID == "" || ids[id] {
-				return invalidEvent("invalid inference input")
-			}
-			ids[id] = true
-		}
-		if err := validateEventConfig(v.RequestConfig); err != nil {
-			return err
-		}
-		if v.RequestConfig.Provider == nil || v.RequestConfig.Model == nil {
-			return invalidEvent("actual request provider/model required")
-		}
-		instructions, tools := p.CatalogueDigests()
-		if v.InstructionDigest != instructions || v.ToolsetDigest != tools {
-			return invalidEvent("unresolvable catalogue digest")
-		}
+		return p.validateInferenceStart(*v)
 	case *InferenceFinishPayload:
-		if err := p.closeOperation(e, EventInferenceStart); err != nil {
+		if _, err := p.closeInference(e); err != nil {
 			return err
 		}
-		return validateTerminal(e.Outcome, v.Error, v.Reason, v.DurationMS)
-	case *ToolStartPayload:
-		if v.CallID == "" || v.InputRef.CallID != v.CallID {
-			return invalidEvent("tool call mismatch")
-		}
-		return p.validateInput(v.InputRef)
-	case *ToolFinishPayload:
-		if err := p.closeOperation(e, EventToolStart); err != nil {
-			return err
-		}
-		start := p.event(e.SourceID).Payload.(*ToolStartPayload)
-		if v.CallID != start.CallID {
-			return invalidEvent("tool finish call mismatch")
-		}
-		if v.Details != nil && len(v.Details.DisplayText) > 4096 {
-			return invalidEvent("unbounded tool details")
-		}
-		return validateTerminal(e.Outcome, v.Error, v.Reason, v.DurationMS)
-	case *DelegationStartPayload:
-		if v.ChildSessionID == "" || v.ChildSessionID == e.SessionID {
-			return invalidEvent("invalid child session")
-		}
-		return p.validateInput(v.InputRef)
-	case *DelegationFinishPayload:
-		if err := p.closeOperation(e, EventDelegationStart); err != nil {
-			return err
-		}
-		if v.ResultEventID != "" {
-			result := p.event(v.ResultEventID)
-			if result == nil || result.Type != EventMessageAppend {
-				return invalidEvent("result must be locally accepted message event")
-			}
-		}
-		return validateTerminal(e.Outcome, v.Error, v.Reason, nil)
-	case *PermissionRequestPayload:
-		operation := p.event(v.OperationRef)
-		if operation == nil || (operation.Type != EventToolStart && operation.Type != EventInferenceStart && operation.Type != EventDelegationStart) || p.data.Terminals[v.OperationRef] != "" {
-			return invalidEvent("invalid protected operation")
-		}
-		return validateScope(v.Scope)
+		return validateTerminal(v.Outcome, v.Error, v.Reason, v.DurationMS)
 	case *PermissionDecidePayload:
-		if err := p.closeOperation(e, EventPermissionRequest); err != nil {
-			return err
+		if _, ok := p.data.CallSeq[v.CallID]; !ok {
+			return invalidEvent("decision for unknown tool call")
+		}
+		if p.data.Decisions[v.CallID] != "" {
+			return invalidEvent("tool call already decided")
 		}
 		if v.Decision != "allow" && v.Decision != "deny" && v.Decision != "cancelled" {
 			return invalidEvent("invalid permission decision")
 		}
-		if v.Decision == "cancelled" && v.Reason == "" {
-			return invalidEvent("cancellation needs reason")
+		switch v.By {
+		case ByConfig, ByMode, ByGrant, ByUser, ByHook, ByReviewer:
+		default:
+			return invalidEvent("invalid decider")
 		}
-		if err := validateScope(v.Scope); err != nil {
-			return err
+		if v.Decision == "cancelled" && v.Reason == "" || len(v.Reason) > maxReason || len(v.Scope) > 1024 {
+			return invalidEvent("invalid decision reason or scope")
 		}
-		request := p.event(e.SourceID).Payload.(*PermissionRequestPayload)
-		for _, resource := range v.Scope.Resources {
-			if !slices.Contains(request.Scope.Resources, resource) {
-				return invalidEvent("permission scope expansion")
+		if v.Asked != nil && (len(v.Asked.Detail) > maxDetails || v.Asked.At < 0) {
+			return invalidEvent("invalid asked record")
+		}
+		p.data.Decisions[v.CallID] = v.Decision
+	case *ToolFinishPayload:
+		if _, ok := p.data.CallSeq[v.CallID]; !ok {
+			return invalidEvent("finish for unknown tool call")
+		}
+		if p.data.Decisions[v.CallID] != "allow" {
+			return invalidEvent("tool.finish needs an allow decision")
+		}
+		if p.data.ToolFinished[v.CallID] {
+			return invalidEvent("duplicate tool.finish")
+		}
+		if len(v.Details) > maxDetails || (v.ChildSession != "" && transcript.ValidateStorageID(v.ChildSession) != nil) || v.ChildSession == p.data.SessionID {
+			return invalidEvent("invalid tool details or child session")
+		}
+		p.data.ToolFinished[v.CallID] = true
+		return validateTerminal(v.Outcome, v.Error, v.Reason, v.DurationMS)
+	case *InstructionsUpdatePayload:
+		return updateCatalogue(p.data.Instructions, v.Set, v.Remove, v.Cause, func(name string, s InstructionSection) error {
+			if s.Content == "" || s.Slot < 0 {
+				return invalidEvent("invalid instruction section %q", name)
 			}
-		}
+			return nil
+		})
+	case *ToolsetUpdatePayload:
+		return updateCatalogue(p.data.Tools, v.Set, v.Remove, v.Cause, func(name string, s ai.Schema) error {
+			if s.Name != name {
+				return invalidEvent("tool schema name must equal its key %q", name)
+			}
+			return nil
+		})
+	case *SkillsUpdatePayload:
+		return updateCatalogue(p.data.Skills, v.Set, v.Remove, v.Cause, func(name, state string) error {
+			if state != SkillDisabled && state != SkillEnabled && state != SkillActive {
+				return invalidEvent("invalid skill state %q", name)
+			}
+			return nil
+		})
 	case *HookFinishPayload:
-		if v.HookName == "" || v.Trigger == "" || (v.DurationMS != nil && *v.DurationMS < 0) || len(v.Reason) > 4096 {
+		if v.Hook == "" || v.Trigger == "" || (v.DurationMS != nil && *v.DurationMS < 0) || len(v.Reason) > maxReason {
 			return invalidEvent("invalid hook finish")
 		}
-		// Hook payload has no error member in the proposal; a bounded reason carries
-		// its known failure/cancellation explanation, never a fabricated hook start.
-		if e.Outcome != OutcomeSuccess && v.Reason == "" {
-			return invalidEvent("hook failure/cancellation needs reason")
+		if v.Outcome != HookRan && v.Outcome != HookBlocked && v.Outcome != HookError {
+			return invalidEvent("invalid hook outcome")
 		}
-		for _, ref := range v.EffectRefs {
-			if p.event(ref) == nil {
-				return invalidEvent("unresolved hook effect")
-			}
-		}
-	case *InstructionUpdatePayload:
-		names := make([]string, len(v.Upsert))
-		for i, item := range v.Upsert {
-			names[i] = item.Name
-		}
-		if err := validateNames(names, v.Remove); err != nil {
-			return err
-		}
-		before := eventCopy(p.data.Instructions)
-		for _, item := range v.Upsert {
-			p.data.Instructions[item.Name] = item
-		}
-		for _, name := range v.Remove {
-			if _, ok := p.data.Instructions[name]; !ok {
-				return invalidEvent("unknown instruction removal")
-			}
-			delete(p.data.Instructions, name)
-		}
-		if reflect.DeepEqual(before, p.data.Instructions) {
-			return invalidEvent("unchanged instructions")
-		}
-	case *ToolsetUpdatePayload:
-		names := make([]string, len(v.Upsert))
-		for i, item := range v.Upsert {
-			names[i] = item.Name
-		}
-		if err := validateNames(names, v.Remove); err != nil {
-			return err
-		}
-		before := eventCopy(p.data.Tools)
-		for _, item := range v.Upsert {
-			p.data.Tools[item.Name] = item
-		}
-		for _, name := range v.Remove {
-			if _, ok := p.data.Tools[name]; !ok {
-				return invalidEvent("unknown tool removal")
-			}
-			delete(p.data.Tools, name)
-		}
-		if reflect.DeepEqual(before, p.data.Tools) {
-			return invalidEvent("unchanged tools")
-		}
-	case *SkillUpdatePayload:
-		names := make([]string, len(v.Changes))
-		for i, item := range v.Changes {
-			names[i] = item.Name
-		}
-		if err := validateNames(names, nil); err != nil {
-			return err
-		}
-		before := eventCopy(p.data.Skills)
-		for _, item := range v.Changes {
-			p.data.Skills[item.Name] = item.Active
-		}
-		if reflect.DeepEqual(before, p.data.Skills) {
-			return invalidEvent("unchanged skills")
+		if v.Outcome != HookRan && v.Reason == "" {
+			return invalidEvent("blocked or failed hook needs reason")
 		}
 	case *AnnotationAddPayload:
 		if v.Text == "" {
 			return invalidEvent("empty annotation")
 		}
-		if a := v.Anchor; a != nil {
-			if (a.MessageID == "") == (a.Seq == 0) {
-				return invalidEvent("anchor must select message or sequence")
-			}
-			if a.MessageID != "" && p.message(a.MessageID).ID == "" {
-				return invalidEvent("unknown anchor message")
-			}
-			if a.Seq >= e.Seq {
-				return invalidEvent("unknown anchor sequence")
-			}
+		if v.AfterMessage != "" && p.message(v.AfterMessage).ID == "" {
+			return invalidEvent("unknown anchor message")
 		}
 	default:
 		return invalidEvent("unsupported payload")
 	}
 	return nil
 }
-func knownEventType(t EventType) bool {
-	switch t {
-	case EventSessionCreate, EventMessageAppend, EventCompactionApply, EventConfigUpdate, EventStateUpdate, EventInferenceStart, EventInferenceFinish, EventToolStart, EventToolFinish, EventDelegationStart, EventDelegationFinish, EventPermissionRequest, EventPermissionDecide, EventHookFinish, EventInstructionUpdate, EventToolsetUpdate, EventSkillUpdate, EventAnnotationAdd:
-		return true
+
+func (p *Projection) validateInferenceStart(v InferenceStartPayload) error {
+	switch v.Purpose {
+	case PurposeTurn, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeReviewer, PurposeHook, PurposeAutopilot, PurposeGroup:
+	default:
+		return invalidEvent("unknown inference purpose %q", v.Purpose)
 	}
-	return false
-}
-func (p *Projection) closeOperation(e Event, t EventType) error {
-	start := p.event(e.SourceID)
-	if start == nil || start.SessionID != e.SessionID || start.Type != t {
-		return invalidEvent("finish/request reference family mismatch")
+	if v.Purpose == PurposeTurn && v.TurnID == "" {
+		return invalidEvent("missing turn ID")
 	}
-	if p.data.Terminals[start.ID] != "" {
-		return invalidEvent("duplicate terminal result")
+	if err := validateEventConfig(v.Request); err != nil {
+		return err
 	}
-	p.data.Terminals[start.ID] = e.ID
+	if v.Request.Provider == nil || v.Request.Model == nil {
+		return invalidEvent("actual request provider/model required")
+	}
+	in := v.Input
+	if (in.Conversation == nil) == (in.Standalone == "") {
+		return invalidEvent("input must be exactly one of conversation or standalone")
+	}
+	if in.Conversation != nil {
+		instructions, tools := p.CatalogueDigests()
+		if v.InstructionsDigest != instructions || v.ToolsetDigest != tools {
+			return invalidEvent("conversation call must match projected catalogues; record it as standalone")
+		}
+		seen := map[string]bool{}
+		for _, m := range in.Conversation.Append {
+			if m.ID == "" || seen[m.ID] || (m.Role != ai.RoleUser && m.Role != ai.RoleAssistant) {
+				return invalidEvent("invalid appended message")
+			}
+			seen[m.ID] = true
+		}
+		return nil
+	}
+	if b, err := hex.DecodeString(in.Standalone); err != nil || len(b) != 32 {
+		return invalidEvent("standalone input must be a SHA-256 digest")
+	}
 	return nil
 }
+
+// updateCatalogue applies a set/remove change to a named catalogue. Each name
+// appears once across set and remove, removals must exist, and a change that
+// leaves the catalogue as it was is rejected.
+func updateCatalogue[T any](cat map[string]T, set map[string]T, remove []string, cause string, check func(string, T) error) error {
+	if cause == "" || len(set)+len(remove) == 0 {
+		return invalidEvent("empty catalogue change or missing cause")
+	}
+	seen := map[string]bool{}
+	for name, v := range set {
+		if name == "" {
+			return invalidEvent("empty catalogue name")
+		}
+		if err := check(name, v); err != nil {
+			return err
+		}
+		seen[name] = true
+	}
+	for _, name := range remove {
+		if name == "" || seen[name] {
+			return invalidEvent("duplicate/overlapping/empty catalogue name")
+		}
+		if _, ok := cat[name]; !ok {
+			return invalidEvent("unknown catalogue removal %q", name)
+		}
+		seen[name] = true
+	}
+	changed := false
+	for name, v := range set {
+		if old, ok := cat[name]; !ok || !reflect.DeepEqual(old, v) {
+			changed = true
+		}
+		cat[name] = v
+	}
+	for _, name := range remove {
+		delete(cat, name)
+		changed = true
+	}
+	if !changed {
+		return invalidEvent("unchanged catalogue")
+	}
+	return nil
+}
+
 func validateTerminal(outcome EventOutcome, err *EventError, reason string, duration *int64) error {
-	if duration != nil && *duration < 0 || len(reason) > 4096 {
+	if outcome != OutcomeSuccess && outcome != OutcomeFailure && outcome != OutcomeCancelled {
+		return invalidEvent("invalid outcome")
+	}
+	if duration != nil && *duration < 0 || len(reason) > maxReason {
 		return invalidEvent("invalid duration or unbounded reason")
 	}
-	if err != nil && (err.Code == "" || err.Message == "" || len(err.Code) > 128 || len(err.Message) > 4096) {
+	if err != nil && (err.Message == "" || len(err.Message) > maxReason) {
 		return invalidEvent("invalid structured error")
 	}
 	if outcome == OutcomeFailure && err == nil {
@@ -448,27 +460,6 @@ func validateTerminal(outcome EventOutcome, err *EventError, reason string, dura
 		return invalidEvent("successful finish has error")
 	}
 	return nil
-}
-func validateNames(upsert, remove []string) error {
-	if len(upsert)+len(remove) == 0 {
-		return invalidEvent("empty catalogue change")
-	}
-	seen := map[string]bool{}
-	for _, names := range [][]string{upsert, remove} {
-		for _, name := range names {
-			if name == "" || seen[name] {
-				return invalidEvent("duplicate/overlapping/empty catalogue name")
-			}
-			seen[name] = true
-		}
-	}
-	return nil
-}
-func validateScope(s PermissionScope) error {
-	if len(s.Resources) == 0 {
-		return invalidEvent("empty permission scope")
-	}
-	return validateNames(s.Resources, nil)
 }
 func validateEventConfig(c EventConfig) error {
 	if c.GenerationOptions != nil {
@@ -485,9 +476,6 @@ func validateEventConfig(c EventConfig) error {
 func validateEventState(s EventState) error {
 	if s.ExecutionCWD != nil && !filepath.IsAbs(*s.ExecutionCWD) {
 		return invalidEvent("execution cwd must be absolute")
-	}
-	if s.ArchivedAt != nil && *s.ArchivedAt < 0 {
-		return invalidEvent("invalid archive time")
 	}
 	if s.GroupHint != nil && (s.GroupHint.GroupID == "" || s.GroupHint.MemberID == "") {
 		return invalidEvent("incomplete group hint")
@@ -506,7 +494,9 @@ func validateEventState(s EventState) error {
 	}
 	return nil
 }
-func (p *Projection) addMessage(m ai.Message) error {
+
+// addMessage registers a native message appended by the event at seq.
+func (p *Projection) addMessage(m ai.Message, seq uint64) error {
 	if m.ID == "" || p.message(m.ID).ID != "" {
 		return invalidEvent("empty or duplicate native message ID")
 	}
@@ -520,6 +510,9 @@ func (p *Projection) addMessage(m ai.Message) error {
 			if m.Role != ai.RoleAssistant || b.ToolCall == nil || b.ToolCall.ID == "" || b.ToolCall.Name == "" || calls[b.ToolCall.ID] {
 				return invalidEvent("invalid or ambiguous native tool call")
 			}
+			if _, dup := p.data.CallSeq[b.ToolCall.ID]; dup {
+				return invalidEvent("tool call ID reused in session")
+			}
 			calls[b.ToolCall.ID] = true
 		}
 		if b.Type == ai.BlockToolResult {
@@ -529,42 +522,13 @@ func (p *Projection) addMessage(m ai.Message) error {
 			results[b.ToolResult.ToolCallID] = true
 		}
 	}
+	for id := range calls {
+		p.data.CallSeq[id] = seq
+	}
 	p.messageIndex[m.ID] = len(p.data.Messages)
 	p.data.Messages = append(p.data.Messages, m)
+	p.data.MessageSeq[m.ID] = seq
 	return nil
-}
-func (p *Projection) validateInput(ref InputRef) error {
-	e := p.event(ref.EventID)
-	if e == nil || ref.MessageID == "" {
-		return invalidEvent("missing durable input reference")
-	}
-	if !slices.Contains(p.sourceMessageIDs(e.ID, EventValidationContext{}), ref.MessageID) {
-		return invalidEvent("input message not owned by referenced event")
-	}
-	if ref.CallID != "" {
-		for _, b := range p.message(ref.MessageID).Content {
-			if b.Type == ai.BlockToolCall && b.ToolCall != nil && b.ToolCall.ID == ref.CallID {
-				return nil
-			}
-		}
-		return invalidEvent("input call missing")
-	}
-	return nil
-}
-func (p *Projection) sourceMessageIDs(id string, validation EventValidationContext) []string {
-	if e := p.event(id); e != nil {
-		switch v := e.Payload.(type) {
-		case *MessageAppendPayload:
-			ids := make([]string, len(v.Messages))
-			for i, m := range v.Messages {
-				ids[i] = m.ID
-			}
-			return ids
-		case *CompactionApplyPayload:
-			return []string{v.Summary.ID}
-		}
-	}
-	return validation.ForeignEvents[id].MessageIDs
 }
 func (p *Projection) validateToolPairs(ids []string) error {
 	calls := map[string]string{}

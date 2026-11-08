@@ -16,7 +16,7 @@ func projectionBenchmarkBatches(records, contentBytes int) [][]Event {
 		if i == 0 {
 			payload = SessionCreatePayload{ProjectID: "project", Workspace: "/work", InitialCWD: "/work", AgentID: "agent"}
 		}
-		batches[i] = []Event{{ID: fmt.Sprintf("event-%d", i), SessionID: "session", Seq: uint64(i + 1), Type: payload.eventType(), SchemaVersion: 1, Payload: payload}}
+		batches[i] = []Event{{Seq: uint64(i + 1), Type: payload.eventType(), SchemaVersion: 1, Payload: payload}}
 	}
 	return batches
 }
@@ -29,20 +29,20 @@ func BenchmarkEventProjection(b *testing.B) {
 			b.Run("Replay/"+name, func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					if _, err := ReplayEventBatches(batches, EventValidationContext{}); err != nil {
+					if _, err := ReplayEventBatches(testSession, batches, EventValidationContext{}); err != nil {
 						b.Fatal(err)
 					}
 				}
 			})
 			b.Run("Append/"+name, func(b *testing.B) {
-				base, err := ReplayEventBatches(batches[:len(batches)-1], EventValidationContext{})
+				base, err := ReplayEventBatches(testSession, batches[:len(batches)-1], EventValidationContext{})
 				if err != nil {
 					b.Fatal(err)
 				}
 				b.ReportAllocs()
 				b.ResetTimer()
 				for b.Loop() {
-					if _, err := ApplyEventBatch(base, batches[len(batches)-1], EventValidationContext{}); err != nil {
+					if _, err := ApplyEventBatch(base, testSession, batches[len(batches)-1], EventValidationContext{}); err != nil {
 						b.Fatal(err)
 					}
 				}

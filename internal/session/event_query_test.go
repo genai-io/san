@@ -17,9 +17,9 @@ import (
 
 func queryFixture(t *testing.T, store *Store, id string) *Session {
 	t.Helper()
-	create := Event{ID: id + "-create", SessionID: id, Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, CreatedAt: 1700000000000,
+	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 1700000000000,
 		Payload: &SessionCreatePayload{ProjectID: store.projectID, Workspace: store.workspace, InitialCWD: store.cwd, AgentID: "main"}}
-	session, err := store.createEventSession(context.Background(), id+"-initial", create, EventValidationContext{})
+	session, err := store.createEventSession(context.Background(), id+"-initial", id, create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +34,8 @@ func queryAppend(t *testing.T, session *Session, first, last uint64) {
 	for seq := first; seq <= last; seq++ {
 		message := ai.UserMessage(fmt.Sprintf("message %d", seq))
 		message.ID = fmt.Sprintf("m-%d", seq)
-		events = append(events, Event{ID: fmt.Sprintf("%s-e-%d", session.ID(), seq), SessionID: session.ID(), Seq: seq,
-			Type: EventMessageAppend, SchemaVersion: 1, CreatedAt: 1700000000000 + int64(seq), Payload: &MessageAppendPayload{Messages: []ai.Message{message}}})
+		events = append(events, Event{Seq: seq,
+			Type: EventMessageAppend, SchemaVersion: 1, Time: 1700000000000 + int64(seq), Payload: &MessageAppendPayload{Messages: []ai.Message{message}}})
 	}
 	prepared, err := session.prepareEventBatch(fmt.Sprintf("batch-%d", first), events, EventValidationContext{})
 	if err != nil {
