@@ -147,7 +147,7 @@ in the header reads **recording** while the stream is connected.
    `~/.san/projects/<encoded-cwd>/transcripts/`.
 3. The embedded SPA (single-page application) fetches session lists and
    records via a REST API, and subscribes to live updates via SSE.
-4. The **replay engine** (`replay.go`) walks the event log from the
+4. The **replay engine** (`replay.go`) walks the events from the
    beginning to reconstruct the model's full context at any record index.
    Results are cached in an LRU (capacity 64) so timeline scrubbing stays
    fast.

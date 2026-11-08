@@ -5,12 +5,12 @@ layer: feature
 
 # transcript
 
-Owns the native append-only event log and its derived projections.
+Owns the native append-only events and their derived projections.
 
 ## Purpose
 
 `internal/session` writes messages and product state here; the inspector reads
-the same records. The log is authoritative. Storage — the append-only file,
+the same records. The events are authoritative. Storage — the append-only file,
 writer leases, crash recovery, listing and deletion — is sdk-go's
 `pkg/session`: messages are its conversation (message and reset lines), and
 every other `Record` is written whole as an application record's data. This
