@@ -83,7 +83,7 @@ Configuration does not move into session storage:
     events.jsonl.lock              writer lock (sdk-go)
     attrs.json                     user intent (absent = defaults)
     blobs/                         content-addressed by sha256
-  cache/<sid>.json       list-row summary (derived)
+  cache/<sid>.json                 list-row summary (derived)
   trash/<sid>/                     a deleted session directory, moved whole
   transcripts/<sid>.jsonl          schema-4 sessions, read-only once converted
 ```

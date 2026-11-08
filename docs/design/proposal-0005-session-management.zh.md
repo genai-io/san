@@ -70,7 +70,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
     events.jsonl.lock              writer 锁（sdk-go）
     attrs.json                     用户意图（不存在即默认值）
     blobs/                         按 sha256 内容寻址
-  cache/<sid>.json       列表行摘要（派生）
+  cache/<sid>.json                 列表行摘要（派生）
   trash/<sid>/                     整个移入的已删除会话目录
   transcripts/<sid>.jsonl          schema-4 会话，转换后只读
 ```
