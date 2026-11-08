@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -42,7 +43,7 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 		if s.runtimeBuildParams.ModelID != "test" || s.permissions.CurrentMode() != setting.ModeNormal {
 			t.Fatal("rejected configuration mutated live policy/model")
 		}
-		history, err := s.nativeSession.Store.Read(string(id))
+		history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

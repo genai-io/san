@@ -196,7 +196,7 @@ func (m *model) loadSessionByID(id string) error {
 	var err error
 	if m.services.Session != nil && m.sessionID() == id && m.services.Session.Err() == nil {
 		opened = m.services.Session
-		sess, err = m.services.SessionStore.Read(id)
+		sess, err = m.services.SessionStore.Read(id, session.ReadOptions{})
 	} else {
 		if m.services.Session != nil && m.sessionID() == id {
 			_ = m.services.Session.Close()

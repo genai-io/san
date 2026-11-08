@@ -47,17 +47,12 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	n := taskNotice()
 	message := m.showNoticeLine(n)
 	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	for _, load := range []func(string) ([]core.ChatMessage, error){store.ReadChatHistory, func(id string) ([]core.ChatMessage, error) {
-		snapshot, err := store.Read(id)
-		if err != nil {
-			return nil, err
-		}
-		return snapshot.ChatRows(), nil
-	}} {
-		messages, err := load("notice-1")
+	for _, opts := range []session.ReadOptions{{}, {FullHistory: true}} {
+		snapshot, err := store.Read("notice-1", opts)
 		if err != nil {
 			t.Fatal(err)
 		}
+		messages := store.ChatRows(snapshot)
 		if len(messages) != 1 || len(m.conv.Messages) != 1 || messages[0].Content != m.conv.Messages[0].Content {
 			t.Fatalf("completion has separate display and model records: live=%+v, saved=%+v", m.conv.Messages, messages)
 		}

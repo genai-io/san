@@ -50,7 +50,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", Content: ai.TextContent(text)})
 	msg.ID = "result-1"
 	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
-	loaded, err := store.Read("parent-1")
+	loaded, err := store.Read("parent-1", session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

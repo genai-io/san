@@ -75,7 +75,7 @@ func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
 	if runErr == nil || result == nil || result.Success || result.AgentID == "" || result.OutputFile == "" {
 		t.Fatalf("failed execution lost transcript identity: result=%#v, err=%v", result, runErr)
 	}
-	saved, err := store.Read(result.AgentID)
+	saved, err := store.Read(result.AgentID, session.ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

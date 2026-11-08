@@ -120,7 +120,7 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 					if err := mainSession.Session.Err(); err != nil {
 						t.Fatal(err)
 					}
-					history, err := mainSession.Store.Read(mainSession.Session.ID())
+					history, err := mainSession.Store.Read(mainSession.Session.ID(), session.ReadOptions{})
 					if err != nil {
 						t.Fatal(err)
 					}

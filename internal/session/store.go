@@ -106,26 +106,18 @@ func (s *Store) Delete(id string) error {
 	return errors.Join(os.RemoveAll(s.toolResultsDir(id)), os.RemoveAll(s.ImagesDir(id)))
 }
 
-func (s *Store) Read(id string) (*History, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	sess, err := s.readHistory(context.Background(), id, false)
-	if err != nil {
-		return nil, err
-	}
-	return sess, nil
+// ReadOptions selects which messages to read from the selected branch.
+// The zero value reads only the active context used for restore.
+type ReadOptions struct {
+	FullHistory bool // Include messages before compaction.
 }
 
-// ReadChatHistory reads the selected branch before compaction for display only.
-func (s *Store) ReadChatHistory(id string) ([]core.ChatMessage, error) {
+// Read returns native history without projecting UI rows or hydrating display assets.
+func (s *Store) Read(id string, opts ReadOptions) (*History, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	snap, err := s.readHistory(context.Background(), id, true)
-	if err != nil {
-		return nil, err
-	}
-	return s.ChatRows(snap), nil
+
+	return s.readHistory(context.Background(), id, opts.FullHistory)
 }
 
 // Create opens a new durable session. The caller owns it until Close.
@@ -176,7 +168,7 @@ func (s *Store) Open(id string) (*Session, *History, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	history, err := s.Read(id)
+	history, err := s.Read(id, ReadOptions{})
 	if err != nil {
 		return nil, nil, errors.Join(err, release())
 	}

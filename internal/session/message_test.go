@@ -40,7 +40,7 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 			} else if err := store.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: messages}); err != nil {
 				t.Fatal(err)
 			}
-			loaded, err := store.Read("s")
+			loaded, err := store.Read("s", ReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,7 +72,7 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	if err := store.Delete("source"); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Read(fork.Metadata.ID)
+	resumed, err := store.Read(fork.Metadata.ID, ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *tes
 	}
 	w.RecordEvent(sdkagent.MessagesReplaced{})
 	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
-	loaded, err := store.Read("s")
+	loaded, err := store.Read("s", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestHistoryImportCannotWriteIntoAnotherActiveSession(t *testing.T) {
 	if err := second.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: []core.Message{{ID: "other", Role: ai.RoleUser, Content: ai.TextContent("other")}}}); err == nil {
 		t.Fatal("snapshot bypassed writer ownership")
 	}
-	got, err := first.Read("s")
+	got, err := first.Read("s", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

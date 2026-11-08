@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -285,7 +286,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if !strings.Contains(string(data), "workspace instruction") || !strings.Contains(string(data), "prompt hook instruction") {
 				t.Fatal("native preparation missing instructions")
 			}
-			history, err := s.nativeSession.Store.Read(string(id))
+			history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
