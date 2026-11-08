@@ -118,10 +118,10 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | | `session.update` | `config?`：provider、model、生成选项、模式、autopilot 策略。`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint | `config` 作用于下一次请求；`state` 按字段替换。 |
 | 对话 | `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
 | | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
-| 模型调用 | `inference.start` | `turn_id`、`input_through`（seq）、`request`（provider、model、选项）、`instructions_digest`、`toolset_digest` | 打开一次模型调用（每次重试都是独立调用）。输出消息以它为 `source`。 |
+| 模型调用 | `inference.start` | `purpose`（turn/compaction/reviewer/title/…）、`turn_id?`、`request`（provider、model、选项）、`instructions_digest`、`toolset_digest`、`input_digest?` | 打开一次模型调用；每次重试都是独立调用。输出消息以它为 `source`。 |
 | | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
-| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/user/hook/reviewer）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。回放绝不重新授权。 |
-| | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 结局与展示细节。结果正文在工具结果消息中。 |
+| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/reviewer）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。 |
+| | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 已运行调用的结局与展示细节。结果正文在工具结果消息中。未通过关卡的调用只有裁决和一条错误工具结果消息。 |
 | 模型可见内容 | `instructions.update` | `set {name: {content, slot}}`、`remove [name]`、`cause` | 从此处起的系统提示各节。 |
 | | `toolset.update` | `set {name: 原生工具 schema}`、`remove [name]`、`cause` | 从此处起提供给模型的工具。 |
 | | `skills.update` | `set {name: disabled/enabled/active}`、`remove [name]`、`cause` | 从此处起的技能可用状态。 |
@@ -137,9 +137,11 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 - `cause` 说明谁改变了目录：`boot`、`mcp:<server>`、`plugin:<name>`、`user:<command>`。
 - `outcome` 为 `success`、`failure` 或 `cancelled`；失败带有界错误，取消带原因。
 - 从不存储：秘密、token 增量、进度刻度、心跳、重复快照，以及可推导的内容（预览、最后提示）。
+- 未知的 `type`，或比当前程序更新的 `v`，会阻止恢复和写入。会话仍可读取展示，这类事件以不透明形式显示。
 
-请求由投影重建，而不是复制进事件：`input_through` 处的上下文，加上 `inference.start` 处投影出的
-instructions 和 toolset。摘要值用来校验重建结果。存储随对话长度线性增长，目录变化保留时间与原因。
+`turn` 请求由投影重建，而不是复制进事件：即其 `inference.start` 之前投影出的上下文、instructions 和
+toolset，由摘要值校验。存储随对话长度线性增长，目录变化保留时间与原因。其他用途发送的是别的内容
+（压缩发送的是压缩提示词加去掉 reminder 的文本，且不带工具），因此只记录 `input_digest`，不承诺可重建。
 
 ### 提交规则
 
@@ -151,7 +153,7 @@ instructions 和 toolset。摘要值用来校验重建结果。存储随对话�
 3. **未完成可见，从不虚构。** 恢复时：
    - 没有裁决的调用从未运行；
    - 已允许但没有 `tool.finish` 的调用结局未知；
-   - 没有 finish 的 `inference.start` 被中断。
+   - 没有 finish 的 `inference.start` 被中断；流式输出的部分内容从不提交。
 
    都不会自动重试或补全。
 4. **不明确的提交靠重读解决。** 出错后 writer 重读尾部；批次 ID 存在即已提交。
@@ -163,6 +165,7 @@ instructions 和 toolset。摘要值用来校验重建结果。存储随对话�
 | 操作 | 记录方式 |
 | --- | --- |
 | 用户输入、模型输出、工具结果、来自其他会话的消息 | `message.append` |
+| 轮次或压缩进行中排队的输入 | 送达前不记录；送达后为 `message.append`。 |
 | 压缩：自动、手动 `/compact`、prompt-too-long 恢复 | `context.compact`，及其 `inference.start` / `finish` |
 | `/clear` | 新会话（`Create`）。旧会话保持完整、可恢复。不设 `context.clear`：一个会话只承载一段对话。 |
 | 回退或编辑之前的消息（目前未实现） | 在该消息之前的 `seq` 处 `Fork`，再在分叉中 `message.append`。源会话从不被改写，因此不需要 `context.rewind`。 |
@@ -190,11 +193,12 @@ ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。恢复�
 
 ```text
 commit [message.append user]
-commit [inference.start]                                --> call model
+commit [inference.start {purpose: turn}]                --> call model
 commit [message.append assistant(tool calls), inference.finish,
         permission.decide (automatic ones)]
-  each asked call: commit [permission.decide]           --> run tool if allowed
-  each call:       commit [message.append tool result, tool.finish]
+  each asked call:   commit [permission.decide]         --> run tool if allowed
+  each allowed call: commit [message.append tool result, tool.finish]
+  each denied call:  commit [message.append error tool result]
 ```
 
 ### 子 agent
@@ -227,8 +231,8 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 ### 压缩
 
 ```text
-commit [inference.start]             capture: context projected at seq S
-generate summary of that context     (no lock held; turns are paused)
+commit [inference.start {purpose: compaction}]   capture: context at seq S
+generate summary of that context                 (no lock; turns are paused)
 commit [context.compact { summary, through: S }, inference.finish]
 
 before: context = m1 .. m40  (all at seq <= S)
@@ -303,7 +307,7 @@ func (s *Session) Close() error                                      // drain, r
 
 分开存放意味着缓存 bug 永远不会损坏用户意图，`cache/` 也永远可以删除。大多数会话不会有 attrs 文件；
 不存在即默认值。显示的标题取 `attrs.title`，没有则取事件中生成的 `state.title`，因此分叉会继承生成的标题。
-最后活动时间取最后一个事件的 `time`；打开、读取、扫描和恢复都不计入。
+最后活动时间取最后一条 `message.append` 的 `time`。目录、状态、备注事件，以及打开、读取、扫描和恢复都不计入。
 
 | 策略 | 默认 |
 | --- | --- |
@@ -347,7 +351,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | SDK message / `message.appended` | `message.append` |
 | SDK truncate + 重新保存的消息（`conversation.replaced`） | 有 `session.compacted` 指向摘要：`context.compact`。写入空上下文（子 agent 记录）：`message.append`。与当前上下文相同（恢复时重新加载）：丢弃。其他情况阻止转换。 |
 | `session.state.patched` | `session.update`（model/mode/autopilot → config；title/tasks/group → state）；`lastPrompt` 可推导，丢弃 |
-| `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
+| `inference.requested` / `responded` / `failed` | `inference.start {purpose: turn}` / `inference.finish`；丢弃 `messageIds`（即事件之前的上下文） |
 | `system.section.added/removed` | `instructions.update` set/remove；`caller` → `cause` |
 | `tool.added/removed` | `toolset.update` set/remove；`caller` → `cause` |
 | `tool.completed` | `tool.finish` |
@@ -385,7 +389,9 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - 事件：每种事件类型往返无损；原生 provider 字段保留；回放无副作用；批次重试幂等、冲突失败。
 - 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途、转换中途，均恢复到已提交状态。
 - 压缩：`through` 边界、连续压缩、失败时上下文不变。
-- 请求：每个 `inference.start` 处投影出的上下文和目录与其摘要值一致；恢复重新加载和请求时修复不写事件。
+- 请求：对 `turn`，每个 `inference.start` 之前投影出的上下文和目录与其摘要值一致；恢复重新加载和请求时修复不写事件。
+- 关卡：每个工具调用恰有一个裁决；被拒绝的调用有错误结果、没有 `tool.finish`；会话授权不会恢复。
+- 版本：未知类型或更新的 `v` 阻止恢复但仍可展示。
 - 中断的工具：无裁决 → 从未运行；已允许无 finish → 结局未知；都不重试。
 - 删除源后分叉仍独立；子 agent 延迟结果。
 - 生命周期：固定与忙碌保护、回收站期限、保留默认关闭、GC 保留未知文件。
@@ -395,4 +401,5 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 - 载荷的精确 Go 类型，以及哪些部分（信封、投影器、批次辅助）属于 sdk-go。
 - 仓库移动后的 `relink` 交互。
+- 非 `turn` 的模型调用（reviewer、标题、recall、recap）是否都应记录，以获得完整的用量和成本。目前只记录主循环调用。
 - 在测量大项目列表性能后，摘要缓存是否应改为每项目一个索引。

@@ -137,10 +137,10 @@ have one meaning each:
 | | `session.update` | `config?`: provider, model, generation options, mode, autopilot policy. `state?`: generated title, todos, execution_cwd, autopilot progress, group hint | `config` applies to the next request; `state` replaces fields. |
 | Conversation | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
 | | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
-| Model calls | `inference.start` | `turn_id`, `input_through` (seq), `request` (provider, model, options), `instructions_digest`, `toolset_digest` | Opens one model call (each retry is its own call). Output messages name it as `source`. |
+| Model calls | `inference.start` | `purpose` (turn/compaction/reviewer/title/…), `turn_id?`, `request` (provider, model, options), `instructions_digest`, `toolset_digest`, `input_digest?` | Opens one model call; each retry is its own call. Output messages name it as `source`. |
 | | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
-| Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. Never re-grants on replay. |
-| | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details. The result body is the tool-result message. |
+| Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/grant/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. `grant` means an earlier session-scoped approval; grants are never restored on resume, so such calls ask again. |
+| | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details of a call that ran. The result body is the tool-result message. A call that did not pass the gate has only its decision and an error tool-result message. |
 | What the model could see | `instructions.update` | `set {name: {content, slot}}`, `remove [name]`, `cause` | System-prompt sections from this point on. |
 | | `toolset.update` | `set {name: native tool schema}`, `remove [name]`, `cause` | Tools offered to the model from this point on. |
 | | `skills.update` | `set {name: disabled/enabled/active}`, `remove [name]`, `cause` | Skill availability from this point on. |
@@ -161,11 +161,17 @@ Payload rules:
   error, cancellations a reason.
 - Never stored: secrets, token deltas, progress ticks, heartbeats, repeated
   snapshots, or anything derivable (previews, last prompt).
+- An unknown `type`, or a `v` newer than this binary supports, blocks resume and
+  writes. The session stays readable for display, with such events shown as
+  opaque.
 
-A request is reconstructed from projections, not copied into the event:
-context at `input_through`, plus instructions and toolset as projected at the
-`inference.start`. The digests verify that reconstruction. Storage stays linear
-in conversation length, and catalogue changes keep their timing and cause.
+A `turn` request is reconstructed from projections, not copied into the event:
+the context, instructions and toolset as projected just before its
+`inference.start`, which the digests verify. Storage stays linear in
+conversation length, and catalogue changes keep their timing and cause. Other
+purposes send something else (compaction sends the compaction prompt over
+reminder-stripped text, with no tools), so for them the event records only
+`input_digest` and promises no reconstruction.
 
 ### Commit rules
 
@@ -179,7 +185,8 @@ in conversation length, and catalogue changes keep their timing and cause.
 3. **Unfinished is visible, never invented.** On resume:
    - a call with no decision never ran;
    - a call allowed but without `tool.finish` has an unknown outcome;
-   - an `inference.start` without a finish was interrupted.
+   - an `inference.start` without a finish was interrupted; partially streamed
+     output is never committed.
 
    None is retried or completed automatically.
 4. **Ambiguous commits are resolved by re-reading.** After an error, the writer
@@ -193,6 +200,7 @@ Every other operation that seems to change it is covered elsewhere:
 | Operation | Recorded as |
 | --- | --- |
 | User input, model output, tool results, messages delivered from other sessions | `message.append` |
+| Input queued while a turn or compaction runs | Nothing until it is delivered; then `message.append`. |
 | Compaction: automatic, manual `/compact`, recovery from prompt-too-long | `context.compact` with its `inference.start` / `finish` |
 | `/clear` | A new session (`Create`). The old one stays intact and resumable. No `context.clear`: one session holds one conversation. |
 | Rewind or edit an earlier message (not implemented today) | `Fork` at the `seq` before that message, then `message.append` in the fork. The source is never rewritten, so no `context.rewind` is needed. |
@@ -223,11 +231,12 @@ configuration at resume; differences from the projection are written as
 
 ```text
 commit [message.append user]
-commit [inference.start]                                --> call model
+commit [inference.start {purpose: turn}]                --> call model
 commit [message.append assistant(tool calls), inference.finish,
         permission.decide (automatic ones)]
-  each asked call: commit [permission.decide]           --> run tool if allowed
-  each call:       commit [message.append tool result, tool.finish]
+  each asked call:   commit [permission.decide]         --> run tool if allowed
+  each allowed call: commit [message.append tool result, tool.finish]
+  each denied call:  commit [message.append error tool result]
 ```
 
 ### Subagents
@@ -267,8 +276,8 @@ operations in the copied prefix stay unfinished.
 ### Compaction
 
 ```text
-commit [inference.start]             capture: context projected at seq S
-generate summary of that context     (no lock held; turns are paused)
+commit [inference.start {purpose: compaction}]   capture: context at seq S
+generate summary of that context                 (no lock; turns are paused)
 commit [context.compact { summary, through: S }, inference.finish]
 
 before: context = m1 .. m40  (all at seq <= S)
@@ -355,8 +364,8 @@ Keeping them apart means a cache bug can never damage user intent and
 `cache/` can always be deleted. Most sessions never get an attrs file; absent
 means defaults. The displayed title is `attrs.title` if set, otherwise the
 generated `state.title` from events, so a fork inherits the generated title.
-Last activity is the last event's `time`; opening, reading, scanning and
-restoring do not count.
+Last activity is the `time` of the last `message.append`. Catalogue, state and
+annotation events, opening, reading, scanning and restoring do not count.
 
 | Policy | Default |
 | --- | --- |
@@ -410,7 +419,7 @@ fields the old records lack are left absent.
 | SDK message / `message.appended` | `message.append` |
 | SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Equal to the current context (resume reload): dropped. Anything else blocks conversion. |
 | `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state); `lastPrompt` dropped as derivable |
-| `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
+| `inference.requested` / `responded` / `failed` | `inference.start {purpose: turn}` / `inference.finish`; `messageIds` dropped (the context before the event) |
 | `system.section.added/removed` | `instructions.update` set/remove; `caller` → `cause` |
 | `tool.added/removed` | `toolset.update` set/remove; `caller` → `cause` |
 | `tool.completed` | `tool.finish` |
@@ -468,8 +477,12 @@ fields the old records lack are left absent.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
   mid-restore, mid-conversion. Each recovers to a committed state.
 - Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
-- Requests: context and catalogues projected at each `inference.start` match its
-  digests; resume reload and request-time repair write no events.
+- Requests: for `turn`, the context and catalogues projected before each
+  `inference.start` match its digests; resume reload and request-time repair
+  write no events.
+- Gate: every tool call has exactly one decision; denied calls get an error
+  result and no `tool.finish`; session grants are not restored.
+- Versions: an unknown type or newer `v` blocks resume but still displays.
 - Interrupted tools: no decision → never ran; allowed without finish → unknown
   outcome; neither is retried.
 - Fork independence after source deletion; subagent late results.
@@ -483,5 +496,7 @@ fields the old records lack are left absent.
 - Exact payload Go types, and which parts (envelope, projector, batch helpers)
   belong in sdk-go.
 - `relink` UX for moved repositories.
+- Whether non-`turn` model calls (reviewer, title, recall, recap) should all be
+  recorded for complete usage and cost. Today only main-loop calls are.
 - Whether the summary cache should become one per-project index once listing
   large projects is measured.
