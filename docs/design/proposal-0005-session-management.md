@@ -20,16 +20,17 @@ Project 1 ── N Workspace 1 ── N Session
                                   ├─ parent_session_id → parent agent session
                                   ├─ fork_source_id    → source session
                                   └─ 1 ── N Events (session_events, ordered by seq)
-                                            ├─ Lifecycle: session.started / session.forked
-                                            ├─ Messages: message.appended
-                                            │    └─ Native user / assistant / tool-result content
-                                            ├─ Context: conversation.replaced / session.compacted
-                                            │    └─ Summary + retained messages / summary ID + source seq
-                                            ├─ State: session.state.patched
-                                            │    └─ Title, model/mode overrides, todos, group hint
-                                            ├─ Inference: inference.requested / responded / failed
-                                            └─ Presentation/audit: notice.added, tool.completed,
-                                                 permission.*, hook.fired, system.*, tool.*, skill.*
+                                            ├─ Session: session.created / session.forked
+                                            ├─ Messages: messages.appended / messages.replaced
+                                            │    └─ Append or replace an ordered native message list
+                                            ├─ Compaction: compaction.completed
+                                            │    └─ Summary ID + source seq; text belongs to messages
+                                            ├─ Config/state: config.updated / state.updated
+                                            │    └─ Session overrides / title, todos, group hint
+                                            ├─ Inference: inference.started / completed / failed
+                                            └─ Tool/audit: tool.started / completed / failed,
+                                                 notice.added, permission.requested / decided,
+                                                 hook.completed, system.updated, tools.updated, skill.updated
 
 Events ── projector ──┬─ History: display history, including pre-compaction messages
                      ├─ Snapshot: active context + durable state for resume
@@ -38,15 +39,54 @@ Events ── projector ──┬─ History: display history, including pre-com
 
 Each event row belongs to exactly one session. Its `type` selects the typed
 `payload`; the categories above are not separate tables. Messages are event
-content, not the entire event model. `message.appended` owns native conversation
-content; `tool.completed` adds presentation details rather than a second tool-result
-authority. Parent/fork links relate sessions; they do not share mutable event rows.
+content, not the entire event model. `messages.appended` owns native conversation
+content; `tool.completed` adds execution/presentation metadata, not a second copy
+of tool-result content. Parent/fork links relate sessions; they do not share mutable event rows.
 History and Snapshot are views of the same events, not independent saved copies.
 Event means a durable persistence fact here, not every transient streaming/runtime
 notification. `Event` is the proposed storage envelope; current code still uses
 `transcript.Record` and requires an explicit adapter, not a blind type rename.
-The event names illustrate existing semantics, not an exhaustive enum; archive
-and restored-cwd changes need typed payloads defined before implementation.
+Event names follow `<object>.<past-tense action>`; Session ownership is already
+in `session_id`. These are target names, not the current codec. Import maps legacy
+types explicitly while preserving their meaning. Archive belongs to state; current
+execution cwd belongs to session state, not home-workspace identity.
+
+### Recording contract: complete facts, minimal duplication
+
+Persist an event when it changes recoverable state, contributes user-visible
+history, or explains a consequential execution/security outcome. Do not record
+every runtime notification. Each type needs a producer, consumer and minimum
+payload; a type without one of those has not justified persistence.
+
+| Event family | Minimum durable information |
+| --- | --- |
+| `session.created` / `session.forked` | Identity, initial location/settings, parent or fixed fork provenance |
+| `messages.appended` / `messages.replaced` | Ordered native message list with stable IDs; one message is a one-element list |
+| `compaction.completed` | Operation ID, source sequence and summary message ID; no second summary text |
+| `config.updated` / `state.updated` | Only changed typed fields; distinguish absent from explicit clearing |
+| `inference.started` / `inference.completed` / `inference.failed` | Attempt ID, input message IDs and non-secret request settings; outcome, usage and bounded error details |
+| `tool.started` / `tool.completed` / `tool.failed` | Call/attempt IDs, execution outcome and necessary timing/presentation fields; arguments/results reference native messages or assets |
+| `permission.requested` / `permission.decided`, `hook.completed` | Correlation, scoped decision/outcome and bounded reason; no duplicate prompts or tool payloads |
+| `system.updated`, `tools.updated`, `skill.updated`, `notice.added` | Changed definitions/state or meaningful notice with its message position; unchanged definitions are not repeated per inference |
+
+Persist inference/tool start before dispatch and correlate the terminal outcome;
+retries have distinct attempt IDs. Cancellation is an explicit outcome, not success.
+A start without an outcome means interrupted/unknown, not proven failure or a safe
+automatic retry. This execution boundary is separate from a durable assistant tool
+call, which may exist before execution is authorized. If the required start cannot
+be committed, do not dispatch the operation. Adapter work must establish these
+target guarantees rather than assume current callbacks already provide them.
+
+Do not store token deltas, spinner/progress ticks, picker navigation, repeated reads,
+empty patches, unchanged snapshots or reconstructible UI text. Final native messages
+remain complete. Preserve genuine repeated actions and identical user messages:
+deduplicate retries by event/operation ID, never solely by text or timestamps.
+Message batches deduplicate by native message identity. Replacements carry the full
+required active sequence; this intentional snapshot is not a reason to create a
+parallel messages table. Secrets, credentials and unbounded diagnostic dumps are
+excluded; retain bounded diagnostics and necessary asset references instead.
+
+### Ownership rules
 
 | Concept | Owns |
 | --- | --- |
@@ -287,8 +327,8 @@ Summary generation belongs to the agent/runtime, outside any SQL transaction.
 | Artifact | Storage |
 | --- | --- |
 | Original messages and referenced assets | Retained records/files for history, inspection, fork and export |
-| Completed native summary and retained messages | `session_events`: `conversation.replaced` payload |
-| Summary ID and source sequence | `session_events`: `session.compacted` payload |
+| Completed native summary and retained messages | `session_events`: `messages.replaced` payload |
+| Summary ID and source sequence | `session_events`: `compaction.completed` payload |
 | Partial summary tokens | Runtime memory; never accepted recovery state |
 
 Compact accepts a fixed source sequence and stable operation ID. Validate that
@@ -369,6 +409,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Configuration changes and revoked permissions | Correct scoped writes and current security policy on resume |
 | Display history, images and parallel tools | Complete browsing without expanding resumed model context |
 | Crash, duplicate writes, cleanup and bad checkpoints | Consistent records/summaries; recoverable caches; explicit failures |
+| Interrupted calls, retry and repeated identical input | Starts/outcomes correlate; unknown execution stays unknown; distinct actions survive deduplication |
+| Streaming/progress and unchanged state | Complete final messages without per-token events, empty patches or repeated snapshots |
 | Import, repeated import, export and rollback | Preserved IDs/content and one writable authority |
 
 Use existing session/transcript/app tests as the baseline. Check picker responsiveness
