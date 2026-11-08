@@ -20,7 +20,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
   ├── Session  (可恢复的对话；workspace = 它运行的检出目录)
   │     ├── events     只追加、权威、单 writer
   │     ├── attrs      用户意图：改过的标题、归档、固定（可选）
-  │     └── blobs      事件引用的内容（图片、大输出、提示词）
+  │     └── blobs      事件引用的内容（图片、大型工具输出）
   └── cache            只含派生摘要；随时可删
 ```
 
@@ -96,54 +96,93 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
 复制前缀的分叉无需改动即可保持所有会话内引用有效。重试幂等由批次提供：重试的提交复用批次 ID，
 sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 
+### 词汇
+
+每个类型都是 `<object>.<action>`。object 表示事件关于什么；每个 action 只有一种含义：
+
+| Action | 含义 |
+| --- | --- |
+| `create` | 新身份。每个会话一次，恒为 `seq 1`。 |
+| `update` | 修改具名的值：会话字段用补丁（缺省 / 设置 / 清除），目录用按名的 `set` / `remove`。 |
+| `append` | 追加到对话末尾。 |
+| `compact` | 用摘要替换活动上下文。历史保留全部内容。 |
+| `start` / `finish` | 有界操作。`finish` 通过 `source` 指向它的 `start`，并带上结局。只有当没有其他事件已标记操作开始时，才有持久的 `start`。 |
+| `decide` | 对守护某个副作用的关卡作出裁决。 |
+| `add` | 仅供展示的记录。 |
+
 ### 事件类型
 
-| 事件 | 载荷 | 投影效果 |
-| --- | --- | --- |
-| `session.create` | `project`、`workspace`、`initial_cwd`、`agent_id`、`config`（初始覆盖）；`parent? {session, call_id}`、`fork? {session, seq}` | 恒为 `seq 1`。身份与溯源。 |
-| `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
-| `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史；历史不删除任何内容。 |
-| `session.update` | `config?`：模型、provider、生成选项、模式、autopilot 策略；`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint、活动技能 | 后续请求使用新覆盖；状态按字段替换。 |
-| `inference.start` | `turn_id`、`input_through`（seq）、`request`（provider、model、选项）、`instructions` 与 `tools`（blob 摘要） | 打开一次尝试。输出消息以它为 `source`。 |
-| `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error?` | 关闭 `source` 指向的尝试。 |
-| `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`、`child_session?` | 单次工具调用的审计与展示细节。结果正文在工具结果消息中。 |
-| `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`scope`、`by`（config/user/hook/reviewer）、`asked_at?`、`reason?` | 仅审计；回放绝不重新授权。 |
-| `hook.finish` | `hook`、`trigger`、`outcome`、`duration_ms?`、`effects?` | 已完成 hook 的审计。异步派发在完成前不记录。 |
-| `annotation.add` | `text`、`anchor?`（seq） | 仅展示的备注；绝不进入模型上下文。 |
+| 分组 | 事件 | 载荷 | 投影效果 |
+| --- | --- | --- | --- |
+| 身份 | `session.create` | `project`、`workspace`、`initial_cwd`、`agent_id`、`config`（初始覆盖）；`parent? {session, call_id?}`、`fork? {session, seq}` | 身份与溯源。 |
+| | `session.update` | `config?`：provider、model、生成选项、模式、autopilot 策略。`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint | `config` 作用于下一次请求；`state` 按字段替换。 |
+| 对话 | `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
+| | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
+| 模型调用 | `inference.start` | `turn_id`、`input_through`（seq）、`request`（provider、model、选项）、`instructions_digest`、`toolset_digest` | 打开一次模型调用（每次重试都是独立调用）。输出消息以它为 `source`。 |
+| | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
+| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/user/hook/reviewer）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。回放绝不重新授权。 |
+| | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 结局与展示细节。结果正文在工具结果消息中。 |
+| 模型可见内容 | `instructions.update` | `set {name: {content, slot}}`、`remove [name]`、`cause` | 从此处起的系统提示各节。 |
+| | `toolset.update` | `set {name: 原生工具 schema}`、`remove [name]`、`cause` | 从此处起提供给模型的工具。 |
+| | `skills.update` | `set {name: disabled/enabled/active}`、`remove [name]`、`cause` | 从此处起的技能可用状态。 |
+| 审计与展示 | `hook.finish` | `hook`、`trigger`、`matcher?`、`outcome`（ran/blocked/error）、`duration_ms?`、`reason?` | 一次已完成 hook 运行的记录。 |
+| | `annotation.add` | `text`、`by_agent?`、`after_message?` | 展示给人、绝不给模型的备注。默认放在自身位置，设置 `after_message` 时放在该消息之后。 |
 
 载荷规则：
 
 - 原生消息保留 SDK 类型及所有 provider 字段（签名、加密推理、内容顺序、工具 ID）。
   消息 ID 在会话内唯一。
-- 补丁区分缺省、设置、清除；`false`、`0`、`""` 是值。拒绝未知字段。空补丁不写入。
+- 补丁区分缺省、设置、清除；`false`、`0`、`""` 是值。目录更新中每个条目在 `set` 与 `remove`
+  中只出现一次。拒绝未知字段。空补丁和未变化的目录不写入。
+- `cause` 说明谁改变了目录：`boot`、`mcp:<server>`、`plugin:<name>`、`user:<command>`。
 - `outcome` 为 `success`、`failure` 或 `cancelled`；失败带有界错误，取消带原因。
-- 从不存储：秘密、token 增量、进度刻度、心跳、重复快照，以及渲染器可推导的内容（预览、最后提示）。
+- 从不存储：秘密、token 增量、进度刻度、心跳、重复快照，以及可推导的内容（预览、最后提示）。
 
-`inference.start` 以 `input_through` 指向输入，而不是列出消息 ID，因此存储随对话长度线性增长。
-系统提示和工具定义按内容去重存为 blob 并以摘要引用，使每次请求都可重建，无需单独的目录事件。
+请求由投影重建，而不是复制进事件：`input_through` 处的上下文，加上 `inference.start` 处投影出的
+instructions 和 toolset。摘要值用来校验重建结果。存储随对话长度线性增长，目录变化保留时间与原因。
 
 ### 提交规则
 
-1. **副作用跟随事实。** 携带工具调用的 assistant 消息在任何工具运行前提交；
-   `inference.start` 在调用模型前提交；`permission.decide` 在被允许的工具运行前提交。
-   提交失败则副作用不开始。
-2. **结果与其结局一起提交。** 工具结果消息与其 `tool.finish`、生成的消息与
-   `inference.finish` 各自同批。
-3. **未完成可见，从不虚构。** 没有结果的工具调用、没有 finish 的 `inference.start`，
-   恢复时报告为中断，不自动重试或补全。
+1. **副作用跟随事实。** 携带工具调用的 assistant 消息在任何工具运行前提交；`inference.start`
+   在调用模型前提交；`permission.decide allow` 在工具运行前提交。每个工具调用都经过关卡，
+   包括自动允许。提交失败则副作用不开始。
+2. **结果与其结局一起提交。** 工具结果消息与其 `tool.finish`、生成的消息与 `inference.finish`
+   各自同批。自动裁决可以与 assistant 消息同批。
+3. **未完成可见，从不虚构。** 恢复时：
+   - 没有裁决的调用从未运行；
+   - 已允许但没有 `tool.finish` 的调用结局未知；
+   - 没有 finish 的 `inference.start` 被中断。
+
+   都不会自动重试或补全。
 4. **不明确的提交靠重读解决。** 出错后 writer 重读尾部；批次 ID 存在即已提交。
+
+### 上下文操作
+
+活动上下文只通过 `message.append` 和 `context.compact` 改变。其他看似改变上下文的操作都由别处覆盖：
+
+| 操作 | 记录方式 |
+| --- | --- |
+| 用户输入、模型输出、工具结果、来自其他会话的消息 | `message.append` |
+| 压缩：自动、手动 `/compact`、prompt-too-long 恢复 | `context.compact`，及其 `inference.start` / `finish` |
+| `/clear` | 新会话（`Create`）。旧会话保持完整、可恢复。不设 `context.clear`：一个会话只承载一段对话。 |
+| 回退或编辑之前的消息（目前未实现） | 在该消息之前的 `seq` 处 `Fork`，再在分叉中 `message.append`。源会话从不被改写，因此不需要 `context.rewind`。 |
+| 中断的轮次留下没有结果的工具调用 | 不记录。上下文保留它们；每次构建请求时修复工具配对（`ai.Repair`）。 |
+| 恢复、分叉或子 agent 续跑时把上下文加载进 runtime | 不记录。runtime 接收投影；与投影相同的替换不是事件。schema 4 会把它记成 `conversation.replaced`。 |
+| 子 agent 模型回退 | `session.update.config`；上下文不变。 |
+| 请求的 provider 适配（如纯文本模型的图片处理） | 不记录。它是上下文与请求配置的纯函数。 |
 
 ### 投影
 
 纯投影器把已提交事件折叠为：
 
 - **Context** — 发给模型的活动消息列表。
-- **State** — 生效的覆盖与会话状态。
+- **State** — 生效的覆盖、会话状态和三个目录。
 - **History** — 曾有过的所有消息及审计和备注，用于展示和检查。压缩前的消息保留在此。
 - **Summary** — 缓存在 `cache/summaries/` 中的列表行数据。
 
 恢复流程为 `Open → 投影 → 解析当前设置与信任 → 启动 runtime`。TUI、无界面和 ACP 共用；
-ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。
+ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。恢复时按当前配置重建目录；
+与投影的差异写成 cause 为 `resume` 的 `*.update` 事件。
 
 ## 关键流程
 
@@ -151,10 +190,11 @@ ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。
 
 ```text
 commit [message.append user]
-commit [inference.start]                       --> call model
-commit [message.append assistant(tool calls), inference.finish]
-  for each call: commit [permission.decide]    --> run tool
-                 commit [message.append tool result, tool.finish]
+commit [inference.start]                                --> call model
+commit [message.append assistant(tool calls), inference.finish,
+        permission.decide (automatic ones)]
+  each asked call: commit [permission.decide]           --> run tool if allowed
+  each call:       commit [message.append tool result, tool.finish]
 ```
 
 ### 子 agent
@@ -162,15 +202,17 @@ commit [message.append assistant(tool calls), inference.finish]
 子 agent 是独立会话；父会话只记录它接纳的内容。
 
 ```text
-parent: assistant tool call C (Agent)
+parent: assistant tool call C (Agent), permission.decide allow C
 child:  session.create { parent: {parent_sid, C} }   committed before the child runs
         ... its own independent events ...
 parent: commit [message.append tool result for C, tool.finish { call_id: C, child_session }]
 ```
 
-在工具调用之外送达的后续结果（后台完成、群组消息）是原父会话中的一条 `message.append`，
-其 `source` 指向子会话的内容事件。投递与重试归传输层或群组收件箱；稳定的批次 ID 使重复投递幂等。
-回放从不重建进程、回调或子会话所有权。
+- 续跑（对已有子会话 `SendMessage`）是另一次工具调用，有自己的 `tool.finish { child_session }`。
+- 在工具调用之外稍后送达的结果（后台完成、群组消息）是原父会话中的一条 `message.append`，
+  其 `source` 指向子会话的内容事件。
+- 不经工具调用启动的会话（cron、workflow）只在存在调用时才设置 `parent.call_id`。
+- 投递与重试归传输层或群组收件箱；稳定的批次 ID 使重复投递幂等。回放从不重建进程、回调或子会话所有权。
 
 ### 分叉
 
@@ -180,12 +222,9 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 2. 清空 group hint；重命名事件文件到正式位置以发布。
 
 位置和原生消息 ID 不变，因此无需改写任何引用。分叉相互独立：删除源会话不会破坏它，
-复制前缀中未完成的尝试保持未完成。
+复制前缀中未完成的操作保持未完成。
 
 ### 压缩
-
-压缩是唯一让活动上下文变短的操作，其余一律追加。`/clear` 会新建会话，编辑通过 `Fork` 离开原会话，
-二者都不改写上下文。
 
 ```text
 commit [inference.start]             capture: context projected at seq S
@@ -196,8 +235,8 @@ before: context = m1 .. m40  (all at seq <= S)
 after:  context = [summary]            history = m1 .. m40, summary
 ```
 
-`through` 精确指出摘要覆盖的范围，使事件自描述：检查器能显示哪些消息被摘要；`S` 之后追加的内容
-（目前没有，因为压缩期间输入会排队）会留在上下文中而不会丢失。摘要需要保留的近期请求写在摘要文本里。
+`through` 精确指出摘要覆盖的范围。检查器能显示哪些消息被摘要；`S` 之后追加的内容会留在上下文中
+而不会丢失——目前没有这种内容，因为压缩期间输入会排队。摘要需要保留的近期请求写进摘要文本。
 失败或取消的压缩只写 `inference.finish`，上下文不变。
 
 ## 一致性与恢复
@@ -306,27 +345,31 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | --- | --- |
 | `session.started`、`session.forked` | `session.create` |
 | SDK message / `message.appended` | `message.append` |
-| SDK truncate + 重新保存的消息（`conversation.replaced`） | 有 `session.compacted` 指向摘要：`context.compact`。写入空上下文（子 agent 记录）：`message.append`。其他情况阻止转换。 |
-| `session.state.patched` | `session.update`（model/mode/autopilot → config；title/tasks/group → state） |
+| SDK truncate + 重新保存的消息（`conversation.replaced`） | 有 `session.compacted` 指向摘要：`context.compact`。写入空上下文（子 agent 记录）：`message.append`。与当前上下文相同（恢复时重新加载）：丢弃。其他情况阻止转换。 |
+| `session.state.patched` | `session.update`（model/mode/autopilot → config；title/tasks/group → state）；`lastPrompt` 可推导，丢弃 |
 | `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
-| `system.section.*`、`tool.added/removed` | 折叠进下一个 `inference.start` 的 instructions/tools blob |
+| `system.section.added/removed` | `instructions.update` set/remove；`caller` → `cause` |
+| `tool.added/removed` | `toolset.update` set/remove；`caller` → `cause` |
 | `tool.completed` | `tool.finish` |
-| `permission.required` + `permission.decided` | `permission.decide`（`asked_at` 取自请求） |
+| `permission.required` + `permission.decided` | 合为一条 `permission.decide`；请求中的选项和细节成为 `asked`。没有裁决的请求丢弃（该调用从未运行）。 |
 | `hook.fired` | 结局为终态时映射为 `hook.finish`；仅异步派发的丢弃 |
-| `skill.state.changed` | `session.update.state.active_skills` |
-| `notice.added` | `annotation.add` |
+| `skill.state.changed` | `skills.update` |
+| `notice.added` | `annotation.add`（`afterMessageId` → `after_message`） |
 
 ## 备选方案
 
 - **全局唯一事件 ID**（上一版草案）。需要分配、跨分区冲突检查，并在分叉时改写所有本地引用。
   位置身份 `(session, seq)` 加批次 ID 幂等，提供同样保证而没有这些成本。
-- **工具、委派、权限请求的 start 事件。** 已提交的 assistant 消息在调用运行前就记录了它，
-  子会话的 `session.create` 记录了委派，没有决定的调用即是待处理请求。单独的 start 事件是重复事实。
-- **指令、工具、技能的目录事件。** 由 `inference.start` 引用的内容寻址 blob 使每次请求自描述，
-  无需回放目录来解析摘要。
+- **`tool.start`、`delegation.start/finish`、`permission.request`**（上一版草案）。每个都重复了别的事件
+  已确定的事实：assistant 消息记录了调用，`permission.decide allow` 标记了它可以运行的时刻，子会话的
+  `session.create` 与 `tool.finish.child_session` 记录了委派，`permission.decide.asked` 保留了展示给人的内容。
+  它们覆盖的每个场景都对应到上面的提交规则。
+- **每次请求把提示词和工具定义存为 blob。** 能自描述，但丢失了目录何时、为何变化（MCP 服务器连接、
+  技能启用）。增量事件保留原因且大小线性；`inference.start` 上的摘要值仍可校验每次请求。
 - **归档与固定作为事件。** 这会要求持有 writer 锁才能整理在别处打开的会话；它们也不是对话事实。
-- **通用的 `context.replace`（reason + 混合 entries）。** 它预设了 San 并不存在的回退、编辑和部分保留；
-  `/clear` 本来就新建会话。一个具体的压缩事件更容易校验和阅读。真有新操作时再加。
+- **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
+  `/clear` 新建会话，回退或编辑更适合用保持源会话完整的分叉来表达（见[上下文操作](#上下文操作)）。
+  一个具体的事件更容易校验和阅读。
 - **attrs 与摘要缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
 - **以 `last_resumed_at` 作为活动。** 只打开不操作不算活动；最后事件时间就够了，无需额外的权威字段。
 - **随机项目 ID + 注册表。** 注册表需要加锁更新与对账，仓库移动后仍需显式关联。派生键两者都不需要。
@@ -342,6 +385,8 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - 事件：每种事件类型往返无损；原生 provider 字段保留；回放无副作用；批次重试幂等、冲突失败。
 - 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途、转换中途，均恢复到已提交状态。
 - 压缩：`through` 边界、连续压缩、失败时上下文不变。
+- 请求：每个 `inference.start` 处投影出的上下文和目录与其摘要值一致；恢复重新加载和请求时修复不写事件。
+- 中断的工具：无裁决 → 从未运行；已允许无 finish → 结局未知；都不重试。
 - 删除源后分叉仍独立；子 agent 延迟结果。
 - 生命周期：固定与忙碌保护、回收站期限、保留默认关闭、GC 保留未知文件。
 - 旧格式：在真实 schema-4 会话上验证转换一致性，包括压缩和替换过的对话。

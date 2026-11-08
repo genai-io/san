@@ -21,7 +21,7 @@ Project  (one per Git repository, or per directory outside Git)
   ├── Session  (a resumable conversation; workspace = the checkout it runs in)
   │     ├── events     append-only, authoritative, single writer
   │     ├── attrs      user intent: renamed title, archive, pin (optional)
-  │     └── blobs      content referenced by events (images, large outputs, prompts)
+  │     └── blobs      content referenced by events (images, large tool outputs)
   └── cache            derived summaries only; deleting it is always safe
 ```
 
@@ -114,20 +114,38 @@ Retry idempotency comes from the batch: a retried commit reuses its batch ID,
 and sdk-go treats the same ID with the same content as already committed and a
 changed one as a conflict.
 
+### Vocabulary
+
+Every type is `<object>.<action>`. Objects name what the event is about; actions
+have one meaning each:
+
+| Action | Meaning |
+| --- | --- |
+| `create` | A new identity. Once per session, always `seq 1`. |
+| `update` | A change to named values: a patch (absent / set / clear) for session fields, or `set` / `remove` by name for a catalogue. |
+| `append` | Adds to the end of the conversation. |
+| `compact` | Replaces the active context with a summary. History keeps everything. |
+| `start` / `finish` | A bounded operation. `finish` names its `start` through `source` and carries the outcome. An operation has a durable `start` only when nothing else already marks its beginning. |
+| `decide` | Resolves a gate that guards an effect. |
+| `add` | A display-only record. |
+
 ### Event types
 
-| Event | Payload | Projection effect |
-| --- | --- | --- |
-| `session.create` | `project`, `workspace`, `initial_cwd`, `agent_id`, `config` (initial overrides); `parent? {session, call_id}`, `fork? {session, seq}` | Always `seq 1`. Identity and provenance. |
-| `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
-| `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history; nothing leaves it. |
-| `session.update` | `config?`: model, provider, generation options, mode, autopilot policy; `state?`: generated title, todos, execution_cwd, autopilot progress, group hint, active skills | Next requests use the new overrides; state is replaced field by field. |
-| `inference.start` | `turn_id`, `input_through` (seq), `request` (provider, model, options), `instructions` and `tools` (blob digests) | Opens an attempt. The output messages name it as `source`. |
-| `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error?` | Closes the attempt named by `source`. |
-| `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?`, `child_session?` | Audit and display details for one tool call. The result body is the tool-result message. |
-| `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `scope`, `by` (config/user/hook/reviewer), `asked_at?`, `reason?` | Audit only; never re-grants on replay. |
-| `hook.finish` | `hook`, `trigger`, `outcome`, `duration_ms?`, `effects?` | Audit of a completed hook. Async dispatch is not recorded until it completes. |
-| `annotation.add` | `text`, `anchor?` (seq) | Display-only note; never model context. |
+| Group | Event | Payload | Projection effect |
+| --- | --- | --- | --- |
+| Identity | `session.create` | `project`, `workspace`, `initial_cwd`, `agent_id`, `config` (initial overrides); `parent? {session, call_id?}`, `fork? {session, seq}` | Identity and provenance. |
+| | `session.update` | `config?`: provider, model, generation options, mode, autopilot policy. `state?`: generated title, todos, execution_cwd, autopilot progress, group hint | `config` applies to the next request; `state` replaces fields. |
+| Conversation | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
+| | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
+| Model calls | `inference.start` | `turn_id`, `input_through` (seq), `request` (provider, model, options), `instructions_digest`, `toolset_digest` | Opens one model call (each retry is its own call). Output messages name it as `source`. |
+| | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
+| Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. Never re-grants on replay. |
+| | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details. The result body is the tool-result message. |
+| What the model could see | `instructions.update` | `set {name: {content, slot}}`, `remove [name]`, `cause` | System-prompt sections from this point on. |
+| | `toolset.update` | `set {name: native tool schema}`, `remove [name]`, `cause` | Tools offered to the model from this point on. |
+| | `skills.update` | `set {name: disabled/enabled/active}`, `remove [name]`, `cause` | Skill availability from this point on. |
+| Audit and display | `hook.finish` | `hook`, `trigger`, `matcher?`, `outcome` (ran/blocked/error), `duration_ms?`, `reason?` | Record of a completed hook run. |
+| | `annotation.add` | `text`, `by_agent?`, `after_message?` | Note shown to the person, never to the model. Placed at its own position unless `after_message` is set. |
 
 Payload rules:
 
@@ -135,45 +153,69 @@ Payload rules:
   encrypted reasoning, content order, tool IDs). Message IDs are unique within a
   session.
 - Patches distinguish absent, set and clear; `false`, `0` and `""` are values.
-  Unknown fields are rejected. Empty patches are not written.
+  Catalogue updates name each entry once across `set` and `remove`. Unknown
+  fields are rejected. Empty patches and unchanged catalogues are not written.
+- `cause` says who changed a catalogue: `boot`, `mcp:<server>`, `plugin:<name>`,
+  `user:<command>`.
 - `outcome` is `success`, `failure` or `cancelled`; failures carry a bounded
   error, cancellations a reason.
 - Never stored: secrets, token deltas, progress ticks, heartbeats, repeated
-  snapshots, or anything a renderer can derive (previews, last prompt).
+  snapshots, or anything derivable (previews, last prompt).
 
-`inference.start` points at its input by `input_through` instead of listing
-message IDs, so storage stays linear in conversation length. System prompts and
-tool definitions are stored once per distinct content as blobs and referenced by
-digest, which makes every request reconstructible without separate catalogue
-events.
+A request is reconstructed from projections, not copied into the event:
+context at `input_through`, plus instructions and toolset as projected at the
+`inference.start`. The digests verify that reconstruction. Storage stays linear
+in conversation length, and catalogue changes keep their timing and cause.
 
 ### Commit rules
 
 1. **Effects follow facts.** The assistant message carrying tool calls is
    committed before any tool runs; `inference.start` before the model is called;
-   `permission.decide` before an allowed tool runs. If the commit fails, the
-   effect does not start.
+   `permission.decide allow` before the tool runs. Every tool call passes the
+   gate, including automatic allows. If a commit fails, the effect does not start.
 2. **Results commit with their outcome.** A tool-result message and its
    `tool.finish`, or generated messages and `inference.finish`, go in one batch.
-3. **Unfinished is visible, never invented.** A tool call without a result, or an
-   `inference.start` without a finish, is reported as interrupted on resume. It
-   is not retried or completed automatically.
+   Automatic decisions may share the assistant message's batch.
+3. **Unfinished is visible, never invented.** On resume:
+   - a call with no decision never ran;
+   - a call allowed but without `tool.finish` has an unknown outcome;
+   - an `inference.start` without a finish was interrupted.
+
+   None is retried or completed automatically.
 4. **Ambiguous commits are resolved by re-reading.** After an error, the writer
    re-reads the tail; if the batch ID is present the commit happened.
+
+### Context operations
+
+The active context changes only through `message.append` and `context.compact`.
+Every other operation that seems to change it is covered elsewhere:
+
+| Operation | Recorded as |
+| --- | --- |
+| User input, model output, tool results, messages delivered from other sessions | `message.append` |
+| Compaction: automatic, manual `/compact`, recovery from prompt-too-long | `context.compact` with its `inference.start` / `finish` |
+| `/clear` | A new session (`Create`). The old one stays intact and resumable. No `context.clear`: one session holds one conversation. |
+| Rewind or edit an earlier message (not implemented today) | `Fork` at the `seq` before that message, then `message.append` in the fork. The source is never rewritten, so no `context.rewind` is needed. |
+| Interrupted turn leaving tool calls without results | Nothing. Context keeps them; request building repairs tool pairing (`ai.Repair`) every time. |
+| Loading context into the runtime on resume, fork or subagent continuation | Nothing. The runtime receives the projection; a replacement equal to the projection is not an event. Schema 4 records it as `conversation.replaced`. |
+| Subagent model fallback | `session.update.config`; context unchanged. |
+| Provider adaptation of a request (e.g. images for text-only models) | Nothing. A pure function of context and request config. |
 
 ### Projections
 
 A pure projector folds committed events into:
 
 - **Context** — the active message list sent to the model.
-- **State** — effective overrides and session state.
+- **State** — effective overrides, session state and the three catalogues.
 - **History** — every message ever held plus audit and annotations, for display
   and inspection. Pre-compaction messages stay here.
 - **Summary** — the list-row data cached in `cache/summaries/`.
 
 Resume is `Open → project → resolve current settings and trust → start runtime`.
 TUI, headless and ACP share it; ACP checks the requested cwd against the restored
-`execution_cwd` before building services.
+`execution_cwd` before building services. Catalogues are rebuilt from current
+configuration at resume; differences from the projection are written as
+`*.update` events with cause `resume`.
 
 ## Key flows
 
@@ -181,10 +223,11 @@ TUI, headless and ACP share it; ACP checks the requested cwd against the restore
 
 ```text
 commit [message.append user]
-commit [inference.start]                       --> call model
-commit [message.append assistant(tool calls), inference.finish]
-  for each call: commit [permission.decide]    --> run tool
-                 commit [message.append tool result, tool.finish]
+commit [inference.start]                                --> call model
+commit [message.append assistant(tool calls), inference.finish,
+        permission.decide (automatic ones)]
+  each asked call: commit [permission.decide]           --> run tool if allowed
+  each call:       commit [message.append tool result, tool.finish]
 ```
 
 ### Subagents
@@ -192,17 +235,22 @@ commit [message.append assistant(tool calls), inference.finish]
 A subagent is a separate session; the parent records only what it accepted.
 
 ```text
-parent: assistant tool call C (Agent)
+parent: assistant tool call C (Agent), permission.decide allow C
 child:  session.create { parent: {parent_sid, C} }   committed before the child runs
         ... its own independent events ...
 parent: commit [message.append tool result for C, tool.finish { call_id: C, child_session }]
 ```
 
-A later result delivered outside the tool call (background completion, group
-message) is a `message.append` in the original parent, with `source` pointing at
-the child's content event. Delivery and retry belong to the transport or group
-inbox; the stable batch ID makes redelivery idempotent. Replay never recreates
-processes, callbacks or child ownership.
+- A continuation (`SendMessage` to an existing child) is another tool call with
+  its own `tool.finish { child_session }`.
+- A result delivered later, outside the tool call (background completion, group
+  message), is a `message.append` in the original parent with `source` pointing
+  at the child's content event.
+- Sessions started without a tool call (cron, workflow) set `parent.call_id`
+  only when there is one.
+- Delivery and retry belong to the transport or group inbox; the stable batch ID
+  makes redelivery idempotent. Replay never recreates processes, callbacks or
+  child ownership.
 
 ### Fork
 
@@ -214,13 +262,9 @@ Fork at `seq N` of a source session:
 
 Positions and native message IDs are unchanged, so no reference is rewritten.
 The fork is independent: deleting the source never breaks it, and unfinished
-attempts in the copied prefix stay unfinished.
+operations in the copied prefix stay unfinished.
 
 ### Compaction
-
-Compaction is the only operation that shrinks the active context; everything
-else appends. `/clear` starts a new session and edits leave a session through
-`Fork`, so neither rewrites context.
 
 ```text
 commit [inference.start]             capture: context projected at seq S
@@ -231,12 +275,12 @@ before: context = m1 .. m40  (all at seq <= S)
 after:  context = [summary]            history = m1 .. m40, summary
 ```
 
-`through` names exactly what the summary covers, so the event is
-self-describing: the inspector can show which messages were summarized, and
-anything appended after `S` (none today, because input queues during
-compaction) would stay in context rather than be lost. Recent requests the
-summary must keep are part of the summary text. A failed or cancelled
-compaction writes only `inference.finish` and leaves context unchanged.
+`through` names exactly what the summary covers. The inspector can show which
+messages were summarized, and anything appended after `S` stays in context
+rather than being lost; today nothing is, because input queues during
+compaction. Recent requests the summary must keep are written into the summary
+text. A failed or cancelled compaction writes only `inference.finish` and leaves
+context unchanged.
 
 ## Consistency and recovery
 
@@ -364,15 +408,16 @@ fields the old records lack are left absent.
 | --- | --- |
 | `session.started`, `session.forked` | `session.create` |
 | SDK message / `message.appended` | `message.append` |
-| SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Anything else blocks conversion. |
-| `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state) |
+| SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Equal to the current context (resume reload): dropped. Anything else blocks conversion. |
+| `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state); `lastPrompt` dropped as derivable |
 | `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
-| `system.section.*`, `tool.added/removed` | Folded into instruction/tool blobs of the next `inference.start` |
+| `system.section.added/removed` | `instructions.update` set/remove; `caller` → `cause` |
+| `tool.added/removed` | `toolset.update` set/remove; `caller` → `cause` |
 | `tool.completed` | `tool.finish` |
-| `permission.required` + `permission.decided` | `permission.decide` (`asked_at` from the request) |
+| `permission.required` + `permission.decided` | One `permission.decide`; the request's options and detail become `asked`. A request without a decision is dropped (the call never ran). |
 | `hook.fired` | `hook.finish` when its outcome is terminal; async-only dropped |
-| `skill.state.changed` | `session.update.state.active_skills` |
-| `notice.added` | `annotation.add` |
+| `skill.state.changed` | `skills.update` |
+| `notice.added` | `annotation.add` (`afterMessageId` → `after_message`) |
 
 ## Alternatives considered
 
@@ -380,19 +425,23 @@ fields the old records lack are left absent.
   cross-partition collision checks and rewriting every local reference on fork.
   Positional `(session, seq)` identity plus batch IDs for idempotency gives the
   same guarantees with none of that.
-- **Start events for tools, delegation and permission requests.** The committed
-  assistant message already records the call before it runs, the child's
-  `session.create` records delegation, and a call without a decision is a
-  pending request. Separate start events duplicate those facts.
-- **Catalogue events for instructions, tools and skills.** Content-addressed
-  blobs referenced from `inference.start` make each request self-describing and
-  remove the need to replay catalogues to resolve a digest.
+- **`tool.start`, `delegation.start/finish`, `permission.request`** (previous
+  draft). Each duplicates a fact another event already fixes: the assistant
+  message records the call, `permission.decide allow` marks the point after
+  which it may run, the child's `session.create` and `tool.finish.child_session`
+  record delegation, and `permission.decide.asked` keeps what the person was
+  shown. Every scenario they covered maps to the commit rules above.
+- **Prompt and tool definitions as blobs per request.** Self-describing, but it
+  loses when and why a catalogue changed (an MCP server connecting, a skill
+  being enabled). Delta events keep the cause and stay linear in size; the
+  digests on `inference.start` still verify each request.
 - **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.
-- **A generic `context.replace` (reason + mixed entries).** It anticipated
-  rewind, edit and partial retention that San does not have; `/clear` already
-  creates a new session. One concrete compaction event is easier to validate
-  and read. Add an operation when a real one exists.
+- **A generic `context.replace`, or `context.clear` / `context.rewind`.** San's
+  only in-place rewrite is compaction; `/clear` creates a new session, and a
+  rewind or edit is better as a fork that leaves the source intact (see
+  [Context operations](#context-operations)). One concrete event is easier to
+  validate and read.
 - **attrs and summary cache in one file.** Rebuilding the cache would rewrite
   user intent, so "deleting caches is safe" would no longer hold.
 - **`last_resumed_at` as activity.** Opening without doing anything is not
@@ -419,6 +468,10 @@ fields the old records lack are left absent.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
   mid-restore, mid-conversion. Each recovers to a committed state.
 - Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
+- Requests: context and catalogues projected at each `inference.start` match its
+  digests; resume reload and request-time repair write no events.
+- Interrupted tools: no decision → never ran; allowed without finish → unknown
+  outcome; neither is retried.
 - Fork independence after source deletion; subagent late results.
 - Lifecycle: pin and busy guards, trash deadline, retention off by default, GC
   keeps unknown files.
