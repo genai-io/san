@@ -136,6 +136,59 @@ continuations. Child transcripts remain inspectable after restart; continuing a
 live child still validates parent/task/session ownership. Late callbacks stay
 bound to their original session and cannot mutate the newly selected UI.
 
+### Configuration scopes and write destinations
+
+SQLite session storage does not imply SQLite ownership of all settings. Keep the
+same logical settings API regardless of storage medium; explicitly choose a scope
+on write, never save the fully merged result back into any source.
+
+| Scope/data | Authoritative destination | Read/write behavior |
+| --- | --- | --- |
+| User defaults | `~/.san/settings.json` and existing user-level provider/skill configuration files | Shared across projects; update only the selected file's fields |
+| Project shared settings | Selected cwd's `.san/settings.json` and existing instruction/config files | Repository-editable and shareable; not duplicated in `projects` |
+| Local/worktree settings | Existing `settings.local.json` locations, including main-checkout local files for linked worktrees | Personal overrides; preserve current resolution and trust rules |
+| Persona overlay | Selected persona's settings files | Existing field-specific overlay; not a project-row copy |
+| Session overrides | Typed `session.state.patched` records in SQLite | Apply only to supported session fields; do not rewrite user/project defaults |
+| CLI/environment overrides | Invocation memory | Do not persist the entire environment or silently promote temporary values |
+| Request configuration history | Allowlisted fields in inference/session records | Evidence of the request, not editable defaults or future permission grants |
+| Credentials, trust and permission authority | Existing secret/auth and security-policy owners | Not copied into ordinary settings JSON or checkpoint payloads |
+
+The current settings-file order is Claude-compatible user → San user →
+Claude-compatible project → San project → project-local Claude → project-local
+San; linked worktrees then read main-checkout local Claude and San files. Defaults
+seed resolution, and persona/request overlays follow their current call paths.
+This is not a universal last-writer-wins rule: maps merge per key, permission
+rules use deduplicated unions, and hooks have native-over-compat event rules.
+Session model selection and explicit request options cannot override safety
+checks. Preserve these rules and test them rather than introducing a single
+JSON merge for every configuration family.
+
+Proposed settings capability (separate from SessionStore):
+
+```go
+Resolve(ctx context.Context, target ConfigTarget) (ResolvedConfig, error)
+Update(ctx context.Context, target ConfigTarget, patch SettingsPatch) error
+```
+
+`ConfigTarget` identifies user, project or local-file scope plus validated cwd,
+or an owned session for supported session overrides. `SettingsPatch` is typed and
+distinguishes absent, explicit empty/false, and removing an override where the
+underlying format supports it; unsupported clearing operations must fail clearly.
+`ResolvedConfig` carries effective values and per-field source provenance (multiple
+sources for merged fields), excluding secret material from inspection output.
+Read-only sources reject Update. Session writes delegate to the opened handle;
+file writes retain atomic updates and cross-process coordination. No transaction
+is promised across config files and SQLite: request records capture the settings
+actually used. Changes affect subsequent resolutions, not an in-flight request
+or prior transcript; reload/cwd changes must not leave stale permissions cached.
+
+On resume, restore supported session selections, then resolve current file and
+policy sources. A missing historical model/provider produces an explicit error or
+user-selected replacement, not silent replay under a different model. Removed
+permissions take effect even when an old record shows a grant. If user/project
+settings ever move into SQLite, that is a separate authority migration with
+explicit import/export and file compatibility, not an extra writable mirror.
+
 ## API contracts
 
 These are conceptual product APIs, not a prescription for new packages or
@@ -180,6 +233,7 @@ type SessionStore interface {
 
 func (s *Session) ID() string
 func (s *Session) Append(ctx context.Context, records ...Record) error
+func (s *Session) Compact(ctx context.Context, change CompactionChange) error
 func (s *Session) Snapshot() (Projection, error)
 func (s *Session) Close() error
 ```
@@ -190,6 +244,7 @@ func (s *Session) Close() error
 | ProjectPatch | Typed optional name/description; absent leaves unchanged, empty explicitly clears where allowed |
 | CreateOptions | Workspace ID, initial cwd, optional caller-assigned session ID, parent identity and initial non-secret settings |
 | ForkOptions | Optional destination workspace and source sequence; omitted sequence captures latest committed prefix; destination cwd validated before creation |
+| CompactionChange | Expected source sequence, stable operation ID, native summary message and ordered retained messages; no model callback or UI data |
 | SessionQuery | Project/workspace/parent/group/sidechain/archive filters as required by current callers, bounded limit and opaque cursor |
 | RecordQuery / HistoryQuery | Bounded limit and opaque cursor; no `includeCompacted` mode switch between history and resume |
 | RecordPage / HistoryPage | Typed records or display entries, `ThroughSeq`, `NextCursor`; history entries retain source IDs and attachment references |
@@ -217,6 +272,7 @@ not an implicit steal. Invalid project/workspace filter combinations are rejecte
 | Sessions | Archive(id) / Delete(id) | Archive via record; hard delete claims ownership and rejects an active writer |
 | Session | ID / Snapshot | Identity and immutable committed projection with its sequence |
 | Session | Append(records...) | One atomic batch and one persistence entrance |
+| Session | Compact(change) | Validate and commit completed compaction through the same append implementation; never invoke the model inside a transaction |
 | Session | Close | Release writer exactly once, after in-flight writes |
 
 Do not add parallel `SaveMessages`, `SaveHistory`, and `SaveMetadata` authorities.
@@ -251,7 +307,34 @@ record versions prevent resume, rather than being silently skipped.
 
 ## Logical schema
 
-Four core tables. SQL below is specified as fields and constraints rather than
+### Storage allocation
+
+Every durable datum has a named destination. This is not a four-table limit:
+introduce another table when it has independent ownership or a proven query need,
+not merely because it appears in this inventory. File-backed authorities below
+are deliberate scope decisions, not unassigned database work.
+
+| Data | Table/column or file destination | Authority / reconstruction |
+| --- | --- | --- |
+| Project identity and description | `projects.id/name/description` | Authoritative entity metadata |
+| Workspace registration and home project | `workspaces.root_path/project_id/kind` | Authoritative location registration |
+| Session home, ancestry and fork provenance | `sessions.workspace_id/parent_session_id/fork_source_id/fork_source_seq`; birth/fork records | Row links to extant entities; records retain original historical identities |
+| Session title/archive/list summary | `sessions.title/archived_at` and query-driven summary columns | Derived from records in the same commit |
+| Messages, images-in-message and tool-call/result payloads | `session_records.payload`, typed message/replacement events | Native historical content; large asset contents remain referenced files |
+| Compaction summary and retained active context | `session_records.payload`, `conversation.replaced` | Full replacement messages, including native summary ID/content |
+| Compaction boundary and input version | `session_records.payload`, `session.compacted` | Summary ID plus source sequence, not duplicate summary text |
+| Session model/mode/other supported overrides | `session_records.payload`, `session.state.patched` | Session-only intent, never a copy of all resolved settings |
+| Durable todos, notices and tool presentation details | Corresponding typed `session_records.payload` | Projected into application state/history |
+| Group restoration hint | Session state record; optional derived list column | Actual roster/inbox/membership remain in the group subsystem |
+| Non-secret settings used for a request | Inference record payload | Historical evidence, not future configuration authority |
+| User defaults and provider choices | Existing user configuration files | Config resolver; no `users` or user-config table in this migration |
+| Shared Project settings/instructions | Existing project configuration/instruction files | Config resolver; no duplicate `project_settings` table |
+| Worktree/local/persona settings | Existing scoped files | Preserve current precedence, trust and write destinations |
+| Large outputs and pasted image bytes | Existing attachment files with record references | Session-owned assets; not dropped by compaction |
+| Optional restored projection | `session_checkpoints.payload/through_seq/projector_version` | Disposable cache of records |
+| Secret values and security-policy authority | Existing secret/auth/policy owners | Not a transcript or checkpoint responsibility |
+
+Four core tables follow. SQL is specified as fields and constraints rather than
 an executable migration; timestamp encoding is UTC Unix milliseconds. Opaque IDs
 are TEXT. All foreign-key enforcement must be enabled on every connection.
 
@@ -343,12 +426,79 @@ IDs, replacement boundaries and unknown provider fields supported by SDK types.
 Record IDs and native message IDs are distinct. Retain current reset/compaction
 semantics; do not invent a parent-record tree during the backend migration.
 
+### Compaction storage and recovery
+
+Compaction is a first-phase Session Management capability, required before a
+backend can claim session conformance. It is not deferred with checkpoints or
+owned by a separate compaction storage subsystem. `Session.Compact` accepts a
+completed summary plus retained native messages and validates the transition;
+the agent/runtime generates that summary outside persistence. Compact uses the
+same append implementation, not an independent writer or second source of truth.
+
+Compaction output is durable conversation data, not a disposable cache. No
+separate `compactions` table or latest-summary file is needed for the initial
+model: retain complete typed payloads in `session_records`.
+
+| Artifact | Storage | Recovery meaning |
+| --- | --- | --- |
+| Original messages and tool references | Existing immutable records and referenced assets | Remain available to history, inspection, fork and export |
+| Completed native summary and retained messages | A `conversation.replaced` payload in records | Defines the new active context without deleting earlier records |
+| Compaction boundary | `session.compacted` payload referencing the summary's native message ID and source sequence | Identifies which committed context was compacted |
+| Partial summary tokens | Runtime memory | Not an accepted replacement and never a resume checkpoint |
+| Optional replay checkpoint | Derived `session_checkpoints` row | Accelerates projection; safe to discard and rebuild |
+
+Generate the summary outside the write transaction from a fixed context sequence.
+Before accepting it, validate that its input context has not changed; initially
+use an expected source sequence and reject/recompute on conflict. Hold the session
+writer, but no SQL transaction, while waiting on the model. Late results from a
+retired session/runtime must be rejected, as in current manual-compaction handling.
+
+For new SQLite writes, Compact derives stable record IDs from its operation ID
+and commits the replacement (containing the native summary and any retained
+messages), boundary and derived summaries in one Append batch. Repeating the same
+operation/content returns success without another transition; conflicting reuse
+fails. The expected source sequence is checked for a new operation after checking
+whether it already committed, so a retry is not mistaken for a stale compaction.
+The
+boundary references the summary already present in the replacement; it need not
+store another copy of its text. A separate `message.appended` copy is unnecessary
+for this new batch shape. Replay accepts the current legacy summary-append,
+boundary and truncate sequence during import, preserving its native message IDs.
+The persistence codec/projector must explicitly support both shapes before cutover.
+
+If generation fails, is cancelled, or the batch does not commit, the previous
+context remains authoritative. If commit succeeds before a crash, resume uses the
+replacement even if the UI never displayed it. Consecutive compactions apply in
+sequence; history retains earlier summaries and original turns, deduplicating
+native message IDs. Invalid boundaries fail validation rather than resurrecting
+summarized-away context. Auto-compaction, manual compaction and manual compaction
+before runtime startup must use the same durable transition.
+
+A fork captures the source's history and compaction state at its chosen sequence;
+compacting either conversation later cannot affect the other. Compaction alone
+must not garbage-collect old tool results or images: full history still references
+them. Any future retention/redaction policy is separate and must define its effect
+on history, fork, export and checkpoints. Checkpoints never substitute for keeping
+the summary records themselves.
+
 ### Optional derived tables
 
-A checkpoint may later store `session_id PK/FK`, `through_seq`,
-`projector_version`, `payload`, `created_at`. It must include all recovery state,
-not only messages; incompatible snapshots fall back to replay. Compaction changes
-context semantics; checkpointing only accelerates recovery.
+Create `session_checkpoints` only when recovery measurements justify it:
+
+| Column | SQL type / constraint | Meaning |
+| --- | --- | --- |
+| `session_id` | TEXT PK NOT NULL FK sessions, DELETE CASCADE | One latest checkpoint per session |
+| `through_seq` | INTEGER NOT NULL, CHECK >= 0 | Complete projected record prefix |
+| `projector_version` | INTEGER NOT NULL, CHECK > 0 | Interpretation and snapshot-format version |
+| `payload` | BLOB NOT NULL | Versioned complete durable projection, excluding runtime handles/secrets |
+| `created_at` | INTEGER NOT NULL | Snapshot creation time |
+
+Validate `through_seq <= sessions.last_seq` against the same database snapshot.
+A rebuild must not replace a newer checkpoint with an older one. Checkpoints
+include durable todo and recovery positions, not only messages; they do not store
+live processes, callbacks or temporary grants. Incompatible/corrupt snapshots fall
+back to records. Compaction changes context semantics; checkpointing only speeds
+recovery. No separate index is needed beyond the session primary key.
 
 No initial `session_state`, `project_state`, `messages`, `parts`, `runs`, or
 untyped settings tables. Introduce one only for a demonstrated independent
@@ -404,12 +554,17 @@ an interchange/debugging format, not a long-term dual-written authority.
 
 1. **Contract review:** audit the pinned sdk-go APIs and all query consumers;
    settle identity resolution, summary fields, codec, ownership, database scope,
-   driver and atomic SDK/San projection boundary. Keep existing behavior tests.
+   driver and atomic SDK/San projection boundary. Include Compact, its payload,
+   history/resume/fork semantics and interruption behavior in this first-phase
+   contract; compaction is required, not a later performance enhancement.
 2. **API seams:** remove file-path assumptions and separate display/history from
-   restoration without changing the file-backed behavior. Implement shared
-   projection contracts with focused conformance tests.
-3. **SQLite backend:** implement entities, records, transactions and summaries;
-   run the same behavioral cases against both backends during development.
+   restoration without changing the file-backed behavior. Route auto/manual
+   compaction through the session capability, preserving existing messages and
+   boundaries; identify any stronger atomicity that requires the new backend.
+   Implement shared projection contracts with focused conformance tests.
+3. **SQLite backend:** implement entities, records, atomic compaction transitions,
+   transactions and summaries; run the same behavioral cases against both
+   backends during development.
 4. **Explicit import and cutover:** import supported current transcripts under
    exclusive source ownership, preserving identities and assets. Checkpoint the
    import at transaction boundaries; retries verify provenance/content rather
@@ -437,6 +592,8 @@ codec and legacy-ID audit rather than adding a speculative core table now.
 | Background completion after switch or restart | Original-session routing; persisted child history does not imply a live task |
 | Parent agent, child agent, independent fork | Distinct relationships; source deletion does not delete descendants |
 | Replacement, compaction, retry, parallel tools | Same native restored context as the supported old backend |
+| Auto/manual/inactive-runtime compaction, repeated compaction, failure and retry | Complete durable transition or unchanged prior context; original history and assets retained |
+| User/project/local/session configuration changes | Writes target only the explicit authority; current policy and field-specific precedence survive resume |
 | UI history and attachment hydration | Pre-compaction browsing without expanding model context |
 | Append crash, duplicate retry, two processes | Atomic records/summaries; one session writer; no split ownership |
 | Settings changes and revoked permissions | Current policy enforced; secrets absent from stored snapshots |
