@@ -55,6 +55,21 @@
   --font-mono:    "JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, monospace;
 }
 
+/* Typed pages retain native event identities and have no legacy replay controls. */
+.typed-row, .typed-controls button {
+  background: var(--ink-2);
+  color: var(--bone);
+  border: 1px solid var(--rule);
+  padding: 0.6rem 0.8rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.typed-row { display: block; width: 100%; text-align: left; }
+.typed-row:hover, .typed-row.selected { background: var(--ink-3); color: var(--amber); }
+.typed-row:focus-visible, .typed-controls button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.typed-controls { display: flex; gap: 0.5rem; padding: 0.8rem; }
+.typed-controls button:disabled { color: var(--bone-3); cursor: wait; }
+
 * { box-sizing: border-box; }
 
 html, body {

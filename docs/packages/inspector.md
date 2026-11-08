@@ -6,7 +6,7 @@ layer: feature
 # inspector
 
 Local web UI for replaying session transcripts. Reads the JSONL files
-under `~/.san/projects/<cwd-hash>/transcripts/<session-id>.jsonl` and exposes a
+under the resolved project's `transcripts/<session-id>.jsonl` directory and exposes a
 small HTTP API + SSE live-tail to an embedded single-page UI.
 
 ## Purpose
@@ -16,7 +16,24 @@ viewer over the project's transcripts. It is **read-only**, single-process,
 and intended for debugging an agent run after the fact or watching one
 live. The wire format is the JSONL on disk — sdk-go `pkg/session` lines, with
 san's own records in `data` — and the inspector adds no schema of its own. A
-record's ID is its line number.
+record's ID is its line number. Typed logs instead use `Store.Events` through
+an injected `EventReader`: stable event IDs, validated-prefix cursor pagination,
+and lossless JSON payload inspection. Event detail is server-encoded as a JSON
+string alongside timeline fields, so browser number parsing cannot round native
+schema integers. They are explicitly inspection-only, not resumable histories.
+Only SDK `ErrMode` before any accepted typed prefix selects the legacy viewer;
+a legacy record after a typed prefix is corruption. Corrupt or unsupported typed
+logs remain visible errors. `New(projectDir)` retains legacy viewing via the
+existing read-only format probe; typed logs require an injected reader.
+Typed views do not use SSE,
+legacy state replay, prompt reconstruction, or legacy category filters.
+
+`cmd/san/inspector.go` opens the actual project with `session.OpenStore` and
+uses its `ProjectDir`, so worktrees and subdirectories share project identity.
+Startup can perform normal project metadata registration; read-only refers to
+transcript inspection, which takes no writer leases and never repairs logs.
+`NewWithEventReader` borrows this reader; callers close it after HTTP shutdown.
+`Server.Close` closes the server's separate legacy reader.
 
 ## Contract
 
@@ -40,6 +57,12 @@ call.
 - `Server` (`server.go`) — HTTP server. Routes:
   - `GET /api/sessions` — all transcript files, enriched with saved summaries;
     unreadable files remain available for diagnosis.
+  - `GET /api/sessions/{id}/events?limit={limit}&cursor={cursor}` — checked typed
+    events, `nextCursor`, and `throughSeq`; default 100, maximum 500 per page.
+    Cursors pin the validated prefix; refresh explicitly starts a new snapshot.
+    Page size bounds output, not replay work: each page currently replays the
+    full pinned prefix rather than using an indexed seek.
+    Only `409 legacy_format` permits legacy fallback. Other failures remain errors.
   - `GET /api/sessions/{id}/records?after={offset}` — complete JSONL records
     from a byte offset, with `X-Next-Offset` for the next read.
   - `GET /api/sessions/{id}/state/{recordID}` — materialized replay state

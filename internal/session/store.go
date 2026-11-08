@@ -79,6 +79,9 @@ func (s *Store) Close() error {
 	return s.transcriptStore.Close()
 }
 
+// ProjectDir returns the resolved storage root shared by this project's workspaces.
+func (s *Store) ProjectDir() string { return s.projectDir }
+
 // TranscriptPath returns the session's JSONL path.
 func (s *Store) TranscriptPath(sessionID string) string {
 	if s.transcriptStore != nil {

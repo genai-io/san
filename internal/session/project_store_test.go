@@ -38,8 +38,20 @@ func TestOpenStoreSharedWorktrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer main.Close()
-	if main.projectID != child.projectID || main.projectDir != child.projectDir {
+	if main.projectID != child.projectID || main.ProjectDir() != child.ProjectDir() {
 		t.Fatal("linked worktrees did not share project storage")
+	}
+	subdir := filepath.Join(repo, "nested")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nested, err := OpenStore(ctx, subdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nested.Close()
+	if nested.ProjectDir() != main.ProjectDir() || filepath.Dir(filepath.Dir(main.TranscriptPath("child"))) != main.ProjectDir() {
+		t.Fatal("inspector root differs from resolved transcript storage")
 	}
 	opened, err := child.Create(CreateOptions{ID: "child"})
 	if err != nil {

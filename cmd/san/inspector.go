@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/inspector"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/session"
@@ -35,18 +35,23 @@ var inspectorCmd = &cobra.Command{
 	Use:   "inspector",
 	Short: "Open the local inspector for this project's sessions",
 	Long: `Launch a localhost web server that visualizes session transcripts
-recorded under ~/.san/projects/<encoded-cwd>/transcripts/. The inspector
+recorded under the resolved project's transcripts directory. The inspector
 is read-only and runs until Ctrl-C.
 
 By default the server binds 127.0.0.1 on a random port and opens the page
 in your default browser. Use --no-open to skip the browser launch and
 --addr to pin a port (e.g. --addr 127.0.0.1:38080).`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) (resultErr error) {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getwd: %w", err)
 		}
-		projectDir := projectDirFor(cwd)
+		store, err := session.OpenStore(cmd.Context(), cwd)
+		if err != nil {
+			return err
+		}
+		defer func() { resultErr = errors.Join(resultErr, store.Close()) }()
+		projectDir := store.ProjectDir()
 
 		// Sanity: warn if no transcripts have been recorded yet but still serve.
 		txDir := filepath.Join(projectDir, "transcripts")
@@ -66,12 +71,19 @@ in your default browser. Use --no-open to skip the browser launch and
 		}
 		url := fmt.Sprintf("http://%s", ln.Addr().String())
 
-		srv := &http.Server{Handler: inspector.New(projectDir).Handler()}
+		viewer := inspector.NewWithEventReader(projectDir, store)
+		defer func() { resultErr = errors.Join(resultErr, viewer.Close()) }()
+		srv := &http.Server{Handler: viewer.Handler()}
 
 		// Shutdown on SIGINT/SIGTERM.
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		shutdownDone := make(chan struct{})
+		defer func() {
+			stop()
+			<-shutdownDone
+		}()
 		go func() {
+			defer close(shutdownDone)
 			<-ctx.Done()
 			shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
@@ -88,14 +100,6 @@ in your default browser. Use --no-open to skip the browser launch and
 		}
 		return nil
 	},
-}
-
-// projectDirFor returns ~/.san/projects/<encoded-cwd>. Mirrors
-// session.encodePath without importing internals.
-func projectDirFor(cwd string) string {
-	home, _ := os.UserHomeDir()
-	encoded := session.ProjectID(cwd)
-	return filepath.Join(confdir.Dir(home), "projects", encoded)
 }
 
 // requireLoopback rejects any bind address whose host isn't 127.0.0.1/::1.

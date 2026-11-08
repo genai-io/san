@@ -166,6 +166,11 @@ func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession
 	state := newEventState()
 	for committed, err := range s.transcriptStore.Batches(ctx, id) {
 		if err != nil {
+			// ErrMode identifies a legacy first record only. A legacy line
+			// after accepted typed batches is corruption, not a fallback signal.
+			if state.projection != nil && errors.Is(err, sdksession.ErrMode) {
+				return nil, fmt.Errorf("legacy record after typed event prefix")
+			}
 			return nil, err
 		}
 		b := committed.Batch

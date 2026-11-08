@@ -1,8 +1,7 @@
 // Package inspector serves the san session transcripts to a local web
 // UI. The inspector is read-only, single-process, localhost-only. It exposes
-// a small HTTP API that mirrors the JSONL on disk — the wire format IS the
-// file format — plus an SSE endpoint for live tail. UI assets are embedded
-// so the binary is self-contained.
+// a legacy JSONL API and SSE live tail, plus checked typed-event pages.
+// UI assets are embedded so the binary is self-contained.
 package inspector
 
 import (
@@ -36,6 +35,7 @@ type Server struct {
 	projectDir string // .../.san/projects/<workdir-hash>
 	mux        *http.ServeMux
 	store      *transcript.Store // reads logs and derived summaries
+	events     EventReader
 
 	replayCache *replayLRU
 }
@@ -147,6 +147,8 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case action == "events":
+		s.handleEvents(w, r, sessionID)
 	case action == "records":
 		s.handleRecords(w, r, sessionID)
 	case action == "stream":

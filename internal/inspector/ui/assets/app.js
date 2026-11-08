@@ -2,7 +2,7 @@
 //
 // State machine:
 //   1. Fetch /api/sessions, populate sidebar.
-//   2. On session click, open SSE /api/sessions/{id}/stream.
+//   2. On session click, try checked typed event pages; only legacy logs use SSE.
 //   3. Each SSE event carries one JSONL record line; append to timeline.
 //   4. On row click, render the full JSON in the detail pane.
 
@@ -18,6 +18,8 @@ const promptBody = $("#prompt-body");
 const promptMeta = $("#prompt-meta");
 
 const state = {
+  sessionRequest: 0,
+  typed: false,
   currentSession: null,
   selectedRecordID: null,
   detailRequest: 0,
@@ -227,7 +229,9 @@ function renderSessionList(list) {
   }
 }
 
-function openSession(id, li) {
+async function openSession(id, li) {
+  const request = ++state.sessionRequest;
+  state.typed = false;
   for (const x of sessions.querySelectorAll("li.active")) x.classList.remove("active");
   if (li) li.classList.add("active");
 
@@ -253,6 +257,26 @@ function openSession(id, li) {
   promptBody.replaceChildren(emptyNote("Select a record to see the system prompt the model sees at that point."));
   promptMeta.textContent = "— at selected record";
   sessionMeta.textContent = id;
+
+  setStatus("loading");
+  try {
+    const response = await fetch("/api/sessions/" + encodeURIComponent(id) + "/events");
+    const page = await response.json();
+    if (request !== state.sessionRequest) return;
+    if (response.ok) {
+      state.typed = true;
+      renderEventPage(id, request, page);
+      return;
+    }
+    // Only a positively identified legacy log may use the legacy decoder.
+    if (response.status !== 409 || page.code !== "legacy_format") throw new Error(page.error || "Cannot read event log");
+  } catch (error) {
+    if (request === state.sessionRequest) {
+      setStatus("error");
+      detail.textContent = error.message;
+    }
+    return;
+  }
 
   const es = new EventSource("/api/sessions/" + encodeURIComponent(id) + "/stream");
   state.eventSource = es;
@@ -284,6 +308,61 @@ function openSession(id, li) {
     ingestForChain(rec);
     appendRow(rec, state.records.length - 1);
   };
+}
+
+// Typed inspection deliberately bypasses legacy replay, chain and prompt rendering.
+function renderEventPage(id, request, page) {
+  if (request !== state.sessionRequest) return;
+  sessionMeta.textContent = id + " — typed event log; inspection only; resume unsupported — through seq " + page.throughSeq;
+  promptBody.replaceChildren(emptyNote("Typed prompt replay is not supported."));
+  setStatus("snapshot");
+  for (const event of page.events) {
+    if (state.seenIDs.has(event.id)) continue;
+    state.seenIDs.add(event.id);
+    const row = document.createElement("button");
+    row.className = "typed-row";
+    row.textContent = event.seq + " · " + event.type + (event.outcome ? " · " + event.outcome : "");
+    row.onclick = () => {
+      if (request !== state.sessionRequest) return;
+      for (const previous of timeline.querySelectorAll(".typed-row.selected")) previous.classList.remove("selected");
+      row.classList.add("selected");
+      const pre = document.createElement("pre");
+      pre.textContent = event.json;
+      const heading = document.createElement("h3");
+      heading.textContent = "Event " + event.seq + " · " + event.type + " · " + event.id;
+      detail.replaceChildren(heading, pre);
+    };
+    timeline.appendChild(row);
+  }
+  const controls = document.createElement("div");
+  controls.className = "typed-controls";
+  const refresh = document.createElement("button");
+  refresh.textContent = "Refresh snapshot";
+  refresh.onclick = () => { if (request === state.sessionRequest) return openSession(id); };
+  controls.appendChild(refresh);
+  if (page.nextCursor) {
+    const more = document.createElement("button");
+    more.textContent = "Load more";
+    more.onclick = async () => {
+      if (request !== state.sessionRequest || more.disabled) return;
+      more.disabled = true;
+      try {
+        const response = await fetch("/api/sessions/" + encodeURIComponent(id) + "/events?cursor=" + encodeURIComponent(page.nextCursor));
+        const next = await response.json();
+        if (request !== state.sessionRequest) return;
+        if (!response.ok) throw new Error(next.error || "Cannot read event page");
+        controls.remove();
+        renderEventPage(id, request, next);
+      } catch (error) {
+        if (request !== state.sessionRequest) return;
+        more.disabled = false;
+        setStatus("error");
+        detail.textContent = error.message;
+      }
+    };
+    controls.appendChild(more);
+  }
+  timeline.appendChild(controls);
 }
 
 // fromLog reads one line of the session log as a transcript record, the way
@@ -1116,6 +1195,7 @@ function wireFilters() {
     const el = document.getElementById(id);
     el.addEventListener("change", () => {
       state.filters[key] = el.checked;
+      if (state.typed) return; // Typed payload inspection does not use legacy filters.
       // Re-render timeline against current filters.
       timeline.innerHTML = "";
       state.records.forEach((r, i) => appendRow(r, i));
@@ -1162,6 +1242,7 @@ function wirePromptPanel() {
 }
 
 async function refreshPromptPanel(rec) {
+  if (state.typed) return;
   const request = ++state.promptRequest;
   if (!mainEl.classList.contains("show-prompt")) return;
   promptMeta.textContent = "— at " + (rec.type || "?") + " " + (rec.id ? rec.id.slice(-12) : "");
