@@ -98,14 +98,14 @@ func TestListSkipsSidechainBodyWithoutCachingPartialSummary(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	summary, err := store.summaryLocked(ctx, "child", false)
+	summary, err := store.summary(ctx, "child", false)
 	if err != nil || !summary.IsSidechain {
 		t.Fatalf("hidden child's body was replayed: %v", err)
 	}
 	if _, err := os.Stat(store.summaryPath("child")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("partial summary was persisted")
 	}
-	if _, err := store.summaryLocked(ctx, "child", true); err == nil {
+	if _, err := store.summary(ctx, "child", true); err == nil {
 		t.Fatal("partial summary hid corruption from a full listing")
 	}
 }

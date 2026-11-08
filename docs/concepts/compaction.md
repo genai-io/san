@@ -113,9 +113,10 @@ AUTO  (core agent, inside the ThinkAct loop)
 MANUAL  (/compact [focus], app layer)
   user: /compact [focus]
      │  PreCompact hook  (focus += AdditionalContext)
-     │  summarize ──▶ stop the agent ──▶ conv := [summary]
-     │                                ──▶ restore recently-accessed files
-     └─ next user message ──▶ ensureAgentRuntime reseeds the agent from conv ──▶ Run
+     │  summarize ──▶ active agent compacts in place ──▶ OnCompacted
+     │              └─ no active runtime: persist summary + boundary
+     │                                    ──▶ SetMessages ──▶ OnCompacted
+     └─ next input uses the compacted native conversation
 ```
 
 ### Commonalities
@@ -132,15 +133,15 @@ MANUAL  (/compact [focus], app layer)
 | Aspect | Auto-compact | Manual `/compact` |
 |---|---|---|
 | Trigger | proactive: prompt ≥ window − max_tokens; or reactive *prompt-too-long* retry | user runs `/compact [focus]` |
-| Driver | core agent `compact()` — runs **in-loop** | app layer; summary computed, then agent **stopped** |
-| Continuation | `continue` re-infers immediately with `[summary]` | agent stopped; **next** user message reseeds it from the conversation |
+| Driver | core agent `compact()` — runs **in-loop** | app computes summary, then asks the active agent to compact in place |
+| Continuation | `continue` re-infers immediately with `[summary]` | active runtime is retained; without one, the next start uses the saved summary |
 | Focus | none | optional focus string; `PreCompact` hook can add context |
 | Recent-file restore | the loop resumes at once, so the summary itself carries the `AGENTS.md` chain and the recent files (within a quarter of the budget) | restores recently-accessed files on the next user turn |
-| Transcript boundary | recorded (summary append + `session.compacted`) | not yet recorded — tracked with the post-compaction unification work |
+| Transcript boundary | recorded (summary append + `session.compacted`) | recorded through the active agent, or `RecordManualCompaction` before updating an inactive runtime |
 
-> The remaining divergences (file restore, env-reset call, and manual-path
-> transcript recording) are being unified so both paths share one
-> post-compaction routine. See the unification follow-up.
+Both paths use `OnCompacted` for post-compaction handling. Manual compaction
+without an active runtime persists the native summary and boundary before
+replacing the visible conversation.
 
 ## Transcript recording & replay
 
@@ -189,8 +190,8 @@ changed), but reminders are deliberately rebuilt.
 | Trigger + in-loop compaction | `internal/core/compact.go` (`preStep`, `onInferError`, `shorten`) |
 | Summary text (reminders stripped) | `internal/core/message.go` (`BuildCompactionText`) |
 | Compaction LLM call | `internal/agent/build.go`, `internal/app/conv/compact.go` |
-| Boundary recording | `internal/session/recorder.go` (`onCompact`) → `transcript.FileStore.Compact` |
-| Replay truncation | `internal/transcript/projector.go` (`materializeActiveChain`) |
+| Boundary recording | `internal/session/events.go` (`RecordEvent`) → `internal/transcript/store.go` |
+| Replay truncation | `internal/transcript/projector.go` (`projectRecords`) |
 | App-side handlers + memory refresh | `internal/app/model_compact.go` |
 
 ## See Also

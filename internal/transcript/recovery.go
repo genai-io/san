@@ -28,18 +28,26 @@ func (s *Store) Position(ctx context.Context, id string) (string, int, int, erro
 
 // Claim permits one live writer per session, including across processes.
 func (s *Store) Claim(id string) (func() error, error) {
+	return s.ClaimContext(context.Background(), id)
+}
+
+// ClaimContext acquires the SDK writer lease using ctx.
+func (s *Store) ClaimContext(ctx context.Context, id string) (func() error, error) {
 	if err := ValidateStorageID(id); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s.writers == nil {
 		s.writers = make(map[string]*session.Writer)
 	}
 	if s.writers[id] != nil {
 		return nil, fmt.Errorf("session %s already has a writer", id)
 	}
-	w, err := s.log.Writer(context.Background(), id)
+	w, err := s.log.Writer(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("claim session %s: %w", id, err)
 	}

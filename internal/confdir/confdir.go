@@ -20,7 +20,8 @@ func Dir(root string) string {
 }
 
 // RepoRoot is the nearest directory at or above cwd holding a .git entry, or
-// cwd itself outside a repository.
+// cwd itself outside a repository. It preserves cwd's lexical path spelling;
+// callers needing canonical identity must normalize their input separately.
 func RepoRoot(cwd string) string {
 	dir := cwd
 	for {
@@ -61,9 +62,17 @@ func mainRepoRoot(cwd string) string {
 	if !filepath.IsAbs(gitdir) {
 		gitdir = filepath.Join(root, gitdir)
 	}
-	// <main>/.git/worktrees/<name> → <main>
-	if filepath.Base(filepath.Dir(gitdir)) == "worktrees" {
-		return filepath.Dir(filepath.Dir(filepath.Dir(gitdir)))
+	// Only the conventional common directory identifies a main checkout.
+	// A separate Git directory or submodule must not infer an unrelated parent.
+	if data, err := os.ReadFile(filepath.Join(gitdir, "commondir")); err == nil {
+		common := strings.TrimSpace(string(data))
+		if !filepath.IsAbs(common) {
+			common = filepath.Join(gitdir, common)
+		}
+		common = filepath.Clean(common)
+		if filepath.Base(common) == ".git" {
+			return filepath.Dir(common)
+		}
 	}
 	return root
 }
@@ -74,6 +83,9 @@ func mainRepoRoot(cwd string) string {
 func LocalDir(cwd string) string {
 	if abs, err := filepath.Abs(cwd); err == nil {
 		cwd = abs
+	}
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
 	}
 	root, main := RepoRoot(cwd), MainRepoRoot(cwd)
 	rel, err := filepath.Rel(root, cwd)

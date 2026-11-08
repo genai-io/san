@@ -30,6 +30,7 @@ type Session struct {
 	err               error
 	release           func() error
 	closed            bool
+	eventState        *eventState
 }
 
 type pendingInference struct {
@@ -39,6 +40,7 @@ type pendingInference struct {
 
 // CreateOptions describes a new session; ID is assigned when omitted.
 type CreateOptions struct {
+	Workspace       string
 	ID              string
 	AgentID         string
 	Provider        string
@@ -60,7 +62,7 @@ func newSession(store *transcript.Store, opts CreateOptions) (*Session, error) {
 	}
 	if err := store.Start(context.Background(), transcript.StartCommand{
 		SessionID: opts.ID, AgentID: opts.AgentID, Provider: opts.Provider,
-		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd,
+		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd, Workspace: opts.Workspace,
 		ParentSessionID: opts.ParentSessionID, Sidechain: opts.Sidechain, Time: opts.CreatedAt,
 	}); err != nil {
 		return nil, errors.Join(err, release())
@@ -108,6 +110,9 @@ func (s *Session) appendLocked(ctx context.Context, rec transcript.Record) error
 	}
 	if s.err != nil {
 		return s.err
+	}
+	if s.eventState != nil {
+		return transcript.ErrEventFormat
 	}
 	if rec.SessionID != "" && rec.SessionID != s.sessionID {
 		return fmt.Errorf("record belongs to session %s, want %s", rec.SessionID, s.sessionID)
