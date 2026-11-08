@@ -18,11 +18,11 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 
 ```text
 Project  (one per Git repository, or per directory outside Git)
-  └── Session  (a resumable conversation; workspace = the checkout it runs in)
-        ├── events         append-only, authoritative, single writer
-        ├── attrs          small mutable file: title, archive, pin, activity
-        ├── blobs          content referenced by events (images, large outputs, prompts)
-        └── summary cache  rebuildable
+  ├── Session  (a resumable conversation; workspace = the checkout it runs in)
+  │     ├── events     append-only, authoritative, single writer
+  │     ├── attrs      user intent: renamed title, archive, pin (optional)
+  │     └── blobs      content referenced by events (images, large outputs, prompts)
+  └── cache            derived summaries only; deleting it is always safe
 ```
 
 Four invariants carry the whole design:
@@ -79,8 +79,8 @@ Configuration does not move into session storage:
   project.json                     key, display name
   transcripts/<sid>.jsonl          events (sdk-go batch mode)
   transcripts/<sid>.jsonl.lock     writer lock (sdk-go)
-  transcripts/<sid>.attrs.json     mutable attributes (authoritative)
-  transcripts/<sid>.jsonl.meta     summary cache (rebuildable)
+  transcripts/<sid>.attrs.json     user intent (authoritative; absent = defaults)
+  cache/summaries/<sid>.json       list-row summary (derived)
   blobs/<sid>/                     content-addressed by sha256
   trash/<sid>/                     deleted sessions: manifest + moved files
   legacy/<sid>.jsonl               schema-4 originals kept after conversion
@@ -120,8 +120,8 @@ changed one as a conflict.
 | --- | --- | --- |
 | `session.create` | `project`, `workspace`, `initial_cwd`, `agent_id`, `config` (initial overrides); `parent? {session, call_id}`, `fork? {session, seq}` | Always `seq 1`. Identity and provenance. |
 | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
-| `context.replace` | `reason` (compaction/clear/rewind/edit); `through`: seq; `entries`: ordered list, each an existing message ID or a new native message | Active context becomes `entries` + every message appended after `through`. New messages (e.g. a summary) join history; nothing leaves it. |
-| `session.update` | `config?`: model, provider, generation options, mode, autopilot policy; `state?`: todos, execution_cwd, autopilot progress, group hint, active skills | Next requests use the new overrides; state is replaced field by field. |
+| `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history; nothing leaves it. |
+| `session.update` | `config?`: model, provider, generation options, mode, autopilot policy; `state?`: generated title, todos, execution_cwd, autopilot progress, group hint, active skills | Next requests use the new overrides; state is replaced field by field. |
 | `inference.start` | `turn_id`, `input_through` (seq), `request` (provider, model, options), `instructions` and `tools` (blob digests) | Opens an attempt. The output messages name it as `source`. |
 | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error?` | Closes the attempt named by `source`. |
 | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?`, `child_session?` | Audit and display details for one tool call. The result body is the tool-result message. |
@@ -169,7 +169,7 @@ A pure projector folds committed events into:
 - **State** — effective overrides and session state.
 - **History** — every message ever held plus audit and annotations, for display
   and inspection. Pre-compaction messages stay here.
-- **Summary** — the list-row data cached in `.meta`.
+- **Summary** — the list-row data cached in `cache/summaries/`.
 
 Resume is `Open → project → resolve current settings and trust → start runtime`.
 TUI, headless and ACP share it; ACP checks the requested cwd against the restored
@@ -216,24 +216,27 @@ Positions and native message IDs are unchanged, so no reference is rewritten.
 The fork is independent: deleting the source never breaks it, and unfinished
 attempts in the copied prefix stay unfinished.
 
-### Compaction and other context rewrites
+### Compaction
 
-Every change to the active context other than appending — compaction, `/clear`,
-rewind, clearing old tool output — is one `context.replace`.
+Compaction is the only operation that shrinks the active context; everything
+else appends. `/clear` starts a new session and edits leave a session through
+`Fork`, so neither rewrites context.
 
 ```text
-capture context at seq S --> generate summary (outside any lock)
-commit [context.replace { reason: compaction, through: S,
-                          entries: [summary, retained IDs...] }, inference.finish]
+commit [inference.start]             capture: context projected at seq S
+generate summary of that context     (no lock held; turns are paused)
+commit [context.compact { summary, through: S }, inference.finish]
+
+before: context = m1 .. m40  (all at seq <= S)
+after:  context = [summary]            history = m1 .. m40, summary
 ```
 
-Anything committed after `S` while the summary was generated stays in context
-after the entries, so a summary is never stale and never needs rejection.
-Entries may reference only messages in the context at `S`, and the resulting
-context must keep every tool call together with its result. A failed or
-cancelled compaction writes only `inference.finish` and leaves context
-unchanged. Retained messages are referenced, not copied, so compaction does not
-duplicate them.
+`through` names exactly what the summary covers, so the event is
+self-describing: the inspector can show which messages were summarized, and
+anything appended after `S` (none today, because input queues during
+compaction) would stay in context rather than be lost. Recent requests the
+summary must keep are part of the summary text. A failed or cancelled
+compaction writes only `inference.finish` and leaves context unchanged.
 
 ## Consistency and recovery
 
@@ -245,7 +248,7 @@ duplicate them.
 | Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
 | Assets | Blobs are written and synced before the event that references them. |
 | Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
-| Caches | `.meta` stores the tail (`count`, `hash`) it was built from and is valid only if it matches the events file. Cache writes are atomic replaces. A stale or missing cache is rebuilt, never trusted. |
+| Caches | A summary records the events file's size and last batch hash when built; it is valid only while both match. Appends change the size and replacement changes the hash; mtime is not used. Cache writes are atomic replaces; a stale or missing cache is rebuilt, never trusted. |
 | Event pages | Cursor = `(seq, byte offset, tail hash at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a hash mismatch means the events file was replaced, and the cursor fails. |
 
 A consistent backup copies the project directory while no writer is active.
@@ -282,9 +285,9 @@ func (s *Session) Close() error                                      // drain, r
   activity (`recent` | `all`) and visibility (`live` | `trash` | `all`), ordered
   by `(last_active, id)` with an opaque cursor.
 - `Append` is the only write path for conversation events; compaction is an
-  `Append` of `context.replace` with `inference.finish`. `session.create` is
+  `Append` of `context.compact` with `inference.finish`. `session.create` is
   reserved for `Create` and `Fork`.
-- `SetAttrs` changes title, archive and pin without the writer lock, so a picker
+- `SetAttrs` changes the user title, archive and pin without the writer lock, so a picker
   can organize a session another process has open.
 - Errors are distinguishable: not found, busy, closed, conflict, invalid,
   unsupported version, corrupt, cancelled, storage.
@@ -295,11 +298,21 @@ interfaces, and generic pieces move into sdk-go.
 
 ## Lifecycle and retention
 
-Attributes that organize sessions are not conversation facts, so they live in
-`<sid>.attrs.json` rather than in events: `title`, `archived_at`, `pinned`,
-`last_resumed_at`. The file is replaced atomically under a short per-session
-lock. Last activity is the later of the last event's `time` and
-`last_resumed_at`; reads, scans, cache rebuilds and restores do not count.
+Two kinds of session data exist, and they are stored apart:
+
+| | `transcripts/<sid>.attrs.json` | `cache/summaries/<sid>.json` |
+| --- | --- | --- |
+| Holds | User intent: `title` (renamed), `archived_at`, `pinned` | Projection of events for the list: title, last prompt, counts, workspace, parent, last activity |
+| Derivable from events | No | Yes |
+| If lost | Data loss | Slower until rebuilt |
+| Writer | Anyone, under a short per-session lock; no writer lock | Any reader, on rebuild |
+
+Keeping them apart means a cache bug can never damage user intent and
+`cache/` can always be deleted. Most sessions never get an attrs file; absent
+means defaults. The displayed title is `attrs.title` if set, otherwise the
+generated `state.title` from events, so a fork inherits the generated title.
+Last activity is the last event's `time`; opening, reading, scanning and
+restoring do not count.
 
 | Policy | Default |
 | --- | --- |
@@ -317,7 +330,8 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 - **Delete** requires the writer lock (an open session cannot be deleted) and a
   non-pinned session. It writes `trash/<sid>/manifest.json` first (files,
-  deleted_at), then renames the events file, attrs and blobs into `trash/<sid>/`. On
+  deleted_at), then renames the events file, attrs and blobs into `trash/<sid>/`
+  and drops the cached summary. On
   startup, a manifest with unmoved files is rolled forward. Children and forks
   are independent sessions and are not touched.
 - **Restore** reverses the moves. It fails if the ID already exists live; it
@@ -350,8 +364,8 @@ fields the old records lack are left absent.
 | --- | --- |
 | `session.started`, `session.forked` | `session.create` |
 | SDK message / `message.appended` | `message.append` |
-| SDK truncate + re-saved messages (`conversation.replaced`) | `context.replace`; re-saved messages that match an earlier message become ID entries, others are new entries. `reason: compaction` when a `session.compacted` names the summary, otherwise `edit`. |
-| `session.state.patched` | `session.update` (model/mode/autopilot → config; tasks/group → state); title → attrs |
+| SDK truncate + re-saved messages (`conversation.replaced`) | With a `session.compacted` naming the summary: `context.compact`. Into an empty context (subagent records): `message.append`. Anything else blocks conversion. |
+| `session.state.patched` | `session.update` (model/mode/autopilot → config; title/tasks/group → state) |
 | `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
 | `system.section.*`, `tool.added/removed` | Folded into instruction/tool blobs of the next `inference.start` |
 | `tool.completed` | `tool.finish` |
@@ -375,8 +389,14 @@ fields the old records lack are left absent.
   remove the need to replay catalogues to resolve a digest.
 - **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.
-- **Compaction rejected when the tail moved.** Folding post-capture messages into
-  the result makes staleness impossible instead of detected.
+- **A generic `context.replace` (reason + mixed entries).** It anticipated
+  rewind, edit and partial retention that San does not have; `/clear` already
+  creates a new session. One concrete compaction event is easier to validate
+  and read. Add an operation when a real one exists.
+- **attrs and summary cache in one file.** Rebuilding the cache would rewrite
+  user intent, so "deleting caches is safe" would no longer hold.
+- **`last_resumed_at` as activity.** Opening without doing anything is not
+  activity; the last event time is enough and needs no extra authority.
 - **Random project IDs with a registry.** A registry needs locked updates and
   reconciliation, and a moved repository still needs an explicit relink. A
   derived key needs neither.
@@ -398,7 +418,7 @@ fields the old records lack are left absent.
   no side effects; batch retries are idempotent and conflicts fail.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
   mid-restore, mid-conversion. Each recovers to a committed state.
-- Compaction with concurrent appends; consecutive compactions; tool-pair integrity.
+- Compaction: `through` boundary, consecutive compactions, failure leaves context unchanged.
 - Fork independence after source deletion; subagent late results.
 - Lifecycle: pin and busy guards, trash deadline, retention off by default, GC
   keeps unknown files.

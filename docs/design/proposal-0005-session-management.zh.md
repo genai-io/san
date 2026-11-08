@@ -17,11 +17,11 @@
 
 ```text
 Project  (每个 Git 仓库一个；Git 之外每个目录一个)
-  └── Session  (可恢复的对话；workspace = 它运行的检出目录)
-        ├── events         只追加、权威、单 writer
-        ├── attrs          小型可变文件：标题、归档、固定、活动时间
-        ├── blobs          事件引用的内容（图片、大输出、提示词）
-        └── summary cache  可重建
+  ├── Session  (可恢复的对话；workspace = 它运行的检出目录)
+  │     ├── events     只追加、权威、单 writer
+  │     ├── attrs      用户意图：改过的标题、归档、固定（可选）
+  │     └── blobs      事件引用的内容（图片、大输出、提示词）
+  └── cache            只含派生摘要；随时可删
 ```
 
 整个设计由四条不变量支撑：
@@ -66,8 +66,8 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
   project.json                     键、显示名
   transcripts/<sid>.jsonl          事件（sdk-go 批次模式）
   transcripts/<sid>.jsonl.lock     writer 锁（sdk-go）
-  transcripts/<sid>.attrs.json     可变属性（权威）
-  transcripts/<sid>.jsonl.meta     摘要缓存（可重建）
+  transcripts/<sid>.attrs.json     用户意图（权威；不存在即默认值）
+  cache/summaries/<sid>.json       列表行摘要（派生）
   blobs/<sid>/                     按 sha256 内容寻址
   trash/<sid>/                     已删除会话：manifest + 移入的文件
   legacy/<sid>.jsonl               转换后保留的 schema-4 原件
@@ -102,8 +102,8 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | --- | --- | --- |
 | `session.create` | `project`、`workspace`、`initial_cwd`、`agent_id`、`config`（初始覆盖）；`parent? {session, call_id}`、`fork? {session, seq}` | 恒为 `seq 1`。身份与溯源。 |
 | `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
-| `context.replace` | `reason`（compaction/clear/rewind/edit）；`through`：seq；`entries`：有序列表，每项是已有消息 ID 或新的原生消息 | 活动上下文变为 `entries` + `through` 之后追加的所有消息。新消息（如摘要）加入历史；历史不删除任何内容。 |
-| `session.update` | `config?`：模型、provider、生成选项、模式、autopilot 策略；`state?`：todos、execution_cwd、autopilot 进度、group hint、活动技能 | 后续请求使用新覆盖；状态按字段替换。 |
+| `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史；历史不删除任何内容。 |
+| `session.update` | `config?`：模型、provider、生成选项、模式、autopilot 策略；`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint、活动技能 | 后续请求使用新覆盖；状态按字段替换。 |
 | `inference.start` | `turn_id`、`input_through`（seq）、`request`（provider、model、选项）、`instructions` 与 `tools`（blob 摘要） | 打开一次尝试。输出消息以它为 `source`。 |
 | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error?` | 关闭 `source` 指向的尝试。 |
 | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`、`child_session?` | 单次工具调用的审计与展示细节。结果正文在工具结果消息中。 |
@@ -140,7 +140,7 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 - **Context** — 发给模型的活动消息列表。
 - **State** — 生效的覆盖与会话状态。
 - **History** — 曾有过的所有消息及审计和备注，用于展示和检查。压缩前的消息保留在此。
-- **Summary** — 缓存在 `.meta` 中的列表行数据。
+- **Summary** — 缓存在 `cache/summaries/` 中的列表行数据。
 
 恢复流程为 `Open → 投影 → 解析当前设置与信任 → 启动 runtime`。TUI、无界面和 ACP 共用；
 ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。
@@ -182,20 +182,23 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 位置和原生消息 ID 不变，因此无需改写任何引用。分叉相互独立：删除源会话不会破坏它，
 复制前缀中未完成的尝试保持未完成。
 
-### 压缩及其他上下文改写
+### 压缩
 
-除追加之外对活动上下文的任何改变——压缩、`/clear`、回退、清理旧工具输出——都是一条 `context.replace`。
+压缩是唯一让活动上下文变短的操作，其余一律追加。`/clear` 会新建会话，编辑通过 `Fork` 离开原会话，
+二者都不改写上下文。
 
 ```text
-capture context at seq S --> generate summary (outside any lock)
-commit [context.replace { reason: compaction, through: S,
-                          entries: [summary, retained IDs...] }, inference.finish]
+commit [inference.start]             capture: context projected at seq S
+generate summary of that context     (no lock held; turns are paused)
+commit [context.compact { summary, through: S }, inference.finish]
+
+before: context = m1 .. m40  (all at seq <= S)
+after:  context = [summary]            history = m1 .. m40, summary
 ```
 
-摘要生成期间在 `S` 之后提交的内容会接在 entries 之后留在上下文中，因此摘要不会过期，也无需拒绝。
-entries 只能引用 `S` 时上下文中的消息，且结果上下文须保持每个工具调用与其结果成对。
-失败或取消的压缩只写 `inference.finish`，上下文不变。保留的消息按引用而非复制，
-因此压缩不会重复它们。
+`through` 精确指出摘要覆盖的范围，使事件自描述：检查器能显示哪些消息被摘要；`S` 之后追加的内容
+（目前没有，因为压缩期间输入会排队）会留在上下文中而不会丢失。摘要需要保留的近期请求写在摘要文本里。
+失败或取消的压缩只写 `inference.finish`，上下文不变。
 
 ## 一致性与恢复
 
@@ -207,7 +210,7 @@ entries 只能引用 `S` 时上下文中的消息，且结果上下文须保持�
 | 崩溃恢复 | 下一个 writer 截掉未结束的末行。完整但损坏的行是错误，绝不跳过。比当前程序更新的记录类型阻止恢复。 |
 | 资源 | blob 先写入并 sync，再写引用它的事件。 |
 | Create / Fork | Create 是一个批次，崩溃后要么什么都没有，要么是有效会话。Fork 通过重命名发布。 |
-| 缓存 | `.meta` 保存构建时的尾部（`count`、`hash`），仅当与事件文件一致时有效。缓存以原子替换写入。过期或缺失的缓存会重建，绝不信任。 |
+| 缓存 | 摘要记录构建时事件文件的大小和最后一个批次的哈希，两者都一致才有效。追加会改变大小，整体替换会改变哈希；不使用 mtime。缓存以原子替换写入；过期或缺失的缓存会重建，绝不信任。 |
 | 事件分页 | 游标 = `(seq, 字节偏移, 该偏移处的尾部哈希)`。分页从偏移处继续读取，代价为 O(页) 而非重放前缀；哈希不符说明事件文件被替换，游标失败。 |
 
 一致备份是在无 writer 活动时复制整个项目目录。
@@ -240,9 +243,9 @@ func (s *Session) Close() error                                      // drain, r
 - `Get`、`List`、`Events` 从不取 writer 锁。`List` 覆盖项目的所有 workspace，可按 workspace、
   父会话、归档、活动（`recent` | `all`）和可见性（`live` | `trash` | `all`）过滤，
   按 `(last_active, id)` 排序并使用不透明游标。
-- `Append` 是对话事件唯一的写入路径；压缩就是 `context.replace` 与 `inference.finish` 一起 `Append`。
+- `Append` 是对话事件唯一的写入路径；压缩就是 `context.compact` 与 `inference.finish` 一起 `Append`。
   `session.create` 保留给 `Create` 和 `Fork`。
-- `SetAttrs` 无需 writer 锁即可修改标题、归档和固定，因此选择器可以整理另一进程正打开的会话。
+- `SetAttrs` 无需 writer 锁即可修改用户标题、归档和固定，因此选择器可以整理另一进程正打开的会话。
 - 错误可区分：不存在、忙碌、已关闭、冲突、无效、不支持的版本、损坏、取消、存储错误。
 
 当前 `Store`（`Create/Open/List/Fork/Delete`、`Append(transcript.Record)`、立即删除）演进为上述接口；
@@ -250,9 +253,18 @@ func (s *Session) Close() error                                      // drain, r
 
 ## 生命周期与保留
 
-用于整理会话的属性不是对话事实，因此存于 `<sid>.attrs.json` 而非事件：`title`、`archived_at`、
-`pinned`、`last_resumed_at`。该文件在短暂的每会话锁下原子替换。最后活动时间取最后一个事件的
-`time` 与 `last_resumed_at` 中较晚者；读取、扫描、缓存重建和恢复都不计入。
+会话数据有两类，分开存放：
+
+| | `transcripts/<sid>.attrs.json` | `cache/summaries/<sid>.json` |
+| --- | --- | --- |
+| 内容 | 用户意图：`title`（改过的）、`archived_at`、`pinned` | 事件在列表中的投影：标题、最后提示、计数、workspace、父会话、最后活动 |
+| 能否从事件推导 | 不能 | 能 |
+| 丢失后果 | 数据丢失 | 重建前变慢 |
+| 写入者 | 任何进程，在短暂的每会话锁下；不需要 writer 锁 | 任何读者，在重建时 |
+
+分开存放意味着缓存 bug 永远不会损坏用户意图，`cache/` 也永远可以删除。大多数会话不会有 attrs 文件；
+不存在即默认值。显示的标题取 `attrs.title`，没有则取事件中生成的 `state.title`，因此分叉会继承生成的标题。
+最后活动时间取最后一个事件的 `time`；打开、读取、扫描和恢复都不计入。
 
 | 策略 | 默认 |
 | --- | --- |
@@ -269,7 +281,8 @@ live/archived --Delete / retention--> trash --7 days--> purged
 ```
 
 - **Delete** 需要 writer 锁（打开中的会话不能删除），且会话未固定。先写
-  `trash/<sid>/manifest.json`（文件清单、deleted_at），再把事件文件、attrs 和 blobs 重命名进 `trash/<sid>/`。
+  `trash/<sid>/manifest.json`（文件清单、deleted_at），再把事件文件、attrs 和 blobs 重命名进 `trash/<sid>/`，
+  并删除缓存的摘要。
   启动时，若 manifest 存在而文件未移完，则继续完成。子会话和分叉是独立会话，不受影响。
 - **Restore** 反向移动。若该 ID 已有在线会话则失败；绝不覆盖或改名。
 - **Purge** 删除超过期限的回收站目录，最后删 manifest。
@@ -293,8 +306,8 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | --- | --- |
 | `session.started`、`session.forked` | `session.create` |
 | SDK message / `message.appended` | `message.append` |
-| SDK truncate + 重新保存的消息（`conversation.replaced`） | `context.replace`；与之前消息相同的重存消息成为 ID 项，其余成为新项。若有 `session.compacted` 指向摘要则 `reason: compaction`，否则为 `edit`。 |
-| `session.state.patched` | `session.update`（model/mode/autopilot → config；tasks/group → state）；title → attrs |
+| SDK truncate + 重新保存的消息（`conversation.replaced`） | 有 `session.compacted` 指向摘要：`context.compact`。写入空上下文（子 agent 记录）：`message.append`。其他情况阻止转换。 |
+| `session.state.patched` | `session.update`（model/mode/autopilot → config；title/tasks/group → state） |
 | `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
 | `system.section.*`、`tool.added/removed` | 折叠进下一个 `inference.start` 的 instructions/tools blob |
 | `tool.completed` | `tool.finish` |
@@ -312,7 +325,10 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - **指令、工具、技能的目录事件。** 由 `inference.start` 引用的内容寻址 blob 使每次请求自描述，
   无需回放目录来解析摘要。
 - **归档与固定作为事件。** 这会要求持有 writer 锁才能整理在别处打开的会话；它们也不是对话事实。
-- **尾部移动时拒绝压缩。** 把捕获之后的消息并入结果，使过期不可能发生，而不是事后检测。
+- **通用的 `context.replace`（reason + 混合 entries）。** 它预设了 San 并不存在的回退、编辑和部分保留；
+  `/clear` 本来就新建会话。一个具体的压缩事件更容易校验和阅读。真有新操作时再加。
+- **attrs 与摘要缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
+- **以 `last_resumed_at` 作为活动。** 只打开不操作不算活动；最后事件时间就够了，无需额外的权威字段。
 - **随机项目 ID + 注册表。** 注册表需要加锁更新与对账，仓库移动后仍需显式关联。派生键两者都不需要。
 - **SQLite。** 2026-11-07 与 JSONL 对比测量（Apple M5，双方均持久 sync）：追加相同（≈4 ms），
   回放 1,000 条消息慢约 20%，列出 100 个会话在缓存热时快 3.5 倍、内存缓存丢失后慢 25 倍
@@ -325,7 +341,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - 身份：worktree 共享项目；clone、submodule 和非 Git 子目录不共享；配置保持检出本地。
 - 事件：每种事件类型往返无损；原生 provider 字段保留；回放无副作用；批次重试幂等、冲突失败。
 - 在每次 write/sync/rename 处注入崩溃：部分批次、分叉中途、删除中途、恢复中途、转换中途，均恢复到已提交状态。
-- 压缩期间并发追加；连续压缩；工具调用/结果成对完整。
+- 压缩：`through` 边界、连续压缩、失败时上下文不变。
 - 删除源后分叉仍独立；子 agent 延迟结果。
 - 生命周期：固定与忙碌保护、回收站期限、保留默认关闭、GC 保留未知文件。
 - 旧格式：在真实 schema-4 会话上验证转换一致性，包括压缩和替换过的对话。
