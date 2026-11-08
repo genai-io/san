@@ -65,6 +65,23 @@ func NewStoreWithDir(dir string) (*Store, error) {
 	}, nil
 }
 
+// NewSQLiteStoreWithDir opens the experimental storage backend in dir/sessions.db.
+// It does not import JSONL or select a runtime backend; file-based hook/inspection
+// integrations must not use it until they support explicit transcript export.
+func NewSQLiteStoreWithDir(dir string) (*Store, error) {
+	txStore, err := transcript.NewSQLiteStore(dir, ProjectID(dir))
+	if err != nil {
+		return nil, err
+	}
+	return &Store{cwd: dir, projectID: ProjectID(dir), projectDir: dir, transcriptStore: txStore}, nil
+}
+
+// Close releases backend resources after all opened sessions have closed.
+func (s *Store) Close() error {
+	return s.transcriptStore.Close()
+}
+
+// TranscriptPath is empty for storage backends without a JSONL file.
 func (s *Store) TranscriptPath(sessionID string) string {
 	if s.transcriptStore != nil {
 		return s.transcriptStore.TranscriptPath(sessionID)
@@ -121,10 +138,10 @@ func (s *Store) Create(opts CreateOptions) (*Session, error) {
 	if err := transcript.ValidateStorageID(opts.ID); err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(s.TranscriptPath(opts.ID)); err == nil {
-		return nil, fmt.Errorf("session %s already exists", opts.ID)
-	} else if !os.IsNotExist(err) {
+	if exists, err := s.transcriptStore.Exists(context.Background(), opts.ID); err != nil {
 		return nil, err
+	} else if exists {
+		return nil, fmt.Errorf("session %s already exists", opts.ID)
 	}
 	if opts.Cwd == "" {
 		opts.Cwd = s.cwd
@@ -137,8 +154,10 @@ func (s *Store) Open(id string) (*Session, *History, error) {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, nil, err
 	}
-	if _, err := os.Stat(s.TranscriptPath(id)); err != nil {
+	if exists, err := s.transcriptStore.Exists(context.Background(), id); err != nil {
 		return nil, nil, err
+	} else if !exists {
+		return nil, nil, fmt.Errorf("session %s: %w", id, os.ErrNotExist)
 	}
 	release, err := s.transcriptStore.Claim(id)
 	if err != nil {

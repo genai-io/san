@@ -4,9 +4,16 @@
 
 ## Status and scope
 
-Draft — 2026-11-07. Documentation first; the APIs and SQLite backend below are
-not implemented. Current storage remains sdk-go JSONL logs partitioned by a
-hash of cwd. This proposal changes persistence, not agent execution semantics.
+Draft — 2026-11-07. The optional SQLite storage experiment and initial comparisons
+are implemented; JSONL remains the default, with no automatic legacy
+migration or default switch. The first stage uses existing scoped stores, the SDK's
+native record codec and current transcript/truncate semantics. It does not implement
+all 18 proposed event types or the logical Project/Workspace model below. The target
+APIs and schema remain proposed; this changes persistence, not agent execution.
+
+Runtime hooks and the inspector still require JSONL paths. Initial opt-in is through
+a storage constructor/capability and tests, not an integrated TUI/ACP flag. Removing
+those path assumptions is a separate integration gate.
 
 Goals: preserve current scenarios, make ownership explicit, and keep the API and
 schema small. Each fact has one authority. Add a table for an independent
@@ -87,12 +94,12 @@ reconciles final state once, not every intermediate historical transition.
 
 ### Event information contract
 
-Every event uses the table envelope below: identity/order, type/version/time,
-optional correlation, cause, delivery and outcome columns, plus typed payload.
-IDs are allocated before submit; seq is assigned at commit, never inferred from
-timestamps. Payload does not duplicate envelope fields. A suffix `?` below means
-optional; otherwise payload fields are required. Envelope requirements by type are
-specified in the correlation contract. Native messages, tool definitions and todos
+Every event uses the table envelope below: globally unique `id`, owning `session_id`,
+commit-order `seq`, type/version/time, optional `source_event_id` and outcome, plus
+typed JSON payload. IDs are allocated before submit; seq is assigned at commit,
+never inferred from timestamps. Payload does not duplicate envelope fields. A suffix
+`?` below means optional; otherwise payload fields are required. Envelope requirements
+by type are specified in the identity contract. Native messages, tool definitions and todos
 retain their SDK/product schemas rather than being reduced to text. Unknown optional
 values are absent, not invented defaults. Exact Go types are an SDK-alignment gate.
 
@@ -108,7 +115,7 @@ values are absent, not invented defaults. Exact Go types are an SDK-alignment ga
 | `tool.start` | call_id, input_ref | Register unfinished execution; input_ref identifies the durable invocation and arguments | Authorize or run the tool |
 | `tool.finish` | call_id; duration_ms?, error?, reason?, details? | Close attempt and attach typed execution/display details; result body stays in messages/assets | Copy result bodies or repeat side effects |
 | `delegation.start` | child_session_id, input_ref | Register one accepted child execution/continuation and its input | Launch a child during replay or copy its event stream |
-| `delegation.finish` | error?, reason? | Close the delegated attempt; link accepted result through its cause when present | End the child session or duplicate its result body |
+| `delegation.finish` | result_event_id?, error?, reason? | Close the delegated attempt; link accepted result through result_event_id when present | End the child session or duplicate its result body |
 | `permission.request` | operation_ref, scope | Add pending audit entry linked to the protected operation | Open a prompt during replay |
 | `permission.decide` | decision, scope; reason? | Resolve the request's audit entry | Restore a historical grant as current authorization |
 | `hook.finish` | hook_name, trigger; duration_ms?, reason?, effect_refs? | Record known Hook outcome and references to separately persisted effects | Run Hook or apply effects again |
@@ -134,25 +141,24 @@ or resets a field according to its typed contract. False/zero/empty are explicit
 values, not an implicit clear. Reject unknown or cross-owner fields.
 Unchanged patches and definition deltas are no-ops.
 
-### Correlation and provenance
-
-Generic query/validation fields are columns, not buried in payload:
+### Identity and provenance
 
 | Envelope fields | Meaning and required use |
 | --- | --- |
-| `correlation_id` | One operation identity within a session: required for inference/tool/delegation start/finish, permission request/decide, hook finish and compaction apply. Pairs share it; execution retries get new IDs, persistence retries keep theirs. Null on unrelated events. |
-| `cause_session_id`, `cause_event_id` | One immediate causal event, both present or both absent. Generated messages/summaries reference their producing start; received messages reference source content, or delegation.start for delegated input. Follow links rather than copying a trace path. |
-| `delivery_id` | Required on cross-session message acceptance; identifies one accepted batch and remains stable on redelivery. Null on other events. |
+| `id`, `session_id`, `seq` | Globally unique event identity, owning session and session-local commit order. Persistence retries retain the event ID; new executions get new start event IDs. |
+| `source_event_id` | Optional immediate source event, local or foreign. Generated messages/summaries name their producing start; received messages name source content, or delegation.start for delegated input. No source-session column is needed with global IDs. |
 | `outcome` | Required only on inference/tool/delegation/hook finish: success/failure/cancelled. Permission decision stays in its typed payload. |
 
-Correlation is not a global trace ID. It replaces payload attempt/request/invocation/
-operation IDs for the event's own operation; native call_id and turn_id remain typed
-payload fields. Compaction has its own correlation, distinct from the inference
-identified by its cause. Causal columns replace producer_ref rather than mirror it.
-An event may have no cause, for example direct user input; never invent one. Type,
-local message role and the causal chain identify origin without a redundant source-kind
-column. Event-specific input/content references remain typed payload: one immediate
-cause is not a complete dependency graph.
+A start event's ID is the operation identity, not a separate generic correlation ID.
+Finish and permission-decision events use `source_event_id` for their start/request.
+When both operation and result relations are needed, delegation.finish uses
+`source_event_id` for delegation.start and typed `result_event_id?` for the locally
+accepted result. Permission.request retains typed `operation_ref` for its protected
+operation. Other event-specific input/effect references stay in typed payload; one
+source link is not a dependency graph. Compaction and Hook finish use their own
+event IDs for retry identity. Direct user input may have no source; never invent one.
+Native call_id and turn_id remain payload fields. Delivery deduplication uses the
+stable acceptance event ID under the transport contract below, not another column.
 
 ### Validation and correlation
 
@@ -163,16 +169,16 @@ cause is not a complete dependency graph.
 - Native message IDs are nonempty and unique; same ID with different content is a
   conflict. Compaction validates its source and references as specified below.
 - Generated inference/tool message batches and summaries must name their producing
-  start through the causal columns. A batch has one cause; split mixed origins.
-  Validate native tool-call IDs against that execution. Causes are immutable alongside
+  start through source_event_id. A batch has one source; split mixed origins.
+  Validate native tool-call IDs against that execution. Sources are immutable alongside
   content, never inferred from timestamps or adjacency. Legacy unknown provenance
   stays explicitly unknown through the compatibility mapping.
-- Start/finish match correlation_id in the same session and execution family; tool
-  call IDs also match. Admit one start and at most one terminal result per operation.
-  Reusing a correlation for a different operation conflicts. Failure needs a bounded
-  structured error; cancellation needs a reason. Unknown results have no fabricated
-  finish. Repeating an identical result is idempotent; conflicting outcomes fail.
-- Permission decisions match request correlation IDs; decision is allow/deny/cancelled.
+- Finish source_event_id resolves to a start in the same session and execution family;
+  tool call IDs also match. Admit at most one terminal result per start. Failure needs
+  a bounded structured error; cancellation needs a reason. Unknown results have no
+  fabricated finish. Repeating an identical result is idempotent; conflicting outcomes fail.
+- Permission decisions name their request event ID through source_event_id;
+  decision is allow/deny/cancelled.
   Scope cannot expand the request. A Hook dispatch acknowledgement is not a known
   finish. A Hook effect changes state only through its own event/owner, not replay.
 - Local causes and required message/event/asset references resolve to the committed
@@ -195,19 +201,19 @@ cause is not a complete dependency graph.
 ### Delegation and cross-session input
 
 A subagent owns its own session/event stream. Parent ancestry identifies the session;
-one delegation correlation identifies one execution or continuation, not the child's
+one delegation.start event ID identifies one execution or continuation, not the child's
 lifetime. The parent records only coordination facts and content actually accepted:
 
 ```text
 Parent: tool.start → delegation.start
-                         │ cause
+                         │ source_event_id
                          ▼
 Child:  session.create / accepted input → inference/tool/message events
                                                        │ result content
                                                        ▼
 Parent: message.append ───────────────────────→ delegation.finish
-        cause = child content                   cause = accepted result
-        delivery_id = receipt                   correlation = delegation.start
+        source_event_id = child content         result_event_id = accepted result
+        id = stable acceptance ID               source_event_id = delegation.start ID
 ```
 
 Allocate the target child ID before committing delegation.start, then create/claim
@@ -215,7 +221,7 @@ the child before dispatch; a failed creation may leave the reserved ID without a
 session. Validate current parent/task/child ownership before execution. A new child's
 creation, or an existing child's accepted continuation input, causally references the
 parent delegation start. Tool dispatch acknowledgement is not delegation completion.
-Each continuation has a fresh delegation correlation. Known completion, failure or
+Each continuation has a fresh delegation.start event ID. Known completion, failure or
 cancellation closes that attempt; a crash leaves it unknown until reconciled, never
 a reason for replay to launch work. Result messages and delegation.finish commit
 together when known together; finish references the locally accepted result, not
@@ -230,16 +236,19 @@ inference inputs and compaction use local IDs. Redelivery reuses the accepted ID
 a genuinely new delivery gets new ones even for identical source content. This is
 message acceptance, not a lossless import that preserves source-local message identity.
 
-The cause identifies the upstream content event, except delegated input references
+The source_event_id identifies upstream content, except delegated input references
 delegation.start and resolves its immutable input_ref. One delivery is one same-origin
-batch; multiple deliveries of one source event have distinct delivery IDs. The trusted
-transport allocates collision-resistant delivery IDs, retains them across retries and
-validates source/session ownership; message text cannot assert authority. Same
-receiver/delivery plus identical content and provenance returns the existing acceptance;
-a changed body or cause conflicts, even with a new event ID. Acknowledge only after
-atomic acceptance. Acceptance does not imply model consumption; inference input IDs
-determine what was used. Locally transformed content references its local producer,
-whose input references lead to the accepted source; do not claim it is an exact copy.
+batch. The trusted transport durably maps (receiver, transport delivery key) to one
+globally unique acceptance event ID before submission, retaining that mapping across
+retries/restarts and ambiguous commits. Multiple deliveries of one source get distinct
+acceptance IDs. Redelivery must not allocate a new event ID to bypass deduplication.
+Validate source/session ownership; message text cannot assert authority. Same mapped
+ID, content and provenance returns the existing acceptance; changed content, source
+or receiver conflicts. Acknowledge only after atomic acceptance. The transport retains
+its routing/retry guarantees; removing a delivery column does not remove this contract.
+Acceptance does not imply model consumption; inference input IDs determine what was
+used. Locally transformed content references its local producer, whose input references
+lead to the accepted source; do not claim it is an exact copy.
 
 Transport/group inbox owns routing, retry and delivery guarantees. Session history
 records acceptance, not a parallel queue or every send/receive notification. No
@@ -384,7 +393,7 @@ func (s *Session) Close() error
 
 | Type / operation | Required behavior |
 | --- | --- |
-| `CreateOptions` | Workspace ID, initial cwd, optional ID/parent and non-secret initial settings; paired `cause_session_id` / `cause_event_id` required for delegated creation, validated and persisted by Create |
+| `CreateOptions` | Workspace ID, initial cwd, optional ID/parent and non-secret initial settings; `source_event_id` required for delegated creation, validated and persisted by Create |
 | `Create` / `Open` | Return a writer-owned handle; Open claims before loading a consistent projection |
 | `Get` / `List` | Read summaries without claiming a writer, including sessions owned by other processes |
 | `SessionQuery` | Project/workspace/parent/group/sidechain/archive filters, bounded limit, opaque cursor |
@@ -392,7 +401,7 @@ func (s *Session) Close() error
 | `History` | Display projection of that fixed prefix, including pre-compaction history; attachments by reference |
 | `Snapshot` | Immutable committed context, application state and recovery positions; no UI rows or live resources |
 | `ForkOptions` | Optional destination workspace and source sequence; otherwise capture latest committed prefix |
-| `CompactionChange` | `source_seq` (expected current prefix), stable `correlation_id` for the compaction operation, full native `summary` with stable ID/provider content, ordered `retained_message_ids`, causal identity for a generated summary |
+| `CompactionChange` | `source_seq` (expected current prefix), stable event `id` for compaction retry, full native `summary` with stable ID/provider content, ordered `retained_message_ids`, optional `source_event_id` naming the generating inference start |
 | `Append` / `Compact` | One shared atomic write implementation and compaction validation; Append also batches compaction with its inference finish, while Compact wraps a single transition |
 | `Archive` / `Delete` | Archive appends state; hard deletion requires ownership and rejects an active writer |
 | `Close` | Wait for in-flight writes and release ownership exactly once |
@@ -438,7 +447,7 @@ unsupported schema, corruption, cancellation and storage errors.
 | --- | --- |
 | Project description and workspace registration | `projects` / `workspaces` |
 | Session identity and query summaries | `sessions`; summaries derive from records |
-| Operation/cause/delivery identities and terminal outcomes | First-class `session_events` columns; one authority, no payload mirrors |
+| Event identity, source and terminal outcome | `session_events` columns; operation/result-specific references stay in typed JSON payload |
 | Native messages, compaction content, session overrides, todos, annotations and audit details | Typed `session_events.payload` |
 | User defaults and provider/skill choices | Existing user files, including `~/.san/settings.json` |
 | Shared project settings and instructions | Existing project files, including `.san/settings.json` |
@@ -533,26 +542,25 @@ setter; do not drop current filtering behavior to minimize column count.
 | --- | --- | --- |
 | `session_id` | TEXT FK sessions, DELETE CASCADE | Owning conversation |
 | `seq` | INTEGER CHECK > 0 | Commit order within session |
-| `id` | TEXT | Stable event identity |
+| `id` | TEXT UNIQUE | Globally unique stable event identity |
 | `type` | TEXT | Event discriminator |
 | `schema_version` | INTEGER CHECK > 0 | Payload codec version |
 | `created_at` | INTEGER | Event time, not ordering key |
-| `correlation_id` | TEXT ? | Session-scoped operation identity shared by its lifecycle events |
-| `cause_session_id` | TEXT ? | Session containing the immediate causal event; historical identity, not ownership |
-| `cause_event_id` | TEXT ? | Event ID within cause_session_id; paired with that column |
-| `delivery_id` | TEXT ? | Stable transport identity for one accepted cross-session message batch |
+| `source_event_id` | TEXT ? | Globally unique immediate source event ID; historical provenance, not ownership |
 | `outcome` | TEXT ? CHECK success/failure/cancelled | Known execution terminal outcome; null for other types |
 | `payload` | TEXT, validated JSON | Event-specific content only; no duplicate envelope fields |
 
-PK `(session_id, seq)`; UNIQUE `(session_id, id)`, `(session_id, delivery_id)` and
-`(session_id, type, correlation_id)` (null values do not conflict). The last constraint
-prevents duplicate starts/terminals; application validation also forbids correlation
-reuse across different operation families. Index `(session_id, correlation_id, seq)`
-for operation lookup and `(cause_session_id, cause_event_id)` for reverse tracing.
-Require both cause columns null or both nonnull. Validate required/forbidden columns
-by type before commit. Foreign cause identities deliberately have no deletion FK:
-never cascade, clear or block deletion through historical provenance. Local reference
-integrity is enforced by append/import validation, not by fetching foreign data on replay.
+PK `(session_id, seq)`; UNIQUE `(id)`. Index `(source_event_id)` for operation/source
+lookup. Validate required/forbidden fields and at most one terminal per start/request
+inside the append transaction; do not make all source links unique, since a start can
+produce many messages. Source identities deliberately have no deletion FK: never
+cascade, clear or block deletion through historical provenance. Append/import validates
+local references; replay does not fetch foreign data.
+
+Use one shared events table, not per-session tables or databases. Benchmark ordinary
+rowid storage plus these indexes against `WITHOUT ROWID` with the composite primary
+key; neither layout is assumed faster. Keep the five logical table definitions here,
+including the optional checkpoint table, separate from the first-stage backend schema.
 
 Promote shared identity, deduplication, causal lookup and terminal-status fields;
 keep native content, scope, input references, patches and diagnostics typed in payload.
@@ -587,7 +595,10 @@ No initial parallel `session_state`, `project_state`, `messages`, `parts`, `runs
 or generic settings tables. SQL migration, record codec and projector versions
 are separate contracts; database schema migrations need a version ledger.
 
-## Compaction: first-phase session capability
+## Compaction: target session capability
+
+The backend experiment preserves current SDK compaction/truncate semantics; the
+following `compaction.apply` contract is the target, not a first-stage codec change.
 
 Compaction changes active messages only; existing history, config, state and assets
 remain intact. Model summaries may omit details: storage must be lossless, but
@@ -597,8 +608,8 @@ the shared append path; generate the summary outside any SQL transaction.
 A successful compaction commits one `compaction.apply` event, not separate replacement
 and completion events:
 
-The envelope correlation identifies the compaction for idempotent retry; causal
-columns identify its generating inference start. Neither is duplicated in payload.
+The event id identifies compaction for idempotent retry; source_event_id identifies
+its generating inference start when known. Neither is duplicated in payload.
 
 | Payload field | Meaning |
 | --- | --- |
@@ -677,14 +688,19 @@ Fork protects a fixed, nonempty committed source prefix against deletion until t
 child is published. Replace the source creation at seq 1 with one child creation;
 do not prepend it. Child identity/home-workspace options and fork provenance are
 new; preserve the source initial configuration as the seed for inherited replay.
-Copy subsequent events in their original sequence positions and retain session-local
-message/event/correlation/delivery IDs. Rebind a causal pair only when its session is
-the fork source and its event belongs to the copied prefix, including references to
-the replaced creation. Foreign provenance stays unchanged. Local event-sequence
-anchors and historical compaction source_seq values keep their positions;
-fork_source_seq denotes the source prefix. Copy assets and rewrite local content
-references before publication. Copied delegation targets are historical identities:
-do not reparent real children, inherit their execution ownership or redirect results.
+Copy subsequent events in their original sequence positions, preserving native message
+IDs, but allocate fresh globally unique event IDs for every copied event and the child
+creation. Build a complete old→new event-ID map, including the replaced creation.
+Rewrite ALL source-local event references through it, in both envelope and typed
+payload: source_event_id, operation_ref, result_event_id, input/effect references and
+any other event-ID-bearing field. Start IDs identify operations, so copied operation
+references must also change. Foreign source IDs remain unchanged; missing required
+local mappings fail validation. Local event-sequence anchors and historical compaction
+source_seq retain their positions; fork_source_seq denotes the source prefix. Forked
+acceptances are historical copies, not new deliveries: never transfer the transport's
+live receiver mapping. Copy assets and rewrite local content references before
+publication. Copied delegation targets are historical identities: do not reparent real
+children, inherit live execution/permission/group ownership or redirect results.
 
 After projecting the inherited prefix, append child-local state patches for explicit
 destination adjustments and, if set, clear group_hint. Do not filter historical
@@ -700,31 +716,113 @@ resolve all content references without the source session, even after its deleti
 sdk-go owns generic ordered storage, native codecs, ownership and transaction
 primitives. San owns identity resolution, configuration/trust, application records
 and projections. Define atomic SDK/San summary updates without SDK importing San
-or UI/runtime issuing SQL. Replace `TranscriptPath` and file-existence assumptions
-with queries/export; JSONL remains interchange, not a second writable authority.
+or UI/runtime issuing SQL. JSONL remains the default writable backend for existing
+sessions; do not dual-write a session. Path-independent queries/export must eventually
+replace `TranscriptPath` and file-existence assumptions before runtime integration.
 
-1. **Agree contracts:** audit sdk-go and existing callers; settle identity rules,
-   query-driven columns, codecs, ownership, database scope and atomic projection.
-   Include Compact, history/resume/fork and failure semantics now.
-2. **Introduce API seams:** preserve the file-backed behavior while removing path
-   assumptions; unify projection and compaction entrypoints. Identify stronger
-   atomicity that requires the new backend.
-3. **Implement SQLite:** entities, records, compaction and summaries; run shared
-   behavior cases against both backends during development.
-4. **Import and cut over:** exclusively own sources, preserve IDs/assets and old
-   files, record import progress/provenance, and verify retries rather than overwrite.
-   Report corrupt/unsupported sessions individually. Require verified lossless legacy
-   mappings and old-projector parity before cutover; retain unmapped sources without
-   claiming full compatibility. Never silently merge projects.
-5. **Optimize:** measure before adding checkpoints/indexes; retire legacy writers
-   after verified cutover and update package documentation.
+1. **Backend experiment (approved):** offer an optional SQLite storage constructor/
+   capability, using current scoped stores and SDK native record codecs, including
+   existing replacement/truncate behavior. Test against current JSONL, not an imagined
+   unoptimized baseline. Do not claim the target project catalog or event schema is built.
+2. **Correctness and performance gate:** run the comparisons below, narrow lock scopes,
+   update summaries incrementally and separate list/history/resume reads. Keep JSONL
+   default; no automatic legacy import, default switch or TUI/ACP selection flag.
+3. **Target model and integration (proposed):** settle identity, SDK transactions,
+   summary columns and adapters for the 18-type schema; remove hook/inspector path
+   dependencies and verify runtime consumers before exposing backend selection there.
+4. **Migration/cutover (separate decision):** require explicit approval, exclusive
+   source ownership, lossless mappings, preserved originals/assets and verified
+   old-projector parity. Record progress/provenance, reject unsupported records and
+   verify retries rather than overwrite. Never silently merge projects. Only after
+   that decision may JSONL become interchange rather than the default writer.
+5. **Measured optimization:** compare physical layouts/indexes; add checkpoints only
+   if measured replay cost justifies them, not as a prerequisite for correctness.
 
 Only one backend writes a migrated session. Before new SQLite writes, originals
 permit rollback; afterward export newer history before rollback. Migration
 bookkeeping schema follows the codec/legacy-ID audit. Classify old parent fields
 from original records rather than guessing whether they mean ancestry or fork.
 
+## Backend comparison and test acceptance
+
+Use identical native-record fixtures, assets and durability guarantees. Report JSONL
+flush/fsync policy, SQLite WAL/synchronous settings, driver/version, hardware, batch
+sizes and cache conditions; never compare buffered acknowledgement to durable commit.
+Measure current JSONL with its warm metadata/projection caches as well as cold opens,
+and SQLite warm/cold paths. Report latency distributions, throughput, allocations,
+database/WAL/index size and lock/busy time. The limited measurements below do not
+replace this full acceptance scope.
+
+- Cover many short sessions, long transcripts, large native payloads, single/batched
+  appends, repeated compaction/truncate, fork, reopen/resume and concurrent sessions/
+  processes. Compare rowid + indexes with `WITHOUT ROWID` under the same workload.
+- Keep three read paths distinct: indexed summary Get/List (no transcript replay),
+  bounded fixed-prefix History/Events browsing, and full active-context/state recovery
+  for Open/Snapshot. History projection must still honor context transitions.
+- Prepare encoding outside shared locks where safe; serialize per-session validation,
+  commit and publication, keeping SQL write transactions short. Do not hold a global
+  store lock over decoding, replay or unrelated reads. Update summaries from appended
+  deltas, not a full-history rescan, with rebuild equivalence tests.
+- Require JSONL/SQLite parity for native/provider fields, order, history, active context,
+  state, assets, truncate and fork; test ownership conflicts, cancellation, crash/reopen,
+  duplicate/conflicting writes, corruption and atomic record/summary publication.
+  Assert no replay side effects. Capability gaps are explicit failures, not silent loss.
+- Separate first-stage existing-record tests from future 18-type/global-ID mapping
+  tests. Record reproducible commands and measured trade-offs before recommending a
+  default change; checkpoints remain optional and require their own measured benefit.
+
+### Initial measurements — 2026-11-07
+
+Apple M5 / 32 GiB, darwin/arm64, Go 1.26.9, modernc.org/sqlite v1.44.3,
+GOMAXPROCS=4. Values are medians of three benchmark-run averages, not P95/P99
+or cold-disk latency. Fixture setup is excluded; OS caches are not flushed.
+JSONL appends explicitly Sync; changed Save already syncs. SQLite uses WAL,
+synchronous=FULL, fullfsync=ON and checkpoint_fullfsync=ON on every connection.
+The latter settings match Go's macOS F_FULLFSYNC boundary; earlier measurements
+without them are excluded rather than advertised as a write-speed improvement.
+
+| Workload | JSONL ms/op | SQLite ms/op | Interpretation |
+| --- | ---: | ---: | --- |
+| San durable application append | 3.993 | 4.043 | Similar; more SQL allocations |
+| Native append to 100-message context | 4.007 | 4.953 | About 24% slower |
+| San replay, 1,000 messages | 2.947 | 3.534 | About 20% slower |
+| List 100 sessions, warm summaries | 0.225 | 0.065 | About 3.5× faster |
+| List after memory-cache loss, existing JSONL disk summaries | 1.490 | 37.900 | About 25× slower; SQLite lacks persisted product summaries |
+| List with all summaries invalidated | 44.386 | 37.271 | About 16% faster |
+| San Fork, 100 messages | 408.127 | 438.396 | About 7% slower; current per-record copy protocol |
+| SDK independent durable writers, 4 workers | 3.110 | 5.465 | About 76% worse aggregate time/op; single DB writer contention |
+
+Lists contain 100 messages per session. Replay allocates about 2.27 MB/op for
+JSONL versus 3.80 MB/op for SQLite at 1,000 messages. Same-flags stripped San builds
+are 82,744,498 versus 86,546,162 bytes: the pure-Go driver adds about 3.80 MB even
+when JSONL is selected at runtime. This is an experimental cost, not zero-impact opt-in.
+
+Layout comparison favors a conservative rowid table plus composite index initially:
+WITHOUT ROWID replay was about 5–8% faster in the 1,000-message 256-byte/8-KiB
+fixtures, but the 100 × 1-KiB append fixture occupied 487,424 versus 159,744 database
+bytes after checkpoint. Live DB/WAL/SHM were 2,195,776 versus 1,577,776 bytes.
+Neither layout wins universally; keep the comparison benchmark rather than adding
+per-session tables or a public layout switch.
+
+Reproduce in San and sdk-go respectively, without simultaneous benchmark runs:
+
+```bash
+go test ./internal/transcript -run '^$' -bench '^BenchmarkBackend' -benchmem -benchtime=30x -count=3 -cpu=4 -timeout=10m
+go test ./pkg/session -run '^$' -bench '^Benchmark(SessionBackends|SQLiteLayouts)$' -benchmem -benchtime=100x -count=3 -cpu=4 -timeout=10m
+```
+
+Decision: keep JSONL default. Before runtime rollout, persist/rebuild product summaries
+without full cold-list replay, reduce per-record Fork commits and replay allocations,
+and validate writer contention. Listing now has a separate summary lock and read-only
+history avoids the writer-cache lock; other writer/projection operations remain globally
+serialized. SDK Save/Fork are atomic, but San compound compaction/Fork still use their
+existing multi-call protocols. No automatic import, target-ID conversion, checkpoint,
+full runtime integration, power-loss certification or tail-latency claim is included.
+
 ## Acceptance and remaining decisions
+
+The following matrix describes target-model acceptance, not features already proven
+by the first-stage backend experiment.
 
 | Scenario | Required result |
 | --- | --- |
@@ -732,7 +830,7 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Move, missing directory, path reuse, cross-project `cd` | Inspectable history; explicit reconciliation; execution policy refreshed |
 | TUI/headless/ACP and competing processes | Validated cwd and common single-writer ownership |
 | Group switch/rejected reclaim; late background completion | No resurrected membership or misrouted callbacks |
-| Delegation start, continuation, crash and fork | One correlation per execution; dispatch acknowledgement is not finish; unfinished attempts remain unknown; copied history grants no child ownership |
+| Delegation start, continuation, crash and fork | One start-event identity per execution; dispatch acknowledgement is not finish; unfinished attempts remain unknown; copied history grants no child ownership |
 | Cross-session delivery, redelivery and source deletion | Atomic local acceptance before acknowledgement; same delivery/content is idempotent, changed content/cause conflicts; accepted content survives source deletion; replay never resends |
 | Child history and fork; parent/source deletion | Independent identity/assets; fresh replay equals Fork result, preserves local sequence references and clears inherited group hint; no implied live task |
 | Repeated/failed/audited compaction, retry and invalid references | One atomic transition with one apply and its pending inference finish; own audit does not cause staleness; intervening writes reject apply; context/history parity and unchanged config/state/assets |
@@ -748,7 +846,8 @@ from original records rather than guessing whether they mean ancestry or fork.
 | Import, repeated import, export and rollback | Preserved IDs/content and one writable authority |
 
 Use existing session/transcript/app tests as the baseline. Check picker responsiveness
-and replay costs before optimization. Documentation does not claim SQLite tests pass.
+and replay costs before optimization. Passing backend tests does not establish the
+remaining target-model and migration guarantees.
 
 Before implementation, settle relocation/worktree-linking UX, final summary fields,
 SDK transaction integration and migration bookkeeping. JSONL remains a valid

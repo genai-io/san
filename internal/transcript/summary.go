@@ -23,19 +23,26 @@ type summaryCache struct {
 func (s *Store) summaryPath(id string) string { return s.transcriptPath(id) + ".meta" }
 
 func (s *Store) summaryLocked(ctx context.Context, id string, includeSidechain bool) (Summary, error) {
-	info, err := os.Stat(s.transcriptPath(id))
+	s.summaryMu.Lock()
+	defer s.summaryMu.Unlock()
+	info, err := s.log.Stat(ctx, id)
 	if err != nil {
 		return Summary{}, err
 	}
+	return s.summaryInfoLocked(ctx, info, includeSidechain)
+}
+
+func (s *Store) summaryInfoLocked(ctx context.Context, info session.Info, includeSidechain bool) (Summary, error) {
+	id := info.ID
 	if s.summaries == nil {
 		s.summaries = make(map[string]summaryCache)
 	}
 	c, ok := s.summaries[id]
-	if !ok {
+	if !ok && !s.sqlite {
 		data, _ := os.ReadFile(s.summaryPath(id))
 		_ = json.Unmarshal(data, &c)
 	}
-	if c.Item.ID == id && c.Size == info.Size() && c.ModifiedAt.Equal(info.ModTime()) && (!c.headerOnly || !includeSidechain) {
+	if c.Item.ID == id && c.Size == info.Size && c.ModifiedAt.Equal(info.ModTime) && (!c.headerOnly || !includeSidechain) {
 		s.summaries[id] = c
 		return c.Item, nil
 	}
@@ -44,18 +51,20 @@ func (s *Store) summaryLocked(ctx context.Context, id string, includeSidechain b
 		return Summary{}, err
 	}
 	if item.IsSidechain && !includeSidechain {
-		s.summaries[id] = summaryCache{Size: info.Size(), ModifiedAt: info.ModTime(), Item: item, headerOnly: true}
+		s.summaries[id] = summaryCache{Size: info.Size, ModifiedAt: info.ModTime, Item: item, headerOnly: true}
 		return item, nil // Do not persist a partial summary.
 	}
 	item.Title = preview(item.Title)
 	item.LastPrompt = preview(item.LastPrompt)
-	c = summaryCache{Size: info.Size(), ModifiedAt: info.ModTime(), Item: item}
-	data, err := json.Marshal(c)
-	if err != nil {
-		return Summary{}, err
+	c = summaryCache{Size: info.Size, ModifiedAt: info.ModTime, Item: item}
+	if !s.sqlite {
+		data, err := json.Marshal(c)
+		if err != nil {
+			return Summary{}, err
+		}
+		// A failed cache write never makes an intact transcript inaccessible.
+		_ = atomicfile.Write(s.summaryPath(id), data, 0600)
 	}
-	// A failed cache write never makes an intact transcript inaccessible.
-	_ = atomicfile.Write(s.summaryPath(id), data, 0600)
 	s.summaries[id] = c
 	return item, nil
 }
