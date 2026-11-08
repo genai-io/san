@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/transcript"
 )
@@ -21,30 +20,39 @@ type Store struct {
 	cwd             string
 	projectID       string
 	projectDir      string
+	project         *projectIdentity
+	workspace       string
 	transcriptStore *transcript.Store
 }
 
+// NewStore opens the project containing cwd. Use OpenStore when cancellation is available.
 func NewStore(cwd string) (*Store, error) {
+	return OpenStore(context.Background(), cwd)
+}
+
+// OpenStore identifies a project without moving existing session files.
+func OpenStore(ctx context.Context, cwd string) (*Store, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-
-	projectID := ProjectID(cwd)
-	projectDir := filepath.Join(confdir.Dir(homeDir), "projects", projectID)
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create project directory: %w", err)
-	}
-
-	txStore, err := transcript.NewStore(projectDir, projectID)
+	project, err := resolveProject(ctx, homeDir, cwd)
 	if err != nil {
 		return nil, err
 	}
-
+	txStore, err := transcript.NewStore(project.Root, project.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &Store{
-		cwd:             cwd,
-		projectID:       projectID,
-		projectDir:      projectDir,
+		cwd:             project.InitialCwd,
+		projectID:       project.ID,
+		projectDir:      project.Root,
+		project:         &project,
+		workspace:       project.Workspace,
 		transcriptStore: txStore,
 	}, nil
 }
@@ -61,10 +69,17 @@ func NewStoreWithDir(dir string) (*Store, error) {
 		cwd:             dir,
 		projectID:       ProjectID(dir),
 		projectDir:      dir,
+		workspace:       dir,
 		transcriptStore: txStore,
 	}, nil
 }
 
+// Close releases store resources after all opened sessions have closed.
+func (s *Store) Close() error {
+	return s.transcriptStore.Close()
+}
+
+// TranscriptPath returns the session's JSONL path.
 func (s *Store) TranscriptPath(sessionID string) string {
 	if s.transcriptStore != nil {
 		return s.transcriptStore.TranscriptPath(sessionID)
@@ -115,16 +130,28 @@ func (s *Store) ReadChatHistory(id string) ([]core.ChatMessage, error) {
 
 // Create opens a new durable session. The caller owns it until Close.
 func (s *Store) Create(opts CreateOptions) (*Session, error) {
+	if opts.Workspace == "" {
+		opts.Workspace = s.workspace
+	} else if s.project != nil {
+		workspace, err := validateProjectWorkspace(context.Background(), *s.project, opts.Workspace)
+		if err != nil {
+			return nil, err
+		}
+		opts.Workspace = workspace
+		if opts.Cwd == "" {
+			opts.Cwd = workspace
+		}
+	}
 	if opts.ID == "" {
 		opts.ID = NewSessionID()
 	}
 	if err := transcript.ValidateStorageID(opts.ID); err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(s.TranscriptPath(opts.ID)); err == nil {
-		return nil, fmt.Errorf("session %s already exists", opts.ID)
-	} else if !os.IsNotExist(err) {
+	if exists, err := s.transcriptStore.Exists(context.Background(), opts.ID); err != nil {
 		return nil, err
+	} else if exists {
+		return nil, fmt.Errorf("session %s already exists", opts.ID)
 	}
 	if opts.Cwd == "" {
 		opts.Cwd = s.cwd
@@ -137,7 +164,12 @@ func (s *Store) Open(id string) (*Session, *History, error) {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, nil, err
 	}
-	if _, err := os.Stat(s.TranscriptPath(id)); err != nil {
+	if exists, err := s.transcriptStore.Exists(context.Background(), id); err != nil {
+		return nil, nil, err
+	} else if !exists {
+		return nil, nil, fmt.Errorf("session %s: %w", id, os.ErrNotExist)
+	}
+	if err := s.transcriptStore.CheckLegacyFormat(context.Background(), id); err != nil {
 		return nil, nil, err
 	}
 	release, err := s.transcriptStore.Claim(id)

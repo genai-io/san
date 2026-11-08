@@ -3,6 +3,8 @@ package transcript
 import "time"
 
 type Metadata struct {
+	ProjectID       string
+	Workspace       string
 	ID              string
 	Title           string
 	LastPrompt      string
@@ -23,6 +25,8 @@ func MetadataFromTranscript(t *Transcript) Metadata {
 		return Metadata{}
 	}
 	return Metadata{
+		ProjectID:       t.ProjectID,
+		Workspace:       t.Workspace,
 		ID:              t.ID,
 		Title:           t.State.Title,
 		LastPrompt:      t.State.LastPrompt,

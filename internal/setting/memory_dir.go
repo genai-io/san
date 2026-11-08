@@ -23,7 +23,7 @@ func MemoryStoresFor(cwd string) system.MemoryStores {
 		s.User = d
 	}
 	// Runs on every tool call, so git is asked only about a file that sets it.
-	paths := &Loader{projectDir: confdir.Dir(cwd), projectRoot: cwd}
+	paths := &Loader{projectDir: confdir.Dir(cwd), cwd: cwd}
 	for _, src := range paths.projectSettingsFiles() { // later files win
 		if src.local {
 			if d := expandMemoryDir(readMemoryDir(src.path), home); d != "" && UntrackedInRepo(src.path) {
