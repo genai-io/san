@@ -299,7 +299,7 @@ func (p *Projection) apply(e Event, tail uint64, validation EventValidationConte
 		return validateTerminal(e.Outcome, v.Error, v.Reason, nil)
 	case *PermissionRequestPayload:
 		operation := p.event(v.OperationRef)
-		if operation == nil || (operation.Type != EventToolStart && operation.Type != EventInferenceStart && operation.Type != EventDelegationStart) || p.data.Terminals[v.OperationRef] != "" {
+		if operation == nil || (operation.Type != EventToolStart && operation.Type != EventInferenceStart && operation.Type != EventDelegationStart) || p.data.EndByStart[v.OperationRef] != "" {
 			return invalidEvent("invalid protected operation")
 		}
 		return validateScope(v.Scope)
@@ -425,10 +425,10 @@ func (p *Projection) closeOperation(e Event, t EventType) error {
 	if start == nil || start.SessionID != e.SessionID || start.Type != t {
 		return invalidEvent("finish/request reference family mismatch")
 	}
-	if p.data.Terminals[start.ID] != "" {
+	if p.data.EndByStart[start.ID] != "" {
 		return invalidEvent("duplicate terminal result")
 	}
-	p.data.Terminals[start.ID] = e.ID
+	p.data.EndByStart[start.ID] = e.ID
 	return nil
 }
 func validateTerminal(outcome EventOutcome, err *EventError, reason string, duration *int64) error {

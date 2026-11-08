@@ -23,7 +23,7 @@ type projectionData struct {
 	Instructions map[string]InstructionSection
 	Tools        map[string]ai.Schema
 	Skills       map[string]bool
-	Terminals    map[string]string
+	EndByStart   map[string]string // Start/request event ID → finish/decision event ID.
 }
 
 // Projection is an immutable validated prefix. Accessors return independent
@@ -142,7 +142,7 @@ func ApplyEventBatch(base *Projection, events []Event, validation EventValidatio
 		p.data.Instructions = maps.Clone(base.data.Instructions)
 		p.data.Tools = maps.Clone(base.data.Tools)
 		p.data.Skills = maps.Clone(base.data.Skills)
-		p.data.Terminals = maps.Clone(base.data.Terminals)
+		p.data.EndByStart = maps.Clone(base.data.EndByStart)
 		p.eventIndex = maps.Clone(base.eventIndex)
 		p.messageIndex = maps.Clone(base.messageIndex)
 	}
@@ -155,7 +155,7 @@ func ApplyEventBatch(base *Projection, events []Event, validation EventValidatio
 func applyReplayEventBatch(p *Projection, events []Event, validation EventValidationContext) (*Projection, error) {
 	if p == nil {
 		p = &Projection{
-			data:       projectionData{Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]bool{}, Terminals: map[string]string{}},
+			data:       projectionData{Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]bool{}, EndByStart: map[string]string{}},
 			eventIndex: map[string]int{}, messageIndex: map[string]int{},
 		}
 	}
