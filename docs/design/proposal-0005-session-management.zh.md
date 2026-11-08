@@ -4,13 +4,14 @@
 
 ## 状态与范围
 
-草案 — 2026-11-07。本 PR 仅评审设计：以文件/JSONL 实现存储中立的会话/事件 API。
-不采用 SQLite；历史测量仅作为依据，不引入数据库迁移或后端选择 UI。
-配套[实现 PR #737](https://github.com/genai-io/san/pull/737) 尚未合入；实现状态指该分支，不是本 PR 或主分支新增能力。
-第一阶段包括 `OpenStore` 注册、Git worktree 共享会话归属、当前检出项目设置、非 Git 精确路径归属，以及 schema 4 可选身份字段/摘要缓存升级；该分支正按本次配置决定调整，尚不代表最终行为已验证。旧 cwd 分区不自动迁移。
-仍使用 SDK 原生记录及 transcript/truncate 语义；18 类事件、完整目标 API、原子批次、回收站和自动保留策略尚未实现。Hooks/inspector 保持 JSONL 集成。
-新格式切换须先补齐 SDK 原子批次及可阻断执行的持久化接纳边界，不能只重命名事件。
-每项事实只有一个权威来源：持久化对话变化、必要执行/权限审计及不可重建说明，而非通用 runtime 日志；摘要/索引必须可重建。
+草案 — 2026-11-07，仅评审文件/JSONL 存储中立 API，不引入 SQLite 迁移或后端选择 UI。每项事实一个权威：对话变化、必要执行/权限审计、不可重建说明；不是 runtime 日志，摘要/索引可重建。
+
+| 交付 | 状态 |
+| --- | --- |
+| [实现 #737](https://github.com/genai-io/san/pull/737) | 未合入：项目/worktree 身份、当前检出配置、schema 4 身份/缓存升级；18 类类型化事件及纯投影器是尚未接入的基础代码。 |
+| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 未合入：可选批次提交及推理/工具/输出接纳边界。完整行可见不证明 Sync 已完成；Commit 成功才确认文件同步。 |
+| 现有持久化 | SDK 原生记录/truncate；Hooks/inspector 保持 JSONL；不迁移旧分区、不双写。 |
+| 下述目标 | 新事件写入、完整生产方接入/API、回收站及保留仍待完成；基础代码不等于格式切换。 |
 
 ## 身份、目录与配置
 
@@ -33,25 +34,37 @@ Runtime 负责执行/取消；持久待办、权限决定及群组提示不是�
 | 非 Git | 精确规范化启动 cwd 就是查询键、项目根及 workspace。同路径复用注册；子目录启动属于另一 Project，不查最近祖先。 |
 | 两者 | 绝对路径/符号链接规范化与信任检查一致，不转小写；运行时 cwd 变化不重新分配归属。 |
 
-`project_id`/`workspace` 固定于创建；Git workspace 是检出根，`initial_cwd` 可在其下。可变 `execution_cwd` 可跨项目，不迁移会话。
-从状态恢复执行位置，旧历史回退到初始 cwd；按执行位置解析工具、配置、Hook 和信任。
-移动、路径复用及 Git 元数据缺失/变化须显式验证并协调/选择注册；不静默转移身份、合并旧分区或改写路径。关联不授予信任；检出缺失不妨碍历史查阅。
+```text
+creation: project_id + workspace + initial_cwd (fixed)
+                                  |
+resume: state.execution_cwd -------+ fallback for old history
+                  |
+                  +--> tools / settings / hooks / trust at execution location
+                  `--> cwd may cross projects; ownership NEVER follows
+```
+Git workspace = 检出根，initial_cwd 可在其下。移动、路径复用、Git 元数据缺失/变化须显式验证并协调注册；不静默转移身份、合并旧分区或改写历史。关联不授予信任，检出缺失不妨碍查阅。
 
-共享 Project 身份/会话**不意味着集中配置**：
-- Git 项目设置取**当前检出根**，不是原始主检出；非 Git 取精确启动 cwd。Git 跟踪的设置、指令等随正常 checkout 切换，各分支可有意不同。
-- 不要求共享配置根，不自动复制/同步或回退其他检出。会话管理不要求主检出存在。用户全局配置自然共享；显式链接仅为自愿选择。
-- 不为共享身份/会话重构配置、MCP、插件、技能或指令加载器；保留各自路径规则，不声称所有加载器已把子目录归一到检出根。适用的旧本地来源/信任兼容行为可保留，不是一概废除旧回退。
+| 配置边界 | 规则 |
+| --- | --- |
+| 项目设置 | 当前 Git 检出根，不是原始主检出；非 Git 为精确启动 cwd。跟踪设置/指令随 checkout/分支变化。 |
+| 共享 | 用户全局自然共享，链接自愿；无强制共享根、复制/同步或其他检出回退，不要求主检出存在。 |
+| 旧加载器 | 配置/MCP/插件/技能/指令保留路径规则及适用旧本地来源/信任兼容；共享身份无需重构，也非所有加载器均按检出根解析子目录。 |
+| 解析/写入 | 保留用户 → 项目 → 本地、兼容来源、persona、逐字段合并/来源（[配置](../reference/configuration.md)）。只写所选作用域字段，不写合并结果；跨进程协调，拒绝只读来源。 |
+| 会话覆盖/恢复 | 只影响后续请求；使用当前策略/凭据，不恢复历史授权。模型缺失报错或明确替代；无配置/事件事务，不复制秘密、安全权威或完整设置树。 |
+| 当前限制 | 注册锁等待不能中途取消；原子发布 ≠ 断电持久；同路径仓库替换不能自动识别。 |
 
-保留用户 -> 项目 -> 本地解析、适用兼容来源、persona 及逐字段合并；见[配置](../reference/configuration.md)。写入只选一个作用域并更新其字段，跨进程协调、拒绝只读来源，不写回合并结果；保留逐字段来源。
-注册锁等待目前不能中途取消，原子发布不承诺断电持久性；路径完全相同的仓库替换无法自动识别。
-会话覆盖只影响后续请求；恢复使用当前策略/凭据，不复用历史授权。模型/提供方缺失须报错或明确替代；配置文件与事件无跨文件事务，不把秘密、安全权威或完整设置树复制到历史。
-
-旧存储按精确 cwd 哈希分区，新注册使用稳定项目 ID。`~/.san/projects/<project-id>/` 下：
-`project.json` 保存身份/查询元数据而非配置；`transcripts/<sid>.jsonl` 是日志，`.jsonl.meta` 是可重建摘要，`blobs/{image,tool-result}/<sid>/` 保存会话资源；拟议 `trash/<sid>/` 保留删除代次、清单、日志及资源。
-`project.json` 已用于新注册，回收站仍属拟议。扫描注册可重建查询索引，不增加身份权威；旧 `<cwd-hash>` 不自动改名/移动。
-Worktree 共用分区，以 Session.workspace 区分；父子日志同级，以 parent_session_id 关联。配置仍在当前检出/用户作用域，由原加载器管理，不复制到会话分区；回收站转换不能假设多文件移动原子。
-内部目录负责项目名称/描述、注册及分区位置，不负责配置/当前 cwd。已有分区在获准协调前保持独立可读，不隐含导入。
-有会话、回收站或未完成转换时禁止移除项目。删除会话不删除检出；父子关系不意味着级联删除。
+```text
+~/.san/projects/
+  <cwd-hash>/                      legacy: separate, readable; no auto-move/import
+  <project-id>/                   shared worktrees; no workspace directory layer
+    project.json                  identity/lookup metadata, NOT config (implemented)
+    transcripts/<sid>.jsonl        peer parent/child logs; parent_session_id links
+    transcripts/<sid>.jsonl.meta   rebuildable summary
+    blobs/{image,tool-result}/<sid>/
+    trash/<sid>/                  PROPOSED generations/manifests/logs/assets
+checkout / user scope             config stays with existing loaders
+```
+内部目录负责名称/描述、注册/分区位置，不负责配置/cwd；扫描只重建查询索引。协调须获准；会话、回收站或未完成转换阻止移除项目。会话删除不删除检出或按祖先级联；回收站恢复不能假设多文件移动原子。
 
 ## 事件契约
 
@@ -142,8 +155,17 @@ replay --------------------------------------------> projector only; no effects
 
 ## API
 
-公开模型是具体的项目作用域 `*Store` 和持有所有权的 `*Session`；不公开 Projects、Settings、Workspaces、SessionStore、EventReader 或 History 服务。使用方可定义窄接口，最终类型/原语须 SDK 对齐。
-当前 internal/session.Store 有 Create、Open、List/ListContext、Fork、Delete、Close；Open/Fork 还返回 History。Session.Append 接收单个 transcript.Record，Session.Close 已存在；transcript.Store.Records 提供原始记录，Delete 立即删除历史。以下签名及可恢复 Delete 均为拟议。
+```text
+OpenStore(dir) --> project-scoped *Store (internal registration; no public services)
+  |-- Get/List ------------> summaries; no writer claim
+  |-- Events --------------> fixed committed prefix --> History --> display pages
+  |-- Create/Open/Fork ----> exclusive *Session
+  |                            |-- Append/Compact --> atomic commit
+  |                            |-- Snapshot -------> active committed projection
+  |                            `-- Close ----------> drain + release (not session end)
+  `-- Delete/Restore/Clean -> lifecycle metadata, not conversation events
+```
+使用方可定义窄接口；最终原语/类型对齐 SDK。**下列签名属拟议**：当前 Store 有 Create/Open/List/ListContext/Fork/Delete/Close；Open/Fork 还返回 History，Append 接收单个 transcript.Record，Records 暴露原始记录，Delete 立即删历史，Session.Close 已存在。
 
 ```go
 func OpenStore(ctx context.Context, dir string) (*Store, error)
@@ -191,16 +213,7 @@ OpenStore 规范化启动 dir，内部注册/解析项目并固定作用域；�
 List 按 `(updated_at, id)` 实时键集排序，不是跨请求快照；未知活动置于按 ID 排序的稳定分组。History 从完整固定前缀投影后才对展示分页，不能用孤立原始页/筛选流重建，不能从 UI 历史恢复执行。
 未来完整历史检查点可加速；仅有效上下文缓存不能替代 History。
 
-| API / 生产方 | 持久映射 |
-| --- | --- |
-| Create / Fork | 一个 session.create；Fork 导入/重映射继承事实 |
-| Compact / 带审计 Append | compaction.apply；接受审计结果时合批 apply + inference.finish |
-| Archive | 独占下写 state.update.archived_at；已打开会话使用自身 Append |
-| 标题/固定/待办/cwd/配置管理方 | 经 Append 写类型化 state.update/config.update；文件配置仍归既有管理方 |
-| 模型/工具/委派适配层 | Start、已接纳消息和已知 finish |
-| 审批/Hook/请求准备/技能/应用 | 对应类型化审计/目录/注释事件，不增加独立 Store 动词 |
-| Get/List/Events/Snapshot、Open/Close | 无对话事件；成功显式 resume 活动另存控制元数据 |
-| Delete/Restore/Clean | 外部生命周期元数据，不伪造对话事件 |
+持久写入：Create/Fork → 唯一 session.create + 重映射继承事实；Compact/审计 Append → compaction.apply（与已知 inference.finish 原子提交）；Archive → 独占下 state.update.archived_at，已有 writer 自行 Append。状态/配置管理方及 runtime 适配层用类型化 Append，不增 Store 动词；设置文件归属不变。读/Open/Close 不写对话事件；显式恢复写控制元数据，删除写生命周期元数据。
 
 恢复：Open -> 投影 -> 当前配置/信任 -> runtime。TUI/无界面/ACP 共用所有权规则；ACP 构建服务前核对请求 cwd/恢复执行位置，不符须显式获准变更。
 打开失败释放所有权，切换失败保留原选择；区分不存在、忙碌、关闭、冲突、无效、不支持模式、损坏、取消及存储错误。
@@ -215,21 +228,25 @@ parent: delegation.start D -- dispatch --> child: independent event stream
          finish.source_id = D; result_event_id = R
 ```
 
-**子 agent。** 独立事件流。delegation.start 前预留子 ID；派发前创建/认领并验证父级/任务/子会话所有权。每次继续执行用新 start ID。
-父会话只存协调/接纳内容，不转存子事件流。delegation.finish 的 source_id 指 start，result_event_id 指本地接纳结果；已知结果 + finish 合批，不虚构空输出。
-跨会话接纳独立保存内容/资源，用新接收方本地原生 ID 及对齐 source_message_ids，保留提供方字段/工具身份。可信投递层跨重试/重启保留稳定接纳事件/消息 ID；内容/来源/接收方变化即冲突，有意新投递用新 ID，接纳后才确认。
-推理输入 ID 才证明消费，收到不证明。传输层/群组收件箱负责路由/重试，不另建会话队列，不承诺跨会话事务或恰好一次执行。
-延迟结果属于原 writer，不是选中 UI/分叉；源删除可中断追溯但不影响本地内容。群组名单/收件箱由外部管理，恢复重新认领/协调提示，切换释放成员关系，分叉清除提示。
-回放不重建进程、回调或子会话所有权；继续活跃子任务须重新验证。
+| 子 agent 边界 | 契约 |
+| --- | --- |
+| 派发 | 预留子 ID；派发前创建/认领并验证父级/任务/子会话所有权；每次继续执行用新 start。 |
+| 接纳 | 父只存协调/接纳内容，不存子事件流。已知结果 + finish 合批，不虚构空输出。独立内容/资源、新接收方原生 ID、对齐 source_message_ids，保留提供方字段/工具身份。 |
+| 重试/投递 | 可信层跨重试/重启保持接纳事件/消息 ID；内容/来源/接收方变化冲突，有意投递用新 ID。接纳后确认，仅推理输入 ID 证明消费。传输层/群组收件箱负责路由/重试；无会话队列、跨会话事务或恰好一次执行。 |
+| Runtime | 延迟结果归原 writer，不归选中 UI/分叉。源删除仅影响溯源，不影响留存。外部名单/收件箱归属不变；恢复协调/认领提示，切换释放成员，分叉清空提示。回放不重建进程/回调/子所有权，活跃继续执行重新验证。 |
 
-**分叉。** 保护固定非空源前缀至发布；唯一子创建原位替换 seq 1，保留源初始配置供继承回放。后续事件按原序号复制，使用新全局事件 ID，保留原生消息 ID。
-重映射封装/载荷中**全部**源本地事件引用，包括 source_id、operation_ref、result_event_id 及 input/effect 引用；必需映射缺失则失败。外部来源及本地序号锚点不变。
-发布前独立复制资源/改写引用。历史委派不改变真实子父级、转移投递映射或授予执行/权限/群组权威。继承回放后追加必要的子本地目标调整，清空已设置 group_hint；不筛除历史补丁、不写空补丁。
-整体发布暂存 transcript；从头回放等于 Fork 结果，源删除后仍能解析全部内容；历史未完成尝试不重启。
+```text
+fixed nonempty source prefix              staged fork (protect source until publish)
+seq 1: create E1 -----------------------> create F1 (source initial config)
+seq 2..N: E2..EN -----------------------> F2..FN (fresh global event IDs; same seq)
+local refs: E* -------------------------> F* (envelope AND payload)
+foreign refs / native message IDs / seq anchors ----> unchanged
+assets --------------------------------> independent copies + rewritten refs
+inherited replay --> destination adjustments + clear group_hint --> publish whole log
+```
+重映射**所有**本地事件引用：source_id、operation_ref、result_event_id、input/effect；必需映射缺失失败。保留历史补丁，只追加必要子本地调整。历史委派不改变真实子父级或转移投递映射/执行/权限/群组权威；从头回放等于 Fork 结果，源删除后内容仍完整，未完成尝试不重启。
 
-**压缩。** 仅把有效上下文改为原生摘要 + 有序保留消息；摘要进入 History 索引，无需另一消息事件。保留原历史、config/state/资源，存储无损不等于模型摘要无损；生成在提交临界区外完成，共用 Append/Compact 路径。
-带审计生成先串行捕获输入/提交 inference.start，再捕获已提交 source_seq，之后派发。接受成功时一个批次依次提交 apply + finish，校验**批次前尾序号**；自身 finish 不使 apply 失效，中途任何写入使结果过期。
-验证摘要身份、同会话已有唯一引用、原有效顺序、工具调用/结果一致性；可保留先前仍有效摘要，不留悬空工具结果。
+**压缩：** 有效上下文 → 原生摘要 + 有序保留消息；摘要索引到 History，不另写消息事件。保留历史/config/state/资源（存储无损 ≠ 摘要无损）。先串行捕获输入/提交 start，生成在提交锁外；共用 Append/Compact，验证批前尾、摘要身份、同会话已有唯一引用、有效顺序及工具调用/结果一致性，可保留仍有效的旧摘要。
 
 ```text
 commit inference.start --> capture source_seq S --> generate outside commit lock
@@ -286,29 +303,35 @@ live/archived -- Delete or authorized retention --> trash -- deadline --> expire
 pin / owner / pending work / unknown state --> block destructive transitions
 ```
 
-检出本地的保留策略不能意外删除另一 workspace 会话。自动清理限于 OpenStore 捕获的当前 workspace，除非有**显式项目级授权**。可使用用户全局策略，但共享来源本身不授权扩大范围；复用现有配置/授权边界，不增加策略服务。
-策略缺失、不可信/有歧义则阻止破坏性清理；变更不静默缩短已有回收站期限。这些是拟议规则，不是已实现设置键/CLI 参数。
-Clean 有界且限于 Store 项目及获准 workspace 范围；IDs 只缩小范围，不授予项目级权限、不沿父子/分叉链接扩展。显式项目级清理须另有授权，更宽 List 结果不构成授权。
-DryRun 不写、不修复、不认领租约，需恢复时报告阻塞；结果包含逐 ID 动作/原因、可恢复性/期限、验证字节估算（否则未知）、截断及取消/失败部分结果。
-确认预览只传选定返回 IDs；预览不预留/授权。执行与 writer 同互斥下复查当前策略、前缀/控制/生命周期修订、墓碑/所有者；变化候选跳过/报告，不扩展或替换候选。
-定时清理有自己的策略授权；持久重试代次留在内部，不要求客户端计划令牌、回执或操作 ID。
-保护固定、空闲 writer、后台工作、待投递/审批、未完成/未知执行或活动、损坏及未知模式；协调 fork/import/backup/投递保护，无安全隔离则跳过。崩溃工作先核实再判断年龄，活跃依赖影响安全，父子不是永久保留或级联规则；Delete/Restore 同样执行适用保护，无子树事务。
-回收站在稳定项目分区，与日志/资源同文件系统，不在 workspace/cwd 下；生命周期元数据保留身份、清单、验证前缀、授权/期限及重启进度。移动前隔离发现/Open/旧句柄；**多文件移动不原子**，未完成转换受保护至恢复/安全回滚，读者不见部分历史。
-Restore 验证内容/引用及原关联；缺失、损坏或 purge 已开始则失败。ID/路径冲突不覆盖/合并/另分 ID；完整发布原身份/历史/归档/固定状态，不授予 runtime 权威。重试区分已恢复代次与后续删除。
-只有 Clean 永久删除到期回收站：先持久标记不可用，再可重启回收经验证所属文件，不复活数据；生命周期依据保留至完成。
-缓存驱逐协调读写；资源 GC 扫描**全部保留历史**，含压缩前、归档/固定及回收站，保护暂存/发布/备份。仅已验证临时/孤儿文件过宽限期（如 24 小时）才可删除，unlink 前复查引用；扫描不全、未知所有者/格式/歧义引用则跳过，日志、引用资源、活跃租约不是垃圾。
-交互就绪后/空闲时有界调度；CLI 不运行则无守护进程，到期只是下次安全运行资格。磁盘压力只提示、预览/导出及显式选择，不缩短期限或绕过保护。
+| 清理边界（拟议，非已实现设置键/参数） | 必需行为 |
+| --- | --- |
+| 授权 | 自动清理限 OpenStore 捕获 workspace，扩大须显式项目级授权。检出本地策略不删其他 workspace；全局来源、更宽 List、IDs 均不扩大权限。复用现有配置；缺失/不可信/歧义策略阻止破坏，变更不静默缩短期限。 |
+| 范围/预览 | Store 项目 ∩ 获准 workspace ∩ 可选 IDs，不沿父子/分叉扩展。DryRun 不写/修复/认领租约，报告恢复阻塞；Limit 有限默认/上限。逐 ID 返回动作/原因、可恢复性/期限、验证字节或未知、截断及取消/失败部分结果。 |
+| 确认/竞态 | 只提交选定返回 IDs；预览不预留/授权。writer 互斥下复查策略、前缀/控制/生命周期修订、墓碑/所有者；变化则跳过/报告，不替换/扩大。定时清理另行授权；重试代次内部管理，不引入客户端令牌/回执/操作 ID。 |
+| 保护 | 固定、空闲 writer、后台工作、待投递/审批、未完成/未知执行或活动、损坏/未知模式。协调 fork/import/backup/投递隔离，否则跳过；崩溃工作先核实。看活跃依赖而非祖先；Delete/Restore 同样执行适用保护，无级联/子树事务。 |
+| 回收站转换 | 稳定项目分区，与日志/资源同文件系统，不在 workspace/cwd。元数据含身份/清单/验证前缀/授权/期限/重启进度；移动前隔离发现/Open/旧句柄。多文件移动不原子；不完整转换保护至恢复/安全回滚，不暴露部分历史。 |
+| Restore | 验证内容/引用/原关联；缺失/损坏/purge 已开始失败。冲突不覆盖/合并/换 ID；完整发布原身份/历史/归档/固定，不授予 runtime 权威；重试区分已恢复代次与后来删除。 |
+| 永久删除 | 仅 Clean 清除到期回收站：持久不可用标记 → 可重启回收验证所属文件 → 完成前保留生命周期依据；不复活。 |
+| GC/缓存驱逐 | 协调读写；扫描全部保留历史（压缩前/归档/固定/回收站），保护暂存/发布/备份。仅已验证临时/孤儿文件过宽限（如 24h），unlink 前复查引用。不全扫描/未知归属或格式/歧义引用则跳过；日志、引用资源、活跃租约非垃圾。 |
+| 调度/压力 | 交互就绪后/空闲有界运行；无 CLI 则无守护进程。到期仅获下次安全运行资格；压力只提示/预览/导出/明确选择，不缩短期限或绕过保护。 |
 
 ## 落地与验证
 
-1. 移除 SQLite 实验/依赖，保留文件元数据、显式同步、读取锁优化/测试；保持原生编解码/truncate，无后端开关。
-2. 确定 SDK 对齐的批次帧、所有权、恢复/缓存校验；故障测试 write/sync/rename/unlink 边界、部分批次/移动、不明确提交及备份。
-3. 文件上实现注册、类型化适配/投影；测试 TUI/无界面/ACP、hooks/inspector，区分摘要、事件/历史浏览、恢复状态三条读路径。
-4. 转换须获准、独占、可重试，保留原件/资源/来源及新旧投影等价证明；不支持记录阻止切换，不静默合并分区/双写；新格式写入后回滚须先保留/导出新历史。
-5. 先测量再优化增量摘要、锁、回放分配/可选检查点；后端测试通过不证明目标契约。
-
-验证覆盖身份/worktree/配置隔离及信任、18 类事件无回放副作用、原生/提供方往返、重试/有意重复、委派/分叉独立性及延迟回调、连续/审计/过期压缩、固定前缀浏览、当前策略恢复、保留默认/固定/未知保护、预览竞态、中断删除/恢复/清除、GC/一致备份。
-剩余选择：位置迁移/协调交互、注册文件格式、最终摘要/载荷类型、SDK 批次集成及转换记账。Git common-directory 身份、非 Git 精确 cwd、当前检出项目配置已确定；SQLite 或文件上的 SQLite 索引须另决策并提供新证据。
+```text
+legacy schema 4 + SDK codec/truncate --> existing readers (originals preserved)
+                  |
+                  v
+SDK batches + fenced ownership + durable admission + recovery/cache fault tests
+                  |
+validated adapters --> old/new parity gate --> approved exclusive retryable conversion
+                  |   context/history/native IDs/assets/inspector incl. replacements
+                  `-- unsupported/missing facts --> BLOCK; no fabricated/discarded facts
+conversion --> new format (no dual writes / silent partition merge)
+rollback after new writes --> preserve/export new history FIRST
+```
+移除 SQLite 实验/依赖，保留文件元数据、sync、读锁优化/测试及原生行为。测试 TUI/无界面/ACP、hooks/inspector、三条读路径；注入 write/sync/rename/unlink、部分批次/移动、不明确提交/备份故障。先测摘要/锁/回放分配再做检查点；后端测试不证明目标契约。
+验证：身份/worktree/配置隔离/信任、18 类事件无回放副作用、原生/提供方往返、重试与有意重复、委派/分叉独立性/延迟回调、连续/审计/过期压缩、固定前缀浏览/当前策略恢复、保留默认/固定/未知保护、预览竞态、中断 trash/restore/purge、GC/备份。
+未决：位置迁移/协调 UX、注册格式、最终摘要/载荷、SDK 批次集成/转换记账。已定：Git common-directory 身份、非 Git 精确 cwd、检出本地配置；SQLite（含索引）须另决策/新证据。
 
 ## 历史性能 — 2026-11-07
 
