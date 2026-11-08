@@ -70,7 +70,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
     events.jsonl.lock              writer 锁（sdk-go）
     attrs.json                     用户意图（不存在即默认值）
     blobs/                         按 sha256 内容寻址
-  cache/summaries/<sid>.json       列表行摘要（派生）
+  cache/<sid>.json       列表行摘要（派生）
   trash/<sid>/                     整个移入的已删除会话目录
   transcripts/<sid>.jsonl          schema-4 会话，转换后只读
 ```
@@ -225,7 +225,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 - **Context** — 发给模型的活动消息列表。
 - **State** — 生效的覆盖、会话状态和三个目录。
 - **History** — 曾有过的所有消息及审计和备注，用于展示和检查。压缩前的消息保留在此。
-- **Summary** — 缓存在 `cache/summaries/` 中的列表行数据。
+- **Summary** — 缓存在 `cache/` 中的列表行数据。
 
 恢复流程为 `Open → 投影 → 解析当前设置与信任 → 启动 runtime`。TUI、无界面和 ACP 共用；
 ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。恢复时按当前配置重建目录；
@@ -342,7 +342,7 @@ func (s *Session) Close() error                                      // drain, r
 
 会话数据有两类，分开存放：
 
-| | `sessions/<sid>/attrs.json` | `cache/summaries/<sid>.json` |
+| | `sessions/<sid>/attrs.json` | `cache/<sid>.json` |
 | --- | --- | --- |
 | 内容 | 用户意图：`title`（改过的）、`archived_at`、`pinned` | 事件在列表中的投影：标题、最后提示、计数、workspace、父会话、最后活动 |
 | 能否从事件推导 | 不能 | 能 |
@@ -412,11 +412,18 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 1 | 事件模型 | 18 类、全局事件 ID 与 `source_id` → 13 类、`seq` 身份、`source` 引用、词汇、目录与 `context.compact` 载荷 |
 | 2 | 校验与投影器 | 按位置的引用检查；关卡、未完成调用与版本规则；Context / State / History 投影 |
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
-| 4 | attrs 与缓存 | `attrs.json`、`cache/summaries/`、大小 + 批次哈希有效性、按偏移的事件分页 |
+| 4 | attrs 与缓存 | `attrs.json`、`cache/`、大小 + 批次哈希有效性、按偏移的事件分页 |
 | 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
 | 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；带一致性门禁的 schema-4 转换 |
 
 第 1–2 片要求移植 #737 的测试，而不是删除。
+
+第 6 片改变的是路径，不只是格式。所有使用旧平铺路径的地方都要迁到会话目录：`Session.TranscriptPath` 及其
+对 hook 暴露的路径、`session` 中的发现与列表、检查器（`cmd/san/inspector.go`、`internal/inspector`）以及
+`transcript.Store`。每个会话目录作为独立的 sdk-go store 打开，固定 ID 为 `events`，因此 sdk-go 的批次格式、
+writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关闭后目录可直接重命名）。发现时先查
+`sessions/<sid>/`，再回退到 `transcripts/<sid>.jsonl`，同一个会话不会出现两次。`sessions/`、`trash/`、`cache/`
+必须在同一文件系统上，这是重命名原子性的前提。
 
 代码布局遵循同样的划分。`internal/session` 负责产品层 Store 与 Session；其类型化事件代码按职责分文件
 （`event_model`、`event_validation`、`event_projector`、`event_storage`、`event_query`），而不是新建包，

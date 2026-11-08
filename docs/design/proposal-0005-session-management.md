@@ -83,7 +83,7 @@ Configuration does not move into session storage:
     events.jsonl.lock              writer lock (sdk-go)
     attrs.json                     user intent (absent = defaults)
     blobs/                         content-addressed by sha256
-  cache/summaries/<sid>.json       list-row summary (derived)
+  cache/<sid>.json       list-row summary (derived)
   trash/<sid>/                     a deleted session directory, moved whole
   transcripts/<sid>.jsonl          schema-4 sessions, read-only once converted
 ```
@@ -275,7 +275,7 @@ A pure projector folds committed events into:
 - **State** — effective overrides, session state and the three catalogues.
 - **History** — every message ever held plus audit and annotations, for display
   and inspection. Pre-compaction messages stay here.
-- **Summary** — the list-row data cached in `cache/summaries/`.
+- **Summary** — the list-row data cached in `cache/`.
 
 Resume is `Open → project → resolve current settings and trust → start runtime`.
 TUI, headless and ACP share it; ACP checks the requested cwd against the restored
@@ -411,7 +411,7 @@ interfaces, and generic pieces move into sdk-go.
 
 Two kinds of session data exist, and they are stored apart:
 
-| | `sessions/<sid>/attrs.json` | `cache/summaries/<sid>.json` |
+| | `sessions/<sid>/attrs.json` | `cache/<sid>.json` |
 | --- | --- | --- |
 | Holds | User intent: `title` (renamed), `archived_at`, `pinned` | Projection of events for the list: title, last prompt, counts, workspace, parent, last activity |
 | Derivable from events | No | Yes |
@@ -497,11 +497,22 @@ independent PR that keeps runtime writing schema 4 until the last one.
 | 1 | Event model | 18 types, global event IDs and `source_id` → 13 types, `seq` identity, `source` refs, vocabulary, catalogue and `context.compact` payloads |
 | 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
-| 4 | Attrs and cache | `attrs.json`, `cache/summaries/`, size + batch-hash validity, event pages by offset |
+| 4 | Attrs and cache | `attrs.json`, `cache/`, size + batch-hash validity, event pages by offset |
 | 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
 | 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; schema-4 conversion with parity gate |
 
 Slices 1–2 are gated by #737's tests being ported, not deleted.
+
+Slice 6 changes paths, not only formats. Every consumer of the old flat path moves
+to the session directory: `Session.TranscriptPath` and its hook-facing path,
+discovery and listing in `session`, the inspector (`cmd/san/inspector.go`,
+`internal/inspector`), and `transcript.Store`. Each session directory is opened as
+its own sdk-go store with the fixed ID `events`, which keeps sdk-go's batch format,
+writer lock and recovery unchanged (verified: one writer per directory, and the
+directory renames cleanly once closed). Discovery checks `sessions/<sid>/` first and
+falls back to `transcripts/<sid>.jsonl`; a session never appears twice. All of
+`sessions/`, `trash/` and `cache/` must be on one filesystem, which is what makes
+the renames atomic.
 
 Code layout follows the same split. `internal/session` owns the product Store
 and Session; its typed-event code is grouped by responsibility in files
