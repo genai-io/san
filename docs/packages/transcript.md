@@ -7,12 +7,17 @@ layer: feature
 
 Owns the native append-only event log and its derived projections.
 
+This page documents the current JSONL backend. The
+[session management proposal](../design/proposal-0005-session-management.md)
+plans a SQLite backend while retaining typed records and shared projection rules.
+It does not introduce a second history authority or change storage today.
+
 ## Purpose
 
 `internal/session` writes messages and product state here; the inspector reads
 the same records. The log is authoritative. Storage — the append-only file,
 writer leases, crash recovery, listing and deletion — is sdk-go's
-`pkg/session`: messages are its conversation (message and reset lines), and
+`pkg/session`: messages are its conversation (message and truncate lines), and
 every other `Record` is written whole as an application record's data. This
 package owns san's record types, their projection, and per-session summaries.
 
@@ -43,19 +48,19 @@ func Project(records []Record) (*Transcript, error)
 
 ## Internals
 
-- `store.go` writes through the claimed `session.Writer`: a message extends the
-  conversation and is saved, a replacement is saved whole (a reset and its
-  messages), and a `session.compacted` saves the conversation from its summary
-  on. Message IDs name immutable content; a replacement holds unique, nonempty
-  IDs, and replaying the same IDs writes nothing.
-- `read.go` reads the log back as `Record`s: a message as `message.appended`, a
-  reset as an empty `conversation.replaced`. A record's ID is its position in
-  the log.
+- `store.go` writes through the claimed `session.Writer`. Save compares the
+  conversation with its previous encoding, truncates to the unchanged prefix
+  when needed, and appends the changed suffix. A `session.compacted` saves the
+  conversation from its summary on. San requires unique, nonempty message IDs
+  in replacements and treats those IDs as immutable content identities.
+- `read.go` reads messages as `message.appended` and truncates as
+  `conversation.replaced` carrying the retained prefix, which may be nonempty.
+  A record's ID is its position in the log.
 - `state_patch.go` applies typed partial updates and removes unchanged fields.
-- `projector.go` is linear. Resume starts over at each reset; history keeps
-  every message once, in the order it first appeared. Session ancestry uses
-  `parentSessionId`.
-- `recovery.go` claims a session through `session.Store.Write` and refreshes
+- `projector.go` is linear. Resume replaces its active conversation at each
+  replacement; history keeps every message once, in first-appearance order.
+  Session ancestry uses `parentSessionId`.
+- `recovery.go` claims a session through `session.Store.Writer` and refreshes
   derived caches on every claim, so inference/exchange counters and state
   reflect intervening writes by other processes.
 - Each `transcripts/<id>.jsonl` has a derived `<id>.jsonl.meta`, validated against
@@ -72,8 +77,9 @@ func Project(records []Record) (*Transcript, error)
 store mutex. `Claim` takes the session's writer, a cross-process lease; its
 returned idempotent release function closes it. Callers hold that lease while
 writing a conversation; a write outside one takes the writer for that write.
-A message or replacement is synced before returning; other records are synced
-by the next one, or by release. Delete refuses a held session. Session and
+A changed conversation save syncs before returning. Application-record appends
+sync on a subsequent changed conversation save or writer close, not on another
+application append or a no-op save. Delete refuses a held session. Session and
 attachment identifiers must be single path components.
 
 ## Tests
