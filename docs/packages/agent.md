@@ -155,6 +155,22 @@ func Default() *Runtime
   share one ID. `Send` appends to the agent's message queue (never blocks) and
   reports a stopped run instead of silently dropping input.
 
+## Admission boundaries
+
+`core.Config` exposes optional `InferenceAdmission`, `ToolAdmission`, and
+`OutputAdmission` callbacks using native `sdkagent` payloads. They are separate
+from permission `Gate` and telemetry `OnEvent`: inference admission sees the
+prepared request before dispatch; tool admission sees allowed, rewritten calls
+before execution; output admission sees post-filter output with its stable message
+ID before history insertion and `MessageAdded`. Callback errors terminate the
+exchange without retry or recovery. Already-started tools are not rolled back,
+and stream fragments/start/end notifications may precede admission; telemetry is
+not proof of dispatch or committed output.
+
+Nil callbacks preserve the SDK's default path and costs. These are core-only
+extension points, not foreground runtime or persistence wiring. They do not cover
+input acceptance, history replacement/replay, or compaction boundaries.
+
 ## Tests
 
 ```
@@ -178,6 +194,8 @@ internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
 internal/agent/runtime_interrupt_test.go — inactive cancellation receipt.
 internal/agent/runtime_interrupt_http_test.go — actual HTTP abort and execution unwind.
+internal/core/admission_test.go — post-hook admission before dispatch/publication,
+                                  fatal failures, stable message IDs and nil defaults.
 internal/core/turn_finalization_test.go — receipt identity, completion and errors.
 internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.

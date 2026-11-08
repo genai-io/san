@@ -160,7 +160,18 @@ type Config struct {
 	Gate Gate
 	// ResultFilter decides what the model is told a tool produced. Nil sends
 	// every result through as the tool gave it.
-	ResultFilter            ResultFilter
+	ResultFilter ResultFilter
+	// InferenceAdmission runs after request preparation, before model dispatch.
+	// Errors stop the turn without retry or recovery. Nil keeps SDK defaults.
+	InferenceAdmission func(context.Context, sdkagent.InferenceAdmission) error
+	// ToolAdmission runs after Gate checks and rewrites, before tool dispatch.
+	// Errors stop the batch, but do not undo already-started tools.
+	ToolAdmission func(context.Context, sdkagent.ToolAdmission) error
+	// OutputAdmission runs after output hooks and ID assignment, before history
+	// and MessageAdded publication. Errors stop the turn; streamed fragments and
+	// end notifications may already be visible. Inputs and replay are not covered.
+	// Nil admission callbacks preserve the SDK's default path and costs.
+	OutputAdmission         func(context.Context, sdkagent.OutputAdmission) error
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
 	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
@@ -261,6 +272,9 @@ func NewAgent(cfg Config) Agent {
 		// session's append-only writer dedupes by.
 		sdkagent.WithMessageIDs(NewMessageID),
 		sdkagent.WithHooks(a.hooks()),
+		sdkagent.WithInferenceAdmission(cfg.InferenceAdmission),
+		sdkagent.WithToolAdmission(cfg.ToolAdmission),
+		sdkagent.WithOutputAdmission(cfg.OutputAdmission),
 	)
 	if err != nil {
 		panic("core.NewAgent: " + err.Error())
