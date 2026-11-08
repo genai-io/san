@@ -65,16 +65,20 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
 ```text
 ~/.san/projects/<project>/
   project.json                     键、显示名
-  transcripts/<sid>.jsonl          事件（sdk-go 批次模式）
-  transcripts/<sid>.jsonl.lock     writer 锁（sdk-go）
-  transcripts/<sid>.attrs.json     用户意图（权威；不存在即默认值）
+  sessions/<sid>/                  一个会话的全部权威数据
+    events.jsonl                   事件（sdk-go 批次模式）
+    events.jsonl.lock              writer 锁（sdk-go）
+    attrs.json                     用户意图（不存在即默认值）
+    blobs/                         按 sha256 内容寻址
   cache/summaries/<sid>.json       列表行摘要（派生）
-  blobs/<sid>/                     按 sha256 内容寻址
-  trash/<sid>/                     已删除会话：manifest + 移入的文件
-  legacy/<sid>.jsonl               转换后保留的 schema-4 原件
+  trash/<sid>/                     整个移入的已删除会话目录
+  transcripts/<sid>.jsonl          schema-4 会话，转换后只读
 ```
 
-父子会话在 `transcripts/` 中是平级的；关联记录在子会话的 `session.create` 中。
+目录按“丢失后果”分组：`sessions/` 与 `trash/` 是权威数据，`cache/` 可丢弃，`transcripts/` 是原样保留的旧格式。
+一个会话就是一个目录，因此删除、恢复、分叉、备份都只处理一个单元，目录重命名是原子的。`sessions/` 中的会话
+遮蔽 `transcripts/` 中同 ID 的文件。父子会话在 `sessions/` 中平级；关联记录在子会话的 `session.create` 中。
+以 `.` 开头的名字是暂存，发现时忽略。
 以 `.` 开头的文件是暂存文件，发现时忽略。
 
 ## 事件
@@ -262,8 +266,8 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 
 在源会话的 `seq N` 处分叉：
 
-1. 以暂存名写入 `session.create { fork: {source, N} }`，随后原样复制事件 `2..N`，并复制被引用的 blob。
-2. 清空 group hint；重命名事件文件到正式位置以发布。
+1. 以暂存目录写入 `session.create { fork: {source, N} }`，随后原样复制事件 `2..N`，并复制被引用的 blob。
+2. 清空 group hint；把暂存目录重命名到 `sessions/` 以发布。
 
 位置和原生消息 ID 不变，因此无需改写任何引用。分叉相互独立：删除源会话不会破坏它，
 复制前缀中未完成的操作保持未完成。
@@ -338,7 +342,7 @@ func (s *Session) Close() error                                      // drain, r
 
 会话数据有两类，分开存放：
 
-| | `transcripts/<sid>.attrs.json` | `cache/summaries/<sid>.json` |
+| | `sessions/<sid>/attrs.json` | `cache/summaries/<sid>.json` |
 | --- | --- | --- |
 | 内容 | 用户意图：`title`（改过的）、`archived_at`、`pinned` | 事件在列表中的投影：标题、最后提示、计数、workspace、父会话、最后活动 |
 | 能否从事件推导 | 不能 | 能 |
@@ -363,12 +367,11 @@ live/archived --Delete / retention--> trash --7 days--> purged
       +-------------- Restore ----------+
 ```
 
-- **Delete** 需要 writer 锁（打开中的会话不能删除），且会话未固定。先写
-  `trash/<sid>/manifest.json`（文件清单、deleted_at），再把事件文件、attrs 和 blobs 重命名进 `trash/<sid>/`，
-  并删除缓存的摘要。
-  启动时，若 manifest 存在而文件未移完，则继续完成。子会话和分叉是独立会话，不受影响。
-- **Restore** 反向移动。若该 ID 已有在线会话则失败；绝不覆盖或改名。
-- **Purge** 删除超过期限的回收站目录，最后删 manifest。
+- **Delete** 需要 writer 锁（打开中的会话不能删除），且会话未固定。先在会话目录中写 `deleted.json`（`deleted_at`），
+  再一步把目录重命名为 `trash/<sid>/`，并删除缓存的摘要。子会话和分叉是独立会话，不受影响。
+  崩溃后会话要么在线要么在回收站，绝不会被拆开。
+- **Restore** 把目录重命名回去。若该 ID 已有在线会话则失败；绝不覆盖或改名。
+- **Purge** 把超过期限的目录重命名为 `trash/.purging-<sid>/` 再删除；遗留的 `.purging-` 目录在下次运行时完成清理。
 - **Clean** 在 UI 可交互后运行保留和清除，每次运行有上限。`DryRun` 只报告将发生什么，不写入。
   自动保留默认只作用于当前 workspace，除非配置为项目级。
 - **GC** 删除超过 24 小时的暂存文件和未被引用的 blob。无法确定归属的一律保留。
@@ -379,9 +382,9 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 新会话使用类型化事件。schema-4 transcript 通过适配器保持可读，并在首次恢复时、持有 writer 锁的情况下转换：
 
-1. 按下表把记录映射到暂存事件文件，并复制 blob。
+1. 按下表把记录映射到暂存目录 `sessions/.<sid>/`，并复制 blob。
 2. 验证投影出的上下文和历史与旧读取器一致。
-3. 把原件移到 `legacy/<sid>.jsonl`，以相同会话 ID 发布新事件，使父链接和群组成员关系保持有效。
+3. 把暂存目录重命名为 `sessions/<sid>/` 发布，会话 ID 不变，使父链接和群组成员关系保持有效。原件仍在 `transcripts/` 中，不动，被新目录遮蔽。
 
 验证失败时，会话以旧格式保持只读，可作为其旧上下文的分叉继续。转换从不虚构事实：旧记录缺少的字段保持缺省。
 
@@ -410,10 +413,15 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 2 | 校验与投影器 | 按位置的引用检查；关卡、未完成调用与版本规则；Context / State / History 投影 |
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
 | 4 | attrs 与缓存 | `attrs.json`、`cache/summaries/`、大小 + 批次哈希有效性、按偏移的事件分页 |
-| 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、回收站 manifest、保留、GC |
-| 6 | runtime 切换 | 生产者写事件；以前缀复制分叉；恢复与 ACP 校验；带一致性门禁的 schema-4 转换 |
+| 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
+| 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；带一致性门禁的 schema-4 转换 |
 
 第 1–2 片要求移植 #737 的测试，而不是删除。
+
+代码布局遵循同样的划分。`internal/session` 负责产品层 Store 与 Session；其类型化事件代码按职责分文件
+（`event_model`、`event_validation`、`event_projector`、`event_storage`、`event_query`），而不是新建包，
+因为事件模型在 `session` 之外没有使用方。`internal/transcript` 保留 schema 4 与 sdk-go 封装，第 6 片落地后
+收缩为旧格式读取器。通用部分（批次封装、writer 锁）留在 sdk-go。
 
 ## 备选方案
 

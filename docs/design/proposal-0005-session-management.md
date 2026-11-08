@@ -78,18 +78,24 @@ Configuration does not move into session storage:
 ```text
 ~/.san/projects/<project>/
   project.json                     key, display name
-  transcripts/<sid>.jsonl          events (sdk-go batch mode)
-  transcripts/<sid>.jsonl.lock     writer lock (sdk-go)
-  transcripts/<sid>.attrs.json     user intent (authoritative; absent = defaults)
+  sessions/<sid>/                  everything authoritative about one session
+    events.jsonl                   events (sdk-go batch mode)
+    events.jsonl.lock              writer lock (sdk-go)
+    attrs.json                     user intent (absent = defaults)
+    blobs/                         content-addressed by sha256
   cache/summaries/<sid>.json       list-row summary (derived)
-  blobs/<sid>/                     content-addressed by sha256
-  trash/<sid>/                     deleted sessions: manifest + moved files
-  legacy/<sid>.jsonl               schema-4 originals kept after conversion
+  trash/<sid>/                     a deleted session directory, moved whole
+  transcripts/<sid>.jsonl          schema-4 sessions, read-only once converted
 ```
 
-Parent and child sessions are peers in `transcripts/`; the link lives in the
-child's `session.create`. Files whose names start with `.` are staging and are
-ignored by discovery.
+Directories group data by what happens when it is lost. `sessions/` and
+`trash/` hold authoritative data, `cache/` is disposable, and `transcripts/` is
+the legacy format, left untouched. A session is one directory, so deleting,
+restoring, forking and backing it up each handle one unit, and a rename of that
+directory is atomic. A session in `sessions/` shadows a same-ID file in
+`transcripts/`. Parent and child sessions are peers in `sessions/`; the link
+lives in the child's `session.create`. Names starting with `.` are staging and
+are ignored by discovery.
 
 ## Events
 
@@ -317,9 +323,9 @@ parent: commit [message.append tool result for C, tool.finish { call_id: C, chil
 
 Fork at `seq N` of a source session:
 
-1. Under a staging name, write `session.create { fork: {source, N} }` followed by
+1. Under a staging directory, write `session.create { fork: {source, N} }` followed by
    a verbatim copy of events `2..N`, and copy the referenced blobs.
-2. Clear the group hint; publish by renaming the events file into place.
+2. Clear the group hint; publish by renaming the staging directory into `sessions/`.
 
 Positions and native message IDs are unchanged, so no reference is rewritten.
 The fork is independent: deleting the source never breaks it, and unfinished
@@ -405,7 +411,7 @@ interfaces, and generic pieces move into sdk-go.
 
 Two kinds of session data exist, and they are stored apart:
 
-| | `transcripts/<sid>.attrs.json` | `cache/summaries/<sid>.json` |
+| | `sessions/<sid>/attrs.json` | `cache/summaries/<sid>.json` |
 | --- | --- | --- |
 | Holds | User intent: `title` (renamed), `archived_at`, `pinned` | Projection of events for the list: title, last prompt, counts, workspace, parent, last activity |
 | Derivable from events | No | Yes |
@@ -434,14 +440,14 @@ live/archived --Delete / retention--> trash --7 days--> purged
 ```
 
 - **Delete** requires the writer lock (an open session cannot be deleted) and a
-  non-pinned session. It writes `trash/<sid>/manifest.json` first (files,
-  deleted_at), then renames the events file, attrs and blobs into `trash/<sid>/`
-  and drops the cached summary. On
-  startup, a manifest with unmoved files is rolled forward. Children and forks
-  are independent sessions and are not touched.
-- **Restore** reverses the moves. It fails if the ID already exists live; it
-  never overwrites or renames.
-- **Purge** removes trash directories past their deadline, manifest last.
+  non-pinned session. It writes `deleted.json` (`deleted_at`) into the session
+  directory, renames the directory to `trash/<sid>/` in one step, and drops the
+  cached summary. Children and forks are independent sessions and are not
+  touched. A crash leaves the session either live or trashed, never split.
+- **Restore** renames the directory back. It fails if the ID already exists
+  live; it never overwrites or renames.
+- **Purge** renames a directory past its deadline to `trash/.purging-<sid>/` and
+  then removes it; a leftover `.purging-` directory is finished on the next run.
 - **Clean** runs retention and purge, bounded per run, after the UI is
   interactive. `DryRun` reports what would happen without writing. Automatic
   retention acts only on the current workspace unless configured project-wide.
@@ -456,10 +462,11 @@ Reads of trashed sessions require `visibility=trash`; `Open`, `Fork` and
 New sessions use typed events. Schema-4 transcripts remain readable through an
 adapter and are converted on first resume, under the writer lock:
 
-1. Map records with the table below into a staging events file, copying blobs.
+1. Map records with the table below into a staging directory `sessions/.<sid>/`, copying blobs.
 2. Verify the projected context and history match the legacy reader.
-3. Move the original to `legacy/<sid>.jsonl` and publish the new events under the
-   same session ID, so parent links and group membership stay valid.
+3. Publish by renaming the staging directory to `sessions/<sid>/`, under the same
+   session ID so parent links and group membership stay valid. The original
+   stays in `transcripts/`, untouched, and is shadowed by the new directory.
 
 If verification fails, the session stays read-only in legacy form and can be
 continued as a fork of its legacy context. Conversion never invents facts:
@@ -491,10 +498,18 @@ independent PR that keeps runtime writing schema 4 until the last one.
 | 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
 | 4 | Attrs and cache | `attrs.json`, `cache/summaries/`, size + batch-hash validity, event pages by offset |
-| 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, trash manifests, retention, GC |
-| 6 | Runtime cutover | Producers write events; fork by prefix copy; resume and ACP checks; schema-4 conversion with parity gate |
+| 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
+| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; schema-4 conversion with parity gate |
 
 Slices 1–2 are gated by #737's tests being ported, not deleted.
+
+Code layout follows the same split. `internal/session` owns the product Store
+and Session; its typed-event code is grouped by responsibility in files
+(`event_model`, `event_validation`, `event_projector`, `event_storage`,
+`event_query`) rather than a new package, as the event model has no consumer
+outside `session`. `internal/transcript` keeps schema 4 and the sdk-go wrapper,
+and shrinks to the legacy reader once slice 6 lands. Generic pieces (batch
+framing, writer lock) stay in sdk-go.
 
 ## Alternatives considered
 
