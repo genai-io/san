@@ -4,448 +4,411 @@
 
 ## Status and scope
 
-Draft — 2026-11-07. Design only: storage-neutral API over files/JSONL; no SQLite migration or backend-selection UI. Persist conversation changes, necessary execution/permission audit and non-reconstructible commentary—not a runtime log. Summaries/indexes are rebuildable.
+Draft — 2026-11-08. Defines the target model for projects, sessions and their
+event logs on top of sdk-go's JSONL store. Storage stays file-backed; SQLite
+is out of scope (see [Alternatives](#alternatives-considered)).
 
-| Delivery | Status |
+| Piece | Status |
 | --- | --- |
-| [Implementation #737](https://github.com/genai-io/san/pull/737) | Unmerged: project/worktree identity, checkout-local settings, schema-4 identity/cache upgrades; 18-event model/projector, private typed persistence and public bounded raw Events reader. No runtime cutover. |
-| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged at `4bc968c`: opt-in committed batches and inference/tool/output admission. Complete-line visibility is not proof of completed Sync; successful Commit acknowledges file Sync. |
-| Existing persistence | SDK native records/truncate; Hooks/inspector retain JSONL integration; no legacy partition migration or dual-write. |
-| Target below | Runtime event writes, complete producer integration/API, trash and retention remain gated; private persistence is not a format cutover. |
+| [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged: committed batches (`Writer.Commit`, `Store.Batches`). |
+| [#737](https://github.com/genai-io/san/pull/737) | Open: project/worktree identity, checkout-local settings, typed events behind a private writer. Runtime still writes schema 4. |
+| Runtime cutover, lifecycle (trash/retention), legacy conversion | Not started; specified below. |
 
-### Current slice versus target API
-
-The API contracts, 18-event table and diagrams below describe the **target**.
-The unmerged slice keeps runtime writes on schema 4; typed writes remain private.
-Public `Store.Events` returns raw events (default 100, maximum 500 per page),
-replaying the full pinned prefix on every page; bounded output is not bounded work.
-Filters, lifecycle-generation binding and full runtime integration remain targets,
-not current APIs. See the implementation docs in [#737](https://github.com/genai-io/san/pull/737)
-for persistence, retry and creation limitations.
-
-## Identity, directories and configuration
+## Model
 
 ```text
-checkout A --+
-             +-- Git common directory --> one Project --> shared sessions
-checkout B --+                              (workspace = A or B)
-
-checkout A --> A's project config / tracked files (branch A)
-checkout B --> B's project config / tracked files (branch B)
-user scope --> naturally shared user-global config
+Project  (one per Git repository, or per directory outside Git)
+  └── Session  (a resumable conversation; workspace = the checkout it runs in)
+        ├── event log      append-only, authoritative, single writer
+        ├── attrs          small mutable file: title, archive, pin, activity
+        ├── blobs          content referenced by events (images, large outputs, prompts)
+        └── summary cache  rebuildable
 ```
 
-Workspace is not an entity, service or physical directory layer. A Session is a
-resumable conversation, not one process or agent run; Close releases a handle and
-does not end it. There is no initial `session.end` event. Runtime owns execution
-and cancellation; stored todos, permission decisions and group hints are not live resources.
+Four invariants carry the whole design:
 
-Project IDs are stable opaque IDs assigned at registration, separate from lookup paths:
+1. **The event log is the only source of truth for a conversation.** Messages,
+   context, settings overrides and audit are all projections of it. There is no
+   parallel messages/state store.
+2. **One writer per session, across processes.** Readers never need the writer.
+3. **Facts before effects.** Anything that precedes or authorizes a side effect
+   (a model call, a tool run) is committed before the effect starts. Replay only
+   projects; it never calls models, tools or hooks.
+4. **Everything derived is disposable.** Summaries, indexes and pages can be
+   deleted and rebuilt from the logs without loss.
 
-| Startup location | Internal registration rule |
-| --- | --- |
-| Git | Canonical absolute Git common directory; resolve Git's relative result against its documented base first. Main checkout, linked worktrees and subdirectories share one Project. Independent clones and submodules remain distinct. |
-| Non-Git | Exact normalized startup cwd is the key, project root and workspace. The same path reuses registration; startup in a child directory is a distinct Project. No nearest-ancestor lookup. |
-| Both | Normalize absolute paths and symlinks consistently with trust checks; do not lowercase. A runtime cwd change never reassigns ownership. |
+A session is a conversation, not a process: `Close` releases the handle and the
+session stays resumable. There is no "session ended" event.
 
-```text
-creation: project_id + workspace + initial_cwd (fixed)
-                                  |
-resume: state.execution_cwd -------+ fallback for old history
-                  |
-                  +--> tools / settings / hooks / trust at execution location
-                  `--> cwd may cross projects; ownership NEVER follows
-```
+## Project identity and configuration
 
-Git workspace = checkout root; initial_cwd may be below it. Moves, reused paths or changed/missing Git metadata require explicit registration validation/reconciliation. Never silently transfer identity, merge legacy partitions or rewrite history. Association grants no trust; missing checkouts do not block inspection.
-
-| Configuration boundary | Rule |
-| --- | --- |
-| Project settings | Current Git checkout root, not original main checkout; exact startup cwd outside Git. Tracked settings/instructions follow checkout/branch. |
-| Sharing | User-global naturally shared; links opt-in. No mandatory shared root, copying/sync or fallback to another checkout; main checkout need not exist. |
-| Existing loaders | Preserve config/MCP/plugin/skill/instruction path rules and applicable legacy local-source/trust compatibility. Sharing identity requires no redesign; not every loader normalizes subdirectories to checkout root. |
-| Resolution/writes | Preserve user → project → local, compatibility sources, persona, field merges/provenance ([configuration](../reference/configuration.md)). Write one scope's fields, never merged output; coordinate processes and reject read-only sources. |
-| Session overrides/resume | Subsequent requests only; current policy/credentials, never historical grants. Missing model/provider needs error or explicit replacement. No config/event transaction, secrets, security authority or full settings-tree copies. |
-| Current limitations | Registration lock waits cannot be cancelled mid-wait; atomic publication ≠ power-loss durability; identical-path repository replacement is not automatically detected. |
-
-```text
-~/.san/projects/
-  <cwd-hash>/                      legacy: separate, readable; no auto-move/import
-  <project-id>/                   shared worktrees; no workspace directory layer
-    project.json                  identity/lookup metadata, NOT config (implemented)
-    transcripts/<sid>.jsonl        peer parent/child logs; parent_session_id links
-    transcripts/<sid>.jsonl.meta   rebuildable summary
-    blobs/{image,tool-result}/<sid>/
-    trash/<sid>/                  PROPOSED generations/manifests/logs/assets
-checkout / user scope             config stays with existing loaders
-```
-
-The internal catalog owns names/descriptions, registration and partition locations—not config/cwd. Registration scans rebuild lookup indexes, not identity. Reconciliation needs approval; project removal is blocked by sessions, trash or unfinished transitions. Session deletion never deletes checkouts or cascades by ancestry; trash recovery cannot assume atomic multi-file moves.
-
-## Event contract
-
-An Event is an immutable durable fact, not a transient notification or a renamed
-`transcript.Record`. Names use `<object>.<action>`: apply records an accepted
-transition; finish records a terminal outcome, not necessarily success.
-
-| Envelope field | Type and meaning |
-| --- | --- |
-| `id` | Globally unique string, allocated before submission; stable across persistence retries |
-| `session_id` | Owning session ID; project/workspace are obtained through that session |
-| `seq` | Contiguous positive session-local commit order, assigned at commit |
-| `type`, `schema_version` | Event discriminator and positive payload codec version |
-| `created_at` | UTC Unix milliseconds; not an ordering key |
-| `source_id?` | Immediate source **event ID**, local or foreign; not a session, request, native message ID or legacy sequence |
-| `outcome?` | Required only on inference/tool/delegation/hook finish: success/failure/cancelled |
-| `payload` | Validated typed JSON, without duplicate envelope fields |
-
-A start event's ID is the operation identity. Finish names its start through
-`source_id`; permission.decide names its request. Generated messages/summaries name
-the producing start. Received messages name source content, or delegation.start
-for delegated input. Direct user input may have no source. Native call_id/turn_id
-remain payload fields. A source link is provenance, not ownership or a dependency graph.
-
-In the single type table below, `?` means optional; other payload fields are required.
-Native messages, tool definitions and nested state keep their SDK/product types,
-not generic strings. Exact Go payload types remain an SDK-alignment gate.
-
-| Event | Typed payload fields | Effect when applied / boundary |
+| Startup location | Project key | Workspace |
 | --- | --- | --- |
-| `session.create` | project_id, workspace, initial_cwd, agent_id, sidechain; parent_session_id?, fork_source_id?, fork_source_seq?, initial_config? | Initialize identity/projection and provenance; do not launch an agent or repeat copying. |
-| `message.append` | messages: nonempty ordered native-message list; source_message_ids?: aligned source native IDs | Index content, append history/active sequence, derive previews; do not execute embedded tool calls. |
-| `compaction.apply` | source_seq, summary: native message, retained_message_ids: ordered list | Index summary; active sequence becomes summary + retained messages; preserve history/config/state/assets. |
-| `config.update` | patch: ConfigPatch | Update session overrides for next resolution, not User/Project files or in-flight requests. |
-| `state.update` | patch: StatePatch | Update named state/summaries; cwd changes require environment refresh, not ownership or authority changes. |
-| `inference.start` | turn_id, input_message_ids, request_config, instruction_digest, toolset_digest | Register unfinished attempt and actual non-secret request provenance; no model call. |
-| `inference.finish` | stop_reason?, usage?, duration_ms?, error?, reason? | Close attempt and update audit/usage; output remains in message events; no automatic retry. |
-| `tool.start` | call_id, input_ref | Register execution; input_ref identifies durable invocation/arguments; no authorization or execution. |
-| `tool.finish` | call_id; duration_ms?, error?, reason?, details? | Close attempt with typed execution/display details; result bodies remain in messages/assets. |
-| `delegation.start` | child_session_id, input_ref | Register one accepted child execution/continuation; no child launch or stream copying. |
-| `delegation.finish` | result_event_id?, error?, reason? | Close attempt and link locally accepted result, not end the child or duplicate its result. |
-| `permission.request` | operation_ref, scope | Record pending audit linked to protected operation; no replay prompt. |
-| `permission.decide` | decision, scope; reason? | Resolve audit with allow/deny/cancelled; never restore historical authorization. |
-| `hook.finish` | hook_name, trigger; duration_ms?, reason?, effect_refs? | Record known outcome and separately owned effect references; never rerun Hook/effects. |
-| `instruction.update` | upsert: named instruction sections, remove: section names; source? | Update historical catalogue for request digests, not current files or messages. |
-| `toolset.update` | upsert: native tool definitions, remove: tool names; source? | Update historical tool catalogue; do not install or enable tools. |
-| `skill.update` | changes: named typed skill activation states; source? | Record observed activation for inspection, not load skills or edit preferences. |
-| `annotation.add` | text; anchor?: message ID or event sequence | Durable display-only commentary at anchor or session level; never model context/state/execution. |
+| Inside Git | Canonical absolute Git common directory. Main checkout, linked worktrees and subdirectories share one project; separate clones and submodules are distinct. | Checkout root (`git rev-parse --show-toplevel`) |
+| Outside Git | Exact canonical startup directory; no ancestor search. | Same directory |
 
-ConfigPatch permits provider, model, generation_options, mode and autopilot_policy.
-Generation options/policy use versioned allowlisted product fields, not arbitrary
-provider JSON. StatePatch permits title, archived_at, pinned, todos,
-autopilot_progress, execution_cwd and group_hint. The hint contains group/member
-identity for reclaim, not roster or permission authority. Last-prompt preview is derived.
+Paths are absolute, symlink-resolved and case-preserved, using the same
+normalization as trust checks. The project directory is
+`~/.san/projects/<hash(kind + key)>/`. `project.json` inside it records the key
+and a display name; it is descriptive, not an identity registry. A moved
+repository therefore gets a new project; relinking an old one is an explicit
+command, never automatic. Legacy `<hash(cwd)>` partitions stay readable where
+they are; nothing is moved or merged.
 
-Patches distinguish absent, set and clear; false/zero/empty are explicit values.
-Reject unknown/cross-owner fields. Named catalogue changes require unique names,
-disjoint upsert/remove sets and resolvable request digests; empty catalogues are known
-values. Unchanged patches/definitions emit nothing.
+Each session fixes `project`, `workspace` and `initial_cwd` at creation. The
+current working directory is session state (`execution_cwd`); changing it
+refreshes tools, settings and trust for the new location but never moves the
+session to another project.
 
-Validation and recording rules:
+Configuration does not move into session storage:
 
-- Creation is seq 1 and unique; parent links are acyclic. Fork source ID/sequence
-  are both absent or identify a nonempty source prefix. Initial config contains no secrets.
-- Native message IDs are nonempty and unique locally; conflicting content fails.
-  Preserve signatures, encrypted reasoning, images/content order, tool IDs and
-  supported provider fields. Current Record.Message/Messages use `json:"-"`;
-  directly marshaling Record would lose content.
-- Each message batch has one source; split mixed origins. Sources are immutable,
-  never inferred from adjacency or timestamps. Local references resolve in the
-  committed prefix or earlier validated batch entries. input_ref identifies immutable
-  native-call or persisted invocation content. Required missing content fails.
-- Finish must match a same-session start/family and tool call ID where applicable;
-  at most one terminal result per start/request. Failure needs bounded structured
-  error; cancellation needs a reason. Permission scope cannot expand its request.
-  Unknown outcomes stay unknown; dispatch acknowledgements are not finishes.
-- Trusted adapters validate foreign provenance at acceptance; replay reads local
-  content without requiring the foreign source to survive. Imports with unavailable
-  provenance need explicit compatibility handling, not fabricated references.
-- Commit starts before dispatch; persistence failure prevents execution. When output
-  and finish are known together, commit them in one batch. Earlier complete output
-  may survive a crash without a known finish. No replay retries or side effects.
-- Same event ID/content is idempotent; conflicting reuse fails. New executions and
-  intentional repeat inputs get new IDs, even with identical text. Do not store token
-  deltas, heartbeats, progress ticks, empty patches, repeated snapshots or derivable UI text.
-  Exclude secrets and unbounded diagnostics. Renderers consume facts, never produce them.
+- Project settings and instructions load from the **current checkout**, so they
+  follow its branch. User-global settings are shared naturally. There is no
+  shared project root and no fallback to the main checkout.
+- Existing loaders, precedence (user → project → local → persona) and
+  provenance are unchanged ([configuration](../reference/configuration.md)).
+- A session stores only its own overrides (model, mode, …). On resume they are
+  re-resolved against current settings and credentials; permission grants are
+  never restored from history. A model that no longer exists is an error the
+  user resolves explicitly.
+
+## Storage layout
 
 ```text
-runtime adapters --> validate + commit batch --> committed Events (seq)
-                         |                          |
-                    failure: no dispatch            +--> pure projector
-                    start committed: dispatch              |-- History (full)
-                                                          |-- Snapshot (active)
-                                                          `-- Summary (list)
-replay --------------------------------------------> projector only; no effects
+~/.san/projects/<project>/
+  project.json                     key, display name
+  transcripts/<sid>.jsonl          event log (sdk-go batch mode)
+  transcripts/<sid>.jsonl.lock     writer lock (sdk-go)
+  transcripts/<sid>.attrs.json     mutable attributes (authoritative)
+  transcripts/<sid>.jsonl.meta     summary cache (rebuildable)
+  blobs/<sid>/                     content-addressed by sha256
+  trash/<sid>/                     deleted sessions: manifest + moved files
+  legacy/<sid>.jsonl               schema-4 originals kept after conversion
 ```
 
-Replay only projects committed facts. It never calls models/tools/Hooks, prompts,
-resends deliveries or appends events. After commit the live coordinator reconciles
-runtime changes; resume resolves final configuration/trust once.
+Parent and child sessions are peers in `transcripts/`; the link lives in the
+child's `session.create`. Files whose names start with `.` are staging and are
+ignored by discovery.
 
-## Current records → target events
+## Event log
 
-Current storage combines SDK message/truncate/application records with San schema
-`"4"` and **19 type constants**, not these 18 events. See
-[records.go](../../internal/transcript/records.go) and
-[read.go](../../internal/transcript/read.go). Current read IDs are log positions.
-The following is a semantic adapter proposal, not a rename migration.
+### Envelope
 
-| Current record(s) | Target / compatibility requirement |
+Each event is one sdk-go application record. A group of events written together
+is one sdk-go batch: a single checksummed JSONL line, chained to the previous
+tail, so readers see all of it or none of it.
+
+| Field | Meaning |
 | --- | --- |
-| `session.started`, `session.forked` | One `session.create` with verified parent/fork provenance |
-| `message.appended` (SDK message) | `message.append`, preserving native fields/IDs and known provenance |
-| `session.compacted`, `conversation.replaced` (SDK truncate) | Jointly verify summary/boundary/truncate for `compaction.apply`; generic replacement is not necessarily compaction |
-| `session.state.patched` | Split desired behavior into config.update and facts into state.update; derive preview |
-| `inference.requested` | inference.start with validated request correlation/provenance |
-| `inference.responded`, `inference.failed` | inference.finish with known outcome and recorded attempt relationships; do not infer missing starts |
-| `system.section.added`, `system.section.removed` | instruction.update upsert/remove |
-| `tool.added`, `tool.removed` | toolset.update, not execution |
-| `hook.fired` | hook.finish only for known terminal outcome; async dispatch is not completion |
-| `permission.required`, `permission.decided` | permission.request/decide; translate permit/reject, validate links; immediate decisions may lack requests |
-| `skill.state.changed`, `notice.added` | skill.update / annotation.add with observed state and meaningful anchor semantics |
-| `tool.completed` | tool.finish details only with known outcome/start correlation; current payload alone is insufficient |
-| No dedicated schema-4 constant | tool.start and delegation.start/finish require new producers |
+| `seq` | 1-based position of the event in the session log. Assigned by the writer from the current tail; it is the event's identity. |
+| `type` | `<object>.<action>`, from the table below. |
+| `v` | Payload schema version for this type. |
+| `time` | UTC Unix milliseconds. Informational; ordering is `seq`. |
+| `source?` | Reference to the event this one derives from: `{seq}` in the same session, `{session, seq}` in another. Provenance only. |
+| `payload` | Typed JSON for `type`. |
 
-Missing starts, global IDs, links or outcomes require explicit compatibility mapping.
-Do not discard unmatched records or fabricate facts. Unsupported lossless mappings
-block import and cutover while originals remain intact. Prove old/new active-context,
-full-history, native-ID, asset and inspector-provenance parity, including legacy replacements.
+Events are identified by position rather than by allocated IDs. Committed
+prefixes are immutable, so `(session, seq)` is stable for the log's lifetime and
+a fork that copies a prefix keeps every in-session reference valid unchanged.
+Retry idempotency comes from the batch: a retried commit reuses its batch ID,
+and sdk-go treats the same ID with the same content as already committed and a
+changed one as a conflict.
+
+### Event types
+
+| Event | Payload | Projection effect |
+| --- | --- | --- |
+| `session.create` | `project`, `workspace`, `initial_cwd`, `agent_id`, `config` (initial overrides); `parent? {session, call_id}`, `fork? {session, seq}` | Always `seq 1`. Identity and provenance. |
+| `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
+| `context.replace` | `reason` (compaction/clear/rewind/edit); `through`: seq; `entries`: ordered list, each an existing message ID or a new native message | Active context becomes `entries` + every message appended after `through`. New messages (e.g. a summary) join history; nothing leaves it. |
+| `session.update` | `config?`: model, provider, generation options, mode, autopilot policy; `state?`: todos, execution_cwd, autopilot progress, group hint, active skills | Next requests use the new overrides; state is replaced field by field. |
+| `inference.start` | `turn_id`, `input_through` (seq), `request` (provider, model, options), `instructions` and `tools` (blob digests) | Opens an attempt. The output messages name it as `source`. |
+| `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error?` | Closes the attempt named by `source`. |
+| `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?`, `child_session?` | Audit and display details for one tool call. The result body is the tool-result message. |
+| `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `scope`, `by` (config/user/hook/reviewer), `asked_at?`, `reason?` | Audit only; never re-grants on replay. |
+| `hook.finish` | `hook`, `trigger`, `outcome`, `duration_ms?`, `effects?` | Audit of a completed hook. Async dispatch is not recorded until it completes. |
+| `annotation.add` | `text`, `anchor?` (seq) | Display-only note; never model context. |
+
+Payload rules:
+
+- Native messages keep their SDK type and every provider field (signatures,
+  encrypted reasoning, content order, tool IDs). Message IDs are unique within a
+  session.
+- Patches distinguish absent, set and clear; `false`, `0` and `""` are values.
+  Unknown fields are rejected. Empty patches are not written.
+- `outcome` is `success`, `failure` or `cancelled`; failures carry a bounded
+  error, cancellations a reason.
+- Never stored: secrets, token deltas, progress ticks, heartbeats, repeated
+  snapshots, or anything a renderer can derive (previews, last prompt).
+
+`inference.start` points at its input by `input_through` instead of listing
+message IDs, so storage stays linear in conversation length. System prompts and
+tool definitions are stored once per distinct content as blobs and referenced by
+digest, which makes every request reconstructible without separate catalogue
+events.
+
+### Commit rules
+
+1. **Effects follow facts.** The assistant message carrying tool calls is
+   committed before any tool runs; `inference.start` before the model is called;
+   `permission.decide` before an allowed tool runs. If the commit fails, the
+   effect does not start.
+2. **Results commit with their outcome.** A tool-result message and its
+   `tool.finish`, or generated messages and `inference.finish`, go in one batch.
+3. **Unfinished is visible, never invented.** A tool call without a result, or an
+   `inference.start` without a finish, is reported as interrupted on resume. It
+   is not retried or completed automatically.
+4. **Ambiguous commits are resolved by re-reading.** After an error, the writer
+   re-reads the tail; if the batch ID is present the commit happened.
+
+### Projections
+
+A pure projector folds committed events into:
+
+- **Context** — the active message list sent to the model.
+- **State** — effective overrides and session state.
+- **History** — every message ever held plus audit and annotations, for display
+  and inspection. Pre-compaction messages stay here.
+- **Summary** — the list-row data cached in `.meta`.
+
+Resume is `Open → project → resolve current settings and trust → start runtime`.
+TUI, headless and ACP share it; ACP checks the requested cwd against the restored
+`execution_cwd` before building services.
+
+## Key flows
+
+### Turn
+
+```text
+commit [message.append user]
+commit [inference.start]                       --> call model
+commit [message.append assistant(tool calls), inference.finish]
+  for each call: commit [permission.decide]    --> run tool
+                 commit [message.append tool result, tool.finish]
+```
+
+### Subagents
+
+A subagent is a separate session; the parent records only what it accepted.
+
+```text
+parent: assistant tool call C (Agent)
+child:  session.create { parent: {parent_sid, C} }   committed before the child runs
+        ... its own independent log ...
+parent: commit [message.append tool result for C, tool.finish { call_id: C, child_session }]
+```
+
+A later result delivered outside the tool call (background completion, group
+message) is a `message.append` in the original parent, with `source` pointing at
+the child's content event. Delivery and retry belong to the transport or group
+inbox; the stable batch ID makes redelivery idempotent. Replay never recreates
+processes, callbacks or child ownership.
+
+### Fork
+
+Fork at `seq N` of a source session:
+
+1. Under a staging name, write `session.create { fork: {source, N} }` followed by
+   a verbatim copy of events `2..N`, and copy the referenced blobs.
+2. Clear the group hint; publish by renaming the log into place.
+
+Positions and native message IDs are unchanged, so no reference is rewritten.
+The fork is independent: deleting the source never breaks it, and unfinished
+attempts in the copied prefix stay unfinished.
+
+### Compaction and other context rewrites
+
+Every change to the active context other than appending — compaction, `/clear`,
+rewind, clearing old tool output — is one `context.replace`.
+
+```text
+capture context at seq S --> generate summary (outside any lock)
+commit [context.replace { reason: compaction, through: S,
+                          entries: [summary, retained IDs...] }, inference.finish]
+```
+
+Anything committed after `S` while the summary was generated stays in context
+after the entries, so a summary is never stale and never needs rejection.
+Entries may reference only messages in the context at `S`, and the resulting
+context must keep every tool call together with its result. A failed or
+cancelled compaction writes only `inference.finish` and leaves context
+unchanged. Retained messages are referenced, not copied, so compaction does not
+duplicate them in the log.
+
+## Consistency and recovery
+
+| Concern | Mechanism |
+| --- | --- |
+| Atomic groups | One sdk-go batch per group: one line, checksummed, hash-chained to the expected tail. |
+| Durability | `Commit` returns after file sync. Local filesystems only; directory sync and power-loss certification are not claimed. |
+| Single writer | sdk-go per-session `flock`, held by an open file and released on process death. A second writer gets `ErrBusy`. |
+| Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
+| Assets | Blobs are written and synced before the event that references them. |
+| Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
+| Caches | `.meta` stores the tail (`count`, `hash`) it was built from and is valid only if it matches the log. Cache writes are atomic replaces. A stale or missing cache is rebuilt, never trusted. |
+| Event pages | Cursor = `(seq, byte offset, tail hash at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a hash mismatch means the log was replaced, and the cursor fails. |
+
+A consistent backup copies the project directory while no writer is active.
 
 ## API
 
-```text
-OpenStore(dir) --> project-scoped *Store (internal registration; no public services)
-  |-- Get/List ------------> summaries; no writer claim
-  |-- Events --------------> fixed committed prefix --> History --> display pages
-  |-- Create/Open/Fork ----> exclusive *Session
-  |                            |-- Append/Compact --> atomic commit
-  |                            |-- Snapshot -------> active committed projection
-  |                            `-- Close ----------> drain + release (not session end)
-  `-- Delete/Restore/Clean -> lifecycle metadata, not conversation events
-```
-
-Consumers may define narrow interfaces; final primitives/types align with sdk-go. **Proposed signatures below:** current Store has Create/Open/List/ListContext/Fork/Delete/Close; Open/Fork also return History, Append accepts one transcript.Record, Records exposes raw records, and Delete immediately removes history. Session.Close already exists.
-
 ```go
-func OpenStore(ctx context.Context, dir string) (*Store, error)
+func OpenStore(ctx context.Context, startDir string) (*Store, error)
 
 func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error)
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
-func (s *Store) Get(ctx context.Context, id string) (Summary, error)
-func (s *Store) List(ctx context.Context, query SessionQuery) (SessionPage, error)
-func (s *Store) Events(ctx context.Context, id string, query EventQuery) (EventPage, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
-func (s *Store) Archive(ctx context.Context, id string, archived bool) error
+func (s *Store) Get(ctx context.Context, id string) (Summary, error)
+func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
+func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
+func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
 func (s *Store) Delete(ctx context.Context, id string) error
 func (s *Store) Restore(ctx context.Context, id string) error
 func (s *Store) Clean(ctx context.Context, opts CleanOptions) (CleanResult, error)
 func (s *Store) Close() error
 
-type CleanOptions struct {
-    DryRun bool
-    IDs    []string
-    Limit  int
-}
-
 func (s *Session) ID() string
-func (s *Session) Append(ctx context.Context, events ...Event) error
-func (s *Session) Compact(ctx context.Context, change CompactionChange) error
-func (s *Session) Snapshot() (Projection, error)
-func (s *Session) Close() error
+func (s *Session) Append(ctx context.Context, events ...Event) error // one batch
+func (s *Session) Snapshot() Projection                              // in-memory, committed only
+func (s *Session) Close() error                                      // drain, release lock
 ```
 
-OpenStore normalizes startup dir, resolves/registers the project internally and fixes
-its scope. All IDs must belong there except an explicitly selected Fork source.
-I/O honors context cancellation; Snapshot reads an immutable in-memory committed projection.
+- `OpenStore` resolves the project from `startDir`; every ID must belong to it.
+  A cross-project fork takes the source from its own `Store`.
+- `Create`, `Open` and `Fork` take the writer lock before loading. `Open` keeps
+  the stored workspace and cwd.
+- `Get`, `List` and `Events` never take the writer lock. `List` spans all
+  workspaces of the project and filters by workspace, parent, archived,
+  activity (`recent` | `all`) and visibility (`live` | `trash` | `all`), ordered
+  by `(last_active, id)` with an opaque cursor.
+- `Append` is the only write path for conversation events; compaction is an
+  `Append` of `context.replace` with `inference.finish`. `session.create` is
+  reserved for `Create` and `Fork`.
+- `SetAttrs` changes title, archive and pin without the writer lock, so a picker
+  can organize a session another process has open.
+- Errors are distinguishable: not found, busy, closed, conflict, invalid,
+  unsupported version, corrupt, cancelled, storage.
 
-| Type / operation | Options and behavior |
+The current `Store` (`Create/Open/List/Fork/Delete`, `Append(transcript.Record)`,
+immediate deletion) evolves into this surface; consumers keep narrow local
+interfaces, and generic pieces move into sdk-go.
+
+## Lifecycle and retention
+
+Attributes that organize sessions are not conversation facts, so they live in
+`<sid>.attrs.json` rather than in the log: `title`, `archived_at`, `pinned`,
+`last_resumed_at`. The file is replaced atomically under a short per-session
+lock. Last activity is the later of the last event's `time` and
+`last_resumed_at`; reads, scans, cache rebuilds and restores do not count.
+
+| Policy | Default |
 | --- | --- |
-| CreateOptions | Optional ID/parent, non-secret initial settings, workspace/initial cwd. Defaults are captured checkout/root and startup dir; alternate workspace must resolve to the same project, with cwd defaulting there. Store supplies project_id; validate trust and delegated source_id. |
-| Create / Open | Claim writer ownership before loading consistent state. Open preserves existing workspace/cwd, never constructor defaults. |
-| Get / List / SessionQuery | Read summaries without claiming writers, across this project's workspaces. Filter workspace/parent/group/sidechain/archive, activity (`recent` or `all`), visibility (`live`, `trash`, `all`), bounded limit and opaque cursor. |
-| Events / EventQuery / EventPage | Bounded seq-ordered raw events; cursor binds project/session, filters, lifecycle generation and validated fixed ThroughSeq/prefix identity. Later appends do not shift it; changed/unavailable content fails explicitly. |
-| Snapshot | Active context, application state and recovery positions, not display rows or live resources. |
-| ForkOptions | Source seq defaults to latest committed prefix; same-project workspace defaults to source. Receiver is destination; cross-project fork requires explicit separately opened source *Store, with destination defaults from receiver. Validate both associations/trust. |
-| CompactionChange | Expected source_seq, stable event id, full native summary with stable ID, ordered retained_message_ids, optional source_id for generating inference start. |
-| Append / Compact | Shared validated atomic batch path; Append supports apply + inference.finish, Compact wraps one transition. Creation is reserved for Create/Fork. |
-| Delete / Restore / Clean | Recoverable deletion / validated restoration of original ID / bounded policy cleanup. Clean IDs only narrow scope; Limit has finite default and maximum; DryRun is read-only. |
-| Session.Close / Store.Close | Drain writes and release Session ownership once. Close sessions first; Store drains operations and rejects closure while writer handles remain. |
-
-List is a live keyset listing ordered by `(updated_at, id)`, not a cross-request
-snapshot; unknown activity has a stable ID-ordered bucket. History is a product
-projection of a complete fixed prefix, then display pagination—not an isolated raw
-page or filtered stream. Never resume from UI history. Optional history-capable
-checkpoints could accelerate this later; active-context-only caches cannot replace History.
-
-Durable writes: Create/Fork → one session.create plus remapped inherited facts; Compact/audited Append → compaction.apply (+ known inference.finish atomically); Archive → state.update.archived_at under exclusive ownership (open writers use Append). State/config owners and runtime adapters use typed Append, not new Store verbs; settings files retain their owner. Reads/Open/Close emit no conversation events; successful explicit resume uses control metadata, deletion uses lifecycle metadata.
-
-Resume is Open → projection → current configuration/trust → runtime. TUI/headless/ACP
-share ownership rules; ACP checks requested cwd against restored execution location
-before constructing services. Mismatch requires an explicit permitted change. Failed
-opens release ownership; failed switches retain selection. Distinguish missing, busy,
-closed, conflict, invalid, unsupported schema, corruption, cancellation and storage errors.
-
-## Subagents, fork and compaction
+| Recent list | Shows sessions active in the last 30 days; display filter only. Pinned sessions always show. |
+| Archive | Hidden from the default list; fully readable and resumable. |
+| Pin | Blocks Delete and automatic retention until unpinned. |
+| Delete | Moves to trash. Kept 7 days, then purged. |
+| Automatic retention | Off. When enabled (e.g. 90 days inactive), moves eligible sessions to trash; it never purges directly. |
 
 ```text
-parent: delegation.start D -- dispatch --> child: independent event stream
-        (reserve child ID)                           |
-        [message.append R + delegation.finish] <----+ accepted result
-         R.source_id = child content event           (copy content/assets)
-         finish.source_id = D; result_event_id = R
+live/archived --Delete / retention--> trash --7 days--> purged
+      ^                                 |
+      +-------------- Restore ----------+
 ```
 
-| Subagent boundary | Contract |
+- **Delete** requires the writer lock (an open session cannot be deleted) and a
+  non-pinned session. It writes `trash/<sid>/manifest.json` first (files,
+  deleted_at), then renames the log, attrs and blobs into `trash/<sid>/`. On
+  startup, a manifest with unmoved files is rolled forward. Children and forks
+  are independent sessions and are not touched.
+- **Restore** reverses the moves. It fails if the ID already exists live; it
+  never overwrites or renames.
+- **Purge** removes trash directories past their deadline, manifest last.
+- **Clean** runs retention and purge, bounded per run, after the UI is
+  interactive. `DryRun` reports what would happen without writing. Automatic
+  retention acts only on the current workspace unless configured project-wide.
+- **GC** removes staging files and unreferenced blobs older than 24 hours.
+  Anything it cannot attribute is kept.
+
+Reads of trashed sessions require `visibility=trash`; `Open`, `Fork` and
+`Append` reject them until restored.
+
+## Migration from schema 4
+
+New sessions use the event log. Schema-4 logs remain readable through an
+adapter and are converted on first resume, under the writer lock:
+
+1. Map records with the table below into a staging log, copying blobs.
+2. Verify the projected context and history match the legacy reader.
+3. Move the original to `legacy/<sid>.jsonl` and publish the new log under the
+   same session ID, so parent links and group membership stay valid.
+
+If verification fails, the session stays read-only in legacy form and can be
+continued as a fork of its legacy context. Conversion never invents facts:
+fields the old records lack are left absent.
+
+| Schema 4 | Target |
 | --- | --- |
-| Dispatch | Reserve child ID; create/claim and validate parent/task/child ownership before dispatch. Each continuation gets a new start. |
-| Acceptance | Parent stores coordination/accepted content, not child streams. Known result + finish commit together; no invented empty output. Independent content/assets, fresh receiver-local native IDs, aligned source_message_ids; preserve provider fields/tool identities. |
-| Retry/delivery | Trusted delivery keeps stable acceptance event/message IDs across retries/restarts; changed content/source/receiver conflicts, intentional deliveries get new IDs. Acknowledge after acceptance; only inference input IDs prove consumption. Transport/group inbox owns routing/retry; no session queue, cross-session transaction or exactly-once execution. |
-| Runtime | Late results go to original writer, not selected UI/fork. Source deletion affects tracing, not retention. External roster/inbox ownership unchanged: resume reconciles/reclaims hints, switch releases membership, fork clears hints. Replay recreates no processes/callbacks/child ownership; live continuation revalidates. |
+| `session.started`, `session.forked` | `session.create` |
+| SDK message / `message.appended` | `message.append` |
+| SDK truncate + re-saved messages (`conversation.replaced`) | `context.replace`; re-saved messages that match an earlier message become ID entries, others are new entries. `reason: compaction` when a `session.compacted` names the summary, otherwise `edit`. |
+| `session.state.patched` | `session.update` (model/mode/autopilot → config; tasks/group → state); title → attrs |
+| `inference.requested` / `responded` / `failed` | `inference.start` / `inference.finish` |
+| `system.section.*`, `tool.added/removed` | Folded into instruction/tool blobs of the next `inference.start` |
+| `tool.completed` | `tool.finish` |
+| `permission.required` + `permission.decided` | `permission.decide` (`asked_at` from the request) |
+| `hook.fired` | `hook.finish` when its outcome is terminal; async-only dropped |
+| `skill.state.changed` | `session.update.state.active_skills` |
+| `notice.added` | `annotation.add` |
 
-```text
-fixed nonempty source prefix              staged fork (protect source until publish)
-seq 1: create E1 -----------------------> create F1 (source initial config)
-seq 2..N: E2..EN -----------------------> F2..FN (fresh global event IDs; same seq)
-local refs: E* -------------------------> F* (envelope AND payload)
-foreign refs / native message IDs / seq anchors ----> unchanged
-assets --------------------------------> independent copies + rewritten refs
-inherited replay --> destination adjustments + clear group_hint --> publish whole log
-```
+## Alternatives considered
 
-Remap **all** local event references: source_id, operation_ref, result_event_id, input/effect references; missing required mappings fail. Preserve historical patches, append only necessary child-local changes. Historical delegation neither reparents children nor transfers delivery mappings or execution/permission/group authority. Fresh replay must equal Fork's result and resolve content after source deletion; unfinished attempts never restart.
+- **Globally unique event IDs** (previous draft). They require allocation,
+  cross-partition collision checks and rewriting every local reference on fork.
+  Positional `(session, seq)` identity plus batch IDs for idempotency gives the
+  same guarantees with none of that.
+- **Start events for tools, delegation and permission requests.** The committed
+  assistant message already records the call before it runs, the child's
+  `session.create` records delegation, and a call without a decision is a
+  pending request. Separate start events duplicate those facts.
+- **Catalogue events for instructions, tools and skills.** Content-addressed
+  blobs referenced from `inference.start` make each request self-describing and
+  remove the need to replay catalogues to resolve a digest.
+- **Archive and pin in the log.** That would require the writer lock to organize
+  a session open elsewhere; they are not conversation facts.
+- **Compaction rejected when the tail moved.** Folding post-capture messages into
+  the result makes staleness impossible instead of detected.
+- **Random project IDs with a registry.** A registry needs locked updates and
+  reconciliation, and a moved repository still needs an explicit relink. A
+  derived key needs neither.
+- **SQLite.** Measured against JSONL on 2026-11-07 (Apple M5, durable sync on
+  both sides): appends were equal (≈4 ms), replay of 1,000 messages was ~20%
+  slower, listing 100 sessions was 3.5× faster with warm caches but 25× slower
+  once the in-memory cache was lost (JSONL had persisted summaries), and the
+  binary grew 3.8 MB. Not worth a second storage engine; revisit only with new
+  evidence, after optimizing summary caching and replay allocations.
+- **In-place migration or dual writes.** sdk-go forbids mixing legacy and batch
+  records in one log, and dual writes double the failure modes. Convert once,
+  keep the original.
 
-**Compaction:** active context → native summary + ordered retained messages; index summary in History without another message event. Preserve history/config/state/assets (storage lossless ≠ summary lossless). Serialize input capture/start before generation outside commit lock; shared Append/Compact validates pre-batch tail, summary identity, same-session existing unique references, active order and tool-call/result consistency. Earlier active summaries may be retained.
+## Validation
 
-```text
-commit inference.start --> capture source_seq S --> generate outside commit lock
-                                                        |
-                    retry: check prior commitment <-----+
-                    owner valid + pre-batch tail == S?
-                      yes --> [compaction.apply + inference.finish] atomic batch
-                      no  --> no apply; context unchanged (finish may still be known)
-```
+- Identity: worktrees share a project; clones, submodules and non-Git
+  subdirectories do not; config stays checkout-local.
+- Log: every event type round-trips; native provider fields survive; replay has
+  no side effects; batch retries are idempotent and conflicts fail.
+- Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
+  mid-restore, mid-conversion. Each recovers to a committed state.
+- Compaction with concurrent appends; consecutive compactions; tool-pair integrity.
+- Fork independence after source deletion; subagent late results.
+- Lifecycle: pin and busy guards, trash deadline, retention off by default, GC
+  keeps unknown files.
+- Legacy: conversion parity on real schema-4 sessions, including compactions and
+  replaced conversations.
 
-Check prior commitment before rejecting stale retries; same ID/content adds nothing,
-conflicts fail. Reject retired-owner results. Failure/cancellation/no-op leaves context
-unchanged. A stale rejected summary may still have successful inference.finish without
-apply or unused summary content. Resolve ambiguous batch commitment before recording
-another outcome or retrying. All compaction modes and consecutive compactions use this rule.
+## Open questions
 
-## JSONL consistency and caches
-
-**Proposed local-file requirements**, not ordinary JSONL guarantees or network-filesystem support. SDK owns generic native codecs/ownership/commit primitives; San owns policy.
-
-| Boundary | Requirement |
-| --- | --- |
-| Atomic batch | One write/multiple lines ≠ atomic. Versioned verifiable framing binds identity, expected prior tail, seq/count/integrity; SDK integration choice, not an event type. Validate/prepare projection → complete flush/fsync → acknowledge/publish; no partial reads. |
-| Recovery | Only validated committed prefixes; ignore incomplete tail batches, repair exclusively before writes. Interior corruption fails, never skips. Stable IDs/content reconcile ambiguous commits; cancellation ≠ rollback. Unknown state-affecting versions block resume. |
-| Ownership | Fenced per-session cross-process writer, including idle handles; no timestamp-only leases or unlinking live locks. No inference/tool/approval inside commit critical section. Death releases ownership, not proof of external completion or exactly-once execution. |
-| Publication/backup | Publish/sync assets before references. Create/Fork expose only complete validated staging; discovery ignores staging. Back up committed prefixes, registrations, authoritative control/lifecycle metadata, trash and assets together; separate copies of changing logs/blobs are inconsistent. |
-
-| Data | Authority / cache rule |
-| --- | --- |
-| Project identity/locations | Coordinated versioned internal catalog; atomic publication |
-| Session identity and conversation | Creation and ordered typed events; no parallel messages/state/settings store |
-| Resume activity and trash lifecycle | Authoritative versioned control sidecar / lifecycle metadata, included in backups |
-| `.meta`, locators and indexes | Rebuildable; validate format/projector, committed prefix and relevant control/lifecycle revisions |
-| Optional checkpoints | Deferred until measured benefit; no secrets/live resources; invalid caches fall back to events |
-
-Caches may lag after crashes but cannot lead committed history, hide committed sessions
-or resurrect deleted ones. Validate/rebuild before coherent reads; coordinate cross-process
-invalidation. Publish caches atomically and memory only after event commitment; no physical
-multi-file atomicity is claimed. Global event-ID collision/retry checks must work across
-partitions, including imports; random allocation alone is not validation.
-Keep file-format, codec and projector versions separate. Do not prescribe speculative cache schemas.
-
-## Retention and safe cleanup
-
-Default: **no automatic deletion of live history**. Recent filtering, archive, pin,
-recoverable Delete and permanent Clean are distinct; compaction is none of them.
-
-| Policy | Default / effect |
-| --- | --- |
-| Recent list | 30 days, display filter only. Pinned bypass age, not explicit archive filters; unknown activity remains visible. |
-| Pin | false; when set blocks manual/bulk Delete and automatic retention. Explicitly unpin; no hidden force option. |
-| Trash | 7 days after soft deletion. Show deadline before confirmation; Delete authorizes later expiry cleanup, never early purge. |
-| Automatic retention | Disabled. Explicitly enabled inactivity age (e.g. 90 days) moves eligible live/archived sessions to trash and authorizes subsequent expiry, never direct purge. |
-
-Old live history remains reachable via activity=all, appropriate archive filters,
-Get/Events and explicit resume. Trash defaults hidden; visibility=trash/all lists it
-without age cutoff. Get returns tombstone status; Events requires include_trash.
-Open/Fork/Append/Archive reject trash: Restore first. Reads never silently restore.
-
-Activity uses trustworthy `updated_at`: meaningful accepted writes or successful
-explicit resume after ownership/projection/policy checks. Resume stores last_resumed_at
-in a small versioned control sidecar, not an event. Open alone, reads, retries/no-ops,
-scans, cache rebuilds, backups, Restore and cleanup do not advance activity. Imported
-timestamps, mtime and discovery time are not current activity; unknown legacy activity
-stays unknown, visible and protected from automatic retention.
-
-```text
-live/archived -- Delete or authorized retention --> trash -- deadline --> expired trash
-     ^                                               |                       |
-     +-------------------- Restore ------------------+                 safe Clean
-                                                                         |
-                                                                   permanently removed
-pin / owner / pending work / unknown state --> block destructive transitions
-```
-
-| Cleanup boundary (proposed, not implemented keys/flags) | Required behavior |
-| --- | --- |
-| Authorization | Automatic cleanup: OpenStore's captured workspace unless explicitly authorized project-wide. Checkout-local policy cannot delete other workspaces; user-global source/broader List/IDs grant no broader authority. Existing config/authorization suffices; missing/untrusted/ambiguous policy blocks destruction, policy changes cannot shorten trash deadlines silently. |
-| Bounds/preview | Store project ∩ authorized workspaces ∩ optional IDs; never follow parent/fork links. DryRun writes/repairs nothing, claims no lease, reports blocked recovery. Finite Limit default/maximum; per-ID action/reason, recoverability/deadline, verified bytes or unknown, truncation and partial cancellation/failure results. |
-| Confirmation/race | Submit only selected returned IDs; preview reserves/authorizes nothing. Under writer exclusion recheck policy, prefix/control/lifecycle revisions, tombstones/owners; changed candidates skip/report, never substitute/expand. Scheduled cleanup needs separate authorization; retry generations internal, no client tokens/receipts/operation IDs. |
-| Guards | Pins, idle writers, background work, pending delivery/approval, unfinished/unknown execution/activity, corruption/unsupported schemas. Coordinate fork/import/backup/delivery barriers or skip; reconcile crashed work before aging. Active dependencies, not ancestry; Delete/Restore share applicable guards, no cascade/subtree transaction. |
-| Trash transition | Stable project partition on log/asset filesystem, not workspace/cwd. Metadata retains identity, inventory, validated prefix, authorization/deadline/restart progress. Fence discovery/Open/stale handles before moves; multi-file moves are NOT atomic. Protect incomplete transitions until recovery/safe rollback; no partial history. |
-| Restore | Validate content/references/original association; missing/corrupt/purge-started fails. Collisions never overwrite/merge/allocate new IDs. Publish original identity/history/archive/pin completely without runtime authority; distinguish restored generations from later deletion on retry. |
-| Permanent removal | Clean alone purges expired trash: durable unavailable marker → restartable reclaim of verified owned files → retain lifecycle evidence until complete; no resurrection. |
-| GC/cache eviction | Coordinate readers/writers. Scan ALL retained history (pre-compaction/archive/pin/trash); protect staging/publication/backups. Only verified temporary/orphan files beyond grace (e.g. 24h), recheck references before unlink. Incomplete scans/unknown ownership or format/ambiguous references → skip. Logs, referenced assets and live leases are not garbage. |
-| Scheduling/pressure | Bounded after interactive readiness/at idle; no CLI → no daemon. Expiry means next safe run eligibility. Disk pressure offers warnings/preview/export/explicit choices, never shorter deadlines or bypasses. |
-
-## Rollout and validation
-
-```text
-legacy schema 4 + SDK codec/truncate --> existing readers (originals preserved)
-                  |
-                  v
-SDK batches + fenced ownership + durable admission + recovery/cache fault tests
-                  |
-validated adapters --> old/new parity gate --> approved exclusive retryable conversion
-                  |   context/history/native IDs/assets/inspector incl. replacements
-                  `-- unsupported/missing facts --> BLOCK; no fabricated/discarded facts
-conversion --> new format (no dual writes / silent partition merge)
-rollback after new writes --> preserve/export new history FIRST
-```
-
-Remove SQLite experiment/dependencies, retaining file metadata, sync, read-lock improvements/tests and native behavior. Test TUI/headless/ACP, hooks/inspector and all three read paths. Fault-inject write/sync/rename/unlink, partial batches/moves, ambiguous commits and backups. Measure summaries/locks/replay allocations before checkpoints; backend tests alone do not prove target contracts.
-
-Validation: identity/worktree/config isolation/trust; all 18 events without replay effects; native/provider round trips; retries vs intentional repeats; delegation/fork independence/late callbacks; repeated/audited/stale compaction; fixed-prefix browsing/current-policy resume; retention defaults/pin/unknown guards, preview races, interrupted trash/restore/purge, GC/backups.
-
-Open choices: relocation/reconciliation UX, registration format, final summary/payload types, SDK batch integration/conversion bookkeeping. Settled: Git common-directory identity, exact non-Git cwd, checkout-local config. SQLite (including an index) needs a separate decision/new evidence.
-
-## Historical performance — 2026-11-07
-
-Deferred experiment, **not target guarantees/new results**: Apple M5 / 32 GiB, darwin/arm64, Go 1.26.9, modernc.org/sqlite v1.44.3, GOMAXPROCS=4. Median of three run averages, not P95/P99/cold-disk latency; fixtures excluded, OS caches not flushed. JSONL append explicitly Syncs; changed Save already syncs. Every SQLite connection: WAL, synchronous=FULL, fullfsync=ON, checkpoint_fullfsync=ON, matching Go macOS F_FULLFSYNC. Earlier unmatched measurements excluded.
-
-| Workload | JSONL ms/op | SQLite ms/op | Interpretation |
-| --- | ---: | ---: | --- |
-| San durable application append | 3.993 | 4.043 | Similar; more SQL allocations |
-| Native append to 100-message context | 4.007 | 4.953 | About 24% slower |
-| San replay, 1,000 messages | 2.947 | 3.534 | About 20% slower |
-| List 100 sessions, warm summaries | 0.225 | 0.065 | About 3.5× faster |
-| List after memory-cache loss, existing JSONL disk summaries | 1.490 | 37.900 | About 25× slower; SQLite lacks persisted product summaries |
-| List with all summaries invalidated | 44.386 | 37.271 | About 16% faster |
-
-Lists have 100 messages/session. Replay at 1,000 messages allocates about 2.27 MB/op
-(JSONL) versus 3.80 MB/op (SQLite). Same-flags stripped binaries are **82,744,498 vs
-86,546,162 bytes**, about 3.80 MB extra even when JSONL is selected at runtime.
-
-Historical conclusion: keep JSONL, not a universal speed claim. Unequal persisted
-summary support limits listing comparisons; optimize summaries, replay allocations and
-per-record commits before reconsidering storage. SDK Save/Fork are atomic, while San
-compound compaction/Fork still use existing multi-call protocols.
-
-Any future comparison must use identical native fixtures/assets and durability, separate
-warm/cold summaries, browsing and recovery, and report distributions, allocations, size and
-contention across batches/concurrent writers. Existing benchmarks do not establish automatic
-import, target-ID conversion, checkpoints, full runtime integration or power-loss certification.
+- Exact payload Go types, and which parts (envelope, projector, batch helpers)
+  belong in sdk-go.
+- `relink` UX for moved repositories.
+- Whether the summary cache should become one per-project index once listing
+  large projects is measured.
