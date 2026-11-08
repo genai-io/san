@@ -11,9 +11,10 @@ rationale, without database migration or a backend-selection UI.
 The companion [implementation PR #737](https://github.com/genai-io/san/pull/737) is
 not yet merged. Implementation status below refers to that branch, not capabilities
 added by this design PR or already on main. Its first stage implements `OpenStore`
-project registration, shared Git worktree
-ownership/settings, exact non-Git directory identity, and optional project/workspace
-fields in schema 4 with upgraded summary caches. Legacy cwd partitions are not migrated.
+project registration, shared Git worktree session ownership, current-checkout project
+settings, exact non-Git directory identity, and optional project/workspace
+fields in schema 4 with upgraded summary caches. That branch is being adjusted to
+this configuration decision; it is not verification of the final behavior. Legacy cwd partitions are not migrated.
 The SDK native record and transcript/truncate semantics remain: the 18-event format,
 full target API, atomic batches, trash and automatic retention are not implemented.
 Hooks and the inspector retain their JSONL integration. New-format cutover first needs
@@ -26,14 +27,13 @@ general runtime log. Summaries and indexes must be rebuildable.
 ## Identity, directories and configuration
 
 ```text
-Project 1 ── N Session ── N Events (ordered by seq)
-                 ├─ workspace: checkout/home path attribute
-                 ├─ parent_session_id: agent ancestry
-                 └─ fork_source_id + fork_source_seq: captured source prefix
+checkout A --+
+             +-- Git common directory --> one Project --> shared sessions
+checkout B --+                              (workspace = A or B)
 
-Events → projector → History  (full display history, including before compaction)
-                   → Snapshot (active context and durable resume state)
-                   → Summary  (session-list metadata)
+checkout A --> A's project config / tracked files (branch A)
+checkout B --> B's project config / tracked files (branch B)
+user scope --> naturally shared user-global config
 ```
 
 Workspace is not an entity, service or physical directory layer. A Session is a
@@ -59,62 +59,44 @@ and registration reconciliation/selection. Never silently transfer identity,
 merge old exact-cwd partitions or rewrite historical paths. Association does not
 confer trust. Missing checkouts do not prevent history inspection.
 
-The existing configuration module resolves and retains `config_root`:
+Project identity/session sharing does **not** centralize configuration:
 
-- Git uses the **original main checkout**, even on first startup in a linked worktree.
-  Resolve it from repository/worktree metadata. Git common directory identifies the
-  project; it is not the shared settings directory.
-- Non-Git uses the exact startup root above. Missing/ambiguous shared sources require
-  an error or explicit selection/reconciliation, not fallback to an arbitrary worktree.
-- Shared settings/instructions, including `.san/settings.json`, come from config_root.
-  Apply eligible target-worktree local overrides through the existing resolver.
-  Branch-local copies are not alternate shared authorities; registration stores a
-  source location, not a second editable settings copy.
+- Git project settings come from the **current checkout root**, not the original main
+  checkout. Non-Git project settings use the exact startup cwd. Git-tracked settings,
+  instructions and other files follow normal checkout behavior; branches may intentionally differ.
+- No compulsory shared configuration root, automatic copying/synchronization or fallback
+  to another checkout. History/session management does not require the main checkout to exist.
+  User-global configuration is naturally shared; explicit links are opt-in.
+- Existing configuration, MCP, plugin, skill and instruction loaders need no redesign
+  merely to share Project identity and sessions; their existing path rules remain,
+  not a claim that every loader normalizes subdirectories to checkout root. Preserve applicable legacy local-source
+  and trust compatibility; this decision does not abolish all existing fallback behavior.
 
-Shared settings.json sources and target-local writes are implemented. MCP, plugins,
-skills and instruction files still use their existing loaders; unified routing remains
-pending, not all project files are shared. Registration lock waits cannot yet be
-cancelled mid-wait, atomic publication does not promise power-loss durability, and
-repository replacement preserving identical paths cannot be automatically detected.
-
-Preserve current user → project → local resolution, compatibility sources,
-linked-worktree main-checkout local overrides, persona and field-specific merges.
-See [configuration](../reference/configuration.md). Writes select one scope, update
-only its fields, coordinate across processes and reject read-only sources; never
-write the merged result. Resolution retains per-field provenance.
+Preserve user -> project -> local resolution, applicable compatibility sources, persona
+and field-specific merges; see [configuration](../reference/configuration.md). Writes
+select one scope, update only its fields, coordinate across processes and reject read-only
+sources; never write the merged result. Resolution retains per-field provenance.
+Registration lock waits cannot yet be cancelled mid-wait; atomic publication does not
+promise power-loss durability, and identical-path repository replacement is not automatically detected.
 
 Session overrides affect subsequent resolution, not in-flight requests. Resume
 uses current policy and credentials, never historical grants. Missing providers/models
 need an explicit error or replacement. No transaction spans configuration files and
 events; do not copy secrets, security authority or the full settings tree into history.
 
-Legacy storage is partitioned by exact-cwd hash, with `transcripts/<sid>.jsonl`,
-`transcripts/<sid>.jsonl.meta` summaries and assets isolated by type and session.
-New registrations now use stable IDs and project files while retaining the log/asset
-path conventions; trash remains part of the target layout:
+Legacy storage uses exact-cwd hash partitions; new registrations use stable project IDs.
+Under `~/.san/projects/<project-id>/`, `project.json` holds identity/lookup metadata,
+not configuration. `transcripts/<sid>.jsonl` holds the log, `.jsonl.meta` its rebuildable
+summary, and `blobs/{image,tool-result}/<sid>/` session-owned assets. Proposed
+`trash/<sid>/` retains deletion generations, manifests, logs and assets.
 
-```text
-~/.san/
-└── projects/
-    └── <project-id>/
-        ├── project.json                 # Identity, lookup key, config_root; not settings
-        ├── transcripts/
-        │   ├── <sid>.jsonl               # Authoritative event log
-        │   └── <sid>.jsonl.meta          # Rebuildable summary
-        ├── blobs/
-        │   ├── image/<sid>/              # Session-retained images
-        │   └── tool-result/<sid>/        # Large tool outputs
-        └── trash/<sid>/                  # Deletion generation, manifest and retained data
-```
-
-`project.json` is implemented for new registrations; `trash/` remains proposed. Scanning
-project registrations can rebuild lookup indexes; indexes are not another identity
-authority. Existing `<cwd-hash>` partitions are not automatically renamed or moved.
-Worktrees of one project share this directory, distinguished by Session.workspace;
-parent and child logs are peers linked by parent_session_id. Trash retains logs,
-assets and required metadata; transitions must recover without assuming atomic
-multi-file moves. Shared settings stay in project files at config_root, managed by
-the existing configuration module, not copied into this directory.
+`project.json` is implemented for new registrations; trash remains proposed. Scanning
+registrations rebuilds lookup indexes, not another identity authority. Old `<cwd-hash>`
+partitions are not automatically renamed/moved. Worktrees share this partition and
+Session.workspace distinguishes ownership paths; parent/child logs are peers linked
+by parent_session_id. Configuration stays with existing loaders in the current checkout
+or user scope, never copied into the session partition. Trash transitions must recover
+without assuming atomic multi-file moves.
 
 The internal catalog owns project name/description, registration and partition
 locations, not configuration or current cwd. Existing partitions remain distinct
@@ -207,6 +189,16 @@ Validation and recording rules:
   intentional repeat inputs get new IDs, even with identical text. Do not store token
   deltas, heartbeats, progress ticks, empty patches, repeated snapshots or derivable UI text.
   Exclude secrets and unbounded diagnostics. Renderers consume facts, never produce them.
+
+```text
+runtime adapters --> validate + commit batch --> committed Events (seq)
+                         |                          |
+                    failure: no dispatch            +--> pure projector
+                    start committed: dispatch              |-- History (full)
+                                                          |-- Snapshot (active)
+                                                          `-- Summary (list)
+replay --------------------------------------------> projector only; no effects
+```
 
 Replay only projects committed facts. It never calls models/tools/Hooks, prompts,
 resends deliveries or appends events. After commit the live coordinator reconciles
@@ -322,24 +314,27 @@ closed, conflict, invalid, unsupported schema, corruption, cancellation and stor
 
 ## Subagents, fork and compaction
 
-**Subagents.** Each owns an independent stream. Reserve child ID before delegation.start;
-create/claim and validate parent/task/child ownership before dispatch. Each continuation
-has a new start ID. Parent stores coordination and accepted content, not forwarded child
-streams. delegation.finish uses source_id for its start and result_event_id for the
-locally accepted result. Commit known result + finish together; never invent empty output.
+```text
+parent: delegation.start D -- dispatch --> child: independent event stream
+        (reserve child ID)                           |
+        [message.append R + delegation.finish] <----+ accepted result
+         R.source_id = child content event           (copy content/assets)
+         finish.source_id = D; result_event_id = R
+```
 
-Cross-session acceptance stores content/assets independently, with new receiver-local
-native IDs and aligned source_message_ids. Preserve provider fields and tool identities.
-Trusted delivery retains stable acceptance event/message IDs across retries and restarts;
-changed content/source/receiver conflicts, while intentional new deliveries get new IDs.
-Acknowledge after acceptance. Inference input IDs—not receipt—prove consumption.
-Transport/group inbox owns routing/retry; no parallel session queue, cross-session
-transaction or exactly-once execution is promised. Late results belong to the original
-writer, not selected UI/fork. Source deletion may end tracing, never local content retention.
-
-Group roster/inbox remain externally owned. Resume reclaims/reconciles hints, switch
-releases live membership, and fork clears inherited hints. Replay cannot recreate
-processes/callbacks or child ownership; continuing live children requires fresh validation.
+**Subagents.** Before dispatch create/claim and validate parent/task/child ownership;
+each continuation has a new start ID. Parent stores coordination and accepted content,
+not forwarded child streams. Commit known result + finish together; never invent empty output.
+Acceptance copies content/assets independently, using fresh receiver-local native IDs
+and aligned source_message_ids, preserving provider fields/tool identities. Trusted delivery
+keeps stable acceptance event/message IDs across retries/restarts; changed content/source/
+receiver conflicts, intentional new deliveries get new IDs. Acknowledge only after acceptance;
+inference input IDs—not receipt—prove consumption. Transport/group inbox owns routing/retry:
+no parallel session queue, cross-session transaction or exactly-once execution guarantee.
+Late results belong to the original writer, not selected UI/fork. Source deletion may end
+tracing, never local retention. External group roster/inbox ownership remains unchanged:
+resume reconciles/reclaims hints, switch releases membership, fork clears hints. Replay
+cannot recreate processes/callbacks/child ownership; live continuation needs fresh validation.
 
 **Fork.** Protect a fixed nonempty source prefix through publication. Replace its seq-1
 creation with one child creation; retain source initial configuration for inherited replay.
@@ -355,17 +350,22 @@ adjustments and clear group_hint if set; do not filter historical patches or emi
 Publish the staged transcript as a whole. Fresh replay must equal Fork's result and resolve
 all content after source deletion; historical unfinished attempts are not restarted.
 
-**Compaction.** It changes only active context to native summary + ordered retained
-messages. Index summary for History without another message event. Keep original history,
-config/state and assets; storage is lossless, but model summaries need not be.
-Generate outside the commit critical section using the shared Append/Compact path.
+**Compaction.** Only active context changes to native summary + ordered retained messages.
+Index summary for History without another message event; preserve history/config/state/assets.
+Storage is lossless, model summaries need not be. Use the shared Append/Compact path:
+serialize input capture and inference.start before generation, outside the commit lock.
+Validate against the **pre-batch tail**: its own finish cannot invalidate apply, but any
+intervening write does. Summary identity and same-session existing unique references must
+preserve active order/tool-call-result consistency; earlier active summaries may be retained.
 
-For audited generation, serialize input capture and commit inference.start, then capture
-that committed source_seq before dispatch. Accepted success commits compaction.apply
-followed by inference.finish in **one batch**, validating against the **pre-batch tail**.
-Its own finish cannot invalidate apply; any intervening write makes the result stale.
-Validate summary identity, same-session existing unique references, original active order
-and tool-call/result consistency. Earlier active summaries may be retained; no dangling results.
+```text
+commit inference.start --> capture source_seq S --> generate outside commit lock
+                                                        |
+                    retry: check prior commitment <-----+
+                    owner valid + pre-batch tail == S?
+                      yes --> [compaction.apply + inference.finish] atomic batch
+                      no  --> no apply; context unchanged (finish may still be known)
+```
 
 Check prior commitment before rejecting stale retries; same ID/content adds nothing,
 conflicts fail. Reject retired-owner results. Failure/cancellation/no-op leaves context
@@ -436,50 +436,60 @@ scans, cache rebuilds, backups, Restore and cleanup do not advance activity. Imp
 timestamps, mtime and discovery time are not current activity; unknown legacy activity
 stays unknown, visible and protected from automatic retention.
 
-Existing configuration at shared config_root owns retention policy. Local overrides
-may only disable cleanup or lengthen protection. Missing/untrusted/ambiguous policy
-blocks destructive cleanup; changes cannot silently shorten existing trash deadlines.
-These defaults are proposed logical policy, not implemented settings keys or CLI flags.
+```text
+live/archived -- Delete or authorized retention --> trash -- deadline --> expired trash
+     ^                                               |                       |
+     +-------------------- Restore ------------------+                 safe Clean
+                                                                         |
+                                                                   permanently removed
+pin / owner / pending work / unknown state --> block destructive transitions
+```
 
-Clean is bounded within its Store project; IDs only narrow scope, never follow parent/fork
-links. DryRun writes nothing, repairs nothing and claims no lease; report blocked recovery.
+Checkout-local retention policy must not unexpectedly delete another workspace's
+sessions. Automatic cleanup is restricted to the current workspace captured by
+OpenStore unless there is explicit project-wide authorization. User-global policy may
+be used, but a shared source alone does not authorize a broader scope. No new policy
+service is needed; use existing configuration and explicit authorization boundaries.
+Missing/untrusted/ambiguous policy blocks destructive cleanup; changes cannot silently
+shorten existing trash deadlines. These are proposed logical rules, not implemented keys/flags.
+
+Clean is bounded within its Store project and authorized workspace scope; IDs only
+narrow scope, never grant project-wide authorization or follow parent/fork links.
+Explicit project-wide cleanup requires separate authorization, not a broader List result.
+DryRun writes nothing, repairs nothing and claims no lease; report blocked recovery.
 Results include per-ID action/reason, recoverability/deadline, verified byte estimates
 (or unknown), truncation and partial outcomes on cancellation/failure.
 
-Confirm a preview using only selected returned IDs. Preview reserves/authorizes nothing;
-execution rechecks current policy, prefix/control/lifecycle revisions, tombstones and owners
-under the same exclusion as writers. Changed candidates skip/report, never expand scope or
-substitute new candidates. Scheduled cleanup has its own policy authorization; durable retry
-generations stay internal, without client plan tokens/receipts/operation IDs.
+Confirm previews with only selected returned IDs; previews reserve/authorize nothing.
+Under writer exclusion, execution rechecks policy, prefix/control/lifecycle revisions,
+tombstones and owners. Changed candidates skip/report, never expand or substitute.
+Scheduled cleanup needs its own authorization; durable retry generations remain internal,
+without client plan tokens, receipts or operation IDs.
 
-Protect pinned sessions, idle writers, background work, pending delivery/approval,
-unfinished or unknown execution/activity, corruption and unsupported schemas. Coordinate
-fork/import/backup and delivery protections; without a safe barrier, skip. Reconcile crashed
-work before aging. Active dependencies matter; ancestry is neither permanent retention nor
-a cascade rule. Delete/Restore apply the relevant guards too; no subtree transaction.
-
-Trash stays in the stable project partition on the same filesystem as logs/assets,
-not under workspace/cwd. Authoritative lifecycle metadata retains identity, inventory,
-validated prefix, authorization/deadline and restart progress. Fence discovery/Open/stale
-handles before moves. **Multi-file moves are not atomic**: incomplete transitions stay
-protected until recovered or safely rolled back; readers never see partial history.
-
-Restore validates retained content/references and original association. Missing/corrupt or
-purge-started content fails; ID/path collisions never overwrite, merge or allocate a new ID.
-Publish complete original identity/history/archive/pin state without runtime authority.
-Retries distinguish restored generations from later deletions. Only Clean permanently removes
-expired trash: first durably mark unavailable, then restartably reclaim verified owned files
-without resurrection, retaining lifecycle evidence until completion.
+Protect pins, idle writers, background work, pending delivery/approval, unfinished/unknown
+execution/activity, corruption and unsupported schemas. Coordinate fork/import/backup and
+delivery barriers or skip; reconcile crashed work before aging. Active dependencies matter,
+not ancestry. Delete/Restore share applicable guards; no cascade or subtree transaction.
+Trash resides in the stable project partition on the log/asset filesystem, not workspace/cwd.
+Lifecycle metadata retains identity, inventory, validated prefix, authorization/deadline and
+restart progress. Fence discovery/Open/stale handles before moves. Multi-file moves are
+not atomic: incomplete transitions stay protected until recovered/safely rolled back;
+readers never see partial history.
+Restore validates content/references and original association; missing/corrupt/purge-started
+content fails. ID/path collisions never overwrite, merge or allocate new IDs. Publish original
+identity/history/archive/pin state completely, without runtime authority; retries distinguish
+restored generations from later deletions. Clean alone permanently removes expired trash:
+durably mark unavailable, restartably reclaim verified owned files without resurrection,
+and retain lifecycle evidence until completion.
 
 Cache eviction coordinates readers/writers. Asset GC scans **all retained history**, including
-pre-compaction, archived/pinned and trash content, and protects staging/publication/backups.
-Only verified temporary/orphan files past a grace period (e.g. 24 hours) qualify; recheck
-references before unlink. Incomplete scans, unknown owners/formats or ambiguous references
-mean skip. Logs, referenced assets and live lease files are not garbage.
-
-Schedule bounded cleanup after interactive readiness/at idle. No running CLI means no daemon;
-expiry is eligibility at the next safe run. Disk pressure offers warning/preview/export and
-explicit choices, never shortened deadlines or bypassed protections.
+pre-compaction/archive/pin/trash, and protects staging/publication/backups. Only verified
+temporary/orphan files past a grace period (e.g. 24 hours) qualify; recheck references before
+unlink. Incomplete scans, unknown owners/formats or ambiguous references mean skip.
+Logs, referenced assets and live lease files are not garbage.
+Run bounded cleanup after interactive readiness/at idle; no running CLI means no daemon.
+Expiry means eligibility at the next safe run. Disk pressure offers warnings, preview/export
+and explicit choices, never shorter deadlines or bypassed protections.
 
 ## Rollout and validation
 
@@ -501,10 +511,10 @@ delegation/fork independence and late callbacks; repeated/audited/stale compacti
 fixed-prefix browsing; current-policy resume; retention defaults, pin/unknown guards,
 preview races, interrupted trash/restore/purge, GC and consistent backups.
 
-Remaining implementation choices: relocation/reconciliation UX, ambiguous-source selection,
-registration file format, final summary/payload types, SDK batch integration and conversion bookkeeping.
-Git common-directory identity, exact non-Git cwd and original-main-checkout config_root are
-settled. SQLite or a SQLite index over files requires a separate decision and new evidence.
+Remaining implementation choices: relocation/reconciliation UX, registration file format,
+final summary/payload types, SDK batch integration and conversion bookkeeping.
+Git common-directory identity, exact non-Git cwd and current-checkout project configuration
+are settled. SQLite or a SQLite index over files requires a separate decision and new evidence.
 
 ## Historical performance — 2026-11-07
 
@@ -524,21 +534,14 @@ Earlier measurements without those settings are excluded.
 | List 100 sessions, warm summaries | 0.225 | 0.065 | About 3.5× faster |
 | List after memory-cache loss, existing JSONL disk summaries | 1.490 | 37.900 | About 25× slower; SQLite lacks persisted product summaries |
 | List with all summaries invalidated | 44.386 | 37.271 | About 16% faster |
-| San Fork, 100 messages | 408.127 | 438.396 | About 7% slower; current per-record copy protocol |
-| SDK independent durable writers, 4 workers | 3.110 | 5.465 | About 76% worse aggregate time/op; single DB writer contention |
 
 Lists have 100 messages/session. Replay at 1,000 messages allocates about 2.27 MB/op
 (JSONL) versus 3.80 MB/op (SQLite). Same-flags stripped binaries are **82,744,498 vs
 86,546,162 bytes**, about 3.80 MB extra even when JSONL is selected at runtime.
 
-WITHOUT ROWID replay was about 5–8% faster for 1,000-message 256-byte/8-KiB fixtures,
-but the 100 × 1-KiB append fixture used 487,424 vs 159,744 database bytes after checkpoint;
-live DB/WAL/SHM totaled 2,195,776 vs 1,577,776 bytes. No layout wins universally.
-
-Historical conclusion: keep JSONL. Persisted product summaries, fewer per-record Fork
-commits, replay allocation and writer contention remain optimization work. Listing has a
-separate summary lock and read-only history avoids the writer-cache lock; other writer/
-projection operations remain globally serialized. SDK Save/Fork are atomic, while San
+Historical conclusion: keep JSONL, not a universal speed claim. Unequal persisted
+summary support limits listing comparisons; optimize summaries, replay allocations and
+per-record commits before reconsidering storage. SDK Save/Fork are atomic, while San
 compound compaction/Fork still use existing multi-call protocols.
 
 Any future comparison must use identical native fixtures/assets and durability, separate
