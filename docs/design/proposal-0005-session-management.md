@@ -5,7 +5,7 @@
 ## Status and scope
 
 Draft — 2026-11-08. Defines the target model for projects, sessions and their
-event logs on top of sdk-go's JSONL store. Storage stays file-backed; SQLite
+events on top of sdk-go's JSONL store. Storage stays file-backed; SQLite
 is out of scope (see [Alternatives](#alternatives-considered)).
 
 | Piece | Status |
@@ -19,7 +19,7 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 ```text
 Project  (one per Git repository, or per directory outside Git)
   └── Session  (a resumable conversation; workspace = the checkout it runs in)
-        ├── event log      append-only, authoritative, single writer
+        ├── events         append-only, authoritative, single writer
         ├── attrs          small mutable file: title, archive, pin, activity
         ├── blobs          content referenced by events (images, large outputs, prompts)
         └── summary cache  rebuildable
@@ -27,7 +27,7 @@ Project  (one per Git repository, or per directory outside Git)
 
 Four invariants carry the whole design:
 
-1. **The event log is the only source of truth for a conversation.** Messages,
+1. **Events are the only source of truth for a conversation.** Messages,
    context, settings overrides and audit are all projections of it. There is no
    parallel messages/state store.
 2. **One writer per session, across processes.** Readers never need the writer.
@@ -35,7 +35,7 @@ Four invariants carry the whole design:
    (a model call, a tool run) is committed before the effect starts. Replay only
    projects; it never calls models, tools or hooks.
 4. **Everything derived is disposable.** Summaries, indexes and pages can be
-   deleted and rebuilt from the logs without loss.
+   deleted and rebuilt from events without loss.
 
 A session is a conversation, not a process: `Close` releases the handle and the
 session stays resumable. There is no "session ended" event.
@@ -77,7 +77,7 @@ Configuration does not move into session storage:
 ```text
 ~/.san/projects/<project>/
   project.json                     key, display name
-  transcripts/<sid>.jsonl          event log (sdk-go batch mode)
+  transcripts/<sid>.jsonl          events (sdk-go batch mode)
   transcripts/<sid>.jsonl.lock     writer lock (sdk-go)
   transcripts/<sid>.attrs.json     mutable attributes (authoritative)
   transcripts/<sid>.jsonl.meta     summary cache (rebuildable)
@@ -90,7 +90,7 @@ Parent and child sessions are peers in `transcripts/`; the link lives in the
 child's `session.create`. Files whose names start with `.` are staging and are
 ignored by discovery.
 
-## Event log
+## Events
 
 ### Envelope
 
@@ -100,7 +100,7 @@ tail, so readers see all of it or none of it.
 
 | Field | Meaning |
 | --- | --- |
-| `seq` | 1-based position of the event in the session log. Assigned by the writer from the current tail; it is the event's identity. |
+| `seq` | 1-based position of the event in the session. Assigned by the writer from the current tail; it is the event's identity. |
 | `type` | `<object>.<action>`, from the table below. |
 | `v` | Payload schema version for this type. |
 | `time` | UTC Unix milliseconds. Informational; ordering is `seq`. |
@@ -108,7 +108,7 @@ tail, so readers see all of it or none of it.
 | `payload` | Typed JSON for `type`. |
 
 Events are identified by position rather than by allocated IDs. Committed
-prefixes are immutable, so `(session, seq)` is stable for the log's lifetime and
+prefixes are immutable, so `(session, seq)` is stable for the session's lifetime and
 a fork that copies a prefix keeps every in-session reference valid unchanged.
 Retry idempotency comes from the batch: a retried commit reuses its batch ID,
 and sdk-go treats the same ID with the same content as already committed and a
@@ -194,7 +194,7 @@ A subagent is a separate session; the parent records only what it accepted.
 ```text
 parent: assistant tool call C (Agent)
 child:  session.create { parent: {parent_sid, C} }   committed before the child runs
-        ... its own independent log ...
+        ... its own independent events ...
 parent: commit [message.append tool result for C, tool.finish { call_id: C, child_session }]
 ```
 
@@ -210,7 +210,7 @@ Fork at `seq N` of a source session:
 
 1. Under a staging name, write `session.create { fork: {source, N} }` followed by
    a verbatim copy of events `2..N`, and copy the referenced blobs.
-2. Clear the group hint; publish by renaming the log into place.
+2. Clear the group hint; publish by renaming the events file into place.
 
 Positions and native message IDs are unchanged, so no reference is rewritten.
 The fork is independent: deleting the source never breaks it, and unfinished
@@ -233,7 +233,7 @@ Entries may reference only messages in the context at `S`, and the resulting
 context must keep every tool call together with its result. A failed or
 cancelled compaction writes only `inference.finish` and leaves context
 unchanged. Retained messages are referenced, not copied, so compaction does not
-duplicate them in the log.
+duplicate them.
 
 ## Consistency and recovery
 
@@ -245,8 +245,8 @@ duplicate them in the log.
 | Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
 | Assets | Blobs are written and synced before the event that references them. |
 | Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
-| Caches | `.meta` stores the tail (`count`, `hash`) it was built from and is valid only if it matches the log. Cache writes are atomic replaces. A stale or missing cache is rebuilt, never trusted. |
-| Event pages | Cursor = `(seq, byte offset, tail hash at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a hash mismatch means the log was replaced, and the cursor fails. |
+| Caches | `.meta` stores the tail (`count`, `hash`) it was built from and is valid only if it matches the events file. Cache writes are atomic replaces. A stale or missing cache is rebuilt, never trusted. |
+| Event pages | Cursor = `(seq, byte offset, tail hash at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a hash mismatch means the events file was replaced, and the cursor fails. |
 
 A consistent backup copies the project directory while no writer is active.
 
@@ -296,7 +296,7 @@ interfaces, and generic pieces move into sdk-go.
 ## Lifecycle and retention
 
 Attributes that organize sessions are not conversation facts, so they live in
-`<sid>.attrs.json` rather than in the log: `title`, `archived_at`, `pinned`,
+`<sid>.attrs.json` rather than in events: `title`, `archived_at`, `pinned`,
 `last_resumed_at`. The file is replaced atomically under a short per-session
 lock. Last activity is the later of the last event's `time` and
 `last_resumed_at`; reads, scans, cache rebuilds and restores do not count.
@@ -317,7 +317,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 - **Delete** requires the writer lock (an open session cannot be deleted) and a
   non-pinned session. It writes `trash/<sid>/manifest.json` first (files,
-  deleted_at), then renames the log, attrs and blobs into `trash/<sid>/`. On
+  deleted_at), then renames the events file, attrs and blobs into `trash/<sid>/`. On
   startup, a manifest with unmoved files is rolled forward. Children and forks
   are independent sessions and are not touched.
 - **Restore** reverses the moves. It fails if the ID already exists live; it
@@ -334,12 +334,12 @@ Reads of trashed sessions require `visibility=trash`; `Open`, `Fork` and
 
 ## Migration from schema 4
 
-New sessions use the event log. Schema-4 logs remain readable through an
+New sessions use typed events. Schema-4 transcripts remain readable through an
 adapter and are converted on first resume, under the writer lock:
 
-1. Map records with the table below into a staging log, copying blobs.
+1. Map records with the table below into a staging events file, copying blobs.
 2. Verify the projected context and history match the legacy reader.
-3. Move the original to `legacy/<sid>.jsonl` and publish the new log under the
+3. Move the original to `legacy/<sid>.jsonl` and publish the new events under the
    same session ID, so parent links and group membership stay valid.
 
 If verification fails, the session stays read-only in legacy form and can be
@@ -373,7 +373,7 @@ fields the old records lack are left absent.
 - **Catalogue events for instructions, tools and skills.** Content-addressed
   blobs referenced from `inference.start` make each request self-describing and
   remove the need to replay catalogues to resolve a digest.
-- **Archive and pin in the log.** That would require the writer lock to organize
+- **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.
 - **Compaction rejected when the tail moved.** Folding post-capture messages into
   the result makes staleness impossible instead of detected.
@@ -387,14 +387,14 @@ fields the old records lack are left absent.
   binary grew 3.8 MB. Not worth a second storage engine; revisit only with new
   evidence, after optimizing summary caching and replay allocations.
 - **In-place migration or dual writes.** sdk-go forbids mixing legacy and batch
-  records in one log, and dual writes double the failure modes. Convert once,
+  records in one file, and dual writes double the failure modes. Convert once,
   keep the original.
 
 ## Validation
 
 - Identity: worktrees share a project; clones, submodules and non-Git
   subdirectories do not; config stays checkout-local.
-- Log: every event type round-trips; native provider fields survive; replay has
+- Events: every event type round-trips; native provider fields survive; replay has
   no side effects; batch retries are idempotent and conflicts fail.
 - Crash injection at every write/sync/rename: partial batch, mid-fork, mid-delete,
   mid-restore, mid-conversion. Each recovers to a committed state.
