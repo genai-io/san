@@ -5,15 +5,15 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
-func eventStorageFixture(t *testing.T) (*Store, *Session, Event) {
+func eventStorageFixture(t *testing.T) (*Store, *eventSession, Event) {
 	t.Helper()
 	s, err := NewStoreWithDir(t.TempDir())
 	if err != nil {
@@ -31,7 +31,7 @@ func eventStorageFixture(t *testing.T) (*Store, *Session, Event) {
 func testEvent(seq uint64, _ string, p EventPayload) Event {
 	return Event{Seq: seq, Type: p.eventType(), SchemaVersion: 1, Time: 123, Payload: p}
 }
-func commitTestEvents(t *testing.T, s *Session, id string, events ...Event) *preparedEventBatch {
+func commitTestEvents(t *testing.T, s *eventSession, id string, events ...Event) *preparedEventBatch {
 	t.Helper()
 	p, err := s.prepareEventBatch(id, events, EventValidationContext{})
 	if err != nil {
@@ -42,9 +42,9 @@ func commitTestEvents(t *testing.T, s *Session, id string, events ...Event) *pre
 	}
 	return p
 }
-func eventBytes(t *testing.T, s *Session) []byte {
+func eventBytes(t *testing.T, s *eventSession) []byte {
 	t.Helper()
-	b, err := os.ReadFile(s.TranscriptPath())
+	b, err := os.ReadFile(s.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +72,8 @@ func TestEventPersistenceRetryAndNativeHistory(t *testing.T) {
 	if !reflect.DeepEqual(snapshot.Messages()[:2], messages) {
 		t.Fatal("native message fidelity")
 	}
-	if err = s.Append(ctx, transcript.Record{Type: transcript.MessageAppended}); !errors.Is(err, transcript.ErrEventFormat) {
-		t.Fatal(err)
-	}
 	if !bytes.Equal(before, eventBytes(t, s)) {
-		t.Fatal("retry/legacy append changed bytes")
+		t.Fatal("retry changed bytes")
 	}
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
@@ -151,7 +148,7 @@ func TestEventReadOnlyAndRecovery(t *testing.T) {
 	store, s, _ := eventStorageFixture(t)
 	before := eventBytes(t, s)
 	_ = s.Close()
-	f, err := os.OpenFile(s.TranscriptPath(), os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(s.Path(), os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +169,8 @@ func TestEventReadOnlyAndRecovery(t *testing.T) {
 	if !bytes.Equal(before, eventBytes(t, s)) {
 		t.Fatal("writer did not recover tail")
 	}
-	if err := store.Delete("session"); err == nil {
-		t.Fatal("deleted claimed session")
-	}
-	_ = reopened.Close()
-	if err := store.Delete("session"); err != nil {
-		t.Fatal(err)
+	if _, err := store.openEventSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
+		t.Fatalf("second writer: %v", err)
 	}
 }
 func TestEventMalformedInitialUnchanged(t *testing.T) {
@@ -185,7 +178,7 @@ func TestEventMalformedInitialUnchanged(t *testing.T) {
 	store, s, _ := eventStorageFixture(t)
 	original := eventBytes(t, s)
 	_ = s.Close()
-	if err := os.WriteFile(s.TranscriptPath(), original[:len(original)/2], 0600); err != nil {
+	if err := os.WriteFile(s.Path(), original[:len(original)/2], 0600); err != nil {
 		t.Fatal(err)
 	}
 	before := eventBytes(t, s)
@@ -248,7 +241,7 @@ func TestEventLostAcknowledgmentReopenRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := store.transcriptStore.CommitBatch(ctx, s.ID(), prepared.batch)
+	receipt, err := s.log.commit(ctx, prepared.batch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,5 +285,59 @@ func TestEventLostAcknowledgmentReopenRetry(t *testing.T) {
 	}
 	if !bytes.Equal(before, eventBytes(t, reopened)) {
 		t.Fatal("lost-ack retry wrote bytes")
+	}
+}
+
+func TestEventSessionIsOneDirectory(t *testing.T) {
+	ctx := context.Background()
+	store, s, _ := eventStorageFixture(t)
+	root := store.sessionsRoot()
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 1 || entries[0].Name() != "session" {
+		t.Fatalf("create left staging behind: %v", entries)
+	}
+	if s.Path() != filepath.Join(root, "session", eventsFileName) {
+		t.Fatalf("events path %s", s.Path())
+	}
+	commitTestEvents(t, s, "note", testEvent(2, "", AnnotationAddPayload{Text: "note"}))
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The directory is the unit: moving it moves the whole session, and a
+	// closed session leaves nothing behind that pins the old location.
+	moved := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Rename(store.sessionDir("session"), moved); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.openEventSession(ctx, "session"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("moved session still opens: %v", err)
+	}
+	if err := os.Rename(moved, store.sessionDir("session")); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.openEventSession(ctx, "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if p, _ := reopened.eventSnapshot(); len(p.Events()) != 2 {
+		t.Fatal("events lost across a directory move")
+	}
+}
+
+func TestEventCreateFailureLeavesNothingDiscoverable(t *testing.T) {
+	ctx := context.Background()
+	store, _, create := eventStorageFixture(t)
+	if _, err := store.createEventSession(ctx, "dup", "session", create, EventValidationContext{}); err == nil {
+		t.Fatal("created over an existing session")
+	}
+	bad := create
+	bad.Payload = SessionCreatePayload{ProjectID: store.projectID, Workspace: "relative", InitialCWD: store.cwd, AgentID: "main"}
+	if _, err := store.createEventSession(ctx, "bad", "other", bad, EventValidationContext{}); err == nil {
+		t.Fatal("created an invalid session")
+	}
+	entries, _ := os.ReadDir(store.sessionsRoot())
+	if len(entries) != 1 || entries[0].Name() != "session" {
+		t.Fatalf("failed create left directories: %v", entries)
 	}
 }

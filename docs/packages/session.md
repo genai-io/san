@@ -151,19 +151,20 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
 - `overview.go`: `Overview`, a session's list row projected from events, cached in `cache/<sid>.json`
-  while the events file's fingerprint matches. `blob.go` stores standalone request copies; `attrs.go`
+  while the events file's stamp matches. `blob.go` stores standalone request copies; `attrs.go`
   holds user intent (renamed title, archive, pin).
 
-The unmerged persistence slice in `event_storage.go` adds private
-`createEventSession` / `openEventSession` and prepare/commit helpers. `readEvents`
-rebuilds private state; `replayEvents` returns its projection and SDK tail. Both
-accept an optional inclusive `tailLimit` (nil reads all complete batches). Each SDK
-committed batch contains one version-1 `san.events` application record with typed
-events and retained validation evidence. Candidate projection and evidence are
-published only after successful Commit; preparation detaches and validates input.
-Ordinary `Store.Create` / `Open`, `Session.Append(transcript.Record)`, runtime,
-hooks and inspector remain schema 4. There is no runtime cutover, dual-write,
-automatic legacy conversion, or public typed writer/resume API.
+`event_storage.go` adds the private typed writer. Each session is one directory,
+`sessions/<sid>/`, holding `events.jsonl` (an sdk-go store opened on that directory with
+the fixed ID `events`, see `event_log.go`), plus `attrs.json` and `blobs/` when present.
+`createEventSession` builds the session in a staging directory and publishes it with one
+rename; `openEventSession` replays, then claims the writer. `readEvents` rebuilds private
+state and `replayEvents` returns its projection and SDK tail; both accept an optional
+inclusive `tailLimit`. Each committed batch holds one version-1 `san.events` record with
+typed events and retained validation evidence, published only after a successful Commit.
+Ordinary `Store.Create` / `Open`, `Session.Append(transcript.Record)`, runtime, hooks and
+inspector remain schema 4 under `transcripts/`; there is no dual write and no public typed
+writer or resume API yet.
 
 The public read surface is bounded raw events, not rendered history or resumable
 context:

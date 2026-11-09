@@ -28,7 +28,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	if _, err = other.openEventSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
 		t.Fatalf("ownership: %v", err)
 	}
-	wrong := &Store{projectID: "wrong", transcriptStore: store.transcriptStore}
+	wrong := &Store{projectID: "wrong", projectDir: store.projectDir}
 	if _, _, err = wrong.replayEvents(ctx, "session", nil); err == nil {
 		t.Fatal("accepted wrong project")
 	}
@@ -39,7 +39,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	if _, err = store.createEventSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created wrong project")
 	}
-	if _, err = os.Stat(store.TranscriptPath("bad")); !os.IsNotExist(err) {
+	if _, err = os.Stat(store.sessionDir("bad")); !os.IsNotExist(err) {
 		t.Fatal("validation wrote a file")
 	}
 	identity.ProjectID = store.projectID
@@ -70,7 +70,7 @@ func TestEventConcurrentCreators(t *testing.T) {
 	}
 	create := testEvent(1, "create", SessionCreatePayload{ProjectID: stores[0].projectID, Workspace: dir, InitialCWD: dir, AgentID: "main"})
 	start := make(chan struct{})
-	results := make(chan *Session, 2)
+	results := make(chan *eventSession, 2)
 	var wg sync.WaitGroup
 	for _, store := range stores {
 		wg.Add(1)
@@ -116,7 +116,7 @@ func TestEventStrictPayloadAndCorruption(t *testing.T) {
 	if bytes.Equal(original, damaged) {
 		t.Fatal("fixture not changed")
 	}
-	if err := os.WriteFile(s.TranscriptPath(), damaged, 0600); err != nil {
+	if err := os.WriteFile(s.Path(), damaged, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.replayEvents(ctx, "session", nil); err == nil {
@@ -140,11 +140,11 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tail, err := s.store.BatchTail(ctx, s.ID())
+	tail, err := s.log.tail()
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "invalid", Expected: tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}})
+	receipt, err := s.log.commit(ctx, sdksession.Batch{ID: "invalid", Expected: tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "later", Expected: receipt.Tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}}); err != nil {
+	if _, err = s.log.commit(ctx, sdksession.Batch{ID: "later", Expected: receipt.Tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}}); err != nil {
 		t.Fatal(err)
 	}
 	before := eventBytes(t, s)
@@ -167,11 +167,11 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 		t.Fatal("invalid product data modified")
 	}
 	// Failure must release the lease even when the SDK log itself is valid.
-	release, err := store.transcriptStore.ClaimContext(ctx, s.ID())
+	log, err := openEventLog(ctx, store.sessionDir(s.ID()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = release()
+	_ = log.close()
 }
 func TestEventPrepareDetachesInputAndCancellationPoisons(t *testing.T) {
 	ctx := context.Background()

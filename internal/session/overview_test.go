@@ -10,7 +10,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func overviewFixture(t *testing.T) (*Store, *Session) {
+func overviewFixture(t *testing.T) (*Store, *eventSession) {
 	t.Helper()
 	store, s, _ := eventStorageFixture(t)
 	commitTestEvents(t, s, "m1", testEvent(2, "", MessageAppendPayload{Messages: []ai.Message{eventText("u1", ai.RoleUser, "  first question  ")}}))
@@ -65,21 +65,21 @@ func TestOverviewCacheHitMissAndRebuild(t *testing.T) {
 	if got, _ := store.overview(ctx, s.ID()); got.Messages != 41 {
 		t.Fatal("valid cache was not used")
 	}
-	// An append changes the fingerprint, so the stale entry is rebuilt.
+	// An append changes the stamp, so the stale entry is rebuilt.
 	commitTestEvents(t, s, "m2", testEvent(3, "", MessageAppendPayload{Messages: []ai.Message{eventText("u2", ai.RoleUser, "second")}}))
 	got, err := store.overview(ctx, s.ID())
 	if err != nil || got.Messages != 2 || got.LastPrompt != "second" {
 		t.Fatalf("%+v %v", got, err)
 	}
 	// An unfinished last line is not committed history and does not invalidate.
-	f, _ := os.OpenFile(s.TranscriptPath(), os.O_APPEND|os.O_WRONLY, 0o600)
+	f, _ := os.OpenFile(s.Path(), os.O_APPEND|os.O_WRONLY, 0o600)
 	_, _ = f.WriteString(`{"batch_version":1`)
 	_ = f.Close()
 	if again, err := store.overview(ctx, s.ID()); err != nil || again != got {
 		t.Fatalf("unfinished tail changed the overview: %+v %v", again, err)
 	}
 	// Damaged or foreign cache content is ignored, never trusted.
-	for _, bad := range []string{"{", `{"fingerprint":{},"overview":{"session":"other"}}`, ""} {
+	for _, bad := range []string{"{", `{"stamp":{},"overview":{"session":"other"}}`, ""} {
 		_ = os.WriteFile(cacheFile, []byte(bad), 0o600)
 		if again, err := store.overview(ctx, s.ID()); err != nil || again != got {
 			t.Fatalf("bad cache %q: %+v %v", bad, again, err)
@@ -90,11 +90,11 @@ func TestOverviewCacheHitMissAndRebuild(t *testing.T) {
 	}
 }
 
-func TestFingerprintLog(t *testing.T) {
+func TestStampOf(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "events.jsonl")
-	fp := func() logFingerprint {
+	st := func() stamp {
 		t.Helper()
-		got, err := fingerprintLog(path)
+		got, err := stampOf(path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -106,34 +106,34 @@ func TestFingerprintLog(t *testing.T) {
 		}
 	}
 	write("")
-	if fp() != (logFingerprint{}) {
-		t.Fatal("empty file has a fingerprint")
+	if st() != (stamp{}) {
+		t.Fatal("empty file has a stamp")
 	}
 	write("partial")
-	if fp() != (logFingerprint{}) {
+	if st() != (stamp{}) {
 		t.Fatal("no complete line yet")
 	}
 	write("one\n")
-	a := fp()
+	a := st()
 	write("one\npartial")
-	if fp() != a {
-		t.Fatal("unfinished tail leaked into fingerprint")
+	if st() != a {
+		t.Fatal("unfinished tail leaked into the stamp")
 	}
 	write("one\ntwo\n")
-	b := fp()
+	b := st()
 	if b == a || b.Size != 8 {
 		t.Fatalf("append must change it: %+v %+v", a, b)
 	}
 	// Lines longer than the read chunk are found whole.
 	big := strings.Repeat("x", 200<<10)
 	write("head\n" + big + "\n")
-	c := fp()
+	c := st()
 	write("other\n" + big + "\n")
-	if c.LastLine != fp().LastLine || c.Size == fp().Size {
-		t.Fatalf("big last line: %+v vs %+v", c, fp())
+	if c.LastLine != st().LastLine || c.Size == st().Size {
+		t.Fatalf("big last line: %+v vs %+v", c, st())
 	}
 	write("head\n" + big + "y\n")
-	if fp().LastLine == c.LastLine {
+	if st().LastLine == c.LastLine {
 		t.Fatal("changed last line kept its digest")
 	}
 }

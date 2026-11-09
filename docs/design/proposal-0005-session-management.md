@@ -355,7 +355,7 @@ context unchanged.
 | Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
 | Assets | Blobs are written and synced before the event that references them. |
 | Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
-| Caches | Valid only while the events file's fingerprint (length of complete lines + digest of the last line) matches; the chained batch hash makes that enough. Stale or damaged caches are rebuilt, never trusted. |
+| Caches | Valid only while the events file's stamp (length of complete lines + digest of the last line) matches; the chained batch hash makes that enough. Stale or damaged caches are rebuilt, never trusted. |
 | Event pages | Cursor = `(seq, byte offset, tail)`; a page reads from the offset, so it costs O(page). Needs sdk-go `Store.BatchesFrom`; until then each page reads the prefix. |
 
 A consistent backup copies the project directory while no writer is active.

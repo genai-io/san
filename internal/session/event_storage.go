@@ -1,6 +1,6 @@
 package session
 
-// Private typed-event persistence. Ordinary Store.Create/Open remain schema 4.
+// Private typed-event persistence under sessions/<sid>/. Ordinary Store.Create/Open remain schema 4.
 import (
 	"context"
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/genai-io/san/internal/transcript"
@@ -26,10 +27,52 @@ type eventState struct {
 	batches    map[string]sdksession.Tail // original Expected, not duplicated history
 }
 type preparedEventBatch struct {
-	owner      *Session
+	owner      *eventSession
 	batch      sdksession.Batch
 	projection *Projection
 	validation EventValidationContext
+}
+
+// eventSession is a typed session opened for writing: it owns the directory's
+// writer and the projection of everything committed so far.
+type eventSession struct {
+	mu     sync.Mutex
+	id     string
+	path   string // events file
+	log    *eventLog
+	state  *eventState
+	err    error // a failed write leaves the writer unfit to commit more
+	closed bool
+}
+
+func (s *eventSession) ID() string   { return s.id }
+func (s *eventSession) Path() string { return s.path }
+
+// Err reports a persistence failure, or ErrClosed after Close.
+func (s *eventSession) Err() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	if s.closed {
+		return ErrClosed
+	}
+	return nil
+}
+
+// Close releases the writer after any in-flight commit.
+func (s *eventSession) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	if s.log != nil {
+		return s.log.close()
+	}
+	return nil
 }
 
 func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
@@ -49,7 +92,7 @@ func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
 	return p, nil
 }
 
-func (s *Store) createEventSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*Session, error) {
+func (s *Store) createEventSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
 	// Detach and validate before acquiring a writer (which may create an empty file).
 	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
 	if err != nil {
@@ -82,31 +125,40 @@ func (s *Store) createEventSession(ctx context.Context, batchID, sessionID strin
 	if err := transcript.ValidateStorageID(sessionID); err != nil {
 		return nil, err
 	}
-	opened := &Session{store: s.transcriptStore, sessionID: sessionID, eventState: newEventState()}
+	opened := &eventSession{id: sessionID, path: s.eventsPath(sessionID), state: newEventState()}
 	prepared, err := opened.prepareEventBatch(batchID, []Event{create}, payload.Validation)
 	if err != nil {
 		return nil, err
 	}
-	if exists, err := s.transcriptStore.Exists(ctx, sessionID); err != nil {
-		return nil, err
-	} else if exists {
+	final := s.sessionDir(sessionID)
+	if _, err := os.Stat(final); err == nil {
 		return nil, fmt.Errorf("session %s already exists", sessionID)
 	}
-	release, err := s.transcriptStore.ClaimContext(ctx, sessionID)
+	// Build the session in a staging directory and publish it by one rename, so a
+	// crash leaves either nothing discoverable or a complete session.
+	if err := os.MkdirAll(s.sessionsRoot(), 0o700); err != nil {
+		return nil, err
+	}
+	stage, err := os.MkdirTemp(s.sessionsRoot(), "."+sessionID+"-")
 	if err != nil {
 		return nil, err
 	}
-	opened.release = release
-	// Claim may create an empty SDK file; only an empty file is eligible.
-	info, err := os.Stat(s.TranscriptPath(sessionID))
-	if err != nil || info.Size() != 0 {
-		if err == nil {
-			err = fmt.Errorf("session %s already exists", sessionID)
-		}
-		return nil, errors.Join(err, opened.Close())
+	defer os.RemoveAll(stage) // a no-op once renamed
+	if opened.log, err = openEventLog(ctx, stage); err != nil {
+		return nil, err
 	}
-	if _, err = opened.commitEventBatch(ctx, prepared); err != nil {
-		return nil, errors.Join(err, opened.Close())
+	receipt, err := opened.commitEventBatch(ctx, prepared)
+	if err = errors.Join(err, opened.log.close()); err != nil {
+		return nil, err
+	}
+	if err = os.Rename(stage, final); err != nil {
+		return nil, fmt.Errorf("session %s already exists: %w", sessionID, err)
+	}
+	if opened.log, err = openEventLog(ctx, final); err != nil {
+		return nil, err
+	}
+	if tail, err := opened.log.tail(); err != nil || tail != receipt.Tail {
+		return nil, errors.Join(sdksession.ErrTail, err, opened.log.close())
 	}
 	return opened, nil
 }
@@ -114,14 +166,12 @@ func newEventState() *eventState {
 	return &eventState{batches: map[string]sdksession.Tail{}}
 }
 
-func (s *Store) openEventSession(ctx context.Context, id string) (*Session, error) {
+func (s *Store) openEventSession(ctx context.Context, id string) (*eventSession, error) {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, err
 	}
-	if exists, err := s.transcriptStore.Exists(ctx, id); err != nil {
+	if _, err := os.Stat(s.eventsPath(id)); err != nil {
 		return nil, err
-	} else if !exists {
-		return nil, os.ErrNotExist
 	}
 	// Reject malformed complete product facts before SDK tail recovery can
 	// modify an unfinished suffix. This also rejects a missing initial identity.
@@ -129,26 +179,26 @@ func (s *Store) openEventSession(ctx context.Context, id string) (*Session, erro
 	if err != nil {
 		return nil, err
 	}
-	release, err := s.transcriptStore.ClaimContext(ctx, id)
+	log, err := openEventLog(ctx, s.sessionDir(id))
 	if err != nil {
 		return nil, err
 	}
 	// Opening the SDK writer performs only its transport tail recovery.
-	tail, err := s.transcriptStore.BatchTail(ctx, id)
+	tail, err := log.tail()
 	if err != nil {
-		return nil, errors.Join(err, release())
+		return nil, errors.Join(err, log.close())
 	}
 	if state.tail != tail {
 		// A previous owner may have committed between the read and our claim.
 		state, err = s.readEvents(ctx, id, nil)
 		if err != nil {
-			return nil, errors.Join(err, release())
+			return nil, errors.Join(err, log.close())
 		}
 	}
 	if state.tail != tail {
-		return nil, errors.Join(sdksession.ErrTail, release())
+		return nil, errors.Join(sdksession.ErrTail, log.close())
 	}
-	return &Session{store: s.transcriptStore, sessionID: id, release: release, eventState: state}, nil
+	return &eventSession{id: id, path: s.eventsPath(id), log: log, state: state}, nil
 }
 func (s *Store) replayEvents(ctx context.Context, id string, tailLimit *sdksession.Tail) (*Projection, sdksession.Tail, error) {
 	state, err := s.readEvents(ctx, id, tailLimit)
@@ -162,13 +212,13 @@ func (s *Store) replayEvents(ctx context.Context, id string, tailLimit *sdksessi
 // A missing or changed tail is an error.
 func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession.Tail) (*eventState, error) {
 	state := newEventState()
-	for committed, err := range s.transcriptStore.Batches(ctx, id) {
+	for committed, err := range readEventBatches(ctx, s.sessionDir(id)) {
 		if err != nil {
 			return nil, err
 		}
 		b := committed.Batch
 		if len(b.Records) != 1 || b.Records[0].Type != sdksession.TypeApp || b.Records[0].Name != "san.events" {
-			return nil, transcript.ErrEventFormat
+			return nil, errNotEvents
 		}
 		payload, err := decodeEventBatchPayload(b.Records[0].Data)
 		if err != nil {
@@ -210,7 +260,7 @@ func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession
 	return state, nil
 }
 
-func (s *Session) prepareEventBatch(batchID string, events []Event, validation EventValidationContext) (*preparedEventBatch, error) {
+func (s *eventSession) prepareEventBatch(batchID string, events []Event, validation EventValidationContext) (*preparedEventBatch, error) {
 	if s == nil {
 		return nil, ErrClosed
 	}
@@ -222,8 +272,8 @@ func (s *Session) prepareEventBatch(batchID string, events []Event, validation E
 	if s.err != nil {
 		return nil, s.err
 	}
-	if s.eventState == nil {
-		return nil, transcript.ErrEventFormat
+	if s.state == nil {
+		return nil, errNotEvents
 	}
 	if batchID == "" {
 		return nil, fmt.Errorf("empty batch ID")
@@ -236,7 +286,7 @@ func (s *Session) prepareEventBatch(batchID string, events []Event, validation E
 	if err != nil {
 		return nil, err
 	}
-	state := s.eventState
+	state := s.state
 	p := &preparedEventBatch{owner: s, batch: sdksession.Batch{ID: batchID, Expected: state.tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(payload.Events[0].Time).UTC(), Data: raw}}}}
 	// Reject deterministic transport timestamp encoding failures before Commit.
 	if _, err := p.batch.Records[0].Time.MarshalJSON(); err != nil {
@@ -247,20 +297,20 @@ func (s *Session) prepareEventBatch(batchID string, events []Event, validation E
 		p.batch.Expected = expected
 		return p, nil
 	}
-	if err := rejectLocalEvidence(payload.Validation, s.sessionID); err != nil {
+	if err := rejectLocalEvidence(payload.Validation, s.id); err != nil {
 		return nil, err
 	}
 	p.validation, err = mergeValidation(state.validation, payload.Validation)
 	if err != nil {
 		return nil, err
 	}
-	p.projection, err = ApplyEventBatch(state.projection, s.sessionID, payload.Events, p.validation)
+	p.projection, err = ApplyEventBatch(state.projection, s.id, payload.Events, p.validation)
 	if err != nil {
 		return nil, err
 	}
 	return p, nil
 }
-func (s *Session) commitEventBatch(ctx context.Context, p *preparedEventBatch) (sdksession.Receipt, error) {
+func (s *eventSession) commitEventBatch(ctx context.Context, p *preparedEventBatch) (sdksession.Receipt, error) {
 	if s == nil {
 		return sdksession.Receipt{}, ErrClosed
 	}
@@ -272,17 +322,17 @@ func (s *Session) commitEventBatch(ctx context.Context, p *preparedEventBatch) (
 	if s.err != nil {
 		return sdksession.Receipt{}, s.err
 	}
-	if p == nil || p.owner != s || s.eventState == nil {
+	if p == nil || p.owner != s || s.state == nil {
 		return sdksession.Receipt{}, fmt.Errorf("foreign prepared batch")
 	}
-	state := s.eventState
+	state := s.state
 	_, retry := state.batches[p.batch.ID]
 	if !retry && p.batch.Expected != state.tail {
 		return sdksession.Receipt{}, sdksession.ErrTail
 	}
-	receipt, err := s.store.CommitBatch(ctx, s.sessionID, p.batch)
+	receipt, err := s.log.commit(ctx, p.batch)
 	if err != nil {
-		if !errors.Is(err, sdksession.ErrConflict) && !errors.Is(err, sdksession.ErrTail) && !errors.Is(err, sdksession.ErrMode) && !errors.Is(err, transcript.ErrEventFormat) && !errors.Is(err, transcript.ErrUnclaimed) {
+		if !errors.Is(err, sdksession.ErrConflict) && !errors.Is(err, sdksession.ErrTail) && !errors.Is(err, sdksession.ErrMode) {
 			s.err = err
 		}
 		return receipt, err
@@ -295,7 +345,7 @@ func (s *Session) commitEventBatch(ctx context.Context, p *preparedEventBatch) (
 	}
 	return receipt, nil
 }
-func (s *Session) eventSnapshot() (*Projection, error) {
+func (s *eventSession) eventSnapshot() (*Projection, error) {
 	if s == nil {
 		return nil, ErrClosed
 	}
@@ -307,11 +357,11 @@ func (s *Session) eventSnapshot() (*Projection, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	if s.eventState == nil {
-		return nil, transcript.ErrEventFormat
+	if s.state == nil {
+		return nil, errNotEvents
 	}
 	// Projection is immutable and its public accessors detach their results.
-	return s.eventState.projection, nil
+	return s.state.projection, nil
 }
 
 // rejectLocalEvidence refuses evidence that claims a foreign source inside this
