@@ -11,11 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func queryFixture(t *testing.T, store *Store, id string) *Session {
+func queryFixture(t *testing.T, store *Store, id string) *eventSession {
 	t.Helper()
 	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 1700000000000,
 		Payload: &SessionCreatePayload{ProjectID: store.projectID, Workspace: store.workspace, InitialCWD: store.cwd, AgentID: "main"}}
@@ -28,7 +27,7 @@ func queryFixture(t *testing.T, store *Store, id string) *Session {
 	return session
 }
 
-func queryAppend(t *testing.T, session *Session, first, last uint64) {
+func queryAppend(t *testing.T, session *eventSession, first, last uint64) {
 	t.Helper()
 	var events []Event
 	for seq := first; seq <= last; seq++ {
@@ -143,7 +142,7 @@ func TestEventPinnedPageStopsBeforeLaterCorruption(t *testing.T) {
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
 	}
-	path := store.TranscriptPath("typed")
+	path := store.eventsPath("typed")
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -162,42 +161,6 @@ func TestEventPinnedPageStopsBeforeLaterCorruption(t *testing.T) {
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(corrupt, after) {
 		t.Fatalf("read changed log: %v", err)
-	}
-}
-
-func TestLegacyOpenDoesNotRepairTypedLog(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session := queryFixture(t, store, "typed")
-	if err := session.Close(); err != nil {
-		t.Fatal(err)
-	}
-	path := store.TranscriptPath("typed")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data = append(data, []byte(`{"unfinished`)...)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	opened, history, err := store.Open("typed")
-	if !errors.Is(err, transcript.ErrEventFormat) || opened != nil || history != nil {
-		t.Fatalf("legacy open=%v history=%v err=%v", opened, history, err)
-	}
-	after, err := os.ReadFile(path)
-	if err != nil || !bytes.Equal(data, after) {
-		t.Fatalf("rejected legacy open changed typed log: %v", err)
-	}
-	// Only the typed writer may perform SDK tail recovery after validation.
-	opened, err = store.openEventSession(context.Background(), "typed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := opened.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 

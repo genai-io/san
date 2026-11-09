@@ -182,7 +182,7 @@ func (c overviewCache) remove(id string) error {
 // never fails the read: the cache is an optimisation, not a record.
 func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
 	cache := overviewCache{dir: filepath.Join(s.projectDir, "cache")}
-	st, err := stampOf(s.TranscriptPath(id))
+	st, err := stampOf(s.eventsPath(id))
 	if err != nil {
 		return Overview{}, err
 	}
@@ -198,7 +198,7 @@ func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
 	ov := overviewOf(id, p)
 	// Cache only if the file did not change since the first stamp: then
 	// the replay saw exactly the committed history the stamp names.
-	if after, err := stampOf(s.TranscriptPath(id)); err == nil && after == st {
+	if after, err := stampOf(s.eventsPath(id)); err == nil && after == st {
 		_ = cache.store(id, st, ov)
 	}
 	return ov, nil

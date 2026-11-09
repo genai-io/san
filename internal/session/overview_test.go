@@ -10,7 +10,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func overviewFixture(t *testing.T) (*Store, *Session) {
+func overviewFixture(t *testing.T) (*Store, *eventSession) {
 	t.Helper()
 	store, s, _ := eventStorageFixture(t)
 	commitTestEvents(t, s, "m1", testEvent(2, "", MessageAppendPayload{Messages: []ai.Message{eventText("u1", ai.RoleUser, "  first question  ")}}))
@@ -72,7 +72,7 @@ func TestOverviewCacheHitMissAndRebuild(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 	// An unfinished last line is not committed history and does not invalidate.
-	f, _ := os.OpenFile(s.TranscriptPath(), os.O_APPEND|os.O_WRONLY, 0o600)
+	f, _ := os.OpenFile(s.Path(), os.O_APPEND|os.O_WRONLY, 0o600)
 	_, _ = f.WriteString(`{"batch_version":1`)
 	_ = f.Close()
 	if again, err := store.overview(ctx, s.ID()); err != nil || again != got {
