@@ -150,7 +150,7 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
-- `fork.go`: `forkEventSession` copies the first N events into a new session, keeping positions and native
+- `fork.go`: `forkSession` copies the first N events into a new session, keeping positions and native
   message IDs. Only the creation event changes (fork link, no parent); a group hint is cleared; referenced
   request blobs are copied and verified. Built in a staging directory and published by one rename.
 - `list.go`: `listOverviews`, a keyset listing ordered by (last activity, ID) descending. Defaults to live,
@@ -167,8 +167,8 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
 `event_storage.go` adds the private typed writer. Each session is one directory,
 `sessions/<sid>/`, holding `events.jsonl` (an sdk-go store opened on that directory with
 the fixed ID `events`, see `event_log.go`), plus `attrs.json` and `blobs/` when present.
-`createEventSession` builds the session in a staging directory and publishes it with one
-rename; `openEventSession` replays, then claims the writer. `readEvents` rebuilds private
+`createSession` builds the session in a staging directory and publishes it with one
+rename; `openSession` replays, then claims the writer. `readEvents` rebuilds private
 state and `replayEvents` returns its projection and SDK tail; both accept an optional
 inclusive `tailLimit`. Each committed batch holds one version-1 `san.events` record with
 typed events and retained validation evidence, published only after a successful Commit.

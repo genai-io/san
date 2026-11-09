@@ -18,7 +18,7 @@ func queryFixture(t *testing.T, store *Store, id string) *eventSession {
 	t.Helper()
 	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 1700000000000,
 		Payload: &SessionCreatePayload{ProjectID: store.projectID, Workspace: store.workspace, InitialCWD: store.cwd, AgentID: "main"}}
-	session, err := store.createEventSession(context.Background(), id+"-initial", id, create, EventValidationContext{})
+	session, err := store.createSession(context.Background(), id+"-initial", id, create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}

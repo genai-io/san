@@ -23,7 +23,7 @@ func forkSource(t *testing.T, store *Store) *eventSession {
 	ctx := context.Background()
 	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 1000, Payload: SessionCreatePayload{
 		ProjectID: store.projectID, Workspace: store.workspace, InitialCWD: store.cwd, AgentID: "main", Parent: &ParentLink{Session: "boss"}}}
-	src, err := store.createEventSession(ctx, "c", "src", create, EventValidationContext{ParentAncestors: map[string][]string{"boss": {"boss"}}})
+	src, err := store.createSession(ctx, "c", "src", create, EventValidationContext{ParentAncestors: map[string][]string{"boss": {"boss"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestForkCopiesThePrefixAndStaysIndependent(t *testing.T) {
 	defer store.Close()
 	src := forkSource(t, store)
 	before := eventBytes(t, src)
-	fork, err := store.forkEventSession(ctx, "src", "fork", 0, forkNow)
+	fork, err := store.forkSession(ctx, "src", "fork", 0, forkNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +108,12 @@ func TestForkCopiesThePrefixAndStaysIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = fork.Close()
-	reopened, err := store.openEventSession(ctx, "fork")
+	reopened, err := store.openSession(ctx, "fork")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if _, err := store.openEventSession(ctx, "fork"); !errors.Is(err, sdksession.ErrBusy) {
+	if _, err := store.openSession(ctx, "fork"); !errors.Is(err, sdksession.ErrBusy) {
 		t.Fatalf("a fork is claimed by its opener: %v", err)
 	}
 	if ov, _ := store.overview(ctx, "fork"); ov.LastActive != forkNow.UnixMilli() || ov.ForkedFrom != "src" {
@@ -126,7 +126,7 @@ func TestForkAtAnEarlierPoint(t *testing.T) {
 	store, _ := NewStoreWithDir(t.TempDir())
 	defer store.Close()
 	forkSource(t, store)
-	fork, err := store.forkEventSession(ctx, "src", "early", 2, forkNow)
+	fork, err := store.forkSession(ctx, "src", "early", 2, forkNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestForkAtAnEarlierPoint(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(store.sessionDir("early"), "blobs")); !os.IsNotExist(err) {
 		t.Fatal("blobs the prefix does not reference were copied")
 	}
-	only, err := store.forkEventSession(ctx, "src", "just-create", 1, forkNow)
+	only, err := store.forkSession(ctx, "src", "just-create", 1, forkNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestForkFailuresLeaveNothing(t *testing.T) {
 		"bad id":         {"src", "../x", 0},
 		"existing":       {"src", "src", 0},
 	} {
-		if _, err := store.forkEventSession(ctx, c.src, c.dst, c.at, forkNow); err == nil {
+		if _, err := store.forkSession(ctx, c.src, c.dst, c.at, forkNow); err == nil {
 			t.Fatalf("%s: accepted", name)
 		}
 	}
@@ -170,7 +170,7 @@ func TestForkFailuresLeaveNothing(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(store.sessionDir("src"), "blobs")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.forkEventSession(ctx, "src", "dangling", 0, forkNow); err == nil {
+	if _, err := store.forkSession(ctx, "src", "dangling", 0, forkNow); err == nil {
 		t.Fatal("forked with a missing blob")
 	}
 	entries, _ := os.ReadDir(store.sessionsRoot())

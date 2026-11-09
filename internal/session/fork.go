@@ -12,7 +12,7 @@ import (
 	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
-// forkEventSession copies the first atSeq events of a live session into a new
+// forkSession copies the first atSeq events of a live session into a new
 // session newID (atSeq 0 = everything committed). The copy keeps positions and
 // native message IDs, so no reference is rewritten, and stays independent of
 // its source: deleting the source never breaks it, and operations unfinished at
@@ -23,7 +23,7 @@ import (
 // session.update. Blobs the copied events reference are copied and verified;
 // a missing or damaged blob fails the fork. Like Create, the fork is built in a
 // staging directory and published by one rename.
-func (s *Store) forkEventSession(ctx context.Context, srcID, newID string, atSeq uint64, now time.Time) (*eventSession, error) {
+func (s *Store) forkSession(ctx context.Context, srcID, newID string, atSeq uint64, now time.Time) (*eventSession, error) {
 	if err := transcript.ValidateStorageID(newID); err != nil {
 		return nil, err
 	}

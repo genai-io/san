@@ -92,7 +92,7 @@ func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
 	return p, nil
 }
 
-func (s *Store) createEventSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
+func (s *Store) createSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
 	// Detach and validate before acquiring a writer (which may create an empty file).
 	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
 	if err != nil {
@@ -166,7 +166,7 @@ func newEventState() *eventState {
 	return &eventState{batches: map[string]sdksession.Tail{}}
 }
 
-func (s *Store) openEventSession(ctx context.Context, id string) (*eventSession, error) {
+func (s *Store) openSession(ctx context.Context, id string) (*eventSession, error) {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, err
 	}

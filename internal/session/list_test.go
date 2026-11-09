@@ -26,7 +26,7 @@ func listSession(t *testing.T, s *Store, id string, lastActive int64, mutate fun
 	if payload.Parent != nil {
 		validation.ParentAncestors = map[string][]string{payload.Parent.Session: {payload.Parent.Session}}
 	}
-	opened, err := s.createEventSession(ctx, "c-"+id, id, create, validation)
+	opened, err := s.createSession(ctx, "c-"+id, id, create, validation)
 	if err != nil {
 		t.Fatal(err)
 	}
