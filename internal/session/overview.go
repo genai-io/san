@@ -31,8 +31,8 @@ type Overview struct {
 	Model      string `json:"model,omitempty"`
 	Messages   int    `json:"messages"`
 	CreatedAt  int64  `json:"created_at"`
-	// LastActive is the time of the last message.append. Catalogue, state and
-	// annotation events, opening and reading do not count.
+	// LastActive is the later of creation and the last message.append. Catalogue,
+	// state and annotation events, opening and reading do not count.
 	LastActive int64 `json:"last_active"`
 }
 
@@ -54,10 +54,12 @@ func overviewOf(sessionID string, p *Projection) Overview {
 	if cfg.Model != nil {
 		s.Model = *cfg.Model
 	}
+	// Creating a session is activity too: a fork keeps its source's message
+	// times but is new now.
 	s.LastActive = s.CreatedAt
 	for i := len(p.data.Events) - 1; i >= 0; i-- {
 		if p.data.Events[i].Type == EventMessageAppend {
-			s.LastActive = p.data.Events[i].Time
+			s.LastActive = max(s.LastActive, p.data.Events[i].Time)
 			break
 		}
 	}

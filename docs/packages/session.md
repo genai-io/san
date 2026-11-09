@@ -150,6 +150,9 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
+- `fork.go`: `forkEventSession` copies the first N events into a new session, keeping positions and native
+  message IDs. Only the creation event changes (fork link, no parent); a group hint is cleared; referenced
+  request blobs are copied and verified. Built in a staging directory and published by one rename.
 - `list.go`: `listOverviews`, a keyset listing ordered by (last activity, ID) descending. Defaults to live,
   unarchived sessions active in the last 30 days; pinned sessions bypass that window, trashed ones are
   listed without an age cut, and a session that cannot be read is listed with its error.
