@@ -61,7 +61,7 @@ func forkSource(t *testing.T, store *Store) *eventSession {
 
 func TestForkCopiesThePrefixAndStaysIndependent(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestForkCopiesThePrefixAndStaysIndependent(t *testing.T) {
 
 func TestForkAtAnEarlierPoint(t *testing.T) {
 	ctx := context.Background()
-	store, _ := NewStoreWithDir(t.TempDir())
+	store, _ := openStoreIn(t.TempDir())
 	defer store.Close()
 	forkSource(t, store)
 	fork, err := store.forkSession(ctx, "src", "early", 2, forkNow)
@@ -150,7 +150,7 @@ func TestForkAtAnEarlierPoint(t *testing.T) {
 
 func TestForkFailuresLeaveNothing(t *testing.T) {
 	ctx := context.Background()
-	store, _ := NewStoreWithDir(t.TempDir())
+	store, _ := openStoreIn(t.TempDir())
 	defer store.Close()
 	forkSource(t, store)
 	for name, c := range map[string]struct {

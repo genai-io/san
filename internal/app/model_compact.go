@@ -26,7 +26,7 @@ import (
 type pendingCompaction struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
-	session   *session.Session
+	session   *session.LegacySession
 	sessionID string
 	outbox    <-chan core.Event
 }

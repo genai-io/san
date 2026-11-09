@@ -13,10 +13,10 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// History is the selected native conversation, application state, and display
+// LegacyHistory is the selected native conversation, application state, and display
 // information read from a transcript. It owns no runtime or writer resources.
-type History struct {
-	Metadata    Metadata
+type LegacyHistory struct {
+	Metadata    LegacyMetadata
 	Messages    []ai.Message
 	Tasks       []todo.Item
 	Notices     []transcript.NoticeRecord
@@ -79,7 +79,7 @@ func imageSourceNote(text string, imageCount int) bool {
 }
 
 // ChatRows builds the display from native messages and separate presentation events.
-func (s *History) ChatRows() []core.ChatMessage {
+func (s *LegacyHistory) ChatRows() []core.ChatMessage {
 	rows := ChatRows(s.Messages)
 	for i := range rows {
 		if rows[i].ToolResult == nil {
@@ -119,7 +119,7 @@ func withNotices(rows []core.ChatMessage, notices []transcript.NoticeRecord) []c
 }
 
 // ChatRows reads attachments for display without changing the native conversation.
-func (s *Store) ChatRows(history *History) []core.ChatMessage {
+func (s *LegacyStore) ChatRows(history *LegacyHistory) []core.ChatMessage {
 	rows := history.ChatRows()
 	if transcript.ValidateStorageID(history.Metadata.ID) != nil {
 		return rows

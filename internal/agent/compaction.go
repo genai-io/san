@@ -84,7 +84,7 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 
 // RecordManualCompaction persists the native boundary for a conversation with no
 // running agent. The caller replaces its chain only after this succeeds.
-func RecordManualCompaction(opened *session.Session, result CompactResult) (core.Message, core.Compacted, error) {
+func RecordManualCompaction(opened *session.LegacySession, result CompactResult) (core.Message, core.Compacted, error) {
 	summary := core.UserMessage(core.FormatCompactSummary(result.Summary), nil)
 	summary.ID = core.NewMessageID()
 	info := core.Compacted{Summary: result.Summary, OriginalCount: result.OriginalCount, SummaryMessageID: summary.ID, Trigger: "manual"}

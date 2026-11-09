@@ -13,7 +13,7 @@ import (
 )
 
 // ImportSession seeds test history through the same typed Append interface as callers.
-func ImportSession(store *session.Store, history *session.History) (err error) {
+func ImportSession(store *session.LegacyStore, history *session.LegacyHistory) (err error) {
 	if history == nil {
 		return fmt.Errorf("history is nil")
 	}
@@ -32,7 +32,7 @@ func ImportSession(store *session.Store, history *session.History) (err error) {
 	}
 	opened, _, err := store.Open(meta.ID)
 	if errors.Is(err, os.ErrNotExist) {
-		opened, err = store.Create(session.CreateOptions{ID: meta.ID, CreatedAt: meta.CreatedAt, Cwd: meta.Cwd, Provider: meta.Provider, Model: meta.Model, ParentSessionID: meta.ParentSessionID})
+		opened, err = store.Create(session.LegacyCreateOptions{ID: meta.ID, CreatedAt: meta.CreatedAt, Cwd: meta.Cwd, Provider: meta.Provider, Model: meta.Model, ParentSessionID: meta.ParentSessionID})
 	}
 	if err != nil {
 		return err

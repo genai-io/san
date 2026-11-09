@@ -18,7 +18,7 @@ import (
 )
 
 func TestNativeContinuationAfterInferenceFailureKeepsAppliedWork(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestNativeContinuationAfterInferenceFailureKeepsAppliedWork(t *testing.T) {
 }
 
 func TestBrokenNativeCheckpointDoesNotStartAnotherAttempt(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestBrokenNativeCheckpointDoesNotStartAnotherAttempt(t *testing.T) {
 }
 
 func TestNativeContinuationRejectsOverlapAndForeignParent(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,12 +27,12 @@ func TestOpenStoreSharedWorktrees(t *testing.T) {
 	git("-C", repo, "worktree", "add", "-b", "fix", worktree)
 
 	// First opening a linked worktree still registers the original project.
-	child, err := OpenStore(ctx, worktree)
+	child, err := OpenLegacyStore(ctx, worktree)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer child.Close()
-	main, err := OpenStore(ctx, repo)
+	main, err := OpenLegacyStore(ctx, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestOpenStoreSharedWorktrees(t *testing.T) {
 	if main.projectID != child.projectID || main.projectDir != child.projectDir {
 		t.Fatal("linked worktrees did not share project storage")
 	}
-	opened, err := child.Create(CreateOptions{ID: "child"})
+	opened, err := child.Create(LegacyCreateOptions{ID: "child"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,14 +61,14 @@ func TestOpenStoreSharedWorktrees(t *testing.T) {
 	if history.Metadata.Workspace != wantWorkspace || history.Metadata.Cwd != wantWorkspace || history.Metadata.ProjectID != main.projectID {
 		t.Fatalf("resume replaced original identity: %+v", history.Metadata)
 	}
-	other, err := main.Create(CreateOptions{ID: "explicit", Workspace: worktree})
+	other, err := main.Create(LegacyCreateOptions{ID: "explicit", Workspace: worktree})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := other.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := main.Create(CreateOptions{ID: "foreign", Workspace: t.TempDir()}); err == nil {
+	if _, err := main.Create(LegacyCreateOptions{ID: "foreign", Workspace: t.TempDir()}); err == nil {
 		t.Fatal("accepted workspace outside the project")
 	}
 	list, err := main.ListContext(ctx)
@@ -98,12 +98,12 @@ func TestOpenStoreExactDirectoryAndCancellation(t *testing.T) {
 	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	a, err := OpenStore(ctx, root)
+	a, err := OpenLegacyStore(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := OpenStore(ctx, child)
+	b, err := OpenLegacyStore(ctx, child)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestOpenStoreExactDirectoryAndCancellation(t *testing.T) {
 	if a.projectID == b.projectID {
 		t.Fatal("non-Git child directory inherited parent project")
 	}
-	c, err := OpenStore(ctx, root)
+	c, err := OpenLegacyStore(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestOpenStoreExactDirectoryAndCancellation(t *testing.T) {
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := OpenStore(cancelled, root); !errors.Is(err, context.Canceled) {
+	if _, err := OpenLegacyStore(cancelled, root); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled open = %v", err)
 	}
 }

@@ -99,9 +99,19 @@ func (s *Store) clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 			}
 			if !opts.DryRun {
 				guard := func(dir string) error {
-					ov, err := s.overviewAt(ctx, dir, it.SessionID, false)
-					if err != nil || ov.LastActive > cutoff {
+					state, err := s.readEventsIn(ctx, dir, it.SessionID, nil)
+					if err != nil {
+						return errors.New(skipUnreadable)
+					}
+					ov := overviewOf(it.SessionID, state.projection)
+					if ov.LastActive > cutoff {
 						return errors.New(skipChanged)
+					}
+					if opts.Workspace != "" && ov.Workspace != opts.Workspace {
+						return errors.New(skipOutOfScope)
+					}
+					if u := state.projection.Unfinished(); len(u.Inferences)+len(u.NeverRan)+len(u.Unknown) > 0 {
+						return errors.New(skipUnfinished)
 					}
 					return nil
 				}
@@ -114,19 +124,11 @@ func (s *Store) clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 		}
 	}
 
-	purged, err := lib.purge(ctx, now, opts.DryRun)
+	purged, truncated, err := lib.purge(ctx, now, opts.DryRun, only, limit-len(res.Trashed))
+	res.Purged = purged
+	res.Truncated = res.Truncated || truncated
 	if err != nil {
 		return res, err
-	}
-	for _, id := range purged {
-		if len(opts.IDs) > 0 && !only[id] {
-			continue
-		}
-		if len(res.Purged) >= limit {
-			res.Truncated = true
-			break
-		}
-		res.Purged = append(res.Purged, id)
 	}
 	if len(opts.IDs) == 0 {
 		if res.Removed, err = s.collectGarbage(ctx, now, opts.DryRun); err != nil {
@@ -230,8 +232,15 @@ func (s *Store) collectGarbage(ctx context.Context, now time.Time, dryRun bool) 
 }
 
 // collectBlobs removes request copies in one session's blobs/ that none of its
-// events name. A session it cannot read is left entirely alone.
+// events name. The short session lock covers both the read and removals, excluding
+// Append's blob validation and commit. Unreadable sessions are left alone.
 func (s *Store) collectBlobs(ctx context.Context, dir, id string, old func(string) bool, remove func(string) error) error {
+	return (library{root: s.projectDir}).withLock(ctx, id, func() error {
+		return s.collectBlobsLocked(ctx, dir, id, old, remove)
+	})
+}
+
+func (s *Store) collectBlobsLocked(ctx context.Context, dir, id string, old func(string) bool, remove func(string) error) error {
 	blobs := filepath.Join(dir, "blobs")
 	files, err := os.ReadDir(blobs)
 	if errors.Is(err, os.ErrNotExist) || len(files) == 0 {

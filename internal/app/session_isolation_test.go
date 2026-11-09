@@ -17,9 +17,9 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func switchToOtherSession(t *testing.T, m *model, store *session.Store) {
+func switchToOtherSession(t *testing.T, m *model, store *session.LegacyStore) {
 	t.Helper()
-	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "other"}, Messages: []core.Message{{ID: "other-user", Role: ai.RoleUser, Content: ai.TextContent("other conversation")}}}); err != nil {
+	if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "other"}, Messages: []core.Message{{ID: "other-user", Role: ai.RoleUser, Content: ai.TextContent("other conversation")}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.loadSessionByID("other"); err != nil {

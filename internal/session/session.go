@@ -2,182 +2,189 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"reflect"
+	"slices"
 	"sync"
 	"time"
-
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/transcript"
-	"go.uber.org/zap"
 )
 
+// ErrClosed means the store or writer handle has been closed.
 var ErrClosed = errors.New("session is closed")
 
-// Session is one opened durable identity. It owns the writer lease until Close.
+// Session owns one typed writer until Close. Its snapshots contain committed
+// facts only; it never runs an agent or restores permission grants.
 type Session struct {
-	mu                sync.Mutex
-	store             *transcript.Store
-	sessionID         string
-	agentID           string
-	cwd               string
-	isSidechain       bool
-	inferenceSequence int
-	exchangeCount     int
-	runExchangeOffset int
-	maxOutputTokens   int
-	pendingRequest    *pendingInference
-	err               error
-	release           func() error
-	closed            bool
-	eventState        *eventState
+	mu     sync.Mutex // serializes preparation and commit, including source reads
+	store  *Store
+	writer *eventSession
 }
 
-type pendingInference struct {
-	sequence  int
-	startedAt time.Time
+func (s *Session) ID() string   { return s.writer.ID() }
+func (s *Session) Path() string { return s.writer.Path() }
+func (s *Session) Err() error   { return s.writer.Err() }
+
+// Snapshot returns the last committed prefix, including after Close or a write
+// failure. Projection is immutable and its accessors detach their results.
+func (s *Session) Snapshot() Projection {
+	s.writer.mu.Lock()
+	defer s.writer.mu.Unlock()
+	return *s.writer.state.projection
 }
 
-// CreateOptions describes a new session; ID is assigned when omitted.
-type CreateOptions struct {
-	Workspace       string
-	ID              string
-	AgentID         string
-	Provider        string
-	Model           string
-	MaxTokens       int
-	Cwd             string
-	CreatedAt       time.Time
-	ParentSessionID string
-	Sidechain       bool
-}
-
-func newSession(store *transcript.Store, opts CreateOptions) (*Session, error) {
-	if opts.CreatedAt.IsZero() {
-		opts.CreatedAt = time.Now()
-	}
-	release, err := store.Claim(opts.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := store.Start(context.Background(), transcript.StartCommand{
-		SessionID: opts.ID, AgentID: opts.AgentID, Provider: opts.Provider,
-		Model: opts.Model, MaxTokens: opts.MaxTokens, Cwd: opts.Cwd, Workspace: opts.Workspace,
-		ParentSessionID: opts.ParentSessionID, Sidechain: opts.Sidechain, Time: opts.CreatedAt,
-	}); err != nil {
-		return nil, errors.Join(err, release())
-	}
-	return sessionFromLease(store, opts, release)
-}
-
-func sessionFromLease(store *transcript.Store, opts CreateOptions, release func() error) (*Session, error) {
-	_, inference, exchange, err := store.Position(context.Background(), opts.ID)
-	if err != nil {
-		return nil, errors.Join(err, release())
-	}
-	return &Session{store: store, sessionID: opts.ID, agentID: opts.AgentID, cwd: opts.Cwd,
-		isSidechain: opts.Sidechain, maxOutputTokens: opts.MaxTokens, release: release,
-		inferenceSequence: inference, exchangeCount: exchange, runExchangeOffset: exchange}, nil
-}
-
-func (s *Session) ID() string {
-	if s == nil {
-		return ""
-	}
-	return s.sessionID
-}
-func (s *Session) TranscriptPath() string {
-	if s == nil || s.store == nil {
-		return ""
-	}
-	return s.store.TranscriptPath(s.sessionID)
-}
-
-// Append is the only persistence entrance for messages, state, and audit records.
-// The session supplies identity and ordering; the transcript validates payloads.
-func (s *Session) Append(ctx context.Context, rec transcript.Record) error {
-	if s == nil {
-		return ErrClosed
-	}
+// Append commits one atomic batch. Zero seq, version and time are filled from
+// the committed tail, version 1 and the current time; an omitted type follows
+// the payload. Explicit envelope values are validated, never overwritten.
+func (s *Session) Append(ctx context.Context, events ...Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.appendLocked(ctx, rec)
+	return (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
+		return s.appendLocked(ctx, events)
+	})
 }
 
-func (s *Session) appendLocked(ctx context.Context, rec transcript.Record) error {
-	if s.closed {
-		return ErrClosed
-	}
-	if s.err != nil {
-		return s.err
-	}
-	if s.eventState != nil {
-		return transcript.ErrEventFormat
-	}
-	if rec.SessionID != "" && rec.SessionID != s.sessionID {
-		return fmt.Errorf("record belongs to session %s, want %s", rec.SessionID, s.sessionID)
-	}
-	rec.SessionID = s.sessionID
-	if rec.Time.IsZero() {
-		rec.Time = time.Now()
-	}
-	if rec.Type == transcript.NoticeAdded && rec.Notice != nil {
-		notice := *rec.Notice
-		if notice.AfterMessageID == "" {
-			var err error
-			notice.AfterMessageID, err = s.store.LastMessageID(ctx, s.sessionID)
-			if err != nil {
-				s.err = err
-				return err
-			}
-		}
-		rec.Notice = &notice
-	}
-	if err := s.store.Append(ctx, rec); err != nil {
-		switch rec.Type {
-		case transcript.MessageAppended, transcript.ConversationReplaced, transcript.SessionCompacted,
-			transcript.SessionStatePatched, transcript.InferenceRequested, transcript.InferenceResponded, transcript.InferenceFailed:
-			s.err = err
-		}
-		log.Logger().Warn("session: append "+rec.Type+" failed", zap.Error(err))
+func (s *Session) appendLocked(ctx context.Context, events []Event) error {
+	if err := s.writer.Err(); err != nil {
 		return err
 	}
-	if rec.Inference != nil {
-		s.inferenceSequence = max(s.inferenceSequence, rec.Inference.Sequence)
-		s.exchangeCount = max(s.exchangeCount, rec.Inference.Exchange)
+	if err := s.store.checkID(ctx, s.ID()); err != nil {
+		return err
 	}
-	return nil
+	if len(events) == 0 {
+		return fmt.Errorf("empty event batch")
+	}
+	snapshot := s.Snapshot()
+	events = slices.Clone(events)
+	now := time.Now().UnixMilli()
+	for i := range events {
+		e := &events[i]
+		if e.Payload == nil || (reflect.ValueOf(e.Payload).Kind() == reflect.Pointer && reflect.ValueOf(e.Payload).IsNil()) {
+			return fmt.Errorf("nil event payload")
+		}
+		if e.Type == "" {
+			e.Type = e.Payload.eventType()
+		}
+		if e.Type == EventSessionCreate {
+			return fmt.Errorf("session.create is reserved for Create and Fork")
+		}
+		if e.Seq == 0 {
+			e.Seq = uint64(len(snapshot.data.Events) + i + 1)
+		}
+		if e.SchemaVersion == 0 {
+			e.SchemaVersion = 1
+		}
+		if e.Time == 0 {
+			e.Time = now
+		}
+	}
+	// Detach native payloads before validating references or reading blobs.
+	raw, err := json.Marshal(events)
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(raw, &events); err != nil {
+		return err
+	}
+	validation, err := s.validation(ctx, events)
+	if err != nil {
+		return err
+	}
+	prepared, err := s.writer.prepareEventBatch(blobDigest(raw), events, validation)
+	if err != nil {
+		return err
+	}
+	_, err = s.writer.commitEventBatch(ctx, prepared)
+	return err
 }
 
-// Err reports the persistence failure, or ErrClosed after resource retirement.
-func (s *Session) Err() error {
-	if s == nil {
-		return nil
-	}
+// PutRequest persists an exact standalone request before an inference references
+// it. The session owns the blob and cleanup cannot race its write.
+func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.err != nil {
-		return s.err
+	if err := s.writer.Err(); err != nil {
+		return "", err
 	}
-	if s.closed {
-		return ErrClosed
+	if err := s.store.check(ctx); err != nil {
+		return "", err
 	}
-	return nil
+	var digest string
+	err := (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
+		var err error
+		digest, err = s.requests().PutRequest(request)
+		return err
+	})
+	return digest, err
 }
 
-// Close releases this session's writer lease after any in-flight append.
+// Request reads and verifies the exact standalone request identified by digest.
+func (s *Session) Request(ctx context.Context, digest string) (StandaloneRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.writer.Err(); err != nil {
+		return StandaloneRequest{}, err
+	}
+	if err := s.store.check(ctx); err != nil {
+		return StandaloneRequest{}, err
+	}
+	return s.requests().Request(digest)
+}
+
+func (s *Session) requests() blobStore {
+	return blobStore{dir: filepath.Join(s.store.sessionDir(s.ID()), "blobs")}
+}
+
+// validation records acceptance facts so foreign sessions may disappear later.
+// A standalone request must already be durable before its start can commit.
+func (s *Session) validation(ctx context.Context, events []Event) (EventValidationContext, error) {
+	out := EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{}}
+	foreign := map[string]*Projection{}
+	for _, e := range events {
+		if start, ok := e.Payload.(*InferenceStartPayload); ok && start.Input.Standalone != "" {
+			if _, err := s.requests().Request(start.Input.Standalone); err != nil {
+				return out, fmt.Errorf("standalone request: %w", err)
+			}
+		}
+		ref := e.Source
+		if ref == nil || ref.Session == "" || ref.Session == s.ID() {
+			continue
+		}
+		if err := s.store.checkID(ctx, ref.Session); err != nil {
+			return out, err
+		}
+		key := foreignKey(ref.Session, ref.Seq)
+		if fact, ok := s.writer.state.validation.ForeignEvents[key]; ok {
+			out.ForeignEvents[key] = fact
+			continue
+		}
+		p := foreign[ref.Session]
+		if p == nil {
+			state, err := s.store.readEvents(ctx, ref.Session, nil)
+			if err != nil {
+				return out, err
+			}
+			p = state.projection
+			foreign[ref.Session] = p
+		}
+		source := p.event(ref.Seq)
+		if source == nil {
+			return out, fmt.Errorf("unresolved foreign source %s", key)
+		}
+		fact := ForeignEventEvidence{Type: source.Type}
+		if source.Type == EventMessageAppend {
+			fact.MessageIDs = p.messageIDsOf(source)
+		}
+		out.ForeignEvents[key] = fact
+	}
+	return out, nil
+}
+
+// Close drains in-flight appends, then releases the writer exactly once.
 func (s *Session) Close() error {
-	if s == nil {
-		return nil
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	if s.release != nil {
-		return s.release()
-	}
-	return nil
+	return s.writer.Close()
 }

@@ -35,11 +35,11 @@ func runCmd(cmd tea.Cmd) {
 }
 
 func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := mustCreateSession(t, store, session.CreateOptions{ID: "notice-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
+	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "notice-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	m := &model{conv: conv.NewModel(80)}
 	m.conv.OnNotice = func(msg core.ChatMessage) {
 		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: msg.Content, Agent: msg.AgentNotice}})
@@ -47,7 +47,7 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	n := taskNotice()
 	message := m.showNoticeLine(n)
 	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	for _, opts := range []session.ReadOptions{{}, {FullHistory: true}} {
+	for _, opts := range []session.LegacyReadOptions{{}, {FullHistory: true}} {
 		snapshot, err := store.Read("notice-1", opts)
 		if err != nil {
 			t.Fatal(err)

@@ -15,17 +15,17 @@ import (
 )
 
 func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewLegacyStore(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewStore(): %v", err)
+		t.Fatalf("NewLegacyStore(): %v", err)
 	}
 
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}, ai.Message{Role: ai.RoleAssistant, Content: ai.TextContent("world")}}
 
 	// Save with a custom title
-	sess := &History{
-		Metadata: Metadata{
-			Title: "My Custom Session",
+	sess := &LegacyHistory{
+		Metadata: LegacyMetadata{
+			Title: "My Custom LegacySession",
 		},
 		Messages: msgs,
 	}
@@ -39,26 +39,26 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 	}
 
 	// Load and verify title
-	loaded, err := store.Read(id, ReadOptions{})
+	loaded, err := store.Read(id, LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
-	if loaded.Metadata.Title != "My Custom Session" {
-		t.Fatalf("Title = %q, want %q", loaded.Metadata.Title, "My Custom Session")
+	if loaded.Metadata.Title != "My Custom LegacySession" {
+		t.Fatalf("Title = %q, want %q", loaded.Metadata.Title, "My Custom LegacySession")
 	}
 }
 
 func TestStoreSaveTitleChangePersists(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewLegacyStore(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewStore(): %v", err)
+		t.Fatalf("NewLegacyStore(): %v", err)
 	}
 
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}}
 
 	// Save with initial title
-	sess := &History{
-		Metadata: Metadata{
+	sess := &LegacyHistory{
+		Metadata: LegacyMetadata{
 			Title: "Initial Title",
 		},
 		Messages: msgs,
@@ -76,7 +76,7 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 	}
 
 	// Load and verify new title
-	loaded, err := store.Read(id, ReadOptions{})
+	loaded, err := store.Read(id, LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
@@ -86,16 +86,16 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 }
 
 func TestStoreListPreservesCustomTitle(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewLegacyStore(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewStore(): %v", err)
+		t.Fatalf("NewLegacyStore(): %v", err)
 	}
 
 	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("first message")}}
 
-	sess := &History{
-		Metadata: Metadata{
-			Title: "Session From Listing",
+	sess := &LegacyHistory{
+		Metadata: LegacyMetadata{
+			Title: "LegacySession From Listing",
 		},
 		Messages: msgs,
 	}
@@ -113,18 +113,18 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 	}
 	found := false
 	for _, meta := range list {
-		if meta.Title == "Session From Listing" {
+		if meta.Title == "LegacySession From Listing" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected title %q in listing, got: %+v", "Session From Listing", list)
+		t.Fatalf("expected title %q in listing, got: %+v", "LegacySession From Listing", list)
 	}
 }
 
 func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
 	}
 	for _, id := range []string{".", "..", "../escape", "a/b", `a\b`} {
 		t.Run(id, func(t *testing.T) {
-			if opened, err := store.Create(CreateOptions{ID: id}); err == nil {
+			if opened, err := store.Create(LegacyCreateOptions{ID: id}); err == nil {
 				_ = opened.Close()
 				t.Fatal("created unsafe ID")
 			}
@@ -141,7 +141,7 @@ func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
 				_ = opened.Close()
 				t.Fatal("opened unsafe ID")
 			}
-			if _, err := store.Read(id, ReadOptions{}); err == nil {
+			if _, err := store.Read(id, LegacyReadOptions{}); err == nil {
 				t.Fatal("read unsafe ID")
 			}
 			if err := store.Delete(id); err == nil {
@@ -163,20 +163,20 @@ func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
 
 func TestDeleteRejectsLiveWriterAcrossStores(t *testing.T) {
 	dir := t.TempDir()
-	store, err := NewStoreWithDir(dir)
+	store, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := NewStoreWithDir(dir)
+	other, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(CreateOptions{ID: "s"})
+	opened, err := store.Create(LegacyCreateOptions{ID: "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	for _, deleting := range []*Store{store, other} {
+	for _, deleting := range []*LegacyStore{store, other} {
 		if err := deleting.Delete("s"); err == nil {
 			t.Fatal("deleted active session")
 		}
@@ -192,7 +192,7 @@ func TestDeleteRejectsLiveWriterAcrossStores(t *testing.T) {
 	if err := other.Delete("s"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Read("s", ReadOptions{}); !errors.Is(err, sdksession.ErrNotFound) {
+	if _, err := store.Read("s", LegacyReadOptions{}); !errors.Is(err, sdksession.ErrNotFound) {
 		t.Fatalf("deleted transcript remains: %v", err)
 	}
 }

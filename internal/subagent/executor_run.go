@@ -27,7 +27,7 @@ type preparedRun struct {
 	originalPrompt string
 	toolStarted    bool
 	priorFailure   string
-	native         *session.Session
+	native         *session.LegacySession
 	history        []core.Message
 	checkpoint     *continuationState
 	req            tool.AgentExecRequest

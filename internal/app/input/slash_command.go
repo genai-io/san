@@ -54,7 +54,7 @@ type SlashCommandEnv struct {
 	// later command reads (e.g. /disabled-tools then /tools).
 	Setting      *setting.Settings
 	LLM          *llm.Conn
-	SessionStore *session.Store
+	SessionStore *session.LegacyStore
 	SessionID    func() string
 	Skill        *skill.Registry
 	Plugin       *plugin.Registry

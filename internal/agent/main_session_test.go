@@ -23,11 +23,11 @@ import (
 
 func mainSessionFixture(t *testing.T) MainSession {
 	t.Helper()
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err := store.Create(session.CreateOptions{AgentID: "main", Model: "fake"})
+	rec, err := store.Create(session.LegacyCreateOptions{AgentID: "main", Model: "fake"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 					if err := mainSession.Session.Err(); err != nil {
 						t.Fatal(err)
 					}
-					history, err := mainSession.Store.Read(mainSession.Session.ID(), session.ReadOptions{})
+					history, err := mainSession.Store.Read(mainSession.Session.ID(), session.LegacyReadOptions{})
 					if err != nil {
 						t.Fatal(err)
 					}

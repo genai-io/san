@@ -13,7 +13,8 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged: committed batches (`Writer.Commit`, `Store.Batches`). |
 | [#737](https://github.com/genai-io/san/pull/737) | Merged: project/worktree identity, checkout-local settings, typed events behind a private writer, using the previous draft's 18-type model. It converges to this design before any runtime cutover. Runtime still writes schema 4. |
 | [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
-| Runtime cutover, lifecycle (trash/retention) | Not started; specified below. The cutover is a breaking change (see [Compatibility](#compatibility)). |
+| Typed storage and public API | Implemented: 13 events, blobs, attrs, cache, list/fork/clean and opened typed sessions; still unwired. |
+| Runtime cutover | Recorder, runtime resume, subagents and final switch remain. The cutover is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 
@@ -369,7 +370,7 @@ func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
 func (s *Store) Get(ctx context.Context, id string) (Overview, error)
-func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
+func (s *Store) List(ctx context.Context, q ListQuery) (ListPage, error)
 func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
 func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
 func (s *Store) Delete(ctx context.Context, id string) error
@@ -378,6 +379,10 @@ func (s *Store) Clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 func (s *Store) Close() error
 
 func (s *Session) ID() string
+func (s *Session) Path() string
+func (s *Session) Err() error
+func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (string, error)
+func (s *Session) Request(ctx context.Context, digest string) (StandaloneRequest, error)
 func (s *Session) Append(ctx context.Context, events ...Event) error // one batch
 func (s *Session) Snapshot() Projection                              // in-memory, committed only
 func (s *Session) Close() error                                      // drain, release lock
@@ -399,13 +404,17 @@ func (s *Session) Close() error                                      // drain, r
 - Errors are distinguishable: not found, busy, closed, conflict, invalid,
   unsupported version, corrupt, cancelled, storage.
 
-The current `Store` (`Create/Open/List/Fork/Delete`, `Append(transcript.Record)`,
-immediate deletion) evolves into this surface; consumers keep narrow local
-interfaces, and generic pieces move into sdk-go.
+The runtime still uses `LegacyStore` (`Create/Open/List/Fork/Delete`,
+`Append(transcript.Record)`, immediate deletion); the typed API above is implemented
+separately. Recorder, resume and final consumer cutover remain pending. Consumers
+keep narrow local interfaces, and generic pieces move into sdk-go.
 
 ## Lifecycle and retention
 
-Two kinds of session data exist, and they are stored apart:
+Two kinds of session data exist, and they are stored apart.
+Project `.locks/<sid>` paths are transient coordination, not authoritative
+conversation data; append validation/commit shares this short metadata lock with
+attrs, trash/restore and blob collection. Request blobs sync before references commit:
 
 | | `sessions/<sid>/attrs.json` | `cache/<sid>.json` |
 | --- | --- | --- |

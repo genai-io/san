@@ -174,7 +174,7 @@ func TestHistoryLoadIgnoresClosedOrReplacedViewer(t *testing.T) {
 }
 
 func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 			native = append(native, message)
 		}
 	}
-	snap := &session.History{Messages: native}
+	snap := &session.LegacyHistory{Messages: native}
 	if err := testutil.ImportSession(store, snap); err != nil {
 		t.Fatal(err)
 	}

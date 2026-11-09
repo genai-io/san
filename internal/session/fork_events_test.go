@@ -12,16 +12,16 @@ import (
 )
 
 func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := mustSession(t, store.transcriptStore, CreateOptions{ID: "original"})
+	original := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "original"})
 	original.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old conversation")}})
 	if err := original.Close(); err != nil {
 		t.Fatal(err)
 	}
-	other, err := store.Create(CreateOptions{ID: "other"})
+	other, err := store.Create(LegacyCreateOptions{ID: "other"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,17 +35,17 @@ func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
 		t.Fatal(history)
 	}
 	reopened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new turn")}})
-	got, err := store.Read("original", ReadOptions{})
+	got, err := store.Read("original", LegacyReadOptions{})
 	if err != nil || len(got.Messages) != 2 || got.Messages[1].ID != "new" {
 		t.Fatalf("history: %+v, %v", got, err)
 	}
 }
 func TestForkSessionWritesToItsOwnTranscript(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := mustSession(t, store.transcriptStore, CreateOptions{ID: "parent"})
+	original := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "parent"})
 	msg := core.Message{ID: "before", Role: ai.RoleUser, Content: ai.TextContent("before")}
 	if err := original.Append(context.Background(), transcript.Record{Type: transcript.MessageAppended, Message: &msg}); err != nil {
 		t.Fatal(err)
@@ -61,11 +61,11 @@ func TestForkSessionWritesToItsOwnTranscript(t *testing.T) {
 	}
 	defer func() { _ = opened.Close() }()
 	opened.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "after", Role: ai.RoleUser, Content: ai.TextContent("after")}})
-	parent, err := store.Read("parent", ReadOptions{})
+	parent, err := store.Read("parent", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := store.Read(fork.Metadata.ID, ReadOptions{})
+	child, err := store.Read(fork.Metadata.ID, LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestForkSessionWritesToItsOwnTranscript(t *testing.T) {
 		t.Fatalf("parent=%+v child=%+v", parent.Messages, child.Messages)
 	}
 }
-func readTranscript(t *testing.T, store *Store, sessionID string) string {
+func readTranscript(t *testing.T, store *LegacyStore, sessionID string) string {
 	t.Helper()
 	data, err := os.ReadFile(store.transcriptStore.TranscriptPath(sessionID))
 	if err != nil {

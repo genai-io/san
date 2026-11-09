@@ -33,7 +33,7 @@ func TestSessionWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-1", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-1", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
@@ -123,7 +123,7 @@ func TestSessionWritesSystemSectionEvents(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-sys", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-sys", AgentID: "main",
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
@@ -175,7 +175,7 @@ func TestSessionWritesToolsChangeEvents(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-tools", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-tools", AgentID: "main",
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
@@ -230,7 +230,7 @@ func TestSessionWritesCompactionBoundary(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-c", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-c", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
@@ -258,12 +258,12 @@ func TestSessionWritesCompactionBoundary(t *testing.T) {
 	}
 }
 
-// A nil-safe writer (no Store) must accept events without panicking.
+// A nil-safe writer (no LegacyStore) must accept events without panicking.
 func TestSessionNilSafe(t *testing.T) {
-	var rec *Session
+	var rec *LegacySession
 	rec.RecordEvent(sdkagent.InferenceStart{})
 
-	empty := &Session{}
+	empty := &LegacySession{}
 	empty.RecordEvent(sdkagent.InferenceStart{})
 }
 
@@ -271,7 +271,7 @@ func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record
 	t.Helper()
 	fs, err := transcript.NewStore(baseDir, "proj-1")
 	if err != nil {
-		t.Fatalf("NewStore (reread): %v", err)
+		t.Fatalf("NewLegacyStore (reread): %v", err)
 	}
 	var out []transcript.Record
 	for r, err := range fs.Records(context.Background(), sessionID) {
@@ -297,7 +297,7 @@ func TestSessionWritesInferenceFailed(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-f", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-f", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
@@ -349,7 +349,7 @@ func TestSessionKeepsToolDetailsWithTheResult(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-d", AgentID: "main"})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-d", AgentID: "main"})
 
 	diff := toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "@@ -1 +1 @@\n-old\n+new\n", AddedLines: 1, RemovedLines: 1}
 	rec.RecordEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
@@ -381,11 +381,11 @@ func TestInferenceRecordsTheWorkspaceGitBranch(t *testing.T) {
 			t.Fatalf("git %v: %v, %s", args, err, output)
 		}
 	}
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(CreateOptions{ID: "s", Cwd: dir})
+	opened, err := store.Create(LegacyCreateOptions{ID: "s", Cwd: dir})
 	if err != nil {
 		t.Fatal(err)
 	}

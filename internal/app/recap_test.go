@@ -94,11 +94,11 @@ func TestRecapWrittenAwayShowsOnArrival(t *testing.T) {
 // The recap is a persisted notice, not an agent message. After a real
 // transcript round trip it still gates the next automatic recap.
 func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(session.CreateOptions{ID: "recap-test"})
+	opened, err := store.Create(session.LegacyCreateOptions{ID: "recap-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read("recap-test", session.ReadOptions{})
+	history, err := store.Read("recap-test", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

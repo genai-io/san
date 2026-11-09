@@ -16,7 +16,7 @@ import (
 // consumers" invariant: when the agent appends a user message and immediately
 // fires PreInfer, the writer must land message.appended on disk first.
 //
-// Before the OnAppend wiring, message.appended was written by Store.Save at
+// Before the OnAppend wiring, message.appended was written by LegacyStore.Save at
 // turn end, so the on-disk order was inference.requested → message.appended,
 // which made the viewer's "context at this inference" view incorrect (the
 // active chain looked empty).
@@ -32,7 +32,7 @@ func TestSessionWritesMessageBeforeInference(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-order", AgentID: "main",
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-order", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096, Cwd: "/tmp",
 	})
 
@@ -93,13 +93,13 @@ func TestSessionWritesMessageBeforeInference(t *testing.T) {
 }
 
 // When the writer writes message.appended via OnAppend, a follow-up
-// Store.Save on the TUI path (OmitMessageWrites=true) must NOT add a second
+// LegacyStore.Save on the TUI path (OmitMessageWrites=true) must NOT add a second
 // copy of the same message under a different ID. Without this guard the
 // JSONL would balloon by ~2× and the active chain projection would see
 // duplicate messages.
 func TestSessionAndSaveDoNotDoubleWrite(t *testing.T) {
 	dir := t.TempDir()
-	store, err := NewStoreWithDir(dir)
+	store, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
@@ -110,9 +110,9 @@ func TestSessionAndSaveDoNotDoubleWrite(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-dup", AgentID: "main", Cwd: dir})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-dup", AgentID: "main", Cwd: dir})
 
-	// Session writes the two messages (agent-side path).
+	// LegacySession writes the two messages (agent-side path).
 	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m1", Role: ai.RoleUser, Content: ai.TextContent("hi"),
 	}})
@@ -152,7 +152,7 @@ func TestSessionPermissionRequiredDecidedShareRequestID(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-perm", AgentID: "main"})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-perm", AgentID: "main"})
 
 	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
 		RequestID: "req-42", Tool: "Bash", Source: "ask", Mode: "normal",
@@ -200,7 +200,7 @@ func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 
 	// Seed the file with two pre-existing messages, simulating a session
 	// the user is now resuming.
-	rec0 := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
+	rec0 := mustSession(t, fs, LegacyCreateOptions{ID: "sess-seed", AgentID: "main"})
 	rec0.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m1", Role: ai.RoleUser, Content: ai.TextContent("first turn"),
 	}})
@@ -212,7 +212,7 @@ func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 
 	// Simulate process restart with a fresh writer; without seeding it
 	// would start the conversation over at the next message.
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-seed", AgentID: "main"})
 
 	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
@@ -239,7 +239,7 @@ func TestSessionPermissionRecordsCarryToolInput(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-pi", AgentID: "main"})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-pi", AgentID: "main"})
 
 	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
 		RequestID: "rq-1", Tool: "Bash",
@@ -291,7 +291,7 @@ func TestSessionSkipsEmptyMessages(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := mustSession(t, fs, CreateOptions{ID: "sess-skip", AgentID: "main"})
+	rec := mustSession(t, fs, LegacyCreateOptions{ID: "sess-skip", AgentID: "main"})
 
 	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "empty-1", Role: ai.RoleUser, // no content, no tool result, no images

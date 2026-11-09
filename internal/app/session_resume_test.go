@@ -34,15 +34,15 @@ func (*failedTurnProvider) Client(string, map[string]string) (*ai.Client, error)
 	return aitest.Always(aitest.Fails(&ai.Error{Kind: ai.KindAuth, Message: "test authentication failure"})).Client(), nil
 }
 
-func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store) {
+func resumedModel(t *testing.T, messages []core.Message) (*model, *session.LegacyStore) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	cwd := t.TempDir()
-	store, err := session.NewStoreWithDir(cwd)
+	store, err := session.NewLegacyStoreWithDir(cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "s"}, Messages: messages}); err != nil {
+	if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "s"}, Messages: messages}); err != nil {
 		t.Fatal(err)
 	}
 	opened, history, err := store.Open("s")
@@ -80,8 +80,8 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
-	if err := testutil.ImportSession(store, &session.History{
-		Metadata: session.Metadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
+	if err := testutil.ImportSession(store, &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestResumeReplaysEveryMessage(t *testing.T) {
 	for range 60 {
 		messages = append(messages, ai.UserMessage("prompt"))
 	}
-	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "other"}, Messages: messages}); err != nil {
+	if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "other"}, Messages: messages}); err != nil {
 		t.Fatal(err)
 	}
 	m.conv.CommittedCount = len(m.conv.Messages)
@@ -128,8 +128,8 @@ func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
 			m.enqueueInteraction(question)
 			m.enqueueInteraction(approval)
 			if action == "resume" {
-				if err := testutil.ImportSession(store, &session.History{
-					Metadata: session.Metadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
+				if err := testutil.ImportSession(store, &session.LegacyHistory{
+					Metadata: session.LegacyMetadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -275,7 +275,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("retry never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.ReadOptions{})
+	loaded, err := store.Read("s", session.LegacyReadOptions{})
 	if err != nil || len(loaded.Messages) < 5 || !reflect.DeepEqual(loaded.Messages[:3], history) {
 		t.Fatalf("retry corrupted the durable history: %+v, %v", loaded, err)
 	}
@@ -293,7 +293,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	if len(m.conv.Messages) != 1 || m.conv.Messages[0].ID != seed[0].ID {
 		t.Fatal("UI and native summary have different identities")
 	}
-	loaded, err := store.Read("s", session.ReadOptions{})
+	loaded, err := store.Read("s", session.LegacyReadOptions{})
 	if err != nil || !reflect.DeepEqual(loaded.Messages, seed) {
 		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
 	}
@@ -303,7 +303,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
-	full, err := store.Read("s", session.ReadOptions{FullHistory: true})
+	full, err := store.Read("s", session.LegacyReadOptions{FullHistory: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 		t.Fatal("text-only turn never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.ReadOptions{})
+	loaded, err := store.Read("s", session.LegacyReadOptions{})
 	if err != nil || len(loaded.Messages) < 3 || !reflect.DeepEqual(loaded.Messages[:2], history) {
 		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
 	}
@@ -378,7 +378,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 		t.Fatal("turn after rename never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.ReadOptions{})
+	loaded, err := store.Read("s", session.LegacyReadOptions{})
 	if err != nil || loaded.Metadata.Title != "renamed" || len(loaded.Messages) < 3 || loaded.Messages[2].ID != "after-name" {
 		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
 	}
@@ -410,12 +410,12 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
 				t.Fatalf("session switch changed the source membership: %+v", members)
 			}
-			source, err := store.Read("s", session.ReadOptions{})
+			source, err := store.Read("s", session.LegacyReadOptions{})
 			if err != nil || source.Metadata.Group == "" {
 				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
 			}
 			if action == "fork" {
-				forked, err := store.Read(m.sessionID(), session.ReadOptions{})
+				forked, err := store.Read(m.sessionID(), session.LegacyReadOptions{})
 				if err != nil || forked.Metadata.Group != "" {
 					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
 				}
@@ -472,7 +472,7 @@ func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
 			if action == "clear" {
 				err = m.clearSession()
 			} else {
-				if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "other"}}); err != nil {
+				if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "other"}}); err != nil {
 					t.Fatal(err)
 				}
 				err = m.loadSessionByID("other")

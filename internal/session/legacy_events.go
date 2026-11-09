@@ -15,7 +15,7 @@ import (
 // RecordEvent records native events for this opened session before producer delivery.
 // TurnEnded transfers essential write failures to its receipt without acknowledging
 // consumer cleanup or required state writes.
-func (r *Session) RecordEvent(ev core.Event) {
+func (r *LegacySession) RecordEvent(ev core.Event) {
 	if end, ok := ev.(core.TurnEnded); ok {
 		end.Result.Finalization.RecordError(r.Err())
 		return
@@ -60,7 +60,7 @@ func (r *Session) RecordEvent(ev core.Event) {
 }
 
 // RecordHookAudit records best-effort hook audit for this opened session.
-func (r *Session) RecordHookAudit(a hook.HookFiredAudit) {
+func (r *LegacySession) RecordHookAudit(a hook.HookFiredAudit) {
 	_ = r.Append(context.Background(), transcript.Record{Type: transcript.HookFired, Hook: &transcript.HookRecord{
 		Event: a.Event, Source: a.Source, Matcher: a.Matcher, Outcome: a.Outcome,
 		Reason: a.Reason, LatencyMs: a.Duration.Milliseconds(),
@@ -68,7 +68,7 @@ func (r *Session) RecordHookAudit(a hook.HookFiredAudit) {
 }
 
 // RecordSkillStateChange records best-effort skill audit for this opened session.
-func (r *Session) RecordSkillStateChange(name, previous, current, caller string) {
+func (r *LegacySession) RecordSkillStateChange(name, previous, current, caller string) {
 	_ = r.Append(context.Background(), transcript.Record{Type: transcript.SkillStateChanged, Skill: &transcript.SkillRecord{
 		Name: name, Previous: previous, Current: current, Caller: caller,
 	}})
@@ -78,14 +78,14 @@ func (r *Session) RecordSkillStateChange(name, previous, current, caller string)
 // recorded via the preceding message.appended (compaction emits OnAppend for
 // it first); this record marks that summary's ID as the point where replay
 // stops walking parents, so the summarized-away history is not resurrected.
-func (r *Session) recordCompaction(info core.Compacted) {
+func (r *LegacySession) recordCompaction(info core.Compacted) {
 	if info.SummaryMessageID == "" {
 		return
 	}
 	_ = r.appendLocked(context.Background(), transcript.Record{SessionID: r.sessionID, Time: time.Now(), Type: transcript.SessionCompacted, Compaction: &transcript.Compaction{MessageID: info.SummaryMessageID}})
 }
 
-func (r *Session) recordToolChange(c core.ToolsChange) {
+func (r *LegacySession) recordToolChange(c core.ToolsChange) {
 	typ := transcript.ToolAdded
 	payload := transcript.ToolRecord{Caller: c.Caller}
 	if c.Removed {
@@ -97,7 +97,7 @@ func (r *Session) recordToolChange(c core.ToolsChange) {
 	_ = r.appendLocked(context.Background(), transcript.Record{SessionID: r.sessionID, Time: time.Now(), Type: typ, Tool: &payload})
 }
 
-func (r *Session) recordSystemChange(c core.SystemChange) {
+func (r *LegacySession) recordSystemChange(c core.SystemChange) {
 	typ := transcript.SystemSectionAdded
 	if c.Removed {
 		typ = transcript.SystemSectionRemoved
@@ -114,7 +114,7 @@ func (r *Session) recordSystemChange(c core.SystemChange) {
 // recordInferenceStarted records the call as digests rather than content, so the
 // transcript can reference what went out without copying it on every turn. The
 // digesting lives here because this is the only thing that ever wanted it.
-func (r *Session) recordInferenceStarted(e sdkagent.InferenceStart) {
+func (r *LegacySession) recordInferenceStarted(e sdkagent.InferenceStart) {
 	if e.Inference == nil {
 		return
 	}
@@ -154,7 +154,7 @@ func (r *Session) recordInferenceStarted(e sdkagent.InferenceStart) {
 // recordInferenceEnded closes out the open request. A call that failed ends the
 // span just as a response does, and says why: without inference.failed the
 // attempt leaves an inference.requested no record ever answers.
-func (r *Session) recordInferenceEnded(e sdkagent.InferenceEnd) {
+func (r *LegacySession) recordInferenceEnded(e sdkagent.InferenceEnd) {
 	now := time.Now()
 
 	if e.Err != nil {
@@ -194,7 +194,7 @@ func (r *Session) recordInferenceEnded(e sdkagent.InferenceEnd) {
 
 // closePendingRequest consumes the open inference.requested and returns its
 // sequence plus elapsed time. Zero sequence when no request is pending.
-func (r *Session) closePendingRequest(now time.Time) (sequence int, latencyMs int64) {
+func (r *LegacySession) closePendingRequest(now time.Time) (sequence int, latencyMs int64) {
 	prev := r.pendingRequest
 	r.pendingRequest = nil
 
@@ -205,7 +205,7 @@ func (r *Session) closePendingRequest(now time.Time) (sequence int, latencyMs in
 }
 
 // appendInference uses the shared append implementation and retains failures in Err.
-func (r *Session) appendInference(now time.Time, typ string, rec transcript.InferenceRecord) {
+func (r *LegacySession) appendInference(now time.Time, typ string, rec transcript.InferenceRecord) {
 	branch := ""
 	if typ == transcript.InferenceRequested {
 		branch = getGitBranch(r.cwd)
@@ -225,7 +225,7 @@ func inferenceDigest(inf *sdkagent.Inference) transcript.InferenceRecord {
 	}
 }
 
-func (r *Session) recordToolDetails(e sdkagent.ToolEnd) {
+func (r *LegacySession) recordToolDetails(e sdkagent.ToolEnd) {
 	details := transcript.ToolDetailsRecord{ToolCallID: e.ID}
 	switch v := e.Result.Details.(type) {
 	case toolresult.FileChangeDetails:

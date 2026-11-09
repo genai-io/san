@@ -23,8 +23,8 @@ type sessionSelectedMsg struct {
 // SessionSelector holds the state for the session selector.
 type SessionSelector struct {
 	active   bool
-	sessions []session.Summary
-	filtered []session.Summary
+	sessions []session.LegacySummary
+	filtered []session.LegacySummary
 	nav      kit.ListNav
 	width    int
 	height   int
@@ -61,12 +61,12 @@ func calculateSessionPreviewLength(width int) int {
 
 type sessionsListedMsg struct {
 	generation uint64
-	sessions   []session.Summary
+	sessions   []session.LegacySummary
 	err        error
 }
 
 // EnterSelect paints immediately; disk I/O runs on the returned command.
-func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, cwd string) (tea.Cmd, error) {
+func (s *SessionSelector) EnterSelect(width, height int, store *session.LegacyStore, cwd string) (tea.Cmd, error) {
 	if store == nil {
 		return nil, fmt.Errorf("session store is required")
 	}
@@ -152,7 +152,7 @@ func (s *SessionSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func sessionFormatCompactMetadata(sess session.Summary) string {
+func sessionFormatCompactMetadata(sess session.LegacySummary) string {
 	return fmt.Sprintf("%d msgs · %s", sess.MessageCount, sessionFormatRelativeTime(sess.UpdatedAt))
 }
 
@@ -167,7 +167,7 @@ func sessionTruncateToFirstLine(content string, maxLen int) string {
 	return kit.TruncateText(content, maxLen)
 }
 
-func (s *SessionSelector) renderSession(sess session.Summary, isSelected bool, sb *strings.Builder, boxWidth int) {
+func (s *SessionSelector) renderSession(sess session.LegacySummary, isSelected bool, sb *strings.Builder, boxWidth int) {
 	// RenderSelectableRow adds a 4-char left prefix for unselected rows
 	// ("  " + PaddingLeft(2)) and the same 4-char visual offset for
 	// selected rows ("  ▎ "). We account for that below so the row is

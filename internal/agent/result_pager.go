@@ -15,7 +15,7 @@ import (
 // current-session selector. A missing/failed store still produces a bounded
 // preview, explicitly reporting that the full content was not persisted.
 type ResultPager struct {
-	Store     *session.Store
+	Store     *session.LegacyStore
 	SessionID string
 }
 

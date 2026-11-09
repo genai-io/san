@@ -11,9 +11,9 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-func selectorStore(t *testing.T) *session.Store {
+func selectorStore(t *testing.T) *session.LegacyStore {
 	t.Helper()
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func selectorStore(t *testing.T) *session.Store {
 
 func TestSessionSelectorLoadsOffLoopAndKeepsTypedFilter(t *testing.T) {
 	store := selectorStore(t)
-	opened, err := store.Create(session.CreateOptions{ID: "first"})
+	opened, err := store.Create(session.LegacyCreateOptions{ID: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestSessionSelectorCancelRejectsStaleResultsAfterReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Selector.Cancel()
-	UpdateSession(OverlayDeps{}, &state, sessionsListedMsg{generation: cancelled.generation, sessions: []session.Summary{{ID: "stale"}}})
+	UpdateSession(OverlayDeps{}, &state, sessionsListedMsg{generation: cancelled.generation, sessions: []session.LegacySummary{{ID: "stale"}}})
 	if !state.Selector.loading || len(state.Selector.sessions) != 0 {
 		t.Fatal("an old result replaced the reopened selector")
 	}
@@ -85,7 +85,7 @@ func TestSessionSelectorRendersCachedTitlesAndPreviews(t *testing.T) {
 	}
 	defer state.Selector.Cancel()
 	msg := cmd().(sessionsListedMsg)
-	msg.sessions = []session.Summary{{ID: "unreadable", Title: "Go", LastPrompt: "缓存中的预览\nsecond line"}}
+	msg.sessions = []session.LegacySummary{{ID: "unreadable", Title: "Go", LastPrompt: "缓存中的预览\nsecond line"}}
 	UpdateSession(OverlayDeps{}, &state, msg)
 	view := state.Selector.Render()
 	if !strings.Contains(view, "Go") || !strings.Contains(view, "缓存中的预览") || strings.Contains(view, "second line") {
@@ -113,7 +113,7 @@ func BenchmarkSessionSelectorFilterAndRender(b *testing.B) {
 	s.active = true
 	s.Resize(120, 40)
 	for i := range 1000 {
-		s.sessions = append(s.sessions, session.Summary{ID: string(rune(i)), Title: "Diagnostic session title", LastPrompt: "Cached prompt preview"})
+		s.sessions = append(s.sessions, session.LegacySummary{ID: string(rune(i)), Title: "Diagnostic session title", LastPrompt: "Cached prompt preview"})
 	}
 	b.ReportAllocs()
 	for b.Loop() {

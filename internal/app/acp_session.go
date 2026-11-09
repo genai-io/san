@@ -67,7 +67,7 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			err = errors.Join(err, s.close())
 		}
 	}()
-	history, err := s.nativeSession.Store.Read(string(req.SessionID), session.ReadOptions{FullHistory: true})
+	history, err := s.nativeSession.Store.Read(string(req.SessionID), session.LegacyReadOptions{FullHistory: true})
 	if err != nil {
 		return response, err
 	}

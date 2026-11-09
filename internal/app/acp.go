@@ -128,14 +128,14 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if !info.IsDir() {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be a directory")
 	}
-	store, err := session.OpenStore(ctx, req.CWD)
+	store, err := session.OpenLegacyStore(ctx, req.CWD)
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	var opened *session.Session
-	var history *session.History
+	var opened *session.LegacySession
+	var history *session.LegacyHistory
 	if resumeID == "" {
-		opened, err = store.Create(session.CreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Provider: h.provider.Name(), Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+		opened, err = store.Create(session.LegacyCreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Provider: h.provider.Name(), Model: h.model, MaxTokens: setting.DefaultMaxTokens})
 	} else {
 		opened, history, err = store.Open(resumeID)
 	}

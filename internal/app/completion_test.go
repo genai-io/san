@@ -18,11 +18,11 @@ import (
 
 func attachTurnSession(t *testing.T, m *model) {
 	t.Helper()
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened := mustCreateSession(t, store, session.CreateOptions{ID: "turn", AgentID: "main"})
+	opened := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "turn", AgentID: "main"})
 	m.services.Session = opened
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	t.Cleanup(func() { _ = opened.Close() })

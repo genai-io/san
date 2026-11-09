@@ -16,11 +16,11 @@ import (
 // shows it again where it was: before the first message, or after the one it
 // followed.
 func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main"})
+	rec := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main"})
 	add := func(id string, role ai.Role, text string) {
 		rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
 	}
@@ -30,7 +30,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "From @web: done", Agent: true}})
 	add("m2", ai.RoleAssistant, "hello")
 
-	sess, err := store.Read("s", ReadOptions{})
+	sess, err := store.Read("s", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

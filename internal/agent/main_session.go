@@ -11,8 +11,8 @@ import (
 // Authorization and extension callbacks belong to the host's composition, not
 // to this data owner.
 type MainSession struct {
-	Session *session.Session
-	Store   *session.Store
+	Session *session.LegacySession
+	Store   *session.LegacyStore
 }
 
 // Validate rejects unavailable recording and cross-project result storage.

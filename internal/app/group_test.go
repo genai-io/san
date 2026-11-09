@@ -21,7 +21,7 @@ import (
 )
 
 func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +34,11 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		{From: "web", Subject: "UI ready", Content: "second finding"},
 	})
 	live := m.conv.Messages[0]
-	rec := mustCreateSession(t, store, session.CreateOptions{ID: "group-batch", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
+	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "group-batch", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
 	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	history, err := store.Read("group-batch", session.ReadOptions{FullHistory: true})
+	history, err := store.Read("group-batch", session.LegacyReadOptions{FullHistory: true})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,12 +13,12 @@ import (
 )
 
 func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap := &History{
-		Metadata: Metadata{ID: "history-test", Title: "Custom history", Mode: "plan", Group: "team", Provider: "test", Model: "model", ParentSessionID: "parent"},
+	snap := &LegacyHistory{
+		Metadata: LegacyMetadata{ID: "history-test", Title: "Custom history", Mode: "plan", Group: "team", Provider: "test", Model: "model", ParentSessionID: "parent"},
 		Messages: []core.Message{
 			{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("run a command")},
 			{ID: "call", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "tc", Name: "Bash", Input: `{"command":"test"}`})}},
@@ -35,11 +35,11 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if err := store.transcriptStore.Append(context.Background(), transcript.Record{SessionID: snap.Metadata.ID, Time: time.Now(), Type: transcript.SessionCompacted, Compaction: &transcript.Compaction{MessageID: "summary"}}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Read(snap.Metadata.ID, ReadOptions{})
+	resumed, err := store.Read(snap.Metadata.ID, LegacyReadOptions{})
 	if err != nil || len(resumed.Messages) != 1 || resumed.Messages[0].ID != "summary" {
 		t.Fatalf("resume should still stop at compaction: %+v, %v", resumed, err)
 	}
-	full, err := store.Read(snap.Metadata.ID, ReadOptions{FullHistory: true})
+	full, err := store.Read(snap.Metadata.ID, LegacyReadOptions{FullHistory: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,14 +68,14 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if !reflect.DeepEqual(restored, resumed) {
 		t.Fatalf("Open restored full history instead of active context: %+v", restored)
 	}
-	resumed, err = store.Read(snap.Metadata.ID, ReadOptions{})
+	resumed, err = store.Read(snap.Metadata.ID, LegacyReadOptions{})
 	if err != nil || len(resumed.Messages) != 1 {
 		t.Fatalf("reading history changed resume: %+v, %v", resumed, err)
 	}
 }
 
 func TestDisplayHydratesOnlyValidToolReferences(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestDisplayHydratesOnlyValidToolReferences(t *testing.T) {
 		{"unfinished", "preview\n\n[Full output persisted to blobs/tool-result/s/ok", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := &History{Metadata: Metadata{ID: "s"}, Messages: []ai.Message{{ID: "r", Role: ai.RoleUser, Content: ai.Content{
+			h := &LegacyHistory{Metadata: LegacyMetadata{ID: "s"}, Messages: []ai.Message{{ID: "r", Role: ai.RoleUser, Content: ai.Content{
 				ai.ToolResultBlock(ai.ToolResult{ToolCallID: "one", Content: ai.TextContent(tc.text)}),
 				ai.ToolResultBlock(ai.ToolResult{ToolCallID: "two", Content: ai.TextContent(tc.text)}),
 			}}}}

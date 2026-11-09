@@ -43,7 +43,7 @@ func TestACPConfigurationWaitsForWorkerCleanup(t *testing.T) {
 		if s.runtimeBuildParams.ModelID != "test" || s.permissions.CurrentMode() != setting.ModeNormal {
 			t.Fatal("rejected configuration mutated live policy/model")
 		}
-		history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
+		history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

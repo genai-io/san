@@ -5,26 +5,43 @@ layer: feature
 
 # session
 
-Owns durable conversation identity and the opened Session that writes its transcript.
-The application owns which session is selected. `agent.Runtime` owns execution.
+Owns project/session identity and durable conversation events. The application
+owns the selected session; `agent.Runtime` owns execution.
 
-Sessions persist as JSONL through sdk-go's file store. The
-[session management design](https://github.com/genai-io/san/pull/736)
-describes proposed changes separately from the current implementation.
+## Typed API (runtime not switched yet)
 
-## Responsibilities and names
+`store.go` exposes `OpenStore` and `Store.Create`, `Open`, `Fork`, `Get`,
+`List`, `Events`, `SetAttrs`, `Delete`, `Restore`, and `Clean` over
+`sessions/<sid>/`. `session.go` owns `Session.Append`, `Snapshot`, `Close`,
+`ID`, `Path`, `Err`, `PutRequest(ctx, StandaloneRequest)` and `Request(ctx, digest)`.
+Appends serialize envelope assignment, validation and one committed batch under
+short project `.locks/<sid>` metadata coordination shared with attrs, trash/restore
+and blob collection. Request blobs sync before references commit. Snapshots expose
+only immutable committed facts. Foreign provenance is retained for replay;
+standalone requests must be stored before referencing them. Reads do not acquire
+a writer; attrs may change while it is open.
+`CleanOptions.Limit` bounds retention and purge together, and ID selection applies
+before deletion, including interrupted purges.
 
-- **Store** manages multiple sessions in one registered project:
+Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
+under `transcripts/`. There is no dual write or automatic conversion. The
+[cutover design](../design/proposal-0005-session-management.md) tracks recorder,
+resume and the final switch separately. Public API coverage is in
+`typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.
+
+## Current runtime (legacy)
+
+- **LegacyStore** manages schema-4 sessions in one registered project:
   create, open, read, list, fork, delete, and store attachments. Git common-directory
   identity groups linked worktrees; non-Git projects use the exact startup path.
-  Legacy cwd-hash partitions remain separate. Store does not run an agent or
+  Legacy cwd-hash partitions remain separate. LegacyStore does not run an agent or
   own the current selection. `Create` creates a new identity; `Open` acquires an existing
   identity's writer lease before restoring it. `Read` reads without opening a
-  writer, returning native `History`. `Read(id, ReadOptions{})` selects active context;
-  `ReadOptions{FullHistory: true}` includes pre-compaction messages on the selected
-  branch. Display callers separately use `Store.ChatRows(history)` for projection
+  writer, returning native `LegacyHistory`. `Read(id, LegacyReadOptions{})` selects active context;
+  `LegacyReadOptions{FullHistory: true}` includes pre-compaction messages on the selected
+  branch. Display callers separately use `LegacyStore.ChatRows(history)` for projection
   and asset hydration. `Fork` returns an opened child and its restored history.
-- **Session** is one opened identity, fixed until `Close`. It owns the writer
+- **LegacySession** is one opened identity, fixed until `Close`. It owns the writer
   lease, ordered appends, inference/exchange positions, and persistence failures.
   `Append` accepts a typed transcript record. `RecordEvent` adapts native
   agent events to the same append implementation; application state and audit
@@ -33,33 +50,34 @@ describes proposed changes separately from the current implementation.
 - **Runtime** runs the agent and owns its authoritative native message chain.
   `Start` runs it, `Stop` cancels execution while retaining messages, and `Reset`
   clears the conversation after stopping. Runtime never owns transcript files
-  or writer leases. Several runtime generations can use the same opened Session.
-- **History** is the selected native conversation and application/display data
+  or writer leases. Several runtime generations can use the same LegacySession.
+- **LegacyHistory** is the selected native conversation and application/display data
   read from a transcript: metadata, messages, todo items, notices, and tool
   presentation details. This read result supplies Runtime and the UI during
-  restoration. Session owns the resources and writes; History owns only data.
+  restoration. LegacySession owns the resources and writes; LegacyHistory owns only data.
 - **Transcript** is the append-only log of what happened. It is authoritative.
   Its `Record` payloads keep SDK-native messages and schemas, and native todo
   items. `transcript.Store` implements log storage, replay, recovery, and derived
-  summaries beneath the product-facing Store and Session.
+  summaries beneath the product-facing LegacyStore and LegacySession.
 
 All writes share one append implementation, with typed adaptation at the SDK
 and application boundaries.
 
 ## Entrypoints and core packages
 
-- `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadOptions`, `List`,
+- `legacy_store.go`: `OpenLegacyStore` (`NewLegacyStore` compatibility wrapper), `Create`, `Open`, `Read`, `LegacyReadOptions`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
 - `project.go`: derives the project ID from where the project is, writes its description, validates workspaces.
-- `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
-- `events.go`: `RecordEvent`, inference spans, compaction and native event
+- `legacy_session.go`: the opened `LegacySession`, `LegacyCreateOptions`, `Append`, `Err`, `Close`.
+- `legacy_events.go`: `RecordEvent`, inference spans, compaction and native event
   adaptation. Internal method names describe the event being persisted.
-- `history.go`: `History` and its one-way `ChatRows` display projection.
+- `legacy_history.go`: `LegacyHistory` and its one-way `ChatRows` display projection.
+- `metadata.go`: legacy metadata aliases (`LegacyMetadata`, `LegacySummary`).
 - `internal/app/model_session.go`: current selection, application state records,
-  restore, clear, and fork. `services` holds Store and the opened Session directly.
+  restore, clear, and fork. `services` holds LegacyStore and the LegacySession directly.
 - `internal/agent/runtime.go`: live execution and native message retention.
 
-The application creates Store at startup and injects it into slash commands.
+The application creates LegacyStore at startup and injects it into slash commands.
 `san -r` and `/resume` paint the selector before listing sessions on a background
 command. `ListContext` cancels cold-cache recovery when the picker closes;
 generation checks discard late results after reopening. Filtering and terminal
@@ -83,19 +101,19 @@ scrollback through the normal print queue.
 ## Flow
 
 ```text
-SDK native event -> Session.RecordEvent -> shared append -> transcript
-application change -> Session.Append --------------------------> transcript
+SDK native event -> LegacySession.RecordEvent -> shared append -> transcript
+application change -> LegacySession.Append --------------------> transcript
 
-Store.Open(id) -> claim writer lease -> read/project once -> Session + History
+LegacyStore.Open(id) -> claim writer lease -> read/project once -> LegacySession + LegacyHistory
                                                            |          |
                                                            |          +-> native messages -> Runtime
                                                            |          +-> ChatRows -> dialogue UI
                                                            +-> later appends
 
-switch -> Runtime.Stop -> open replacement -> retire previous Session/UI context
+switch -> Runtime.Stop -> open replacement -> retire previous LegacySession/UI context
        -> restore history and bind identity/hooks/group/tasks
-clear  -> Runtime.Reset -> Session.Close -> select fresh identity
-quit   -> Runtime.Stop -> Session.Close
+clear  -> Runtime.Reset -> LegacySession.Close -> select fresh identity
+quit   -> Runtime.Stop -> LegacySession.Close
 ```
 
 Application state writes contain title, prompt preview, mode, autopilot, group,
@@ -119,7 +137,7 @@ native history. Runtime retains it through stops and errors. Inputs rejected bef
 agent acceptance remain in a native pending queue; rebuilding never reads UI rows.
 Accepted input is announced and retained even when inference fails or a run stops
 before its next step. Runtime rejects sends once its mailbox starts stopping.
-`Store.ChatRows` expands persisted tool output only for display and reconstructs
+`LegacyStore.ChatRows` expands persisted tool output only for display and reconstructs
 image markers in their native text/image order. It hides San's model-only source
 path paragraph from the resumed UI without removing it from the native
 conversation; the model can still use that path after compaction or resume.
@@ -127,12 +145,12 @@ Runtime receives
 the original preview and attachment reference, keeping resumed context bounded.
 
 Completed subagents write native conversation replacement and title records
-through their own opened Session.
+through their own LegacySession.
 
 ## Typed-event persistence slice (not a runtime format switch)
 
 ```text
-existing Runtime -> Session.Append(transcript.Record) -> schema-4 JSONL (unchanged)
+existing Runtime -> LegacySession.Append(transcript.Record) -> schema-4 JSONL (unchanged)
 
 new typed Event batches -> ApplyEventBatch -> immutable Projection
                                   | reject: keep original projection
@@ -176,9 +194,9 @@ rename; `openSession` replays, then claims the writer. `readEvents` rebuilds pri
 state and `replayEvents` returns its projection and SDK tail; both accept an optional
 inclusive `tailLimit`. Each committed batch holds one version-1 `san.events` record with
 typed events and retained validation evidence, published only after a successful Commit.
-Ordinary `Store.Create` / `Open`, `Session.Append(transcript.Record)`, runtime, hooks and
-inspector remain schema 4 under `transcripts/`; there is no dual write and no public typed
-writer or resume API yet.
+Runtime, hooks and inspector still use `LegacyStore.Create` / `Open` and
+`LegacySession.Append(transcript.Record)` with schema 4 under `transcripts/`.
+The public typed writer is available separately; recorder and resume cutover are pending.
 
 The public read surface is bounded raw events, not rendered history or resumable
 context:
@@ -236,17 +254,19 @@ allocation and memory costs even for small pages. Tests include
 
 Paths do not encode ancestry; a session's parent is `parentSessionId`.
 Ordinary runtime transcripts are sdk-go `pkg/session` logs with schema version `4`
-and SDK-native payloads; the private typed path uses committed `san.events` batches.
+and SDK-native payloads; the public typed path uses committed `san.events` batches.
+Project `.locks/<sid>` paths provide transient coordination, not authoritative
+conversation data.
 Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
-`OpenStore(ctx, cwd)` derives the project ID from the project's kind and canonical key: the Git
+`OpenLegacyStore(ctx, cwd)` derives the project ID from the project's kind and canonical key: the Git
 common directory, or the exact startup directory outside Git. Git subdirectories and worktrees
 share one project; clones and submodules do not; non-Git child directories are distinct. There is
 no registry to lock or reconcile, and `project.json` (kind, key, name) only describes the project.
 A repository that moves is a new project. Old `<hash(cwd)>` partitions are not read.
 
-`CreateOptions.Workspace` defaults to the captured checkout/root. An explicit workspace
+`LegacyCreateOptions.Workspace` defaults to the captured checkout/root. An explicit workspace
 must belong to the same project; it does not change project ownership or grant trust.
 New start records persist project/workspace identity; legacy missing fields stay unknown.
 Project identity does not select settings. Settings load and project-scope writes
@@ -256,10 +276,10 @@ synchronized; missing project settings do not fall back to another checkout.
 The existing main-checkout local override and grant-write compatibility remains.
 A valid linked checkout needs its common
 Git metadata, not an available original main checkout or main configuration files.
-`NewStoreWithDir` remains an explicit-directory construction path for embedding/tests.
-Close all Session handles before `Store.Close()`. `TranscriptPath` supplies the live
-JSONL path used by hooks and inspection consumers. Trash and automatic retention remain
-proposed; current Delete still removes files immediately.
+`NewLegacyStoreWithDir` remains an explicit-directory construction path for embedding/tests.
+Close all LegacySession handles before `LegacyStore.Close()`. `TranscriptPath` supplies the live
+JSONL path used by hooks and inspection consumers. Legacy Delete still removes
+files immediately; typed Store implements trash and retention separately.
 
 ## Lifecycle and failure handling
 
@@ -273,7 +293,7 @@ proposed; current Delete still removes files immediately.
 - A writer lease is held from Open/Create until Close, including idle resume.
   Every new lease refreshes cached state after another process's writes.
 - Failed opens release their candidate lease and do not redirect the selected
-  session. A retired runtime's callback remains bound to its retired Session.
+  session. A retired runtime's callback remains bound to its retired LegacySession.
 - A successful identity switch cancels the previous session's displayed and
   queued interactions, rejects requests from its retired UI owner, and discards
   pending one-time context. First open, same-ID resume, and failed opens retain
@@ -282,9 +302,9 @@ proposed; current Delete still removes files immediately.
   grants and reapply the selected permission mode. Same-ID and failed resume
   preserve those grants. Retired outbox events cannot change the selected UI;
   a naturally finished run keeps its outbox long enough to drain final events.
-- Runtime rebuilds reuse the opened Session. Agent-start events establish a new
+- Runtime rebuilds reuse the LegacySession. Agent-start events establish a new
   exchange offset without clearing durable history.
-- Clear resets Runtime, closes the old Session, releases group identity, and
+- Clear resets Runtime, closes the old LegacySession, releases group identity, and
   selects a new identity before accepting another input.
 - Fork stops Runtime, copies history and assets, then opens/replays the child
   once. The source's membership remains; the child starts without group membership.
@@ -302,7 +322,7 @@ to acquire a writer. `Writer.Save(messages)` persists conversation changes;
 `Writer.Append(name, data)` appends application records; `Writer.Close()` syncs
 and releases ownership. SDK `Open` does not restore a San session identity.
 
-San's opened `Session`, event adaptation, titles, tasks, groups, and UI projections
+San's opened `LegacySession`, event adaptation, titles, tasks, groups, and UI projections
 remain product responsibilities. SDK saves use native message structs and record
 a truncate to the unchanged prefix followed by changed messages. SDK `Stat`
 provides identity and per-session size/modification metadata. SDK `Store.Close`
@@ -333,8 +353,8 @@ changes. `internal/app/input/session_selector_test.go` covers loading, cancellat
 stale results, filtering, cached previews, and resizing.
 
 
-Run `make ci`. Always stop Runtime before closing its Session. Full-history reads are
-for browsing; `Open` always restores active context with zero `ReadOptions`. Never
+Run `make ci`. Always stop Runtime before closing its LegacySession. Full-history reads are
+for browsing; `Open` always restores active context with zero `LegacyReadOptions`. Never
 write UI rows or a read result back at the end of a turn.
 
 ## See also

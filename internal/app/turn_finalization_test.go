@@ -134,7 +134,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				}
 			}
 			if mode == "session-replaced" {
-				replacement, err := store.Create(session.CreateOptions{ID: "replacement"})
+				replacement, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
 				if err != nil {
 					t.Fatal(err)
 				}

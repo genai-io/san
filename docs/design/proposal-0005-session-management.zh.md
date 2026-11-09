@@ -12,7 +12,8 @@
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 已合并：提交批次（`Writer.Commit`、`Store.Batches`）。 |
 | [#737](https://github.com/genai-io/san/pull/737) | 已合并：项目/worktree 身份、检出本地配置、私有 writer 后的类型化事件，采用上一版草案的 18 类模型。在任何 runtime 切换前收敛到本设计。runtime 仍写 schema 4。 |
 | [#738](https://github.com/genai-io/san/pull/738) | 已合并：core 中可选的 SDK 准入边界。 |
-| runtime 切换、生命周期（回收站/保留） | 未开始；规格见下文。切换是破坏性变更（见[兼容性](#兼容性)）。 |
+| 类型化存储与公共 API | 已实现：13 类事件、blob、attrs、缓存、list/fork/clean 和打开的类型化会话；尚未接入 runtime。 |
+| runtime 切换 | 录制、runtime 恢复、子代理和最终切换仍待完成。切换是破坏性变更（见[兼容性](#兼容性)）。 |
 
 ## 模型
 
@@ -307,7 +308,7 @@ func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
 func (s *Store) Get(ctx context.Context, id string) (Overview, error)
-func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
+func (s *Store) List(ctx context.Context, q ListQuery) (ListPage, error)
 func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
 func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
 func (s *Store) Delete(ctx context.Context, id string) error
@@ -316,6 +317,10 @@ func (s *Store) Clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 func (s *Store) Close() error
 
 func (s *Session) ID() string
+func (s *Session) Path() string
+func (s *Session) Err() error
+func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (string, error)
+func (s *Session) Request(ctx context.Context, digest string) (StandaloneRequest, error)
 func (s *Session) Append(ctx context.Context, events ...Event) error // one batch
 func (s *Session) Snapshot() Projection                              // in-memory, committed only
 func (s *Session) Close() error                                      // drain, release lock
@@ -331,12 +336,15 @@ func (s *Session) Close() error                                      // drain, r
 - `SetAttrs` 无需 writer 锁即可修改用户标题、归档和固定，因此选择器可以整理另一进程正打开的会话。
 - 错误可区分：不存在、忙碌、已关闭、冲突、无效、不支持的版本、损坏、取消、存储错误。
 
-当前 `Store`（`Create/Open/List/Fork/Delete`、`Append(transcript.Record)`、立即删除）演进为上述接口；
+运行时仍使用 `LegacyStore`（`Create/Open/List/Fork/Delete`、`Append(transcript.Record)`、立即删除）；
+上述类型化 API 已独立实现，录制、恢复和最终使用方切换仍待完成。
 使用方保留窄的本地接口，通用部分移入 sdk-go。
 
 ## 生命周期与保留
 
-会话数据有两类，分开存放：
+会话数据有两类，分开存放。
+项目 `.locks/<sid>` 路径仅用于临时协调，不是权威对话数据；追加校验与提交同 attrs、
+回收站移动/恢复及 blob 回收共用短暂的元数据锁。请求 blob 在引用提交前同步：
 
 | | `sessions/<sid>/attrs.json` | `cache/<sid>.json` |
 | --- | --- | --- |

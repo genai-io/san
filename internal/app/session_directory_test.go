@@ -40,7 +40,7 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 	t.Cleanup(group.Forget)
 	original := m.services.Session
 	permissions := m.env.SessionPermissions
-	target := mustCreateSession(t, store, session.CreateOptions{ID: "other", Cwd: t.TempDir()})
+	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "other", Cwd: t.TempDir()})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 func TestResumeDirectorySameDirectorySucceeds(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
-	target := mustCreateSession(t, store, session.CreateOptions{ID: "other", Cwd: m.env.CWD})
+	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "other", Cwd: m.env.CWD})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -87,12 +87,12 @@ func TestACPResumeDirectoryGuard(t *testing.T) {
 	if err := os.Mkdir(other, 0700); err != nil {
 		t.Fatal(err)
 	}
-	store, err := session.OpenStore(t.Context(), root)
+	store, err := session.OpenLegacyStore(t.Context(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	target := mustCreateSession(t, store, session.CreateOptions{ID: "saved", Cwd: root})
+	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "saved", Cwd: root})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}

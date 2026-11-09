@@ -24,12 +24,12 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 	}
 	for _, live := range []bool{false, true} {
 		t.Run(map[bool]string{false: "snapshot", true: "live"}[live], func(t *testing.T) {
-			store, err := NewStoreWithDir(t.TempDir())
+			store, err := NewLegacyStoreWithDir(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if live {
-				w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+				w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 				defer w.Close()
 				for _, m := range messages {
 					w.RecordEvent(sdkagent.MessageAdded{Message: m})
@@ -37,10 +37,10 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 				if err := w.Err(); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := store.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: messages}); err != nil {
+			} else if err := store.importHistory(&LegacyHistory{Metadata: LegacyMetadata{ID: "s"}, Messages: messages}); err != nil {
 				t.Fatal(err)
 			}
-			loaded, err := store.Read("s", ReadOptions{})
+			loaded, err := store.Read("s", LegacyReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +52,7 @@ func TestMessagesSurviveWriteAndResumeUnchanged(t *testing.T) {
 }
 
 func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := ai.Message{ID: "m", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "call", Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/source/call]")})}}
-	if err := store.importHistory(&History{Metadata: Metadata{ID: "source", CreatedAt: time.Unix(100, 0)}, Messages: []ai.Message{message}}); err != nil {
+	if err := store.importHistory(&LegacyHistory{Metadata: LegacyMetadata{ID: "source", CreatedAt: time.Unix(100, 0)}, Messages: []ai.Message{message}}); err != nil {
 		t.Fatal(err)
 	}
 	before := readAllRecords(t, store.projectDir, "source")
@@ -72,7 +72,7 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 	if err := store.Delete("source"); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Read(fork.Metadata.ID, ReadOptions{})
+	resumed, err := store.Read(fork.Metadata.ID, LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,14 +88,14 @@ func TestForkOwnsItsToolOutputAndPreservesHistoryTime(t *testing.T) {
 }
 
 func TestSessionRecordsActualModelAndMonotonicInferences(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
+	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
 	w.RecordEvent(sdkagent.InferenceStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "actual"}), Options: []ai.Option{ai.WithMaxTokens(42)}}})
 	w.Close()
-	w = mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
+	w = mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main", Provider: "initial", Model: "initial", MaxTokens: 100})
 	defer w.Close()
 	w.RecordEvent(sdkagent.InferenceStart{Turn: 1, Attempt: 1, Inference: &sdkagent.Inference{Client: ai.NewClientWithDriver(aitest.Always(aitest.Says("ok")), ai.Model{ID: "second"})}})
 	records := readAllRecords(t, store.projectDir, "s")
@@ -141,12 +141,12 @@ func TestRestoreProjectsInlineImagesWithoutModelOnlySourceNote(t *testing.T) {
 }
 
 func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	history := []ai.Message{{ID: "old", Role: ai.RoleUser, Content: ai.TextContent("old")}}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	defer w.Close()
 	w.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
 	before := len(readAllRecords(t, store.projectDir, "s"))
@@ -158,7 +158,7 @@ func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *tes
 	}
 	w.RecordEvent(sdkagent.MessagesReplaced{})
 	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new", Role: ai.RoleUser, Content: ai.TextContent("new")}})
-	loaded, err := store.Read("s", ReadOptions{})
+	loaded, err := store.Read("s", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +168,11 @@ func TestRepeatedResumeDoesNotCopyHistoryAndReplacementDoesNotResurrectIt(t *tes
 }
 
 func TestForkPreservesToolPresentationAndNativeResult(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "source", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "source", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	w.RecordEvent(sdkagent.ToolEnd{ID: "call", Result: sdkagent.Result{Details: toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "diff"}}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Edit", Content: ai.TextContent("edited")})
 	result.ID = "result"
@@ -197,7 +197,7 @@ func TestForkPreservesToolPresentationAndNativeResult(t *testing.T) {
 }
 
 func TestForkOwnsPathsUsedByTextOnlyImageInput(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestForkOwnsPathsUsedByTextOnlyImageInput(t *testing.T) {
 	}
 	msg := core.UserMessage("read "+imagePath, nil)
 	msg.ID = "image"
-	if err := store.importHistory(&History{Metadata: Metadata{ID: "source"}, Messages: []core.Message{msg}}); err != nil {
+	if err := store.importHistory(&LegacyHistory{Metadata: LegacyMetadata{ID: "source"}, Messages: []core.Message{msg}}); err != nil {
 		t.Fatal(err)
 	}
 	forkSession, fork, err := store.Fork("source")
@@ -233,20 +233,20 @@ func TestForkOwnsPathsUsedByTextOnlyImageInput(t *testing.T) {
 
 func TestHistoryImportCannotWriteIntoAnotherActiveSession(t *testing.T) {
 	dir := t.TempDir()
-	first, err := NewStoreWithDir(dir)
+	first, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := mustSession(t, first.transcriptStore, CreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	w := mustSession(t, first.transcriptStore, LegacyCreateOptions{ID: "s", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	w.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "saved", Role: ai.RoleUser, Content: ai.TextContent("saved")}})
-	second, err := NewStoreWithDir(dir)
+	second, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := second.importHistory(&History{Metadata: Metadata{ID: "s"}, Messages: []core.Message{{ID: "other", Role: ai.RoleUser, Content: ai.TextContent("other")}}}); err == nil {
+	if err := second.importHistory(&LegacyHistory{Metadata: LegacyMetadata{ID: "s"}, Messages: []core.Message{{ID: "other", Role: ai.RoleUser, Content: ai.TextContent("other")}}}); err == nil {
 		t.Fatal("snapshot bypassed writer ownership")
 	}
-	got, err := first.Read("s", ReadOptions{})
+	got, err := first.Read("s", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

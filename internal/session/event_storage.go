@@ -1,6 +1,6 @@
 package session
 
-// Private typed-event persistence under sessions/<sid>/. Ordinary Store.Create/Open remain schema 4.
+// Typed-event persistence under sessions/<sid>/. The runtime still uses LegacyStore.
 import (
 	"context"
 	"encoding/json"
