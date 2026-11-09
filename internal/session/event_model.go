@@ -76,11 +76,15 @@ func (p *PatchField[T]) UnmarshalJSON(b []byte) error {
 }
 
 type GenerationOptions struct {
-	Version       int       `json:"version"`
-	MaxTokens     *int      `json:"max_tokens,omitempty"`
-	Temperature   *float64  `json:"temperature,omitempty"`
-	Effort        ai.Effort `json:"effort,omitempty"`
-	StopSequences []string  `json:"stop_sequences,omitempty"`
+	Version        int               `json:"version"`
+	MaxTokens      *int              `json:"max_tokens,omitempty"`
+	Temperature    *float64          `json:"temperature,omitempty"`
+	Effort         ai.Effort         `json:"effort,omitempty"`
+	StopSequences  []string          `json:"stop_sequences,omitempty"`
+	ToolChoice     ai.ToolChoice     `json:"tool_choice,omitzero"`
+	CacheRetention ai.CacheRetention `json:"cache_retention,omitempty"`
+	Schema         *ai.Schema        `json:"schema,omitempty"`
+	SamplingParams map[string]any    `json:"sampling_params,omitempty"`
 }
 type AutopilotPolicy struct {
 	Version  int `json:"version"`

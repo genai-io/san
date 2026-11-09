@@ -23,10 +23,33 @@ a writer; attrs may change while it is open.
 `CleanOptions.Limit` bounds retention and purge together, and ID selection applies
 before deletion, including interrupted purges.
 
+`inference.go` adds `StartInference`, `Inference.Finish`, and `InferenceRequest`.
+Admission compares the effective request with the projected prompt, toolset and
+repaired context under the session write lock; mismatches use a durable standalone
+request copy. Resolved generation settings retain native tool choice, schema,
+cache and sampling options. Finishes commit accepted results and usage together;
+compaction keeps the prefix captured at admission. Historical requests rebuild
+from that prefix, not the session's current state.
+
+`recorder.go` adapts core's inference/tool/output admissions and `RecordEvent`.
+Install them together: observations alone cannot fence effects. Policy owners
+must call `Decide` with the real authority/scope before authorizing a tool; the
+tool admission requires that committed allow. SDK `ToolEnd.Started` distinguishes
+execution from a rejected or unadmitted call. Canonical output shares a batch with
+its inference/tool outcomes; raw tool details stay separate from filtered model
+content. If output is aborted, completed tool outcomes still persist without
+inventing conversation messages. Observer failures stop the next admission.
+`RecordHook` is an explicit
+durable completion, not a replacement for the hook engine's nonblocking audit
+callback. Tests in `inference_test.go` and `recorder_test.go` exercise the real SDK
+loop and injected write failures. The SDK contracts are in
+[sdk-go #109](https://github.com/genai-io/sdk-go/pull/109).
+
 Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
-under `transcripts/`. There is no dual write or automatic conversion. The
-[cutover design](../design/proposal-0005-session-management.md) tracks recorder,
-resume and the final switch separately. Public API coverage is in
+under `transcripts/`. There is no dual write or automatic conversion. Per-attempt
+utility calls and resolved policy/hook handoffs still need production integration.
+The [cutover design](../design/proposal-0005-session-management.md) tracks that,
+runtime resume and the final switch separately. Public API coverage is in
 `typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.
 
 ## Current runtime (legacy)

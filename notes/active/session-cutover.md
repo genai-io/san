@@ -21,8 +21,13 @@ every piece ready and tested while unwired, then switch once and delete the old 
    `Path`, `Err`, `Append`, `Snapshot`, `PutRequest`, `Request`, `Close`) wrap the
    typed storage. Tests cover atomic batches, concurrent appends, provenance,
    standalone requests, lifecycle and scoped cleanup. Runtime still uses `Legacy*`.
-3. **Recorder.** Maps runtime events to typed events, with golden tests on recorded
-   agent runs:
+3. **Recorder (core adapters done; unwired).** `recorder.go` maps runtime
+   admissions and observations; `inference.go` records/rebuilds every purpose's
+   effective request and atomically commits results with finishes. Real-agent
+   golden sequences cover the turn/tool path, denied calls and write failures.
+   sdk-go [#109](https://github.com/genai-io/sdk-go/pull/109) supplies native tool
+   choice JSON and reliable tool execution evidence. Production utility-call,
+   resolved permission and prompt-hook handoffs still need integration:
 
    | Runtime source | Typed events |
    | --- | --- |
@@ -54,6 +59,7 @@ every piece ready and tested while unwired, then switch once and delete the old 
 ## Open items
 
 - Event pages by offset need `Store.BatchesFrom` in sdk-go; until then each page reads the prefix.
+- Classify the model call in `internal/agent/memory_recall.go` before utility integration.
 - Retention age is not a setting yet; `Clean` takes it as an option.
 - Decide at step 6 whether `internal/session` keeps `Store`/`Session` or the typed
   pieces move to a leaner package; the rename in step 1 keeps either possible.
