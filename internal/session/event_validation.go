@@ -288,7 +288,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 			return invalidEvent("invalid permission decision")
 		}
 		switch v.By {
-		case ByConfig, ByMode, ByGrant, ByUser, ByHook, ByReviewer:
+		case ByConfig, ByMode, ByGrant, ByUser, ByHook, ByJudge:
 		default:
 			return invalidEvent("invalid decider")
 		}
@@ -360,7 +360,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 
 func (p *Projection) validateInferenceStart(v InferenceStartPayload) error {
 	switch v.Purpose {
-	case PurposeTurn, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeReviewer, PurposeHook, PurposeAutopilot, PurposeGroup:
+	case PurposeTurn, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeJudge, PurposeHook, PurposeAutopilot, PurposeGroup:
 	default:
 		return invalidEvent("unknown inference purpose %q", v.Purpose)
 	}

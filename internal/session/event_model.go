@@ -172,7 +172,7 @@ const (
 	PurposeRecap      = "recap"
 	PurposeSuggest    = "suggest"
 	PurposeCompaction = "compaction"
-	PurposeReviewer   = "reviewer"
+	PurposeJudge      = "judge"
 	PurposeHook       = "hook"
 	PurposeAutopilot  = "autopilot"
 	PurposeGroup      = "group"
@@ -214,12 +214,12 @@ type InferenceFinishPayload struct {
 // Permission deciders. Grant is an earlier session-scoped approval and is never
 // restored on resume.
 const (
-	ByConfig   = "config"
-	ByMode     = "mode"
-	ByGrant    = "grant"
-	ByUser     = "user"
-	ByHook     = "hook"
-	ByReviewer = "reviewer"
+	ByConfig = "config"
+	ByMode   = "mode"
+	ByGrant  = "grant"
+	ByUser   = "user"
+	ByHook   = "hook"
+	ByJudge  = "judge"
 )
 
 // Asked keeps what the person was shown when a decision needed asking.
