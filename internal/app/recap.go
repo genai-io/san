@@ -61,12 +61,11 @@ type recapReadyMsg struct {
 // one through prepareRecapAtTurnEnd.
 func (m *model) onBlur() tea.Cmd {
 	m.unfocusedSince = time.Now()
-	after := m.env.AutoPilot.RecapAfter()
-	if after == 0 || !m.recapDue() || m.hasDraft() {
+	if !m.shouldAutoRecap() {
 		return nil
 	}
 	since := m.unfocusedSince
-	return tea.Tick(min(after, recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
+	return tea.Tick(min(m.env.AutoPilot.RecapAfter(), recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
 }
 
 // onFocus ends an absence: the input hint skipped meanwhile is fetched, and
@@ -81,9 +80,8 @@ func (m *model) onFocus() tea.Cmd {
 // enough and the session is idle. Returning mid-turn skips this automatic
 // recap; it must not interrupt tool calls or appear unexpectedly later.
 func (m *model) recapOnReturn(since time.Time) tea.Cmd {
-	after := m.env.AutoPilot.RecapAfter()
-	if since.IsZero() || after == 0 || time.Since(since) < after ||
-		m.conv.Stream.Active || !m.recapDue() || m.hasDraft() {
+	if since.IsZero() || time.Since(since) < m.env.AutoPilot.RecapAfter() ||
+		m.conv.Stream.Active || !m.shouldAutoRecap() {
 		return nil
 	}
 	return m.deliverRecap()
@@ -95,7 +93,7 @@ func (m *model) recapNow() tea.Cmd {
 		m.conv.AddNotice("No model connected.")
 		return nil
 	}
-	if !m.recapWanted() {
+	if !m.canRecap() {
 		m.conv.AddNotice("Nothing to recap yet.")
 		return nil
 	}
@@ -127,10 +125,7 @@ func (m *model) deliverRecap() tea.Cmd {
 // written on return. Called when the cache window comes up and when the
 // session goes idle after it.
 func (m *model) prepareRecap() tea.Cmd {
-	if m.unfocusedSince.IsZero() || m.recap.busy || m.env.AutoPilot.RecapAfter() == 0 || !m.recapDue() || m.hasDraft() || !m.sessionQuiet() {
-		return nil
-	}
-	if m.recapReady() {
+	if m.unfocusedSince.IsZero() || m.recap.busy || !m.shouldAutoRecap() || !m.sessionQuiet() || m.recapReady() {
 		return nil
 	}
 	return m.writeRecap()
@@ -154,16 +149,17 @@ func (m *model) recapReady() bool {
 	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen()
 }
 
-// recapWanted reports whether there is a conversation to recap.
-func (m *model) recapWanted() bool {
+// canRecap reports whether there is a conversation to recap.
+func (m *model) canRecap() bool {
 	return m.env.LLMProvider != nil && !m.conv.Compact.Active && m.assistantReplies() > 0
 }
 
-// recapDue reports whether an unasked recap has new ground to cover. Use the
-// recorded notice rather than process-local state so a resumed session does not
-// recap the same completed work again.
-func (m *model) recapDue() bool {
-	if !m.recapWanted() || m.turns() < recapMinTurns {
+// shouldAutoRecap gates every unasked recap: the feature is on, the session has
+// new ground to cover and the user is not already typing. New ground is read
+// from the recorded recap notice rather than process-local state, so a resumed
+// session does not recap the same completed work again.
+func (m *model) shouldAutoRecap() bool {
+	if m.env.AutoPilot.RecapAfter() == 0 || !m.canRecap() || m.hasDraft() || m.turns() < recapMinTurns {
 		return false
 	}
 	since := 0
@@ -243,11 +239,14 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if !show {
-		m.recap.ready = msg
-		return nil
+	if show {
+		return m.showRecap(msg)
 	}
-	return m.showRecap(msg)
+	m.recap.ready = msg
+	if !m.unfocusedSince.IsZero() && m.recapReady() && m.sessionQuiet() && !m.hasDraft() {
+		return m.showRecap(msg)
+	}
+	return nil
 }
 
 // showRecap adds the recap to the conversation as a notice the agent never
