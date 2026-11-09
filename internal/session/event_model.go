@@ -1,7 +1,7 @@
 package session
 
-// Typed events. Ordinary Store.Create/Open remain schema 4; this model is
-// deliberately not connected to Session's writer yet (see the delivery plan in
+// Typed events persisted by Store and Session. Runtime producers still use
+// LegacySession until the single format switch (see the delivery plan in
 // docs/design/proposal-0005-session-management.md).
 import (
 	"bytes"

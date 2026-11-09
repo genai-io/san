@@ -51,10 +51,17 @@ func (b blobStore) path(digest string) (string, error) {
 func (b blobStore) Put(data []byte) (string, error) {
 	digest := blobDigest(data)
 	path, _ := b.path(digest)
-	if old, err := os.ReadFile(path); err == nil && blobDigest(old) == digest {
-		return digest, nil
+	if old, err := os.ReadFile(path); err != nil || blobDigest(old) != digest {
+		if err := atomicfile.Write(path, data, 0o600); err != nil {
+			return "", err
+		}
 	}
-	return digest, atomicfile.Write(path, data, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return "", err
+	}
+	err = f.Sync()
+	return digest, errors.Join(err, f.Close())
 }
 
 // Get returns the content for digest, verifying it. A missing blob is

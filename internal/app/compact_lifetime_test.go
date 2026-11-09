@@ -81,7 +81,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "replace":
-				opened, err := store.Create(session.CreateOptions{ID: "replacement"})
+				opened, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -128,7 +128,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "replace":
-					opened, err := store.Create(session.CreateOptions{ID: "replacement"})
+					opened, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -155,7 +155,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				m.OnCompactStart(99)
 				pending := m.pendingCompaction
 				before := m.services.Agent.Messages()
-				history, err := store.Read(m.sessionID(), session.ReadOptions{FullHistory: true})
+				history, err := store.Read(m.sessionID(), session.LegacyReadOptions{FullHistory: true})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -163,7 +163,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				if cmd := m.HandleCompactResult(msg); cmd != nil {
 					t.Fatal("stale result produced command")
 				}
-				afterHistory, err := store.Read(m.sessionID(), session.ReadOptions{FullHistory: true})
+				afterHistory, err := store.Read(m.sessionID(), session.LegacyReadOptions{FullHistory: true})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -243,7 +243,7 @@ func TestManualCompactionCompletedResultOwnership(t *testing.T) {
 			if m.pendingCompaction != nil || request.Ctx.Err() == nil {
 				t.Fatal("completed request retained ownership")
 			}
-			loaded, err := store.Read("s", session.ReadOptions{})
+			loaded, err := store.Read("s", session.LegacyReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,7 +289,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 			m.services.sessionID = "unopened"
 			if fail {
 				// An already leased writer cannot be replaced by a new Create.
-				opened, err := store.Create(session.CreateOptions{ID: "unopened"})
+				opened, err := store.Create(session.LegacyCreateOptions{ID: "unopened"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -307,7 +307,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 					t.Fatal("failed recording replaced history")
 				}
 			} else {
-				loaded, err := store.Read("unopened", session.ReadOptions{})
+				loaded, err := store.Read("unopened", session.LegacyReadOptions{})
 				if err != nil || len(loaded.Messages) != 1 || !reflect.DeepEqual(loaded.Messages, m.services.Agent.Messages()) {
 					t.Fatalf("unopened summary was not recorded: %v", err)
 				}

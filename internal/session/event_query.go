@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/genai-io/san/internal/transcript"
 	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
@@ -47,10 +46,7 @@ type eventCursor struct {
 // prefix fails instead of silently restarting. Legacy records are not converted.
 // This does not make typed logs resumable through the existing runtime.
 func (s *Store) Events(ctx context.Context, id string, query EventQuery) (EventPage, error) {
-	if err := ctx.Err(); err != nil {
-		return EventPage{}, err
-	}
-	if err := transcript.ValidateStorageID(id); err != nil {
+	if err := s.checkID(ctx, id); err != nil {
 		return EventPage{}, err
 	}
 	limit := query.Limit
@@ -78,8 +74,6 @@ func (s *Store) Events(ctx context.Context, id string, query EventQuery) (EventP
 		tailLimit = &cursor.Tail
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	projection, tail, err := s.replayEvents(ctx, id, tailLimit)
 	if err != nil {
 		return EventPage{}, err

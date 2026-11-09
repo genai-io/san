@@ -31,8 +31,8 @@ type services struct {
 	LLM          *llm.Conn
 	Tool         *tool.Registry
 	Hook         *hook.Engine
-	Session      *session.Session
-	SessionStore *session.Store
+	Session      *session.LegacySession
+	SessionStore *session.LegacyStore
 	sessionID    string
 	Skill        *skill.Registry
 	Subagent     *subagent.Registry

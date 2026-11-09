@@ -30,7 +30,7 @@ import (
 )
 
 var appCwd string
-var appSessionStore *session.Store
+var appSessionStore *session.LegacyStore
 var appSessionID string
 
 func initInfrastructure() error {
@@ -66,7 +66,7 @@ func initInfrastructure() error {
 
 	// Phase 4: session
 	var err error
-	appSessionStore, err = session.NewStore(appCwd)
+	appSessionStore, err = session.NewLegacyStore(appCwd)
 	if err != nil {
 		return err
 	}

@@ -139,11 +139,11 @@ func TestPurgeHonoursDeadlineDryRunAndUnknownAge(t *testing.T) {
 		t.Fatal(err)
 	}
 	early := t0.Add(trashRetention - time.Second)
-	if got, err := lib.purge(ctx, early, false); err != nil || len(got) != 0 {
+	if got, _, err := lib.purge(ctx, early, false, nil, -1); err != nil || len(got) != 0 {
 		t.Fatalf("purged before the deadline: %v %v", got, err)
 	}
 	due := t0.Add(trashRetention)
-	if got, err := lib.purge(ctx, due, true); err != nil || len(got) != 1 {
+	if got, _, err := lib.purge(ctx, due, true, nil, -1); err != nil || len(got) != 1 {
 		t.Fatalf("dry run: %v %v", got, err)
 	}
 	if _, err := os.Stat(lib.trashDir("session")); err != nil {
@@ -153,7 +153,7 @@ func TestPurgeHonoursDeadlineDryRunAndUnknownAge(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(lib.trashDir("session"), deletedFile), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := lib.purge(ctx, due.Add(1000*time.Hour), false); len(got) != 0 {
+	if got, _, _ := lib.purge(ctx, due.Add(1000*time.Hour), false, nil, -1); len(got) != 0 {
 		t.Fatal("purged a session of unknown age")
 	}
 	data := `{"deleted_at":` + strconv.FormatInt(t0.UnixMilli(), 10) + `}`
@@ -165,8 +165,8 @@ func TestPurgeHonoursDeadlineDryRunAndUnknownAge(t *testing.T) {
 	if err := os.MkdirAll(left, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.purge(ctx, due, false)
-	if err != nil || len(got) != 1 || got[0] != "session" {
+	got, _, err := lib.purge(ctx, due, false, nil, -1)
+	if err != nil || len(got) != 2 || got[0] != "session" || got[1] != "old" {
 		t.Fatalf("purge: %v %v", got, err)
 	}
 	entries, _ := os.ReadDir(lib.trashRoot())

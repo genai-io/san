@@ -10,11 +10,11 @@ import (
 )
 
 func TestBashTailSurvivesResumeAndFork(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "source", AgentID: "main"})
+	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "source", AgentID: "main"})
 	details := toolresult.BashDetails{LineCount: 128, Tail: "last one\nlast two\n"}
 	w.RecordEvent(sdkagent.ToolEnd{ID: "call", Name: "Bash", Result: sdkagent.Result{Details: details}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Bash", Content: ai.TextContent("model-facing output")})
@@ -23,7 +23,7 @@ func TestBashTailSurvivesResumeAndFork(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	check := func(history *History) {
+	check := func(history *LegacyHistory) {
 		t.Helper()
 		rows := history.ChatRows()
 		if len(rows) != 1 {
@@ -36,7 +36,7 @@ func TestBashTailSurvivesResumeAndFork(t *testing.T) {
 			t.Fatal("native result changed")
 		}
 	}
-	history, err := store.Read("source", ReadOptions{})
+	history, err := store.Read("source", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

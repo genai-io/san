@@ -153,7 +153,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// calls in isolation. The recap row surfaces this fork ID.
 		var forkOnEvent func(core.Event)
 		var forkSessionID string
-		rec, err := sessionStore.Create(session.CreateOptions{AgentID: "selflearn-review", Provider: params.Provider.Name(), Model: params.ModelID, MaxTokens: params.MaxTokens, ParentSessionID: parentSessionID, Sidechain: true})
+		rec, err := sessionStore.Create(session.LegacyCreateOptions{AgentID: "selflearn-review", Provider: params.Provider.Name(), Model: params.ModelID, MaxTokens: params.MaxTokens, ParentSessionID: parentSessionID, Sidechain: true})
 		if err != nil {
 			log.Logger().Warn("could not open self-learning session", zap.Error(err))
 			return

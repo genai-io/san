@@ -4,11 +4,11 @@ import "testing"
 
 func TestCreateWorkspaceMetadataRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	store, err := NewStoreWithDir(dir)
+	store, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := store.Create(CreateOptions{ID: "identity", Workspace: "/worktrees/topic", Cwd: "/worktrees/topic/sub"})
+	created, err := store.Create(LegacyCreateOptions{ID: "identity", Workspace: "/worktrees/topic", Cwd: "/worktrees/topic/sub"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,12 +18,12 @@ func TestCreateWorkspaceMetadataRoundTrip(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = NewStoreWithDir(dir)
+	store, err = NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	history, err := store.Read("identity", ReadOptions{})
+	history, err := store.Read("identity", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,11 +23,11 @@ import (
 func TestClearStartsAFreshDurableSession(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TASK_LIST_ID", "")
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := mustCreateSession(t, store, session.CreateOptions{ID: "old", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
+	old := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "old", AgentID: "main", Provider: "test", Model: "model", MaxTokens: 100})
 	history := []ai.Message{{ID: "old-message", Role: ai.RoleUser, Content: ai.TextContent("old text")}}
 	old.RecordEvent(sdkagent.MessageAdded{Message: history[0]})
 	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.New(), Hook: hook.NewEngine(nil, "old", "", old.TranscriptPath())}, conv: conv.NewModel(80)}
@@ -58,7 +58,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	}
 	w.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "new-message", Role: ai.RoleUser, Content: ai.TextContent("new text")}})
 	for sessionID, want := range map[string]string{"old": "old-message", id: "new-message"} {
-		got, err := store.Read(sessionID, session.ReadOptions{})
+		got, err := store.Read(sessionID, session.LegacyReadOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func initClearSessionTest(t *testing.T, m *model) {
 	m.env.FileCache = filecache.New()
 }
 
-func mustCreateSession(t *testing.T, store *session.Store, opts session.CreateOptions) *session.Session {
+func mustCreateSession(t *testing.T, store *session.LegacyStore, opts session.LegacyCreateOptions) *session.LegacySession {
 	t.Helper()
 	opened, err := store.Create(opts)
 	if err != nil {

@@ -2,324 +2,232 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"slices"
-	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/transcript"
 )
 
+// Store is one project's typed sessions: a directory per session under
+// sessions/, with their trash, cache and listings. It knows the project it
+// belongs to and nothing about the runtime or the current selection.
 type Store struct {
-	mu              sync.RWMutex
-	cwd             string
-	projectID       string
-	projectDir      string
-	project         *projectIdentity
-	workspace       string
-	transcriptStore *transcript.Store
+	cwd        string
+	projectID  string
+	projectDir string
+	project    *projectIdentity
+	workspace  string
+	closed     atomic.Bool
 }
 
-// NewStore opens the project containing cwd. Use OpenStore when cancellation is available.
-func NewStore(cwd string) (*Store, error) {
-	return OpenStore(context.Background(), cwd)
-}
-
-// OpenStore identifies a project without moving existing session files.
-func OpenStore(ctx context.Context, cwd string) (*Store, error) {
+// OpenStore identifies the project containing startDir and opens its store.
+func OpenStore(ctx context.Context, startDir string) (*Store, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	homeDir, err := os.UserHomeDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-	project, err := resolveProject(ctx, homeDir, cwd)
+	project, err := resolveProject(ctx, home, startDir)
 	if err != nil {
 		return nil, err
 	}
-	txStore, err := transcript.NewStore(project.Root, project.ID)
-	if err != nil {
-		return nil, err
-	}
-	return &Store{
-		cwd:             project.InitialCwd,
-		projectID:       project.ID,
-		projectDir:      project.Root,
-		project:         &project,
-		workspace:       project.Workspace,
-		transcriptStore: txStore,
-	}, nil
+	return &Store{cwd: project.InitialCwd, projectID: project.ID, projectDir: project.Root, project: &project, workspace: project.Workspace}, nil
 }
 
-func NewStoreWithDir(dir string) (*Store, error) {
+// openStoreIn opens a store rooted at dir with dir itself as the workspace. It
+// skips project resolution, for tests and tools that already own the directory.
+func openStoreIn(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
-	txStore, err := transcript.NewStore(dir, ProjectID(dir))
-	if err != nil {
-		return nil, fmt.Errorf("create transcript store: %w", err)
-	}
-	return &Store{
-		cwd:             dir,
-		projectID:       ProjectID(dir),
-		projectDir:      dir,
-		workspace:       dir,
-		transcriptStore: txStore,
-	}, nil
+	return &Store{cwd: dir, projectID: ProjectID(dir), projectDir: dir, workspace: dir}, nil
 }
 
-// Close releases store resources after all opened sessions have closed.
+// Close prevents new operations. Sessions opened from the store must be closed first.
 func (s *Store) Close() error {
-	return s.transcriptStore.Close()
+	s.closed.Store(true)
+	return nil
 }
 
-// TranscriptPath returns the session's JSONL path.
-func (s *Store) TranscriptPath(sessionID string) string {
-	if s.transcriptStore != nil {
-		return s.transcriptStore.TranscriptPath(sessionID)
-	}
-	return filepath.Join(s.projectDir, "transcripts", sessionID+".jsonl")
-}
-
-func (s *Store) List() ([]Summary, error) {
-	return s.ListContext(context.Background())
-}
-
-// ListContext lists picker metadata and stops cold-cache recovery on cancellation.
-func (s *Store) ListContext(ctx context.Context) ([]Summary, error) {
-	return s.transcriptStore.List(ctx, s.projectID, transcript.ListOptions{})
-}
-
-func (s *Store) Delete(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := s.transcriptStore.Delete(context.Background(), id); err != nil {
+func (s *Store) check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return errors.Join(os.RemoveAll(s.toolResultsDir(id)), os.RemoveAll(s.ImagesDir(id)))
+	if s.closed.Load() {
+		return ErrClosed
+	}
+	return nil
 }
 
-// ReadOptions selects which messages to read from the selected branch.
-// The zero value reads only the active context used for restore.
-type ReadOptions struct {
-	FullHistory bool // Include messages before compaction.
+func (s *Store) checkID(ctx context.Context, id string) error {
+	if err := s.check(ctx); err != nil {
+		return err
+	}
+	return transcript.ValidateStorageID(id)
 }
 
-// Read returns native history without projecting UI rows or hydrating display assets.
-func (s *Store) Read(id string, opts ReadOptions) (*History, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.readHistory(context.Background(), id, opts.FullHistory)
+// CreateOptions fixes a session's identity. Omitted values use the store's
+// workspace and startup directory, agent "main", and a generated ID.
+type CreateOptions struct {
+	ID         string
+	Workspace  string
+	InitialCWD string
+	AgentID    string
+	Config     *EventConfig
+	Parent     *ParentLink
+	CreatedAt  time.Time
 }
 
-// Create opens a new durable session. The caller owns it until Close.
-func (s *Store) Create(opts CreateOptions) (*Session, error) {
+// Create commits the identity before returning its writer handle.
+func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error) {
+	if opts.ID == "" {
+		opts.ID = NewSessionID()
+	}
+	if err := s.checkID(ctx, opts.ID); err != nil {
+		return nil, err
+	}
 	if opts.Workspace == "" {
 		opts.Workspace = s.workspace
-	} else if s.project != nil {
-		workspace, err := validateProjectWorkspace(context.Background(), *s.project, opts.Workspace)
+	}
+	if opts.InitialCWD == "" {
+		opts.InitialCWD = s.cwd
+	}
+	if opts.AgentID == "" {
+		opts.AgentID = "main"
+	}
+	if opts.CreatedAt.IsZero() {
+		opts.CreatedAt = time.Now()
+	}
+	validation := EventValidationContext{}
+	if opts.Parent != nil {
+		if err := transcript.ValidateStorageID(opts.Parent.Session); err != nil {
+			return nil, err
+		}
+		parent, err := s.readEvents(ctx, opts.Parent.Session, nil)
 		if err != nil {
 			return nil, err
 		}
-		opts.Workspace = workspace
-		if opts.Cwd == "" {
-			opts.Cwd = workspace
+		ancestors := []string{opts.Parent.Session}
+		if link := parent.projection.Identity().Parent; link != nil {
+			ancestors = append(ancestors, parent.validation.ParentAncestors[link.Session]...)
 		}
+		validation.ParentAncestors = map[string][]string{opts.Parent.Session: ancestors}
+	}
+	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: opts.CreatedAt.UnixMilli(),
+		Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: opts.Workspace,
+			InitialCWD: opts.InitialCWD, AgentID: opts.AgentID, Config: opts.Config, Parent: opts.Parent}}
+	var writer *eventSession
+	err := (library{root: s.projectDir}).withLock(ctx, opts.ID, func() error {
+		var err error
+		writer, err = s.createSession(ctx, "create", opts.ID, create, validation)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Session{store: s, writer: writer}, nil
+}
+
+// Open validates the committed prefix, then claims the existing writer.
+// It preserves stored identity and never restores permissions or executes work.
+func (s *Store) Open(ctx context.Context, id string) (*Session, error) {
+	if err := s.checkID(ctx, id); err != nil {
+		return nil, err
+	}
+	var writer *eventSession
+	err := (library{root: s.projectDir}).withLock(ctx, id, func() error {
+		var err error
+		writer, err = s.openSession(ctx, id)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Session{store: s, writer: writer}, nil
+}
+
+// ForkOptions selects an inclusive event prefix; Seq zero copies the whole log.
+type ForkOptions struct {
+	ID  string // generated when omitted
+	Seq uint64
+}
+
+func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error) {
+	if err := s.checkID(ctx, id); err != nil {
+		return nil, err
 	}
 	if opts.ID == "" {
 		opts.ID = NewSessionID()
 	}
-	if err := transcript.ValidateStorageID(opts.ID); err != nil {
+	var writer *eventSession
+	err := (library{root: s.projectDir}).withLock(ctx, opts.ID, func() error {
+		var err error
+		writer, err = s.forkSession(ctx, id, opts.ID, opts.Seq, time.Now())
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
-	if exists, err := s.transcriptStore.Exists(context.Background(), opts.ID); err != nil {
-		return nil, err
-	} else if exists {
-		return nil, fmt.Errorf("session %s already exists", opts.ID)
-	}
-	if opts.Cwd == "" {
-		opts.Cwd = s.cwd
-	}
-	return newSession(s.transcriptStore, opts)
+	return &Session{store: s, writer: writer}, nil
 }
 
-// Open claims the session before reading and projecting its history once.
-func (s *Store) Open(id string) (*Session, *History, error) {
-	if err := transcript.ValidateStorageID(id); err != nil {
-		return nil, nil, err
+// Get reads a live session's generated overview without taking its writer.
+// User-chosen titles and other attributes are available on ListItem.
+func (s *Store) Get(ctx context.Context, id string) (Overview, error) {
+	if err := s.checkID(ctx, id); err != nil {
+		return Overview{}, err
 	}
-	if exists, err := s.transcriptStore.Exists(context.Background(), id); err != nil {
-		return nil, nil, err
-	} else if !exists {
-		return nil, nil, fmt.Errorf("session %s: %w", id, os.ErrNotExist)
-	}
-	if err := s.transcriptStore.CheckLegacyFormat(context.Background(), id); err != nil {
-		return nil, nil, err
-	}
-	release, err := s.transcriptStore.Claim(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	history, err := s.Read(id, ReadOptions{})
-	if err != nil {
-		return nil, nil, errors.Join(err, release())
-	}
-	opened, err := sessionFromLease(s.transcriptStore, CreateOptions{ID: id, AgentID: "main", Cwd: history.Metadata.Cwd}, release)
-	if err != nil {
-		return nil, nil, err
-	}
-	return opened, history, nil
+	return s.overview(ctx, id)
 }
 
-// Fork returns an opened copy with its own identity, assets, and writer lease.
-func (s *Store) Fork(sourceID string) (*Session, *History, error) {
-	id, err := s.copyTranscript(sourceID)
-	if err != nil {
-		return nil, nil, err
+func (s *Store) List(ctx context.Context, query ListQuery) (ListPage, error) {
+	if err := s.check(ctx); err != nil {
+		return ListPage{}, err
 	}
-	opened, history, err := s.Open(id)
-	if err != nil {
-		return nil, nil, errors.Join(err, s.Delete(id))
-	}
-	// Group membership belongs to the source identity, not its conversation.
-	if history.Metadata.Group != "" {
-		at := time.Now()
-		if err := opened.Append(context.Background(), transcript.Record{Time: at, Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Group: new("")}}); err != nil {
-			return nil, nil, errors.Join(err, opened.Close(), s.Delete(id))
-		}
-		history.Metadata.Group = ""
-		history.Metadata.UpdatedAt = at
-	}
-	return opened, history, nil
+	return s.listOverviews(ctx, query)
 }
 
-func (s *Store) copyTranscript(sourceID string) (string, error) {
-	if err := transcript.ValidateStorageID(sourceID); err != nil {
-		return "", err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	newID := NewSessionID()
-	committed := false
-	defer func() {
-		if !committed {
-			_ = os.RemoveAll(s.toolResultsDir(newID))
-			_ = os.RemoveAll(s.ImagesDir(newID))
-		}
-	}()
-	for _, paths := range [][2]string{{s.toolResultsDir(sourceID), s.toolResultsDir(newID)}, {s.ImagesDir(sourceID), s.ImagesDir(newID)}} {
-		if _, err := os.Stat(paths[0]); os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			return "", err
-		}
-		if err := os.CopyFS(paths[1], os.DirFS(paths[0])); err != nil {
-			return "", fmt.Errorf("copy fork assets: %w", err)
-		}
-	}
-	if err := s.transcriptStore.Fork(context.Background(), transcript.ForkCommand{
-		SourceSessionID: sourceID,
-		NewSessionID:    newID,
-		Time:            time.Now(),
-	}); err != nil {
-		return "", err
-	}
-	committed = true
-	return newID, nil
-}
-
-func (s *Store) PersistToolResult(sessionID, toolCallID, content string) error {
-	if err := transcript.ValidateStorageID(sessionID); err != nil {
+// SetAttrs changes user intent without taking the conversation's writer lock.
+func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error {
+	if err := s.checkID(ctx, id); err != nil {
 		return err
 	}
-	if err := transcript.ValidateStorageID(toolCallID); err != nil {
+	return (library{root: s.projectDir}).withLock(ctx, id, func() error {
+		if _, err := os.Stat(s.eventsPath(id)); err != nil {
+			return err
+		}
+		_, err := updateAttrs(s.sessionDir(id), patch)
+		return err
+	})
+}
+
+// Delete moves a closed, unpinned session to trash; it does not purge it.
+func (s *Store) Delete(ctx context.Context, id string) error {
+	if err := s.checkID(ctx, id); err != nil {
 		return err
 	}
-	dir := s.toolResultsDir(sessionID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create tool result dir: %w", err)
-	}
-	return atomicfile.Write(filepath.Join(dir, toolCallID), []byte(content), 0o644)
+	return (library{root: s.projectDir}).trash(ctx, id, time.Now())
 }
 
-// RecordSubagentConversation writes the completed child's native messages.
-func (s *Store) RecordSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (id, path string, err error) {
-	if len(messages) == 0 {
-		return "", "", nil
+func (s *Store) Restore(ctx context.Context, id string) error {
+	if err := s.checkID(ctx, id); err != nil {
+		return err
 	}
-	if title == "" {
-		title = "Subagent"
+	return (library{root: s.projectDir}).restore(ctx, id)
+}
+
+func (s *Store) Clean(ctx context.Context, opts CleanOptions) (CleanResult, error) {
+	if err := s.check(ctx); err != nil {
+		return CleanResult{}, err
 	}
-	opened, err := s.Create(CreateOptions{AgentID: "subagent", Model: modelID, Cwd: cwd, ParentSessionID: parentSessionID})
-	if err != nil {
-		return "", "", err
-	}
-	defer func() { err = errors.Join(err, opened.Close()) }()
-	messages = slices.Clone(messages)
-	for i := range messages {
-		if messages[i].ID == "" {
-			messages[i].ID = core.NewMessageID()
+	for _, id := range opts.IDs {
+		if err := transcript.ValidateStorageID(id); err != nil {
+			return CleanResult{}, err
 		}
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
-		return "", "", err
-	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new(title)}}); err != nil {
-		return "", "", err
-	}
-	return opened.ID(), opened.TranscriptPath(), nil
-}
-
-func (s *Store) toolResultsDir(sessionID string) string {
-	return filepath.Join(s.projectDir, "blobs", "tool-result", sessionID)
-}
-
-// ImagesDir is where a session's pasted images are written when a text-only
-// model has to be handed a path instead of the picture. That path is inlined
-// into a turn the transcript replays, so the file has to live as long as the
-// transcript does — next to the session's spilled tool results, gone with
-// them in Delete.
-func (s *Store) ImagesDir(sessionID string) string {
-	return filepath.Join(s.projectDir, "blobs", "image", sessionID)
-}
-
-func (s *Store) readHistory(ctx context.Context, sessionID string, includeCompacted bool) (*History, error) {
-	if s.transcriptStore == nil || sessionID == "" {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
-	}
-	load := s.transcriptStore.Load
-	if includeCompacted {
-		load = s.transcriptStore.LoadHistory
-	}
-	tx, err := load(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("load transcript %s: %w", sessionID, err)
-	}
-	if tx == nil {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
-	}
-	sess := &History{
-		Metadata:    transcript.MetadataFromTranscript(tx),
-		Notices:     tx.Notices,
-		ToolDetails: tx.ToolDetails,
-		Messages:    tx.Messages,
-		Tasks:       tx.State.Tasks,
-	}
-
-	if sess.Metadata.Title == "" {
-		sess.Metadata.Title = GenerateTitle(sess.Messages)
-	}
-	if sess.Metadata.LastPrompt == "" {
-		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Messages)
-	}
-	return sess, nil
+	return s.clean(ctx, opts)
 }

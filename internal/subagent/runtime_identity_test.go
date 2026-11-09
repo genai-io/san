@@ -13,7 +13,7 @@ import (
 )
 
 func TestRuntimeIdentityContinuationUsesOriginalCallAndFreshCallback(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestRuntimeIdentityContinuationUsesOriginalCallAndFreshCallback(t *testing.
 }
 
 func TestRuntimeIdentityForegroundPrecedesActivityAndPreservesSession(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

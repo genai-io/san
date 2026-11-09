@@ -14,7 +14,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func mustSession(t *testing.T, store *transcript.Store, opts CreateOptions) *Session {
+func mustSession(t *testing.T, store *transcript.Store, opts LegacyCreateOptions) *LegacySession {
 	t.Helper()
 	opened, err := newSession(store, opts)
 	if err != nil {
@@ -26,23 +26,23 @@ func mustSession(t *testing.T, store *transcript.Store, opts CreateOptions) *Ses
 
 func TestOpenHoldsTheLeaseBeforeRestoringHistory(t *testing.T) {
 	dir := t.TempDir()
-	a, err := NewStoreWithDir(dir)
+	a, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := NewStoreWithDir(dir)
+	b, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner := mustSession(t, a.transcriptStore, CreateOptions{ID: "s"})
-	appendMessage := func(opened *Session, id string) {
+	owner := mustSession(t, a.transcriptStore, LegacyCreateOptions{ID: "s"})
+	appendMessage := func(opened *LegacySession, id string) {
 		msg := ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}
 		if err := opened.Append(context.Background(), transcript.Record{Type: transcript.MessageAppended, Message: &msg}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	appendMessage(owner, "m1")
-	if _, err := b.Read("s", ReadOptions{}); err != nil {
+	if _, err := b.Read("s", LegacyReadOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if opened, _, err := b.Open("s"); err == nil {
@@ -67,14 +67,14 @@ func TestOpenHoldsTheLeaseBeforeRestoringHistory(t *testing.T) {
 	}
 	opened.RecordEvent(sdkagent.MessagesReplaced{Messages: history.Messages})
 	appendMessage(opened, "m3")
-	got, err := b.Read("s", ReadOptions{})
+	got, err := b.Read("s", LegacyReadOptions{})
 	if err != nil || len(got.Messages) != 3 {
 		t.Fatalf("history lost: %+v, %v", got, err)
 	}
 }
 
 func TestOpeningMissingSessionDoesNotCreateATranscript(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,11 +88,11 @@ func TestOpeningMissingSessionDoesNotCreateATranscript(t *testing.T) {
 }
 
 func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(CreateOptions{ID: "s"})
+	opened, err := store.Create(LegacyCreateOptions{ID: "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,12 +121,12 @@ func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
 	}
 }
 func TestDisplayHydrationPreservesNativeResumeHistory(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	const preview = "preview\n\n[Full output persisted to blobs/tool-result/s/c]"
-	snapshot := &History{Metadata: Metadata{ID: "s"}, Messages: []ai.Message{
+	snapshot := &LegacyHistory{Metadata: LegacyMetadata{ID: "s"}, Messages: []ai.Message{
 		{ID: "call", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "c", Name: "Bash", Input: `{}`})}},
 		{ID: "result", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "c", ToolName: "Bash", Content: ai.TextContent(preview)})}},
 	}}
@@ -155,13 +155,13 @@ func TestDisplayHydrationPreservesNativeResumeHistory(t *testing.T) {
 }
 
 // importHistory seeds a transcript through the opened session in unit tests.
-func (s *Store) importHistory(history *History) error {
+func (s *LegacyStore) importHistory(history *LegacyHistory) error {
 	if history == nil {
 		return fmt.Errorf("history is nil")
 	}
 	normalizeMetadata(&history.Metadata, history.Messages, s.cwd, time.Now())
 	meta := history.Metadata
-	opened, err := newSession(s.transcriptStore, CreateOptions{ID: meta.ID, CreatedAt: meta.CreatedAt,
+	opened, err := newSession(s.transcriptStore, LegacyCreateOptions{ID: meta.ID, CreatedAt: meta.CreatedAt,
 		Cwd: meta.Cwd, Provider: meta.Provider, Model: meta.Model, ParentSessionID: meta.ParentSessionID})
 	if err != nil {
 		return err
@@ -179,7 +179,7 @@ func (s *Store) importHistory(history *History) error {
 		GitBranch: getGitBranch(s.cwd), State: &transcript.StatePatch{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
 }
 
-func normalizeMetadata(meta *Metadata, msgs []core.Message, defaultCwd string, now time.Time) {
+func normalizeMetadata(meta *LegacyMetadata, msgs []core.Message, defaultCwd string, now time.Time) {
 	if meta.ID == "" {
 		meta.ID = NewSessionID()
 	}
@@ -200,11 +200,11 @@ func normalizeMetadata(meta *Metadata, msgs []core.Message, defaultCwd string, n
 }
 
 func TestRepeatedMessageDoesNotMoveTheParentPosition(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(CreateOptions{ID: "s"})
+	opened, err := store.Create(LegacyCreateOptions{ID: "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,18 +225,18 @@ func TestRepeatedMessageDoesNotMoveTheParentPosition(t *testing.T) {
 			t.Fatalf("notice position=%s", record.Notice.AfterMessageID)
 		}
 	}
-	got, err := store.Read("s", ReadOptions{})
+	got, err := store.Read("s", LegacyReadOptions{})
 	if err != nil || len(got.Messages) != 3 {
 		t.Fatalf("history=%+v, %v", got, err)
 	}
 }
 
 func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(CreateOptions{ID: "s"})
+	opened, err := store.Create(LegacyCreateOptions{ID: "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 		}
 	}
 	before := len(readAllRecords(t, store.projectDir, "s"))
-	history, err := store.Read("s", ReadOptions{})
+	history, err := store.Read("s", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Tasks: new([]todo.Item{}), Group: new("")}}); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := store.Read("s", ReadOptions{})
+	restored, err := store.Read("s", LegacyReadOptions{})
 	if err != nil || len(restored.Tasks) != 0 || restored.Metadata.Group != "" {
 		t.Fatalf("state not cleared: %+v, %v", restored, err)
 	}

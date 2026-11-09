@@ -46,7 +46,7 @@ func queryAppend(t *testing.T, session *eventSession, first, last uint64) {
 }
 
 func TestEventPagesKeepCheckedPrefix(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestEventPagesKeepCheckedPrefix(t *testing.T) {
 }
 
 func TestEventCursorRejectsChangedQueryOrPrefix(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestEventCursorRejectsChangedQueryOrPrefix(t *testing.T) {
 }
 
 func TestEventPinnedPageStopsBeforeLaterCorruption(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,35 +164,32 @@ func TestEventPinnedPageStopsBeforeLaterCorruption(t *testing.T) {
 	}
 }
 
-func TestEventsDoesNotConvertLegacyHistory(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+func TestEventsDoesNotReadLegacyTranscripts(t *testing.T) {
+	dir := t.TempDir()
+	legacy, err := NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.Create(CreateOptions{ID: "legacy"})
+	session, err := legacy.Create(LegacyCreateOptions{ID: "legacy"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
 	}
-	path := store.TranscriptPath("legacy")
-	before, err := os.ReadFile(path)
+	before, err := os.ReadFile(legacy.TranscriptPath("legacy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openStoreIn(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Events(context.Background(), "legacy", EventQuery{}); err == nil {
 		t.Fatal("legacy records were presented as new events")
 	}
-	after, err := os.ReadFile(path)
+	after, err := os.ReadFile(legacy.TranscriptPath("legacy"))
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("read changed legacy file: %v", err)
-	}
-	opened, _, err := store.Open("legacy")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := opened.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

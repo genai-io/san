@@ -7,9 +7,9 @@ import (
 	"github.com/genai-io/san/internal/transcript"
 )
 
-// Regression: Store.Create must write session.started before returning, so
+// Regression: LegacyStore.Create must write session.started before returning, so
 // that subsequent telemetry writes from SetObserver replay don't beat it to
-// the disk. If session.started were written lazily (or only by Store.Save),
+// the disk. If session.started were written lazily (or only by LegacyStore.Save),
 // the transcript file would already exist when Save calls Start — Start
 // would short-circuit and provider/model metadata would be lost.
 func TestSession_WritesSessionStartedBeforeTelemetry(t *testing.T) {
@@ -19,7 +19,7 @@ func TestSession_WritesSessionStartedBeforeTelemetry(t *testing.T) {
 		t.Fatalf("NewStore: %v", err)
 	}
 	// Construct the writer — should write session.started synchronously.
-	rec := mustSession(t, fs, CreateOptions{
+	rec := mustSession(t, fs, LegacyCreateOptions{
 		ID:        "sess",
 		AgentID:   "main",
 		Provider:  "anthropic",

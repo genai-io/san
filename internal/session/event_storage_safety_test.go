@@ -20,7 +20,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	if _, err := store.createSession(ctx, "again", "session", create, EventValidationContext{}); err == nil {
 		t.Fatal("overwrote existing session")
 	}
-	other, err := NewStoreWithDir(store.projectDir)
+	other, err := openStoreIn(store.projectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestEventConcurrentCreators(t *testing.T) {
 	stores := make([]*Store, 2)
 	for i := range stores {
 		var err error
-		stores[i], err = NewStoreWithDir(dir)
+		stores[i], err = openStoreIn(dir)
 		if err != nil {
 			t.Fatal(err)
 		}

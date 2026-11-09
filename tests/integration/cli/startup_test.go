@@ -190,14 +190,14 @@ func TestNonInteractivePrintMode(t *testing.T) {
 // source, but saving to the fork does not modify the original.
 func TestSessionFork_IsIndependent(t *testing.T) {
 	dir := t.TempDir()
-	store, err := session.NewStoreWithDir(dir)
+	store, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 
 	// 1. Create and save the original session.
-	original := &session.History{
-		Metadata: session.Metadata{
+	original := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:       "source-session",
 			Title:    "Source",
 			Provider: "fake",
@@ -247,7 +247,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 
 	// 4. Reload the original and confirm it is unchanged.
 	time.Sleep(10 * time.Millisecond) // ensure timestamps differ
-	reloaded, err := store.Read("source-session", session.ReadOptions{})
+	reloaded, err := store.Read("source-session", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(source-session): %v", err)
 	}
@@ -256,7 +256,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 5. Reload the fork and confirm it has the extra entry.
-	reloadedFork, err := store.Read(forked.Metadata.ID, session.ReadOptions{})
+	reloadedFork, err := store.Read(forked.Metadata.ID, session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load(forked): %v", err)
 	}

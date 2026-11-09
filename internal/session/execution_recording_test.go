@@ -24,7 +24,7 @@ func TestEventRecorderTurnFinalization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			rec := mustSession(t, fs, CreateOptions{ID: "session"})
+			rec := mustSession(t, fs, LegacyCreateOptions{ID: "session"})
 			switch mode {
 			case "essential-write-failed":
 				rec.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("missing ID")})
@@ -92,10 +92,10 @@ func TestExecutionAuditCallbacksKeepOpenedIdentityAndOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened := mustSession(t, fs, CreateOptions{ID: "original"})
+	opened := mustSession(t, fs, LegacyCreateOptions{ID: "original"})
 	recordHook, recordSkill := opened.RecordHookAudit, opened.RecordSkillStateChange
 	// Replacing the application's session variable cannot retarget callbacks.
-	opened = mustSession(t, fs, CreateOptions{ID: "replacement"})
+	opened = mustSession(t, fs, LegacyCreateOptions{ID: "replacement"})
 	audit := hook.HookFiredAudit{Event: "PreToolUse", Source: "project", Matcher: "Bash", Outcome: "allow", Reason: "checked", Duration: 12 * time.Millisecond}
 	recordHook(audit)
 	recordSkill("review", "inactive", "active", "main")

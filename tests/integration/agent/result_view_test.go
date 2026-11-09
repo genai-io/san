@@ -20,7 +20,7 @@ import (
 )
 
 func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if strings.Contains(text, "Tokens:") || !strings.Contains(text, "Transcript:") {
 		t.Fatalf("model result must contain findings and inspection pointers: %q", text)
 	}
-	rec := mustCreateSession(t, store, session.CreateOptions{ID: "parent-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
+	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "parent-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
 	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
 		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
 	}}}}
@@ -50,7 +50,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", Content: ai.TextContent(text)})
 	msg.ID = "result-1"
 	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
-	loaded, err := store.Read("parent-1", session.ReadOptions{})
+	loaded, err := store.Read("parent-1", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	}
 }
 
-func mustCreateSession(t *testing.T, store *session.Store, opts session.CreateOptions) *session.Session {
+func mustCreateSession(t *testing.T, store *session.LegacyStore, opts session.LegacyCreateOptions) *session.LegacySession {
 	t.Helper()
 	opened, err := store.Create(opts)
 	if err != nil {

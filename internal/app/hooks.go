@@ -45,7 +45,7 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 
 // pendingStopHook identifies the pending decision and its session/runtime.
 type pendingStopHook struct {
-	session *session.Session
+	session *session.LegacySession
 	outbox  <-chan core.Event
 }
 

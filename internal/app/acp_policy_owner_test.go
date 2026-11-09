@@ -27,7 +27,7 @@ func TestACPModeUsesSessionPolicy(t *testing.T) {
 	if err := s.recordState(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
+	history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

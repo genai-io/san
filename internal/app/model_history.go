@@ -30,7 +30,7 @@ func (m *model) openHistory() tea.Cmd {
 		msg.sessionID = m.sessionID()
 		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
 			load = func(id string) ([]core.ChatMessage, error) {
-				history, err := store.Read(id, session.ReadOptions{FullHistory: true})
+				history, err := store.Read(id, session.LegacyReadOptions{FullHistory: true})
 				if err != nil {
 					return nil, err
 				}

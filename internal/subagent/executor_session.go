@@ -11,8 +11,8 @@ import (
 )
 
 type liveSessionStore interface {
-	Create(session.CreateOptions) (*session.Session, error)
-	Open(string) (*session.Session, *session.History, error)
+	Create(session.LegacyCreateOptions) (*session.LegacySession, error)
+	Open(string) (*session.LegacySession, *session.LegacyHistory, error)
 }
 
 type continuationState struct {
@@ -56,7 +56,7 @@ func (e *Executor) openNative(run *preparedRun) error {
 		if state.persistenceErr != nil {
 			return fmt.Errorf("native history persistence failed; inspect/repair child transcript before continuing: %w", state.persistenceErr)
 		}
-		var history *session.History
+		var history *session.LegacyHistory
 		run.native, history, err = store.Open(state.sessionID)
 		if err != nil {
 			return err
@@ -71,7 +71,7 @@ func (e *Executor) openNative(run *preparedRun) error {
 		}
 		run.history = history.Messages
 	} else {
-		run.native, err = store.Create(session.CreateOptions{AgentID: run.req.TaskID, ParentSessionID: e.parentSessionID, Model: run.cfg.modelID, Cwd: run.currentCwd()})
+		run.native, err = store.Create(session.LegacyCreateOptions{AgentID: run.req.TaskID, ParentSessionID: e.parentSessionID, Model: run.cfg.modelID, Cwd: run.currentCwd()})
 		if err == nil && run.checkpoint != nil {
 			run.checkpoint.sessionID = run.native.ID()
 		}

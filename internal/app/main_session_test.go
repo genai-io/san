@@ -102,7 +102,7 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 							t.Fatalf("missing %s audit", marker)
 						}
 					}
-					history, err := store.Read(rec.ID(), session.ReadOptions{})
+					history, err := store.Read(rec.ID(), session.LegacyReadOptions{})
 					if err != nil || len(history.Messages) < 4 {
 						t.Fatalf("native history: %v", err)
 					}

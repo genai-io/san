@@ -170,11 +170,11 @@ func TestPostCompactReseedsContext(t *testing.T) {
 func TestRecordManualCompactionReplayAndFailure(t *testing.T) {
 	for _, closed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "saved", true: "closed"}[closed], func(t *testing.T) {
-			store, err := session.NewStoreWithDir(t.TempDir())
+			store, err := session.NewLegacyStoreWithDir(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
-			opened, err := store.Create(session.CreateOptions{ID: "compact"})
+			opened, err := store.Create(session.LegacyCreateOptions{ID: "compact"})
 			if err != nil {
 				t.Fatal(err)
 			}

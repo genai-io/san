@@ -252,8 +252,12 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 			return invalidEvent("compaction through must name a committed event")
 		}
 		if e.Source != nil {
-			start, ok := p.event(e.Source.Seq).Payload.(*InferenceStartPayload)
-			if !srcLocal || !ok || start.Purpose != PurposeCompaction {
+			if !srcLocal || e.Source.Session != "" {
+				return invalidEvent("summary source must be a local compaction inference.start")
+			}
+			source := p.event(e.Source.Seq)
+			start, ok := source.Payload.(*InferenceStartPayload)
+			if !ok || start.Purpose != PurposeCompaction {
 				return invalidEvent("summary source must be a local compaction inference.start")
 			}
 		}

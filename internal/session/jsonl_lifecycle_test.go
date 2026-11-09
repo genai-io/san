@@ -24,9 +24,9 @@ func requireStoreOK(t *testing.T, err error) {
 
 func TestJSONLSessionLifecycle(t *testing.T) {
 	dir := t.TempDir()
-	open := func() *Store {
+	open := func() *LegacyStore {
 		t.Helper()
-		s, err := NewStoreWithDir(dir)
+		s, err := NewLegacyStoreWithDir(dir)
 		requireStoreOK(t, err)
 		t.Cleanup(func() { requireStoreOK(t, s.Close()) })
 		return s
@@ -36,7 +36,7 @@ func TestJSONLSessionLifecycle(t *testing.T) {
 		_ = missing.Close()
 		t.Fatal("opened missing session")
 	}
-	writer, err := a.Create(CreateOptions{ID: "source", AgentID: "main"})
+	writer, err := a.Create(LegacyCreateOptions{ID: "source", AgentID: "main"})
 	requireStoreOK(t, err)
 	t.Cleanup(func() { _ = writer.Close() })
 	wantPath := filepath.Join(dir, "transcripts", "source.jsonl")
@@ -45,7 +45,7 @@ func TestJSONLSessionLifecycle(t *testing.T) {
 	}
 	_, err = os.Stat(wantPath)
 	requireStoreOK(t, err)
-	if duplicate, err := b.Create(CreateOptions{ID: "source"}); err == nil {
+	if duplicate, err := b.Create(LegacyCreateOptions{ID: "source"}); err == nil {
 		_ = duplicate.Close()
 		t.Fatal("duplicate identity accepted")
 	}
@@ -92,7 +92,7 @@ func TestJSONLSessionLifecycle(t *testing.T) {
 	if !reflect.DeepEqual(history.Messages, []ai.Message{summary}) {
 		t.Fatalf("resume after compaction = %+v", history.Messages)
 	}
-	full, err := c.Read("source", ReadOptions{FullHistory: true})
+	full, err := c.Read("source", LegacyReadOptions{FullHistory: true})
 	requireStoreOK(t, err)
 	rows := c.ChatRows(full)
 	if len(rows) != 3 {
@@ -103,10 +103,10 @@ func TestJSONLSessionLifecycle(t *testing.T) {
 }
 
 func TestJSONLForkOwnsAssetsAndConversation(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	requireStoreOK(t, err)
 	t.Cleanup(func() { requireStoreOK(t, store.Close()) })
-	source, err := store.Create(CreateOptions{ID: "source", AgentID: "main"})
+	source, err := store.Create(LegacyCreateOptions{ID: "source", AgentID: "main"})
 	requireStoreOK(t, err)
 	t.Cleanup(func() { _ = source.Close() })
 	requireStoreOK(t, store.PersistToolResult("source", "call", "FULL OUTPUT"))
@@ -135,7 +135,7 @@ func TestJSONLForkOwnsAssetsAndConversation(t *testing.T) {
 	}
 	fork.RecordEvent(sdkagent.MessageAdded{Message: ai.Message{ID: "fork-only", Role: ai.RoleUser, Content: ai.TextContent("independent")}})
 	requireStoreOK(t, fork.Err())
-	original, err := store.Read("source", ReadOptions{})
+	original, err := store.Read("source", LegacyReadOptions{})
 	requireStoreOK(t, err)
 	if !reflect.DeepEqual(original.Messages, messages) {
 		t.Fatalf("fork changed source: %+v", original.Messages)

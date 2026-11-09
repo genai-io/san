@@ -18,13 +18,13 @@ import (
 )
 
 // newTestStore creates a Store using a temp directory instead of ~/.san/projects/.
-func newTestStore(t *testing.T) *session.Store {
+func newTestStore(t *testing.T) *session.LegacyStore {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "sessions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	store, err := session.NewStoreWithDir(dir)
+	store, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
@@ -49,8 +49,8 @@ func getEntryText(m core.Message) string {
 func TestSession_SaveAndLoad(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:       "test-1",
 			Title:    "Test Session",
 			Provider: "fake",
@@ -67,7 +67,7 @@ func TestSession_SaveAndLoad(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read("test-1", session.ReadOptions{})
+	loaded, err := store.Read("test-1", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -90,8 +90,8 @@ func TestSession_List(t *testing.T) {
 	store := newTestStore(t)
 
 	for i, title := range []string{"First", "Second", "Third"} {
-		sess := &session.History{
-			Metadata: session.Metadata{
+		sess := &session.LegacyHistory{
+			Metadata: session.LegacyMetadata{
 				ID:        title,
 				Title:     title,
 				UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
@@ -122,8 +122,8 @@ func TestSession_List(t *testing.T) {
 func TestSession_Delete(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.History{
-		Metadata: session.Metadata{ID: "to-delete", Title: "Delete Me"},
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "to-delete", Title: "Delete Me"},
 	}
 	if err := testutil.ImportSession(store, sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -133,7 +133,7 @@ func TestSession_Delete(t *testing.T) {
 		t.Fatalf("Delete() error: %v", err)
 	}
 
-	_, err := store.Read("to-delete", session.ReadOptions{})
+	_, err := store.Read("to-delete", session.LegacyReadOptions{})
 	if err == nil {
 		t.Error("expected error loading deleted session")
 	}
@@ -143,8 +143,8 @@ func TestSession_AppendBehavior(t *testing.T) {
 	store := newTestStore(t)
 
 	// First save with 1 entry
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:    "append-test",
 			Title: "Append Test",
 		},
@@ -166,7 +166,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 	}
 
 	// Load and verify all 3 entries are present
-	loaded, err := store.Read("append-test", session.ReadOptions{})
+	loaded, err := store.Read("append-test", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -181,8 +181,8 @@ func TestSession_AppendBehavior(t *testing.T) {
 func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:    "metadata-update-test",
 			Title: "Metadata Update Test",
 		},
@@ -194,7 +194,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 		t.Fatalf("first Save() error: %v", err)
 	}
 
-	first, err := store.Read("metadata-update-test", session.ReadOptions{})
+	first, err := store.Read("metadata-update-test", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("first Load() error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 		t.Fatalf("second Save() error: %v", err)
 	}
 
-	second, err := store.Read("metadata-update-test", session.ReadOptions{})
+	second, err := store.Read("metadata-update-test", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("second Load() error: %v", err)
 	}
@@ -224,8 +224,8 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:       "message-types-roundtrip",
 			Title:    "Message Types Roundtrip",
 			Provider: "fake",
@@ -242,7 +242,7 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read("message-types-roundtrip", session.ReadOptions{})
+	loaded, err := store.Read("message-types-roundtrip", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	store, err := session.NewStoreWithDir(dir)
+	store, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
@@ -302,8 +302,8 @@ func TestSession_PersistToolResult(t *testing.T) {
 		t.Errorf("persisted content size = %d, want 200000", len(data))
 	}
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:    sessionID,
 			Title: "Overflow",
 		},
@@ -313,7 +313,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	loaded, err := store.Read(sessionID, session.ReadOptions{})
+	loaded, err := store.Read(sessionID, session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -328,13 +328,13 @@ func TestSession_PersistToolResult(t *testing.T) {
 // where a malformed entry silently breaks session loading.
 func TestSession_JSONL_Integrity(t *testing.T) {
 	dir := t.TempDir()
-	store, err := session.NewStoreWithDir(dir)
+	store, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:       "jsonl-integrity-test",
 			Title:    "JSONL Integrity Test",
 			Provider: "fake",
@@ -407,8 +407,8 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		}
 	}
 
-	sess := &session.History{
-		Metadata: session.Metadata{
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{
 			ID:       "continue-test",
 			Title:    "Continue Test",
 			Provider: "fake",
@@ -423,7 +423,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 	}
 
 	// Simulate "-c": load the session and verify messages are in order.
-	loaded, err := store.Read("continue-test", session.ReadOptions{})
+	loaded, err := store.Read("continue-test", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load() (continue) error: %v", err)
 	}
@@ -455,8 +455,8 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	store := newTestStore(t)
 
-	sess := &session.History{
-		Metadata: session.Metadata{ID: "save-twice"},
+	sess := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "save-twice"},
 		Messages: []ai.Message{
 			makeUserEntry("m1", "hello"),
 			makeAssistantEntry("m2", "hi"),
@@ -469,7 +469,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 		t.Fatalf("Save #2: %v", err)
 	}
 
-	loaded, err := store.Read("save-twice", session.ReadOptions{})
+	loaded, err := store.Read("save-twice", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -501,12 +501,12 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	store1, err := session.NewStoreWithDir(dir)
+	store1, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
-	first := &session.History{
-		Metadata: session.Metadata{ID: "restart-group", Group: "urgent"},
+	first := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "restart-group", Group: "urgent"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := testutil.ImportSession(store1, first); err != nil {
@@ -514,19 +514,19 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	}
 
 	// Fresh store simulates a process restart — lastEmittedState is empty.
-	store2, err := session.NewStoreWithDir(dir)
+	store2, err := session.NewLegacyStoreWithDir(dir)
 	if err != nil {
 		t.Fatalf("NewStoreWithDir #2: %v", err)
 	}
-	cleared := &session.History{
-		Metadata: session.Metadata{ID: "restart-group", Group: ""},
+	cleared := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "restart-group", Group: ""},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := testutil.ImportSession(store2, cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store2.Read("restart-group", session.ReadOptions{})
+	loaded, err := store2.Read("restart-group", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -539,8 +539,8 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	store := newTestStore(t)
 
-	withTasks := &session.History{
-		Metadata: session.Metadata{ID: "clear-tasks"},
+	withTasks := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "clear-tasks"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks: []taskTracker.Item{{
 			ID: "t1", Subject: "do thing", Status: "in_progress",
@@ -551,8 +551,8 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 		t.Fatalf("Save with tasks: %v", err)
 	}
 
-	cleared := &session.History{
-		Metadata: session.Metadata{ID: "clear-tasks"},
+	cleared := &session.LegacyHistory{
+		Metadata: session.LegacyMetadata{ID: "clear-tasks"},
 		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks:    nil,
 	}
@@ -560,7 +560,7 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 		t.Fatalf("Save cleared: %v", err)
 	}
 
-	loaded, err := store.Read("clear-tasks", session.ReadOptions{})
+	loaded, err := store.Read("clear-tasks", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

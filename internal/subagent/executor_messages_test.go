@@ -19,7 +19,7 @@ import (
 )
 
 func TestSendMessageContinuesForegroundSession(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestSendMessageContinuesForegroundSession(t *testing.T) {
 }
 
 func TestSendMessageApprovalCannotResumeLaterAttempt(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,11 +10,11 @@ import (
 )
 
 func TestAgentIdentitySurvivesResumeAndForkWithoutModelLeak(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := mustSession(t, store.transcriptStore, CreateOptions{ID: "identity-source", AgentID: "main"})
+	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "identity-source", AgentID: "main"})
 	identity := toolresult.AgentIdentity{ID: "sender-hook", Name: "worker", CallID: "original-launch", SessionID: "child-session"}
 	w.RecordEvent(sdkagent.ToolEnd{ID: "call", Name: "Agent", Result: sdkagent.Result{Details: toolresult.AgentDetails{Identity: identity}}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Agent", Content: ai.TextContent("finding only")})
@@ -23,7 +23,7 @@ func TestAgentIdentitySurvivesResumeAndForkWithoutModelLeak(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	check := func(h *History) {
+	check := func(h *LegacyHistory) {
 		t.Helper()
 		rows := h.ChatRows()
 		if len(rows) != 1 {
@@ -37,7 +37,7 @@ func TestAgentIdentitySurvivesResumeAndForkWithoutModelLeak(t *testing.T) {
 			t.Fatal("identity leaked into model result")
 		}
 	}
-	h, err := store.Read("identity-source", ReadOptions{})
+	h, err := store.Read("identity-source", LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

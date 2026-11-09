@@ -39,6 +39,23 @@ func (l library) trashRoot() string           { return filepath.Join(l.root, tra
 func (l library) trashDir(id string) string   { return filepath.Join(l.trashRoot(), id) }
 func (l library) cacheFile(id string) string  { return filepath.Join(l.root, "cache", id+".json") }
 
+// withLock serializes short mutations across directory moves. Unlike the writer
+// lease or attrs lock inside the session, this path never moves with the data.
+func (l library) withLock(ctx context.Context, id string, fn func() error) error {
+	if err := transcript.ValidateStorageID(id); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return atomicfile.WithLock(filepath.Join(l.root, ".locks", id), func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return fn()
+	})
+}
+
 type deletedRecord struct {
 	DeletedAt int64 `json:"deleted_at"` // Unix ms
 }
@@ -69,9 +86,12 @@ func (l library) trash(ctx context.Context, id string, now time.Time) error {
 // held, so a caller that chose the session earlier can confirm it is still the
 // session it meant to move. A non-nil error from guard cancels the move.
 func (l library) trashChecked(ctx context.Context, id string, now time.Time, guard func(dir string) error) error {
-	if err := transcript.ValidateStorageID(id); err != nil {
-		return err
-	}
+	return l.withLock(ctx, id, func() error {
+		return l.trashLocked(ctx, id, now, guard)
+	})
+}
+
+func (l library) trashLocked(ctx context.Context, id string, now time.Time, guard func(dir string) error) error {
 	dir := l.sessionDir(id)
 	if _, err := os.Stat(filepath.Join(dir, eventsFileName)); err != nil {
 		return err
@@ -128,12 +148,10 @@ func (l library) trashChecked(ctx context.Context, id string, now time.Time, gua
 
 // restore moves a trashed session back, never overwriting a live one.
 func (l library) restore(ctx context.Context, id string) error {
-	if err := transcript.ValidateStorageID(id); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+	return l.withLock(ctx, id, func() error { return l.restoreLocked(id) })
+}
+
+func (l library) restoreLocked(id string) error {
 	src, dst := l.trashDir(id), l.sessionDir(id)
 	if _, err := os.Stat(filepath.Join(src, eventsFileName)); err != nil {
 		return err
@@ -184,56 +202,85 @@ func (l library) trashed(ctx context.Context) ([]Trashed, error) {
 	return out, nil
 }
 
-// purge permanently removes trashed sessions past their deadline and returns
-// their IDs; with dryRun it only reports. A session of unknown age is kept. A
-// removal is a rename to a hidden name followed by deletion, so an interrupted
-// purge is finished by the next run and never leaves a half-readable session.
-func (l library) purge(ctx context.Context, now time.Time, dryRun bool) ([]string, error) {
-	if !dryRun {
-		if err := l.finishPurges(ctx); err != nil {
-			return nil, err
-		}
-	}
+// purge applies scope and the remaining action budget before any removal,
+// including recovery of interrupted purges. A negative limit is unbounded.
+func (l library) purge(ctx context.Context, now time.Time, dryRun bool, only map[string]bool, limit int) ([]string, bool, error) {
 	list, err := l.trashed(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	entries, err := os.ReadDir(l.trashRoot())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, false, err
+	}
+	// Interrupted removals have already passed their deadline.
+	pending := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), purgingPrefix) {
+			id := strings.TrimPrefix(e.Name(), purgingPrefix)
+			if transcript.ValidateStorageID(id) != nil {
+				continue
+			}
+			pending[id] = true
+			list = append(list, Trashed{ID: id})
+		}
 	}
 	var purged []string
+	seen := map[string]bool{}
 	for _, t := range list {
-		if d := t.Deadline(); d.IsZero() || now.Before(d) {
+		if seen[t.ID] {
 			continue
 		}
-		if !dryRun {
-			hidden := filepath.Join(l.trashRoot(), purgingPrefix+t.ID)
-			if err := os.Rename(l.trashDir(t.ID), hidden); err != nil {
-				return purged, err
-			}
-			if err := os.RemoveAll(hidden); err != nil {
-				return purged, err
-			}
-		}
-		purged = append(purged, t.ID)
-	}
-	return purged, nil
-}
-
-func (l library) finishPurges(ctx context.Context) error {
-	entries, err := os.ReadDir(l.trashRoot())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
+		seen[t.ID] = true
 		if err := ctx.Err(); err != nil {
-			return err
+			return purged, false, err
 		}
-		if strings.HasPrefix(e.Name(), purgingPrefix) {
-			if err := os.RemoveAll(filepath.Join(l.trashRoot(), e.Name())); err != nil {
-				return err
+		if len(only) > 0 && !only[t.ID] {
+			continue
+		}
+		if d := t.Deadline(); !pending[t.ID] && (d.IsZero() || now.Before(d)) {
+			continue
+		}
+		if limit >= 0 && len(purged) >= limit {
+			return purged, true, nil
+		}
+		acted := false
+		err := l.withLock(ctx, t.ID, func() error {
+			hidden := filepath.Join(l.trashRoot(), purgingPrefix+t.ID)
+			if pending[t.ID] {
+				if _, err := os.Stat(hidden); errors.Is(err, os.ErrNotExist) {
+					return nil
+				} else if err != nil {
+					return err
+				}
+			} else {
+				// Restore, or delete followed by another delete, may have changed
+				// the entry since discovery. Recheck its deadline under the lock.
+				data, err := os.ReadFile(filepath.Join(l.trashDir(t.ID), deletedFile))
+				var marker deletedRecord
+				if err != nil || strictEventJSON(data, &marker) != nil || marker.DeletedAt <= 0 || now.Before(time.UnixMilli(marker.DeletedAt).Add(trashRetention)) {
+					return nil
+				}
+				if !dryRun {
+					if err := os.Rename(l.trashDir(t.ID), hidden); err != nil {
+						return err
+					}
+				}
 			}
+			if !dryRun {
+				if err := os.RemoveAll(hidden); err != nil {
+					return err
+				}
+			}
+			acted = true
+			return nil
+		})
+		if err != nil {
+			return purged, false, err
+		}
+		if acted {
+			purged = append(purged, t.ID)
 		}
 	}
-	return nil
+	return purged, false, nil
 }

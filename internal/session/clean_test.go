@@ -14,7 +14,7 @@ import (
 
 func cleanStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := NewStoreWithDir(t.TempDir())
+	s, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,6 +25,96 @@ func cleanStore(t *testing.T) *Store {
 func isLive(s *Store, id string) bool {
 	_, err := os.Stat(s.sessionDir(id))
 	return err == nil
+}
+
+func TestCleanPurgeScopeAndSharedBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		ids        []string
+		retention  bool
+		wantPurged []string
+		truncated  bool
+	}{
+		{name: "selected subset", ids: []string{"b"}, wantPurged: []string{"b"}},
+		{name: "physical deletion limit", wantPurged: []string{"a"}, truncated: true},
+		{name: "retention shares budget", retention: true, truncated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			s := cleanStore(t)
+			lib := library{root: s.projectDir}
+			for _, id := range []string{"a", "b", "c"} {
+				listSession(t, s, id, ago(300*24*time.Hour), nil)
+				if err := lib.trash(ctx, id, listNow.Add(-8*24*time.Hour)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			opts := CleanOptions{Now: listNow, IDs: tc.ids, Limit: 1, DryRun: true}
+			if tc.retention {
+				listSession(t, s, "idle", ago(300*24*time.Hour), nil)
+				opts.InactiveAfter = 90 * 24 * time.Hour
+			}
+			dry, err := s.clean(ctx, opts)
+			if err != nil || !reflect.DeepEqual(dry.Purged, tc.wantPurged) || dry.Truncated != tc.truncated {
+				t.Fatalf("preview: %+v, %v", dry, err)
+			}
+			for _, id := range []string{"a", "b", "c"} {
+				if _, err := os.Stat(lib.trashDir(id)); err != nil {
+					t.Fatalf("preview removed %s: %v", id, err)
+				}
+			}
+			if tc.retention && !isLive(s, "idle") {
+				t.Fatal("preview moved live session")
+			}
+			opts.DryRun = false
+			actual, err := s.clean(ctx, opts)
+			if err != nil || !reflect.DeepEqual(actual, dry) {
+				t.Fatalf("actual: %+v, preview: %+v, error: %v", actual, dry, err)
+			}
+			for _, id := range []string{"a", "b", "c"} {
+				_, err := os.Stat(lib.trashDir(id))
+				wantRemoved := len(tc.wantPurged) > 0 && tc.wantPurged[0] == id
+				if os.IsNotExist(err) != wantRemoved {
+					t.Fatalf("%s removed=%v, want %v (err=%v)", id, os.IsNotExist(err), wantRemoved, err)
+				}
+			}
+			if tc.retention && (!reflect.DeepEqual(actual.Trashed, []string{"idle"}) || isLive(s, "idle")) {
+				t.Fatalf("retention: %+v", actual)
+			}
+		})
+	}
+}
+
+func TestCleanBoundsInterruptedPurges(t *testing.T) {
+	ctx := context.Background()
+	s := cleanStore(t)
+	lib := library{root: s.projectDir}
+	for _, id := range []string{"a", "b", "c"} {
+		if err := os.MkdirAll(filepath.Join(lib.trashRoot(), purgingPrefix+id), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts := CleanOptions{Now: listNow, IDs: []string{"b", "c"}, Limit: 1, DryRun: true}
+	dry, err := s.clean(ctx, opts)
+	if err != nil || !reflect.DeepEqual(dry.Purged, []string{"b"}) || !dry.Truncated {
+		t.Fatalf("preview: %+v, %v", dry, err)
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := os.Stat(filepath.Join(lib.trashRoot(), purgingPrefix+id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opts.DryRun = false
+	actual, err := s.clean(ctx, opts)
+	if err != nil || !reflect.DeepEqual(actual, dry) {
+		t.Fatalf("actual: %+v, preview: %+v, %v", actual, dry, err)
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		_, err := os.Stat(filepath.Join(lib.trashRoot(), purgingPrefix+id))
+		if os.IsNotExist(err) != (id == "b") {
+			t.Fatalf("unexpected removal of %s: %v", id, err)
+		}
+	}
 }
 
 func TestCleanRetentionIsOffUnlessAsked(t *testing.T) {

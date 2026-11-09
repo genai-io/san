@@ -14,12 +14,12 @@ import (
 // them back as two rows — otherwise the resumed chain carries one orphaned
 // tool_use, which the SDK's repair pass then drops along with its result.
 func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 	const sessionID = "sess-parallel"
-	rec := mustSession(t, store.transcriptStore, CreateOptions{ID: sessionID, AgentID: "main",
+	rec := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: sessionID, AgentID: "main",
 		Provider: "p", Model: "m", Cwd: "/tmp",
 	})
 
@@ -40,7 +40,7 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 		rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 	}
 
-	loaded, err := store.Read(sessionID, ReadOptions{})
+	loaded, err := store.Read(sessionID, LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -57,10 +57,10 @@ func TestParallelToolResultsSurviveRecordAndLoad(t *testing.T) {
 
 	// Retire the live writer before importing a cold native snapshot.
 	_ = rec.Close()
-	if err := store.importHistory(&History{Metadata: Metadata{ID: sessionID}, Messages: loaded.Messages}); err != nil {
+	if err := store.importHistory(&LegacyHistory{Metadata: LegacyMetadata{ID: sessionID}, Messages: loaded.Messages}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	again, err := store.Read(sessionID, ReadOptions{})
+	again, err := store.Read(sessionID, LegacyReadOptions{})
 	if err != nil {
 		t.Fatalf("Load again: %v", err)
 	}

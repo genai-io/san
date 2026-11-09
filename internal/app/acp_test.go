@@ -286,7 +286,7 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if !strings.Contains(string(data), "workspace instruction") || !strings.Contains(string(data), "prompt hook instruction") {
 				t.Fatal("native preparation missing instructions")
 			}
-			history, err := s.nativeSession.Store.Read(string(id), session.ReadOptions{})
+			history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}

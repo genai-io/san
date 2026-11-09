@@ -15,7 +15,7 @@ import (
 
 func eventStorageFixture(t *testing.T) (*Store, *eventSession, Event) {
 	t.Helper()
-	s, err := NewStoreWithDir(t.TempDir())
+	s, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,18 +191,19 @@ func TestEventMalformedInitialUnchanged(t *testing.T) {
 }
 func TestEventEvidenceByBatch(t *testing.T) {
 	ctx := context.Background()
-	store, s, _ := eventStorageFixture(t)
-	child, err := store.Create(CreateOptions{ID: "child", AgentID: "main"})
+	store, s, create := eventStorageFixture(t)
+	child, err := store.createSession(ctx, "child-create", "child", create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = child.Close(); err != nil {
+	commitTestEvents(t, child, "child-message", testEvent(2, "", MessageAppendPayload{Messages: []ai.Message{eventText("source", ai.RoleUser, "copied")}}))
+	if err := child.Close(); err != nil {
 		t.Fatal(err)
 	}
-	key := foreignKey("child", 1)
+	key := foreignKey("child", 2)
 	facts := EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{key: {Type: EventMessageAppend, MessageIDs: []string{"source"}}}}
 	e := testEvent(2, "copy", MessageAppendPayload{Messages: []ai.Message{eventText("copy-message", ai.RoleAssistant, "copied")}})
-	e.Source = &EventRef{Session: "child", Seq: 1}
+	e.Source = &EventRef{Session: "child", Seq: 2}
 	if _, err := s.prepareEventBatch("missing", []Event{e}, EventValidationContext{}); err == nil {
 		t.Fatal("future evidence validated old event")
 	}
@@ -218,8 +219,12 @@ func TestEventEvidenceByBatch(t *testing.T) {
 	if _, err := s.prepareEventBatch("contradiction", []Event{testEvent(4, "bad", AnnotationAddPayload{Text: "bad"})}, facts); err == nil {
 		t.Fatal("contradictory evidence accepted")
 	}
-	if err = store.Delete("child"); err != nil {
+	// Retained evidence must survive the source session disappearing.
+	if err := os.RemoveAll(store.sessionDir("child")); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(child.Path()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source session still exists: %v", err)
 	}
 	_ = s.Close()
 	reopened, err := store.openSession(ctx, "session")

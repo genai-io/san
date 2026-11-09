@@ -3,7 +3,8 @@
 Moves the runtime from schema-4 transcripts to the typed `sessions/<sid>/` store
 ([PROP-0005](../../docs/design/proposal-0005-session-management.md)). The storage
 layer is done and unwired (events, projector, blobs, attrs, overview cache, trash,
-list, fork, clean). What is left is the public API, the producers, and the switch.
+list, fork, clean). Name isolation and the public typed API are implemented and
+unwired; the producers, runtime resume and final switch remain.
 
 ## Why a flag day
 
@@ -13,13 +14,13 @@ every piece ready and tested while unwired, then switch once and delete the old 
 
 ## Steps
 
-1. **Free the names (mechanical).** Rename the schema-4 `session.Store`, `Session`,
-   `History`, `Summary`, `CreateOptions` to `Legacy*`. No behaviour change; ~28 files
-   in `internal/app`, plus `agent`, `subagent`, tests. This is what lets the final API
-   use the design's names.
-2. **Public typed API.** `Store` (`Create`, `Open`, `Fork`, `Get`, `List`, `Events`,
-   `SetAttrs`, `Delete`, `Restore`, `Clean`) and `Session` (`ID`, `Append`, `Snapshot`,
-   `Close`) over the private pieces, named as in the design. Unwired; tested.
+1. **Free the names (done).** Schema-4 contracts and callers use `Legacy*`;
+   typed `Store` / `Session` own `store.go` / `session.go` without a format switch.
+2. **Public typed API (done; unwired).** `Store` (`Create`, `Open`, `Fork`, `Get`,
+   `List`, `Events`, `SetAttrs`, `Delete`, `Restore`, `Clean`) and `Session` (`ID`,
+   `Path`, `Err`, `Append`, `Snapshot`, `PutRequest`, `Request`, `Close`) wrap the
+   typed storage. Tests cover atomic batches, concurrent appends, provenance,
+   standalone requests, lifecycle and scoped cleanup. Runtime still uses `Legacy*`.
 3. **Recorder.** Maps runtime events to typed events, with golden tests on recorded
    agent runs:
 

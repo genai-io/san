@@ -7,11 +7,11 @@ import (
 
 func TestBadTranscriptDoesNotHideHealthySessions(t *testing.T) {
 	for _, bad := range []string{"{\"type\":\"session.started\",\"version\":\"1\"}\n", "{broken}\n"} {
-		store, err := NewStoreWithDir(t.TempDir())
+		store, err := NewLegacyStoreWithDir(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
-		opened, err := store.Create(CreateOptions{ID: "healthy"})
+		opened, err := store.Create(LegacyCreateOptions{ID: "healthy"})
 		if err != nil {
 			t.Fatal(err)
 		}

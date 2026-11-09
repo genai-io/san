@@ -29,11 +29,11 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	if err := os.WriteFile(path, []byte("---\ndescription: Release policy\n---\nPrivate release body"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := mustCreateSession(t, store, session.CreateOptions{ID: "memory-anchor", AgentID: "main"})
+	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "memory-anchor", AgentID: "main"})
 	t.Cleanup(func() { _ = rec.Close() })
 	attached := "source body\n\n" + reminder.WrapWithSource("Memories relevant to this message:\n\nMemory `"+path+"` (project store):\nPrivate release body", reminder.ProviderMemoryRecall)
 	call := ai.ToolCall{ID: "call", Name: "Read", Input: `{"file_path":"main.go"}`}
@@ -55,7 +55,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
-	history, err := store.Read("memory-anchor", session.ReadOptions{})
+	history, err := store.Read("memory-anchor", session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -63,7 +63,7 @@ func TestHeadlessAgentPrintsPartialResultBeforeReturningError(t *testing.T) {
 }
 
 func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
-	store, err := session.NewStoreWithDir(t.TempDir())
+	store, err := session.NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
 	if runErr == nil || result == nil || result.Success || result.AgentID == "" || result.OutputFile == "" {
 		t.Fatalf("failed execution lost transcript identity: result=%#v, err=%v", result, runErr)
 	}
-	saved, err := store.Read(result.AgentID, session.ReadOptions{})
+	saved, err := store.Read(result.AgentID, session.LegacyReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
 			}
 			task.Initialize(options)
 			t.Cleanup(task.ResetDefaultTracker)
-			store, err := session.NewStoreWithDir(t.TempDir())
+			store, err := session.NewLegacyStoreWithDir(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}

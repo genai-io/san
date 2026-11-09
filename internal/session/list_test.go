@@ -70,7 +70,7 @@ func equalIDs(a, b []string) bool {
 }
 
 func TestListRecentWindowPinAndArchive(t *testing.T) {
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestListRecentWindowPinAndArchive(t *testing.T) {
 
 func TestListParentTrashAndDamage(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestListParentTrashAndDamage(t *testing.T) {
 
 func TestListDisplayTitleAndBadInput(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewStoreWithDir(t.TempDir())
+	store, err := openStoreIn(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,7 +40,7 @@ func (m *model) ensureSessionStore() error {
 	if m.services.SessionStore != nil {
 		return nil
 	}
-	store, err := session.NewStore(m.env.CWD)
+	store, err := session.NewLegacyStore(m.env.CWD)
 	if err != nil {
 		return err
 	}
@@ -48,7 +48,7 @@ func (m *model) ensureSessionStore() error {
 	return nil
 }
 
-func (m *model) openCurrentSession() (*session.Session, error) {
+func (m *model) openCurrentSession() (*session.LegacySession, error) {
 	if m.services.Session != nil {
 		return m.services.Session, m.services.Session.Err()
 	}
@@ -68,7 +68,7 @@ func (m *model) openCurrentSession() (*session.Session, error) {
 		id := m.services.sessionID
 		group.BindSession(func() string { return id })
 	}
-	opened, err := m.services.SessionStore.Create(session.CreateOptions{ID: m.services.sessionID,
+	opened, err := m.services.SessionStore.Create(session.LegacyCreateOptions{ID: m.services.sessionID,
 		AgentID: "main", Provider: provider, Model: m.env.GetModelID(), MaxTokens: maxOutputTokens})
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (m *model) recordNotice(n core.ChatMessage) {
 }
 
 // replaceSession retires the prior session and UI context after opening the replacement.
-func (m *model) replaceSession(opened *session.Session) {
+func (m *model) replaceSession(opened *session.LegacySession) {
 	if m.sessionID() != opened.ID() {
 		m.conv.SetAgentIdentitySession(opened.ID())
 		m.env.SessionPermissions = setting.NewSessionPermissions()
@@ -191,12 +191,12 @@ func (m *model) loadSessionByID(id string) error {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
-	var opened *session.Session
-	var sess *session.History
+	var opened *session.LegacySession
+	var sess *session.LegacyHistory
 	var err error
 	if m.services.Session != nil && m.sessionID() == id && m.services.Session.Err() == nil {
 		opened = m.services.Session
-		sess, err = m.services.SessionStore.Read(id, session.ReadOptions{})
+		sess, err = m.services.SessionStore.Read(id, session.LegacyReadOptions{})
 	} else {
 		if m.services.Session != nil && m.sessionID() == id {
 			_ = m.services.Session.Close()
@@ -234,7 +234,7 @@ func (m *model) loadSessionByID(id string) error {
 	return nil
 }
 
-func (m *model) restoreHistory(sess *session.History) {
+func (m *model) restoreHistory(sess *session.LegacyHistory) {
 	m.conv.Messages = m.services.SessionStore.ChatRows(sess)
 	m.earlyNotices = nil
 	m.services.Agent.SetMessages(sess.Messages)
