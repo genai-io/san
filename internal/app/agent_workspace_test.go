@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/mcp"
-	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -19,7 +19,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	m.userInput = fixedComposerModel(80, 24).userInput
 	m.services.Tool = tool.NewRegistry()
 	m.services.MCP = mcp.NewManagerForTest(nil)
-	m.reviewerApprovals, m.reviewerEscalations = new(atomic.Int64), new(atomic.Int64)
+	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	gitCwd, plainCwd := t.TempDir(), t.TempDir()
 	if out, err := exec.Command("git", "init", "--quiet", gitCwd).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %s: %v", out, err)
@@ -34,11 +34,11 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := m.services.Session
-	judge := m.autopilot.Load().judge
+	before := m.autopilot.Load().judge
 	check := func(cwd string, underGit bool) {
 		t.Helper()
 		params.PermissionReview(context.Background(), "Write", map[string]any{"file_path": "file.txt", "content": "test"}, "test")
-		// Capture the actual Request evidence rendered by the reviewer, not a
+		// Capture the actual Request evidence rendered by the judge, not a
 		// parallel test-only permission closure.
 		text := provider.lastOptions().Messages[0].Text()
 		start := strings.LastIndex(text, "\n{")
@@ -52,12 +52,12 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 		if err := json.NewDecoder(strings.NewReader(text[start:])).Decode(&wire); err != nil {
 			t.Fatal(err)
 		}
-		request := reviewer.Request{CWD: wire.CWD, UnderGit: wire.UnderGit}
+		request := judge.Request{CWD: wire.CWD, UnderGit: wire.UnderGit}
 		if request.CWD != cwd || request.UnderGit != underGit {
 			t.Fatalf("review workspace = %+v, want %s/%v", request, cwd, underGit)
 		}
 		if params.CWDFunc() != cwd {
-			t.Fatal("tools and reviewer disagree")
+			t.Fatal("tools and judge disagree")
 		}
 	}
 	check(gitCwd, true)
@@ -65,7 +65,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	check(plainCwd, false)
 	m.changeCwd(gitCwd)
 	check(gitCwd, true)
-	if m.services.Session != owner || params.SessionID != owner.ID() || m.autopilot.Load().judge != judge {
+	if m.services.Session != owner || params.SessionID != owner.ID() || m.autopilot.Load().judge != before {
 		t.Fatal("workspace switch replaced session or judge")
 	}
 }
@@ -73,7 +73,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 func TestAutopilotWorkspaceSnapshotConcurrent(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	m.services.MCP = mcp.NewManagerForTest(nil)
-	m.reviewerApprovals, m.reviewerEscalations = new(atomic.Int64), new(atomic.Int64)
+	m.judgeApprovals, m.judgeEscalations = new(atomic.Int64), new(atomic.Int64)
 	m.env.SessionPermissions.SetMode(setting.ModeAutoPilot)
 	provider := &autopilotStubProvider{content: `{"decision":"escalate","reason":"test"}`}
 	m.env.LLMProvider = provider

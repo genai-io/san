@@ -12,7 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/transcript"
@@ -273,7 +273,7 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 	}
 }
 
-func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
+func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	mainSession := mainSessionFixture(t)
 	policy := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot},
 		Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
@@ -282,10 +282,10 @@ func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 	release := make(chan struct{})
 	review := func() PermissionReview {
 		return PermissionReview{Engaged: true, Enabled: true,
-			Judge: func(context.Context, reviewer.Request) (reviewer.Verdict, error) {
+			Judge: func(context.Context, judge.Request) (judge.Verdict, error) {
 				close(entered)
 				<-release
-				return reviewer.Verdict{Allow: true, Reason: "late"}, nil
+				return judge.Verdict{Allow: true, Reason: "late"}, nil
 			},
 		}
 	}

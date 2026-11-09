@@ -219,7 +219,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		adaptOpts = append(adaptOpts, tool.WithBashPromptResponderProvider(p.BashPromptResponder))
 	}
 	pg := NewPermissionGate(p.PermissionRules)
-	pg.SetReviewer(p.PermissionReview)
+	pg.SetJudge(p.PermissionReview)
 	pg.SetHookAllowCheck(p.CanApproveByHook)
 	disabledTools, hasPermissionRules := p.DisabledTools, p.PermissionRules != nil
 	adaptOpts = append(adaptOpts, tool.WithPermissionCheck(func(ctx context.Context, name string, input map[string]any) (bool, string) {

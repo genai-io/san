@@ -76,7 +76,7 @@ type env struct {
 
 	// AutoPilot is the live autopilot config for this session: seeded from
 	// settings at startup, edited via the /autopilot panel, persisted with the
-	// session, and restored on resume. The reviewer and mission responder read
+	// session, and restored on resume. The judge and mission responder read
 	// it from here (not from a settings snapshot) so mid-session edits and
 	// resumed configs take effect.
 	AutoPilot setting.AutoPilotSettings

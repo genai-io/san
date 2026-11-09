@@ -162,7 +162,7 @@ One subagent-specific rule composes with the pipeline:
 
 In `ModeAutoPilot`, a call that would prompt is offered to a review agent
 before it is offered to the user. One flag decides which calls those are,
-and the reviewer has no say in it:
+and the judge has no say in it:
 
 - `PermissionDecision.Reviewable` (`internal/setting/permission.go`) marks a
   prompt the judge may weigh.
@@ -172,7 +172,7 @@ and the reviewer has no say in it:
   prompt to the judge; `allow` short-circuits, anything else falls through to
   the human prompt.
 - The judge fails closed: `PermReviewFunc` must return the zero value on any
-  error, so a broken or slow reviewer escalates rather than approves.
+  error, so a broken or slow judge escalates rather than approves.
 
 The load-bearing safety property is which prompts never reach the judge.
 `ConfirmationTier` splits the confirmation reasons in two, and only the
@@ -180,7 +180,7 @@ The load-bearing safety property is which prompts never reach the judge.
 destruction, sensitive paths, data exfiltration — and the circuit breaker
 stay the human's call in every mode.
 
-The reviewer itself lives in `internal/reviewer/`.
+The judge itself lives in `internal/judge/`.
 
 ## Hooks Can Mutate Permissions
 
@@ -226,7 +226,7 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 - Decision gate: `internal/setting/permission.go` → `HasPermissionToUseTool`.
 - Rule parser + Bash AST: `internal/setting/bash_ast.go`.
 - Approval modal flow: `internal/agent/permission.go` (`PermissionGate`).
-- Gray-zone judge: `internal/reviewer/`.
+- Gray-zone judge: `internal/judge/`.
 - Hook-allow invariant: `internal/setting/permission.go` → `CanApproveByHook`,
   applied in `internal/tool/gate.go`.
 - Subagent permission resolution: `internal/subagent/executor.go`.

@@ -9,8 +9,8 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
@@ -64,7 +64,7 @@ type PermissionReview struct {
 	CWD      string
 	UnderGit bool
 	Mission  string
-	Judge    func(context.Context, reviewer.Request) (reviewer.Verdict, error)
+	Judge    func(context.Context, judge.Request) (judge.Verdict, error)
 	Observe  func(context.Context, bool, string)
 }
 
@@ -94,7 +94,7 @@ func (p PermissionPolicy) Review(ctx context.Context, name string, args map[stri
 	}
 	reviewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	verdict, err := r.Judge(reviewCtx, reviewer.Request{ToolName: name, Args: args, Reason: reason,
+	verdict, err := r.Judge(reviewCtx, judge.Request{ToolName: name, Args: args, Reason: reason,
 		CWD: r.CWD, Mission: r.Mission, UnderGit: r.UnderGit})
 	// A provider may return a verdict after cancellation; it must not create grants.
 	if err == nil {
@@ -110,7 +110,7 @@ func (p PermissionPolicy) Review(ctx context.Context, name string, args map[stri
 		observe(false, reason)
 		return PermReviewResult{}
 	}
-	p.record(name, args, true, transcript.PermissionSourceReviewer, verdict.Reason)
+	p.record(name, args, true, transcript.PermissionSourceJudge, verdict.Reason)
 	for _, rule := range setting.ExactAllowRules(name, args) {
 		p.Session.AllowPattern(rule)
 	}

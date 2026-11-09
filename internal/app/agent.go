@@ -182,7 +182,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 
 	// Build the autopilot judge into the atomic slot so /autopilot Save can
 	// hot-swap it mid-session; the closures below Load it per call.
-	m.rebuildAutopilotReviewer()
+	m.rebuildAutopilotJudge()
 
 	// Stream timeout overrides. Priority: SAN_* env var > settings.json > core
 	// default (zero value => core picks FirstChunkTimeout=5m, IdleTimeout=60s).
@@ -259,18 +259,18 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	return params, nil
 }
 
-// resolveReviewerModel picks the provider and model for the auto-review judge.
-func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
-	p, info := m.resolveReviewer(ref)
+// resolveJudgeModel picks the provider and model for the auto-review judge.
+func (m *model) resolveJudgeModel(ref string) (llm.Provider, string) {
+	p, info := m.resolveJudge(ref)
 	return p, info.ModelID
 }
 
-// resolveReviewer resolves a judge model ref to its provider and model. A
+// resolveJudge resolves a judge model ref to its provider and model. A
 // "vendor/model" ref (e.g. "anthropic/claude-haiku-4-5") routes to that
 // connected provider; a bare id stays on the session provider; empty uses the
 // session model. An unresolvable vendor falls back to the session model. The
 // info names whichever provider was actually picked, for capability lookups.
-func (m *model) resolveReviewer(ref string) (llm.Provider, *llm.CurrentModelInfo) {
+func (m *model) resolveJudge(ref string) (llm.Provider, *llm.CurrentModelInfo) {
 	session := &llm.CurrentModelInfo{ModelID: m.env.GetModelID()}
 	if m.env.CurrentModel != nil {
 		session.Provider, session.AuthMethod = m.env.CurrentModel.Provider, m.env.CurrentModel.AuthMethod
@@ -295,7 +295,7 @@ func (m *model) autopilotModelEfforts(ref string) []string {
 	if _, _, ok := llm.ParseVendorModel(ref); !ok {
 		return nil
 	}
-	p, info := m.resolveReviewer(ref)
+	p, info := m.resolveJudge(ref)
 	return llm.ThinkingEffortsForModel(p, m.services.LLM.Store(), info)
 }
 
@@ -326,9 +326,9 @@ func (m *model) autopilotModelRefs() []string {
 // needs one.
 func (m *model) recordDecision(ctx context.Context, approved bool, reason string) {
 	if approved {
-		m.reviewerApprovals.Add(1)
+		m.judgeApprovals.Add(1)
 	} else {
-		m.reviewerEscalations.Add(1)
+		m.judgeEscalations.Add(1)
 	}
 	if id := core.ToolCallIDFromContext(ctx); id != "" {
 		m.pendingDecisions.Store(id, core.ReviewDecision{Approved: approved, Reason: reason})
@@ -521,7 +521,7 @@ func (m *model) startMemoryRecall(query string) {
 	if !m.services.Reminder.Prepared() || m.memoryRecall.surfaced == nil {
 		m.memoryRecall.surfaced = map[string]bool{} // a new conversation has seen none
 	}
-	provider, info := m.resolveReviewer("")
+	provider, info := m.resolveJudge("")
 	r := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info)}
 	m.memoryRecall.current.Swap(r.Start(m.agentAutoMemory, query, maps.Clone(m.memoryRecall.surfaced))).Stop()
 }
@@ -621,7 +621,7 @@ func (m *model) ResetAgentRuntime() error {
 	m.services.Reminder.ResetConversation()
 	// Compaction must not restore the old conversation's files.
 	m.env.FileCache.Clear()
-	// Stop feeding the L1 reviewer AND cancel the session-scoped context
+	// Stop feeding the L1 judge AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.
 	m.teardownSelfLearn()

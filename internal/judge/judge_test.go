@@ -1,4 +1,4 @@
-package reviewer
+package judge
 
 import (
 	"github.com/genai-io/sdk-go/pkg/ai"

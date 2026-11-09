@@ -10,7 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
@@ -93,7 +93,7 @@ func TestPermissionPolicyReview(t *testing.T) {
 			var order []string
 			p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) {
 				order = append(order, "audit")
-				if r.Permission.Source != transcript.PermissionSourceReviewer || r.Permission.Decision != "permit" {
+				if r.Permission.Source != transcript.PermissionSourceJudge || r.Permission.Decision != "permit" {
 					t.Fatalf("audit: %+v", r.Permission)
 				}
 			}}
@@ -114,7 +114,7 @@ func TestPermissionPolicyReview(t *testing.T) {
 						t.Fatal("invalid observation")
 					}
 				},
-				Judge: func(ctx context.Context, req reviewer.Request) (reviewer.Verdict, error) {
+				Judge: func(ctx context.Context, req judge.Request) (judge.Verdict, error) {
 					calls++
 					deadline, ok := ctx.Deadline()
 					if !ok || time.Until(deadline) > 30*time.Second || core.ToolCallIDFromContext(ctx) != "call-1" {
@@ -127,9 +127,9 @@ func TestPermissionPolicyReview(t *testing.T) {
 						cancel()
 					}
 					if outcome == "error" {
-						return reviewer.Verdict{Allow: true}, errors.New("offline")
+						return judge.Verdict{Allow: true}, errors.New("offline")
 					}
-					return reviewer.Verdict{Allow: outcome != "deny", Reason: "judgment"}, nil
+					return judge.Verdict{Allow: outcome != "deny", Reason: "judgment"}, nil
 				},
 			}
 			if outcome == "missing" {
@@ -172,7 +172,7 @@ func TestPermissionPolicyGateEscalatesReviewFailure(t *testing.T) {
 	p := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot}}
 	gate := NewPermissionGate(p.Decide)
 	defer gate.Close()
-	gate.SetReviewer(func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
+	gate.SetJudge(func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
 		return p.Review(ctx, name, args, reason, PermissionReview{Engaged: true, Enabled: true})
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

@@ -91,12 +91,12 @@ type model struct {
 	interactions interactionState // UI-owned FIFO; one active reply endpoint across prompt kinds.
 	tasks        taskViewerState  // session-scoped task browsing and action return path
 
-	// reviewerApprovals / reviewerEscalations count auto-review outcomes this
+	// judgeApprovals / judgeEscalations count auto-review outcomes this
 	// session for the status bar: gray-zone tool calls the judge auto-approved
 	// vs. handed back to the user. Pointers so value-receiver copies of the
 	// model share one counter across the agent and UI goroutines.
-	reviewerApprovals   *atomic.Int64
-	reviewerEscalations *atomic.Int64
+	judgeApprovals   *atomic.Int64
+	judgeEscalations *atomic.Int64
 
 	// pendingDecisions maps a tool call ID to the auto-review judge's decision,
 	// so the renderer can draw it inline under that tool call. Written on the

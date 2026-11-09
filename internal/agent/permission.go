@@ -94,9 +94,9 @@ func NewPermissionGate(decideFn PermDecisionFunc) *PermissionGate {
 	}
 }
 
-// SetReviewer installs the gray-zone judge. When set, a reviewable Prompt is
+// SetJudge installs the gray-zone judge. When set, a reviewable Prompt is
 // offered to it before falling back to the user. A nil fn disables review.
-func (pg *PermissionGate) SetReviewer(fn PermReviewFunc) {
+func (pg *PermissionGate) SetJudge(fn PermReviewFunc) {
 	pg.reviewFn = fn
 }
 

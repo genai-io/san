@@ -552,12 +552,12 @@ func (m model) renderModeStatus() string {
 		modelName = status
 	}
 	reviewApprovals := 0
-	if m.reviewerApprovals != nil {
-		reviewApprovals = int(m.reviewerApprovals.Load())
+	if m.judgeApprovals != nil {
+		reviewApprovals = int(m.judgeApprovals.Load())
 	}
 	reviewEscalations := 0
-	if m.reviewerEscalations != nil {
-		reviewEscalations = int(m.reviewerEscalations.Load())
+	if m.judgeEscalations != nil {
+		reviewEscalations = int(m.judgeEscalations.Load())
 	}
 	statusMessage := m.userInput.Provider.StatusMessage
 	if !m.userInput.LastCtrlC.IsZero() {
