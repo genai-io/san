@@ -153,6 +153,10 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
 - `fork.go`: `forkSession` copies the first N events into a new session, keeping positions and native
   message IDs. Only the creation event changes (fork link, no parent); a group hint is cleared; referenced
   request blobs are copied and verified. Built in a staging directory and published by one rename.
+- `clean.go`: `clean` applies retention (off unless `InactiveAfter` is set; pinned, busy, unreadable and
+  unfinished sessions are skipped with a reason, and a guard re-checks activity under the writer claim),
+  purges expired trash, and collects garbage older than 24h: staging directories, request copies no event
+  references, orphan cache files. Bounded by `Limit`, narrowed (never widened) by `IDs`, previewable with `DryRun`.
 - `list.go`: `listOverviews`, a keyset listing ordered by (last activity, ID) descending. Defaults to live,
   unarchived sessions active in the last 30 days; pinned sessions bypass that window, trashed ones are
   listed without an age cut, and a session that cannot be read is listed with its error.
