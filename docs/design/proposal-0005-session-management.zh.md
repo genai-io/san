@@ -121,7 +121,7 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
 | 模型调用 | `inference.start` | `purpose`、`turn_id?`、`request`（provider、model、选项）、`input`（`conversation {append?}` 或 `standalone`）、`instructions_digest?`、`toolset_digest?` | 打开一次模型调用；每次重试都是独立调用。见[模型调用](#模型调用)。 |
 | | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
-| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/judge）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。`judge` 是裁决静态规则无法判定的灰区调用的模型（`internal/reviewer`），不持有工具，失败时回到用户确认。 |
+| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/judge）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。`judge` 是裁决静态规则无法判定的灰区调用的模型（`internal/judge`），不持有工具，失败时回到用户确认。 |
 | | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 已运行调用的结局与展示细节。结果正文在工具结果消息中。未通过关卡的调用只有裁决和一条错误工具结果消息。 |
 | 模型可见内容 | `instructions.update` | `set {name: {content, slot}}`、`remove [name]`、`cause` | 从此处起的系统提示各节。 |
 | | `toolset.update` | `set {name: 原生工具 schema}`、`remove [name]`、`cause` | 从此处起提供给模型的工具。 |
