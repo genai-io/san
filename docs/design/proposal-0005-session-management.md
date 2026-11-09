@@ -14,7 +14,7 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | [#737](https://github.com/genai-io/san/pull/737) | Merged: project/worktree identity, checkout-local settings, typed events behind a private writer, using the previous draft's 18-type model. It converges to this design before any runtime cutover. Runtime still writes schema 4. |
 | [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
 | Typed storage and public API | Implemented: 13 events, blobs, attrs, cache, list/fork/clean and opened typed sessions; still unwired. |
-| Runtime cutover | Recorder, runtime resume, subagents and final switch remain. The cutover is a breaking change (see [Compatibility](#compatibility)). |
+| Runtime cutover | Core recorder/admission adapters are implemented and unwired; producer integration, runtime resume, subagents and final switch remain. The cutover is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 

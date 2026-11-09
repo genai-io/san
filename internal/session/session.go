@@ -39,9 +39,31 @@ func (s *Session) Snapshot() Projection {
 // the committed tail, version 1 and the current time; an omitted type follows
 // the payload. Explicit envelope values are validated, never overwritten.
 func (s *Session) Append(ctx context.Context, events ...Event) error {
+	return s.write(ctx, func(*Projection) ([]Event, error) {
+		if len(events) == 0 {
+			return nil, fmt.Errorf("empty event batch")
+		}
+		return events, nil
+	})
+}
+
+// write keeps snapshot-dependent preparation and its commit in one critical
+// section. A nil batch is a no-op, used by unchanged catalogues and blob writes.
+func (s *Session) write(ctx context.Context, build func(*Projection) ([]Event, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
+		if err := s.writer.Err(); err != nil {
+			return err
+		}
+		if err := s.store.checkID(ctx, s.ID()); err != nil {
+			return err
+		}
+		snapshot := s.Snapshot()
+		events, err := build(&snapshot)
+		if err != nil || len(events) == 0 {
+			return err
+		}
 		return s.appendLocked(ctx, events)
 	})
 }
