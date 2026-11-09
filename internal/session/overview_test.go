@@ -10,20 +10,20 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func summaryFixture(t *testing.T) (*Store, *Session) {
+func overviewFixture(t *testing.T) (*Store, *Session) {
 	t.Helper()
 	store, s, _ := eventStorageFixture(t)
 	commitTestEvents(t, s, "m1", testEvent(2, "", MessageAppendPayload{Messages: []ai.Message{eventText("u1", ai.RoleUser, "  first question  ")}}))
 	return store, s
 }
 
-func TestSummaryProjectsListRow(t *testing.T) {
-	store, s := summaryFixture(t)
+func TestOverviewProjectsListRow(t *testing.T) {
+	store, s := overviewFixture(t)
 	commitTestEvents(t, s, "t", testEvent(3, "", SessionUpdatePayload{State: &StatePatch{Title: SetField("Fix login")}, Config: &ConfigPatch{Model: SetField("m1")}}))
 	note := testEvent(4, "", AnnotationAddPayload{Text: "note"})
 	note.Time = 999999
 	commitTestEvents(t, s, "n", note)
-	got, err := store.summary(context.Background(), s.ID())
+	got, err := store.overview(context.Background(), s.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,22 +35,22 @@ func TestSummaryProjectsListRow(t *testing.T) {
 	}
 	long := strings.Repeat("é", 500)
 	commitTestEvents(t, s, "long", testEvent(5, "", MessageAppendPayload{Messages: []ai.Message{eventText("u2", ai.RoleUser, long)}}))
-	got, _ = store.summary(context.Background(), s.ID())
+	got, _ = store.overview(context.Background(), s.ID())
 	if n := len([]rune(got.LastPrompt)); n != lastPromptRunes {
 		t.Fatalf("last prompt runes = %d", n)
 	}
 }
 
-func TestSummaryCacheHitMissAndRebuild(t *testing.T) {
+func TestOverviewCacheHitMissAndRebuild(t *testing.T) {
 	ctx := context.Background()
-	store, s := summaryFixture(t)
+	store, s := overviewFixture(t)
 	cacheFile := filepath.Join(store.projectDir, "cache", s.ID()+".json")
-	first, err := store.summary(ctx, s.ID())
+	first, err := store.overview(ctx, s.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(cacheFile); err != nil {
-		t.Fatal("summary was not cached")
+		t.Fatal("overview was not cached")
 	}
 	// A hit must not replay: break the events' product validity but not their
 	// framing by checking the cache answers from its own file.
@@ -62,12 +62,12 @@ func TestSummaryCacheHitMissAndRebuild(t *testing.T) {
 	if err := os.WriteFile(cacheFile, []byte(marked), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := store.summary(ctx, s.ID()); got.Messages != 41 {
+	if got, _ := store.overview(ctx, s.ID()); got.Messages != 41 {
 		t.Fatal("valid cache was not used")
 	}
 	// An append changes the fingerprint, so the stale entry is rebuilt.
 	commitTestEvents(t, s, "m2", testEvent(3, "", MessageAppendPayload{Messages: []ai.Message{eventText("u2", ai.RoleUser, "second")}}))
-	got, err := store.summary(ctx, s.ID())
+	got, err := store.overview(ctx, s.ID())
 	if err != nil || got.Messages != 2 || got.LastPrompt != "second" {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -75,18 +75,18 @@ func TestSummaryCacheHitMissAndRebuild(t *testing.T) {
 	f, _ := os.OpenFile(s.TranscriptPath(), os.O_APPEND|os.O_WRONLY, 0o600)
 	_, _ = f.WriteString(`{"batch_version":1`)
 	_ = f.Close()
-	if again, err := store.summary(ctx, s.ID()); err != nil || again != got {
-		t.Fatalf("unfinished tail changed the summary: %+v %v", again, err)
+	if again, err := store.overview(ctx, s.ID()); err != nil || again != got {
+		t.Fatalf("unfinished tail changed the overview: %+v %v", again, err)
 	}
 	// Damaged or foreign cache content is ignored, never trusted.
-	for _, bad := range []string{"{", `{"fingerprint":{},"summary":{"session":"other"}}`, ""} {
+	for _, bad := range []string{"{", `{"fingerprint":{},"overview":{"session":"other"}}`, ""} {
 		_ = os.WriteFile(cacheFile, []byte(bad), 0o600)
-		if again, err := store.summary(ctx, s.ID()); err != nil || again != got {
+		if again, err := store.overview(ctx, s.ID()); err != nil || again != got {
 			t.Fatalf("bad cache %q: %+v %v", bad, again, err)
 		}
 	}
 	if first.Messages != 1 {
-		t.Fatal("first summary changed")
+		t.Fatal("first overview changed")
 	}
 }
 

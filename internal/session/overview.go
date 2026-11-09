@@ -16,10 +16,10 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// SessionSummary is one session's row in a list, projected from its events. It is
+// Overview is one session's row in a list, projected from its events. It is
 // derived data: never authoritative, always rebuildable, and cached only to
 // avoid replaying every session just to draw a picker.
-type SessionSummary struct {
+type Overview struct {
 	SessionID  string `json:"session"`
 	AgentID    string `json:"agent_id"`
 	Workspace  string `json:"workspace"`
@@ -38,9 +38,9 @@ type SessionSummary struct {
 
 const lastPromptRunes = 200
 
-func summarize(sessionID string, p *Projection) SessionSummary {
+func overviewOf(sessionID string, p *Projection) Overview {
 	id, state, cfg := p.Identity(), p.State(), p.Config()
-	s := SessionSummary{SessionID: sessionID, AgentID: id.AgentID, Workspace: id.Workspace, InitialCWD: id.InitialCWD,
+	s := Overview{SessionID: sessionID, AgentID: id.AgentID, Workspace: id.Workspace, InitialCWD: id.InitialCWD,
 		Messages: len(p.data.Messages), CreatedAt: p.data.Events[0].Time}
 	if id.Parent != nil {
 		s.Parent = id.Parent.Session
@@ -138,68 +138,68 @@ func fingerprintLog(path string) (logFingerprint, error) {
 	return logFingerprint{Size: end, LastLine: hex.EncodeToString(sum[:])}, nil
 }
 
-type summaryCacheFile struct {
+type overviewCacheFile struct {
 	Fingerprint logFingerprint `json:"fingerprint"`
-	Summary     SessionSummary `json:"summary"`
+	Overview    Overview       `json:"overview"`
 }
 
-// summaryCache keeps one derived file per session. A cache entry is valid only
+// overviewCache keeps one derived file per session. A cache entry is valid only
 // while the events file still has the fingerprint it was built from, so it can
 // lag behind a commit but never lead it; any doubt rebuilds.
-type summaryCache struct{ dir string }
+type overviewCache struct{ dir string }
 
-func (c summaryCache) path(id string) string { return filepath.Join(c.dir, id+".json") }
+func (c overviewCache) path(id string) string { return filepath.Join(c.dir, id+".json") }
 
-func (c summaryCache) load(id string, fp logFingerprint) (SessionSummary, bool) {
+func (c overviewCache) load(id string, fp logFingerprint) (Overview, bool) {
 	data, err := os.ReadFile(c.path(id))
 	if err != nil {
-		return SessionSummary{}, false
+		return Overview{}, false
 	}
-	var f summaryCacheFile
-	if strictEventJSON(data, &f) != nil || f.Fingerprint != fp || f.Summary.SessionID != id {
-		return SessionSummary{}, false
+	var f overviewCacheFile
+	if strictEventJSON(data, &f) != nil || f.Fingerprint != fp || f.Overview.SessionID != id {
+		return Overview{}, false
 	}
-	return f.Summary, true
+	return f.Overview, true
 }
 
-func (c summaryCache) store(id string, fp logFingerprint, s SessionSummary) error {
-	data, err := json.Marshal(summaryCacheFile{fp, s})
+func (c overviewCache) store(id string, fp logFingerprint, s Overview) error {
+	data, err := json.Marshal(overviewCacheFile{fp, s})
 	if err != nil {
 		return err
 	}
 	return atomicfile.Write(c.path(id), data, 0o600)
 }
 
-func (c summaryCache) remove(id string) error {
+func (c overviewCache) remove(id string) error {
 	if err := os.Remove(c.path(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
 }
 
-// summary returns the cached summary of a session when the events file is
+// overview returns the cached overview of a session when the events file is
 // unchanged, otherwise replays it and refreshes the cache. A failed cache write
 // never fails the read: the cache is an optimisation, not a record.
-func (s *Store) summary(ctx context.Context, id string) (SessionSummary, error) {
-	cache := summaryCache{dir: filepath.Join(s.projectDir, "cache")}
+func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
+	cache := overviewCache{dir: filepath.Join(s.projectDir, "cache")}
 	fp, err := fingerprintLog(s.TranscriptPath(id))
 	if err != nil {
-		return SessionSummary{}, err
+		return Overview{}, err
 	}
 	if fp != (logFingerprint{}) {
-		if sum, ok := cache.load(id, fp); ok {
-			return sum, nil
+		if cached, ok := cache.load(id, fp); ok {
+			return cached, nil
 		}
 	}
 	p, _, err := s.replayEvents(ctx, id, nil)
 	if err != nil {
-		return SessionSummary{}, err
+		return Overview{}, err
 	}
-	sum := summarize(id, p)
+	ov := overviewOf(id, p)
 	// Cache only if the file did not change since the first fingerprint: then
 	// the replay saw exactly the committed history the fingerprint names.
 	if after, err := fingerprintLog(s.TranscriptPath(id)); err == nil && after == fp {
-		_ = cache.store(id, fp, sum)
+		_ = cache.store(id, fp, ov)
 	}
-	return sum, nil
+	return ov, nil
 }

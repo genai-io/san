@@ -69,7 +69,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
     events.jsonl.lock              writer 锁（sdk-go）
     attrs.json                     用户意图（不存在即默认值）
     blobs/                         按 sha256 内容寻址
-  cache/<sid>.json                 列表行摘要（派生）
+  cache/<sid>.json                 概览（派生）
   trash/<sid>/                     整个移入的已删除会话目录
 ```
 
@@ -221,7 +221,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 - **Context** — 发给模型的活动消息列表。
 - **State** — 生效的覆盖、会话状态和三个目录。
 - **History** — 曾有过的所有消息及审计和备注，用于展示和检查。压缩前的消息保留在此。
-- **Summary** — 缓存在 `cache/` 中的列表行数据。
+- **Overview** — 会话的列表行（标题、最后提问、计数、最后活跃），缓存在 `cache/` 中。
 
 恢复流程为 `Open → 投影 → 解析当前设置与信任 → 启动 runtime`。TUI、无界面和 ACP 共用；
 ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。恢复时按当前配置重建目录；
@@ -306,7 +306,7 @@ func OpenStore(ctx context.Context, startDir string) (*Store, error)
 func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error)
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
-func (s *Store) Get(ctx context.Context, id string) (Summary, error)
+func (s *Store) Get(ctx context.Context, id string) (Overview, error)
 func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
 func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
 func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
@@ -364,7 +364,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 ```
 
 - **Delete** 需要 writer 锁（打开中的会话不能删除），且会话未固定。先在会话目录中写 `deleted.json`（`deleted_at`），
-  再一步把目录重命名为 `trash/<sid>/`，并删除缓存的摘要。子会话和分叉是独立会话，不受影响。
+  再一步把目录重命名为 `trash/<sid>/`，并删除缓存的概览。子会话和分叉是独立会话，不受影响。
   崩溃后会话要么在线要么在回收站，绝不会被拆开。
 - **Restore** 把目录重命名回去。若该 ID 已有在线会话则失败；绝不覆盖或改名。
 - **Purge** 把超过期限的目录重命名为 `trash/.purging-<sid>/` 再删除；遗留的 `.purging-` 目录在下次运行时完成清理。
@@ -421,12 +421,12 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
 - **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
   `/clear` 新建会话，回退或编辑更适合用保持源会话完整的分叉来表达（见[上下文操作](#上下文操作)）。
   一个具体的事件更容易校验和阅读。
-- **attrs 与摘要缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
+- **attrs 与概览缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
 - **以 `last_resumed_at` 作为活动。** 只打开不操作不算活动；最后事件时间就够了，无需额外的权威字段。
 - **随机项目 ID + 注册表。** 注册表需要加锁更新与对账，仓库移动后仍需显式关联。派生键两者都不需要。
 - **SQLite。** 2026-11-07 与 JSONL 对比测量（Apple M5，双方均持久 sync）：追加相同（≈4 ms），
   回放 1,000 条消息慢约 20%，列出 100 个会话在缓存热时快 3.5 倍、内存缓存丢失后慢 25 倍
-  （JSONL 有持久化摘要），二进制增大 3.8 MB。不值得引入第二个存储引擎；只有在优化摘要缓存和
+  （JSONL 有持久化摘要），二进制增大 3.8 MB。不值得引入第二个存储引擎；只有在优化概览缓存和
   回放分配之后、出现新证据时再考虑。
 - **读取、转换或双写旧格式。** 转换要映射缺少 start、链接或结局的记录，要么虚构事实要么被阻止；双写使故障模式翻倍；
   sdk-go 也禁止在同一文件中混用两种记录。不背负它，每条规则才能无条件成立。
@@ -449,4 +449,4 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
 
 - 载荷的精确 Go 类型，以及哪些部分（信封、投影器、批次辅助）属于 sdk-go。
 - 仓库移动后的 `relink` 交互。
-- 在测量大项目列表性能后，摘要缓存是否应改为每项目一个索引。
+- 在测量大项目列表性能后，概览缓存是否应改为每项目一个索引。
