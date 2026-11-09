@@ -3,6 +3,30 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.2] - 2026-11-09
+
+### Added
+- Record typed inference and tool boundaries ([@yanmxa](https://github.com/yanmxa) in [#752](https://github.com/genai-io/san/pull/752))
+- Expose the typed store and session API ([@yanmxa](https://github.com/yanmxa) in [#751](https://github.com/genai-io/san/pull/751))
+- Store typed sessions as sessions/<sid>/ directories ([@yanmxa](https://github.com/yanmxa) in [#746](https://github.com/genai-io/san/pull/746))
+- List, fork and clean for the typed store ([@yanmxa](https://github.com/yanmxa) in [#749](https://github.com/genai-io/san/pull/749))
+- Trash/restore/purge as directory renames; derive the project ID ([@yanmxa](https://github.com/yanmxa) in [#747](https://github.com/genai-io/san/pull/747))
+- Cache session overviews by events-file fingerprint ([@yanmxa](https://github.com/yanmxa) in [#744](https://github.com/genai-io/san/pull/744))
+- Add request blobs and attrs ([@yanmxa](https://github.com/yanmxa) in [#742](https://github.com/genai-io/san/pull/742))
+- Converge typed events to the 13-event model ([@yanmxa](https://github.com/yanmxa) in [#741](https://github.com/genai-io/san/pull/741))
+- Add project identity and private typed event storage ([@yanmxa](https://github.com/yanmxa) in [#737](https://github.com/genai-io/san/pull/737))
+- Expose optional SDK admission boundaries ([@yanmxa](https://github.com/yanmxa) in [#738](https://github.com/genai-io/san/pull/738))
+- Unify comic identity and polish bilingual experience ([@yanmxa](https://github.com/yanmxa) in [#735](https://github.com/genai-io/san/pull/735))
+### Changed
+- Plan the session cutover ([@yanmxa](https://github.com/yanmxa) in [#750](https://github.com/genai-io/san/pull/750))
+- Rename the permission reviewer to judge and retire 'auto review' ([@yanmxa](https://github.com/yanmxa) in [#743](https://github.com/genai-io/san/pull/743))
+- Record every model call and rebuild requests by purpose ([@yanmxa](https://github.com/yanmxa) in [#740](https://github.com/genai-io/san/pull/740))
+- Define file-backed session and event design ([@yanmxa](https://github.com/yanmxa) in [#736](https://github.com/genai-io/san/pull/736))
+### Fixed
+- Show a recap as soon as it is written while away ([@yanmxa](https://github.com/yanmxa) in [#748](https://github.com/genai-io/san/pull/748))
+- Keep automatic recovery quiet and transient ([@yanmxa](https://github.com/yanmxa) in [#734](https://github.com/genai-io/san/pull/734))
+- Follow conversational intent through action ([@yanmxa](https://github.com/yanmxa) in [#733](https://github.com/genai-io/san/pull/733))
+- Move update notice above the input box ([@yanmxa](https://github.com/yanmxa) in [#732](https://github.com/genai-io/san/pull/732))
 ## [v1.25.1] - 2026-11-06
 
 ### Added
