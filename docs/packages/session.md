@@ -150,6 +150,9 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
+- `list.go`: `listOverviews`, a keyset listing ordered by (last activity, ID) descending. Defaults to live,
+  unarchived sessions active in the last 30 days; pinned sessions bypass that window, trashed ones are
+  listed without an age cut, and a session that cannot be read is listed with its error.
 - `lifecycle.go`: `library`, the project's sessions as directories. Trash writes `deleted.json`, holds the
   writer claim across one rename into `trash/<sid>/` (refusing busy or pinned sessions); restore
   renames back and never overwrites; purge removes trashed sessions past 7 days via a hidden rename,

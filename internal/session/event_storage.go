@@ -211,8 +211,13 @@ func (s *Store) replayEvents(ctx context.Context, id string, tailLimit *sdksessi
 // readEvents reads through the inclusive SDK batch tailLimit; nil reads all complete batches.
 // A missing or changed tail is an error.
 func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession.Tail) (*eventState, error) {
+	return s.readEventsIn(ctx, s.sessionDir(id), id, tailLimit)
+}
+
+// readEventsIn reads the session whose directory is dir, live or trashed.
+func (s *Store) readEventsIn(ctx context.Context, dir, id string, tailLimit *sdksession.Tail) (*eventState, error) {
 	state := newEventState()
-	for committed, err := range readEventBatches(ctx, s.sessionDir(id)) {
+	for committed, err := range readEventBatches(ctx, dir) {
 		if err != nil {
 			return nil, err
 		}
