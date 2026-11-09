@@ -62,6 +62,13 @@ func (t Trashed) Deadline() time.Time {
 // session open anywhere (ErrBusy) cannot be trashed, and it refuses a pinned one.
 // The claim is held across the rename, so nothing can open the session midway.
 func (l library) trash(ctx context.Context, id string, now time.Time) error {
+	return l.trashChecked(ctx, id, now, nil)
+}
+
+// trashChecked is trash with a last look: guard runs once the writer claim is
+// held, so a caller that chose the session earlier can confirm it is still the
+// session it meant to move. A non-nil error from guard cancels the move.
+func (l library) trashChecked(ctx context.Context, id string, now time.Time, guard func(dir string) error) error {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return err
 	}
@@ -85,6 +92,11 @@ func (l library) trash(ctx context.Context, id string, now time.Time) error {
 	}
 	if attrs.Pinned {
 		return ErrPinned
+	}
+	if guard != nil {
+		if err := guard(dir); err != nil {
+			return err
+		}
 	}
 	target := l.trashDir(id)
 	if _, err := os.Stat(target); err == nil {

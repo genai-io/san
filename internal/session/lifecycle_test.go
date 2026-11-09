@@ -50,7 +50,7 @@ func TestTrashAndRestoreMoveTheWholeSession(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(lib.trashDir("session"), eventsFileName+".lock")); !os.IsNotExist(err) {
 		t.Fatal("stale writer lock left in the trash")
 	}
-	if _, err := store.openEventSession(ctx, "session"); err == nil {
+	if _, err := store.openSession(ctx, "session"); err == nil {
 		t.Fatal("trashed session opened")
 	}
 	list, err := lib.trashed(ctx)
@@ -64,7 +64,7 @@ func TestTrashAndRestoreMoveTheWholeSession(t *testing.T) {
 		t.Fatal("restore left the trash marker")
 	}
 	a, _ := readAttrs(lib.sessionDir("session"))
-	opened, err := store.openEventSession(ctx, "session")
+	opened, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestTrashAndRestoreMoveTheWholeSession(t *testing.T) {
 func TestTrashRefusesBusyPinnedAndUnknown(t *testing.T) {
 	ctx := context.Background()
 	lib, store := lifecycleFixture(t)
-	open, err := store.openEventSession(ctx, "session")
+	open, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestRestoreNeverOverwrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	create := testEvent(1, "", SessionCreatePayload{ProjectID: store.projectID, Workspace: store.workspace, InitialCWD: store.cwd, AgentID: "other"})
-	again, err := store.createEventSession(ctx, "again", "session", create, EventValidationContext{})
+	again, err := store.createSession(ctx, "again", "session", create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}

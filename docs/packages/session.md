@@ -150,6 +150,16 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
+- `fork.go`: `forkSession` copies the first N events into a new session, keeping positions and native
+  message IDs. Only the creation event changes (fork link, no parent); a group hint is cleared; referenced
+  request blobs are copied and verified. Built in a staging directory and published by one rename.
+- `clean.go`: `clean` applies retention (off unless `InactiveAfter` is set; pinned, busy, unreadable and
+  unfinished sessions are skipped with a reason, and a guard re-checks activity under the writer claim),
+  purges expired trash, and collects garbage older than 24h: staging directories, request copies no event
+  references, orphan cache files. Bounded by `Limit`, narrowed (never widened) by `IDs`, previewable with `DryRun`.
+- `list.go`: `listOverviews`, a keyset listing ordered by (last activity, ID) descending. Defaults to live,
+  unarchived sessions active in the last 30 days; pinned sessions bypass that window, trashed ones are
+  listed without an age cut, and a session that cannot be read is listed with its error.
 - `lifecycle.go`: `library`, the project's sessions as directories. Trash writes `deleted.json`, holds the
   writer claim across one rename into `trash/<sid>/` (refusing busy or pinned sessions); restore
   renames back and never overwrites; purge removes trashed sessions past 7 days via a hidden rename,
@@ -161,8 +171,8 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
 `event_storage.go` adds the private typed writer. Each session is one directory,
 `sessions/<sid>/`, holding `events.jsonl` (an sdk-go store opened on that directory with
 the fixed ID `events`, see `event_log.go`), plus `attrs.json` and `blobs/` when present.
-`createEventSession` builds the session in a staging directory and publishes it with one
-rename; `openEventSession` replays, then claims the writer. `readEvents` rebuilds private
+`createSession` builds the session in a staging directory and publishes it with one
+rename; `openSession` replays, then claims the writer. `readEvents` rebuilds private
 state and `replayEvents` returns its projection and SDK tail; both accept an optional
 inclusive `tailLimit`. Each committed batch holds one version-1 `san.events` record with
 typed events and retained validation evidence, published only after a successful Commit.

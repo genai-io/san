@@ -21,7 +21,7 @@ func eventStorageFixture(t *testing.T) (*Store, *eventSession, Event) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 123, Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: s.workspace, InitialCWD: s.cwd, AgentID: "main"}}
-	opened, err := s.createEventSession(context.Background(), "create-batch", "session", create, EventValidationContext{})
+	opened, err := s.createSession(context.Background(), "create-batch", "session", create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestEventPersistenceRetryAndNativeHistory(t *testing.T) {
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := store.openEventSession(ctx, "session")
+	reopened, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestEventReadOnlyAndRecovery(t *testing.T) {
 	if !bytes.Equal(damaged, eventBytes(t, s)) {
 		t.Fatal("readonly repaired bytes")
 	}
-	reopened, err := store.openEventSession(ctx, "session")
+	reopened, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestEventReadOnlyAndRecovery(t *testing.T) {
 	if !bytes.Equal(before, eventBytes(t, s)) {
 		t.Fatal("writer did not recover tail")
 	}
-	if _, err := store.openEventSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
+	if _, err := store.openSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
 		t.Fatalf("second writer: %v", err)
 	}
 }
@@ -182,7 +182,7 @@ func TestEventMalformedInitialUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := eventBytes(t, s)
-	if _, err := store.openEventSession(ctx, "session"); err == nil {
+	if _, err := store.openSession(ctx, "session"); err == nil {
 		t.Fatal("accepted malformed initial")
 	}
 	if !bytes.Equal(before, eventBytes(t, s)) {
@@ -222,7 +222,7 @@ func TestEventEvidenceByBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.Close()
-	reopened, err := store.openEventSession(ctx, "session")
+	reopened, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestEventLostAcknowledgmentReopenRetry(t *testing.T) {
 	if err = s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := store.openEventSession(ctx, s.ID())
+	reopened, err := store.openSession(ctx, s.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,13 +309,13 @@ func TestEventSessionIsOneDirectory(t *testing.T) {
 	if err := os.Rename(store.sessionDir("session"), moved); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.openEventSession(ctx, "session"); !errors.Is(err, os.ErrNotExist) {
+	if _, err := store.openSession(ctx, "session"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("moved session still opens: %v", err)
 	}
 	if err := os.Rename(moved, store.sessionDir("session")); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := store.openEventSession(ctx, "session")
+	reopened, err := store.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,12 +328,12 @@ func TestEventSessionIsOneDirectory(t *testing.T) {
 func TestEventCreateFailureLeavesNothingDiscoverable(t *testing.T) {
 	ctx := context.Background()
 	store, _, create := eventStorageFixture(t)
-	if _, err := store.createEventSession(ctx, "dup", "session", create, EventValidationContext{}); err == nil {
+	if _, err := store.createSession(ctx, "dup", "session", create, EventValidationContext{}); err == nil {
 		t.Fatal("created over an existing session")
 	}
 	bad := create
 	bad.Payload = SessionCreatePayload{ProjectID: store.projectID, Workspace: "relative", InitialCWD: store.cwd, AgentID: "main"}
-	if _, err := store.createEventSession(ctx, "bad", "other", bad, EventValidationContext{}); err == nil {
+	if _, err := store.createSession(ctx, "bad", "other", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created an invalid session")
 	}
 	entries, _ := os.ReadDir(store.sessionsRoot())

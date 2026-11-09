@@ -17,7 +17,7 @@ import (
 func TestEventIdentityAndOwnership(t *testing.T) {
 	ctx := context.Background()
 	store, s, create := eventStorageFixture(t)
-	if _, err := store.createEventSession(ctx, "again", "session", create, EventValidationContext{}); err == nil {
+	if _, err := store.createSession(ctx, "again", "session", create, EventValidationContext{}); err == nil {
 		t.Fatal("overwrote existing session")
 	}
 	other, err := NewStoreWithDir(store.projectDir)
@@ -25,7 +25,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
-	if _, err = other.openEventSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
+	if _, err = other.openSession(ctx, "session"); !errors.Is(err, sdksession.ErrBusy) {
 		t.Fatalf("ownership: %v", err)
 	}
 	wrong := &Store{projectID: "wrong", projectDir: store.projectDir}
@@ -36,7 +36,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	identity := bad.Payload.(SessionCreatePayload)
 	identity.ProjectID = "wrong"
 	bad.Payload = identity
-	if _, err = store.createEventSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
+	if _, err = store.createSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created wrong project")
 	}
 	if _, err = os.Stat(store.sessionDir("bad")); !os.IsNotExist(err) {
@@ -45,12 +45,12 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	identity.ProjectID = store.projectID
 	identity.Workspace = "/another-project"
 	bad.Payload = identity
-	if _, err = store.createEventSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
+	if _, err = store.createSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created wrong workspace")
 	}
 	_ = s.Close()
 	_ = s.Close()
-	reopened, err := other.openEventSession(ctx, "session")
+	reopened, err := other.openSession(ctx, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestEventConcurrentCreators(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			s, _ := store.createEventSession(ctx, "create", "session", create, EventValidationContext{})
+			s, _ := store.createSession(ctx, "create", "session", create, EventValidationContext{})
 			results <- s
 		}()
 	}
@@ -122,7 +122,7 @@ func TestEventStrictPayloadAndCorruption(t *testing.T) {
 	if _, _, err := store.replayEvents(ctx, "session", nil); err == nil {
 		t.Fatal("accepted damaged hash")
 	}
-	if _, err := store.openEventSession(ctx, "session"); err == nil {
+	if _, err := store.openSession(ctx, "session"); err == nil {
 		t.Fatal("opened damaged hash")
 	}
 	if !bytes.Equal(damaged, eventBytes(t, s)) {
@@ -160,7 +160,7 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	if _, _, err = store.replayEvents(ctx, s.ID(), nil); err == nil {
 		t.Fatal("future evidence repaired earlier fact")
 	}
-	if _, err = store.openEventSession(ctx, s.ID()); err == nil {
+	if _, err = store.openSession(ctx, s.ID()); err == nil {
 		t.Fatal("invalid prefix opened")
 	}
 	if !bytes.Equal(before, eventBytes(t, s)) {

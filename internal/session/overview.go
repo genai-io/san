@@ -31,8 +31,8 @@ type Overview struct {
 	Model      string `json:"model,omitempty"`
 	Messages   int    `json:"messages"`
 	CreatedAt  int64  `json:"created_at"`
-	// LastActive is the time of the last message.append. Catalogue, state and
-	// annotation events, opening and reading do not count.
+	// LastActive is the later of creation and the last message.append. Catalogue,
+	// state and annotation events, opening and reading do not count.
 	LastActive int64 `json:"last_active"`
 }
 
@@ -54,10 +54,12 @@ func overviewOf(sessionID string, p *Projection) Overview {
 	if cfg.Model != nil {
 		s.Model = *cfg.Model
 	}
+	// Creating a session is activity too: a fork keeps its source's message
+	// times but is new now.
 	s.LastActive = s.CreatedAt
 	for i := len(p.data.Events) - 1; i >= 0; i-- {
 		if p.data.Events[i].Type == EventMessageAppend {
-			s.LastActive = p.data.Events[i].Time
+			s.LastActive = max(s.LastActive, p.data.Events[i].Time)
 			break
 		}
 	}
@@ -177,28 +179,36 @@ func (c overviewCache) remove(id string) error {
 	return nil
 }
 
-// overview returns the cached overview of a session when the events file is
-// unchanged, otherwise replays it and refreshes the cache. A failed cache write
-// never fails the read: the cache is an optimisation, not a record.
+// overview returns the overview of a live session, cached while its events file
+// is unchanged. A failed cache write never fails the read: the cache is an
+// optimisation, not a record.
 func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
+	return s.overviewAt(ctx, s.sessionDir(id), id, true)
+}
+
+// overviewAt reads the session in dir, replaying it unless a valid cache entry
+// exists. Trashed sessions pass cached=false: they are rare to list and their
+// cache is dropped on trash.
+func (s *Store) overviewAt(ctx context.Context, dir, id string, cached bool) (Overview, error) {
+	path := filepath.Join(dir, eventsFileName)
 	cache := overviewCache{dir: filepath.Join(s.projectDir, "cache")}
-	st, err := stampOf(s.eventsPath(id))
+	st, err := stampOf(path)
 	if err != nil {
 		return Overview{}, err
 	}
-	if st != (stamp{}) {
-		if cached, ok := cache.load(id, st); ok {
-			return cached, nil
+	if cached && st != (stamp{}) {
+		if hit, ok := cache.load(id, st); ok {
+			return hit, nil
 		}
 	}
-	p, _, err := s.replayEvents(ctx, id, nil)
+	state, err := s.readEventsIn(ctx, dir, id, nil)
 	if err != nil {
 		return Overview{}, err
 	}
-	ov := overviewOf(id, p)
+	ov := overviewOf(id, state.projection)
 	// Cache only if the file did not change since the first stamp: then
 	// the replay saw exactly the committed history the stamp names.
-	if after, err := stampOf(s.eventsPath(id)); err == nil && after == st {
+	if after, err := stampOf(path); cached && err == nil && after == st {
 		_ = cache.store(id, st, ov)
 	}
 	return ov, nil

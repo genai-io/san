@@ -92,7 +92,7 @@ func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
 	return p, nil
 }
 
-func (s *Store) createEventSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
+func (s *Store) createSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
 	// Detach and validate before acquiring a writer (which may create an empty file).
 	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
 	if err != nil {
@@ -166,7 +166,7 @@ func newEventState() *eventState {
 	return &eventState{batches: map[string]sdksession.Tail{}}
 }
 
-func (s *Store) openEventSession(ctx context.Context, id string) (*eventSession, error) {
+func (s *Store) openSession(ctx context.Context, id string) (*eventSession, error) {
 	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, err
 	}
@@ -211,8 +211,13 @@ func (s *Store) replayEvents(ctx context.Context, id string, tailLimit *sdksessi
 // readEvents reads through the inclusive SDK batch tailLimit; nil reads all complete batches.
 // A missing or changed tail is an error.
 func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession.Tail) (*eventState, error) {
+	return s.readEventsIn(ctx, s.sessionDir(id), id, tailLimit)
+}
+
+// readEventsIn reads the session whose directory is dir, live or trashed.
+func (s *Store) readEventsIn(ctx context.Context, dir, id string, tailLimit *sdksession.Tail) (*eventState, error) {
 	state := newEventState()
-	for committed, err := range readEventBatches(ctx, s.sessionDir(id)) {
+	for committed, err := range readEventBatches(ctx, dir) {
 		if err != nil {
 			return nil, err
 		}
