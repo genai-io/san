@@ -10,7 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
@@ -23,7 +23,7 @@ func TestPermissionPolicyRules(t *testing.T) {
 	p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) { records = append(records, r) }}
 	args := map[string]any{"command": "go test ./..."}
 	first, second := p.Decide("Bash", args), p.Decide("Bash", args)
-	if first.Decision != perm.Prompt || !first.Reviewable || first.RequestID == "" || first.RequestID == second.RequestID || len(records) != 0 {
+	if first.Decision != perm.Prompt || !first.Judgeable || first.RequestID == "" || first.RequestID == second.RequestID || len(records) != 0 {
 		t.Fatalf("prompt metadata: %+v %+v, records %v", first, second, records)
 	}
 	data.Permissions.Deny = []string{"Bash"}
@@ -84,7 +84,7 @@ func TestPermissionPolicyMemoryAndAuditSnapshot(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyReview(t *testing.T) {
+func TestPermissionPolicyJudge(t *testing.T) {
 	for _, outcome := range []string{"allow", "deny", "error", "cancel", "missing", "disabled", "disengaged", "breaker", "unrecoverable"} {
 		t.Run(outcome, func(t *testing.T) {
 			data := setting.NewData()
@@ -93,7 +93,7 @@ func TestPermissionPolicyReview(t *testing.T) {
 			var order []string
 			p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) {
 				order = append(order, "audit")
-				if r.Permission.Source != transcript.PermissionSourceReviewer || r.Permission.Decision != "permit" {
+				if r.Permission.Source != transcript.PermissionSourceJudge || r.Permission.Decision != "permit" {
 					t.Fatalf("audit: %+v", r.Permission)
 				}
 			}}
@@ -107,14 +107,14 @@ func TestPermissionPolicyReview(t *testing.T) {
 			ctx, cancel := context.WithCancel(core.WithToolCallID(context.Background(), "call-1"))
 			defer cancel()
 			calls := 0
-			r := PermissionReview{Engaged: outcome != "disengaged", Enabled: outcome != "disabled", CWD: "/workspace", UnderGit: true, Mission: "verify",
+			r := JudgeSnapshot{Engaged: outcome != "disengaged", Enabled: outcome != "disabled", CWD: "/workspace", UnderGit: true, Mission: "verify",
 				Observe: func(ctx context.Context, allow bool, reason string) {
 					order = append(order, "observe")
 					if core.ToolCallIDFromContext(ctx) != "call-1" || reason == "" || allow != (outcome == "allow") {
 						t.Fatal("invalid observation")
 					}
 				},
-				Judge: func(ctx context.Context, req reviewer.Request) (reviewer.Verdict, error) {
+				Judge: func(ctx context.Context, req judge.Request) (judge.Verdict, error) {
 					calls++
 					deadline, ok := ctx.Deadline()
 					if !ok || time.Until(deadline) > 30*time.Second || core.ToolCallIDFromContext(ctx) != "call-1" {
@@ -127,15 +127,15 @@ func TestPermissionPolicyReview(t *testing.T) {
 						cancel()
 					}
 					if outcome == "error" {
-						return reviewer.Verdict{Allow: true}, errors.New("offline")
+						return judge.Verdict{Allow: true}, errors.New("offline")
 					}
-					return reviewer.Verdict{Allow: outcome != "deny", Reason: "judgment"}, nil
+					return judge.Verdict{Allow: outcome != "deny", Reason: "judgment"}, nil
 				},
 			}
 			if outcome == "missing" {
 				r.Judge = nil
 			}
-			got := p.Review(ctx, "Bash", args, "gray zone", r)
+			got := p.Judge(ctx, "Bash", args, "gray zone", r)
 			if got.Allow != (outcome == "allow") {
 				t.Fatalf("result: %+v", got)
 			}
@@ -168,12 +168,12 @@ func TestPermissionPolicyReview(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyGateEscalatesReviewFailure(t *testing.T) {
+func TestPermissionPolicyGateEscalatesJudgeFailure(t *testing.T) {
 	p := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot}}
 	gate := NewPermissionGate(p.Decide)
 	defer gate.Close()
-	gate.SetReviewer(func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
-		return p.Review(ctx, name, args, reason, PermissionReview{Engaged: true, Enabled: true})
+	gate.SetJudge(func(ctx context.Context, name string, args map[string]any, reason string) PermJudgeResult {
+		return p.Judge(ctx, name, args, reason, JudgeSnapshot{Engaged: true, Enabled: true})
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

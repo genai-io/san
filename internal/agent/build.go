@@ -69,15 +69,15 @@ type BuildParams struct {
 	// self-learning is active). Nil ⇒ no extra tools.
 	ExtraTools []core.ToolSchema
 
-	// PermissionRules and PermissionReview are the two stages of the
+	// PermissionRules and PermissionJudge are the two stages of the
 	// pre-execution permission gate: the rules stage applies the static rules
-	// (permit/reject/prompt); the review stage is the LLM auto-review consulted
+	// (permit/reject/prompt); the judge stage is the LLM judge consulted
 	// only on a gray-zone prompt (AutoPilot.Permission). CanApproveByHook
 	// guards the way past both: it vets a PreToolUse hook's "allow" against the
 	// settings, so a hook cannot waive a deny rule, the circuit breaker, a
 	// confirmation tier or an explicit ask rule. Nil fails closed.
 	PermissionRules  PermDecisionFunc
-	PermissionReview PermReviewFunc
+	PermissionJudge  PermJudgeFunc
 	CanApproveByHook PermHookApprovalFunc
 
 	// ResultFilter may replace a tool result before the model is told about it — an
@@ -219,7 +219,7 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		adaptOpts = append(adaptOpts, tool.WithBashPromptResponderProvider(p.BashPromptResponder))
 	}
 	pg := NewPermissionGate(p.PermissionRules)
-	pg.SetReviewer(p.PermissionReview)
+	pg.SetJudge(p.PermissionJudge)
 	pg.SetHookAllowCheck(p.CanApproveByHook)
 	disabledTools, hasPermissionRules := p.DisabledTools, p.PermissionRules != nil
 	adaptOpts = append(adaptOpts, tool.WithPermissionCheck(func(ctx context.Context, name string, input map[string]any) (bool, string) {

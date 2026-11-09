@@ -12,7 +12,7 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, service wiring. |
 | `app` | `internal/app` and its subpackages | TUI shell, model composition, event routing. |
-| `feature` | Business-domain packages: interaction, agent, broker, group, llm, tool, session, transcript, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, reviewer, image | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: interaction, agent, broker, group, llm, tool, session, transcript, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
 | `infrastructure` | `log`, `secret`, `filecache`, `markdown`, `proc`, `confdir`, `atomicfile`, `autoupdate` | Stateless helpers usable by any layer above. |
 
@@ -47,7 +47,7 @@ not by lower layers importing higher layers.
    `internal/interaction` owns request lifetimes and human-permission preparation,
    scopes and audit-before-reply, not execution, transport or presentation. It may
    use agent/tool, settings and transcript contracts, but not Bubble Tea or ACP.
-   Rule, hook and reviewer policy stays with its existing owners. Adapters serialize
+   Rule, hook and judge policy stays with its existing owners. Adapters serialize
    each approval, map only offered options and pass the current session owner.
    Owner identity fences session generations; request contexts preserve independent
    background lifetimes. Audit callbacks are best effort, not durability guarantees;

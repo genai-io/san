@@ -76,7 +76,7 @@ type env struct {
 
 	// AutoPilot is the live autopilot config for this session: seeded from
 	// settings at startup, edited via the /autopilot panel, persisted with the
-	// session, and restored on resume. The reviewer and mission responder read
+	// session, and restored on resume. The judge and mission responder read
 	// it from here (not from a settings snapshot) so mid-session edits and
 	// resumed configs take effect.
 	AutoPilot setting.AutoPilotSettings
@@ -198,7 +198,7 @@ func (m *env) ResetSessionPermissions() {
 
 // applyEditPosture grants the accept-edits posture — edits/writes auto-approved,
 // working dir trusted. Shared by accept-edits and auto-pilot (which additionally
-// routes non-edit prompts to the review agent). ApplyModePermissions owns
+// routes non-edit prompts to the judge). ApplyModePermissions owns
 // SessionPermissions.Mode; this only layers on the extra allowances.
 func (m *env) applyEditPosture(cwd string) {
 	m.SessionPermissions.GrantEditPosture(cwd)

@@ -262,7 +262,7 @@ func (m *model) restoreHistory(sess *session.History) {
 	if m.env.AutoPilot.MissionState == setting.MissionRunning {
 		m.env.AutoPilot.MissionState = setting.MissionPaused
 	}
-	m.rebuildAutopilotReviewer()
+	m.rebuildAutopilotJudge()
 
 	// Membership follows the session: rejoin the group it was in, and leave the
 	// one the previous session held offline.
@@ -391,7 +391,7 @@ func (m *model) clearSession() error {
 	m.pendingMessages.Discard()
 	m.beforeGoal = nil
 	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
-	m.rebuildAutopilotReviewer()
+	m.rebuildAutopilotJudge()
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(m.sessionID())
 	m.ReconfigureAgentTool()

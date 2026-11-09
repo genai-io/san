@@ -16,7 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -226,7 +226,7 @@ func (p *AutopilotSelector) save() tea.Cmd {
 func (p *AutopilotSelector) openSystemPrompt() {
 	seed := p.snap.SystemPrompt
 	if seed == "" {
-		seed = reviewer.DefaultSteeringInstructions()
+		seed = judge.DefaultSteeringInstructions()
 	}
 	p.prompt.SetValue(seed)
 	p.prompt.SetWidth(p.innerWidth())
@@ -248,7 +248,7 @@ func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 		val := strings.TrimRight(p.prompt.Value(), "\n")
 		// Left as the built-in instructions (unchanged) → store nothing, so the
 		// panel keeps reading "built-in" and Dirty() doesn't flag a no-op edit.
-		if strings.TrimSpace(val) == strings.TrimSpace(reviewer.DefaultSteeringInstructions()) {
+		if strings.TrimSpace(val) == strings.TrimSpace(judge.DefaultSteeringInstructions()) {
 			val = ""
 		}
 		p.snap.SystemPrompt = val

@@ -105,7 +105,7 @@ var (
 	agentLabelStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Success)
 
-	// Auto-review decision labels: green when the judge auto-approved a
+	// Judge decision labels: green when the judge auto-approved a
 	// gray-zone tool call, amber when it escalated the call back to the user.
 	decisionApprovedStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
@@ -597,13 +597,13 @@ func RenderAgentNotice(content string, width int, colors map[string]int) string 
 	return kit.TruncateText(line, max(1, width)) + "\n"
 }
 
-// renderDecision renders the auto-review outcome as a one-line annotation
+// renderDecision renders the judge outcome as a one-line annotation
 // between a tool call and its result: a "↳" arrow plus the decision — green
 // "auto-approved" when the judge let it through, amber "escalated" when it
 // handed the call back to the user — and the judge's (few-word) reason dimmed
 // after it. Returns "" when the call was not judged. The "  ↳" indent aligns the
 // arrow with the "⎿" result trailer on the line below.
-func renderDecision(v *core.ReviewDecision) string {
+func renderDecision(v *core.JudgeDecision) string {
 	if v == nil {
 		return ""
 	}
@@ -724,9 +724,9 @@ type ToolResultData struct {
 	// Nested indicates this result is rendering immediately below its tool call.
 	// Nested results show a terminal state without repeating the tool name.
 	Nested bool
-	// Decision is the auto-review decision for this call (nil if it was not
+	// Decision is the judge decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.
-	Decision *core.ReviewDecision
+	Decision *core.JudgeDecision
 }
 
 // RenderToolCalls renders the tool calls section of an assistant core.

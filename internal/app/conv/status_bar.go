@@ -212,8 +212,8 @@ type OperationModeParams struct {
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
-	ReviewApprovals   int      // auto-review approvals this session, shown next to the mode
-	ReviewEscalations int      // auto-review escalations to the user this session
+	JudgeApprovals    int      // judge approvals this session, shown next to the mode
+	JudgeEscalations  int      // judge escalations to the user this session
 	AutopilotThinking bool     // the copilot is mid-decision — show "thinking…" on the mode indicator
 	Group             string   // this session's group, "" outside one
 	GroupSelf         string   // this session's member name in it
@@ -225,7 +225,7 @@ type OperationModeParams struct {
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
-	mode, hint := modeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
+	mode, hint := modeIndicator(params.Mode, params.JudgeApprovals, params.JudgeEscalations, params.AutopilotThinking)
 	if params.ModeHint {
 		mode += hint
 	}
@@ -350,15 +350,15 @@ func compactStatusHint(percent float64) string {
 	}
 }
 
-// RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or YOLO mode.
-func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) string {
-	label, hint := modeIndicator(mode, reviewApprovals, reviewEscalations, autopilotThinking)
+// RenderOperationModeIndicator returns the mode status indicator for auto-accept, autopilot, or YOLO mode.
+func RenderOperationModeIndicator(mode setting.OperationMode, judgeApprovals, judgeEscalations int, autopilotThinking bool) string {
+	label, hint := modeIndicator(mode, judgeApprovals, judgeEscalations, autopilotThinking)
 	return label + hint
 }
 
 // modeIndicator returns the mode label and, apart, its shift+tab hint, which
 // the status line shows only for a moment.
-func modeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) (label, hint string) {
+func modeIndicator(mode setting.OperationMode, judgeApprovals, judgeEscalations int, autopilotThinking bool) (label, hint string) {
 	var icon string
 	var clr kit.AdaptiveColor
 
@@ -384,11 +384,11 @@ func modeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalation
 			// The copilot is deciding — surface it here instead of a transcript line.
 			label = " autopilot · thinking…"
 		} else {
-			if reviewApprovals > 0 {
-				label += fmt.Sprintf(" · %d approved", reviewApprovals)
+			if judgeApprovals > 0 {
+				label += fmt.Sprintf(" · %d approved", judgeApprovals)
 			}
-			if reviewEscalations > 0 {
-				label += fmt.Sprintf(" · %d escalated", reviewEscalations)
+			if judgeEscalations > 0 {
+				label += fmt.Sprintf(" · %d escalated", judgeEscalations)
 			}
 		}
 	}

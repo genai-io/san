@@ -15,9 +15,9 @@ type bashPromptResponder struct {
 	bridge *conv.AgentToUI
 }
 
-// RequestAnswer delegates an ordinary prompt to the auto-review LLM, which
+// RequestAnswer delegates an ordinary prompt to the judge, which
 // decides the reply. It never sees a secret prompt — that goes to RequestSecret.
-// The provider closure only builds this responder when auto-review is on, so
+// The provider closure only builds this responder when autopilot is on, so
 // there is no mode re-check here. The runtime snapshot is loaded live (judge plus
 // the mission it steers toward) so a mid-session panel save or mission edit takes
 // effect.
@@ -26,7 +26,7 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 	defer cancel()
 	rt := r.model.autopilot.Load()
 	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt)
-	log.Logger().Debug("auto-review prompt answer",
+	log.Logger().Debug("judge prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),
 		zap.Error(err))

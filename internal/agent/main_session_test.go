@@ -12,7 +12,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/transcript"
@@ -273,19 +273,19 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 	}
 }
 
-func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
+func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	mainSession := mainSessionFixture(t)
 	policy := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot},
 		Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
 	}
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	review := func() PermissionReview {
-		return PermissionReview{Engaged: true, Enabled: true,
-			Judge: func(context.Context, reviewer.Request) (reviewer.Verdict, error) {
+	snapshot := func() JudgeSnapshot {
+		return JudgeSnapshot{Engaged: true, Enabled: true,
+			Judge: func(context.Context, judge.Request) (judge.Verdict, error) {
 				close(entered)
 				<-release
-				return reviewer.Verdict{Allow: true, Reason: "late"}, nil
+				return judge.Verdict{Allow: true, Reason: "late"}, nil
 			},
 		}
 	}
@@ -294,8 +294,8 @@ func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 	}
 	params := BuildParams{Provider: stubProvider{}, ModelID: "fake", PermissionRules: policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
-		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
-			return policy.Review(ctx, name, args, reason, review())
+		PermissionJudge: func(ctx context.Context, name string, args map[string]any, reason string) PermJudgeResult {
+			return policy.Judge(ctx, name, args, reason, snapshot())
 		},
 	}
 	_, gate, err := buildAgent(params)
@@ -323,7 +323,7 @@ func TestMainSessionCancelledReviewerCannotGrant(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("cancel did not release gate")
 	}
-	if d := params.PermissionRules("Bash", args); !d.Reviewable {
+	if d := params.PermissionRules("Bash", args); !d.Judgeable {
 		t.Fatalf("late approval changed session policy: %+v", d)
 	}
 	bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())

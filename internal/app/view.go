@@ -551,13 +551,13 @@ func (m model) renderModeStatus() string {
 	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
 		modelName = status
 	}
-	reviewApprovals := 0
-	if m.reviewerApprovals != nil {
-		reviewApprovals = int(m.reviewerApprovals.Load())
+	judgeApprovals := 0
+	if m.judgeApprovals != nil {
+		judgeApprovals = int(m.judgeApprovals.Load())
 	}
-	reviewEscalations := 0
-	if m.reviewerEscalations != nil {
-		reviewEscalations = int(m.reviewerEscalations.Load())
+	judgeEscalations := 0
+	if m.judgeEscalations != nil {
+		judgeEscalations = int(m.judgeEscalations.Load())
 	}
 	statusMessage := m.userInput.Provider.StatusMessage
 	if !m.userInput.LastCtrlC.IsZero() {
@@ -576,8 +576,8 @@ func (m model) renderModeStatus() string {
 		Compressions:      m.env.Compressions,
 		ShowContextBar:    m.env.ShowContextBar,
 		Width:             m.env.Width,
-		ReviewApprovals:   reviewApprovals,
-		ReviewEscalations: reviewEscalations,
+		JudgeApprovals:    judgeApprovals,
+		JudgeEscalations:  judgeEscalations,
 		AutopilotThinking: m.autopilotDeciding,
 		ModeHint:          time.Now().Before(m.modeHintUntil),
 		Group:             m.grp.name,

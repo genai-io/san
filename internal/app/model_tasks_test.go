@@ -166,7 +166,7 @@ func TestTaskRootReviewReturnsSameDetailAfterFIFOQuestion(t *testing.T) {
 			m.userInput.Tasks.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 			action := m.userInput.Tasks.HandleKeypress(tea.KeyPressMsg{Code: 'r', Text: "r"})
 			if action == nil {
-				t.Fatal("selected approval was not reviewable")
+				t.Fatal("selected approval was not judgeable")
 			}
 			m.dispatch(action())
 			if m.interactions.active != question || !m.conv.Modal.Question.IsActive() || m.userInput.Approval.IsActive() {

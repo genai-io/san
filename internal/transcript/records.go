@@ -49,11 +49,11 @@ const (
 	PermissionReject = "reject"
 
 	// PermissionRecord.Source
-	PermissionSourceConfig   = "config"
-	PermissionSourceUser     = "user"
-	PermissionSourceHook     = "hook"
-	PermissionSourceAsk      = "ask"
-	PermissionSourceReviewer = "reviewer"
+	PermissionSourceConfig = "config"
+	PermissionSourceUser   = "user"
+	PermissionSourceHook   = "hook"
+	PermissionSourceAsk    = "ask"
+	PermissionSourceJudge  = "judge"
 )
 
 // PermissionRecord.Scope is a free-form label owned by the source of the

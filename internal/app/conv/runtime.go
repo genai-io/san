@@ -50,9 +50,9 @@ type Runtime interface {
 	// ── Services conv calls on the host ─────────────────────────
 	CommitMessages() []tea.Cmd
 	FlushStreamingBlocks() []tea.Cmd
-	// TakeReviewDecision consumes the auto-review decision stashed for a tool
-	// call (nil if it was not auto-reviewed), to stamp onto its rendered result.
-	TakeReviewDecision(callID string) *core.ReviewDecision
+	// TakeJudgeDecision consumes the judge decision stashed for a tool
+	// call (nil if it was not judged), to stamp onto its rendered result.
+	TakeJudgeDecision(callID string) *core.JudgeDecision
 	HasRunningTasks() bool
 	// AgentOutbox is the selected runtime's outbox, retained through its final events.
 	AgentOutbox() <-chan core.Event

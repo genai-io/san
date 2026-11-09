@@ -1,4 +1,4 @@
-// Package reviewer runs a single-inference "permission judge": given a tool
+// Package judge runs a single-inference "permission judge": given a tool
 // call the static permission rules could not resolve (the gray zone), it
 // decides whether the action is safe enough to auto-approve or must be
 // escalated to the user.
@@ -7,7 +7,7 @@
 // prompt-injected judge can never take an action itself. It fails closed: any
 // error, timeout, or unparseable answer leaves the decision to the caller,
 // which escalates to the human.
-package reviewer
+package judge
 
 import (
 	"context"
@@ -31,7 +31,7 @@ type Request struct {
 	ToolName string
 	Args     map[string]any
 	// Reason is the static gate's explanation for why the call reached the gray
-	// zone (e.g. "mode: auto review requires confirmation").
+	// zone (e.g. "mode: autopilot requires confirmation").
 	Reason string
 	CWD    string
 	// UnderGit reports whether the working directory is a git working tree. It
@@ -53,8 +53,8 @@ type Judge struct {
 	systemPrompt string
 }
 
-// New builds a reviewer over the given provider/model. A nil provider yields a
-// reviewer whose Permission always errors, so callers fail closed.
+// New builds a judge over the given provider/model. A nil provider yields a
+// judge whose Permission always errors, so callers fail closed.
 func New(provider llm.Provider, model string) *Judge {
 	return &Judge{provider: provider, model: model, systemPrompt: ComposeSystemPrompt(defaultSteeringInstructions)}
 }
@@ -115,10 +115,10 @@ func (r *Judge) Permission(ctx context.Context, req Request) (Verdict, error) {
 
 // infer runs one review inference — the shared system prompt plus the given
 // user message — and returns the raw response for the caller to parse. A nil
-// reviewer or provider yields an error so callers fail closed.
+// judge or provider yields an error so callers fail closed.
 func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	if r == nil || r.provider == nil {
-		return "", fmt.Errorf("reviewer not configured")
+		return "", fmt.Errorf("judge not configured")
 	}
 	// An explicit rung lifts the cap: reasoning tokens count against it and
 	// would starve the verdict. The driver then applies its own default.

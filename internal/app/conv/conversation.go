@@ -149,7 +149,7 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 	last.AutopilotNote = note
 }
 
-func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.ReviewDecision) {
+func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.JudgeDecision) {
 	for _, tc := range calls {
 		m.Append(core.ChatMessage{
 			Role: core.ChatUser,
@@ -159,7 +159,7 @@ func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, co
 				Content:    ai.TextContent(contentFn(tc)),
 				IsError:    true,
 			},
-			// Consume the stashed auto-review decision so an interrupted judged
+			// Consume the stashed judge decision so an interrupted judged
 			// call still shows its annotation and its handoff entry is released
 			// (this synthetic result never reaches the applyPostTool path).
 			Decision: decisionFn(tc.ID),

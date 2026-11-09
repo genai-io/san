@@ -56,7 +56,7 @@ func Default() *Runtime
   resume can seed it before the first run. `Reset` clears it after shutdown.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`. Root gates
-  stamp the tool-call ID before hooks, reviewer and human approval run, matching
+  stamp the tool-call ID before hooks, judge and human approval run, matching
   subagent gates (tool execution wrappers alone run too late to identify approval).
   `FileViews` binds the conversation's observed file versions to tool and
   permission contexts for read-before-write checks; it is distinct from the
@@ -90,13 +90,13 @@ func Default() *Runtime
   asynchronous permission asks into synchronous TUI approval modals.
 - `permission_policy.go` supplies `PermissionPolicy.Decide`, `Review` and
   `CanApproveByHook` to native `BuildParams`. TUI and print share settings rules and
-  deny-aware auto-memory maintenance. TUI supplies a live reviewer/config snapshot;
+  deny-aware auto-memory maintenance. TUI supplies a live judge/config snapshot;
   the policy enforces safety guards, a 30-second review budget, fail-closed human
   escalation, exact session grants and best-effort decision audits before return.
   Cancelled reviews cannot cache late approvals. The session grant owner and audit
   callback are bound at construction; callers stop that runtime before replacing
   its session. Human prompts remain in `interaction`, rule precedence in `setting`,
-  and judge inference in `reviewer`; this is not full headless runtime assembly.
+  and judge inference in `judge`; this is not full headless runtime assembly.
 - Runtime owns live native messages; the opened Session owns persistence and its
   writer lease. Stopping Runtime retains history. The Session remains open until
   it is explicitly closed; see [session](session.md).
@@ -179,7 +179,7 @@ internal/app/main_session_test.go — TUI composition, native permission/hook/sk
 internal/agent/main_session_test.go — production main-session/runtime tool turns, allow/deny, hook audits,
                               transcript-before-terminal ordering, live recall and cancelled review.
 internal/agent/result_pager_test.go — threshold, UTF-8 preview, metadata and persistence failure.
-internal/agent/permission_policy_test.go — rule/reviewer/hook composition, exact grants,
+internal/agent/permission_policy_test.go — rule/judge/hook composition, exact grants,
                                           audit ordering and cancelled verdicts.
 internal/agent/permission_memory_test.go — memory containment and deny precedence.
 internal/agent/compaction_test.go — hook/summary context, failures, replay and reminder reset.
