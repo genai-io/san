@@ -48,7 +48,7 @@ func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionR
 		return PermDecisionResult{Decision: d.Behavior, Reason: d.Reason}
 	}
 	return PermDecisionResult{Decision: perm.Prompt, Reason: d.Reason, ToolName: name,
-		Description: d.Reason, RequestID: core.NewMessageID(), Reviewable: d.Reviewable}
+		Description: d.Reason, RequestID: core.NewMessageID(), Judgeable: d.Judgeable}
 }
 
 // CanApproveByHook checks hook approval eligibility; it does not invoke a hook or approve.
@@ -56,9 +56,9 @@ func (p PermissionPolicy) CanApproveByHook(name string, args map[string]any) boo
 	return p.Settings != nil && p.Session != nil && p.Settings.CanApproveByHook(name, args, p.Session)
 }
 
-// PermissionReview is a live snapshot supplied for each gray-zone decision.
+// JudgeSnapshot is a live snapshot supplied for each gray-zone decision.
 // Observe retains tool-call context for UI annotations without owning presentation.
-type PermissionReview struct {
+type JudgeSnapshot struct {
 	Engaged  bool
 	Enabled  bool
 	CWD      string
@@ -68,9 +68,9 @@ type PermissionReview struct {
 	Observe  func(context.Context, bool, string)
 }
 
-func (p PermissionPolicy) Review(ctx context.Context, name string, args map[string]any, reason string, r PermissionReview) PermReviewResult {
+func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[string]any, reason string, r JudgeSnapshot) PermJudgeResult {
 	if !r.Engaged || p.Settings == nil || p.Session == nil || ctx.Err() != nil {
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
 	observe := func(allow bool, reason string) {
 		if r.Observe != nil {
@@ -79,28 +79,28 @@ func (p PermissionPolicy) Review(ctx context.Context, name string, args map[stri
 	}
 	if reason := setting.CircuitBreakerReason(name, args); reason != "" {
 		observe(false, reason)
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
 	if reason := setting.UnrecoverableReason(name, args); reason != "" {
 		observe(false, reason)
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
 	if !r.Enabled {
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
 	if r.Judge == nil {
 		observe(false, "autopilot unavailable — asking you")
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
-	reviewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	judgeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	verdict, err := r.Judge(reviewCtx, judge.Request{ToolName: name, Args: args, Reason: reason,
+	verdict, err := r.Judge(judgeCtx, judge.Request{ToolName: name, Args: args, Reason: reason,
 		CWD: r.CWD, Mission: r.Mission, UnderGit: r.UnderGit})
 	// A provider may return a verdict after cancellation; it must not create grants.
 	if err == nil {
-		err = reviewCtx.Err()
+		err = judgeCtx.Err()
 	}
-	log.Logger().Debug("auto-review verdict", zap.String("tool", name),
+	log.Logger().Debug("judge verdict", zap.String("tool", name),
 		zap.Bool("allow", err == nil && verdict.Allow), zap.String("reason", verdict.Reason), zap.Error(err))
 	if err != nil || !verdict.Allow {
 		reason := verdict.Reason
@@ -108,14 +108,14 @@ func (p PermissionPolicy) Review(ctx context.Context, name string, args map[stri
 			reason = "autopilot unavailable — asking you"
 		}
 		observe(false, reason)
-		return PermReviewResult{}
+		return PermJudgeResult{}
 	}
 	p.record(name, args, true, transcript.PermissionSourceJudge, verdict.Reason)
 	for _, rule := range setting.ExactAllowRules(name, args) {
 		p.Session.AllowPattern(rule)
 	}
 	observe(true, verdict.Reason)
-	return PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
+	return PermJudgeResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
 }
 
 func (p PermissionPolicy) record(name string, args map[string]any, allow bool, source, reason string) {

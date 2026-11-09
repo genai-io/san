@@ -19,25 +19,25 @@ type PermDecisionResult struct {
 	ToolName    string
 	Description string
 	RequestID   string
-	// Reviewable marks a Prompt the auto-review agent may judge instead of the
-	// user. Set only for the auto-review gray-zone default.
-	Reviewable bool
+	// Judgeable marks a Prompt the judge may judge instead of the
+	// user. Set only for the autopilot gray-zone default.
+	Judgeable bool
 }
 
 // PermDecisionFunc evaluates whether a tool call is allowed, denied, or needs prompting.
 type PermDecisionFunc func(name string, args map[string]any) PermDecisionResult
 
-// PermReviewResult is the outcome of a gray-zone review. Allow=true auto-approves
+// PermJudgeResult is the outcome of a gray-zone review. Allow=true auto-approves
 // the call; the zero value (Allow=false) escalates it to the human.
-type PermReviewResult struct {
+type PermJudgeResult struct {
 	Allow  bool
 	Reason string
 }
 
-// PermReviewFunc judges a reviewable gray-zone tool call. It runs on the agent
+// PermJudgeFunc judges a judgeable gray-zone tool call. It runs on the agent
 // goroutine and must fail closed (return the zero value) on any error, so a
 // broken or slow judge can never silently approve.
-type PermReviewFunc func(ctx context.Context, name string, input map[string]any, reason string) PermReviewResult
+type PermJudgeFunc func(ctx context.Context, name string, input map[string]any, reason string) PermJudgeResult
 
 // PermHookApprovalFunc checks eligibility for a PreToolUse hook's approval;
 // it neither invokes a hook nor approves the call. Precedence is deny rules >
@@ -80,7 +80,7 @@ type PermissionGate struct {
 	cancel         context.CancelFunc
 	requests       chan *PermGateRequest
 	decideFn       PermDecisionFunc
-	reviewFn       PermReviewFunc       // optional; judges reviewable gray-zone prompts
+	judgeFn        PermJudgeFunc        // optional; judges judgeable gray-zone prompts
 	hookAllowCheck PermHookApprovalFunc // optional; checks hook approval eligibility
 }
 
@@ -94,10 +94,10 @@ func NewPermissionGate(decideFn PermDecisionFunc) *PermissionGate {
 	}
 }
 
-// SetJudge installs the gray-zone judge. When set, a reviewable Prompt is
+// SetJudge installs the gray-zone judge. When set, a judgeable Prompt is
 // offered to it before falling back to the user. A nil fn disables review.
-func (pg *PermissionGate) SetJudge(fn PermReviewFunc) {
-	pg.reviewFn = fn
+func (pg *PermissionGate) SetJudge(fn PermJudgeFunc) {
+	pg.judgeFn = fn
 }
 
 // SetHookAllowCheck installs the hook approval eligibility check. Nil fails closed.
@@ -152,10 +152,10 @@ func (pg *PermissionGate) Check(ctx context.Context, name string, input map[stri
 		decision.Description = decision.Reason
 	}
 
-	// Gray-zone review: offer a reviewable Prompt to the judge before the user.
+	// Gray-zone review: offer a judgeable Prompt to the judge before the user.
 	// Allow short-circuits; anything else falls through to the human prompt.
-	if decision.Reviewable && pg.reviewFn != nil {
-		if rv := pg.reviewFn(ctx, name, input, decision.Reason); rv.Allow {
+	if decision.Judgeable && pg.judgeFn != nil {
+		if rv := pg.judgeFn(ctx, name, input, decision.Reason); rv.Allow {
 			return true, rv.Reason
 		}
 	}

@@ -16,10 +16,10 @@ import (
 type PermissionDecision struct {
 	Behavior perm.Decision
 	Reason   string // e.g. "deny rule: Read(**/.env)", "confirmation: .git/ directory"
-	// Reviewable marks a Prompt the auto-review agent may judge. It is set only
-	// for the auto-review gray-zone default — never for a confirmation safety
+	// Judgeable marks a Prompt the judge may judge. It is set only
+	// for the autopilot gray-zone default — never for a confirmation safety
 	// check or an ask-rule prompt — so those always escalate to the human.
-	Reviewable bool
+	Judgeable bool
 }
 
 // decide is a shorthand for building a PermissionDecision.
@@ -39,7 +39,7 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 //  3. BypassPermissions mode → allow everything else
 //  4. Confirmation checks (skipped by bypass): the unrecoverable tier
 //     (destructive bash, sensitive paths, data exfiltration — never
-//     judge-reviewable) and the recoverable tier (work-discarding git,
+//     judgeable) and the recoverable tier (work-discarding git,
 //     out-of-working-dir writes — the AutoPilot judge may weigh git)
 //  5. Ask rules — an explicit ask outranks any session grant
 //  6. Session permissions (runtime overrides)
@@ -88,9 +88,9 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	}
 
 	// ── Step 4: Confirmation checks ──
-	if reason, reviewable := s.confirmationPromptReason(toolName, args, session); reason != "" {
+	if reason, judgeable := s.confirmationPromptReason(toolName, args, session); reason != "" {
 		d := decide(perm.Prompt, reason)
-		d.Reviewable = reviewable
+		d.Judgeable = judgeable
 		return coerceAsk(d, session)
 	}
 
@@ -125,7 +125,7 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 // the recoverable git tier is the judge's to weigh; every other reason here —
 // real destruction, a sensitive path, a write reaching outside the working
 // directory — stays the human's call.
-func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
+func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, judgeable bool) {
 	if reason, recoverable := ConfirmationTier(toolName, args); reason != "" {
 		return "confirmation: " + reason, recoverable
 	}
@@ -159,12 +159,12 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 		return decide(perm.Prompt, "mode: accept edits requires confirmation")
 	case ModeAutoPilot:
 		// Edits are auto-approved like accept-edits; non-edit tools fall to a
-		// reviewable Prompt — the gray zone the review agent judges.
+		// judgeable Prompt — the gray zone the judge judges.
 		if perm.IsEditTool(toolName) {
-			return decide(perm.Permit, "mode: auto review (edits)")
+			return decide(perm.Permit, "mode: autopilot (edits)")
 		}
-		d := decide(perm.Prompt, "mode: auto review requires confirmation")
-		d.Reviewable = true
+		d := decide(perm.Prompt, "mode: autopilot requires confirmation")
+		d.Judgeable = true
 		return d
 	case ModeReadOnly:
 		return decide(perm.Reject, "mode: read-only")

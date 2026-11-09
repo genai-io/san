@@ -48,16 +48,16 @@ func TestPermissionGateForcedPromptUsesHookReason(t *testing.T) {
 	}
 }
 
-func TestPermissionGateJudgeAllowsReviewable(t *testing.T) {
+func TestPermissionGateJudgeAllowsJudgeable(t *testing.T) {
 	gate := NewPermissionGate(func(name string, args map[string]any) PermDecisionResult {
-		return PermDecisionResult{Decision: perm.Prompt, Reason: "mode: auto review requires confirmation", Reviewable: true}
+		return PermDecisionResult{Decision: perm.Prompt, Reason: "mode: autopilot requires confirmation", Judgeable: true}
 	})
 	defer gate.Close()
 
 	reviewed := false
-	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermReviewResult {
+	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermJudgeResult {
 		reviewed = true
-		return PermReviewResult{Allow: true, Reason: "safe: runs tests"}
+		return PermJudgeResult{Allow: true, Reason: "safe: runs tests"}
 	})
 
 	allow, reason := gate.Check(context.Background(), "Bash", map[string]any{"command": "go test ./..."}, false, "")
@@ -65,22 +65,22 @@ func TestPermissionGateJudgeAllowsReviewable(t *testing.T) {
 		t.Fatalf("judge allow = (%v, %q), want (true, judge reason)", allow, reason)
 	}
 	if !reviewed {
-		t.Fatal("judge was not consulted for a reviewable prompt")
+		t.Fatal("judge was not consulted for a judgeable prompt")
 	}
 }
 
-func TestPermissionGateJudgeSkippedWhenNotReviewable(t *testing.T) {
+func TestPermissionGateJudgeSkippedWhenNotJudgeable(t *testing.T) {
 	// An explicit ask rule or confirmation escalation is a Prompt but NOT
-	// reviewable — the judge must never override the user's stated intent.
+	// judgeable — the judge must never override the user's stated intent.
 	gate := NewPermissionGate(func(name string, args map[string]any) PermDecisionResult {
-		return PermDecisionResult{Decision: perm.Prompt, Reason: "ask rule: Bash(rm:*)", Reviewable: false}
+		return PermDecisionResult{Decision: perm.Prompt, Reason: "ask rule: Bash(rm:*)", Judgeable: false}
 	})
 	defer gate.Close()
 
 	reviewed := false
-	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermReviewResult {
+	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermJudgeResult {
 		reviewed = true
-		return PermReviewResult{Allow: true}
+		return PermJudgeResult{Allow: true}
 	})
 
 	done := make(chan bool, 1)
@@ -91,10 +91,10 @@ func TestPermissionGateJudgeSkippedWhenNotReviewable(t *testing.T) {
 
 	req, ok := gate.Recv()
 	if !ok {
-		t.Fatal("expected a human prompt for a non-reviewable decision")
+		t.Fatal("expected a human prompt for a non-judgeable decision")
 	}
 	if reviewed {
-		t.Fatal("judge must not judge a non-reviewable prompt (would override an ask rule)")
+		t.Fatal("judge must not judge a non-judgeable prompt (would override an ask rule)")
 	}
 	req.Response <- PermGateResponse{Allow: false, Reason: "denied"}
 	if <-done {
@@ -104,14 +104,14 @@ func TestPermissionGateJudgeSkippedWhenNotReviewable(t *testing.T) {
 
 func TestPermissionGateJudgeEscalatesToHuman(t *testing.T) {
 	gate := NewPermissionGate(func(name string, args map[string]any) PermDecisionResult {
-		return PermDecisionResult{Decision: perm.Prompt, Reason: "mode: auto review requires confirmation", Reviewable: true}
+		return PermDecisionResult{Decision: perm.Prompt, Reason: "mode: autopilot requires confirmation", Judgeable: true}
 	})
 	defer gate.Close()
 
 	reviewed := false
-	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermReviewResult {
+	gate.SetJudge(func(_ context.Context, _ string, _ map[string]any, _ string) PermJudgeResult {
 		reviewed = true
-		return PermReviewResult{} // escalate
+		return PermJudgeResult{} // escalate
 	})
 
 	done := make(chan bool, 1)

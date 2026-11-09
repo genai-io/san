@@ -211,7 +211,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		// Interactive answering is opt-in via the Bash steer, read live (via
 		// the synchronized snapshot — this runs on the agent goroutine) so a
 		// mid-session toggle takes effect: without it, bash stays on the
-		// normal non-tty path even in auto-review.
+		// normal non-tty path even in autopilot.
 		if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
 			return nil
 		}
@@ -241,12 +241,12 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
-	params.PermissionReview = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
+	params.PermissionJudge = func(ctx context.Context, name string, args map[string]any, reason string) agent.PermJudgeResult {
 		rt := m.autopilot.Load()
 		if rt == nil {
-			return agent.PermReviewResult{}
+			return agent.PermJudgeResult{}
 		}
-		return policy.Review(ctx, name, args, reason, agent.PermissionReview{
+		return policy.Judge(ctx, name, args, reason, agent.JudgeSnapshot{
 			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
 			CWD: rt.cwd, UnderGit: rt.underGit, Mission: rt.cfg.ActiveMission(),
 			Judge: rt.judge.Permission, Observe: m.recordDecision,
@@ -259,7 +259,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	return params, nil
 }
 
-// resolveJudgeModel picks the provider and model for the auto-review judge.
+// resolveJudgeModel picks the provider and model for the autopilot judge.
 func (m *model) resolveJudgeModel(ref string) (llm.Provider, string) {
 	p, info := m.resolveJudge(ref)
 	return p, info.ModelID
@@ -282,7 +282,7 @@ func (m *model) resolveJudge(ref string) (llm.Provider, *llm.CurrentModelInfo) {
 		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), vendor); err == nil {
 			return p, &llm.CurrentModelInfo{ModelID: id, Provider: vendor}
 		}
-		log.Logger().Warn("auto-review model vendor unavailable; using session model", zap.String("model", ref))
+		log.Logger().Warn("judge model vendor unavailable; using session model", zap.String("model", ref))
 		return m.env.LLMProvider, session
 	}
 	session.ModelID = ref
@@ -317,9 +317,9 @@ func (m *model) autopilotModelRefs() []string {
 	return refs
 }
 
-// recordDecision tallies one auto-review decision for the status-bar count and
+// recordDecision tallies one judge decision for the status-bar count and
 // stashes it for the renderer, keyed by the tool call ID carried in ctx and
-// consumed (load + delete) in TakeReviewDecision — so the handoff map only ever
+// consumed (load + delete) in TakeJudgeDecision — so the handoff map only ever
 // holds calls whose result has not arrived yet. The approved flag
 // picks the counter, so the count and the inline annotations can never drift.
 // The count is bumped even when ctx carries no tool call ID; only the stash
@@ -331,23 +331,23 @@ func (m *model) recordDecision(ctx context.Context, approved bool, reason string
 		m.judgeEscalations.Add(1)
 	}
 	if id := core.ToolCallIDFromContext(ctx); id != "" {
-		m.pendingDecisions.Store(id, core.ReviewDecision{Approved: approved, Reason: reason})
+		m.pendingDecisions.Store(id, core.JudgeDecision{Approved: approved, Reason: reason})
 	}
 }
 
-// TakeReviewDecision consumes the decision stashed for a tool call (load + delete),
+// TakeJudgeDecision consumes the decision stashed for a tool call (load + delete),
 // so it stamps exactly one rendered result and the handoff map holds only
-// in-flight calls. Returns nil when the call was not auto-reviewed. Mirrors the
+// in-flight calls. Returns nil when the call was not judged. Mirrors the
 // tool side-effect handoff (Tool.PopSideEffect), consumed at the same point in
 // OnToolResult.
-func (m *model) TakeReviewDecision(callID string) *core.ReviewDecision {
+func (m *model) TakeJudgeDecision(callID string) *core.JudgeDecision {
 	// No empty-callID guard: recordDecision never stores under an empty key, so
 	// LoadAndDelete("") already misses and returns nil.
 	v, ok := m.pendingDecisions.LoadAndDelete(callID)
 	if !ok {
 		return nil
 	}
-	decision := v.(core.ReviewDecision)
+	decision := v.(core.JudgeDecision)
 	return &decision
 }
 

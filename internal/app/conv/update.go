@@ -362,10 +362,10 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cm
 		Role:        core.ChatUser,
 		ToolResult:  rt.OnToolResult(tr),
 		ToolDetails: details,
-		// Stamp the auto-review decision (if this call was judged) onto the
+		// Stamp the judge decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed
 		// here — the handoff map keeps only in-flight calls.
-		Decision: rt.TakeReviewDecision(tr.ToolCallID),
+		Decision: rt.TakeJudgeDecision(tr.ToolCallID),
 	})
 	// Release queued input only after every tool call in this response has
 	// completed. Releasing after the first result inserts the user's pending

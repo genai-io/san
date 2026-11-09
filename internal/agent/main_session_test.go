@@ -280,8 +280,8 @@ func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	}
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	review := func() PermissionReview {
-		return PermissionReview{Engaged: true, Enabled: true,
+	snapshot := func() JudgeSnapshot {
+		return JudgeSnapshot{Engaged: true, Enabled: true,
 			Judge: func(context.Context, judge.Request) (judge.Verdict, error) {
 				close(entered)
 				<-release
@@ -294,8 +294,8 @@ func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	}
 	params := BuildParams{Provider: stubProvider{}, ModelID: "fake", PermissionRules: policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
-		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
-			return policy.Review(ctx, name, args, reason, review())
+		PermissionJudge: func(ctx context.Context, name string, args map[string]any, reason string) PermJudgeResult {
+			return policy.Judge(ctx, name, args, reason, snapshot())
 		},
 	}
 	_, gate, err := buildAgent(params)
@@ -323,7 +323,7 @@ func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("cancel did not release gate")
 	}
-	if d := params.PermissionRules("Bash", args); !d.Reviewable {
+	if d := params.PermissionRules("Bash", args); !d.Judgeable {
 		t.Fatalf("late approval changed session policy: %+v", d)
 	}
 	bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())

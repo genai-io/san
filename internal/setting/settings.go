@@ -688,7 +688,7 @@ const (
 	ModeBypassPermissions               // "YOLO mode": allow all except deny rules and the root/home-removal circuit breaker
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
-	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
+	ModeAutoPilot                       // auto-approve edits; delegate the rest to the judge
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.

@@ -37,7 +37,7 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	before := m.autopilot.Load().judge
 	check := func(cwd string, underGit bool) {
 		t.Helper()
-		params.PermissionReview(context.Background(), "Write", map[string]any{"file_path": "file.txt", "content": "test"}, "test")
+		params.PermissionJudge(context.Background(), "Write", map[string]any{"file_path": "file.txt", "content": "test"}, "test")
 		// Capture the actual Request evidence rendered by the judge, not a
 		// parallel test-only permission closure.
 		text := provider.lastOptions().Messages[0].Text()
@@ -87,7 +87,7 @@ func TestAutopilotWorkspaceSnapshotConcurrent(t *testing.T) {
 		defer close(done)
 		<-start
 		for range 200 {
-			params.PermissionReview(context.Background(), "Write", map[string]any{"file_path": "file.txt"}, "test")
+			params.PermissionJudge(context.Background(), "Write", map[string]any{"file_path": "file.txt"}, "test")
 			text := provider.lastOptions().Messages[0].Text()
 			var wire struct {
 				CWD      string `json:"workingDirectory"`

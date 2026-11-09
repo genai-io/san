@@ -86,11 +86,11 @@ const (
 // where the interface reads them; the conversion between the two is ToMessage.
 type Message = ai.Message
 
-// ReviewDecision is the auto-review judge's display-only outcome for one
+// JudgeDecision is the autopilot judge's display-only outcome for one
 // gray-zone tool call: whether it was auto-approved (vs. escalated to the user)
 // and the judge's one-sentence reason. Rendered inline under the tool call it
 // annotates; never persisted or sent to the provider.
-type ReviewDecision struct {
+type JudgeDecision struct {
 	Approved bool
 	Reason   string
 }
@@ -132,11 +132,11 @@ type ChatMessage struct {
 	// conversation carries is a field a provider is sent.
 	ToolDetails any
 
-	// Decision is the auto-review judge's decision for the tool call this message
+	// Decision is the autopilot judge's decision for the tool call this message
 	// carries the result of — set only on a ai.RoleUser/ToolResult message whose
 	// call was judged, so the renderer can draw the decision inline under the
 	// tool call. Display-only: dropped by ToMessage, never persisted.
-	Decision *ReviewDecision
+	Decision *JudgeDecision
 
 	// AutopilotNote, when set, marks a user message the copilot produced — a
 	// continuation ("2/5") or a rewrite ("refined") — or the /goal echo that

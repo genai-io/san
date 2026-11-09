@@ -44,7 +44,7 @@ func TestFilePermissionsFollowSensitiveSymlinks(t *testing.T) {
 	for _, tool := range []string{"Write", "Edit"} {
 		for _, path := range []string{target, link, dangling, traversal, filepath.Join(dirLink, "new-dir", "new-file")} {
 			decision := d.HasPermissionToUseTool(tool, map[string]any{"file_path": path}, s)
-			if decision.Behavior != perm.Prompt || decision.Reviewable {
+			if decision.Behavior != perm.Prompt || decision.Judgeable {
 				t.Errorf("%s(%s) = %+v, want human confirmation", tool, path, decision)
 			}
 		}

@@ -198,7 +198,7 @@ func (m *env) ResetSessionPermissions() {
 
 // applyEditPosture grants the accept-edits posture — edits/writes auto-approved,
 // working dir trusted. Shared by accept-edits and auto-pilot (which additionally
-// routes non-edit prompts to the review agent). ApplyModePermissions owns
+// routes non-edit prompts to the judge). ApplyModePermissions owns
 // SessionPermissions.Mode; this only layers on the extra allowances.
 func (m *env) applyEditPosture(cwd string) {
 	m.SessionPermissions.GrantEditPosture(cwd)

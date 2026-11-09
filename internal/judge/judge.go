@@ -31,7 +31,7 @@ type Request struct {
 	ToolName string
 	Args     map[string]any
 	// Reason is the static gate's explanation for why the call reached the gray
-	// zone (e.g. "mode: auto review requires confirmation").
+	// zone (e.g. "mode: autopilot requires confirmation").
 	Reason string
 	CWD    string
 	// UnderGit reports whether the working directory is a git working tree. It

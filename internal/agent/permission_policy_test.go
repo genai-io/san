@@ -23,7 +23,7 @@ func TestPermissionPolicyRules(t *testing.T) {
 	p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) { records = append(records, r) }}
 	args := map[string]any{"command": "go test ./..."}
 	first, second := p.Decide("Bash", args), p.Decide("Bash", args)
-	if first.Decision != perm.Prompt || !first.Reviewable || first.RequestID == "" || first.RequestID == second.RequestID || len(records) != 0 {
+	if first.Decision != perm.Prompt || !first.Judgeable || first.RequestID == "" || first.RequestID == second.RequestID || len(records) != 0 {
 		t.Fatalf("prompt metadata: %+v %+v, records %v", first, second, records)
 	}
 	data.Permissions.Deny = []string{"Bash"}
@@ -84,7 +84,7 @@ func TestPermissionPolicyMemoryAndAuditSnapshot(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyReview(t *testing.T) {
+func TestPermissionPolicyJudge(t *testing.T) {
 	for _, outcome := range []string{"allow", "deny", "error", "cancel", "missing", "disabled", "disengaged", "breaker", "unrecoverable"} {
 		t.Run(outcome, func(t *testing.T) {
 			data := setting.NewData()
@@ -107,7 +107,7 @@ func TestPermissionPolicyReview(t *testing.T) {
 			ctx, cancel := context.WithCancel(core.WithToolCallID(context.Background(), "call-1"))
 			defer cancel()
 			calls := 0
-			r := PermissionReview{Engaged: outcome != "disengaged", Enabled: outcome != "disabled", CWD: "/workspace", UnderGit: true, Mission: "verify",
+			r := JudgeSnapshot{Engaged: outcome != "disengaged", Enabled: outcome != "disabled", CWD: "/workspace", UnderGit: true, Mission: "verify",
 				Observe: func(ctx context.Context, allow bool, reason string) {
 					order = append(order, "observe")
 					if core.ToolCallIDFromContext(ctx) != "call-1" || reason == "" || allow != (outcome == "allow") {
@@ -135,7 +135,7 @@ func TestPermissionPolicyReview(t *testing.T) {
 			if outcome == "missing" {
 				r.Judge = nil
 			}
-			got := p.Review(ctx, "Bash", args, "gray zone", r)
+			got := p.Judge(ctx, "Bash", args, "gray zone", r)
 			if got.Allow != (outcome == "allow") {
 				t.Fatalf("result: %+v", got)
 			}
@@ -168,12 +168,12 @@ func TestPermissionPolicyReview(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyGateEscalatesReviewFailure(t *testing.T) {
+func TestPermissionPolicyGateEscalatesJudgeFailure(t *testing.T) {
 	p := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot}}
 	gate := NewPermissionGate(p.Decide)
 	defer gate.Close()
-	gate.SetJudge(func(ctx context.Context, name string, args map[string]any, reason string) PermReviewResult {
-		return p.Review(ctx, name, args, reason, PermissionReview{Engaged: true, Enabled: true})
+	gate.SetJudge(func(ctx context.Context, name string, args map[string]any, reason string) PermJudgeResult {
+		return p.Judge(ctx, name, args, reason, JudgeSnapshot{Engaged: true, Enabled: true})
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

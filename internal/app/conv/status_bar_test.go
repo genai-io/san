@@ -252,7 +252,7 @@ func TestRenderOperationModeIndicator_AutoPilotCounts(t *testing.T) {
 }
 
 func TestRenderOperationModeIndicator_CountsOnlyInAutoPilot(t *testing.T) {
-	// Approvals/escalations are an auto-review concept; other modes never show them.
+	// Approvals/escalations are an autopilot concept; other modes never show them.
 	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoAccept, 5, 4, false))
 	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {
 		t.Errorf("accept-edits mode must not show review counts: %q", out)

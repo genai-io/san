@@ -26,7 +26,7 @@ For the Claude-Code-compatible rule syntax see
 |---|---|---|
 | `ModeNormal` | `normal` | Safe tools auto-allow; everything else prompts. |
 | `ModeAutoAccept` | `accept edits` | Edit/Write auto-allow; other gated tools prompt. |
-| `ModeAutoPilot` | `autopilot` | Edits auto-allow; every other gated call becomes a **reviewable** prompt the judge may answer. |
+| `ModeAutoPilot` | `autopilot` | Edits auto-allow; every other gated call becomes a **judgeable** prompt the judge may answer. |
 | `ModeBypassPermissions` | `YOLO` | Allow everything except deny rules and the circuit breaker. |
 | `ModeDontAsk` | `don't ask` | Coerce `ask` → `deny`; never prompt. |
 | `ModeReadOnly` | `read-only` | Safe tools only; everything else denied. |
@@ -60,7 +60,7 @@ function in `internal/setting/permission.go` — keep the two in sync.
 3. **BypassPermissions mode** — allow everything that got past 1 and 2.
 4. **Confirmation checks** (skipped by bypass) — the unrecoverable tier
    (destructive bash, sensitive paths, data exfiltration; never
-   judge-reviewable) and the recoverable tier (work-discarding git,
+   judgeable) and the recoverable tier (work-discarding git,
    out-of-working-dir writes; the AutoPilot judge may weigh the git case).
 5. **Ask rules** — `permissions.ask`. An explicit ask outranks any session
    grant, so "allow for this session" cannot silence it.
@@ -68,7 +68,7 @@ function in `internal/setting/permission.go` — keep the two in sync.
    modals and hook updates.
 7. **Allow rules** — `permissions.allow`.
 8. **Mode default** — `setting.ModeDefault`, the mode table above. This is
-   where AutoPilot marks a prompt `Reviewable`.
+   where AutoPilot marks a prompt `Judgeable`.
 9. **Headless / DontAsk coercion** — `ask` becomes `deny` when nobody can
    answer.
 
@@ -158,25 +158,25 @@ One subagent-specific rule composes with the pipeline:
   running subagent) follows the ordinary mode pipeline like any other tool.
   See [`packages/broker.md`](../packages/broker.md).
 
-## The Gray Zone: Auto-Review
+## The Gray Zone: The Judge
 
-In `ModeAutoPilot`, a call that would prompt is offered to a review agent
+In `ModeAutoPilot`, a call that would prompt is offered to a judge
 before it is offered to the user. One flag decides which calls those are,
 and the judge has no say in it:
 
-- `PermissionDecision.Reviewable` (`internal/setting/permission.go`) marks a
+- `PermissionDecision.Judgeable` (`internal/setting/permission.go`) marks a
   prompt the judge may weigh.
 - `setting.ModeDefault` sets it **only** for the AutoPilot non-edit default
   (step 8). Nothing else in the pipeline sets it.
-- `PermissionGate.Check` (`internal/agent/permission.go`) offers a reviewable
+- `PermissionGate.Check` (`internal/agent/permission.go`) offers a judgeable
   prompt to the judge; `allow` short-circuits, anything else falls through to
   the human prompt.
-- The judge fails closed: `PermReviewFunc` must return the zero value on any
+- The judge fails closed: `PermJudgeFunc` must return the zero value on any
   error, so a broken or slow judge escalates rather than approves.
 
 The load-bearing safety property is which prompts never reach the judge.
 `ConfirmationTier` splits the confirmation reasons in two, and only the
-**recoverable** tier is reviewable. The unrecoverable tier — real
+**recoverable** tier is judgeable. The unrecoverable tier — real
 destruction, sensitive paths, data exfiltration — and the circuit breaker
 stay the human's call in every mode.
 

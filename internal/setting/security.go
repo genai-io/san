@@ -22,7 +22,7 @@ var destructiveCommands = []string{
 	"dd:if=",        // direct disk access
 	"mkfs",          // filesystem creation
 	"fdisk",         // disk partitioning
-	// Privilege escalation & persistence — confirm even in auto-review, since a
+	// Privilege escalation & persistence — confirm even in autopilot, since a
 	// wrong auto-approval here installs a backdoor or survives the session.
 	"sudo:",      // run as another user
 	"visudo",     // edit sudoers

@@ -324,8 +324,8 @@ func Test_isDestructiveCommand(t *testing.T) {
 
 // The floor has two tiers. Everything on it needs a human wherever no judge is
 // watching; only the outer, git-recoverable tier may be weighed by the AutoPilot
-// judge, and it is the tier that reaches the judge marked Reviewable.
-func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
+// judge, and it is the tier that reaches the judge marked Judgeable.
+func TestGitDiscardingTierIsFlooredButJudgeable(t *testing.T) {
 	discarding := []string{
 		"git reset --hard HEAD", "git clean -fd", "git checkout -- .",
 		"git stash drop", "git stash clear", "git branch -D feature",
@@ -340,8 +340,8 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 			t.Errorf("%q read as unrecoverable (%s); the judge can never weigh it", cmd, r)
 		}
 		d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot})
-		if d.Behavior != perm.Prompt || !d.Reviewable {
-			t.Errorf("%q = %v (reviewable=%v), want a reviewable prompt", cmd, d.Behavior, d.Reviewable)
+		if d.Behavior != perm.Prompt || !d.Judgeable {
+			t.Errorf("%q = %v (judgeable=%v), want a judgeable prompt", cmd, d.Behavior, d.Judgeable)
 		}
 	}
 
@@ -350,18 +350,18 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 		t.Error("--force-with-lease should not be floored")
 	}
 
-	// The unrecoverable tier stays unreviewable: no judge may lift it.
+	// The unrecoverable tier stays unjudgeable: no judge may lift it.
 	args := map[string]any{"command": "rm -rf /tmp/x"}
 	if UnrecoverableReason("Bash", args) == "" {
 		t.Fatal("rm -rf should be unrecoverable")
 	}
-	if d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot}); d.Reviewable {
-		t.Error("rm -rf reached the judge as reviewable")
+	if d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot}); d.Judgeable {
+		t.Error("rm -rf reached the judge as judgeable")
 	}
 
 	// A write reaching outside the working directory is held for the same
 	// human, not handed to the judge. It is neither tier of the floor, so a
-	// classification that inferred "reviewable" from "not unrecoverable" would
+	// classification that inferred "judgeable" from "not unrecoverable" would
 	// quietly grant the judge a much larger say than the git tier it was for.
 	outside := (&Data{}).HasPermissionToUseTool("Write",
 		map[string]any{"file_path": "/etc/hosts"},
@@ -369,8 +369,8 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	if outside.Behavior != perm.Prompt {
 		t.Fatalf("write outside the working directory = %v, want a prompt", outside.Behavior)
 	}
-	if outside.Reviewable {
-		t.Error("write outside the working directory reached the judge as reviewable")
+	if outside.Judgeable {
+		t.Error("write outside the working directory reached the judge as judgeable")
 	}
 }
 
