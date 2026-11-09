@@ -166,10 +166,10 @@ func (p *Projection) closeInference(e Event) (*InferenceStartPayload, error) {
 	if start == nil || start.Type != EventInferenceStart {
 		return nil, invalidEvent("finish source must be inference.start")
 	}
-	if !p.data.OpenInferences[start.Seq] {
+	if !p.data.UnfinishedInferences[start.Seq] {
 		return nil, invalidEvent("duplicate terminal result")
 	}
-	delete(p.data.OpenInferences, start.Seq)
+	delete(p.data.UnfinishedInferences, start.Seq)
 	return start.Payload.(*InferenceStartPayload), nil
 }
 
@@ -274,7 +274,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		if err := p.validateInferenceStart(*v); err != nil {
 			return err
 		}
-		p.data.OpenInferences[e.Seq] = true
+		p.data.UnfinishedInferences[e.Seq] = true
 	case *InferenceFinishPayload:
 		if _, err := p.closeInference(e); err != nil {
 			return err

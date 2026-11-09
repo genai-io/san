@@ -14,19 +14,19 @@ import (
 )
 
 type projectionData struct {
-	SessionID      string
-	Events         []Event
-	Identity       SessionCreatePayload
-	Messages       []ai.Message
-	ActiveIDs      []string
-	MessageSeq     map[string]uint64   // message ID -> seq of the event that appended it
-	ToolCalls      map[string]toolCall // by tool call ID
-	Config         EventConfig
-	State          EventState
-	Instructions   map[string]InstructionSection
-	Tools          map[string]ai.Schema
-	Skills         map[string]string
-	OpenInferences map[uint64]bool // inference.start seq, until its inference.finish
+	SessionID            string
+	Events               []Event
+	Identity             SessionCreatePayload
+	Messages             []ai.Message
+	ActiveIDs            []string
+	MessageSeq           map[string]uint64   // message ID -> seq of the event that appended it
+	ToolCalls            map[string]toolCall // by tool call ID
+	Config               EventConfig
+	State                EventState
+	Instructions         map[string]InstructionSection
+	Tools                map[string]ai.Schema
+	Skills               map[string]string
+	UnfinishedInferences map[uint64]bool // inference.start seq, until its inference.finish
 }
 
 // toolCall follows one native tool call from the message that carries it,
@@ -106,7 +106,7 @@ type Unfinished struct {
 
 func (p *Projection) Unfinished() Unfinished {
 	var u Unfinished
-	for seq := range p.data.OpenInferences {
+	for seq := range p.data.UnfinishedInferences {
 		u.Inferences = append(u.Inferences, seq)
 	}
 	for id, c := range p.data.ToolCalls {
@@ -184,7 +184,7 @@ func ApplyEventBatch(base *Projection, sessionID string, events []Event, validat
 		p.data.Instructions = maps.Clone(base.data.Instructions)
 		p.data.Tools = maps.Clone(base.data.Tools)
 		p.data.Skills = maps.Clone(base.data.Skills)
-		p.data.OpenInferences = maps.Clone(base.data.OpenInferences)
+		p.data.UnfinishedInferences = maps.Clone(base.data.UnfinishedInferences)
 		p.messageIndex = maps.Clone(base.messageIndex)
 	}
 	return applyReplayEventBatch(p, sessionID, events, validation)
@@ -199,7 +199,7 @@ func applyReplayEventBatch(p *Projection, sessionID string, events []Event, vali
 			data: projectionData{
 				SessionID: sessionID, MessageSeq: map[string]uint64{}, ToolCalls: map[string]toolCall{},
 				Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]string{},
-				OpenInferences: map[uint64]bool{},
+				UnfinishedInferences: map[uint64]bool{},
 			},
 			messageIndex: map[string]int{},
 		}
