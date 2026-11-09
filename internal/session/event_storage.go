@@ -24,14 +24,12 @@ type eventState struct {
 	tail       sdksession.Tail
 	validation EventValidationContext
 	batches    map[string]sdksession.Tail // original Expected, not duplicated history
-	ids        map[string]bool
 }
 type preparedEventBatch struct {
 	owner      *Session
 	batch      sdksession.Batch
 	projection *Projection
 	validation EventValidationContext
-	ids        []string
 }
 
 func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
@@ -51,7 +49,7 @@ func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
 	return p, nil
 }
 
-func (s *Store) createEventSession(ctx context.Context, batchID string, create Event, validation EventValidationContext) (*Session, error) {
+func (s *Store) createEventSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*Session, error) {
 	// Detach and validate before acquiring a writer (which may create an empty file).
 	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
 	if err != nil {
@@ -81,29 +79,29 @@ func (s *Store) createEventSession(ctx context.Context, batchID string, create E
 	} else if identity.Workspace != s.workspace {
 		return nil, fmt.Errorf("event workspace identity mismatch")
 	}
-	if err := transcript.ValidateStorageID(create.SessionID); err != nil {
+	if err := transcript.ValidateStorageID(sessionID); err != nil {
 		return nil, err
 	}
-	opened := &Session{store: s.transcriptStore, sessionID: create.SessionID, eventState: newEventState()}
+	opened := &Session{store: s.transcriptStore, sessionID: sessionID, eventState: newEventState()}
 	prepared, err := opened.prepareEventBatch(batchID, []Event{create}, payload.Validation)
 	if err != nil {
 		return nil, err
 	}
-	if exists, err := s.transcriptStore.Exists(ctx, create.SessionID); err != nil {
+	if exists, err := s.transcriptStore.Exists(ctx, sessionID); err != nil {
 		return nil, err
 	} else if exists {
-		return nil, fmt.Errorf("session %s already exists", create.SessionID)
+		return nil, fmt.Errorf("session %s already exists", sessionID)
 	}
-	release, err := s.transcriptStore.ClaimContext(ctx, create.SessionID)
+	release, err := s.transcriptStore.ClaimContext(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	opened.release = release
 	// Claim may create an empty SDK file; only an empty file is eligible.
-	info, err := os.Stat(s.TranscriptPath(create.SessionID))
+	info, err := os.Stat(s.TranscriptPath(sessionID))
 	if err != nil || info.Size() != 0 {
 		if err == nil {
-			err = fmt.Errorf("session %s already exists", create.SessionID)
+			err = fmt.Errorf("session %s already exists", sessionID)
 		}
 		return nil, errors.Join(err, opened.Close())
 	}
@@ -113,7 +111,7 @@ func (s *Store) createEventSession(ctx context.Context, batchID string, create E
 	return opened, nil
 }
 func newEventState() *eventState {
-	return &eventState{batches: map[string]sdksession.Tail{}, ids: map[string]bool{}}
+	return &eventState{batches: map[string]sdksession.Tail{}}
 }
 
 func (s *Store) openEventSession(ctx context.Context, id string) (*Session, error) {
@@ -176,25 +174,17 @@ func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession
 		if err != nil {
 			return nil, err
 		}
-		if !b.Records[0].Time.Equal(time.UnixMilli(payload.Events[0].CreatedAt).UTC()) {
+		if !b.Records[0].Time.Equal(time.UnixMilli(payload.Events[0].Time).UTC()) {
 			return nil, fmt.Errorf("event record timestamp mismatch")
 		}
-		for foreignID, fact := range payload.Validation.ForeignEvents {
-			if state.ids[foreignID] || fact.SessionID == id {
-				return nil, fmt.Errorf("foreign evidence contradicts local identity")
-			}
+		if err := rejectLocalEvidence(payload.Validation, id); err != nil {
+			return nil, err
 		}
 		validation, err := mergeReplayValidation(state.validation, payload.Validation)
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range payload.Events {
-			if e.SessionID != id || state.ids[e.ID] {
-				return nil, fmt.Errorf("event session or ID conflict")
-			}
-			state.ids[e.ID] = true
-		}
-		state.projection, err = applyReplayEventBatch(state.projection, payload.Events, validation)
+		state.projection, err = applyReplayEventBatch(state.projection, id, payload.Events, validation)
 		if err != nil {
 			return nil, err
 		}
@@ -247,7 +237,7 @@ func (s *Session) prepareEventBatch(batchID string, events []Event, validation E
 		return nil, err
 	}
 	state := s.eventState
-	p := &preparedEventBatch{owner: s, batch: sdksession.Batch{ID: batchID, Expected: state.tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(payload.Events[0].CreatedAt).UTC(), Data: raw}}}}
+	p := &preparedEventBatch{owner: s, batch: sdksession.Batch{ID: batchID, Expected: state.tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(payload.Events[0].Time).UTC(), Data: raw}}}}
 	// Reject deterministic transport timestamp encoding failures before Commit.
 	if _, err := p.batch.Records[0].Time.MarshalJSON(); err != nil {
 		return nil, err
@@ -257,24 +247,14 @@ func (s *Session) prepareEventBatch(batchID string, events []Event, validation E
 		p.batch.Expected = expected
 		return p, nil
 	}
-	for foreignID, fact := range payload.Validation.ForeignEvents {
-		if state.ids[foreignID] || fact.SessionID == s.sessionID {
-			return nil, fmt.Errorf("foreign evidence contradicts local identity")
-		}
+	if err := rejectLocalEvidence(payload.Validation, s.sessionID); err != nil {
+		return nil, err
 	}
 	p.validation, err = mergeValidation(state.validation, payload.Validation)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	for _, e := range payload.Events {
-		if e.SessionID != s.sessionID || state.ids[e.ID] || seen[e.ID] {
-			return nil, fmt.Errorf("event session or ID conflict")
-		}
-		seen[e.ID] = true
-		p.ids = append(p.ids, e.ID)
-	}
-	p.projection, err = ApplyEventBatch(state.projection, payload.Events, p.validation)
+	p.projection, err = ApplyEventBatch(state.projection, s.sessionID, payload.Events, p.validation)
 	if err != nil {
 		return nil, err
 	}
@@ -312,9 +292,6 @@ func (s *Session) commitEventBatch(ctx context.Context, p *preparedEventBatch) (
 		state.validation = p.validation
 		state.tail = receipt.Tail
 		state.batches[p.batch.ID] = p.batch.Expected
-		for _, id := range p.ids {
-			state.ids[id] = true
-		}
 	}
 	return receipt, nil
 }
@@ -335,4 +312,15 @@ func (s *Session) eventSnapshot() (*Projection, error) {
 	}
 	// Projection is immutable and its public accessors detach their results.
 	return s.eventState.projection, nil
+}
+
+// rejectLocalEvidence refuses evidence that claims a foreign source inside this
+// session: its own events are resolved from the committed prefix, never evidence.
+func rejectLocalEvidence(v EventValidationContext, session string) error {
+	for key := range v.ForeignEvents {
+		if s, _, _ := parseForeignKey(key); s == session {
+			return fmt.Errorf("foreign evidence contradicts local identity")
+		}
+	}
+	return nil
 }

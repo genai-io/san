@@ -1,7 +1,8 @@
 package session
 
-// This file defines unintegrated event groundwork. It is not the legacy
-// transcript format and is deliberately not connected to Session's writer.
+// Typed events. Ordinary Store.Create/Open remain schema 4; this model is
+// deliberately not connected to Session's writer yet (see the delivery plan in
+// docs/design/proposal-0005-session-management.md).
 import (
 	"bytes"
 	"encoding/json"
@@ -16,24 +17,19 @@ import (
 type EventType string
 
 const (
-	EventSessionCreate     EventType = "session.create"
-	EventMessageAppend     EventType = "message.append"
-	EventCompactionApply   EventType = "compaction.apply"
-	EventConfigUpdate      EventType = "config.update"
-	EventStateUpdate       EventType = "state.update"
-	EventInferenceStart    EventType = "inference.start"
-	EventInferenceFinish   EventType = "inference.finish"
-	EventToolStart         EventType = "tool.start"
-	EventToolFinish        EventType = "tool.finish"
-	EventDelegationStart   EventType = "delegation.start"
-	EventDelegationFinish  EventType = "delegation.finish"
-	EventPermissionRequest EventType = "permission.request"
-	EventPermissionDecide  EventType = "permission.decide"
-	EventHookFinish        EventType = "hook.finish"
-	EventInstructionUpdate EventType = "instruction.update"
-	EventToolsetUpdate     EventType = "toolset.update"
-	EventSkillUpdate       EventType = "skill.update"
-	EventAnnotationAdd     EventType = "annotation.add"
+	EventSessionCreate      EventType = "session.create"
+	EventSessionUpdate      EventType = "session.update"
+	EventMessageAppend      EventType = "message.append"
+	EventContextCompact     EventType = "context.compact"
+	EventInferenceStart     EventType = "inference.start"
+	EventInferenceFinish    EventType = "inference.finish"
+	EventPermissionDecide   EventType = "permission.decide"
+	EventToolFinish         EventType = "tool.finish"
+	EventInstructionsUpdate EventType = "instructions.update"
+	EventToolsetUpdate      EventType = "toolset.update"
+	EventSkillsUpdate       EventType = "skills.update"
+	EventHookFinish         EventType = "hook.finish"
+	EventAnnotationAdd      EventType = "annotation.add"
 )
 
 type EventOutcome string
@@ -44,19 +40,24 @@ const (
 	OutcomeCancelled EventOutcome = "cancelled"
 )
 
+// EventRef names another event: in this session when Session is empty.
+type EventRef struct {
+	Session string `json:"session,omitempty"`
+	Seq     uint64 `json:"seq"`
+}
+
+// Event is identified by its position, Seq, within its session. Provenance
+// links use Source; nothing else is allocated or globally unique.
 type Event struct {
-	ID            string       `json:"id"`
-	SessionID     string       `json:"session_id"`
 	Seq           uint64       `json:"seq"`
 	Type          EventType    `json:"type"`
-	SchemaVersion int          `json:"schema_version"`
-	CreatedAt     int64        `json:"created_at"`
-	SourceID      string       `json:"source_id,omitempty"`
-	Outcome       EventOutcome `json:"outcome,omitempty"`
+	SchemaVersion int          `json:"v"`
+	Time          int64        `json:"time"`
+	Source        *EventRef    `json:"source,omitempty"`
 	Payload       EventPayload `json:"payload"`
 }
 
-// EventPayload is closed to the eighteen supported payload families.
+// EventPayload is closed to the thirteen supported payload families.
 type EventPayload interface{ eventType() EventType }
 
 // PatchField distinguishes an absent field, a JSON null (clear), and a value.
@@ -112,10 +113,11 @@ type GroupHint struct {
 	GroupID  string `json:"group_id"`
 	MemberID string `json:"member_id"`
 }
+
+// EventState is session state recorded as facts. Archive, pin and a renamed
+// title are user intent and live in attrs, never here.
 type EventState struct {
 	Title             *string            `json:"title,omitempty"`
-	ArchivedAt        *int64             `json:"archived_at,omitempty"`
-	Pinned            *bool              `json:"pinned,omitempty"`
 	Todos             *[]EventTodo       `json:"todos,omitempty"`
 	AutopilotProgress *AutopilotProgress `json:"autopilot_progress,omitempty"`
 	ExecutionCWD      *string            `json:"execution_cwd,omitempty"`
@@ -123,157 +125,225 @@ type EventState struct {
 }
 type StatePatch struct {
 	Title             PatchField[string]            `json:"title,omitzero"`
-	ArchivedAt        PatchField[int64]             `json:"archived_at,omitzero"`
-	Pinned            PatchField[bool]              `json:"pinned,omitzero"`
 	Todos             PatchField[[]EventTodo]       `json:"todos,omitzero"`
 	AutopilotProgress PatchField[AutopilotProgress] `json:"autopilot_progress,omitzero"`
 	ExecutionCWD      PatchField[string]            `json:"execution_cwd,omitzero"`
 	GroupHint         PatchField[GroupHint]         `json:"group_hint,omitzero"`
 }
+
+// ParentLink says which session, and optionally which tool call, started this one.
+type ParentLink struct {
+	Session string `json:"session"`
+	CallID  string `json:"call_id,omitempty"`
+}
+type ForkLink struct {
+	Session string `json:"session"`
+	Seq     uint64 `json:"seq"`
+}
 type SessionCreatePayload struct {
-	ProjectID       string       `json:"project_id"`
-	Workspace       string       `json:"workspace"`
-	InitialCWD      string       `json:"initial_cwd"`
-	AgentID         string       `json:"agent_id"`
-	Sidechain       bool         `json:"sidechain"`
-	ParentSessionID string       `json:"parent_session_id,omitempty"`
-	ForkSourceID    string       `json:"fork_source_id,omitempty"`
-	ForkSourceSeq   uint64       `json:"fork_source_seq,omitempty"`
-	InitialConfig   *EventConfig `json:"initial_config,omitempty"`
+	ProjectID  string       `json:"project"`
+	Workspace  string       `json:"workspace"`
+	InitialCWD string       `json:"initial_cwd"`
+	AgentID    string       `json:"agent_id"`
+	Config     *EventConfig `json:"config,omitempty"`
+	Parent     *ParentLink  `json:"parent,omitempty"`
+	Fork       *ForkLink    `json:"fork,omitempty"`
+}
+type SessionUpdatePayload struct {
+	Config *ConfigPatch `json:"config,omitempty"`
+	State  *StatePatch  `json:"state,omitempty"`
 }
 type MessageAppendPayload struct {
-	Messages         []ai.Message `json:"messages"`
-	SourceMessageIDs []string     `json:"source_message_ids,omitempty"`
+	Messages []ai.Message `json:"messages"`
 }
-type CompactionApplyPayload struct {
-	SourceSeq          uint64     `json:"source_seq"`
-	Summary            ai.Message `json:"summary"`
-	RetainedMessageIDs []string   `json:"retained_message_ids"`
+
+// ContextCompactPayload replaces the active context with Summary plus every
+// message appended after Through. History keeps everything.
+type ContextCompactPayload struct {
+	Summary ai.Message `json:"summary"`
+	Through uint64     `json:"through"`
 }
-type ConfigUpdatePayload struct {
-	Patch ConfigPatch `json:"patch"`
+
+// Purposes name why a model call was made; each has one usual input kind and
+// one event that holds its result.
+const (
+	PurposeTurn       = "turn"
+	PurposeBtw        = "btw"
+	PurposeRecap      = "recap"
+	PurposeSuggest    = "suggest"
+	PurposeCompaction = "compaction"
+	PurposeJudge      = "judge"
+	PurposeHook       = "hook"
+	PurposeAutopilot  = "autopilot"
+	PurposeGroup      = "group"
+)
+
+// ConversationInput: the request is this session's own context, instructions and
+// toolset as projected just before the event, followed by Append for this call only.
+type ConversationInput struct {
+	Append []ai.Message `json:"append,omitempty"`
 }
-type StateUpdatePayload struct {
-	Patch StatePatch `json:"patch"`
+
+// InferenceInput is exactly one of Conversation or Standalone. Standalone is the
+// digest of an exact copy of the request stored once as a blob.
+type InferenceInput struct {
+	Conversation *ConversationInput `json:"conversation,omitempty"`
+	Standalone   string             `json:"standalone,omitempty"`
 }
 type InferenceStartPayload struct {
-	TurnID            string      `json:"turn_id"`
-	InputMessageIDs   []string    `json:"input_message_ids"`
-	RequestConfig     EventConfig `json:"request_config"`
-	InstructionDigest string      `json:"instruction_digest"`
-	ToolsetDigest     string      `json:"toolset_digest"`
+	Purpose            string         `json:"purpose"`
+	TurnID             string         `json:"turn_id,omitempty"`
+	Request            EventConfig    `json:"request"`
+	Input              InferenceInput `json:"input"`
+	InstructionsDigest string         `json:"instructions_digest,omitempty"`
+	ToolsetDigest      string         `json:"toolset_digest,omitempty"`
 }
 type EventError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable,omitempty"`
 }
 type InferenceFinishPayload struct {
-	StopReason string      `json:"stop_reason,omitempty"`
-	Usage      *ai.Usage   `json:"usage,omitempty"`
-	DurationMS *int64      `json:"duration_ms,omitempty"`
-	Error      *EventError `json:"error,omitempty"`
-	Reason     string      `json:"reason,omitempty"`
+	Outcome    EventOutcome `json:"outcome"`
+	StopReason string       `json:"stop_reason,omitempty"`
+	Usage      *ai.Usage    `json:"usage,omitempty"`
+	DurationMS *int64       `json:"duration_ms,omitempty"`
+	Error      *EventError  `json:"error,omitempty"`
+	Reason     string       `json:"reason,omitempty"`
 }
 
-// InputRef addresses immutable content in a local message event. CallID, when
-// present, selects the native invocation rather than the whole message.
-type InputRef struct {
-	EventID   string `json:"event_id"`
-	MessageID string `json:"message_id"`
-	CallID    string `json:"call_id,omitempty"`
-}
-type ToolStartPayload struct {
-	CallID   string   `json:"call_id"`
-	InputRef InputRef `json:"input_ref"`
-}
-type ToolExecutionDetails struct {
-	ExitCode    *int   `json:"exit_code,omitempty"`
-	DisplayText string `json:"display_text,omitempty"`
-}
-type ToolFinishPayload struct {
-	CallID     string                `json:"call_id"`
-	DurationMS *int64                `json:"duration_ms,omitempty"`
-	Error      *EventError           `json:"error,omitempty"`
-	Reason     string                `json:"reason,omitempty"`
-	Details    *ToolExecutionDetails `json:"details,omitempty"`
-}
-type DelegationStartPayload struct {
-	ChildSessionID string   `json:"child_session_id"`
-	InputRef       InputRef `json:"input_ref"`
-}
-type DelegationFinishPayload struct {
-	ResultEventID string      `json:"result_event_id,omitempty"`
-	Error         *EventError `json:"error,omitempty"`
-	Reason        string      `json:"reason,omitempty"`
-}
-type PermissionScope struct {
-	Resources []string `json:"resources"`
-}
-type PermissionRequestPayload struct {
-	OperationRef string          `json:"operation_ref"`
-	Scope        PermissionScope `json:"scope"`
+// Permission deciders. Grant is an earlier session-scoped approval and is never
+// restored on resume.
+const (
+	ByConfig = "config"
+	ByMode   = "mode"
+	ByGrant  = "grant"
+	ByUser   = "user"
+	ByHook   = "hook"
+	ByJudge  = "judge"
+)
+
+// Asked keeps what the person was shown when a decision needed asking.
+type Asked struct {
+	Options []string        `json:"options,omitempty"`
+	Detail  json.RawMessage `json:"detail,omitempty"`
+	At      int64           `json:"at,omitempty"`
 }
 type PermissionDecidePayload struct {
-	Decision string          `json:"decision"`
-	Scope    PermissionScope `json:"scope"`
-	Reason   string          `json:"reason,omitempty"`
+	CallID   string `json:"call_id"`
+	Decision string `json:"decision"`
+	By       string `json:"by"`
+	Scope    string `json:"scope,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Asked    *Asked `json:"asked,omitempty"`
 }
-type HookFinishPayload struct {
-	HookName   string   `json:"hook_name"`
-	Trigger    string   `json:"trigger"`
-	DurationMS *int64   `json:"duration_ms,omitempty"`
-	Reason     string   `json:"reason,omitempty"`
-	EffectRefs []string `json:"effect_refs,omitempty"`
-}
-type InstructionSection struct {
-	Name string `json:"name"`
-	Text string `json:"text"`
-}
-type InstructionUpdatePayload struct {
-	Upsert []InstructionSection `json:"upsert"`
-	Remove []string             `json:"remove"`
-	Source string               `json:"source,omitempty"`
-}
-type ToolsetUpdatePayload struct {
-	Upsert []ai.Schema `json:"upsert"`
-	Remove []string    `json:"remove"`
-	Source string      `json:"source,omitempty"`
-}
-type SkillActivation struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
-}
-type SkillUpdatePayload struct {
-	Changes []SkillActivation `json:"changes"`
-	Source  string            `json:"source,omitempty"`
-}
-type AnnotationAnchor struct {
-	MessageID string `json:"message_id,omitempty"`
-	Seq       uint64 `json:"seq,omitempty"`
-}
-type AnnotationAddPayload struct {
-	Text   string            `json:"text"`
-	Anchor *AnnotationAnchor `json:"anchor,omitempty"`
+type ToolFinishPayload struct {
+	CallID       string          `json:"call_id"`
+	Outcome      EventOutcome    `json:"outcome"`
+	DurationMS   *int64          `json:"duration_ms,omitempty"`
+	Error        *EventError     `json:"error,omitempty"`
+	Reason       string          `json:"reason,omitempty"`
+	Details      json.RawMessage `json:"details,omitempty"`
+	ChildSession string          `json:"child_session,omitempty"`
 }
 
-func (SessionCreatePayload) eventType() EventType     { return EventSessionCreate }
-func (MessageAppendPayload) eventType() EventType     { return EventMessageAppend }
-func (CompactionApplyPayload) eventType() EventType   { return EventCompactionApply }
-func (ConfigUpdatePayload) eventType() EventType      { return EventConfigUpdate }
-func (StateUpdatePayload) eventType() EventType       { return EventStateUpdate }
-func (InferenceStartPayload) eventType() EventType    { return EventInferenceStart }
-func (InferenceFinishPayload) eventType() EventType   { return EventInferenceFinish }
-func (ToolStartPayload) eventType() EventType         { return EventToolStart }
-func (ToolFinishPayload) eventType() EventType        { return EventToolFinish }
-func (DelegationStartPayload) eventType() EventType   { return EventDelegationStart }
-func (DelegationFinishPayload) eventType() EventType  { return EventDelegationFinish }
-func (PermissionRequestPayload) eventType() EventType { return EventPermissionRequest }
-func (PermissionDecidePayload) eventType() EventType  { return EventPermissionDecide }
-func (HookFinishPayload) eventType() EventType        { return EventHookFinish }
-func (InstructionUpdatePayload) eventType() EventType { return EventInstructionUpdate }
-func (ToolsetUpdatePayload) eventType() EventType     { return EventToolsetUpdate }
-func (SkillUpdatePayload) eventType() EventType       { return EventSkillUpdate }
-func (AnnotationAddPayload) eventType() EventType     { return EventAnnotationAdd }
+// Catalogue updates name each entry once across Set and Remove; Cause says who
+// changed it (boot, mcp:<server>, plugin:<name>, user:<command>, resume).
+type InstructionSection struct {
+	Content string `json:"content"`
+	Slot    int    `json:"slot,omitempty"`
+}
+type InstructionsUpdatePayload struct {
+	Set    map[string]InstructionSection `json:"set,omitempty"`
+	Remove []string                      `json:"remove,omitempty"`
+	Cause  string                        `json:"cause"`
+}
+type ToolsetUpdatePayload struct {
+	Set    map[string]ai.Schema `json:"set,omitempty"`
+	Remove []string             `json:"remove,omitempty"`
+	Cause  string               `json:"cause"`
+}
+
+const (
+	SkillDisabled = "disabled"
+	SkillEnabled  = "enabled"
+	SkillActive   = "active"
+)
+
+type SkillsUpdatePayload struct {
+	Set    map[string]string `json:"set,omitempty"`
+	Remove []string          `json:"remove,omitempty"`
+	Cause  string            `json:"cause"`
+}
+
+const (
+	HookRan     = "ran"
+	HookBlocked = "blocked"
+	HookError   = "error"
+)
+
+type HookFinishPayload struct {
+	Hook       string `json:"hook"`
+	Trigger    string `json:"trigger"`
+	Matcher    string `json:"matcher,omitempty"`
+	Outcome    string `json:"outcome"`
+	DurationMS *int64 `json:"duration_ms,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// AnnotationAddPayload is shown to the person and never to the model.
+type AnnotationAddPayload struct {
+	Text         string `json:"text"`
+	ByAgent      bool   `json:"by_agent,omitempty"`
+	AfterMessage string `json:"after_message,omitempty"`
+}
+
+func (SessionCreatePayload) eventType() EventType      { return EventSessionCreate }
+func (SessionUpdatePayload) eventType() EventType      { return EventSessionUpdate }
+func (MessageAppendPayload) eventType() EventType      { return EventMessageAppend }
+func (ContextCompactPayload) eventType() EventType     { return EventContextCompact }
+func (InferenceStartPayload) eventType() EventType     { return EventInferenceStart }
+func (InferenceFinishPayload) eventType() EventType    { return EventInferenceFinish }
+func (PermissionDecidePayload) eventType() EventType   { return EventPermissionDecide }
+func (ToolFinishPayload) eventType() EventType         { return EventToolFinish }
+func (InstructionsUpdatePayload) eventType() EventType { return EventInstructionsUpdate }
+func (ToolsetUpdatePayload) eventType() EventType      { return EventToolsetUpdate }
+func (SkillsUpdatePayload) eventType() EventType       { return EventSkillsUpdate }
+func (HookFinishPayload) eventType() EventType         { return EventHookFinish }
+func (AnnotationAddPayload) eventType() EventType      { return EventAnnotationAdd }
+
+// newEventPayload returns an empty payload for a known type, or nil.
+func newEventPayload(t EventType) EventPayload {
+	switch t {
+	case EventSessionCreate:
+		return &SessionCreatePayload{}
+	case EventSessionUpdate:
+		return &SessionUpdatePayload{}
+	case EventMessageAppend:
+		return &MessageAppendPayload{}
+	case EventContextCompact:
+		return &ContextCompactPayload{}
+	case EventInferenceStart:
+		return &InferenceStartPayload{}
+	case EventInferenceFinish:
+		return &InferenceFinishPayload{}
+	case EventPermissionDecide:
+		return &PermissionDecidePayload{}
+	case EventToolFinish:
+		return &ToolFinishPayload{}
+	case EventInstructionsUpdate:
+		return &InstructionsUpdatePayload{}
+	case EventToolsetUpdate:
+		return &ToolsetUpdatePayload{}
+	case EventSkillsUpdate:
+		return &SkillsUpdatePayload{}
+	case EventHookFinish:
+		return &HookFinishPayload{}
+	case EventAnnotationAdd:
+		return &AnnotationAddPayload{}
+	}
+	return nil
+}
+func knownEventType(t EventType) bool { return newEventPayload(t) != nil }
 
 func strictEventJSON(b []byte, v any) error {
 	d := json.NewDecoder(bytes.NewReader(b))
@@ -392,45 +462,8 @@ func (e *Event) UnmarshalJSON(b []byte) error {
 	if err := strictEventJSON(b, &wire); err != nil {
 		return err
 	}
-	var p EventPayload
-	switch next.Type {
-	case EventSessionCreate:
-		p = &SessionCreatePayload{}
-	case EventMessageAppend:
-		p = &MessageAppendPayload{}
-	case EventCompactionApply:
-		p = &CompactionApplyPayload{}
-	case EventConfigUpdate:
-		p = &ConfigUpdatePayload{}
-	case EventStateUpdate:
-		p = &StateUpdatePayload{}
-	case EventInferenceStart:
-		p = &InferenceStartPayload{}
-	case EventInferenceFinish:
-		p = &InferenceFinishPayload{}
-	case EventToolStart:
-		p = &ToolStartPayload{}
-	case EventToolFinish:
-		p = &ToolFinishPayload{}
-	case EventDelegationStart:
-		p = &DelegationStartPayload{}
-	case EventDelegationFinish:
-		p = &DelegationFinishPayload{}
-	case EventPermissionRequest:
-		p = &PermissionRequestPayload{}
-	case EventPermissionDecide:
-		p = &PermissionDecidePayload{}
-	case EventHookFinish:
-		p = &HookFinishPayload{}
-	case EventInstructionUpdate:
-		p = &InstructionUpdatePayload{}
-	case EventToolsetUpdate:
-		p = &ToolsetUpdatePayload{}
-	case EventSkillUpdate:
-		p = &SkillUpdatePayload{}
-	case EventAnnotationAdd:
-		p = &AnnotationAddPayload{}
-	default:
+	p := newEventPayload(next.Type)
+	if p == nil {
 		return fmt.Errorf("unsupported event type %q", next.Type)
 	}
 	if len(wire.Payload) == 0 || bytes.Equal(bytes.TrimSpace(wire.Payload), []byte("null")) {

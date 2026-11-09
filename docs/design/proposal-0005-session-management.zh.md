@@ -121,7 +121,7 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
 | 模型调用 | `inference.start` | `purpose`、`turn_id?`、`request`（provider、model、选项）、`input`（`conversation {append?}` 或 `standalone`）、`instructions_digest?`、`toolset_digest?` | 打开一次模型调用；每次重试都是独立调用。见[模型调用](#模型调用)。 |
 | | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
-| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/reviewer）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。 |
+| 工具调用 | `permission.decide` | `call_id`、`decision`（allow/deny/cancelled）、`by`（config/mode/grant/user/hook/judge）、`scope?`、`reason?`、`asked? {options, detail, at}` | 关卡结果。`allow` 之后工具才可能运行。`grant` 表示本会话早先的授权；授权在恢复时绝不带回，这类调用会重新询问。`judge` 是裁决静态规则无法判定的灰区调用的模型（`internal/judge`），不持有工具，失败时回到用户确认。 |
 | | `tool.finish` | `call_id`、`outcome`、`duration_ms?`、`error?`、`details?`（文件变更、bash、agent）、`child_session?` | 已运行调用的结局与展示细节。结果正文在工具结果消息中。未通过关卡的调用只有裁决和一条错误工具结果消息。 |
 | 模型可见内容 | `instructions.update` | `set {name: {content, slot}}`、`remove [name]`、`cause` | 从此处起的系统提示各节。 |
 | | `toolset.update` | `set {name: 原生工具 schema}`、`remove [name]`、`cause` | 从此处起提供给模型的工具。 |
@@ -150,7 +150,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 | 类别 | 模型收到的内容 | `inference.start` 记录什么 | 例子 |
 | --- | --- | --- | --- |
 | 对话调用 | 本会话此刻的对话本身（上下文、系统提示、工具），再加几条只为这次调用追加的消息 | `input.conversation {append?}`：只记追加的消息。其余内容已在事件中，由 `instructions_digest` 和 `toolset_digest` 校验。 | 普通一轮不追加；`/btw` 追加那个问题。 |
-| 独立调用 | 单独构建的请求，有自己的提示和输入 | `input.standalone`：请求精确副本的摘要，副本在 `blobs/` 中只存一次 | reviewer 收到的是它自己的提示加待审的工具调用。 |
+| 独立调用 | 单独构建的请求，有自己的提示和输入 | `input.standalone`：请求精确副本的摘要，副本在 `blobs/` 中只存一次 | judge 收到的是它自己的提示加待审的工具调用。 |
 
 边界是机械可判定的。只有同时满足以下三条，才是对话调用：
 
@@ -176,7 +176,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 | `recap` | 对话 | 占位、recap 提示 | `annotation.add` |
 | `suggest` | 对话 | 占位、建议提示 | 不记录；被采纳的文本之后作为用户输入到达 |
 | `compaction` | 独立 | — | `context.compact` |
-| `reviewer` | 独立 | — | `permission.decide {by: reviewer}` |
+| `judge` | 独立 | — | `permission.decide {by: judge}` |
 | `hook`（prompt hook） | 独立 | — | `hook.finish` |
 | `autopilot` | 独立 | — | `session.update`（进度）或 `message.append`（下一条指令） |
 | `group`（解释 `/group`） | 独立 | — | `session.update`（group hint）或 `annotation.add` |
@@ -416,7 +416,7 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
   它们覆盖的每个场景都对应到上面的提交规则。
 - **每次调用都存请求精确副本。** 精确，但每一轮的副本都重复整段对话（存储平方增长），且丢失目录何时、
   为何变化。只有独立调用才存副本。
-- **只记录主循环调用**（当前行为）。用量和成本会漏掉压缩、reviewer、hook 和旁路调用，其结果也没有溯源。
+- **只记录主循环调用**（当前行为）。用量和成本会漏掉压缩、judge、hook 和旁路调用，其结果也没有溯源。
 - **归档与固定作为事件。** 这会要求持有 writer 锁才能整理在别处打开的会话；它们也不是对话事实。
 - **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
   `/clear` 新建会话，回退或编辑更适合用保持源会话完整的分叉来表达（见[上下文操作](#上下文操作)）。

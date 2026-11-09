@@ -142,7 +142,7 @@ have one meaning each:
 | | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
 | Model calls | `inference.start` | `purpose`, `turn_id?`, `request` (provider, model, options), `input` (`conversation {append?}` or `standalone`), `instructions_digest?`, `toolset_digest?` | Opens one model call; each retry is its own call. See [Model calls](#model-calls). |
 | | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
-| Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/grant/user/hook/reviewer), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. `grant` means an earlier session-scoped approval; grants are never restored on resume, so such calls ask again. |
+| Tool calls | `permission.decide` | `call_id`, `decision` (allow/deny/cancelled), `by` (config/mode/grant/user/hook/judge), `scope?`, `reason?`, `asked? {options, detail, at}` | Gate result. An `allow` is the point after which the tool may run. `grant` means an earlier session-scoped approval; grants are never restored on resume, so such calls ask again. `judge` is the model that rules on gray-zone calls the static rules cannot settle (`internal/judge`); it holds no tools and fails closed to the user. |
 | | `tool.finish` | `call_id`, `outcome`, `duration_ms?`, `error?`, `details?` (file change, bash, agent), `child_session?` | Outcome and display details of a call that ran. The result body is the tool-result message. A call that did not pass the gate has only its decision and an error tool-result message. |
 | What the model could see | `instructions.update` | `set {name: {content, slot}}`, `remove [name]`, `cause` | System-prompt sections from this point on. |
 | | `toolset.update` | `set {name: native tool schema}`, `remove [name]`, `cause` | Tools offered to the model from this point on. |
@@ -181,7 +181,7 @@ into two kinds:
 | Kind | What the model was sent | What `inference.start` records | Example |
 | --- | --- | --- | --- |
 | Conversation call | This session's own conversation at that moment (context, system prompt, tools), plus a few messages added for this call only | `input.conversation {append?}`: just the added messages. The rest is already in the events; `instructions_digest` and `toolset_digest` check it. | A normal turn appends nothing. `/btw` appends the question. |
-| Standalone call | A request built separately, with its own prompt and inputs | `input.standalone`: digest of an exact copy of the request, stored once in `blobs/` | The reviewer is sent its own prompt plus the tool call under review. |
+| Standalone call | A request built separately, with its own prompt and inputs | `input.standalone`: digest of an exact copy of the request, stored once in `blobs/` | The judge is sent its own prompt plus the tool call under review. |
 
 The boundary is mechanical. A call is a conversation call only if all three
 hold:
@@ -218,7 +218,7 @@ send the tools only so the prompt cache matches; the tools never run.
 | `recap` | Conversation | Placeholders, the recap prompt | `annotation.add` |
 | `suggest` | Conversation | Placeholders, the suggestion prompt | Nothing; accepted text later arrives as user input |
 | `compaction` | Standalone | — | `context.compact` |
-| `reviewer` | Standalone | — | `permission.decide {by: reviewer}` |
+| `judge` | Standalone | — | `permission.decide {by: judge}` |
 | `hook` (prompt hooks) | Standalone | — | `hook.finish` |
 | `autopilot` | Standalone | — | `session.update` (progress) or `message.append` (next instruction) |
 | `group` (interpreting `/group`) | Standalone | — | `session.update` (group hint) or `annotation.add` |
@@ -513,7 +513,7 @@ Generic pieces (batch framing, writer lock) stay in sdk-go.
   whole conversation (quadratic storage) and loses when and why a catalogue
   changed. Copies are kept only for standalone calls.
 - **Recording only main-loop calls** (today's behaviour). Usage and cost would miss
-  compaction, reviewer, hook and side calls, and their results would have no
+  compaction, judge, hook and side calls, and their results would have no
   provenance.
 - **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.

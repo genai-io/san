@@ -17,7 +17,7 @@ import (
 func TestEventIdentityAndOwnership(t *testing.T) {
 	ctx := context.Background()
 	store, s, create := eventStorageFixture(t)
-	if _, err := store.createEventSession(ctx, "again", create, EventValidationContext{}); err == nil {
+	if _, err := store.createEventSession(ctx, "again", "session", create, EventValidationContext{}); err == nil {
 		t.Fatal("overwrote existing session")
 	}
 	other, err := NewStoreWithDir(store.projectDir)
@@ -33,11 +33,10 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 		t.Fatal("accepted wrong project")
 	}
 	bad := create
-	bad.SessionID = "bad"
 	identity := bad.Payload.(SessionCreatePayload)
 	identity.ProjectID = "wrong"
 	bad.Payload = identity
-	if _, err = store.createEventSession(ctx, "bad", bad, EventValidationContext{}); err == nil {
+	if _, err = store.createEventSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created wrong project")
 	}
 	if _, err = os.Stat(store.TranscriptPath("bad")); !os.IsNotExist(err) {
@@ -46,7 +45,7 @@ func TestEventIdentityAndOwnership(t *testing.T) {
 	identity.ProjectID = store.projectID
 	identity.Workspace = "/another-project"
 	bad.Payload = identity
-	if _, err = store.createEventSession(ctx, "bad", bad, EventValidationContext{}); err == nil {
+	if _, err = store.createEventSession(ctx, "bad", "bad", bad, EventValidationContext{}); err == nil {
 		t.Fatal("created wrong workspace")
 	}
 	_ = s.Close()
@@ -78,7 +77,7 @@ func TestEventConcurrentCreators(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			s, _ := store.createEventSession(ctx, "create", create, EventValidationContext{})
+			s, _ := store.createEventSession(ctx, "create", "session", create, EventValidationContext{})
 			results <- s
 		}()
 	}
@@ -133,8 +132,8 @@ func TestEventStrictPayloadAndCorruption(t *testing.T) {
 func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	ctx := context.Background()
 	store, s, _ := eventStorageFixture(t)
-	e := testEvent(2, "copy", MessageAppendPayload{Messages: []ai.Message{eventText("copied", ai.RoleAssistant, "copied")}, SourceMessageIDs: []string{"original"}})
-	e.SourceID = "future"
+	e := testEvent(2, "copy", MessageAppendPayload{Messages: []ai.Message{eventText("copied", ai.RoleAssistant, "copied")}})
+	e.Source = &EventRef{Session: "foreign-session", Seq: 1}
 	// Bypass product validation only to build a valid SDK envelope with invalid
 	// product facts; the SDK remains the sole framing/hash authority.
 	raw, err := json.Marshal(eventBatchPayload{1, []Event{e}, EventValidationContext{}})
@@ -145,15 +144,15 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "invalid", Expected: tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.CreatedAt).UTC(), Data: raw}}})
+	receipt, err := s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "invalid", Expected: tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err = json.Marshal(eventBatchPayload{1, []Event{testEvent(3, "later", AnnotationAddPayload{Text: "later"})}, EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{"future": {SessionID: "foreign-session", Type: EventMessageAppend, MessageIDs: []string{"original"}}}}})
+	raw, err = json.Marshal(eventBatchPayload{1, []Event{testEvent(3, "later", AnnotationAddPayload{Text: "later"})}, EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{foreignKey("foreign-session", 1): {Type: EventMessageAppend, MessageIDs: []string{"original"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "later", Expected: receipt.Tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.CreatedAt).UTC(), Data: raw}}}); err != nil {
+	if _, err = s.store.CommitBatch(ctx, s.ID(), sdksession.Batch{ID: "later", Expected: receipt.Tail, Records: []sdksession.Record{{Type: sdksession.TypeApp, Name: "san.events", Time: time.UnixMilli(e.Time).UTC(), Data: raw}}}); err != nil {
 		t.Fatal(err)
 	}
 	before := eventBytes(t, s)

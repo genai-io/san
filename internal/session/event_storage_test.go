@@ -20,16 +20,16 @@ func eventStorageFixture(t *testing.T) (*Store, *Session, Event) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	create := Event{ID: "create", SessionID: "session", Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, CreatedAt: 123, Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: s.workspace, InitialCWD: s.cwd, AgentID: "main"}}
-	opened, err := s.createEventSession(context.Background(), "create-batch", create, EventValidationContext{})
+	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: 123, Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: s.workspace, InitialCWD: s.cwd, AgentID: "main"}}
+	opened, err := s.createEventSession(context.Background(), "create-batch", "session", create, EventValidationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = opened.Close() })
 	return s, opened, create
 }
-func testEvent(seq uint64, id string, p EventPayload) Event {
-	return Event{ID: id, SessionID: "session", Seq: seq, Type: p.eventType(), SchemaVersion: 1, CreatedAt: 123, Payload: p}
+func testEvent(seq uint64, _ string, p EventPayload) Event {
+	return Event{Seq: seq, Type: p.eventType(), SchemaVersion: 1, Time: 123, Payload: p}
 }
 func commitTestEvents(t *testing.T, s *Session, id string, events ...Event) *preparedEventBatch {
 	t.Helper()
@@ -57,7 +57,7 @@ func TestEventPersistenceRetryAndNativeHistory(t *testing.T) {
 	messages := []ai.Message{eventText("u", ai.RoleUser, "question"), eventText("a", ai.RoleUser, "followup")}
 	appendEvent := testEvent(2, "append", MessageAppendPayload{Messages: messages})
 	prepared := commitTestEvents(t, s, "messages", appendEvent)
-	commitTestEvents(t, s, "compact", testEvent(3, "compact", CompactionApplyPayload{SourceSeq: 2, Summary: eventText("summary", ai.RoleAssistant, "summary"), RetainedMessageIDs: []string{"a"}}))
+	commitTestEvents(t, s, "compact", testEvent(3, "compact", ContextCompactPayload{Summary: eventText("summary", ai.RoleUser, "summary"), Through: 2}))
 	before := eventBytes(t, s)
 	if _, err := s.commitEventBatch(ctx, prepared); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestEventPersistenceRetryAndNativeHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Events()) != 3 || len(snapshot.Messages()) != 3 || len(snapshot.ActiveMessages()) != 2 {
+	if len(snapshot.Events()) != 3 || len(snapshot.Messages()) != 3 || len(snapshot.ActiveMessages()) != 1 {
 		t.Fatal("retry lost compaction or full history")
 	}
 	if !reflect.DeepEqual(snapshot.Messages()[:2], messages) {
@@ -206,9 +206,10 @@ func TestEventEvidenceByBatch(t *testing.T) {
 	if err = child.Close(); err != nil {
 		t.Fatal(err)
 	}
-	facts := EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{"foreign": {SessionID: "child", Type: EventMessageAppend, MessageIDs: []string{"source"}}}}
-	e := testEvent(2, "copy", MessageAppendPayload{Messages: []ai.Message{eventText("copy-message", ai.RoleAssistant, "copied")}, SourceMessageIDs: []string{"source"}})
-	e.SourceID = "foreign"
+	key := foreignKey("child", 1)
+	facts := EventValidationContext{ForeignEvents: map[string]ForeignEventEvidence{key: {Type: EventMessageAppend, MessageIDs: []string{"source"}}}}
+	e := testEvent(2, "copy", MessageAppendPayload{Messages: []ai.Message{eventText("copy-message", ai.RoleAssistant, "copied")}})
+	e.Source = &EventRef{Session: "child", Seq: 1}
 	if _, err := s.prepareEventBatch("missing", []Event{e}, EventValidationContext{}); err == nil {
 		t.Fatal("future evidence validated old event")
 	}
@@ -220,7 +221,7 @@ func TestEventEvidenceByBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	commitTestEvents(t, s, "next", testEvent(3, "note", AnnotationAddPayload{Text: "next"}))
-	facts.ForeignEvents["foreign"] = ForeignEventEvidence{SessionID: "other", Type: EventMessageAppend}
+	facts.ForeignEvents[key] = ForeignEventEvidence{Type: EventAnnotationAdd}
 	if _, err := s.prepareEventBatch("contradiction", []Event{testEvent(4, "bad", AnnotationAddPayload{Text: "bad"})}, facts); err == nil {
 		t.Fatal("contradictory evidence accepted")
 	}
