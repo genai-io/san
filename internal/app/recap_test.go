@@ -73,6 +73,24 @@ func TestFocusShowsRecapWrittenAhead(t *testing.T) {
 	}
 }
 
+// A recap landing while the user is away shows at once; otherwise it is held.
+func TestRecapWrittenAwayShowsOnArrival(t *testing.T) {
+	m := newRecapModel(t)
+	msg := recapReadyMsg{sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Now: x\nNext: y"}
+
+	m.onRecapReady(msg)
+	if m.recap.ready.text == "" || m.conv.Messages[len(m.conv.Messages)-1].Role == core.ChatNotice {
+		t.Fatal("a recap landing for a present user must be held")
+	}
+
+	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
+	m.onRecapReady(msg)
+	last := m.conv.Messages[len(m.conv.Messages)-1]
+	if last.Role != core.ChatNotice || last.Content != "/recap \n\nNow: x\nNext: y" || m.recap.ready.text != "" {
+		t.Fatalf("recap written away not shown on arrival: %q", last.Content)
+	}
+}
+
 // The recap is a persisted notice, not an agent message. After a real
 // transcript round trip it still gates the next automatic recap.
 func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
