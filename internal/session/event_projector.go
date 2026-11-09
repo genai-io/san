@@ -14,21 +14,21 @@ import (
 )
 
 type projectionData struct {
-	SessionID    string
-	Events       []Event
-	Identity     SessionCreatePayload
-	Messages     []ai.Message
-	ActiveIDs    []string
-	MessageSeq   map[string]uint64 // message ID -> seq of the event that appended it
-	CallSeq      map[string]uint64 // tool call ID -> seq of the message carrying it
-	Config       EventConfig
-	State        EventState
-	Instructions map[string]InstructionSection
-	Tools        map[string]ai.Schema
-	Skills       map[string]string
-	Terminals    map[uint64]uint64 // inference.start seq -> inference.finish seq
-	Decisions    map[string]string // tool call ID -> decision
-	ToolFinished map[string]bool
+	SessionID          string
+	Events             []Event
+	Identity           SessionCreatePayload
+	Messages           []ai.Message
+	ActiveIDs          []string
+	MessageSeq         map[string]uint64 // message ID -> seq of the event that appended it
+	ToolCallSeq        map[string]uint64 // tool call ID -> seq of the message carrying it
+	Config             EventConfig
+	State              EventState
+	Instructions       map[string]InstructionSection
+	Tools              map[string]ai.Schema
+	Skills             map[string]string
+	InferenceFinishSeq map[uint64]uint64 // inference.start seq -> seq of its inference.finish
+	ToolDecision       map[string]string // tool call ID -> permission.decide decision
+	ToolFinishSeq      map[string]uint64 // tool call ID -> seq of its tool.finish
 }
 
 // Projection is an immutable validated prefix. Accessors return independent
@@ -102,16 +102,16 @@ func (p *Projection) Unfinished() Unfinished {
 	var u Unfinished
 	for _, e := range p.data.Events {
 		if e.Type == EventInferenceStart {
-			if _, ok := p.data.Terminals[e.Seq]; !ok {
+			if _, ok := p.data.InferenceFinishSeq[e.Seq]; !ok {
 				u.Inferences = append(u.Inferences, e.Seq)
 			}
 		}
 	}
-	for call := range p.data.CallSeq {
-		switch d := p.data.Decisions[call]; {
+	for call := range p.data.ToolCallSeq {
+		switch d := p.data.ToolDecision[call]; {
 		case d == "":
 			u.NeverRan = append(u.NeverRan, call)
-		case d == "allow" && !p.data.ToolFinished[call]:
+		case d == "allow" && p.data.ToolFinishSeq[call] == 0:
 			u.Unknown = append(u.Unknown, call)
 		}
 	}
@@ -177,13 +177,13 @@ func ApplyEventBatch(base *Projection, sessionID string, events []Event, validat
 		p.data.Messages = slices.Clone(base.data.Messages)
 		p.data.ActiveIDs = slices.Clone(base.data.ActiveIDs)
 		p.data.MessageSeq = maps.Clone(base.data.MessageSeq)
-		p.data.CallSeq = maps.Clone(base.data.CallSeq)
+		p.data.ToolCallSeq = maps.Clone(base.data.ToolCallSeq)
 		p.data.Instructions = maps.Clone(base.data.Instructions)
 		p.data.Tools = maps.Clone(base.data.Tools)
 		p.data.Skills = maps.Clone(base.data.Skills)
-		p.data.Terminals = maps.Clone(base.data.Terminals)
-		p.data.Decisions = maps.Clone(base.data.Decisions)
-		p.data.ToolFinished = maps.Clone(base.data.ToolFinished)
+		p.data.InferenceFinishSeq = maps.Clone(base.data.InferenceFinishSeq)
+		p.data.ToolDecision = maps.Clone(base.data.ToolDecision)
+		p.data.ToolFinishSeq = maps.Clone(base.data.ToolFinishSeq)
 		p.messageIndex = maps.Clone(base.messageIndex)
 	}
 	return applyReplayEventBatch(p, sessionID, events, validation)
@@ -196,9 +196,9 @@ func applyReplayEventBatch(p *Projection, sessionID string, events []Event, vali
 	if p == nil {
 		p = &Projection{
 			data: projectionData{
-				SessionID: sessionID, MessageSeq: map[string]uint64{}, CallSeq: map[string]uint64{},
+				SessionID: sessionID, MessageSeq: map[string]uint64{}, ToolCallSeq: map[string]uint64{},
 				Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]string{},
-				Terminals: map[uint64]uint64{}, Decisions: map[string]string{}, ToolFinished: map[string]bool{},
+				InferenceFinishSeq: map[uint64]uint64{}, ToolDecision: map[string]string{}, ToolFinishSeq: map[string]uint64{},
 			},
 			messageIndex: map[string]int{},
 		}
