@@ -69,7 +69,7 @@ Project  (每个 Git 仓库一个；Git 之外每个目录一个)
     events.jsonl.lock              writer 锁（sdk-go）
     attrs.json                     用户意图（不存在即默认值）
     blobs/                         按 sha256 内容寻址
-  cache/<sid>.json                 列表行摘要（派生）
+  cache/<sid>.json                 概览（派生）
   trash/<sid>/                     整个移入的已删除会话目录
 ```
 
@@ -221,7 +221,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 - **Context** — 发给模型的活动消息列表。
 - **State** — 生效的覆盖、会话状态和三个目录。
 - **History** — 曾有过的所有消息及审计和备注，用于展示和检查。压缩前的消息保留在此。
-- **Summary** — 缓存在 `cache/` 中的列表行数据。
+- **Overview** — 会话的列表行（标题、最后提问、计数、最后活跃），缓存在 `cache/` 中。
 
 恢复流程为 `Open → 投影 → 解析当前设置与信任 → 启动 runtime`。TUI、无界面和 ACP 共用；
 ACP 在构建服务前用恢复的 `execution_cwd` 校验请求的 cwd。恢复时按当前配置重建目录；
@@ -293,8 +293,8 @@ after:  context = [summary]            history = m1 .. m40, summary
 | 崩溃恢复 | 下一个 writer 截掉未结束的末行。完整但损坏的行是错误，绝不跳过。比当前程序更新的记录类型阻止恢复。 |
 | 资源 | blob 先写入并 sync，再写引用它的事件。 |
 | Create / Fork | Create 是一个批次，崩溃后要么什么都没有，要么是有效会话。Fork 通过重命名发布。 |
-| 缓存 | 摘要记录构建时事件文件的大小和最后一个批次的哈希，两者都一致才有效。追加会改变大小，整体替换会改变哈希；不使用 mtime。缓存以原子替换写入；过期或缺失的缓存会重建，绝不信任。 |
-| 事件分页 | 游标 = `(seq, 字节偏移, 该偏移处的尾部哈希)`。分页从偏移处继续读取，代价为 O(页) 而非重放前缀；哈希不符说明事件文件被替换，游标失败。 |
+| 缓存 | 仅当事件文件指纹（完整行总长度 + 最后一行摘要）一致时有效；批次哈希是链式的，因此足够。过期或损坏的缓存重建，绝不信任。 |
+| 事件分页 | 游标 = `(seq, 字节偏移, 尾部)`；分页从偏移处读取，代价 O(页)。需要 sdk-go `Store.BatchesFrom`；在此之前每页读取前缀。 |
 
 一致备份是在无 writer 活动时复制整个项目目录。
 
@@ -306,7 +306,7 @@ func OpenStore(ctx context.Context, startDir string) (*Store, error)
 func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error)
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
-func (s *Store) Get(ctx context.Context, id string) (Summary, error)
+func (s *Store) Get(ctx context.Context, id string) (Overview, error)
 func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
 func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
 func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
@@ -364,7 +364,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 ```
 
 - **Delete** 需要 writer 锁（打开中的会话不能删除），且会话未固定。先在会话目录中写 `deleted.json`（`deleted_at`），
-  再一步把目录重命名为 `trash/<sid>/`，并删除缓存的摘要。子会话和分叉是独立会话，不受影响。
+  再一步把目录重命名为 `trash/<sid>/`，并删除缓存的概览。子会话和分叉是独立会话，不受影响。
   崩溃后会话要么在线要么在回收站，绝不会被拆开。
 - **Restore** 把目录重命名回去。若该 ID 已有在线会话则失败；绝不覆盖或改名。
 - **Purge** 把超过期限的目录重命名为 `trash/.purging-<sid>/` 再删除；遗留的 `.purging-` 目录在下次运行时完成清理。
@@ -390,7 +390,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 1 | 事件模型 | 18 类、全局事件 ID 与 `source_id` → 13 类、`seq` 身份、`source` 引用、词汇、目录与 `context.compact` 载荷 |
 | 2 | 校验与投影器 | 按位置的引用检查；关卡、未完成调用与版本规则；Context / State / History 投影 |
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
-| 4 | attrs 与缓存 | `attrs.json`、`cache/`、大小 + 批次哈希有效性、按偏移的事件分页 |
+| 4 | attrs 与缓存 | `attrs.json`、`cache/<sid>.json`；待 sdk-go `BatchesFrom` 后做偏移分页 |
 | 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
 | 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；删除 schema-4 记录、投影器、`internal/transcript` 以及 `project.go` 中的旧分区查找 |
 
@@ -421,12 +421,12 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
 - **通用的 `context.replace`，或 `context.clear` / `context.rewind`。** San 唯一的原地改写是压缩；
   `/clear` 新建会话，回退或编辑更适合用保持源会话完整的分叉来表达（见[上下文操作](#上下文操作)）。
   一个具体的事件更容易校验和阅读。
-- **attrs 与摘要缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
+- **attrs 与概览缓存合为一个文件。** 重建缓存会重写用户意图，“删缓存永远安全”不再成立。
 - **以 `last_resumed_at` 作为活动。** 只打开不操作不算活动；最后事件时间就够了，无需额外的权威字段。
 - **随机项目 ID + 注册表。** 注册表需要加锁更新与对账，仓库移动后仍需显式关联。派生键两者都不需要。
 - **SQLite。** 2026-11-07 与 JSONL 对比测量（Apple M5，双方均持久 sync）：追加相同（≈4 ms），
   回放 1,000 条消息慢约 20%，列出 100 个会话在缓存热时快 3.5 倍、内存缓存丢失后慢 25 倍
-  （JSONL 有持久化摘要），二进制增大 3.8 MB。不值得引入第二个存储引擎；只有在优化摘要缓存和
+  （JSONL 有持久化摘要），二进制增大 3.8 MB。不值得引入第二个存储引擎；只有在优化概览缓存和
   回放分配之后、出现新证据时再考虑。
 - **读取、转换或双写旧格式。** 转换要映射缺少 start、链接或结局的记录，要么虚构事实要么被阻止；双写使故障模式翻倍；
   sdk-go 也禁止在同一文件中混用两种记录。不背负它，每条规则才能无条件成立。
@@ -449,4 +449,4 @@ writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关
 
 - 载荷的精确 Go 类型，以及哪些部分（信封、投影器、批次辅助）属于 sdk-go。
 - 仓库移动后的 `relink` 交互。
-- 在测量大项目列表性能后，摘要缓存是否应改为每项目一个索引。
+- 在测量大项目列表性能后，概览缓存是否应改为每项目一个索引。

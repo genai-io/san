@@ -82,7 +82,7 @@ Configuration does not move into session storage:
     events.jsonl.lock              writer lock (sdk-go)
     attrs.json                     user intent (absent = defaults)
     blobs/                         content-addressed by sha256
-  cache/<sid>.json                 list-row summary (derived)
+  cache/<sid>.json                 overview (derived)
   trash/<sid>/                     a deleted session directory, moved whole
 ```
 
@@ -271,7 +271,7 @@ A pure projector folds committed events into:
 - **State** — effective overrides, session state and the three catalogues.
 - **History** — every message ever held plus audit and annotations, for display
   and inspection. Pre-compaction messages stay here.
-- **Summary** — the list-row data cached in `cache/`.
+- **Overview** — the session's list row (title, last prompt, counts, last activity), cached in `cache/`.
 
 Resume is `Open → project → resolve current settings and trust → start runtime`.
 TUI, headless and ACP share it; ACP checks the requested cwd against the restored
@@ -355,8 +355,8 @@ context unchanged.
 | Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
 | Assets | Blobs are written and synced before the event that references them. |
 | Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
-| Caches | A summary records the events file's size and last batch hash when built; it is valid only while both match. Appends change the size and replacement changes the hash; mtime is not used. Cache writes are atomic replaces; a stale or missing cache is rebuilt, never trusted. |
-| Event pages | Cursor = `(seq, byte offset, tail hash at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a hash mismatch means the events file was replaced, and the cursor fails. |
+| Caches | Valid only while the events file's fingerprint (length of complete lines + digest of the last line) matches; the chained batch hash makes that enough. Stale or damaged caches are rebuilt, never trusted. |
+| Event pages | Cursor = `(seq, byte offset, tail)`; a page reads from the offset, so it costs O(page). Needs sdk-go `Store.BatchesFrom`; until then each page reads the prefix. |
 
 A consistent backup copies the project directory while no writer is active.
 
@@ -368,7 +368,7 @@ func OpenStore(ctx context.Context, startDir string) (*Store, error)
 func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error)
 func (s *Store) Open(ctx context.Context, id string) (*Session, error)
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error)
-func (s *Store) Get(ctx context.Context, id string) (Summary, error)
+func (s *Store) Get(ctx context.Context, id string) (Overview, error)
 func (s *Store) List(ctx context.Context, q SessionQuery) (SessionPage, error)
 func (s *Store) Events(ctx context.Context, id string, q EventQuery) (EventPage, error)
 func (s *Store) SetAttrs(ctx context.Context, id string, patch AttrsPatch) error
@@ -438,7 +438,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 - **Delete** requires the writer lock (an open session cannot be deleted) and a
   non-pinned session. It writes `deleted.json` (`deleted_at`) into the session
   directory, renames the directory to `trash/<sid>/` in one step, and drops the
-  cached summary. Children and forks are independent sessions and are not
+  cached overview. Children and forks are independent sessions and are not
   touched. A crash leaves the session either live or trashed, never split.
 - **Restore** renames the directory back. It fails if the ID already exists
   live; it never overwrites or renames.
@@ -474,7 +474,7 @@ which removes it.
 | 1 | Event model | 18 types, global event IDs and `source_id` → 13 types, `seq` identity, `source` refs, vocabulary, catalogue and `context.compact` payloads |
 | 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
-| 4 | Attrs and cache | `attrs.json`, `cache/`, size + batch-hash validity, event pages by offset |
+| 4 | Attrs and cache | `attrs.json`, `cache/<sid>.json`; offset pages after sdk-go `BatchesFrom` |
 | 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
 | 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the schema-4 records, projector, `internal/transcript` and the legacy-partition lookup in `project.go` |
 
@@ -522,7 +522,7 @@ Generic pieces (batch framing, writer lock) stay in sdk-go.
   rewind or edit is better as a fork that leaves the source intact (see
   [Context operations](#context-operations)). One concrete event is easier to
   validate and read.
-- **attrs and summary cache in one file.** Rebuilding the cache would rewrite
+- **attrs and the overview cache in one file.** Rebuilding the cache would rewrite
   user intent, so "deleting caches is safe" would no longer hold.
 - **`last_resumed_at` as activity.** Opening without doing anything is not
   activity; the last event time is enough and needs no extra authority.
@@ -534,7 +534,7 @@ Generic pieces (batch framing, writer lock) stay in sdk-go.
   slower, listing 100 sessions was 3.5× faster with warm caches but 25× slower
   once the in-memory cache was lost (JSONL had persisted summaries), and the
   binary grew 3.8 MB. Not worth a second storage engine; revisit only with new
-  evidence, after optimizing summary caching and replay allocations.
+  evidence, after optimizing overview caching and replay allocations.
 - **Reading, converting or dual-writing the old format.** Conversion must map
   records that lack starts, links or outcomes, so it either invents facts or
   blocks; dual writes double the failure modes; sdk-go forbids mixing the two
@@ -567,5 +567,5 @@ Generic pieces (batch framing, writer lock) stay in sdk-go.
 - Exact payload Go types, and which parts (envelope, projector, batch helpers)
   belong in sdk-go.
 - `relink` UX for moved repositories.
-- Whether the summary cache should become one per-project index once listing
+- Whether the overview cache should become one per-project index once listing
   large projects is measured.
