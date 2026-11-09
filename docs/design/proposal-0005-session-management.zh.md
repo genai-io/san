@@ -293,8 +293,8 @@ after:  context = [summary]            history = m1 .. m40, summary
 | 崩溃恢复 | 下一个 writer 截掉未结束的末行。完整但损坏的行是错误，绝不跳过。比当前程序更新的记录类型阻止恢复。 |
 | 资源 | blob 先写入并 sync，再写引用它的事件。 |
 | Create / Fork | Create 是一个批次，崩溃后要么什么都没有，要么是有效会话。Fork 通过重命名发布。 |
-| 缓存 | 缓存的摘要记录事件文件的指纹：完整行的总长度和最后一行的摘要。每个批次行都带有链接到此前所有批次的哈希，因此指纹相同即已提交历史相同；未结束的末行不计入，也不使用 mtime。缓存以原子替换写入；过期或缺失的缓存会重建，绝不信任。 |
-| 事件分页 | 游标 = `(seq, 字节偏移, 该偏移处的尾部)`。分页从偏移处继续读取，代价为 O(页) 而非重放前缀；不符说明事件文件被替换，游标失败。这需要 sdk-go 提供从已记录偏移和尾部开始读取的接口（`Store.BatchesFrom`）；在它出现之前，每页都要读取并校验前缀。 |
+| 缓存 | 仅当事件文件指纹（完整行总长度 + 最后一行摘要）一致时有效；批次哈希是链式的，因此足够。过期或损坏的缓存重建，绝不信任。 |
+| 事件分页 | 游标 = `(seq, 字节偏移, 尾部)`；分页从偏移处读取，代价 O(页)。需要 sdk-go `Store.BatchesFrom`；在此之前每页读取前缀。 |
 
 一致备份是在无 writer 活动时复制整个项目目录。
 
@@ -390,7 +390,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 1 | 事件模型 | 18 类、全局事件 ID 与 `source_id` → 13 类、`seq` 身份、`source` 引用、词汇、目录与 `context.compact` 载荷 |
 | 2 | 校验与投影器 | 按位置的引用检查；关卡、未完成调用与版本规则；Context / State / History 投影 |
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
-| 4 | attrs 与缓存 | `attrs.json`、`cache/<sid>.json` 与指纹有效性（已完成）；待 sdk-go 提供 `BatchesFrom` 后做按偏移的事件分页 |
+| 4 | attrs 与缓存 | `attrs.json`、`cache/<sid>.json`；待 sdk-go `BatchesFrom` 后做偏移分页 |
 | 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
 | 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；删除 schema-4 记录、投影器、`internal/transcript` 以及 `project.go` 中的旧分区查找 |
 

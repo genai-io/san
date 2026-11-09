@@ -17,13 +17,13 @@ func summaryFixture(t *testing.T) (*Store, *Session) {
 	return store, s
 }
 
-func TestEventSummaryProjectsListRow(t *testing.T) {
+func TestSummaryProjectsListRow(t *testing.T) {
 	store, s := summaryFixture(t)
 	commitTestEvents(t, s, "t", testEvent(3, "", SessionUpdatePayload{State: &StatePatch{Title: SetField("Fix login")}, Config: &ConfigPatch{Model: SetField("m1")}}))
 	note := testEvent(4, "", AnnotationAddPayload{Text: "note"})
 	note.Time = 999999
 	commitTestEvents(t, s, "n", note)
-	got, err := store.eventSummary(context.Background(), s.ID())
+	got, err := store.summary(context.Background(), s.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,17 +35,17 @@ func TestEventSummaryProjectsListRow(t *testing.T) {
 	}
 	long := strings.Repeat("é", 500)
 	commitTestEvents(t, s, "long", testEvent(5, "", MessageAppendPayload{Messages: []ai.Message{eventText("u2", ai.RoleUser, long)}}))
-	got, _ = store.eventSummary(context.Background(), s.ID())
+	got, _ = store.summary(context.Background(), s.ID())
 	if n := len([]rune(got.LastPrompt)); n != lastPromptRunes {
 		t.Fatalf("last prompt runes = %d", n)
 	}
 }
 
-func TestEventSummaryCacheHitMissAndRebuild(t *testing.T) {
+func TestSummaryCacheHitMissAndRebuild(t *testing.T) {
 	ctx := context.Background()
 	store, s := summaryFixture(t)
 	cacheFile := filepath.Join(store.projectDir, "cache", s.ID()+".json")
-	first, err := store.eventSummary(ctx, s.ID())
+	first, err := store.summary(ctx, s.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,12 +62,12 @@ func TestEventSummaryCacheHitMissAndRebuild(t *testing.T) {
 	if err := os.WriteFile(cacheFile, []byte(marked), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := store.eventSummary(ctx, s.ID()); got.Messages != 41 {
+	if got, _ := store.summary(ctx, s.ID()); got.Messages != 41 {
 		t.Fatal("valid cache was not used")
 	}
 	// An append changes the fingerprint, so the stale entry is rebuilt.
 	commitTestEvents(t, s, "m2", testEvent(3, "", MessageAppendPayload{Messages: []ai.Message{eventText("u2", ai.RoleUser, "second")}}))
-	got, err := store.eventSummary(ctx, s.ID())
+	got, err := store.summary(ctx, s.ID())
 	if err != nil || got.Messages != 2 || got.LastPrompt != "second" {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -75,13 +75,13 @@ func TestEventSummaryCacheHitMissAndRebuild(t *testing.T) {
 	f, _ := os.OpenFile(s.TranscriptPath(), os.O_APPEND|os.O_WRONLY, 0o600)
 	_, _ = f.WriteString(`{"batch_version":1`)
 	_ = f.Close()
-	if again, err := store.eventSummary(ctx, s.ID()); err != nil || again != got {
+	if again, err := store.summary(ctx, s.ID()); err != nil || again != got {
 		t.Fatalf("unfinished tail changed the summary: %+v %v", again, err)
 	}
 	// Damaged or foreign cache content is ignored, never trusted.
 	for _, bad := range []string{"{", `{"fingerprint":{},"summary":{"session":"other"}}`, ""} {
 		_ = os.WriteFile(cacheFile, []byte(bad), 0o600)
-		if again, err := store.eventSummary(ctx, s.ID()); err != nil || again != got {
+		if again, err := store.summary(ctx, s.ID()); err != nil || again != got {
 			t.Fatalf("bad cache %q: %+v %v", bad, again, err)
 		}
 	}

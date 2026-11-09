@@ -150,9 +150,9 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
-- `event_summary.go`: `EventSummary` (a list row projected from events) and its derived cache
-  in `cache/<sid>.json`, valid only while the events file's fingerprint (length of complete lines +
-  digest of the last line) matches. `event_blob.go` and `attrs.go` hold request copies and user intent.
+- `summary.go`: `SessionSummary`, a list row projected from events, cached in `cache/<sid>.json`
+  while the events file's fingerprint matches. `blob.go` stores standalone request copies; `attrs.go`
+  holds user intent (renamed title, archive, pin).
 
 The unmerged persistence slice in `event_storage.go` adds private
 `createEventSession` / `openEventSession` and prepare/commit helpers. `readEvents`

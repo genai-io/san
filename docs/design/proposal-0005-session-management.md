@@ -355,8 +355,8 @@ context unchanged.
 | Crash recovery | The next writer cuts an unterminated last line. A corrupt complete line is an error, never skipped. A record type newer than this binary blocks resume. |
 | Assets | Blobs are written and synced before the event that references them. |
 | Create / Fork | Create is one batch, so a crash leaves either nothing or a valid session. Fork publishes by rename. |
-| Caches | A cached summary records a fingerprint of the events file: the length of its complete lines and a digest of the last one. Every batch line carries a hash chained to all earlier batches, so equal fingerprints mean equal committed history; an unfinished last line is not part of it, and mtime is not used. Cache writes are atomic replaces; a stale or missing cache is rebuilt, never trusted. |
-| Event pages | Cursor = `(seq, byte offset, tail at that offset)`. A page resumes reading at the offset, so it costs O(page) rather than a replay of the prefix; a mismatch means the events file was replaced, and the cursor fails. This needs an sdk-go reader that starts from a recorded offset and tail (`Store.BatchesFrom`); until it exists each page reads and checks the prefix. |
+| Caches | Valid only while the events file's fingerprint (length of complete lines + digest of the last line) matches; the chained batch hash makes that enough. Stale or damaged caches are rebuilt, never trusted. |
+| Event pages | Cursor = `(seq, byte offset, tail)`; a page reads from the offset, so it costs O(page). Needs sdk-go `Store.BatchesFrom`; until then each page reads the prefix. |
 
 A consistent backup copies the project directory while no writer is active.
 
@@ -474,7 +474,7 @@ which removes it.
 | 1 | Event model | 18 types, global event IDs and `source_id` → 13 types, `seq` identity, `source` refs, vocabulary, catalogue and `context.compact` payloads |
 | 2 | Validation and projector | Reference checks by position; gate, unfinished-call and version rules; Context / State / History projections |
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
-| 4 | Attrs and cache | `attrs.json`, `cache/<sid>.json` with fingerprint validity (done); event pages by offset once sdk-go has `BatchesFrom` |
+| 4 | Attrs and cache | `attrs.json`, `cache/<sid>.json`; offset pages after sdk-go `BatchesFrom` |
 | 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
 | 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the schema-4 records, projector, `internal/transcript` and the legacy-partition lookup in `project.go` |
 
