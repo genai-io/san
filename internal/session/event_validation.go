@@ -166,10 +166,10 @@ func (p *Projection) closeInference(e Event) (*InferenceStartPayload, error) {
 	if start == nil || start.Type != EventInferenceStart {
 		return nil, invalidEvent("finish source must be inference.start")
 	}
-	if _, done := p.data.InferenceFinishSeq[start.Seq]; done {
+	if !p.data.OpenInferences[start.Seq] {
 		return nil, invalidEvent("duplicate terminal result")
 	}
-	p.data.InferenceFinishSeq[start.Seq] = e.Seq
+	delete(p.data.OpenInferences, start.Seq)
 	return start.Payload.(*InferenceStartPayload), nil
 }
 
@@ -271,17 +271,21 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		}
 		p.data.ActiveIDs = active
 	case *InferenceStartPayload:
-		return p.validateInferenceStart(*v)
+		if err := p.validateInferenceStart(*v); err != nil {
+			return err
+		}
+		p.data.OpenInferences[e.Seq] = true
 	case *InferenceFinishPayload:
 		if _, err := p.closeInference(e); err != nil {
 			return err
 		}
 		return validateTerminal(v.Outcome, v.Error, v.Reason, v.DurationMS)
 	case *PermissionDecidePayload:
-		if _, ok := p.data.ToolCallSeq[v.CallID]; !ok {
+		call, ok := p.data.ToolCalls[v.CallID]
+		if !ok {
 			return invalidEvent("decision for unknown tool call")
 		}
-		if p.data.ToolDecision[v.CallID] != "" {
+		if call.Decision != "" {
 			return invalidEvent("tool call already decided")
 		}
 		if v.Decision != "allow" && v.Decision != "deny" && v.Decision != "cancelled" {
@@ -298,21 +302,24 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		if v.Asked != nil && (len(v.Asked.Detail) > maxDetails || v.Asked.At < 0) {
 			return invalidEvent("invalid asked record")
 		}
-		p.data.ToolDecision[v.CallID] = v.Decision
+		call.Decision = v.Decision
+		p.data.ToolCalls[v.CallID] = call
 	case *ToolFinishPayload:
-		if _, ok := p.data.ToolCallSeq[v.CallID]; !ok {
+		call, ok := p.data.ToolCalls[v.CallID]
+		if !ok {
 			return invalidEvent("finish for unknown tool call")
 		}
-		if p.data.ToolDecision[v.CallID] != "allow" {
+		if call.Decision != "allow" {
 			return invalidEvent("tool.finish needs an allow decision")
 		}
-		if p.data.ToolFinishSeq[v.CallID] != 0 {
+		if call.Finish != 0 {
 			return invalidEvent("duplicate tool.finish")
 		}
 		if len(v.Details) > maxDetails || (v.ChildSession != "" && transcript.ValidateStorageID(v.ChildSession) != nil) || v.ChildSession == p.data.SessionID {
 			return invalidEvent("invalid tool details or child session")
 		}
-		p.data.ToolFinishSeq[v.CallID] = e.Seq
+		call.Finish = e.Seq
+		p.data.ToolCalls[v.CallID] = call
 		return validateTerminal(v.Outcome, v.Error, v.Reason, v.DurationMS)
 	case *InstructionsUpdatePayload:
 		return updateCatalogue(p.data.Instructions, v.Set, v.Remove, v.Cause, func(name string, s InstructionSection) error {
@@ -510,7 +517,7 @@ func (p *Projection) addMessage(m ai.Message, seq uint64) error {
 			if m.Role != ai.RoleAssistant || b.ToolCall == nil || b.ToolCall.ID == "" || b.ToolCall.Name == "" || calls[b.ToolCall.ID] {
 				return invalidEvent("invalid or ambiguous native tool call")
 			}
-			if _, dup := p.data.ToolCallSeq[b.ToolCall.ID]; dup {
+			if _, dup := p.data.ToolCalls[b.ToolCall.ID]; dup {
 				return invalidEvent("tool call ID reused in session")
 			}
 			calls[b.ToolCall.ID] = true
@@ -523,7 +530,7 @@ func (p *Projection) addMessage(m ai.Message, seq uint64) error {
 		}
 	}
 	for id := range calls {
-		p.data.ToolCallSeq[id] = seq
+		p.data.ToolCalls[id] = toolCall{Seq: seq}
 	}
 	p.messageIndex[m.ID] = len(p.data.Messages)
 	p.data.Messages = append(p.data.Messages, m)

@@ -14,21 +14,27 @@ import (
 )
 
 type projectionData struct {
-	SessionID          string
-	Events             []Event
-	Identity           SessionCreatePayload
-	Messages           []ai.Message
-	ActiveIDs          []string
-	MessageSeq         map[string]uint64 // message ID -> seq of the event that appended it
-	ToolCallSeq        map[string]uint64 // tool call ID -> seq of the message carrying it
-	Config             EventConfig
-	State              EventState
-	Instructions       map[string]InstructionSection
-	Tools              map[string]ai.Schema
-	Skills             map[string]string
-	InferenceFinishSeq map[uint64]uint64 // inference.start seq -> seq of its inference.finish
-	ToolDecision       map[string]string // tool call ID -> permission.decide decision
-	ToolFinishSeq      map[string]uint64 // tool call ID -> seq of its tool.finish
+	SessionID      string
+	Events         []Event
+	Identity       SessionCreatePayload
+	Messages       []ai.Message
+	ActiveIDs      []string
+	MessageSeq     map[string]uint64   // message ID -> seq of the event that appended it
+	ToolCalls      map[string]toolCall // by tool call ID
+	Config         EventConfig
+	State          EventState
+	Instructions   map[string]InstructionSection
+	Tools          map[string]ai.Schema
+	Skills         map[string]string
+	OpenInferences map[uint64]bool // inference.start seq, until its inference.finish
+}
+
+// toolCall follows one native tool call from the message that carries it,
+// through the permission gate, to its tool.finish.
+type toolCall struct {
+	Seq      uint64 // event whose message carries the call
+	Decision string // permission.decide result; empty until decided
+	Finish   uint64 // seq of tool.finish; zero until finished
 }
 
 // Projection is an immutable validated prefix. Accessors return independent
@@ -100,21 +106,18 @@ type Unfinished struct {
 
 func (p *Projection) Unfinished() Unfinished {
 	var u Unfinished
-	for _, e := range p.data.Events {
-		if e.Type == EventInferenceStart {
-			if _, ok := p.data.InferenceFinishSeq[e.Seq]; !ok {
-				u.Inferences = append(u.Inferences, e.Seq)
-			}
+	for seq := range p.data.OpenInferences {
+		u.Inferences = append(u.Inferences, seq)
+	}
+	for id, c := range p.data.ToolCalls {
+		switch {
+		case c.Decision == "":
+			u.NeverRan = append(u.NeverRan, id)
+		case c.Decision == "allow" && c.Finish == 0:
+			u.Unknown = append(u.Unknown, id)
 		}
 	}
-	for call := range p.data.ToolCallSeq {
-		switch d := p.data.ToolDecision[call]; {
-		case d == "":
-			u.NeverRan = append(u.NeverRan, call)
-		case d == "allow" && p.data.ToolFinishSeq[call] == 0:
-			u.Unknown = append(u.Unknown, call)
-		}
-	}
+	slices.Sort(u.Inferences)
 	sort.Strings(u.NeverRan)
 	sort.Strings(u.Unknown)
 	return u
@@ -177,13 +180,11 @@ func ApplyEventBatch(base *Projection, sessionID string, events []Event, validat
 		p.data.Messages = slices.Clone(base.data.Messages)
 		p.data.ActiveIDs = slices.Clone(base.data.ActiveIDs)
 		p.data.MessageSeq = maps.Clone(base.data.MessageSeq)
-		p.data.ToolCallSeq = maps.Clone(base.data.ToolCallSeq)
+		p.data.ToolCalls = maps.Clone(base.data.ToolCalls)
 		p.data.Instructions = maps.Clone(base.data.Instructions)
 		p.data.Tools = maps.Clone(base.data.Tools)
 		p.data.Skills = maps.Clone(base.data.Skills)
-		p.data.InferenceFinishSeq = maps.Clone(base.data.InferenceFinishSeq)
-		p.data.ToolDecision = maps.Clone(base.data.ToolDecision)
-		p.data.ToolFinishSeq = maps.Clone(base.data.ToolFinishSeq)
+		p.data.OpenInferences = maps.Clone(base.data.OpenInferences)
 		p.messageIndex = maps.Clone(base.messageIndex)
 	}
 	return applyReplayEventBatch(p, sessionID, events, validation)
@@ -196,9 +197,9 @@ func applyReplayEventBatch(p *Projection, sessionID string, events []Event, vali
 	if p == nil {
 		p = &Projection{
 			data: projectionData{
-				SessionID: sessionID, MessageSeq: map[string]uint64{}, ToolCallSeq: map[string]uint64{},
+				SessionID: sessionID, MessageSeq: map[string]uint64{}, ToolCalls: map[string]toolCall{},
 				Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]string{},
-				InferenceFinishSeq: map[uint64]uint64{}, ToolDecision: map[string]string{}, ToolFinishSeq: map[string]uint64{},
+				OpenInferences: map[uint64]bool{},
 			},
 			messageIndex: map[string]int{},
 		}
