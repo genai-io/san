@@ -83,25 +83,25 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// logFingerprint identifies the committed content of an events file without
+// stamp identifies the committed content of an events file without
 // reading it all: the length of its complete lines and a digest of the last
 // one. Each batch line carries a hash chained to every earlier batch, so equal
-// fingerprints mean equal committed history. An unfinished last line, which
+// stamps mean equal committed history. An unfinished last line, which
 // readers ignore and the next writer cuts off, is not part of it.
-type logFingerprint struct {
+type stamp struct {
 	Size     int64  `json:"size"`
 	LastLine string `json:"last_line"`
 }
 
-func fingerprintLog(path string) (logFingerprint, error) {
+func stampOf(path string) (stamp, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return logFingerprint{}, err
+		return stamp{}, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return logFingerprint{}, err
+		return stamp{}, err
 	}
 	const chunk = 64 << 10
 	var tail []byte // bytes from the current position to the end of the file
@@ -114,7 +114,7 @@ func fingerprintLog(path string) (logFingerprint, error) {
 		pos -= n
 		buf := make([]byte, n)
 		if _, err := f.ReadAt(buf, pos); err != nil && !errors.Is(err, io.EOF) {
-			return logFingerprint{}, err
+			return stamp{}, err
 		}
 		tail = append(buf, tail...)
 		if end < 0 {
@@ -132,38 +132,38 @@ func fingerprintLog(path string) (logFingerprint, error) {
 		}
 	}
 	if end < 0 {
-		return logFingerprint{}, nil // no complete line: nothing committed
+		return stamp{}, nil // no complete line: nothing committed
 	}
 	sum := sha256.Sum256(tail)
-	return logFingerprint{Size: end, LastLine: hex.EncodeToString(sum[:])}, nil
+	return stamp{Size: end, LastLine: hex.EncodeToString(sum[:])}, nil
 }
 
 type overviewCacheFile struct {
-	Fingerprint logFingerprint `json:"fingerprint"`
-	Overview    Overview       `json:"overview"`
+	Stamp    stamp    `json:"stamp"`
+	Overview Overview `json:"overview"`
 }
 
 // overviewCache keeps one derived file per session. A cache entry is valid only
-// while the events file still has the fingerprint it was built from, so it can
+// while the events file still has the stamp it was built from, so it can
 // lag behind a commit but never lead it; any doubt rebuilds.
 type overviewCache struct{ dir string }
 
 func (c overviewCache) path(id string) string { return filepath.Join(c.dir, id+".json") }
 
-func (c overviewCache) load(id string, fp logFingerprint) (Overview, bool) {
+func (c overviewCache) load(id string, st stamp) (Overview, bool) {
 	data, err := os.ReadFile(c.path(id))
 	if err != nil {
 		return Overview{}, false
 	}
 	var f overviewCacheFile
-	if strictEventJSON(data, &f) != nil || f.Fingerprint != fp || f.Overview.SessionID != id {
+	if strictEventJSON(data, &f) != nil || f.Stamp != st || f.Overview.SessionID != id {
 		return Overview{}, false
 	}
 	return f.Overview, true
 }
 
-func (c overviewCache) store(id string, fp logFingerprint, s Overview) error {
-	data, err := json.Marshal(overviewCacheFile{fp, s})
+func (c overviewCache) store(id string, st stamp, s Overview) error {
+	data, err := json.Marshal(overviewCacheFile{st, s})
 	if err != nil {
 		return err
 	}
@@ -182,12 +182,12 @@ func (c overviewCache) remove(id string) error {
 // never fails the read: the cache is an optimisation, not a record.
 func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
 	cache := overviewCache{dir: filepath.Join(s.projectDir, "cache")}
-	fp, err := fingerprintLog(s.TranscriptPath(id))
+	st, err := stampOf(s.TranscriptPath(id))
 	if err != nil {
 		return Overview{}, err
 	}
-	if fp != (logFingerprint{}) {
-		if cached, ok := cache.load(id, fp); ok {
+	if st != (stamp{}) {
+		if cached, ok := cache.load(id, st); ok {
 			return cached, nil
 		}
 	}
@@ -196,10 +196,10 @@ func (s *Store) overview(ctx context.Context, id string) (Overview, error) {
 		return Overview{}, err
 	}
 	ov := overviewOf(id, p)
-	// Cache only if the file did not change since the first fingerprint: then
-	// the replay saw exactly the committed history the fingerprint names.
-	if after, err := fingerprintLog(s.TranscriptPath(id)); err == nil && after == fp {
-		_ = cache.store(id, fp, ov)
+	// Cache only if the file did not change since the first stamp: then
+	// the replay saw exactly the committed history the stamp names.
+	if after, err := stampOf(s.TranscriptPath(id)); err == nil && after == st {
+		_ = cache.store(id, st, ov)
 	}
 	return ov, nil
 }

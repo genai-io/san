@@ -151,7 +151,7 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
 - `overview.go`: `Overview`, a session's list row projected from events, cached in `cache/<sid>.json`
-  while the events file's fingerprint matches. `blob.go` stores standalone request copies; `attrs.go`
+  while the events file's stamp matches. `blob.go` stores standalone request copies; `attrs.go`
   holds user intent (renamed title, archive, pin).
 
 The unmerged persistence slice in `event_storage.go` adds private
