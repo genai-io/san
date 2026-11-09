@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -78,39 +77,16 @@ func TestOpenStoreSharedWorktrees(t *testing.T) {
 	}
 }
 
-func TestProjectMovedGitMetadataRequiresReconciliation(t *testing.T) {
+func TestProjectMovedGitMetadataIsANewProject(t *testing.T) {
 	home, repo := t.TempDir(), t.TempDir()
 	projectTestGit(t, repo, "init", "-q")
 	original := projectTestResolve(t, home, repo)
 	metadata := filepath.Join(t.TempDir(), "metadata")
 	projectTestGit(t, repo, "init", "-q", "--separate-git-dir", metadata)
 	projectTestGit(t, repo, "config", "core.worktree", repo)
-	if _, err := resolveProject(context.Background(), home, repo); err == nil || !strings.Contains(err.Error(), "reconciliation") {
-		t.Fatalf("moved Git metadata = %v, want reconciliation error", err)
-	}
-	registrations, err := filepath.Glob(filepath.Join(filepath.Dir(original.Root), "*", "project.json"))
-	if err != nil || len(registrations) != 1 {
-		t.Fatalf("silently created another project: %v, %v", registrations, err)
-	}
-}
-
-func TestOpenStoreRejectsUnreadableLegacyLayout(t *testing.T) {
-	home, cwd := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	legacy := filepath.Join(home, ".san", "projects", ProjectID(cwd))
-	if err := os.MkdirAll(legacy, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	// A malformed legacy directory must not be mistaken for absent history.
-	if err := os.WriteFile(filepath.Join(legacy, "transcripts"), []byte("not a directory"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := OpenStore(context.Background(), cwd); err == nil {
-		t.Fatal("silently replaced inaccessible legacy partition")
-	}
-	entries, err := os.ReadDir(filepath.Dir(legacy))
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("unexpected new project registration: %v, %v", entries, err)
+	moved := projectTestResolve(t, home, repo)
+	if moved.ID == original.ID || moved.Key == original.Key {
+		t.Fatal("moved Git metadata kept the old identity")
 	}
 }
 

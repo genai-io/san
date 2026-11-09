@@ -50,7 +50,7 @@ and application boundaries.
 
 - `store.go`: `OpenStore` (`NewStore` compatibility wrapper), `Create`, `Open`, `Read`, `ReadOptions`, `List`,
   `Fork`, `Delete`, `RecordSubagentConversation`, and attachment storage.
-- `project.go`: locked project registration, legacy partition lookup and workspace validation.
+- `project.go`: derives the project ID from where the project is, writes its description, validates workspaces.
 - `session.go`: the opened `Session`, `CreateOptions`, `Append`, `Err`, `Close`.
 - `events.go`: `RecordEvent`, inference spans, compaction and native event
   adaptation. Internal method names describe the event being persisted.
@@ -150,6 +150,10 @@ ReplayEventBatches --------------------------^ (preserves batch boundaries)
   `through` and validates native call/result pairing; `Unfinished` reports calls that never ran,
   allowed calls with unknown outcome and interrupted inferences. Accessors detach snapshots.
 - `event_query.go`: `Store.Events`, bounded pages pinned to a checked prefix.
+- `lifecycle.go`: `library`, the project's sessions as directories. Trash writes `deleted.json`, holds the
+  writer claim across one rename into `trash/<sid>/` (refusing busy or pinned sessions); restore
+  renames back and never overwrites; purge removes trashed sessions past 7 days via a hidden rename,
+  and keeps any of unknown age.
 - `overview.go`: `Overview`, a session's list row projected from events, cached in `cache/<sid>.json`
   while the events file's stamp matches. `blob.go` stores standalone request copies; `attrs.go`
   holds user intent (renamed title, archive, pin).
@@ -213,7 +217,7 @@ allocation and memory costs even for small pages. Tests include
 
 ```text
 ~/.san/projects/<project-id>/
-  project.json                         # new registrations only
+  project.json                         # description only; identity is derived
   transcripts/<session-id>.jsonl
   transcripts/<session-id>.jsonl.meta
   blobs/tool-result/<session-id>/<tool-call-id>
@@ -226,17 +230,11 @@ and SDK-native payloads; the private typed path uses committed `san.events` batc
 Metadata files
 are disposable derived summaries. Earlier schema versions are rejected; no migration is provided.
 
-`OpenStore(ctx, cwd)` registers a stable project ID or reuses an existing registration.
-Git subdirectories/worktrees share one project; clones and submodules do not. Non-Git
-child directories are distinct projects. Existing exact-cwd hash partitions with logs
-win over registration and are never merged or moved automatically. Registration is
-cross-process serialized; lock waiting is not cancellable, and atomic file publication
-is not a power-loss durability guarantee. Version-2 registrations store only ID,
-kind, canonical lookup key, and an anchor (the first observed checkout root or exact
-non-Git directory). A changed kind or common directory at that anchor and corrupt
-registrations require explicit repair. Other checkout-path reuse and identical-path
-repository replacement are not detected. Version-1 IDs remain readable; their old
-`config_root` is only a reconciliation anchor, never a configuration source.
+`OpenStore(ctx, cwd)` derives the project ID from the project's kind and canonical key: the Git
+common directory, or the exact startup directory outside Git. Git subdirectories and worktrees
+share one project; clones and submodules do not; non-Git child directories are distinct. There is
+no registry to lock or reconcile, and `project.json` (kind, key, name) only describes the project.
+A repository that moves is a new project. Old `<hash(cwd)>` partitions are not read.
 
 `CreateOptions.Workspace` defaults to the captured checkout/root. An explicit workspace
 must belong to the same project; it does not change project ownership or grant trust.

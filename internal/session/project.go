@@ -2,8 +2,8 @@ package session
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -18,20 +18,25 @@ import (
 // projectIdentity is a storage association, never a trust decision.
 type projectIdentity struct {
 	ID, Root, Workspace, InitialCwd, Key, Kind string
-	Legacy                                     bool
 }
 
-type projectRegistration struct {
-	Version    int    `json:"version"`
-	ID         string `json:"id"`
-	Kind       string `json:"kind"`
-	Key        string `json:"lookup_key"`
-	Anchor     string `json:"anchor"`
-	ConfigRoot string `json:"config_root,omitempty"` // version 1 only; never a settings source
+// projectFile is project.json: a description for people and tools. Identity is
+// derived from the key, never read back from this file.
+type projectFile struct {
+	Version int    `json:"version"`
+	Kind    string `json:"kind"`
+	Key     string `json:"key"`
+	Name    string `json:"name"`
 }
 
-// Path reuse is detected when the kind or lookup key changes at the saved anchor.
-// Other checkout reuse and replacing metadata at identical paths are not detected.
+// deriveProjectID names a project by what it is: its kind and canonical key (the
+// Git common directory, or the exact directory outside Git). The same place
+// always maps to the same ID, with no registry to lock, scan or reconcile; a
+// repository that moves is a new project.
+func deriveProjectID(kind, key string) string {
+	sum := sha256.Sum256([]byte(kind + "\x00" + key))
+	return hex.EncodeToString(sum[:12])
+}
 
 func resolveProject(ctx context.Context, home, cwd string) (projectIdentity, error) {
 	var p projectIdentity
@@ -43,26 +48,6 @@ func resolveProject(ctx context.Context, home, cwd string) (projectIdentity, err
 		return p, err
 	}
 	p.InitialCwd, p.Workspace = initial, initial
-	projects := filepath.Join(confdir.Dir(home), "projects")
-	// Keep the original spelling's exact-cwd partition readable before normalizing
-	// symlinks. Never register it as the common repository or move its contents.
-	for _, oldCwd := range []string{cwd, initial} {
-		id := ProjectID(oldCwd)
-		root := filepath.Join(projects, id)
-		entries, err := os.ReadDir(filepath.Join(root, "transcripts"))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return p, fmt.Errorf("inspect legacy partition: %w", err)
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jsonl") {
-				p.ID, p.Root, p.Legacy = id, root, true
-				return p, nil
-			}
-		}
-	}
 	kind, key := "directory", initial
 	common, gitErr := projectGit(ctx, initial, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if gitErr == nil {
@@ -88,76 +73,23 @@ func resolveProject(ctx context.Context, home, cwd string) (projectIdentity, err
 		}
 	}
 	p.Key, p.Kind = key, kind
-	want := projectRegistration{Version: 2, Kind: kind, Key: key, Anchor: p.Workspace}
-	// WithLock waits in the OS; cancellation is checked on either side, not
-	// during lock acquisition. Atomic publication does not promise power-loss sync.
+	p.ID = deriveProjectID(kind, key)
+	p.Root = filepath.Join(confdir.Dir(home), "projects", p.ID)
 	if err := ctx.Err(); err != nil {
 		return p, err
 	}
-	err = atomicfile.WithLock(filepath.Join(projects, ".registry.lock"), func() error {
-		if err := ctx.Err(); err != nil {
-			return err
+	if err := os.MkdirAll(p.Root, 0o700); err != nil {
+		return p, err
+	}
+	// Every writer publishes the same content, so racing writers need no lock.
+	name := filepath.Base(p.Workspace)
+	if kind == "git" {
+		name = filepath.Base(filepath.Dir(key))
+		if filepath.Base(key) != ".git" {
+			name = filepath.Base(key)
 		}
-		entries, err := os.ReadDir(projects)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if !entry.IsDir() {
-				continue
-			}
-			path := filepath.Join(projects, entry.Name(), "project.json")
-			data, err := os.ReadFile(path)
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			var saved projectRegistration
-			if err := json.Unmarshal(data, &saved); err != nil {
-				return fmt.Errorf("read registration %s: %w", path, err)
-			}
-			// Early version-1 registrations used the main checkout as an anchor.
-			// Preserve their IDs without requiring that checkout to remain available.
-			if saved.Version == 1 {
-				saved.Anchor = saved.ConfigRoot
-			}
-			if (saved.Version != 1 && saved.Version != 2) || saved.ID != entry.Name() || saved.Key == "" || saved.Anchor == "" || (saved.Kind != "git" && saved.Kind != "directory") {
-				return fmt.Errorf("invalid or unsupported project registration %s", path)
-			}
-			if saved.Kind != kind && (saved.Key == initial || saved.Anchor == p.Workspace) {
-				return fmt.Errorf("project kind changed; explicit reconciliation required")
-			}
-			if saved.Key != key {
-				if saved.Anchor == want.Anchor {
-					return fmt.Errorf("project registration %s changed; explicit reconciliation required", saved.ID)
-				}
-				continue
-			}
-			if saved.Kind != kind || (kind == "directory" && saved.Anchor != want.Anchor) {
-				return fmt.Errorf("project registration %s changed; explicit reconciliation required", saved.ID)
-			}
-			if p.ID != "" {
-				return fmt.Errorf("ambiguous project registrations for %s; explicit reconciliation required", key)
-			}
-			p.ID, p.Root = saved.ID, filepath.Join(projects, saved.ID)
-		}
-		if p.ID != "" {
-			return nil
-		}
-		want.ID = rand.Text()
-		p.ID, p.Root = want.ID, filepath.Join(projects, want.ID)
-		// Mkdir is also an ID collision check; never overwrite an existing partition.
-		if err := os.Mkdir(p.Root, 0o700); err != nil {
-			return err
-		}
-		return atomicfile.WriteJSON(filepath.Join(p.Root, "project.json"), want, 0o600)
-	})
-	return p, err
+	}
+	return p, atomicfile.WriteJSON(filepath.Join(p.Root, "project.json"), projectFile{Version: 1, Kind: kind, Key: key, Name: name}, 0o600)
 }
 
 // validateProjectWorkspace validates an explicit workspace without registering it.
@@ -169,12 +101,6 @@ func validateProjectWorkspace(ctx context.Context, p projectIdentity, workspace 
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
-	}
-	if p.Legacy {
-		if canonical != p.InitialCwd {
-			return "", fmt.Errorf("legacy partition requires its exact startup workspace")
-		}
-		return canonical, nil
 	}
 	key, kind := canonical, "directory"
 	common, gitErr := projectGit(ctx, canonical, "rev-parse", "--path-format=absolute", "--git-common-dir")

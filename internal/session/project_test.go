@@ -45,7 +45,7 @@ func TestProjectNonGitExactCanonicalDirectory(t *testing.T) {
 	if q := projectTestResolve(t, home, child); q.ID == p.ID {
 		t.Fatal("nonGit child inherited project")
 	}
-	if p.ID == ProjectID(root) || p.InitialCwd != p.Workspace {
+	if p.InitialCwd != p.Workspace {
 		t.Fatalf("bad identity: %+v", p)
 	}
 	if _, err := validateProjectWorkspace(context.Background(), p, child); err == nil {
@@ -100,24 +100,6 @@ func TestProjectGitWorktreesAndSeparateGitDir(t *testing.T) {
 				t.Fatalf("submodule inferred foreign trust root: %s", got)
 			}
 		})
-	}
-}
-func TestProjectLegacyPrecedence(t *testing.T) {
-	home, root := t.TempDir(), t.TempDir()
-	projectTestGit(t, root, "init")
-	legacy := filepath.Join(confdir.Dir(home), "projects", ProjectID(root), "transcripts")
-	if err := os.MkdirAll(legacy, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "old.jsonl"), []byte("legacy"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	p := projectTestResolve(t, home, root)
-	if !p.Legacy || p.ID != ProjectID(root) {
-		t.Fatalf("lost legacy: %+v", p)
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(legacy), "project.json")); !os.IsNotExist(err) {
-		t.Fatal("legacy registered automatically")
 	}
 }
 func TestProjectConcurrentRegistration(t *testing.T) {
@@ -185,27 +167,6 @@ func TestProjectProcessRegistration(t *testing.T) {
 		}
 	}
 }
-func TestProjectChangedIdentityRejected(t *testing.T) {
-	home, root := t.TempDir(), t.TempDir()
-	p := projectTestResolve(t, home, root)
-	path := filepath.Join(p.Root, "project.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var saved projectRegistration
-	if err := json.Unmarshal(data, &saved); err != nil {
-		t.Fatal(err)
-	}
-	saved.Anchor = filepath.Join(root, "moved")
-	data, _ = json.Marshal(saved)
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := resolveProject(context.Background(), home, root); err == nil {
-		t.Fatal("accepted reused identity")
-	}
-}
 func TestProjectMissingMainCheckout(t *testing.T) {
 	home, base := t.TempDir(), t.TempDir()
 	root := filepath.Join(base, "main")
@@ -249,21 +210,39 @@ func TestProjectWithoutGit(t *testing.T) {
 	}
 }
 
-func TestProjectRegistrySymlinkIgnored(t *testing.T) {
-	home, root := t.TempDir(), t.TempDir()
-	p := projectTestResolve(t, home, root)
-	if err := os.Symlink(p.Root, filepath.Join(filepath.Dir(p.Root), "alias")); err != nil {
-		t.Fatal(err)
-	}
-	if q := projectTestResolve(t, home, root); q.ID != p.ID {
-		t.Fatal("symlink registration changed identity")
-	}
-}
-
 func TestProjectCanceledRegistration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := resolveProject(ctx, t.TempDir(), t.TempDir()); err != context.Canceled {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestProjectIDIsDerivedFromPlaceNotFromRegistry(t *testing.T) {
+	root := t.TempDir()
+	a := projectTestResolve(t, t.TempDir(), root)
+	b := projectTestResolve(t, t.TempDir(), root)
+	if a.ID != b.ID || a.ID != deriveProjectID("directory", a.Key) {
+		t.Fatalf("same place, different homes: %s %s", a.ID, b.ID)
+	}
+	if deriveProjectID("git", a.Key) == a.ID {
+		t.Fatal("kind is part of identity")
+	}
+	// project.json describes the project; hand-editing or deleting it changes nothing.
+	path := filepath.Join(a.Root, "project.json")
+	var saved projectFile
+	data, err := os.ReadFile(path)
+	if err != nil || json.Unmarshal(data, &saved) != nil || saved.Kind != "directory" || saved.Key != a.Key || saved.Name != filepath.Base(a.Workspace) {
+		t.Fatalf("description: %+v %v", saved, err)
+	}
+	home := filepath.Dir(filepath.Dir(filepath.Dir(a.Root)))
+	if err := os.WriteFile(path, []byte("garbage"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c := projectTestResolve(t, home, root); c.ID != a.ID {
+		t.Fatal("project.json decided identity")
+	}
+	if data, _ := os.ReadFile(path); string(data) == "garbage" {
+		t.Fatal("description not refreshed")
 	}
 }
