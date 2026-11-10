@@ -73,10 +73,9 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !m.pendingMessages.CanDeliver(false) || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
-	if head, ok := m.userInput.Queue.At(0); ok {
-		fields := strings.Fields(head.Content)
-		if len(fields) > 0 && fields[0] == "/group" {
-			// A queued control request stays local, just like a direct side command.
+	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) {
+		if input.IsSideCommand(head.Content) || input.IsWorkflowStopCommand(head.Content) {
+			// Side commands stay local even when a queued edit turns into one.
 			m.userInput.Queue.Dequeue()
 			text, cmd, _ := m.executeCommand(context.Background(), head.Content)
 			if text != "" {
@@ -85,6 +84,12 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 			next, _ := m.releaseQueuedMessage()
 			return tea.Batch(append(m.CommitMessages(), cmd, next)...), true
 		}
+		// Session-changing commands must wait for the turn to finish, then
+		// use the normal admission and command dispatch instead of the inbox.
+		if m.conv.Stream.Active {
+			return nil, false
+		}
+		return m.sendNextQueuedInputIfIdle(), true
 	}
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
@@ -118,30 +123,35 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
-	// Drain ONE user message per call so each gets its own agent response.
-	// The agent's inner loop also drains one inbox message at a time,
-	// producing one TurnEnded per queued message. Leaving edit mode re-kicks a
-	// drain held by a head item under edit (see routeKeypress).
-	if cmd, released := m.releaseQueuedMessage(); released {
+	var cmds []tea.Cmd
+	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) && !m.conv.Stream.Active {
+		cmd, waiting := m.sendQueuedInputs(false)
+		cmds = append(cmds, cmd)
+		if waiting {
+			return tea.Batch(cmds...), true
+		}
+	} else if cmd, released := m.releaseQueuedMessage(); released {
+		// Ordinary messages still drain one per boundary, each with its own response.
 		log.Logger().Sugar().Debugf("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
 		return cmd, true
-	} else if m.userInput.Queue.SelectIdx == 0 {
+	}
+	if m.userInput.Queue.SelectIdx == 0 {
 		log.Logger().Sugar().Debugf("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
 	}
 
 	if len(m.systemInput.CronQueue) > 0 {
 		prompt := m.systemInput.CronQueue[0]
 		m.systemInput.CronQueue = m.systemInput.CronQueue[1:]
-		return m.injectCronPrompt(prompt), true
+		return tea.Batch(append(cmds, m.injectCronPrompt(prompt))...), true
 	}
 
 	if m.systemInput.AsyncHookQueue != nil {
 		if item, ok := m.systemInput.AsyncHookQueue.Pop(); ok {
-			return m.injectAsyncHookContinuation(item), true
+			return tea.Batch(append(cmds, m.injectAsyncHookContinuation(item))...), true
 		}
 	}
 
-	return nil, false
+	return tea.Batch(cmds...), false
 }
 
 // injectAsNewTurn delivers a notice with no turn running: the line is shown and the

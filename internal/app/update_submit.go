@@ -14,6 +14,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/image"
 	"github.com/genai-io/san/internal/llm"
@@ -100,11 +101,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 
 	m.userInput.RecordSubmission(m.env.CWD, raw)
 
-	// A leading absolute path to an existing image (e.g. a drag-drop paste of
-	// "upload an image first") starts with "/" and would otherwise parse as a
-	// slash command. Bypass command matching so it flows through the normal
-	// message path, where ProcessImageRefs attaches it as an image.
-	if input.LeadingImagePath(m.env.CWD, raw) == "" {
+	if m.isSlashCommand(raw) {
 		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
 			return cmd
 		}
@@ -130,6 +127,12 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	m.userInput.Reset()
 	message, _ := msg.ToMessage()
 	return m.SubmitToAgent(message)
+}
+
+// isSlashCommand excludes leading image paths, which also start with "/".
+func (m *model) isSlashCommand(raw string) bool {
+	_, _, isCmd := command.ParseCommand(raw)
+	return isCmd && input.LeadingImagePath(m.env.CWD, raw) == ""
 }
 
 // runSlashCommandIfMatched returns (cmd, true) if `raw` is a slash command
@@ -192,21 +195,48 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 	return strings.TrimSpace(sb.String())
 }
 
-// sendNextQueuedInputIfIdle submits one queued input while idle, preserving
-// the composer draft. A head item under edit waits until editing ends.
+// sendNextQueuedInputIfIdle dispatches queued commands and at most one message,
+// preserving the composer draft. A head item under edit waits until editing ends.
 func (m *model) sendNextQueuedInputIfIdle() tea.Cmd {
 	return m.sendNextQueuedInput(false)
 }
 
 // Only queue-selection Enter may bypass the manual-stop hold, never the fence.
 func (m *model) sendNextQueuedInput(explicit bool) tea.Cmd {
-	if !m.pendingMessages.CanDeliver(explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
-		return nil
+	cmd, _ := m.sendQueuedInputs(explicit)
+	return cmd
+}
+
+// sendQueuedInputs reports whether a turn or UI/session transition supersedes
+// idle completion. Synchronous local commands alone must not strand the queue.
+func (m *model) sendQueuedInputs(explicit bool) (tea.Cmd, bool) {
+	var cmds []tea.Cmd
+	for m.userInput.Queue.Len() > 0 {
+		if !m.pendingMessages.CanDeliver(explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
+			break
+		}
+		if _, active := m.activeOverlay(); active {
+			return tea.Batch(cmds...), true
+		}
+		item, _ := m.userInput.Queue.Dequeue()
+		isCommand := m.isSlashCommand(item.Content)
+		name, _, _ := command.ParseCommand(item.Content)
+		previousSession, previousOutbox := m.services.Session, m.AgentOutbox()
+		cmds = append(cmds, m.dispatchQueuedInput(item))
+		explicit = false
+		if !isCommand || name == "exit" || name == "quit" ||
+			m.services.Session != previousSession || m.AgentOutbox() != previousOutbox ||
+			m.conv.Stream.Active || m.conv.Compact.Active || m.pendingMessages.Len() > 0 {
+			return tea.Batch(cmds...), true
+		}
+		if _, active := m.activeOverlay(); active {
+			return tea.Batch(cmds...), true
+		}
 	}
-	item, ok := m.userInput.Queue.Dequeue()
-	if !ok {
-		return nil
-	}
+	return tea.Batch(cmds...), false
+}
+
+func (m *model) dispatchQueuedInput(item input.QueueItem) tea.Cmd {
 	m.conv.Compact.ClearResult()
 
 	// The textarea may hold an unrelated draft (in-progress typing on the
