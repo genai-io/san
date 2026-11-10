@@ -135,6 +135,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
 			cmd = tea.Batch(cmd, resume)
 		}
+		cmd = tea.Batch(cmd, m.sendNextQueuedInputIfIdle())
 	}
 	switch msg.(type) {
 	case conv.InteractionRequestMsg, conv.AgentActivityBatchMsg, conv.AgentActivityMsg, conv.AgentToUITickMsg:

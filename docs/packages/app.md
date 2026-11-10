@@ -202,6 +202,15 @@ acceptance.
   injection would let reload edit the `services` struct in place
   instead.
 
+### Queued input
+
+At step boundaries, ordinary queued messages enter the agent inbox; slash
+commands wait until the turn ends and use the normal prompt-admission and command
+dispatch path. Side commands and workflow stops can still run mid-turn. Local
+commands advance to the next queued item, while overlays pause delivery until
+closed. Leading image paths remain messages, and dispatch preserves the unrelated
+composer draft. Regression coverage lives in `internal/app/queue_slash_test.go`.
+
 ### Image turns
 
 `update_submit.go` resolves file references and pasted attachments on both direct

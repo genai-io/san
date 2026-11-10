@@ -106,7 +106,7 @@ func TestPromptAdmissionDoesNotGateDeliveryPaths(t *testing.T) {
 			m, provider := textOnlyModel(t)
 			calls := installBlockingPromptHook(t, m)
 			if queued {
-				m.userInput.Queue.Enqueue("/clear", nil)
+				m.userInput.Queue.Enqueue("queued prompt", nil)
 				cmd, released := m.releaseQueuedMessage()
 				if !released {
 					t.Fatal("queue was blocked")
@@ -122,10 +122,10 @@ func TestPromptAdmissionDoesNotGateDeliveryPaths(t *testing.T) {
 			case chain := <-provider.requests:
 				found := false
 				for _, msg := range chain {
-					found = found || strings.Contains(msg.Text(), "/clear")
+					found = found || strings.Contains(msg.Text(), map[bool]string{false: "/clear", true: "queued prompt"}[queued])
 				}
 				if !found {
-					t.Fatal("slash text did not reach provider stub")
+					t.Fatal("message did not reach provider stub")
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("no provider request")
