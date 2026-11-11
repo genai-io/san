@@ -7,6 +7,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 )
 
@@ -29,7 +30,11 @@ func Default() *Conn { return defaultConn }
 // Initialize discovers and connects to the best available LLM provider, then
 // records the provider/model/store on the package-level *Conn.
 func Initialize() {
-	store, _ := NewStore()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	store, _ := NewStoreForCwd(cwd)
 	if store == nil {
 		return
 	}

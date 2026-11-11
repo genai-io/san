@@ -41,7 +41,7 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 
 | File or directory | Purpose | Scope |
 |---|---|---|
-| `providers.json` | Provider connections and current model | User |
+| `providers.json` | Connections (user), model selection (user / project) | User / project |
 | `models.json` | Model windows, prices, and reasoning overrides | User |
 | `settings.json` | Permissions, hooks, environment, persona, disabled tools | User / project |
 | `skills.json` | Skill states | User / project |
@@ -100,6 +100,16 @@ main checkout conservatively uses the current checkout for this helper.
 Existing trust filtering (including eligibility of untracked local files) still
 applies. Existing trust policy covers a repository and its worktrees; project
 registration itself does not grant trust or restore historical authorizations.
+
+### Model selection
+
+- No user default: `/models` saves to `~/.san/providers.json`.
+- Otherwise: save to `<project>/.san/providers.json`, affecting only that checkout
+  (the working directory outside Git).
+- Startup prefers the project model, then the user default. Connections and
+  credentials remain user-wide.
+- Repository-supplied overrides require workspace trust; untracked personal
+  overrides do not.
 
 **settings.json schema:**
 

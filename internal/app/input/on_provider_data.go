@@ -41,7 +41,7 @@ func (s *ProviderSelector) Enter(ctx context.Context, width, height int) (tea.Cm
 // loadProviderData refreshes provider and model data from a fresh store.
 // Does NOT reset UI state (tabs, selection, expansion) or call rebuildVisibleItems.
 func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
-	store, err := llm.NewStore()
+	store, err := llm.NewStoreForCwd(s.cwd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load store: %w", err)
 	}

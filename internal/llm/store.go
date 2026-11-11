@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -12,16 +10,15 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // What the user connected, and what they chose.
 //
-// The store is one JSON file — providers.json in San's config directory —
-// holding the decisions a session should not have to ask about again: which
-// providers are connected and how, which model is current, and the per-model
-// preferences (token limits, thinking effort) that go with it. Everything a
-// provider merely told San about itself is cached rather than decided; that
-// half lives in modelcache.go.
+// The user store is providers.json in San's config directory. It holds
+// connections, the default model, and per-model preferences (token limits,
+// thinking effort). A project's providers.json overrides only the current
+// model. Provider-supplied metadata lives in modelcache.go.
 //
 // Several Stores are open at once — the app has one, the /models picker opens
 // its own — so a write lands on disk and the others catch up via Reload.
@@ -75,56 +72,104 @@ type storeData struct {
 	CustomProvider  *CustomProviderConfig     `json:"customProvider,omitempty"`  // user-defined OpenAI-compatible provider
 }
 
-// Store is providers.json, open. Every accessor locks; the data is unexported
-// so nothing can read it half-written.
-type Store struct {
-	mu   sync.RWMutex
-	path string
-	data storeData
+// modelSelection is the project store; connections and preferences stay user-wide.
+type modelSelection struct {
+	Current *CurrentModelInfo `json:"current"`
 }
 
-// NewStore opens the store, creating the config directory if it is missing. A
-// file that is not there yet is not an error — it is a first run.
+// Store holds user preferences and an optional project model override.
+// Every accessor locks; the data is unexported.
+type Store struct {
+	mu             sync.RWMutex
+	path           string
+	projectPath    string
+	data           storeData
+	projectCurrent *CurrentModelInfo
+}
+
+// NewStore opens the user store without a project override.
 func NewStore() (*Store, error) {
+	return NewStoreForCwd("")
+}
+
+// NewStoreForCwd opens the user store and the current checkout's model override.
+// Outside Git, the project is cwd itself. Missing files are a first run.
+func NewStoreForCwd(cwd string) (*Store, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
 
+	if real, err := filepath.EvalSymlinks(homeDir); err == nil {
+		homeDir = real
+	}
 	configDir := confdir.Dir(homeDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return nil, err
 	}
 
-	store := &Store{
-		path: filepath.Join(configDir, "providers.json"),
-		data: storeData{
-			Connections: make(map[string]ConnectionInfo),
-			Models:      make(map[string]modelCache),
-		},
+	store := &Store{path: filepath.Join(configDir, "providers.json")}
+	if cwd != "" {
+		store.projectPath, err = projectModelPath(cwd)
+		if err != nil {
+			return nil, err
+		}
+		if store.projectPath == store.path {
+			store.projectPath = ""
+		}
 	}
-
-	if err := store.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := store.load(); err != nil {
 		return nil, err
 	}
-
 	return store, nil
 }
 
-// load reads providers.json into memory.
+func projectModelPath(cwd string) (string, error) {
+	cwd, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", err
+	}
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
+	return filepath.Join(confdir.Dir(confdir.RepoRoot(cwd)), "providers.json"), nil
+}
+
+// ProjectModelFindings names repository-supplied routing that waits for trust.
+// Untracked model files are personal choices, like other local configuration.
+func ProjectModelFindings(cwd string) []string {
+	path, err := projectModelPath(cwd)
+	if err != nil || setting.UntrackedInRepo(path) {
+		return nil
+	}
+	var selection modelSelection
+	if atomicfile.ReadJSON(path, &selection) != nil || selection.Current == nil {
+		return nil
+	}
+	current := selection.Current
+	file, _ := filepath.Rel(cwd, path)
+	return []string{fmt.Sprintf("send prompts to %s (%s, %s)  (%s)", current.ModelID, current.Provider, current.AuthMethod, file)}
+}
+
 func (s *Store) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.loadLocked()
+}
 
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return fmt.Errorf("read provider store %s: %w", s.path, err)
+// loadLocked replaces both snapshots, including fields removed on disk.
+func (s *Store) loadLocked() error {
+	var data storeData
+	if err := atomicfile.ReadJSON(s.path, &data); err != nil {
+		return err
 	}
-
-	if err := json.Unmarshal(data, &s.data); err != nil {
-		return fmt.Errorf("parse provider store: %w", err)
+	var project modelSelection
+	if s.projectPath != "" && (setting.IsWorkspaceTrusted(filepath.Dir(filepath.Dir(s.projectPath))) || setting.UntrackedInRepo(s.projectPath)) {
+		if err := atomicfile.ReadJSON(s.projectPath, &project); err != nil {
+			return err
+		}
 	}
-
+	s.data, s.projectCurrent = data, project.Current
 	s.initMaps()
 	return nil
 }
@@ -139,10 +184,7 @@ func (s *Store) load() error {
 // pick up the new model's name and limit instead of falling back to the raw ID
 // and "--". A missing file is not an error: nothing has been persisted yet.
 func (s *Store) Reload() error {
-	if err := s.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
+	return s.load()
 }
 
 // initMaps fills in the maps an older file — or a hand-edited one — may not
@@ -162,8 +204,14 @@ func (s *Store) initMaps() {
 	}
 }
 
-// save writes the store back, atomically. Callers hold the lock.
+// save writes user metadata without reverting a default selected by another
+// Store. Model selection writes use their own read-modify-write path.
 func (s *Store) save() error {
+	var latest modelSelection
+	if err := atomicfile.ReadJSON(s.path, &latest); err != nil {
+		return err
+	}
+	s.data.Current = latest.Current
 	return atomicfile.WriteJSON(s.path, s.data, 0o644)
 }
 
@@ -248,34 +296,85 @@ func (s *Store) Disconnect(provider ProviderID) error {
 	return s.save()
 }
 
-// ClearCurrentModel clears the current model selection.
+// ClearCurrentModel removes the effective selection, revealing the user default
+// when a project override is cleared.
 func (s *Store) ClearCurrentModel() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data.Current = nil
-	return s.save()
+	if err := s.loadLocked(); err != nil {
+		return err
+	}
+	if s.projectCurrent != nil {
+		return s.saveProjectModel(nil)
+	}
+	next := s.data
+	next.Current = nil
+	if err := atomicfile.WriteJSON(s.path, next, 0o644); err != nil {
+		return err
+	}
+	s.data = next
+	return nil
 }
 
-// SetCurrentModel records the model San infers through, and where to reach it.
+// SetCurrentModel seeds an unset user default; later choices apply only to the
+// project. A user-only store always writes the user default.
 func (s *Store) SetCurrentModel(modelID string, provider ProviderID, authMethod AuthMethod) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data.Current = &CurrentModelInfo{
+	// Another store may have established the user default since this one opened.
+	if err := s.loadLocked(); err != nil {
+		return err
+	}
+	current := &CurrentModelInfo{
 		ModelID:    modelID,
 		Provider:   provider,
 		AuthMethod: authMethod,
 	}
-	return s.save()
+	if s.data.Current != nil && s.projectPath != "" {
+		return s.saveProjectModel(current)
+	}
+
+	next := s.data
+	next.Current = current
+	if err := atomicfile.WriteJSON(s.path, next, 0o644); err != nil {
+		return err
+	}
+	s.data = next
+	if s.projectCurrent != nil {
+		return s.saveProjectModel(nil)
+	}
+	return nil
 }
 
-// CurrentModel returns the model San infers through, or nil if none is set.
+// saveProjectModel commits memory only after persistence succeeds. Caller locks.
+func (s *Store) saveProjectModel(current *CurrentModelInfo) error {
+	var existing modelSelection
+	if err := atomicfile.ReadJSON(s.projectPath, &existing); err != nil {
+		return err
+	}
+	if err := atomicfile.WriteJSON(s.projectPath, modelSelection{Current: current}, 0o644); err != nil {
+		return err
+	}
+	s.projectCurrent = current
+	return nil
+}
+
+// CurrentModel returns the project model, falling back to the user default.
 func (s *Store) CurrentModel() *CurrentModelInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.data.Current
+	current := s.projectCurrent
+	if current == nil {
+		current = s.data.Current
+	}
+	if current == nil {
+		return nil
+	}
+	copy := *current
+	return &copy
 }
 
 // SearchProvider returns the chosen web-search backend, or "" for the default.

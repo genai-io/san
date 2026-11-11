@@ -120,10 +120,10 @@ Worth knowing beyond the names:
 
 ## Lifecycle
 
-- Construction: `Initialize()` loads `~/.san/providers.json`,
-  picks the last-used provider (or the first connectable one), and stores
-  it.
-- Switching: `/models` slash command calls `SetCurrentModel` + reload.
+- Construction: `Initialize()` loads user connections and the effective model
+  through `NewStoreForCwd(cwd)`.
+- Switching: `/models` seeds the user default once, then saves project-only
+  choices. See [model selection](../reference/configuration.md#model-selection).
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 
@@ -219,6 +219,8 @@ internal/llm/client_test.go   — Client.Infer plumbing and its failure paths.
 internal/llm/errors_test.go   — what the agent loop is told about a failure.
 internal/llm/provider_test.go — the optional-extension defaults.
 internal/llm/store_test.go    — provider config persistence.
+internal/llm/store_scope_test.go — model scope and fallback.
+internal/llm/store_trust_test.go — model routing trust.
 internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
 internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
 internal/llm/vendor_models_test.go — Codex catalog requests and live capabilities.

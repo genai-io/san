@@ -97,3 +97,44 @@ func TestProviderSelectionStopTimeoutPreservesSelection(t *testing.T) {
 		t.Fatalf("persisted selection = %+v", got)
 	}
 }
+
+func TestResolveProviderUsesProjectModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SAN_TRUST_WORKSPACE", "1")
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	userProvider := &switchProviderStub{name: "scope-user"}
+	projectProvider := &switchProviderStub{name: "scope-project"}
+	for _, route := range []struct {
+		provider *switchProviderStub
+		auth     llm.AuthMethod
+	}{
+		{userProvider, llm.AuthAPIKey},
+		{projectProvider, llm.AuthSubscription},
+	} {
+		id := llm.ProviderID(route.provider.name)
+		llm.Register(llm.Meta{Provider: id, AuthMethod: route.auth}, func(context.Context) (llm.Provider, error) {
+			return route.provider, nil
+		})
+		t.Cleanup(func() { llm.Unregister(id, route.auth) })
+	}
+	store, err := llm.NewStoreForCwd(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetCurrentModel("default", "scope-user", llm.AuthAPIKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetCurrentModel("project", "scope-project", llm.AuthSubscription); err != nil {
+		t.Fatal(err)
+	}
+	provider, model, err := resolveProvider(context.Background())
+	if err != nil || provider != projectProvider || model != "project" {
+		t.Fatalf("project resolution = %v, %q, %v", provider, model, err)
+	}
+	t.Chdir(t.TempDir())
+	provider, model, err = resolveProvider(context.Background())
+	if err != nil || provider != userProvider || model != "default" {
+		t.Fatalf("other project resolution = %v, %q, %v", provider, model, err)
+	}
+}

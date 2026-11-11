@@ -87,6 +87,6 @@ affected). To reproduce exactly what CI sees, build the scanner with CI's Go
 version:
 
 ```bash
-GOTOOLCHAIN=go1.27.2 go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-GOTOOLCHAIN=go1.27.2 make vulncheck
+GOTOOLCHAIN=go1.27.4 go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+GOTOOLCHAIN=go1.27.4 make vulncheck
 ```
