@@ -270,7 +270,11 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 // interactive startup path; when resolution falls back to a connection without
 // a saved current model, it fills that provider's default model id.
 func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
-	store, err := llm.NewStore()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, "", err
+	}
+	store, err := llm.NewStoreForCwd(cwd)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load store: %w", err)
 	}

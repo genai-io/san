@@ -47,3 +47,60 @@ func TestProviderSelectionCommitsOnlyInsideSwitch(t *testing.T) {
 		t.Fatal("selection not committed exactly once")
 	}
 }
+
+func TestModelCommandScopesSelectionToCurrentProject(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SAN_TRUST_WORKSPACE", "1")
+	t.Chdir(t.TempDir()) // The TUI's cwd can differ from the process cwd.
+	user, err := llm.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := user.SetCurrentModel("default", llm.OpenAI, llm.AuthAPIKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := user.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "default"}, {ID: "project-a"}, {ID: "project-b"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := &Model{Provider: ProviderState{Selector: NewProviderSelector()}}
+	projectA, projectB := t.TempDir(), t.TempDir()
+	for _, step := range []struct {
+		cwd, want, selectModel string
+	}{
+		{projectA, "default", "project-a"},
+		{projectB, "default", "project-b"},
+		{projectA, "project-a", ""},
+		{projectB, "project-b", ""},
+	} {
+		c := NewSlashCommandController(SlashCommandEnv{Input: state, Cwd: step.cwd, Width: 80, Height: 24})
+		if _, _, err := c.handleModelCommand(context.Background(), ""); err != nil {
+			t.Fatal(err)
+		}
+		selector := &state.Provider.Selector
+		if got := selector.store.CurrentModel(); got == nil || got.ModelID != step.want {
+			t.Fatalf("project %s: current = %+v, want %s", step.cwd, got, step.want)
+		}
+		marked := ""
+		for _, model := range selector.allModels {
+			if model.IsCurrent {
+				marked = model.ID
+			}
+		}
+		if marked != step.want {
+			t.Fatalf("picker marks %q, want %q", marked, step.want)
+		}
+		if step.selectModel != "" {
+			if _, err := selector.SetModel(step.selectModel, "openai", llm.AuthAPIKey); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := user.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if got := user.CurrentModel(); got == nil || got.ModelID != "default" {
+		t.Fatalf("project selections changed user default: %+v", got)
+	}
+}

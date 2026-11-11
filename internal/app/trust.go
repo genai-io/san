@@ -10,15 +10,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
 )
 
 // workspaceTrustFindings lists what cwd's own configuration would turn on
-// once trusted: hooks, allow rules, MCP servers, plugins.
+// once trusted: model routing, hooks, allow rules, MCP servers, plugins.
 func workspaceTrustFindings(cwd string) []string {
-	findings := setting.ProjectSettingsFindings(cwd)
+	findings := llm.ProjectModelFindings(cwd)
+	findings = append(findings, setting.ProjectSettingsFindings(cwd)...)
 	findings = append(findings, mcp.ProjectServerFindings(cwd)...)
 	return append(findings, plugin.ProjectPluginFindings(cwd)...)
 }

@@ -524,6 +524,7 @@ func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string
 }
 
 func (c *SlashCommandController) handleModelCommand(ctx context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Provider.Selector.cwd = c.env.Cwd
 	cmd, err := c.env.Input.Provider.Selector.Enter(ctx, c.env.Width, c.env.Height)
 	if err != nil {
 		return "", nil, err

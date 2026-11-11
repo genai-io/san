@@ -391,7 +391,7 @@ func (s *ProviderSelector) findAuthMethodIndex(item providerListItem) int {
 // SetModel sets the current model.
 func (s *ProviderSelector) SetModel(modelID string, providerName string, authMethod llm.AuthMethod) (string, error) {
 	if s.store == nil {
-		store, err := llm.NewStore()
+		store, err := llm.NewStoreForCwd(s.cwd)
 		if err != nil {
 			return "", fmt.Errorf("failed to load store: %w", err)
 		}
