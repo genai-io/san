@@ -41,7 +41,7 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 
 | File or directory | Purpose | Scope |
 |---|---|---|
-| `providers.json` | User: connections, default model, preferences; project: model override only | User / project |
+| `providers.json` | Connections (user), model selection (user / project) | User / project |
 | `models.json` | Model windows, prices, and reasoning overrides | User |
 | `settings.json` | Permissions, hooks, environment, persona, disabled tools | User / project |
 | `skills.json` | Skill states | User / project |
@@ -103,20 +103,13 @@ registration itself does not grant trust or restore historical authorizations.
 
 ### Model selection
 
-The first `/models` selection establishes `~/.san/providers.json`'s `current`
-model if no user default exists. Later selections write only the current
-project's `.san/providers.json`; other projects keep their own selection or
-inherit the user default. Each selection includes the model ID, provider, and
-auth method. Connections, credentials, model caches, and per-model preferences
-remain user-wide.
-
-Project model files use the current checkout root (or the exact cwd outside
-Git), including when launched from a subdirectory or symlink. Linked worktrees
-keep separate model overrides. Interactive and one-shot startup both prefer the
-project selection over the user default. Removing the project's `current`
-selection restores inheritance. Repository-supplied model overrides require
-workspace trust and appear in the trust review. Untracked project model files
-are personal choices and apply without trusting the rest of the repository.
+- No user default: `/models` saves to `~/.san/providers.json`.
+- Otherwise: save to `<project>/.san/providers.json`, affecting only that checkout
+  (the working directory outside Git).
+- Startup prefers the project model, then the user default. Connections and
+  credentials remain user-wide.
+- Repository-supplied overrides require workspace trust; untracked personal
+  overrides do not.
 
 **settings.json schema:**
 

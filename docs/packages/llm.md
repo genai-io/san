@@ -120,16 +120,10 @@ Worth knowing beyond the names:
 
 ## Lifecycle
 
-- Construction: `Initialize()` opens `NewStoreForCwd(cwd)`, loading user
-  connections and the default model from `~/.san/providers.json`, plus the
-  current checkout's `.san/providers.json` model override. `NewStore()` opens
-  only the user store for connection/cache management.
-- Switching: `/models` calls `SetCurrentModel` + reload. An unset user default
-  is seeded first; later choices affect only the project. Project selections
-  include provider and auth method and take precedence at startup in both
-  interactive and one-shot modes. Connections and preferences stay user-wide.
-  Repository-supplied overrides require workspace trust; untracked project model
-  files are personal choices and remain eligible without it.
+- Construction: `Initialize()` loads user connections and the effective model
+  through `NewStoreForCwd(cwd)`.
+- Switching: `/models` seeds the user default once, then saves project-only
+  choices. See [model selection](../reference/configuration.md#model-selection).
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 
@@ -225,8 +219,8 @@ internal/llm/client_test.go   — Client.Infer plumbing and its failure paths.
 internal/llm/errors_test.go   — what the agent loop is told about a failure.
 internal/llm/provider_test.go — the optional-extension defaults.
 internal/llm/store_test.go    — provider config persistence.
-internal/llm/store_scope_test.go — user default, project isolation, reload, and save failures.
-internal/llm/store_trust_test.go — project routing trust and personal-file eligibility.
+internal/llm/store_scope_test.go — model scope and fallback.
+internal/llm/store_trust_test.go — model routing trust.
 internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
 internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
 internal/llm/vendor_models_test.go — Codex catalog requests and live capabilities.
