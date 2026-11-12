@@ -103,9 +103,10 @@ registration itself does not grant trust or restore historical authorizations.
 
 ### Model selection
 
-- No user default: `/models` saves to `~/.san/providers.json`.
-- Otherwise: save to `<project>/.san/providers.json`, affecting only that checkout
-  (the working directory outside Git).
+- `Enter` saves to `<project>/.san/providers.json`, or seeds
+  `~/.san/providers.json` if no user default exists.
+- `Ctrl+G` sets the highlighted model as the user default, keeping project
+  overrides unchanged. Project scope is the checkout, or the cwd outside Git.
 - Startup prefers the project model, then the user default. Connections and
   credentials remain user-wide.
 - Repository-supplied overrides require workspace trust; untracked personal

@@ -452,7 +452,11 @@ func (s *ProviderSelector) renderHints() string {
 	if s.activeTab == providerTabProviders {
 		parts = append(parts, "Ctrl+E edit", "Ctrl+D remove", "Enter connect/refresh")
 	} else {
-		parts = append(parts, "Space mark · Enter confirm")
+		enterHint := "Enter project"
+		if s.store != nil && s.store.UserDefaultModel() == nil {
+			enterHint = "Enter user default"
+		}
+		parts = append(parts, "Space mark", enterHint, "Ctrl+G user default")
 	}
 	parts = append(parts, "←/→/Tab switch", "Esc cancel")
 	return kit.DimStyle().Render(strings.Join(parts, " · "))

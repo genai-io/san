@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -49,6 +50,157 @@ func scopeRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestStoreUserDefaultModelIsolation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := scopeStore(t, t.TempDir())
+	if s.UserDefaultModel() != nil || s.HasProjectModel() {
+		t.Fatal("empty store has a selection")
+	}
+	first := CurrentModelInfo{"default", OpenAI, AuthAPIKey}
+	override := CurrentModelInfo{"project", Moonshot, AuthAPIKey}
+	next := CurrentModelInfo{"shared-id", OpenAI, AuthSubscription}
+	scopeSelect(t, s, first)
+	scopeSelect(t, s, override)
+	inheriting := scopeStore(t, t.TempDir())
+	before := string(scopeRead(t, s.projectPath))
+	if err := s.SetUserDefaultModel(next.ModelID, next.Provider, next.AuthMethod); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.UserDefaultModel(); !reflect.DeepEqual(got, &next) {
+		t.Fatalf("UserDefaultModel() = %#v, want %#v", got, next)
+	}
+	copy := s.UserDefaultModel()
+	copy.ModelID = "mutated"
+	if *s.UserDefaultModel() != next {
+		t.Fatal("accessor exposed stored default")
+	}
+	if !s.HasProjectModel() || inheriting.HasProjectModel() {
+		t.Fatal("incorrect project scope")
+	}
+	scopeWant(t, s, &override)
+	if string(scopeRead(t, s.projectPath)) != before {
+		t.Fatal("user default update changed project bytes")
+	}
+	scopeWant(t, scopeStore(t, filepath.Dir(filepath.Dir(s.projectPath))), &override)
+	scopeWant(t, inheriting, &first)
+	if err := inheriting.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	scopeWant(t, inheriting, &next)
+	scopeWant(t, scopeStore(t, ""), &next)
+}
+
+func TestStoreUserDefaultPreservesLatestMetadata(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	stale := scopeStore(t, t.TempDir())
+	writer := scopeStore(t, "")
+	if err := writer.Connect(OpenAI, AuthSubscription); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.CacheModels(OpenAI, AuthSubscription, []ModelInfo{{ID: "model", DisplayName: "Model"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetThinkingEffort("model", "high"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetContextLimit("model", 100, 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetSearchProvider("brave"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetCustomProvider(CustomProviderConfig{ID: "custom", BaseURL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	var want storeData
+	if err := json.Unmarshal(scopeRead(t, writer.path), &want); err != nil {
+		t.Fatal(err)
+	}
+	next := CurrentModelInfo{"model", OpenAI, AuthSubscription}
+	want.Current = &next
+	if err := stale.SetUserDefaultModel(next.ModelID, next.Provider, next.AuthMethod); err != nil {
+		t.Fatal(err)
+	}
+	var got storeData
+	if err := json.Unmarshal(scopeRead(t, writer.path), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(stale.data, want) {
+		t.Fatal("user default update lost latest user metadata")
+	}
+}
+
+func TestStoreUserDefaultSurvivesConcurrentMetadataWrites(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	selector, metadata := scopeStore(t, ""), scopeStore(t, "")
+	for range 32 {
+		if err := selector.SetUserDefaultModel("old", OpenAI, AuthAPIKey); err != nil {
+			t.Fatal(err)
+		}
+		start, done := make(chan struct{}), make(chan error, 2)
+		go func() {
+			<-start
+			done <- selector.SetUserDefaultModel("new", OpenAI, AuthSubscription)
+		}()
+		go func() {
+			<-start
+			done <- metadata.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{{ID: "cached", DisplayName: "Cached model"}})
+		}()
+		close(start)
+		for range 2 {
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := scopeStore(t, "").UserDefaultModel(); got == nil || got.ModelID != "new" || got.AuthMethod != AuthSubscription {
+			t.Fatalf("metadata refresh reverted the user default: %+v", got)
+		}
+	}
+}
+
+func TestStoreUserDefaultIgnoresMalformedProject(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := scopeStore(t, t.TempDir())
+	scopeSelect(t, s, CurrentModelInfo{"default", OpenAI, AuthAPIKey})
+	override := CurrentModelInfo{"project", Moonshot, AuthAPIKey}
+	scopeSelect(t, s, override)
+	const malformed = `{"current":`
+	scopeWrite(t, s.projectPath, malformed)
+	next := CurrentModelInfo{"new-default", OpenAI, AuthSubscription}
+	if err := s.SetUserDefaultModel(next.ModelID, next.Provider, next.AuthMethod); err != nil {
+		t.Fatal(err)
+	}
+	scopeWant(t, s, &override)
+	if !s.HasProjectModel() || string(scopeRead(t, s.projectPath)) != malformed {
+		t.Fatal("user update touched loaded project override or malformed file")
+	}
+	scopeWant(t, scopeStore(t, ""), &next)
+}
+
+func TestStoreUserDefaultWriteFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires Unix directory write permissions")
+	}
+	t.Setenv("HOME", t.TempDir())
+	s := scopeStore(t, t.TempDir())
+	first := CurrentModelInfo{"default", OpenAI, AuthAPIKey}
+	scopeSelect(t, s, first)
+	before := string(scopeRead(t, s.path))
+	// Deny temporary-file creation while keeping the user file readable.
+	dir := filepath.Dir(s.path)
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	if err := s.SetUserDefaultModel("failed", Moonshot, AuthSubscription); err == nil {
+		t.Fatal("write unexpectedly succeeded")
+	}
+	scopeWant(t, s, &first)
+	if *s.UserDefaultModel() != first || string(scopeRead(t, s.path)) != before {
+		t.Fatal("failed write changed user default")
+	}
 }
 
 func TestStoreScopeDefaultAndProjectIsolation(t *testing.T) {
