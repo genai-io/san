@@ -157,6 +157,16 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "enter":
 		return s.Select()
 
+	case "ctrl+g":
+		if s.activeTab == providerTabModels && s.selectedIdx >= 0 && s.selectedIdx < len(s.visibleItems) {
+			item := s.visibleItems[s.selectedIdx]
+			if item.Kind == providerItemModel && item.Model != nil {
+				m := item.Model
+				return s.selectModelFromIDs(m.ID, m.ProviderName, m.AuthMethod, true)
+			}
+		}
+		return nil
+
 	case "left":
 		if !s.GoBack() {
 			s.PrevTab()
@@ -237,25 +247,17 @@ func (s *ProviderSelector) selectModel(m *providerModelItem) tea.Cmd {
 	if m == nil {
 		return nil
 	}
-	s.active = false
-	return func() tea.Msg {
-		return providerModelSelectedMsg{
-			ModelID:      m.ID,
-			ProviderName: m.ProviderName,
-			AuthMethod:   m.AuthMethod,
-		}
-	}
+	return s.selectModelFromIDs(m.ID, m.ProviderName, m.AuthMethod, false)
 }
 
-// selectModelFromIDs is like selectModel but takes the model identity as strings
-// and constructs the message directly, without requiring a model pointer.
-func (s *ProviderSelector) selectModelFromIDs(id, provider string, auth llm.AuthMethod) tea.Cmd {
+func (s *ProviderSelector) selectModelFromIDs(id, provider string, auth llm.AuthMethod, userDefault bool) tea.Cmd {
 	s.active = false
 	return func() tea.Msg {
 		return providerModelSelectedMsg{
 			ModelID:      id,
 			ProviderName: provider,
 			AuthMethod:   auth,
+			UserDefault:  userDefault,
 		}
 	}
 }
@@ -266,7 +268,7 @@ func (s *ProviderSelector) selectModelFromIDs(id, provider string, auth llm.Auth
 func (s *ProviderSelector) selectMarkedModel() tea.Cmd {
 	for _, m := range s.allModels {
 		if m.IsCurrent {
-			return s.selectModelFromIDs(m.ID, m.ProviderName, m.AuthMethod)
+			return s.selectModelFromIDs(m.ID, m.ProviderName, m.AuthMethod, false)
 		}
 	}
 	return nil
@@ -388,14 +390,21 @@ func (s *ProviderSelector) findAuthMethodIndex(item providerListItem) int {
 	return 0
 }
 
-// SetModel sets the current model.
-func (s *ProviderSelector) SetModel(modelID string, providerName string, authMethod llm.AuthMethod) (string, error) {
+func (s *ProviderSelector) ensureStore() error {
 	if s.store == nil {
 		store, err := llm.NewStoreForCwd(s.cwd)
 		if err != nil {
-			return "", fmt.Errorf("failed to load store: %w", err)
+			return fmt.Errorf("failed to load store: %w", err)
 		}
 		s.store = store
+	}
+	return nil
+}
+
+// SetModel sets the current model.
+func (s *ProviderSelector) SetModel(modelID string, providerName string, authMethod llm.AuthMethod) (string, error) {
+	if err := s.ensureStore(); err != nil {
+		return "", err
 	}
 
 	if err := s.store.SetCurrentModel(modelID, llm.ProviderID(providerName), authMethod); err != nil {

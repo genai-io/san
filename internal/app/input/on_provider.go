@@ -8,6 +8,8 @@ package input
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -201,6 +203,7 @@ type providerModelSelectedMsg struct {
 	ModelID      string
 	ProviderName string
 	AuthMethod   llm.AuthMethod
+	UserDefault  bool
 }
 
 // providerConnectResultMsg is sent when inline connection completes.
@@ -315,22 +318,60 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 }
 
 func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
-	p, err := llm.GetProvider(context.Background(), llm.ProviderID(msg.ProviderName), msg.AuthMethod)
-	if err == nil {
-		err = deps.SwitchProvider(p, func() error {
-			if _, err := state.Selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod); err != nil {
-				return err
+	selector := &state.Selector
+	var err error
+	projectUnchanged := false
+	if msg.UserDefault {
+		err = selector.ensureStore()
+		if err == nil {
+			// A broken project file need not block updating only the user default.
+			if reloadErr := selector.store.Reload(); reloadErr != nil && !selector.store.HasProjectModel() {
+				err = reloadErr
 			}
-			deps.SetCurrentModel(&llm.CurrentModelInfo{
-				ModelID:    msg.ModelID,
-				Provider:   llm.ProviderID(msg.ProviderName),
-				AuthMethod: msg.AuthMethod,
+		}
+		if err == nil && selector.store.HasProjectModel() {
+			projectUnchanged = true
+			err = selector.store.SetUserDefaultModel(msg.ModelID, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
+			if err == nil && deps.ReloadModelStore != nil {
+				deps.ReloadModelStore()
+			}
+		}
+	}
+	if err == nil && !projectUnchanged {
+		var p llm.Provider
+		p, err = llm.GetProvider(context.Background(), llm.ProviderID(msg.ProviderName), msg.AuthMethod)
+		if err == nil {
+			err = deps.SwitchProvider(p, func() error {
+				if msg.UserDefault {
+					err = selector.store.SetUserDefaultModel(msg.ModelID, llm.ProviderID(msg.ProviderName), msg.AuthMethod)
+				} else {
+					_, err = selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod)
+				}
+				if err != nil {
+					return err
+				}
+				deps.SetCurrentModel(&llm.CurrentModelInfo{
+					ModelID:    msg.ModelID,
+					Provider:   llm.ProviderID(msg.ProviderName),
+					AuthMethod: msg.AuthMethod,
+				})
+				return nil
 			})
-			return nil
-		})
+		}
 	}
 	if err != nil {
 		deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: "Error: " + err.Error()})
+		return tea.Batch(deps.CommitMessages()...)
 	}
-	return tea.Batch(deps.CommitMessages()...)
+	label := "Project model"
+	if msg.UserDefault || !selector.store.HasProjectModel() {
+		label = "User default"
+	}
+	status := fmt.Sprintf("%s: %s", label, msg.ModelID)
+	if projectUnchanged {
+		deps.Conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: status + " (project unchanged)"})
+		return tea.Batch(deps.CommitMessages()...)
+	}
+	token := state.SetStatusMessage(status)
+	return tea.Batch(append(deps.CommitMessages(), kit.StatusTimer(3*time.Second, token))...)
 }

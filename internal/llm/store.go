@@ -207,12 +207,14 @@ func (s *Store) initMaps() {
 // save writes user metadata without reverting a default selected by another
 // Store. Model selection writes use their own read-modify-write path.
 func (s *Store) save() error {
-	var latest modelSelection
-	if err := atomicfile.ReadJSON(s.path, &latest); err != nil {
-		return err
-	}
-	s.data.Current = latest.Current
-	return atomicfile.WriteJSON(s.path, s.data, 0o644)
+	return atomicfile.WithLock(s.path+".lock", func() error {
+		var latest modelSelection
+		if err := atomicfile.ReadJSON(s.path, &latest); err != nil {
+			return err
+		}
+		s.data.Current = latest.Current
+		return atomicfile.WriteJSON(s.path, s.data, 0o644)
+	})
 }
 
 // Connect records that a provider is connected by this auth method.
@@ -308,13 +310,7 @@ func (s *Store) ClearCurrentModel() error {
 	if s.projectCurrent != nil {
 		return s.saveProjectModel(nil)
 	}
-	next := s.data
-	next.Current = nil
-	if err := atomicfile.WriteJSON(s.path, next, 0o644); err != nil {
-		return err
-	}
-	s.data = next
-	return nil
+	return s.saveUserModel(nil)
 }
 
 // SetCurrentModel seeds an unset user default; later choices apply only to the
@@ -336,16 +332,71 @@ func (s *Store) SetCurrentModel(modelID string, provider ProviderID, authMethod 
 		return s.saveProjectModel(current)
 	}
 
-	next := s.data
+	return atomicfile.WithLock(s.path+".lock", func() error {
+		// Recheck first-run scope after waiting for another store's write.
+		if err := s.loadLocked(); err != nil {
+			return err
+		}
+		if s.data.Current != nil && s.projectPath != "" {
+			return s.saveProjectModel(current)
+		}
+		if err := s.saveUserModelLocked(current); err != nil {
+			return err
+		}
+		if s.projectCurrent != nil {
+			return s.saveProjectModel(nil)
+		}
+		return nil
+	})
+}
+
+// SetUserDefaultModel changes only the user default, preserving any project override.
+func (s *Store) SetUserDefaultModel(modelID string, provider ProviderID, authMethod AuthMethod) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.saveUserModel(&CurrentModelInfo{ModelID: modelID, Provider: provider, AuthMethod: authMethod})
+}
+
+// saveUserModel preserves the latest user metadata. Caller holds the store lock.
+func (s *Store) saveUserModel(current *CurrentModelInfo) error {
+	return atomicfile.WithLock(s.path+".lock", func() error {
+		return s.saveUserModelLocked(current)
+	})
+}
+
+// saveUserModelLocked requires both the store mutex and the file lock.
+func (s *Store) saveUserModelLocked(current *CurrentModelInfo) error {
+	var next storeData
+	if err := atomicfile.ReadJSON(s.path, &next); err != nil {
+		return err
+	}
 	next.Current = current
 	if err := atomicfile.WriteJSON(s.path, next, 0o644); err != nil {
 		return err
 	}
 	s.data = next
-	if s.projectCurrent != nil {
-		return s.saveProjectModel(nil)
-	}
+	s.initMaps()
 	return nil
+}
+
+// UserDefaultModel returns a copy of the loaded user default, or nil.
+func (s *Store) UserDefaultModel() *CurrentModelInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.data.Current == nil {
+		return nil
+	}
+	current := *s.data.Current
+	return &current
+}
+
+// HasProjectModel reports whether a loaded project override is effective.
+func (s *Store) HasProjectModel() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.projectCurrent != nil
 }
 
 // saveProjectModel commits memory only after persistence succeeds. Caller locks.
