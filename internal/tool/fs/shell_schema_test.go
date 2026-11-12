@@ -93,8 +93,14 @@ func TestShellSchemaSentToProviders(t *testing.T) {
 						t.Fatalf("legacy argument %s still advertised to the model", legacy)
 					}
 				}
-				if !strings.Contains(schema.Description, "foreground by default") || !strings.Contains(schema.Description, "independent next step") {
-					t.Fatal("shell guidance lost the foreground default or the reason for background execution")
+				for _, hint := range []string{
+					"foreground by default", "independent next step", "verify readiness",
+					"San exits, not on session changes", "even code 0",
+					"other shell state does not", "Read/Edit/Write",
+				} {
+					if !strings.Contains(schema.Description, hint) {
+						t.Errorf("shell guidance lost %q", hint)
+					}
 				}
 			})
 		}

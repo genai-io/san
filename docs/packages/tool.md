@@ -10,18 +10,13 @@ permission gate, side-effect plumbing, and per-call dispatch.
 
 ## Purpose
 
-Every built-in tool (Bash, Read, Edit, Write, WebFetch, …)
-registers into this package's singleton at init time. The shell tool is
-named `PowerShell` or `Bash`; zsh retains the `Bash` identifier so permission
-rules stay compatible. `proc.DefaultShell` prefers `SAN_SHELL`, then supported
-Unix `$SHELL`, then platform defaults; schemas and prompts name the actual
-interpreter. A Windows with both also registers the other, disabled by
-default (`/tools` turns it on), whose description says how to split the work; `IsShellTool` is how the rest of San asks "is this the shell
-tool" without naming one. The agent loop calls
-`Execute(name, params, cwd)` to dispatch; the registry resolves the tool,
-runs the permission check (`internal/setting`), invokes the tool, and
-returns a `toolresult.ToolResult` with stdout, error, side-effect handle,
-and audit metadata.
+Built-ins register at init time. `Execute(name, params, cwd)` resolves the tool,
+checks permissions, and returns output, side effects, and audit metadata.
+
+Shell selection: `SAN_SHELL` → supported Unix `$SHELL` → platform default.
+Prompts name the interpreter; tool/rule identifiers remain `Bash` (including
+zsh) or `PowerShell`. Windows offers its other shell via `/tools`.
+Use `IsShellTool` to identify either.
 
 ## Contract
 
