@@ -20,9 +20,9 @@ func TestACPWorkerShellInput(t *testing.T) {
 	for _, background := range []bool{false, true} {
 		for _, secret := range []bool{false, true} {
 			t.Run(fmt.Sprintf("background=%t/secret=%t", background, secret), func(t *testing.T) {
-				command := `read -p "Continue? [y/N] " a; echo "answer=$a"`
+				command := `printf 'Continue? [y/N] '; read -r a; echo "answer=$a"`
 				if secret {
-					command = `read -s -p "Password: " a; echo refused`
+					command = `printf 'Password: '; read -s a; echo refused`
 				}
 				args, _ := json.Marshal(map[string]any{"command": command, "timeout_ms": 3000})
 				var answered atomic.Bool
@@ -69,10 +69,10 @@ func TestACPWorkerShellInput(t *testing.T) {
 func TestACPShellInput(t *testing.T) {
 	for _, secret := range []bool{false, true} {
 		t.Run(map[bool]string{false: "ordinary", true: "secret refused"}[secret], func(t *testing.T) {
-			command := `read -p "Continue? [y/N] " a; echo "answer=$a"`
+			command := `printf 'Continue? [y/N] '; read -r a; echo "answer=$a"`
 			want := "answer=yes"
 			if secret {
-				command = `if read -s -p "Password: " a; then echo unexpected; else echo refused; fi`
+				command = `printf 'Password: '; if read -s a; then echo unexpected; else echo refused; fi`
 				want = "refused"
 			}
 			args, _ := json.Marshal(map[string]any{"command": command, "timeout_ms": 3000})

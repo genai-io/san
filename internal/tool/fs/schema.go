@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -107,10 +108,15 @@ func (t *WriteTool) Schema() core.ToolSchema {
 // that is the shell. The parameters are the same; the guidance is per shell.
 func (t *ShellTool) Schema() core.ToolSchema {
 	name := t.Name()
-	description := bashDescription
+	shell, err := t.resolve()
+	if err != nil {
+		shell = proc.Shell{Kind: proc.ShellBash}
+	}
+	description := fmt.Sprintf(unixShellDescription, shell)
 	if name == tool.ToolPowerShell {
-		shell, _ := t.resolve()
 		description = fmt.Sprintf(powerShellDescription, shell)
+	} else if shell.Kind == proc.ShellZsh {
+		description += "\n\nThe interpreter is zsh -f: user startup files are skipped and inherited environment variables remain available. Keep commands portable; complex or zsh-specific expansions require human confirmation. The tool and permission-rule name remains Bash."
 	}
 	// The second shell is only in play once the user turns it on, so the
 	// division of labour is written there and never names a missing tool.
@@ -125,7 +131,7 @@ func (t *ShellTool) Schema() core.ToolSchema {
 	}
 }
 
-const bashDescription = `Executes a bash command and returns its output.
+const unixShellDescription = `Executes a %s command and returns its output.
 
 - Commands already run in the session working directory — NEVER prefix with "cd <cwd> &&"; use relative paths inside it. A successful cd updates the session working directory; other shell state (variables, aliases) does not persist between calls.
 - Search and discovery run through this tool (rg, find/fd, ls); pipe large output through head/wc. Provably read-only commands run without approval prompts.

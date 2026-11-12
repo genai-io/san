@@ -29,6 +29,7 @@ func RunAgent(opts AgentRunOptions) error {
 	if opts.Prompt == "" {
 		return fmt.Errorf("--prompt is required")
 	}
+	warnShellFallback()
 
 	// Graceful shutdown: SIGINT/SIGTERM cancels the run's context.
 	ctx, cancel := context.WithCancel(context.Background())

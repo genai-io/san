@@ -416,6 +416,9 @@ var bashSecurityPatterns = []struct {
 // destructive pattern matching. Returns a reason string if the command is
 // suspicious, or empty string if it appears safe.
 func checkBashSecurity(cmd string) string {
+	if reason := nativeZshReviewReason(cmd); reason != "" {
+		return reason
+	}
 	// AST-based checks first (more accurate, structural analysis)
 	if file := parseBashAST(cmd); file != nil {
 		if reason := checkASTSecurity(file); reason != "" {

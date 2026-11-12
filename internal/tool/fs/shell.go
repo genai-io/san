@@ -25,9 +25,8 @@ const (
 	cwdFileEnvVar = "SAN_CWD_FILE"
 )
 
-// ShellTool runs shell commands under the platform's shell, and is named for
-// it — Bash, or PowerShell — so the model writes that shell's syntax. The zero
-// value uses proc.DefaultShell.
+// ShellTool runs commands in the selected interpreter. Unix shells retain the
+// Bash tool name for permission compatibility. The zero value uses proc.DefaultShell.
 type ShellTool struct {
 	shell proc.Shell
 	// second marks the shell offered beside the default, which ships
@@ -505,7 +504,11 @@ func shellCommand(ctx context.Context, shell proc.Shell, script string, env []st
 		cmd.Env = append(env, scriptEnv...)
 		return cmd
 	}
-	cmd := exec.CommandContext(ctx, shell.Path, "-c", script)
+	args := []string{"-c", script}
+	if shell.Kind == proc.ShellZsh {
+		args = append([]string{"-f"}, args...)
+	}
+	cmd := exec.CommandContext(ctx, shell.Path, args...)
 	cmd.Env = env
 	return cmd
 }

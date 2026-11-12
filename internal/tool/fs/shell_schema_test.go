@@ -29,8 +29,8 @@ func TestShellSchemaSentToProviders(t *testing.T) {
 		{"chat", chat.New, "data: {\"id\":\"test\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"},
 		{"responses", responses.New, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"test\",\"status\":\"completed\",\"output\":[]}}\n\n"},
 	} {
-		for _, shell := range []proc.Shell{{Kind: proc.ShellBash, Path: "bash"}, {Kind: proc.ShellPowerShell, Path: "pwsh"}} {
-			t.Run(protocol.name+"/"+shell.Kind.ToolName(), func(t *testing.T) {
+		for _, shell := range []proc.Shell{{Kind: proc.ShellBash, Path: "bash"}, {Kind: proc.ShellZsh, Path: "zsh"}, {Kind: proc.ShellPowerShell, Path: "pwsh"}} {
+			t.Run(protocol.name+"/"+string(shell.Kind), func(t *testing.T) {
 				captured := make(chan map[string]any, 1)
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					var body map[string]any

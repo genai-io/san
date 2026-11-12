@@ -99,7 +99,7 @@ func TestResolveShellOverride(t *testing.T) {
 	if got, err := resolveShell(pwsh); err != nil || got.Kind != ShellPowerShell || got.Path != pwsh {
 		t.Errorf("resolveShell(%q) = %+v, %v", pwsh, got, err)
 	}
-	if got, err := resolveShell(zsh); err != nil || got.Kind != ShellBash {
+	if got, err := resolveShell(zsh); err != nil || got.Kind != ShellZsh {
 		t.Errorf("resolveShell(%q) = %+v, %v", zsh, got, err)
 	}
 	if _, err := resolveShell(filepath.Join(dir, "missing")); err == nil {

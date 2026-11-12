@@ -420,6 +420,9 @@ func bashRuleForms(cmd string) []string {
 // naming the executable as written (a git rule must not cover ./x/git); nil
 // when the command does not parse or expands at run time.
 func bashSubcommandRuleForms(cmd string) [][]string {
+	if nativeZshReviewReason(cmd) != "" {
+		return nil
+	}
 	file := parseBashAST(cmd)
 	if file == nil || expandsAtRunTime(file) {
 		return nil

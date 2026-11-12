@@ -40,6 +40,7 @@ const acpWriteTimeout = 30 * time.Second
 // Closing input/output must interrupt active I/O; raw blocking standard file
 // descriptors do not satisfy this contract. The CLI supplies pollable streams.
 func RunACP(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string) error {
+	warnShellFallback()
 	llm.Initialize()
 	provider, model, err := resolveProvider(ctx)
 	if err != nil {
