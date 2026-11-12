@@ -23,6 +23,7 @@ var zshReviewCommands = []string{
 	`cat <(echo ZSH_AUDIT)`, `ls $((1+1))`, `ls $[1+1]`,
 	`ls ${HOME[1]}`, `ls ${HOME:1}`, `ls ${HOME//x/y}`,
 	`setopt SH_WORD_SPLIT`, `unsetopt NOMATCH`, `emulate sh`,
+	`nice setopt SH_WORD_SPLIT`, `/usr/bin/setopt SH_WORD_SPLIT`,
 	`set -o shwordsplit`, `set +o shwordsplit`, `set -eo shwordsplit`,
 	`builtin setopt SH_WORD_SPLIT`, `builtin builtin setopt SH_WORD_SPLIT`,
 	`noglob setopt SH_WORD_SPLIT`, `nocorrect setopt SH_WORD_SPLIT`,

@@ -85,6 +85,24 @@ func TestShellNamesWhichPowerShell(t *testing.T) {
 	}
 }
 
+func TestShellLabels(t *testing.T) {
+	for _, tc := range []struct {
+		shell Shell
+		want  string
+	}{
+		{Shell{Kind: ShellBash, Path: "bash"}, "bash"},
+		{Shell{Kind: ShellZsh, Path: "zsh"}, "zsh"},
+		{Shell{Kind: ShellPowerShell, Path: "pwsh.exe"}, "pwsh"},
+		{Shell{Kind: ShellPowerShell, Path: "powershell.exe"}, "PS"},
+		{Shell{Kind: ShellBash}, ""},
+		{Shell{Path: "unknown"}, ""},
+	} {
+		if got := tc.shell.Label(); got != tc.want {
+			t.Errorf("%+v label = %q, want %q", tc.shell, got, tc.want)
+		}
+	}
+}
+
 // SAN_SHELL names a shell by kind or by path; the kind of a path is read from
 // its file name.
 func TestResolveShellOverride(t *testing.T) {
@@ -99,7 +117,12 @@ func TestResolveShellOverride(t *testing.T) {
 	if got, err := resolveShell(pwsh); err != nil || got.Kind != ShellPowerShell || got.Path != pwsh {
 		t.Errorf("resolveShell(%q) = %+v, %v", pwsh, got, err)
 	}
-	if got, err := resolveShell(zsh); err != nil || got.Kind != ShellZsh {
+	got, err := resolveShell(zsh)
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Error("native zsh was accepted on Windows")
+		}
+	} else if err != nil || got.Kind != ShellZsh {
 		t.Errorf("resolveShell(%q) = %+v, %v", zsh, got, err)
 	}
 	if _, err := resolveShell(filepath.Join(dir, "missing")); err == nil {

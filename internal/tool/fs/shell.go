@@ -73,11 +73,16 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 	// Count lines in command
 	lineCount := strings.Count(command, "\n") + 1
 
+	shell, err := t.resolve()
+	if err != nil {
+		return nil, err
+	}
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
-		ToolName:    t.Name(),
+		ToolName:    shell.Kind.ToolName(),
 		Description: description,
 		BashMeta: &perm.BashMetadata{
+			ShellLabel:    shell.Label(),
 			Command:       command,
 			Description:   description,
 			RunBackground: options.background,
@@ -87,7 +92,13 @@ func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any
 }
 
 // ExecuteApproved executes the command after user approval
-func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) (result toolresult.ToolResult) {
+	// Resolve once for execution and its display metadata.
+	shell, resolveErr := t.resolve()
+	if resolveErr == nil {
+		tool.ReportShellLabel(ctx, shell.Label())
+	}
+	defer func() { result = withShellLabel(result, shell.Label()) }()
 	start := time.Now()
 	options, err := parseShellExecutionOptions(params)
 	if err != nil {
@@ -101,16 +112,21 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	timeout := options.timeout
 
 	if options.background {
-		return t.executeBackground(ctx, command, description, cwd, timeout, options.lifetime)
+		if resolveErr != nil {
+			return toolresult.ToolResult{
+				Success:  false,
+				Error:    resolveErr.Error(),
+				Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon()},
+			}
+		}
+		return t.executeBackground(ctx, shell, command, description, cwd, timeout, options.lifetime)
 	}
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	shell, err := t.resolve()
-	if err != nil {
-		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0, "", false)
+	if resolveErr != nil {
+		return t.foregroundResult(ctx, description, "", "", resolveErr, time.Since(start), timeout, "", cwd, 0, "", false)
 	}
 
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
@@ -293,19 +309,23 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]any, cwd stri
 	return t.ExecuteApproved(ctx, params, cwd)
 }
 
+// withShellLabel preserves all existing execution details, including failures
+// created before output capture or background task registration.
+func withShellLabel(result toolresult.ToolResult, label string) toolresult.ToolResult {
+	details, _ := result.Details.(toolresult.BashDetails)
+	details.ShellLabel = label
+	if !result.Success && details.Error == "" {
+		details.Error = result.Error
+	}
+	result.Details = details
+	return result
+}
+
 // executeBackground runs the command in the background and returns immediately
-func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration, lifetimes ...task.Lifetime) toolresult.ToolResult {
+func (t *ShellTool) executeBackground(ctx context.Context, shell proc.Shell, command, description, cwd string, timeout time.Duration, lifetimes ...task.Lifetime) toolresult.ToolResult {
 	lifetime := task.LifetimeJob
 	if len(lifetimes) > 0 {
 		lifetime = lifetimes[0]
-	}
-	shell, err := t.resolve()
-	if err != nil {
-		return toolresult.ToolResult{
-			Success:  false,
-			Error:    err.Error(),
-			Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon()},
-		}
 	}
 
 	// Services are application-managed, not tied to a foreground turn or job deadline.

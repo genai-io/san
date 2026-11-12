@@ -39,11 +39,13 @@ func zshReviewReason(cmd string, kind proc.ShellKind) string {
 				unsafe = true
 				break
 			}
-			// Native precommands can expose builtins or change how a later
-			// head is interpreted. Do not attempt recursive wrapper parsing.
-			switch head {
-			case "builtin", "noglob", "nocorrect", "-":
+			// Native precommands and option mutators need review, including
+			// when they occur as exec targets or normalized command names.
+			if isZshReviewCommand(head) {
 				unsafe = true
+				break
+			}
+			switch head {
 			case "exec":
 				words := n.Args[1:]
 				if len(words) > 0 {
@@ -53,11 +55,7 @@ func zshReviewReason(cmd string, kind proc.ShellKind) string {
 				}
 				if len(words) > 0 {
 					target, ok := literalWord(words[0])
-					if !ok || strings.HasPrefix(target, "-") {
-						unsafe = true
-					}
-					switch target {
-					case "set", "setopt", "unsetopt", "emulate", "builtin", "noglob", "nocorrect", "exec":
+					if !ok || strings.HasPrefix(target, "-") || target == "set" || target == "exec" || isZshReviewCommand(target) {
 						unsafe = true
 					}
 				}
@@ -111,14 +109,21 @@ func zshReviewReason(cmd string, kind proc.ShellKind) string {
 	if unsafe {
 		return reason
 	}
-	// These builtins can change the expansion assumptions used above.
+	// Keep the shared extractor's path stripping and wrapper normalization.
 	for _, command := range extractCommandsAST(file) {
-		switch command.Name {
-		case "setopt", "unsetopt", "emulate":
+		if isZshReviewCommand(command.Name) {
 			return reason
 		}
 	}
 	return ""
+}
+
+func isZshReviewCommand(head string) bool {
+	switch head {
+	case "setopt", "unsetopt", "emulate", "builtin", "noglob", "nocorrect", "-":
+		return true
+	}
+	return false
 }
 
 func portableParameterName(name string) bool {

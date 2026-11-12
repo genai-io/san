@@ -100,13 +100,9 @@ func TestAdaptiveShellSelection(t *testing.T) {
 	}
 }
 
-func TestZshLabelsAndSecondShell(t *testing.T) {
+func TestZshKeepsBashIdentity(t *testing.T) {
 	shell := Shell{Kind: ShellZsh, Path: "/bin/zsh"}
 	if shell.String() != "zsh" || shell.Kind.ToolName() != "Bash" {
 		t.Fatalf("zsh labels: %s, %s", shell.String(), shell.Kind.ToolName())
-	}
-	second, ok := secondShell(shell, "bash", "pwsh")
-	if !ok || second.Kind != ShellPowerShell {
-		t.Fatalf("second shell = %+v, %v", second, ok)
 	}
 }

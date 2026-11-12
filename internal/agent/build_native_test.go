@@ -16,7 +16,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestBuildParamsBashHelpIsLocalToSchemas(t *testing.T) {
+func TestBuildParamsShellHelpIsLocalToSchemas(t *testing.T) {
 	const help = "Directory changes apply to this command only"
 	bashHelp := func(p BuildParams) string {
 		t.Helper()
@@ -32,14 +32,14 @@ func TestBuildParamsBashHelpIsLocalToSchemas(t *testing.T) {
 	if !strings.Contains(before, "updates the session working directory") {
 		t.Fatal("default help lost session directory behavior")
 	}
-	custom := bashHelp(BuildParams{BashDirHelp: help})
+	custom := bashHelp(BuildParams{ShellDirHelp: help})
 	if !strings.Contains(custom, help) || strings.Contains(custom, "updates the session working directory") {
 		t.Fatal(custom)
 	}
 	if after := bashHelp(BuildParams{}); after != before {
 		t.Fatal("schema override mutated default help")
 	}
-	for _, schema := range (BuildParams{BashDirHelp: help, DisabledTools: map[string]bool{"Bash": true}}).Schemas() {
+	for _, schema := range (BuildParams{ShellDirHelp: help, DisabledTools: map[string]bool{"Bash": true}}).Schemas() {
 		if schema.Name == "Bash" {
 			t.Fatal("help override restored disabled tool")
 		}

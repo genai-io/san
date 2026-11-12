@@ -208,7 +208,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 				if m.Tool.Progress == nil {
 					m.Tool.Progress = make(map[string]ToolProgress)
 				}
-				m.Tool.Progress[e.ID] = ToolProgress{Counter: e.Partial.Content.Text(), Tail: details.Tail, LineCount: details.LineCount, TailTruncated: details.TailTruncated}
+				m.Tool.Progress[e.ID] = ToolProgress{ShellLabel: details.ShellLabel, Counter: e.Partial.Content.Text(), Tail: details.Tail, LineCount: details.LineCount, TailTruncated: details.TailTruncated}
 			}
 			return nil
 		}

@@ -18,6 +18,31 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/driver/openai/responses"
 )
 
+func TestShellDirectoryHelp(t *testing.T) {
+	const help = "Directory changes apply to this command only"
+	for _, shell := range []proc.Shell{
+		{Kind: proc.ShellBash, Path: "bash"},
+		{Kind: proc.ShellZsh, Path: "zsh"},
+		{Kind: proc.ShellPowerShell, Path: "pwsh"},
+		{Kind: proc.ShellPowerShell, Path: "powershell"},
+	} {
+		t.Run(shell.Label(), func(t *testing.T) {
+			tool := &ShellTool{shell: shell}
+			before := tool.Schema()
+			custom := tool.SchemaWithDirectoryHelp(help)
+			if !strings.Contains(custom.Description, help) || strings.Contains(custom.Description, "updates the session working directory") {
+				t.Fatal("custom directory guidance was not applied")
+			}
+			if custom.Name != before.Name || !reflect.DeepEqual(custom.Definition, before.Definition) {
+				t.Fatal("directory guidance changed the tool contract")
+			}
+			if after := tool.Schema(); !reflect.DeepEqual(after, before) {
+				t.Fatal("custom guidance changed the default schema")
+			}
+		})
+	}
+}
+
 // Inspect what reaches a provider, not just the source schema. Optional fields
 // must stay nullable even when a strict endpoint requires callers to fill them.
 func TestShellSchemaSentToProviders(t *testing.T) {

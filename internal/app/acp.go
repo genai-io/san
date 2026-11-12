@@ -93,7 +93,7 @@ type acpHost struct {
 }
 
 // ACP does not apply shell directory handoffs to the session's CWD.
-const acpBashDirHelp = "Directory changes affect only this command; subsequent commands start in the original session working directory"
+const acpShellDirHelp = "Directory changes affect only this command; subsequent commands start in the original session working directory"
 
 // Each SDK-admitted session has independent policy, transcript and history.
 // The SDK serializes prompts for a session, including the response barrier.
@@ -223,7 +223,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
 		MaxTokens: setting.DefaultMaxTokens, Skills: skills, Plugins: plugins, PluginRoot: s.runtime.PluginRoot,
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
-		FileViews: fs.NewFileViews(), BashDirHelp: acpBashDirHelp,
+		FileViews: fs.NewFileViews(), ShellDirHelp: acpShellDirHelp,
 		ToolResponse: func(callID string, response any) { s.toolResponses.Store(callID, response) },
 		Tasks:        tasks, NativeTools: tasks.Tools(),
 		PermissionRules:  policy.Decide,
@@ -240,7 +240,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 			if !h.forms {
 				s.runtimeBuildParams.DisabledTools[schema.Name] = true
 			}
-		case "Read", "Write", "Edit", "Bash", "Glob", "Grep", "Skill", "Agent":
+		case "Read", "Write", "Edit", "Bash", "PowerShell", "Glob", "Grep", "Skill", "Agent":
 		default:
 			s.runtimeBuildParams.DisabledTools[schema.Name] = true
 		}

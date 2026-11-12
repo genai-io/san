@@ -377,6 +377,9 @@ func (p *ApprovalModel) getTitle() string {
 		title = "Write to file"
 	case tool.ToolBash, tool.ToolPowerShell:
 		title = p.request.ToolName + " command"
+		if p.request.BashMeta != nil && p.request.BashMeta.ShellLabel != "" {
+			title = p.request.BashMeta.ShellLabel + " command"
+		}
 	case tool.ToolSkill:
 		title = "Load skill"
 	case tool.ToolAgent:

@@ -16,10 +16,15 @@ func TestExactProgressTypedUpdate(t *testing.T) {
 	applyAgentEvent(nil, m, sdkagent.ToolUpdate{ID: "first", Name: "Bash"})
 	started := time.Now().Add(-time.Minute)
 	m.Tool.StartedAt["first"] = started
-	update := sdkagent.ToolUpdate{ID: "first", Name: "Bash", Partial: sdkagent.Result{Content: ai.TextContent("1.2k lines"), Details: toolresult.BashDetails{LineCount: 1234, Tail: "last", TailTruncated: true}}}
+	metadata := sdkagent.ToolUpdate{ID: "first", Name: "Bash", Partial: sdkagent.Result{Details: toolresult.BashDetails{ShellLabel: "zsh"}}}
+	applyAgentEvent(nil, m, metadata)
+	if got := m.Tool.Progress["first"]; got.ShellLabel != "zsh" || got.LineCount != 0 || got.Counter != "" || got.Tail != "" {
+		t.Fatalf("metadata-only progress=%+v", got)
+	}
+	update := sdkagent.ToolUpdate{ID: "first", Name: "Bash", Partial: sdkagent.Result{Content: ai.TextContent("1.2k lines"), Details: toolresult.BashDetails{ShellLabel: "zsh", LineCount: 1234, Tail: "last", TailTruncated: true}}}
 	applyAgentEvent(nil, m, update)
 	got := m.Tool.Progress["first"]
-	if got.LineCount != 1234 || !got.TailTruncated || got.Counter != "1.2k lines" || got.Tail != "last" {
+	if got.ShellLabel != "zsh" || got.LineCount != 1234 || !got.TailTruncated || got.Counter != "1.2k lines" || got.Tail != "last" {
 		t.Fatalf("progress=%+v", got)
 	}
 	if !m.Tool.StartedAt["first"].Equal(started) {

@@ -15,8 +15,8 @@ import (
 type ShellKind string
 
 const (
-	ShellZsh        ShellKind = "zsh"
 	ShellBash       ShellKind = "bash"
+	ShellZsh        ShellKind = "zsh"
 	ShellPowerShell ShellKind = "powershell"
 )
 
@@ -46,6 +46,24 @@ func (s Shell) String() string {
 		return "PowerShell 7 (pwsh)"
 	}
 	return "Windows PowerShell 5.1"
+}
+
+// Label is the compact execution title; String retains prompt version details.
+func (s Shell) Label() string {
+	if s.Path == "" {
+		return ""
+	}
+	switch s.Kind {
+	case ShellBash, ShellZsh:
+		return string(s.Kind)
+	case ShellPowerShell:
+		if strings.HasPrefix(strings.ToLower(filepath.Base(s.Path)), "pwsh") {
+			return "pwsh"
+		}
+		return "PS"
+	default:
+		return ""
+	}
 }
 
 // DefaultShell returns the cached interpreter selected by SAN_SHELL, then the
@@ -185,7 +203,7 @@ func SecondShell() (Shell, bool) {
 // secondShell is the other kind than def, when its interpreter was found.
 func secondShell(def Shell, bash, powerShell string) (Shell, bool) {
 	switch {
-	case (def.Kind == ShellBash || def.Kind == ShellZsh) && powerShell != "":
+	case def.Kind == ShellBash && powerShell != "":
 		return Shell{Kind: ShellPowerShell, Path: powerShell}, true
 	case def.Kind == ShellPowerShell && bash != "":
 		return Shell{Kind: ShellBash, Path: bash}, true
@@ -221,20 +239,13 @@ func PowerShellPath() (string, bool) {
 }
 
 var powerShellPath = sync.OnceValue(func() string {
-	for _, name := range []string{"pwsh", "powershell"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return path
-		}
-	}
-	return ""
+	shell, _ := resolveShellValue("powershell", runtime.GOOS)
+	return shell.Path
 })
 
 var bashPath = sync.OnceValue(func() string {
-	if runtime.GOOS != "windows" {
-		path, _ := exec.LookPath("bash")
-		return path
-	}
-	return findGitBash(exec.LookPath, os.Getenv, fileExists)
+	shell, _ := resolveShellValue("bash", runtime.GOOS)
+	return shell.Path
 })
 
 // findGitBash locates Git for Windows' bash.exe: beside the git on PATH, then
@@ -279,9 +290,4 @@ func isWSLLauncher(path, systemRoot string) bool {
 		return true
 	}
 	return strings.Contains(lower, sep+"windowsapps"+sep)
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
 }

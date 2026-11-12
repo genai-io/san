@@ -20,8 +20,8 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestACPBashDirHelp(t *testing.T) {
-	for _, schema := range (agent.BuildParams{BashDirHelp: acpBashDirHelp}).Schemas() {
+func TestACPShellDirHelp(t *testing.T) {
+	for _, schema := range (agent.BuildParams{ShellDirHelp: acpShellDirHelp}).Schemas() {
 		if schema.Name == "Bash" {
 			if strings.Contains(schema.Description, "updates the session working directory") || !strings.Contains(schema.Description, "subsequent commands start in the original session working directory") {
 				t.Fatal(schema.Description)

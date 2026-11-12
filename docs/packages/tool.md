@@ -14,8 +14,9 @@ Built-ins register at init time. `Execute(name, params, cwd)` resolves the tool,
 checks permissions, and returns output, side effects, and audit metadata.
 
 Shell selection: `SAN_SHELL` → supported Unix `$SHELL` → platform default.
-Prompts name the interpreter; tool/rule identifiers remain `Bash` (including
-zsh) or `PowerShell`. Windows offers its other shell via `/tools`.
+Prompts name the interpreter; execution titles use stored labels (`bash`, `zsh`,
+`pwsh`, `PS`). Tool/rule identifiers remain `Bash` (including zsh) or `PowerShell`.
+Windows offers its other shell via `/tools`.
 Use `IsShellTool` to identify either.
 
 ## Contract

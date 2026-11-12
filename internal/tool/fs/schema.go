@@ -104,17 +104,26 @@ func (t *WriteTool) Schema() core.ToolSchema {
 	}
 }
 
-// Schema returns the model-facing tool definition: Bash, or PowerShell where
-// that is the shell. The parameters are the same; the guidance is per shell.
+var _ tool.ShellDirectoryAwareTool = (*ShellTool)(nil)
+
+// Schema describes the selected interpreter with the host's default cwd behavior.
 func (t *ShellTool) Schema() core.ToolSchema {
+	return t.SchemaWithDirectoryHelp("")
+}
+
+// SchemaWithDirectoryHelp keeps host-specific guidance local to this schema.
+func (t *ShellTool) SchemaWithDirectoryHelp(help string) core.ToolSchema {
+	if help == "" {
+		help = "A successful cd updates the session working directory"
+	}
 	name := t.Name()
 	shell, err := t.resolve()
 	if err != nil {
 		shell = proc.Shell{Kind: proc.ShellBash}
 	}
-	description := fmt.Sprintf(unixShellDescription, shell)
+	description := fmt.Sprintf(unixShellDescription, shell, help)
 	if name == tool.ToolPowerShell {
-		description = fmt.Sprintf(powerShellDescription, shell)
+		description = fmt.Sprintf(powerShellDescription, shell, help)
 	} else if shell.Kind == proc.ShellZsh {
 		description += "\n\nUses zsh -f (no user startup files) and inherited environment. Complex/native expansions require human confirmation. Tool/rule name stays Bash."
 	}
@@ -133,7 +142,7 @@ func (t *ShellTool) Schema() core.ToolSchema {
 
 const unixShellDescription = `Executes a %s command and returns its output.
 
-- Starts in the session cwd; do not prepend cd to it. Successful cd persists; other shell state does not.
+- Starts in the session cwd; do not prepend cd to it. %s; other shell state does not persist.
 - Use for discovery (rg/find/ls); bound large output with head/wc. Use Read/Edit/Write for file contents.
 - No TTY or interactive stdin: use non-interactive flags or heredocs. Read-only commands may run without approval.
 - Background processes detach; results include the process-group ID and stop commands.`
@@ -141,7 +150,7 @@ const unixShellDescription = `Executes a %s command and returns its output.
 const powerShellDescription = `Executes a %s command and returns its output.
 
 - Use PowerShell syntax: $env:NAME and backtick escaping. On 5.1, no && or ||; use ";" or "if ($?) { ... }".
-- Starts in the session cwd; do not prepend Set-Location to it. Successful cd persists; other shell state does not.
+- Starts in the session cwd; do not prepend Set-Location to it. %s; other shell state does not persist.
 - Use for discovery (Get-ChildItem/Select-String/rg); limit output with Select-Object -First. Use Read/Edit/Write for file contents.
 - No interactive console: use non-interactive flags. Simple read-only pipelines may run without approval.`
 
