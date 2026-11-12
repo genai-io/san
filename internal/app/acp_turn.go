@@ -13,6 +13,8 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -194,18 +196,18 @@ func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {
 		return protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallVariant{SessionUpdate: "tool_call", ToolCallID: protocol.ToolCallID(e.ID), Title: e.Name,
 			Status: protocol.Some(protocol.ToolCallStatusInProgress), RawInput: protocol.Some(input)}}, true
 	case sdkagent.ToolUpdate:
-		return acpToolUpdate(e.ID, e.Partial.Content.Text(), protocol.ToolCallStatusInProgress), true
+		return acpToolUpdate(e.ID, e.Name, e.Partial.Content.Text(), protocol.ToolCallStatusInProgress, e.Partial.Details), true
 	case sdkagent.ToolEnd:
 		status := protocol.ToolCallStatusCompleted
 		if e.Err != nil {
 			status = protocol.ToolCallStatusFailed
 		}
-		return acpToolUpdate(e.ID, e.Result.Content.Text(), status), true
+		return acpToolUpdate(e.ID, e.Name, e.Result.Content.Text(), status, e.Result.Details), true
 	}
 	return protocol.SessionUpdate{}, false
 }
 
-func acpToolUpdate(id, text string, status protocol.ToolCallStatus) protocol.SessionUpdate {
+func acpToolUpdate(id, name, text string, status protocol.ToolCallStatus, details any) protocol.SessionUpdate {
 	// ToolEnd contains the original result, before the native ResultPager.
 	// Bound its display separately so a large result cannot close the transport.
 	const preview = 64 << 10
@@ -216,6 +218,14 @@ func acpToolUpdate(id, text string, status protocol.ToolCallStatus) protocol.Ses
 		}
 		text = text[:end] + "\n[ACP display truncated; full result is in the native transcript]"
 	}
-	return protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallUpdateVariant{SessionUpdate: "tool_call_update", ToolCallID: protocol.ToolCallID(id), Status: protocol.Some(status),
-		Content: protocol.Some([]protocol.ToolCallContent{{Value: protocol.ToolCallContentContentVariant{Type: "content", Content: acpText(text)}}})}}
+	update := protocol.SessionUpdateToolCallUpdateVariant{SessionUpdate: "tool_call_update", ToolCallID: protocol.ToolCallID(id), Status: protocol.Some(status),
+		Content: protocol.Some([]protocol.ToolCallContent{{Value: protocol.ToolCallContentContentVariant{Type: "content", Content: acpText(text)}}})}
+	if tool.IsShellTool(name) {
+		title := name
+		if shell, ok := details.(toolresult.BashDetails); ok && shell.ShellLabel != "" {
+			title = shell.ShellLabel
+		}
+		update.Title = protocol.Some(title)
+	}
+	return protocol.SessionUpdate{Value: update}
 }

@@ -7,6 +7,8 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/interaction"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
@@ -38,12 +40,26 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			}
 			req.RequestID = core.NewMessageID()
 		}
+		title := req.ToolName
+		if tool.IsShellTool(req.ToolName) {
+			view, prepareErr := interaction.PreparePermission(req, s.runtimeBuildParams.CWD, s.permissions.CurrentMode().PersistenceName(), setting.New(s.permissions.settings), s.permissions.SessionPermissions)
+			if prepareErr != nil {
+				select {
+				case req.Response <- agent.PermGateResponse{Reason: prepareErr.Error()}:
+				case <-req.Context.Done():
+				}
+				continue
+			}
+			if view.BashMeta != nil && view.BashMeta.ShellLabel != "" {
+				title = view.BashMeta.ShellLabel
+			}
+		}
 		input, _ := json.Marshal(req.Input)
 		record := transcript.PermissionRecord{RequestID: req.RequestID, Tool: req.ToolName, Input: input,
 			Source: transcript.PermissionSourceAsk, OptionsOffered: []string{"allow_once", "reject_once"}}
 		_ = s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &record})
 		response, err := turn.RequestPermission(protocol.RequestPermissionRequest{
-			ToolCall: protocol.ToolCallUpdate{ToolCallID: protocol.ToolCallID(req.ToolCallID), Title: protocol.Some(req.ToolName), RawInput: protocol.Some(json.RawMessage(input))},
+			ToolCall: protocol.ToolCallUpdate{ToolCallID: protocol.ToolCallID(req.ToolCallID), Title: protocol.Some(title), RawInput: protocol.Some(json.RawMessage(input))},
 			Options: []protocol.PermissionOption{
 				{OptionID: "allow_once", Kind: "allow_once", Name: "Allow once"},
 				{OptionID: "reject_once", Kind: "reject_once", Name: "Reject once"},

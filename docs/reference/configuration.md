@@ -2,7 +2,8 @@
 
 ## Shell and model catalog
 
-- **Windows shell:** PowerShell by default (`pwsh` if available, otherwise Windows PowerShell). Override with `SAN_SHELL=bash`, `powershell`, or an executable path. When both shells are installed, enable the other in `/tools`.
+- **Shell:** `SAN_SHELL` (name/path) → Unix `$SHELL` (Bash/zsh) → Bash (Unix) or PowerShell (Windows, `pwsh` first). Invalid overrides fail; unsupported/unavailable preferences warn and fall back. Windows also offers Git Bash via `/tools`.
+- **Zsh:** Unix only; uses `-f` and the `Bash` tool/rule name. Complex/native expansions require human confirmation.
 - **Model catalog:** model lineups, context windows, and prices refresh daily from models.dev. Set `SAN_DISABLE_MODEL_REFRESH=1` to skip refreshes; override values in `~/.san/models.json`. [Source](https://models.dev)
 
 ## Credentials

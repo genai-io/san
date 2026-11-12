@@ -21,7 +21,12 @@ func TestBackgroundShellCapturesLaunchingAgent(t *testing.T) {
 				// The tool caller, not an inherited task owner, determines ownership.
 				ctx = task.WithOwnerAgentID(ctx, "stale-owner")
 				ctx = tool.WithAgentID(ctx, owner)
-				result := (&ShellTool{}).executeBackground(ctx, "sleep 5", "owner test", t.TempDir(), 10*time.Second, lifetime)
+				shell := &ShellTool{}
+				selected, err := shell.resolve()
+				if err != nil {
+					t.Fatal(err)
+				}
+				result := shell.executeBackground(ctx, selected, "sleep 5", "owner test", t.TempDir(), 10*time.Second, lifetime)
 				if !result.Success {
 					t.Fatal(result.Error)
 				}

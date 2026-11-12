@@ -10,12 +10,20 @@ import (
 )
 
 func TestBashTailSurvivesResumeAndFork(t *testing.T) {
+	for _, label := range []string{"", "bash", "zsh", "pwsh", "PS"} {
+		t.Run("shell="+label, func(t *testing.T) {
+			testBashDetailsResumeAndFork(t, label)
+		})
+	}
+}
+
+func testBashDetailsResumeAndFork(t *testing.T, label string) {
 	store, err := NewLegacyStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := mustSession(t, store.transcriptStore, LegacyCreateOptions{ID: "source", AgentID: "main"})
-	details := toolresult.BashDetails{LineCount: 128, Tail: "last one\nlast two\n"}
+	details := toolresult.BashDetails{ShellLabel: label, LineCount: 128, Tail: "last one\nlast two\n"}
 	w.RecordEvent(sdkagent.ToolEnd{ID: "call", Name: "Bash", Result: sdkagent.Result{Details: details}})
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Bash", Content: ai.TextContent("model-facing output")})
 	result.ID = "result"

@@ -44,7 +44,11 @@ func TestShellExecutionValidation(t *testing.T) {
 
 func TestServiceOutlivesJobTimeout(t *testing.T) {
 	shell := &ShellTool{}
-	result := shell.executeBackground(context.Background(), "sleep 5", "service", t.TempDir(), 20*time.Millisecond, task.LifetimeService)
+	selected, err := shell.resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := shell.executeBackground(context.Background(), selected, "sleep 5", "service", t.TempDir(), 20*time.Millisecond, task.LifetimeService)
 	if !result.Success {
 		t.Fatal(result.Error)
 	}

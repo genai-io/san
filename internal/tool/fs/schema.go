@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -103,21 +104,35 @@ func (t *WriteTool) Schema() core.ToolSchema {
 	}
 }
 
-// Schema returns the model-facing tool definition: Bash, or PowerShell where
-// that is the shell. The parameters are the same; the guidance is per shell.
+var _ tool.ShellDirectoryAwareTool = (*ShellTool)(nil)
+
+// Schema describes the selected interpreter with the host's default cwd behavior.
 func (t *ShellTool) Schema() core.ToolSchema {
+	return t.SchemaWithDirectoryHelp("")
+}
+
+// SchemaWithDirectoryHelp keeps host-specific guidance local to this schema.
+func (t *ShellTool) SchemaWithDirectoryHelp(help string) core.ToolSchema {
+	if help == "" {
+		help = "A successful cd updates the session working directory"
+	}
 	name := t.Name()
-	description := bashDescription
+	shell, err := t.resolve()
+	if err != nil {
+		shell = proc.Shell{Kind: proc.ShellBash}
+	}
+	description := fmt.Sprintf(unixShellDescription, shell, help)
 	if name == tool.ToolPowerShell {
-		shell, _ := t.resolve()
-		description = fmt.Sprintf(powerShellDescription, shell)
+		description = fmt.Sprintf(powerShellDescription, shell, help)
+	} else if shell.Kind == proc.ShellZsh {
+		description += "\n\nUses zsh -f (no user startup files) and inherited environment. Complex/native expansions require human confirmation. Tool/rule name stays Bash."
 	}
 	// The second shell is only in play once the user turns it on, so the
 	// division of labour is written there and never names a missing tool.
 	if t.second {
 		description += "\n\n" + secondShellNote(name)
 	}
-	description += "\n\nRun commands in the foreground by default. Use execution_mode='background_job' when explicitly requested or while doing a concrete independent next step; use 'background_service' for a server that must keep running. If your next step needs the result, wait for it; do not background routine short commands. timeout_ms is an execution deadline, not a wait-before-background threshold. Services have no execution deadline: omit timeout_ms or use null. They are managed by this San process and stopped on application shutdown, not session switching. A service exiting on its own, even with exit code 0, is a failure. Check readiness before relying on a service; launching it is not a health check."
+	description += "\n\nRun in the foreground by default. Use background_job only when requested or when you have an independent next step. Use background_service for persistent servers and verify readiness. Services stop when San exits, not on session changes; any self-exit (even code 0) is a failure."
 	return core.ToolSchema{
 		Name:        name,
 		Description: description,
@@ -125,22 +140,19 @@ func (t *ShellTool) Schema() core.ToolSchema {
 	}
 }
 
-const bashDescription = `Executes a bash command and returns its output.
+const unixShellDescription = `Executes a %s command and returns its output.
 
-- Commands already run in the session working directory — NEVER prefix with "cd <cwd> &&"; use relative paths inside it. A successful cd updates the session working directory; other shell state (variables, aliases) does not persist between calls.
-- Search and discovery run through this tool (rg, find/fd, ls); pipe large output through head/wc. Provably read-only commands run without approval prompts.
-- For file contents use the dedicated tools: Read (not cat), Edit (not sed), Write (not echo/redirection).
-- No TTY and no stdin — anything awaiting interactive input hangs until timeout. Use non-interactive flags ("git commit -m", "npm init -y", "apt-get -y") or feed input via heredoc.
-- On Unix, background execution detaches the command; its result includes the process-group ID and exact Bash commands for graceful or forced termination.`
+- Starts in the session cwd; do not prepend cd to it. %s; other shell state does not persist.
+- Use for discovery (rg/find/ls); bound large output with head/wc. Use Read/Edit/Write for file contents.
+- No TTY or interactive stdin: use non-interactive flags or heredocs. Read-only commands may run without approval.
+- Background processes detach; results include the process-group ID and stop commands.`
 
-const powerShellDescription = `Executes a PowerShell command and returns its output. The shell is %s.
+const powerShellDescription = `Executes a %s command and returns its output.
 
-- Write PowerShell, not bash: separate statements with ";" (Windows PowerShell 5.1 has no && or ||; use "if ($?) { ... }"), send errors away with 2>$null, read environment variables as $env:NAME, and escape with a backtick.
-- Commands already run in the session working directory — NEVER prefix with "Set-Location <cwd>;"; use relative paths inside it. A successful Set-Location (cd) updates the session working directory; other state (variables, functions) does not persist between calls.
-- Search and discovery run through this tool (Get-ChildItem -Recurse -Filter, Select-String, or rg when installed); cut large output with Select-Object -First N. A single pipeline of read-only cmdlets runs without an approval prompt; anything with ; && ( { $ or a redirection asks.
-- For file contents use the dedicated tools: Read (not Get-Content), Edit (not -replace), Write (not Set-Content/Out-File).
-- No console and no stdin — anything awaiting input hangs until timeout. Use non-interactive flags (-Force, -Confirm:$false, "git commit -m").
-- Background execution runs the command detached; you are notified when it completes.`
+- Use PowerShell syntax: $env:NAME and backtick escaping. On 5.1, no && or ||; use ";" or "if ($?) { ... }".
+- Starts in the session cwd; do not prepend Set-Location to it. %s; other shell state does not persist.
+- Use for discovery (Get-ChildItem/Select-String/rg); limit output with Select-Object -First. Use Read/Edit/Write for file contents.
+- No interactive console: use non-interactive flags. Simple read-only pipelines may run without approval.`
 
 func shellParameters() map[string]any {
 	return map[string]any{
@@ -152,28 +164,28 @@ func shellParameters() map[string]any {
 			},
 			"description": map[string]any{
 				"type":        []string{"string", "null"},
-				"description": "Optional short description in active voice (e.g. Run the unit tests), shown in approvals and task notices. Omit or use null to show a command preview instead.",
+				"description": "Short action label for approvals/tasks; omit or null to show the command.",
 			},
 			"timeout_ms": map[string]any{
 				"type":        []string{"integer", "null"},
 				"minimum":     1,
 				"maximum":     maxShellTimeoutMS,
-				"description": fmt.Sprintf("Execution deadline in milliseconds for foreground or background_job (default %d, maximum %d). Omit or use null for the default; background_service requires omission or null. Does not control when a call returns or becomes background work.", defaultShellTimeoutMS, maxShellTimeoutMS),
+				"description": fmt.Sprintf("Execution deadline in ms (default %d, max %d), not a backgrounding threshold. Omit or null for background_service.", defaultShellTimeoutMS, maxShellTimeoutMS),
 			},
 			"execution_mode": map[string]any{
 				"type":        []string{"string", "null"},
 				"enum":        []any{shellForeground, shellBackgroundJob, shellBackgroundService, nil},
-				"description": "Defaults to foreground (also when null): wait and return the result directly. background_job returns a task ID immediately for finite work with an independent next step. background_service starts a managed long-running service without an execution deadline; verify readiness separately.",
+				"description": "foreground (default/null) waits for completion; background_job returns a task ID immediately; background_service runs a managed service without a deadline.",
 			},
 		},
 		"required": []string{"command"},
 	}
 }
 
-// secondShellNote tells the model how to split work when both shells are on.
+// secondShellNote divides work between the two Windows shells.
 func secondShellNote(name string) string {
 	if name == tool.ToolPowerShell {
-		return "The Bash tool (Git for Windows) is also available: keep scripts and POSIX tools (grep, sed, make) in Bash, and use this tool for Windows-specific work — cmdlets, the registry, services, Windows paths."
+		return "Bash (Git for Windows) is also available for POSIX tools/scripts; use PowerShell for Windows-specific work."
 	}
-	return "The PowerShell tool is also available: use this tool for scripts and POSIX tools (grep, sed, make), and PowerShell for Windows-specific work — cmdlets, the registry, services."
+	return "PowerShell is also available for Windows-specific work; use Bash for POSIX tools/scripts."
 }

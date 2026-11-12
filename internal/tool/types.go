@@ -35,6 +35,12 @@ type AgentCatalogAwareTool interface {
 	SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema
 }
 
+// ShellDirectoryAwareTool provides host-specific cwd guidance without rewriting prose.
+type ShellDirectoryAwareTool interface {
+	Tool
+	SchemaWithDirectoryHelp(help string) core.ToolSchema
+}
+
 // PermissionAwareTool is a tool that requires user permission before execution
 type PermissionAwareTool interface {
 	Tool

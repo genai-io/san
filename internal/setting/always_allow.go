@@ -39,6 +39,9 @@ func ExactAllowRules(toolName string, args map[string]any) []string {
 	switch toolName {
 	case "Bash":
 		cmd, _ := args["command"].(string)
+		if nativeZshReviewReason(cmd) != "" {
+			return nil
+		}
 		file := parseBashAST(cmd)
 		if file == nil {
 			return nil

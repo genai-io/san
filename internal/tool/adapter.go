@@ -124,6 +124,16 @@ func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...Ada
 	return core.NewTools(adapted...)
 }
 
+type shellLabelKey struct{}
+
+// ReportShellLabel enriches the existing SDK partial-result stream with the
+// interpreter selected by execution, including commands that produce no output.
+func ReportShellLabel(ctx context.Context, label string) {
+	if report, ok := ctx.Value(shellLabelKey{}).(func(string)); ok {
+		report(label)
+	}
+}
+
 // toolAdapter wraps a legacy Tool as a core.Tool.
 type toolAdapter struct {
 	inner           Tool
@@ -170,10 +180,15 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 	if IsShellTool(a.inner.Name()) {
 		inherited := BashProgressFromContext(ctx)
 		reportCtx := ctx
+		var shellLabel string
+		ctx = context.WithValue(ctx, shellLabelKey{}, func(label string) {
+			shellLabel = label
+			agent.Report(reportCtx, agent.Result{Details: toolresult.BashDetails{ShellLabel: label}})
+		})
 		ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64, tail string) {
 			agent.Report(reportCtx, agent.Result{
 				Content: ai.TextContent(formatBashProgress(lines, bytes)),
-				Details: toolresult.BashDetails{LineCount: lines, Tail: tail, TailTruncated: bytes > int64(len(tail))},
+				Details: toolresult.BashDetails{ShellLabel: shellLabel, LineCount: lines, Tail: tail, TailTruncated: bytes > int64(len(tail))},
 			})
 			if inherited != nil {
 				inherited(lines, bytes, tail)

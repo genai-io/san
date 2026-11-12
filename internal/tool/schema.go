@@ -45,6 +45,7 @@ func IsAgentToolName(name string) bool {
 type SchemaOptions struct {
 	MCPTools     func() []core.ToolSchema
 	AgentCatalog func() string // summaries of enabled predefined agents
+	ShellDirHelp string        // host-specific cwd persistence guidance
 
 	// ExtraTools are caller-supplied schemas appended to the registered set —
 	// the hook for conditionally-present tools whose schema the caller builds
@@ -125,6 +126,12 @@ func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 		if agentCatalog != "" {
 			if aware, ok := t.(AgentCatalogAwareTool); ok {
 				tools = append(tools, aware.SchemaWithAgentCatalog(agentCatalog))
+				continue
+			}
+		}
+		if opts.ShellDirHelp != "" {
+			if aware, ok := t.(ShellDirectoryAwareTool); ok {
+				tools = append(tools, aware.SchemaWithDirectoryHelp(opts.ShellDirHelp))
 				continue
 			}
 		}

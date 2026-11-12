@@ -183,7 +183,7 @@ func TestShellToolFollowsSANShell(t *testing.T) {
 	switch os.Getenv("SAN_SHELL") {
 	case "powershell", "pwsh":
 		want = tool.ToolPowerShell
-	case "bash":
+	case "bash", "zsh":
 		want = tool.ToolBash
 	default:
 		t.Skip("SAN_SHELL is not set to a shell kind")

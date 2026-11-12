@@ -20,12 +20,14 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/persona"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 )
 
 // Run routes to either print mode or interactive TUI.
 func Run(opts setting.RunOptions) (runErr error) {
+	warnShellFallback()
 	var m *model
 	// Services belong to the application, not an individual agent turn. Keep
 	// teardown here so print-mode success and errors clean up too, while the
@@ -103,6 +105,12 @@ func Run(opts setting.RunOptions) (runErr error) {
 		printExitMessage(fm)
 	}
 	return nil
+}
+
+func warnShellFallback() {
+	if shell, err := proc.DefaultShell(); err == nil && shell.FallbackReason != "" {
+		fmt.Fprintln(os.Stderr, "san: "+shell.FallbackReason)
+	}
 }
 
 func initModel(opts setting.RunOptions) (*model, error) {

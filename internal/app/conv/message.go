@@ -814,10 +814,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 		} else if tc.Name == tool.ToolAskUserQuestion {
 			sb.WriteString(renderAskUserCall(tc.Input, toolCallIcon(tc, params), params.Width))
 		} else if result, ok := params.ResultMap[tc.ID].Details.(toolresult.BashDetails); tool.IsShellTool(tc.Name) && ok && result.TaskID != "" {
-			sb.WriteString(renderBackgroundShellCall(tc.Name, tc.Input, result.TaskID, params.Width))
+			sb.WriteString(renderBackgroundShellCall(shellCallTitle(tc, params), tc.Input, result.TaskID, params.Width))
 		} else if params.ToolCallsExpanded && tool.IsShellTool(tc.Name) {
 			command, description := extractBashCommand(tc.Input)
-			sb.WriteString(renderShellCommandBlock(tc.Name, command, description, params.Width, toolCallIcon(tc, params), ""))
+			sb.WriteString(renderShellCommandBlock(shellCallTitle(tc, params), command, description, params.Width, toolCallIcon(tc, params), ""))
 		} else if params.ToolCallsExpanded {
 			toolLine := renderToolLine(tc.Name, params.Width)
 			sb.WriteString(toolLine + "\n")
@@ -843,7 +843,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 			detail := runningRowDetail(tc, params)
 			rowWidth := params.Width
 			if rowWidth > 0 {
-				detail = xansi.Truncate(detail, max(0, rowWidth-lipgloss.Width("● "+tc.Name)), "")
+				name := tc.Name
+				if tool.IsShellTool(tc.Name) {
+					name = shellCallTitle(tc, params)
+				}
+				detail = xansi.Truncate(detail, max(0, rowWidth-lipgloss.Width("● "+name)), "")
 				rowWidth = max(1, rowWidth-lipgloss.Width(detail))
 			}
 			var row string
@@ -851,7 +855,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			} else if tool.IsShellTool(tc.Name) {
-				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
+				row = renderShellToolCall(shellCallTitle(tc, params), tc.Input, params.Width, icon, detail)
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
@@ -892,6 +896,19 @@ func RenderToolCalls(params ToolCallsParams) string {
 		return xansi.Hardwrap(sb.String(), params.Width, true)
 	}
 	return sb.String()
+}
+
+// shellCallTitle uses execution metadata, never the shell of the viewing process.
+func shellCallTitle(tc core.ToolCall, params ToolCallsParams) string {
+	if details, ok := params.ResultMap[tc.ID].Details.(toolresult.BashDetails); ok && details.ShellLabel != "" {
+		return details.ShellLabel
+	}
+	if _, done := params.ResultMap[tc.ID]; !done {
+		if label := params.ToolProgress[tc.ID].ShellLabel; label != "" {
+			return label
+		}
+	}
+	return tc.Name
 }
 
 // toolCallIcon picks a call's row glyph: the live dot while it is in flight, a

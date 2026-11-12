@@ -34,6 +34,7 @@ type DiffMetadata struct {
 
 // BashMetadata contains metadata for Bash command permission requests.
 type BashMetadata struct {
+	ShellLabel    string `json:"shellLabel,omitempty"`
 	Command       string `json:"command"`
 	Description   string `json:"description,omitempty"`
 	RunBackground bool   `json:"runBackground,omitempty"`

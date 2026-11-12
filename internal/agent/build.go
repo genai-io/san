@@ -59,10 +59,9 @@ type BuildParams struct {
 	// when auto memory is off.
 	AutoMemory system.MemoryStores
 
-	// BashDirHelp replaces the Bash schema's session-directory sentence. It is
-	// help text only: CWD/CWDFunc and the host's PostTool handling own behavior.
-	// Empty keeps the default help for hosts that apply directory changes.
-	BashDirHelp string
+	// ShellDirHelp overrides cwd guidance without changing execution behavior.
+	// Empty keeps the default for hosts that apply directory changes.
+	ShellDirHelp string
 
 	// ExtraTools are caller-built conditional tool schemas appended to the
 	// toolset (e.g. the self-learning Evolve trigger, injected only when
@@ -126,20 +125,12 @@ func (p BuildParams) System() core.System {
 // MCP tools are not included — they arrive as ready-made core.Tools rather
 // than schemas, and are wired in separately.
 func (p BuildParams) Schemas() []core.ToolSchema {
-	schemas := (&tool.Set{
+	return (&tool.Set{
 		Disabled:     p.DisabledTools,
 		AgentCatalog: p.AgentCatalog,
+		ShellDirHelp: p.ShellDirHelp,
 		ExtraTools:   p.ExtraTools,
 	}).Tools()
-	if p.BashDirHelp != "" {
-		for i := range schemas {
-			if schemas[i].Name == "Bash" {
-				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful cd updates the session working directory", p.BashDirHelp)
-				schemas[i].Description = strings.ReplaceAll(schemas[i].Description, "A successful Set-Location (cd) updates the session working directory", p.BashDirHelp)
-			}
-		}
-	}
-	return schemas
 }
 
 // ToolSchemas returns the tool definitions an agent built from p sends, MCP

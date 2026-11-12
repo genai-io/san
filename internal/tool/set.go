@@ -45,6 +45,7 @@ type Set struct {
 	Disabled     map[string]bool          // excluded tools
 	MCP          func() []core.ToolSchema // MCP tools getter
 	AgentCatalog func() string            // predefined-agent summaries; main conversation only
+	ShellDirHelp string                   // host-specific cwd persistence guidance
 	Allow        []string                 // agent allow list (nil = all tools, non-nil = only these)
 	Disallow     []string                 // agent deny list (excluded after allow filtering)
 	IsAgent      bool                     // true for subagent tool sets (excludes parent-only tools)
@@ -78,6 +79,7 @@ func (s *Set) defaultTools() []core.ToolSchema {
 	tools := GetToolSchemasWith(SchemaOptions{
 		MCPTools:     s.MCP,
 		AgentCatalog: s.AgentCatalog,
+		ShellDirHelp: s.ShellDirHelp,
 		ExtraTools:   s.ExtraTools,
 	})
 
@@ -95,7 +97,8 @@ func (s *Set) defaultTools() []core.ToolSchema {
 // Used for agents with nil Allow (= all tools).
 func (s *Set) agentAllTools() []core.ToolSchema {
 	allTools := GetToolSchemasWith(SchemaOptions{
-		MCPTools: s.MCP,
+		MCPTools:     s.MCP,
+		ShellDirHelp: s.ShellDirHelp,
 	})
 	filtered := make([]core.ToolSchema, 0, len(allTools))
 	for _, t := range allTools {
@@ -111,7 +114,7 @@ func (s *Set) agentAllTools() []core.ToolSchema {
 // even when listed). MCP tools matching the allow list (e.g.
 // "mcp__server__tool") are also included.
 func (s *Set) agentTools() []core.ToolSchema {
-	allTools := GetToolSchemas()
+	allTools := GetToolSchemasWith(SchemaOptions{ShellDirHelp: s.ShellDirHelp})
 
 	// Build allow set for fast lookup
 	allowSet := make(map[string]bool, len(s.Allow))

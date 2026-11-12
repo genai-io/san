@@ -80,7 +80,7 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			if row.ToolResult.IsError {
 				status = protocol.ToolCallStatusFailed
 			}
-			if err = turn.SendUpdate(protocol.SessionNotification{Update: acpToolUpdate(row.ToolResult.ToolCallID, row.ToolResult.Content.Text(), status)}); err != nil {
+			if err = turn.SendUpdate(protocol.SessionNotification{Update: acpToolUpdate(row.ToolResult.ToolCallID, row.ToolResult.ToolName, row.ToolResult.Content.Text(), status, row.ToolDetails)}); err != nil {
 				return response, err
 			}
 			continue
@@ -106,7 +106,11 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			text = text[n:]
 		}
 		for _, call := range row.ToolCalls {
-			update := protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallVariant{SessionUpdate: "tool_call", ToolCallID: protocol.ToolCallID(call.ID), Title: call.Name, Status: protocol.Some(protocol.ToolCallStatusCompleted)}}
+			title := call.Name
+			if details := history.ToolDetails[call.ID].Bash; details != nil && details.ShellLabel != "" {
+				title = details.ShellLabel
+			}
+			update := protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallVariant{SessionUpdate: "tool_call", ToolCallID: protocol.ToolCallID(call.ID), Title: title, Status: protocol.Some(protocol.ToolCallStatusCompleted)}}
 			if err = turn.SendUpdate(protocol.SessionNotification{Update: update}); err != nil {
 				return response, err
 			}

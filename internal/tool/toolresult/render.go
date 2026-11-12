@@ -41,6 +41,7 @@ func LastLines(s string, n int) string {
 // lines as they interleaved, which the row keeps.
 // A command started in the background has no output yet, only its task ID.
 type BashDetails struct {
+	ShellLabel    string `json:"shellLabel,omitempty"`
 	Error         string `json:"error"`
 	LineCount     int    `json:"lineCount"`
 	Tail          string `json:"tail,omitempty"`
