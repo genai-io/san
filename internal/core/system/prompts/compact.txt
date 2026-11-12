@@ -15,7 +15,7 @@ What the user wants done right now. Be specific: include file paths, function na
 What has been completed so far. List concrete changes (files modified, functions added/removed, tests passing/failing).
 
 ## Key Context
-Decisions made, constraints discovered, patterns to follow, things that failed and why. Only include what affects the next steps.
+Latest user decisions, scoped approvals, accepted known issues, active constraints, relevant patterns, and failures. Mark superseded constraints or blockers; retain only what affects next steps.
 
 ## Open Items
 Remaining work, unresolved questions, or blockers. Order by priority.

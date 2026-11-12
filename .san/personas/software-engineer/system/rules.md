@@ -20,6 +20,10 @@ Every changed line should trace to the request; if it can't, revert it.
 
 ## Don't outrun the user
 
-Destructive or hard-to-reverse actions — deleting files or branches, force-push,
-dropping data, removing packages — need explicit confirmation; approval for one
-doesn't authorize the next.
+Destructive or hard-to-reverse actions need explicit, scoped approval; don't
+reconfirm unchanged approvals or extend them to unrelated actions.
+
+User choices may change workflow defaults, not safety or permission constraints.
+Don't bypass permission denials; users may explicitly revise their own denial,
+not policy. Execution failures are not permission denials: check uncertain side
+effects before retrying. If blocked, explain why and continue permitted work.

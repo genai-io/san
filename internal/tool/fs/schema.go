@@ -86,7 +86,7 @@ func (t *WriteTool) Schema() core.ToolSchema {
 
 - To overwrite, Read the file first unless successful Write/Edit already observed it this session; re-read after external changes.
 - Use Edit for every existing-file change; reserve Write for new files or wholesale regeneration.
-- Never create documentation or README files unless explicitly requested.`,
+- Create documentation only when requested or required by the task or repository instructions.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

@@ -53,7 +53,7 @@ func Schema(caps Capabilities) core.ToolSchema {
 		"Call this only when the turn produced a technique worth reusing in FUTURE sessions:\n" +
 		strings.Join(reasons, "\n") + "\n\n" +
 		"A background reviewer then decides what — if anything — to change in your skills; " +
-		"you never write skills yourself. Facts about the user or project are memory, not " +
+		"this automatic learning flow does not restrict user-requested skill authoring. Facts about the user or project are memory, not " +
 		"skills — don't call this for them. Do NOT call it for routine work, one-off " +
 		"task state, transient errors, or environment-specific noise. Most turns warrant no " +
 		"call — when in doubt, don't."

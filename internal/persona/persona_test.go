@@ -51,6 +51,40 @@ func TestParseDir_LoadsParts(t *testing.T) {
 	}
 }
 
+func TestBundledSoftwareEngineerDecisionGuidance(t *testing.T) {
+	p, ok := parseDir(filepath.Join("..", "..", ".san", "personas", "software-engineer"))
+	if !ok {
+		t.Fatal("bundled software-engineer persona did not load")
+	}
+	for _, tc := range []struct {
+		name string
+		body string
+		want []string
+	}{
+		{"behavior", p.Behavior, []string{
+			"Distinguish factual errors from user choices",
+			"respect explicit decisions, even with known issues",
+			"Don't reopen settled choices",
+			"only if new evidence materially changes risk or scope",
+		}},
+		{"rules", p.Rules, []string{
+			"don't reconfirm unchanged approvals",
+			"not safety or permission constraints",
+			"revise their own denial, not policy",
+			"Execution failures are not permission denials",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Join(strings.Fields(tc.body), " ")
+			for _, want := range tc.want {
+				if !strings.Contains(body, want) {
+					t.Errorf("persona %s missing %q", tc.name, want)
+				}
+			}
+		})
+	}
+}
+
 func TestParseDir_ParsesAgentAllowList(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "p")
 	writeFile(t, filepath.Join(dir, "settings.json"),

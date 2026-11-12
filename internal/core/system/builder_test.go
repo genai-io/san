@@ -272,7 +272,13 @@ func TestCachedTemplatesNonEmpty(t *testing.T) {
 }
 
 func TestCompactPrompt(t *testing.T) {
-	if CompactPrompt() == "" {
-		t.Error("CompactPrompt() should return non-empty string")
+	prompt := CompactPrompt()
+	for _, want := range []string{
+		"Latest user decisions, scoped approvals, accepted known issues",
+		"Mark superseded constraints or blockers",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("compaction prompt missing %q", want)
+		}
 	}
 }
