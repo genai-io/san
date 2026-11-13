@@ -23,8 +23,8 @@ type sessionSelectedMsg struct {
 // SessionSelector holds the state for the session selector.
 type SessionSelector struct {
 	active   bool
-	sessions []session.LegacySummary
-	filtered []session.LegacySummary
+	sessions []session.ListItem
+	filtered []session.ListItem
 	nav      kit.ListNav
 	width    int
 	height   int
@@ -61,12 +61,12 @@ func calculateSessionPreviewLength(width int) int {
 
 type sessionsListedMsg struct {
 	generation uint64
-	sessions   []session.LegacySummary
+	sessions   []session.ListItem
 	err        error
 }
 
 // EnterSelect paints immediately; disk I/O runs on the returned command.
-func (s *SessionSelector) EnterSelect(width, height int, store *session.LegacyStore, cwd string) (tea.Cmd, error) {
+func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, cwd string) (tea.Cmd, error) {
 	if store == nil {
 		return nil, fmt.Errorf("session store is required")
 	}
@@ -78,8 +78,24 @@ func (s *SessionSelector) EnterSelect(width, height int, store *session.LegacySt
 	generation := s.generation
 	return func() tea.Msg {
 		defer cancel()
-		sessions, err := store.ListContext(ctx)
-		return sessionsListedMsg{generation: generation, sessions: sessions, err: err}
+		var sessions []session.ListItem
+		query := session.ListQuery{All: true, Limit: 200}
+		for {
+			page, err := store.List(ctx, query)
+			if err != nil {
+				return sessionsListedMsg{generation: generation, err: err}
+			}
+			for _, item := range page.Items {
+				// Worker sessions are not resumable as the main conversation.
+				if item.Parent == "" {
+					sessions = append(sessions, item)
+				}
+			}
+			if page.Next == "" {
+				return sessionsListedMsg{generation: generation, sessions: sessions}
+			}
+			query.Cursor = page.Next
+		}
 	}, nil
 }
 
@@ -107,7 +123,7 @@ func (s *SessionSelector) updateFilter() {
 	s.filtered = s.filtered[:0]
 
 	for _, sess := range s.sessions {
-		if query != "" && !kit.FuzzyMatch(strings.ToLower(sess.Title), query) &&
+		if query != "" && !kit.FuzzyMatch(strings.ToLower(sess.DisplayTitle()), query) &&
 			!kit.FuzzyMatch(strings.ToLower(sess.Model), query) {
 			continue
 		}
@@ -127,7 +143,7 @@ func (s *SessionSelector) Select() tea.Cmd {
 	s.active = false
 
 	return func() tea.Msg {
-		return sessionSelectedMsg{SessionID: selected.ID}
+		return sessionSelectedMsg{SessionID: selected.SessionID}
 	}
 }
 
@@ -152,8 +168,8 @@ func (s *SessionSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func sessionFormatCompactMetadata(sess session.LegacySummary) string {
-	return fmt.Sprintf("%d msgs · %s", sess.MessageCount, sessionFormatRelativeTime(sess.UpdatedAt))
+func sessionFormatCompactMetadata(sess session.ListItem) string {
+	return fmt.Sprintf("%d msgs · %s", sess.Messages, sessionFormatRelativeTime(time.UnixMilli(sess.LastActive)))
 }
 
 func sessionTruncateToFirstLine(content string, maxLen int) string {
@@ -167,13 +183,13 @@ func sessionTruncateToFirstLine(content string, maxLen int) string {
 	return kit.TruncateText(content, maxLen)
 }
 
-func (s *SessionSelector) renderSession(sess session.LegacySummary, isSelected bool, sb *strings.Builder, boxWidth int) {
+func (s *SessionSelector) renderSession(sess session.ListItem, isSelected bool, sb *strings.Builder, boxWidth int) {
 	// RenderSelectableRow adds a 4-char left prefix for unselected rows
 	// ("  " + PaddingLeft(2)) and the same 4-char visual offset for
 	// selected rows ("  ▎ "). We account for that below so the row is
 	// exactly boxWidth columns wide with metadata flush right.
 
-	displayTitle := sess.Title
+	displayTitle := sess.DisplayTitle()
 
 	metadata := sessionFormatCompactMetadata(sess)
 	mdWidth := lipgloss.Width(metadata)

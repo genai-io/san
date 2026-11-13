@@ -17,14 +17,11 @@ import (
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/san/tests/integration/testutil"
 )
 
 func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := testutil.OpenSessionStore(t, t.TempDir())
 	m := commitTestModel()
 	m.services.Agent = &agent.Runtime{}
 	m.conv.Stream.Active = true
@@ -34,11 +31,13 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		{From: "web", Subject: "UI ready", Content: "second finding"},
 	})
 	live := m.conv.Messages[0]
-	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "group-batch", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "group-batch", AgentID: "main"})
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
-	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	history, err := store.Read("group-batch", session.LegacyReadOptions{FullHistory: true})
+	if err := testutil.AppendMessages(rec, []core.Message{message}); err != nil {
+		t.Fatal(err)
+	}
+	history, err := store.Read(t.Context(), "group-batch")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,10 +265,9 @@ func TestInAGroupCompletionLeadsWithMembers(t *testing.T) {
 // The session name is the member name: a named session joins under it, and
 // renaming it in a group renames the member, with --role setting what it owns.
 func TestTheSessionNameIsTheMemberName(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	group.BindSession(func() string { return "s-self" })
-	m := &model{env: env{Width: 80, CWD: "/w/shop", SessionName: "API Server"}, conv: conv.NewModel(80),
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()}}
+	m, store := resumedModel(t, nil)
+	group.BindSession(m.sessionID)
+	m.env.SessionName = "API Server"
 	m.groupCommand("join shop")
 	t.Cleanup(func() { _ = group.Leave() })
 	if _, self := group.Current(); self.Name != "api-server" {
@@ -284,6 +282,10 @@ func TestTheSessionNameIsTheMemberName(t *testing.T) {
 	}
 	if !strings.Contains(note, "@网关 in shop") || !strings.Contains(m.grp.blob, "网关") {
 		t.Errorf("note %q, persisted membership %q", note, m.grp.blob)
+	}
+	attrs, err := store.Attrs(t.Context(), m.sessionID())
+	if err != nil || attrs.Title != "网关" {
+		t.Fatalf("renamed member title was not durable user intent: %+v %v", attrs, err)
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/proc"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -42,7 +41,7 @@ func TestWorkerCwdHandoffAndIsolation(t *testing.T) {
 		testutil.ToolCallResponse(tool.ToolBash, "sibling-pwd", `{"command":"pwd"}`),
 		testutil.EndTurnResponse("Sibling finished"),
 	}}
-	executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+	executor := newIntegrationExecutor(t, provider, cwd, "fake-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Mode: "explore", Prompt: "Read source after changing directory", Description: "CWD-WORKER"})
 	if err != nil || !result.Success {
 		t.Fatalf("result=%+v err=%v", result, err)

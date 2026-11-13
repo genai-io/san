@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/tests/integration/testutil"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -29,11 +30,8 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	if err := os.WriteFile(path, []byte("---\ndescription: Release policy\n---\nPrivate release body"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "memory-anchor", AgentID: "main"})
+	store := testutil.OpenSessionStore(t, t.TempDir())
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "memory-anchor", AgentID: "main"})
 	t.Cleanup(func() { _ = rec.Close() })
 	attached := "source body\n\n" + reminder.WrapWithSource("Memories relevant to this message:\n\nMemory `"+path+"` (project store):\nPrivate release body", reminder.ProviderMemoryRecall)
 	call := ai.ToolCall{ID: "call", Name: "Read", Input: `{"file_path":"main.go"}`}
@@ -47,22 +45,28 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	}
 	// The writer can already have the answer before the UI consumes the
 	// earlier result's event. The recall must not anchor to that latest row.
-	for _, message := range messages {
-		rec.RecordEvent(sdkagent.MessageAdded{Message: message})
+	if err := testutil.AppendMessages(rec, messages); err != nil {
+		t.Fatal(err)
 	}
 	m := fixedComposerModel(80, 40)
-	m.services.Agent, m.services.Session = &agent.Runtime{}, rec
+	m.services.Agent, m.services.Session, m.services.SessionStore = &agent.Runtime{}, rec, store
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
 	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
-	history, err := store.Read("memory-anchor", session.LegacyReadOptions{})
+	history, err := store.Read(t.Context(), "memory-anchor")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history.Notices) != 1 || history.Notices[0].AfterMessageID != result.ID {
-		t.Fatalf("recall attached to the writer's latest row instead of its result: %+v", history.Notices)
+	var notices []session.AnnotationAddPayload
+	for _, event := range history.Events() {
+		if annotation, ok := event.Payload.(*session.AnnotationAddPayload); ok {
+			notices = append(notices, *annotation)
+		}
 	}
-	rows := history.ChatRows()
+	if len(notices) != 1 || notices[0].AfterMessage != result.ID {
+		t.Fatalf("recall attached to the writer's latest row instead of its result: %+v", notices)
+	}
+	rows := store.ChatRows(history)
 	p := conv.RenderContext{Width: 80, Messages: rows, InlinedResults: conv.PrecomputeInlinedResults(rows, 0)}
 	out := ansi.Strip(conv.RenderMessageRange(p, 0, len(rows), false))
 	at, answer := strings.Index(out, "⟡ Memory · recalled: Release policy"), strings.Index(out, "Final answer")

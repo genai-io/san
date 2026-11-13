@@ -45,7 +45,7 @@ func TestBackgroundPermissionsAreResolvedBeforeLaunch(t *testing.T) {
 				testutil.ToolCallResponse("Write", "write-result", string(input)),
 				testutil.EndTurnResponse("finished"),
 			}}
-			executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+			executor := newIntegrationExecutor(t, provider, cwd, "fake-model", nil)
 			var parentReads atomic.Int32
 			executor.SetParentPermissionMode(func() subagent.PermissionMode {
 				if parentReads.Add(1) == 1 {

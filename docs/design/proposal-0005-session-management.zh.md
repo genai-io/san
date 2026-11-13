@@ -10,10 +10,10 @@
 | 部分 | 状态 |
 | --- | --- |
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | 已合并：提交批次（`Writer.Commit`、`Store.Batches`）。 |
-| [#737](https://github.com/genai-io/san/pull/737) | 已合并：项目/worktree 身份、检出本地配置、私有 writer 后的类型化事件，采用上一版草案的 18 类模型。在任何 runtime 切换前收敛到本设计。runtime 仍写 schema 4。 |
+| [#737](https://github.com/genai-io/san/pull/737) | 历史基础：项目/worktree 身份、检出本地配置与私有 writer；早期事件词汇和运行时格式已由统一原生实现替代。 |
 | [#738](https://github.com/genai-io/san/pull/738) | 已合并：core 中可选的 SDK 准入边界。 |
-| 类型化存储与公共 API | 已实现：13 类事件、blob、attrs、缓存、list/fork/clean 和打开的类型化会话；尚未接入 runtime。 |
-| runtime 切换 | 核心录制及首批权限/hook/旁路调用适配已实现但未接入；其余辅助调用生产者、runtime 恢复、子代理和最终切换仍待完成。切换是破坏性变更（见[兼容性](#兼容性)）。 |
+| 类型化存储与公共 API | 已实现：13 类事件、原生投影与请求、blob、attrs、缓存、list/fork/clean 和打开的会话。 |
+| runtime 切换 | 主机、辅助调用、子代理和检查器默认使用统一原生后端；旧持久化已删除，最终共享代码树的集成验证单独跟踪。切换是破坏性变更（见[兼容性](#兼容性)）。 |
 
 ## 模型
 
@@ -118,7 +118,7 @@ sdk-go 将相同 ID 且内容相同视为已提交，内容不同视为冲突。
 | --- | --- | --- | --- |
 | 身份 | `session.create` | `project`、`workspace`、`initial_cwd`、`agent_id`、`config`（初始覆盖）；`parent? {session, call_id?}`、`fork? {session, seq}` | 身份与溯源。 |
 | | `session.update` | `config?`：provider、model、生成选项、模式、autopilot 策略。`state?`：生成的标题、todos、execution_cwd、autopilot 进度、group hint | `config` 作用于下一次请求；`state` 按字段替换。 |
-| 对话 | `message.append` | `messages`：非空的 SDK 原生消息列表 | 追加到历史和活动上下文。 |
+| 对话 | `message.append` | `messages`：非空的 SDK 原生消息列表；`accepted?`：持久化队列接受 | 原生历史/上下文只展示一次；后续精确 ID 消费用本地 source 引用接受事件。 |
 | | `context.compact` | `summary`：原生消息；`through`：seq | 活动上下文变为 `[summary]` + `through` 之后追加的消息。摘要加入历史。 |
 | 模型调用 | `inference.start` | `purpose`、`turn_id?`、`request`（provider、model、选项）、`input`（`conversation {append?}` 或 `standalone`）、`instructions_digest?`、`toolset_digest?` | 打开一次模型调用；每次重试都是独立调用。见[模型调用](#模型调用)。 |
 | | `inference.finish` | `outcome`、`stop_reason?`、`usage?`、`duration_ms?`、`error? {message, retryable}` | 关闭 `source` 指向的调用。 |
@@ -206,7 +206,7 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 | 操作 | 记录方式 |
 | --- | --- |
 | 用户输入、模型输出、工具结果、来自其他会话的消息 | `message.append` |
-| 轮次或压缩进行中排队的输入 | 送达前不记录；送达后为 `message.append`。 |
+| 轮次或压缩进行中排队的输入 | 原生接受时写 `message.append {accepted: true}`；消费时保留精确 ID/内容，并以本地 source 引用接受事件。 |
 | 压缩：自动、手动 `/compact`、prompt-too-long 恢复 | `context.compact`，及其 `inference.start` / `finish` |
 | `/clear` | 新会话（`Create`）。旧会话保持完整、可恢复。不设 `context.clear`：一个会话只承载一段对话。 |
 | 回退或编辑之前的消息（目前未实现） | 在该消息之前的 `seq` 处 `Fork`，再在分叉中 `message.append`。源会话从不被改写，因此不需要 `context.rewind`。 |
@@ -216,6 +216,9 @@ San 记录自己发起的每次模型调用，因此用量和成本完整，每�
 | 请求的 provider 适配（如纯文本模型的图片处理） | 不记录。它是上下文与请求配置的纯函数。 |
 
 ### 投影
+
+接受事件保留实际外部/辅助调用来源；消费事件必须保留精确原生 ID/内容并以本地 source 引用接受事件。
+`Messages()` 与 `ActiveMessages()` 对这两个生命周期事实去重，按消费顺序排列并保留待消费尾部；压缩不丢弃该尾部。
 
 纯投影器把已提交事件折叠为：
 
@@ -281,7 +284,7 @@ after:  context = [summary]            history = m1 .. m40, summary
 ```
 
 `through` 精确指出摘要覆盖的范围。检查器能显示哪些消息被摘要；`S` 之后追加的内容会留在上下文中
-而不会丢失——目前没有这种内容，因为压缩期间输入会排队。摘要需要保留的近期请求写进摘要文本。
+而不会丢失。压缩期间持久化接受的输入留在待消费尾部，直到原生消费。摘要需要保留的近期请求写进摘要文本。
 失败或取消的压缩只写 `inference.finish`，上下文不变。
 
 ## 一致性与恢复
@@ -336,9 +339,9 @@ func (s *Session) Close() error                                      // drain, r
 - `SetAttrs` 无需 writer 锁即可修改用户标题、归档和固定，因此选择器可以整理另一进程正打开的会话。
 - 错误可区分：不存在、忙碌、已关闭、冲突、无效、不支持的版本、损坏、取消、存储错误。
 
-运行时仍使用 `LegacyStore`（`Create/Open/List/Fork/Delete`、`Append(transcript.Record)`、立即删除）；
-上述类型化 API 已独立实现，录制、恢复和最终使用方切换仍待完成。
-使用方保留窄的本地接口，通用部分移入 sdk-go。
+运行时统一使用上述 `Store` / `Session` API；`Read`、`ContextRequest`、
+`InferenceRequest` 与 `CommittedBatches` 支持无 writer 检查，`ChatRows` 只用于展示。
+不保留旧格式读取器、别名、回退或自动转换。使用方保持窄接口，通用部分留在 sdk-go。
 
 ## 生命周期与保留
 
@@ -391,7 +394,7 @@ live/archived --Delete / retention--> trash --7 days--> purged
 
 ## 交付计划
 
-已合并的代码（#737、#738）实现的是上一版草案。下面每一片都是独立 PR，在最后一片之前 runtime 仍写当前格式，最后一片将其移除。
+以下记录交付顺序。最后一片已实现统一原生主机/检查器接入与旧持久化删除；全仓验证仍是独立集成门禁。
 
 | # | 分片 | 替换 / 新增 |
 | --- | --- | --- |
@@ -400,19 +403,16 @@ live/archived --Delete / retention--> trash --7 days--> purged
 | 3 | 模型调用 | `purpose`、对话/独立输入、请求 blob、提交时校验摘要值 |
 | 4 | attrs 与缓存 | `attrs.json`、`cache/<sid>.json`；待 sdk-go `BatchesFrom` 后做偏移分页 |
 | 5 | 生命周期 | `SetAttrs`、`Delete` / `Restore` / `Clean`、整目录回收站、保留、GC |
-| 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；删除 schema-4 记录、投影器、`internal/transcript` 以及 `project.go` 中的旧分区查找 |
+| 6 | runtime 切换 | `sessions/` 布局；生产者写事件；以前缀复制分叉；恢复与 ACP 校验；删除旧记录/投影包及 cwd 分区查找 |
 
 第 1–2 片要求移植 #737 的测试，而不是删除。
 
-第 6 片改变的是路径，不只是格式。所有使用旧平铺路径的地方都要迁到会话目录：`Session.TranscriptPath` 及其
-对 hook 暴露的路径、`session` 中的发现与列表、检查器（`cmd/san/inspector.go`、`internal/inspector`）以及
-`transcript.Store`。每个会话目录作为独立的 sdk-go store 打开，固定 ID 为 `events`，因此 sdk-go 的批次格式、
-writer 锁和恢复逻辑都不变（已验证：每个目录一个 writer，关闭后目录可直接重命名）。`sessions/`、`trash/`、`cache/`
-必须在同一文件系统上，这是重命名原子性的前提。
+第 6 片将所有使用方迁到会话目录：`Session.Path` 及 hook 路径、会话发现/列表和检查器。
+每个会话目录作为独立 sdk-go store 打开，固定 ID 为 `events`，批次、writer 锁与恢复由 SDK 提供。
+`sessions/`、`trash/`、`cache/` 必须位于同一文件系统以保证重命名原子性。
 
-代码布局遵循同样的划分。`internal/session` 负责产品层 Store 与 Session；其类型化事件代码按职责分文件
-（`event_model`、`event_validation`、`event_projector`、`event_storage`、`event_query`），而不是新建包，
-因为事件模型在 `session` 之外没有使用方。`internal/transcript` 在第 6 片中删除，其仍被新模型需要的部分（摘要、恢复）并入 `session`。通用部分（批次封装、writer 锁）留在 sdk-go。
+`internal/session` 负责产品 Store、Session、类型化校验与投影，按职责分文件。
+旧持久化包已删除，所需摘要和原生恢复适配留在 `session`；通用批次封装与 writer 锁留在 sdk-go。
 
 ## 备选方案
 

@@ -1,570 +1,316 @@
 package session_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/tests/integration/testutil"
-
 	"github.com/genai-io/san/internal/core"
-	session "github.com/genai-io/san/internal/session"
-	taskTracker "github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// newTestStore creates a Store using a temp directory instead of ~/.san/projects/.
-func newTestStore(t *testing.T) *session.LegacyStore {
+func newTestStore(t *testing.T) *session.Store {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "sessions")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	return testutil.OpenSessionStore(t, t.TempDir())
+}
+func makeUserEntry(id, text string) core.Message {
+	return ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(text)}
+}
+func makeAssistantEntry(id, text string) core.Message {
+	return ai.Message{ID: id, Role: ai.RoleAssistant, Content: ai.TextContent(text)}
+}
+func importMessages(t *testing.T, store *session.Store, id string, messages ...ai.Message) {
+	t.Helper()
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: id}, messages); err != nil {
+		t.Fatal(err)
 	}
-	store, err := session.NewLegacyStoreWithDir(dir)
+}
+func readSession(t *testing.T, store *session.Store, id string) session.Projection {
+	t.Helper()
+	p, err := store.Read(t.Context(), id)
 	if err != nil {
-		t.Fatalf("NewStoreWithDir: %v", err)
+		t.Fatal(err)
 	}
-	return store
+	return p
 }
-
-// makeUserEntry creates a user text message for testing.
-func makeUserEntry(uuid, text string) core.Message {
-	return core.Message{ID: uuid, Role: ai.RoleUser, Content: ai.TextContent(text)}
+func openSession(t *testing.T, store *session.Store, id string) *session.Session {
+	t.Helper()
+	owner, err := store.Open(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close() })
+	return owner
 }
-
-// makeAssistantEntry creates an assistant text message for testing.
-func makeAssistantEntry(uuid, text string) core.Message {
-	return core.Message{ID: uuid, Role: ai.RoleAssistant, Content: ai.TextContent(text)}
+func appendMessages(t *testing.T, owner *session.Session, messages ...ai.Message) {
+	t.Helper()
+	if err := testutil.AppendMessages(owner, messages); err != nil {
+		t.Fatal(err)
+	}
 }
-
-// getEntryText returns a message's text.
-func getEntryText(m core.Message) string {
-	return m.Text()
+func appendState(t *testing.T, owner *session.Session, state session.StatePatch) {
+	t.Helper()
+	if err := owner.Append(t.Context(), session.Event{Payload: session.SessionUpdatePayload{State: &state}}); err != nil {
+		t.Fatal(err)
+	}
+}
+func listSessions(t *testing.T, store *session.Store) []session.ListItem {
+	t.Helper()
+	page, err := store.List(t.Context(), session.ListQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return page.Items
 }
 
 func TestSession_SaveAndLoad(t *testing.T) {
 	store := newTestStore(t)
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:       "test-1",
-			Title:    "Test Session",
-			Provider: "fake",
-			Model:    "fake-model",
-			Cwd:      "/tmp/project",
-		},
-		Messages: []ai.Message{
-			makeUserEntry("u1", "hello"),
-			makeAssistantEntry("a1", "hi there"),
-		},
+	config := &session.EventConfig{Provider: new("fake"), Model: new("fake-model")}
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "test-1", Config: config}, []ai.Message{makeUserEntry("u1", "hello"), makeAssistantEntry("a1", "hi there")}); err != nil {
+		t.Fatal(err)
 	}
-
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	loaded, err := store.Read("test-1", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	if loaded.Metadata.Title != "Test Session" {
-		t.Errorf("expected title 'Test Session', got %q", loaded.Metadata.Title)
-	}
-	if loaded.Metadata.Provider != "fake" {
-		t.Errorf("expected provider 'fake', got %q", loaded.Metadata.Provider)
-	}
-	if len(loaded.Messages) != 2 {
-		t.Errorf("expected 2 entries, got %d", len(loaded.Messages))
-	}
-	if getEntryText(loaded.Messages[0]) != "hello" {
-		t.Errorf("expected first entry 'hello', got %q", getEntryText(loaded.Messages[0]))
+	owner := openSession(t, store, "test-1")
+	appendState(t, owner, session.StatePatch{Title: session.SetField("Test Session")})
+	loaded := readSession(t, store, "test-1")
+	if *loaded.State().Title != "Test Session" || *loaded.Config().Provider != "fake" || len(loaded.Messages()) != 2 || loaded.Messages()[0].Text() != "hello" {
+		t.Fatalf("loaded=%+v", loaded)
 	}
 }
-
 func TestSession_List(t *testing.T) {
 	store := newTestStore(t)
-
-	for i, title := range []string{"First", "Second", "Third"} {
-		sess := &session.LegacyHistory{
-			Metadata: session.LegacyMetadata{
-				ID:        title,
-				Title:     title,
-				UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
-			},
+	for _, title := range []string{"First", "Second", "Third"} {
+		importMessages(t, store, title)
+		owner := openSession(t, store, title)
+		appendState(t, owner, session.StatePatch{Title: session.SetField(title)})
+		if err := owner.Close(); err != nil {
+			t.Fatal(err)
 		}
-		if err := testutil.ImportSession(store, sess); err != nil {
-			t.Fatalf("Save(%s) error: %v", title, err)
-		}
-		// Small sleep so timestamps differ
 		time.Sleep(10 * time.Millisecond)
 	}
-
-	list, err := store.List()
-	if err != nil {
-		t.Fatalf("List() error: %v", err)
-	}
-
-	if len(list) != 3 {
-		t.Fatalf("expected 3 sessions, got %d", len(list))
-	}
-
-	// Sorted by update time, newest first
-	if list[0].Title != "Third" {
-		t.Errorf("expected newest first ('Third'), got %q", list[0].Title)
+	list := listSessions(t, store)
+	if len(list) != 3 || list[0].Title != "Third" {
+		t.Fatalf("list=%+v", list)
 	}
 }
-
 func TestSession_Delete(t *testing.T) {
 	store := newTestStore(t)
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "to-delete", Title: "Delete Me"},
+	importMessages(t, store, "to-delete")
+	if err := store.Delete(t.Context(), "to-delete"); err != nil {
+		t.Fatal(err)
 	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
+	if _, err := store.Read(t.Context(), "to-delete"); err == nil {
+		t.Fatal("deleted session readable")
 	}
-
-	if err := store.Delete("to-delete"); err != nil {
-		t.Fatalf("Delete() error: %v", err)
-	}
-
-	_, err := store.Read("to-delete", session.LegacyReadOptions{})
-	if err == nil {
-		t.Error("expected error loading deleted session")
+	if len(listSessions(t, store)) != 0 {
+		t.Fatal("trashed session listed live")
 	}
 }
-
 func TestSession_AppendBehavior(t *testing.T) {
 	store := newTestStore(t)
-
-	// First save with 1 entry
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:    "append-test",
-			Title: "Append Test",
-		},
-		Messages: []ai.Message{
-			makeUserEntry("u1", "hello"),
-		},
-	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("first Save() error: %v", err)
-	}
-
-	// Second save with 3 entries (original + 2 new)
-	sess.Messages = append(sess.Messages,
-		makeAssistantEntry("a1", "hi there"),
-		makeUserEntry("u2", "how are you?"),
-	)
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("second Save() error: %v", err)
-	}
-
-	// Load and verify all 3 entries are present
-	loaded, err := store.Read("append-test", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if len(loaded.Messages) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(loaded.Messages))
-	}
-	if getEntryText(loaded.Messages[2]) != "how are you?" {
-		t.Errorf("expected third entry 'how are you?', got %q", getEntryText(loaded.Messages[2]))
+	importMessages(t, store, "append-test", makeUserEntry("u1", "hello"))
+	owner := openSession(t, store, "append-test")
+	appendMessages(t, owner, makeAssistantEntry("a1", "hi there"), makeUserEntry("u2", "how are you?"))
+	p := readSession(t, store, "append-test")
+	if len(p.Messages()) != 3 || p.Messages()[2].Text() != "how are you?" {
+		t.Fatalf("messages=%+v", p.Messages())
 	}
 }
-
 func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 	store := newTestStore(t)
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:    "metadata-update-test",
-			Title: "Metadata Update Test",
-		},
-		Messages: []ai.Message{
-			makeUserEntry("u1", "hello"),
-		},
-	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("first Save() error: %v", err)
-	}
-
-	first, err := store.Read("metadata-update-test", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("first Load() error: %v", err)
-	}
-	if first.Metadata.MessageCount != 1 {
-		t.Fatalf("first message count = %d, want 1", first.Metadata.MessageCount)
-	}
-
+	importMessages(t, store, "metadata-update-test", makeUserEntry("u1", "hello"))
+	first := listSessions(t, store)[0]
 	time.Sleep(10 * time.Millisecond)
-
-	sess.Messages = append(sess.Messages, makeAssistantEntry("a1", "hi there"))
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("second Save() error: %v", err)
-	}
-
-	second, err := store.Read("metadata-update-test", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("second Load() error: %v", err)
-	}
-	if second.Metadata.MessageCount != 2 {
-		t.Errorf("second message count = %d, want 2", second.Metadata.MessageCount)
-	}
-	if !second.Metadata.UpdatedAt.After(first.Metadata.UpdatedAt) {
-		t.Errorf("UpdatedAt did not advance: first=%v second=%v", first.Metadata.UpdatedAt, second.Metadata.UpdatedAt)
+	owner := openSession(t, store, "metadata-update-test")
+	appendMessages(t, owner, makeAssistantEntry("a1", "hi there"))
+	second := listSessions(t, store)[0]
+	if first.Messages != 1 || second.Messages != 2 || second.LastActive <= first.LastActive {
+		t.Fatalf("before=%+v after=%+v", first, second)
 	}
 }
-
 func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	store := newTestStore(t)
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:       "message-types-roundtrip",
-			Title:    "Message Types Roundtrip",
-			Provider: "fake",
-			Model:    "fake-model",
-			Cwd:      "/tmp/project",
-		},
-		Messages: []ai.Message{
-			makeUserEntry("u1", "read this file"), ai.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.Content{ai.TextBlock("I'll inspect it."), ai.ThinkingBlock("need to inspect the file",
-				"sig-1"), ai.ToolCallBlock(ai.ToolCall{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test.txt"}`})}}, ai.Message{ID: "u2", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: ai.TextContent("file contents")})}}, makeAssistantEntry("a2", "done"),
-		},
-	}
-
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	loaded, err := store.Read("message-types-roundtrip", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if len(loaded.Messages) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(loaded.Messages))
-	}
-
-	assistant := loaded.Messages[1]
-	if assistant.Content.Thinking() != "need to inspect the file" || assistant.Content.ThinkingSignature() != "sig-1" {
-		t.Errorf("thinking did not round-trip: %+v", assistant)
-	}
-	if assistant.Text() != "I'll inspect it." {
-		t.Errorf("assistant content did not round-trip: %q", assistant.Text())
-	}
-	if len(assistant.ToolCalls()) != 1 || assistant.ToolCalls()[0].Name != "Read" {
-		t.Errorf("tool_use did not round-trip: %+v", assistant.ToolCalls())
-	}
-
-	userResult := loaded.Messages[2]
-	if len(userResult.ToolResults()) == 0 || userResult.ToolResults()[0].ToolCallID != "tc-1" {
-		t.Fatalf("tool_result did not round-trip: %+v", userResult.ToolResults()[0])
-	}
-	if userResult.ToolResults()[0].Content.Text() != "file contents" {
-		t.Errorf("tool_result content mismatch: %q", userResult.ToolResults()[0].Content.Text())
-	}
-	// ToolName is backfilled from the assistant tool_use block on load.
-	if userResult.ToolResults()[0].ToolName != "Read" {
-		t.Errorf("tool_result ToolName = %q, want Read", userResult.ToolResults()[0].ToolName)
+	messages := []ai.Message{makeUserEntry("u1", "read this file"), {ID: "a1", Role: ai.RoleAssistant, Content: ai.Content{ai.TextBlock("I'll inspect it."), ai.ThinkingBlock("need to inspect the file", "sig-1"), ai.ReasoningBlock(ai.ReasoningItem{ID: "reason", EncryptedContent: "opaque"}), ai.ToolCallBlock(ai.ToolCall{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test.txt"}`, Signature: []byte("signed")})}}, {ID: "u2", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: ai.TextContent("file contents")})}}, makeAssistantEntry("a2", "done")}
+	importMessages(t, store, "message-types-roundtrip", messages...)
+	loaded := readSession(t, store, "message-types-roundtrip")
+	if !reflect.DeepEqual(messages, loaded.Messages()) {
+		t.Fatalf("native messages changed: %+v", loaded.Messages())
 	}
 }
-
 func TestSession_PersistToolResult(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sessions")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	store := newTestStore(t)
+	id := "tool-overflow-test"
+	call := "tc-abc123"
+	content := strings.Repeat("x", 200_000)
+	messages := []ai.Message{makeUserEntry("question", "run"), {ID: "call", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: call, Name: "Bash", Input: `{}`})}}, {ID: "result", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: call, ToolName: "Bash", Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + id + "/" + call + "]")})}}}
+	importMessages(t, store, id, messages...)
+	if err := store.PersistToolResult(id, call, content); err != nil {
+		t.Fatal(err)
 	}
-	store, err := session.NewLegacyStoreWithDir(dir)
-	if err != nil {
-		t.Fatalf("NewStoreWithDir: %v", err)
+	data, err := os.ReadFile(filepath.Join(store.ProjectDir(), "sessions", id, "blobs", "tool-result", call))
+	if err != nil || string(data) != content {
+		t.Fatalf("asset=%d err=%v", len(data), err)
 	}
-
-	sessionID := "tool-overflow-test"
-	toolCallID := "tc-abc123"
-	content := strings.Repeat("x", 200_000) // 200KB
-
-	if err := store.PersistToolResult(sessionID, toolCallID, content); err != nil {
-		t.Fatalf("PersistToolResult() error: %v", err)
+	p := readSession(t, store, id)
+	rows := store.ChatRows(p)
+	if rows[len(rows)-1].ToolResult.Text() != content {
+		t.Fatal("preview not hydrated")
 	}
-
-	// Verify the file was created with correct content
-	resultPath := filepath.Join(dir, "blobs", "tool-result", sessionID, toolCallID)
-	data, err := os.ReadFile(resultPath)
-	if err != nil {
-		t.Fatalf("failed to read persisted tool result: %v", err)
-	}
-	if len(data) != 200_000 {
-		t.Errorf("persisted content size = %d, want 200000", len(data))
-	}
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:    sessionID,
-			Title: "Overflow",
-		},
-		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: toolCallID, Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]")})}}},
-	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	loaded, err := store.Read(sessionID, session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	got := store.ChatRows(loaded)[0].ToolResult.Text()
-	if got != content {
-		t.Fatalf("hydrated tool result len = %d, want %d", len(got), len(content))
+	if p.Messages()[2].ToolResults()[0].Content.Text() == content {
+		t.Fatal("native preview overwritten")
 	}
 }
-
-// TestSession_JSONL_Integrity verifies that every line written to a JSONL
-// session file is valid JSON. This guards against serialisation regressions
-// where a malformed entry silently breaks session loading.
 func TestSession_JSONL_Integrity(t *testing.T) {
-	dir := t.TempDir()
-	store, err := session.NewLegacyStoreWithDir(dir)
+	store := newTestStore(t)
+	importMessages(t, store, "jsonl-integrity-test", makeUserEntry("u1", "first message"), makeAssistantEntry("a1", "first response"), makeUserEntry("u2", "second message"), makeAssistantEntry("a2", "special chars: <>&\"'"))
+	path := filepath.Join(store.ProjectDir(), "sessions", "jsonl-integrity-test", "events.jsonl")
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("NewStoreWithDir: %v", err)
+		t.Fatal(err)
 	}
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:       "jsonl-integrity-test",
-			Title:    "JSONL Integrity Test",
-			Provider: "fake",
-			Model:    "fake-model",
-			Cwd:      "/tmp/project",
-		},
-		Messages: []ai.Message{
-			makeUserEntry("u1", "first message"),
-			makeAssistantEntry("a1", "first response"),
-			makeUserEntry("u2", "second message"),
-			makeAssistantEntry("a2", "second response with special chars: <>&\"'"),
-		},
-	}
-
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	// Read the raw JSONL file and verify every non-empty line is valid JSON.
-	filePath := store.TranscriptPath(sess.Metadata.ID)
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile() error: %v", err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	validLines := 0
-	for i, line := range lines {
+	lines := 0
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" {
-			continue // trailing newline is expected
+			continue
 		}
-		var obj map[string]any
-		if err := json.Unmarshal([]byte(line), &obj); err != nil {
-			t.Errorf("line %d is not valid JSON: %v\ncontent: %s", i+1, err, line)
-		} else {
-			validLines++
+		var object map[string]any
+		if err := json.Unmarshal([]byte(line), &object); err != nil {
+			t.Fatal(err)
 		}
+		lines++
 	}
-
-	// A snapshot import writes one header, a line per message, and one state patch.
-	if validLines != 6 {
-		t.Errorf("expected 6 JSON lines, got %d", validLines)
+	batches := 0
+	for _, err := range store.CommittedBatches(t.Context(), "jsonl-integrity-test") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		batches++
+	}
+	if lines != batches || lines != 7 {
+		t.Fatalf("lines=%d batches=%d", lines, batches)
 	}
 }
-
-// TestSession_ContinueRestoresMessages verifies that loading a session after
-// multiple Save calls returns all messages in the original order. This
-// simulates the "-c" (--continue) flag behaviour where the previous
-// conversation must be fully replayed.
 func TestSession_ContinueRestoresMessages(t *testing.T) {
 	store := newTestStore(t)
-
-	// Build a multi-turn conversation.
-	turns := []struct{ role, text string }{
-		{"user", "hello"},
-		{"assistant", "hi there"},
-		{"user", "what is 2+2?"},
-		{"assistant", "4"},
-		{"user", "thanks"},
-	}
-
-	var entries []core.Message
-	for i, turn := range turns {
-		uuid := fmt.Sprintf("id-%d", i)
-		switch turn.role {
-		case "user":
-			entries = append(entries, makeUserEntry(uuid, turn.text))
-		case "assistant":
-			entries = append(entries, makeAssistantEntry(uuid, turn.text))
+	texts := []string{"hello", "hi there", "what is 2+2?", "4", "thanks"}
+	var messages []ai.Message
+	for i, text := range texts {
+		message := makeUserEntry(fmt.Sprintf("id-%d", i), text)
+		if i%2 == 1 {
+			message.Role = ai.RoleAssistant
 		}
+		messages = append(messages, message)
 	}
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:       "continue-test",
-			Title:    "Continue Test",
-			Provider: "fake",
-			Model:    "fake-model",
-			Cwd:      "/tmp/project",
-		},
-		Messages: entries,
-	}
-
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	// Simulate "-c": load the session and verify messages are in order.
-	loaded, err := store.Read("continue-test", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load() (continue) error: %v", err)
-	}
-
-	if len(loaded.Messages) != len(turns) {
-		t.Fatalf("expected %d entries after continue, got %d", len(turns), len(loaded.Messages))
-	}
-
-	for i, want := range turns {
-		got := getEntryText(loaded.Messages[i])
-		if got != want.text {
-			t.Errorf("entry[%d]: want %q, got %q", i, want.text, got)
-		}
-
-		wantRole := ai.RoleUser
-		if want.role == "assistant" {
-			wantRole = ai.RoleAssistant
-		}
-		if loaded.Messages[i].Role != wantRole {
-			t.Errorf("entry[%d]: want role %q, got %q", i, wantRole, loaded.Messages[i].Role)
-		}
+	importMessages(t, store, "continue-test", messages...)
+	p := readSession(t, store, "continue-test")
+	if !reflect.DeepEqual(messages, p.Messages()) {
+		t.Fatalf("replay=%+v", p.Messages())
 	}
 }
-
-// Regression: the append-only persistence path must not duplicate prior
-// messages when Save is called repeatedly with the same UUIDs. The dedup
-// cache hinges on stable IDs from upstream; this test pins that contract
-// at the Store.Save boundary.
 func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	store := newTestStore(t)
-
-	sess := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "save-twice"},
-		Messages: []ai.Message{
-			makeUserEntry("m1", "hello"),
-			makeAssistantEntry("m2", "hi"),
-		},
+	messages := []ai.Message{makeUserEntry("m1", "hello"), makeAssistantEntry("m2", "hi")}
+	importMessages(t, store, "save-twice", messages...)
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "save-twice"}, messages); err == nil {
+		t.Fatal("duplicate identity accepted")
 	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save #1: %v", err)
+	owner := openSession(t, store, "save-twice")
+	if err := testutil.AppendMessages(owner, messages[:1]); err == nil {
+		t.Fatal("duplicate message accepted")
 	}
-	if err := testutil.ImportSession(store, sess); err != nil {
-		t.Fatalf("Save #2: %v", err)
-	}
-
-	loaded, err := store.Read("save-twice", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(loaded.Messages) != 2 {
-		t.Fatalf("expected 2 entries after two saves, got %d (dedup failed)", len(loaded.Messages))
-	}
-
-	// Count raw message records on disk too — projection only shows the
-	// active chain, so a duplicated history could pass the entry count check.
-	raw, err := os.ReadFile(store.TranscriptPath("save-twice"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	p := readSession(t, store, "save-twice")
+	if len(p.Messages()) != 2 {
+		t.Fatal("duplicate persisted")
 	}
 	count := 0
-	for line := range strings.SplitSeq(string(raw), "\n") {
-		if strings.Contains(line, `"type":"message"`) {
+	for _, event := range p.Events() {
+		if event.Type == session.EventMessageAppend {
 			count++
 		}
 	}
 	if count != 2 {
-		t.Fatalf("on-disk message records = %d, want 2 (dedup leaked duplicates)", count)
+		t.Fatalf("message events=%d", count)
 	}
 }
-
-// Clearing a field after restart must compare against the persisted state.
 func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sessions")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	store := newTestStore(t)
+	importMessages(t, store, "restart-group", makeUserEntry("m1", "hi"))
+	owner := openSession(t, store, "restart-group")
+	appendState(t, owner, session.StatePatch{GroupHint: session.SetField(session.GroupHint{GroupID: "urgent", MemberID: "main"})})
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
 	}
-
-	store1, err := session.NewLegacyStoreWithDir(dir)
+	persisted := readSession(t, store, "restart-group")
+	identity := persisted.Identity()
+	restarted, err := session.OpenStore(context.Background(), identity.Workspace)
 	if err != nil {
-		t.Fatalf("NewStoreWithDir: %v", err)
+		t.Fatal(err)
 	}
-	first := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "restart-group", Group: "urgent"},
-		Messages: []ai.Message{makeUserEntry("m1", "hi")},
+	defer restarted.Close()
+	owner = openSession(t, restarted, "restart-group")
+	appendState(t, owner, session.StatePatch{GroupHint: session.ClearField[session.GroupHint]()})
+	cleared := readSession(t, restarted, "restart-group")
+	if cleared.State().GroupHint != nil {
+		t.Fatal("group clear lost on restart")
 	}
-	if err := testutil.ImportSession(store1, first); err != nil {
-		t.Fatalf("Save first: %v", err)
+}
+func TestSession_ImagesSurviveRestartAndFork(t *testing.T) {
+	store := newTestStore(t)
+	message := ai.Message{ID: "image-message", Role: ai.RoleUser, Content: ai.Content{ai.TextBlock("before"), ai.ImageBlock(ai.Image{MediaType: "image/png", Data: "aGVsbG8="}), ai.TextBlock("after"), ai.TextBlock("[Image #1: /tmp/source.png]")}}
+	importMessages(t, store, "images", message)
+	dir := store.ImagesDir("images")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
 	}
-
-	// Fresh store simulates a process restart — lastEmittedState is empty.
-	store2, err := session.NewLegacyStoreWithDir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "source.png"), []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	identity := readSession(t, store, "images")
+	workspace := identity.Identity().Workspace
+	restarted, err := session.OpenStore(t.Context(), workspace)
 	if err != nil {
-		t.Fatalf("NewStoreWithDir #2: %v", err)
+		t.Fatal(err)
 	}
-	cleared := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "restart-group", Group: ""},
-		Messages: []ai.Message{makeUserEntry("m1", "hi")},
+	defer restarted.Close()
+	loaded := readSession(t, restarted, "images")
+	if !reflect.DeepEqual(loaded.Messages(), []ai.Message{message}) {
+		t.Fatal("native image changed after restart")
 	}
-	if err := testutil.ImportSession(store2, cleared); err != nil {
-		t.Fatalf("Save cleared: %v", err)
+	rows := restarted.ChatRows(loaded)
+	if rows[0].DisplayContent != "before[Image #1]after" || len(rows[0].Images) != 1 {
+		t.Fatalf("image display=%+v", rows)
 	}
-
-	loaded, err := store2.Read("restart-group", session.LegacyReadOptions{})
+	fork, err := restarted.Fork(t.Context(), "images", session.ForkOptions{})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatal(err)
 	}
-	if loaded.Metadata.Group != "" {
-		t.Fatalf("Group = %q, want empty (clear did not survive cold cache)", loaded.Metadata.Group)
+	defer fork.Close()
+	forked := fork.Snapshot()
+	if !reflect.DeepEqual(forked.Messages(), loaded.Messages()) {
+		t.Fatal("fork changed native image")
+	}
+	data, err := os.ReadFile(filepath.Join(restarted.ImagesDir(fork.ID()), "source.png"))
+	if err != nil || string(data) != "hello" {
+		t.Fatalf("fork image=%q %v", data, err)
 	}
 }
 
-// An explicit empty task list clears the previous persisted tasks.
 func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	store := newTestStore(t)
-
-	withTasks := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "clear-tasks"},
-		Messages: []ai.Message{makeUserEntry("m1", "hi")},
-		Tasks: []taskTracker.Item{{
-			ID: "t1", Subject: "do thing", Status: "in_progress",
-			CreatedAt: time.Now(), UpdatedAt: time.Now(),
-		}},
-	}
-	if err := testutil.ImportSession(store, withTasks); err != nil {
-		t.Fatalf("Save with tasks: %v", err)
-	}
-
-	cleared := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "clear-tasks"},
-		Messages: []ai.Message{makeUserEntry("m1", "hi")},
-		Tasks:    nil,
-	}
-	if err := testutil.ImportSession(store, cleared); err != nil {
-		t.Fatalf("Save cleared: %v", err)
-	}
-
-	loaded, err := store.Read("clear-tasks", session.LegacyReadOptions{})
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(loaded.Tasks) != 0 {
-		t.Fatalf("expected tasks to be cleared, got %d (stale tasks resurrected)", len(loaded.Tasks))
+	importMessages(t, store, "clear-tasks", makeUserEntry("m1", "hi"))
+	owner := openSession(t, store, "clear-tasks")
+	appendState(t, owner, session.StatePatch{Todos: session.SetField([]todo.Item{{ID: "t1", Subject: "do thing", Status: "in_progress"}})})
+	appendState(t, owner, session.StatePatch{Todos: session.SetField([]todo.Item{})})
+	p := readSession(t, store, "clear-tasks")
+	if p.State().Todos == nil || len(*p.State().Todos) != 0 {
+		t.Fatal("stale tasks resurrected")
 	}
 }

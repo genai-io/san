@@ -205,7 +205,7 @@ func (a *agent) Run(ctx context.Context) (runErr error) {
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
 				// left in the conversation.
 				var persistenceErr *compactionError
-				if ctx.Err() == nil && errors.Is(err, context.Canceled) && !errors.As(err, &persistenceErr) {
+				if ctx.Err() == nil && errors.Is(err, context.Canceled) && !errors.As(err, &persistenceErr) && (result == nil || result.StopReason != StopError) {
 					glog.Logger().Sugar().Debugf("agent.Run: turn interrupted by user, resuming wait")
 					// The next fresh input clears the latch under turnMu.
 					break
@@ -240,6 +240,19 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 	}()
 
 	result, err := a.ThinkAct(turnCtx)
+	// The SDK classifies a rejected output admission as StopError even when
+	// cancellation alone interrupted the prepublication write. Preserve its
+	// actual error and unpublished output, but let the mailbox's real cancelled
+	// terminal consumer finish cleanup. Never unwrap joins or hide write errors.
+	if result != nil && result.StopReason == StopError && turnCtx.Err() == context.Canceled {
+		cancelled := err == context.Canceled // SDK output precheck, before admission.
+		if admission, ok := err.(*sdkagent.AdmissionError); ok && admission.Boundary == "output" && admission.Err == context.Canceled {
+			cancelled = true
+		}
+		if cancelled {
+			result.StopReason = StopCanceled
+		}
+	}
 	if result != nil && result.StopReason != StopError {
 		result.Finalization = h.finalization
 	} else {

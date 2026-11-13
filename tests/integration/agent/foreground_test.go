@@ -46,7 +46,7 @@ func TestForegroundAgentsRunInParallelAndJoinBeforeParentInference(t *testing.T)
 			}
 		}
 	})
-	executor := subagent.NewExecutor(driverProvider{&testutil.FakeProvider{}, workers}, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, driverProvider{&testutil.FakeProvider{}, workers}, t.TempDir(), "fake-model", nil)
 	executor.SetDisabledTools(map[string]bool{tool.ToolRead: true})
 	spawn := agenttool.NewAgentTool()
 	spawn.SetExecutor(subagent.NewExecutorAdapter(executor))

@@ -10,7 +10,10 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -46,6 +49,18 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 					testutil.EndTurnResponse("worker finished"),
 				}}
 				m := interactionModel()
+				store := testutil.OpenSessionStore(t, cwd)
+				parent, err := store.Create(t.Context(), session.CreateOptions{ID: "ui-parent", InitialCWD: cwd})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = parent.Close() })
+				m.services.SessionStore, m.services.Session = store, parent
+				m.services.Setting = setting.New(setting.NewData())
+				m.env.CWD = cwd
+				if mode == subagent.PermissionBypass {
+					m.env.SessionPermissions.SetMode(setting.ModeBypassPermissions)
+				}
 				terminal := newTerminalHistoryState(80, 24)
 				program := tea.NewProgram(&interactionRendererModel{m}, tea.WithInput(nil), tea.WithOutput(terminal),
 					tea.WithWindowSize(80, 24), tea.WithEnvironment([]string{"TERM=xterm-256color"}))
@@ -80,6 +95,13 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 					}
 				}
 				executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+				if err := executor.SetSessions(store, parent); err != nil {
+					t.Fatal(err)
+				}
+				settings, grants := m.services.Setting, m.env.SessionPermissions
+				executor.ConfigureOwner(m.services.Task, subagent.NewRegistry(), func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
+					return newWorkerResolver(settings, grants, system.MemoryStores{}, bridge, child, source)
+				}, nil)
 				executor.SetParentPermissionMode(func() subagent.PermissionMode { return mode })
 				executor.SetInteractions(bridge)
 				req := tool.AgentExecRequest{Prompt: "Write a marker, ask a question, then finish", ParentToolCallID: "spawning-call"}

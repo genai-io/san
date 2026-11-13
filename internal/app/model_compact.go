@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -25,17 +26,37 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
-// pendingCompaction is owned only by the UI goroutine. The command captures
-// its context and immutable request input, never the model or its live owner.
+// pendingCompaction's session/UI fields are owned by the UI goroutine. The
+// command captures immutable request input and the mutex-protected hook gate,
+// never the model or its live owner.
 type pendingCompaction struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	session   *session.LegacySession
-	sessionID string
-	outbox    <-chan core.Event
-	owner     *session.Session
-	recording *session.Completion
-	messages  []core.Message
+	ctx         context.Context
+	cancel      context.CancelFunc
+	session     *session.Session
+	sessionID   string
+	outbox      <-chan core.Event
+	completion  *session.Completion
+	messages    []core.Message
+	hookMu      sync.Mutex
+	hookRetired bool
+	hookDone    chan struct{}
+}
+
+// runPreCompact fences commands that have not started and joins synchronous
+// model hooks independently of Bubble Tea's eventual result delivery.
+func (p *pendingCompaction) runPreCompact(prepared func(context.Context) hook.HookOutcome) func(context.Context) hook.HookOutcome {
+	return func(ctx context.Context) hook.HookOutcome {
+		p.hookMu.Lock()
+		if p.hookRetired || p.hookDone != nil {
+			p.hookMu.Unlock()
+			return hook.HookOutcome{Error: context.Canceled}
+		}
+		done := make(chan struct{})
+		p.hookDone = done
+		p.hookMu.Unlock()
+		defer close(done)
+		return prepared(ctx)
+	}
 }
 
 func discardCompaction(recording *session.Completion) {
@@ -44,13 +65,29 @@ func discardCompaction(recording *session.Completion) {
 	}
 }
 
-func (m *model) cancelManualCompaction() {
+func (m *model) cancelManualCompaction() error {
 	if p := m.pendingCompaction; p != nil {
 		p.cancel()
-		discardCompaction(p.recording)
+		p.hookMu.Lock()
+		p.hookRetired = true
+		hookDone := p.hookDone
+		p.hookMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
+		defer cancel()
+		if err := p.completion.DiscardAndWait(ctx); err != nil {
+			return fmt.Errorf("join manual compaction: %w", err)
+		}
+		if hookDone != nil {
+			select {
+			case <-hookDone:
+			case <-ctx.Done():
+				return fmt.Errorf("join pre-compact hook: %w", ctx.Err())
+			}
+		}
 		m.pendingCompaction = nil
 		m.conv.Compact.Clear()
 	}
+	return nil
 }
 
 func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest {
@@ -61,13 +98,16 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 	var recording *session.Completion
 	var preCompact func(context.Context) hook.HookOutcome
 	var requestErr error
-	owner := m.services.Recording
-	if owner != nil && m.services.Session != nil {
-		requestErr = fmt.Errorf("compaction cannot use legacy and typed recording together")
-	}
+	owner := m.services.Session
 	// Rejected short requests never acquire a lifetime or disturb the UI.
 	if len(messages) >= core.MinMessagesToCompact {
-		m.cancelManualCompaction()
+		if err := m.cancelManualCompaction(); err != nil {
+			return agent.CompactRequest{Ctx: ctx, Err: err}
+		}
+		owner, requestErr = m.openCurrentSession()
+		if requestErr == nil && !owner.OwnedBy(m.services.SessionStore) {
+			requestErr = fmt.Errorf("compaction session and store have different owners")
+		}
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
 		recording = owner.Completion(session.PurposeCompaction)
@@ -78,8 +118,11 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 			native[i].Content = native[i].Content.Clone()
 		}
 		m.pendingCompaction = &pendingCompaction{ctx: ctx, cancel: cancel,
-			session: m.services.Session, sessionID: m.sessionID(), outbox: m.AgentOutbox(),
-			owner: owner, recording: recording, messages: native}
+			session: owner, sessionID: m.sessionID(), outbox: m.AgentOutbox(),
+			completion: recording, messages: native}
+		if preCompact != nil {
+			preCompact = m.pendingCompaction.runPreCompact(preCompact)
+		}
 	}
 	return agent.CompactRequest{
 		Ctx:    ctx,
@@ -91,7 +134,7 @@ func (m *model) BuildCompactRequest(focus, trigger string) agent.CompactRequest 
 		SummaryFocus: focus,
 		PreCompact:   preCompact,
 		Trigger:      trigger,
-		Recording:    recording,
+		Completion:   recording,
 		Err:          requestErr,
 	}
 }
@@ -168,13 +211,16 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 // next session start still seeds the summary.
 func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	p := m.pendingCompaction
-	if p == nil || msg.Context != p.ctx || msg.Recording != p.recording || p.ctx.Err() != nil ||
-		p.session != m.services.Session || p.owner != m.services.Recording || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {
-		discardCompaction(msg.Recording)
+	if p == nil || msg.Context != p.ctx || msg.Completion != p.completion || p.ctx.Err() != nil ||
+		p.session != m.services.Session || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {
+		discardCompaction(msg.Completion)
 		return nil
 	}
-	if p.recording != nil && !reflect.DeepEqual(p.messages, m.services.Agent.Messages()) {
-		m.cancelManualCompaction()
+	if p.completion != nil && !reflect.DeepEqual(p.messages, m.services.Agent.Messages()) {
+		if err := m.cancelManualCompaction(); err != nil {
+			m.conv.AddNotice("Compaction cleanup failed: " + err.Error())
+			return tea.Batch(m.CommitMessages()...)
+		}
 		m.conv.Compact.Complete("Compaction discarded because the conversation changed.", true)
 		return nil
 	}
@@ -183,7 +229,7 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	p.cancel()
 	m.pendingCompaction = nil
 	if errors.Is(msg.Err, agent.ErrNothingToCompact) {
-		discardCompaction(msg.Recording)
+		discardCompaction(msg.Completion)
 		// Not a failure: there was nothing to do. Saying so is the point —
 		// pressing /compact on a summary used to spend a model call to
 		// summarise it again, a little worse each time.
@@ -191,7 +237,7 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 		return tea.Batch(append(m.CommitMessages(), m.sendNextQueuedInputIfIdle())...)
 	}
 	if msg.Err != nil {
-		discardCompaction(msg.Recording)
+		discardCompaction(msg.Completion)
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
@@ -200,36 +246,16 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	// OnCompacted from the agent's authoritative message count, so the box and
 	// the boundary line never disagree. The spinner stays until the agent's
 	// CompactEvent arrives.
-	accepted, err := m.services.Agent.Compact(msg.Recording.Compaction(msg.Summary))
+	accepted, err := m.services.Agent.Compact(msg.Completion.Compaction(msg.Summary))
 	if err != nil {
-		discardCompaction(msg.Recording)
+		discardCompaction(msg.Completion)
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be queued: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
 	if accepted {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	if msg.Recording != nil {
-		summary, info, err := agent.RecordManualCompaction(nil, msg.CompactResult)
-		if err != nil {
-			m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
-			return tea.Batch(m.CommitMessages()...)
-		}
-		m.services.Agent.SetMessages([]core.Message{summary})
-		return m.OnCompacted(info)
-	}
-	// A resumed conversation may not have a runtime yet. Record the same
-	// native summary and boundary as live compaction before replacing the UI.
-	if err := m.ensureSessionStore(); err != nil {
-		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
-		return tea.Batch(m.CommitMessages()...)
-	}
-	opened, err := m.openCurrentSession()
-	if err != nil {
-		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
-		return tea.Batch(m.CommitMessages()...)
-	}
-	summary, info, err := agent.RecordManualCompaction(opened, msg.CompactResult)
+	summary, info, err := agent.RecordManualCompaction(p.session, msg.CompactResult)
 	if err != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
 		return tea.Batch(m.CommitMessages()...)

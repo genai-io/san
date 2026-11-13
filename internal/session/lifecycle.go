@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 const (
@@ -42,7 +41,7 @@ func (l library) cacheFile(id string) string  { return filepath.Join(l.root, "ca
 // withLock serializes short mutations across directory moves. Unlike the writer
 // lease or attrs lock inside the session, this path never moves with the data.
 func (l library) withLock(ctx context.Context, id string, fn func() error) error {
-	if err := transcript.ValidateStorageID(id); err != nil {
+	if err := ValidateStorageID(id); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -218,7 +217,7 @@ func (l library) purge(ctx context.Context, now time.Time, dryRun bool, only map
 	for _, e := range entries {
 		if e.IsDir() && strings.HasPrefix(e.Name(), purgingPrefix) {
 			id := strings.TrimPrefix(e.Name(), purgingPrefix)
-			if transcript.ValidateStorageID(id) != nil {
+			if ValidateStorageID(id) != nil {
 				continue
 			}
 			pending[id] = true

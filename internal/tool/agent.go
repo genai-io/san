@@ -20,6 +20,24 @@ type messagesGetterKey struct{}
 // so SendMessage can stamp the sender. Empty for the main conversation.
 type agentIDKey struct{}
 
+type messageSourceKey struct{}
+
+type messageSource struct {
+	session string
+	seq     uint64
+}
+
+// WithMessageSource carries trusted native provenance for messages sent by a tool.
+// The source comes from the admitted call, never from model-supplied arguments.
+func WithMessageSource(ctx context.Context, sessionID string, seq uint64) context.Context {
+	return context.WithValue(ctx, messageSourceKey{}, messageSource{sessionID, seq})
+}
+
+func MessageSourceFromContext(ctx context.Context) (string, uint64) {
+	source, _ := ctx.Value(messageSourceKey{}).(messageSource)
+	return source.session, source.seq
+}
+
 // WithAgentID marks the context with the running subagent's broker address.
 func WithAgentID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, agentIDKey{}, id)
@@ -68,6 +86,8 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
+	SourceSession       string // trusted cross-session input origin; never model-facing
+	SourceSeq           uint64
 	OnIdentity          func(toolresult.AgentIdentity) // display-only; reported before work begins
 	ResumeTaskID        string                         // Continue the same task and native child session with Prompt only.
 	ResumeAttempt       int                            // Internal approval-time execution fence; not model-facing.

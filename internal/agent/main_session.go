@@ -11,8 +11,8 @@ import (
 // Authorization and extension callbacks belong to the host's composition, not
 // to this data owner.
 type MainSession struct {
-	Session *session.LegacySession
-	Store   *session.LegacyStore
+	Session *session.Session
+	Store   *session.Store
 }
 
 // Validate rejects unavailable recording and cross-project result storage.
@@ -25,8 +25,8 @@ func (s MainSession) Validate() error {
 	if err := s.Session.Err(); err != nil {
 		return err
 	}
-	if s.Store.TranscriptPath(s.Session.ID()) != s.Session.TranscriptPath() {
-		return fmt.Errorf("main-session recorder and result store belong to different projects")
+	if !s.Session.OwnedBy(s.Store) {
+		return fmt.Errorf("main-session recorder and result store have different owners")
 	}
 	return nil
 }

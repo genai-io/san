@@ -2,8 +2,11 @@ package subagent_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/hook"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
@@ -20,18 +23,29 @@ import (
 )
 
 func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, rec := integrationSessions(t)
 	provider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
 		{Content: ai.TextContent("Verified finding"), StopReason: ai.StopEndTurn, Usage: llm.Usage{Input: 100, Output: 25}},
 	}}
 	executor := subagent.NewExecutor(provider, t.TempDir(), "worker-model", nil)
-	executor.SetSessionStore(store, "parent-1")
+	bindIntegrationSessions(t, executor, store, rec)
 	agentTool := agenttool.NewAgentTool()
 	agentTool.SetExecutor(subagent.NewExecutorAdapter(executor))
 	adapted := tool.AdaptTool(agentTool, core.ToolSchema{Name: "Agent"}, func() string { return "." })
+	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
+		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
+	}}}}
+	scope := rec.Completion(session.PurposeBtw)
+	callProvider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{{Content: owner.Content, StopReason: ai.StopToolUse}}}
+	if _, err := llm.Complete(context.Background(), callProvider, llm.CompletionOptions{Model: "m", Messages: []core.Message{core.UserMessage("Investigate", nil)}, Admission: scope.Admission()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := scope.FinishMessage(context.Background(), owner); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Append(context.Background(), session.Event{Payload: session.PermissionDecidePayload{CallID: "worker-1", Decision: "allow", By: session.ByConfig}}); err != nil {
+		t.Fatal(err)
+	}
 	result, runErr := adapted.Run(context.Background(), ai.ToolCall{ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`})
 	if runErr != nil {
 		t.Fatal(runErr)
@@ -41,24 +55,24 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if strings.Contains(text, "Tokens:") || !strings.Contains(text, "Transcript:") {
 		t.Fatalf("model result must contain findings and inspection pointers: %q", text)
 	}
-	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "parent-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
-	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
-		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
-	}}}}
-	rec.RecordEvent(sdkagent.MessageAdded{Message: owner})
-	rec.RecordEvent(sdkagent.ToolEnd{ID: "worker-1", Name: "Agent", Result: result})
-	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", Content: ai.TextContent(text)})
+	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "worker-1", ToolName: "Agent", Content: ai.TextContent(text)})
 	msg.ID = "result-1"
-	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
-	loaded, err := store.Read("parent-1", session.LegacyReadOptions{})
+	details, err := json.Marshal(result.Details)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.ChatRows()) != 2 || loaded.ChatRows()[1].ToolDetails == nil {
-		t.Fatalf("agent details lost on resume: %+v", loaded.ChatRows())
+	if err := rec.Append(context.Background(), session.Event{Payload: session.MessageAppendPayload{Messages: []core.Message{msg}}}, session.Event{Payload: session.ToolFinishPayload{CallID: "worker-1", Outcome: session.OutcomeSuccess, Details: details}}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Read(context.Background(), rec.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.ChatRows(loaded)) != 2 || store.ChatRows(loaded)[1].ToolDetails == nil {
+		t.Fatalf("agent details lost on resume: %+v", store.ChatRows(loaded))
 	}
 	// Rendering receives the resolved preference; zero explicitly hides previews.
-	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.ChatRows()[1].ToolResult.Content.Text(), Details: loaded.ChatRows()[1].ToolDetails, Width: 100, AgentPreviewLines: setting.NewData().AgentPreviewLineCount()}
+	data := conv.ToolResultData{ToolName: "Agent", Content: store.ChatRows(loaded)[1].ToolResult.Content.Text(), Details: store.ChatRows(loaded)[1].ToolDetails, Width: 100, AgentPreviewLines: setting.NewData().AgentPreviewLineCount()}
 	collapsed := ansi.Strip(conv.RenderToolResultInline(data, nil))
 	if !strings.Contains(collapsed, "Verified finding") {
 		t.Fatalf("resumed UI lost its result: %q", collapsed)
@@ -77,12 +91,33 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	}
 }
 
-func mustCreateSession(t *testing.T, store *session.LegacyStore, opts session.LegacyCreateOptions) *session.LegacySession {
+func integrationSessions(t *testing.T) (*session.Store, *session.Session) {
 	t.Helper()
-	opened, err := store.Create(opts)
+	t.Setenv("HOME", t.TempDir())
+	store, err := session.OpenStore(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	opened, err := store.Create(context.Background(), session.CreateOptions{ID: "parent-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = opened.Close() })
-	return opened
+	return store, opened
+}
+
+func bindIntegrationSessions(t *testing.T, executor *subagent.Executor, store *session.Store, parent *session.Session) {
+	t.Helper()
+	if err := executor.SetSessions(store, parent); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newIntegrationExecutor(t *testing.T, provider llm.Provider, cwd, model string, hooks hook.Handler) *subagent.Executor {
+	t.Helper()
+	store, parent := integrationSessions(t)
+	executor := subagent.NewExecutor(provider, cwd, model, hooks)
+	bindIntegrationSessions(t, executor, store, parent)
+	return executor
 }

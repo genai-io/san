@@ -58,7 +58,7 @@ func TestBackgroundPermissionSnapshotSurvivesParentModeChange(t *testing.T) {
 				}
 			}
 			provider := driverProvider{&testutil.FakeProvider{}, aitest.New(first, aitest.Says("done"))}
-			executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+			executor := newIntegrationExecutor(t, provider, cwd, "fake-model", nil)
 			var current atomic.Value
 			current.Store(tc.initial)
 			executor.SetParentPermissionMode(func() subagent.PermissionMode { return current.Load().(subagent.PermissionMode) })

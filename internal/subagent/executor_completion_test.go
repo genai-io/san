@@ -99,7 +99,7 @@ func TestInboxConsumesRetainedCompletionBeforeWorkerRun(t *testing.T) {
 		System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
 	})
 	a.Append(initial)
-	result, err := runWithInbox(context.Background(), a, route, 1)
+	result, err := runWithInbox(context.Background(), a, route, 1, nil)
 	if err != nil || result.Content != "processed completion" || result.Steps != 1 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -128,7 +128,7 @@ func TestInboxDeliversCompletionDuringSDKRun(t *testing.T) {
 		},
 	})
 	a.Append(initial)
-	result, err := runWithInbox(context.Background(), a, route, 2)
+	result, err := runWithInbox(context.Background(), a, route, 2, nil)
 	if err != nil || !sent || result.Steps != 2 || result.Content != "processed completion" {
 		t.Fatalf("result=%+v sent=%v err=%v", result, sent, err)
 	}
@@ -159,7 +159,7 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	}
 	initial := core.UserMessage("initial worker context", nil)
 	a.Append(initial)
-	_, err := runWithInbox(context.Background(), a, route, 3)
+	_, err := runWithInbox(context.Background(), a, route, 3, nil)
 	if err != context.Canceled || a.calls != 1 {
 		t.Fatalf("closed worker restarted: calls=%d err=%v", a.calls, err)
 	}
@@ -177,7 +177,7 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	}
 	other := newWorker([]core.Message{core.UserMessage("other task", nil)})
 	other.Append(core.UserMessage("other task", nil))
-	if _, err := runWithInbox(context.Background(), other, task.NewID(), 1); err != nil {
+	if _, err := runWithInbox(context.Background(), other, task.NewID(), 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	assertInboxCompletionCount(t, other, mail.Content, 0)
@@ -186,7 +186,7 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	for _, message := range a.Messages() {
 		resumed.Append(message)
 	}
-	result, err := runWithInbox(context.Background(), resumed, route, 1)
+	result, err := runWithInbox(context.Background(), resumed, route, 1, nil)
 	if err != nil || result.Content != "resumed" {
 		t.Fatalf("resume result=%+v err=%v", result, err)
 	}

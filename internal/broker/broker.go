@@ -25,11 +25,13 @@ const Main = "main"
 // short human-facing notice (may be empty); Content is the body delivered to
 // the recipient.
 type Message struct {
-	SessionID string // owning main conversation, retained across queued delivery
-	From      string
-	To        string
-	Subject   string
-	Content   string
+	SourceSession string // native originating message; empty for host-generated mail
+	SourceSeq     uint64
+	SessionID     string // owning main conversation, retained across queued delivery
+	From          string
+	To            string
+	Subject       string
+	Content       string
 	// TaskCompletion is routing metadata, independent of the model-facing body.
 	// The broker passes it through without interpreting task lifecycle state.
 	TaskCompletion *TaskCompletion

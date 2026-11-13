@@ -256,8 +256,7 @@ func (s *Runtime) SendInput(input PendingInput) error {
 			return &llm.RecordingError{Err: fmt.Errorf("child input requires a foreign source event")}
 		}
 		source := *input.Source
-		if err := input.Destination.Append(context.Background(), session.Event{Source: &source,
-			Payload: session.MessageAppendPayload{Messages: []core.Message{msg}}}); err != nil {
+		if err := input.Destination.AcceptInput(context.Background(), msg, &source); err != nil {
 			return &llm.RecordingError{Err: err}
 		}
 	}
@@ -265,7 +264,7 @@ func (s *Runtime) SendInput(input PendingInput) error {
 		if !input.Completion.OwnedBy(run.recording) {
 			return &llm.RecordingError{Err: fmt.Errorf("input completion belongs to another session")}
 		}
-		if err := input.Completion.FinishMessage(context.Background(), msg); err != nil {
+		if err := input.Completion.AcceptMessage(context.Background(), msg); err != nil {
 			return &llm.RecordingError{Err: err}
 		}
 	}

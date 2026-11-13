@@ -10,7 +10,6 @@ import (
 
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/proc"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -43,7 +42,7 @@ func TestAgentExploreCannotWriteThroughCompoundRedirect(t *testing.T) {
 				testutil.ToolCallResponse(tool.ToolBash, "redirect-source", string(input)),
 				testutil.EndTurnResponse("Write blocked"),
 			}}
-			executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+			executor := newIntegrationExecutor(t, provider, cwd, "fake-model", nil)
 			result, err := executor.Run(context.Background(), tool.AgentExecRequest{Mode: "explore", Prompt: "Review the source"})
 			if err != nil || !result.Success {
 				t.Fatalf("worker did not recover from denial: result=%+v, err=%v", result, err)

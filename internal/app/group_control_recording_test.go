@@ -30,7 +30,7 @@ func TestGroupControlRecording(t *testing.T) {
 			}
 			defer owner.Close()
 			m := commitTestModel()
-			m.services.Recording, m.services.sessionID = owner, owner.ID()
+			m.services.Session, m.services.sessionID = owner, owner.ID()
 			content := `{"action":"kick","arguments":{"name":"api"}}`
 			if mode == "invalid" {
 				content = "invalid"
@@ -55,7 +55,7 @@ func TestGroupControlRecording(t *testing.T) {
 			case "stale":
 				m.grp.control = nil
 			case "owner":
-				m.services.Recording = nil
+				m.services.Session = nil
 			case "closed":
 				owner.Close()
 			}
@@ -116,7 +116,7 @@ func TestGroupControlRecordingPostEffectFailure(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Recording, m.services.sessionID = owner, owner.ID()
+	m.services.Session, m.services.sessionID = owner, owner.ID()
 	m.services.Reminder = reminder.New()
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent(`{"action":"join","arguments":{"group":"team","name":"api"}}`)})), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("join team as api")
@@ -144,17 +144,29 @@ func TestGroupControlRecordingPostEffectFailure(t *testing.T) {
 	}
 }
 
-func TestGroupControlRecordingMixedWriter(t *testing.T) {
-	m := commitTestModel()
-	m.services.Recording = new(session.Session)
-	m.services.Session = new(session.LegacySession)
-	if text, cmd := m.resolveGroupControl("show collaborators"); cmd != nil || !strings.Contains(text, "mixed session writers") {
-		t.Fatalf("mixed writer accepted: %q", text)
+func TestGroupControlRecordingSupersededOwner(t *testing.T) {
+	m, owner := autopilotRecordingModel(t)
+	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says(`{"action":"list","arguments":{}}`)), ai.Model{ID: "m"})}
+	_, cmd := m.resolveGroupControl("show collaborators")
+	msg := cmd().(groupControlMsg)
+	m.services.Session = nil
+	if text := m.handleGroupControl(msg); !strings.Contains(text, "discarded") {
+		t.Fatalf("superseded owner accepted: %q", text)
+	}
+	p := owner.Snapshot()
+	if len(p.Unfinished().Inferences) != 0 {
+		t.Fatal("superseded inference left unfinished on original owner")
+	}
+	for _, event := range p.Events() {
+		if event.Type == session.EventAnnotationAdd {
+			t.Fatal("superseded group result published")
+		}
 	}
 }
 
 // Keep cancellation accounting on the original owner even before dispatch.
 func TestGroupControlRecordingCancelledInFlight(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	store, err := session.OpenStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +178,7 @@ func TestGroupControlRecordingCancelledInFlight(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Recording = owner
+	m.services.Session = owner
 	entered := make(chan struct{})
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
 		close(entered)
@@ -198,6 +210,7 @@ func TestGroupControlRecordingCancelledInFlight(t *testing.T) {
 }
 
 func TestGroupControlRecordingCancelledBeforeDispatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	store, err := session.OpenStore(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +222,7 @@ func TestGroupControlRecordingCancelledBeforeDispatch(t *testing.T) {
 	}
 	defer owner.Close()
 	m := commitTestModel()
-	m.services.Recording = owner
+	m.services.Session = owner
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent("unused")})), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("show collaborators")
 	m.cancelGroupControl()

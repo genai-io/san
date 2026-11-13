@@ -20,22 +20,22 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 // ============================================================
@@ -164,7 +164,6 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	}
 	params := m.promptParams()
 
-	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	rec, err := m.openCurrentSession()
 	if err != nil {
 		return params, err
@@ -174,9 +173,9 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return params, err
 	}
 	for _, n := range m.earlyNotices {
-		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
-			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
-				AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
+		if err := rec.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice}}); err != nil {
+			return params, err
+		}
 	}
 	m.earlyNotices = nil
 
@@ -196,8 +195,9 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	)
 
 	params.Provider = m.env.LLMProvider
+	params.Recording = rec
 	params.ModelID = m.env.GetModelID()
-	params.MaxTokens = maxTokens
+	params.MaxTokens = m.sessionMaxOutput()
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
 	params.FileCache = m.env.FileCache
 	params.CWDFunc = func() string { return m.autopilot.Load().cwd }
@@ -227,18 +227,21 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	// Bind extension audits here, where the application owns their lifecycle.
 	// Session validation and agent construction never rebind shared services.
 	params.SessionID = rec.ID()
-	params.OnEvent = rec.RecordEvent
+	providerName := ""
+	if params.Provider != nil {
+		providerName = params.Provider.Name()
+	}
+	recorder := session.NewRecorder(rec, providerName)
 	if hooks := m.services.Hook; hooks != nil {
-		hooks.SetSession(rec.ID(), rec.TranscriptPath())
-		hooks.SetAuditCallback(rec.RecordHookAudit)
+		hooks.SetSession(rec.ID(), rec.Path())
+		bindSessionHooks(hooks, params.Provider, rec, params.ModelID)
 		params.HookEngine = hooks
 	}
 	if skills := m.services.Skill; skills != nil {
-		skills.SetStateChangeObserver(rec.RecordSkillStateChange)
+		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
 	policy := agent.PermissionPolicy{
 		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
-		Audit: func(record transcript.Record) { _ = rec.Append(context.Background(), record) },
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
@@ -250,7 +253,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return policy.Judge(ctx, name, args, reason, agent.JudgeSnapshot{
 			Engaged: m.autopilotEngaged(), Enabled: rt.cfg.Steers.PermissionOn(),
 			CWD: rt.cwd, UnderGit: rt.underGit, Mission: rt.cfg.ActiveMission(),
-			Judge: rt.judge.Permission, Observe: m.recordDecision,
+			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
 	params.ResultFilter = agent.WithRecall(
@@ -428,6 +431,9 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		}
 	}
 
+	if _, err := m.openCurrentSession(); err != nil {
+		return nil, err
+	}
 	// Rebuild the subagent executor alongside the main agent so it inherits the
 	// same effective disabled-tool snapshot after settings/persona drift.
 	m.ReconfigureAgentTool()
@@ -438,10 +444,16 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	if w := m.services.Session; w != nil && w.Err() != nil {
 		return nil, w.Err()
 	}
-	coreMessages := m.services.Agent.Messages()
-
-	m.cancelManualCompaction()
-	if err := m.services.Agent.Start(params, coreMessages); err != nil {
+	if err := m.cancelManualCompaction(); err != nil {
+		return nil, err
+	}
+	projection := m.services.Session.Snapshot()
+	if len(projection.ActiveMessages())+len(projection.Instructions())+len(projection.Tools())+len(projection.Skills()) > 0 {
+		_, err = m.services.Agent.Resume(params)
+	} else {
+		err = m.services.Agent.Start(params, nil)
+	}
+	if err != nil {
 		return nil, err
 	}
 	m.agentSession = m.services.Session
@@ -526,9 +538,6 @@ func (m *model) startMemoryRecall(query string) error {
 	if m.memoryRecall == nil || strings.TrimSpace(query) == "" || conv.IsAgentEnvelope(query) || m.agentAutoMemory.Off() {
 		return nil
 	}
-	if m.services.Recording != nil && m.services.Session != nil {
-		return &llm.RecordingError{Err: fmt.Errorf("memory recall cannot use legacy and typed recording together")}
-	}
 	if err := m.memoryRecall.current.Load().Stop(); err != nil {
 		return err
 	}
@@ -536,7 +545,7 @@ func (m *model) startMemoryRecall(query string) error {
 		m.memoryRecall.surfaced = map[string]bool{}
 	}
 	provider, info := m.resolveJudge("")
-	r := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info), Recording: m.services.Recording}
+	r := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info), Recording: m.services.Session}
 	m.memoryRecall.current.Store(r.Start(m.agentAutoMemory, query, maps.Clone(m.memoryRecall.surfaced)))
 	return nil
 }
@@ -607,7 +616,9 @@ const agentStopTimeout = 2 * time.Second
 
 func (m *model) StopAgentRuntime() error {
 	m.cancelAutopilot()
-	m.cancelManualCompaction()
+	if err := m.cancelManualCompaction(); err != nil {
+		return err
+	}
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
@@ -623,7 +634,9 @@ func (m *model) StopAgentRuntime() error {
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() error {
 	m.cancelAutopilot()
-	m.cancelManualCompaction()
+	if err := m.cancelManualCompaction(); err != nil {
+		return err
+	}
 	m.pendingStopHook = nil
 	ctx, cancel := context.WithTimeout(context.Background(), agentStopTimeout)
 	defer cancel()
@@ -691,7 +704,7 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.Perm
 }
 
 func (m *model) ReconfigureAgentTool() {
-	if m.env.LLMProvider == nil {
+	if m.env.LLMProvider == nil || m.services.Session == nil {
 		return
 	}
 	m.ensureMemoryContextLoaded()
@@ -704,9 +717,34 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {
 		return subagent.InheritedPermissionMode(perms.CurrentMode())
 	})
-	if m.services.SessionStore != nil && m.sessionID() != "" {
-		executor.SetSessionStore(m.services.SessionStore, m.sessionID())
+	if err := executor.SetSessions(m.services.SessionStore, m.services.Session); err != nil {
+		m.conv.AddNotice("Cannot configure agents: " + err.Error())
+		return
 	}
+	settings, bridge, memory := m.services.Setting, m.conv.AgentToUI, m.autoMemory()
+	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
+		return newWorkerResolver(settings, perms, memory, bridge, child, source)
+	}, nil)
+	parentHooks := m.services.Hook
+	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
+		projection := owner.Snapshot()
+		cwd := projection.Identity().InitialCWD
+		if value := projection.State().ExecutionCWD; value != nil {
+			cwd = *value
+		}
+		child := parentHooks.ForSession(owner.ID(), cwd, owner.Path())
+		bind := func(provider llm.Provider, model string) {
+			bindSessionHooks(child, provider, owner, model)
+		}
+		bind(provider, model)
+		return child, bind, child.Shutdown
+	})
+	files := m.env.FileCache
+	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
+		engine, _ := handler.(*hook.Engine)
+		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{TouchFile: files.Touch})
+		return nil
+	})
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
 	executor.SetMCPDependencies(m.services.MCP)
@@ -742,7 +780,7 @@ func (m *model) ReconfigureAgentTool() {
 // ============================================================
 
 func (m *model) buildLLMClient() *llm.Client {
-	c := llm.NewClient(m.env.LLMProvider, m.env.GetModelID(), kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens))
+	c := llm.NewClient(m.env.LLMProvider, m.env.GetModelID(), m.sessionMaxOutput())
 	c.SetThinkingEffort(m.env.EffectiveThinkingEffort())
 	return c
 }

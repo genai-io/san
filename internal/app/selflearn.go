@@ -100,8 +100,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// (the same *atomic.Bool).
 	live := &atomic.Bool{}
 	live.Store(true)
-	parentSessionID := m.sessionID()
+	parentSession := m.services.Session
 	sessionStore := m.services.SessionStore
+	runtime, cwd := m.services.Agent, m.env.CWD
 
 	// The write observer feeds the live spinner-tail and the post-pass recap.
 	// It runs on the fork goroutine and checks `live` so a write landing after
@@ -121,10 +122,10 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// not flash "evolving → evolved" on a session the user just killed.
 		// Active() guards the macro window; the per-phase live.Load() checks
 		// below catch a teardown that lands AFTER Active() returned true.
-		if !m.services.Agent.Active() {
+		if !runtime.Active() {
 			return
 		}
-		sys := m.services.Agent.System()
+		sys := runtime.System()
 		if sys == nil {
 			return
 		}
@@ -137,7 +138,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// this pass (create on a skill-free turn, update/delete on a skill-use
 		// turn), so the reviewer can't take an action that wasn't triggered. All
 		// actions remain agent-created only.
-		skillMgr := selflearn.NewSkillManager(m.env.CWD, skillPerms)
+		skillMgr := selflearn.NewSkillManager(cwd, skillPerms)
 		skillMgr.SetWriteObserver(func(action, skillName, note string) {
 			recordAction(skillVerb(action), skillName, note)
 		})
@@ -147,30 +148,36 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
-		// Sidechain writer: each L1 fork gets its OWN session ID
-		// (formatted "<parent>.selflearn-review.<unix>") so
-		// `san --resume <fork-id>` replays exactly that review's LLM
-		// calls in isolation. The recap row surfaces this fork ID.
-		var forkOnEvent func(core.Event)
-		var forkSessionID string
-		rec, err := sessionStore.Create(session.LegacyCreateOptions{AgentID: "selflearn-review", Provider: params.Provider.Name(), Model: params.ModelID, MaxTokens: params.MaxTokens, ParentSessionID: parentSessionID, Sidechain: true})
+		// Each review owns an independent native writer and records only work it
+		// actually executes; the inherited snapshot is input, not replayed events.
+		if sessionStore == nil {
+			log.Logger().Warn("self-learning requires session persistence")
+			return
+		}
+		var parent *session.ParentLink
+		if parentSession != nil {
+			if err := parentSession.Err(); err != nil {
+				log.Logger().Warn("self-learning parent is unavailable", zap.Error(err))
+				return
+			}
+			parent = &session.ParentLink{Session: parentSession.ID()}
+		}
+		provider, model := params.Provider.Name(), params.ModelID
+		reviewOwner, err := sessionStore.Create(reviewCtx, session.CreateOptions{AgentID: "selflearn-review", InitialCWD: cwd, Parent: parent, Config: &session.EventConfig{Provider: &provider, Model: &model}})
 		if err != nil {
 			log.Logger().Warn("could not open self-learning session", zap.Error(err))
 			return
 		}
-		defer func() { _ = rec.Close() }()
-		if rec != nil {
-			forkOnEvent = rec.RecordEvent
-			forkSessionID = rec.ID()
-		}
+		defer func() { _ = reviewOwner.Close() }()
+		forkSessionID := reviewOwner.ID()
 		fc := selflearn.ForkConfig{
 			Client:      client.TurnClient,
 			CallOptions: client.CallOptions,
 			System:      sys,
-			CWD:         m.env.CWD,
+			CWD:         cwd,
 			Skills:      skillMgr,
 			Strategy:    cfg.Strategy,
-			OnEvent:     forkOnEvent,
+			Recording:   reviewOwner,
 		}
 		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, snapshot)
 		// Re-check live AFTER the RunReview return. This is the macro

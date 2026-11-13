@@ -1,8 +1,6 @@
 package session
 
-// Typed events persisted by Store and Session. Runtime producers still use
-// LegacySession until the single format switch (see the delivery plan in
-// docs/design/proposal-0005-session-management.md).
+// Typed events persisted by Store and Session.
 import (
 	"bytes"
 	"encoding/json"
@@ -11,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -87,8 +87,8 @@ type GenerationOptions struct {
 	SamplingParams map[string]any    `json:"sampling_params,omitempty"`
 }
 type AutopilotPolicy struct {
-	Version  int `json:"version"`
-	MaxTurns int `json:"max_turns"`
+	Version  int                       `json:"version"`
+	Settings setting.AutoPilotSettings `json:"settings"`
 }
 type EventConfig struct {
 	Provider          *string            `json:"provider,omitempty"`
@@ -104,11 +104,6 @@ type ConfigPatch struct {
 	Mode              PatchField[string]            `json:"mode,omitzero"`
 	AutopilotPolicy   PatchField[AutopilotPolicy]   `json:"autopilot_policy,omitzero"`
 }
-type EventTodo struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Status string `json:"status"`
-}
 type AutopilotProgress struct {
 	CompletedTurns int    `json:"completed_turns"`
 	Status         string `json:"status"`
@@ -122,14 +117,14 @@ type GroupHint struct {
 // title are user intent and live in attrs, never here.
 type EventState struct {
 	Title             *string            `json:"title,omitempty"`
-	Todos             *[]EventTodo       `json:"todos,omitempty"`
+	Todos             *[]todo.Item       `json:"todos,omitempty"`
 	AutopilotProgress *AutopilotProgress `json:"autopilot_progress,omitempty"`
 	ExecutionCWD      *string            `json:"execution_cwd,omitempty"`
 	GroupHint         *GroupHint         `json:"group_hint,omitempty"`
 }
 type StatePatch struct {
 	Title             PatchField[string]            `json:"title,omitzero"`
-	Todos             PatchField[[]EventTodo]       `json:"todos,omitzero"`
+	Todos             PatchField[[]todo.Item]       `json:"todos,omitzero"`
 	AutopilotProgress PatchField[AutopilotProgress] `json:"autopilot_progress,omitzero"`
 	ExecutionCWD      PatchField[string]            `json:"execution_cwd,omitzero"`
 	GroupHint         PatchField[GroupHint]         `json:"group_hint,omitzero"`
@@ -159,6 +154,9 @@ type SessionUpdatePayload struct {
 }
 type MessageAppendPayload struct {
 	Messages []ai.Message `json:"messages"`
+	// Accepted records queued input before native consumption. A later exact
+	// append sourced to this event consumes it; output precedes queued input.
+	Accepted bool `json:"accepted,omitempty"`
 }
 
 // ContextCompactPayload replaces the active context with Summary plus every

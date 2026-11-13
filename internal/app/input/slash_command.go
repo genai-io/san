@@ -54,7 +54,8 @@ type SlashCommandEnv struct {
 	// later command reads (e.g. /disabled-tools then /tools).
 	Setting      *setting.Settings
 	LLM          *llm.Conn
-	SessionStore *session.LegacyStore
+	SessionStore *session.Store
+	Session      *session.Session
 	SessionID    func() string
 	Skill        *skill.Registry
 	Plugin       *plugin.Registry
@@ -751,7 +752,12 @@ func loopUsage() string {
 // the reading you take before deciding whether /compact is worth it.
 func (c *SlashCommandController) handleContextCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	if sub, rest, _ := strings.Cut(strings.TrimSpace(args), " "); sub == "limit" {
-		return setContextLimit(c.env.LLM.Store(), c.env.LLM.CurrentModel(), rest), nil, nil
+		text, changed := setContextLimit(c.env.LLM.Store(), c.env.LLM.CurrentModel(), rest)
+		if changed == nil {
+			return text, nil, nil
+		}
+		changed.Session = c.env.Session
+		return text, func() tea.Msg { return *changed }, nil
 	}
 	return conv.RenderContextUsage(c.env.ContextUsage()), nil, nil
 }

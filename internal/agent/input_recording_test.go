@@ -146,9 +146,20 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 			var inputs int
 			for _, event := range snapshot.Events() {
 				if payload, ok := event.Payload.(*session.MessageAppendPayload); ok && payload.Messages[0].ID == input.ID {
-					inputs++
-					if event.Source == nil || event.Source.Seq != 2 {
-						t.Fatalf("input lost its autopilot source: %+v", event.Source)
+					if payload.Accepted {
+						inputs++
+						if event.Source == nil || event.Source.Seq != 2 {
+							t.Fatalf("input acceptance lost its autopilot source: %+v", event.Source)
+						}
+					} else {
+						if event.Source == nil || event.Source.Session != "" || event.Source.Seq == 0 || event.Source.Seq >= event.Seq {
+							t.Fatalf("input consumption lost its acceptance: %+v", event.Source)
+						}
+						acceptance := snapshot.Events()[event.Source.Seq-1]
+						accepted, ok := acceptance.Payload.(*session.MessageAppendPayload)
+						if !ok || !accepted.Accepted || !reflect.DeepEqual(accepted.Messages, payload.Messages) || acceptance.Source == nil || acceptance.Source.Seq != 2 {
+							t.Fatal("consumption changed exact accepted input or lost utility provenance")
+						}
 					}
 				}
 			}

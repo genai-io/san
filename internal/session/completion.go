@@ -16,21 +16,21 @@ import (
 // Completion owns one utility request, including its retries, until its domain
 // owner accepts or discards the final result. It never redirects to a new session.
 type Completion struct {
-	mu       sync.Mutex
-	session  *Session
-	purpose  string
-	append   []ai.Message
-	current  *Inference
-	response *ai.Response
-	callErr  error
-	returned bool
-	discard  bool
-	closed   bool
-	err      error
+	mu          sync.Mutex
+	session     *Session
+	purpose     string
+	append      []ai.Message
+	current     *Inference
+	response    *ai.Response
+	callErr     error
+	returned    bool
+	discard     bool
+	closed      bool
+	err         error
+	attemptDone chan struct{}
 }
 
-// Completion returns nil for an unconfigured typed session, preserving the
-// existing completion path during the unwired migration.
+// Completion binds a utility request to this owner; a nil session returns nil.
 func (s *Session) Completion(purpose string, extra ...ai.Message) *Completion {
 	if s == nil {
 		return nil
@@ -56,7 +56,7 @@ func (c *Completion) admit(ctx context.Context, provider string, model ai.Model,
 	if c.err != nil {
 		return nil, c.err
 	}
-	if c.closed {
+	if c.closed || c.discard {
 		return nil, fmt.Errorf("completion is closed")
 	}
 	if c.current != nil {
@@ -78,12 +78,15 @@ func (c *Completion) admit(ctx context.Context, provider string, model ai.Model,
 		return nil, err
 	}
 	c.current, c.response, c.callErr, c.returned = inference, nil, nil, false
+	done := make(chan struct{})
+	c.attemptDone = done
 	return func(persist context.Context, response *ai.Response, callErr error) error {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.closed || c.current != inference || c.returned {
 			return fmt.Errorf("completion attempt already returned")
 		}
+		defer close(done)
 		if response != nil {
 			copy := *response
 			// Only accounting and outcome are needed here; accepted content is
@@ -144,6 +147,11 @@ func (c *Completion) OwnedBy(owner *Session) bool {
 	return c != nil && c.session == owner
 }
 
+// AcceptMessage atomically finishes the utility call and owns its queued input.
+func (c *Completion) AcceptMessage(ctx context.Context, message core.Message) error {
+	return c.Finish(ctx, Event{Payload: MessageAppendPayload{Messages: []ai.Message{message}, Accepted: true}})
+}
+
 // FinishMessage commits the exact native input accepted by the runtime.
 func (c *Completion) FinishMessage(ctx context.Context, message core.Message) error {
 	return c.Finish(ctx, Event{Payload: MessageAppendPayload{Messages: []ai.Message{message}}})
@@ -193,6 +201,37 @@ func (c *Completion) FinishHook(ctx context.Context, audit hook.HookFiredAudit) 
 	}
 	c.mu.Unlock()
 	return c.Finish(ctx, event)
+}
+
+// DiscardAndWait prevents further admission and joins an admitted call's terminal
+// write. The caller cancels the request first and keeps its writer alive until
+// this succeeds. A previously accepted result is left intact.
+func (c *Completion) DiscardAndWait(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	if c.closed || c.err != nil {
+		err := c.err
+		c.mu.Unlock()
+		return err
+	}
+	c.discard = true
+	if c.current == nil || c.returned {
+		c.mu.Unlock()
+		return c.Finish(context.Background())
+	}
+	done := c.attemptDone
+	c.mu.Unlock()
+	select {
+	case <-done:
+		c.mu.Lock()
+		err := c.err
+		c.mu.Unlock()
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Close discards the result. If a call is still running, its finisher will

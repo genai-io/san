@@ -13,7 +13,6 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // ErrNothingToCompact avoids summarizing a chain already below the native floor.
@@ -28,7 +27,7 @@ type CompactRequest struct {
 	SummaryFocus string
 	PreCompact   func(context.Context) hook.HookOutcome
 	Trigger      string
-	Recording    *session.Completion
+	Completion   *session.Completion
 	Err          error
 }
 
@@ -36,17 +35,17 @@ type CompactResult struct {
 	Summary       string
 	OriginalCount int
 	Trigger       string
-	Recording     *session.Completion
+	Completion    *session.Completion
 	Err           error
 }
 
 // Run preserves PreCompact's advisory context, including on a hook block or error.
 // The caller's context owns both hook execution and the model request.
 func (r CompactRequest) Run() (result CompactResult) {
-	result.Trigger, result.Recording = r.Trigger, r.Recording
+	result.Trigger, result.Completion = r.Trigger, r.Completion
 	defer func() {
 		if result.Err != nil {
-			result.Err = errors.Join(result.Err, r.Recording.Close())
+			result.Err = errors.Join(result.Err, r.Completion.Close())
 		}
 	}()
 	if r.Err != nil {
@@ -76,7 +75,7 @@ func (r CompactRequest) Run() (result CompactResult) {
 		result.Err = err
 		return result
 	}
-	result.Summary, result.OriginalCount, result.Err = CompactConversation(r.Ctx, r.Client, r.Messages, focus, r.Recording.Admission())
+	result.Summary, result.OriginalCount, result.Err = CompactConversation(r.Ctx, r.Client, r.Messages, focus, r.Completion.Admission())
 	if result.Err == nil {
 		result.Err = r.Ctx.Err()
 	}
@@ -105,19 +104,14 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 
 // RecordManualCompaction persists the native boundary for a conversation with no
 // running agent. The caller replaces its chain only after this succeeds.
-func RecordManualCompaction(opened *session.LegacySession, result CompactResult) (core.Message, core.Compacted, error) {
-	if opened != nil && result.Recording != nil {
-		return core.Message{}, core.Compacted{}, fmt.Errorf("compaction cannot use legacy and typed recording together")
+func RecordManualCompaction(opened *session.Session, result CompactResult) (core.Message, core.Compacted, error) {
+	if opened == nil || !result.Completion.OwnedBy(opened) {
+		return core.Message{}, core.Compacted{}, fmt.Errorf("compaction requires its original session completion")
 	}
 	summary := core.UserMessage(core.FormatCompactSummary(result.Summary), nil)
 	summary.ID = core.NewMessageID()
 	info := core.Compacted{Summary: result.Summary, OriginalCount: result.OriginalCount, SummaryMessageID: summary.ID, Trigger: "manual"}
-	if result.Recording != nil {
-		return summary, info, result.Recording.Compaction(result.Summary).Finish(context.Background(), summary)
-	}
-	opened.RecordEvent(sdkagent.MessageAdded{Message: summary})
-	opened.RecordEvent(info)
-	return summary, info, opened.Err()
+	return summary, info, result.Completion.Compaction(result.Summary).Finish(context.Background(), summary)
 }
 
 // PostCompact refreshes context in native order. refreshMemory updates the

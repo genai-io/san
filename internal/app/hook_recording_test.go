@@ -52,10 +52,10 @@ func TestStopHookRecordingErrorAndStaleOwner(t *testing.T) {
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "current", true: "stale"}[stale], func(t *testing.T) {
 			m := newRecapModel(t)
-			m.pendingStopHook = &pendingStopHook{outbox: m.AgentOutbox()}
+			m.pendingStopHook = &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
 			before := len(m.conv.Messages)
 			if stale {
-				m.services.Recording = new(session.Session)
+				m.services.Session = new(session.Session)
 			}
 			m.handleStopHookResult(stopHookResultMsg{pending: m.pendingStopHook, Blocked: true, Reason: "must not continue", Err: &hook.RecordingError{Err: errors.New("storage")}})
 			want := before + 1

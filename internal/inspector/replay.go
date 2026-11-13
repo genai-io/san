@@ -2,295 +2,41 @@ package inspector
 
 import (
 	"context"
-	"encoding/json"
-	"reflect"
-	"slices"
-	"sort"
-	"strings"
+	"fmt"
 
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-type replayState struct {
-	RecordID       string                 `json:"recordId,omitempty"`
-	RecordType     string                 `json:"recordType,omitempty"`
-	Provider       string                 `json:"provider,omitempty"`
-	Model          string                 `json:"model,omitempty"`
-	ComposedSystem string                 `json:"composedSystem,omitempty"`
-	MaxTokens      int                    `json:"maxTokens,omitempty"`
-	Cwd            string                 `json:"cwd,omitempty"`
-	AgentID        string                 `json:"agentId,omitempty"`
-	System         []replaySystemSection  `json:"system"`
-	Tools          []ai.Schema            `json:"tools"`
-	Messages       []replayMessage        `json:"messages"`
-	Digests        replayDigests          `json:"digests"`
-	Integrity      []replayIntegrityCheck `json:"integrity,omitempty"`
+type nativeState struct {
+	Seq      uint64                       `json:"seq"`
+	Event    *session.Event               `json:"event,omitempty"`
+	Identity session.SessionCreatePayload `json:"identity"`
+	Context  *ai.Request                  `json:"context"`
+	Request  *ai.Request                  `json:"request,omitempty"`
+	History  []ai.Message                 `json:"history"`
 }
 
-type replaySystemSection struct {
-	Name    string `json:"name"`
-	Slot    int    `json:"slot"`
-	Content string `json:"content"`
-	Caller  string `json:"caller,omitempty"`
-}
-
-type replayMessage struct {
-	ID      string     `json:"id"`
-	Role    string     `json:"role"`
-	Content ai.Content `json:"content,omitempty"`
-}
-
-type replayDigests struct {
-	System string `json:"system"`
-	Tools  string `json:"tools"`
-}
-
-// replayIntegrityCheck reports per-field divergence between what an
-// inference.requested record claims (Expected) and what the replayer
-// reconstructs (Got). Both sides are emitted as json.RawMessage so the
-// wire format is self-describing — string fields for digests, array
-// fields for messageIds — and the JS side can dispatch on shape without
-// re-parsing string-of-JSON.
-type replayIntegrityCheck struct {
-	Field    string          `json:"field"`
-	Expected json.RawMessage `json:"expected"`
-	Got      json.RawMessage `json:"got"`
-	OK       bool            `json:"ok"`
-}
-
-type replaySectionEntry struct {
-	replaySystemSection
-	order int
-}
-
-func replayFile(ctx context.Context, store *transcript.Store, sessionID, targetID string) (replayState, bool, error) {
-	var st replayBuilder
-	var found bool
-	for rec, err := range store.Records(ctx, sessionID) {
-		if err != nil {
-			return replayState{}, false, err
-		}
-		st.apply(rec)
-		if targetID != "" && rec.ID == targetID {
-			found = true
-			break
-		}
-	}
-	if targetID != "" && !found {
-		return replayState{}, false, nil
-	}
-	return st.snapshot(), true, nil
-}
-
-type replayBuilder struct {
-	recordID   string
-	recordType string
-	provider   string
-	model      string
-	maxTokens  int
-	cwd        string
-	agentID    string
-	seq        int
-	sections   map[string]replaySectionEntry // section name -> latest section
-	tools      map[string]ai.Schema          // tool name -> latest schema
-	messages   []replayMessage               // the conversation
-	integrity  []replayIntegrityCheck
-}
-
-func (b *replayBuilder) apply(rec transcript.Record) {
-	b.recordID = rec.ID
-	b.recordType = rec.Type
-	switch rec.Type {
-	case transcript.SessionStarted:
-		b.cwd = rec.Cwd
-		if rec.Start != nil {
-			b.provider = rec.Start.Provider
-			b.model = rec.Start.Model
-			b.maxTokens = rec.Start.MaxTokens
-			b.agentID = rec.Start.AgentID
-		}
-	case transcript.SystemSectionAdded:
-		if rec.System == nil {
-			return
-		}
-		if b.sections == nil {
-			b.sections = make(map[string]replaySectionEntry)
-		}
-		entry, existed := b.sections[rec.System.Name]
-		if !existed {
-			b.seq++
-			entry.order = b.seq
-		}
-		entry.replaySystemSection = replaySystemSection{
-			Name:    rec.System.Name,
-			Slot:    rec.System.Slot,
-			Content: rec.System.Content,
-			Caller:  rec.System.Caller,
-		}
-		b.sections[rec.System.Name] = entry
-	case transcript.SystemSectionRemoved:
-		if rec.System != nil && b.sections != nil {
-			delete(b.sections, rec.System.Name)
-		}
-	case transcript.ToolAdded:
-		if rec.Tool == nil || rec.Tool.Schema == nil {
-			return
-		}
-		if b.tools == nil {
-			b.tools = make(map[string]ai.Schema)
-		}
-		b.tools[rec.Tool.Schema.Name] = *rec.Tool.Schema
-	case transcript.ToolRemoved:
-		if rec.Tool != nil && b.tools != nil {
-			delete(b.tools, rec.Tool.Name)
-		}
-	case transcript.ConversationReplaced:
-		b.messages = nil
-		for _, msg := range rec.Messages {
-			b.messages = append(b.messages, replayMessage{ID: msg.ID, Role: string(msg.Role), Content: msg.Content})
-		}
-	case transcript.MessageAppended:
-		if rec.Message != nil {
-			b.messages = append(b.messages, replayMessage{ID: rec.Message.ID, Role: string(rec.Message.Role), Content: rec.Message.Content})
-		}
-	case transcript.InferenceRequested:
-		if rec.Inference != nil {
-			if rec.Inference.Provider != "" {
-				b.provider = rec.Inference.Provider
-			}
-			if rec.Inference.Model != "" {
-				b.model = rec.Inference.Model
-			}
-			if rec.Inference.MaxTokens != 0 {
-				b.maxTokens = rec.Inference.MaxTokens
-			}
-			b.checkInference(rec.Inference)
-		}
-	}
-}
-
-func (b *replayBuilder) checkInference(inf *transcript.InferenceRecord) {
-	system := b.sortedSections()
-	tools := b.sortedTools()
-	messageIDs := replayMessageIDs(b.messages)
-	sysDigest := transcript.DigestSystem(renderSections(system))
-	toolsDigest := transcript.DigestTools(tools)
-	b.integrity = []replayIntegrityCheck{
-		{
-			Field: "systemDigest", Expected: jsonRaw(inf.SystemDigest), Got: jsonRaw(sysDigest),
-			OK: inf.SystemDigest == "" || inf.SystemDigest == sysDigest,
-		},
-		{
-			Field: "toolsDigest", Expected: jsonRaw(inf.ToolsDigest), Got: jsonRaw(toolsDigest),
-			OK: inf.ToolsDigest == "" || inf.ToolsDigest == toolsDigest,
-		},
-		{
-			Field: "messageIds", Expected: jsonRaw(inf.MessageIDs), Got: jsonRaw(messageIDs),
-			OK: len(inf.MessageIDs) == 0 || reflect.DeepEqual(inf.MessageIDs, messageIDs),
-		},
-	}
-}
-
-func (b *replayBuilder) snapshot() replayState {
-	system := b.sortedSections()
-	tools := b.sortedTools()
-	return replayState{
-		RecordID:       b.recordID,
-		RecordType:     b.recordType,
-		Provider:       b.provider,
-		Model:          b.model,
-		MaxTokens:      b.maxTokens,
-		Cwd:            b.cwd,
-		AgentID:        b.agentID,
-		ComposedSystem: composedSystem(system),
-		System:         system,
-		Tools:          tools,
-		Messages:       slices.Clone(b.messages),
-		Digests:        replayDigests{System: transcript.DigestSystem(renderSections(system)), Tools: transcript.DigestTools(tools)},
-		Integrity:      append([]replayIntegrityCheck(nil), b.integrity...),
-	}
-}
-
-// composedSystem joins section contents with blank lines, mirroring
-// core.System.Prompt() — this is the exact string the model receives.
-// The same join rule produces digestSystem, so a matching composedSystem
-// hash equals systemDigest in the inference record.
-func composedSystem(sections []replaySystemSection) string {
-	parts := make([]string, 0, len(sections))
-	for _, sec := range sections {
-		if sec.Content != "" {
-			parts = append(parts, sec.Content)
-		}
-	}
-	return strings.Join(parts, "\n\n")
-}
-
-func (b *replayBuilder) sortedSections() []replaySystemSection {
-	if len(b.sections) == 0 {
-		return nil
-	}
-	entries := make([]replaySectionEntry, 0, len(b.sections))
-	for _, e := range b.sections {
-		entries = append(entries, e)
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Slot != entries[j].Slot {
-			return entries[i].Slot < entries[j].Slot
-		}
-		return entries[i].order < entries[j].order
-	})
-	out := make([]replaySystemSection, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, e.replaySystemSection)
-	}
-	return out
-}
-
-func (b *replayBuilder) sortedTools() []ai.Schema {
-	if len(b.tools) == 0 {
-		return nil
-	}
-	out := make([]ai.Schema, 0, len(b.tools))
-	for _, t := range b.tools {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
-func replayMessageIDs(messages []replayMessage) []string {
-	out := make([]string, 0, len(messages))
-	for _, m := range messages {
-		if m.ID != "" {
-			out = append(out, m.ID)
-		}
-	}
-	return out
-}
-
-// jsonRaw marshals v to a json.RawMessage. A marshal error returns "null" so
-// the field still serializes legally; downstream consumers treat null as
-// "no value" the same way they treat an empty input.
-func jsonRaw(v any) json.RawMessage {
-	b, err := json.Marshal(v)
+func (s *Server) readState(ctx context.Context, id string, seq uint64) (nativeState, error) {
+	p, err := s.store.Read(ctx, id)
 	if err != nil {
-		return json.RawMessage("null")
+		return nativeState{}, err
 	}
-	return b
-}
-
-// renderSections rebuilds the prompt the agent sent from the section records
-// it left behind, the way core/system builds it: in slot order, joined by a
-// blank line. This is replay's own answer, which is why it is here and not in
-// transcript — the digest is one number, but reconstructing what was hashed is
-// what replay is for.
-func renderSections(sections []replaySystemSection) string {
-	parts := make([]string, 0, len(sections))
-	for _, sec := range sections {
-		if sec.Content != "" {
-			parts = append(parts, sec.Content)
+	events := p.Events()
+	st := nativeState{Seq: seq, Identity: p.Identity(), History: p.Messages()}
+	if seq != 0 {
+		if seq > uint64(len(events)) {
+			return nativeState{}, fmt.Errorf("event sequence out of range")
 		}
+		event := events[seq-1]
+		st.Event = &event
 	}
-	return strings.Join(parts, "\n\n")
+	st.Context, err = s.store.ContextRequest(ctx, id, seq)
+	if err != nil {
+		return nativeState{}, err
+	}
+	if st.Event != nil && st.Event.Type == session.EventInferenceStart {
+		st.Request, err = s.store.InferenceRequest(ctx, id, seq)
+	}
+	return st, err
 }

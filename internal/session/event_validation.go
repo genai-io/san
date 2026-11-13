@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -71,7 +70,7 @@ func mergeReplayValidation(out, current EventValidationContext) (EventValidation
 	if out.ForkPrefixes == nil {
 		out.ForkPrefixes = map[string]uint64{}
 	}
-	validID := func(id string) bool { return transcript.ValidateStorageID(id) == nil }
+	validID := func(id string) bool { return ValidateStorageID(id) == nil }
 	uniqueIDs := func(ids []string) bool {
 		seen := map[string]bool{}
 		for _, id := range ids {
@@ -239,13 +238,35 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 			return invalidEvent("invalid message source family")
 		}
 		for _, m := range v.Messages {
-			if m.Role == ai.RoleAssistant && e.Source == nil {
-				return invalidEvent("assistant message needs explicit provenance")
+			if v.Accepted && (m.Role != ai.RoleUser || len(m.ToolResults()) != 0) {
+				return invalidEvent("accepted input must be a native user message")
 			}
-			if err := p.addMessage(m, e.Seq); err != nil {
-				return err
+			if accepted := p.data.Accepted[m.ID]; accepted != 0 {
+				if v.Accepted || e.Source == nil || e.Source.Session != "" || e.Source.Seq != accepted || !sameJSON(p.message(m.ID), m) {
+					return invalidEvent("consumption must exactly match its accepted input")
+				}
+				delete(p.data.Accepted, m.ID)
+				p.data.MessageSeq[m.ID] = e.Seq
+				p.data.ActiveIDs = slices.DeleteFunc(p.data.ActiveIDs, func(id string) bool { return id == m.ID })
+			} else {
+				if m.Role == ai.RoleAssistant && e.Source == nil {
+					return invalidEvent("assistant message needs explicit provenance")
+				}
+				if err := p.addMessage(m, e.Seq); err != nil {
+					return err
+				}
 			}
-			p.data.ActiveIDs = append(p.data.ActiveIDs, m.ID)
+			if v.Accepted {
+				p.data.Accepted[m.ID] = e.Seq
+				p.data.ActiveIDs = append(p.data.ActiveIDs, m.ID)
+			} else {
+				at := slices.IndexFunc(p.data.ActiveIDs, func(id string) bool { return p.data.Accepted[id] != 0 })
+				if at < 0 {
+					at = len(p.data.ActiveIDs)
+				}
+				p.data.ActiveIDs = slices.Insert(p.data.ActiveIDs, at, m.ID)
+			}
+			p.orderHistoryMessage(m.ID, v.Accepted)
 		}
 	case *ContextCompactPayload:
 		if v.Through == 0 || v.Through >= e.Seq {
@@ -264,9 +285,10 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		if err := p.addMessage(v.Summary, e.Seq); err != nil {
 			return err
 		}
+		p.orderHistoryMessage(v.Summary.ID, false)
 		active := []string{v.Summary.ID}
 		for _, id := range p.data.ActiveIDs {
-			if p.data.MessageSeq[id] > v.Through {
+			if p.data.MessageSeq[id] > v.Through || p.data.Accepted[id] != 0 {
 				active = append(active, id)
 			}
 		}
@@ -319,7 +341,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		if call.Finish != 0 {
 			return invalidEvent("duplicate tool.finish")
 		}
-		if len(v.Details) > maxDetails || (v.ChildSession != "" && transcript.ValidateStorageID(v.ChildSession) != nil) || v.ChildSession == p.data.SessionID {
+		if len(v.Details) > maxDetails || (v.ChildSession != "" && ValidateStorageID(v.ChildSession) != nil) || v.ChildSession == p.data.SessionID {
 			return invalidEvent("invalid tool details or child session")
 		}
 		call.Finish = e.Seq
@@ -479,7 +501,7 @@ func validateEventConfig(c EventConfig) error {
 			return invalidEvent("invalid generation options")
 		}
 	}
-	if c.AutopilotPolicy != nil && (c.AutopilotPolicy.Version != 1 || c.AutopilotPolicy.MaxTurns < 0) {
+	if c.AutopilotPolicy != nil && (c.AutopilotPolicy.Version != 1 || c.AutopilotPolicy.Settings.MissionState != "") {
 		return invalidEvent("invalid autopilot policy")
 	}
 	return nil
@@ -497,7 +519,7 @@ func validateEventState(s EventState) error {
 	if s.Todos != nil {
 		seen := map[string]bool{}
 		for _, todo := range *s.Todos {
-			if todo.ID == "" || seen[todo.ID] || todo.Text == "" || (todo.Status != "pending" && todo.Status != "in_progress" && todo.Status != "completed") {
+			if todo.ID == "" || seen[todo.ID] || todo.Subject == "" || (todo.Status != "pending" && todo.Status != "in_progress" && todo.Status != "completed" && todo.Status != "deleted") {
 				return invalidEvent("invalid todo")
 			}
 			seen[todo.ID] = true

@@ -3,6 +3,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,14 +16,14 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// sessionID also names a new conversation before its transcript is opened.
 func (m *model) sessionID() string {
 	if m.services.Session != nil {
 		return m.services.Session.ID()
@@ -30,17 +32,20 @@ func (m *model) sessionID() string {
 }
 
 func (m *model) sessionTranscriptPath() string {
+	if m.services.Session != nil {
+		return m.services.Session.Path()
+	}
 	if m.services.SessionStore == nil || m.sessionID() == "" {
 		return ""
 	}
-	return m.services.SessionStore.TranscriptPath(m.sessionID())
+	return filepath.Join(m.services.SessionStore.ProjectDir(), "sessions", m.sessionID(), "events.jsonl")
 }
 
 func (m *model) ensureSessionStore() error {
 	if m.services.SessionStore != nil {
 		return nil
 	}
-	store, err := session.NewLegacyStore(m.env.CWD)
+	store, err := session.OpenStore(context.Background(), m.env.CWD)
 	if err != nil {
 		return err
 	}
@@ -48,84 +53,112 @@ func (m *model) ensureSessionStore() error {
 	return nil
 }
 
-func (m *model) openCurrentSession() (*session.LegacySession, error) {
+func (m *model) openCurrentSession() (*session.Session, error) {
 	if m.services.Session != nil {
 		return m.services.Session, m.services.Session.Err()
 	}
 	if err := m.ensureSessionStore(); err != nil {
 		return nil, err
 	}
-	var provider string
-	if m.env.LLMProvider != nil {
-		provider = m.env.LLMProvider.Name()
-	}
-	maxOutputTokens := setting.DefaultMaxTokens
-	if m.services.LLM != nil {
-		maxOutputTokens = kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
-	}
 	if m.services.sessionID == "" {
 		m.services.sessionID = session.NewSessionID()
-		id := m.services.sessionID
-		group.BindSession(func() string { return id })
 	}
-	opened, err := m.services.SessionStore.Create(session.LegacyCreateOptions{ID: m.services.sessionID,
-		AgentID: "main", Provider: provider, Model: m.env.GetModelID(), MaxTokens: maxOutputTokens})
+	update := m.buildSessionRecord()
+	config := session.EventConfig{}
+	if update.Config != nil {
+		patch := update.Config
+		config.Provider = patch.Provider.Value
+		config.Model = patch.Model.Value
+		config.GenerationOptions = patch.GenerationOptions.Value
+		config.Mode = patch.Mode.Value
+		config.AutopilotPolicy = patch.AutopilotPolicy.Value
+	}
+	opened, err := m.services.SessionStore.Create(context.Background(), session.CreateOptions{ID: m.services.sessionID, AgentID: "main", InitialCWD: m.env.CWD, Config: &config})
 	if err != nil {
 		return nil, err
 	}
-	m.replaceSession(opened)
+	if err := m.replaceSession(opened); err != nil {
+		return opened, err
+	}
+	notices := m.earlyNotices
+	m.earlyNotices = nil
+	for i, n := range notices {
+		if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice, AfterMessage: conv.MemoryRecallNoticeAnchor(n.Content)}}); err != nil {
+			m.earlyNotices = append(m.earlyNotices, notices[i:]...)
+			return opened, err
+		}
+	}
 	return opened, nil
 }
 
 func (m *model) appendSessionState() error {
-	record := m.buildSessionRecord()
-	if record == nil {
-		return nil
-	}
 	opened, err := m.openCurrentSession()
 	if err != nil {
 		return err
 	}
-	return opened.Append(context.Background(), *record)
+	return session.NewRecorder(opened, "").RecordState(context.Background(), *m.buildSessionRecord())
 }
 
 func (m *model) recordNotice(n core.ChatMessage) {
 	if opened := m.services.Session; opened != nil {
-		_ = opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
-			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice,
-				AfterMessageID: conv.MemoryRecallNoticeAnchor(n.Content)}})
+		if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice, AfterMessage: conv.MemoryRecallNoticeAnchor(n.Content)}}); err != nil {
+			log.Logger().Warn("session annotation append failed", zap.Error(err))
+		}
 		return
 	}
 	m.earlyNotices = append(m.earlyNotices, n)
 }
 
-// replaceSession retires the prior session and UI context after opening the replacement.
-func (m *model) replaceSession(opened *session.LegacySession) {
-	if m.sessionID() != opened.ID() || (m.services.Session != nil && m.services.Session != opened) {
-		m.resetRecap()
+// replaceSession fences owner generations, even when a reopened handle has the
+// same ID. Old hook work is joined while its original writer is still available.
+func (m *model) replaceSession(opened *session.Session) error {
+	if opened == nil {
+		return fmt.Errorf("cannot select a nil session")
 	}
-	if m.sessionID() != opened.ID() {
-		m.conv.SetAgentIdentitySession(opened.ID())
+	previous := m.services.Session
+	changed := previous != opened || m.sessionID() != opened.ID()
+	retiring := previous != nil || m.sessionID() != opened.ID()
+	var closeErr error
+	if changed {
+		m.resetRecap()
+		m.cancelAutopilot()
+		m.cancelGroupControl()
+		if err := m.cancelManualCompaction(); err != nil {
+			return err
+		}
+		if oldHooks := m.services.Hook; oldHooks != nil {
+			next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
+			oldHooks.Shutdown()
+			m.services.Hook = next
+		}
+		if previous != nil {
+			closeErr = previous.Close()
+		}
+	}
+	if changed && retiring {
 		m.env.SessionPermissions = setting.NewSessionPermissions()
 		m.env.ApplyModePermissions(m.env.CWD)
 		m.discardPendingMessages()
 		m.queueContinuation = nil
 		m.pendingPluginRoot = ""
 		m.resetInteractions()
-		m.services.Reminder.DiscardPendingNotices()
-	}
-	if previous := m.services.Session; previous != opened {
-		m.cancelAutopilot()
-		m.cancelGroupControl()
-		m.cancelManualCompaction()
-		_ = previous.Close()
+		if m.services.Reminder != nil {
+			m.services.Reminder.DiscardPendingNotices()
+		}
+		m.conv.SetAgentIdentitySession(opened.ID())
 	}
 	m.services.Session = opened
 	m.services.sessionID = opened.ID()
-	group.BindSession(opened.ID)
-	if m.services.Hook != nil {
-		m.services.Hook.SetSession(m.sessionID(), m.sessionTranscriptPath())
+	if changed {
+		m.bindMainBroker(opened)
 	}
+	group.BindSession(opened.ID)
+	bindSessionHooks(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
+	if changed && m.services.Hook != nil {
+		m.configureAsyncHookCallback()
+		m.wireTaskLifecycle(m.services.Hook)
+	}
+	return closeErr
 }
 
 func (m *model) appendTurnState() error {
@@ -137,27 +170,62 @@ func (m *model) appendTurnState() error {
 	return err
 }
 
-// buildSessionRecord contains application state only, never the message chain.
-func (m *model) buildSessionRecord() *transcript.Record {
-	if len(m.conv.Messages) == 0 {
-		return nil
+// buildSessionRecord captures product state only. Recorder.RecordState compares
+// it with the committed projection; no message snapshot is ever written here.
+func (m *model) buildSessionRecord() *session.SessionUpdatePayload {
+	provider := ""
+	if m.env.LLMProvider != nil {
+		provider = m.env.LLMProvider.Name()
 	}
-	messages := m.services.Agent.Messages()
-	title := m.env.SessionName
-	if title == "" {
-		title = session.GenerateTitle(messages)
+	maxTokens := setting.DefaultMaxTokens
+	if m.services.LLM != nil {
+		maxTokens = kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	}
-	return &transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{
-			Title: new(title), LastPrompt: new(session.ExtractLastUserText(messages)),
-			Mode: new(m.env.SessionMode()), AutoPilot: new(marshalAutoPilot(m.env.AutoPilot)),
-			Group: new(currentMembership()), Tasks: new(m.services.Tracker.Export()),
-		}}
+	generation := session.GenerationOptions{Version: 1}
+	if m.services.Session != nil {
+		p := m.services.Session.Snapshot()
+		if saved := p.Config().GenerationOptions; saved != nil {
+			generation = *saved
+		}
+	}
+	if generation.MaxTokens == nil {
+		generation.MaxTokens = &maxTokens
+	}
+	generation.Effort = ai.Effort(m.env.EffectiveThinkingEffort())
+	policy := m.env.AutoPilot.Clone()
+	policy.MissionState = ""
+	update := &session.SessionUpdatePayload{
+		Config: &session.ConfigPatch{
+			Provider: session.SetField(provider), Model: session.SetField(m.env.GetModelID()),
+			GenerationOptions: session.SetField(generation), Mode: session.SetField(m.env.SessionMode()),
+			AutopilotPolicy: session.SetField(session.AutopilotPolicy{Version: 1, Settings: policy}),
+		},
+		State: &session.StatePatch{
+			ExecutionCWD: session.SetField(m.env.CWD), GroupHint: session.ClearField[session.GroupHint](),
+			AutopilotProgress: session.SetField(session.AutopilotProgress{
+				CompletedTurns: m.autopilotContinuations, Status: string(m.env.AutoPilot.MissionState),
+			}),
+		},
+	}
+	if m.services.Tracker != nil {
+		update.State.Todos = session.SetField(m.services.Tracker.Export())
+	}
+	if name, self := group.Current(); name != "" {
+		update.State.GroupHint = session.SetField(session.GroupHint{GroupID: name, MemberID: self.Name})
+	}
+	if m.services.Session != nil {
+		p := m.services.Session.Snapshot()
+		if p.State().Title == nil {
+			if title := session.GenerateTitle(p.Messages()); title != "" {
+				update.State.Title = session.SetField(title)
+			}
+		}
+	}
+	return update
 }
 
-// validateResumeDirectory rejects implicit execution-directory changes. A missing
-// legacy cwd is unknown, not evidence that the session belongs to another path.
-// This check does not grant trust or change the runtime's working directory.
+// validateResumeDirectory rejects implicit execution-directory changes; it
+// neither grants trust nor changes the current process working directory.
 func validateResumeDirectory(saved, requested string) error {
 	if saved == "" {
 		return nil
@@ -187,8 +255,6 @@ func (m *model) loadSessionByID(id string) error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
-
-	// Finish pending writes before reading, including a resume of this same ID.
 	if err := m.StopAgentRuntime(); err != nil {
 		return err
 	}
@@ -196,91 +262,184 @@ func (m *model) loadSessionByID(id string) error {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
-	var opened *session.LegacySession
-	var sess *session.LegacyHistory
-	var err error
-	if m.services.Session != nil && m.sessionID() == id && m.services.Session.Err() == nil {
-		opened = m.services.Session
-		sess, err = m.services.SessionStore.Read(id, session.LegacyReadOptions{})
-	} else {
-		if m.services.Session != nil && m.sessionID() == id {
-			_ = m.services.Session.Close()
-			m.services.Session = nil
-		}
-		opened, sess, err = m.services.SessionStore.Open(id)
-	}
+	history, err := m.services.SessionStore.Read(context.Background(), id)
 	if err != nil {
 		return err
 	}
-
-	if err := validateResumeDirectory(sess.Metadata.Cwd, m.env.CWD); err != nil {
-		if opened != m.services.Session {
-			_ = opened.Close()
-		}
+	saved := history.Identity().InitialCWD
+	if cwd := history.State().ExecutionCWD; cwd != nil {
+		saved = *cwd
+	}
+	if err := validateResumeDirectory(saved, m.env.CWD); err != nil {
 		return err
 	}
-
-	// This is a different persisted conversation. Do not let a stopped agent's
-	// restart snapshot override the selected transcript on the next turn, and
-	// don't let the previous conversation's Reads satisfy Edit's
-	// read-before-modify gate in this one, nor its files ride on compaction.
-	m.replaceSession(opened)
+	// Validate presentation metadata before changing the selected owner too.
+	if _, err := m.services.SessionStore.Attrs(context.Background(), id); err != nil {
+		return err
+	}
+	if _, _, err := m.resolveSessionModel(history); err != nil {
+		return err
+	}
+	opened := m.services.Session
+	if opened != nil && opened.ID() == id && opened.Err() == nil && m.services.Hook != nil {
+		oldHooks := m.services.Hook
+		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
+		oldHooks.Shutdown()
+		m.services.Hook = next
+		bindSessionHooks(next, m.env.LLMProvider, opened, m.env.GetModelID())
+		m.configureAsyncHookCallback()
+		m.wireTaskLifecycle(next)
+		history = opened.Snapshot()
+	}
+	if opened == nil || opened.ID() != id || opened.Err() != nil {
+		if opened != nil && opened.ID() == id {
+			if m.services.Hook != nil {
+				m.services.Hook.Shutdown()
+			}
+			if err := opened.Close(); err != nil {
+				return err
+			}
+		}
+		opened, err = m.services.SessionStore.Open(context.Background(), id)
+		if err != nil {
+			return err
+		}
+		history = opened.Snapshot()
+		saved = history.Identity().InitialCWD
+		if cwd := history.State().ExecutionCWD; cwd != nil {
+			saved = *cwd
+		}
+		if err := validateResumeDirectory(saved, m.env.CWD); err != nil {
+			return errors.Join(err, opened.Close())
+		}
+		if _, _, err := m.resolveSessionModel(history); err != nil {
+			return errors.Join(err, opened.Close())
+		}
+	}
+	if err := m.replaceSession(opened); err != nil {
+		return err
+	}
 	fs.ResetFileViews()
 	m.env.FileCache.Clear()
-	m.restoreHistory(sess)
-
-	if len(sess.Tasks) == 0 {
-		m.services.Tracker.Reset()
+	if err := m.restoreHistory(history); err != nil {
+		return err
 	}
-
 	m.env.ResetContextDisplay()
 	m.ReconfigureAgentTool()
-
 	return nil
 }
 
-func (m *model) restoreHistory(sess *session.LegacyHistory) {
+func (m *model) resolveSessionModel(history session.Projection) (llm.Provider, *llm.CurrentModelInfo, error) {
+	config := history.Config()
+	provider := m.env.LLMProvider
+	info := &llm.CurrentModelInfo{}
+	if m.env.CurrentModel != nil {
+		*info = *m.env.CurrentModel
+	}
+	if saved := config.Provider; saved != nil && *saved != "" {
+		if provider == nil || provider.Name() != *saved {
+			if m.services.LLM == nil {
+				return nil, nil, fmt.Errorf("cannot resume provider %q without connection settings", *saved)
+			}
+			resolved, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), llm.ProviderID(*saved))
+			if err != nil {
+				return nil, nil, fmt.Errorf("cannot resume provider %q: %w", *saved, err)
+			}
+			provider = resolved
+			info.Provider = llm.ProviderID(*saved)
+			if connection, ok := m.services.LLM.Store().Connection(info.Provider); ok {
+				info.AuthMethod = connection.AuthMethod
+			}
+		}
+	}
+	if provider != nil {
+		info.Provider = llm.ProviderID(provider.Name())
+	}
+	if saved := config.Model; saved != nil {
+		info.ModelID = *saved
+	}
+	return provider, info, nil
+}
+
+func (m *model) restoreHistory(history session.Projection) error {
+	provider, info, err := m.resolveSessionModel(history)
+	if err != nil {
+		return err
+	}
+	attrs, err := m.services.SessionStore.Attrs(context.Background(), history.SessionID())
+	if err != nil {
+		return err
+	}
+	m.env.LLMProvider, m.env.CurrentModel = provider, info
+	if m.services.LLM != nil {
+		m.services.LLM.SetProvider(provider)
+		m.services.LLM.SetCurrentModel(info)
+	}
+	bindSessionHooks(m.services.Hook, provider, m.services.Session, info.ModelID)
 	m.resetRecap()
-	m.conv.Messages = m.services.SessionStore.ChatRows(sess)
+	m.conv.Messages = m.services.SessionStore.ChatRows(history)
 	m.earlyNotices = nil
-	m.services.Agent.SetMessages(sess.Messages)
+	m.services.Agent.SetMessages(history.ActiveMessages())
 	m.services.Reminder.RestoreHistory(m.conv.Messages)
 	m.conv.CommittedCount = 0
-
-	m.env.SessionName = sess.Metadata.Title
-
-	// Leave any earlier session's tracker directory behind: initTaskStorage
-	// keeps a directory that is already set, and this session's items are
-	// re-imported below after SetStorageDir's disk load.
-	m.setTrackerStorageDir("")
-	m.initTaskStorage(m.sessionID())
-
-	if len(sess.Tasks) > 0 {
-		m.services.Tracker.Import(sess.Tasks)
+	m.env.SessionName = attrs.Title
+	state, config := history.State(), history.Config()
+	if m.env.SessionName == "" && state.Title != nil {
+		m.env.SessionName = *state.Title
 	}
-
-	// Session-specific settings never inherit the previous conversation's goal.
+	m.setTrackerStorageDir("")
+	m.initTaskStorage(history.SessionID())
+	m.services.Tracker.Reset()
+	if state.Todos != nil {
+		m.services.Tracker.Import(*state.Todos)
+	}
 	m.beforeGoal = nil
 	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
-	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
-		m.env.AutoPilot = ar
+	if config.AutopilotPolicy != nil {
+		m.env.AutoPilot = config.AutopilotPolicy.Settings.Clone()
+	}
+	m.autopilotContinuations = 0
+	if state.AutopilotProgress != nil {
+		m.autopilotContinuations = state.AutopilotProgress.CompletedTurns
+		m.env.AutoPilot.MissionState = setting.MissionState(state.AutopilotProgress.Status)
 	}
 	if m.env.AutoPilot.MissionState == setting.MissionRunning {
 		m.env.AutoPilot.MissionState = setting.MissionPaused
 	}
 	m.rebuildAutopilotJudge()
-
-	// Membership follows the session: rejoin the group it was in, and leave the
-	// one the previous session held offline.
-	m.rejoinGroup(sess.Metadata.Group)
-
-	// Resume into the operation mode the session was saved in, so an autopilot
-	// run picks up where it left off without re-cycling shift+tab. Bypass is
-	// never granted by a session, only kept — see resumeOperationMode.
-	if mode := resumeOperationMode(sess.Metadata.Mode, m.env.OperationMode); mode != m.env.OperationMode {
+	if generation := config.GenerationOptions; generation != nil {
+		m.env.ThinkingEffort = string(generation.Effort)
+	}
+	membershipJSON := ""
+	if hint := state.GroupHint; hint != nil {
+		data, _ := json.Marshal(membership{Group: hint.GroupID, Name: hint.MemberID})
+		membershipJSON = string(data)
+	}
+	savedMode := ""
+	if config.Mode != nil {
+		savedMode = *config.Mode
+	}
+	if mode := resumeOperationMode(savedMode, m.env.OperationMode); mode != m.env.OperationMode {
 		m.env.OperationMode = mode
 		m.applyOperationMode()
 	}
+	m.rejoinGroup(membershipJSON)
+	unfinished := history.Unfinished()
+	// Interrupted-operation status is reconstructed presentation, not a new
+	// annotation fact on every resume. Never send it into the native context.
+	statusNotice := func(text string) {
+		m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatNotice, Content: text})
+	}
+	if len(unfinished.Inferences) > 0 {
+		statusNotice(fmt.Sprintf("Resumed with %d unfinished model call(s); no response was committed and no call was retried.", len(unfinished.Inferences)))
+	}
+	for _, call := range unfinished.NeverRan {
+		statusNotice("Tool call " + call + " did not pass its permission gate; it was not run.")
+	}
+	for _, call := range unfinished.Unknown {
+		statusNotice("Tool call " + call + " was allowed but has no committed completion; its outcome is unknown and it was not retried.")
+	}
+	return nil
 }
 
 func (m *model) initTaskStorage(sessionID string) {
@@ -288,13 +447,11 @@ func (m *model) initTaskStorage(sessionID string) {
 	if m.services.Tracker.StorageDir() != "" {
 		return
 	}
-
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Logger().Warn("failed to get home directory for task storage", zap.Error(err))
 		return
 	}
-
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
 		dir := filepath.Join(confdir.Dir(homeDir), "tasks", taskListID)
@@ -302,7 +459,6 @@ func (m *model) initTaskStorage(sessionID string) {
 		m.setTaskOutputDir(dir)
 		return
 	}
-
 	if sessionID == "" {
 		return
 	}
@@ -311,24 +467,16 @@ func (m *model) initTaskStorage(sessionID string) {
 	m.setTaskOutputDir(dir)
 }
 
-// setTrackerStorageDir points the task tracker at dir. A failure leaves the
-// tracker working in memory but no longer persisting, which is worth a line in
-// the log — there is nothing the user can do about it mid-session, and failing
-// the session load over it would be worse than losing the task file.
 func (m *model) setTrackerStorageDir(dir string) {
 	if err := m.services.Tracker.SetStorageDir(dir); err != nil {
-		log.Logger().Warn("task tracker storage unavailable",
-			zap.String("dir", dir), zap.Error(err))
+		log.Logger().Warn("task tracker storage unavailable", zap.String("dir", dir), zap.Error(err))
 	}
 }
 
-// setTaskOutputDir points background-task output at dir/outputs, with the same
-// degrade-and-log answer as setTrackerStorageDir.
 func (m *model) setTaskOutputDir(dir string) {
 	outputs := filepath.Join(dir, "outputs")
 	if err := m.services.Task.SetOutputDir(outputs); err != nil {
-		log.Logger().Warn("task output directory unavailable",
-			zap.String("dir", outputs), zap.Error(err))
+		log.Logger().Warn("task output directory unavailable", zap.String("dir", outputs), zap.Error(err))
 	}
 }
 
@@ -343,35 +491,42 @@ func (m *model) forkSession() (string, error) {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
-	opened, forked, err := m.services.SessionStore.Fork(m.sessionID())
+	if err := m.appendSessionState(); err != nil {
+		return "", err
+	}
+	originalID := m.sessionID()
+	opened, err := m.services.SessionStore.Fork(context.Background(), originalID, session.ForkOptions{})
 	if err != nil {
 		return "", err
 	}
-	originalID := forked.Metadata.ParentSessionID
-	m.replaceSession(opened)
-	m.releaseGroupOnSwitch()
-	m.services.Agent.SetMessages(forked.Messages)
-	// Same storage switch as loadSessionByID: clear the tracker so
-	// initTaskStorage adopts the fork's directory, then re-import the tasks
-	// that SetStorageDir's disk load replaced.
-	m.setTrackerStorageDir("")
-	m.initTaskStorage(forked.Metadata.ID)
-	m.services.Tracker.Import(forked.Tasks)
+	if err := m.replaceSession(opened); err != nil {
+		return originalID, err
+	}
+	fs.ResetFileViews()
+	m.env.FileCache.Clear()
+	if err := m.restoreHistory(opened.Snapshot()); err != nil {
+		return originalID, err
+	}
+	m.env.ResetContextDisplay()
 	m.ReconfigureAgentTool()
 	return originalID, nil
 }
 
-// renameSession names the session and persists it, so saves stop generating a
-// title; in a group the member follows, and the returned line says how.
 func (m *model) renameSession(name, role string) (string, error) {
+	opened, err := m.openCurrentSession()
+	if err != nil {
+		return "", err
+	}
 	if name != "" {
+		if err := m.services.SessionStore.SetAttrs(context.Background(), opened.ID(), session.AttrsPatch{Title: session.SetField(name)}); err != nil {
+			return "", err
+		}
 		m.env.SessionName = name
 	}
 	note := m.renameMember(name, role)
 	return note, m.appendSessionState()
 }
 
-// clearSession starts a fresh durable identity after retiring the previous writer.
 func (m *model) clearSession() error {
 	if err := m.ResetAgentRuntime(); err != nil {
 		return err
@@ -380,27 +535,29 @@ func (m *model) clearSession() error {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
-	m.resetRecap()
-	_ = m.services.Session.Close()
-	m.services.Session = nil
-	m.services.sessionID = session.NewSessionID()
-	m.env.SessionPermissions = setting.NewSessionPermissions()
-	m.env.ApplyModePermissions(m.env.CWD)
-	id := m.services.sessionID
-	group.BindSession(func() string { return id })
-	if m.services.Hook != nil {
-		m.services.Hook.SetSession(m.sessionID(), m.sessionTranscriptPath())
+	if err := m.ensureSessionStore(); err != nil {
+		return err
+	}
+	opened, err := m.services.SessionStore.Create(context.Background(), session.CreateOptions{ID: session.NewSessionID(), AgentID: "main", InitialCWD: m.env.CWD})
+	if err != nil {
+		return err
+	}
+	if err := m.replaceSession(opened); err != nil {
+		return err
 	}
 	group.Release()
 	m.grp = groupState{polling: m.grp.polling}
 	m.env.SessionName = ""
 	m.earlyNotices = nil
-	m.discardPendingMessages()
 	m.beforeGoal = nil
+	m.autopilotContinuations = 0
 	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
 	m.rebuildAutopilotJudge()
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(m.sessionID())
+	m.services.Tracker.Reset()
+	fs.ResetFileViews()
+	m.env.FileCache.Clear()
 	m.ReconfigureAgentTool()
-	return nil
+	return m.appendSessionState()
 }

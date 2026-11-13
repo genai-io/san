@@ -1,12 +1,14 @@
 package selflearn
 
 import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -34,10 +36,9 @@ type ForkConfig struct {
 	// Strategy is the user's optional learning-strategy override; non-empty
 	// replaces the built-in guidance.
 	Strategy string
-	// OnEvent receives the fork agent's lifecycle events (PreInfer /
-	// PostInfer / OnAppend / …). Wire a sidechain writer here to land
-	// the fork's LLM calls in the main session transcript so the
-	// inspector can replay them. nil = no recording (legacy behavior).
+	// Recording is the captured review child owner. The caller owns its lifetime.
+	Recording *session.Session
+	// OnEvent optionally observes lifecycle events in addition to native recording.
 	OnEvent func(core.Event)
 }
 
@@ -68,7 +69,7 @@ func RunReview(ctx context.Context, fc ForkConfig, snapshot []core.Message) (str
 
 	tools := core.NewTools(newSkillManageTool(fc.Skills))
 
-	ag := core.NewAgent(core.Config{
+	config := core.Config{
 		Client:      fc.Client,
 		CallOptions: fc.CallOptions,
 		System:      sys,
@@ -77,14 +78,51 @@ func RunReview(ctx context.Context, fc ForkConfig, snapshot []core.Message) (str
 		MaxSteps:    forkMaxSteps,
 		OutboxBuf:   -1, // no outbox: this fork is headless, driven via ThinkAct
 		OnEvent:     fc.OnEvent,
-	})
+	}
+	var recorder *session.Recorder
+	initializingSnapshot := false
+	if fc.Recording != nil {
+		recorder = session.NewRecorder(fc.Recording, "")
+		var instructions []session.NamedInstruction
+		for _, section := range sys.Sections() {
+			if text := section.Render(); text != "" {
+				instructions = append(instructions, session.NamedInstruction{Name: section.Name, InstructionSection: session.InstructionSection{Content: text, Slot: int(section.Slot)}})
+			}
+		}
+		if err := recorder.RecordCatalogues(ctx, instructions, tools.Schemas(), nil, "boot"); err != nil {
+			return "", err
+		}
+		config.Gate = tool.HookedPermission(nil, reviewPermission{allowOnly(tools)}, recorder.RecordPermission)
+		config.InferenceAdmission = recorder.InferenceAdmission
+		config.ToolAdmission = recorder.ToolAdmission
+		config.OutputAdmission = recorder.OutputAdmission
+		config.OnEvent = func(ev core.Event) {
+			_, replacement := ev.(sdkagent.MessagesReplaced)
+			if initializingSnapshot && replacement {
+				initializingSnapshot = false
+			} else {
+				recorder.RecordEvent(ev)
+			}
+			if fc.OnEvent != nil {
+				fc.OnEvent(ev)
+			}
+		}
+	}
+	ag := core.NewAgent(config)
 
 	// Trim trailing user-role messages (user-typed turns and tool results, both
 	// RoleUser) so the review prompt isn't the second consecutive user-role turn
 	// on the wire — most providers reject that as a role-order violation.
+	// Inherited context is request input, not work executed by this child. The
+	// inference admission stores it as a standalone request without inventing
+	// historical child messages or replacing the durable conversation.
+	initializingSnapshot = true
 	ag.SetMessages(trimTrailingPendingMessages(snapshot))
 	ag.Append(core.UserMessage(prompt, nil))
 	res, err := ag.ThinkAct(ctx)
+	if recorder != nil && recorder.Err() != nil {
+		return "", recorder.Err()
+	}
 	if err != nil {
 		return "", err
 	}
@@ -107,6 +145,25 @@ func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 		end--
 	}
 	return msgs[:end]
+}
+
+// reviewPermission records the review's explicit restricted tool configuration,
+// not authority inferred from a human-readable reason.
+type reviewPermission struct{ check perm.PermissionFunc }
+
+func (p reviewPermission) Check(ctx context.Context, name string, input map[string]any, _ bool, _ string) (bool, string) {
+	return p.check(ctx, name, input)
+}
+
+func (reviewPermission) CanApproveByHook(string, map[string]any) bool { return false }
+
+func (p reviewPermission) Resolve(ctx context.Context, name string, input map[string]any, _ bool, _ string) perm.Resolution {
+	allow, reason := p.check(ctx, name, input)
+	decision := "deny"
+	if allow {
+		decision = "allow"
+	}
+	return perm.Resolution{Decision: decision, By: "config", Scope: "once", Reason: reason}
 }
 
 // allowOnly builds a static permission policy: tools in `allowed` pass,

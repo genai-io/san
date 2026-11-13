@@ -37,7 +37,6 @@ type groupControlRequest struct {
 	cancel              context.CancelFunc
 	session, membership string
 	owner               *session.Session
-	legacy              *session.LegacySession
 	runtime             *agent.Runtime
 	recording           *session.Completion
 }
@@ -65,9 +64,6 @@ func (m *model) cancelGroupControl() {
 }
 
 func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
-	if m.services.Recording != nil && m.services.Session != nil {
-		return "Group interpretation recording is unavailable: mixed session writers; no changes made.", nil
-	}
 	if m.env.LLMProvider == nil {
 		return "Group interpretation is unavailable; use an explicit command.\n" + groupUsage, nil
 	}
@@ -82,8 +78,8 @@ func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	m.cancelGroupControl()
 	r := &groupControlRequest{ctx: ctx, cancel: cancel, session: m.sessionID(), membership: currentMembership(),
-		owner: m.services.Recording, legacy: m.services.Session, runtime: m.services.Agent,
-		recording: m.services.Recording.Completion(session.PurposeGroup)}
+		owner: m.services.Session, runtime: m.services.Agent,
+		recording: m.services.Session.Completion(session.PurposeGroup)}
 	m.grp.control = r
 	return "Interpreting group request… (another /group command cancels it)", func() tea.Msg {
 		defer cancel()
@@ -118,7 +114,7 @@ func (m *model) handleGroupControl(msg groupControlMsg) string {
 	if r != m.grp.control {
 		return ""
 	}
-	if r.owner != m.services.Recording || r.legacy != m.services.Session || r.runtime != m.services.Agent || r.session != m.sessionID() {
+	if r.owner != m.services.Session || r.runtime != m.services.Agent || r.session != m.sessionID() {
 		return "Group request discarded because the session or membership changed."
 	}
 	m.grp.control = nil

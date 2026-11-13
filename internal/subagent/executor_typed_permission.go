@@ -13,7 +13,8 @@ type childPermission struct {
 	config     *AgentConfig
 	mode       PermissionMode
 	child      *session.Session
-	parent     func(*session.Session, bool, string) tool.Resolver
+	source     func(context.Context) tool.AgentInteractionSource
+	parent     func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
 	background bool
 }
 
@@ -41,8 +42,11 @@ func (p childPermission) Resolve(ctx context.Context, name string, input map[str
 		return perm.Resolution{Decision: "deny", By: by, Reason: why}
 	}
 	if p.parent != nil {
-		cwd, _ := ctx.Value(executionDirectoryKey{}).(string)
-		owner := p.parent(p.child, p.background, cwd)
+		var source tool.AgentInteractionSource
+		if p.source != nil {
+			source = p.source(ctx)
+		}
+		owner := p.parent(p.child, p.background, source)
 		if owner == nil {
 			return perm.Resolution{Decision: "deny", By: "config", Reason: "owner permission resolver unavailable"}
 		}

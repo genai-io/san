@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
@@ -360,6 +361,12 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := textOnlyModel(t)
+			m.env.CWD = t.TempDir()
+			if err := m.ensureSessionStore(); err != nil {
+				t.Fatal(err)
+			}
+			owner := mustCreateSession(t, m.services.SessionStore, session.CreateOptions{ID: "sess-1"})
+			m.services.Session = owner
 			if tc.vision {
 				m.env.LLMProvider = &restartStubProvider{}
 			}
@@ -379,7 +386,10 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 				t.Fatalf("read %s = %q; want the pasted bytes", path, got)
 			}
 
-			if err := store.Delete("sess-1"); err != nil {
+			if err := owner.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Delete(t.Context(), "sess-1"); err != nil {
 				t.Fatalf("Delete: %v", err)
 			}
 			if _, err := os.Stat(path); !os.IsNotExist(err) {

@@ -25,7 +25,6 @@ import (
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/fs"
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
@@ -104,7 +103,6 @@ type acpSession struct {
 	runtime            agent.Runtime
 	hooks              *hook.Engine
 	reminders          *reminder.Reminder
-	lastPrompt         string
 	toolResponses      sync.Map
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
@@ -138,22 +136,38 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if !info.IsDir() {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be a directory")
 	}
-	store, err := session.OpenLegacyStore(ctx, req.CWD)
+	store, err := session.OpenStore(ctx, req.CWD)
 	if err != nil {
 		return protocol.NewSessionResponse{}, err
 	}
-	var opened *session.LegacySession
-	var history *session.LegacyHistory
+	var opened *session.Session
+	var history *session.Projection
 	if resumeID == "" {
-		opened, err = store.Create(session.LegacyCreateOptions{ID: session.NewSessionID(), Cwd: req.CWD, Provider: h.provider.Name(), Model: h.model, MaxTokens: setting.DefaultMaxTokens})
+		opened, err = store.Create(ctx, session.CreateOptions{InitialCWD: req.CWD, Config: &session.EventConfig{Provider: new(h.provider.Name()), Model: new(h.model), GenerationOptions: &session.GenerationOptions{Version: 1, MaxTokens: new(setting.DefaultMaxTokens)}}})
 	} else {
-		opened, history, err = store.Open(resumeID)
+		opened, err = store.Open(ctx, resumeID)
+		if err == nil {
+			snapshot := opened.Snapshot()
+			history = &snapshot
+		}
 	}
 	if err != nil {
+		_ = store.Close()
 		return protocol.NewSessionResponse{}, err
 	}
+	openedOwned := true
+	defer func() {
+		if openedOwned {
+			_ = opened.Close()
+			_ = store.Close()
+		}
+	}()
 	if history != nil {
-		if err := validateResumeDirectory(history.Metadata.Cwd, req.CWD); err != nil {
+		cwd := history.Identity().InitialCWD
+		if saved := history.State().ExecutionCWD; saved != nil {
+			cwd = *saved
+		}
+		if err := validateResumeDirectory(cwd, req.CWD); err != nil {
 			_ = opened.Close()
 			_ = store.Close()
 			return protocol.NewSessionResponse{}, err
@@ -176,18 +190,19 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if !found {
 		models = append(models, llm.ModelInfo{ID: h.model, Name: h.model})
 	}
-	if history != nil && history.Metadata.Model != "" {
+	if history != nil && history.Config().Model != nil && *history.Config().Model != "" {
+		saved := history.Config()
 		found = false
 		for _, m := range models {
-			if m.ID == history.Metadata.Model {
+			if m.ID == *saved.Model {
 				found = true
 			}
 		}
-		if !found || (history.Metadata.Provider != "" && history.Metadata.Provider != h.provider.Name()) {
+		if !found || (saved.Provider != nil && *saved.Provider != "" && *saved.Provider != h.provider.Name()) {
 			_ = opened.Close()
 			return protocol.NewSessionResponse{}, fmt.Errorf("saved model is unavailable from the configured provider")
 		}
-		modelID = history.Metadata.Model
+		modelID = *saved.Model
 	}
 	plugins, skills, servers, err := acpExtensions(ctx, req.CWD, settings, req.MCPServers)
 	if err != nil {
@@ -210,18 +225,15 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
-	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.TranscriptPath())
-	s.hooks.SetAuditCallback(opened.RecordHookAudit)
+	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.Path())
+	bindSessionHooks(s.hooks, h.provider, opened, modelID)
+	skills.SetStateChangeObserver(session.NewRecorder(opened, h.provider.Name()).RecordSkillStateChange)
 	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
-	s.hooks.SetLLMCompleter(buildHookCompleter(h.provider), modelID)
-	audit := func(rec transcript.Record) { _ = opened.Append(context.Background(), rec) }
-	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings, audit: audit}
+	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings}
 	s.permissions.AddWorkingDirectory(req.CWD)
 	if history != nil {
-		s.runtime.SetMessages(history.Messages)
-		s.reminders.RestoreHistory(store.ChatRows(history))
-		s.lastPrompt = history.Metadata.LastPrompt
-		if history.Metadata.Mode == "auto-accept" {
+		s.reminders.RestoreHistory(store.ChatRows(*history))
+		if saved := history.Config().Mode; saved != nil && *saved == "auto-accept" {
 			s.permissions.SetMode(setting.ModeAutoAccept)
 		}
 	}
@@ -237,9 +249,17 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		Tasks:        tasks, NativeTools: tasks.Tools(),
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
-		HookEngine:       s.hooks, OnEvent: opened.RecordEvent,
+		HookEngine:       s.hooks, Recording: opened,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   policy.AutoMemory, FileCache: filecache.New(),
+	}
+	if history != nil {
+		if generation := history.Config().GenerationOptions; generation != nil {
+			if generation.MaxTokens != nil {
+				s.runtimeBuildParams.MaxTokens = *generation.MaxTokens
+			}
+			s.runtimeBuildParams.ThinkingEffort = string(generation.Effort)
+		}
 	}
 	// Tools requiring the TUI or process-global extension state are not offered.
 	s.runtimeBuildParams.DisabledTools = setting.WithDefaultDisabledTools(settings.DisabledTools)
@@ -264,6 +284,12 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		source = "resume"
 	}
 	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: source, Model: modelID})
+	var hookRecording *hook.RecordingError
+	var completionRecording *llm.RecordingError
+	if errors.As(outcome.Error, &hookRecording) || errors.As(outcome.Error, &completionRecording) {
+		_ = s.close()
+		return protocol.NewSessionResponse{}, outcome.Error
+	}
 	if outcome.AdditionalContext != "" {
 		s.reminders.Enqueue(outcome.AdditionalContext)
 	}
@@ -273,10 +299,25 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
+	if history != nil {
+		if err := s.configureAgents(); err != nil {
+			_ = s.close()
+			return protocol.NewSessionResponse{}, err
+		}
+		if _, err := s.runtime.Resume(s.runtimeBuildParams); err != nil {
+			_ = s.close()
+			return protocol.NewSessionResponse{}, err
+		}
+	}
+	if err := s.recordState(); err != nil {
+		_ = s.close()
+		return protocol.NewSessionResponse{}, err
+	}
 	id := protocol.SessionID(opened.ID())
 	h.mu.Lock()
 	h.sessions[id] = s
 	h.mu.Unlock()
+	openedOwned = false
 	return protocol.NewSessionResponse{SessionID: id, Modes: protocol.Some(s.modes()), ConfigOptions: protocol.Some(s.configOptions())}, nil
 }
 
@@ -308,7 +349,7 @@ func (s *acpSession) close() error {
 	if s.mcp != nil {
 		err = errors.Join(err, s.mcp.Close())
 	}
-	return errors.Join(err, s.nativeSession.Session.Close())
+	return errors.Join(err, s.nativeSession.Session.Close(), s.nativeSession.Store.Close())
 }
 
 func (s *acpSession) refreshMemory() {
@@ -326,8 +367,9 @@ func (s *acpSession) refreshMemory() {
 }
 
 func (s *acpSession) recordState() error {
-	return s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StatePatch{LastPrompt: new(s.lastPrompt), Mode: new(s.permissions.CurrentMode().PersistenceName())}})
+	return session.NewRecorder(s.nativeSession.Session, s.runtimeBuildParams.Provider.Name()).RecordState(context.Background(), session.SessionUpdatePayload{
+		Config: &session.ConfigPatch{Provider: session.SetField(s.runtimeBuildParams.Provider.Name()), Model: session.SetField(s.runtimeBuildParams.ModelID), Mode: session.SetField(s.permissions.CurrentMode().PersistenceName())},
+		State:  &session.StatePatch{ExecutionCWD: session.SetField(s.runtimeBuildParams.CWD)}})
 }
 
 func acpText(text string) protocol.ContentBlock {

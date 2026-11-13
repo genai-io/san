@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/genai-io/san/tests/integration/testutil"
 
@@ -189,95 +188,47 @@ func TestNonInteractivePrintMode(t *testing.T) {
 // independent session: the fork contains the same conversation history as the
 // source, but saving to the fork does not modify the original.
 func TestSessionFork_IsIndependent(t *testing.T) {
-	dir := t.TempDir()
-	store, err := session.NewLegacyStoreWithDir(dir)
+	store := testutil.OpenSessionStore(t, t.TempDir())
+	messages := []ai.Message{{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("original message")}, {ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("original reply")}}
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "source-session", Config: &session.EventConfig{Provider: new("fake"), Model: new("fake-model")}}, messages); err != nil {
+		t.Fatal(err)
+	}
+	fork, err := store.Fork(t.Context(), "source-session", session.ForkOptions{})
 	if err != nil {
-		t.Fatalf("NewStoreWithDir: %v", err)
+		t.Fatal(err)
 	}
-
-	// 1. Create and save the original session.
-	original := &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{
-			ID:       "source-session",
-			Title:    "Source",
-			Provider: "fake",
-			Model:    "fake-model",
-			Cwd:      dir,
-		},
-		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("original message")}, ai.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("original reply")}},
+	defer fork.Close()
+	forked := fork.Snapshot()
+	if fork.ID() == "source-session" || len(forked.Messages()) != len(messages) || forked.Messages()[0].Text() != "original message" {
+		t.Fatalf("fork=%+v", forked)
 	}
-	if err := testutil.ImportSession(store, original); err != nil {
-		t.Fatalf("Save(original): %v", err)
+	if forked.Identity().Fork == nil || forked.Identity().Fork.Session != "source-session" || forked.Identity().Parent != nil {
+		t.Fatal("fork and child identity conflated")
 	}
-
-	// 2. Fork the session.
-	forkSession, forked, err := store.Fork("source-session")
-	if forkSession != nil {
-		if err := forkSession.Close(); err != nil {
-			t.Fatal(err)
-		}
+	if err := testutil.AppendMessages(fork, []ai.Message{core.UserMessage("fork-only message", nil)}); err != nil {
+		t.Fatal(err)
 	}
+	source, err := store.Read(t.Context(), "source-session")
 	if err != nil {
-		t.Fatalf("Fork(): %v", err)
+		t.Fatal(err)
 	}
-
-	// The fork must have a different ID.
-	if forked.Metadata.ID == "source-session" {
-		t.Fatal("forked session must have a different ID than the source")
-	}
-
-	// The fork must have the same conversation history as the source.
-	if len(forked.Messages) != len(original.Messages) {
-		t.Fatalf("fork should have %d entries, got %d", len(original.Messages), len(forked.Messages))
-	}
-	if forked.Messages[0].Text() != "original message" {
-		t.Errorf("fork message[0] text mismatch")
-	}
-
-	// The fork must reference the source via ParentSessionID.
-	if forked.Metadata.ParentSessionID != "source-session" {
-		t.Errorf("fork ParentSessionID = %q, want %q", forked.Metadata.ParentSessionID, "source-session")
-	}
-
-	// 3. Append a new entry to the fork and save it.
-	forked.Messages = append(forked.Messages, core.Message{ID: "u2", Role: ai.RoleUser, Content: ai.TextContent("fork-only message")})
-	if err := testutil.ImportSession(store, forked); err != nil {
-		t.Fatalf("Save(forked): %v", err)
-	}
-
-	// 4. Reload the original and confirm it is unchanged.
-	time.Sleep(10 * time.Millisecond) // ensure timestamps differ
-	reloaded, err := store.Read("source-session", session.LegacyReadOptions{})
+	reloaded, err := store.Read(t.Context(), fork.ID())
 	if err != nil {
-		t.Fatalf("Load(source-session): %v", err)
+		t.Fatal(err)
 	}
-	if len(reloaded.Messages) != 2 {
-		t.Errorf("original should still have 2 entries, got %d", len(reloaded.Messages))
+	if len(source.Messages()) != 2 || len(reloaded.Messages()) != 3 {
+		t.Fatal("fork writes changed source")
 	}
-
-	// 5. Reload the fork and confirm it has the extra entry.
-	reloadedFork, err := store.Read(forked.Metadata.ID, session.LegacyReadOptions{})
+	page, err := store.List(t.Context(), session.ListQuery{})
 	if err != nil {
-		t.Fatalf("Load(forked): %v", err)
+		t.Fatal(err)
 	}
-	if len(reloadedFork.Messages) != 3 {
-		t.Errorf("fork should have 3 entries, got %d", len(reloadedFork.Messages))
+	ids := map[string]bool{}
+	for _, item := range page.Items {
+		ids[item.SessionID] = true
 	}
-
-	// 6. Both must appear in the session list.
-	list, err := store.List()
-	if err != nil {
-		t.Fatalf("List(): %v", err)
-	}
-	ids := make(map[string]bool)
-	for _, s := range list {
-		ids[s.ID] = true
-	}
-	if !ids["source-session"] {
-		t.Error("List() should include the original session")
-	}
-	if !ids[forked.Metadata.ID] {
-		t.Error("List() should include the forked session")
+	if len(ids) != 2 || !ids["source-session"] || !ids[fork.ID()] {
+		t.Fatalf("list=%+v", page)
 	}
 }
 

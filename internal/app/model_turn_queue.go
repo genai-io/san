@@ -26,7 +26,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		return nil
 	}
 	m.pendingStopHook = nil
-	if msg.pending.session != m.services.Session || msg.pending.recording != m.services.Recording || msg.pending.outbox != m.AgentOutbox() ||
+	if msg.pending.session != m.services.Session || msg.pending.outbox != m.AgentOutbox() ||
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
@@ -164,7 +164,7 @@ func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.submit(pendingMessage{Message: message})
+	return m.submit(n.input(message))
 }
 
 func (m *model) showNoticeLine(n mainNotice) core.Message {
@@ -229,6 +229,9 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // deliverNotice shows the notice immediately; its content reaches the running
 // agent at the next step boundary (see notify.go).
 func (m *model) deliverNotice(n mainNotice) tea.Cmd {
+	if n.Destination != nil && n.Destination != m.services.Session {
+		return nil
+	}
 	if n.SessionID != "" && n.SessionID != m.sessionID() {
 		return nil
 	}
@@ -248,7 +251,7 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 	var send tea.Cmd
 	message := m.showNoticeLine(n)
 	if n.Content != "" { // display-only notices have nothing for the model to read
-		send = m.sendToAgent(pendingMessage{Message: message})
+		send = m.sendToAgent(n.input(message))
 	}
 	return tea.Batch(append(m.CommitMessages(), send)...)
 }

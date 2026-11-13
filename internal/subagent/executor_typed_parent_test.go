@@ -43,7 +43,7 @@ func TestTypedParentRecorderAcceptsChildLink(t *testing.T) {
 	}
 	defer parent.Close()
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("child answer"))}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	driver := aitest.New(aitest.Asks(ai.ToolCall{ID: "launch", Name: "Agent", Input: "{}"}), aitest.Says("accepted"))

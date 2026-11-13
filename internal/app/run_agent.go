@@ -5,15 +5,22 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // AgentRunOptions configures a one-shot headless agent run.
@@ -24,8 +31,53 @@ type AgentRunOptions struct {
 	MaxSteps int    // maximum LLM inference steps
 }
 
+// newHeadlessExecutor installs native persistence and the current headless
+// policy before any worker can be admitted. A nil parent is a top-level run.
+func newHeadlessExecutor(provider llm.Provider, cwd, model string, settings *setting.Data, store *session.Store, registry *subagent.Registry, tasks *task.Manager) (*subagent.Executor, error) {
+	executor := subagent.NewExecutor(provider, cwd, model, nil)
+	if err := executor.SetSessions(store, nil); err != nil {
+		return nil, err
+	}
+	permissions := &setting.SessionPermissions{ShouldAvoidPrompts: true}
+	permissions.AddWorkingDirectory(cwd)
+	executor.ConfigureOwner(tasks, registry, func(_ *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
+		cwd := source.WorkingDirectory
+		policy := agent.PermissionPolicy{Settings: setting.ScopedPermissions{Data: settings, CWD: cwd}, Session: permissions}
+		return headlessPermissionResolver{policy: policy}
+	}, nil)
+	executor.SetDisabledTools(setting.WithDefaultDisabledTools(settings.DisabledTools))
+	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
+		projection := owner.Snapshot()
+		engine := hook.NewEngine(settings, owner.ID(), projection.Identity().InitialCWD, owner.Path())
+		bindSessionHooks(engine, provider, owner, model)
+		return engine, func(provider llm.Provider, model string) { bindSessionHooks(engine, provider, owner, model) }, engine.Shutdown
+	})
+	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
+		engine, _ := handler.(*hook.Engine)
+		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{})
+		return nil
+	})
+	return executor, nil
+}
+
+type headlessPermissionResolver struct{ policy agent.PermissionPolicy }
+
+func (r headlessPermissionResolver) Resolve(ctx context.Context, name string, input map[string]any, force bool, reason string) perm.Resolution {
+	if err := ctx.Err(); err != nil {
+		return perm.Resolution{Decision: "cancelled", By: "config", Reason: err.Error()}
+	}
+	decision := r.policy.Decide(name, input)
+	if decision.Decision == perm.Permit && !force {
+		return perm.Resolution{Decision: "allow", By: decision.By, Scope: decision.Scope, Reason: decision.Reason}
+	}
+	if decision.Decision == perm.Reject {
+		return perm.Resolution{Decision: "deny", By: decision.By, Scope: decision.Scope, Reason: decision.Reason}
+	}
+	return perm.Resolution{Decision: "deny", By: "config", Reason: "headless agent cannot ask for approval: " + reason}
+}
+
 // RunAgent executes a single agent in headless mode (no TUI).
-func RunAgent(opts AgentRunOptions) error {
+func RunAgent(opts AgentRunOptions) (runErr error) {
 	if opts.Prompt == "" {
 		return fmt.Errorf("--prompt is required")
 	}
@@ -36,12 +88,25 @@ func RunAgent(opts AgentRunOptions) error {
 	defer cancel()
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
-		<-sigCh
-		fmt.Println("\nShutting down agent...")
-		cancel()
+		select {
+		case <-sigCh:
+			fmt.Println("\nShutting down agent...")
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	store, err := session.OpenStore(ctx, cwd)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, store.Close()) }()
 	provider, modelID, err := resolveProvider(ctx)
 	if err != nil {
 		return err
@@ -50,7 +115,6 @@ func RunAgent(opts AgentRunOptions) error {
 		modelID = opts.Model
 	}
 
-	cwd, _ := os.Getwd()
 	warnUntrustedWorkspace(cwd)
 	workerSettings, err := setting.LoadForCwd(cwd)
 	if err != nil {
@@ -70,7 +134,12 @@ func RunAgent(opts AgentRunOptions) error {
 	// Run through the full subagent pipeline so headless invocations get the
 	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
 	// as TUI-spawned subagents.
-	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
+	pool := task.NewManager()
+	defer func() { runErr = errors.Join(runErr, pool.StopServices("")); pool.Cancel(); pool.Join() }()
+	executor, err := newHeadlessExecutor(provider, cwd, modelID, workerSettings, store, subagent.Default(), pool)
+	if err != nil {
+		return err
+	}
 	executor.SetDefaultModel(workerSettings.SubagentModel)
 	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))
 

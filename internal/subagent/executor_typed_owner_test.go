@@ -32,7 +32,7 @@ func TestTypedSessionsRejectWrongStoreHandle(t *testing.T) {
 	}
 	defer other.Close()
 	e := NewExecutor(continuationProvider{aitest.New()}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(other, parent); err == nil {
+	if err := e.SetSessions(other, parent); err == nil {
 		t.Fatal("accepted parent from another store handle")
 	}
 	crossProject, err := session.OpenStore(ctx, t.TempDir())
@@ -45,10 +45,10 @@ func TestTypedSessionsRejectWrongStoreHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer duplicate.Close()
-	if err := e.SetTypedSessions(crossProject, parent); err == nil {
+	if err := e.SetSessions(crossProject, parent); err == nil {
 		t.Fatal("accepted cross-project parent with matching ID")
 	}
-	if err := e.SetTypedSessions(original, parent); err != nil {
+	if err := e.SetSessions(original, parent); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -77,7 +77,7 @@ func TestPreparedTypedChildRetainsOriginalOwners(t *testing.T) {
 		}
 		return ctx
 	}
-	if err := e.SetTypedSessions(original, parent); err != nil {
+	if err := e.SetSessions(original, parent); err != nil {
 		t.Fatal(err)
 	}
 	run, err := e.prepareRun(ctx, tool.AgentExecRequest{TaskID: "worker", Prompt: "work", ParentToolCallID: "launch"})
@@ -90,7 +90,7 @@ func TestPreparedTypedChildRetainsOriginalOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer replacement.Close()
-	if err := e.SetTypedSessions(original, replacement); err != nil {
+	if err := e.SetSessions(original, replacement); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.openNative(ctx, run); err != nil {
@@ -99,7 +99,7 @@ func TestPreparedTypedChildRetainsOriginalOwners(t *testing.T) {
 	defer run.recording.Close()
 	snapshot := run.recording.Snapshot()
 	link := snapshot.Identity().Parent
-	if run.typedStore != original || run.typedParent != parent || link == nil || link.Session != parent.ID() || link.CallID != "launch" {
+	if run.store != original || run.parent != parent || link == nil || link.Session != parent.ID() || link.CallID != "launch" {
 		t.Fatalf("prepared run followed replacement owner: %+v", link)
 	}
 	if run.checkpoint.parentOwner != parent {

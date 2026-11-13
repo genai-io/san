@@ -59,7 +59,7 @@ func TestTypedCreationPrecedesLifecycleHooks(t *testing.T) {
 			}}
 			d := aitest.New(aitest.Says("done"))
 			e := NewExecutor(continuationProvider{d}, cwd, "aitest", hooks)
-			if err := e.SetTypedSessions(store, parent); err != nil {
+			if err := e.SetSessions(store, parent); err != nil {
 				t.Fatal(err)
 			}
 			run, err = e.prepareRun(ctx, tool.AgentExecRequest{Prompt: "work", ParentToolCallID: "launch"})

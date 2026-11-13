@@ -6,11 +6,12 @@ import (
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // runWithInbox closes message acceptance and drains late input within one execution budget.
-func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps int) (*core.Result, error) {
+func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps int, owner *session.Session) (*core.Result, error) {
 	// Delivery and the final pending check share a lock: after closing,
 	// even a broker callback already looked up must reject instead of dropping input.
 	var mailMu sync.Mutex
@@ -19,10 +20,22 @@ func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps in
 		broker.Register(taskID, func(m broker.Message) bool {
 			mailMu.Lock()
 			defer mailMu.Unlock()
-			if !accepting || ctx.Err() != nil {
+			if !accepting || ctx.Err() != nil || (owner != nil && owner.Err() != nil) {
 				return false
 			}
-			ag.Append(core.UserMessage(m.Content, nil))
+			message := core.UserMessage(m.Content, nil)
+			if m.SourceSession != "" || m.SourceSeq != 0 {
+				if owner == nil || m.SourceSession == "" || m.SourceSeq == 0 {
+					return false
+				}
+				message.ID = core.NewMessageID()
+				if err := owner.AcceptInput(ctx, message, &session.EventRef{Session: m.SourceSession, Seq: m.SourceSeq}); err != nil {
+					return false
+				}
+			}
+			// Append is infallible. Exact native IDs let the observer recognize
+			// precommitted input instead of writing a second, unsourced copy.
+			ag.Append(message)
 			return true
 		})
 		defer broker.Unregister(taskID)

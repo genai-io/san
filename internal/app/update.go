@@ -277,6 +277,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.env.CurrentModel = m.services.LLM.CurrentModel()
 		m.env.LLMProvider = m.services.LLM.Provider()
 		return m, nil
+	case input.ContextLimitUpdatedMsg:
+		if err := m.applyContextLimitUpdate(msg); err != nil {
+			m.conv.AddNotice("Could not apply session output limit: " + err.Error())
+			return m, tea.Batch(m.CommitMessages()...)
+		}
+		return m, nil
 	case input.ToolToggleMsg:
 		// The selector already persisted the enable/disable to disk. Refresh the
 		// in-memory settings so DisabledTools() (read by the built-in and MCP

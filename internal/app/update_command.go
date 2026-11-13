@@ -25,6 +25,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		Setting:      m.services.Setting,
 		LLM:          m.services.LLM,
 		SessionStore: m.services.SessionStore,
+		Session:      m.services.Session,
 		SessionID:    m.sessionID,
 		Command:      m.services.Command,
 		Skill:        m.services.Skill,

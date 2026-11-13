@@ -53,9 +53,18 @@ func (h *AgentToUI) sendInteraction(req *InteractionRequest) error {
 
 // Approve forwards only an already evaluated worker Prompt, never a Reject.
 func (h *AgentToUI) Approve(ctx context.Context, source tool.AgentInteractionSource, view *perm.PermissionRequest, input map[string]any) (bool, string) {
+	resolved := h.ResolveApproval(ctx, source, view, input)
+	return resolved.Decision == "allow", resolved.Reason
+}
+
+// ResolveApproval preserves the native verdict and the question actually shown.
+func (h *AgentToUI) ResolveApproval(ctx context.Context, source tool.AgentInteractionSource, view *perm.PermissionRequest, input map[string]any) perm.Resolution {
+	cancelled := func(err error, asked *perm.Asked) perm.Resolution {
+		return perm.Resolution{Decision: "cancelled", By: "user", Reason: err.Error(), Asked: asked}
+	}
 	req, cancel, err := h.interaction(ctx)
 	if err != nil {
-		return false, err.Error()
+		return cancelled(err, nil)
 	}
 	defer cancel()
 	req.Source = source
@@ -66,16 +75,26 @@ func (h *AgentToUI) Approve(ctx context.Context, source tool.AgentInteractionSou
 		Response: make(chan agent.PermGateResponse, 1),
 	}
 	if err := h.sendInteraction(req); err != nil {
-		return false, err.Error()
+		return cancelled(err, req.Permission.AskedSnapshot())
 	}
 	select {
 	case response := <-req.Permission.Response:
-		if err := h.interactionError(req.Context); err != nil {
-			return false, err.Error()
+		asked := response.Asked
+		if asked == nil {
+			asked = req.Permission.AskedSnapshot()
 		}
-		return response.Allow, response.Reason
+		if err := h.interactionError(req.Context); err != nil {
+			return cancelled(err, asked)
+		}
+		decision := "deny"
+		if response.Cancelled {
+			decision = "cancelled"
+		} else if response.Allow {
+			decision = "allow"
+		}
+		return perm.Resolution{Decision: decision, By: response.By, Scope: response.Scope, Reason: response.Reason, Asked: asked}
 	case <-req.Context.Done():
-		return false, req.Context.Err().Error()
+		return cancelled(req.Context.Err(), req.Permission.AskedSnapshot())
 	}
 }
 

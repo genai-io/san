@@ -10,7 +10,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -39,7 +38,7 @@ func TestShownQuestionSurvivesCancellation(t *testing.T) {
 	req := &Request{Context: native.Context, Owner: owner, Permission: native}
 	view := &perm.PermissionRequest{ToolName: "Write"}
 	labels := []string{"Allow once", "Deny"}
-	if NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels }, nil) == nil {
+	if NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels }) == nil {
 		t.Fatal("approval not shown")
 	}
 	labels[0] = "mutated"
@@ -56,15 +55,7 @@ func TestShownQuestionSnapshotIsDetached(t *testing.T) {
 	view.BashMeta = &perm.BashMetadata{LineCount: 7}
 	labels := []string{"Allow once", "Deny"}
 	before := time.Now().UnixMilli()
-	p := NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels }, func(r transcript.Record) {
-		// Audit observers also do not own the question snapshot.
-		if r.Type == transcript.PermissionRequired {
-			r.Permission.OptionsOffered[0] = "changed by observer"
-			if len(r.Permission.Detail) > 0 {
-				r.Permission.Detail[0] = '!'
-			}
-		}
-	})
+	p := NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels })
 	labels[0] = "changed by caller"
 	view.BashMeta.LineCount = 99
 	req.Permission.Input["file_path"] = "changed"
@@ -77,7 +68,7 @@ func TestShownQuestionSnapshotIsDetached(t *testing.T) {
 	}
 }
 
-func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
+func TestPermissionScopesAndStructuredReply(t *testing.T) {
 	for _, tc := range []struct {
 		name                                    string
 		approve, session, persist, worker, once bool
@@ -99,7 +90,6 @@ func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
 			if tc.worker {
 				req.Source = tool.AgentInteractionSource{AgentID: "worker", WorkingDirectory: "/worker", PermissionMode: "edit"}
 			}
-			var records []transcript.Record
 			options := func(v *perm.PermissionRequest) []string {
 				if v.OnceOnly != (tc.once || tc.worker) {
 					t.Fatal("options built before scope restriction")
@@ -109,13 +99,9 @@ func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
 				}
 				return []string{"Allow once", "Allow session", "Always allow", "Deny"}
 			}
-			p := NewPermission(req, owner, view, options, func(r transcript.Record) {
-				if len(req.Permission.Response) != 0 {
-					t.Fatal("worker woke before audit")
-				}
-				records = append(records, r)
-			})
-			// Rendering changes cannot expand the captured grant scope or alter audit input.
+			p := NewPermission(req, owner, view, options)
+			expectedOptions := append([]string(nil), p.asked.Options...)
+			// Rendering changes cannot expand the captured grant scope or alter the question.
 			view.OnceOnly = false
 			view.AllowRules = []string{"Write(**)"}
 			req.Permission.Input["_onActivity"] = func() {}
@@ -127,20 +113,13 @@ func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
 			if !p.Resolve(owner, d, allow, persist) || p.Resolve(owner, d, allow, persist) {
 				t.Fatal("decision was not exactly once")
 			}
-			if got := <-req.Permission.Response; got.Allow != tc.approve || got.By != "user" || got.Scope != tc.scope || got.Asked == nil || got.Asked.At <= 0 || !reflect.DeepEqual(got.Asked.Options, records[0].Permission.OptionsOffered) {
+			if got := <-req.Permission.Response; got.Allow != tc.approve || got.By != "user" || got.Scope != tc.scope || got.Asked == nil || got.Asked.At <= 0 || !reflect.DeepEqual(got.Asked.Options, expectedOptions) {
 				t.Fatal(got)
 			}
 			if !reflect.DeepEqual(grants, tc.grants) {
 				t.Fatalf("grants=%v want %v", grants, tc.grants)
 			}
-			if len(records) != 2 || records[0].Type != transcript.PermissionRequired || records[1].Type != transcript.PermissionDecided {
-				t.Fatalf("audit=%+v", records)
-			}
-			record := records[1].Permission
-			if record.Scope != tc.scope || string(record.Input) != `{"file_path":"fixture"}` || record.RequestID != "approval-1" {
-				t.Fatalf("record=%+v", record)
-			}
-			if tc.worker && (record.Mode != "edit" || len(record.Detail) == 0) {
+			if tc.worker && len(p.asked.Detail) == 0 {
 				t.Fatal("worker context lost")
 			}
 		})
@@ -157,8 +136,7 @@ func TestPermissionRejectsStaleAndUnsupportedReplies(t *testing.T) {
 			if kind == "missing rules" {
 				view.AllowRules = nil
 			}
-			records := 0
-			p := NewPermission(req, owner, view, nil, func(transcript.Record) { records++ })
+			p := NewPermission(req, owner, view, nil)
 			d := PermissionDecision{Approved: true, Request: view}
 			current := owner
 			switch kind {
@@ -176,7 +154,7 @@ func TestPermissionRejectsStaleAndUnsupportedReplies(t *testing.T) {
 				d.AllowAll = true
 			}
 			persist := func([]string) { t.Fatal("invalid reply granted rules") }
-			if p.Resolve(current, d, nil, persist) || records != 1 || len(req.Permission.Response) != 0 {
+			if p.Resolve(current, d, nil, persist) || len(req.Permission.Response) != 0 {
 				t.Fatal("invalid reply changed state")
 			}
 		})
@@ -209,7 +187,7 @@ func TestPermissionHookGateCancellationAndSuccessor(t *testing.T) {
 	}
 	firstReq := &Request{Context: first.Context, Owner: owner, Permission: first}
 	firstView := &perm.PermissionRequest{ToolName: "Write"}
-	old := NewPermission(firstReq, owner, firstView, nil, nil)
+	old := NewPermission(firstReq, owner, firstView, nil)
 	stopFirst()
 	select {
 	case d := <-firstDone:
@@ -226,12 +204,7 @@ func TestPermissionHookGateCancellationAndSuccessor(t *testing.T) {
 	}
 	secondReq := &Request{Context: second.Context, Owner: owner, Permission: second}
 	secondView := &perm.PermissionRequest{ToolName: "Write"}
-	audited := false
-	next := NewPermission(secondReq, owner, secondView, nil, func(r transcript.Record) {
-		if r.Type == transcript.PermissionDecided {
-			audited = true
-		}
-	})
+	next := NewPermission(secondReq, owner, secondView, nil)
 	if old.Resolve(owner, PermissionDecision{Approved: true, Request: firstView}, nil, nil) {
 		t.Fatal("late reply authorized cancelled tool")
 	}
@@ -243,28 +216,32 @@ func TestPermissionHookGateCancellationAndSuccessor(t *testing.T) {
 	}
 	select {
 	case d := <-secondDone:
-		if d.Block || !audited {
-			t.Fatal("successor blocked or unaudited")
+		if d.Block {
+			t.Fatal("successor blocked")
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
 }
 
-func TestPermissionCancellationDuringAuditFailsClosed(t *testing.T) {
+func TestPermissionCancellationDuringGrantFailsClosed(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	owner := &testOwner{}
 	req, view := permissionRequest(ctx, owner)
-	p := NewPermission(req, owner, view, nil, func(r transcript.Record) {
-		if r.Type == transcript.PermissionDecided {
-			cancel()
+	p := NewPermission(req, owner, view, nil)
+	grants := 0
+	persist := func([]string) {
+		grants++
+		if p.Resolve(owner, PermissionDecision{Approved: true, Persist: true, Request: view}, nil, nil) {
+			t.Fatal("reentrant reply accepted")
 		}
-	})
-	if !p.Resolve(owner, PermissionDecision{Approved: true, Request: view}, nil, nil) {
+		cancel()
+	}
+	if !p.Resolve(owner, PermissionDecision{Approved: true, Persist: true, Request: view}, nil, persist) {
 		t.Fatal("decision not consumed")
 	}
-	if got := <-req.Permission.Response; got.Allow {
-		t.Fatal("cancelled caller authorized")
+	if got := <-req.Permission.Response; got.Allow || !got.Cancelled || got.By != "user" || got.Asked == nil || grants != 1 {
+		t.Fatal("cancelled caller authorized or external grant rolled back")
 	}
 }

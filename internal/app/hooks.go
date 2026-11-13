@@ -48,9 +48,8 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 
 // pendingStopHook identifies the pending decision and its session/runtime.
 type pendingStopHook struct {
-	session   *session.LegacySession
-	recording *session.Session
-	outbox    <-chan core.Event
+	session *session.Session
+	outbox  <-chan core.Event
 }
 
 type stopHookResultMsg struct {
@@ -62,7 +61,7 @@ type stopHookResultMsg struct {
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
-	pending := &pendingStopHook{session: m.services.Session, recording: m.services.Recording, outbox: m.AgentOutbox()}
+	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
 	m.pendingStopHook = pending
 	check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 	return func() tea.Msg {
@@ -110,7 +109,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
 	m.services.LLM.SetProvider(p)
-	m.services.Hook.SetLLMCompleter(buildHookCompleter(p), m.env.GetModelID())
+	bindSessionHooks(m.services.Hook, p, m.services.Session, m.env.GetModelID())
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
@@ -179,19 +178,5 @@ func buildRecordedHookCompleter(p llm.Provider, owner *session.Session) hook.Rec
 			err = &hook.RecordingError{Err: err}
 		}
 		return result, err
-	}
-}
-
-func buildHookCompleter(p llm.Provider) hook.LLMCompleter {
-	if p == nil {
-		return nil
-	}
-	return func(ctx context.Context, systemPrompt, userMessage, model string) (string, error) {
-		c := llm.NewClient(p, model, 0)
-		resp, err := c.Complete(ctx, systemPrompt, []core.Message{core.UserMessage(userMessage, nil)}, nil, 4096)
-		if err != nil {
-			return "", err
-		}
-		return resp.Content.Text(), nil
 	}
 }

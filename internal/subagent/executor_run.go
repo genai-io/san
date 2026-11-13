@@ -12,6 +12,8 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/session"
@@ -24,14 +26,19 @@ import (
 )
 
 type preparedRun struct {
-	sourceAfter    uint64 // Accepted prefix before this execution; never cite an older answer.
-	originalPrompt string
-	toolStarted    bool
-	priorFailure   string
-	native         *session.LegacySession
-	// Capture original typed ownership before scheduling child work.
-	typedStore  *session.Store
-	typedParent *session.Session
+	hookFactory       func(*session.Session, llm.Provider, string) (hook.Handler, func(llm.Provider, string), func())
+	rebindHooks       func(llm.Provider, string)
+	stopHooks         func()
+	hooks             hook.Handler
+	hooksBound        bool
+	sourceAfter       uint64 // Accepted prefix before this execution; never cite an older answer.
+	originalPrompt    string
+	toolStarted       bool
+	continuationInput *core.Message // exact preaccepted prompt, retained across async launch
+	priorFailure      string
+	// Capture original ownership before scheduling child work.
+	store       *session.Store
+	parent      *session.Session
 	recorder    *session.Recorder
 	recording   *session.Session
 	history     []core.Message
@@ -58,11 +65,11 @@ type preparedRun struct {
 	outputTokens int
 }
 
-func (r *preparedRun) parentID(legacy string) string {
-	if r.typedParent != nil {
-		return r.typedParent.ID()
+func (r *preparedRun) parentID() string {
+	if r.parent != nil {
+		return r.parent.ID()
 	}
-	return legacy
+	return ""
 }
 
 func (r *preparedRun) identity() toolresult.AgentIdentity {
@@ -77,8 +84,6 @@ func (r *preparedRun) identity() toolresult.AgentIdentity {
 	identity := toolresult.AgentIdentity{ID: id, Name: r.cfg.config.Name, CallID: callID}
 	if r.recording != nil {
 		identity.SessionID = r.recording.ID()
-	} else if r.native != nil {
-		identity.SessionID = r.native.ID()
 	} else if r.checkpoint != nil {
 		identity.SessionID = r.checkpoint.sessionID
 	}
@@ -228,8 +233,10 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &preparedRun{
-		typedStore:     e.typedStore,
-		typedParent:    e.typedParent,
+		hookFactory:    e.childHooks,
+		hooks:          e.hooks,
+		store:          e.store,
+		parent:         e.parent,
 		originalPrompt: e.taskPrompt(cfg, req),
 		req:            req,
 		cfg:            cfg,
@@ -249,10 +256,7 @@ func (e *Executor) logRunStart(run *preparedRun) {
 }
 
 func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (out *core.Result, runErr error) {
-	if run.recording != nil && (run.native != nil || e.sessionStore != nil) {
-		return nil, fmt.Errorf("child execution cannot use legacy and typed recording together")
-	}
-	if run.native == nil && run.recording == nil {
+	if run.recording == nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -268,31 +272,6 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		}
 	}
 	run.reportIdentity()
-	if run.recording != nil {
-		defer func() {
-			var recordingErr error
-			if run.recorder != nil {
-				recordingErr = run.recorder.Err()
-			}
-			persistErr := errors.Join(recordingErr, run.recording.Err(), run.recording.Close())
-			if run.checkpoint != nil {
-				run.checkpoint.cwd, run.checkpoint.persistenceErr, run.checkpoint.cfg = run.currentCwd(), persistErr, run.cfg
-			}
-			runErr = errors.Join(runErr, persistErr)
-		}()
-	}
-	if run.native != nil {
-		defer func() {
-			if run.checkpoint != nil {
-				run.checkpoint.cwd = run.currentCwd()
-			}
-			persistErr := errors.Join(run.native.Err(), run.native.Close())
-			if run.checkpoint != nil {
-				run.checkpoint.persistenceErr = persistErr
-			}
-			runErr = errors.Join(runErr, persistErr)
-		}()
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -312,14 +291,11 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		}
 	}
 	onEvent := func(ev core.Event) {
-		if run.native != nil {
-			if _, stopped := ev.(core.AgentStopped); !stopped {
-				run.native.RecordEvent(ev)
-			}
-		}
 		if event, ok := ev.(sdkagent.ToolEnd); ok && e.postTool != nil {
 			effect, _ := run.sideEffects.Load(event.ID)
-			e.postTool(core.ToolResult{ToolCallID: event.ID, ToolName: event.Name, Content: event.Result.Content, IsError: event.Err != nil}, effect)
+			if err := e.postTool(run.hooks, core.ToolResult{ToolCallID: event.ID, ToolName: event.Name, Content: event.Result.Content, IsError: event.Err != nil}, effect); err != nil {
+				_ = run.recorder.Fail(err) // Returned at the next admission or cleanup.
+			}
 		}
 		run.forwardEvent(ctx, ev)
 	}
@@ -331,7 +307,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 
 	if run.req.ResumeTaskID != "" {
 		ag.SetMessages(run.history)
-		ag.Append(core.UserMessage(fmt.Sprintf("Continuation (previous execution: %s; current cwd: %s). Verify current filesystem/external state before retrying any interrupted tool with unknown outcome.\n", run.priorFailure, run.currentCwd())+run.req.Prompt, nil))
+		ag.Append(*run.continuationInput)
 	} else if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
 		return nil, err
 	}
@@ -347,18 +323,18 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		agentAddr = run.hookID
 	}
 	ctx = tool.WithAgentID(ctx, agentAddr)
-	ctx = task.WithSessionID(ctx, run.parentID(e.parentSessionID))
+	ctx = task.WithSessionID(ctx, run.parentID())
 
 	inboxID := run.req.TaskID
 	if e.tasks != nil {
 		// Session-owned hosts do not publish worker addresses in the TUI broker.
 		inboxID = ""
 	}
-	result, err := runWithInbox(ctx, ag, inboxID, run.cfg.maxSteps)
+	result, err := runWithInbox(ctx, ag, inboxID, run.cfg.maxSteps, run.recording)
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
 	// or continuation instruction again.
-	if ctx.Err() == nil && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
+	if ctx.Err() == nil && run.recording.Err() == nil && (run.recorder == nil || run.recorder.Err() == nil) && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
 		messages := ag.Messages()
 		run.cfg.provider, run.cfg.modelID = e.provider, e.parentModelID
 		if run.recording != nil {
@@ -366,13 +342,16 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 				return result, updateErr
 			}
 		}
+		if run.rebindHooks != nil {
+			run.rebindHooks(run.cfg.provider, run.cfg.modelID)
+		}
 		fallback, cleanupFallback, buildErr := e.buildAgent(ctx, run, onToolExec, onEvent)
 		if buildErr != nil {
 			return result, buildErr
 		}
 		defer cleanupFallback()
 		fallback.SetMessages(messages)
-		result, err = runWithInbox(ctx, fallback, inboxID, run.cfg.maxSteps)
+		result, err = runWithInbox(ctx, fallback, inboxID, run.cfg.maxSteps, run.recording)
 	}
 	if err != nil {
 		if result != nil {
@@ -433,17 +412,8 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 	var agentSessionID, agentTranscriptPath string
 	if run.recording != nil {
 		agentSessionID, agentTranscriptPath = run.recording.ID(), run.recording.Path()
-	} else if run.native != nil {
-		agentSessionID, agentTranscriptPath = run.native.ID(), run.native.TranscriptPath()
-	} else {
-		agentSessionID, agentTranscriptPath = e.persistSubagentSession(
-			run.cfg.displayName,
-			run.cfg.modelID,
-			run.req.Description,
-			result.Messages,
-		)
 	}
-	e.fireSubagentStop(run.req, run.hookID, agentTranscriptPath, result.Content)
+	e.fireSubagentStop(run.hooks, run.req, run.hookID, agentTranscriptPath, result.Content)
 
 	identity := run.identity()
 	identity.SessionID = agentSessionID

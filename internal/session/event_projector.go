@@ -20,6 +20,7 @@ type projectionData struct {
 	Messages             []ai.Message
 	ActiveIDs            []string
 	MessageSeq           map[string]uint64   // message ID -> seq of the event that appended it
+	Accepted             map[string]uint64   // queued input ID -> original acceptance event
 	ToolCalls            map[string]toolCall // by tool call ID
 	Config               EventConfig
 	State                EventState
@@ -52,6 +53,16 @@ func (p *Projection) Identity() SessionCreatePayload { return eventCopy(p.data.I
 func (p *Projection) Config() EventConfig            { return eventCopy(p.data.Config) }
 func (p *Projection) State() EventState              { return eventCopy(p.data.State) }
 func (p *Projection) Skills() map[string]string      { return maps.Clone(p.data.Skills) }
+
+// ToolCallSource identifies the committed native message carrying a tool call.
+// Session is explicit so the reference stays foreign when delivered elsewhere.
+func (p *Projection) ToolCallSource(callID string) (EventRef, bool) {
+	call, ok := p.data.ToolCalls[callID]
+	if !ok || call.Seq == 0 || p.data.SessionID == "" {
+		return EventRef{}, false
+	}
+	return EventRef{Session: p.data.SessionID, Seq: call.Seq}, true
+}
 
 // ActiveMessages is the context sent to the model.
 func (p *Projection) ActiveMessages() []ai.Message {
@@ -180,6 +191,7 @@ func ApplyEventBatch(base *Projection, sessionID string, events []Event, validat
 		p.data.Messages = slices.Clone(base.data.Messages)
 		p.data.ActiveIDs = slices.Clone(base.data.ActiveIDs)
 		p.data.MessageSeq = maps.Clone(base.data.MessageSeq)
+		p.data.Accepted = maps.Clone(base.data.Accepted)
 		p.data.ToolCalls = maps.Clone(base.data.ToolCalls)
 		p.data.Instructions = maps.Clone(base.data.Instructions)
 		p.data.Tools = maps.Clone(base.data.Tools)
@@ -197,7 +209,7 @@ func applyReplayEventBatch(p *Projection, sessionID string, events []Event, vali
 	if p == nil {
 		p = &Projection{
 			data: projectionData{
-				SessionID: sessionID, MessageSeq: map[string]uint64{}, ToolCalls: map[string]toolCall{},
+				SessionID: sessionID, MessageSeq: map[string]uint64{}, Accepted: map[string]uint64{}, ToolCalls: map[string]toolCall{},
 				Instructions: map[string]InstructionSection{}, Tools: map[string]ai.Schema{}, Skills: map[string]string{},
 				UnfinishedInferences: map[uint64]bool{},
 			},

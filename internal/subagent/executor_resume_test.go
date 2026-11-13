@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -27,10 +27,7 @@ func (p continuationProvider) ListModels(context.Context) ([]llm.ModelInfo, erro
 func (p continuationProvider) Name() string                                        { return "aitest" }
 
 func TestNativeBackgroundContinuation(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "parent-native-test")
 	cwd := t.TempDir()
 	path := filepath.Join(cwd, "useful.txt")
 	if err := os.WriteFile(path, []byte("previously discovered evidence"), 0600); err != nil {
@@ -39,7 +36,7 @@ func TestNativeBackgroundContinuation(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"file_path": path})
 	d := aitest.New(aitest.Asks(ai.ToolCall{ID: "read-1", Name: "Read", Input: string(args)}), aitest.Asks(ai.ToolCall{ID: "read-2", Name: "Read", Input: string(args)}), aitest.Says("verified follow-up"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	e.SetSessionStore(store, "parent-native-test")
+	bindContinuationSessions(t, e, store, parent)
 	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "Inspect original task", MaxSteps: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +47,13 @@ func TestNativeBackgroundContinuation(t *testing.T) {
 	first := a.GetStatus()
 	if first.Status != task.StatusFailed || first.AgentSessionID == "" {
 		t.Fatalf("first execution: %+v", first)
+	}
+	checkpoint, err := store.Read(context.Background(), first.AgentSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link := checkpoint.Identity().Parent; link == nil || link.Session != parent.ID() {
+		t.Fatalf("child lost validated parent link: %+v", link)
 	}
 	b, err := e.RunBackground(tool.AgentExecRequest{ResumeTaskID: a.GetID(), Prompt: "Check it now", MaxSteps: 2})
 	if err != nil {
@@ -75,11 +79,20 @@ func TestNativeBackgroundContinuation(t *testing.T) {
 	if !strings.Contains(text.String(), "Inspect original task") || !strings.Contains(text.String(), "Check it now") || !strings.Contains(text.String(), "previously discovered evidence") {
 		t.Fatalf("native history missing: %s", text.String())
 	}
-	h, err := store.Read(first.AgentSessionID, session.LegacyReadOptions{})
+	h, err := store.Read(context.Background(), first.AgentSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(h.Messages) < 4 {
-		t.Fatalf("native history not appended: %+v", h.Messages)
+	if len(h.Messages()) < 4 {
+		t.Fatalf("native history not appended: %+v", h.Messages())
+	}
+	before, after := checkpoint.Events(), h.Events()
+	if len(after) <= len(before) || !reflect.DeepEqual(before, after[:len(before)]) {
+		t.Fatal("continuation replaced or rewrote the committed native event prefix")
+	}
+	for i, event := range after {
+		if event.Seq != uint64(i+1) {
+			t.Fatalf("non-contiguous native sequence at %d: %d", i, event.Seq)
+		}
 	}
 }

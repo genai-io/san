@@ -9,11 +9,8 @@ import (
 )
 
 func TestResumeCommandListsInjectedStore(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err := store.Create(session.LegacyCreateOptions{ID: "existing"})
+	store := selectorStore(t)
+	opened, err := store.Create(t.Context(), session.CreateOptions{ID: "existing"})
 	if err != nil {
 		t.Fatal(err)
 	}

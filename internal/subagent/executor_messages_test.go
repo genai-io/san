@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/broker"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	agenttools "github.com/genai-io/san/internal/tool/agent"
@@ -19,13 +18,10 @@ import (
 )
 
 func TestSendMessageContinuesForegroundSession(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "message-parent")
 	driver := aitest.New(aitest.Says("original findings"), aitest.Says("follow-up verified"))
 	executor := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
-	executor.SetSessionStore(store, "message-parent")
+	bindContinuationSessions(t, executor, store, parent)
 	first, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "Inspect original task", MaxSteps: 3})
 	if err != nil || first == nil || !first.Success {
 		t.Fatalf("first execution: %+v %v", first, err)
@@ -75,12 +71,9 @@ func TestSendMessageContinuesForegroundSession(t *testing.T) {
 }
 
 func TestSendMessageApprovalCannotResumeLaterAttempt(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "owner")
 	executor := NewExecutor(continuationProvider{aitest.New(aitest.Says("done"))}, t.TempDir(), "aitest", nil)
-	executor.SetSessionStore(store, "owner")
+	bindContinuationSessions(t, executor, store, parent)
 	first, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "work"})
 	if err != nil {
 		t.Fatal(err)
@@ -106,10 +99,13 @@ func TestSendMessageApprovalCannotResumeLaterAttempt(t *testing.T) {
 }
 
 func TestRunningAgentProcessesAcceptedMessagesWithinBudget(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	for _, budget := range []int{1, 2} {
 		t.Run(string(rune('0'+budget)), func(t *testing.T) {
+			store, parent := continuationSessions(t, "message-budget-parent")
 			driver := aitest.New(aitest.Says("first response"), aitest.Says("follow-up response"))
 			executor := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
+			bindContinuationSessions(t, executor, store, parent)
 			var route string
 			sent := false
 			result, err := executor.Run(context.Background(), tool.AgentExecRequest{

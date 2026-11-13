@@ -141,7 +141,7 @@ func (m *model) showActiveInteraction() tea.Cmd {
 		m.interactions.permission = view
 		m.syncApprovalToolState()
 		m.interactions.approval = interaction.NewPermission(req, m.conv.AgentToUI, view,
-			input.BuildApprovalOptions, m.recordPermission)
+			input.BuildApprovalOptions)
 		if m.interactions.approval == nil {
 			m.finishInteraction()
 			return m.advanceInteractions()

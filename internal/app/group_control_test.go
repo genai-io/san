@@ -11,7 +11,26 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
+
+func newGroupControlModel(t *testing.T) *model {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	m := commitTestModel()
+	m.env.CWD = t.TempDir()
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.env.ApplyModePermissions(m.env.CWD)
+	store, err := session.OpenStore(t.Context(), m.env.CWD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	owner := mustCreateSession(t, store, session.CreateOptions{ID: "control-test", InitialCWD: m.env.CWD})
+	m.services.SessionStore, m.services.Session, m.services.sessionID = store, owner, owner.ID()
+	return m
+}
 
 func TestGroupControlQueueNeverEntersMainConversation(t *testing.T) {
 	for _, busy := range []bool{false, true} {
@@ -72,7 +91,7 @@ func TestGroupControlStrictSchema(t *testing.T) {
 }
 
 func TestGroupControlIsolatedCompletion(t *testing.T) {
-	m := commitTestModel()
+	m := newGroupControlModel(t)
 	p := &autopilotStubProvider{content: `{"action":"members","arguments":{}}`}
 	m.env.LLMProvider = p
 	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatUser, Content: "PRIVATE TRANSCRIPT SENTINEL"})
@@ -111,7 +130,7 @@ func TestGroupControlIsolatedCompletion(t *testing.T) {
 }
 
 func TestGroupControlNativeAndCancellation(t *testing.T) {
-	m := commitTestModel()
+	m := newGroupControlModel(t)
 	p := &autopilotStubProvider{content: `{"action":"members","arguments":{}}`}
 	m.env.LLMProvider = p
 	for _, args := range []string{"", "members", "list", "kick", "disband"} {
@@ -136,7 +155,7 @@ func TestGroupControlNativeAndCancellation(t *testing.T) {
 func TestGroupControlFencesAndFailures(t *testing.T) {
 	for _, mode := range []string{"session", "membership", "switch", "timeout", "invalid"} {
 		t.Run(mode, func(t *testing.T) {
-			m := commitTestModel()
+			m := newGroupControlModel(t)
 			m.env.LLMProvider = &autopilotStubProvider{content: `{"action":"members","arguments":{}}`}
 			_, cmd := m.groupCommand("show my teammates")
 			msg := cmd().(groupControlMsg)
@@ -170,7 +189,7 @@ func TestGroupControlFencesAndFailures(t *testing.T) {
 
 func TestGroupControlDestructiveRequiresNativeCommand(t *testing.T) {
 	for _, text := range []string{`{"action":"kick","arguments":{"name":"api"}}`, `{"action":"disband","arguments":{"group":"team"}}`} {
-		m := commitTestModel()
+		m := newGroupControlModel(t)
 		m.env.LLMProvider = &autopilotStubProvider{content: text}
 		_, cmd := m.groupCommand("please remove it")
 		got := m.handleGroupControl(cmd().(groupControlMsg))
@@ -182,7 +201,7 @@ func TestGroupControlDestructiveRequiresNativeCommand(t *testing.T) {
 
 func TestGroupControlAppliesOnlyOnUIThread(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	m := commitTestModel()
+	m := newGroupControlModel(t)
 	m.services.Agent = &agent.Runtime{}
 	m.services.Reminder = reminder.New()
 	m.services.sessionID = "control-test"

@@ -15,19 +15,19 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
+	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 func TestACPLoadNativeStateAndModes(t *testing.T) {
 	f := newACPFixture(t, aitest.New(aitest.Says("continued")), nil)
 	cwd := t.TempDir()
-	store, err := session.NewLegacyStore(cwd)
+	store, err := session.OpenStore(f.ctx, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(session.LegacyCreateOptions{Cwd: cwd, Model: "test"})
+	opened, err := store.Create(f.ctx, session.CreateOptions{InitialCWD: cwd, Config: &session.EventConfig{Model: new("test")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +36,17 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	for i := range messages {
 		messages[i].ID = core.NewMessageID()
 	}
-	if err := opened.Append(f.ctx, transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
+	if err := opened.Append(f.ctx, session.Event{Payload: session.MessageAppendPayload{Messages: messages[:1]}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := opened.Append(f.ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Mode: new("bypassPermissions"), LastPrompt: new("remember the original")}}); err != nil {
+	inference, err := opened.StartInference(f.ctx, session.InferenceOptions{Purpose: session.PurposeTurn, TurnID: "saved", Provider: "acp-test", Model: ai.Model{ID: "test"}, Request: &ai.Request{Messages: messages[:1]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inference.Finish(f.ctx, &ai.Response{Content: ai.TextContent("remembered")}, nil, session.Event{Payload: session.MessageAppendPayload{Messages: messages[1:]}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Append(f.ctx, session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{Mode: session.SetField("bypassPermissions")}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := opened.Close(); err != nil {
@@ -56,7 +63,7 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	f.host.mu.Lock()
 	s := f.host.sessions[req.SessionID]
 	f.host.mu.Unlock()
-	if len(s.runtime.Messages()) != 2 || s.lastPrompt != "remember the original" {
+	if len(s.runtime.Messages()) != 2 || s.runtime.Messages()[0].Text() != "remember the original" {
 		t.Fatal("native state not restored")
 	}
 	f.mu.Lock()
@@ -81,11 +88,11 @@ func TestACPLoadNativeStateAndModes(t *testing.T) {
 	if _, err := f.prompt(req.SessionID, "continue"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read(id, session.LegacyReadOptions{})
+	history, err := store.Read(f.ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history.Messages) < 4 || history.Metadata.Mode != "auto-accept" {
+	if len(history.Messages()) < 4 || *history.Config().Mode != "auto-accept" {
 		t.Fatal("history/state not retained")
 	}
 }
@@ -113,8 +120,8 @@ func TestACPModelSwitchPreservesOwners(t *testing.T) {
 	if s.runtimeBuildParams.ModelID != "other" || s.permissions != permissions || s.runtimeBuildParams.FileViews != views || s.runtimeBuildParams.Skills != skills || len(s.runtime.Messages()) < 2 {
 		t.Fatal("switch lost session owners")
 	}
-	history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
-	if err != nil || history.Metadata.Model != "other" {
+	history, err := s.nativeSession.Store.Read(f.ctx, string(id))
+	if err != nil || *history.Config().Model != "other" {
 		t.Fatalf("selection not durable: %v", err)
 	}
 	if _, err := f.prompt(id, "second"); err != nil {
@@ -145,12 +152,12 @@ func TestACPSkillUsesSessionRegistry(t *testing.T) {
 	if _, err := f.prompt(id, "load the local skill"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := f.host.sessions[id].nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
+	history, err := f.host.sessions[id].nativeSession.Store.Read(f.ctx, string(id))
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
-	for _, m := range history.Messages {
+	for _, m := range history.Messages() {
 		for _, r := range m.ToolResults() {
 			if strings.Contains(r.Content.Text(), "SESSION OWNED SKILL") {
 				found = true

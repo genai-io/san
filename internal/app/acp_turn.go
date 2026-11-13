@@ -23,6 +23,8 @@ import (
 func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.PromptRequest) (response protocol.PromptResponse, err error) {
 	s.input.set(turn)
 	defer s.input.set(nil)
+	s.input.bindCancellation(ctx, func() { s.runtime.Cancel() })
+	defer s.input.bindCancellation(nil, nil)
 	if s.runtimeBuildParams.Plugins != nil {
 		ctx = plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins)
 	}
@@ -56,11 +58,28 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return response, err
 	}
 	if !s.runtime.Active() {
-		s.configureAgents()
-		if err := s.runtime.Start(s.runtimeBuildParams, s.runtime.Messages()); err != nil {
+		if err := s.configureAgents(); err != nil {
+			return response, err
+		}
+		projection := s.nativeSession.Session.Snapshot()
+		if len(projection.ActiveMessages()) > 0 {
+			if _, err := s.runtime.Resume(s.runtimeBuildParams); err != nil {
+				return response, err
+			}
+		} else if err := s.runtime.Start(s.runtimeBuildParams, nil); err != nil {
 			return response, err
 		}
 	}
+	cancellationDone := make(chan struct{})
+	stopCancellation := context.AfterFunc(ctx, func() {
+		defer close(cancellationDone)
+		s.runtime.Cancel()
+	})
+	defer func() {
+		if !stopCancellation() {
+			<-cancellationDone
+		}
+	}()
 	gate := s.runtime.PermissionGate()
 	permissionsCtx, cancelPermissions := context.WithCancel(ctx)
 	permissionsDone := make(chan struct{})
@@ -84,23 +103,34 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if err := s.runtime.Send(msg); err != nil {
 		return response, err
 	}
-	s.lastPrompt = text.String()
 	cancelled := ctx.Done()
 	var receipt *core.TurnFinalization
+	var receiptDone <-chan error
 	var transportErr error
 	for {
 		select {
+		case finalizedErr := <-receiptDone:
+			// A native cancelled admission can have no terminal event. The
+			// producer settles that exact receipt after unwinding; do not wait
+			// forever for an event it deliberately did not emit.
+			finished = true
+			if finalizedErr == context.Canceled {
+				finalizedErr = nil
+			}
+			return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(finalizedErr, transportErr, s.nativeSession.Session.Err())
 		case <-cancelled:
 			cancelled = nil
 			receipt = s.runtime.Cancel()
-			if receipt == nil {
-				// Cancellation can precede mailbox admission. Drain while shutdown joins
-				// rather than returning with an accepted input still owned by the runtime.
+			if receipt != nil {
+				done := make(chan error, 1)
+				receiptDone = done
+				go func(captured *core.TurnFinalization) { done <- captured.Wait(context.Background()) }(receipt)
+			} else if stopping == nil {
 				stopping = make(chan struct{})
-				go func() {
+				go func(done chan struct{}) {
 					_ = s.runtime.Stop(context.Background())
-					close(stopping)
-				}()
+					close(done)
+				}(stopping)
 			}
 		case event, ok := <-s.runtime.Outbox():
 			if !ok {
@@ -156,6 +186,9 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				}
 				return protocol.PromptResponse{StopReason: stop}, errors.Join(recordErr, transportErr)
 			case core.AgentStopped:
+				if ctx.Err() != nil || transportErr != nil {
+					return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, errors.Join(acpStopFailure(e.Err), transportErr, s.nativeSession.Session.Err())
+				}
 				if e.Err != nil && ctx.Err() == nil {
 					s.hooks.ExecuteAsync(hook.StopFailure, hook.HookInput{Error: e.Err.Error()})
 				}
@@ -170,11 +203,31 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 					transportErr = turn.SendUpdate(protocol.SessionNotification{Update: update})
 					if transportErr != nil {
 						receipt = s.runtime.Cancel()
+						if receipt != nil {
+							done := make(chan error, 1)
+							receiptDone = done
+							go func(captured *core.TurnFinalization) { done <- captured.Wait(context.Background()) }(receipt)
+						} else if stopping == nil {
+							stopping = make(chan struct{})
+							go func(done chan struct{}) { _ = s.runtime.Stop(context.Background()); close(done) }(stopping)
+						}
 					}
 				}
 			}
 		}
 	}
+}
+
+// acpStopFailure suppresses only a direct, pure cancellation. Joined or
+// wrapped failures retain their full evidence even when cancellation also won.
+func acpStopFailure(err error) error {
+	if err == context.Canceled {
+		return nil
+	}
+	if admission, ok := err.(*sdkagent.AdmissionError); ok && admission.Boundary == "output" && admission.Err == context.Canceled {
+		return nil
+	}
+	return err
 }
 
 func (s *acpSession) postTool(e sdkagent.ToolEnd) {

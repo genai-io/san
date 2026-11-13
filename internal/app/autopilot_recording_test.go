@@ -35,7 +35,8 @@ func autopilotRecordingModel(t *testing.T) (*model, *session.Session) {
 	}
 	t.Cleanup(func() { owner.Close() })
 	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
-	m.services.Recording, m.services.sessionID = owner, owner.ID()
+	m.services.Session, m.services.sessionID = owner, owner.ID()
+	m.services.SessionStore = store
 	t.Cleanup(m.cancelAutopilot)
 	return m, owner
 }
@@ -353,13 +354,23 @@ func TestAutopilotMissionRefineCancellationDelivery(t *testing.T) {
 func TestAutopilotMissionRefineOwnerFence(t *testing.T) {
 	for _, changed := range []string{"owner", "session"} {
 		t.Run(changed, func(t *testing.T) {
-			m, _ := autopilotRecordingModel(t)
+			m, original := autopilotRecordingModel(t)
 			_, current := m.missionRefine("original draft")
+			var replacement *session.Session
+			var err error
 			if changed == "owner" {
-				m.services.Recording = &session.Session{}
+				if err := original.Close(); err != nil {
+					t.Fatal(err)
+				}
+				replacement, err = m.services.SessionStore.Open(t.Context(), original.ID())
 			} else {
-				m.services.sessionID = "another-session"
+				replacement, err = m.services.SessionStore.Create(t.Context(), session.CreateOptions{ID: "another-session"})
 			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer replacement.Close()
+			m.services.Session = replacement
 			if valid, _ := current(); valid {
 				t.Fatal("changed session accepted old editor result")
 			}

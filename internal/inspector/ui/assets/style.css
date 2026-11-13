@@ -429,6 +429,23 @@ aside {
 .timeline::-webkit-scrollbar-thumb { background: var(--bone-4); border-radius: 0; }
 .timeline::-webkit-scrollbar-track { background: transparent; }
 
+.timeline-row {
+  padding: 0.6rem 1rem;
+  border-left: 3px solid var(--bone-4);
+  border-bottom: 1px solid var(--ink-2);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.timeline-row:hover, .timeline-row.active { background: var(--ink-2); }
+.timeline-row.active { border-left-color: var(--amber); }
+.timeline-row[data-kind="message"] { border-left-color: var(--c-message); }
+.timeline-row[data-kind="inference"] { border-left-color: var(--c-inference); }
+.timeline-row[data-kind="tool"] { border-left-color: var(--c-tool); }
+.timeline-row[data-kind="system"] { border-left-color: var(--c-system); }
+.timeline-row[data-kind="state"] { border-left-color: var(--c-state); }
+.timeline-row[data-kind="hook"] { border-left-color: var(--c-hook); }
+.timeline-row[data-kind="permission"] { border-left-color: var(--c-permission); }
+
 .row {
   display: grid;
   grid-template-columns: 76px 6px 1fr;

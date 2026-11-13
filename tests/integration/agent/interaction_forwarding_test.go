@@ -8,24 +8,13 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	_ "github.com/genai-io/san/internal/tool/fs"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
-
-type forwardingInteractions struct {
-	approve func(context.Context, tool.AgentInteractionSource, *perm.PermissionRequest, map[string]any) (bool, string)
-}
-
-func (f forwardingInteractions) Approve(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) (bool, string) {
-	return f.approve(ctx, source, request, input)
-}
-func (f forwardingInteractions) Ask(context.Context, tool.AgentInteractionSource, *tool.QuestionRequest) (*tool.QuestionResponse, error) {
-	return nil, nil
-}
 
 func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 	for _, background := range []bool{false, true} {
@@ -34,11 +23,11 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 				cwd := t.TempDir()
 				marker := filepath.Join(cwd, "approved-marker")
 				seen := make(chan tool.AgentInteractionSource, 1)
-				executor := subagent.NewExecutor(&testutil.FakeProvider{Responses: []llm.CompletionResponse{
+				executor := newIntegrationExecutor(t, &testutil.FakeProvider{Responses: []llm.CompletionResponse{
 					testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test approval"}`),
 					testutil.EndTurnResponse("done"),
 				}}, cwd, "fake-model", nil)
-				executor.SetInteractions(forwardingInteractions{approve: func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) (bool, string) {
+				configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) interaction.PermissionDecision {
 					if _, err := os.Stat(marker); !os.IsNotExist(err) {
 						t.Error("tool ran before approval")
 					}
@@ -52,8 +41,8 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 						t.Errorf("incomplete request: %+v", request)
 					}
 					seen <- source
-					return approve, "test decision"
-				}})
+					return interaction.PermissionDecision{Approved: approve, Request: request}
+				})
 				req := tool.AgentExecRequest{Prompt: "run command", ParentToolCallID: "parent-call"}
 				var taskID string
 				if background {

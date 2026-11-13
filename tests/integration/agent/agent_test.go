@@ -16,7 +16,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -63,23 +62,20 @@ func TestHeadlessAgentPrintsPartialResultBeforeReturningError(t *testing.T) {
 }
 
 func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	executor := subagent.NewExecutor(&testutil.FakeProvider{
+	store, parent := integrationSessions(t)
+	executor := newIntegrationExecutor(t, &testutil.FakeProvider{
 		ErrorAt: 1, ErrorValue: errors.New("invalid API credentials"),
 	}, t.TempDir(), "fake-model", nil)
-	executor.SetSessionStore(store, "parent-1")
+	bindIntegrationSessions(t, executor, store, parent)
 	result, runErr := subagent.NewExecutorAdapter(executor).Run(context.Background(), tool.AgentExecRequest{Prompt: "Investigate"})
 	if runErr == nil || result == nil || result.Success || result.AgentID == "" || result.OutputFile == "" {
 		t.Fatalf("failed execution lost transcript identity: result=%#v, err=%v", result, runErr)
 	}
-	saved, err := store.Read(result.AgentID, session.LegacyReadOptions{})
+	saved, err := store.Read(context.Background(), result.AgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Metadata.ParentSessionID != "parent-1" || len(saved.Messages) == 0 {
+	if saved.Identity().Parent == nil || saved.Identity().Parent.Session != parent.ID() || len(saved.Messages()) == 0 {
 		t.Fatalf("failed transcript not linked to parent: %#v", saved)
 	}
 }
@@ -93,14 +89,11 @@ func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
 			}
 			task.Initialize(options)
 			t.Cleanup(task.ResetDefaultTracker)
-			store, err := session.NewLegacyStoreWithDir(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			executor := subagent.NewExecutor(&testutil.FakeProvider{
+			store, parent := integrationSessions(t)
+			executor := newIntegrationExecutor(t, &testutil.FakeProvider{
 				ErrorAt: 1, ErrorValue: errors.New("invalid API credentials"),
 			}, t.TempDir(), "fake-model", nil)
-			executor.SetSessionStore(store, "parent-1")
+			bindIntegrationSessions(t, executor, store, parent)
 			worker, err := executor.RunBackground(tool.AgentExecRequest{Prompt: "Investigate"})
 			if err != nil {
 				t.Fatal(err)
@@ -116,8 +109,15 @@ func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
 			if taskLog && info.OutputFile != initialFile {
 				t.Fatalf("failure replaced the task log: %q -> %q", initialFile, info.OutputFile)
 			}
-			if !taskLog && info.OutputFile != store.TranscriptPath(info.AgentSessionID) {
-				t.Fatalf("without a task log failure must link the transcript: %#v", info)
+			if !taskLog {
+				child, err := store.Open(context.Background(), info.AgentSessionID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer child.Close()
+				if info.OutputFile != child.Path() {
+					t.Fatalf("without a task log failure must link the transcript: %#v", info)
+				}
 			}
 		})
 	}
@@ -133,7 +133,7 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 		},
 	}
 
-	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, mp, t.TempDir(), "fake-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Mode:        "explore",
 		Prompt:      "Find all Go files",
@@ -160,7 +160,7 @@ func TestAgent_UnknownNameUsesDefaultTemplate(t *testing.T) {
 			{Content: ai.TextContent("completed with default template"), StopReason: ai.StopEndTurn},
 		},
 	}
-	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, mp, t.TempDir(), "fake-model", nil)
 
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "NonExistent",
@@ -180,12 +180,12 @@ func TestAgent_MaxStepsRespected(t *testing.T) {
 	for i := range responses {
 		responses[i] = llm.CompletionResponse{
 			StopReason: ai.StopToolUse,
-			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: "tc", Name: "UnknownTool", Input: "{}"})},
+			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: fmt.Sprintf("tc-%d", i), Name: "UnknownTool", Input: "{}"})},
 			Usage:      llm.Usage{Input: 1, Output: 1},
 		}
 	}
 
-	executor := subagent.NewExecutor(
+	executor := newIntegrationExecutor(t,
 		&testutil.FakeProvider{Responses: responses},
 		t.TempDir(), "fake-model", nil,
 	)
@@ -222,7 +222,7 @@ func TestAgent_ModelResolution(t *testing.T) {
 					{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn},
 				},
 			}
-			executor := subagent.NewExecutor(mp, t.TempDir(), tt.parentModel, nil)
+			executor := newIntegrationExecutor(t, mp, t.TempDir(), tt.parentModel, nil)
 
 			if tt.parentModel != "" && executor.ParentModelID() != tt.parentModel {
 				t.Errorf("parent model mismatch: got %q, want %q",
@@ -288,7 +288,7 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 		},
 	}
 
-	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, mp, t.TempDir(), "fake-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Mode:   "explore",
 		Prompt: "try to write a file",
@@ -350,7 +350,7 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 		},
 	}
 
-	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", engine)
+	executor := newIntegrationExecutor(t, mp, tmpDir, "fake-model", engine)
 	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Prompt: "test hooks",
 	})
@@ -389,7 +389,7 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 		},
 	}
 
-	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, mp, t.TempDir(), "fake-model", nil)
 	agentTask, err := executor.RunBackground(tool.AgentExecRequest{
 		Prompt:      "background task",
 		Description: "bg test",
@@ -432,7 +432,7 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 		},
 	}
 
-	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", nil)
+	executor := newIntegrationExecutor(t, mp, tmpDir, "fake-model", nil)
 	var activity []string
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Mode:   "explore",
@@ -477,7 +477,7 @@ func TestAgent_SmallBudgetStopsTheActualRuntime(t *testing.T) {
 		{Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{ID: "read-1", Name: "Read", Input: `{"file_path":"missing.go"}`}}}, StopReason: ai.StopToolUse},
 		{Content: ai.TextContent("Should not reach another inference"), StopReason: ai.StopEndTurn},
 	}}
-	executor := subagent.NewExecutor(provider, t.TempDir(), "worker-model", nil)
+	executor := newIntegrationExecutor(t, provider, t.TempDir(), "worker-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "Investigate", MaxSteps: 1})
 	if err != nil || result == nil || result.Success || len(provider.Calls) != 1 || !strings.Contains(result.Error, "maximum steps (1)") {
 		t.Fatalf("explicit budget did not stop the runtime: calls=%d, result=%+v, err=%v", len(provider.Calls), result, err)

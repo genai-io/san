@@ -34,18 +34,15 @@ func (*failedTurnProvider) Client(string, map[string]string) (*ai.Client, error)
 	return aitest.Always(aitest.Fails(&ai.Error{Kind: ai.KindAuth, Message: "test authentication failure"})).Client(), nil
 }
 
-func resumedModel(t *testing.T, messages []core.Message) (*model, *session.LegacyStore) {
+func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	cwd := t.TempDir()
-	store, err := session.NewLegacyStoreWithDir(cwd)
-	if err != nil {
+	store := testutil.OpenSessionStore(t, cwd)
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "s"}, messages); err != nil {
 		t.Fatal(err)
 	}
-	if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "s"}, Messages: messages}); err != nil {
-		t.Fatal(err)
-	}
-	opened, history, err := store.Open("s")
+	opened, err := store.Open(t.Context(), "s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +54,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Legac
 			Tracker:   todo.NewStore(), Reminder: reminder.New(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
-			Hook:     hook.NewEngine(nil, "s", "", opened.TranscriptPath()),
+			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
 		},
 		conv:      conv.NewModel(80),
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
@@ -66,9 +63,15 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Legac
 	m.env.FileCache = filecache.New()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
-	m.services.Agent.SetMessages(history.Messages)
-	m.conv.Messages = history.ChatRows()
-	t.Cleanup(func() { _ = m.services.Session.Close() })
+	history := opened.Snapshot()
+	m.services.Agent.SetMessages(history.ActiveMessages())
+	m.conv.Messages = store.ChatRows(history)
+	t.Cleanup(func() {
+		if m.services.Session != nil {
+			_ = m.services.Session.Close()
+		}
+		_ = opened.Close()
+	})
 	t.Cleanup(func() {
 		if err := m.StopAgentRuntime(); err != nil {
 			t.Error(err)
@@ -80,9 +83,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Legac
 func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
-	if err := testutil.ImportSession(store, &session.LegacyHistory{
-		Metadata: session.LegacyMetadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
-	}); err != nil {
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, []core.Message{ai.UserMessage("other conversation")}); err != nil {
 		t.Fatal(err)
 	}
 	m.services.Reminder.Enqueue("context belonging to the previous session")
@@ -103,7 +104,7 @@ func TestResumeReplaysEveryMessage(t *testing.T) {
 	for range 60 {
 		messages = append(messages, ai.UserMessage("prompt"))
 	}
-	if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "other"}, Messages: messages}); err != nil {
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, messages); err != nil {
 		t.Fatal(err)
 	}
 	m.conv.CommittedCount = len(m.conv.Messages)
@@ -128,9 +129,7 @@ func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
 			m.enqueueInteraction(question)
 			m.enqueueInteraction(approval)
 			if action == "resume" {
-				if err := testutil.ImportSession(store, &session.LegacyHistory{
-					Metadata: session.LegacyMetadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
-				}); err != nil {
+				if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, []core.Message{ai.UserMessage("other conversation")}); err != nil {
 					t.Fatal(err)
 				}
 				if err := m.loadSessionByID("other"); err != nil {
@@ -171,7 +170,7 @@ func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
 	}
 }
 
-func TestSessionOpeningPreservesContextWithoutAnIdentitySwitch(t *testing.T) {
+func TestSessionOpeningFencesReplacementAndPreservesInitialBinding(t *testing.T) {
 	for _, action := range []string{"same-session", "closed-session", "missing-session", "first-open"} {
 		t.Run(action, func(t *testing.T) {
 			m, _ := resumedModel(t, parallelResultChain())
@@ -191,6 +190,7 @@ func TestSessionOpeningPreservesContextWithoutAnIdentitySwitch(t *testing.T) {
 				m.conv.Messages = nil
 			}
 			ui := m.conv.AgentToUI
+			permissions := m.env.SessionPermissions
 			m.services.Reminder.Enqueue("pending context for this identity")
 			var err error
 			switch action {
@@ -204,11 +204,17 @@ func TestSessionOpeningPreservesContextWithoutAnIdentitySwitch(t *testing.T) {
 			if (err != nil) != (action == "missing-session") {
 				t.Fatalf("session opening error = %v, action = %s", err, action)
 			}
-			if m.conv.AgentToUI != ui || ui.Closed() {
-				t.Fatal("opening the session retired its UI context")
+			retired := action == "closed-session"
+			if retired {
+				if m.conv.AgentToUI == ui || !ui.Closed() || m.env.SessionPermissions == permissions {
+					t.Fatal("reopened writer retained the retired owner's UI or grants")
+				}
+			} else if m.conv.AgentToUI != ui || ui.Closed() {
+				t.Fatal("same/failed/initial binding retired its UI context")
 			}
-			if next := m.attachPendingReminders(core.UserMessage("continue", nil)); !strings.Contains(next.Text(), "pending context for this identity") {
-				t.Fatal("opening the session discarded its pending context")
+			next := m.attachPendingReminders(core.UserMessage("continue", nil))
+			if strings.Contains(next.Text(), "pending context for this identity") == retired {
+				t.Fatal("session opening retained or discarded context against owner lifetime")
 			}
 		})
 	}
@@ -234,8 +240,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 	m, store := resumedModel(t, history)
 	w := m.services.Session
 	stopped := make(chan error, 1)
-	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", OnEvent: func(event core.Event) {
-		w.RecordEvent(event)
+	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -260,7 +265,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
@@ -275,8 +280,8 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("retry never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.LegacyReadOptions{})
-	if err != nil || len(loaded.Messages) < 5 || !reflect.DeepEqual(loaded.Messages[:3], history) {
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || len(loaded.ActiveMessages()) < 5 || !reflect.DeepEqual(loaded.ActiveMessages()[:3], history) {
 		t.Fatalf("retry corrupted the durable history: %+v, %v", loaded, err)
 	}
 }
@@ -284,26 +289,34 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T) {
 	history := parallelResultChain()
 	m, store := resumedModel(t, history)
+	m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("both files read")).Client()}
 	request := m.BuildCompactRequest("", "manual")
-	m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Summary: "both files read", OriginalCount: len(history)}})
+	result := conv.CompactCmd(request)().(conv.CompactResultMsg)
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if !strings.Contains(result.Summary, "both files read") {
+		t.Fatalf("summary output lost: %q", result.Summary)
+	}
+	m.HandleCompactResult(result)
 	seed := m.services.Agent.Messages()
-	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary("both files read") {
+	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary(result.Summary) {
 		t.Fatalf("inactive compaction retained old inference context: %+v", seed)
 	}
 	if len(m.conv.Messages) != 1 || m.conv.Messages[0].ID != seed[0].ID {
 		t.Fatal("UI and native summary have different identities")
 	}
-	loaded, err := store.Read("s", session.LegacyReadOptions{})
-	if err != nil || !reflect.DeepEqual(loaded.Messages, seed) {
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || !reflect.DeepEqual(loaded.ActiveMessages(), seed) {
 		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
 	}
 	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, seed); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
 		t.Fatal(err)
 	}
 	m.StopAgentRuntime()
-	full, err := store.Read("s", session.LegacyReadOptions{FullHistory: true})
+	full, err := store.Read(t.Context(), "s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +332,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
 	w := m.services.Session
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, m.services.Agent.Messages()); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
@@ -334,11 +347,11 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 		t.Fatal("text-only turn never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.LegacyReadOptions{})
-	if err != nil || len(loaded.Messages) < 3 || !reflect.DeepEqual(loaded.Messages[:2], history) {
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || len(loaded.ActiveMessages()) < 3 || !reflect.DeepEqual(loaded.ActiveMessages()[:2], history) {
 		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
 	}
-	m.services.Agent.SetMessages(loaded.Messages)
+	m.services.Agent.SetMessages(loaded.ActiveMessages())
 	m.env.LLMProvider = &restartStubProvider{}
 	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
 		t.Fatal("vision model could not recover the historical image")
@@ -353,8 +366,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 	w := m.services.Session
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	stopped := make(chan error, 1)
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(event core.Event) {
-		w.RecordEvent(event)
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
@@ -378,8 +390,9 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 		t.Fatal("turn after rename never reached inference")
 	}
 	m.StopAgentRuntime()
-	loaded, err := store.Read("s", session.LegacyReadOptions{})
-	if err != nil || loaded.Metadata.Title != "renamed" || len(loaded.Messages) < 3 || loaded.Messages[2].ID != "after-name" {
+	loaded, err := store.Read(t.Context(), "s")
+	attrs, attrsErr := store.Attrs(t.Context(), "s")
+	if err != nil || attrsErr != nil || attrs.Title != "renamed" || len(loaded.ActiveMessages()) < 3 || loaded.ActiveMessages()[2].ID != "after-name" {
 		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
 	}
 }
@@ -410,13 +423,13 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
 				t.Fatalf("session switch changed the source membership: %+v", members)
 			}
-			source, err := store.Read("s", session.LegacyReadOptions{})
-			if err != nil || source.Metadata.Group == "" {
+			source, err := store.Read(t.Context(), "s")
+			if err != nil || source.State().GroupHint == nil || source.State().GroupHint.GroupID == "" {
 				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
 			}
 			if action == "fork" {
-				forked, err := store.Read(m.sessionID(), session.LegacyReadOptions{})
-				if err != nil || forked.Metadata.Group != "" {
+				forked, err := store.Read(t.Context(), m.sessionID())
+				if err != nil || (forked.State().GroupHint != nil && forked.State().GroupHint.GroupID != "") {
 					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
 				}
 			}
@@ -472,7 +485,7 @@ func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
 			if action == "clear" {
 				err = m.clearSession()
 			} else {
-				if err := testutil.ImportSession(store, &session.LegacyHistory{Metadata: session.LegacyMetadata{ID: "other"}}); err != nil {
+				if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, nil); err != nil {
 					t.Fatal(err)
 				}
 				err = m.loadSessionByID("other")

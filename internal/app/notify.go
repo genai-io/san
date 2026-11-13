@@ -22,6 +22,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -33,9 +35,11 @@ import (
 // Content = display-only). Pure UI signals (e.g. the self-learn spinner start)
 // do not ride here — they have their own channels.
 type mainNotice struct {
-	SessionID string
-	Display   string
-	Content   string
+	SessionID   string
+	Source      *session.EventRef
+	Destination *session.Session
+	Display     string
+	Content     string
 	// FromAgent marks a notice relayed in from a background agent (a subagent
 	// completion or interim report), so the UI renders its Display line as an
 	// inbound agent message rather than a plain system notice.
@@ -49,11 +53,34 @@ type mainNotice struct {
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
 	n := mainNotice{SessionID: m.SessionID, Display: m.Subject, Content: m.Content, FromAgent: true}
+	if m.SourceSession != "" || m.SourceSeq != 0 {
+		n.Source = &session.EventRef{Session: m.SourceSession, Seq: m.SourceSeq}
+	}
 	if completion := m.TaskCompletion; completion != nil {
 		n.FinishedTaskID = completion.TaskID
 		n.FinishedAttempt = completion.Attempt
 	}
 	return n
+}
+
+// bindMainBroker captures the receiving handle before mail enters the UI queue.
+func (m *model) bindMainBroker(owner *session.Session) {
+	broker.Register(broker.Main, func(message broker.Message) bool {
+		if message.SessionID != "" && message.SessionID != owner.ID() {
+			return false
+		}
+		n := fromBrokerMessage(message)
+		n.Destination = owner
+		return m.notifyMain(n)
+	})
+}
+
+func (n mainNotice) input(message core.Message) pendingMessage {
+	input := pendingMessage{Message: message, Source: n.Source}
+	if n.Source != nil {
+		input.Destination = n.Destination
+	}
+	return input
 }
 
 // maxTaskOutputInNotification is the largest task output, in bytes, inlined
@@ -147,15 +174,24 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		recipient = broker.Main
 	}
 	return broker.Message{
-		SessionID: info.ParentSessionID,
-		From:      info.ID,
-		To:        recipient,
-		Subject:   subject,
-		Content:   b.String(),
+		SourceSession: taskSourceSession(info),
+		SourceSeq:     info.SourceMessageSeq,
+		SessionID:     info.ParentSessionID,
+		From:          info.ID,
+		To:            recipient,
+		Subject:       subject,
+		Content:       b.String(),
 		TaskCompletion: &broker.TaskCompletion{
 			TaskID: info.ID, Attempt: info.Attempt,
 		},
 	}, true
+}
+
+func taskSourceSession(info task.TaskInfo) string {
+	if info.SourceMessageSeq != 0 {
+		return info.AgentSessionID
+	}
+	return ""
 }
 
 // taskSubject generates a human-readable subject line from task info.

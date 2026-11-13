@@ -32,12 +32,10 @@ import (
 
 type autopilotRequest struct {
 	owner  *session.Session
-	legacy *session.LegacySession
 	id     string
 	outbox <-chan core.Event
 	ctx    context.Context
 	cancel context.CancelFunc
-	err    error
 	mu     sync.Mutex
 	scope  *session.Completion
 	closed bool
@@ -48,10 +46,7 @@ type autopilotRequestKey struct{}
 func (m *model) newAutopilotRequest() *autopilotRequest {
 	m.cancelAutopilot()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	r := &autopilotRequest{owner: m.services.Recording, legacy: m.services.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
-	if r.owner != nil && r.legacy != nil {
-		r.err = fmt.Errorf("autopilot cannot use legacy and typed recording together")
-	}
+	r := &autopilotRequest{owner: m.services.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
 	r.ctx = context.WithValue(ctx, autopilotRequestKey{}, r)
 	m.autopilotRequest = r
 	return r
@@ -85,9 +80,6 @@ func (r *autopilotRequest) attempt() (*session.Completion, error) {
 	if r.closed {
 		return nil, context.Canceled
 	}
-	if r.err != nil {
-		return nil, r.err
-	}
 	r.scope = r.owner.Completion(session.PurposeAutopilot)
 	return r.scope, nil
 }
@@ -110,7 +102,7 @@ func (m *model) currentAutopilot(r *autopilotRequest) bool {
 	r.mu.Lock()
 	closed := r.closed
 	r.mu.Unlock()
-	return !closed && m.autopilotRequest == r && r.owner == m.services.Recording && r.legacy == m.services.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
+	return !closed && m.autopilotRequest == r && r.owner == m.services.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
 }
 
 func (m *model) cancelAutopilot() {
@@ -382,7 +374,7 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			return strings.TrimSpace(resp.Content.Text()), nil
 		}, func() (bool, error) {
 			// The panel fences editor generations; cancellation still needs error delivery.
-			valid := r.owner == m.services.Recording && r.legacy == m.services.Session && r.id == m.sessionID()
+			valid := r.owner == m.services.Session && r.id == m.sessionID()
 			err := r.ctx.Err()
 			r.close()
 			return valid, err

@@ -97,8 +97,8 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace writer; nil leaves recording off.
 	OnEvent func(core.Event)
-	// Recording owns typed runtime and utility-call records; nil until cutover.
-	// Do not combine it with a legacy transcript observer.
+	// Recording owns native runtime and utility-call records. Application hosts
+	// always bind it; unrecorded embedders and focused tests may leave it nil.
 	Recording *session.Session
 	recorder  *session.Recorder
 	resuming  bool
@@ -191,6 +191,13 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	schemas := p.Schemas()
 	var adaptOpts []tool.AdaptOption
 	toolContext := func(ctx context.Context) context.Context {
+		ctx = tool.WithMessageSource(ctx, "", 0)
+		if p.Recording != nil {
+			snapshot := p.Recording.Snapshot()
+			if source, ok := snapshot.ToolCallSource(core.ToolCallIDFromContext(ctx)); ok {
+				ctx = tool.WithMessageSource(ctx, source.Session, source.Seq)
+			}
+		}
 		if p.Tasks != nil {
 			ctx = task.WithManager(task.WithSessionID(ctx, p.SessionID), p.Tasks)
 		}

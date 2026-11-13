@@ -27,7 +27,7 @@ func TestTypedContinuationRejectsReplacementParentHandle(t *testing.T) {
 	}
 	d := aitest.New(aitest.Says("first"), aitest.Says("must not run"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "work", ParentToolCallID: "launch"})
@@ -46,7 +46,7 @@ func TestTypedContinuationRejectsReplacementParentHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer replacement.Close()
-	if err := e.SetTypedSessions(store, replacement); err != nil {
+	if err := e.SetSessions(store, replacement); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.RunBackground(tool.AgentExecRequest{ResumeTaskID: a.GetID(), Prompt: "continue", ParentToolCallID: "later"}); err == nil {
@@ -92,14 +92,14 @@ func TestTypedFallbackConfigurationPrecedesDispatch(t *testing.T) {
 	}
 	d := aitest.New(aitest.Fails(errors.New("model_not_found")), fallback)
 	e := NewExecutor(continuationProvider{d}, cwd, "parent-model", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	run, err = e.prepareRun(ctx, tool.AgentExecRequest{Prompt: "work", ParentToolCallID: "launch", Model: "missing-model", TaskID: "test-worker"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := e.executePreparedRun(ctx, run)
+	result, err := e.runPrepared(ctx, run)
 	if err != nil {
 		t.Fatal(err)
 	}

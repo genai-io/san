@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -29,12 +27,10 @@ type PermissionSettings interface {
 
 // PermissionPolicy binds execution authorization to one session. Callers serialize
 // decisions with human grant changes and retire the policy with its runtime.
-// Audit is best effort; it runs before an approval returns, not as a durability fence.
 type PermissionPolicy struct {
 	Settings   PermissionSettings
 	Session    *setting.SessionPermissions
 	AutoMemory system.MemoryStores
-	Audit      func(transcript.Record)
 }
 
 func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionResult {
@@ -48,7 +44,6 @@ func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionR
 		d = p.Settings.HasPermissionToUseTool(name, args, p.Session)
 	}
 	if d.Behavior == perm.Permit || d.Behavior == perm.Reject {
-		p.record(name, args, d.Behavior == perm.Permit, transcript.PermissionSourceConfig, d.Reason)
 		return PermDecisionResult{Decision: d.Behavior, By: d.By, Scope: d.Scope, Reason: d.Reason}
 	}
 	return PermDecisionResult{Decision: perm.Prompt, Reason: d.Reason, ToolName: name,
@@ -123,7 +118,6 @@ func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[strin
 		return PermJudgeResult{}
 	}
 	approve := func() {
-		p.record(name, args, true, transcript.PermissionSourceJudge, verdict.Reason)
 		for _, rule := range setting.ExactAllowRules(name, args) {
 			p.Session.AllowPattern(rule)
 		}
@@ -146,22 +140,4 @@ func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[strin
 		}
 	}
 	return result
-}
-
-func (p PermissionPolicy) record(name string, args map[string]any, allow bool, source, reason string) {
-	if p.Audit == nil {
-		return
-	}
-	input, err := json.Marshal(args)
-	if err != nil {
-		log.Logger().Warn("marshal permission input", zap.Error(err))
-	}
-	decision := "reject"
-	if allow {
-		decision = "permit"
-	}
-	p.Audit(transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
-		Tool: name, Input: input, Decision: decision, Source: source, Reason: reason,
-		Mode: p.Session.CurrentMode().PersistenceName(),
-	}})
 }
