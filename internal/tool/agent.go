@@ -97,6 +97,7 @@ type AgentExecRequest struct {
 
 // AgentExecResult contains the result of agent execution.
 type AgentExecResult struct {
+	SourceMessageSeq  uint64
 	Identity          toolresult.AgentIdentity
 	AgentID           string
 	AgentName         string

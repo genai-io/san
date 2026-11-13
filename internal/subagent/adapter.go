@@ -31,6 +31,7 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &tool.AgentExecResult{
+		SourceMessageSeq:  result.SourceMessageSeq,
 		Identity:          result.Identity,
 		AgentID:           result.AgentID,
 		AgentName:         result.AgentName,

@@ -3,9 +3,9 @@
 Moves the runtime from schema-4 transcripts to the typed `sessions/<sid>/` store
 ([PROP-0005](../../docs/design/proposal-0005-session-management.md)). The storage
 layer is done and unwired (events, projector, blobs, attrs, overview cache, trash,
-list, fork, clean). Name isolation, the public typed API and producer adapters
-are implemented but not default-enabled. Runtime resume, child provenance and the
-final switch remain.
+list, fork, clean). Public APIs, producer adapters, native resume and child
+execution are implemented but not default-enabled. The remaining PR switches all
+hosts and the inspector together, then removes legacy persistence.
 
 ## Why a flag day
 
@@ -44,7 +44,7 @@ every piece ready and tested while unwired, then switch once and delete the old 
      and atomically join the exact accepted summary with its inference finish.
      Deferred native acceptance precedes context replacement; stale/canceled
      requests and queued shutdown work discard against the original writer.
-     Child-session creation/provenance and default writer injection remain step 5.
+     Child-writer injection is opt-in in step 5; default wiring waits for step 6.
    - Permission-judge calls join the final gate verdict with inference accounting;
      grants follow a committed allow. Ordinary judge failures still escalate.
    - Autopilot closes parse attempts separately and commits prepared continuation
@@ -71,12 +71,15 @@ every piece ready and tested while unwired, then switch once and delete the old 
    Non-turn model calls (judge, hook, autopilot, group, compaction, recall) record a
    `standalone` request copy in `blobs/`; `btw`, `recap`, `suggest` record
    `conversation` calls with `append`.
-4. **Resume.** `Open` → projection → current settings and trust → runtime; report
-   `Unfinished()`; ACP checks the requested cwd against `execution_cwd`; catalogues are
-   rebuilt from current config and differences written with `cause: resume`.
-5. **Subagents.** Child `session.create {parent}` committed before the child runs,
-   `tool.finish {child_session}` in the parent, later results as `message.append` with a
-   foreign `source` and evidence.
+4. **Resume (native adapter ready).** `Runtime.Resume` validates the opened owner
+   and execution cwd, seeds active context and returns `Unfinished()` without replay.
+   Current catalogue additions, changes and removals commit with cause `resume`.
+   Hosts resolve settings/trust and present interruptions at step 6.
+5. **Subagents (typed execution ready).** Child identity commits before dispatch;
+   continuation retains the original parent/tool call. Native admissions record
+   child execution and return committed message sources. `SendInput` atomically
+   accepts prepared child messages with foreign provenance against the original
+   receiver. Default host injection and notification routing switch in step 6.
 6. **Switch and delete.** Point `internal/app`, `agent`, `subagent`, hooks, ACP and the
    inspector at the new API; delete `Legacy*`, schema-4 records and projector,
    `internal/transcript`, and the legacy-partition code. Move the hook-facing

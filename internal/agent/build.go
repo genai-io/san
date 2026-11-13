@@ -97,9 +97,11 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace writer; nil leaves recording off.
 	OnEvent func(core.Event)
-	// Recording owns typed compaction attempts; nil until the format cutover.
+	// Recording owns typed runtime and utility-call records; nil until cutover.
 	// Do not combine it with a legacy transcript observer.
 	Recording *session.Session
+	recorder  *session.Recorder
+	resuming  bool
 
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
@@ -167,6 +169,12 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
+	}
+	if p.Recording != nil && p.PermissionRules == nil {
+		return nil, nil, fmt.Errorf("typed runtime requires a permission policy")
+	}
+	if err := p.prepareRecording(); err != nil {
+		return nil, nil, err
 	}
 
 	client := llm.NewClient(p.Provider, p.ModelID, p.MaxTokens)
@@ -258,7 +266,14 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	}
 
 	permissionGate := tool.HookedPermission(p.HookEngine, pg)
-	ag = core.NewAgent(core.Config{
+	if p.recorder != nil {
+		permissionGate = tool.HookedPermission(p.HookEngine, pg, p.recorder.RecordPermission)
+	}
+	if err := p.recordCatalogues(sys, tools); err != nil {
+		pg.Close()
+		return nil, nil, err
+	}
+	cfg := core.Config{
 		ID:              "main",
 		Client:          client.TurnClient,
 		PrepareMessages: client.RequestMessages,
@@ -276,7 +291,19 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
-	})
+	}
+	if p.recorder != nil {
+		cfg.InferenceAdmission = p.recorder.InferenceAdmission
+		cfg.ToolAdmission = p.recorder.ToolAdmission
+		cfg.OutputAdmission = p.recorder.OutputAdmission
+	}
+	ag = core.NewAgent(cfg)
+	if p.recorder != nil {
+		if err := p.recorder.Err(); err != nil {
+			pg.Close()
+			return nil, nil, &llm.RecordingError{Err: err}
+		}
+	}
 
 	return ag, pg, nil
 }

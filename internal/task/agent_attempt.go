@@ -125,6 +125,7 @@ func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.C
 	t.EndTime = time.Time{}
 	t.attemptStart = time.Now()
 	t.attemptOutput.Reset()
+	t.sourceMessageSeq = 0
 	t.StepCount, t.TokenUsage = 0, 0
 	t.progress = ""
 	t.liveView = ""

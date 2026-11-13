@@ -27,6 +27,11 @@ func (s *Session) ID() string   { return s.writer.ID() }
 func (s *Session) Path() string { return s.writer.Path() }
 func (s *Session) Err() error   { return s.writer.Err() }
 
+// OwnedBy compares the original store handles, not just project or session IDs.
+func (s *Session) OwnedBy(store *Store) bool {
+	return s != nil && s.store == store
+}
+
 // Snapshot returns the last committed prefix, including after Close or a write
 // failure. Projection is immutable and its accessors detach their results.
 func (s *Session) Snapshot() Projection {

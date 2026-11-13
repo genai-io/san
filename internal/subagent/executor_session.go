@@ -1,6 +1,7 @@
 package subagent
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
@@ -16,6 +17,7 @@ type liveSessionStore interface {
 }
 
 type continuationState struct {
+	parentOwner                    *session.Session
 	persistenceErr                 error
 	originalPrompt                 string
 	cfg                            *runConfig
@@ -33,7 +35,10 @@ func newContinuationState(run *preparedRun, parent, taskID string) *continuation
 	return state
 }
 
-func (e *Executor) openNative(run *preparedRun) error {
+func (e *Executor) openNative(ctx context.Context, run *preparedRun) error {
+	if run.typedStore != nil {
+		return e.openTyped(ctx, run)
+	}
 	if run.native != nil {
 		return nil // A continuation claims its writer before beginning an attempt.
 	}

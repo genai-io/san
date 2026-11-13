@@ -123,6 +123,13 @@ Continuation keeps its existing background execution contract.
 
 ## Lifecycle
 
+Typed execution is opt-in through `SetTypedSessions(store, parent)`. Creation
+commits the original parent/tool-call link before dispatch; continuation reopens
+only that parent's child and restores active native context. Typed parent policy
+uses `SetPermissionResolver` to retain actual decision authority. Results expose
+the committed child message sequence for later delivery; task logs never write to
+the event log. Default host wiring remains legacy until the unified cutover.
+
 - Construction: `Initialize(Options{CWD, PluginAgentPaths})` loads
   definitions, initializes state stores.
 - Per-invocation: `NewExecutor(provider, cwd, model, hookEngine)` →
