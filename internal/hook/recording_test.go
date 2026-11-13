@@ -16,16 +16,22 @@ func TestRecordedCompletionInterpretedBeforeFinish(t *testing.T) {
 				s.Hooks["PreToolUse"] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: kind, Prompt: "check"}}}}
 				e := NewEngine(s, "s", t.TempDir(), "")
 				var got HookFiredAudit
+				finishes := 0
 				e.SetRecordedLLMCompleter(func(context.Context, string, string, string) (LLMCompletion, error) {
-					return LLMCompletion{Text: text, Finish: func(ctx context.Context, a HookFiredAudit) error { got = a; return nil }}, nil
+					return LLMCompletion{Text: text, Finish: func(ctx context.Context, a HookFiredAudit) error {
+						finishes++
+						got = a
+						return nil
+					}}, nil
 				}, "model")
 				e.Execute(context.Background(), PreToolUse, HookInput{})
 				want := "blocked"
 				if text == "invalid" {
 					want = "error"
 				}
-				if got.Outcome != want || got.Event != "PreToolUse" || got.Duration <= 0 {
-					t.Fatalf("audit: %+v", got)
+				// Fast callbacks can measure zero at the platform clock's resolution.
+				if finishes != 1 || got.Outcome != want || got.Event != "PreToolUse" || got.Duration < 0 {
+					t.Fatalf("finishes=%d audit=%+v", finishes, got)
 				}
 			})
 		}
