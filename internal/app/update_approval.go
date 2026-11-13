@@ -5,7 +5,6 @@
 package app
 
 import (
-	"context"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -14,7 +13,6 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 type permissionDecision = interaction.PermissionDecision
@@ -39,12 +37,6 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	}
 	m.finishInteraction()
 	return tea.Batch(noticeCmd, m.advanceInteractions())
-}
-
-func (m *model) recordPermission(record transcript.Record) {
-	if rec := m.services.Session; rec != nil {
-		_ = rec.Append(context.Background(), record)
-	}
 }
 
 // saveAllowRules attempts persistence and reports the outcome without revoking approval.

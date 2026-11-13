@@ -77,6 +77,18 @@ func (r *PermGateRequest) MarkAsked(asked perm.Asked) {
 	r.asked.Store(&asked)
 }
 
+// AskedSnapshot returns an independent copy of the question already shown.
+func (r *PermGateRequest) AskedSnapshot() *perm.Asked {
+	asked := r.asked.Load()
+	if asked == nil {
+		return nil
+	}
+	copy := *asked
+	copy.Options = slices.Clone(asked.Options)
+	copy.Detail = slices.Clone(asked.Detail)
+	return &copy
+}
+
 // PermGateResponse is the user's decision on a permission request.
 type PermGateResponse struct {
 	By        string

@@ -27,7 +27,7 @@ func TestRecapRecordingCancelledOnRetirement(t *testing.T) {
 	}
 	defer owner.Close()
 	m := newRecapModel(t)
-	m.services.Recording, m.services.sessionID = owner, owner.ID()
+	m.services.Session, m.services.sessionID = owner, owner.ID()
 	entered := make(chan struct{})
 	driver := aitest.New(func(ctx context.Context, r *ai.Request) iter.Seq2[ai.Delta, error] {
 		close(entered)
@@ -80,7 +80,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 			}
 			defer owner.Close()
 			m := newRecapModel(t)
-			m.services.Recording, m.services.sessionID = owner, owner.ID()
+			m.services.Session, m.services.sessionID = owner, owner.ID()
 			m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{
 				Content: ai.TextContent("Ready for review."), Usage: ai.Usage{Input: 17, Output: 4},
 			})), ai.Model{ID: "m"})}
@@ -111,7 +111,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 				m.resetRecap()
 			case "switch":
 				m.resetRecap()
-				m.services.Recording = nil
+				m.services.Session = nil
 				m.showRecap(ready)
 			case "closed":
 				if err := owner.Close(); err != nil {
@@ -196,12 +196,13 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 			}
 			m := newRecapModel(t)
 			m.services.sessionID = "same"
-			m.services.Recording = recording
+			m.services.Session = recording
+			askSessionID := m.sessionID()
 			before := len(m.conv.Messages)
 			if mode == "stale" {
-				m.services.Recording = nil
+				m.services.Session = nil
 			}
-			m.onBtwAnswer(btwAnswerMsg{ask: btwAsk{question: "why?", sessionID: "same"}, answer: answer, owner: recording, recording: req.recording})
+			m.onBtwAnswer(btwAnswerMsg{ask: btwAsk{question: "why?", sessionID: askSessionID}, answer: answer, owner: recording, recording: req.recording})
 			accepted := mode == "current" || mode == "default"
 			if (len(m.conv.Messages) > before) != accepted {
 				t.Fatalf("accepted output = %v, want %v", m.conv.Messages, accepted)

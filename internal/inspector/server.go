@@ -1,15 +1,9 @@
-// Package inspector serves the san session transcripts to a local web
-// UI. The inspector is read-only, single-process, localhost-only. It exposes
-// a small HTTP API that mirrors the JSONL on disk — the wire format IS the
-// file format — plus an SSE endpoint for live tail. UI assets are embedded
-// so the binary is self-contained.
+// Package inspector serves a read-only local viewer of typed session events.
 package inspector
 
 import (
-	"bytes"
-	"container/list"
 	"encoding/json"
-	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -17,305 +11,123 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/genai-io/san/internal/inspector/ui"
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/session"
 )
 
-// replayCacheCapacity is the upper bound on cached replay states across all
-// sessions. Each entry is a fully materialized replayState (system sections,
-// tool schemas, active message chain at that point in time). A few dozen
-// entries cover sequential timeline navigation comfortably while keeping
-// peak memory in the low single-digit MB.
-const replayCacheCapacity = 64
-
-// Server hosts the trace viewer for a single project directory.
 type Server struct {
-	projectDir string // .../.san/projects/<workdir-hash>
-	mux        *http.ServeMux
-	store      *transcript.Store // reads logs and derived summaries
-
-	replayCache *replayLRU
+	store *session.Store
+	mux   *http.ServeMux
 }
 
-func New(projectDir string) *Server {
-	s := &Server{
-		projectDir:  projectDir,
-		mux:         http.NewServeMux(),
-		replayCache: newReplayLRU(replayCacheCapacity),
-	}
-	// Best-effort: the viewer falls back to a directory walk if the store
-	// isn't constructable (missing project dir, permission error, etc.).
-	if store, err := transcript.NewStore(projectDir, ""); err == nil {
-		s.store = store
-	}
-	s.routes()
-	return s
-}
-
-func (s *Server) Handler() http.Handler { return s.mux }
-
-func (s *Server) routes() {
-	// UI assets — strip the "assets/" prefix to expose them at the root.
+func New(store *session.Store) *Server {
+	s := &Server{store: store, mux: http.NewServeMux()}
 	assets, err := fs.Sub(ui.Assets, "assets")
 	if err == nil {
 		s.mux.Handle("/", http.FileServer(http.FS(assets)))
 	}
-
 	s.mux.HandleFunc("/api/sessions", s.handleListSessions)
-	// Per-session routes: /api/sessions/{id}/records, /api/sessions/{id}/stream,
-	// /api/sessions/{id}/state/{recordID}
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRoute)
+	return s
 }
-
-// transcriptsDir is the JSONL location: <projectDir>/transcripts.
-func (s *Server) transcriptsDir() string {
-	return filepath.Join(s.projectDir, "transcripts")
-}
+func (s *Server) Handler() http.Handler { return s.mux }
 
 type sessionListItem struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Size      int64     `json:"size"`
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	Size       int64     `json:"size"`
+	AttrsError string    `json:"attrsError,omitempty"`
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	var summaries []transcript.Summary
-	if s.store != nil {
-		summaries, _ = s.store.List(r.Context(), "", transcript.ListOptions{IncludeSidechain: true})
-	}
-	items, err := s.listFromDir(summaries)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Directory enumeration keeps unsupported sessions discoverable. Unlike List,
+	// this read never regenerates overview caches or changes files.
+	entries, err := os.ReadDir(filepath.Join(s.store.ProjectDir(), "sessions"))
+	if err != nil && !os.IsNotExist(err) {
+		http.Error(w, err.Error(), 500)
 		return
 	}
-	writeJSON(w, items)
-}
-
-// The inspector keeps raw file access even when a transcript cannot be restored.
-func (s *Server) listFromDir(summaries []transcript.Summary) ([]sessionListItem, error) {
-	byID := make(map[string]transcript.Summary, len(summaries))
-	for _, summary := range summaries {
-		byID[summary.ID] = summary
-	}
-	entries, err := os.ReadDir(s.transcriptsDir())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []sessionListItem{}, nil
-		}
-		return nil, err
-	}
-	items := make([]sessionListItem, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+	items := []sessionListItem{}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
-		id := strings.TrimSuffix(e.Name(), ".jsonl")
-		info, err := e.Info()
+		info, err := os.Stat(filepath.Join(s.store.ProjectDir(), "sessions", entry.Name(), "events.jsonl"))
 		if err != nil {
 			continue
 		}
-		item := sessionListItem{
-			ID:        id,
-			UpdatedAt: info.ModTime(),
-			Size:      info.Size(),
+		item := sessionListItem{ID: entry.Name(), UpdatedAt: info.ModTime(), Size: info.Size()}
+		if p, e := s.store.Read(r.Context(), entry.Name()); e == nil {
+			if title := p.State().Title; title != nil {
+				item.Title = *title
+			}
 		}
-		if summary, ok := byID[id]; ok {
-			item.Title, item.UpdatedAt = summary.Title, summary.UpdatedAt
+		if attrs, e := s.store.Attrs(r.Context(), entry.Name()); e != nil {
+			item.AttrsError = e.Error()
+		} else if attrs.Title != "" {
+			item.Title = attrs.Title
 		}
 		items = append(items, item)
 	}
 	slices.SortStableFunc(items, func(a, b sessionListItem) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
-	return items, nil
+	writeJSON(w, items)
 }
 
-// handleSessionRoute routes /api/sessions/{id}/{action} to the matching handler.
 func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) < 2 {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/")
+	if len(parts) < 2 || parts[0] == "" {
 		http.NotFound(w, r)
 		return
 	}
-	sessionID, action := parts[0], parts[1]
-	if sessionID == "" {
+	id := parts[0]
+	if id == "." || id == ".." || strings.ContainsAny(id, "/\\") {
 		http.NotFound(w, r)
 		return
 	}
-
 	switch {
-	case action == "records":
-		s.handleRecords(w, r, sessionID)
-	case action == "stream":
-		s.handleStream(w, r, sessionID)
-	case strings.HasPrefix(action, "state/"):
-		recordID := strings.TrimPrefix(action, "state/")
-		s.handleState(w, r, sessionID, recordID)
+	case len(parts) == 2 && parts[1] == "records":
+		batches, err := s.readBatches(r.Context(), id)
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		result := rawRecords{Batches: batches}
+		if err != nil {
+			result.Error = err.Error()
+			// Diagnostics are explicitly unvalidated, bounded text, never streamed as events.
+			if f, e := os.Open(filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl")); e == nil {
+				raw, _ := io.ReadAll(io.LimitReader(f, 1<<20))
+				f.Close()
+				result.Unvalidated = string(raw)
+			}
+		}
+		writeJSON(w, result)
+	case len(parts) == 2 && parts[1] == "stream":
+		s.handleStream(w, r, id)
+	case len(parts) == 3 && parts[1] == "state":
+		seq, err := strconv.ParseUint(parts[2], 10, 64)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		st, err := s.readState(r.Context(), id, seq)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		writeJSON(w, st)
 	default:
 		http.NotFound(w, r)
 	}
 }
-
-func (s *Server) handleState(w http.ResponseWriter, r *http.Request, sessionID, recordID string) {
-	path, ok := s.sessionPath(sessionID)
-	if !ok || s.store == nil || recordID == "" || strings.ContainsAny(recordID, "/\\") {
-		http.NotFound(w, r)
-		return
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.NotFound(w, r)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", sessionID, recordID, info.Size(), info.ModTime().UnixNano())
-	if cached, ok := s.replayCache.get(key); ok {
-		writeJSON(w, cached)
-		return
-	}
-	state, found, err := replayFile(r.Context(), s.store, sessionID, recordID)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if !found {
-		http.NotFound(w, r)
-		return
-	}
-	s.replayCache.put(key, state)
-	writeJSON(w, state)
-}
-
-// replayLRU caches the results of replayFile by (sessionID, recordID).
-// The key includes file size and modification time so replacement invalidates it. Bounded to keep
-// peak memory in check on long-running viewers; eviction is plain LRU.
-type replayLRU struct {
-	mu       sync.Mutex
-	capacity int
-	order    *list.List // front = most recently used
-	entries  map[string]*list.Element
-}
-
-type replayCacheEntry struct {
-	key   string
-	state replayState
-}
-
-func newReplayLRU(capacity int) *replayLRU {
-	return &replayLRU{
-		capacity: capacity,
-		order:    list.New(),
-		entries:  make(map[string]*list.Element),
-	}
-}
-
-func (c *replayLRU) get(key string) (replayState, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.entries[key]; ok {
-		c.order.MoveToFront(el)
-		return el.Value.(*replayCacheEntry).state, true
-	}
-	return replayState{}, false
-}
-
-func (c *replayLRU) put(key string, state replayState) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.entries[key]; ok {
-		el.Value.(*replayCacheEntry).state = state
-		c.order.MoveToFront(el)
-		return
-	}
-	el := c.order.PushFront(&replayCacheEntry{key: key, state: state})
-	c.entries[key] = el
-	for c.order.Len() > c.capacity {
-		oldest := c.order.Back()
-		if oldest == nil {
-			break
-		}
-		c.order.Remove(oldest)
-		delete(c.entries, oldest.Value.(*replayCacheEntry).key)
-	}
-}
-
-func (s *Server) sessionPath(id string) (string, bool) {
-	// Defense against path traversal — sessionID must look like a single
-	// filename segment.
-	if strings.ContainsAny(id, "/\\") || id == "" {
-		return "", false
-	}
-	p := filepath.Join(s.transcriptsDir(), id+".jsonl")
-	return p, true
-}
-
-func (s *Server) handleRecords(w http.ResponseWriter, r *http.Request, sessionID string) {
-	path, ok := s.sessionPath(sessionID)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-
-	after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
-	data, nextOffset, err := readFromOffset(path, after)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("X-Next-Offset", strconv.FormatInt(nextOffset, 10))
-	_, _ = w.Write(data)
-}
-
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
-}
-
-// readFromOffset returns complete JSONL lines and the consumed file offset.
-func readFromOffset(path string, offset int64) ([]byte, int64, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, 0, err
-	}
-	end := info.Size()
-	if offset >= end {
-		return nil, end, nil
-	}
-	if _, err := f.Seek(offset, 0); err != nil {
-		return nil, 0, err
-	}
-	buf := make([]byte, end-offset)
-	n, err := f.Read(buf)
-	if err != nil {
-		return nil, 0, err
-	}
-	buf = buf[:n]
-	// A line still being written is not a record yet.
-	i := bytes.LastIndexByte(buf, '\n')
-	if i >= 0 {
-		return buf[:i+1], offset + int64(i+1), nil
-	}
-	// No newline yet — leave the bytes for next poll.
-	return nil, offset, nil
 }

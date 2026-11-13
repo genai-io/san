@@ -81,7 +81,7 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "replace":
-				opened, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
+				opened, err := store.Create(t.Context(), session.CreateOptions{ID: "replacement"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -117,10 +117,15 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 		for _, failed := range []bool{false, true} {
 			t.Run(change+map[bool]string{true: "/error", false: "/success"}[failed], func(t *testing.T) {
 				m, store := resumedModel(t, parallelResultChain())
-				request := m.BuildCompactRequest("", "manual")
-				msg := conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Summary: "stale summary", OriginalCount: len(request.Messages)}}
+				turn := aitest.Says("stale summary")
 				if failed {
-					msg.Err = errors.New("stale error")
+					turn = aitest.Fails(&ai.Error{Kind: ai.KindAuth, Message: "stale error"})
+				}
+				m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(turn).Client()}
+				request := m.BuildCompactRequest("", "manual")
+				msg := conv.CompactCmd(request)().(conv.CompactResultMsg)
+				if (msg.Err != nil) != failed {
+					t.Fatalf("prepared result error=%v failed=%v", msg.Err, failed)
 				}
 				switch change {
 				case "reset":
@@ -128,16 +133,19 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "replace":
-					opened, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
+					opened, err := store.Create(t.Context(), session.CreateOptions{ID: "replacement"})
 					if err != nil {
 						t.Fatal(err)
 					}
 					m.replaceSession(opened)
 				case "same-session-writer":
+					if err := m.cancelManualCompaction(); err != nil {
+						t.Fatal(err)
+					}
 					if err := m.services.Session.Close(); err != nil {
 						t.Fatal(err)
 					}
-					opened, _, err := store.Open("s")
+					opened, err := store.Open(t.Context(), "s")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -155,7 +163,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				m.OnCompactStart(99)
 				pending := m.pendingCompaction
 				before := m.services.Agent.Messages()
-				history, err := store.Read(m.sessionID(), session.LegacyReadOptions{FullHistory: true})
+				history, err := store.Read(t.Context(), m.sessionID())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -163,7 +171,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				if cmd := m.HandleCompactResult(msg); cmd != nil {
 					t.Fatal("stale result produced command")
 				}
-				afterHistory, err := store.Read(m.sessionID(), session.LegacyReadOptions{FullHistory: true})
+				afterHistory, err := store.Read(t.Context(), m.sessionID())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -243,15 +251,15 @@ func TestManualCompactionCompletedResultOwnership(t *testing.T) {
 			if m.pendingCompaction != nil || request.Ctx.Err() == nil {
 				t.Fatal("completed request retained ownership")
 			}
-			loaded, err := store.Read("s", session.LegacyReadOptions{})
+			loaded, err := store.Read(t.Context(), "s")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if replace {
-				if len(m.services.Agent.Messages()) != 0 || len(loaded.Messages) != len(request.Messages) {
+				if len(m.services.Agent.Messages()) != 0 || len(loaded.ActiveMessages()) != len(request.Messages) {
 					t.Fatal("late successful result changed history")
 				}
-			} else if len(loaded.Messages) != 1 || !reflect.DeepEqual(loaded.Messages, m.services.Agent.Messages()) || m.conv.Compact.Active {
+			} else if len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.services.Agent.Messages()) || m.conv.Compact.Active {
 				t.Fatal("successful result did not record and replace the native chain")
 			}
 		})
@@ -289,7 +297,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 			m.services.sessionID = "unopened"
 			if fail {
 				// An already leased writer cannot be replaced by a new Create.
-				opened, err := store.Create(session.LegacyCreateOptions{ID: "unopened"})
+				opened, err := store.Create(t.Context(), session.CreateOptions{ID: "unopened"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -307,8 +315,8 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 					t.Fatal("failed recording replaced history")
 				}
 			} else {
-				loaded, err := store.Read("unopened", session.LegacyReadOptions{})
-				if err != nil || len(loaded.Messages) != 1 || !reflect.DeepEqual(loaded.Messages, m.services.Agent.Messages()) {
+				loaded, err := store.Read(t.Context(), "unopened")
+				if err != nil || len(loaded.ActiveMessages()) != 1 || !reflect.DeepEqual(loaded.ActiveMessages(), m.services.Agent.Messages()) {
 					t.Fatalf("unopened summary was not recorded: %v", err)
 				}
 			}

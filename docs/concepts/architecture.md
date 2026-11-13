@@ -26,12 +26,13 @@ For a grouped capability list, see the [feature overview](../features.md).
 3. **Extensions** — skill, plugin, MCP server, hook, slash command, subagent.
    Four extension primitives; *plugin* is one *source* among many — see
    [`concepts/extension-model.md`](extension-model.md).
-4. **Sessions** — transcript persistence, resume, fork, projection
-   (`internal/session` and `internal/transcript`). Replayable in the inspector
-   (`internal/inspector`). Storage is currently file-backed; the proposed
+4. **Sessions** — canonical project identity, typed event persistence, resume,
+   fork and native projections (`internal/session`), replayable read-only in the
+   inspector (`internal/inspector`). The
    [session management design](../design/proposal-0005-session-management.md)
-   defines Project → Session → Events with workspace as a session attribute and
-   JSONL persistence. Implementation is reviewed separately in [PR #737](https://github.com/genai-io/san/pull/737).
+   defines Project → Session → Events, with workspace as a session attribute and
+   file-backed committed JSONL batches. All hosts use this backend; older
+   transcript files are neither read nor converted.
 5. **Providers** — every LLM vendor through one adapter
    (`internal/llm/vendor*.go`, over `genai-io/sdk-go`) and search backends
    (`internal/search/{exa,tavily,brave,serper}`).

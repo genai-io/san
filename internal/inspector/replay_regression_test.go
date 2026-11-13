@@ -3,93 +3,87 @@ package inspector
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/session"
 )
 
-func TestReplayIntegrityBelongsToSelectedInference(t *testing.T) {
-	var b replayBuilder
-	b.apply(transcript.Record{ID: "bad", Type: transcript.InferenceRequested, Inference: &transcript.InferenceRecord{SystemDigest: "wrong"}})
-	if b.snapshot().Integrity[0].OK {
-		t.Fatal("bad inference should fail integrity")
+func TestReadsNeverServeStaleStateAfterReplacement(t *testing.T) {
+	store, w, srv := fixture(t)
+	appendPayload(t, w, session.InstructionsUpdatePayload{Set: map[string]session.InstructionSection{"system": {Content: "old"}}, Cause: "boot"})
+	var st nativeState
+	getJSON(t, srv, "/api/sessions/session/state/0", &st)
+	if st.Context.System != "old" {
+		t.Fatal("fixture")
 	}
-	b.apply(transcript.Record{ID: "good", Type: transcript.InferenceRequested, Inference: &transcript.InferenceRecord{SystemDigest: transcript.DigestSystem("")}})
-	checks := b.snapshot().Integrity
-	if len(checks) != 3 {
-		t.Fatalf("selected inference inherited previous checks: %+v", checks)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
 	}
-	for _, check := range checks {
-		if !check.OK {
-			t.Fatalf("healthy inference inherited a failure: %+v", check)
-		}
+	if err := store.Delete(context.Background(), w.ID()); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	New(store).Handler().ServeHTTP(response, httptest.NewRequest("GET", "/api/sessions/session/state/0", nil))
+	if response.Code == 200 {
+		t.Fatal("deleted session served stale state")
+	}
+	replacement, err := store.Create(context.Background(), session.CreateOptions{ID: w.ID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replacement.Close()
+	appendPayload(t, replacement, session.InstructionsUpdatePayload{Set: map[string]session.InstructionSection{"system": {Content: "replacement"}}, Cause: "boot"})
+	getJSON(t, srv, "/api/sessions/session/state/0", &st)
+	if st.Context.System != "replacement" {
+		t.Fatal("replacement served stale state")
 	}
 }
 
-func TestReplayCacheDoesNotOutliveTranscript(t *testing.T) {
-	s := New(t.TempDir())
-	ctx := context.Background()
-	if err := s.store.Start(ctx, transcript.StartCommand{SessionID: "s", Model: "original"}); err != nil {
+func TestIncompleteSDKBatchNeverAppearsInRecords(t *testing.T) {
+	store, w, srv := fixture(t)
+	original, err := os.ReadFile(w.Path())
+	if err != nil {
 		t.Fatal(err)
 	}
-	get := func() *httptest.ResponseRecorder {
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sessions/s/state/0", nil))
-		return w
-	}
-	if got := get(); got.Code != http.StatusOK {
-		t.Fatalf("initial replay: %s", got.Body.String())
-	}
-	if err := s.store.Delete(ctx, "s"); err != nil {
+	appendPayload(t, w, session.AnnotationAddPayload{Text: "not yet complete"})
+	complete, err := os.ReadFile(w.Path())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := get(); got.Code != http.StatusNotFound {
-		t.Fatalf("deleted transcript still served from cache: %d %s", got.Code, got.Body.String())
-	}
-	if err := s.store.Start(ctx, transcript.StartCommand{SessionID: "s", Model: "replacement"}); err != nil {
+	if err = w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := get(); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "replacement") {
-		t.Fatalf("replacement transcript served stale content: %s", got.Body.String())
-	}
-}
-
-func TestInspectorKeepsUnreadableFilesAvailableForDiagnosis(t *testing.T) {
-	s := New(t.TempDir())
-	ctx := context.Background()
-	if err := s.store.Start(ctx, transcript.StartCommand{SessionID: "healthy"}); err != nil {
+	// Cut a genuine SDK envelope before its terminating newline. SDK determines
+	// commit visibility; inspector must not infer it from parseable event content.
+	if err = os.WriteFile(w.Path(), complete[:len(complete)-2], 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.store.Append(ctx, transcript.Record{SessionID: "healthy", Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new("saved title")}}); err != nil {
+	var records rawRecords
+	getJSON(t, srv, "/api/sessions/session/records", &records)
+	if len(records.Batches) != 1 {
+		t.Fatalf("incomplete batch exposed: %+v", records)
+	}
+	before := diskSnapshot(t, store.ProjectDir())
+	getJSON(t, srv, "/api/sessions/session/records", &records)
+	if !reflect.DeepEqual(before, diskSnapshot(t, store.ProjectDir())) {
+		t.Fatal("incomplete tail repaired by reader")
+	}
+	if err = os.WriteFile(w.Path(), complete, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(s.store.TranscriptPath("broken"), []byte("{broken}\n"), 0600); err != nil {
-		t.Fatal(err)
+	getJSON(t, srv, "/api/sessions/session/records", &records)
+	if len(records.Batches) != 2 {
+		t.Fatal("completed batch missing")
 	}
-	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sessions", nil))
-	var items []sessionListItem
-	if err := json.Unmarshal(w.Body.Bytes(), &items); err != nil || len(items) != 2 {
-		t.Fatalf("raw transcript missing from inspector: %s, %v", w.Body.String(), err)
+	raw, _ := json.Marshal(records)
+	if !strings.Contains(string(raw), "not yet complete") {
+		t.Fatal("payload lost")
 	}
-	for _, item := range items {
-		if item.ID == "healthy" && item.Title != "saved title" {
-			t.Fatal("inspector lost the saved title")
-		}
-	}
-}
-
-func TestReadFromOffsetWaitsForAWholeLine(t *testing.T) {
-	path := t.TempDir() + "/s.jsonl"
-	if err := os.WriteFile(path, []byte("{\"id\":\"first\"}\n{\"id\":\"second\"}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	data, offset, err := readFromOffset(path, 0)
-	if err != nil || string(data) != "{\"id\":\"first\"}\n" || offset != int64(len(data)) {
-		t.Fatalf("a line still being written must wait for more bytes: data=%q offset=%d err=%v", data, offset, err)
+	if len(before) == 0 || len(original) == 0 {
+		t.Fatal("empty fixture")
 	}
 }

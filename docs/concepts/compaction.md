@@ -143,35 +143,21 @@ Both paths use `OnCompacted` for post-compaction handling. Manual compaction
 without an active runtime persists the native summary and boundary before
 replacing the visible conversation.
 
-## Transcript recording & replay
+## Session recording and replay
 
-Compaction does not delete the old turns from the transcript — that history
-stays on disk for audit and scroll-back. The transcript is an sdk-go
-`pkg/session` log, and compaction is written the way that log writes any
-rewritten conversation: a **truncate** to the unchanged prefix — nothing, for a
-compaction — then the conversation that replaced it.
+Compaction never deletes earlier turns from persisted history. A compaction
+`inference.start` captures its committed prefix; the accepted native summary and
+`context.compact {summary, through}` share a batch with `inference.finish`.
+The core supplies the final summary ID, formatting and task-preserving content
+before context replacement is accepted. Failed, canceled or obsolete summaries
+finish accounting without publishing a replacement context.
 
-The core agent gives the summary a stable ID and announces it as a message,
-then emits `core.Compacted` naming it. The session writes a `session.compacted`
-record, and the conversation from the summary on after a truncate:
-
-```
-transcript (append-only)            resume: the conversation as the log leaves it
-  message  m1                         m1   ─ cut by the truncate
-  message  m2                         m2   ─ cut by the truncate
-  ...                                 ...
-  message  SUM                        SUM  ─ cut by the truncate
-  app session.compacted  messageId=SUM
-  truncate keep=0                     ─────────────────────────────┐
-  message  SUM                        SUM                           ├─ [SUM, m8, m9]
-  message  m8                         m8                            │
-  message  m9                         m9                            ┘
-```
-
-Resume (`Project`, `internal/transcript/projector.go`) applies each truncate,
-so the reconstructed conversation matches what the live agent sends.
-`/history` reads every message the session ever held, each once, so the
-turns before the summary stay readable.
+`Projection.ActiveMessages()` becomes the accepted summary followed by messages
+appended after `through`. `Projection.Messages()` retains every original message
+and the summary for audit and scrollback. `Store.Read` and historical request
+reconstruction apply these boundaries without acquiring a writer, replaying model
+calls or inventing missing tool results. There is no truncate/rewrite stream or
+second persistence projector.
 
 ## Reminder freshness
 
@@ -190,8 +176,8 @@ changed), but reminders are deliberately rebuilt.
 | Trigger + in-loop compaction | `internal/core/compact.go` (`preStep`, `onInferError`, `shorten`) |
 | Summary text (reminders stripped) | `internal/core/message.go` (`BuildCompactionText`) |
 | Compaction LLM call | `internal/agent/build.go`, `internal/app/conv/compact.go` |
-| Boundary recording | `internal/session/events.go` (`RecordEvent`) → `internal/transcript/store.go` |
-| Replay truncation | `internal/transcript/projector.go` (`projectRecords`) |
+| Boundary recording | `internal/session/completion.go`, `inference.go`, `recorder.go` |
+| Active/full-history projection | `internal/session/event_projector.go`, `event_validation.go` |
 | App-side handlers + memory refresh | `internal/app/model_compact.go` |
 
 ## See Also

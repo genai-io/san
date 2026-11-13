@@ -31,7 +31,7 @@ func recordedCompactModel(t *testing.T, turn aitest.Turn) (*model, *session.Sess
 	m := newRecapModel(t)
 	m.services.Reminder = reminder.New()
 	m.env.CWD = t.TempDir()
-	m.services.Recording, m.services.sessionID = owner, owner.ID()
+	m.services.Session, m.services.SessionStore, m.services.sessionID = owner, store, owner.ID()
 	messages := []core.Message{core.UserMessage("first", nil), core.UserMessage("second", nil), core.UserMessage("third", nil)}
 	for i := range messages {
 		messages[i].ID = core.NewMessageID()
@@ -41,7 +41,11 @@ func recordedCompactModel(t *testing.T, turn aitest.Turn) (*model, *session.Sess
 		t.Fatal(err)
 	}
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(turn), ai.Model{ID: "m"})}
-	t.Cleanup(m.cancelManualCompaction)
+	t.Cleanup(func() {
+		if err := m.cancelManualCompaction(); err != nil {
+			t.Error(err)
+		}
+	})
 	return m, owner
 }
 
@@ -62,7 +66,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			}
 			switch mode {
 			case "switched":
-				m.services.Recording = nil
+				m.services.Session = nil
 			case "superseded":
 				m.BuildCompactRequest("new focus", "manual")
 			case "advanced":
@@ -104,6 +108,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			want := 0
 			if mode == "accepted" {
 				want = 1
+				assertCompactionCommittedWithFinish(t, m.services.SessionStore, owner.ID())
 			}
 			if compacts != want {
 				t.Fatalf("context boundaries=%d want=%d", compacts, want)
@@ -121,29 +126,30 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 	}
 }
 
-func TestManualCompactionRejectsMixedRecording(t *testing.T) {
+func TestManualCompactionRejectsForeignStoreOwner(t *testing.T) {
 	m, owner := recordedCompactModel(t, func(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-		t.Fatal("mixed recording dispatched a model request")
+		t.Fatal("foreign-owner compaction dispatched a model request")
 		return nil
 	})
-	legacyStore, err := session.NewLegacyStoreWithDir(t.TempDir())
+	foreignStore, err := session.OpenStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := legacyStore.Create(session.LegacyCreateOptions{ID: owner.ID()})
+	t.Cleanup(func() { _ = foreignStore.Close() })
+	foreign, err := foreignStore.Create(t.Context(), session.CreateOptions{ID: owner.ID()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = legacy.Close() })
-	m.services.Session = legacy
+	t.Cleanup(func() { _ = foreign.Close() })
+	m.services.Session = foreign
 	req := m.BuildCompactRequest("", "manual")
 	result := req.Run()
 	if result.Err == nil {
-		t.Fatal("mixed recording accepted")
+		t.Fatal("foreign store owner accepted")
 	}
 	p := owner.Snapshot()
 	if len(p.Events()) != 2 {
-		t.Fatal("rejected request wrote typed inference events")
+		t.Fatal("rejected request wrote inference events")
 	}
 }
 

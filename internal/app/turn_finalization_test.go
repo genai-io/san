@@ -13,7 +13,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -56,8 +55,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			opened := m.services.Session
 			m.agentSession = opened
 			p := &finalizationProvider{client: llm.Client()}
-			if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", OnEvent: func(ev core.Event) {
-				opened.RecordEvent(ev)
+			if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(ev core.Event) {
 				if _, ok := ev.(core.TurnEnded); ok && mode == "natural" {
 					close(naturalEnd)
 				}
@@ -77,9 +75,12 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				}
 			}
 			if mode == "essential-write-failed" {
-				// A malformed essential message exercises the real recorder/store
-				// failure path, not a synthetic receipt.RecordError call.
-				opened.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("missing ID")})
+				// Retire the writer before the native terminal result/finish commit,
+				// exercising the real producer recorder failure, not a synthetic
+				// receipt.RecordError or a consumer-only state failure.
+				if err := opened.Close(); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if mode == "natural" {
 				select {
@@ -134,7 +135,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 				}
 			}
 			if mode == "session-replaced" {
-				replacement, err := store.Create(session.LegacyCreateOptions{ID: "replacement"})
+				replacement, err := store.Create(t.Context(), session.CreateOptions{ID: "replacement"})
 				if err != nil {
 					t.Fatal(err)
 				}

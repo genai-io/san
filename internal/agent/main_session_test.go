@@ -15,7 +15,8 @@ import (
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/tests/integration/testutil"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -23,11 +24,8 @@ import (
 
 func mainSessionFixture(t *testing.T) MainSession {
 	t.Helper()
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec, err := store.Create(session.LegacyCreateOptions{AgentID: "main", Model: "fake"})
+	store := testutil.OpenSessionStore(t, t.TempDir())
+	rec, err := store.Create(context.Background(), session.CreateOptions{AgentID: "main", Config: &session.EventConfig{Model: new("fake")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,8 +71,8 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 			} else {
 				data.Permissions.Deny = []string{toolName}
 			}
-			hooks := hook.NewEngine(data, mainSession.Session.ID(), t.TempDir(), mainSession.Session.TranscriptPath())
-			hooks.SetAuditCallback(mainSession.Session.RecordHookAudit)
+			hooks := hook.NewEngine(data, mainSession.Session.ID(), t.TempDir(), mainSession.Session.Path())
+			hooks.SetCompletionRecorder(session.NewRecorder(mainSession.Session, "fake").RecordHook)
 			hooks.AddSessionFunctionHook(hook.PreToolUse, toolName, hook.FunctionHook{
 				Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) {
 					return hook.HookOutput{}, nil
@@ -84,7 +82,7 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 			full := strings.Repeat("界", 40_000)
 			fixture := sdkagent.ToolFunc(toolName, "return output", func(context.Context, struct{}) (sdkagent.Result, error) {
 				calls.Add(1)
-				return sdkagent.TextResult(full), nil
+				return sdkagent.Result{Content: ai.TextContent(full), Details: toolresult.BashDetails{LineCount: 42, Tail: "raw tail"}}, nil
 			})
 			driver := aitest.New(
 				aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "call-1", Name: toolName, Input: `{}`})}, StopReason: ai.StopToolUse}),
@@ -93,11 +91,9 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 			if err := mainSession.Validate(); err != nil {
 				t.Fatal(err)
 			}
-			policy := PermissionPolicy{Settings: data, Session: setting.NewSessionPermissions(),
-				Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
-			}
+			policy := PermissionPolicy{Settings: data, Session: setting.NewSessionPermissions()}
 			params := BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture},
-				SessionID: mainSession.Session.ID(), OnEvent: mainSession.Session.RecordEvent,
+				SessionID: mainSession.Session.ID(), Recording: mainSession.Session,
 				HookEngine: hooks, PermissionRules: policy.Decide, CanApproveByHook: policy.CanApproveByHook,
 				ResultFilter: ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter,
 			}
@@ -120,24 +116,24 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 					if err := mainSession.Session.Err(); err != nil {
 						t.Fatal(err)
 					}
-					history, err := mainSession.Store.Read(mainSession.Session.ID(), session.LegacyReadOptions{})
+					history, err := mainSession.Store.Read(context.Background(), mainSession.Session.ID())
 					if err != nil {
 						t.Fatal(err)
 					}
-					if len(history.Messages) < 4 {
-						t.Fatalf("terminal event preceded transcript writes: %d messages", len(history.Messages))
+					if len(history.Messages()) < 4 {
+						t.Fatalf("terminal event preceded transcript writes: %d messages", len(history.Messages()))
 					}
-					bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())
+					bytes, err := os.ReadFile(mainSession.Session.Path())
 					if err != nil {
 						t.Fatal(err)
 					}
-					if !strings.Contains(string(bytes), "permission.decided") {
+					if !strings.Contains(string(bytes), "permission.decide") {
 						t.Fatal("missing permission audit")
 					}
-					if !strings.Contains(string(bytes), "hook.fired") {
+					if !strings.Contains(string(bytes), "hook.finish") {
 						t.Fatal("missing hook audit")
 					}
-					blob := filepath.Join(filepath.Dir(filepath.Dir(mainSession.Session.TranscriptPath())), "blobs", "tool-result", mainSession.Session.ID(), "call-1")
+					blob := filepath.Join(filepath.Dir(mainSession.Session.Path()), "blobs", "tool-result", "call-1")
 					if allow {
 						if calls.Load() != 1 {
 							t.Fatalf("executions = %d", calls.Load())
@@ -151,6 +147,19 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 						}
 						if string(content) != full {
 							t.Fatal("full output not retained")
+						}
+						found := false
+						for _, row := range mainSession.Store.ChatRows(history) {
+							if row.ToolResult != nil && row.ToolResult.ToolCallID == "call-1" {
+								found = true
+								details, ok := row.ToolDetails.(toolresult.BashDetails)
+								if row.ToolResult.Text() != full || !ok || details.LineCount != 42 || details.Tail != "raw tail" {
+									t.Fatalf("hydrated row=%+v", row)
+								}
+							}
+						}
+						if !found {
+							t.Fatal("missing tool display")
 						}
 					} else if calls.Load() != 0 {
 						t.Fatal("denied tool ran")
@@ -217,7 +226,7 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 	}
 	policy := PermissionPolicy{Settings: data, Session: setting.NewSessionPermissions()}
 	params := BuildParams{Provider: runOnceProvider{driver}, ModelID: "fake", MCPTools: []core.Tool{fixture},
-		SessionID: mainSession.Session.ID(), OnEvent: mainSession.Session.RecordEvent,
+		SessionID: mainSession.Session.ID(), Recording: mainSession.Session,
 		PermissionRules: policy.Decide, CanApproveByHook: policy.CanApproveByHook,
 	}
 	runtime := &Runtime{}
@@ -275,9 +284,7 @@ func TestMainSessionRuntimeCancelRetiresHumanApproval(t *testing.T) {
 
 func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	mainSession := mainSessionFixture(t)
-	policy := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot},
-		Audit: func(record transcript.Record) { _ = mainSession.Session.Append(context.Background(), record) },
-	}
+	policy := PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoPilot}}
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	snapshot := func() JudgeSnapshot {
@@ -326,11 +333,11 @@ func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 	if d := params.PermissionRules("Bash", args); !d.Judgeable {
 		t.Fatalf("late approval changed session policy: %+v", d)
 	}
-	bytes, err := os.ReadFile(mainSession.Session.TranscriptPath())
+	bytes, err := os.ReadFile(mainSession.Session.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(bytes), "permission.decided") {
+	if strings.Contains(string(bytes), "permission.decide") {
 		t.Fatal("late verdict recorded as approval")
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -13,12 +12,9 @@ import (
 )
 
 func TestRuntimeIdentityContinuationUsesOriginalCallAndFreshCallback(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "identity-parent")
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("first"), aitest.Says("second"))}, t.TempDir(), "aitest", nil)
-	e.SetSessionStore(store, "identity-parent")
+	bindContinuationSessions(t, e, store, parent)
 	adapter := NewExecutorAdapter(e)
 	var first, second []toolresult.AgentIdentity
 	info, err := adapter.RunBackground(tool.AgentExecRequest{Prompt: "work", ParentToolCallID: "launch", OnIdentity: func(i toolresult.AgentIdentity) { first = append(first, i) }})
@@ -51,12 +47,9 @@ func TestRuntimeIdentityContinuationUsesOriginalCallAndFreshCallback(t *testing.
 }
 
 func TestRuntimeIdentityForegroundPrecedesActivityAndPreservesSession(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "identity-parent")
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("finding"))}, t.TempDir(), "aitest", nil)
-	e.SetSessionStore(store, "foreground-parent")
+	bindContinuationSessions(t, e, store, parent)
 	var identities []toolresult.AgentIdentity
 	activityBeforeIdentity := false
 	result, err := NewExecutorAdapter(e).Run(context.Background(), tool.AgentExecRequest{

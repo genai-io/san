@@ -53,14 +53,14 @@ func TestTypedPermissionFactoryBindsJudgeToChild(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"file_path": path})
 	d := aitest.New(aitest.Asks(ai.ToolCall{ID: "read", Name: "Read", Input: string(args)}), aitest.Says("done"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	var captured *session.Session
-	e.SetPermissionResolver(func(child *session.Session, _ bool, _ string) tool.Resolver {
+	e.ConfigureOwner(nil, Default(), func(child *session.Session, _ bool, _ tool.AgentInteractionSource) tool.Resolver {
 		captured = child
 		return childJudgeResolver{child}
-	})
+	}, nil)
 	result, err := e.Run(ctx, tool.AgentExecRequest{Prompt: "read evidence", ParentToolCallID: "launch"})
 	if err != nil {
 		t.Fatal(err)

@@ -6,8 +6,6 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
-
-	"github.com/genai-io/san/internal/transcript"
 )
 
 // Store is one project's typed sessions: a directory per session under
@@ -44,7 +42,7 @@ func openStoreIn(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
-	return &Store{cwd: dir, projectID: ProjectID(dir), projectDir: dir, workspace: dir}, nil
+	return &Store{cwd: dir, projectID: deriveProjectID("directory", dir), projectDir: dir, workspace: dir}, nil
 }
 
 // Close prevents new operations. Sessions opened from the store must be closed first.
@@ -67,7 +65,7 @@ func (s *Store) checkID(ctx context.Context, id string) error {
 	if err := s.check(ctx); err != nil {
 		return err
 	}
-	return transcript.ValidateStorageID(id)
+	return ValidateStorageID(id)
 }
 
 // CreateOptions fixes a session's identity. Omitted values use the store's
@@ -104,7 +102,7 @@ func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error
 	}
 	validation := EventValidationContext{}
 	if opts.Parent != nil {
-		if err := transcript.ValidateStorageID(opts.Parent.Session); err != nil {
+		if err := ValidateStorageID(opts.Parent.Session); err != nil {
 			return nil, err
 		}
 		parent, err := s.readEvents(ctx, opts.Parent.Session, nil)
@@ -225,7 +223,7 @@ func (s *Store) Clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 		return CleanResult{}, err
 	}
 	for _, id := range opts.IDs {
-		if err := transcript.ValidateStorageID(id); err != nil {
+		if err := ValidateStorageID(id); err != nil {
 			return CleanResult{}, err
 		}
 	}

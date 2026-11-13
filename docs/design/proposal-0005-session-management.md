@@ -11,10 +11,10 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | Piece | Status |
 | --- | --- |
 | [SDK #105](https://github.com/genai-io/sdk-go/pull/105) | Merged: committed batches (`Writer.Commit`, `Store.Batches`). |
-| [#737](https://github.com/genai-io/san/pull/737) | Merged: project/worktree identity, checkout-local settings, typed events behind a private writer, using the previous draft's 18-type model. It converges to this design before any runtime cutover. Runtime still writes schema 4. |
+| [#737](https://github.com/genai-io/san/pull/737) | Historical foundation: project/worktree identity, checkout-local settings and private typed writer. Its earlier event vocabulary and runtime format are superseded by the unified implementation below. |
 | [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
-| Typed storage and public API | Implemented: 13 events, blobs, attrs, cache, list/fork/clean and opened typed sessions; still unwired. |
-| Runtime cutover | Producer, native resume and typed child-execution adapters are implemented and opt-in. Unified host/inspector wiring and legacy deletion remain. The cutover is a breaking change (see [Compatibility](#compatibility)). |
+| Typed storage and public API | Implemented: 13 events, native projections and requests, blobs, attrs, cache, list/fork/clean and opened sessions. |
+| Runtime cutover | Unified native backend is the default for hosts, utility calls, child execution and inspector. Legacy persistence is removed; final shared-tree integration validation is tracked separately. This is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 
@@ -139,7 +139,7 @@ have one meaning each:
 | --- | --- | --- | --- |
 | Identity | `session.create` | `project`, `workspace`, `initial_cwd`, `agent_id`, `config` (initial overrides); `parent? {session, call_id?}`, `fork? {session, seq}` | Identity and provenance. |
 | | `session.update` | `config?`: provider, model, generation options, mode, autopilot policy. `state?`: generated title, todos, execution_cwd, autopilot progress, group hint | `config` applies to the next request; `state` replaces fields. |
-| Conversation | `message.append` | `messages`: nonempty list of native SDK messages | Appends to history and active context. |
+| Conversation | `message.append` | `messages`: nonempty list of native SDK messages; `accepted?`: durable queue acceptance | Appends native history/context once; later exact-ID consumption references acceptance locally. |
 | | `context.compact` | `summary`: native message; `through`: seq | Active context becomes `[summary]` + messages appended after `through`. The summary joins history. |
 | Model calls | `inference.start` | `purpose`, `turn_id?`, `request` (provider, model, options), `input` (`conversation {append?}` or `standalone`), `instructions_digest?`, `toolset_digest?` | Opens one model call; each retry is its own call. See [Model calls](#model-calls). |
 | | `inference.finish` | `outcome`, `stop_reason?`, `usage?`, `duration_ms?`, `error? {message, retryable}` | Closes the call named by `source`. |
@@ -259,7 +259,7 @@ Every other operation that seems to change it is covered elsewhere:
 | Operation | Recorded as |
 | --- | --- |
 | User input, model output, tool results, messages delivered from other sessions | `message.append` |
-| Input queued while a turn or compaction runs | Nothing until it is delivered; then `message.append`. |
+| Input queued while a turn or compaction runs | `message.append {accepted: true}` at durable native acceptance, then exact-ID consumption with local source back to acceptance. |
 | Compaction: automatic, manual `/compact`, recovery from prompt-too-long | `context.compact` with its `inference.start` / `finish` |
 | `/clear` | A new session (`Create`). The old one stays intact and resumable. No `context.clear`: one session holds one conversation. |
 | Rewind or edit an earlier message (not implemented today) | `Fork` at the `seq` before that message, then `message.append` in the fork. The source is never rewritten, so no `context.rewind` is needed. |
@@ -269,6 +269,12 @@ Every other operation that seems to change it is covered elsewhere:
 | Provider adaptation of a request (e.g. images for text-only models) | Nothing. A pure function of context and request config. |
 
 ### Projections
+
+Accepted input keeps the original foreign/utility provenance on its first append.
+Consumption must preserve its exact native IDs/content and source the acceptance
+locally; it is not a second message or a provenance rewrite. `Messages()` and
+`ActiveMessages()` deduplicate acceptance/consumption, preserve consumed order and
+place still-pending input at the tail. Compaction keeps that pending tail.
 
 A pure projector folds committed events into:
 
@@ -345,10 +351,10 @@ after:  context = [summary]            history = m1 .. m40, summary
 
 `through` names exactly what the summary covers. The inspector can show which
 messages were summarized, and anything appended after `S` stays in context
-rather than being lost; today nothing is, because input queues during
-compaction. Recent requests the summary must keep are written into the summary
-text. A failed or cancelled compaction writes only `inference.finish` and leaves
-context unchanged.
+rather than being lost. Input durably accepted while compaction runs remains at
+the pending tail until native consumption. Recent requests the summary must keep
+are written into the summary text. A failed or cancelled compaction writes only
+`inference.finish` and leaves context unchanged.
 
 ## Consistency and recovery
 
@@ -408,10 +414,11 @@ func (s *Session) Close() error                                      // drain, r
 - Errors are distinguishable: not found, busy, closed, conflict, invalid,
   unsupported version, corrupt, cancelled, storage.
 
-The runtime still uses `LegacyStore` (`Create/Open/List/Fork/Delete`,
-`Append(transcript.Record)`, immediate deletion); the typed API above is implemented
-separately. Recorder, resume and final consumer cutover remain pending. Consumers
-keep narrow local interfaces, and generic pieces move into sdk-go.
+All runtime consumers use this canonical `Store` / `Session` API. `Read`,
+`ContextRequest`, `InferenceRequest` and `CommittedBatches` serve writer-free
+inspection; `ChatRows` is display-only. There is no older-format reader, alias,
+fallback or automatic conversion. Consumers keep narrow local interfaces, and
+generic pieces remain in sdk-go.
 
 ## Lifecycle and retention
 
@@ -478,9 +485,9 @@ stay on disk untouched and the user may delete them. Forward, an unknown event
 
 ## Delivery plan
 
-Merged code (#737, #738) implements the previous draft. Each slice below is an
-independent PR that keeps runtime writing the current format until the last one,
-which removes it.
+The slices below record the delivery sequence. Unified native host/inspector
+wiring and removal of older persistence are implemented in the final slice;
+repository-wide validation remains a separate integration gate.
 
 | # | Slice | Replaces / adds |
 | --- | --- | --- |
@@ -489,26 +496,21 @@ which removes it.
 | 3 | Model calls | `purpose`, conversation/standalone input, request blobs, digest check at commit |
 | 4 | Attrs and cache | `attrs.json`, `cache/<sid>.json`; offset pages after sdk-go `BatchesFrom` |
 | 5 | Lifecycle | `SetAttrs`, `Delete` / `Restore` / `Clean`, whole-directory trash, retention, GC |
-| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the schema-4 records, projector, `internal/transcript` and the legacy-partition lookup in `project.go` |
+| 6 | Runtime cutover | `sessions/` layout; producers write events; fork by prefix copy; resume and ACP checks; delete the older records/projector package and cwd-partition lookup |
 
 Slices 1–2 are gated by #737's tests being ported, not deleted.
 
-Slice 6 changes paths, not only formats. Every consumer of the old flat path moves
-to the session directory: `Session.TranscriptPath` and its hook-facing path,
-discovery and listing in `session`, the inspector (`cmd/san/inspector.go`,
-`internal/inspector`), and `transcript.Store`. Each session directory is opened as
-its own sdk-go store with the fixed ID `events`, which keeps sdk-go's batch format,
-writer lock and recovery unchanged (verified: one writer per directory, and the
-directory renames cleanly once closed). All of `sessions/`, `trash/` and `cache/`
-must be on one filesystem, which is what makes the renames atomic.
+Slice 6 moves every consumer to the session directory: `Session.Path` and its
+hook-facing path, discovery/listing, and the inspector (`cmd/san/inspector.go`,
+`internal/inspector`). Each session directory opens as its own sdk-go store with
+fixed ID `events`, keeping SDK batch framing, writer locking and recovery.
+`sessions/`, `trash/` and `cache/` must share a filesystem for atomic renames.
 
-Code layout follows the same split. `internal/session` owns the product Store
-and Session; its typed-event code is grouped by responsibility in files
-(`event_model`, `event_validation`, `event_projector`, `event_storage`,
-`event_query`) rather than a new package, as the event model has no consumer
-outside `session`. `internal/transcript` is deleted in slice 6; what it still
-does that the new model needs (summaries, recovery) moves into `session`.
-Generic pieces (batch framing, writer lock) stay in sdk-go.
+`internal/session` owns product Store, Session, typed validation and projections,
+grouped by responsibility in files (`event_model`, `event_validation`,
+`event_projector`, `event_storage`, `event_query`, `read`). The older persistence
+package has been deleted; required summaries and native recovery adapters live in
+`session`. Generic batch framing and writer locking stay in sdk-go.
 
 ## Alternatives considered
 

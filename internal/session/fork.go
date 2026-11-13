@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/genai-io/san/internal/transcript"
 	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
@@ -24,7 +23,7 @@ import (
 // a missing or damaged blob fails the fork. Like Create, the fork is built in a
 // staging directory and published by one rename.
 func (s *Store) forkSession(ctx context.Context, srcID, newID string, atSeq uint64, now time.Time) (*eventSession, error) {
-	if err := transcript.ValidateStorageID(newID); err != nil {
+	if err := ValidateStorageID(newID); err != nil {
 		return nil, err
 	}
 	src, err := s.readEvents(ctx, srcID, nil)
@@ -62,6 +61,9 @@ func (s *Store) forkSession(ctx context.Context, srcID, newID string, atSeq uint
 
 	srcBlobs := blobStore{dir: filepath.Join(s.sessionDir(srcID), "blobs")}
 	dstBlobs := blobStore{dir: filepath.Join(stage, "blobs")}
+	if err := copyDisplayAssets(srcBlobs.dir, dstBlobs.dir); err != nil {
+		return nil, err
+	}
 	for _, e := range prefix {
 		in, ok := e.Payload.(*InferenceStartPayload)
 		if !ok || in.Input.Standalone == "" {

@@ -22,7 +22,6 @@ import (
 // Install all three admissions and RecordEvent together; observations alone are
 // not durability fences. The final permission owner must call Decide before
 // authorizing, after all policy and hook decisions have resolved.
-// The runtime continues using LegacySession until the final format switch.
 type Recorder struct {
 	mu       sync.Mutex
 	session  *Session
@@ -49,6 +48,13 @@ func (r *Recorder) Err() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.check(context.Background())
+}
+
+// Fail latches an external before-effect durability failure for later admissions.
+func (r *Recorder) Fail(err error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.remember(err)
 }
 
 func (r *Recorder) check(ctx context.Context) error {
@@ -232,7 +238,7 @@ func (r *Recorder) RecordEvent(event core.Event) {
 		err = r.message(e.Message)
 	case sdkagent.MessagesReplaced:
 		p := r.session.Snapshot()
-		if !sameJSON(p.ActiveMessages(), e.Messages) {
+		if !sameJSON(p.ActiveMessages(), e.Messages) && !sameJSON(p.consumedMessages(), e.Messages) {
 			err = fmt.Errorf("context replacement must be committed through compaction or fork")
 		}
 	case sdkagent.InferenceEnd:
@@ -274,7 +280,7 @@ func (r *Recorder) message(message ai.Message) error {
 			if !sameJSON(existing, message) {
 				return nil, fmt.Errorf("published message differs from committed output")
 			}
-			return nil, nil
+			return p.consumeInputEvents([]ai.Message{message})
 		}
 		if message.Role != ai.RoleUser || len(message.ToolResults()) > 0 {
 			return nil, fmt.Errorf("generated message bypassed output admission")
@@ -414,6 +420,22 @@ func (r *Recorder) toolsChange(change core.ToolsChange) error {
 		}
 		return []Event{{Payload: update}}, nil
 	})
+}
+
+// RecordSkillStateChange observes native registry changes without importing skills.
+func (r *Recorder) RecordSkillStateChange(name, previous, current, caller string) {
+	state := current
+	switch current {
+	case "disable":
+		state = SkillDisabled
+	case "enable":
+		state = SkillEnabled
+	case "active":
+		state = SkillActive
+	}
+	if err := r.RecordSkill(context.Background(), name, state, caller); err != nil {
+		_ = r.Fail(err)
+	}
 }
 
 func (r *Recorder) RecordSkill(ctx context.Context, name, state, cause string) error {

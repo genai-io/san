@@ -12,7 +12,6 @@ import (
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/proc"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -53,7 +52,7 @@ func TestAgentRunningShellErrorsStayWithWorker(t *testing.T) {
 			driver := aitest.New(aitest.Asks(ai.ToolCall{
 				ID: "tail-source", Name: shell.Kind.ToolName(), Input: input,
 			}), aitest.Says("Review finished"))
-			executor := subagent.NewExecutor(driverProvider{&testutil.FakeProvider{}, driver}, cwd, "fake-model", nil)
+			executor := newIntegrationExecutor(t, driverProvider{&testutil.FakeProvider{}, driver}, cwd, "fake-model", nil)
 			var notices []broker.Message
 			broker.Register(broker.Main, func(message broker.Message) bool {
 				notices = append(notices, message)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
@@ -68,11 +68,11 @@ func (h *acpHost) setConfig(ctx context.Context, request protocol.SetSessionConf
 		if err := s.runtime.Stop(ctx); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, err
 		}
-		if err := s.nativeSession.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Model: new(id)}}); err != nil {
+		if err := s.nativeSession.Session.Append(ctx, session.Event{Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{Model: session.SetField(id)}}}); err != nil {
 			return protocol.SetSessionConfigOptionResponse{}, err
 		}
 		s.runtimeBuildParams.ModelID = id
-		s.hooks.SetLLMCompleter(buildHookCompleter(s.runtimeBuildParams.Provider), id)
+		bindSessionHooks(s.hooks, s.runtimeBuildParams.Provider, s.nativeSession.Session, id)
 	}
 	return protocol.SetSessionConfigOptionResponse{ConfigOptions: s.configOptions()}, nil
 }

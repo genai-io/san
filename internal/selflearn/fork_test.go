@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 )
 
 // TestTrimTrailingPendingMessages guards against the "messages must
@@ -106,11 +107,13 @@ func TestRunReviewWritesSkillAndInheritsSystem(t *testing.T) {
 		Render: func() string { return "PARENT-SYSTEM-MARKER" },
 	}, "test")
 
+	owner := reviewRecording(t)
 	fc := ForkConfig{
-		Client: stubClient(llm),
-		System: parentSys,
-		CWD:    "/work/project-x",
-		Skills: mgr,
+		Recording: owner,
+		Client:    stubClient(llm),
+		System:    parentSys,
+		CWD:       "/work/project-x",
+		Skills:    mgr,
 	}
 	snapshot := []core.Message{
 		core.UserMessage("please switch the file to tabs", nil),
@@ -133,5 +136,28 @@ func TestRunReviewWritesSkillAndInheritsSystem(t *testing.T) {
 	// The fork must only ever be offered its single write tool.
 	if len(llm.Last().Tools) != 1 {
 		t.Fatalf("fork tool count = %d, want 1", len(llm.Last().Tools))
+	}
+	counts := map[string]int{}
+	snapshotRecorded := owner.Snapshot()
+	for _, event := range snapshotRecorded.Events() {
+		counts[string(event.Type)]++
+		if p, ok := event.Payload.(*session.InferenceStartPayload); ok && counts["inference.start"] == 1 {
+			if p.Input.Standalone == "" {
+				t.Fatal("inherited context must remain factual standalone request input")
+			}
+		}
+		if p, ok := event.Payload.(*session.PermissionDecidePayload); ok {
+			if p.By != "config" || p.Decision != "allow" {
+				t.Fatalf("permission authority: %+v", p)
+			}
+		}
+	}
+	for _, kind := range []string{"instructions.update", "toolset.update", "inference.start", "inference.finish", "permission.decide", "tool.finish"} {
+		if counts[kind] == 0 {
+			t.Errorf("missing native event %s: %v", kind, counts)
+		}
+	}
+	if err := owner.Err(); err != nil {
+		t.Fatalf("review closed caller-owned writer: %v", err)
 	}
 }

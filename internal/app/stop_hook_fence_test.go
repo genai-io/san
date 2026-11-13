@@ -101,7 +101,7 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 					if err := old.Close(); err != nil {
 						t.Fatal(err)
 					}
-					replacement, _, err := m.services.SessionStore.Open("s")
+					replacement, err := m.services.SessionStore.Open(t.Context(), "s")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -124,12 +124,12 @@ func TestDelayedStopOutcomeFence(t *testing.T) {
 				}
 				current := m.pendingStopHook
 				beforeRows, beforePending, beforeQueue := len(m.conv.Messages), m.pendingMessages.Len(), m.userInput.Queue.Len()
-				before, err := os.ReadFile(m.services.Session.TranscriptPath())
+				before, err := os.ReadFile(m.services.Session.Path())
 				if err != nil {
 					t.Fatal(err)
 				}
 				_, cmd := m.dispatch(msg)
-				after, err := os.ReadFile(m.services.Session.TranscriptPath())
+				after, err := os.ReadFile(m.services.Session.Path())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -205,12 +205,12 @@ func TestLiveStopOutcomeConsumedOnce(t *testing.T) {
 			m, _ := compactQueueModel(t)
 			msg := pendingStopOutcome(t, m, blocked)()
 			beforeRows := len(m.conv.Messages)
-			before, err := os.ReadFile(m.services.Session.TranscriptPath())
+			before, err := os.ReadFile(m.services.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
 			m.dispatch(msg)
-			after, err := os.ReadFile(m.services.Session.TranscriptPath())
+			after, err := os.ReadFile(m.services.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -225,7 +225,7 @@ func TestLiveStopOutcomeConsumedOnce(t *testing.T) {
 			}
 			rows := len(m.conv.Messages)
 			_, cmd := m.dispatch(msg)
-			again, err := os.ReadFile(m.services.Session.TranscriptPath())
+			again, err := os.ReadFile(m.services.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -12,7 +12,6 @@ import (
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/proc"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -38,7 +37,7 @@ func TestAgentExploreReadsFilesWithReadDisabled(t *testing.T) {
 		testutil.ToolCallResponse(shell.Kind.ToolName(), "read-source", input),
 		testutil.EndTurnResponse("Reviewed example.go"),
 	}}
-	executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+	executor := newIntegrationExecutor(t, provider, cwd, "fake-model", nil)
 	executor.SetDisabledTools(map[string]bool{tool.ToolRead: true})
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Mode: "explore", Prompt: "Review example.go"})
 	if err != nil || !result.Success {
@@ -83,7 +82,7 @@ func TestBackgroundAgentShowsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
 	driver := aitest.New(aitest.Asks(ai.ToolCall{
 		ID: "denied-read", Name: shell.Kind.ToolName(), Input: `{"command":"python3 read.py"}`,
 	}), blocked)
-	executor := subagent.NewExecutor(driverProvider{&testutil.FakeProvider{}, driver}, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, driverProvider{&testutil.FakeProvider{}, driver}, t.TempDir(), "fake-model", nil)
 	worker, err := executor.RunBackground(tool.AgentExecRequest{Mode: "explore", Description: "Review source", Prompt: "Read the source"})
 	if err != nil {
 		t.Fatal(err)

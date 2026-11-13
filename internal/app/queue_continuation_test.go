@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 )
 
 func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
@@ -28,7 +30,8 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			}
 			completed := make(chan turnFinalizedMsg, 1)
 			go runFinalizationCommands(m.handleStreamCancel(), completed)
-			if m.pendingMessages.Cancelling() == nil {
+			receipt := m.pendingMessages.Cancelling()
+			if receipt == nil {
 				t.Fatal("cancel did not capture finalization")
 			}
 			m.sendToAgent(pendingMessage{Message: core.UserMessage("held hook", nil)})
@@ -66,26 +69,56 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 			}
 			m.userInput.Textarea.SetValue("unrelated draft")
 			outbox := m.services.Agent.Outbox()
+			events := outbox
 			deadline := time.After(2 * time.Second)
+			var completion turnFinalizedMsg
+			// Native cancellation can settle this exact receipt without emitting a
+			// TurnEnded when admission loses the race. Consume real events while
+			// waiting; never fabricate a terminal event or acknowledge it ourselves.
 		drain:
 			for {
 				select {
-				case ev := <-outbox:
-					if end, ok := ev.(core.TurnEnded); ok {
-						conv.Update(m, &m.conv, conv.AgentOutboxMsg{Outbox: outbox, Event: end})
-						break drain
+				case ev, ok := <-events:
+					if !ok {
+						events = nil
+						continue
 					}
+					conv.Update(m, &m.conv, conv.AgentOutboxMsg{Outbox: outbox, Event: ev})
+				case completion = <-completed:
+					if completion.receipt != receipt || completion.outbox != outbox {
+						t.Fatal("a different turn or runtime settled cancellation")
+					}
+					if completion.err != nil && completion.err != core.ErrTurnCompleted {
+						snapshot := m.services.Session.Snapshot()
+						var start *session.Event
+						for _, event := range snapshot.Events() {
+							if payload, ok := event.Payload.(*session.InferenceStartPayload); ok && payload.Purpose == session.PurposeTurn {
+								copy := event
+								start = &copy
+							}
+						}
+						var finishes []session.Event
+						for _, event := range snapshot.Events() {
+							if start != nil && event.Type == session.EventInferenceFinish && event.Source != nil && event.Source.Session == "" && event.Source.Seq == start.Seq {
+								finishes = append(finishes, event)
+							}
+						}
+						evidence, _ := json.Marshal(struct {
+							Start      *session.Event
+							Finishes   []session.Event
+							Unfinished session.Unfinished
+						}{start, finishes, snapshot.Unfinished()})
+						t.Fatalf("native finalization failed: %v; writer=%v evidence=%s", completion.err, m.services.Session.Err(), evidence)
+					}
+					if err := m.services.Session.Err(); err != nil {
+						t.Fatalf("native writer failed during cancellation: %v", err)
+					}
+					break drain
 				case <-deadline:
-					t.Fatal("terminal event missing")
+					t.Fatal("captured native finalization did not settle")
 				}
 			}
-			var completion turnFinalizedMsg
-			select {
-			case completion = <-completed:
-				m.dispatch(completion)
-			case <-deadline:
-				t.Fatal("acknowledged finalization did not complete")
-			}
+			m.dispatch(completion)
 			if m.userInput.Textarea.Value() != "unrelated draft" {
 				t.Fatal("finalization lost the composer draft")
 			}

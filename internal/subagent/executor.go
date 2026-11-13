@@ -37,8 +37,6 @@ type ProviderResolver interface {
 	Resolve(ctx context.Context, provider llm.ProviderID) (llm.Provider, error)
 }
 
-type executionDirectoryKey struct{}
-
 // Executor runs agent LLM loops
 type Executor struct {
 	interactions               tool.AgentInteractions
@@ -50,25 +48,20 @@ type Executor struct {
 	defaultModel               string // Configured model for the default worker; empty inherits.
 	parentPermissionModeGetter func() PermissionMode
 	hooks                      hook.Handler
-	typedStore                 *session.Store
-	typedParent                *session.Session
-	sessionStore               SubagentSessionStore // Optional: when set, subagent sessions are persisted
-	parentSessionID            string               // Parent session ID for linking subagent sessions
-	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
-	skillsPrompt               string               // available skills section for capable subagents
-	resolveSkill               func(string) string  // nil uses the TUI registry
-	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
+	childHooks                 func(*session.Session, llm.Provider, string) (hook.Handler, func(llm.Provider, string), func())
+	store                      *session.Store
+	parent                     *session.Session
+	parentSessionID            string              // Parent session ID for linking subagent sessions
+	projectInstructions        string              // project memory (AGENTS.md) for edit-capable subagents
+	skillsPrompt               string              // available skills section for capable subagents
+	resolveSkill               func(string) string // nil uses the TUI registry
+	mcpManager                 *mcp.Manager        // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 	tasks                      *task.Manager
-	permissionResolver         func(*session.Session, bool, string) tool.Resolver
-	permission                 func(bool, string) perm.PermissionFunc
+	permissionResolver         func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
 	toolContext                func(context.Context, string) context.Context
-	postTool                   func(core.ToolResult, any)
-}
-
-type SubagentSessionStore interface {
-	RecordSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error)
+	postTool                   func(hook.Handler, core.ToolResult, any) error
 }
 
 type runConfig struct {
@@ -99,17 +92,20 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 // ConfigureOwner binds a host's worker resources before launching any runs.
 // Permission must enforce the parent policy even for child bypass/allow rules.
 // Background policies must never retain a prompt-scoped transport receiver.
-func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(bool, string) perm.PermissionFunc, toolContext func(context.Context, string) context.Context) {
-	e.tasks, e.registry, e.permission, e.toolContext = tasks, registry, permission, toolContext
+func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
+	e.tasks, e.registry, e.permissionResolver, e.toolContext = tasks, registry, permission, toolContext
 }
 
-// SetPermissionResolver supplies the owner's structured authorization for typed children.
-func (e *Executor) SetPermissionResolver(resolve func(*session.Session, bool, string) tool.Resolver) {
-	e.permissionResolver = resolve
+// SetChildHooks supplies a fresh handler bound to the created child's owner.
+// It must not reconfigure a handler shared with the parent or another child.
+func (e *Executor) SetChildHooks(factory func(*session.Session, llm.Provider, string) (hook.Handler, func(llm.Provider, string), func())) {
+	e.childHooks = factory
 }
 
 // SetPostTool observes owned handoffs before they are consumed by worker CWD handling.
-func (e *Executor) SetPostTool(post func(core.ToolResult, any)) { e.postTool = post }
+func (e *Executor) SetPostTool(post func(hook.Handler, core.ToolResult, any) error) {
+	e.postTool = post
+}
 
 func (e *Executor) taskPool() *task.Manager {
 	if e.tasks != nil {
@@ -178,19 +174,17 @@ func (e *Executor) disabledToolsSnapshot() map[string]bool {
 	return maps.Clone(e.disabledTools)
 }
 
-// SetSessionStore configures session persistence for subagent conversations.
-// When set, completed subagent conversations are saved under the parent session.
-func (e *Executor) SetSessionStore(store SubagentSessionStore, parentSessionID string) {
-	e.sessionStore = store
-	e.parentSessionID = parentSessionID
-}
-
-// SetTypedSessions opts into typed child recording. Configure before launching workers.
-func (e *Executor) SetTypedSessions(store *session.Store, parent *session.Session) error {
-	if store == nil || parent == nil || !parent.OwnedBy(store) || e.sessionStore != nil {
-		return fmt.Errorf("typed children require a store and parent without a legacy owner")
+// SetSessions binds persistence before launching workers. A nil parent creates
+// top-level agent sessions; parent-owned command launches may omit a call ID.
+func (e *Executor) SetSessions(store *session.Store, parent *session.Session) error {
+	if store == nil || (parent != nil && !parent.OwnedBy(store)) {
+		return fmt.Errorf("sessions require a store and matching parent owner")
 	}
-	e.typedStore, e.typedParent, e.parentSessionID = store, parent, parent.ID()
+	e.store, e.parent = store, parent
+	e.parentSessionID = ""
+	if parent != nil {
+		e.parentSessionID = parent.ID()
+	}
 	return nil
 }
 
@@ -230,15 +224,16 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(task.WithSessionID(ctx, run.parentID(e.parentSessionID)))
+	ctx, cancel := context.WithCancel(task.WithSessionID(ctx, run.parentID()))
 	defer cancel()
 	worker := e.taskPool().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
 	run.req.TaskID = worker.GetID()
-	run.checkpoint = newContinuationState(run, e.parentSessionID, worker.GetID())
+	run.checkpoint = newContinuationState(run, run.parentID(), worker.GetID())
 	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
 	result, err := e.runPrepared(ctx, run)
 	if result != nil {
+		worker.SetSourceMessageSeq(worker.GetStatus().Attempt, result.SourceMessageSeq)
 		worker.SetIdentity(run.cfg.config.Name, result.AgentID)
 		worker.SetInspectionFile(result.TranscriptPath)
 		worker.AppendOutput([]byte(result.Content))
@@ -252,29 +247,44 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	return result, err
 }
 
-func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentResult, error) {
-	if run.typedStore != nil {
-		defer func() {
-			if run.recording != nil {
-				_ = run.recording.Close()
+func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (out *AgentResult, runErr error) {
+	defer func() {
+		// Stop hooks may record asynchronously. Drain their owned handler while
+		// the child writer is still live, then release its claim exactly once.
+		if run.stopHooks != nil {
+			run.stopHooks()
+		}
+		if run.recording != nil {
+			var recorderErr error
+			if run.recorder != nil {
+				recorderErr = run.recorder.Err()
 			}
-		}() // Release claims even when startup is cancelled.
-		if err := ctx.Err(); err != nil {
-			return nil, err
+			persistErr := errors.Join(recorderErr, run.recording.Err(), run.recording.Close())
+			if run.checkpoint != nil {
+				run.checkpoint.cwd, run.checkpoint.persistenceErr, run.checkpoint.cfg = run.currentCwd(), persistErr, run.cfg
+			}
+			runErr = errors.Join(runErr, persistErr)
 		}
-		if err := e.openNative(ctx, run); err != nil {
-			return nil, err
-		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := e.openNative(ctx, run); err != nil {
+		return nil, err
+	}
+	if run.hookFactory != nil && !run.hooksBound {
+		run.hooks, run.rebindHooks, run.stopHooks = run.hookFactory(run.recording, run.cfg.provider, run.cfg.modelID)
+		run.hooksBound = true
 	}
 	e.logRunStart(run)
-	e.fireSubagentStart(run.req, run.hookID)
+	e.fireSubagentStart(run.hooks, run.req, run.hookID)
 
 	result, err := e.executePreparedRun(ctx, run)
 	if err != nil {
 		if unfinished := e.buildUnfinishedAgentResult(run, result); unfinished != nil {
 			return unfinished, err
 		}
-		e.fireSubagentStop(run.req, run.hookID, "", "")
+		e.fireSubagentStop(run.hooks, run.req, run.hookID, "", "")
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
 
@@ -294,7 +304,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	var agentTask *task.AgentTask
 	var err error
 	if req.ResumeTaskID != "" {
-		if _, ok := e.sessionStore.(liveSessionStore); !ok && e.typedStore == nil {
+		if e.store == nil {
 			cancel()
 			return nil, fmt.Errorf("native continuation requires live session persistence")
 		}
@@ -331,6 +341,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		next := state.req
 		next.Background = true
 		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
+		next.SourceSession, next.SourceSeq = req.SourceSession, req.SourceSeq
 		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
 		next.OnIdentity = req.OnIdentity
 		next.OnQuestion = req.OnQuestion
@@ -344,7 +355,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		if req.MaxSteps > 0 {
 			cfg.maxSteps = req.MaxSteps
 		}
-		run = &preparedRun{typedStore: e.typedStore, typedParent: e.typedParent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
+		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
 		// Validate and claim native history before changing task state. A broken
 		// checkpoint is a failed continuation request, not another execution
@@ -353,11 +364,15 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, err
 		}
+		if err = e.acceptContinuationInput(ctx, run); err != nil {
+			state.persistenceErr = err
+			err = errors.Join(err, run.recording.Close())
+			cancel()
+			return nil, err
+		}
 		if _, err = agentTask.BeginAttemptAfter(prior.Attempt, e.parentSessionID, ctx, cancel); err != nil {
 			if run.recording != nil {
 				_ = run.recording.Close()
-			} else {
-				_ = run.native.Close()
 			}
 			cancel()
 			return nil, err
@@ -379,7 +394,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			ctx,
 			cancel,
 		)
-		run.checkpoint = newContinuationState(run, e.parentSessionID, agentTask.GetID())
+		run.checkpoint = newContinuationState(run, run.parentID(), agentTask.GetID())
 		agentTask.SetLaunchState(run.checkpoint)
 	}
 	agentTask.SetIdentity(identity, "")
@@ -409,9 +424,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		if run.recording != nil {
 			agentTask.SetInspectionFile(run.recording.Path())
 		}
-		if run.native != nil {
-			agentTask.SetInspectionFile(run.native.TranscriptPath())
-		}
 		if run.checkpoint != nil {
 			agentTask.SetIdentity(identity, run.checkpoint.sessionID)
 		}
@@ -423,9 +435,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
 				}
 				agentTask.SetIdentity(identity, result.AgentID)
-				if run.native == nil && run.recording == nil {
-					agentTask.SetOutputFile(result.TranscriptPath)
-				}
 				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
@@ -438,9 +447,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		}
 
 		agentTask.SetIdentity(identity, result.AgentID)
-		if run.native == nil && run.recording == nil {
-			agentTask.SetOutputFile(result.TranscriptPath)
-		}
 		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 
 		if result.Success {
@@ -557,11 +563,11 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 	}, nil
 }
 
-func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID string) {
-	if e.hooks == nil {
+func (e *Executor) fireSubagentStart(handler hook.Handler, req tool.AgentExecRequest, agentHookID string) {
+	if handler == nil {
 		return
 	}
-	e.hooks.ExecuteAsync(hook.SubagentStart, hook.HookInput{
+	handler.ExecuteAsync(hook.SubagentStart, hook.HookInput{
 		AgentName:   strings.TrimSpace(req.Agent),
 		AgentID:     agentHookID,
 		Description: req.Description,
@@ -601,7 +607,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), disabled, mcpGetter)
-	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil || e.permission != nil)
+	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil || e.permissionResolver != nil)
 	brief := rc.brief
 	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
 	brief.ToolGuidance = fileReadToolGuidance(schemas, rc.permMode)
@@ -624,9 +630,14 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 			return "", fmt.Errorf("worker execution directory was not authorized")
 		}),
 		tool.WithToolContext(func(ctx context.Context) context.Context {
-			ctx = task.WithManager(task.WithSessionID(ctx, run.parentID(e.parentSessionID)), e.taskPool())
+			ctx = task.WithManager(task.WithSessionID(ctx, run.parentID()), e.taskPool())
 			if e.toolContext != nil {
 				ctx = e.toolContext(ctx, rc.config.SourceFile)
+			}
+			ctx = tool.WithMessageSource(ctx, "", 0)
+			snapshot := run.recording.Snapshot()
+			if source, ok := snapshot.ToolCallSource(core.ToolCallIDFromContext(ctx)); ok {
+				ctx = tool.WithMessageSource(ctx, source.Session, source.Seq)
 			}
 			return ctx
 		}),
@@ -654,47 +665,14 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
-	var prompt perm.PermissionFunc
-	if e.interactions != nil {
-		prompt = e.interactionApproval(run)
-	}
-	permFn := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, prompt)
-	if e.permission != nil {
-		// The owner authorizes every call, including safe tools and child allow
-		// rules. Child constraints may narrow but never widen parent policy.
-		constraints := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, func(context.Context, string, map[string]any) (bool, string) { return true, "owner review" })
-		permFn = func(ctx context.Context, name string, input map[string]any) (bool, string) {
-			if ok, reason := constraints(ctx, name, input); !ok {
-				return false, reason
-			}
-			cwd, _ := ctx.Value(executionDirectoryKey{}).(string)
-			parent := e.permission(run.req.Background, cwd)
-			if parent == nil {
-				return false, "owner permission policy unavailable"
-			}
-			return parent(ctx, name, input)
-		}
-	}
-	permissionGate := tool.Permission(permFn)
-	if e.permission != nil {
-		permissionGate = tool.HookedPermission(e.hooks, workerPermission{check: permFn})
-	}
-	var recorder *session.Recorder
-	if run.recording != nil {
-		if e.permission != nil && e.permissionResolver == nil {
-			cleanup()
-			return nil, func() {}, fmt.Errorf("typed child requires structured owner permission resolution")
-		}
-		recorder = session.NewRecorder(run.recording, rc.provider.Name())
-		run.recorder = recorder
-		permissionGate = tool.HookedPermission(e.hooks, childPermission{child: run.recording, config: rc.config, mode: rc.permMode, parent: e.permissionResolver, background: run.req.Background}, recorder.RecordPermission)
-	}
+	recorder := session.NewRecorder(run.recording, rc.provider.Name())
+	run.recorder = recorder
+	permissionGate := tool.HookedPermission(run.hooks, childPermission{source: run.interactionSource, child: run.recording, config: rc.config, mode: rc.permMode, parent: e.permissionResolver, background: run.req.Background}, recorder.RecordPermission)
 	gate := core.Gates(activity(onToolExec), func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 		if e.toolContext != nil {
 			ctx = e.toolContext(ctx, rc.config.SourceFile)
 		}
 		cwd := run.currentCwd()
-		ctx = context.WithValue(ctx, executionDirectoryKey{}, cwd)
 		decision, err := permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
 		if err == nil && !decision.Block {
 			callDirs.Store(call.Call.ID, cwd)
@@ -872,17 +850,17 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 // fireSubagentStop fires on every run exit — success, cancellation, or error
 // — with the same AgentID that SubagentStart carried, so hook consumers can
 // pair the two events. The session id travels via the transcript path.
-func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agentTranscriptPath, resultContent string) {
-	if e.hooks == nil {
+func (e *Executor) fireSubagentStop(handler hook.Handler, req tool.AgentExecRequest, agentHookID, agentTranscriptPath, resultContent string) {
+	if handler == nil {
 		return
 	}
 
-	e.hooks.ExecuteAsync(hook.SubagentStop, hook.HookInput{
+	handler.ExecuteAsync(hook.SubagentStop, hook.HookInput{
 		AgentName:            strings.TrimSpace(req.Agent),
 		AgentID:              agentHookID,
 		AgentTranscriptPath:  agentTranscriptPath,
 		LastAssistantMessage: resultContent,
-		StopHookActive:       e.hooks.StopHookActive(),
+		StopHookActive:       handler.StopHookActive(),
 	})
 }
 

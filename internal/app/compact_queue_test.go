@@ -12,7 +12,10 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 func TestSubmitDuringCompactionQueuesInput(t *testing.T) {
@@ -54,7 +57,7 @@ func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	m.userInput = input.New(m.env.CWD, 80, nil, input.SelectorDeps{Setting: m.services.Setting})
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
 	m.env.LLMProvider = provider
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: m.services.Session.RecordEvent}, m.services.Agent.Messages()); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	m.agentEvolveCaps = m.selfLearnCapabilities()
@@ -67,7 +70,15 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 	for _, trigger := range []string{"manual", "auto", "nothing"} {
 		t.Run(trigger, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
-			request := m.BuildCompactRequest("", "manual")
+			const summary = "both files read"
+			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says(summary)).Client()}
+			var request agent.CompactRequest
+			if trigger == "auto" {
+				request = agent.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+			} else {
+				request = m.BuildCompactRequest("", "manual")
+			}
+			m.env.LLMProvider = provider
 			m.OnCompactStart(len(m.conv.Messages))
 			m.userInput.Textarea.SetValue("look at [Image #1]")
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
@@ -78,10 +89,25 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 2, Data: chartImage()}}
 			m.userInput.Images.NextID = 2
 
-			const summary = "both files read"
+			expectedSummary := ""
 			switch trigger {
-			case "manual":
-				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Summary: summary}})
+			case "manual", "auto":
+				msg := conv.CompactCmd(request)().(conv.CompactResultMsg)
+				if msg.Err != nil {
+					t.Fatal(msg.Err)
+				}
+				expectedSummary = msg.Summary
+				if !strings.Contains(expectedSummary, summary) {
+					t.Fatalf("model summary lost: %q", expectedSummary)
+				}
+				if trigger == "manual" {
+					m.HandleCompactResult(msg)
+				} else {
+					accepted, err := m.services.Agent.Compact(msg.Completion.Compaction(msg.Summary))
+					if err != nil || !accepted {
+						t.Fatalf("automatic compaction admission: accepted=%v err=%v", accepted, err)
+					}
+				}
 				if m.userInput.Queue.Len() != 2 {
 					t.Fatal("manual input was released before the replacement reached the UI")
 				}
@@ -98,12 +124,16 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 						t.Fatal("manual compaction never applied its summary")
 					}
 				}
-			case "auto":
-				m.services.Agent.SetMessages([]core.Message{core.UserMessage(core.FormatCompactSummary(summary), nil)})
-				m.OnCompacted(core.Compacted{Summary: summary, Trigger: trigger})
-				m.OnCompactEnd(sdkagent.CompactionEnd{})
+				if trigger == "auto" {
+					m.OnCompactEnd(sdkagent.CompactionEnd{})
+				}
 			case "nothing":
-				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Err: agent.ErrNothingToCompact}})
+				request.Messages = nil
+				msg := conv.CompactCmd(request)().(conv.CompactResultMsg)
+				if !errors.Is(msg.Err, agent.ErrNothingToCompact) {
+					t.Fatalf("expected short-input rejection: %v", msg.Err)
+				}
+				m.HandleCompactResult(msg)
 			}
 
 			select {
@@ -112,7 +142,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				if !strings.Contains(last.Text(), "look at") || !strings.Contains(last.Text(), "/tmp/chart.png") || imgCount(last) != 0 {
 					t.Fatal("queued text or image did not reach inference")
 				}
-				if trigger != "nothing" && (len(request) != 2 || request[0].Text() != core.FormatCompactSummary(summary)) {
+				if trigger != "nothing" && (len(request) != 2 || request[0].Text() != core.FormatCompactSummary(expectedSummary)) {
 					t.Fatal("queued inference used the old history instead of the summary")
 				}
 			case <-time.After(2 * time.Second):
@@ -141,13 +171,37 @@ func TestCompactionQueueEditWaitsForBothCompletionAndEditExit(t *testing.T) {
 	for _, order := range []string{"edit-first", "compact-first"} {
 		t.Run(order, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
+			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("summary")).Client()}
+			request := agent.CompactRequest{Ctx: t.Context(), Client: m.buildLLMClient(), Messages: m.services.Agent.Messages(), Completion: m.services.Session.Completion(session.PurposeCompaction), Trigger: "auto"}
+			m.env.LLMProvider = provider
 			m.OnCompactStart(3)
 			m.userInput.Textarea.SetValue("queued input")
 			m.handleSubmit()
 			m.userInput.Textarea.SetValue("unrelated draft")
 			m.userInput.EnterQueueSelection()
 			m.userInput.Textarea.SetValue("edited input")
-			finish := func() { m.OnCompacted(core.Compacted{Summary: "summary", Trigger: "auto"}) }
+			finish := func() {
+				result := request.Run()
+				if result.Err != nil {
+					t.Fatal(result.Err)
+				}
+				accepted, err := m.services.Agent.Compact(result.Completion.Compaction(result.Summary))
+				if err != nil || !accepted {
+					t.Fatalf("automatic compaction: %v %v", accepted, err)
+				}
+				deadline := time.After(2 * time.Second)
+				for {
+					select {
+					case event := <-m.AgentOutbox():
+						if info, ok := event.(core.Compacted); ok {
+							m.OnCompacted(info)
+							return
+						}
+					case <-deadline:
+						t.Fatal("automatic summary boundary missing")
+					}
+				}
+			}
 			exit := func() { m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) }
 			first, second := exit, finish
 			if order == "compact-first" {
@@ -177,16 +231,21 @@ func TestFailedCompactionKeepsQueuedInput(t *testing.T) {
 	for _, trigger := range []string{"manual", "auto"} {
 		t.Run(trigger, func(t *testing.T) {
 			m, provider := compactQueueModel(t)
+			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Fails(&ai.Error{Kind: ai.KindAuth, Message: "summary failed"})).Client()}
 			request := m.BuildCompactRequest("", "manual")
+			m.env.LLMProvider = provider
 			m.OnCompactStart(3)
 			m.userInput.Textarea.SetValue("look at [Image #1]")
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
 			m.handleSubmit()
-			failure := errors.New("summary failed")
+			msg := conv.CompactCmd(request)().(conv.CompactResultMsg)
+			if msg.Err == nil {
+				t.Fatal("expected actual summary failure")
+			}
 			if trigger == "manual" {
-				m.HandleCompactResult(conv.CompactResultMsg{Context: request.Ctx, CompactResult: agent.CompactResult{Err: failure}})
+				m.HandleCompactResult(msg)
 			} else {
-				m.OnCompactEnd(sdkagent.CompactionEnd{Err: failure})
+				m.OnCompactEnd(sdkagent.CompactionEnd{Err: msg.Err})
 			}
 			item, ok := m.userInput.Queue.At(0)
 			if !ok || item.Content != "look at [Image #1]" || !reflect.DeepEqual(item.Images, []core.Attachment{chartImage()}) || m.conv.Compact.Active {

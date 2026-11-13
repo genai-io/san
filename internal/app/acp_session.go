@@ -9,7 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
@@ -44,7 +44,7 @@ func (h *acpHost) setMode(ctx context.Context, req protocol.SetSessionModeReques
 		return protocol.SetSessionModeResponse{}, err
 	}
 	// The endpoint admits this only while idle. Persist before changing the permission mode.
-	if err := s.nativeSession.Session.Append(ctx, transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Mode: new(mode.PersistenceName())}}); err != nil {
+	if err := session.NewRecorder(s.nativeSession.Session, s.runtimeBuildParams.Provider.Name()).RecordState(ctx, session.SessionUpdatePayload{Config: &session.ConfigPatch{Mode: session.SetField(mode.PersistenceName())}}); err != nil {
 		return protocol.SetSessionModeResponse{}, err
 	}
 	s.permissions.SetMode(mode)
@@ -67,17 +67,42 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			err = errors.Join(err, s.close())
 		}
 	}()
-	history, err := s.nativeSession.Store.Read(string(req.SessionID), session.LegacyReadOptions{FullHistory: true})
+	history, err := s.nativeSession.Store.Read(ctx, string(req.SessionID))
 	if err != nil {
 		return response, err
 	}
-	for _, row := range s.nativeSession.Store.ChatRows(history) {
+	unfinished := history.Unfinished()
+	if len(unfinished.Inferences)+len(unfinished.NeverRan)+len(unfinished.Unknown) > 0 {
+		text := fmt.Sprintf("Interrupted session: unfinished model requests %v; tools that never ran %v; tools with unknown outcome %v. Interrupted work has not been retried.", unfinished.Inferences, unfinished.NeverRan, unfinished.Unknown)
+		if err = turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAgentMessageChunkVariant{SessionUpdate: "agent_message_chunk", Content: acpText(text)}}}); err != nil {
+			return response, err
+		}
+	}
+	finished := make(map[string]session.EventOutcome)
+	for _, event := range history.Events() {
+		if result, ok := event.Payload.(*session.ToolFinishPayload); ok {
+			finished[result.CallID] = result.Outcome
+		}
+	}
+	rows := s.nativeSession.Store.ChatRows(history)
+	titles := make(map[string]string)
+	for _, row := range rows {
+		if row.ToolResult != nil {
+			if details, ok := row.ToolDetails.(toolresult.BashDetails); ok && details.ShellLabel != "" {
+				titles[row.ToolResult.ToolCallID] = details.ShellLabel
+			}
+		}
+	}
+	for _, row := range rows {
 		if err = ctx.Err(); err != nil {
 			return response, err
 		}
 		if row.ToolResult != nil {
-			status := protocol.ToolCallStatusCompleted
-			if row.ToolResult.IsError {
+			status := protocol.ToolCallStatusInProgress
+			if outcome, ok := finished[row.ToolResult.ToolCallID]; ok && outcome == session.OutcomeSuccess {
+				status = protocol.ToolCallStatusCompleted
+			}
+			if row.ToolResult.IsError || finished[row.ToolResult.ToolCallID] == session.OutcomeFailure || finished[row.ToolResult.ToolCallID] == session.OutcomeCancelled {
 				status = protocol.ToolCallStatusFailed
 			}
 			if err = turn.SendUpdate(protocol.SessionNotification{Update: acpToolUpdate(row.ToolResult.ToolCallID, row.ToolResult.ToolName, row.ToolResult.Content.Text(), status, row.ToolDetails)}); err != nil {
@@ -107,10 +132,10 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 		}
 		for _, call := range row.ToolCalls {
 			title := call.Name
-			if details := history.ToolDetails[call.ID].Bash; details != nil && details.ShellLabel != "" {
-				title = details.ShellLabel
+			if label := titles[call.ID]; label != "" {
+				title = label
 			}
-			update := protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallVariant{SessionUpdate: "tool_call", ToolCallID: protocol.ToolCallID(call.ID), Title: title, Status: protocol.Some(protocol.ToolCallStatusCompleted)}}
+			update := protocol.SessionUpdate{Value: protocol.SessionUpdateToolCallVariant{SessionUpdate: "tool_call", ToolCallID: protocol.ToolCallID(call.ID), Title: title, Status: protocol.Some(protocol.ToolCallStatusInProgress)}}
 			if err = turn.SendUpdate(protocol.SessionNotification{Update: update}); err != nil {
 				return response, err
 			}

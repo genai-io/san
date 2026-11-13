@@ -1,6 +1,6 @@
 package session
 
-// Typed-event persistence under sessions/<sid>/. The runtime still uses LegacyStore.
+// Typed-event persistence under sessions/<sid>/.
 import (
 	"context"
 	"encoding/json"
@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/transcript"
 	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
@@ -122,7 +121,7 @@ func (s *Store) createSession(ctx context.Context, batchID, sessionID string, cr
 	} else if identity.Workspace != s.workspace {
 		return nil, fmt.Errorf("event workspace identity mismatch")
 	}
-	if err := transcript.ValidateStorageID(sessionID); err != nil {
+	if err := ValidateStorageID(sessionID); err != nil {
 		return nil, err
 	}
 	opened := &eventSession{id: sessionID, path: s.eventsPath(sessionID), state: newEventState()}
@@ -167,7 +166,7 @@ func newEventState() *eventState {
 }
 
 func (s *Store) openSession(ctx context.Context, id string) (*eventSession, error) {
-	if err := transcript.ValidateStorageID(id); err != nil {
+	if err := ValidateStorageID(id); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(s.eventsPath(id)); err != nil {
@@ -335,7 +334,12 @@ func (s *eventSession) commitEventBatch(ctx context.Context, p *preparedEventBat
 	if !retry && p.batch.Expected != state.tail {
 		return sdksession.Receipt{}, sdksession.ErrTail
 	}
-	receipt, err := s.log.commit(ctx, p.batch)
+	if err := ctx.Err(); err != nil {
+		return sdksession.Receipt{}, err
+	}
+	// Admission is cancellable; an admitted atomic commit must finish so its
+	// receipt and projection cannot diverge from a synced SDK batch.
+	receipt, err := s.log.commit(context.WithoutCancel(ctx), p.batch)
 	if err != nil {
 		if !errors.Is(err, sdksession.ErrConflict) && !errors.Is(err, sdksession.ErrTail) && !errors.Is(err, sdksession.ErrMode) {
 			s.err = err

@@ -27,7 +27,7 @@ func TestWorkflowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	provider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
 		question, question, testutil.EndTurnResponse("done"), testutil.EndTurnResponse("done"),
 	}}
-	executor := subagent.NewExecutor(provider, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 	executor.SetInteractions(bridge)
 	wt := workflowtool.NewWorkflowTool()
 	wt.SetExecutor(subagent.NewExecutorAdapter(executor))

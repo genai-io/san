@@ -25,7 +25,7 @@ func TestTypedChildContinuation(t *testing.T) {
 	defer parent.Close()
 	d := aitest.New(aitest.Says("first answer"), aitest.Says("continued answer"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "original task", ParentToolCallID: "launch"})
@@ -87,7 +87,7 @@ func TestTypedChildClosedStoreFailsBeforeDispatch(t *testing.T) {
 	defer parent.Close()
 	d := aitest.New(aitest.Says("must not dispatch"))
 	e := NewExecutor(continuationProvider{d}, t.TempDir(), "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	store.Close()

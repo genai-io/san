@@ -57,7 +57,7 @@ func TestInboxCompletionBoundary(t *testing.T) {
 	for _, settled := range []bool{false, true} {
 		for _, budget := range []int{1, 2} {
 			a := &boundaryAgent{t: t, route: task.NewID(), settled: settled}
-			result, err := runWithInbox(context.Background(), a, a.route, budget)
+			result, err := runWithInbox(context.Background(), a, a.route, budget, nil)
 			if err != nil || a.calls != budget || result.Steps != budget || a.Pending() != 0 {
 				t.Fatalf("settled=%v budget=%d result=%+v calls=%d pending=%d err=%v", settled, budget, result, a.calls, a.Pending(), err)
 			}
@@ -80,7 +80,7 @@ func TestInboxCompletionBoundary(t *testing.T) {
 func TestInboxFailurePreservesAcceptedInput(t *testing.T) {
 	failure := errors.New("provider failed")
 	a := &boundaryAgent{t: t, route: task.NewID(), failure: failure}
-	result, err := runWithInbox(context.Background(), a, a.route, 3)
+	result, err := runWithInbox(context.Background(), a, a.route, 3, nil)
 	if !errors.Is(err, failure) || result.StopReason != core.StopError || a.calls != 1 || a.Pending() != 0 || a.messages[len(a.messages)-1].Text() != "late accepted input" {
 		t.Fatalf("failure lost input or retried inference: %+v %v", result, err)
 	}
@@ -104,7 +104,7 @@ func TestInboxHandlesActualSDKTurnEndDelivery(t *testing.T) {
 			},
 		})
 		a.Append(core.UserMessage("initial task", nil))
-		result, err := runWithInbox(context.Background(), a, route, budget)
+		result, err := runWithInbox(context.Background(), a, route, budget, nil)
 		if err != nil || result.Steps != budget || a.Pending() != 0 {
 			t.Fatalf("budget=%d result=%+v err=%v", budget, result, err)
 		}

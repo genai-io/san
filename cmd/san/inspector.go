@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/inspector"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/session"
@@ -34,25 +33,24 @@ func init() {
 var inspectorCmd = &cobra.Command{
 	Use:   "inspector",
 	Short: "Open the local inspector for this project's sessions",
-	Long: `Launch a localhost web server that visualizes session transcripts
-recorded under ~/.san/projects/<encoded-cwd>/transcripts/. The inspector
+	Long: `Launch a localhost web server that visualizes typed session events
+recorded under the registered project's sessions/<sid>/events.jsonl. The inspector
 is read-only and runs until Ctrl-C.
 
 By default the server binds 127.0.0.1 on a random port and opens the page
 in your default browser. Use --no-open to skip the browser launch and
 --addr to pin a port (e.g. --addr 127.0.0.1:38080).`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getwd: %w", err)
 		}
-		projectDir := projectDirFor(cwd)
-
-		// Sanity: warn if no transcripts have been recorded yet but still serve.
-		txDir := filepath.Join(projectDir, "transcripts")
-		if _, err := os.Stat(txDir); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Note: no transcripts found at %s — start a san session to populate it.\n", txDir)
+		store, err := session.OpenStore(cmd.Context(), cwd)
+		if err != nil {
+			return err
 		}
+		defer func() { runErr = errors.Join(runErr, store.Close()) }()
+		projectDir := store.ProjectDir()
 
 		// Refuse to bind to anything that isn't loopback — guards against a
 		// fat-fingered --addr that would expose conversation history.
@@ -66,7 +64,7 @@ in your default browser. Use --no-open to skip the browser launch and
 		}
 		url := fmt.Sprintf("http://%s", ln.Addr().String())
 
-		srv := &http.Server{Handler: inspector.New(projectDir).Handler()}
+		srv := &http.Server{Handler: inspector.New(store).Handler()}
 
 		// Shutdown on SIGINT/SIGTERM.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -90,16 +88,8 @@ in your default browser. Use --no-open to skip the browser launch and
 	},
 }
 
-// projectDirFor returns ~/.san/projects/<encoded-cwd>. Mirrors
-// session.encodePath without importing internals.
-func projectDirFor(cwd string) string {
-	home, _ := os.UserHomeDir()
-	encoded := session.ProjectID(cwd)
-	return filepath.Join(confdir.Dir(home), "projects", encoded)
-}
-
 // requireLoopback rejects any bind address whose host isn't 127.0.0.1/::1.
-// Localhost-only is the security model — the transcripts contain everything
+// Localhost-only is the security model — the event logs contain everything
 // the model saw, including any secrets in tool inputs.
 func requireLoopback(addr string) error {
 	host, _, err := net.SplitHostPort(addr)

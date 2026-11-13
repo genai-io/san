@@ -37,8 +37,8 @@ func TestBackgroundQuestionCancellationIsIndependent(t *testing.T) {
 	bridge := conv.NewAgentToUI(4)
 	defer bridge.Close()
 	providers := []*testutil.FakeProvider{workerQuestionProvider(), workerQuestionProvider()}
-	first := subagent.NewExecutor(providers[0], t.TempDir(), "fake-model", nil)
-	second := subagent.NewExecutor(providers[1], t.TempDir(), "fake-model", nil)
+	first := newIntegrationExecutor(t, providers[0], t.TempDir(), "fake-model", nil)
+	second := newIntegrationExecutor(t, providers[1], t.TempDir(), "fake-model", nil)
 	for _, executor := range []*subagent.Executor{first, second} {
 		executor.SetParentPermissionMode(func() subagent.PermissionMode { return subagent.PermissionBypass })
 		executor.SetInteractions(bridge)
@@ -96,7 +96,7 @@ func TestHeadlessAndClosedUIQuestionsFailPromptly(t *testing.T) {
 	for _, closed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "headless", true: "closed"}[closed], func(t *testing.T) {
 			provider := workerQuestionProvider()
-			executor := subagent.NewExecutor(provider, t.TempDir(), "fake-model", nil)
+			executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 			if closed {
 				bridge := conv.NewAgentToUI(1)
 				bridge.Close()

@@ -26,7 +26,7 @@ func TestTypedChildPreservesOwnerPermissionAuthority(t *testing.T) {
 		t.Run(by, func(t *testing.T) {
 			finished := false
 			owner := &childTestResolver{resolution: perm.Resolution{Decision: "allow", By: by, Asked: &perm.Asked{}, Finish: func(context.Context, perm.Resolution) error { finished = true; return nil }}}
-			policy := childPermission{config: baseAgentConfig(), mode: PermissionDefault, parent: func(*session.Session, bool, string) tool.Resolver { return owner }}
+			policy := childPermission{config: baseAgentConfig(), mode: PermissionDefault, parent: func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver { return owner }}
 			resolution := policy.Resolve(context.Background(), "Read", map[string]any{"file_path": "x"}, false, "")
 			if resolution.By != by || resolution.Asked == nil || resolution.Finish == nil || owner.calls != 1 {
 				t.Fatalf("authority lost: %+v", resolution)
@@ -54,7 +54,7 @@ func TestTypedSourceDoesNotCitePreviousAttempt(t *testing.T) {
 	}
 	defer parent.Close()
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("same answer"))}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	first, err := e.Run(ctx, tool.AgentExecRequest{Prompt: "first", ParentToolCallID: "launch"})

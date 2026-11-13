@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -39,14 +40,14 @@ func TestWorkflowInteractionOriginAndRoutingIsolation(t *testing.T) {
 		responses = append(responses, testutil.EndTurnResponse("done"))
 	}
 	provider := &testutil.FakeProvider{Responses: responses}
-	executor := subagent.NewExecutor(provider, t.TempDir(), "fake-model", nil)
+	executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 	type pendingApproval struct {
 		source    tool.AgentInteractionSource
 		reply     chan bool
 		cancelled chan struct{}
 	}
 	pending := make(chan pendingApproval, 4)
-	executor.SetInteractions(forwardingInteractions{approve: func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, _ map[string]any) (bool, string) {
+	configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, _ map[string]any) interaction.PermissionDecision {
 		if source.Workflow == nil || request.CallerAgent != source.Label() || !strings.Contains(request.CallerAgent, source.Workflow.NodeID) {
 			t.Error("approval preview lost workflow/node attribution")
 		}
@@ -54,12 +55,12 @@ func TestWorkflowInteractionOriginAndRoutingIsolation(t *testing.T) {
 		pending <- p
 		select {
 		case answer := <-p.reply:
-			return answer, "independent decision"
+			return interaction.PermissionDecision{Approved: answer, Request: request}
 		case <-ctx.Done():
 			close(p.cancelled)
-			return false, ctx.Err().Error()
+			return interaction.PermissionDecision{Request: request}
 		}
-	}})
+	})
 	wt := workflowtool.NewWorkflowTool()
 	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: review\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nCheck first\n\n## second\nCheck second\n"

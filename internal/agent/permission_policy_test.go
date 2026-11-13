@@ -13,25 +13,20 @@ import (
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 func TestPermissionPolicyRules(t *testing.T) {
 	data := setting.NewData()
 	session := &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
-	var records []transcript.Record
-	p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) { records = append(records, r) }}
+	p := PermissionPolicy{Settings: data, Session: session}
 	args := map[string]any{"command": "go test ./..."}
 	first, second := p.Decide("Bash", args), p.Decide("Bash", args)
-	if first.Decision != perm.Prompt || !first.Judgeable || first.RequestID == "" || first.RequestID == second.RequestID || len(records) != 0 {
-		t.Fatalf("prompt metadata: %+v %+v, records %v", first, second, records)
+	if first.Decision != perm.Prompt || !first.Judgeable || first.RequestID == "" || first.RequestID == second.RequestID {
+		t.Fatalf("prompt metadata: %+v %+v", first, second)
 	}
 	data.Permissions.Deny = []string{"Bash"}
 	if d := p.Decide("Bash", args); d.Decision != perm.Reject {
 		t.Fatalf("deny: %+v", d)
-	}
-	if len(records) != 1 || records[0].Permission.Decision != "reject" || records[0].Permission.Source != transcript.PermissionSourceConfig || records[0].Permission.Mode != session.CurrentMode().PersistenceName() {
-		t.Fatalf("audit: %+v", records)
 	}
 	if p.CanApproveByHook("Bash", args) {
 		t.Fatal("hook bypassed deny")
@@ -60,24 +55,16 @@ func TestPermissionPolicyRules(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyMemoryAndAuditSnapshot(t *testing.T) {
+func TestPermissionPolicyMemory(t *testing.T) {
 	data := setting.NewData()
 	dir := t.TempDir()
 	session := &setting.SessionPermissions{ShouldAvoidPrompts: true}
-	var records []transcript.Record
-	p := PermissionPolicy{Settings: data, Session: session, AutoMemory: system.MemoryStores{Project: dir},
-		Audit: func(r transcript.Record) { records = append(records, r) }}
+	p := PermissionPolicy{Settings: data, Session: session, AutoMemory: system.MemoryStores{Project: dir}}
 	path := filepath.Join(dir, "a.md")
 	args := map[string]any{"file_path": path}
 	if d := p.Decide("Write", args); d.Decision != perm.Permit || d.Reason != "auto memory" {
 		t.Fatalf("memory: %+v", d)
 	}
-	original := string(records[0].Permission.Input)
-	args["file_path"] = "changed"
-	if string(records[0].Permission.Input) != original {
-		t.Fatal("audit aliases input")
-	}
-	args["file_path"] = path
 	data.Permissions.Deny = []string{"Write(**/a.md)"}
 	if d := p.Decide("Write", args); d.Decision != perm.Reject {
 		t.Fatalf("memory bypassed deny: %+v", d)
@@ -91,12 +78,7 @@ func TestPermissionPolicyJudge(t *testing.T) {
 			session := &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
 			successor := &setting.SessionPermissions{Mode: setting.ModeAutoPilot}
 			var order []string
-			p := PermissionPolicy{Settings: data, Session: session, Audit: func(r transcript.Record) {
-				order = append(order, "audit")
-				if r.Permission.Source != transcript.PermissionSourceJudge || r.Permission.Decision != "permit" {
-					t.Fatalf("audit: %+v", r.Permission)
-				}
-			}}
+			p := PermissionPolicy{Settings: data, Session: session}
 			args := map[string]any{"command": "go test ./..."}
 			if outcome == "breaker" {
 				args["command"] = "rm -rf /"
@@ -140,10 +122,9 @@ func TestPermissionPolicyJudge(t *testing.T) {
 				t.Fatalf("result: %+v", got)
 			}
 			if outcome == "allow" {
-				if !reflect.DeepEqual(order, []string{"audit", "observe"}) {
+				if !reflect.DeepEqual(order, []string{"observe"}) {
 					t.Fatalf("order: %v", order)
 				}
-				p.Audit = nil
 				if d := p.Decide("Bash", args); d.Decision != perm.Permit {
 					t.Fatalf("exact grant missing: %+v", d)
 				}
@@ -154,9 +135,6 @@ func TestPermissionPolicyJudge(t *testing.T) {
 					t.Fatal("grant crossed session lifetime")
 				}
 			} else {
-				if len(order) > 0 && order[0] == "audit" {
-					t.Fatal("failed review audited approval")
-				}
 				if len(session.Snapshot().AllowedPatterns) != 0 {
 					t.Fatal("failed review created grants")
 				}

@@ -17,6 +17,7 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -26,26 +27,6 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	base := newBaseModel()
 	m := &base
 
-	// The main conversation registers the "main" address with the broker;
-	// messages routed to it (subagent completions, interim messages) land on
-	// mainNotices and are injected at the next safe seam — see notify.go.
-	broker.Register(broker.Main, func(msg broker.Message) bool {
-		if msg.SessionID != "" && msg.SessionID != m.services.Task.SessionID() {
-			return false
-		}
-		return m.notifyMain(fromBrokerMessage(msg))
-	})
-
-	// Wire task completion: closure captures hooks + tracker.
-	m.wireTaskLifecycle(m.services.Hook)
-
-	m.configureAsyncHookCallback()
-	m.ensureMemoryContextLoaded()
-	m.ReconfigureAgentTool()
-	m.applyPersonaSkills()
-	m.applyPersonaAgents()
-	m.wireReminderProviders()
-	conv.MemoryStores = m.autoMemory()
 	m.conv.OnNotice = m.recordNotice
 	id := m.sessionID()
 	group.BindSession(func() string { return id })
@@ -57,6 +38,17 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err
 	}
+	if _, err := m.openCurrentSession(); err != nil {
+		return nil, err
+	}
+	m.wireTaskLifecycle(m.services.Hook)
+	m.configureAsyncHookCallback()
+	m.ensureMemoryContextLoaded()
+	m.ReconfigureAgentTool()
+	m.applyPersonaSkills()
+	m.applyPersonaAgents()
+	m.wireReminderProviders()
+	conv.MemoryStores = m.autoMemory()
 	// After the run options: a -c / -r start has adopted its session's task
 	// directory by now, and this is a no-op for it. Before, every resume left
 	// an empty tasks/<startup-id>/ behind and kept writing there.
@@ -180,14 +172,22 @@ func (m *model) applyContinueOption() error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
-	items, err := m.services.SessionStore.List()
-	if err != nil {
-		return err
+	query := session.ListQuery{All: true, Limit: 200}
+	for {
+		page, err := m.services.SessionStore.List(context.Background(), query)
+		if err != nil {
+			return err
+		}
+		for _, item := range page.Items {
+			if item.Overview.Parent == "" && item.Err == nil {
+				return m.loadSessionByID(item.Overview.SessionID)
+			}
+		}
+		if page.Next == "" {
+			return fmt.Errorf("no previous session to continue")
+		}
+		query.Cursor = page.Next
 	}
-	if len(items) == 0 {
-		return fmt.Errorf("no previous session to continue")
-	}
-	return m.loadSessionByID(items[0].ID)
 }
 
 func (m *model) applyResumeOption(id string) error {

@@ -130,6 +130,9 @@ func TestACPInputCancellation(t *testing.T) {
 			case <-f.ctx.Done():
 				t.Fatal("prompt did not cancel")
 			}
+			if driver.Calls() != 1 {
+				t.Fatalf("cancelled elicitation started successor inference: calls=%d", driver.Calls())
+			}
 		})
 	}
 }

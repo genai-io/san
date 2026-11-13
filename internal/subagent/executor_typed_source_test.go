@@ -24,7 +24,7 @@ func TestTypedChildSourceEvidence(t *testing.T) {
 	defer parent.Close()
 	d := aitest.New(aitest.Says("accepted answer"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	result, err := e.Run(ctx, tool.AgentExecRequest{Prompt: "work", ParentToolCallID: "launch"})

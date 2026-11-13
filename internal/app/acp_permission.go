@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 
+	"time"
+
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/transcript"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 )
@@ -33,7 +34,7 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			decision := s.runtimeBuildParams.PermissionRules(req.ToolName, req.Input)
 			if decision.Decision == perm.Reject {
 				select {
-				case req.Response <- agent.PermGateResponse{Reason: decision.Reason}:
+				case req.Response <- agent.PermGateResponse{Reason: decision.Reason, By: decision.By, Scope: decision.Scope}:
 				case <-req.Context.Done():
 				}
 				continue
@@ -55,9 +56,8 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 			}
 		}
 		input, _ := json.Marshal(req.Input)
-		record := transcript.PermissionRecord{RequestID: req.RequestID, Tool: req.ToolName, Input: input,
-			Source: transcript.PermissionSourceAsk, OptionsOffered: []string{"allow_once", "reject_once"}}
-		_ = s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &record})
+		asked := perm.Asked{Options: []string{"allow_once", "reject_once"}, Detail: input, At: time.Now().UnixMilli()}
+		req.MarkAsked(asked)
 		response, err := turn.RequestPermission(protocol.RequestPermissionRequest{
 			ToolCall: protocol.ToolCallUpdate{ToolCallID: protocol.ToolCallID(req.ToolCallID), Title: protocol.Some(title), RawInput: protocol.Some(json.RawMessage(input))},
 			Options: []protocol.PermissionOption{
@@ -74,11 +74,13 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 		if err != nil || req.Context.Err() != nil {
 			reason = "interaction cancelled"
 		}
-		record.Source, record.Scope, record.Reason = transcript.PermissionSourceUser, "once", reason
-		record.Decision = interaction.PermissionDecisionFor(allow)
-		_ = s.nativeSession.Session.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &record})
+		if ctx.Err() != nil {
+			// Fence the native actor before releasing a cancelled foreground
+			// approval; the prompt event consumer may still be unwinding I/O.
+			s.runtime.Cancel()
+		}
 		select {
-		case req.Response <- agent.PermGateResponse{Allow: allow, Reason: reason}:
+		case req.Response <- agent.PermGateResponse{Allow: allow, Reason: reason, By: "user", Scope: "once", Asked: &asked, Cancelled: err != nil || req.Context.Err() != nil}:
 		case <-req.Context.Done():
 		}
 	}

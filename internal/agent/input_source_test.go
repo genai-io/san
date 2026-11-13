@@ -58,7 +58,7 @@ func TestChildInputCommitsPreparedSourceBeforeNativeAcceptance(t *testing.T) {
 			projection := owner.Snapshot()
 			found := false
 			for _, event := range projection.Events() {
-				if payload, ok := event.Payload.(*session.MessageAppendPayload); ok && payload.Messages[0].ID == input.ID {
+				if payload, ok := event.Payload.(*session.MessageAppendPayload); ok && payload.Accepted && payload.Messages[0].ID == input.ID {
 					found = reflect.DeepEqual(event.Source, &source) && reflect.DeepEqual(payload.Messages[0], prepared)
 				}
 			}
@@ -93,7 +93,7 @@ func TestChildInputCommitsPreparedSourceBeforeNativeAcceptance(t *testing.T) {
 			projection := owner.Snapshot()
 			count := 0
 			for _, event := range projection.Events() {
-				if payload, ok := event.Payload.(*session.MessageAppendPayload); ok && payload.Messages[0].ID == input.ID {
+				if payload, ok := event.Payload.(*session.MessageAppendPayload); ok && payload.Accepted && payload.Messages[0].ID == input.ID {
 					count++
 				}
 			}

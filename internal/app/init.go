@@ -30,7 +30,7 @@ import (
 )
 
 var appCwd string
-var appSessionStore *session.LegacyStore
+var appSessionStore *session.Store
 var appSessionID string
 
 func initInfrastructure() error {
@@ -66,7 +66,7 @@ func initInfrastructure() error {
 
 	// Phase 4: session
 	var err error
-	appSessionStore, err = session.NewLegacyStore(appCwd)
+	appSessionStore, err = session.OpenStore(context.Background(), appCwd)
 	if err != nil {
 		return err
 	}
@@ -79,8 +79,7 @@ func initInfrastructure() error {
 		Settings:       hookSettings,
 		SessionID:      appSessionID,
 		CWD:            appCwd,
-		TranscriptPath: appSessionStore.TranscriptPath(appSessionID),
-		Completer:      buildHookCompleter(llm.Default().Provider()),
+		TranscriptPath: filepath.Join(appSessionStore.ProjectDir(), "sessions", appSessionID, "events.jsonl"),
 		ModelID:        llm.Default().ModelID(),
 		EnvProvider:    plugin.PluginEnv,
 	})

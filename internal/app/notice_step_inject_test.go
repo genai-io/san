@@ -16,8 +16,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
-	"github.com/genai-io/san/internal/transcript"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/san/tests/integration/testutil"
 )
 
 // runCmd executes cmd, flattening tea.Batch so the leaf commands (the ones that
@@ -35,24 +34,24 @@ func runCmd(cmd tea.Cmd) {
 }
 
 func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "notice-1", AgentID: "main", Provider: "p", Model: "m", MaxTokens: 1000})
+	store := testutil.OpenSessionStore(t, t.TempDir())
+	rec := mustCreateSession(t, store, session.CreateOptions{ID: "notice-1", AgentID: "main"})
 	m := &model{conv: conv.NewModel(80)}
 	m.conv.OnNotice = func(msg core.ChatMessage) {
-		_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: msg.Content, Agent: msg.AgentNotice}})
+		if err := rec.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: msg.Content, ByAgent: msg.AgentNotice}}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	n := taskNotice()
 	message := m.showNoticeLine(n)
-	rec.RecordEvent(sdkagent.MessageAdded{Message: message})
-	for _, opts := range []session.LegacyReadOptions{{}, {FullHistory: true}} {
-		snapshot, err := store.Read("notice-1", opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		messages := store.ChatRows(snapshot)
+	if err := testutil.AppendMessages(rec, []core.Message{message}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Read(t.Context(), "notice-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, messages := range [][]core.ChatMessage{session.ChatRows(snapshot.ActiveMessages()), store.ChatRows(snapshot)} {
 		if len(messages) != 1 || len(m.conv.Messages) != 1 || messages[0].Content != m.conv.Messages[0].Content {
 			t.Fatalf("completion has separate display and model records: live=%+v, saved=%+v", m.conv.Messages, messages)
 		}

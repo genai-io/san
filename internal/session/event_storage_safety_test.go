@@ -173,7 +173,7 @@ func TestEventReplayCannotUseFutureEvidence(t *testing.T) {
 	}
 	_ = log.close()
 }
-func TestEventPrepareDetachesInputAndCancellationPoisons(t *testing.T) {
+func TestEventPrepareDetachesInputAndCancellationPreservesWriter(t *testing.T) {
 	ctx := context.Background()
 	_, s, _ := eventStorageFixture(t)
 	text := AnnotationAddPayload{Text: "before"}
@@ -194,12 +194,24 @@ func TestEventPrepareDetachesInputAndCancellationPoisons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	canceled, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err = s.commitEventBatch(canceled, p); !errors.Is(err, context.Canceled) {
+	before := eventBytes(t, s)
+	tail, err := s.log.tail()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(s.Err(), context.Canceled) {
-		t.Fatal("cancellation not conservatively poisoned")
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err = s.commitEventBatch(canceled, p); err != context.Canceled {
+		t.Fatal(err)
+	}
+	if err := s.Err(); err != nil {
+		t.Fatalf("unadmitted cancellation poisoned writer: %v", err)
+	}
+	after, err := s.log.tail()
+	if err != nil || after != tail || !bytes.Equal(before, eventBytes(t, s)) {
+		t.Fatal("cancelled admission changed the committed prefix")
+	}
+	if _, err := s.commitEventBatch(ctx, p); err != nil {
+		t.Fatalf("healthy writer could not accept a later explicit commit: %v", err)
 	}
 }

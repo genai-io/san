@@ -25,7 +25,7 @@ func TestValidateResumeDirectory(t *testing.T) {
 		}
 	}
 	if err := validateResumeDirectory("", dir); err != nil {
-		t.Fatalf("unknown legacy cwd rejected: %v", err)
+		t.Fatalf("unknown saved cwd rejected: %v", err)
 	}
 	if err := validateResumeDirectory(dir, t.TempDir()); err == nil || !strings.Contains(err.Error(), "reopen San") {
 		t.Fatalf("expected actionable mismatch, got %v", err)
@@ -40,7 +40,7 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 	t.Cleanup(group.Forget)
 	original := m.services.Session
 	permissions := m.env.SessionPermissions
-	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "other", Cwd: t.TempDir()})
+	target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: t.TempDir()})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -50,10 +50,10 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 	if m.services.Session != original || m.sessionID() != original.ID() || m.env.SessionPermissions != permissions {
 		t.Fatal("failed resume replaced original session or permission context")
 	}
-	if _, _, err := store.Open(original.ID()); err == nil {
+	if _, err := store.Open(t.Context(), original.ID()); err == nil {
 		t.Fatal("original lease was released")
 	}
-	reopened, _, err := store.Open("other")
+	reopened, err := store.Open(t.Context(), "other")
 	if err != nil {
 		t.Fatalf("rejected session lease retained: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestResumeDirectoryMismatchPreservesSelectionAndReleasesLease(t *testing.T)
 func TestResumeDirectorySameDirectorySucceeds(t *testing.T) {
 	m, store := resumedModel(t, parallelResultChain())
 	t.Cleanup(group.Forget)
-	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "other", Cwd: m.env.CWD})
+	target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: m.env.CWD})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -87,12 +87,12 @@ func TestACPResumeDirectoryGuard(t *testing.T) {
 	if err := os.Mkdir(other, 0700); err != nil {
 		t.Fatal(err)
 	}
-	store, err := session.OpenLegacyStore(t.Context(), root)
+	store, err := session.OpenStore(t.Context(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	target := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "saved", Cwd: root})
+	target := mustCreateSession(t, store, session.CreateOptions{ID: "saved", InitialCWD: root})
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestACPResumeDirectoryGuard(t *testing.T) {
 	if len(host.sessions) != 0 {
 		t.Fatal("rejected resume registered runtime")
 	}
-	reopened, _, err := store.Open("saved")
+	reopened, err := store.Open(t.Context(), "saved")
 	if err != nil {
 		t.Fatalf("rejected ACP resume retained lease: %v", err)
 	}

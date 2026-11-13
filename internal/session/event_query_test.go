@@ -163,33 +163,3 @@ func TestEventPinnedPageStopsBeforeLaterCorruption(t *testing.T) {
 		t.Fatalf("read changed log: %v", err)
 	}
 }
-
-func TestEventsDoesNotReadLegacyTranscripts(t *testing.T) {
-	dir := t.TempDir()
-	legacy, err := NewLegacyStoreWithDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := legacy.Create(LegacyCreateOptions{ID: "legacy"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := session.Close(); err != nil {
-		t.Fatal(err)
-	}
-	before, err := os.ReadFile(legacy.TranscriptPath("legacy"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openStoreIn(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Events(context.Background(), "legacy", EventQuery{}); err == nil {
-		t.Fatal("legacy records were presented as new events")
-	}
-	after, err := os.ReadFile(legacy.TranscriptPath("legacy"))
-	if err != nil || !bytes.Equal(before, after) {
-		t.Fatalf("read changed legacy file: %v", err)
-	}
-}

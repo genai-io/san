@@ -71,7 +71,7 @@ func TestConfiguredBackgroundModelsKeepRoutingAndCancellationSeparate(t *testing
 		}
 	}
 	parent := &backgroundRoutingProvider{FakeProvider: &testutil.FakeProvider{}, turn: func(string) aitest.Turn { return aitest.Says("unexpected parent route") }}
-	executor := subagent.NewExecutor(parent, t.TempDir(), "parent-model", nil)
+	executor := newIntegrationExecutor(t, parent, t.TempDir(), "parent-model", nil)
 	executor.SetDefaultModel("deepseek/configured-worker")
 	executor.SetResolver(backgroundRoutingResolver{workerProvider})
 	launch := func(req tool.AgentExecRequest) *task.AgentTask {

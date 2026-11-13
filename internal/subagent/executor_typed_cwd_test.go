@@ -34,7 +34,7 @@ func TestTypedCwdHandoffPersistsBeforeContinuation(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"command": "cd '" + target + "'"})
 	d := aitest.New(aitest.Asks(ai.ToolCall{ID: "change-cwd", Name: "Bash", Input: string(args)}), aitest.Says("continued"))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "change directory", ParentToolCallID: "launch", MaxSteps: 1, ResolvedAgentConfig: &AgentConfig{PermissionMode: PermissionBypass}})

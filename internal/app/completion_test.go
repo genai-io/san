@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -14,39 +13,30 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/tests/integration/testutil"
 )
 
 func attachTurnSession(t *testing.T, m *model) {
 	t.Helper()
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	if m.env.CWD == "" {
+		m.env.CWD = t.TempDir()
 	}
-	opened := mustCreateSession(t, store, session.LegacyCreateOptions{ID: "turn", AgentID: "main"})
+	store := testutil.OpenSessionStore(t, m.env.CWD)
+	opened := mustCreateSession(t, store, session.CreateOptions{ID: "turn", AgentID: "main"})
+	m.services.SessionStore = store
 	m.services.Session = opened
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	t.Cleanup(func() { _ = opened.Close() })
 }
 
-// Count on-disk native records, not calls to appendTurnState: the transcript
-// store drops unchanged state patches before acquiring a writer.
+// Count committed typed updates, not calls to appendTurnState: unchanged patches
+// must remain a no-op while still surfacing a retired writer.
 func turnStateRecordCount(t *testing.T, m *model) int {
 	t.Helper()
-	data, err := os.ReadFile(m.services.Session.TranscriptPath())
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := m.services.Session.Snapshot()
 	count := 0
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		var envelope struct {
-			Data struct {
-				Type string `json:"type"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-			t.Fatal(err)
-		}
-		if envelope.Data.Type == "session.state.patched" {
+	for _, event := range p.Events() {
+		if event.Type == session.EventSessionUpdate {
 			count++
 		}
 	}
@@ -57,7 +47,7 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 	for _, scenario := range []string{"no-hooks", "allow", "block", "changed-while-pending", "closed-while-pending"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, _ := compactQueueModel(t)
-			m.env.SessionName = "completed state"
+			m.env.AutoPilot.Mission = "completed state"
 			called := false
 			if scenario != "no-hooks" {
 				m.services.Hook.AddSessionFunctionHook(hook.Stop, "", hook.FunctionHook{
@@ -74,7 +64,7 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 			}
 			check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 			if scenario == "changed-while-pending" {
-				m.env.SessionName = "changed state"
+				m.env.AutoPilot.Mission = "changed state"
 			}
 			if scenario == "closed-while-pending" {
 				if err := m.services.Session.Close(); err != nil {
@@ -148,7 +138,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 			}
 			// Observing TurnEnded ensures producer recording finished before inspection.
 			m.userInput.Queue.Enqueue("successor", nil)
-			m.env.SessionName = "completed state"
+			m.env.AutoPilot.Mission = "completed state"
 			if failed {
 				if err := m.services.Session.Close(); err != nil {
 					t.Fatal(err)
@@ -183,7 +173,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 					t.Fatal("successor end missing")
 				}
 			}
-			data, err := os.ReadFile(m.services.Session.TranscriptPath())
+			data, err := os.ReadFile(m.services.Session.Path())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,7 +194,7 @@ func TestStopContinuationRequiresRecording(t *testing.T) {
 		t.Run(map[bool]string{false: "saved", true: "write-failed"}[failed], func(t *testing.T) {
 			m, provider := compactQueueModel(t)
 			finish := pendingStopOutcome(t, m, true)
-			m.env.SessionName = "post-hook state"
+			m.env.AutoPilot.Mission = "post-hook state"
 			if failed {
 				if err := m.services.Session.Close(); err != nil {
 					t.Fatal(err)
@@ -235,7 +225,7 @@ func TestStopContinuationRequiresRecording(t *testing.T) {
 					if _, ok := ev.(core.TurnEnded); !ok {
 						continue
 					}
-					data, err := os.ReadFile(m.services.Session.TranscriptPath())
+					data, err := os.ReadFile(m.services.Session.Path())
 					if err != nil {
 						t.Fatal(err)
 					}

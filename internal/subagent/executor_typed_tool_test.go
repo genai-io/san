@@ -79,7 +79,7 @@ func TestTypedToolContinuationRetainsNativeEvidence(t *testing.T) {
 	}
 	d := aitest.New(first, aitest.Replies(ai.Response{Content: ai.TextContent("continued"), Usage: ai.Usage{Input: 23, Output: 9}}))
 	e := NewExecutor(continuationProvider{d}, cwd, "aitest", nil)
-	if err := e.SetTypedSessions(store, parent); err != nil {
+	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
 	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "original task", ParentToolCallID: "launch", MaxSteps: 1, OnIdentity: func(id toolresult.AgentIdentity) {

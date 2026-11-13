@@ -156,7 +156,7 @@ func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 func (m *model) recapReady() bool {
 	r := m.recap.ready
 	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() &&
-		r.owner == m.services.Recording && (r.owner == nil || r.owner.Err() == nil)
+		r.owner == m.services.Session && (r.owner == nil || r.owner.Err() == nil)
 }
 
 // clearRecapCache resolves an unshown result against its original writer.
@@ -262,7 +262,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	m.recap.busy = false
 	show := m.recap.show
 	m.recap.show = false
-	if msg.sessionID != m.sessionID() || msg.owner != m.services.Recording ||
+	if msg.sessionID != m.sessionID() || msg.owner != m.services.Session ||
 		(msg.owner != nil && msg.owner.Err() != nil) || msg.chainLen != m.chainLen() {
 		closeSide(msg.recording)
 		return nil
@@ -293,13 +293,22 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 		m.clearRecapCache()
 	}
 	m.recap.ready = recapReadyMsg{}
-	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.services.Recording || r.chainLen != m.chainLen()) {
+	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.services.Session || r.chainLen != m.chainLen()) {
 		closeSide(r.recording)
 		return nil
 	}
 	notice := conv.RecapNotice(m.recapFacts(), r.text)
 	if r.recording != nil && !finishSide(r.recording, notice) {
 		return nil
+	}
+	if r.recording == nil && r.owner != nil {
+		if r.owner != m.services.Session || r.sessionID != m.sessionID() || r.chainLen != m.chainLen() {
+			return nil
+		}
+		if err := r.owner.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: notice}}); err != nil {
+			log.Logger().Error("record recap notice", zap.Error(err))
+			return nil
+		}
 	}
 	m.conv.AddNotice(notice)
 	return tea.Batch(m.CommitMessages()...)

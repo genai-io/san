@@ -93,24 +93,29 @@ func TestBuildAgentParamsNativeAuditsAndPaging(t *testing.T) {
 					if err := rec.Err(); err != nil {
 						t.Fatal(err)
 					}
-					bytes, err := os.ReadFile(rec.TranscriptPath())
+					bytes, err := os.ReadFile(rec.Path())
 					if err != nil {
 						t.Fatal(err)
 					}
-					for _, marker := range []string{"permission.decided", "hook.fired", "skill.state.changed"} {
-						if !strings.Contains(string(bytes), marker) {
-							t.Fatalf("missing %s audit", marker)
+					snapshot := rec.Snapshot()
+					types := map[session.EventType]bool{}
+					for _, event := range snapshot.Events() {
+						types[event.Type] = true
+					}
+					for _, kind := range []session.EventType{session.EventPermissionDecide, session.EventHookFinish, session.EventSkillsUpdate} {
+						if !types[kind] {
+							t.Fatalf("missing %s audit", kind)
 						}
 					}
-					history, err := store.Read(rec.ID(), session.LegacyReadOptions{})
-					if err != nil || len(history.Messages) < 4 {
+					history, err := store.Read(t.Context(), rec.ID())
+					if err != nil || len(history.Messages()) < 4 {
 						t.Fatalf("native history: %v", err)
 					}
 					if allow {
 						if calls.Load() != 1 || !strings.Contains(string(bytes), "Full output persisted") {
 							t.Fatal("allowed output was not executed and paged")
 						}
-						blob, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(rec.TranscriptPath())), "blobs", "tool-result", rec.ID(), "native-call"))
+						blob, err := os.ReadFile(filepath.Join(filepath.Dir(rec.Path()), "blobs", "tool-result", "native-call"))
 						if err != nil || string(blob) != full {
 							t.Fatalf("full native output lost: %v", err)
 						}
@@ -140,7 +145,7 @@ func TestRuntimeConstructionPreservesHostHookAudit(t *testing.T) {
 	m, store := resumedModel(t, nil)
 	owner := agent.MainSession{Session: m.services.Session, Store: store}
 	var audits atomic.Int32
-	hooks := hook.NewEngine(nil, owner.Session.ID(), m.env.CWD, owner.Session.TranscriptPath())
+	hooks := hook.NewEngine(nil, owner.Session.ID(), m.env.CWD, owner.Session.Path())
 	hooks.SetAuditCallback(func(hook.HookFiredAudit) { audits.Add(1) })
 	hooks.AddSessionFunctionHook(hook.PreToolUse, "mcp__fixture__output", hook.FunctionHook{Callback: func(context.Context, hook.HookInput) (hook.HookOutput, error) { return hook.HookOutput{}, nil }})
 	if err := owner.Validate(); err != nil {

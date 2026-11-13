@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -174,10 +175,7 @@ func TestHistoryLoadIgnoresClosedOrReplacedViewer(t *testing.T) {
 }
 
 func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := testutil.OpenSessionStore(t, t.TempDir())
 	rows := turnOf("stored", "tc")
 	native := make([]core.Message, 0, len(rows))
 	for _, row := range rows {
@@ -185,19 +183,18 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 			native = append(native, message)
 		}
 	}
-	snap := &session.LegacyHistory{Messages: native}
-	if err := testutil.ImportSession(store, snap); err != nil {
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "history"}, native); err != nil {
 		t.Fatal(err)
 	}
 	m := commitTestModel(core.ChatMessage{Role: core.ChatUser, Content: "only the current context"})
 	m.services.SessionStore = store
-	m.services.sessionID = snap.Metadata.ID
+	m.services.sessionID = "history"
 	load := m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "out stored") {
 		t.Fatal("history did not read persisted messages")
 	}
-	if err := os.WriteFile(store.TranscriptPath(snap.Metadata.ID), []byte("broken record\n{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.ProjectDir(), "sessions", "history", "events.jsonl"), []byte("broken record\n{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	load = m.openHistory()

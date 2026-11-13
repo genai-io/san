@@ -16,12 +16,34 @@ import (
 // Foreground tools must join before prompt exit clears the turn; background
 // workers and shells must never use this adapter.
 type acpInput struct {
-	mu   sync.Mutex
-	turn *acp.Turn
+	mu            sync.Mutex
+	turn          *acp.Turn
+	promptContext context.Context
+	cancelTurn    func()
 }
 
 func (i *acpInput) set(t *acp.Turn)    { i.mu.Lock(); i.turn = t; i.mu.Unlock() }
 func (i *acpInput) current() *acp.Turn { i.mu.Lock(); defer i.mu.Unlock(); return i.turn }
+
+// bindCancellation fences a cancelled foreground interaction before its native
+// tool returns, so the actor cannot start another inference before the host's
+// event consumer observes the same prompt cancellation.
+func (i *acpInput) bindCancellation(ctx context.Context, cancel func()) {
+	i.mu.Lock()
+	i.promptContext, i.cancelTurn = ctx, cancel
+	i.mu.Unlock()
+}
+
+func (i *acpInput) cancellationFence() func() {
+	i.mu.Lock()
+	ctx, cancel := i.promptContext, i.cancelTurn
+	i.mu.Unlock()
+	return func() {
+		if ctx != nil && ctx.Err() != nil && cancel != nil {
+			cancel()
+		}
+	}
+}
 
 func acpForm(ctx context.Context, turn *acp.Turn, message string, properties map[string]any, required []string) (map[string]json.RawMessage, bool, error) {
 	if turn == nil {
@@ -78,7 +100,9 @@ func (i *acpInput) ask(ctx context.Context, req *tool.QuestionRequest) (*tool.Qu
 		props[key+"_text"] = map[string]any{"type": "string", "title": q.Question + " — Other", "description": "Use only with Other. Do not enter passwords or secrets."}
 		required = append(required, key)
 	}
+	fenceCancellation := i.cancellationFence()
 	content, cancelled, err := acpForm(ctx, i.current(), "Answer the questions. Do not enter passwords or secrets.", props, required)
+	fenceCancellation()
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +145,9 @@ func (i *acpInput) ask(ctx context.Context, req *tool.QuestionRequest) (*tool.Qu
 
 func (i *acpInput) responder(context.Context) tool.BashPromptResponder { return i }
 func (i *acpInput) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
+	fenceCancellation := i.cancellationFence()
 	content, cancelled, err := acpForm(ctx, i.current(), "Command: "+command+"\n"+prompt+"\nDo not enter passwords or secrets.", map[string]any{"answer": map[string]any{"type": "string", "title": "Input"}}, []string{"answer"})
+	fenceCancellation()
 	if err != nil || cancelled {
 		return "", false
 	}

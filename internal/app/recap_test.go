@@ -9,12 +9,12 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
-	"github.com/genai-io/san/internal/transcript"
 )
 
 func newRecapModel(t *testing.T) *model {
@@ -93,33 +93,71 @@ func TestRecapWrittenAwayShowsOnArrival(t *testing.T) {
 
 // The recap is a persisted notice, not an agent message. After a real
 // transcript round trip it still gates the next automatic recap.
+func TestRecapCapturedOwnerAnnotation(t *testing.T) {
+	for _, superseded := range []bool{false, true} {
+		t.Run(map[bool]string{false: "current", true: "superseded"}[superseded], func(t *testing.T) {
+			_, owner := autopilotRecordingModel(t)
+			m := newRecapModel(t)
+			m.services.Session, m.services.sessionID = owner, owner.ID()
+			r := recapReadyMsg{owner: owner, sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Done; waiting for the user."}
+			if superseded {
+				m.services.Session = nil
+			}
+			before := len(m.conv.Messages)
+			m.showRecap(r)
+			p := owner.Snapshot()
+			annotations := 0
+			for _, event := range p.Events() {
+				if event.Type == session.EventAnnotationAdd {
+					annotations++
+				}
+			}
+			if superseded {
+				if annotations != 0 || len(m.conv.Messages) != before {
+					t.Fatal("superseded recap published an annotation or notice")
+				}
+			} else if annotations != 1 || len(m.conv.Messages) != before+1 || len(p.Messages()) != 0 {
+				t.Fatal("accepted recap must persist exactly one annotation, not an agent message")
+			}
+		})
+	}
+}
+
 func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	store, err := session.OpenStore(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := store.Create(session.LegacyCreateOptions{ID: "recap-test"})
+	defer store.Close()
+	opened, err := store.Create(context.Background(), session.CreateOptions{ID: "recap-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var messages []core.Message
+	provider := &autopilotStubProvider{content: "Done."}
 	for range recapMinTurns {
-		messages = append(messages, core.UserMessage("Fix it.", nil), core.AssistantMessage("Done.", "", nil))
+		user := core.UserMessage("Fix it.", nil)
+		user.ID = core.NewMessageID()
+		if err := opened.Append(t.Context(), session.Event{Payload: session.MessageAppendPayload{Messages: []core.Message{user}}}); err != nil {
+			t.Fatal(err)
+		}
+		scope := opened.Completion(session.PurposeBtw)
+		if _, err := llm.Complete(t.Context(), provider, llm.CompletionOptions{Model: "recap-fixture", Messages: []core.Message{user}, Admission: scope.Admission()}); err != nil {
+			t.Fatal(err)
+		}
+		assistant := core.AssistantMessage("Done.", "", nil)
+		assistant.ID = core.NewMessageID()
+		if err := scope.FinishMessage(t.Context(), assistant); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for i := range messages {
-		messages[i].ID = core.NewMessageID()
-	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
-		t.Fatal(err)
-	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
-		Notice: &transcript.NoticeRecord{Text: conv.RecapNotice("away 1h04m", "Done; waiting for the user.")}}); err != nil {
+	if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: conv.RecapNotice("away 1h04m", "Done; waiting for the user.")}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read("recap-test", session.LegacyReadOptions{})
+	history, err := store.Read(context.Background(), "recap-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,22 +238,24 @@ func TestDrivingChanged(t *testing.T) {
 // even if one was written ahead. Finishing the turn does not resurrect it;
 // a later absence while idle can earn a new one.
 func TestRecapSkipsRunningTurn(t *testing.T) {
+	native, owner := autopilotRecordingModel(t)
 	m := newRecapModel(t)
-	m.env.CWD = t.TempDir()
-	m.services.sessionID = "test-recap"
+	snapshot := owner.Snapshot()
+	m.env.CWD = snapshot.Identity().InitialCWD
+	m.services.SessionStore, m.services.Session, m.services.sessionID = native.services.SessionStore, owner, owner.ID()
 	m.conv.Stream.Active = true
 
 	m.unfocusedSince = time.Now().Add(-5 * time.Minute)
 	if cmd := m.prepareRecap(); cmd != nil || m.recap.busy {
 		t.Fatal("a recap was written ahead while the session works")
 	}
-	m.recap.ready = recapReadyMsg{sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Next step"}
+	m.recap.ready = recapReadyMsg{owner: owner, sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Next step"}
 	n := len(m.conv.Messages)
 	if cmd := m.onFocus(); cmd != nil || m.recap.busy || m.recap.show || len(m.conv.Messages) != n {
 		t.Fatal("coming back during a running turn must skip the recap")
 	}
 	m.conv.Stream.Active = false
-	m.pendingStopHook = &pendingStopHook{}
+	m.pendingStopHook = &pendingStopHook{session: owner, outbox: m.AgentOutbox()}
 	m.handleStopHookResult(stopHookResultMsg{pending: m.pendingStopHook, Result: core.Result{StopReason: core.StopEndTurn}})
 	if len(m.conv.Messages) != n {
 		t.Fatal("finishing the turn must not show the skipped recap")

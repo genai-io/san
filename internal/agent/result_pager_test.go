@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -31,6 +33,29 @@ func TestResultPagerBoundaryAndFailedPersistence(t *testing.T) {
 	if !utf8.ValidString(text) || !strings.HasPrefix(text, strings.Repeat("界", 3333)+"\n\n") ||
 		!strings.Contains(text, "Output truncated from 120000 bytes — full content not persisted") || out.Details != "kept" {
 		t.Fatal("preview boundary, failure diagnostic or result metadata changed")
+	}
+}
+
+func TestResultPagerPersistsUnderNativeOwner(t *testing.T) {
+	fixture := mainSessionFixture(t)
+	pager := ResultPager{Store: fixture.Store, SessionID: fixture.Session.ID()}
+	full := strings.Repeat("界", 40_000)
+	original := sdkagent.Result{Content: ai.TextContent(full), Details: "raw details"}
+	out, err := pager.Filter(t.Context(), sdkagent.PostToolContext{Call: ai.ToolCall{ID: "native-call"}, Result: original})
+	if err != nil || out == nil {
+		t.Fatalf("filter=%+v err=%v", out, err)
+	}
+	if out.Details != "raw details" || original.Content.Text() != full || !utf8.ValidString(out.Content.Text()) {
+		t.Fatal("preview changed original result or details")
+	}
+	marker := "[Full output persisted to blobs/tool-result/" + fixture.Session.ID() + "/native-call]"
+	if !strings.HasSuffix(out.Content.Text(), marker) {
+		t.Fatalf("marker changed: %q", out.Content.Text()[len(out.Content.Text())-len(marker):])
+	}
+	path := filepath.Join(filepath.Dir(fixture.Session.Path()), "blobs", "tool-result", "native-call")
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != full {
+		t.Fatalf("native asset=%d err=%v", len(data), err)
 	}
 }
 

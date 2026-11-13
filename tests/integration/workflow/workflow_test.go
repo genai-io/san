@@ -20,6 +20,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	_ "github.com/genai-io/san/internal/tool/register"
@@ -89,7 +90,16 @@ func (p *scriptedProvider) asked(substr string) bool {
 func run(t *testing.T, provider llm.Provider, params map[string]any) task.TaskInfo {
 	t.Helper()
 	cwd := t.TempDir()
+	store := testutil.OpenSessionStore(t, cwd)
+	parent, err := store.Create(t.Context(), session.CreateOptions{AgentID: "main", InitialCWD: cwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = parent.Close() })
 	executor := subagent.NewExecutor(provider, cwd, "fake-model", nil)
+	if err := executor.SetSessions(store, parent); err != nil {
+		t.Fatal(err)
+	}
 	wt := toolworkflow.NewWorkflowTool()
 	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
 

@@ -3,48 +3,73 @@ package testutil
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"time"
+	"testing"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// ImportSession seeds test history through the same typed Append interface as callers.
-func ImportSession(store *session.LegacyStore, history *session.LegacyHistory) (err error) {
-	if history == nil {
-		return fmt.Errorf("history is nil")
+// OpenSessionStore isolates storage while exercising canonical project resolution.
+func OpenSessionStore(t testing.TB, workspace string) *session.Store {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	store, err := session.OpenStore(context.Background(), workspace)
+	if err != nil {
+		t.Fatal(err)
 	}
-	meta := &history.Metadata
-	if meta.ID == "" {
-		meta.ID = session.NewSessionID()
-	}
-	if meta.CreatedAt.IsZero() {
-		meta.CreatedAt = time.Now()
-	}
-	if meta.Title == "" {
-		meta.Title = session.GenerateTitle(history.Messages)
-	}
-	if meta.LastPrompt == "" {
-		meta.LastPrompt = session.ExtractLastUserText(history.Messages)
-	}
-	opened, _, err := store.Open(meta.ID)
-	if errors.Is(err, os.ErrNotExist) {
-		opened, err = store.Create(session.LegacyCreateOptions{ID: meta.ID, CreatedAt: meta.CreatedAt, Cwd: meta.Cwd, Provider: meta.Provider, Model: meta.Model, ParentSessionID: meta.ParentSessionID})
-	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// ImportSession creates native fixture history; later changes use AppendMessages
+// or explicit state events, never snapshot replacement or save-time deduplication.
+func ImportSession(store *session.Store, options session.CreateOptions, messages []ai.Message) (err error) {
+	owner, err := store.Create(context.Background(), options)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, opened.Close()) }()
-	for i := range history.Messages {
-		if history.Messages[i].ID == "" {
-			history.Messages[i].ID = core.NewMessageID()
+	defer func() { err = errors.Join(err, owner.Close()) }()
+	return AppendMessages(owner, messages)
+}
+
+// AppendMessages supplies actual inference provenance for fixture assistant output.
+// Tool result fixtures get an allow gate before their native result message.
+func AppendMessages(owner *session.Session, messages []ai.Message) error {
+	ctx := context.Background()
+	for _, message := range messages {
+		if message.ID == "" {
+			message.ID = core.NewMessageID()
+		}
+		if message.Role == ai.RoleAssistant {
+			snapshot := owner.Snapshot()
+			request := &ai.Request{Messages: snapshot.ActiveMessages()}
+			inference, err := owner.StartInference(ctx, session.InferenceOptions{Purpose: session.PurposeTurn, TurnID: core.NewMessageID(), Provider: "fixture", Model: ai.Model{ID: "fixture"}, Request: request})
+			if err != nil {
+				return err
+			}
+			if err := inference.Finish(ctx, &ai.Response{Content: message.Content, StopReason: ai.StopEndTurn}, nil, session.Event{Payload: session.MessageAppendPayload{Messages: []ai.Message{message}}}); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, result := range message.ToolResults() {
+			snapshot := owner.Snapshot()
+			decided := false
+			for _, event := range snapshot.Events() {
+				if gate, ok := event.Payload.(*session.PermissionDecidePayload); ok && gate.CallID == result.ToolCallID {
+					decided = true
+				}
+			}
+			if !decided {
+				if err := owner.Append(ctx, session.Event{Payload: session.PermissionDecidePayload{CallID: result.ToolCallID, Decision: "allow", By: session.ByConfig}}); err != nil {
+					return err
+				}
+			}
+		}
+		if err := owner.Append(ctx, session.Event{Payload: session.MessageAppendPayload{Messages: []ai.Message{message}}}); err != nil {
+			return err
 		}
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: history.Messages}); err != nil {
-		return err
-	}
-	return opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
+	return nil
 }

@@ -17,8 +17,10 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	_ "github.com/genai-io/san/internal/tool/register" // registers built-in schemas used by tool.Set.Tools
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 // llm.ParseVendorModel gates "vendor/model" routing on registered providers, so
@@ -27,23 +29,6 @@ import (
 func init() {
 	llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek"})
 	llm.RegisterProviderDisplay(llm.Anthropic, llm.ProviderDisplay{Name: "Anthropic"})
-}
-
-type stubSubagentSessionStore struct {
-	saveParentID string
-	saveTitle    string
-	saveModelID  string
-	saveCwd      string
-	saveMessages []core.Message
-}
-
-func (s *stubSubagentSessionStore) RecordSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {
-	s.saveParentID = parentSessionID
-	s.saveTitle = title
-	s.saveModelID = modelID
-	s.saveCwd = cwd
-	s.saveMessages = append([]core.Message(nil), messages...)
-	return "agent-1", "/tmp/transcripts/agent-1.jsonl", nil
 }
 
 func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
@@ -934,28 +919,47 @@ func TestUnnamedAgentUses500Steps(t *testing.T) {
 }
 
 func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
-	store := &stubSubagentSessionStore{}
-	executor := &Executor{
-		cwd:             "/tmp/project",
-		sessionStore:    store,
-		parentSessionID: "parent-1",
+	store, parent := continuationSessions(t, "parent-1")
+	cwd := t.TempDir()
+	driver := aitest.New(aitest.Says("hello"))
+	executor := NewExecutor(continuationProvider{driver}, cwd, "test-model", nil)
+	bindContinuationSessions(t, executor, store, parent)
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "Inspect code", ParentToolCallID: "inspect-call"})
+	if err != nil || result == nil || !result.Success {
+		t.Fatalf("execution: %+v, %v", result, err)
 	}
-
-	sessionID, transcriptPath := executor.persistSubagentSession("General", "test-model", "Inspect code", []core.Message{
-		{Role: ai.RoleUser, Content: ai.TextContent("hello")},
-	})
-
-	if sessionID != "agent-1" {
-		t.Fatalf("sessionID = %q, want %q", sessionID, "agent-1")
+	t.Cleanup(func() { task.Default().Remove(result.Identity.ID) })
+	if result.AgentID == "" || result.Identity.SessionID != result.AgentID {
+		t.Fatalf("missing persisted session identity: %+v", result)
 	}
-	if transcriptPath != "/tmp/transcripts/agent-1.jsonl" {
-		t.Fatalf("transcriptPath = %q", transcriptPath)
+	projection, err := store.Read(context.Background(), result.AgentID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if store.saveParentID != "parent-1" || store.saveTitle != "Inspect code" || store.saveModelID != "test-model" || store.saveCwd != "/tmp/project" {
-		t.Fatalf("unexpected save args: %+v", store)
+	identity := projection.Identity()
+	if identity.Parent == nil || identity.Parent.Session != parent.ID() || identity.Parent.CallID != "inspect-call" || identity.InitialCWD != cwd {
+		t.Fatalf("unexpected native identity: %+v", identity)
 	}
-	if len(store.saveMessages) != 1 || store.saveMessages[0].Text() != "hello" {
-		t.Fatalf("unexpected saved messages: %+v", store.saveMessages)
+	config := projection.Config()
+	if config.Model == nil || *config.Model != "test-model" {
+		t.Fatalf("unexpected native model: %+v", config)
+	}
+	var user, assistant bool
+	for _, message := range projection.Messages() {
+		user = user || message.Role == ai.RoleUser && message.Text() == "Inspect code"
+		assistant = assistant || message.Role == ai.RoleAssistant && message.Text() == "hello"
+	}
+	if !user || !assistant {
+		t.Fatalf("native conversation not persisted: %+v", projection.Messages())
+	}
+	// The returned ID must reopen the real committed writer, not a synthetic path.
+	child, err := store.Open(context.Background(), result.AgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer child.Close()
+	if _, err := os.Stat(child.Path()); err != nil {
+		t.Fatalf("native transcript is unavailable: %v", err)
 	}
 }
 
@@ -969,11 +973,9 @@ func (s *stubSystem) Refresh(_, _ string)                   {}
 func (s *stubSystem) Sections() []core.Section              { return nil }
 func (s *stubSystem) SetObserver(_ func(core.SystemChange)) {}
 
-// TestBuildUnfinishedAgentResultPreservesFailedRun covers the other way a run
-// ends early. A cancelled run was already preserved; a run that died on an
-// inference failure was not, because ThinkAct returned no Result at all — so
-// Run fell through to the bare-error path and persistSubagentSession never
-// ran, losing the transcript of everything the agent had done.
+// TestBuildUnfinishedAgentResultPreservesFailedRun checks that an inference
+// failure retains partial output and its underlying error for task inspection.
+// Native transcript durability is covered by the session-backed execution tests.
 func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{

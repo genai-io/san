@@ -25,7 +25,9 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.pendingMessages.Hold(nil)
 	m.queueContinuation = nil
 	if m.pendingCompaction != nil {
-		m.cancelManualCompaction()
+		if err := m.cancelManualCompaction(); err != nil {
+			m.conv.AddNotice("Compaction cancellation failed: " + err.Error())
+		}
 		return tea.Batch(m.CommitMessages()...)
 	}
 	// The truncated reply and the cancelled tool results already tell the

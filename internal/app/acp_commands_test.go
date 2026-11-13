@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/command"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -126,11 +125,11 @@ func TestACPPluginCommandsAndAgents(t *testing.T) {
 	if _, err := f.prompt(id, "/demo:check arguments"); err != nil {
 		t.Fatal(err)
 	}
-	history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
+	history, err := s.nativeSession.Store.Read(f.ctx, string(id))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range history.Messages {
+	for _, m := range history.Messages() {
 		if strings.Contains(m.Text(), "PLUGIN_COMMAND_BODY") && strings.Contains(m.Text(), "/demo:check arguments") {
 			seen.Store(true)
 		}

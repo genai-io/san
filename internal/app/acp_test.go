@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -157,7 +156,9 @@ func TestACPAutoCompaction(t *testing.T) {
 	compacted := make(chan core.Compacted, 1)
 	record := s.runtimeBuildParams.OnEvent
 	s.runtimeBuildParams.OnEvent = func(event core.Event) {
-		record(event)
+		if record != nil {
+			record(event)
+		}
 		if event, ok := event.(core.Compacted); ok {
 			compacted <- event
 		}
@@ -286,11 +287,11 @@ func TestACPHooksAndRecordingBarrier(t *testing.T) {
 			if !strings.Contains(string(data), "workspace instruction") || !strings.Contains(string(data), "prompt hook instruction") {
 				t.Fatal("native preparation missing instructions")
 			}
-			history, err := s.nativeSession.Store.Read(string(id), session.LegacyReadOptions{})
+			history, err := s.nativeSession.Store.Read(f.ctx, string(id))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(history.Messages) == 0 {
+			if len(history.Messages()) == 0 {
 				t.Fatal("successful protocol response preceded native persistence")
 			}
 		})

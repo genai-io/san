@@ -12,7 +12,7 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, service wiring. |
 | `app` | `internal/app` and its subpackages | TUI shell, model composition, event routing. |
-| `feature` | Business-domain packages: interaction, agent, broker, group, llm, tool, session, transcript, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: interaction, agent, broker, group, llm, tool, session, task, todo, subagent, workflow, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
 | `infrastructure` | `log`, `secret`, `filecache`, `markdown`, `proc`, `confdir`, `atomicfile`, `autoupdate` | Stateless helpers usable by any layer above. |
 
@@ -46,7 +46,7 @@ not by lower layers importing higher layers.
 4. Feature packages should not import `internal/app`.
    `internal/interaction` owns request lifetimes and human-permission preparation,
    scopes and audit-before-reply, not execution, transport or presentation. It may
-   use agent/tool, settings and transcript contracts, but not Bubble Tea or ACP.
+   use agent/tool, settings and native session contracts, but not Bubble Tea or ACP.
    Rule, hook and judge policy stays with its existing owners. Adapters serialize
    each approval, map only offered options and pass the current session owner.
    Owner identity fences session generations; request contexts preserve independent
@@ -60,6 +60,12 @@ not by lower layers importing higher layers.
    `confdir`, `atomicfile`, `autoupdate`) should not import feature packages.
 8. Provider implementations should register with `internal/llm`; product logic
    should not depend directly on concrete provider packages.
+
+9. `internal/session` owns product event validation, native projections and
+   historical request reconstruction. Hosts and the inspector consume its typed
+   read/write APIs; they must not introduce another persistence projector or
+   older-format fallback. Generic framing, writer leases and transport recovery
+   remain in sdk-go.
 
 `tools/layercheck` applies these rules to production, internal-test, and
 external-test imports. It also rejects repository packages that have no entry

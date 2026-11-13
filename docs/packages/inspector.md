@@ -5,80 +5,77 @@ layer: feature
 
 # inspector
 
-Local web UI for replaying session transcripts. Reads the JSONL files
-under `~/.san/projects/<cwd-hash>/transcripts/<session-id>.jsonl` and exposes a
-small HTTP API + SSE live-tail to an embedded single-page UI.
+Read-only local web UI for native session events. TUI, ACP, print and child
+execution use the same `internal/session` backend; the inspector does not own a
+second event schema, projector or writer.
 
-## Purpose
+## Purpose and entrypoints
 
-When the user runs `san inspector`, this package serves a localhost-only
-viewer over the project's transcripts. It is **read-only**, single-process,
-and intended for debugging an agent run after the fact or watching one
-live. The wire format is the JSONL on disk — sdk-go `pkg/session` lines, with
-san's own records in `data` — and the inspector adds no schema of its own. A
-record's ID is its line number.
+`san inspector` resolves the canonical project with `session.OpenStore` and passes
+that store to `inspector.New(store *session.Store) *Server`.
+`Server.Handler() http.Handler` serves an embedded SPA and a small HTTP/SSE API.
+The command binds only to loopback; session contents may contain sensitive model
+inputs and outputs, and the local API has no authentication.
 
-## Contract
+Authoritative logs live under
+`~/.san/projects/<project>/sessions/<sid>/events.jsonl`. There is no older-format
+reader, cwd-hash partition lookup or fallback to `transcripts/`.
 
-```go
-package inspector
+## Flow and API
 
-// Server hosts the transcript viewer for a single project directory.
-type Server struct {
-    // unexported
-}
+- `GET /api/sessions`: enumerate live session directories without regenerating
+  overview caches. Unsupported sessions remain discoverable for diagnosis.
+  Attrs titles override generated titles; attrs errors are reported separately.
+- `GET /api/sessions/{id}/records`: JSON containing unchanged committed SDK batches
+  and checked tails. A read failure returns the valid prefix, an error and bounded
+  explicitly unvalidated diagnostic text; diagnostics are not projected events.
+- `GET /api/sessions/{id}/state/{seq}`: validated native state or the exact
+  historical request at an `inference.start`. Event identity is sequence within
+  the session, not a line number or byte offset. Invalid projections fail closed.
+- `GET /api/sessions/{id}/stream`: SSE of committed batches. Polling compares the
+  entire prior tail chain, emits only complete new batches and closes with a
+  diagnostic if the prefix is replaced or corrupt. Partial suffixes wait.
+- `GET /`: embedded SPA from `ui/assets/`.
 
-func New(projectDir string) *Server
-func (s *Server) Handler() http.Handler
-```
+`session.Store.Read`, `ContextRequest`, `InferenceRequest` and `CommittedBatches`
+are the authoritative read APIs. `replay.go` is an HTTP presentation adapter, not
+an independent domain replay implementation. Conversation requests reconstruct
+catalogues and native context at the admitted prefix; standalone requests load
+verified immutable blobs. Unsupported data remains inspectable as raw diagnostic
+text, never silently normalized into supported events.
 
-Plus internal helpers (`replay.go`, `stream.go`) that the HTTP handlers
-call.
+The UI exposes all thirteen event families, native content blocks, provenance,
+permission authority and asked snapshots, raw tool details, child-session links,
+compaction boundaries and inference accounting. Filters select event families;
+request generations and stream identity fence stale browser responses. Markdown
+links allow HTTP, HTTPS, mailto and relative URLs, not executable schemes.
 
-## Internals
+## Lifecycle and configuration
 
-- `Server` (`server.go`) — HTTP server. Routes:
-  - `GET /api/sessions` — all transcript files, enriched with saved summaries;
-    unreadable files remain available for diagnosis.
-  - `GET /api/sessions/{id}/records?after={offset}` — complete JSONL records
-    from a byte offset, with `X-Next-Offset` for the next read.
-  - `GET /api/sessions/{id}/state/{recordID}` — materialized replay state
-    at a record (system prompt + tool schemas + conversation).
-  - `GET /api/sessions/{id}/stream` — SSE live-tail of new records.
-  - `GET /` — embedded SPA from `ui/assets/`.
-- `replay.go` projects state; `server.go` caches 64 snapshots, keyed by record
-  and file revision. Deleted or replaced files cannot return stale snapshots.
-  Integrity checks belong to the selected inference, not earlier failures.
-- `stream.go` polls per SSE client. A line without its newline is still being
-  written and waits for the next poll.
-- `ui/embed.go` + `ui/assets/` embed the static SPA. Request generations and
-  stream identity prevent old responses from changing a new selection. Markdown
-  links allow HTTP, HTTPS, mailto, and relative URLs, excluding executable schemes.
+Construction opens no session writer and launches no background work. Each SSE
+request polls every 500 ms and stops when canceled. Reconnection starts from the
+committed prefix; the browser deduplicates stable batch/event identities.
+`http.Server.Shutdown` drains requests. Listing, replay, streaming and diagnostics
+do not modify event logs, lock files, attrs or caches.
 
-## Lifecycle
+The CLI's `--addr` defaults to `127.0.0.1:0`; `--no-open` prints the URL instead of
+launching a browser. Project identity follows Git common-directory/worktree rules,
+not the startup directory's old encoded path.
 
-- Construction: `New(projectDir)` opens a read-only handle to the
-  project's transcript directory. No background goroutines until a
-  request comes in.
-- Per-request: replay endpoints hit the LRU; each SSE connection polls every
-  500 ms and stops when the request is canceled. Reconnected streams replay
-  from the start; the browser deduplicates record IDs.
-- Shutdown: standard `http.Server.Shutdown` drains in-flight requests.
+## Tests and pitfalls
 
-## Tests
+- `server_test.go`, `attrs_test.go`: routes, native state, title precedence and
+  read-only behavior.
+- `replay_regression_test.go`, `native_families_test.go`: exact request replay,
+  unsupported/corrupt data, native message and event-family coverage.
+- `stream_test.go`: complete batch visibility, replacement detection and
+  diagnostics without splicing unrelated histories.
+- `ui/app.test.cjs`: delayed responses/streams, filters and safe links.
 
-```
-internal/inspector/server_test.go            — HTTP routes and replay correctness.
-internal/inspector/replay_regression_test.go — corruption, EOF records, cache lifetime, integrity.
-internal/inspector/ui/app.test.cjs           — delayed responses/streams, link safety, filters.
-```
+Run `go test -race ./internal/inspector` and `make test-inspector-ui` for focused
+checks. Do not decode raw batch payloads into a competing product projector or
+acquire a writer to inspect a running session. Never present bounded unvalidated
+text as accepted history or infer a tool's outcome from a missing finish.
 
-Run `make test-inspector-ui` for the browser-state tests using Node's built-in
-test runner; `make ci` includes them alongside the Go tests.
-
-## See Also
-
-- Code: `internal/inspector/`, `internal/inspector/ui/`
-- User guide: [`guides/inspector.md`](../guides/inspector.md)
-- Source data: [`packages/session.md`](session.md) (`internal/transcript`)
-- Layer: `feature`
+See the [user guide](../guides/inspector.md), [session package](session.md) and
+[package map](../reference/package-map.md).

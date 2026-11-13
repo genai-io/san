@@ -5,18 +5,12 @@ import (
 	"fmt"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/tool"
-	"go.uber.org/zap"
 )
 
-type liveSessionStore interface {
-	Create(session.LegacyCreateOptions) (*session.LegacySession, error)
-	Open(string) (*session.LegacySession, *session.LegacyHistory, error)
-}
-
 type continuationState struct {
+	storeOwner                     *session.Store
 	parentOwner                    *session.Session
 	persistenceErr                 error
 	originalPrompt                 string
@@ -27,7 +21,6 @@ type continuationState struct {
 
 func newContinuationState(run *preparedRun, parent, taskID string) *continuationState {
 	state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: parent, taskID: taskID}
-	// Do not retain the completed invocation's UI callbacks.
 	state.req.OnIdentity = nil
 	state.req.OnActivity, state.req.OnQuestion = nil, nil
 	state.req.OnTextDelta, state.req.OnTextEnd = nil, nil
@@ -35,73 +28,74 @@ func newContinuationState(run *preparedRun, parent, taskID string) *continuation
 	return state
 }
 
-func (e *Executor) openNative(ctx context.Context, run *preparedRun) error {
-	if run.typedStore != nil {
-		return e.openTyped(ctx, run)
-	}
-	if run.native != nil {
-		return nil // A continuation claims its writer before beginning an attempt.
-	}
-	store, ok := e.sessionStore.(liveSessionStore)
-	if !ok {
-		if run.req.ResumeTaskID != "" {
-			return fmt.Errorf("native continuation requires live session persistence")
+// acceptContinuationInput binds the exact native prompt before async execution
+// and before returning a positive SendMessage acknowledgement to its sender.
+func (e *Executor) acceptContinuationInput(ctx context.Context, run *preparedRun) error {
+	message := core.UserMessage(fmt.Sprintf("Continuation (previous execution: %s; current cwd: %s). Verify current filesystem/external state before retrying any interrupted tool with unknown outcome.\n", run.priorFailure, run.currentCwd())+run.req.Prompt, nil)
+	message.ID = core.NewMessageID()
+	if run.req.SourceSession != "" || run.req.SourceSeq != 0 {
+		if run.req.SourceSession == "" || run.req.SourceSeq == 0 {
+			return fmt.Errorf("incomplete continuation input source")
 		}
+		if err := run.recording.AcceptInput(ctx, message, &session.EventRef{Session: run.req.SourceSession, Seq: run.req.SourceSeq}); err != nil {
+			return err
+		}
+	}
+	run.continuationInput = &message
+	return nil
+}
+
+func (e *Executor) openNative(ctx context.Context, run *preparedRun) error {
+	if run.store == nil {
+		return fmt.Errorf("agent execution requires session persistence")
+	}
+	if run.recording != nil {
 		return nil
 	}
-	if e.parentSessionID == "" {
-		return fmt.Errorf("native child session requires parent identity")
+	parentID := ""
+	if run.parent != nil {
+		if err := run.parent.Err(); err != nil {
+			return err
+		}
+		parentID = run.parent.ID()
 	}
-	var err error
+	state := run.checkpoint
 	if run.req.ResumeTaskID != "" {
-		state := run.checkpoint
-		if state == nil || state.sessionID == "" || state.parent != e.parentSessionID || state.taskID != run.req.TaskID {
-			return fmt.Errorf("missing or mismatched continuation identity")
+		if state == nil || state.sessionID == "" || state.storeOwner != run.store || state.parentOwner != run.parent || state.parent != parentID || state.taskID != run.req.TaskID {
+			return fmt.Errorf("missing, damaged or mismatched continuation identity")
 		}
 		if state.persistenceErr != nil {
 			return fmt.Errorf("native history persistence failed; inspect/repair child transcript before continuing: %w", state.persistenceErr)
 		}
-		var history *session.LegacyHistory
-		run.native, history, err = store.Open(state.sessionID)
+		child, err := run.store.Open(ctx, state.sessionID)
 		if err != nil {
 			return err
 		}
-		if history == nil || len(history.Messages) == 0 {
-			_ = run.native.Close()
-			return fmt.Errorf("native history is empty or damaged for child session %s; inspect its transcript before continuing", state.sessionID)
+		snapshot := child.Snapshot()
+		link := snapshot.Identity().Parent
+		validLink := link == nil && parentID == ""
+		if link != nil {
+			validLink = link.Session == state.parent && link.CallID == state.req.ParentToolCallID
 		}
-		if history.Metadata.ParentSessionID != e.parentSessionID || history.Metadata.ID != state.sessionID {
-			_ = run.native.Close()
-			return fmt.Errorf("child session identity mismatch")
+		if !validLink || len(snapshot.ActiveMessages()) == 0 {
+			_ = child.Close()
+			return fmt.Errorf("child session identity or history mismatch")
 		}
-		run.history = history.Messages
-	} else {
-		run.native, err = store.Create(session.LegacyCreateOptions{AgentID: run.req.TaskID, ParentSessionID: e.parentSessionID, Model: run.cfg.modelID, Cwd: run.currentCwd()})
-		if err == nil && run.checkpoint != nil {
-			run.checkpoint.sessionID = run.native.ID()
-		}
+		run.recording, run.history = child, snapshot.ActiveMessages()
+		return nil
 	}
-	return err
-}
-
-// persistSubagentSession saves the subagent conversation to disk if a session store is configured.
-// Returns the session ID and transcript path (both empty if not persisted).
-func (e *Executor) persistSubagentSession(agentName, modelID, description string, messages []core.Message) (string, string) {
-	if e.sessionStore == nil || e.parentSessionID == "" {
-		return "", ""
+	var parent *session.ParentLink
+	if parentID != "" {
+		parent = &session.ParentLink{Session: parentID, CallID: run.req.ParentToolCallID}
 	}
-
-	title := description
-	if title == "" {
-		title = agentName
-	}
-	sessionID, transcriptPath, err := e.sessionStore.RecordSubagentConversation(e.parentSessionID, title, modelID, e.cwd, messages)
+	provider, model, mode := run.cfg.provider.Name(), run.cfg.modelID, string(run.cfg.permMode)
+	child, err := run.store.Create(ctx, session.CreateOptions{AgentID: run.req.TaskID, InitialCWD: run.currentCwd(), Parent: parent, Config: &session.EventConfig{Provider: &provider, Model: &model, Mode: &mode}})
 	if err != nil {
-		log.Logger().Warn("Failed to persist subagent session",
-			zap.String("agent", agentName),
-			zap.Error(err),
-		)
-		return "", ""
+		return err
 	}
-	return sessionID, transcriptPath
+	run.recording = child
+	if state != nil {
+		state.sessionID, state.parentOwner, state.storeOwner = child.ID(), run.parent, run.store
+	}
+	return nil
 }

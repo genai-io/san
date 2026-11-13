@@ -16,7 +16,6 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -192,24 +191,27 @@ func TestPostCompactReseedsContext(t *testing.T) {
 func TestRecordManualCompactionReplayAndFailure(t *testing.T) {
 	for _, closed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "saved", true: "closed"}[closed], func(t *testing.T) {
-			store, err := session.NewLegacyStoreWithDir(t.TempDir())
-			if err != nil {
+			fixture := mainSessionFixture(t)
+			store, opened := fixture.Store, fixture.Session
+			messages := compactMessages()
+			for i := range messages {
+				messages[i].ID = core.NewMessageID()
+			}
+			if err := opened.Append(t.Context(), session.Event{Payload: session.MessageAppendPayload{Messages: messages}}); err != nil {
 				t.Fatal(err)
 			}
-			opened, err := store.Create(session.LegacyCreateOptions{ID: "compact"})
-			if err != nil {
-				t.Fatal(err)
+			driver := aitest.New(aitest.Says("summary"))
+			completion := opened.Completion(session.PurposeCompaction)
+			result := (CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: messages, Completion: completion}).Run()
+			if result.Err != nil {
+				t.Fatal(result.Err)
 			}
-			defer func() { _ = opened.Close() }()
-			old := core.UserMessage("old conversation", nil)
-			old.ID = core.NewMessageID()
-			opened.RecordEvent(sdkagent.MessageAdded{Message: old})
 			if closed {
 				if err := opened.Close(); err != nil {
 					t.Fatal(err)
 				}
 			}
-			summary, info, err := RecordManualCompaction(opened, CompactResult{Summary: "summary", OriginalCount: 1})
+			summary, info, err := RecordManualCompaction(opened, result)
 			if closed {
 				if !errors.Is(err, session.ErrClosed) {
 					t.Fatalf("error=%v", err)
@@ -217,18 +219,23 @@ func TestRecordManualCompactionReplayAndFailure(t *testing.T) {
 				return
 			}
 			if err != nil || summary.ID == "" || info.SummaryMessageID != summary.ID || info.Trigger != "manual" {
-				t.Fatalf("info=%+v, err=%v", info, err)
+				t.Fatalf("info=%+v err=%v", info, err)
 			}
 			if err := opened.Close(); err != nil {
 				t.Fatal(err)
 			}
-			reopened, history, err := store.Open("compact")
+			reopened, err := store.Open(t.Context(), opened.ID())
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = reopened.Close() }()
-			if len(history.Messages) != 1 || history.Messages[0].ID != summary.ID || history.Messages[0].Text() != core.FormatCompactSummary("summary") {
-				t.Fatalf("history=%+v", history.Messages)
+			defer reopened.Close()
+			history := reopened.Snapshot()
+			active := history.ActiveMessages()
+			if len(active) != 1 || active[0].ID != summary.ID || active[0].Text() != core.FormatCompactSummary(result.Summary) {
+				t.Fatalf("active=%+v", active)
+			}
+			if len(history.Messages()) != len(messages)+1 {
+				t.Fatal("compaction discarded full history")
 			}
 		})
 	}

@@ -7,7 +7,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -40,7 +39,6 @@ type sideRequest struct {
 	messages  []core.Message
 	owner     *session.Session
 	recording *session.Completion
-	err       error
 }
 
 // newSideRequest captures the main agent's prefix with prompt to follow it.
@@ -54,10 +52,7 @@ func (m *model) newSideRequest(label, prompt string) sideRequest {
 		params := m.promptParams()
 		r.system, r.schemas = params.System().Prompt(), params.ToolSchemas()
 	}
-	r.owner = m.services.Recording
-	if r.owner != nil && m.services.Session != nil {
-		r.err = fmt.Errorf("side request cannot use legacy and typed recording together")
-	}
+	r.owner = m.services.Session
 	r.messages = withSidePrompt(r.chain, prompt)
 	for i := len(r.chain); i < len(r.messages); i++ {
 		if r.messages[i].ID == "" {
@@ -70,9 +65,6 @@ func (m *model) newSideRequest(label, prompt string) sideRequest {
 
 // complete sends the request. A tool call in the reply is never run.
 func (r sideRequest) complete(ctx context.Context) (llm.CompletionResponse, error) {
-	if r.err != nil {
-		return llm.CompletionResponse{}, r.err
-	}
 	messages := r.messages
 	if messages == nil {
 		messages = withSidePrompt(r.chain, r.prompt)

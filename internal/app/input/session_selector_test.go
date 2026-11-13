@@ -3,6 +3,7 @@ package input
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,18 +12,19 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-func selectorStore(t *testing.T) *session.LegacyStore {
+func selectorStore(t *testing.T) *session.Store {
 	t.Helper()
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
+	store, err := session.OpenStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
 
 func TestSessionSelectorLoadsOffLoopAndKeepsTypedFilter(t *testing.T) {
 	store := selectorStore(t)
-	opened, err := store.Create(session.LegacyCreateOptions{ID: "first"})
+	opened, err := store.Create(t.Context(), session.CreateOptions{ID: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func TestSessionSelectorCancelRejectsStaleResultsAfterReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer state.Selector.Cancel()
-	UpdateSession(OverlayDeps{}, &state, sessionsListedMsg{generation: cancelled.generation, sessions: []session.LegacySummary{{ID: "stale"}}})
+	UpdateSession(OverlayDeps{}, &state, sessionsListedMsg{generation: cancelled.generation, sessions: []session.ListItem{{Overview: session.Overview{SessionID: "stale"}}}})
 	if !state.Selector.loading || len(state.Selector.sessions) != 0 {
 		t.Fatal("an old result replaced the reopened selector")
 	}
@@ -85,9 +87,14 @@ func TestSessionSelectorRendersCachedTitlesAndPreviews(t *testing.T) {
 	}
 	defer state.Selector.Cancel()
 	msg := cmd().(sessionsListedMsg)
-	msg.sessions = []session.LegacySummary{{ID: "unreadable", Title: "Go", LastPrompt: "缓存中的预览\nsecond line"}}
+	msg.sessions = []session.ListItem{{Overview: session.Overview{SessionID: "unreadable", Title: "Generated title", LastPrompt: "缓存中的预览\nsecond line"}, Attrs: session.Attrs{Title: "Go"}}}
 	UpdateSession(OverlayDeps{}, &state, msg)
 	view := state.Selector.Render()
+	state.Selector.nav.Search = "go"
+	state.Selector.updateFilter()
+	if len(state.Selector.filtered) != 1 {
+		t.Fatal("filter ignored the explicit title")
+	}
 	if !strings.Contains(view, "Go") || !strings.Contains(view, "缓存中的预览") || strings.Contains(view, "second line") {
 		t.Fatal("render must use cached metadata, including a short explicit title")
 	}
@@ -108,12 +115,44 @@ func TestSessionSelectorShowsListErrors(t *testing.T) {
 	}
 }
 
+func TestSessionSelectorListsAllPagesAndOnlyRoots(t *testing.T) {
+	store := selectorStore(t)
+	for i := range 202 {
+		opts := session.CreateOptions{ID: fmt.Sprintf("session-%03d", i)}
+		if i == 201 {
+			opts.Parent = &session.ParentLink{Session: "session-000"}
+		}
+		opened, err := store.Create(t.Context(), opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := opened.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := SessionState{Selector: NewSessionSelector()}
+	cmd, err := state.Selector.EnterSelect(80, 24, store, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Selector.Cancel()
+	UpdateSession(OverlayDeps{}, &state, cmd())
+	if state.Selector.loadError != nil || len(state.Selector.sessions) != 201 {
+		t.Fatalf("sessions=%d error=%v", len(state.Selector.sessions), state.Selector.loadError)
+	}
+	for _, item := range state.Selector.sessions {
+		if item.Parent != "" {
+			t.Fatal("worker offered as main conversation")
+		}
+	}
+}
+
 func BenchmarkSessionSelectorFilterAndRender(b *testing.B) {
 	s := NewSessionSelector()
 	s.active = true
 	s.Resize(120, 40)
 	for i := range 1000 {
-		s.sessions = append(s.sessions, session.LegacySummary{ID: string(rune(i)), Title: "Diagnostic session title", LastPrompt: "Cached prompt preview"})
+		s.sessions = append(s.sessions, session.ListItem{Overview: session.Overview{SessionID: string(rune(i)), Title: "Diagnostic session title", LastPrompt: "Cached prompt preview"}})
 	}
 	b.ReportAllocs()
 	for b.Loop() {

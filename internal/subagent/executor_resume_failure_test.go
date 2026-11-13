@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -18,10 +17,7 @@ import (
 )
 
 func TestNativeContinuationAfterInferenceFailureKeepsAppliedWork(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "owner")
 	cwd := t.TempDir()
 	path := filepath.Join(cwd, "artifact.txt")
 	args, _ := json.Marshal(map[string]string{"file_path": path, "content": "already applied"})
@@ -32,7 +28,7 @@ func TestNativeContinuationAfterInferenceFailureKeepsAppliedWork(t *testing.T) {
 	)
 	executor := NewExecutor(continuationProvider{driver}, cwd, "aitest", nil)
 	executor.SetParentPermissionMode(func() PermissionMode { return PermissionAcceptEdits })
-	executor.SetSessionStore(store, "failure-parent")
+	bindContinuationSessions(t, executor, store, parent)
 	var tools atomic.Int32
 	worker, err := executor.RunBackground(tool.AgentExecRequest{
 		Prompt: "Create artifact.txt once, then verify it", ParentToolCallID: "first-call",
@@ -84,13 +80,10 @@ func TestNativeContinuationAfterInferenceFailureKeepsAppliedWork(t *testing.T) {
 }
 
 func TestBrokenNativeCheckpointDoesNotStartAnotherAttempt(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "owner")
 	driver := aitest.New(aitest.Fails(errors.New("initial failure")))
 	executor := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
-	executor.SetSessionStore(store, "owner")
+	bindContinuationSessions(t, executor, store, parent)
 	worker, err := executor.RunBackground(tool.AgentExecRequest{Prompt: "Original objective"})
 	if err != nil {
 		t.Fatal(err)
@@ -109,13 +102,10 @@ func TestBrokenNativeCheckpointDoesNotStartAnotherAttempt(t *testing.T) {
 }
 
 func TestNativeContinuationRejectsOverlapAndForeignParent(t *testing.T) {
-	store, err := session.NewLegacyStoreWithDir(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, parent := continuationSessions(t, "owner")
 	driver := aitest.New(aitest.Fails(errors.New("initial failure")), aitest.Hangs())
 	executor := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
-	executor.SetSessionStore(store, "owner")
+	bindContinuationSessions(t, executor, store, parent)
 	worker, err := executor.RunBackground(tool.AgentExecRequest{Prompt: "Original objective"})
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +115,7 @@ func TestNativeContinuationRejectsOverlapAndForeignParent(t *testing.T) {
 		t.Fatal("initial execution hung")
 	}
 	foreign := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
-	foreign.SetSessionStore(store, "other-owner")
+	bindContinuationSessions(t, foreign, store, continuationParent(t, store, "other-owner"))
 	if _, err := foreign.RunBackground(tool.AgentExecRequest{ResumeTaskID: worker.GetID(), Prompt: "Continue"}); err == nil {
 		t.Fatal("foreign parent continued the child session")
 	}

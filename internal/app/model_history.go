@@ -1,11 +1,11 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
-
-	sdksession "github.com/genai-io/sdk-go/pkg/session"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -16,6 +16,7 @@ import (
 )
 
 type historyLoadedMsg struct {
+	owner      *session.Session
 	generation uint64
 	sessionID  string
 	messages   []core.ChatMessage
@@ -24,13 +25,13 @@ type historyLoadedMsg struct {
 
 func (m *model) openHistory() tea.Cmd {
 	m.userInput.Transcript.Enter("History · Loading…", nil, m.env.Width, m.env.Height)
-	msg := historyLoadedMsg{generation: m.userInput.Transcript.Generation(), messages: slices.Clone(m.conv.Messages)}
+	msg := historyLoadedMsg{owner: m.services.Session, generation: m.userInput.Transcript.Generation(), messages: slices.Clone(m.conv.Messages)}
 	var load func(string) ([]core.ChatMessage, error)
 	if m.sessionID() != "" {
 		msg.sessionID = m.sessionID()
 		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
 			load = func(id string) ([]core.ChatMessage, error) {
-				history, err := store.Read(id, session.LegacyReadOptions{FullHistory: true})
+				history, err := store.Read(context.Background(), id)
 				if err != nil {
 					return nil, err
 				}
@@ -43,7 +44,7 @@ func (m *model) openHistory() tea.Cmd {
 			messages, err := load(msg.sessionID)
 			if err == nil {
 				msg.messages = messages
-			} else if !errors.Is(err, sdksession.ErrNotFound) {
+			} else if !errors.Is(err, os.ErrNotExist) {
 				msg.err = err
 			}
 		}
@@ -56,7 +57,7 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 	if !viewer.IsActive() || viewer.Generation() != msg.generation {
 		return
 	}
-	if m.sessionID() != msg.sessionID {
+	if m.sessionID() != msg.sessionID || m.services.Session != msg.owner {
 		return
 	}
 	if msg.err != nil {

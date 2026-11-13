@@ -1,11 +1,9 @@
 # Inspector
 
-The **Inspector** is a local web UI for exploring and debugging san code
-session transcripts. It reads the JSONL transcript files stored under
-`~/.san/projects/` and presents every event — user messages, model
-responses, tool calls, system events, and harness state — as an
-inspectable timeline. Think of it as "conversation forensics" for your
-agent runs.
+The **Inspector** is a local web UI for exploring san's native session events:
+messages, model requests, tool calls, permissions, hooks and harness state. It
+reads committed JSONL batches beneath `~/.san/projects/` without acquiring a
+session writer or modifying session data.
 
 ![Inspector UI](../images/inspector.png)
 
@@ -13,169 +11,100 @@ agent runs.
 
 ```bash
 san inspector
-```
 
-This starts a localhost-only web server on a random port and opens the
-inspector in your default browser. Press `Ctrl-C` to stop.
-
-```bash
 # Pin a specific port
 san inspector --addr 127.0.0.1:38080
 
-# Print the URL but don't open the browser
+# Print the URL without opening a browser
 san inspector --no-open
 ```
 
-> **Security note:** The inspector binds to loopback addresses only
-> (`127.0.0.1`, `::1`, `localhost`). Transcripts contain everything the
-> model saw, including secrets in tool inputs — binding to a non-loopback
-> address is rejected. The API itself is unauthenticated, so treat the
-> bound port as trusted: avoid running the inspector on a shared
-> multi-user host, and stop it (`Ctrl-C`) when you're done.
+The command starts a loopback-only server on a random port and opens your browser
+unless `--no-open` is set. Press `Ctrl-C` to stop.
 
-## What You Can Do
+> **Security:** Session events and request blobs can contain everything a model
+> saw, including sensitive tool inputs. Non-loopback bind addresses are rejected.
+> The local API has no authentication: treat the port as trusted, avoid shared
+> multi-user hosts and stop the server when finished.
 
-### Browse Sessions
+## Browse and inspect
 
-The left sidebar lists all past sessions for the current project
-directory. Click any session to load its transcript.
+The sidebar lists live sessions of the canonical project. Git worktrees share
+one project; unrelated clones and non-Git directories do not. Renamed titles take
+precedence over generated titles. Unsupported sessions remain listed so their raw
+bytes can be diagnosed rather than disappearing silently.
 
-### Navigate the Timeline
+The timeline exposes thirteen event families: session creation/update, native
+messages, context compaction, inference start/finish, permission decisions, tool
+finishes, instruction/toolset/skill catalogues, hook finishes and annotations.
+Filters let you focus on related facts. Events have stable sequence positions
+within their session; sequence numbers are not JSONL line numbers, because one
+committed line may contain multiple events.
 
-The center panel displays every record in the transcript as a
-chronological timeline. Filter chips at the top — `message`, `tool`,
-`system`, `inference`, `state`, `hook`, `permission` — let you show or
-hide each event type so you can focus on what matters:
+Select an event to inspect its raw typed payload and provenance. Raw committed
+SDK batches remain available unchanged. If transport validation fails, the server
+reports the checked prefix and explicitly unvalidated bounded diagnostic text;
+that text is never treated as projected history.
 
-- **message** — user input, piped text, and model responses (text and
-  thinking)
-- **tool** — tool calls the model made, with arguments and results
-- **system** — system-prompt section changes
-- **inference** — each request sent to the model (the "what did the model
-  see?" record; carries the integrity checks below) and how it ended —
-  a response, or a failure (see below)
-- **state** — session state changes
-- **hook** — hook executions
-- **permission** — permission prompts and decisions
+## Reconstruct the model request
 
-### Inspect Raw Records
+At `inference.start`, the inspector asks the session backend for the request that
+was admitted at that exact historical prefix. A conversation request reconstructs
+instructions, tool schemas and repaired active native messages; a standalone
+request loads its immutable, verified blob. Current settings and later catalogue
+changes do not substitute for the historical input.
 
-Click any record to see its raw JSON in the detail pane (right panel).
-This is the exact JSONL line as written to disk — no transformation, no
-hidden fields.
+For other events, cumulative context is reconstructed at the selected sequence.
+Compaction changes active context, not full history: earlier turns remain
+inspectable. Native images, provider signatures, encrypted reasoning and content
+ordering are retained rather than being flattened into a replacement transcript.
+Unsupported event versions or invalid provenance fail validated replay instead
+of being silently skipped.
 
-### Examine the System Prompt
+## Outcomes and interrupted work
 
-At any record, you can open the **System Prompt overlay** to see the
-full system prompt that was active at that moment. This includes all
-sections injected by the harness: personas, skills, project memory
-(`AGENTS.md`), and MCP server prompts. (Tool schemas are not
-part of the system prompt — see Replay State below for those.)
+`inference.finish` links its start and carries outcome, usage, duration and any
+structured error. Each retry has a distinct start/finish; an unfinished start is
+an interrupted call, not a fabricated failure or response.
 
-### Replay State
+A `permission.decide` explains the actual authority and, where shown, the human
+question snapshot. `tool.finish` records an execution outcome, raw display details
+and child-session correlation. Missing finishes do not prove failure: an allowed
+call without a committed finish has an unknown outcome. Inspection never reruns
+models, hooks or tools.
 
-Selecting a record reconstructs the model's complete context at that
-point and shows it in the detail pane (right). For `inference.requested`
-records it loads automatically; for any other record, click **Show
-cumulative context at this record** to expand it. The reconstructed state
-includes:
-- **System prompt** — full text with all injected sections
-- **Tool schemas** — JSON Schema definitions for every tool available
-- **Active message chain** — the exact messages in context (respecting
-  compaction boundaries and system-reminder injection)
+## Live Tail
 
-### Integrity Checking
+Opening a running session subscribes to SSE. Only complete committed batches
+appear. Partial suffixes wait for completion; corruption or replacement of the
+previously checked prefix ends the stream with a diagnostic rather than splicing
+unrelated histories. Browser request generations fence stale selections and
+reconnection deduplicates stable identities.
 
-At each inference request (`inference.requested`), the inspector
-recomputes digests of the replayed state and compares them against what
-was recorded:
-- **System prompt digest** — SHA-256 of the assembled system prompt
-- **Tools digest** — SHA-256 of the serialized tool schemas
-- **Message IDs** — ordered list of message identifiers
+## Storage and API
 
-Mismatches are flagged with a **BAD** badge, showing exactly which
-messages are missing or extra. This is useful for debugging compaction
-bugs, harness injection issues, or unexpected state drift.
+The server reads:
 
-### Failed Inferences
-
-Every request ends in exactly one terminal record: `inference.responded`
-or `inference.failed`. A failed call is accented in red and labeled with
-the attempt, the loop's classification, and the error:
-
-```
-inference.failed  turn 7  attempt 2  retryable  — 529 overloaded
+```text
+~/.san/projects/<project>/sessions/<session-id>/events.jsonl
 ```
 
-- **attempt** — which call of this step it was, counting from one. It
-  rises across recoveries as well as retries, so a step that retried
-  writes one `inference.failed` per abandoned call.
-- **retryable** — the error was transient (429 / 5xx / network / stall).
-  This is how it was *classified*, not whether a retry followed: retries
-  are bounded, so the last `retryable` failure of a step is where the
-  budget ran out.
-- **not-retryable** — the error was never eligible for a retry (bad
-  request, auth, content policy, context window). Usually the end of the
-  turn — but not always: a too-long prompt lands here and the loop
-  recovers by compacting, which the following `session.compacted` shows.
-
-The gap between a failure and the next `inference.requested` is the
-backoff that was waited out. A session that ends on an `inference.failed`
-ended *because* of it.
-
-### Live Tail
-
-When you have an active san code session running in another terminal, the
-inspector live-tails new records via Server-Sent Events (SSE). Just open
-the session — the inspector subscribes automatically and new records
-appear in the timeline as they are written to disk. The status indicator
-in the header reads **recording** while the stream is connected.
-
-## UI Layout
-
-| Area | What It Shows |
-|------|---------------|
-| **Sidebar** (left) | Session list: project sessions sorted by date |
-| **Timeline** (center) | Chronological record stream with filter chips |
-| **Detail** (right) | Raw JSON for the selected record; for inference records, the reconstructed context (system + tools + messages) |
-| **System Prompt overlay** | Full system prompt at a given point in time |
-
-## How It Works
-
-1. `san inspector` starts an HTTP server bound to loopback.
-2. The server reads transcript JSONL files from
-   `~/.san/projects/<encoded-cwd>/transcripts/`.
-3. The embedded SPA (single-page application) fetches session lists and
-   records via a REST API, and subscribes to live updates via SSE.
-4. The **replay engine** (`replay.go`) walks the events from the
-   beginning to reconstruct the model's full context at any record index.
-   Results are cached in an LRU (capacity 64) so timeline scrubbing stays
-   fast.
-5. All processing is read-only — transcripts on disk are never modified.
-
-## API Endpoints
-
-The inspector's HTTP API is designed for its own UI, but you can call it
-directly for scripting:
+There is no older-format reader or fallback to `transcripts/`; sessions written
+by earlier versions remain on disk untouched and are not discovered.
 
 | Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | The inspector SPA |
-| `GET` | `/api/sessions` | List all sessions for the project |
-| `GET` | `/api/sessions/{id}/records?after=N` | Transcript records as NDJSON, paginated |
-| `GET` | `/api/sessions/{id}/stream` | SSE live-tail of new records |
-| `GET` | `/api/sessions/{id}/state/{recordID}` | Replayed state at a given record |
+|---|---|---|
+| `GET` | `/` | Embedded inspector SPA |
+| `GET` | `/api/sessions` | Live project sessions and diagnostic metadata |
+| `GET` | `/api/sessions/{id}/records` | JSON with committed SDK batches, tails and any diagnostics |
+| `GET` | `/api/sessions/{id}/stream` | SSE of committed batches |
+| `GET` | `/api/sessions/{id}/state/{seq}` | Validated native context or historical inference request |
 
-## Flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--addr` | `127.0.0.1:0` | Bind address (loopback only; random port by default) |
-| `--no-open` | `false` | Print the URL without launching the browser |
+Listing, state reconstruction and streaming do not modify logs, attrs, locks or
+cache files. Server shutdown drains requests; each stream stops with its request.
 
 ## See Also
 
-- [Package design doc](../packages/inspector.md) — internals and contracts
-- [Session transcripts](../packages/session.md) — the JSONL format on disk
-- [Compaction](../concepts/compaction.md) — how context window compaction
-  interacts with transcript replay
+- [Inspector package](../packages/inspector.md) — contracts, tests and internals
+- [Sessions](../packages/session.md) — events, request blobs and lifecycle
+- [Compaction](../concepts/compaction.md) — active context versus full history

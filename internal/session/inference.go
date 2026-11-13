@@ -40,6 +40,24 @@ func (s *Session) StartInference(ctx context.Context, opts InferenceOptions) (*I
 	var handle *Inference
 	err := s.write(ctx, func(p *Projection) ([]Event, error) {
 		r := opts.Request
+		var accepted []Event
+		if opts.Purpose == PurposeTurn {
+			var err error
+			accepted, err = p.consumeInputEvents(r.Messages)
+			if err != nil {
+				return nil, err
+			}
+			if len(accepted) > 0 {
+				for i := range accepted {
+					accepted[i].Seq = uint64(len(p.data.Events) + i + 1)
+					accepted[i].Type, accepted[i].SchemaVersion = EventMessageAppend, 1
+				}
+				p, err = ApplyEventBatch(p, p.SessionID(), accepted, EventValidationContext{})
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
 		max := r.MaxTokens
 		model := opts.Model.ID
 		generation := &GenerationOptions{
@@ -63,7 +81,7 @@ func (s *Session) StartInference(ctx context.Context, opts InferenceOptions) (*I
 		now := time.Now()
 		through := uint64(len(p.data.Events))
 		handle = &Inference{owner: s, ref: EventRef{Seq: through + 1}, started: now, through: through}
-		return []Event{{Time: now.UnixMilli(), Payload: start}}, nil
+		return append(accepted, Event{Time: now.UnixMilli(), Payload: start}), nil
 	})
 	if err != nil {
 		return nil, err
@@ -107,7 +125,7 @@ func conversationRequest(p *Projection, extra []ai.Message) *ai.Request {
 			system.Use(core.Section{Name: name, Slot: core.Slot(section.Slot), Render: func() string { return section.Content }}, update.Cause)
 		}
 	}
-	messages := append(p.ActiveMessages(), extra...)
+	messages := append(p.consumedMessages(), extra...)
 	return &ai.Request{System: system.Prompt(), Messages: ai.Repair(messages), Tools: p.Tools()}
 }
 
@@ -208,6 +226,13 @@ func (s *Session) InferenceRequest(ctx context.Context, seq uint64) (*ai.Request
 		return nil, err
 	}
 	snapshot := s.Snapshot()
+	s.writer.mu.Lock()
+	validation := s.writer.state.validation
+	s.writer.mu.Unlock()
+	return reconstructInferenceRequest(s.ID(), snapshot, seq, s.requests(), validation)
+}
+
+func reconstructInferenceRequest(id string, snapshot Projection, seq uint64, blobs blobStore, validation EventValidationContext) (*ai.Request, error) {
 	event := snapshot.event(seq)
 	if event == nil || event.Type != EventInferenceStart {
 		return nil, fmt.Errorf("not an inference start")
@@ -215,16 +240,13 @@ func (s *Session) InferenceRequest(ctx context.Context, seq uint64) (*ai.Request
 	start := event.Payload.(*InferenceStartPayload)
 	var r *ai.Request
 	if start.Input.Conversation != nil {
-		s.writer.mu.Lock()
-		validation := s.writer.state.validation
-		s.writer.mu.Unlock()
-		prefix, err := ReplayEventBatches(s.ID(), [][]Event{snapshot.data.Events[:seq-1]}, validation)
+		prefix, err := ReplayEventBatches(id, [][]Event{snapshot.data.Events[:seq-1]}, validation)
 		if err != nil {
 			return nil, err
 		}
 		r = conversationRequest(prefix, start.Input.Conversation.Append)
 	} else {
-		blob, err := s.requests().Request(start.Input.Standalone)
+		blob, err := blobs.Request(start.Input.Standalone)
 		if err != nil {
 			return nil, err
 		}

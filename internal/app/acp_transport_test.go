@@ -14,6 +14,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -79,7 +80,9 @@ func TestACPWriteTimeout(t *testing.T) {
 			s := f.host.sessions[ids[0]]
 			record := s.runtimeBuildParams.OnEvent
 			s.runtimeBuildParams.OnEvent = func(event core.Event) {
-				record(event)
+				if record != nil {
+					record(event)
+				}
 				if end, ok := event.(core.TurnEnded); ok {
 					receipts <- end.Result.Finalization
 				}
@@ -119,7 +122,22 @@ func TestACPWriteTimeout(t *testing.T) {
 					t.Fatalf("native finalization = %v", err)
 				}
 			default:
-				t.Fatal("missing native finalization receipt")
+				if method != "session/request_permission" {
+					t.Fatal("missing native finalization receipt")
+				}
+				// A cancelled native permission admission may produce StopError,
+				// not TurnEnded. Assert its durable final gate and settled model
+				// inference instead of fabricating a normal terminal receipt.
+				projection := s.nativeSession.Session.Snapshot()
+				var finalized bool
+				for _, event := range projection.Events() {
+					if permission, ok := event.Payload.(*session.PermissionDecidePayload); ok && permission.CallID == "blocked" {
+						finalized = permission.Decision == "cancelled" && permission.Asked != nil
+					}
+				}
+				if !finalized || len(projection.Unfinished().Inferences) != 0 {
+					t.Fatalf("cancelled permission not natively finalized: gate=%t unfinished=%+v", finalized, projection.Unfinished())
+				}
 			}
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatal("blocked permission executed tool")

@@ -47,11 +47,14 @@ func Run(opts setting.RunOptions) (runErr error) {
 		if tasks != nil {
 			if err := tasks.StopServices(""); err != nil {
 				log.Logger().Sugar().Warnf("stop background services: %v", err)
+				runErr = errors.Join(runErr, err)
 			}
+			tasks.Cancel()
+			tasks.Join()
 		}
 		if m != nil {
 			m.resetRecap()
-			_ = m.services.Session.Close()
+			runErr = errors.Join(runErr, m.closeSessionRecording())
 		}
 	}()
 
@@ -226,7 +229,7 @@ func runPrint(userMessage, personaName string) error {
 		}
 	}
 	params.Provider, params.ModelID = llmProvider, modelID
-	res, err := agentpkg.RunOnce(ctx, params, core.UserMessage(userMessage, nil), func(text string) { fmt.Print(text) })
+	res, err := runRecordedPrint(ctx, params, core.UserMessage(userMessage, nil), func(text string) { fmt.Print(text) })
 	if err != nil {
 		return err
 	}
@@ -261,6 +264,7 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 	if setting.New(settings).AutoMemory() {
 		memory = setting.MemoryStoresFor(cwd)
 	}
+	policy := agentpkg.PermissionPolicy{Settings: settings, Session: headless, AutoMemory: memory}
 	return agentpkg.BuildParams{
 		AutoMemory:    memory,
 		ModelID:       settings.Model,
@@ -269,7 +273,8 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		Persona:       parts,
 		DisabledTools: setting.WithDefaultDisabledTools(settings.DisabledTools),
 		// Headless uses the same effective policy; prompts become refusals.
-		PermissionRules: (agentpkg.PermissionPolicy{Settings: settings, Session: headless, AutoMemory: memory}).Decide,
+		PermissionRules:  policy.Decide,
+		CanApproveByHook: policy.CanApproveByHook,
 	}, nil
 }
 
