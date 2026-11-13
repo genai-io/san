@@ -140,6 +140,63 @@ func TestCancelledPermissionRecordsWithLiveContext(t *testing.T) {
 	}
 }
 
+func TestJudgeCompletionUsesFinalPermission(t *testing.T) {
+	for _, mode := range []string{"allow", "rewrite-denied", "cancelled", "fatal", "without-recorder"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			boom := errors.New("judge accounting failed")
+			finishes, records := 0, 0
+			checker := &resolvedChecker{result: perm.Resolution{Decision: "allow", By: "judge"}}
+			checker.result.Finish = func(ctx context.Context, r perm.Resolution) error {
+				finishes++
+				wantDecision, wantBy := "allow", "judge"
+				if mode == "rewrite-denied" {
+					wantDecision, wantBy = "deny", "hook"
+				} else if mode == "cancelled" {
+					wantDecision = "cancelled"
+				}
+				if ctx.Err() != nil || r.CallID != "call" || r.Decision != wantDecision || r.By != wantBy {
+					t.Errorf("final resolution=%+v context error=%v", r, ctx.Err())
+				}
+				return nil
+			}
+			var hooks hook.Handler
+			if mode == "rewrite-denied" {
+				hooks = &fakeHookHandler{outcome: hook.HookOutcome{UpdatedInput: map[string]any{"invalid": make(chan int)}}}
+			}
+			if mode == "cancelled" {
+				cancel()
+			}
+			if mode == "fatal" {
+				checker.result = perm.Resolution{Err: boom}
+			}
+			var record []perm.RecordDecision
+			if mode != "without-recorder" {
+				record = append(record, func(ctx context.Context, r perm.Resolution) error {
+					records++
+					return r.Finish(ctx, r)
+				})
+			}
+			d, err := HookedPermission(hooks, checker, record...)(ctx, sdkagent.PreToolContext{
+				Call: ai.ToolCall{ID: "call", Name: "Bash", Input: `{}`},
+			})
+			if mode == "fatal" {
+				if !errors.Is(err, boom) || finishes != 0 || records != 0 {
+					t.Fatalf("err=%v finishes=%d records=%d", err, finishes, records)
+				}
+				return
+			}
+			if err != nil || finishes != 1 || d.Block != (mode == "rewrite-denied" || mode == "cancelled") {
+				t.Fatalf("decision=%+v err=%v finishes=%d", d, err, finishes)
+			}
+			if mode == "without-recorder" && records != 0 {
+				t.Fatal("unexpected recorder")
+			}
+		})
+	}
+}
+
 func TestPermissionRecordingFailsClosed(t *testing.T) {
 	boom := errors.New("record failed")
 	recorder := func(context.Context, perm.Resolution) error { return boom }

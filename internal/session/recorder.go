@@ -99,15 +99,30 @@ func (r *Recorder) InferenceAdmission(ctx context.Context, c sdkagent.InferenceA
 	return nil
 }
 
-// RecordPermission is the final gate's domain adapter. Policy ownership stays
-// outside the session; this only persists the already-resolved verdict.
-func (r *Recorder) RecordPermission(ctx context.Context, resolved perm.Resolution) error {
+func permissionPayload(resolved perm.Resolution) PermissionDecidePayload {
 	decision := PermissionDecidePayload{CallID: resolved.CallID, Decision: resolved.Decision,
 		By: resolved.By, Scope: resolved.Scope, Reason: resolved.Reason}
 	if resolved.Asked != nil {
 		decision.Asked = &Asked{Options: resolved.Asked.Options, Detail: resolved.Asked.Detail, At: resolved.Asked.At}
 	}
-	return r.Decide(ctx, decision)
+	return decision
+}
+
+// RecordPermission commits the final verdict, joining judge accounting when present.
+func (r *Recorder) RecordPermission(ctx context.Context, resolved perm.Resolution) error {
+	if resolved.Finish == nil {
+		return r.Decide(ctx, permissionPayload(resolved))
+	}
+	r.mu.Lock()
+	err := r.check(ctx)
+	r.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	err = resolved.Finish(ctx, resolved)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.remember(err)
 }
 
 // Decide records policy's real authority, scope and presented question. It does

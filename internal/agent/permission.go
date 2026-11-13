@@ -31,16 +31,15 @@ type PermDecisionResult struct {
 // PermDecisionFunc evaluates whether a tool call is allowed, denied, or needs prompting.
 type PermDecisionFunc func(name string, args map[string]any) PermDecisionResult
 
-// PermJudgeResult is the outcome of a gray-zone review. Allow=true auto-approves
-// the call; the zero value (Allow=false) escalates it to the human.
+// PermJudgeResult approves, escalates, or aborts on an accounting error.
 type PermJudgeResult struct {
 	Allow  bool
 	Reason string
+	Err    error
+	Finish perm.RecordDecision
 }
 
-// PermJudgeFunc judges a judgeable gray-zone tool call. It runs on the agent
-// goroutine and must fail closed (return the zero value) on any error, so a
-// broken or slow judge can never silently approve.
+// PermJudgeFunc reviews a gray-zone call; ordinary failures escalate.
 type PermJudgeFunc func(ctx context.Context, name string, input map[string]any, reason string) PermJudgeResult
 
 // PermHookApprovalFunc checks eligibility for a PreToolUse hook's approval;
@@ -146,6 +145,9 @@ func (pg *PermissionGate) PermissionFunc() perm.PermissionFunc {
 
 func (pg *PermissionGate) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
 	r := pg.Resolve(ctx, name, input, forcePrompt, reason)
+	if r.Err != nil {
+		return false, r.Err.Error()
+	}
 	return r.Decision == "allow", r.Reason
 }
 
@@ -177,8 +179,12 @@ func (pg *PermissionGate) Resolve(ctx context.Context, name string, input map[st
 	// Gray-zone review: offer a judgeable Prompt to the judge before the user.
 	// Allow short-circuits; anything else falls through to the human prompt.
 	if decision.Judgeable && pg.judgeFn != nil {
-		if rv := pg.judgeFn(ctx, name, input, decision.Reason); rv.Allow {
-			return perm.Resolution{Decision: "allow", By: "judge", Reason: rv.Reason}
+		rv := pg.judgeFn(ctx, name, input, decision.Reason)
+		if rv.Err != nil {
+			return perm.Resolution{Err: rv.Err}
+		}
+		if rv.Allow {
+			return perm.Resolution{Decision: "allow", By: "judge", Reason: rv.Reason, Finish: rv.Finish}
 		}
 	}
 

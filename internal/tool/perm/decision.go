@@ -13,6 +13,8 @@ type Resolution struct {
 	Scope    string
 	Reason   string
 	Asked    *Asked
+	Err      error
+	Finish   RecordDecision // commits this resolution with its judge inference
 }
 
 // Asked captures the immutable question actually shown to the user.

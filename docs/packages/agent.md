@@ -89,15 +89,12 @@ func Default() *Runtime
   does not prove persistence; inspect the recorder and honor turn finalization.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
-- `permission_policy.go` supplies `PermissionPolicy.Decide`, `Review` and
-  `CanApproveByHook` to native `BuildParams`. TUI and print share settings rules and
-  deny-aware auto-memory maintenance. TUI supplies a live judge/config snapshot;
-  the policy enforces safety guards, a 30-second review budget, fail-closed human
-  escalation, exact session grants and best-effort decision audits before return.
-  Cancelled reviews cannot cache late approvals. The session grant owner and audit
-  callback are bound at construction; callers stop that runtime before replacing
-  its session. Human prompts remain in `interaction`, rule precedence in `setting`,
-  and judge inference in `judge`; this is not full headless runtime assembly.
+- `permission_policy.go` supplies `PermissionPolicy.Decide`, `Judge` and
+  `CanApproveByHook`. It enforces safety guards, a 30-second judge budget, human
+  escalation and exact session grants. Optional `JudgeSnapshot.Recording` defers
+  grants and observations until the final gate commits the verdict with judge
+  accounting; persistence errors abort instead of prompting. The original session
+  owner stays fixed; default wiring remains legacy.
 - Runtime owns live native messages; the opened Session owns persistence and its
   writer lease. Stopping Runtime retains history. The Session remains open until
   it is explicitly closed; see [session](session.md).

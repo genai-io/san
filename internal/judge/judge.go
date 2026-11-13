@@ -1,12 +1,5 @@
-// Package judge runs a single-inference "permission judge": given a tool
-// call the static permission rules could not resolve (the gray zone), it
-// decides whether the action is safe enough to auto-approve or must be
-// escalated to the user.
-//
-// The judge holds no tools — it can only emit a verdict, so even a
-// prompt-injected judge can never take an action itself. It fails closed: any
-// error, timeout, or unparseable answer leaves the decision to the caller,
-// which escalates to the human.
+// Package judge reviews gray-zone tool calls without tools of its own.
+// Ordinary errors and invalid replies escalate to the user.
 package judge
 
 import (
@@ -43,6 +36,8 @@ type Request struct {
 	// context so a call that plainly advances it reads as expected, routine work.
 	// It never overrides the safety rubric; see permissionTask.
 	Mission string
+
+	Admission llm.CompletionAdmission
 }
 
 // Judge decides gray-zone tool calls with a single LLM inference.
@@ -106,7 +101,7 @@ const maxVerdictTokens = 512
 // Permission returns a verdict for a gray-zone tool call. A non-nil error means the
 // judge could not reach a decision; callers must fail closed (escalate).
 func (r *Judge) Permission(ctx context.Context, req Request) (Verdict, error) {
-	content, err := r.infer(ctx, permissionTask+"\n\n"+renderPermission(req))
+	content, err := r.infer(ctx, permissionTask+"\n\n"+renderPermission(req), req.Admission)
 	if err != nil {
 		return Verdict{}, err
 	}
@@ -116,7 +111,7 @@ func (r *Judge) Permission(ctx context.Context, req Request) (Verdict, error) {
 // infer runs one review inference — the shared system prompt plus the given
 // user message — and returns the raw response for the caller to parse. A nil
 // judge or provider yields an error so callers fail closed.
-func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
+func (r *Judge) infer(ctx context.Context, userMessage string, admission llm.CompletionAdmission) (string, error) {
 	if r == nil || r.provider == nil {
 		return "", fmt.Errorf("judge not configured")
 	}
@@ -132,6 +127,7 @@ func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 		Messages:       []core.Message{core.UserMessage(userMessage, nil)},
 		MaxTokens:      maxTokens,
 		ThinkingEffort: r.effort,
+		Admission:      admission,
 	})
 	if err != nil {
 		return "", err
@@ -151,7 +147,7 @@ type BashPromptReply struct {
 // already-approved command, or to skip it. A non-nil error (or a skip verdict)
 // leaves the prompt unanswered so the caller fails the command closed.
 func (r *Judge) BashPrompt(ctx context.Context, mission, command, prompt string) (BashPromptReply, error) {
-	content, err := r.infer(ctx, bashPromptTask+"\n\n"+renderBashPrompt(mission, command, prompt))
+	content, err := r.infer(ctx, bashPromptTask+"\n\n"+renderBashPrompt(mission, command, prompt), nil)
 	if err != nil {
 		return BashPromptReply{}, err
 	}
