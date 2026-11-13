@@ -109,13 +109,22 @@ type acpSession struct {
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
 	commands           *command.Registry
-	lastSentCommands   []command.Info // Last successful notification; skips unchanged command lists.
+	lastSentCommands   []command.Info // Deduplicates command catalog updates.
 	agents             *subagent.Registry
 	models             []llm.ModelInfo
 }
 
-func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (protocol.NewSessionResponse, error) {
-	return h.open(ctx, req, "")
+func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (acp.CreateSessionResult, error) {
+	response, err := h.open(ctx, req, "")
+	if err != nil {
+		return acp.CreateSessionResult{}, err
+	}
+	h.mu.Lock()
+	s := h.sessions[response.SessionID]
+	h.mu.Unlock()
+	catalog := s.commands.CustomCommands()
+	s.lastSentCommands = catalog
+	return acp.CreateSessionResult{NewSessionResponse: response, Commands: acpCommandCatalog(catalog)}, nil
 }
 
 func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resumeID string) (protocol.NewSessionResponse, error) {

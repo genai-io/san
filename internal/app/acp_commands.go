@@ -37,16 +37,20 @@ func (s *acpSession) commandPrompt(text string) (string, string, error) {
 	return "<command-name>" + c.FullName() + "</command-name>\n\n" + command.WrapInvocation(c.FullName(), body) + "\n\n" + text, s.runtimeBuildParams.Plugins.RootForPath(c.FilePath), nil
 }
 
+func acpCommandCatalog(catalog []command.Info) []protocol.AvailableCommand {
+	commands := make([]protocol.AvailableCommand, 0, len(catalog))
+	for _, c := range catalog {
+		commands = append(commands, protocol.AvailableCommand{Name: c.Name, Description: c.Description})
+	}
+	return commands
+}
+
 func (s *acpSession) sendCommands(turn *acp.Turn) error {
 	catalog := s.commands.CustomCommands()
 	if s.lastSentCommands != nil && slices.Equal(s.lastSentCommands, catalog) {
 		return nil
 	}
-	var commands []protocol.AvailableCommand
-	for _, c := range catalog {
-		commands = append(commands, protocol.AvailableCommand{Name: c.Name, Description: c.Description})
-	}
-	if err := turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAvailableCommandsUpdateVariant{SessionUpdate: "available_commands_update", AvailableCommands: commands}}}); err != nil {
+	if err := turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAvailableCommandsUpdateVariant{SessionUpdate: "available_commands_update", AvailableCommands: acpCommandCatalog(catalog)}}}); err != nil {
 		return err
 	}
 	s.lastSentCommands = catalog
