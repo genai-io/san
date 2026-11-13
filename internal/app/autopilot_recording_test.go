@@ -7,6 +7,7 @@ import (
 	"iter"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -139,6 +140,46 @@ func TestAutopilotRecordingMissionDraftOnly(t *testing.T) {
 	rebuilt, err := owner.InferenceRequest(t.Context(), events[1].Seq)
 	if err != nil || !reflect.DeepEqual(rebuilt, driver.Last()) {
 		t.Fatalf("native request rebuild: %+v %v", rebuilt, err)
+	}
+}
+
+func TestAutopilotMissionRefineCallerCancellation(t *testing.T) {
+	m, owner := autopilotRecordingModel(t)
+	started := make(chan struct{})
+	driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		close(started)
+		<-ctx.Done()
+		return aitest.Fails(ctx.Err())(ctx, req)
+	})
+	m.env.LLMProvider = &compactHTTPProvider{client: driver.Client()}
+	run, current := m.missionRefine("draft")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := run(ctx); done <- err }()
+	budget, stop := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stop()
+	select {
+	case <-started:
+	case <-budget.Done():
+		t.Fatal(budget.Err())
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("caller cancellation lost: %v", err)
+		}
+	case <-budget.Done():
+		t.Fatal("mission request ignored caller cancellation")
+	}
+	if valid, err := current(); !valid || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled editor result: %t %v", valid, err)
+	}
+	p := owner.Snapshot()
+	events := p.Events()
+	if len(events) != 3 || len(p.Messages()) != 0 || len(p.Unfinished().Inferences) != 0 || events[2].Payload.(*session.InferenceFinishPayload).Outcome != session.OutcomeCancelled {
+		t.Fatalf("cancelled mission accounting: %+v", events)
 	}
 }
 

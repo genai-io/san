@@ -350,7 +350,13 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 	payload, _ := json.Marshal(struct {
 		Draft string `json:"draft"`
 	}{Draft: draft})
-	return func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+			if err := ctx.Err(); err != nil {
+				r.cancel()
+				return "", err
+			}
+			stop := context.AfterFunc(ctx, r.cancel)
+			defer stop()
 			if provider == nil {
 				return "", fmt.Errorf("no model connected")
 			}
@@ -363,6 +369,9 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 				Messages:  []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
 				MaxTokens: 600, Admission: c.Admission(),
 			})
+			if err == nil {
+				err = r.ctx.Err()
+			}
 			if err != nil {
 				closeAutopilot(r.take())
 				return "", err
