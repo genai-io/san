@@ -6,10 +6,12 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -22,10 +24,102 @@ import (
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+type autopilotRequest struct {
+	owner  *session.Session
+	legacy *session.LegacySession
+	id     string
+	outbox <-chan core.Event
+	ctx    context.Context
+	cancel context.CancelFunc
+	err    error
+	mu     sync.Mutex
+	scope  *session.Completion
+	closed bool
+}
+
+type autopilotRequestKey struct{}
+
+func (m *model) newAutopilotRequest() *autopilotRequest {
+	m.cancelAutopilot()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	r := &autopilotRequest{owner: m.services.Recording, legacy: m.services.Session, id: m.sessionID(), outbox: m.AgentOutbox(), ctx: ctx, cancel: cancel}
+	if r.owner != nil && r.legacy != nil {
+		r.err = fmt.Errorf("autopilot cannot use legacy and typed recording together")
+	}
+	r.ctx = context.WithValue(ctx, autopilotRequestKey{}, r)
+	m.autopilotRequest = r
+	return r
+}
+
+func closeAutopilot(c *session.Completion) {
+	if err := c.Close(); err != nil {
+		log.Logger().Error("close autopilot recording", zap.Error(err))
+	}
+}
+
+func (r *autopilotRequest) close() {
+	if r == nil {
+		return
+	}
+	r.cancel()
+	r.mu.Lock()
+	r.closed = true
+	c := r.scope
+	r.scope = nil
+	r.mu.Unlock()
+	closeAutopilot(c)
+}
+
+func (r *autopilotRequest) attempt() (*session.Completion, error) {
+	if r == nil {
+		return nil, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil, context.Canceled
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	r.scope = r.owner.Completion(session.PurposeAutopilot)
+	return r.scope, nil
+}
+
+func (r *autopilotRequest) take() *session.Completion {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.scope
+	r.scope = nil
+	return c
+}
+
+func (m *model) currentAutopilot(r *autopilotRequest) bool {
+	if r == nil {
+		return true
+	}
+	r.mu.Lock()
+	closed := r.closed
+	r.mu.Unlock()
+	return !closed && m.autopilotRequest == r && r.owner == m.services.Recording && r.legacy == m.services.Session && r.id == m.sessionID() && r.outbox == m.AgentOutbox()
+}
+
+func (m *model) cancelAutopilot() {
+	if r := m.autopilotRequest; r != nil {
+		r.close()
+		m.autopilotRequest = nil
+	}
+	m.autopilotDeciding = false
+}
 
 // autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
 // judge, resolved config, and coherent workspace facts. All publishers run on
@@ -33,10 +127,11 @@ import (
 // rebuildAutopilotJudge swaps it as one unit so the judge and steer gates
 // can never skew.
 type autopilotRuntime struct {
-	judge    *judge.Judge
-	cfg      setting.AutoPilotSettings
-	cwd      string
-	underGit bool
+	sessionID string
+	judge     *judge.Judge
+	cfg       setting.AutoPilotSettings
+	cwd       string
+	underGit  bool
 }
 
 // rebuildAutopilotJudge builds the autopilot judge from the live session
@@ -54,7 +149,7 @@ func (m *model) rebuildAutopilotJudge() {
 	// Publish the judge and the config it resolved from as one snapshot so the
 	// agent goroutine (steer gates + judge) never sees a judge/config skew;
 	// Clone keeps the snapshot independent of later UI-goroutine edits.
-	m.autopilot.Store(&autopilotRuntime{judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // refreshAutopilotSnapshot republishes the runtime snapshot with the live config
@@ -68,7 +163,7 @@ func (m *model) refreshAutopilotSnapshot() {
 	if rt == nil {
 		return
 	}
-	m.autopilot.Store(&autopilotRuntime{judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // autopilotSteeringInstructions resolves the customizable "how it drives" portion of
@@ -249,25 +344,38 @@ Return ONLY the mission text — no preamble, no JSON, no quotes, no commentary.
 // missionRefine rewrites the mission draft into an improved mission. It runs on
 // the configured autopilot model (falling back to the session model). Wired into
 // the /autopilot panel via SetMissionRefiner.
-func (m *model) missionRefine(ctx context.Context, draft string) (string, error) {
+func (m *model) missionRefine(draft string) (func(context.Context) (string, error), func() (bool, error)) {
+	r := m.newAutopilotRequest()
 	provider, modelID := m.resolveJudgeModel(m.env.AutoPilot.Model)
-	if provider == nil {
-		return "", fmt.Errorf("no model connected")
-	}
-
 	payload, _ := json.Marshal(struct {
 		Draft string `json:"draft"`
 	}{Draft: draft})
-	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-		Model:        modelID,
-		SystemPrompt: missionRefinePrompt,
-		Messages:     []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
-		MaxTokens:    600,
-	})
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(resp.Content.Text()), nil
+	return func(context.Context) (string, error) {
+			if provider == nil {
+				return "", fmt.Errorf("no model connected")
+			}
+			c, err := r.attempt()
+			if err != nil {
+				return "", err
+			}
+			resp, err := llm.Complete(r.ctx, provider, llm.CompletionOptions{
+				Model: modelID, SystemPrompt: missionRefinePrompt,
+				Messages:  []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
+				MaxTokens: 600, Admission: c.Admission(),
+			})
+			if err != nil {
+				closeAutopilot(r.take())
+				return "", err
+			}
+			if err := r.take().Finish(context.Background()); err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(resp.Content.Text()), nil
+		}, func() (bool, error) {
+			valid, err := m.currentAutopilot(r), r.ctx.Err()
+			r.close()
+			return valid, err
+		}
 }
 
 // ── TurnEnd steer (#5): auto-continuation ───────────────────────────────
@@ -299,6 +407,7 @@ type autopilotTrigger struct {
 // autopilotDecisionMsg carries the copilot's continuation decision back to the
 // UI goroutine.
 type autopilotDecisionMsg struct {
+	request     *autopilotRequest
 	trigger     autopilotTrigger
 	cont        bool
 	done        bool
@@ -414,11 +523,12 @@ func (m *model) autopilotDecideCmd(trigger autopilotTrigger) tea.Cmd {
 		return nil // no mission and no conversation: nothing to infer an objective from
 	}
 	systemPrompt := m.autopilotSystemPrompt()
-	m.autopilotDeciding = true // shown on the mode indicator, not a transcript line
-	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		cont, done, instruction, err := autopilotDecideContinue(ctx, provider, modelID, systemPrompt, mission, transcript, trigger.situation)
-		return autopilotDecisionMsg{trigger: trigger, cont: cont, done: done, instruction: instruction, err: err}
-	})
+	r := m.newAutopilotRequest()
+	m.autopilotDeciding = true
+	return func() tea.Msg {
+		cont, done, instruction, err := autopilotDecideContinue(r.ctx, provider, modelID, systemPrompt, mission, transcript, trigger.situation)
+		return autopilotDecisionMsg{request: r, trigger: trigger, cont: cont, done: done, instruction: instruction, err: err}
+	}
 }
 
 // autopilotRecentTranscript renders recent turns and compact evidence for the
@@ -515,6 +625,17 @@ const (
 // the instruction into the composer and submits it (visible, budgeted); on done
 // it retires the mission; otherwise it hands back as its origin dictates.
 func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
+	if !m.currentAutopilot(msg.request) {
+		msg.request.close()
+		return nil
+	}
+	if msg.request != nil && msg.request.ctx.Err() != nil {
+		defer msg.request.close()
+		m.autopilotDeciding = false
+		m.pauseMission()
+		m.conv.AddNotice(autopilotHandback(msg.request.ctx.Err().Error()))
+		return nil
+	}
 	// A compaction is mid-apply. The verdict is still good — compaction rewrites
 	// the history, not the plan — but submitting now would race it, so hold the
 	// "thinking…" indicator and re-deliver shortly instead of dropping the run on
@@ -523,6 +644,7 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		msg.deferrals++
 		return tea.Tick(autopilotCompactDeferral, func(time.Time) tea.Msg { return msg })
 	}
+	defer msg.request.close()
 	m.autopilotDeciding = false // the "thinking…" indicator clears here
 	// A turn is already in flight — the running turn owns the lifecycle, so drop
 	// this stale decision silently.
@@ -541,7 +663,17 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		m.autopilotContinuations++
 		m.autopilotContinuing = true
 		m.userInput.Textarea.SetValue(msg.instruction) // visible: the copilot "types" it, then it reads back as the submitted message
-		return m.handleSubmit()
+		return m.handleSubmitScoped(msg.request.take())
+	}
+	if msg.err == nil && !msg.cont {
+		status := string(setting.MissionPaused)
+		if msg.done {
+			status = string(setting.MissionDone)
+		}
+		if err := msg.request.take().Finish(context.Background(), session.Event{Payload: session.SessionUpdatePayload{State: &session.StatePatch{AutopilotProgress: session.SetField(session.AutopilotProgress{CompletedTurns: m.autopilotContinuations, Status: status})}}}); err != nil {
+			m.conv.AddNotice(autopilotHandback(err.Error()))
+			return nil
+		}
 	}
 	if msg.err == nil && msg.done {
 		m.conv.AddNotice(autopilotMissionDone())
@@ -582,7 +714,10 @@ func (m *model) autopilotStandDown(trigger autopilotTrigger) tea.Cmd {
 
 // autopilotRecoverMsg fires after the recovery backoff, asking the copilot
 // whether the run can resume.
-type autopilotRecoverMsg struct{ failure string }
+type autopilotRecoverMsg struct {
+	failure string
+	request *autopilotRequest
+}
 
 const (
 	// autopilotMaxRecoveries bounds consecutive attempts to revive a run whose
@@ -605,6 +740,11 @@ const (
 // fatal error (bad credentials, a hard rejection) still lands as a handback
 // rather than a retry loop.
 func (m *model) autopilotRecoverCmd(err error) tea.Cmd {
+	var admissionErr *ai.AdmissionError
+	var recordingErr *llm.RecordingError
+	if errors.As(err, &admissionErr) || errors.As(err, &recordingErr) {
+		return nil
+	}
 	ar := m.env.AutoPilot
 	if err == nil || !m.autopilotEngaged() || !ar.Steers.TurnEnd || m.autopilotDeciding ||
 		ar.MissionState != setting.MissionRunning {
@@ -622,12 +762,22 @@ func (m *model) autopilotRecoverCmd(err error) tea.Cmd {
 	delay := time.Duration(m.autopilotRecoveries) * autopilotRecoveryBackoff
 	failure := kit.TruncateText(err.Error(), 200)
 	m.conv.AddNotice(autopilotHint(fmt.Sprintf("turn failed · retrying in %s", delay)))
-	return tea.Tick(delay, func(time.Time) tea.Msg { return autopilotRecoverMsg{failure: failure} })
+	r := m.newAutopilotRequest()
+	return tea.Tick(delay, func(time.Time) tea.Msg { return autopilotRecoverMsg{failure: failure, request: r} })
 }
 
 // handleAutopilotRecover asks the copilot to resume after a failed turn, unless
 // the session already moved on during the backoff.
 func (m *model) handleAutopilotRecover(msg autopilotRecoverMsg) tea.Cmd {
+	if !m.currentAutopilot(msg.request) {
+		msg.request.close()
+		return nil
+	}
+	defer msg.request.close()
+	if msg.request != nil && msg.request.ctx.Err() != nil {
+		m.conv.AddNotice(autopilotHandback(msg.request.ctx.Err().Error()))
+		return nil
+	}
 	if !m.autopilotEngaged() || m.conv.Stream.Active || m.conv.Compact.Active || m.autopilotDeciding {
 		return nil
 	}
@@ -780,6 +930,7 @@ type autopilotInference struct {
 	system    string
 	user      string
 	maxTokens int
+	recording *session.Completion
 }
 
 const (
@@ -807,16 +958,34 @@ func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse f
 	for attempt := 1; ; attempt++ {
 		var content string
 		var retryFloor time.Duration
+		r, _ := ctx.Value(autopilotRequestKey{}).(*autopilotRequest)
+		call.recording, err = r.attempt()
+		if err != nil {
+			return zero, err
+		}
 		if content, err = autopilotComplete(ctx, call); err == nil {
 			var out T
 			if out, err = parse(content); err == nil {
 				return out, nil
 			}
 		} else {
-			if !ai.IsRetryable(err) {
+			var recordingErr *llm.RecordingError
+			var admissionErr *ai.AdmissionError
+			if errors.As(err, &recordingErr) || errors.As(err, &admissionErr) || !ai.IsRetryable(err) {
+				if r != nil {
+					if closeErr := r.take().Close(); closeErr != nil {
+						err = errors.Join(err, &llm.RecordingError{Err: closeErr})
+					}
+				}
 				return zero, err
 			}
-			retryFloor = ai.RetryAfter(err) // a 429's Retry-After outranks our own spacing
+			retryFloor = ai.RetryAfter(err)
+		}
+		if closeErr := call.recording.Close(); closeErr != nil {
+			return zero, &llm.RecordingError{Err: closeErr}
+		}
+		if r != nil {
+			r.take()
 		}
 		if attempt >= autopilotSteerAttempts {
 			return zero, err
@@ -855,6 +1024,7 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 		SystemPrompt: call.system,
 		Messages:     []core.Message{core.UserMessage(call.user, nil)},
 		MaxTokens:    call.maxTokens,
+		Admission:    call.recording.Admission(),
 	})
 	if err != nil {
 		return "", err
@@ -862,21 +1032,12 @@ func autopilotComplete(ctx context.Context, call autopilotInference) (string, er
 	return strings.TrimSpace(resp.Content.Text()), nil
 }
 
-// autopilotAsync runs one steer inference off the UI goroutine on a shared 60s
-// budget — long enough for a slow model, short enough that a wedged one can't
-// hang the steer — and wraps its result in the message the UI routes back.
-func autopilotAsync(build func(ctx context.Context) tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		return build(ctx)
-	}
-}
-
 // ── Question steer (#4): auto-answer AskUserQuestion ─────────────────────
 
 // autopilotQuestionMsg carries the copilot's answer (or a defer) back to the UI.
 type autopilotQuestionMsg struct {
+	request *autopilotRequest
+	err     error
 	req     *tool.QuestionRequest
 	answers map[int][]string
 	answer  bool // false = defer to the human
@@ -910,13 +1071,19 @@ func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 	// is usually answerable from what was just being worked on.
 	transcript := autopilotRecentTranscript(m.conv.Messages, 2000)
 	systemPrompt := m.autopilotSystemPrompt()
-	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		answers, ok := autopilotAnswerQuestion(ctx, provider, modelID, systemPrompt, mission, transcript, req)
-		return autopilotQuestionMsg{req: req, answers: answers, answer: ok}
-	})
+	r := m.newAutopilotRequest()
+	return func() tea.Msg {
+		answers, ok, err := autopilotAnswerQuestionResult(r.ctx, provider, modelID, systemPrompt, mission, transcript, req)
+		return autopilotQuestionMsg{request: r, req: req, answers: answers, answer: ok, err: err}
+	}
 }
 
 func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, transcript string, req *tool.QuestionRequest) (map[int][]string, bool) {
+	a, ok, _ := autopilotAnswerQuestionResult(ctx, provider, modelID, systemPrompt, mission, transcript, req)
+	return a, ok
+}
+
+func autopilotAnswerQuestionResult(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, transcript string, req *tool.QuestionRequest) (map[int][]string, bool, error) {
 	// Number the questions explicitly rather than leaving the index implicit in
 	// array position: two questions that share option labels ("Yes"/"No") would
 	// otherwise let a mis-mapped answer pass verbatim-label validation.
@@ -946,7 +1113,7 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 		return r, err
 	})
 	if err != nil || out.Defer {
-		return nil, false
+		return nil, false, err
 	}
 	// Every question must get at least one valid (verbatim-matching) label, else
 	// defer — a partial or hallucinated answer is worse than asking the human.
@@ -954,14 +1121,14 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 	for i, q := range req.Questions {
 		chosen := validQuestionLabels(q, out.Answers[strconv.Itoa(i)])
 		if len(chosen) == 0 {
-			return nil, false
+			return nil, false, nil
 		}
 		if !q.MultiSelect {
 			chosen = chosen[:1]
 		}
 		answers[i] = chosen
 	}
-	return answers, true
+	return answers, true, nil
 }
 
 // validQuestionLabels keeps only labels that match a real option verbatim,
@@ -983,6 +1150,15 @@ func validQuestionLabels(q tool.Question, labels []string) []string {
 // the modal and replies through the same path the human uses; on a defer it
 // leaves the modal up for the human.
 func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
+	if !m.currentAutopilot(msg.request) {
+		msg.request.close()
+		return nil
+	}
+	defer msg.request.close()
+	if msg.request != nil && msg.request.ctx.Err() != nil {
+		m.conv.AddNotice(autopilotHandback(msg.request.ctx.Err().Error()))
+		return nil
+	}
 	// Drop if the question is no longer pending (human answered, or agent stopped
 	// and drained it).
 	pending := m.interactions.active
@@ -995,8 +1171,16 @@ func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
 	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.Question {
 		return nil
 	}
+	if msg.err != nil {
+		m.conv.AddNotice(autopilotHandback(msg.err.Error()))
+		return nil
+	}
 	if !msg.answer || len(msg.answers) == 0 {
 		m.conv.AddNotice(autopilotHandback("this question is yours"))
+		return nil
+	}
+	if err := msg.request.take().Finish(context.Background()); err != nil {
+		m.conv.AddNotice(autopilotHandback(err.Error()))
 		return nil
 	}
 	m.conv.Modal.Question.Hide()

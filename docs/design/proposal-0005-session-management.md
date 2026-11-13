@@ -223,6 +223,10 @@ send the tools only so the prompt cache matches; the tools never run.
 | `hook` (prompt hooks) | Standalone | — | `hook.finish` |
 | `autopilot` | Standalone | — | `session.update` (progress) or `message.append` (next instruction) |
 | `group` (interpreting `/group`) | Standalone | — | `session.update` (group hint) or `annotation.add` |
+| `recall` (memory selection) | Standalone | — | Nothing; selected contents later enter an admitted tool result |
+
+Draft rewrites and question/Bash prompt choices record accounting only; accepted
+content later follows the existing configuration or tool-result path.
 
 A new purpose declares its kind and result event before it ships; standalone
 is the default. Agents that run their own loop (subagents, self-learning

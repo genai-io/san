@@ -121,6 +121,7 @@ type model struct {
 	// autopilotDeciding is true while a turn-end/kick decision is in flight, so
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
+	autopilotRequest  *autopilotRequest
 	// autopilotOfferDismissed hides the start/resume offer after esc, until the
 	// next turn ends or the panel saves.
 	autopilotOfferDismissed bool

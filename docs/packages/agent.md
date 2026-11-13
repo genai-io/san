@@ -153,9 +153,10 @@ func Default() *Runtime
   gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
   recording still use synchronous observers, so long streams cannot fill an
   unconsumed outbox.
-- Sending: callers pass the `core.Message` built from the conv row so both
-  share one ID. `Send` appends to the agent's message queue (never blocks) and
-  reports a stopped run instead of silently dropping input.
+- Sending: `Send` accepts ordinary native messages. `SendInput` can carry a
+  completion; it checks the original writer and commits the prepared message
+  before native queue insertion. Rejected recorded results close without replay;
+  ordinary user input stays queued for retry.
 
 ## Admission boundaries
 

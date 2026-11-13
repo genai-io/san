@@ -47,10 +47,14 @@ every piece ready and tested while unwired, then switch once and delete the old 
      Child-session creation/provenance and default writer injection remain step 5.
    - Permission-judge calls join the final gate verdict with inference accounting;
      grants follow a committed allow. Ordinary judge failures still escalate.
+   - Autopilot closes parse attempts separately and commits prepared continuation
+     input at runtime acceptance; expired and superseded results cannot act.
+   - Group interpretation records the actual response, not a planned operation.
+     External membership changes are not rolled back on a later recording failure.
+   - Bash prompts, mission drafts and questions record accounting without invented
+     conversation output. Memory selection uses standalone purpose `recall`.
 
-   Remaining producers: autopilot (including Bash prompts and parse retries),
-   group interpretation including stale results, and memory-recall classification.
-   Default runtime wiring waits for all producers and steps 4–6.
+   Default runtime wiring waits for steps 4–6.
 
    | Runtime source | Typed events |
    | --- | --- |
@@ -64,7 +68,7 @@ every piece ready and tested while unwired, then switch once and delete the old 
    | title, todos, cwd, model, mode, group hint | `session.update` |
    | notices | `annotation.add` |
 
-   Non-turn model calls (judge, hook, autopilot, group, compaction) record a
+   Non-turn model calls (judge, hook, autopilot, group, compaction, recall) record a
    `standalone` request copy in `blobs/`; `btw`, `recap`, `suggest` record
    `conversation` calls with `append`.
 4. **Resume.** `Open` → projection → current settings and trust → runtime; report
@@ -82,7 +86,6 @@ every piece ready and tested while unwired, then switch once and delete the old 
 ## Open items
 
 - Event pages by offset need `Store.BatchesFrom` in sdk-go; until then each page reads the prefix.
-- Classify the model call in `internal/agent/memory_recall.go` before utility integration.
 - Retention age is not a setting yet; `Clean` takes it as an option.
 - Decide at step 6 whether `internal/session` keeps `Store`/`Session` or the typed
   pieces move to a leaner package; the rename in step 1 keeps either possible.

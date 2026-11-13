@@ -1,11 +1,18 @@
 package agent
 
-import "github.com/genai-io/san/internal/core"
+import (
+	"errors"
 
-// PendingInput marks user input for memory recall.
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
+)
+
+// PendingInput owns native input until delivery or discard.
 type PendingInput struct {
 	core.Message
-	FromUser bool
+	FromUser  bool
+	Recording *session.Completion
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
@@ -60,9 +67,14 @@ func (q *InputQueue) Finalize(receipt *core.TurnFinalization) bool {
 }
 
 // Discard retires pending input and its fence without granting continuation.
-func (q *InputQueue) Discard() {
+func (q *InputQueue) Discard() error {
+	var err error
+	for _, input := range q.items {
+		err = errors.Join(err, input.Recording.Close())
+	}
 	q.items = nil
 	q.cancelling = nil
+	return err
 }
 
 // ResetAdmission clears stop policy after the runtime has been stopped.
@@ -71,18 +83,28 @@ func (q *InputQueue) ResetAdmission() {
 	q.held = false
 }
 
-// Deliver sends FIFO, retaining rejected input. Retries rerun prepare and user recall.
-func (q *InputQueue) Deliver(send func(core.Message) error, prepare func(core.Message) core.Message, recall func(string)) error {
+// Deliver sends FIFO; rejected recorded results are discarded, user input is retained.
+func (q *InputQueue) Deliver(send func(PendingInput) error, prepare func(core.Message) core.Message, recall func(string) error) error {
 	if !q.CanDeliver(false) {
 		return nil
 	}
 	for len(q.items) > 0 {
 		next := &q.items[0]
+		var err error
 		if next.FromUser {
-			recall(next.Text())
+			err = recall(next.Text())
 		}
-		next.Message = prepare(next.Message)
-		if err := send(next.Message); err != nil {
+		if err == nil {
+			next.Message = prepare(next.Message)
+			err = send(*next)
+		}
+		if err != nil {
+			if next.Recording != nil {
+				if closeErr := next.Recording.Close(); closeErr != nil {
+					err = errors.Join(err, &llm.RecordingError{Err: closeErr})
+				}
+				q.items = q.items[1:]
+			}
 			return err
 		}
 		q.items = q.items[1:]

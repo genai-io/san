@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
@@ -34,15 +37,28 @@ Reply with JSON only: {"selected_memories": ["<store>/<file>", ...]}`
 // Recaller picks the memories a message needs with a side query, so the main
 // model has them in hand instead of spending a step reading them.
 type Recaller struct {
-	Provider llm.Provider
-	Model    string
-	Effort   string
+	Provider  llm.Provider
+	Model     string
+	Effort    string
+	Recording *session.Session
 }
 
 // Recall returns up to maxRecalled memories from stores relevant to query,
 // skipping those already surfaced. It returns nothing when there is nothing
-// to choose from, the selector fails, or ctx ends first.
-func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query string, surfaced map[string]bool) []system.Memory {
+// to choose from or the advisory selector fails. Recording failures are returned.
+func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query string, surfaced map[string]bool) ([]system.Memory, error) {
+	return r.recall(ctx, stores, query, surfaced, r.Recording.Completion(session.PurposeRecall))
+}
+
+func (r Recaller) recall(ctx context.Context, stores system.MemoryStores, query string, surfaced map[string]bool, recording *session.Completion) (memories []system.Memory, err error) {
+	defer func() {
+		if closeErr := recording.Close(); closeErr != nil {
+			err = errors.Join(err, &llm.RecordingError{Err: closeErr})
+		}
+		if err != nil {
+			memories = nil
+		}
+	}()
 	var candidates []system.Memory
 	for _, m := range stores.Memories() {
 		if !surfaced[m.Path] {
@@ -50,7 +66,7 @@ func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query 
 		}
 	}
 	if r.Provider == nil || len(candidates) == 0 || strings.TrimSpace(query) == "" {
-		return nil
+		return nil, nil
 	}
 	byID := map[string]system.Memory{}
 	var list strings.Builder
@@ -65,10 +81,18 @@ func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query 
 		SystemPrompt:   recallSystemPrompt,
 		Messages:       []core.Message{core.UserMessage("Memory files:\n"+list.String()+"\nMessage:\n"+query, nil)},
 		ThinkingEffort: r.Effort,
+		Admission:      recording.Admission(),
 	})
 	if err != nil {
 		log.Logger().Debug("memory recall failed", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.Error(err))
-		return nil
+		var recordingErr *llm.RecordingError
+		if errors.As(err, &recordingErr) {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if ctx.Err() != nil {
+		return nil, nil
 	}
 	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", resp.Content.Text()))
 	var reply struct {
@@ -76,7 +100,7 @@ func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query 
 	}
 	text := resp.Content.Text()
 	if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); i < 0 || j < i || json.Unmarshal([]byte(text[i:j+1]), &reply) != nil {
-		return nil
+		return nil, nil
 	}
 	var out []system.Memory
 	for _, id := range reply.Selected {
@@ -85,7 +109,7 @@ func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query 
 			delete(byID, id)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // LowestEffort is the model's lightest reasoning rung, "" when it has none: a
@@ -105,11 +129,15 @@ func memoryID(m system.Memory) string {
 // it rides the first tool result that completes after it lands, and a turn
 // that calls no tool goes without it.
 type Recall struct {
-	ready    chan struct{}
-	memories []system.Memory
-	taken    atomic.Bool
-	attached atomic.Pointer[[]string]
-	cancel   context.CancelFunc
+	mu        sync.Mutex
+	stopped   bool
+	err       error
+	recording *session.Completion
+	ready     chan struct{}
+	memories  []system.Memory
+	taken     atomic.Bool
+	attached  atomic.Pointer[[]string]
+	cancel    context.CancelFunc
 }
 
 // Start begins picking query's memories, nil when there is nothing to pick.
@@ -118,30 +146,42 @@ func (r Recaller) Start(stores system.MemoryStores, query string, surfaced map[s
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), recallDeadline)
-	p := &Recall{ready: make(chan struct{}), cancel: cancel}
+	p := &Recall{ready: make(chan struct{}), cancel: cancel, recording: r.Recording.Completion(session.PurposeRecall)}
 	go func() {
 		defer close(p.ready)
-		p.memories = r.Recall(ctx, stores, query, surfaced)
+		defer cancel()
+		memories, err := r.recall(ctx, stores, query, surfaced, p.recording)
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.memories, p.err = memories, errors.Join(p.err, err)
 	}()
 	return p
 }
 
 // Take returns the pick's reminder once, "" while it is still running.
-func (p *Recall) Take() string {
+func (p *Recall) Take() (string, error) {
 	if p == nil {
-		return ""
+		return "", nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err != nil {
+		return "", p.err
+	}
+	if p.stopped {
+		return "", nil
 	}
 	select {
 	case <-p.ready:
 	default:
-		return ""
+		return "", nil
 	}
 	if p.taken.Swap(true) {
-		return ""
+		return "", nil
 	}
 	text, paths := recallReminder(p.memories)
 	p.attached.Store(&paths)
-	return text
+	return text, nil
 }
 
 // Attached lists the memories the pick delivered, nil before it rode a result.
@@ -156,10 +196,18 @@ func (p *Recall) Attached() []string {
 }
 
 // Stop abandons a pick its turn no longer needs.
-func (p *Recall) Stop() {
-	if p != nil {
-		p.cancel()
+func (p *Recall) Stop() error {
+	if p == nil {
+		return nil
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopped = true
+	p.cancel()
+	if err := p.recording.Close(); err != nil {
+		p.err = errors.Join(p.err, &llm.RecordingError{Err: err})
+	}
+	return p.err
 }
 
 // WithRecall attaches the current pick, once it lands, to the next tool result
@@ -174,7 +222,10 @@ func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilte
 			}
 			out = r
 		}
-		text := current().Take()
+		text, err := current().Take()
+		if err != nil {
+			return out, err
+		}
 		if text == "" {
 			return out, nil
 		}

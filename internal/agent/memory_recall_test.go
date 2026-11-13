@@ -40,14 +40,17 @@ func TestRecall(t *testing.T) {
 	stores := system.MemoryStores{User: user, Project: project}
 
 	r := Recaller{Provider: recallProvider{`{"selected_memories": ["project/freeze.md", "user/tabs.md", "user/nope.md"]}`}}
-	got := r.Recall(context.Background(), stores, "can I merge?", map[string]bool{tabs: true})
+	got, err := r.Recall(context.Background(), stores, "can I merge?", map[string]bool{tabs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 || got[0].Path != freeze {
 		t.Fatalf("Recall = %+v, want only freeze.md", got)
 	}
 	if out, _ := recallReminder(got); !strings.Contains(out, "body of freeze.md") || !strings.Contains(out, `source="memory-recall"`) {
 		t.Errorf("reminder = %q", out)
 	}
-	if got := (Recaller{Provider: recallProvider{"no json"}}).Recall(context.Background(), stores, "q", nil); got != nil {
+	if got, err := (Recaller{Provider: recallProvider{"no json"}}).Recall(context.Background(), stores, "q", nil); got != nil || err != nil {
 		t.Errorf("an unparsable reply recalled %+v", got)
 	}
 }

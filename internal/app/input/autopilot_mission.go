@@ -21,21 +21,23 @@ import (
 // MissionRefiner rewrites a mission draft into an improved mission. The app
 // injects one backed by the session model; a nil refiner disables the ctrl+r
 // refine action (editing the mission still works).
-type MissionRefiner func(ctx context.Context, draft string) (string, error)
+type MissionRefiner func(draft string) (func(context.Context) (string, error), func() (bool, error))
 
 // MissionRefinedMsg carries a refined mission (or error) back to the panel; the
 // app routes it to AutopilotSelector.DeliverRefinedMission.
 type MissionRefinedMsg struct {
+	Current func() (bool, error)
 	Mission string
 	Err     error
 }
 
 type missionDialog struct {
-	input    textarea.Model // holds the whole mission; editing it IS the mission
-	spinner  spinner.Model  // only the ticker; frame drives the live dot
-	frame    int
-	refining bool
-	status   string // transient notice/error under the editor
+	input      textarea.Model // holds the whole mission; editing it IS the mission
+	spinner    spinner.Model  // only the ticker; frame drives the live dot
+	frame      int
+	refining   bool
+	status     string // transient notice/error under the editor
+	generation uint64
 }
 
 func newMissionDialog() missionDialog {
@@ -53,6 +55,7 @@ const missionEditorHeight = 6
 // resetMission seeds the editor from the persisted mission so re-opening the
 // panel shows the current mission, ready to edit.
 func (p *AutopilotSelector) resetMission() {
+	p.mission.generation++
 	p.mission.refining = false
 	p.mission.status = ""
 	p.mission.input.SetValue(strings.TrimSpace(p.snap.Mission))
@@ -112,12 +115,21 @@ func (p *AutopilotSelector) refineMission() tea.Cmd {
 	}
 	p.mission.status = ""
 	p.mission.refining = true
-	refine := p.refine
+	refine, ownerCurrent := p.refine(draft)
+	p.mission.generation++
+	generation := p.mission.generation
+	current := func() (bool, error) {
+		valid, err := true, error(nil)
+		if ownerCurrent != nil {
+			valid, err = ownerCurrent()
+		}
+		return valid && p.active && p.view == apMission && p.mission.generation == generation, err
+	}
 	request := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		refined, err := refine(ctx, draft)
-		return MissionRefinedMsg{Mission: refined, Err: err}
+		refined, err := refine(ctx)
+		return MissionRefinedMsg{Mission: refined, Err: err, Current: current}
 	}
 	return tea.Batch(p.mission.spinner.Tick, request)
 }
@@ -125,6 +137,20 @@ func (p *AutopilotSelector) refineMission() tea.Cmd {
 // commitMission persists the editor content as the mission directive.
 func (p *AutopilotSelector) commitMission() {
 	p.snap.Mission = strings.TrimSpace(p.mission.input.Value())
+}
+
+// DeliverRefinement fences the owner and editor generation before clearing its spinner.
+func (p *AutopilotSelector) DeliverRefinement(msg MissionRefinedMsg) {
+	if msg.Current != nil {
+		current, err := msg.Current()
+		if !current {
+			return
+		}
+		if err != nil {
+			msg.Err = err
+		}
+	}
+	p.DeliverRefinedMission(msg.Mission, msg.Err)
 }
 
 // DeliverRefinedMission is called by the app when a MissionRefinedMsg arrives:

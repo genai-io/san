@@ -146,8 +146,8 @@ type BashPromptReply struct {
 // BashPrompt decides what to type at an interactive prompt raised by an
 // already-approved command, or to skip it. A non-nil error (or a skip verdict)
 // leaves the prompt unanswered so the caller fails the command closed.
-func (r *Judge) BashPrompt(ctx context.Context, mission, command, prompt string) (BashPromptReply, error) {
-	content, err := r.infer(ctx, bashPromptTask+"\n\n"+renderBashPrompt(mission, command, prompt), nil)
+func (r *Judge) BashPrompt(ctx context.Context, mission, command, prompt string, admission llm.CompletionAdmission) (BashPromptReply, error) {
+	content, err := r.infer(ctx, bashPromptTask+"\n\n"+renderBashPrompt(mission, command, prompt), admission)
 	if err != nil {
 		return BashPromptReply{}, err
 	}

@@ -75,13 +75,16 @@ storage failures. These adapters and child-writer injection remain unwired.
 inference. Escalations finish accounting without inventing a denial; grants follow
 a successful commit. Admission and recording errors stop the gate.
 
+Autopilot records each parse attempt separately. `Runtime.SendInput` joins the
+accepted, prepared instruction with its inference finish; rejected scopes close
+without a message. Draft rewrites, questions, Bash prompts and `recall` record
+accounting only. Group interpretation records its actual returned response after
+the operation; a later write failure does not roll back external membership.
+
 Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
-under `transcripts/`. App `services.Recording` is an unwired composition point,
-mutually exclusive with a selected legacy writer; there is no dual write or
-conversion. Autopilot (including Bash prompts and parse retries), group interpretation
-and memory-recall classification still need producer integration.
-The [cutover design](../design/proposal-0005-session-management.md) tracks that,
-runtime resume and the final switch separately. Public API coverage is in
+under `transcripts/`. Typed producers remain opt-in, with no dual write or conversion.
+The [cutover design](../design/proposal-0005-session-management.md) tracks runtime
+resume, child provenance and the final switch. Public API coverage is in
 `typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.
 
 ## Current runtime (legacy)
