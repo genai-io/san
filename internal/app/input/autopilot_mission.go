@@ -79,6 +79,10 @@ func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	switch msg.String() {
 	case "esc", "enter":
+		// Leaving the editor ends this refinement's lifetime, even if its reply
+		// arrives after the mission view is opened again.
+		p.mission.generation++
+		p.mission.refining = false
 		p.commitMission()
 		p.mission.input.Blur()
 		p.view = apMenu

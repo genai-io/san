@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"iter"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
@@ -291,10 +295,75 @@ func TestAutopilotRecordingExpiredMissionResult(t *testing.T) {
 	if !valid || !errors.Is(err, context.Canceled) {
 		t.Fatalf("current timeout was silently dropped: %v %v", valid, err)
 	}
-	_, stale := m.missionRefine("old")
-	m.newAutopilotRequest()
-	if valid, _ := stale(); valid {
-		t.Fatal("old mission result accepted")
+	_, replaced := m.missionRefine("old")
+	successor := m.newAutopilotRequest()
+	if valid, err := replaced(); !valid || !errors.Is(err, context.Canceled) {
+		t.Fatalf("replaced request lost editor cleanup: %v %v", valid, err)
+	}
+	if !m.currentAutopilot(successor) {
+		t.Fatal("old result closed successor request")
+	}
+}
+
+func TestAutopilotMissionRefineCancellationDelivery(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(fmt.Sprint(replace), func(t *testing.T) {
+			m, _ := autopilotRecordingModel(t)
+			driver := aitest.New(aitest.Says("refined mission"))
+			m.env.LLMProvider = &compactHTTPProvider{client: driver.Client()}
+			p := &m.userInput.Autopilot
+			*p = input.NewAutopilotSelector()
+			p.SetConfigSource(func() setting.AutoPilotSettings {
+				return setting.AutoPilotSettings{Mission: "original draft"}
+			})
+			p.SetMissionRefiner(m.missionRefine)
+			p.Enter(120, 40)
+			// Suggest -> Recap -> Mission, then open the editor.
+			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+			cmd := p.HandleKeypress(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+			if cmd == nil || !p.Thinking() {
+				t.Fatal("mission refinement did not start")
+			}
+			batch := cmd().(tea.BatchMsg)
+			msg := batch[len(batch)-1]().(input.MissionRefinedMsg)
+			if msg.Err != nil || msg.Mission != "refined mission" {
+				t.Fatalf("refinement failed: %+v", msg)
+			}
+			// Cancel after provider success but before the UI accepts the result.
+			var successor *autopilotRequest
+			if replace {
+				successor = m.newAutopilotRequest()
+			} else {
+				m.cancelAutopilot()
+			}
+			m.dispatch(msg)
+			view := p.Render()
+			if p.Thinking() || !strings.Contains(view, "original draft") || !strings.Contains(view, context.Canceled.Error()) || strings.Contains(view, "refined mission") {
+				t.Fatal("cancelled result left spinner active or replaced draft")
+			}
+			if successor != nil && !m.currentAutopilot(successor) {
+				t.Fatal("cancelled editor result touched successor request")
+			}
+		})
+	}
+}
+
+func TestAutopilotMissionRefineOwnerFence(t *testing.T) {
+	for _, changed := range []string{"owner", "session"} {
+		t.Run(changed, func(t *testing.T) {
+			m, _ := autopilotRecordingModel(t)
+			_, current := m.missionRefine("original draft")
+			if changed == "owner" {
+				m.services.Recording = &session.Session{}
+			} else {
+				m.services.sessionID = "another-session"
+			}
+			if valid, _ := current(); valid {
+				t.Fatal("changed session accepted old editor result")
+			}
+		})
 	}
 }
 

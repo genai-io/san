@@ -3,9 +3,9 @@
 Moves the runtime from schema-4 transcripts to the typed `sessions/<sid>/` store
 ([PROP-0005](../../docs/design/proposal-0005-session-management.md)). The storage
 layer is done and unwired (events, projector, blobs, attrs, overview cache, trash,
-list, fork, clean). Name isolation and the public typed API are implemented and
-unwired; core recording and initial permission/hook/side-call adapters are ready.
-The remaining producers, runtime resume and final switch remain.
+list, fork, clean). Name isolation, the public typed API and producer adapters
+are implemented but not default-enabled. Runtime resume, child provenance and the
+final switch remain.
 
 ## Why a flag day
 

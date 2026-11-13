@@ -381,7 +381,9 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			}
 			return strings.TrimSpace(resp.Content.Text()), nil
 		}, func() (bool, error) {
-			valid, err := m.currentAutopilot(r), r.ctx.Err()
+			// The panel fences editor generations; cancellation still needs error delivery.
+			valid := r.owner == m.services.Recording && r.legacy == m.services.Session && r.id == m.sessionID()
+			err := r.ctx.Err()
 			r.close()
 			return valid, err
 		}
