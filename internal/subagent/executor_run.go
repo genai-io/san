@@ -28,14 +28,16 @@ type preparedRun struct {
 	toolStarted    bool
 	priorFailure   string
 	native         *session.LegacySession
-	history        []core.Message
-	checkpoint     *continuationState
-	req            tool.AgentExecRequest
-	cfg            *runConfig
-	cwdMu          sync.RWMutex // Tool adapters read cwd from parallel goroutines.
-	cwd            string
-	system         core.System
-	sideEffects    sync.Map // Each run owns handoffs, even when model call IDs repeat.
+	// The typed child owner stays nil until child-session cutover; never use the parent's writer.
+	recording   *session.Session
+	history     []core.Message
+	checkpoint  *continuationState
+	req         tool.AgentExecRequest
+	cfg         *runConfig
+	cwdMu       sync.RWMutex // Tool adapters read cwd from parallel goroutines.
+	cwd         string
+	system      core.System
+	sideEffects sync.Map // Each run owns handoffs, even when model call IDs repeat.
 	// Batch handoffs are owned by the turn goroutine. All sibling tools use
 	// the pre-batch cwd; the last cwd-changing call in request order wins,
 	// regardless of completion order.
@@ -226,7 +228,10 @@ func (e *Executor) logRunStart(run *preparedRun) {
 }
 
 func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (out *core.Result, runErr error) {
-	if run.native == nil {
+	if run.recording != nil && (run.native != nil || e.sessionStore != nil) {
+		return nil, fmt.Errorf("child execution cannot use legacy and typed recording together")
+	}
+	if run.native == nil && run.recording == nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

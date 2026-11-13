@@ -63,11 +63,19 @@ actual display, and discarded caches finish without an annotation. Suggestions
 never enter context or annotations. `completion_test.go`, the permission-resolution
 tests and app/hook/LLM recording tests exercise these boundaries.
 
+`Completion.Compaction` defers an accepted `context.compact` until core supplies the
+exact native summary ID/text, committing it with the inference finish in one batch.
+Manual requests fence the original writer, runtime and input snapshot; obsolete or
+canceled results finish without replacing context. Main and child summarizers
+record the final instructions/task-preserving summary, not raw model output.
+Compaction recording tests cover retries, partial usage, native queued input and
+storage failures. These adapters and child-writer injection remain unwired.
+
 Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
 under `transcripts/`. App `services.Recording` is an unwired composition point,
 mutually exclusive with a selected legacy writer; there is no dual write or
-automatic conversion. Compaction, judge verdicts, autopilot parse retries, group
-interpretation and memory-recall classification still need producer integration.
+automatic conversion. Judge verdicts, autopilot parse retries, group interpretation
+and memory-recall classification still need producer integration.
 The [cutover design](../design/proposal-0005-session-management.md) tracks that,
 runtime resume and the final switch separately. Public API coverage is in
 `typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.

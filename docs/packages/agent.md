@@ -38,6 +38,7 @@ func (s *Runtime) Messages() []core.Message
 func (s *Runtime) SetMessages(messages []core.Message)
 func (s *Runtime) Active() bool
 func (s *Runtime) Send(msg core.Message) error
+func (s *Runtime) Compact(result core.Compaction) (bool, error)
 func (s *Runtime) Outbox() <-chan core.Event
 func (s *Runtime) PermissionGate() *PermissionGate
 
@@ -142,6 +143,10 @@ func Default() *Runtime
   The app's `pendingCompaction` owns a cancellable request context and captures
   the opened recording owner, session ID and runtime outbox. Results carry that
   exact context identity and are checked before any UI, history or queue effect.
+  `CompactRequest.Recording` and `BuildParams.Recording` optionally bind typed
+  completion scopes. Core finishes the exact native summary before replacing context;
+  persistence failures stop dispatch instead of taking the ordinary provider-error
+  fail-open path. Manual results also fence the typed writer and captured native input.
   Runtime stop/reset/start, session replacement and user cancellation retire the
   request; Escape/empty Ctrl+C keep their existing overlay/draft precedence and
   hold queued input until explicit continuation. Automatic compaction remains

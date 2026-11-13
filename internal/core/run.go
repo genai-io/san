@@ -29,7 +29,7 @@ type agent struct {
 	id              string
 	system          System
 	tools           *Tools
-	compactFunc     func(ctx context.Context, msgs []Message) (string, error)
+	compactFunc     func(ctx context.Context, msgs []Message) (Compaction, error)
 	gate            Gate
 	resultFilter    ResultFilter
 	client          func(msgs []Message) (*ai.Client, error)
@@ -55,7 +55,8 @@ type agent struct {
 
 	// turnMu serializes publication, cancellation target and the idle latch.
 	// Never held across execution, event delivery, or consumer work.
-	turnMu sync.Mutex
+	turnMu        sync.Mutex
+	mailboxClosed bool // guarded by turnMu; fences compaction ownership
 
 	// turn remains published until ThinkAct unwinds, so repeated interrupts
 	// observe the same execution completion rather than an idle channel.
@@ -106,13 +107,47 @@ func (a *agent) Append(msg Message) {
 	}
 }
 
-func (a *agent) Run(ctx context.Context) error {
+func (a *agent) Compact(c Compaction) bool {
+	a.turnMu.Lock()
+	defer a.turnMu.Unlock()
+	if a.mailboxClosed {
+		return false
+	}
+	select {
+	case a.inbox <- Inbound{Signal: SigCompact, Compaction: &c}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *agent) Run(ctx context.Context) (runErr error) {
 	ctx, runDone := context.WithCancel(ctx)
 	defer runDone() // also releases receipts on SigStop or inbox closure
 	a.emit(ctx, AgentStarted{})
 
-	var runErr error
 	defer func() {
+		a.turnMu.Lock()
+		a.mailboxClosed = true
+		var discarded []Compaction
+	drain:
+		for {
+			select {
+			case in, ok := <-a.inbox:
+				if !ok {
+					break drain
+				}
+				if in.Compaction != nil {
+					discarded = append(discarded, *in.Compaction)
+				}
+			default:
+				break drain
+			}
+		}
+		a.turnMu.Unlock()
+		for _, c := range discarded {
+			runErr = errors.Join(runErr, c.close())
+		}
 		// StopEvent must be delivered even on context cancellation,
 		// so use emitFinal which bypasses ctx.Done().
 		a.emitFinal(AgentStopped{Err: runErr})
@@ -169,7 +204,8 @@ func (a *agent) Run(ctx context.Context) error {
 				// was cancelled by Cancel. Just bail back to
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
 				// left in the conversation.
-				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
+				var persistenceErr *compactionError
+				if ctx.Err() == nil && errors.Is(err, context.Canceled) && !errors.As(err, &persistenceErr) {
 					glog.Logger().Sugar().Debugf("agent.Run: turn interrupted by user, resuming wait")
 					// The next fresh input clears the latch under turnMu.
 					break
@@ -256,8 +292,10 @@ func (a *agent) waitForInput(ctx context.Context) error {
 			if !ok || in.Signal == SigStop {
 				return errStopped
 			}
-			if in.Signal == SigCompact {
-				a.applyCompaction(ctx, in.Summary, len(a.Messages()), "manual")
+			if in.Signal == SigCompact && in.Compaction != nil {
+				if err := a.applyCompaction(ctx, *in.Compaction, len(a.Messages()), "manual"); err != nil {
+					return err
+				}
 			}
 		case <-ctx.Done():
 			return ctx.Err()

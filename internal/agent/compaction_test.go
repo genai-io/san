@@ -43,7 +43,7 @@ func TestCompactRequestHookAndSummary(t *testing.T) {
 		}
 		return hook.HookOutput{HookSpecificOutput: &hook.HookSpecificOutput{AdditionalContext: "hook guidance"}}, nil
 	}})
-	got := (CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: compactMessages(), SummaryFocus: "focus", HookEngine: engine, Trigger: "manual"}).Run()
+	got := (CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: compactMessages(), SummaryFocus: "focus", PreCompact: engine.Prepare(hook.PreCompact, hook.HookInput{Trigger: "manual", CustomInstructions: "focus"}), Trigger: "manual"}).Run()
 	if got.Err != nil || !strings.HasPrefix(got.Summary, "concise summary") || got.OriginalCount != core.MinMessagesToCompact || got.Trigger != "manual" || calls != 1 {
 		t.Fatalf("result: %+v, hooks=%d", got, calls)
 	}
@@ -65,11 +65,33 @@ func TestCompactRequestHookFailureIsAdvisory(t *testing.T) {
 				allow := false
 				return hook.HookOutput{Continue: &allow, StopReason: "advisory"}, nil
 			}})
-			result := (CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: compactMessages(), HookEngine: engine, Trigger: "manual"}).Run()
+			result := (CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: compactMessages(), PreCompact: engine.Prepare(hook.PreCompact, hook.HookInput{Trigger: "manual"}), Trigger: "manual"}).Run()
 			if result.Err != nil || driver.Calls() != 1 {
 				t.Fatalf("result=%+v, calls=%d", result, driver.Calls())
 			}
 		})
+	}
+}
+
+func TestCompactRequestCapturesHookAndStopsOnRecordingFailure(t *testing.T) {
+	driver := aitest.New(aitest.Says("must not dispatch"))
+	engine := hook.NewEngine(setting.NewData(), "original", t.TempDir(), "")
+	defer engine.Shutdown()
+	engine.AddSessionFunctionHook(hook.PreCompact, "", hook.FunctionHook{Callback: func(_ context.Context, input hook.HookInput) (hook.HookOutput, error) {
+		if input.SessionID != "original" {
+			t.Error("queued hook retargeted replacement session")
+		}
+		return hook.HookOutput{}, nil
+	}})
+	boom := errors.New("hook recording failed")
+	original, replacement := 0, 0
+	engine.SetCompletionRecorder(func(context.Context, hook.HookFiredAudit) error { original++; return boom })
+	req := CompactRequest{Ctx: t.Context(), Client: llm.NewClient(runOnceProvider{driver}, "fake", 0), Messages: compactMessages(), PreCompact: engine.Prepare(hook.PreCompact, hook.HookInput{Trigger: "manual"})}
+	engine.SetSession("replacement", "")
+	engine.SetCompletionRecorder(func(context.Context, hook.HookFiredAudit) error { replacement++; return nil })
+	result := req.Run()
+	if !errors.Is(result.Err, boom) || driver.Calls() != 0 || original != 1 || replacement != 0 {
+		t.Fatalf("result=%+v model calls=%d original=%d replacement=%d", result, driver.Calls(), original, replacement)
 	}
 }
 

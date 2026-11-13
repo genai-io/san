@@ -51,6 +51,10 @@ type Agent interface {
 	// goroutine; under Run it also wakes an idle agent.
 	Append(msg Message)
 
+	// Compact admits a precomputed result without blocking. On false the caller
+	// retains ownership; on true Run finishes or closes it, including on shutdown.
+	Compact(Compaction) bool
+
 	// Pending reports input not yet incorporated into the conversation.
 	Pending() int
 	// SetMaxSteps changes the next exchange budget; call only between exchanges.
@@ -172,14 +176,14 @@ type Config struct {
 	// end notifications may already be visible. Inputs and replay are not covered.
 	// Nil admission callbacks preserve the SDK's default path and costs.
 	OutputAdmission         func(context.Context, sdkagent.OutputAdmission) error
-	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
-	MaxSteps                int                                                       // max LLM inference steps per turn, 0 = unlimited
-	MaxContinuations        int                                                       // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
-	MaxTurnRetries          int                                                       // max retries per inference step on transient stream errors, 0 = use default (2)
-	StreamFirstChunkTimeout time.Duration                                             // abort if no first chunk arrives within this long, 0 = use default (5m)
-	StreamIdleTimeout       time.Duration                                             // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
-	InboxBuf                int                                                       // inbox channel buffer size, default 16
-	OutboxBuf               int                                                       // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
+	CompactFunc             func(ctx context.Context, msgs []Message) (Compaction, error) // optional: summarize messages for compaction
+	MaxSteps                int                                                           // max LLM inference steps per turn, 0 = unlimited
+	MaxContinuations        int                                                           // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
+	MaxTurnRetries          int                                                           // max retries per inference step on transient stream errors, 0 = use default (2)
+	StreamFirstChunkTimeout time.Duration                                                 // abort if no first chunk arrives within this long, 0 = use default (5m)
+	StreamIdleTimeout       time.Duration                                                 // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
+	InboxBuf                int                                                           // inbox channel buffer size, default 16
+	OutboxBuf               int                                                           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
 	// OnEvent observes lifecycle events synchronously, even when OutboxBuf is -1.
 	OnEvent func(Event)
 }

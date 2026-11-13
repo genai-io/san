@@ -184,9 +184,9 @@ func TestThinkActCompactsOnProviderContextOverflow(t *testing.T) {
 		Client: testClient(llm),
 		System: NewSystem(),
 		Tools:  NewTools(),
-		CompactFunc: func(context.Context, []Message) (string, error) {
+		CompactFunc: func(context.Context, []Message) (Compaction, error) {
 			compacted++
-			return "the story so far", nil
+			return Compaction{Summary: "the story so far"}, nil
 		},
 	}).(*agent)
 	go func() {

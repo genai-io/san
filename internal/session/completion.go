@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -135,6 +136,19 @@ func (c *Completion) Finish(ctx context.Context, results ...Event) error {
 	}
 	c.closed = true
 	return nil
+}
+
+// Compaction defers the context boundary until core supplies the accepted native
+// summary, including its final instructions, formatting and stable message ID.
+func (c *Completion) Compaction(summary string) core.Compaction {
+	result := core.Compaction{Summary: summary}
+	if c != nil {
+		result.Finish = func(ctx context.Context, message core.Message) error {
+			return c.Finish(ctx, Event{Payload: ContextCompactPayload{Summary: message}})
+		}
+		result.Close = c.Close
+	}
+	return result
 }
 
 // FinishHook joins the interpreted hook outcome with its model-call finish.

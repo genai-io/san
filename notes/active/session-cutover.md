@@ -40,10 +40,15 @@ every piece ready and tested while unwired, then switch once and delete the old 
    - BTW, recap and suggestion scopes capture the original session. Recap caches
      publish only at display; discarded or retired work finishes without an
      annotation. Suggestions record accounting, never suggested context.
+   - Manual, automatic and subagent compaction adapters retain per-attempt usage
+     and atomically join the exact accepted summary with its inference finish.
+     Deferred native acceptance precedes context replacement; stale/canceled
+     requests and queued shutdown work discard against the original writer.
+     Child-session creation/provenance and default writer injection remain step 5.
 
-   Remaining producers: manual/automatic/subagent compaction, judge inference
-   joined to its verdict, autopilot including parse retries, group interpretation
-   including stale results, and classification of the dedicated memory-recall call.
+   Remaining producers: judge inference joined to its verdict, autopilot including
+   parse retries, group interpretation including stale results, and classification
+   of the dedicated memory-recall call.
    Default runtime wiring waits for all producers and steps 4–6.
 
    | Runtime source | Typed events |

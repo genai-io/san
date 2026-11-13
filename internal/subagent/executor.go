@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -657,7 +658,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		System:        sys,
 		Tools:         tools,
 		Gate:          gate,
-		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt),
+		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt, run.recording),
 		MaxSteps:      rc.maxSteps,
 		OutboxBuf:     -1,
 		OnEvent:       onEvent,
@@ -702,18 +703,21 @@ func fileReadToolGuidance(schemas []core.ToolSchema, mode PermissionMode) string
 // long subagent runs survive context-window pressure instead of dying on
 // prompt-too-long. The task is re-attached verbatim after the summary: it is
 // the one message a one-shot worker cannot afford to have paraphrased.
-func subagentCompactFunc(client *llm.Client, task string) func(context.Context, []core.Message) (string, error) {
-	return func(ctx context.Context, msgs []core.Message) (string, error) {
+func subagentCompactFunc(client *llm.Client, task string, owner *session.Session) func(context.Context, []core.Message) (core.Compaction, error) {
+	return func(ctx context.Context, msgs []core.Message) (core.Compaction, error) {
+		scope := owner.Completion(session.PurposeCompaction)
+		result := scope.Compaction("")
 		text := core.BuildCompactionText(msgs)
-		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens)
+		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens, scope.Admission())
 		if err != nil {
-			return "", err
+			return result, err
 		}
 		summary := strings.TrimSpace(resp.Content.Text())
 		if summary == "" {
-			return "", fmt.Errorf("compaction produced empty summary")
+			return result, fmt.Errorf("compaction produced empty summary")
 		}
-		return withOriginalTask(summary, task), nil
+		result.Summary = withOriginalTask(summary, task)
+		return result, nil
 	}
 }
 

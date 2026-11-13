@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -16,6 +17,31 @@ import (
 // and again when a provider calls the prompt too long, and the person asks
 // through the inbox with /compact. All three collapse to the same one message,
 // announced the same way.
+
+// Compaction is a deferred summary. Finish commits the exact native message
+// before publication and resolves the accepted scope on success. Close accounts
+// for discarded results (or unrecorded results without Finish); it is not called
+// after successful Finish. Nil callbacks allow unrecorded use. Producers must
+// make Close idempotent and must not commit when Finish returns an error.
+type Compaction struct {
+	Summary string
+	Finish  func(context.Context, Message) error
+	Close   func() error
+}
+
+func (c Compaction) close() error {
+	if c.Close != nil {
+		return c.Close()
+	}
+	return nil
+}
+
+// compactionError prevents persistence failures wrapping cancellation from being
+// mistaken for a turn-only interrupt.
+type compactionError struct{ err error }
+
+func (e *compactionError) Error() string { return e.err.Error() }
+func (e *compactionError) Unwrap() error { return e.err }
 
 // MinMessagesToCompact is the shortest conversation worth shortening: an
 // opening turn and its reply. Summarising fewer costs a model call to make the
@@ -51,7 +77,10 @@ func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) 
 		return nil, nil
 	}
 	shorter, err := a.shorten(ctx, c.Messages, "auto")
-	if err != nil || shorter == nil {
+	if err != nil {
+		return nil, err
+	}
+	if shorter == nil {
 		// Nothing left to shorten: give up as the loop would, on the model's
 		// own failure rather than on anything invented here.
 		return nil, nil
@@ -68,39 +97,80 @@ func (a *agent) shorten(ctx context.Context, msgs []Message, trigger string) ([]
 	sdkagent.Compacting(ctx)
 	a.measured.reset()
 
-	summary, err := a.compactFunc(ctx, msgs)
-	if err != nil || strings.TrimSpace(summary) == "" {
+	c, err := a.compactFunc(ctx, msgs)
+	if err != nil {
+		closeErr := c.close()
+		var admission *ai.AdmissionError
+		if closeErr != nil {
+			return nil, &compactionError{errors.Join(err, closeErr)}
+		}
+		if errors.As(err, &admission) {
+			return nil, &compactionError{err}
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, nil // ordinary provider failures retain the original context
+	}
+	return a.acceptCompaction(ctx, c, len(msgs), trigger)
+}
+
+func (a *agent) applyCompaction(ctx context.Context, c Compaction, originalCount int, trigger string) error {
+	msgs, err := a.acceptCompaction(ctx, c, originalCount, trigger)
+	if err == nil && msgs != nil {
+		a.SetMessages(msgs)
+	}
+	return err
+}
+
+// acceptCompaction resolves the scope before publishing either successful event.
+func (a *agent) acceptCompaction(ctx context.Context, c Compaction, originalCount int, trigger string) ([]Message, error) {
+	var msg Message
+	committed := false
+	err := ctx.Err()
+	if err == nil && strings.TrimSpace(c.Summary) != "" {
+		msg = UserMessage(FormatCompactSummary(c.Summary), nil)
+		msg.ID = NewMessageID()
+		if c.Finish != nil {
+			if finishErr := c.Finish(ctx, msg); finishErr != nil {
+				err = &compactionError{finishErr}
+			} else {
+				committed = true
+			}
+		}
+	}
+	// Successful Finish is terminal: a redundant cleanup failure must never
+	// roll back acceptance after the durable boundary has been committed.
+	if !committed {
+		if closeErr := c.close(); closeErr != nil {
+			err = &compactionError{errors.Join(err, closeErr)}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(c.Summary) == "" {
 		return nil, nil
 	}
-	return []Message{a.summaryMessage(ctx, summary, len(msgs), trigger)}, nil
-}
-
-// applyCompaction replaces the conversation with a summary in place. This is
-// the manual /compact path; the automatic one hands its replacement to the loop
-// instead, which announces it at the boundary that made it.
-func (a *agent) applyCompaction(ctx context.Context, summary string, originalCount int, trigger string) {
-	if strings.TrimSpace(summary) == "" {
-		return
+	// A successful Finish crosses the acceptance boundary. Cancellation after
+	// that point must not leave the committed projection ahead of native history
+	// or suppress its boundary events. Canceled delivery uses the existing
+	// bounded critical-event path rather than an uncancellable mailbox send.
+	publish := func(event Event) {
+		if ctx.Err() != nil {
+			a.emitFinal(event)
+		} else {
+			a.emit(ctx, event)
+		}
 	}
-	a.SetMessages([]Message{a.summaryMessage(ctx, summary, originalCount, trigger)})
-}
-
-// summaryMessage builds the message a compaction collapses to and announces
-// it, so both paths record identically: a stable ID, and a Compacted carrying
-// it as the boundary replay truncates at.
-func (a *agent) summaryMessage(ctx context.Context, summary string, originalCount int, trigger string) Message {
-	msg := UserMessage(FormatCompactSummary(summary), nil)
-	msg.ID = NewMessageID()
-	// Announced as an append before the boundary that truncates at it, so
-	// replay can resolve the ID the next inference references.
-	a.emit(ctx, sdkagent.MessageAdded{Message: msg})
-	a.emit(ctx, Compacted{
-		Summary:          summary,
+	publish(sdkagent.MessageAdded{Message: msg})
+	publish(Compacted{
+		Summary:          c.Summary,
 		OriginalCount:    originalCount,
 		SummaryMessageID: msg.ID,
 		Trigger:          trigger,
 	})
-	return msg
+	return []Message{msg}, nil
 }
 
 // promptMeasure anchors the prompt size on the provider's own count. The SDK's
