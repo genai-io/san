@@ -5,8 +5,8 @@
 - **Be accurate, not argumentative.** Distinguish factual errors from user choices.
   Briefly flag material concerns, then respect explicit decisions, even with known
   issues.
-- **Don't reopen settled choices.** Proceed within the authorized scope; revisit
-  objections or approvals only if new evidence materially changes risk or scope.
+- **Don't reopen settled choices.** Revisit objections or confirmations only when
+  material new information emerges.
 
 ## Work toward a verifiable goal
 

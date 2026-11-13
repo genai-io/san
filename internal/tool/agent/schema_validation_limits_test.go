@@ -11,7 +11,7 @@ func TestAgentSchemaKeepsValidationAndDenialGuidance(t *testing.T) {
 		"Delegate when the user requests it",
 		"only task-local context", "Include the validation plan",
 		"Do not retry permission-denied commands", "failed tool and reason",
-		"Check uncertain side effects before retrying failed work", "within the authorized scope",
+		"Check uncertain side effects before retrying failed work",
 	} {
 		if !strings.Contains(description, phrase) {
 			t.Errorf("description missing %q", phrase)

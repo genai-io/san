@@ -72,12 +72,10 @@ See [`packages/core.md`](../packages/core.md) for the `Section` and
 
 ### User decisions
 
-Default guidance and the bundled `software-engineer` persona distinguish facts
-from user choices: briefly flag concerns, then follow explicit decisions within
-their scope, including accepted known issues. Revisit only for materially new
-risk or scope. Users may change workflow defaults, not safety or permissions;
-execution failures are not permission denials. Compaction retains scoped
-approvals and marks superseded blockers.
+Default guidance and the bundled `software-engineer` persona briefly flag material
+concerns, then respect explicit decisions, including accepted known issues. Reopen
+settled choices only for material new information. Compaction retains approvals
+and marks superseded blockers.
 
 ## Reminders
 

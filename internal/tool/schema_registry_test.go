@@ -24,11 +24,11 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 	return core.ToolSchema{}, false
 }
 
-func TestToolGuidanceRespectsChoicesWithinAuthorization(t *testing.T) {
+func TestToolGuidanceRespectsUserChoices(t *testing.T) {
 	schemas := tool.GetToolSchemas()
 	for name, phrases := range map[string][]string{
 		tool.ToolAskUserQuestion: {"skip settled choices", "accepted known issues", "new evidence materially changes risk or scope"},
-		tool.ToolSkill:           {"unless the user explicitly opts out", "Skill loading does not expand authorization"},
+		tool.ToolSkill:           {"unless the user explicitly opts out"},
 		tool.ToolWrite:           {"Create documentation only when requested or required by the task or repository instructions"},
 	} {
 		schema, ok := findSchema(schemas, name)

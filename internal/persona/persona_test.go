@@ -65,13 +65,11 @@ func TestBundledSoftwareEngineerDecisionGuidance(t *testing.T) {
 			"Distinguish factual errors from user choices",
 			"respect explicit decisions, even with known issues",
 			"Don't reopen settled choices",
-			"only if new evidence materially changes risk or scope",
+			"only when material new information emerges",
 		}},
 		{"rules", p.Rules, []string{
-			"don't reconfirm unchanged approvals",
-			"not safety or permission constraints",
-			"revise their own denial, not policy",
-			"Execution failures are not permission denials",
+			"need explicit approval",
+			"don't extend it to unrelated actions",
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

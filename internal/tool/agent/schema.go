@@ -28,7 +28,7 @@ func agentSchema(agentCatalog string) core.ToolSchema {
 	}
 	sb.WriteString("Brief the agent with only task-local context: the goal, relevant paths, constraints, and known findings. Include the validation plan in the brief. Do not retry permission-denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
-	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work within the authorized scope.")
+	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
