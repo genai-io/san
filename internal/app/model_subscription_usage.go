@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -11,12 +12,31 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
 )
 
-const usageRefreshInterval = 5 * time.Minute
+func usageRefreshInterval(usage auth.CodexUsage) time.Duration {
+	var used float64
+	for _, window := range usage.Windows {
+		if window.Duration <= 0 || math.IsNaN(window.UsedPercent) || window.UsedPercent < 0 || window.UsedPercent > 100 {
+			continue
+		}
+		used = max(used, window.UsedPercent)
+	}
+	switch {
+	case used >= 99:
+		return 5 * time.Second
+	case used >= 90:
+		return 15 * time.Second
+	case used >= 75:
+		return 30 * time.Second
+	default:
+		return time.Minute
+	}
+}
 
 type subscriptionUsageState struct {
 	active     bool
 	generation uint64
 	cancel     context.CancelFunc
+	next       time.Time
 	usage      auth.CodexUsage
 	checked    bool
 	failed     bool
@@ -32,22 +52,22 @@ type subscriptionUsageTick struct{ generation uint64 }
 // subscription share the account snapshot. Leaving it invalidates all work.
 func (m *model) syncSubscriptionUsage() tea.Cmd {
 	active := llm.ChatGPTSubscription(m.env.CurrentModel)
-	if active == m.subscriptionUsage.active {
-		return nil
+	if active != m.subscriptionUsage.active {
+		generation := m.subscriptionUsage.generation + 1
+		if m.subscriptionUsage.cancel != nil {
+			m.subscriptionUsage.cancel()
+		}
+		m.subscriptionUsage = subscriptionUsageState{active: active, generation: generation}
 	}
-	generation := m.subscriptionUsage.generation + 1
-	if m.subscriptionUsage.cancel != nil {
-		m.subscriptionUsage.cancel()
-	}
-	m.subscriptionUsage = subscriptionUsageState{active: active, generation: generation}
 	if !active {
 		return nil
 	}
-	return m.refreshSubscriptionUsage()
+	return m.refreshSubscriptionUsage(time.Now())
 }
 
-func (m *model) refreshSubscriptionUsage() tea.Cmd {
-	if m.subscriptionUsage.cancel != nil {
+func (m *model) refreshSubscriptionUsage(now time.Time) tea.Cmd {
+	if !m.subscriptionUsage.active || !llm.ChatGPTSubscription(m.env.CurrentModel) ||
+		m.subscriptionUsage.cancel != nil || now.Before(m.subscriptionUsage.next) {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -70,15 +90,20 @@ func (m *model) handleSubscriptionUsage(msg subscriptionUsageMsg) tea.Cmd {
 	m.subscriptionUsage.cancel = nil
 	m.subscriptionUsage.checked = true
 	m.subscriptionUsage.failed = msg.err != nil
-	m.subscriptionUsage.usage = msg.usage
-	return tea.Tick(usageRefreshInterval, func(time.Time) tea.Msg { return subscriptionUsageTick{generation: msg.generation} })
+	if msg.err == nil {
+		m.subscriptionUsage.usage = msg.usage
+	}
+	// Failed reads retain the last cadence, but still wait before retrying.
+	interval := usageRefreshInterval(m.subscriptionUsage.usage)
+	m.subscriptionUsage.next = time.Now().Add(interval)
+	return tea.Tick(interval, func(time.Time) tea.Msg { return subscriptionUsageTick{generation: msg.generation} })
 }
 
 func (m *model) handleSubscriptionUsageTick(msg subscriptionUsageTick) tea.Cmd {
 	if !llm.ChatGPTSubscription(m.env.CurrentModel) || !m.subscriptionUsage.active || msg.generation != m.subscriptionUsage.generation {
 		return nil
 	}
-	return m.refreshSubscriptionUsage()
+	return m.refreshSubscriptionUsage(time.Now())
 }
 
 func (m model) subscriptionUsageLabel() string {

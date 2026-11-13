@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestSubscriptionUsageLifecycle(t *testing.T) {
 		}
 	}()
 	generation := m.subscriptionUsage.generation
-	if m.syncSubscriptionUsage() != nil || m.refreshSubscriptionUsage() != nil {
+	if m.syncSubscriptionUsage() != nil || m.refreshSubscriptionUsage(time.Now()) != nil {
 		t.Fatal("duplicate fetch")
 	}
 	if m.subscriptionUsageLabel() != "ChatGPT limits …" {
@@ -41,6 +42,10 @@ func TestSubscriptionUsageLifecycle(t *testing.T) {
 	if m.syncSubscriptionUsage() != nil {
 		t.Fatal("cache not used")
 	}
+	if m.handleSubscriptionUsageTick(subscriptionUsageTick{generation}) != nil {
+		t.Fatal("early tick bypassed refresh deadline")
+	}
+	m.subscriptionUsage.next = time.Now().Add(-time.Second)
 	if m.handleSubscriptionUsageTick(subscriptionUsageTick{generation}) == nil {
 		t.Fatal("no periodic refresh")
 	}
@@ -62,6 +67,114 @@ func TestSubscriptionUsageLifecycle(t *testing.T) {
 	}
 	if m.handleSubscriptionUsage(msg) != nil || m.subscriptionUsage.checked {
 		t.Fatal("previous subscription generation accepted")
+	}
+}
+
+func TestSubscriptionUsageIntervals(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		used []float64
+		want time.Duration
+	}{
+		{"unknown", nil, time.Minute},
+		{"unused", []float64{0}, time.Minute},
+		{"below 75", []float64{74.99}, time.Minute},
+		{"75", []float64{75}, 30 * time.Second},
+		{"below 90", []float64{89.99}, 30 * time.Second},
+		{"90", []float64{90}, 15 * time.Second},
+		{"below 99", []float64{98.99}, 15 * time.Second},
+		{"99", []float64{99}, 5 * time.Second},
+		{"exhausted", []float64{100}, 5 * time.Second},
+		{"weekly higher", []float64{20, 95}, 15 * time.Second},
+		{"short window higher", []float64{99, 20}, 5 * time.Second},
+		{"invalid windows", []float64{math.NaN(), math.Inf(1), math.Inf(-1), -1, 101, 80}, 30 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage := auth.CodexUsage{}
+			for i, used := range tc.used {
+				usage.Windows = append(usage.Windows, auth.CodexUsageWindow{Duration: time.Duration(i+1) * time.Hour, UsedPercent: used})
+			}
+			if got := usageRefreshInterval(usage); got != tc.want {
+				t.Fatalf("interval = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionUsageAdaptiveScheduling(t *testing.T) {
+	m := &model{}
+	m.env.CurrentModel = &llm.CurrentModelInfo{Provider: llm.OpenAI, AuthMethod: llm.AuthSubscription}
+	m.syncSubscriptionUsage()
+	defer func() {
+		if m.subscriptionUsage.cancel != nil {
+			m.subscriptionUsage.cancel()
+		}
+	}()
+	generation := m.subscriptionUsage.generation
+	for _, used := range []float64{20, 75, 90, 99, 100, 10} {
+		usage := auth.CodexUsage{Windows: []auth.CodexUsageWindow{{Duration: 5 * time.Hour, UsedPercent: used}}}
+		interval := usageRefreshInterval(usage)
+		before := time.Now()
+		if m.handleSubscriptionUsage(subscriptionUsageMsg{generation: generation, usage: usage}) == nil {
+			t.Fatal("missing scheduled refresh")
+		}
+		after := time.Now()
+		next := m.subscriptionUsage.next
+		if next.Before(before.Add(interval)) || next.After(after.Add(interval)) {
+			t.Fatalf("used=%v: deadline=%v, expected interval=%v", used, next, interval)
+		}
+		if m.syncSubscriptionUsage() != nil || m.handleSubscriptionUsageTick(subscriptionUsageTick{generation}) != nil ||
+			m.refreshSubscriptionUsage(next.Add(-time.Nanosecond)) != nil {
+			t.Fatal("cached response or old timer caused an early request")
+		}
+		if m.refreshSubscriptionUsage(next) == nil {
+			t.Fatal("deadline did not admit a refresh")
+		}
+		if m.refreshSubscriptionUsage(next) != nil {
+			t.Fatal("duplicate in-flight request")
+		}
+	}
+}
+
+func TestSubscriptionUsageFailureKeepsCadence(t *testing.T) {
+	for _, known := range []bool{false, true} {
+		t.Run(map[bool]string{false: "initial failure", true: "near exhaustion"}[known], func(t *testing.T) {
+			m := &model{}
+			m.env.CurrentModel = &llm.CurrentModelInfo{Provider: llm.OpenAI, AuthMethod: llm.AuthSubscription}
+			m.syncSubscriptionUsage()
+			defer func() {
+				if m.subscriptionUsage.cancel != nil {
+					m.subscriptionUsage.cancel()
+				}
+			}()
+			generation := m.subscriptionUsage.generation
+			interval := time.Minute
+			if known {
+				interval = 5 * time.Second
+				usage := auth.CodexUsage{Windows: []auth.CodexUsageWindow{{Duration: 5 * time.Hour, UsedPercent: 99}}}
+				m.handleSubscriptionUsage(subscriptionUsageMsg{generation: generation, usage: usage})
+				m.refreshSubscriptionUsage(m.subscriptionUsage.next)
+			}
+			before := time.Now()
+			if m.handleSubscriptionUsage(subscriptionUsageMsg{generation: generation, err: errors.New("offline")}) == nil {
+				t.Fatal("failure stopped polling")
+			}
+			after := time.Now()
+			next := m.subscriptionUsage.next
+			if next.Before(before.Add(interval)) || next.After(after.Add(interval)) {
+				t.Fatal("failure lost the prior quota cadence")
+			}
+			if m.subscriptionUsageLabel() != "ChatGPT limits unavailable" {
+				t.Fatal("failed query displayed old data as fresh")
+			}
+			if m.syncSubscriptionUsage() != nil || m.handleSubscriptionUsageTick(subscriptionUsageTick{generation}) != nil {
+				t.Fatal("failure caused an immediate retry loop")
+			}
+			m.subscriptionUsage.next = time.Now().Add(-time.Second)
+			if m.syncSubscriptionUsage() == nil {
+				t.Fatal("an overdue refresh requires no particular timer message")
+			}
+		})
 	}
 }
 
