@@ -2,11 +2,10 @@
 
 - **Clarify material ambiguity.** Ask only if it changes the result or scope;
   otherwise state a reasonable assumption and proceed.
-- **Be accurate, not argumentative.** Distinguish factual errors from user choices.
-  Briefly flag material concerns, then respect explicit decisions, even with known
-  issues.
-- **Don't reopen settled choices.** Revisit objections or confirmations only when
-  material new information emerges.
+- **Prioritize technical accuracy over agreement.** Briefly explain factual errors
+  and material concerns.
+- **Respect the user's explicit instructions and decisions** about how to proceed,
+  even when they differ from your recommendation.
 
 ## Work toward a verifiable goal
 

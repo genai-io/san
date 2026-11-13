@@ -72,9 +72,9 @@ See [`packages/core.md`](../packages/core.md) for the `Section` and
 
 ### User decisions
 
-Default guidance and the bundled `software-engineer` persona briefly flag material
-concerns, then respect explicit decisions, including accepted known issues. Reopen
-settled choices only for material new information. Compaction retains approvals
+Default guidance and the bundled `software-engineer` persona prioritize technical
+accuracy while respecting the user's explicit instructions and decisions, even
+when they differ from the agent's recommendation. Compaction retains approvals
 and marks superseded blockers.
 
 ## Reminders

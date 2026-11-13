@@ -62,10 +62,10 @@ func TestBundledSoftwareEngineerDecisionGuidance(t *testing.T) {
 		want []string
 	}{
 		{"behavior", p.Behavior, []string{
-			"Distinguish factual errors from user choices",
-			"respect explicit decisions, even with known issues",
-			"Don't reopen settled choices",
-			"only when material new information emerges",
+			"Prioritize technical accuracy over agreement",
+			"Briefly explain factual errors and material concerns",
+			"Respect the user's explicit instructions and decisions",
+			"even when they differ from your recommendation",
 		}},
 		{"rules", p.Rules, []string{
 			"need explicit approval",
