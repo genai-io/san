@@ -233,7 +233,7 @@ func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
-		return decide(perm.Prompt, "default: no settings loaded")
+		return decide(perm.Prompt, "mode", "default: no settings loaded")
 	}
 	return s.data.HasPermissionToUseTool(toolName, args, session)
 }

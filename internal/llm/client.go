@@ -157,9 +157,15 @@ func (l *Client) ThinkingEffort() string {
 // tools is what the model is offered, nil for none; maxTokens 0 keeps the
 // client's own cap.
 func (l *Client) Complete(ctx context.Context,
-	sysPrompt string, msgs []core.Message, tools []ToolSchema, maxTokens int,
+	sysPrompt string, msgs []core.Message, tools []ToolSchema, maxTokens int, admission ...CompletionAdmission,
 ) (CompletionResponse, error) {
+	if len(admission) > 1 {
+		return CompletionResponse{}, errors.New("llm: at most one completion admission is allowed")
+	}
 	opts := l.completionOpts(msgs, tools, sysPrompt)
+	if len(admission) == 1 {
+		opts.Admission = admission[0]
+	}
 	if maxTokens > 0 {
 		opts.MaxTokens = maxTokens
 	}
@@ -175,7 +181,9 @@ func (l *Client) Complete(ctx context.Context,
 		// No wrapping first: ai.IsRetryable answers about a bare error too, and
 		// a dropped connection is worth another go whether or not it passed a
 		// driver on the way here.
-		if !ai.IsRetryable(err) || attempt == completeMaxAttempts {
+		var admissionErr *ai.AdmissionError
+		var recordingErr *RecordingError
+		if errors.As(err, &admissionErr) || errors.As(err, &recordingErr) || !ai.IsRetryable(err) || attempt == completeMaxAttempts {
 			return resp, err
 		}
 		if werr := core.BackoffSleep(ctx, attempt, ai.RetryAfter(err)); werr != nil {

@@ -3,6 +3,8 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
@@ -54,11 +56,41 @@ type HookAwareChecker interface {
 // A hook may also rewrite the arguments, which comes back as
 // Decision.Arguments — the call the tool runs is the one that survived the
 // gate, not the one the model sent.
-func HookedPermission(hooks hook.Handler, check HookAwareChecker) core.Gate {
-	if hooks == nil && check == nil {
+type Resolver interface {
+	Resolve(context.Context, string, map[string]any, bool, string) perm.Resolution
+}
+
+func HookedPermission(hooks hook.Handler, check HookAwareChecker, record ...perm.RecordDecision) core.Gate {
+	if len(record) > 1 {
+		return func(context.Context, sdkagent.PreToolContext) (sdkagent.Decision, error) {
+			return sdkagent.Decision{}, fmt.Errorf("at most one permission recorder is allowed")
+		}
+	}
+	var recorder perm.RecordDecision
+	if len(record) == 1 {
+		recorder = record[0]
+	}
+	if hooks == nil && check == nil && recorder == nil {
 		return nil
 	}
-	return func(ctx context.Context, c sdkagent.PreToolContext) (sdkagent.Decision, error) {
+	return func(ctx context.Context, c sdkagent.PreToolContext) (result sdkagent.Decision, err error) {
+		var resolved perm.Resolution
+		if recorder != nil {
+			if _, ok := check.(Resolver); !ok {
+				return result, fmt.Errorf("permission recording requires a structured resolver")
+			}
+			defer func() {
+				if err != nil {
+					return
+				}
+				resolved.CallID = c.Call.ID
+				if resolved.Decision == "" || resolved.By == "" {
+					err = fmt.Errorf("permission resolution is missing authority")
+					return
+				}
+				err = recorder(context.WithoutCancel(ctx), resolved)
+			}()
+		}
 		input, _ := core.ParseToolInput(c.Call.Input)
 		edited := false
 		allowByHook, forceAsk, permissionReason := false, false, ""
@@ -68,7 +100,12 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker) core.Gate {
 				ToolName:  c.Call.Name,
 				ToolInput: input,
 			})
+			var recording *hook.RecordingError
+			if errors.As(out.Error, &recording) {
+				return sdkagent.Decision{}, out.Error
+			}
 			if !out.ShouldContinue || out.ShouldBlock {
+				resolved = perm.Resolution{Decision: "deny", By: "hook", Reason: blockReason(out)}
 				return sdkagent.Decision{Block: true, Reason: blockReason(out)}, nil
 			}
 			if out.UpdatedInput != nil {
@@ -84,8 +121,16 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker) core.Gate {
 			// either confirmation tier or an explicit ask rule, which is what
 			// CanApproveByHook reports on.
 			waived := allowByHook && !forceAsk && check.CanApproveByHook(c.Call.Name, input)
+			if waived {
+				resolved = perm.Resolution{Decision: "allow", By: "hook", Reason: permissionReason}
+			}
 			if !waived {
-				if allow, reason := check.Check(ctx, c.Call.Name, input, forceAsk, permissionReason); !allow {
+				if recorder != nil {
+					resolved = check.(Resolver).Resolve(ctx, c.Call.Name, input, forceAsk, permissionReason)
+					if resolved.Decision != "allow" {
+						return sdkagent.Decision{Block: true, Reason: resolved.Reason}, nil
+					}
+				} else if allow, reason := check.Check(ctx, c.Call.Name, input, forceAsk, permissionReason); !allow {
 					return sdkagent.Decision{Block: true, Reason: reason}, nil
 				}
 			}
@@ -98,6 +143,7 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker) core.Gate {
 		if err != nil {
 			// The hook's edit cannot be expressed, and running the original
 			// would run what the hook rejected. Refuse instead.
+			resolved = perm.Resolution{Decision: "deny", By: "hook", Reason: "the hook's arguments could not be encoded"}
 			return sdkagent.Decision{Block: true, Reason: "the hook's arguments could not be encoded"}, nil
 		}
 		return sdkagent.Decision{Arguments: string(rewritten)}, nil

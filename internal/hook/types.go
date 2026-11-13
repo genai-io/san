@@ -163,6 +163,7 @@ type PermissionSuggestion struct {
 
 // HookOutcome is the processed result from hook execution.
 type HookOutcome struct {
+	finish             func(context.Context, HookFiredAudit) error
 	ShouldContinue     bool
 	ShouldBlock        bool
 	BlockReason        string

@@ -26,14 +26,17 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 		return nil
 	}
 	m.pendingStopHook = nil
-	if msg.pending.session != m.services.Session || msg.pending.outbox != m.AgentOutbox() ||
+	if msg.pending.session != m.services.Session || msg.pending.recording != m.services.Recording || msg.pending.outbox != m.AgentOutbox() ||
 		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
 		return nil
 	}
-	decision := agent.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason}
+	decision := agent.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason, Err: msg.Err}
 	continuation, err := decision.Finish(m.appendTurnState)
 	if err != nil {
-		return nil // appendTurnState surfaces the recording failure.
+		if msg.Err != nil {
+			m.conv.AddNotice("Hook outcome was not saved: " + err.Error())
+		}
+		return nil // appendTurnState surfaces its own recording failure.
 	}
 	if continuation != "" {
 		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: continuation}).ToMessage()

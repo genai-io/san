@@ -50,6 +50,7 @@ func Run(opts setting.RunOptions) (runErr error) {
 			}
 		}
 		if m != nil {
+			m.resetRecap()
 			_ = m.services.Session.Close()
 		}
 	}()

@@ -22,6 +22,61 @@ func permissionRequest(ctx context.Context, owner Owner) (*Request, *perm.Permis
 	}}, &perm.PermissionRequest{ID: "approval-1", ToolName: "Write", AllowRules: []string{"Write(fixture)"}}
 }
 
+func TestShownQuestionSurvivesCancellation(t *testing.T) {
+	owner := &testOwner{}
+	gate := agent.NewPermissionGate(func(string, map[string]any) agent.PermDecisionResult {
+		return agent.PermDecisionResult{Decision: perm.Prompt}
+	})
+	defer gate.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan perm.Resolution, 1)
+	go func() { done <- gate.Resolve(ctx, "Write", nil, false, "") }()
+	native, ok := gate.WaitRequest(t.Context())
+	if !ok {
+		t.Fatal("no approval request")
+	}
+	req := &Request{Context: native.Context, Owner: owner, Permission: native}
+	view := &perm.PermissionRequest{ToolName: "Write"}
+	labels := []string{"Allow once", "Deny"}
+	if NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels }, nil) == nil {
+		t.Fatal("approval not shown")
+	}
+	labels[0] = "mutated"
+	cancel()
+	r := <-done
+	if r.Decision != "cancelled" || r.By != "user" || r.Asked == nil || r.Asked.Options[0] != "Allow once" || r.Asked.At == 0 {
+		t.Fatalf("lost cancelled question: %+v", r)
+	}
+}
+
+func TestShownQuestionSnapshotIsDetached(t *testing.T) {
+	owner := &testOwner{}
+	req, view := permissionRequest(context.Background(), owner)
+	view.BashMeta = &perm.BashMetadata{LineCount: 7}
+	labels := []string{"Allow once", "Deny"}
+	before := time.Now().UnixMilli()
+	p := NewPermission(req, owner, view, func(*perm.PermissionRequest) []string { return labels }, func(r transcript.Record) {
+		// Audit observers also do not own the question snapshot.
+		if r.Type == transcript.PermissionRequired {
+			r.Permission.OptionsOffered[0] = "changed by observer"
+			if len(r.Permission.Detail) > 0 {
+				r.Permission.Detail[0] = '!'
+			}
+		}
+	})
+	labels[0] = "changed by caller"
+	view.BashMeta.LineCount = 99
+	req.Permission.Input["file_path"] = "changed"
+	if !p.Resolve(owner, PermissionDecision{Approved: true, Request: view}, nil, nil) {
+		t.Fatal("resolve failed")
+	}
+	reply := <-req.Permission.Response
+	if reply.Asked == nil || !reflect.DeepEqual(reply.Asked.Options, []string{"Allow once", "Deny"}) || string(reply.Asked.Detail) != `{"lineCount":7}` || reply.Asked.At < before || reply.Asked.At > time.Now().UnixMilli() {
+		t.Fatalf("question=%+v", reply.Asked)
+	}
+}
+
 func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
 	for _, tc := range []struct {
 		name                                    string
@@ -72,7 +127,7 @@ func TestPermissionScopesAndAuditBeforeReply(t *testing.T) {
 			if !p.Resolve(owner, d, allow, persist) || p.Resolve(owner, d, allow, persist) {
 				t.Fatal("decision was not exactly once")
 			}
-			if got := <-req.Permission.Response; got.Allow != tc.approve {
+			if got := <-req.Permission.Response; got.Allow != tc.approve || got.By != "user" || got.Scope != tc.scope || got.Asked == nil || got.Asked.At <= 0 || !reflect.DeepEqual(got.Asked.Options, records[0].Permission.OptionsOffered) {
 				t.Fatal(got)
 			}
 			if !reflect.DeepEqual(grants, tc.grants) {

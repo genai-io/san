@@ -1,6 +1,29 @@
 package perm
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
+
+// Resolution is the final authorization verdict, independent of audit storage.
+type Resolution struct {
+	CallID   string
+	Decision string // allow, deny, or cancelled
+	By       string
+	Scope    string
+	Reason   string
+	Asked    *Asked
+}
+
+// Asked captures the immutable question actually shown to the user.
+type Asked struct {
+	Options []string
+	Detail  json.RawMessage
+	At      int64 // Unix milliseconds
+}
+
+// RecordDecision synchronously records a final verdict before execution.
+type RecordDecision func(context.Context, Resolution) error
 
 // Decision represents a permission decision.
 type Decision int

@@ -13,7 +13,7 @@
 | [#737](https://github.com/genai-io/san/pull/737) | 已合并：项目/worktree 身份、检出本地配置、私有 writer 后的类型化事件，采用上一版草案的 18 类模型。在任何 runtime 切换前收敛到本设计。runtime 仍写 schema 4。 |
 | [#738](https://github.com/genai-io/san/pull/738) | 已合并：core 中可选的 SDK 准入边界。 |
 | 类型化存储与公共 API | 已实现：13 类事件、blob、attrs、缓存、list/fork/clean 和打开的类型化会话；尚未接入 runtime。 |
-| runtime 切换 | 核心录制/准入适配已实现但未接入；生产者集成、runtime 恢复、子代理和最终切换仍待完成。切换是破坏性变更（见[兼容性](#兼容性)）。 |
+| runtime 切换 | 核心录制及首批权限/hook/旁路调用适配已实现但未接入；其余辅助调用生产者、runtime 恢复、子代理和最终切换仍待完成。切换是破坏性变更（见[兼容性](#兼容性)）。 |
 
 ## 模型
 

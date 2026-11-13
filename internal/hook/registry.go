@@ -15,13 +15,25 @@ type matchedHook struct {
 	Func    *FunctionHook
 }
 
-func (e *Engine) getMatchingHooks(event EventType, input *HookInput) []matchedHook {
-	e.populateInputFields(input, event)
+func (e *Engine) getMatchingHooks(event EventType, input *HookInput, snapshots ...*completionSnapshot) []matchedHook {
+	var settings *setting.Data
+	if len(snapshots) > 0 && snapshots[0] != nil {
+		s := snapshots[0]
+		input.SessionID, input.TranscriptPath, input.Cwd = s.sessionID, s.transcript, s.cwd
+		input.HookEventName = string(event)
+		switch event {
+		case SessionStart, SessionEnd, Notification, SubagentStart, PreCompact:
+		default:
+			input.PermissionMode = s.permission
+		}
+		settings = s.settings
+	} else {
+		e.populateInputFields(input, event)
+		e.mu.RLock()
+		settings = e.settings
+		e.mu.RUnlock()
+	}
 	matchValue := getMatchValue(event, *input)
-
-	e.mu.RLock()
-	settings := e.settings
-	e.mu.RUnlock()
 
 	var matched []matchedHook
 	for _, source := range e.store.CollectHooks(event, settings) {

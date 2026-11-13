@@ -5,8 +5,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -45,24 +48,26 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 
 // pendingStopHook identifies the pending decision and its session/runtime.
 type pendingStopHook struct {
-	session *session.LegacySession
-	outbox  <-chan core.Event
+	session   *session.LegacySession
+	recording *session.Session
+	outbox    <-chan core.Event
 }
 
 type stopHookResultMsg struct {
 	pending *pendingStopHook
 	Blocked bool
 	Reason  string
+	Err     error
 	Result  core.Result
 }
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
-	pending := &pendingStopHook{session: m.services.Session, outbox: m.AgentOutbox()}
+	pending := &pendingStopHook{session: m.services.Session, recording: m.services.Recording, outbox: m.AgentOutbox()}
 	m.pendingStopHook = pending
 	check := agent.NewStopCheck(m.services.Hook, core.LastAssistantChatContent(m.conv.Messages))
 	return func() tea.Msg {
 		decision := check.Run(context.Background())
-		return stopHookResultMsg{pending: pending, Blocked: decision.Blocked, Reason: decision.Reason, Result: result}
+		return stopHookResultMsg{pending: pending, Blocked: decision.Blocked, Reason: decision.Reason, Err: decision.Err, Result: result}
 	}
 }
 
@@ -157,6 +162,24 @@ func memoryTypeForLevel(level string) string {
 
 func joinSections(parts []string) string {
 	return strings.Join(parts, "\n\n")
+}
+
+func buildRecordedHookCompleter(p llm.Provider, owner *session.Session) hook.RecordedLLMCompleter {
+	if p == nil {
+		return nil
+	}
+	return func(ctx context.Context, systemPrompt, userMessage, model string) (hook.LLMCompletion, error) {
+		scope := owner.Completion(session.PurposeHook)
+		c := llm.NewClient(p, model, 0)
+		resp, err := c.Complete(ctx, systemPrompt, []core.Message{core.UserMessage(userMessage, nil)}, nil, 4096, scope.Admission())
+		result := hook.LLMCompletion{Text: resp.Content.Text(), Finish: scope.FinishHook}
+		var admission *ai.AdmissionError
+		var recording *llm.RecordingError
+		if errors.As(err, &admission) || errors.As(err, &recording) {
+			err = &hook.RecordingError{Err: err}
+		}
+		return result, err
+	}
 }
 
 func buildHookCompleter(p llm.Provider) hook.LLMCompleter {

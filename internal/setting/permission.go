@@ -16,6 +16,11 @@ import (
 type PermissionDecision struct {
 	Behavior perm.Decision
 	Reason   string // e.g. "deny rule: Read(**/.env)", "confirmation: .git/ directory"
+	// By identifies the final authority: config, mode, or grant.
+	By string
+	// Scope describes authorization scope, not config storage. Only runtime
+	// session grants set it to "session"; config and mode leave it empty.
+	Scope string
 	// Judgeable marks a Prompt the judge may judge. It is set only
 	// for the autopilot gray-zone default — never for a confirmation safety
 	// check or an ask-rule prompt — so those always escalate to the human.
@@ -23,8 +28,12 @@ type PermissionDecision struct {
 }
 
 // decide is a shorthand for building a PermissionDecision.
-func decide(b perm.Decision, reason string) PermissionDecision {
-	return PermissionDecision{Behavior: b, Reason: reason}
+func decide(b perm.Decision, by, reason string) PermissionDecision {
+	d := PermissionDecision{Behavior: b, By: by, Reason: reason}
+	if by == "grant" {
+		d.Scope = "session"
+	}
+	return d
 }
 
 // ---------------------------------------------------------------------------
@@ -72,24 +81,24 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 
 	// ── Step 1: Deny rules ──
 	if pattern := s.DenyRule(toolName, args); pattern != "" {
-		return decide(perm.Reject, "deny rule: "+pattern)
+		return decide(perm.Reject, "config", "deny rule: "+pattern)
 	}
 
 	// ── Step 2: Circuit breaker ──
 	// The one check no mode may skip: a recursive removal of the filesystem
 	// root or the home directory. A guard against model error, not policy.
 	if reason := CircuitBreakerReason(toolName, args); reason != "" {
-		return coerceAsk(decide(perm.Prompt, "circuit breaker: "+reason), session)
+		return coerceAsk(decide(perm.Prompt, "config", "circuit breaker: "+reason), session)
 	}
 
 	// ── Step 3: BypassPermissions mode ──
 	if session != nil && session.Mode == ModeBypassPermissions {
-		return decide(perm.Permit, "mode: bypass permissions")
+		return decide(perm.Permit, "mode", "mode: bypass permissions")
 	}
 
 	// ── Step 4: Confirmation checks ──
 	if reason, judgeable := s.confirmationPromptReason(toolName, args, session); reason != "" {
-		d := decide(perm.Prompt, reason)
+		d := decide(perm.Prompt, "config", reason)
 		d.Judgeable = judgeable
 		return coerceAsk(d, session)
 	}
@@ -97,23 +106,23 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	// ── Step 5: Ask rules ──
 	for _, pattern := range s.Permissions.Ask {
 		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
+			return coerceAsk(decide(perm.Prompt, "config", "ask rule: "+pattern), session)
 		}
 	}
 
 	// ── Step 6: Session permissions ──
 	if session != nil {
 		if session.IsToolAllowed(toolName) {
-			return decide(perm.Permit, "session: allow all "+toolName)
+			return decide(perm.Permit, "grant", "session: allow all "+toolName)
 		}
 		if pattern, ok := MatchAllowList(toolName, args, slices.Collect(maps.Keys(session.AllowedPatterns))); ok {
-			return decide(perm.Permit, "session pattern: "+pattern)
+			return decide(perm.Permit, "grant", "session pattern: "+pattern)
 		}
 	}
 
 	// ── Step 7: Allow rules ──
 	if pattern, ok := MatchAllowList(toolName, args, s.Permissions.Allow); ok {
-		return decide(perm.Permit, "allow rule: "+pattern)
+		return decide(perm.Permit, "config", "allow rule: "+pattern)
 	}
 
 	// ── Step 8/9: Mode default + headless coercion ──
@@ -146,32 +155,32 @@ func (s *Data) confirmationPromptReason(toolName string, args map[string]any, se
 // shares this one mode table instead of carrying its own (perm.Checker).
 func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 	if perm.IsSafeTool(toolName) {
-		return decide(perm.Permit, "mode: safe tool")
+		return decide(perm.Permit, "mode", "mode: safe tool")
 	}
 
 	switch mode {
 	case ModeBypassPermissions:
-		return decide(perm.Permit, "mode: bypass permissions")
+		return decide(perm.Permit, "mode", "mode: bypass permissions")
 	case ModeAutoAccept:
 		if perm.IsEditTool(toolName) {
-			return decide(perm.Permit, "mode: accept edits")
+			return decide(perm.Permit, "mode", "mode: accept edits")
 		}
-		return decide(perm.Prompt, "mode: accept edits requires confirmation")
+		return decide(perm.Prompt, "mode", "mode: accept edits requires confirmation")
 	case ModeAutoPilot:
 		// Edits are auto-approved like accept-edits; non-edit tools fall to a
 		// judgeable Prompt — the gray zone the judge judges.
 		if perm.IsEditTool(toolName) {
-			return decide(perm.Permit, "mode: autopilot (edits)")
+			return decide(perm.Permit, "mode", "mode: autopilot (edits)")
 		}
-		d := decide(perm.Prompt, "mode: autopilot requires confirmation")
+		d := decide(perm.Prompt, "mode", "mode: autopilot requires confirmation")
 		d.Judgeable = true
 		return d
 	case ModeReadOnly:
-		return decide(perm.Reject, "mode: read-only")
+		return decide(perm.Reject, "mode", "mode: read-only")
 	case ModeDontAsk:
-		return decide(perm.Reject, "mode: don't ask (auto-deny)")
+		return decide(perm.Reject, "mode", "mode: don't ask (auto-deny)")
 	default: // ModeNormal
-		return decide(perm.Prompt, "mode: default requires confirmation")
+		return decide(perm.Prompt, "mode", "mode: default requires confirmation")
 	}
 }
 
@@ -183,13 +192,13 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 // Permissions deliberately skips confirmation checks after honoring deny rules.
 func ModeDefaultForCall(toolName string, args map[string]any, mode OperationMode) PermissionDecision {
 	if cmd, ok := args["command"].(string); ok && IsReadOnlyShellCommand(toolName, cmd) {
-		return decide(perm.Permit, "mode: read-only "+strings.ToLower(toolName)+" command")
+		return decide(perm.Permit, "mode", "mode: read-only "+strings.ToLower(toolName)+" command")
 	}
 	// Listing scheduled jobs is read-only; create/delete still follow the
 	// mode default like any other mutating call.
 	if toolName == "Cron" {
 		if action, ok := args["action"].(string); ok && action == "list" {
-			return decide(perm.Permit, "mode: read-only cron listing")
+			return decide(perm.Permit, "mode", "mode: read-only cron listing")
 		}
 	}
 	return ModeDefault(toolName, mode)
@@ -208,10 +217,10 @@ func coerceAsk(decision PermissionDecision, session *SessionPermissions) Permiss
 		return decision
 	}
 	if session.Mode == ModeDontAsk {
-		return decide(perm.Reject, "mode: don't ask (auto-deny): "+decision.Reason)
+		return decide(perm.Reject, "mode", "mode: don't ask (auto-deny): "+decision.Reason)
 	}
 	if session.ShouldAvoidPrompts {
-		return decide(perm.Reject, "headless: "+decision.Reason)
+		return decide(perm.Reject, "mode", "headless: "+decision.Reason)
 	}
 	return decision
 }

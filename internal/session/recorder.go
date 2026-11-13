@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -96,6 +97,17 @@ func (r *Recorder) InferenceAdmission(ctx context.Context, c sdkagent.InferenceA
 	}
 	r.current, r.response = inference, nil
 	return nil
+}
+
+// RecordPermission is the final gate's domain adapter. Policy ownership stays
+// outside the session; this only persists the already-resolved verdict.
+func (r *Recorder) RecordPermission(ctx context.Context, resolved perm.Resolution) error {
+	decision := PermissionDecidePayload{CallID: resolved.CallID, Decision: resolved.Decision,
+		By: resolved.By, Scope: resolved.Scope, Reason: resolved.Reason}
+	if resolved.Asked != nil {
+		decision.Asked = &Asked{Options: resolved.Asked.Options, Detail: resolved.Asked.Detail, At: resolved.Asked.At}
+	}
+	return r.Decide(ctx, decision)
 }
 
 // Decide records policy's real authority, scope and presented question. It does

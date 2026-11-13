@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -15,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 )
 
 // sidePending answers a call the main agent is still running, so the request
@@ -29,12 +31,16 @@ const sideReplying = "[The main agent is replying to this right now; its reply i
 // sideRequest is a side request captured on the UI goroutine, ready to send
 // from any other.
 type sideRequest struct {
-	label   string // names the request in the debug log
-	client  *llm.Client
-	system  string
-	schemas []core.ToolSchema
-	chain   []core.Message
-	prompt  string
+	label     string // names the request in the debug log
+	client    *llm.Client
+	system    string
+	schemas   []core.ToolSchema
+	chain     []core.Message
+	prompt    string
+	messages  []core.Message
+	owner     *session.Session
+	recording *session.Completion
+	err       error
 }
 
 // newSideRequest captures the main agent's prefix with prompt to follow it.
@@ -48,17 +54,54 @@ func (m *model) newSideRequest(label, prompt string) sideRequest {
 		params := m.promptParams()
 		r.system, r.schemas = params.System().Prompt(), params.ToolSchemas()
 	}
+	r.owner = m.services.Recording
+	if r.owner != nil && m.services.Session != nil {
+		r.err = fmt.Errorf("side request cannot use legacy and typed recording together")
+	}
+	r.messages = withSidePrompt(r.chain, prompt)
+	for i := len(r.chain); i < len(r.messages); i++ {
+		if r.messages[i].ID == "" {
+			r.messages[i].ID = core.NewMessageID()
+		}
+	}
+	r.recording = r.owner.Completion(label, r.messages[len(r.chain):]...)
 	return r
 }
 
 // complete sends the request. A tool call in the reply is never run.
 func (r sideRequest) complete(ctx context.Context) (llm.CompletionResponse, error) {
-	msgs := r.client.RequestMessages(withSidePrompt(r.chain, r.prompt))
-	resp, err := r.client.Complete(ctx, r.system, msgs, r.schemas, 0)
+	if r.err != nil {
+		return llm.CompletionResponse{}, r.err
+	}
+	messages := r.messages
+	if messages == nil {
+		messages = withSidePrompt(r.chain, r.prompt)
+	}
+	msgs := r.client.RequestMessages(messages)
+	resp, err := r.client.Complete(ctx, r.system, msgs, r.schemas, 0, r.recording.Admission())
 	if err == nil {
 		log.Logger().Debug("side request answered", zap.String("label", r.label), zap.Int("input", resp.Usage.Input), zap.Int("cache_read", resp.Usage.CacheRead), zap.Int("cache_write", resp.Usage.CacheWrite), zap.Int("output", resp.Usage.Output))
 	}
 	return resp, err
+}
+
+// closeSide resolves discarded attempts against their original owner, even after a switch.
+func closeSide(c *session.Completion) {
+	if err := c.Close(); err != nil {
+		log.Logger().Error("close side recording", zap.Error(err))
+	}
+}
+
+func finishSide(c *session.Completion, text string) bool {
+	var events []session.Event
+	if text != "" {
+		events = append(events, session.Event{Payload: session.AnnotationAddPayload{Text: text}})
+	}
+	if err := c.Finish(context.Background(), events...); err != nil {
+		log.Logger().Error("finish side recording", zap.Error(err))
+		return false
+	}
+	return true
 }
 
 // withSidePrompt appends prompt to a copy of chain, filling whatever the main

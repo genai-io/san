@@ -2,6 +2,7 @@ package interaction
 
 import (
 	"encoding/json"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -22,6 +23,7 @@ type PermissionDecision struct {
 // Permission owns one displayed approval; its caller serializes presentation and replies.
 // Adapters must map only offered options and pass their current session owner.
 type Permission struct {
+	asked    perm.Asked
 	request  *Request
 	view     *perm.PermissionRequest
 	record   transcript.PermissionRecord
@@ -53,6 +55,8 @@ func NewPermission(req *Request, owner Owner, view *perm.PermissionRequest, opti
 	if options != nil {
 		required.OptionsOffered = append([]string(nil), options(view)...)
 	}
+	p.asked = perm.Asked{Options: append([]string(nil), required.OptionsOffered...), Detail: append(json.RawMessage(nil), p.record.Detail...), At: time.Now().UnixMilli()}
+	req.Permission.MarkAsked(p.asked)
 	required.Source = transcript.PermissionSourceAsk
 	if record != nil {
 		record(transcript.Record{Type: transcript.PermissionRequired, Permission: &required})
@@ -102,9 +106,12 @@ func (p *Permission) Resolve(owner Owner, d PermissionDecision, allowTool func(s
 		p.onRecord(transcript.Record{Type: transcript.PermissionDecided, Permission: &decided})
 	}
 	// Cancellation during a callback cannot authorize the retired caller.
-	response := agent.PermGateResponse{Allow: d.Approved, Reason: reason}
+	asked := p.asked
+	asked.Options = append([]string(nil), asked.Options...)
+	asked.Detail = append(json.RawMessage(nil), asked.Detail...)
+	response := agent.PermGateResponse{Allow: d.Approved, Reason: reason, By: "user", Scope: decided.Scope, Asked: &asked}
 	if !p.request.Valid(owner) {
-		response = agent.PermGateResponse{Reason: "interaction cancelled"}
+		response = agent.PermGateResponse{Reason: "interaction cancelled", By: "user", Cancelled: true, Asked: &asked}
 	}
 	select {
 	case p.request.Permission.Response <- response:

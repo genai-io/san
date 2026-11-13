@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -42,18 +43,24 @@ const recapInstructions = `<system-reminder>The user stepped away and is coming 
 
 // recapState is the recap written for an absence and when it shows.
 type recapState struct {
-	busy  bool          // a recap request is in flight
-	show  bool          // show the recap in flight as soon as it lands; implies busy
-	ready recapReadyMsg // a recap written ahead, not shown yet
+	busy      bool          // a recap request is in flight
+	show      bool          // show the recap in flight as soon as it lands; implies busy
+	ready     recapReadyMsg // a recap written ahead, not shown yet
+	requestID string        // fences results from a retired request
+	cancel    context.CancelFunc
+	pending   *session.Completion
 }
 
 type recapPrepareMsg struct{ awaySince time.Time }
 
 type recapReadyMsg struct {
+	requestID string
 	sessionID string
 	chainLen  int // chain length it was written at; a longer chain makes it stale
 	text      string
 	err       error
+	owner     *session.Session
+	recording *session.Completion
 }
 
 // onBlur starts the clock on an absence. Only a conversation with new ground
@@ -107,6 +114,8 @@ func (m *model) deliverRecap() tea.Cmd {
 	if m.recapReady() {
 		return m.showRecap(m.recap.ready)
 	}
+	// Discard stale cached scopes here, not in the read-only readiness predicate.
+	m.clearRecapCache()
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd
 	if !m.needsSpinner() {
@@ -146,7 +155,24 @@ func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
 // moved past.
 func (m *model) recapReady() bool {
 	r := m.recap.ready
-	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen()
+	return r.text != "" && r.sessionID == m.sessionID() && r.chainLen == m.chainLen() &&
+		r.owner == m.services.Recording && (r.owner == nil || r.owner.Err() == nil)
+}
+
+// clearRecapCache resolves an unshown result against its original writer.
+func (m *model) clearRecapCache() {
+	closeSide(m.recap.ready.recording)
+	m.recap.ready = recapReadyMsg{}
+}
+
+// resetRecap retires cached and in-flight work before its owner is replaced.
+func (m *model) resetRecap() {
+	if m.recap.cancel != nil {
+		m.recap.cancel()
+	}
+	closeSide(m.recap.pending)
+	m.clearRecapCache()
+	m.recap = recapState{}
 }
 
 // canRecap reports whether there is a conversation to recap.
@@ -206,6 +232,7 @@ func (m *model) recapLive() string {
 }
 
 func (m *model) writeRecap() tea.Cmd {
+	m.clearRecapCache()
 	m.recap.busy = true
 	facts := ""
 	if f := m.recapFacts(); f != "" {
@@ -215,9 +242,10 @@ func (m *model) writeRecap() tea.Cmd {
 		facts += "\nThe overall goal is AutoPilot's mission: " + goal
 	}
 	req := m.newSideRequest("recap", strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
-	ready := recapReadyMsg{sessionID: m.sessionID(), chainLen: len(req.chain)}
+	ctx, cancel := context.WithTimeout(context.Background(), recapTimeout)
+	m.recap.requestID, m.recap.cancel, m.recap.pending = core.NewMessageID(), cancel, req.recording
+	ready := recapReadyMsg{requestID: m.recap.requestID, sessionID: m.sessionID(), chainLen: len(req.chain), owner: req.owner, recording: req.recording}
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), recapTimeout)
 		defer cancel()
 		resp, err := req.complete(ctx)
 		ready.text, ready.err = strings.TrimSpace(resp.Content.Text()), err
@@ -226,13 +254,21 @@ func (m *model) writeRecap() tea.Cmd {
 }
 
 func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
+	if msg.requestID != m.recap.requestID {
+		closeSide(msg.recording)
+		return nil
+	}
+	m.recap.pending, m.recap.cancel = nil, nil
 	m.recap.busy = false
 	show := m.recap.show
 	m.recap.show = false
-	if msg.sessionID != m.sessionID() {
+	if msg.sessionID != m.sessionID() || msg.owner != m.services.Recording ||
+		(msg.owner != nil && msg.owner.Err() != nil) || msg.chainLen != m.chainLen() {
+		closeSide(msg.recording)
 		return nil
 	}
 	if msg.err != nil || msg.text == "" {
+		closeSide(msg.recording)
 		log.Logger().Debug("recap not written", zap.Error(msg.err))
 		if show {
 			m.conv.AddNotice("Couldn't write a recap.")
@@ -242,6 +278,7 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	if show {
 		return m.showRecap(msg)
 	}
+	m.clearRecapCache()
 	m.recap.ready = msg
 	if !m.unfocusedSince.IsZero() && m.recapReady() && m.sessionQuiet() && !m.hasDraft() {
 		return m.showRecap(msg)
@@ -252,8 +289,19 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 // showRecap adds the recap to the conversation as a notice the agent never
 // sees. The facts are measured now, not when the text was written.
 func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
+	if m.recap.ready.recording != r.recording {
+		m.clearRecapCache()
+	}
 	m.recap.ready = recapReadyMsg{}
-	m.conv.AddNotice(conv.RecapNotice(m.recapFacts(), r.text))
+	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.services.Recording || r.chainLen != m.chainLen()) {
+		closeSide(r.recording)
+		return nil
+	}
+	notice := conv.RecapNotice(m.recapFacts(), r.text)
+	if r.recording != nil && !finishSide(r.recording, notice) {
+		return nil
+	}
+	m.conv.AddNotice(notice)
 	return tea.Batch(m.CommitMessages()...)
 }
 

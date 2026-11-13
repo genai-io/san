@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 
 	"github.com/genai-io/san/internal/hook"
 )
@@ -30,16 +31,14 @@ func EndTurn(c TurnCallbacks) error {
 
 // StopCheck snapshots the hook input on the event owner before asynchronous work.
 type StopCheck struct {
-	hooks    *hook.Engine
-	input    hook.HookInput
-	hasHooks bool
+	hooks *hook.Engine
+	run   func(context.Context) hook.HookOutcome
 }
 
 func NewStopCheck(hooks *hook.Engine, lastAssistant string) StopCheck {
-	check := StopCheck{hooks: hooks, input: hook.HookInput{LastAssistantMessage: lastAssistant}}
-	if hooks != nil {
-		check.hasHooks = hooks.HasHooks(hook.Stop)
-		check.input.StopHookActive = hooks.StopHookActive()
+	check := StopCheck{hooks: hooks}
+	if hooks != nil && hooks.HasHooks(hook.Stop) {
+		check.run = hooks.Prepare(hook.Stop, hook.HookInput{LastAssistantMessage: lastAssistant, StopHookActive: hooks.StopHookActive()})
 	}
 	return check
 }
@@ -47,6 +46,7 @@ func NewStopCheck(hooks *hook.Engine, lastAssistant string) StopCheck {
 type StopDecision struct {
 	Blocked bool
 	Reason  string
+	Err     error
 }
 
 // Run leaves timeout, fail-open and audit policy with the hook engine.
@@ -55,8 +55,12 @@ func (c StopCheck) Run(ctx context.Context) StopDecision {
 		return StopDecision{}
 	}
 	var outcome hook.HookOutcome
-	if c.hasHooks {
-		outcome = c.hooks.Execute(ctx, hook.Stop, c.input)
+	if c.run != nil {
+		outcome = c.run(ctx)
+	}
+	var recording *hook.RecordingError
+	if errors.As(outcome.Error, &recording) {
+		return StopDecision{Err: outcome.Error}
 	}
 	c.hooks.ExecuteAsync(hook.Notification, hook.HookInput{
 		Message: "Claude is waiting for your input", NotificationType: "idle_prompt",
@@ -67,6 +71,9 @@ func (c StopCheck) Run(ctx context.Context) StopDecision {
 // Finish records the post-hook state before either reporting completion or
 // admitting a hook continuation. The host must reject stale decisions first.
 func (d StopDecision) Finish(recordState func() error) (continuation string, err error) {
+	if d.Err != nil {
+		return "", d.Err
+	}
 	if err := recordState(); err != nil {
 		return "", err
 	}

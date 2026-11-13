@@ -33,18 +33,21 @@ type services struct {
 	Hook         *hook.Engine
 	Session      *session.LegacySession
 	SessionStore *session.LegacyStore
-	sessionID    string
-	Skill        *skill.Registry
-	Subagent     *subagent.Registry
-	Command      *command.Registry
-	Task         *task.Manager
-	Tracker      *todo.Store
-	Cron         *cron.Scheduler
-	MCP          *mcp.Manager
-	Plugin       *plugin.Registry
-	Agent        *agent.Runtime
-	Persona      *persona.Registry
-	Reminder     *reminder.Reminder
+	// Recording is an opt-in construction dependency until the format switch.
+	// It must not be combined with a LegacySession for the selected identity.
+	Recording *session.Session
+	sessionID string
+	Skill     *skill.Registry
+	Subagent  *subagent.Registry
+	Command   *command.Registry
+	Task      *task.Manager
+	Tracker   *todo.Store
+	Cron      *cron.Scheduler
+	MCP       *mcp.Manager
+	Plugin    *plugin.Registry
+	Agent     *agent.Runtime
+	Persona   *persona.Registry
+	Reminder  *reminder.Reminder
 
 	// SelfLearn groups the L1 self-learning state: the live per-session
 	// reviewer (nil when no arm is enabled — §3.1 zero-overhead guarantee)

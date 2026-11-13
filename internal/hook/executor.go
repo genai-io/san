@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,14 +48,20 @@ func (e *Engine) executeMatchedHook(ctx context.Context, hook matchedHook, input
 func (e *Engine) executeDetachedHook(ctx context.Context, hook matchedHook, input HookInput) {
 	start := time.Now()
 	result := e.executeMatchedHook(ctx, hook, input)
-	e.audit(HookFiredAudit{
+	audit := HookFiredAudit{
 		Event:    string(hook.Event),
 		Source:   matchedHookIdentity(hook),
 		Matcher:  hook.Matcher,
 		Outcome:  outcomeOf(result),
 		Reason:   reasonOf(result),
 		Duration: time.Since(start),
-	})
+	}
+	e.audit(audit)
+	result = finishCompletion(ctx, result, audit)
+	var recording *RecordingError
+	if errors.As(result.Error, &recording) {
+		return
+	}
 	if hook.Command == nil || !hook.Command.AsyncRewake || !result.ShouldBlock {
 		return
 	}
@@ -99,20 +106,22 @@ func (e *Engine) mergeOutcome(outcome, result HookOutcome) HookOutcome {
 }
 
 func (e *Engine) buildEnv(ctx context.Context, input HookInput) []string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
+	s, ok := ctx.Value(completionSnapshotKey{}).(completionSnapshot)
+	if !ok {
+		ctx = e.completionContext(ctx)
+		s = ctx.Value(completionSnapshotKey{}).(completionSnapshot)
+	}
 	result := append(os.Environ(),
 		setting.EnvPairs(
-			"PROJECT_DIR", e.cwd,
-			"SESSION_ID", e.sessionID,
+			"PROJECT_DIR", s.cwd,
+			"SESSION_ID", s.sessionID,
 			"EVENT_TYPE", input.HookEventName,
 		)...,
 	)
 	if input.ToolName != "" {
 		result = append(result, setting.EnvPair("TOOL_NAME", input.ToolName)...)
 	}
-	if fn := e.envProvider; fn != nil {
+	if fn := s.envProvider; fn != nil {
 		result = append(result, fn(ctx)...)
 	}
 	return result
@@ -310,7 +319,10 @@ func getString(m map[string]any, key string) string {
 	return ""
 }
 
-func (e *Engine) getCwd() string {
+func (e *Engine) getCwd(ctx context.Context) string {
+	if s, ok := ctx.Value(completionSnapshotKey{}).(completionSnapshot); ok {
+		return s.cwd
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.cwd

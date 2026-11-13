@@ -3,12 +3,42 @@ package hook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/genai-io/san/internal/setting"
 )
+
+func (e *Engine) invocationCompleter(ctx context.Context, outcome *HookOutcome) LLMCompleter {
+	s, ok := ctx.Value(completionSnapshotKey{}).(completionSnapshot)
+	if !ok {
+		ctx = e.completionContext(ctx)
+		s, _ = ctx.Value(completionSnapshotKey{}).(completionSnapshot)
+	}
+	if s.recorded == nil {
+		return s.legacy
+	}
+	return func(ctx context.Context, system, user, model string) (string, error) {
+		completion, err := s.recorded(ctx, system, user, model)
+		outcome.finish = completion.Finish
+		if completion.Finish == nil {
+			err = errors.Join(err, &RecordingError{Err: errors.New("recorded hook completion has no finisher")})
+		}
+		return completion.Text, err
+	}
+}
+
+func (e *Engine) invocationModel(ctx context.Context, cmd setting.HookCmd) string {
+	if cmd.Model != "" {
+		return cmd.Model
+	}
+	if s, ok := ctx.Value(completionSnapshotKey{}).(completionSnapshot); ok {
+		return s.model
+	}
+	return e.resolveModel(cmd)
+}
 
 const (
 	hookJSONResponseInstruction = "Return exactly one JSON object matching the hook output schema. Do not include markdown fences or commentary."
@@ -25,8 +55,8 @@ func (e *Engine) executePromptHook(ctx context.Context, hookCmd setting.HookCmd,
 		defer cancel()
 	}
 
-	completer := e.getLLMCompleter()
-	model := e.resolveModel(hookCmd)
+	completer := e.invocationCompleter(ctx, &outcome)
+	model := e.invocationModel(ctx, hookCmd)
 	if completer == nil || model == "" {
 		outcome.Error = fmt.Errorf("prompt hook requires an active provider and model")
 		return outcome
@@ -62,10 +92,10 @@ func (e *Engine) executeAgentHook(ctx context.Context, hookCmd setting.HookCmd, 
 		return outcome
 	}
 
-	model := e.resolveModel(hookCmd)
+	model := e.invocationModel(ctx, hookCmd)
 	prompt := buildHookPrompt(hookCmd.Prompt, string(inputJSON))
 
-	completer := e.getLLMCompleter()
+	completer := e.invocationCompleter(ctx, &outcome)
 	if completer == nil || model == "" {
 		outcome.Error = fmt.Errorf("agent hook requires an active provider and model")
 		return outcome

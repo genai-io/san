@@ -59,7 +59,7 @@ func (r *Request) Cancel() {
 	switch {
 	case r.Permission != nil:
 		select {
-		case r.Permission.Response <- agent.PermGateResponse{Reason: "interaction cancelled"}:
+		case r.Permission.Response <- agent.PermGateResponse{Reason: "interaction cancelled", Cancelled: true, By: "user"}:
 		default:
 		}
 	case r.Question != nil:

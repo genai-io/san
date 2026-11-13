@@ -45,9 +45,29 @@ callback. Tests in `inference_test.go` and `recorder_test.go` exercise the real 
 loop and injected write failures. The SDK contracts are in
 [sdk-go #109](https://github.com/genai-io/sdk-go/pull/109).
 
+`completion.go` owns utility-call attempts until the domain accepts or discards
+its result. Per-call `llm.CompletionAdmission` observes SDK-prepared requests through
+`CompleteWithAdmission` ([sdk-go #110](https://github.com/genai-io/sdk-go/pull/110));
+failed retries finish before another dispatch. Accepted results share one batch
+with the final inference finish. Cancellation does not cancel terminal persistence;
+closing an in-flight scope arranges accounting when its callback returns.
+
+Opt-in producer adapters now cover final permissions (`Recorder.RecordPermission`),
+hook completions, and `/btw`, recap and suggestion calls. Permission authority and
+shown-question snapshots come from policy/interaction, not reason parsing. Hook
+interpretation precedes durable finishing; recording errors block prompt/tool/Stop
+admission rather than using ordinary hook fail-open behavior. Queued and detached
+invocations capture their original hooks, model, input owner and callbacks. Side
+results retain their original session; recap prewarm stays unpublished until
+actual display, and discarded caches finish without an annotation. Suggestions
+never enter context or annotations. `completion_test.go`, the permission-resolution
+tests and app/hook/LLM recording tests exercise these boundaries.
+
 Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
-under `transcripts/`. There is no dual write or automatic conversion. Per-attempt
-utility calls and resolved policy/hook handoffs still need production integration.
+under `transcripts/`. App `services.Recording` is an unwired composition point,
+mutually exclusive with a selected legacy writer; there is no dual write or
+automatic conversion. Compaction, judge verdicts, autopilot parse retries, group
+interpretation and memory-recall classification still need producer integration.
 The [cutover design](../design/proposal-0005-session-management.md) tracks that,
 runtime resume and the final switch separately. Public API coverage is in
 `typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.
@@ -219,7 +239,8 @@ inclusive `tailLimit`. Each committed batch holds one version-1 `san.events` rec
 typed events and retained validation evidence, published only after a successful Commit.
 Runtime, hooks and inspector still use `LegacyStore.Create` / `Open` and
 `LegacySession.Append(transcript.Record)` with schema 4 under `transcripts/`.
-The public typed writer is available separately; recorder and resume cutover are pending.
+The public typed writer and core/initial producer adapters are available separately;
+runtime resume and the final format switch are pending.
 
 The public read surface is bounded raw events, not rendered history or resumable
 context:

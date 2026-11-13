@@ -4,6 +4,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
+	"errors"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -88,6 +89,20 @@ type Provider interface {
 // Factory opens a connection, called when one is actually needed.
 type Factory func(ctx context.Context) (Provider, error)
 
+// CompletionFinish records one dispatched attempt's outcome. A successful result
+// may be staged for its domain owner rather than committed by this callback.
+type CompletionFinish func(context.Context, *ai.Response, error) error
+
+// CompletionAdmission admits a prepared request before model dispatch.
+type CompletionAdmission func(context.Context, string, ai.Model, *ai.Request) (CompletionFinish, error)
+
+// RecordingError reports outcome persistence failure after model dispatch.
+// Unlike an admission failure, the model may already have consumed tokens.
+type RecordingError struct{ Err error }
+
+func (e *RecordingError) Error() string { return "llm: record completion: " + e.Err.Error() }
+func (e *RecordingError) Unwrap() error { return e.Err }
+
 // CompletionOptions is one turn, as San hands it over.
 type CompletionOptions struct {
 	Model          string
@@ -97,6 +112,7 @@ type CompletionOptions struct {
 	Tools          []ToolSchema
 	SystemPrompt   string
 	ThinkingEffort string
+	Admission      CompletionAdmission
 }
 
 // CompletionResponse aliases ai.Response so the streaming layer and the
@@ -175,6 +191,29 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 		callOpts = append(callOpts, ai.WithTools(opts.Tools...))
 	}
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
+	if opts.Admission != nil {
+		var finish CompletionFinish
+		resp, callErr := client.CompleteWithAdmission(ctx, opts.Messages, func(admitCtx context.Context, req *ai.Request) error {
+			var err error
+			finish, err = opts.Admission(admitCtx, provider.Name(), client.Model(), req)
+			if err == nil && finish == nil {
+				err = errors.New("llm: completion admission returned nil finish")
+			}
+			if err != nil {
+				finish = nil
+			}
+			return err
+		}, callOpts...)
+		if finish != nil {
+			if err := finish(context.WithoutCancel(ctx), resp, callErr); err != nil {
+				callErr = errors.Join(callErr, &RecordingError{Err: err})
+			}
+		}
+		if resp != nil {
+			return *resp, callErr
+		}
+		return CompletionResponse{}, callErr
+	}
 	resp, err := client.Complete(ctx, opts.Messages, callOpts...)
 	if err != nil {
 		return CompletionResponse{}, err
