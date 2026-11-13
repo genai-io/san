@@ -71,10 +71,14 @@ record the final instructions/task-preserving summary, not raw model output.
 Compaction recording tests cover retries, partial usage, native queued input and
 storage failures. These adapters and child-writer injection remain unwired.
 
+`Completion.FinishPermission` joins the final gate verdict with its permission-judge
+inference. Escalations finish accounting without inventing a denial; grants follow
+a successful commit. Admission and recording errors stop the gate.
+
 Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
 under `transcripts/`. App `services.Recording` is an unwired composition point,
 mutually exclusive with a selected legacy writer; there is no dual write or
-automatic conversion. Judge verdicts, autopilot parse retries, group interpretation
+conversion. Autopilot (including Bash prompts and parse retries), group interpretation
 and memory-recall classification still need producer integration.
 The [cutover design](../design/proposal-0005-session-management.md) tracks that,
 runtime resume and the final switch separately. Public API coverage is in

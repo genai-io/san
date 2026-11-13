@@ -45,10 +45,11 @@ every piece ready and tested while unwired, then switch once and delete the old 
      Deferred native acceptance precedes context replacement; stale/canceled
      requests and queued shutdown work discard against the original writer.
      Child-session creation/provenance and default writer injection remain step 5.
+   - Permission-judge calls join the final gate verdict with inference accounting;
+     grants follow a committed allow. Ordinary judge failures still escalate.
 
-   Remaining producers: judge inference joined to its verdict, autopilot including
-   parse retries, group interpretation including stale results, and classification
-   of the dedicated memory-recall call.
+   Remaining producers: autopilot (including Bash prompts and parse retries),
+   group interpretation including stale results, and memory-recall classification.
    Default runtime wiring waits for all producers and steps 4–6.
 
    | Runtime source | Typed events |

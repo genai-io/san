@@ -9,6 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -149,6 +150,11 @@ func (c *Completion) Compaction(summary string) core.Compaction {
 		result.Close = c.Close
 	}
 	return result
+}
+
+// FinishPermission joins the final gate verdict with its judge inference.
+func (c *Completion) FinishPermission(ctx context.Context, resolved perm.Resolution) error {
+	return c.Finish(ctx, Event{Payload: permissionPayload(resolved)})
 }
 
 // FinishHook joins the interpreted hook outcome with its model-call finish.

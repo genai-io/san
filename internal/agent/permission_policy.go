@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -10,10 +11,13 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/judge"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // PermissionSettings is the live rule source shared by interactive and print runs.
@@ -59,13 +63,14 @@ func (p PermissionPolicy) CanApproveByHook(name string, args map[string]any) boo
 // JudgeSnapshot is a live snapshot supplied for each gray-zone decision.
 // Observe retains tool-call context for UI annotations without owning presentation.
 type JudgeSnapshot struct {
-	Engaged  bool
-	Enabled  bool
-	CWD      string
-	UnderGit bool
-	Mission  string
-	Judge    func(context.Context, judge.Request) (judge.Verdict, error)
-	Observe  func(context.Context, bool, string)
+	Engaged   bool
+	Enabled   bool
+	CWD       string
+	UnderGit  bool
+	Mission   string
+	Judge     func(context.Context, judge.Request) (judge.Verdict, error)
+	Observe   func(context.Context, bool, string)
+	Recording *session.Session
 }
 
 func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[string]any, reason string, r JudgeSnapshot) PermJudgeResult {
@@ -94,8 +99,9 @@ func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[strin
 	}
 	judgeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	scope := r.Recording.Completion(session.PurposeJudge)
 	verdict, err := r.Judge(judgeCtx, judge.Request{ToolName: name, Args: args, Reason: reason,
-		CWD: r.CWD, Mission: r.Mission, UnderGit: r.UnderGit})
+		CWD: r.CWD, Mission: r.Mission, UnderGit: r.UnderGit, Admission: scope.Admission()})
 	// A provider may return a verdict after cancellation; it must not create grants.
 	if err == nil {
 		err = judgeCtx.Err()
@@ -103,6 +109,12 @@ func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[strin
 	log.Logger().Debug("judge verdict", zap.String("tool", name),
 		zap.Bool("allow", err == nil && verdict.Allow), zap.String("reason", verdict.Reason), zap.Error(err))
 	if err != nil || !verdict.Allow {
+		closeErr := scope.Close()
+		var admission *ai.AdmissionError
+		var recording *llm.RecordingError
+		if closeErr != nil || errors.As(err, &admission) || errors.As(err, &recording) {
+			return PermJudgeResult{Err: errors.Join(err, closeErr)}
+		}
 		reason := verdict.Reason
 		if err != nil || reason == "" {
 			reason = "autopilot unavailable — asking you"
@@ -110,12 +122,30 @@ func (p PermissionPolicy) Judge(ctx context.Context, name string, args map[strin
 		observe(false, reason)
 		return PermJudgeResult{}
 	}
-	p.record(name, args, true, transcript.PermissionSourceJudge, verdict.Reason)
-	for _, rule := range setting.ExactAllowRules(name, args) {
-		p.Session.AllowPattern(rule)
+	approve := func() {
+		p.record(name, args, true, transcript.PermissionSourceJudge, verdict.Reason)
+		for _, rule := range setting.ExactAllowRules(name, args) {
+			p.Session.AllowPattern(rule)
+		}
+		observe(true, verdict.Reason)
 	}
-	observe(true, verdict.Reason)
-	return PermJudgeResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
+	result := PermJudgeResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
+	if scope == nil {
+		approve()
+	} else {
+		result.Finish = func(ctx context.Context, resolved perm.Resolution) error {
+			if err := scope.FinishPermission(ctx, resolved); err != nil {
+				return err
+			}
+			if resolved.Decision == "allow" && resolved.By == "judge" {
+				approve()
+			} else {
+				observe(false, resolved.Reason)
+			}
+			return nil
+		}
+	}
+	return result
 }
 
 func (p PermissionPolicy) record(name string, args map[string]any, allow bool, source, reason string) {

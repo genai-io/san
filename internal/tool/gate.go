@@ -79,18 +79,29 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker, record ...perm
 			if _, ok := check.(Resolver); !ok {
 				return result, fmt.Errorf("permission recording requires a structured resolver")
 			}
-			defer func() {
-				if err != nil {
-					return
-				}
-				resolved.CallID = c.Call.ID
-				if resolved.Decision == "" || resolved.By == "" {
-					err = fmt.Errorf("permission resolution is missing authority")
-					return
-				}
-				err = recorder(context.WithoutCancel(ctx), resolved)
-			}()
 		}
+		defer func() {
+			if err != nil {
+				return
+			}
+			finish := recorder
+			if finish == nil {
+				finish = resolved.Finish
+			}
+			if finish == nil {
+				return
+			}
+			resolved.CallID = c.Call.ID
+			if resolved.Decision == "" || resolved.By == "" {
+				err = fmt.Errorf("permission resolution is missing authority")
+				return
+			}
+			if resolved.Finish != nil && ctx.Err() != nil {
+				resolved.Decision, resolved.Reason = "cancelled", ctx.Err().Error()
+				result = sdkagent.Decision{Block: true, Reason: resolved.Reason}
+			}
+			err = finish(context.WithoutCancel(ctx), resolved)
+		}()
 		input, _ := core.ParseToolInput(c.Call.Input)
 		edited := false
 		allowByHook, forceAsk, permissionReason := false, false, ""
@@ -125,8 +136,11 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker, record ...perm
 				resolved = perm.Resolution{Decision: "allow", By: "hook", Reason: permissionReason}
 			}
 			if !waived {
-				if recorder != nil {
-					resolved = check.(Resolver).Resolve(ctx, c.Call.Name, input, forceAsk, permissionReason)
+				if resolver, ok := check.(Resolver); ok {
+					resolved = resolver.Resolve(ctx, c.Call.Name, input, forceAsk, permissionReason)
+					if resolved.Err != nil {
+						return sdkagent.Decision{}, resolved.Err
+					}
 					if resolved.Decision != "allow" {
 						return sdkagent.Decision{Block: true, Reason: resolved.Reason}, nil
 					}
@@ -143,7 +157,7 @@ func HookedPermission(hooks hook.Handler, check HookAwareChecker, record ...perm
 		if err != nil {
 			// The hook's edit cannot be expressed, and running the original
 			// would run what the hook rejected. Refuse instead.
-			resolved = perm.Resolution{Decision: "deny", By: "hook", Reason: "the hook's arguments could not be encoded"}
+			resolved.Decision, resolved.By, resolved.Reason = "deny", "hook", "the hook's arguments could not be encoded"
 			return sdkagent.Decision{Block: true, Reason: "the hook's arguments could not be encoded"}, nil
 		}
 		return sdkagent.Decision{Arguments: string(rewritten)}, nil
