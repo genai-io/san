@@ -38,6 +38,7 @@ type Agent interface {
     Messages() []Message
     SetMessages(msgs []Message)
     Append(msg Message)       // queue a message; any goroutine, never blocks
+    Compact(result Compaction) bool // queue an owned deferred summary; false retains caller ownership
     ThinkAct(ctx context.Context) (*Result, error)
     Run(ctx context.Context) error
     Cancel() *TurnFinalization
@@ -155,7 +156,11 @@ loop is inseparable from the contract:
   inside.
 - `compact.go` — shortening a conversation that has outgrown its window. Two of
   the exchange's hooks ask for it and `/compact` asks for it through a signal,
-  so it belongs to neither.
+  so it belongs to neither. Producers return `Compaction` with finalized summary
+  text, a `Finish(ctx, nativeMessage)` acceptance callback and an idempotent discard
+  `Close`. Core assigns the native ID/format and finishes before publishing or
+  replacing context; persistence errors are fatal. Mailbox shutdown rejects new
+  transfers and closes queued scopes before releasing their writer owner.
 
 ## Lifecycle
 

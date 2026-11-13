@@ -208,25 +208,22 @@ func (s *Runtime) Send(msg core.Message) error {
 	return nil
 }
 
-// Compact asks the running agent to compact in place using the precomputed
-// summary, replacing its conversation chain without tearing the agent down (so
-// the system prompt and tools are not rebuilt). The agent records the summary
-// and a compaction boundary and emits CompactEvent. Returns false when there is
-// no active agent to compact. Safe because the agent applies it at a phase
-// boundary on its own goroutine.
-func (s *Runtime) Compact(summary string) bool {
+// Compact transfers a precomputed result to the live mailbox. False with no
+// error means there is no runtime; an error leaves ownership with the caller.
+func (s *Runtime) Compact(result core.Compaction) (bool, error) {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 	run := s.run
-	s.mu.RUnlock()
 	if run == nil {
-		return false
+		return false, nil
 	}
-	select {
-	case run.agent.Inbox() <- core.Inbound{Signal: core.SigCompact, Summary: summary}:
-		return true
-	case <-run.done:
-		return false
+	if run.stopped {
+		return false, ErrRuntimeStopped
 	}
+	if !run.agent.Compact(result) {
+		return false, fmt.Errorf("agent is not accepting compaction")
+	}
+	return true, nil
 }
 
 // Cancel cancels only the current turn, keeping the runtime active for later input.

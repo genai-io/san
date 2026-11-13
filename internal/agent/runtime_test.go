@@ -93,6 +93,14 @@ func (a *controlledAgent) Messages() []core.Message                       { retu
 func (a *controlledAgent) SetMessages(messages []core.Message)            { a.messages = messages }
 func (a *controlledAgent) Append(m core.Message)                          { a.appended <- m }
 func (a *controlledAgent) ThinkAct(context.Context) (*core.Result, error) { return nil, nil }
+func (a *controlledAgent) Compact(c core.Compaction) bool {
+	select {
+	case a.inbox <- core.Inbound{Signal: core.SigCompact, Compaction: &c}:
+		return true
+	default:
+		return false
+	}
+}
 func (a *controlledAgent) Run(ctx context.Context) error {
 	close(a.started)
 	if a.ignoreContext {
@@ -114,6 +122,30 @@ func sessionWithAgents(agents ...*controlledAgent) *Runtime {
 		next++
 		return ag, nil, nil
 	}}
+}
+
+func TestRuntimeCompactionRejectionRetainsOwnership(t *testing.T) {
+	closed := 0
+	result := core.Compaction{Summary: "prepared", Close: func() error { closed++; return nil }}
+	var runtime Runtime
+	if accepted, err := runtime.Compact(result); accepted || err != nil {
+		t.Fatal("inactive runtime did not return ownership")
+	}
+	a := newControlledAgent(false)
+	runtime.run = &run{agent: a, stopped: true}
+	if accepted, err := runtime.Compact(result); accepted || !errors.Is(err, ErrRuntimeStopped) {
+		t.Fatal("stopped runtime looked inactive or accepted compaction")
+	}
+	runtime.run.stopped = false
+	for range cap(a.inbox) {
+		a.inbox <- core.Inbound{Signal: core.SigStop}
+	}
+	if accepted, err := runtime.Compact(result); accepted || err == nil {
+		t.Fatal("full mailbox silently lost compaction")
+	}
+	if closed != 0 {
+		t.Fatal("rejected transfer closed caller-owned result")
+	}
 }
 
 func TestSessionStopWaitsForExactRunBeforeRestart(t *testing.T) {

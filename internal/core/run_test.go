@@ -46,7 +46,9 @@ func TestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = ag.Run(ctx) }()
-	ag.Inbox() <- Inbound{Signal: SigCompact, Summary: "the summary"}
+	if !ag.Compact(Compaction{Summary: "the summary"}) {
+		t.Fatal("compaction rejected")
+	}
 	waitFor(t, "the compaction to land", func() bool { return captured.Load() != nil })
 
 	if n := llm.Calls(); n != 0 {
@@ -286,8 +288,8 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 		Client: testClient(aitest.Always(aitest.Hangs())),
 		System: NewSystem(),
 		Tools:  NewTools(),
-		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
-			return "the summary", nil
+		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
+			return Compaction{Summary: "the summary"}, nil
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})
@@ -360,8 +362,8 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 		// One token of room, so the first boundary is already over budget and
 		// the hook fires on the exchange below.
 		ContextBudget: func() int { return 1 },
-		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
-			return "the summary", nil
+		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
+			return Compaction{Summary: "the summary"}, nil
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})
@@ -730,8 +732,8 @@ func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
 		Tools:         NewTools(),
 		MaxSteps:      1,
 		ContextBudget: func() int { return 1 },
-		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
-			return "", errors.New("the summarizer is down")
+		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
+			return Compaction{}, errors.New("the summarizer is down")
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})

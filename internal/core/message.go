@@ -65,8 +65,8 @@ func (r ChatRole) AIRole() (ai.Role, bool) {
 // Whole-run shutdown uses SigStop or Run's context; Cancel only cancels a turn.
 type Inbound struct {
 	Signal Signal
-	// Summary carries SigCompact's precomputed replacement.
-	Summary string
+	// Compaction carries SigCompact's deferred replacement.
+	Compaction *Compaction
 }
 
 // Signal represents control signals sent through channels.

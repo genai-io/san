@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -95,6 +96,9 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace writer; nil leaves recording off.
 	OnEvent func(core.Event)
+	// Recording owns typed compaction attempts; nil until the format cutover.
+	// Do not combine it with a legacy transcript observer.
+	Recording *session.Session
 
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
@@ -231,22 +235,25 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 
 	compactClient := client
 	cache := p.FileCache
-	compactFunc := func(ctx context.Context, msgs []core.Message) (string, error) {
+	compactFunc := func(ctx context.Context, msgs []core.Message) (core.Compaction, error) {
+		scope := p.Recording.Completion(session.PurposeCompaction)
+		result := scope.Compaction("")
 		text := core.BuildCompactionText(msgs)
-		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens)
+		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, nil, core.CompactMaxTokens, scope.Admission())
 		if err != nil {
-			return "", err
+			return result, err
 		}
 		summary := strings.TrimSpace(resp.Content.Text())
 		if summary == "" {
-			return "", fmt.Errorf("compaction produced empty summary")
+			return result, fmt.Errorf("compaction produced empty summary")
 		}
 		// The loop resumes on this summary at once, before the reminders the
 		// next user turn would carry: bring the instructions and the files in
 		// hand along with it.
 		budget := client.ContextBudget()
 		summary = core.WithRecentRequests(summary, msgs, budget)
-		return reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), cache, budget)), nil
+		result.Summary = reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), cache, budget))
+		return result, nil
 	}
 
 	permissionGate := tool.HookedPermission(p.HookEngine, pg)
