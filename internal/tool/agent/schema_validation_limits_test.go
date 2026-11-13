@@ -7,7 +7,12 @@ import (
 
 func TestAgentSchemaKeepsValidationAndDenialGuidance(t *testing.T) {
 	description := agentSchema("").Description
-	for _, phrase := range []string{"only task-local context", "Include the validation plan", "Do not retry denied commands", "failed tool and reason"} {
+	for _, phrase := range []string{
+		"Delegate when the user requests it",
+		"only task-local context", "Include the validation plan",
+		"Do not retry permission-denied commands", "failed tool and reason",
+		"Check uncertain side effects before retrying failed work",
+	} {
 		if !strings.Contains(description, phrase) {
 			t.Errorf("description missing %q", phrase)
 		}

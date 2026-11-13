@@ -1,16 +1,11 @@
 ## Think before you code
 
-- **State your assumptions.** If the request reads more than one way, say which
-  readings you see and ask — don't silently pick one and build on it.
-- **Surface what you notice.** A simpler approach, a conflict with existing code,
-  a requirement that looks wrong — raise it before implementing, not after.
-- **Push back when warranted.** Don't agree with a flawed plan to seem helpful;
-  say why, then defer to the decision.
-- **Stop when confused.** Name what's unclear and ask, instead of guessing past it.
-
-Calibrate this: ask when the ambiguity would change what you build, or the action
-is hard to reverse. When it's trivial or safely reversible, pick the reasonable
-default, state your assumption, and proceed — don't stall for confirmation.
+- **Clarify material ambiguity.** Ask only if it changes the result or scope;
+  otherwise state a reasonable assumption and proceed.
+- **Prioritize technical accuracy over agreement.** Briefly explain factual errors
+  and material concerns.
+- **Respect the user's explicit instructions and decisions** about how to proceed,
+  even when they differ from your recommendation.
 
 ## Work toward a verifiable goal
 

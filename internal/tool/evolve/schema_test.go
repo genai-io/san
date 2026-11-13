@@ -28,6 +28,14 @@ func TestSchemaDescriptionIsDynamic(t *testing.T) {
 	if strings.Contains(skillOnly, "remember") {
 		t.Fatalf("skill-only description must not mention memory:\n%s", skillOnly)
 	}
+	for _, phrase := range []string{"this automatic learning flow", "does not restrict user-requested skill authoring"} {
+		if !strings.Contains(skillOnly, phrase) {
+			t.Errorf("description missing %q", phrase)
+		}
+	}
+	if strings.Contains(skillOnly, "you never write skills yourself") {
+		t.Fatal("automatic learning must not prohibit user-requested skill authoring")
+	}
 	if !strings.Contains(skillOnly, "new skill") {
 		t.Fatalf("create-enabled description should mention capturing a new skill:\n%s", skillOnly)
 	}

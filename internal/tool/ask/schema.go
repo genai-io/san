@@ -8,7 +8,7 @@ func (t *AskUserQuestionTool) Schema() core.ToolSchema {
 		Name: "AskUserQuestion",
 		Description: `Ask the user a question with predefined choices; an 'Other' free-text option is appended automatically.
 
-Use this instead of plain text when you need a decision or preference (ambiguous request, multiple valid approaches); skip it when a reasonable default exists or the answer is in the code.
+Use this for unresolved decisions; skip settled choices (including accepted known issues), reasonable defaults, or answers in code. Re-ask only if new evidence materially changes risk or scope.
 
 Single question (most common):
   {"question": "Which version?", "options": ["v1.0", "v2.0", "v3.0"]}

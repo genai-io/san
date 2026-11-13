@@ -24,6 +24,25 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 	return core.ToolSchema{}, false
 }
 
+func TestToolGuidanceRespectsUserChoices(t *testing.T) {
+	schemas := tool.GetToolSchemas()
+	for name, phrases := range map[string][]string{
+		tool.ToolAskUserQuestion: {"skip settled choices", "accepted known issues", "new evidence materially changes risk or scope"},
+		tool.ToolSkill:           {"unless the user explicitly opts out"},
+		tool.ToolWrite:           {"Create documentation only when requested or required by the task or repository instructions"},
+	} {
+		schema, ok := findSchema(schemas, name)
+		if !ok {
+			t.Fatalf("missing schema %s", name)
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(schema.Description, phrase) {
+				t.Errorf("%s description missing %q", name, phrase)
+			}
+		}
+	}
+}
+
 func TestGroupControlIsNotAModelTool(t *testing.T) {
 	if _, ok := tool.Get("Group"); ok {
 		t.Fatal("group control must not register a model tool")

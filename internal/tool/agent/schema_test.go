@@ -19,8 +19,8 @@ func TestAgentToolSchemaMatchesBuilder(t *testing.T) {
 func TestAgentSchemaRequiresBenefitAndContextIndependence(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
-		"Work directly by default",
-		"Delegate only when it offers a clear benefit and needs little prior conversation context",
+		"Delegate when the user requests it",
+		"when it clearly helps and needs little prior context; otherwise work directly",
 	} {
 		if !strings.Contains(description, want) {
 			t.Errorf("Agent description should contain %q", want)

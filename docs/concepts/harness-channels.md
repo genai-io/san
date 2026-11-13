@@ -70,6 +70,13 @@ directory) instead.
 See [`packages/core.md`](../packages/core.md) for the `Section` and
 `System` types.
 
+### User decisions
+
+Default guidance and the bundled `software-engineer` persona prioritize technical
+accuracy while respecting the user's explicit instructions and decisions, even
+when they differ from the agent's recommendation. Compaction retains approvals
+and marks superseded blockers.
+
 ## Reminders
 
 Reminders carry "session-level" or "project-level" mutable content. The

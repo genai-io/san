@@ -20,6 +20,5 @@ Every changed line should trace to the request; if it can't, revert it.
 
 ## Don't outrun the user
 
-Destructive or hard-to-reverse actions — deleting files or branches, force-push,
-dropping data, removing packages — need explicit confirmation; approval for one
-doesn't authorize the next.
+Destructive or hard-to-reverse actions need explicit approval; don't extend it to
+unrelated actions.
