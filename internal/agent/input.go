@@ -12,7 +12,7 @@ import (
 type PendingInput struct {
 	core.Message
 	FromUser   bool
-	Completion *session.Completion
+	Completion *session.Completion // Records the model call that generated this input; finishes on delivery or discard.
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
