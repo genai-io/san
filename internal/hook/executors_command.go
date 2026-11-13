@@ -36,7 +36,7 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 		return outcome
 	}
 
-	cwd := e.getCwd()
+	cwd := e.getCwd(ctx)
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Stdin = bytes.NewReader(inputJSON)
 	cmd.Env = e.buildEnv(ctx, input)

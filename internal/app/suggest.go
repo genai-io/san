@@ -49,7 +49,14 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 	req := m.newSideRequest("suggest", prompt)
 	return m.userInput.PromptSuggestion.Start(func(ctx context.Context) (string, error) {
 		resp, err := req.complete(ctx)
-		return resp.Content.Text(), err
+		if err != nil {
+			closeSide(req.recording)
+			return "", err
+		}
+		if finishErr := req.recording.Finish(context.WithoutCancel(ctx)); finishErr != nil {
+			return "", finishErr
+		}
+		return resp.Content.Text(), nil
 	})
 }
 

@@ -4,7 +4,8 @@ Moves the runtime from schema-4 transcripts to the typed `sessions/<sid>/` store
 ([PROP-0005](../../docs/design/proposal-0005-session-management.md)). The storage
 layer is done and unwired (events, projector, blobs, attrs, overview cache, trash,
 list, fork, clean). Name isolation and the public typed API are implemented and
-unwired; the producers, runtime resume and final switch remain.
+unwired; core recording and initial permission/hook/side-call adapters are ready.
+The remaining producers, runtime resume and final switch remain.
 
 ## Why a flag day
 
@@ -26,8 +27,24 @@ every piece ready and tested while unwired, then switch once and delete the old 
    effective request and atomically commits results with finishes. Real-agent
    golden sequences cover the turn/tool path, denied calls and write failures.
    sdk-go [#109](https://github.com/genai-io/sdk-go/pull/109) supplies native tool
-   choice JSON and reliable tool execution evidence. Production utility-call,
-   resolved permission and prompt-hook handoffs still need integration:
+   choice JSON and reliable tool execution evidence. Initial producer adapters
+   are implemented and tested, still unwired:
+   - SDK [#110](https://github.com/genai-io/sdk-go/pull/110) supplies native
+     `CompleteAdmitted`; the LLM layer adds per-attempt admission/finishing without
+     reimplementing preparation, repair or aggregation.
+   - Final permission recording keeps explicit authority/scope and detached
+     human question snapshots, failing closed before dispatch.
+   - Hook finishing joins interpreted outcomes with inference accounting; queued
+     and detached invocations retain the original owner. Recording errors are fatal
+     at prompt/tool/Stop gates, unlike ordinary hook execution errors.
+   - BTW, recap and suggestion scopes capture the original session. Recap caches
+     publish only at display; discarded or retired work finishes without an
+     annotation. Suggestions record accounting, never suggested context.
+
+   Remaining producers: manual/automatic/subagent compaction, judge inference
+   joined to its verdict, autopilot including parse retries, group interpretation
+   including stale results, and classification of the dedicated memory-recall call.
+   Default runtime wiring waits for all producers and steps 4–6.
 
    | Runtime source | Typed events |
    | --- | --- |

@@ -39,13 +39,13 @@ func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionR
 	}
 	var d setting.PermissionDecision
 	if permitAutoMemoryWrite(p.AutoMemory, name, args, p.Settings.DenyRule) {
-		d = setting.PermissionDecision{Behavior: perm.Permit, Reason: "auto memory"}
+		d = setting.PermissionDecision{Behavior: perm.Permit, By: "config", Reason: "auto memory"}
 	} else {
 		d = p.Settings.HasPermissionToUseTool(name, args, p.Session)
 	}
 	if d.Behavior == perm.Permit || d.Behavior == perm.Reject {
 		p.record(name, args, d.Behavior == perm.Permit, transcript.PermissionSourceConfig, d.Reason)
-		return PermDecisionResult{Decision: d.Behavior, Reason: d.Reason}
+		return PermDecisionResult{Decision: d.Behavior, By: d.By, Scope: d.Scope, Reason: d.Reason}
 	}
 	return PermDecisionResult{Decision: perm.Prompt, Reason: d.Reason, ToolName: name,
 		Description: d.Reason, RequestID: core.NewMessageID(), Judgeable: d.Judgeable}

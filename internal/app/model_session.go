@@ -101,6 +101,9 @@ func (m *model) recordNotice(n core.ChatMessage) {
 
 // replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.LegacySession) {
+	if m.sessionID() != opened.ID() || (m.services.Session != nil && m.services.Session != opened) {
+		m.resetRecap()
+	}
 	if m.sessionID() != opened.ID() {
 		m.conv.SetAgentIdentitySession(opened.ID())
 		m.env.SessionPermissions = setting.NewSessionPermissions()
@@ -235,6 +238,7 @@ func (m *model) loadSessionByID(id string) error {
 }
 
 func (m *model) restoreHistory(sess *session.LegacyHistory) {
+	m.resetRecap()
 	m.conv.Messages = m.services.SessionStore.ChatRows(sess)
 	m.earlyNotices = nil
 	m.services.Agent.SetMessages(sess.Messages)
@@ -374,6 +378,7 @@ func (m *model) clearSession() error {
 		m.workerMu.Lock()
 		defer m.workerMu.Unlock()
 	}
+	m.resetRecap()
 	_ = m.services.Session.Close()
 	m.services.Session = nil
 	m.services.sessionID = session.NewSessionID()

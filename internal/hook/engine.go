@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -16,6 +17,73 @@ import (
 // The caller supplies the system prompt, user message, and model identifier;
 // the implementation owns provider construction and streaming details.
 type LLMCompleter func(ctx context.Context, systemPrompt, userMessage, model string) (string, error)
+
+// LLMCompletion hands model output and its durable terminal handoff to the engine.
+type LLMCompletion struct {
+	Text   string
+	Finish func(context.Context, HookFiredAudit) error
+}
+type RecordedLLMCompleter func(context.Context, string, string, string) (LLMCompletion, error)
+
+// RecordingError marks a durability failure which must never fail open.
+type RecordingError struct{ Err error }
+
+func (e *RecordingError) Error() string { return "hook recording: " + e.Err.Error() }
+func (e *RecordingError) Unwrap() error { return e.Err }
+
+type completionSnapshot struct {
+	recorded    RecordedLLMCompleter
+	recorder    func(context.Context, HookFiredAudit) error
+	legacy      LLMCompleter
+	model       string
+	sessionID   string
+	transcript  string
+	cwd         string
+	permission  string
+	settings    *setting.Data
+	envProvider func(context.Context) []string
+}
+type completionSnapshotKey struct{}
+
+func (e *Engine) completionContext(ctx context.Context) context.Context {
+	e.mu.RLock()
+	s := completionSnapshot{recorded: e.recordedCompleter, recorder: e.completionRecorder,
+		legacy: e.llmCompleter, model: e.hookModel, sessionID: e.sessionID,
+		transcript: e.transcriptPath, cwd: e.cwd, permission: e.permissionMode, settings: e.settings, envProvider: e.envProvider}
+	e.mu.RUnlock()
+	return context.WithValue(ctx, completionSnapshotKey{}, s)
+}
+func (e *Engine) SetRecordedLLMCompleter(fn RecordedLLMCompleter, model string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recordedCompleter = fn
+	e.hookModel = model
+}
+
+// SetCompletionRecorder records terminal facts when no model-owned finisher exists.
+func (e *Engine) SetCompletionRecorder(fn func(context.Context, HookFiredAudit) error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.completionRecorder = fn
+}
+func finishCompletion(ctx context.Context, r HookOutcome, a HookFiredAudit) HookOutcome {
+	finish := r.finish
+	if finish == nil {
+		s, _ := ctx.Value(completionSnapshotKey{}).(completionSnapshot)
+		finish = s.recorder
+	}
+	if finish != nil {
+		if err := finish(context.WithoutCancel(ctx), a); err != nil {
+			r.Error = errors.Join(r.Error, &RecordingError{Err: err})
+			r.ShouldContinue = false
+		}
+	}
+	var recording *RecordingError
+	if errors.As(r.Error, &recording) {
+		r.ShouldContinue = false
+	}
+	return r
+}
 
 // HookFiredAudit is the payload delivered to AuditCallback after every hook
 // invocation. The session writer uses this to write one hook.fired
@@ -45,12 +113,14 @@ type Engine struct {
 	transcriptPath string
 	permissionMode string
 
-	llmCompleter  LLMCompleter
-	hookModel     string
-	httpClient    *http.Client
-	asyncCallback AsyncHookCallback
-	auditCallback AuditCallback
-	envProvider   func(context.Context) []string
+	recordedCompleter  RecordedLLMCompleter
+	completionRecorder func(context.Context, HookFiredAudit) error
+	llmCompleter       LLMCompleter
+	hookModel          string
+	httpClient         *http.Client
+	asyncCallback      AsyncHookCallback
+	auditCallback      AuditCallback
+	envProvider        func(context.Context) []string
 
 	mu             sync.RWMutex
 	store          *hookStore
@@ -169,8 +239,24 @@ func (e *Engine) AddRuntimeFunctionHook(event EventType, matcher string, hook Fu
 
 // Execute runs all matching hooks for an event synchronously.
 func (e *Engine) Execute(ctx context.Context, event EventType, input HookInput) HookOutcome {
+	return e.Prepare(event, input)(ctx)
+}
+
+// Prepare captures one invocation's hooks, model, input ownership and recording
+// callbacks before the caller queues work. Later reconfiguration cannot retarget it.
+func (e *Engine) Prepare(event EventType, input HookInput) func(context.Context) HookOutcome {
+	captured := e.completionContext(context.Background())
+	snapshot := captured.Value(completionSnapshotKey{}).(completionSnapshot)
+	hooks := e.getMatchingHooks(event, &input, &snapshot)
+	return func(ctx context.Context) HookOutcome {
+		ctx = context.WithValue(ctx, completionSnapshotKey{}, snapshot)
+		return e.execute(ctx, event, input, hooks)
+	}
+}
+
+func (e *Engine) execute(ctx context.Context, event EventType, input HookInput, hooks []matchedHook) HookOutcome {
 	outcome := HookOutcome{ShouldContinue: true}
-	hooks := e.getMatchingHooks(event, &input)
+	snapshot := ctx.Value(completionSnapshotKey{}).(completionSnapshot)
 	if len(hooks) == 0 {
 		return outcome
 	}
@@ -178,8 +264,9 @@ func (e *Engine) Execute(ctx context.Context, event EventType, input HookInput) 
 	for _, hook := range hooks {
 		if hook.Command != nil && (hook.Command.Async || hook.Command.AsyncRewake) {
 			hookCopy, inputCopy := hook, input
+			detachedCtx := context.WithValue(e.detachedCtx, completionSnapshotKey{}, snapshot)
 			e.launchDetached(func() {
-				e.executeDetachedHook(e.detachedCtx, hookCopy, inputCopy)
+				e.executeDetachedHook(detachedCtx, hookCopy, inputCopy)
 			})
 			// Emit at launch; the detached goroutine re-emits with the real
 			// outcome when it finishes. Two records make the lifecycle visible.
@@ -201,14 +288,20 @@ func (e *Engine) Execute(ctx context.Context, event EventType, input HookInput) 
 			zap.Duration("duration", duration),
 			zap.Bool("error", result.Error != nil),
 		)
-		e.audit(HookFiredAudit{
+		audit := HookFiredAudit{
 			Event:    string(event),
 			Source:   matchedHookIdentity(hook),
 			Matcher:  hook.Matcher,
 			Outcome:  outcomeOf(result),
 			Reason:   reasonOf(result),
 			Duration: duration,
-		})
+		}
+		e.audit(audit)
+		result = finishCompletion(ctx, result, audit)
+		var recording *RecordingError
+		if errors.As(result.Error, &recording) {
+			return result
+		}
 		if result.Error != nil {
 			log.Logger().Warn("hook execution failed",
 				zap.String("event", string(event)),
@@ -260,11 +353,13 @@ func reasonOf(r HookOutcome) string {
 
 // ExecuteAsync runs all matching hooks asynchronously (fire-and-forget).
 func (e *Engine) ExecuteAsync(event EventType, input HookInput) {
-	hooks := e.getMatchingHooks(event, &input)
+	detachedCtx := e.completionContext(e.detachedCtx)
+	snapshot := detachedCtx.Value(completionSnapshotKey{}).(completionSnapshot)
+	hooks := e.getMatchingHooks(event, &input, &snapshot)
 	for _, hook := range hooks {
 		hookCopy, inputCopy := hook, input
 		e.launchDetached(func() {
-			e.executeDetachedHook(e.detachedCtx, hookCopy, inputCopy)
+			e.executeDetachedHook(detachedCtx, hookCopy, inputCopy)
 		})
 	}
 }

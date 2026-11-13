@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/session"
 )
 
 const btwTimeout = 2 * time.Minute
@@ -35,8 +36,10 @@ type btwAsk struct {
 }
 
 type btwAnswerMsg struct {
-	ask    btwAsk
-	answer string
+	ask       btwAsk
+	answer    string
+	owner     *session.Session
+	recording *session.Completion
 }
 
 // sideQuestion starts answering question off the UI goroutine.
@@ -52,7 +55,7 @@ func (m *model) sideQuestion(question string) tea.Cmd {
 	return tea.Batch(tick, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
 		defer cancel()
-		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req)}
+		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req), owner: req.owner, recording: req.recording}
 	})
 }
 
@@ -60,10 +63,15 @@ func (m *model) onBtwAnswer(msg btwAnswerMsg) tea.Cmd {
 	if i := slices.Index(m.btw, msg.ask); i >= 0 {
 		m.btw = slices.Delete(m.btw, i, i+1)
 	}
-	if msg.ask.sessionID != m.sessionID() {
+	if msg.ask.sessionID != m.sessionID() || msg.owner != m.services.Recording {
+		closeSide(msg.recording)
 		return nil
 	}
-	m.conv.AddNotice(conv.SideNotice(msg.ask.question, msg.answer))
+	notice := conv.SideNotice(msg.ask.question, msg.answer)
+	if !finishSide(msg.recording, notice) {
+		return nil
+	}
+	m.conv.AddNotice(notice)
 	return tea.Batch(m.CommitMessages()...)
 }
 
