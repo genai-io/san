@@ -14,6 +14,38 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
+func TestACPInitialCommandDiscovery(t *testing.T) {
+	f := newACPFixture(t, aitest.Always(aitest.Says("done")), nil)
+	cwd := t.TempDir()
+	path := filepath.Join(cwd, ".san", "commands", "check.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\ndescription: Check project\n---\nCheck project\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	id := f.session(t, cwd)
+	var response protocol.SetSessionModeResponse
+	if err := f.client.Call(f.ctx, "session/set_mode", protocol.SetSessionModeRequest{SessionID: id, ModeID: "normal"}, &response); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, update := range f.updates {
+		if update.SessionID != id {
+			continue
+		}
+		if catalog, ok := update.Update.Value.(protocol.SessionUpdateAvailableCommandsUpdateVariant); ok {
+			for _, command := range catalog.AvailableCommands {
+				if command.Name == "check" {
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("new session did not advertise /check before its first prompt")
+}
+
 func TestACPCommandCatalogUpdates(t *testing.T) {
 	f := newACPFixture(t, aitest.Always(aitest.Says("done")), nil)
 	cwd := t.TempDir()

@@ -27,9 +27,7 @@ deadline: a stalled write closes the entire connection and all sessions. Tests
 use a shorter budget through the production setup and teardown paths, covering
 blocked updates, permission requests, final responses, native finalization and
 session cleanup. No detached writes, optimistic delivery or module replace.
-The Unix CLI registers nonblocking duplicated stdio with Go's poller and checks
-pollability; a real full-pipe regression verifies timeout joins both read/write.
-Non-Unix ACP stdio is explicitly unavailable pending an interruptible adapter.
+Unix uses pollable duplicated stdio; Windows uses interruptible pipe I/O.
 
 Reproduce the paired native benchmark (no provider/network latency):
 
