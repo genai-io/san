@@ -30,7 +30,7 @@ every piece ready and tested while unwired, then switch once and delete the old 
    choice JSON and reliable tool execution evidence. Initial producer adapters
    are implemented and tested, still unwired:
    - SDK [#110](https://github.com/genai-io/sdk-go/pull/110) supplies native
-     `CompleteAdmitted`; the LLM layer adds per-attempt admission/finishing without
+     `CompleteWithAdmission`; the LLM layer adds per-attempt admission/finishing without
      reimplementing preparation, repair or aggregation.
    - Final permission recording keeps explicit authority/scope and detached
      human question snapshots, failing closed before dispatch.

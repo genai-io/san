@@ -47,7 +47,7 @@ loop and injected write failures. The SDK contracts are in
 
 `completion.go` owns utility-call attempts until the domain accepts or discards
 its result. Per-call `llm.CompletionAdmission` observes SDK-prepared requests through
-`CompleteAdmitted` ([sdk-go #110](https://github.com/genai-io/sdk-go/pull/110));
+`CompleteWithAdmission` ([sdk-go #110](https://github.com/genai-io/sdk-go/pull/110));
 failed retries finish before another dispatch. Accepted results share one batch
 with the final inference finish. Cancellation does not cancel terminal persistence;
 closing an in-flight scope arranges accounting when its callback returns.

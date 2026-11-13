@@ -193,7 +193,7 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 	if opts.Admission != nil {
 		var finish CompletionFinish
-		resp, callErr := client.CompleteAdmitted(ctx, opts.Messages, func(admitCtx context.Context, req *ai.Request) error {
+		resp, callErr := client.CompleteWithAdmission(ctx, opts.Messages, func(admitCtx context.Context, req *ai.Request) error {
 			var err error
 			finish, err = opts.Admission(admitCtx, provider.Name(), client.Model(), req)
 			if err == nil && finish == nil {
