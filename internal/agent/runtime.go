@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
@@ -18,12 +20,13 @@ var (
 )
 
 type run struct {
-	agent   core.Agent
-	cancel  context.CancelFunc
-	done    chan struct{}
-	pending []core.Message // accepted inputs not yet announced by MessageAdded; Runtime.mu guards
-	stopped bool
-	onEvent func(core.Event)
+	agent     core.Agent
+	cancel    context.CancelFunc
+	done      chan struct{}
+	pending   []core.Message // accepted inputs not yet announced by MessageAdded; Runtime.mu guards
+	stopped   bool
+	onEvent   func(core.Event)
+	recording *session.Session
 }
 
 type Runtime struct {
@@ -44,7 +47,7 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 	if s.run != nil {
 		return fmt.Errorf("agent session already active")
 	}
-	run := &run{done: make(chan struct{}), onEvent: params.OnEvent}
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording}
 	params.OnEvent = func(ev core.Event) {
 		switch e := ev.(type) {
 		case sdkagent.MessageAdded:
@@ -190,18 +193,31 @@ func (s *Runtime) Reset(ctx context.Context) error {
 // at the input boundary so the TUI projection, the inbox, and the transcript
 // share one ID; a message without one is stamped on acceptance.
 func (s *Runtime) Send(msg core.Message) error {
+	return s.SendInput(PendingInput{Message: msg})
+}
+
+// SendInput commits a recorded input before infallible native queue admission.
+func (s *Runtime) SendInput(input PendingInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	run := s.run
 	if run == nil {
 		return ErrRuntimeInactive
 	}
-
 	if run.stopped {
 		return ErrRuntimeStopped
 	}
+	msg := input.Message
 	if msg.ID == "" {
 		msg.ID = core.NewMessageID()
+	}
+	if input.Completion != nil {
+		if !input.Completion.OwnedBy(run.recording) {
+			return &llm.RecordingError{Err: fmt.Errorf("input completion belongs to another session")}
+		}
+		if err := input.Completion.FinishMessage(context.Background(), msg); err != nil {
+			return &llm.RecordingError{Err: err}
+		}
 	}
 	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)

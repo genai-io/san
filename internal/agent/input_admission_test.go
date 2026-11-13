@@ -43,13 +43,13 @@ func TestInputQueueCancellationAdmission(t *testing.T) {
 				q.Enqueue(user)
 			}
 			var order []string
-			if err := q.Deliver(func(msg core.Message) error {
+			if err := q.Deliver(func(msg PendingInput) error {
 				order = append(order, "send:"+msg.Text())
 				return nil
 			}, func(msg core.Message) core.Message {
 				order = append(order, "prepare:"+msg.Text())
 				return msg
-			}, func(text string) { order = append(order, "recall:"+text) }); err != nil {
+			}, func(text string) error { order = append(order, "recall:"+text); return nil }); err != nil {
 				t.Fatal(err)
 			}
 			want := []string{"prepare:background", "send:background", "recall:continue", "prepare:continue", "send:continue"}

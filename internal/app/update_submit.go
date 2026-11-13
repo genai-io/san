@@ -19,11 +19,29 @@ import (
 	"github.com/genai-io/san/internal/image"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 )
 
 // handleSubmit is the Enter handler. Reads the textarea; if a turn is
 // already streaming or compacting, queues for later; otherwise runs the submission
 // pipeline.
+func (m *model) handleSubmitScoped(completion *session.Completion) tea.Cmd {
+	if m.conv.Stream.Active || m.conv.Compact.Active || !m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() != 0 {
+		closeAutopilot(completion)
+		m.autopilotContinuing = false
+		m.userInput.Reset()
+		return nil
+	}
+	raw := strings.TrimSpace(m.userInput.FullValue())
+	if raw == "" {
+		closeAutopilot(completion)
+		return nil
+	}
+	m.userInput.PromptSuggestion.Clear()
+	m.conv.Compact.ClearResult()
+	return m.dispatchSubmissionScoped(raw, completion)
+}
+
 func (m *model) handleSubmit() tea.Cmd {
 	m.userInput.PromptSuggestion.Clear()
 
@@ -80,6 +98,11 @@ func (m *model) enqueueInput(raw string) tea.Cmd {
 // prompt-hook gate → history → slash command? → otherwise send to
 // agent. Shared by the Enter handler and sendNextQueuedInputIfIdle.
 func (m *model) dispatchSubmission(raw string) tea.Cmd {
+	return m.dispatchSubmissionScoped(raw, nil)
+}
+
+func (m *model) dispatchSubmissionScoped(raw string, completion *session.Completion) tea.Cmd {
+	defer func() { closeAutopilot(completion) }()
 	if input.IsExitRequest(raw) {
 		cmd, _ := m.QuitWithCancel()
 		return cmd
@@ -126,7 +149,9 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	msg = m.conv.Append(msg)
 	m.userInput.Reset()
 	message, _ := msg.ToMessage()
-	return m.SubmitToAgent(message)
+	p := pendingMessage{Message: message, FromUser: true, Completion: completion}
+	completion = nil
+	return m.submit(p)
 }
 
 // isSlashCommand excludes leading image paths, which also start with "/".
@@ -272,6 +297,26 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
+	if p.Completion != nil {
+		if m.env.LLMProvider == nil {
+			closeAutopilot(p.Completion)
+			return m.notifyNoProvider()
+		}
+		if !m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() != 0 || m.conv.Stream.Active || m.conv.Compact.Active {
+			closeAutopilot(p.Completion)
+			return nil
+		}
+		startCmd, err := m.ensureAgentRuntime()
+		if err != nil {
+			closeAutopilot(p.Completion)
+			m.conv.AddNotice("Failed to start agent: " + err.Error())
+			return tea.Batch(m.CommitMessages()...)
+		}
+		m.pendingStopHook = nil
+		m.pendingMessages.Enqueue(p)
+		m.env.DetectThinkingKeywords(p.Text())
+		return tea.Batch(startCmd, m.sendPendingMessages())
+	}
 	m.pendingStopHook = nil
 	m.pendingMessages.Enqueue(p)
 	if !m.pendingMessages.CanDeliver(false) {

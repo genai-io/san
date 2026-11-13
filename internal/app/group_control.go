@@ -10,10 +10,14 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 )
 
 const groupControlPrompt = `Resolve a user's group-management request. You have no tools and no conversation context.
@@ -32,6 +36,10 @@ type groupControlRequest struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	session, membership string
+	owner               *session.Session
+	legacy              *session.LegacySession
+	runtime             *agent.Runtime
+	recording           *session.Completion
 }
 
 type groupControlOperation struct {
@@ -49,11 +57,17 @@ type groupControlMsg struct {
 func (m *model) cancelGroupControl() {
 	if r := m.grp.control; r != nil {
 		r.cancel()
+		if err := r.recording.Close(); err != nil {
+			log.Logger().Error("discard group interpretation", zap.Error(err))
+		}
 		m.grp.control = nil
 	}
 }
 
 func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
+	if m.services.Recording != nil && m.services.Session != nil {
+		return "Group interpretation recording is unavailable: mixed session writers; no changes made.", nil
+	}
 	if m.env.LLMProvider == nil {
 		return "Group interpretation is unavailable; use an explicit command.\n" + groupUsage, nil
 	}
@@ -66,12 +80,15 @@ func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
 	data, _ := json.Marshal(map[string]string{"request": request, "group": g, "name": self.Name, "role": self.Role})
 	provider, modelID := m.env.LLMProvider, m.env.GetModelID()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	r := &groupControlRequest{ctx: ctx, cancel: cancel, session: m.sessionID(), membership: currentMembership()}
+	m.cancelGroupControl()
+	r := &groupControlRequest{ctx: ctx, cancel: cancel, session: m.sessionID(), membership: currentMembership(),
+		owner: m.services.Recording, legacy: m.services.Session, runtime: m.services.Agent,
+		recording: m.services.Recording.Completion(session.PurposeGroup)}
 	m.grp.control = r
 	return "Interpreting group request… (another /group command cancels it)", func() tea.Msg {
 		defer cancel()
 		resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-			Model: modelID, SystemPrompt: groupControlPrompt,
+			Model: modelID, SystemPrompt: groupControlPrompt, Admission: r.recording.Admission(),
 			Messages: []core.Message{core.UserMessage(string(data), nil)}, MaxTokens: 600,
 		})
 		msg := groupControlMsg{request: r, err: err}
@@ -90,8 +107,19 @@ func (m *model) resolveGroupControl(request string) (string, tea.Cmd) {
 // originating session and membership. Superseded completions are silent.
 func (m *model) handleGroupControl(msg groupControlMsg) string {
 	r := msg.request
-	if r == nil || r != m.grp.control {
+	if r == nil {
 		return ""
+	}
+	defer func() {
+		if err := r.recording.Close(); err != nil {
+			log.Logger().Error("close group interpretation", zap.Error(err))
+		}
+	}()
+	if r != m.grp.control {
+		return ""
+	}
+	if r.owner != m.services.Recording || r.legacy != m.services.Session || r.runtime != m.services.Agent || r.session != m.sessionID() {
+		return "Group request discarded because the session or membership changed."
 	}
 	m.grp.control = nil
 	r.cancel()
@@ -105,7 +133,21 @@ func (m *model) handleGroupControl(msg groupControlMsg) string {
 	if msg.err != nil {
 		return "Could not interpret group request; no changes made. Use an explicit /group command."
 	}
-	op := msg.operation
+	if r.owner != nil {
+		if err := r.owner.Err(); err != nil {
+			return "Group response recording failed; no changes made: " + err.Error()
+		}
+	}
+	text := m.applyGroupControl(msg.operation)
+	if r.recording != nil {
+		if err := r.recording.Finish(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: text}}); err != nil {
+			return "Group response recording failed. Any completed membership changes were not rolled back; do not retry automatically: " + err.Error()
+		}
+	}
+	return text
+}
+
+func (m *model) applyGroupControl(op groupControlOperation) string {
 	switch op.action {
 	case "help":
 		return groupUsage

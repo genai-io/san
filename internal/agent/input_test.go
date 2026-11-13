@@ -29,11 +29,12 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 				msg.Content = append(msg.Content, core.UserMessage("reminder", nil).Content...)
 				return msg
 			}
-			recall := func(text string) {
+			recall := func(text string) error {
 				order = append(order, "recall:"+text)
 				recalled = append(recalled, text)
+				return nil
 			}
-			send := func(msg core.Message) error {
+			send := func(msg PendingInput) error {
 				order = append(order, "send:"+msg.ID)
 				if len(accepted) == failAt {
 					return rejected
@@ -64,8 +65,8 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 				t.Fatalf("order=%v recall=%v", order, recalled)
 			}
 			retained := q.items[0].Message
-			if err := q.Deliver(func(msg core.Message) error {
-				if len(accepted) == failAt && !reflect.DeepEqual(msg, retained) {
+			if err := q.Deliver(func(msg PendingInput) error {
+				if len(accepted) == failAt && !reflect.DeepEqual(msg.Message, retained) {
 					t.Fatal("retry lost prepared native message")
 				}
 				accepted = append(accepted, msg.ID)
@@ -77,6 +78,19 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 				t.Fatalf("retry duplicated or reordered input: %v", accepted)
 			}
 		})
+	}
+}
+
+func TestRecallFailureRetainsUserInput(t *testing.T) {
+	var q InputQueue
+	q.Enqueue(PendingInput{Message: core.UserMessage("keep this input", nil), FromUser: true})
+	failure := errors.New("recall recording failed")
+	err := q.Deliver(func(PendingInput) error {
+		t.Fatal("input dispatched after recall failure")
+		return nil
+	}, nil, func(string) error { return failure })
+	if !errors.Is(err, failure) || q.Len() != 1 || q.First().Text() != "keep this input" {
+		t.Fatalf("recall failure lost user input: %v %+v", err, q)
 	}
 }
 

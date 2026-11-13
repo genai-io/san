@@ -180,6 +180,7 @@ const (
 	PurposeHook       = "hook"
 	PurposeAutopilot  = "autopilot"
 	PurposeGroup      = "group"
+	PurposeRecall     = "recall"
 )
 
 // ConversationInput: the request is this session's own context, instructions and

@@ -146,21 +146,21 @@ func Test_parseBashPromptReply(t *testing.T) {
 func Test_BashPrompt(t *testing.T) {
 	t.Run("answer", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"answer","input":"y"}`}, "model")
-		got, err := r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]")
+		got, err := r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]", nil)
 		if err != nil || !got.Answer || got.Input != "y" {
 			t.Fatalf("BashPrompt() = %+v, err=%v; want answer y", got, err)
 		}
 	})
 	t.Run("skip", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"skip"}`}, "model")
-		got, err := r.BashPrompt(context.Background(), "", "cmd", "Overwrite? [y/N]")
+		got, err := r.BashPrompt(context.Background(), "", "cmd", "Overwrite? [y/N]", nil)
 		if err != nil || got.Answer {
 			t.Fatalf("BashPrompt() = %+v, err=%v; want skip", got, err)
 		}
 	})
 	t.Run("provider error", func(t *testing.T) {
 		r := New(&stubProvider{err: errors.New("boom")}, "model")
-		if _, err := r.BashPrompt(context.Background(), "", "cmd", "prompt"); err == nil {
+		if _, err := r.BashPrompt(context.Background(), "", "cmd", "prompt", nil); err == nil {
 			t.Fatal("BashPrompt() err = nil, want error so caller skips")
 		}
 	})
@@ -222,7 +222,7 @@ func Test_SteeringInstructionsAreGuarded(t *testing.T) {
 
 	// BashPrompt shares the same customizable steering instructions — only the per-call
 	// task differs, and that rides in the user message.
-	_, _ = r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]")
+	_, _ = r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]", nil)
 	if s.lastSystem() != wantCustom {
 		t.Errorf("BashPrompt used %q, want the shared custom system prompt", s.lastSystem())
 	}

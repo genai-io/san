@@ -108,13 +108,15 @@ func (m *model) replaceSession(opened *session.LegacySession) {
 		m.conv.SetAgentIdentitySession(opened.ID())
 		m.env.SessionPermissions = setting.NewSessionPermissions()
 		m.env.ApplyModePermissions(m.env.CWD)
-		m.pendingMessages.Discard()
+		m.discardPendingMessages()
 		m.queueContinuation = nil
 		m.pendingPluginRoot = ""
 		m.resetInteractions()
 		m.services.Reminder.DiscardPendingNotices()
 	}
 	if previous := m.services.Session; previous != opened {
+		m.cancelAutopilot()
+		m.cancelGroupControl()
 		m.cancelManualCompaction()
 		_ = previous.Close()
 	}
@@ -393,7 +395,7 @@ func (m *model) clearSession() error {
 	m.grp = groupState{polling: m.grp.polling}
 	m.env.SessionName = ""
 	m.earlyNotices = nil
-	m.pendingMessages.Discard()
+	m.discardPendingMessages()
 	m.beforeGoal = nil
 	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
 	m.rebuildAutopilotJudge()

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -289,10 +290,10 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 //
 // Permission is the caller's: a run with nobody at the keyboard cannot prompt,
 // so BuildParams.PermissionRules decides alone.
-func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (*core.Result, error) {
-	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID})}
+func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (result *core.Result, err error) {
+	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
 	recall := recaller.Start(p.AutoMemory, message.Text(), nil)
-	defer recall.Stop()
+	defer func() { err = errors.Join(err, recall.Stop()) }()
 	p.ResultFilter = WithRecall(p.ResultFilter, func() *Recall { return recall })
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the

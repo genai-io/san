@@ -77,12 +77,12 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 		return prepared
 	}
 	rejected := errors.New("rejected")
-	if err := q.Deliver(func(core.Message) error { return rejected }, prepare, func(string) {}); !errors.Is(err, rejected) {
+	if err := q.Deliver(func(agent.PendingInput) error { return rejected }, prepare, func(string) error { return nil }); !errors.Is(err, rejected) {
 		t.Fatalf("Deliver = %v", err)
 	}
 	s.Enqueue("later notice")
 	var got string
-	if err := q.Deliver(func(msg core.Message) error { got = msg.Text(); return nil }, prepare, func(string) {}); err != nil {
+	if err := q.Deliver(func(msg agent.PendingInput) error { got = msg.Text(); return nil }, prepare, func(string) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"question", "provider body", "first notice", "later notice"} {

@@ -8,29 +8,35 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
 )
 
 type bashPromptResponder struct {
-	model  *model
-	bridge *conv.AgentToUI
+	model     *model
+	bridge    *conv.AgentToUI
+	recording *session.Session
+	sessionID string
 }
 
-// RequestAnswer delegates an ordinary prompt to the judge, which
-// decides the reply. It never sees a secret prompt — that goes to RequestSecret.
-// The provider closure only builds this responder when autopilot is on, so
-// there is no mode re-check here. The runtime snapshot is loaded live (judge plus
-// the mission it steers toward) so a mid-session panel save or mission edit takes
-// effect.
+// RequestAnswer reads live steering only within the originating session.
 func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	rt := r.model.autopilot.Load()
-	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt)
+	if rt == nil || rt.sessionID != r.sessionID || ctx.Err() != nil {
+		return "", false
+	}
+	scope := r.recording.Completion(session.PurposeAutopilot)
+	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt, scope.Admission())
+	if recordErr := scope.Close(); recordErr != nil {
+		log.Logger().Error("record Bash prompt decision", zap.Error(recordErr))
+		return "", false
+	}
 	log.Logger().Debug("judge prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),
 		zap.Error(err))
-	if err != nil || !reply.Answer {
+	if err != nil || ctx.Err() != nil || !reply.Answer {
 		return "", false
 	}
 	return reply.Input, true

@@ -296,9 +296,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case input.MissionRefinedMsg:
-		// The /autopilot Mission editor's refined text arrived; hand it to the
-		// panel to replace the draft (or surface an error under the editor).
-		m.userInput.Autopilot.DeliverRefinedMission(msg.Mission, msg.Err)
+		m.userInput.Autopilot.DeliverRefinement(msg)
 		return m, nil
 	case autopilotDecisionMsg:
 		// The TurnEnd steer's continue/stop verdict came back.

@@ -139,6 +139,16 @@ func (c *Completion) Finish(ctx context.Context, results ...Event) error {
 	return nil
 }
 
+// OwnedBy compares session handles, not just their IDs.
+func (c *Completion) OwnedBy(owner *Session) bool {
+	return c != nil && c.session == owner
+}
+
+// FinishMessage commits the exact native input accepted by the runtime.
+func (c *Completion) FinishMessage(ctx context.Context, message core.Message) error {
+	return c.Finish(ctx, Event{Payload: MessageAppendPayload{Messages: []ai.Message{message}}})
+}
+
 // Compaction defers the context boundary until core supplies the accepted native
 // summary, including its final instructions, formatting and stable message ID.
 func (c *Completion) Compaction(summary string) core.Compaction {
