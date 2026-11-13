@@ -11,8 +11,8 @@ import (
 // PendingInput owns native input until delivery or discard.
 type PendingInput struct {
 	core.Message
-	FromUser  bool
-	Recording *session.Completion
+	FromUser   bool
+	Completion *session.Completion
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
@@ -70,7 +70,7 @@ func (q *InputQueue) Finalize(receipt *core.TurnFinalization) bool {
 func (q *InputQueue) Discard() error {
 	var err error
 	for _, input := range q.items {
-		err = errors.Join(err, input.Recording.Close())
+		err = errors.Join(err, input.Completion.Close())
 	}
 	q.items = nil
 	q.cancelling = nil
@@ -99,8 +99,8 @@ func (q *InputQueue) Deliver(send func(PendingInput) error, prepare func(core.Me
 			err = send(*next)
 		}
 		if err != nil {
-			if next.Recording != nil {
-				if closeErr := next.Recording.Close(); closeErr != nil {
+			if next.Completion != nil {
+				if closeErr := next.Completion.Close(); closeErr != nil {
 					err = errors.Join(err, &llm.RecordingError{Err: closeErr})
 				}
 				q.items = q.items[1:]

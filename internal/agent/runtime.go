@@ -211,11 +211,11 @@ func (s *Runtime) SendInput(input PendingInput) error {
 	if msg.ID == "" {
 		msg.ID = core.NewMessageID()
 	}
-	if input.Recording != nil {
-		if !input.Recording.OwnedBy(run.recording) {
+	if input.Completion != nil {
+		if !input.Completion.OwnedBy(run.recording) {
 			return &llm.RecordingError{Err: fmt.Errorf("input completion belongs to another session")}
 		}
-		if err := input.Recording.FinishMessage(context.Background(), msg); err != nil {
+		if err := input.Completion.FinishMessage(context.Background(), msg); err != nil {
 			return &llm.RecordingError{Err: err}
 		}
 	}

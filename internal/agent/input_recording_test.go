@@ -33,7 +33,7 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 			if _, err := llm.Complete(t.Context(), runOnceProvider{control}, llm.CompletionOptions{SystemPrompt: "control", Admission: scope.Admission()}); err != nil {
 				t.Fatal(err)
 			}
-			input := PendingInput{Message: core.UserMessage("continue", nil), FromUser: true, Recording: scope}
+			input := PendingInput{Message: core.UserMessage("continue", nil), FromUser: true, Completion: scope}
 			input.ID = "prepared-input"
 			prepared := input.Message
 			prepared.Content = ai.TextContent("continue\n\nfinal reminder")
