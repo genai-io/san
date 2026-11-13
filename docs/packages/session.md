@@ -13,7 +13,7 @@ owns the selected session; `agent.Runtime` owns execution.
 `store.go` exposes `OpenStore` and `Store.Create`, `Open`, `Fork`, `Get`,
 `List`, `Events`, `SetAttrs`, `Delete`, `Restore`, and `Clean` over
 `sessions/<sid>/`. `session.go` owns `Session.Append`, `Snapshot`, `Close`,
-`ID`, `Path`, `Err`, `PutRequest(ctx, StandaloneRequest)` and `Request(ctx, digest)`.
+`ID`, `Path`, `Err`, `OwnedBy`, `PutRequest(ctx, StandaloneRequest)` and `Request(ctx, digest)`.
 Appends serialize envelope assignment, validation and one committed batch under
 short project `.locks/<sid>` metadata coordination shared with attrs, trash/restore
 and blob collection. Request blobs sync before references commit. Snapshots expose
@@ -81,10 +81,17 @@ without a message. Draft rewrites, questions, Bash prompts and `recall` record
 accounting only. Group interpretation records its actual returned response after
 the operation; a later write failure does not roll back external membership.
 
-Runtime, TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
-under `transcripts/`. Typed producers remain opt-in, with no dual write or conversion.
-The [cutover design](../design/proposal-0005-session-management.md) tracks runtime
-resume, child provenance and the final switch. Public API coverage is in
+`Recorder.RecordCatalogues` reconciles complete current instructions, tools and
+skills, including removals, in one batch; unchanged snapshots write nothing.
+`Runtime.Resume` rebuilds from active native messages and returns `Unfinished`
+without executing or completing historical work. Child delivery retains its
+original receiving owner and foreign source; accepted evidence survives later
+removal of the child's files.
+
+Default TUI, ACP, hooks and subagents still use `LegacyStore` / `LegacySession`
+under `transcripts/`. Typed execution remains opt-in, with no dual write or conversion.
+The [cutover design](../design/proposal-0005-session-management.md) tracks the
+remaining host switch. Public API coverage is in
 `typed_store_test.go` and external `typed_api_external_test.go`; storage and lifecycle coverage is listed below.
 
 ## Current runtime (legacy)

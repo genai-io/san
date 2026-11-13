@@ -212,10 +212,11 @@ func (r *Recorder) RecordEvent(event core.Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.check(context.Background()) != nil {
-		// Already-dispatched tools still report real outcomes after an
-		// admission error. Preserve those if the durable writer is healthy.
+		// Already-accepted input and dispatched tools still report facts after an
+		// admission error. Preserve those if the durable writer is healthy;
+		// message still rejects generated content without output admission.
 		switch event.(type) {
-		case sdkagent.ToolEnd, sdkagent.TurnEnd:
+		case sdkagent.MessageAdded, sdkagent.ToolEnd, sdkagent.TurnEnd:
 			if r.session.Err() != nil {
 				return
 			}
@@ -430,6 +431,82 @@ func (r *Recorder) RecordSkill(ctx context.Context, name, state, cause string) e
 		}
 		return []Event{{Payload: SkillsUpdatePayload{Set: map[string]string{name: state}, Cause: recorderCause(cause)}}}, nil
 	}))
+}
+
+// RecordCatalogues reconciles complete current runtime catalogues in one durable
+// batch. Missing entries are removed; unchanged snapshots produce no events.
+func (r *Recorder) RecordCatalogues(ctx context.Context, instructions []NamedInstruction, tools []ai.Schema, skills map[string]string, cause string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	if cause == "" {
+		return r.remember(fmt.Errorf("missing catalogue cause"))
+	}
+	ins := make(map[string]InstructionSection, len(instructions))
+	for _, entry := range instructions {
+		if _, duplicate := ins[entry.Name]; duplicate || entry.Name == "" || entry.Content == "" || entry.Slot < 0 {
+			return r.remember(fmt.Errorf("invalid or duplicate instruction %q", entry.Name))
+		}
+		ins[entry.Name] = entry.InstructionSection
+	}
+	ts := make(map[string]ai.Schema, len(tools))
+	for _, schema := range tools {
+		if _, duplicate := ts[schema.Name]; duplicate || schema.Name == "" {
+			return r.remember(fmt.Errorf("invalid or duplicate tool %q", schema.Name))
+		}
+		ts[schema.Name] = schema
+	}
+	ss := make(map[string]string, len(skills))
+	for name, state := range skills {
+		if name == "" || (state != SkillDisabled && state != SkillEnabled && state != SkillActive) {
+			return r.remember(fmt.Errorf("invalid skill %q", name))
+		}
+		ss[name] = state
+	}
+	// Round-trip schemas before diffing: detach nested caller-owned definitions
+	// and reject definitions that cannot cross the native JSON boundary.
+	raw, err := json.Marshal(ts)
+	if err != nil {
+		return r.remember(err)
+	}
+	if err := strictEventJSON(raw, &ts); err != nil {
+		return r.remember(err)
+	}
+	return r.remember(r.session.write(ctx, func(p *Projection) ([]Event, error) {
+		var batch []Event
+		setIns, removeIns := catalogueDiff(p.data.Instructions, ins)
+		if len(setIns)+len(removeIns) > 0 {
+			batch = append(batch, Event{Payload: InstructionsUpdatePayload{Set: setIns, Remove: removeIns, Cause: cause}})
+		}
+		setTools, removeTools := catalogueDiff(p.data.Tools, ts)
+		if len(setTools)+len(removeTools) > 0 {
+			batch = append(batch, Event{Payload: ToolsetUpdatePayload{Set: setTools, Remove: removeTools, Cause: cause}})
+		}
+		setSkills, removeSkills := catalogueDiff(p.data.Skills, ss)
+		if len(setSkills)+len(removeSkills) > 0 {
+			batch = append(batch, Event{Payload: SkillsUpdatePayload{Set: setSkills, Remove: removeSkills, Cause: cause}})
+		}
+		return batch, nil
+	}))
+}
+
+func catalogueDiff[T any](old, next map[string]T) (map[string]T, []string) {
+	set := map[string]T{}
+	var remove []string
+	for name, value := range next {
+		if previous, exists := old[name]; !exists || !sameJSON(previous, value) {
+			set[name] = value
+		}
+	}
+	for name := range old {
+		if _, exists := next[name]; !exists {
+			remove = append(remove, name)
+		}
+	}
+	sort.Strings(remove)
+	return set, remove
 }
 
 // RecordHook is an explicit durable completion operation, not the hook engine's

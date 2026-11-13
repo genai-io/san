@@ -31,6 +31,7 @@ package agent
 type Runtime struct { /* internal fields */ }
 
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
+func (s *Runtime) Resume(params BuildParams) (session.Unfinished, error)
 func (s *Runtime) Stop(ctx context.Context) error
 func (s *Runtime) Cancel() *core.TurnFinalization
 func (s *Runtime) Reset(ctx context.Context) error
@@ -105,6 +106,12 @@ func Default() *Runtime
   singleton.
 - Per-run: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
+- Typed resume (opt-in): `Resume(params)` validates the opened owner and execution
+  directory, rebuilds current catalogues with cause `resume`, and seeds exact active
+  messages. It returns unfinished work without replaying tools or restoring grants.
+  The host still resolves settings/trust and presents those unfinished records.
+  `BuildParams.Recording` installs native admissions, final permission recording and
+  the same recorder for observations and shutdown input retention.
 - Termination: `Stop(ctx)` cancels and waits for the exact run generation.
   The caller owns the deadline; the TUI allows two seconds. A deadline error
   retains the run and history, and prevents replacement or successful teardown.
@@ -154,9 +161,9 @@ func Default() *Runtime
   recording still use synchronous observers, so long streams cannot fill an
   unconsumed outbox.
 - Sending: `Send` accepts ordinary native messages. `SendInput` can carry a
-  completion; it checks the original writer and commits the prepared message
-  before native queue insertion. Rejected recorded results close without replay;
-  ordinary user input stays queued for retry.
+  completion or a child source with its original receiving session. It commits the
+  prepared message before native queue insertion. Rejected recorded results retire
+  without replay; ordinary user input stays queued for retry.
 
 ## Admission boundaries
 

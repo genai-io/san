@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -64,6 +65,9 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 			driver := aitest.New(first, aitest.Says("done"))
 			boundaries := 0
 			ag, gate, err := buildAgentWithOutbox(BuildParams{Provider: compactRecordingProvider{driver}, ModelID: "model", MaxTokens: 64,
+				PermissionRules: func(string, map[string]any) PermDecisionResult {
+					return PermDecisionResult{Decision: perm.Reject, By: session.ByConfig}
+				},
 				CWD: t.TempDir(), Recording: owner, OnEvent: func(event core.Event) {
 					if info, ok := event.(core.Compacted); ok {
 						boundaries++
@@ -97,10 +101,24 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 				t.Fatalf("boundaries=%d want=%d", boundaries, want)
 			}
 			p := owner.Snapshot()
-			for _, event := range p.Events() {
-				if finish, ok := event.Payload.(*session.InferenceFinishPayload); ok && (finish.Usage.Input != 17 || finish.Usage.Output != 4) {
+			events := p.Events()
+			compactions := 0
+			for _, event := range events {
+				finish, ok := event.Payload.(*session.InferenceFinishPayload)
+				if !ok || event.Source == nil {
+					continue
+				}
+				start, ok := events[event.Source.Seq-1].Payload.(*session.InferenceStartPayload)
+				if !ok || start.Purpose != session.PurposeCompaction {
+					continue
+				}
+				compactions++
+				if finish.Usage == nil || finish.Usage.Input != 17 || finish.Usage.Output != 4 {
 					t.Fatal("compaction lost usage")
 				}
+			}
+			if compactions != 1 {
+				t.Fatalf("compaction attempts = %d, want 1", compactions)
 			}
 			if len(p.Unfinished().Inferences) != 0 {
 				t.Fatal("compaction attempt left unfinished")

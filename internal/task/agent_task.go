@@ -28,22 +28,23 @@ type AgentTask struct {
 	ctx    context.Context    // Task context
 	cancel context.CancelFunc // Cancel function
 
-	mu             sync.RWMutex // Protects mutable fields
-	attempt        int
-	attempts       []AttemptInfo
-	attemptStart   time.Time
-	inspectionFile string // Native transcript fallback; never receives task-log records.
-	finishing      bool
-	stopRequested  bool
-	foreground     bool
-	attemptOutput  bytes.Buffer
-	launchState    any
-	permissionMode string           // Effective mode resolved before the worker starts.
-	progress       string           // Latest non-metadata activity for the live tracker.
-	outputErr      string           // First output-log failure; a nonempty path alone is not proof of durability.
-	liveView       string           // Current structured progress, if the caller supplies one.
-	liveRender     func(int) string // Optional width-aware live renderer.
-	done           chan struct{}    // Closed when task completes
+	mu               sync.RWMutex // Protects mutable fields
+	sourceMessageSeq uint64
+	attempt          int
+	attempts         []AttemptInfo
+	attemptStart     time.Time
+	inspectionFile   string // Native transcript fallback; never receives task-log records.
+	finishing        bool
+	stopRequested    bool
+	foreground       bool
+	attemptOutput    bytes.Buffer
+	launchState      any
+	permissionMode   string           // Effective mode resolved before the worker starts.
+	progress         string           // Latest non-metadata activity for the live tracker.
+	outputErr        string           // First output-log failure; a nonempty path alone is not proof of durability.
+	liveView         string           // Current structured progress, if the caller supplies one.
+	liveRender       func(int) string // Optional width-aware live renderer.
+	done             chan struct{}    // Closed when task completes
 }
 
 // Verify AgentTask implements BackgroundTask
@@ -77,6 +78,15 @@ func NewAgentTask(id, agentName, description string, ctx context.Context, cancel
 		},
 	})
 	return task
+}
+
+// SetSourceMessageSeq retains evidence only for the selected execution.
+func (t *AgentTask) SetSourceMessageSeq(attempt int, seq uint64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if attempt == t.attempt {
+		t.sourceMessageSeq = seq
+	}
 }
 
 // SetIdentity stores stable agent identity metadata for continuation.
@@ -337,23 +347,24 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		Attempts:        append([]AttemptInfo(nil), t.attempts...),
 		ParentSessionID: t.parentSessionID,
 
-		ID:             t.ID,
-		Type:           TaskTypeAgent,
-		Description:    t.Description,
-		Status:         t.Status,
-		StartTime:      t.StartTime,
-		EndTime:        t.EndTime,
-		Error:          t.Error,
-		Output:         t.attemptOutput.String(),
-		OutputFile:     t.inspectionPathLocked(),
-		OutputError:    t.outputErr,
-		Progress:       t.progress,
-		AgentName:      t.AgentName,
-		PermissionMode: t.permissionMode,
-		AgentSessionID: t.SessionID,
-		StepCount:      t.StepCount,
-		TokenUsage:     t.TokenUsage,
-		LiveView:       t.liveView,
+		ID:               t.ID,
+		Type:             TaskTypeAgent,
+		Description:      t.Description,
+		Status:           t.Status,
+		StartTime:        t.StartTime,
+		EndTime:          t.EndTime,
+		Error:            t.Error,
+		Output:           t.attemptOutput.String(),
+		OutputFile:       t.inspectionPathLocked(),
+		OutputError:      t.outputErr,
+		Progress:         t.progress,
+		AgentName:        t.AgentName,
+		PermissionMode:   t.permissionMode,
+		SourceMessageSeq: t.sourceMessageSeq,
+		AgentSessionID:   t.SessionID,
+		StepCount:        t.StepCount,
+		TokenUsage:       t.TokenUsage,
+		LiveView:         t.liveView,
 	}
 }
 

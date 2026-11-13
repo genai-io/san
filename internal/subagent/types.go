@@ -351,20 +351,21 @@ func (c *AgentConfig) GetSystemPrompt() string {
 
 // AgentResult contains the result of an agent execution
 type AgentResult struct {
-	Identity       toolresult.AgentIdentity
-	AgentID        string
-	AgentName      string
-	Model          string
-	Success        bool
-	Content        string
-	TranscriptPath string
-	Messages       []core.Message
-	StepCount      int
-	ToolUses       int
-	TokenUsage     llm.Usage
-	Duration       time.Duration
-	Activity       []string
-	Error          string
+	SourceMessageSeq uint64
+	Identity         toolresult.AgentIdentity
+	AgentID          string
+	AgentName        string
+	Model            string
+	Success          bool
+	Content          string
+	TranscriptPath   string
+	Messages         []core.Message
+	StepCount        int
+	ToolUses         int
+	TokenUsage       llm.Usage
+	Duration         time.Duration
+	Activity         []string
+	Error            string
 }
 
 const (

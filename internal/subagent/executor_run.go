@@ -24,11 +24,15 @@ import (
 )
 
 type preparedRun struct {
+	sourceAfter    uint64 // Accepted prefix before this execution; never cite an older answer.
 	originalPrompt string
 	toolStarted    bool
 	priorFailure   string
 	native         *session.LegacySession
-	// The typed child owner stays nil until child-session cutover; never use the parent's writer.
+	// Capture original typed ownership before scheduling child work.
+	typedStore  *session.Store
+	typedParent *session.Session
+	recorder    *session.Recorder
 	recording   *session.Session
 	history     []core.Message
 	checkpoint  *continuationState
@@ -54,6 +58,13 @@ type preparedRun struct {
 	outputTokens int
 }
 
+func (r *preparedRun) parentID(legacy string) string {
+	if r.typedParent != nil {
+		return r.typedParent.ID()
+	}
+	return legacy
+}
+
 func (r *preparedRun) identity() toolresult.AgentIdentity {
 	id := r.req.TaskID
 	if id == "" {
@@ -64,7 +75,9 @@ func (r *preparedRun) identity() toolresult.AgentIdentity {
 		callID = r.checkpoint.req.ParentToolCallID
 	}
 	identity := toolresult.AgentIdentity{ID: id, Name: r.cfg.config.Name, CallID: callID}
-	if r.native != nil {
+	if r.recording != nil {
+		identity.SessionID = r.recording.ID()
+	} else if r.native != nil {
 		identity.SessionID = r.native.ID()
 	} else if r.checkpoint != nil {
 		identity.SessionID = r.checkpoint.sessionID
@@ -114,7 +127,7 @@ func (r *preparedRun) storeSideEffect(id string, effect any) {
 	r.sideEffects.Store(id, effect)
 }
 
-func (r *preparedRun) finishCwdHandoff(id string, canceled bool) {
+func (r *preparedRun) finishCwdHandoff(ctx context.Context, id string, canceled bool) {
 	effect, _ := r.sideEffects.LoadAndDelete(id)
 	handoff, _ := effect.(map[string]any)
 	cwd, _ := handoff["cwd"].(string)
@@ -127,6 +140,12 @@ func (r *preparedRun) finishCwdHandoff(id string, canceled bool) {
 	}
 	if r.pendingTools != 0 || canceled || r.batchCwd == "" {
 		return
+	}
+	if r.recorder != nil {
+		if err := r.recorder.RecordState(ctx, session.SessionUpdatePayload{State: &session.StatePatch{ExecutionCWD: session.SetField(r.batchCwd)}}); err != nil {
+			r.batchCwd = ""
+			return
+		}
 	}
 	r.cwdMu.Lock()
 	r.cwd = r.batchCwd
@@ -170,7 +189,7 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 	case sdkagent.ToolEnd:
 		// Every worker owns its adapter handoff, even without UI callbacks or
 		// when cancellation suppresses error notices. Never leave it for main.
-		r.finishCwdHandoff(event.ID, canceled)
+		r.finishCwdHandoff(ctx, event.ID, canceled)
 		report := !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled)
 		if report || r.req.OnToolResult != nil {
 			label := r.toolCallLabel(event.Name, event.Args)
@@ -209,6 +228,8 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &preparedRun{
+		typedStore:     e.typedStore,
+		typedParent:    e.typedParent,
 		originalPrompt: e.taskPrompt(cfg, req),
 		req:            req,
 		cfg:            cfg,
@@ -235,11 +256,31 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err := e.openNative(run); err != nil {
+		if err := e.openNative(ctx, run); err != nil {
 			return nil, err
 		}
 	}
+	if run.recording != nil {
+		snapshot := run.recording.Snapshot()
+		events := snapshot.Events()
+		if len(events) > 0 {
+			run.sourceAfter = events[len(events)-1].Seq
+		}
+	}
 	run.reportIdentity()
+	if run.recording != nil {
+		defer func() {
+			var recordingErr error
+			if run.recorder != nil {
+				recordingErr = run.recorder.Err()
+			}
+			persistErr := errors.Join(recordingErr, run.recording.Err(), run.recording.Close())
+			if run.checkpoint != nil {
+				run.checkpoint.cwd, run.checkpoint.persistenceErr, run.checkpoint.cfg = run.currentCwd(), persistErr, run.cfg
+			}
+			runErr = errors.Join(runErr, persistErr)
+		}()
+	}
 	if run.native != nil {
 		defer func() {
 			if run.checkpoint != nil {
@@ -306,7 +347,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		agentAddr = run.hookID
 	}
 	ctx = tool.WithAgentID(ctx, agentAddr)
-	ctx = task.WithSessionID(ctx, e.parentSessionID)
+	ctx = task.WithSessionID(ctx, run.parentID(e.parentSessionID))
 
 	inboxID := run.req.TaskID
 	if e.tasks != nil {
@@ -320,6 +361,11 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	if ctx.Err() == nil && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
 		messages := ag.Messages()
 		run.cfg.provider, run.cfg.modelID = e.provider, e.parentModelID
+		if run.recording != nil {
+			if updateErr := run.recording.Append(ctx, session.Event{Type: session.EventSessionUpdate, Payload: session.SessionUpdatePayload{Config: &session.ConfigPatch{Provider: session.SetField(e.provider.Name()), Model: session.SetField(e.parentModelID)}}}); updateErr != nil {
+				return result, updateErr
+			}
+		}
 		fallback, cleanupFallback, buildErr := e.buildAgent(ctx, run, onToolExec, onEvent)
 		if buildErr != nil {
 			return result, buildErr
@@ -385,7 +431,9 @@ func (e *Executor) buildUnfinishedAgentResult(run *preparedRun, result *core.Res
 // they differ only in Success/Error.
 func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success bool, errMsg string) *AgentResult {
 	var agentSessionID, agentTranscriptPath string
-	if run.native != nil {
+	if run.recording != nil {
+		agentSessionID, agentTranscriptPath = run.recording.ID(), run.recording.Path()
+	} else if run.native != nil {
 		agentSessionID, agentTranscriptPath = run.native.ID(), run.native.TranscriptPath()
 	} else {
 		agentSessionID, agentTranscriptPath = e.persistSubagentSession(
@@ -399,20 +447,44 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 
 	identity := run.identity()
 	identity.SessionID = agentSessionID
+	var sourceSeq uint64
+	if run.recording != nil && result.Content != "" {
+		messageID := ""
+		for i := len(result.Messages) - 1; i >= 0; i-- {
+			if result.Messages[i].Role == ai.RoleAssistant && result.Messages[i].Text() == result.Content {
+				messageID = result.Messages[i].ID
+				break
+			}
+		}
+		snapshot := run.recording.Snapshot()
+		for _, event := range snapshot.Events() {
+			if event.Seq <= run.sourceAfter {
+				continue
+			}
+			if payload, ok := event.Payload.(*session.MessageAppendPayload); ok {
+				for _, message := range payload.Messages {
+					if messageID != "" && message.ID == messageID {
+						sourceSeq = event.Seq
+					}
+				}
+			}
+		}
+	}
 	return &AgentResult{
-		Identity:       identity,
-		AgentID:        agentSessionID,
-		AgentName:      run.cfg.config.Name,
-		TranscriptPath: agentTranscriptPath,
-		Model:          run.cfg.modelID,
-		Success:        success,
-		Content:        result.Content,
-		Messages:       result.Messages,
-		StepCount:      result.Steps,
-		ToolUses:       result.ToolUses,
-		TokenUsage:     result.Usage,
-		Duration:       time.Since(run.startedAt),
-		Activity:       append([]string(nil), run.activity...),
-		Error:          errMsg,
+		SourceMessageSeq: sourceSeq,
+		Identity:         identity,
+		AgentID:          agentSessionID,
+		AgentName:        run.cfg.config.Name,
+		TranscriptPath:   agentTranscriptPath,
+		Model:            run.cfg.modelID,
+		Success:          success,
+		Content:          result.Content,
+		Messages:         result.Messages,
+		StepCount:        result.Steps,
+		ToolUses:         result.ToolUses,
+		TokenUsage:       result.Usage,
+		Duration:         time.Since(run.startedAt),
+		Activity:         append([]string(nil), run.activity...),
+		Error:            errMsg,
 	}
 }
