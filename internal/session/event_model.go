@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
@@ -414,6 +415,14 @@ func checkEventJSONKeys(b []byte) error {
 	}
 	return nil
 }
+
+type requiredEventField struct {
+	name     string
+	nullable bool
+}
+
+var requiredEventFieldCache sync.Map // reflect.Type -> immutable []requiredEventField
+
 func requiredEventFields(b []byte, typ reflect.Type) error {
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
@@ -422,26 +431,36 @@ func requiredEventFields(b []byte, typ reflect.Type) error {
 	if err := json.Unmarshal(b, &fields); err != nil {
 		return err
 	}
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		tag := field.Tag.Get("json")
-		parts := strings.Split(tag, ",")
-		if tag == "" || parts[0] == "-" || slicesContainsOptionalTag(parts[1:]) {
-			continue
+	cached, ok := requiredEventFieldCache.Load(typ)
+	if !ok {
+		var required []requiredEventField
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			tag := field.Tag.Get("json")
+			name, options, _ := strings.Cut(tag, ",")
+			if tag == "" || name == "-" || optionalJSONTag(options) {
+				continue
+			}
+			required = append(required, requiredEventField{name: name, nullable: field.Type.Kind() == reflect.Slice || field.Type.Kind() == reflect.Map})
 		}
-		raw, ok := fields[parts[0]]
+		cached, _ = requiredEventFieldCache.LoadOrStore(typ, required)
+	}
+	for _, field := range cached.([]requiredEventField) {
+		raw, ok := fields[field.name]
 		if !ok {
-			return fmt.Errorf("missing required field %q", parts[0])
+			return fmt.Errorf("missing required field %q", field.name)
 		}
-		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) && field.Type.Kind() != reflect.Slice && field.Type.Kind() != reflect.Map {
-			return fmt.Errorf("null required field %q", parts[0])
+		if !field.nullable && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return fmt.Errorf("null required field %q", field.name)
 		}
 	}
 	return nil
 }
-func slicesContainsOptionalTag(tags []string) bool {
-	for _, tag := range tags {
-		if tag == "omitempty" || tag == "omitzero" {
+func optionalJSONTag(options string) bool {
+	for options != "" {
+		var option string
+		option, options, _ = strings.Cut(options, ",")
+		if option == "omitempty" || option == "omitzero" {
 			return true
 		}
 	}

@@ -260,9 +260,11 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 				p.data.Accepted[m.ID] = e.Seq
 				p.data.ActiveIDs = append(p.data.ActiveIDs, m.ID)
 			} else {
-				at := slices.IndexFunc(p.data.ActiveIDs, func(id string) bool { return p.data.Accepted[id] != 0 })
-				if at < 0 {
-					at = len(p.data.ActiveIDs)
+				at := len(p.data.ActiveIDs)
+				if len(p.data.Accepted) != 0 {
+					if pending := slices.IndexFunc(p.data.ActiveIDs, func(id string) bool { return p.data.Accepted[id] != 0 }); pending >= 0 {
+						at = pending
+					}
 				}
 				p.data.ActiveIDs = slices.Insert(p.data.ActiveIDs, at, m.ID)
 			}

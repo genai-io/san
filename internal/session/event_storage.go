@@ -334,7 +334,12 @@ func (s *eventSession) commitEventBatch(ctx context.Context, p *preparedEventBat
 	if !retry && p.batch.Expected != state.tail {
 		return sdksession.Receipt{}, sdksession.ErrTail
 	}
-	receipt, err := s.log.commit(ctx, p.batch)
+	if err := ctx.Err(); err != nil {
+		return sdksession.Receipt{}, err
+	}
+	// Admission is cancellable; an admitted atomic commit must finish so its
+	// receipt and projection cannot diverge from a synced SDK batch.
+	receipt, err := s.log.commit(context.WithoutCancel(ctx), p.batch)
 	if err != nil {
 		if !errors.Is(err, sdksession.ErrConflict) && !errors.Is(err, sdksession.ErrTail) && !errors.Is(err, sdksession.ErrMode) {
 			s.err = err
