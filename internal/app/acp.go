@@ -109,7 +109,7 @@ type acpSession struct {
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
 	commands           *command.Registry
-	lastSentCommands   []command.Info // Deduplicates command catalog updates.
+	lastSentCommands   []command.Info // Last command list sent to the client; unchanged lists are not resent.
 	agents             *subagent.Registry
 	models             []llm.ModelInfo
 }
