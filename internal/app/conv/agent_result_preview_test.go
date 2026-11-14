@@ -130,7 +130,7 @@ func TestAgentResultPreviewMarkdownAndColor(t *testing.T) {
 				if !strings.Contains(raw, toolResultStyle.Render("  Plain finding")) || toolResultStyle.Render("  Plain finding") == toolCallStyle.Render("  Plain finding") {
 					t.Errorf("actual preview must use dim result color, not header color: %q", raw)
 				}
-				if !strings.Contains(raw, toolCallStyle.Render("Agent")) && !strings.Contains(raw, toolCallStyle.Render("Agent · reviewer · Security review")) {
+				if !strings.Contains(raw, toolCallStyle.Render("Agent")) && !strings.Contains(raw, toolCallStyle.Render("reviewer")) {
 					// The header can be emitted as one styled row rather than styled fragments.
 					first, _, _ := strings.Cut(raw, "\n")
 					if !strings.Contains(first, "\x1b[") || strings.Contains(first, toolResultStyle.Render(ansi.Strip(first))) {
@@ -163,7 +163,7 @@ func TestAgentResultPreviewIdentityExpansion(t *testing.T) {
 		params := ToolCallsParams{AgentPreviewLines: 3, ToolCalls: []core.ToolCall{call}, Width: width, ResultMap: map[string]ToolResultData{"a": {ToolName: "Agent", Content: "Useful result", Details: toolresult.AgentDetails{}}}}
 		got := ansi.Strip(RenderToolCalls(params))
 		header, body, _ := strings.Cut(got, "\n")
-		if !strings.HasPrefix(header, "● Agent · reviewer · Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "Useful result" {
+		if !strings.HasPrefix(header, "● reviewer: Review") || ansi.StringWidth(header) > width || strings.TrimSpace(body) != "Useful result" {
 			t.Fatalf("completed identity should occupy one bounded row: %q", got)
 		}
 		if width < 100 && !strings.HasSuffix(header, "…") {
@@ -195,7 +195,7 @@ func TestParallelAgentResultPreviewOrderAndSpacing(t *testing.T) {
 		got := ansi.Strip(RenderMessageRange(ctx, 0, len(messages), false))
 		last := -1
 		for _, id := range []string{"A", "B", "C"} {
-			header := strings.Index(got, "Agent · worker"+id)
+			header := strings.Index(got, "worker"+id+":")
 			result := strings.Index(got, "Finding "+id)
 			if header <= last || result <= header || strings.Count(got, "Finding "+id) != 1 {
 				t.Fatalf("width %d: result must follow original owner once: %q", width, got)

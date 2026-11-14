@@ -43,42 +43,62 @@ func backgroundStatusStyle(status string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(color)
 }
 
-func (e agentEnvelope) renderTaskNotice(width int, name string, color kit.AdaptiveColor) string {
+func backgroundStatusLabel(status string) string {
+	switch status {
+	case "completed", "succeeded":
+		return "Completed"
+	case "failed":
+		return "Failed"
+	case "stopped", "killed":
+		return "Stopped"
+	case "interrupted":
+		return "Interrupted"
+	case "timeout", "timed_out":
+		return "Timed out"
+	case "":
+		return "Updated"
+	default:
+		return status
+	}
+}
+
+func (e agentEnvelope) renderTaskNotice(width int, name, description string, color kit.AdaptiveColor) string {
 	if width <= 0 {
 		width = 80
 	}
+	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
 		name = "Background task"
 	}
 	status := strings.Join(strings.Fields(e.status), " ")
-	if status == "" {
-		status = "updated"
-	}
-	name = strings.Join(strings.Fields(name), " ")
-	nameBudget := min(max(0, width-ansi.StringWidth(status)-5), max(0, width/2-2))
-	title := ""
-	if nameBudget > 0 {
-		title = kit.TruncateText(name, nameBudget)
-	}
-	identity := lipgloss.NewStyle().Foreground(color)
-	line := identity.Render("●") + " "
-	if title != "" {
-		line += identity.Render(title) + " "
-	}
+	state := backgroundStatusStyle(e.status).Render(backgroundStatusLabel(status))
+	suffix := toolResultStyle.Render(" · ") + state
+
 	outcome := e
 	outcome.description = ""
 	outcome.status = status
-	tail := outcome.summary(max(3, width-ansi.StringWidth(line)+2))
-	reason := strings.TrimPrefix(tail, status)
-	if !strings.HasPrefix(tail, status) {
-		status, reason = tail, ""
+	tail := outcome.summary(width)
+	if reason, ok := strings.CutPrefix(tail, status); ok && status != "" && reason != "" {
+		// On failures, keep identity and genuine diagnostics before task prose.
+		room := max(0, width-kit.ToolIconWidth-ansi.StringWidth(suffix))
+		nameBudget := min(ansi.StringWidth(name), room/2)
+		suffix += toolCallStyle.Render(ansi.Truncate(reason, max(0, room-nameBudget), "…"))
 	}
-	line += backgroundStatusStyle(e.status).Render(status) + toolCallStyle.Render(reason)
-	if e.taskID != "" {
-		id := " · " + e.taskID
-		if ansi.StringWidth(line)+ansi.StringWidth(id) <= width {
-			line += toolResultStyle.Render(id)
+
+	identity := lipgloss.NewStyle().Foreground(color)
+	budget := width - kit.ToolIconWidth - ansi.StringWidth(suffix)
+	if budget <= 0 {
+		line := identity.Render("● ") + state
+		if ansi.StringWidth(line) > width {
+			line = state
 		}
+		return ansi.Truncate(line, max(1, width), "…") + "\n"
 	}
-	return kit.TruncateText(line, max(1, width)) + "\n"
+	label := identity.Render(ansi.Truncate(name, budget, "…"))
+	description = strings.Join(strings.Fields(description), " ")
+	if room := budget - ansi.StringWidth(name) - 2; description != "" && room > 0 {
+		label += toolResultStyle.Render(": " + ansi.Truncate(description, room, "…"))
+	}
+	line := identity.Render("●") + " " + label + suffix
+	return ansi.Truncate(line, max(1, width), "…") + "\n"
 }

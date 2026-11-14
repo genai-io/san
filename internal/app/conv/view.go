@@ -252,6 +252,9 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			sb.WriteString(envelope.renderWithIdentity(p))
 			if msg.Expanded {
 				body := envelope.text()
+				if envelope.taskID != "" {
+					body = "Task ID: " + envelope.taskID + "\n\n" + body
+				}
 				if envelope.outputFile != "" {
 					body += "\n\nOutput file: " + envelope.outputFile
 				}

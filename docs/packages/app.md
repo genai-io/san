@@ -364,6 +364,10 @@ real output lines, and expanded output/logs retain the full evidence.
 Completed Agent blocks show the configured tail of worker prose; routing metadata
 such as Task ID does not count toward preview rows. Expansion keeps the full result.
 Older records use the legacy preview.
+Agent headings use `name: description` without an executor prefix. Completion
+notices keep that name and launch color, mute the description, and reserve space
+for an inline semantic status. Repeated name prefixes and routine task IDs are
+omitted; expanded notifications retain task IDs and full output.
 Expanded shell calls use the same `$` command block; other expanded parameters
 keep continuation lines aligned with their values.
 

@@ -79,8 +79,24 @@ func TestRenderMessageCollapsesResumedAgentEnvelope(t *testing.T) {
 	if strings.Contains(out, "<task-notification") || strings.Contains(out, "full report body") {
 		t.Fatalf("resumed envelope must not render raw XML, got %q", out)
 	}
-	if !strings.Contains(out, "README review completed") {
+	if !strings.Contains(out, "README review · Completed") {
 		t.Fatalf("collapsed envelope should show description + status, got %q", out)
+	}
+}
+
+func TestTaskNoticeExpandedRetainsDetails(t *testing.T) {
+	content := `<task-notification task-id="66b72423" status="completed" description="Review selectors" output-file="/tmp/result.log">Full result</task-notification>`
+	ctx := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatUser, Content: content}}}
+	compact := stripANSI(RenderMessageAt(ctx, 0, false))
+	if strings.Contains(compact, "66b72423") || strings.Contains(compact, "Full result") {
+		t.Fatalf("compact notification should omit routing details and body: %q", compact)
+	}
+	ctx.Messages[0].Expanded = true
+	expanded := stripANSI(RenderMessageAt(ctx, 0, false))
+	for _, want := range []string{"Task ID: 66b72423", "Full result", "Output file: /tmp/result.log"} {
+		if !strings.Contains(expanded, want) {
+			t.Errorf("expanded notification lost %q: %q", want, expanded)
+		}
 	}
 }
 

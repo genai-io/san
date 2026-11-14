@@ -82,7 +82,7 @@ func TestActiveWaitingFollowsPersistedTaskEnvelope(t *testing.T) {
 			{Role: core.ChatUser, Content: "<task-notification status=\"failed\" description=\"job\">\nError: exit status 1\n</task-notification>"},
 		}}
 		out := ansi.Strip(RenderActiveContent(p))
-		if failure, timer := strings.Index(out, "failed"), strings.Index(out, "49s"); failure < 0 || timer <= failure || strings.Count(out, "49s") != 1 || strings.Contains(out, "<task-notification") {
+		if failure, timer := strings.Index(out, "Failed"), strings.Index(out, "49s"); failure < 0 || timer <= failure || strings.Count(out, "49s") != 1 || strings.Contains(out, "<task-notification") {
 			t.Fatalf("width %d: persisted notification did not precede the single waiting row: %q", width, out)
 		}
 	}
