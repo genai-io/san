@@ -22,7 +22,6 @@ type workflowUIService struct {
 	values                                 map[string]string
 }
 
-func (s *workflowUIService) Saved() string { return "/project/.san/workflows" }
 func (s *workflowUIService) Launch(_ string, in map[string]string, _ int) (string, string, error) {
 	s.launches++
 	s.values = in
@@ -43,7 +42,7 @@ func (s *workflowUIService) ResumeRun(_ string, from string) (string, string, er
 	return "", "task", s.err
 }
 func (s *workflowUIService) StopRun(string) error { s.stops++; return s.err }
-func (s *workflowUIService) Definitions() []workflow.Saved {
+func (s *workflowUIService) SavedDefinitions() []workflow.Saved {
 	return []workflow.Saved{{Name: "sample", Path: "/global/sample.md"}}
 }
 func (s *workflowUIService) Definition(string) (string, error) {
@@ -175,6 +174,26 @@ func TestWorkflowDraftValidationSaveAndInputs(t *testing.T) {
 		t.Fatal("service save conflict hidden")
 	}
 }
+func TestWorkflowEditorsKeepActionKeysAsText(t *testing.T) {
+	for _, page := range []string{"edit", "inputs"} {
+		t.Run(page, func(t *testing.T) {
+			s := workflowUIFixture()
+			var v WorkflowView
+			v.OpenDraft(s, "sample", workflowUISource, workflowUISource, 90, 40)
+			key := "e"
+			if page == "inputs" {
+				key = "r"
+			}
+			v.HandleKeypress(workflowKey(key))
+			before := v.editor.Value()
+			v.HandleKeypress(workflowKey("s"))
+			if v.page != page || v.editor.Value() == before || v.confirm != "" || s.saves != 0 || s.stops != 0 {
+				t.Fatal("typing in an editor triggered a workflow action")
+			}
+		})
+	}
+}
+
 func TestWorkflowResponsiveInspectAndConfirmations(t *testing.T) {
 	s := workflowUIFixture()
 	c := s.r.Nodes["b"]

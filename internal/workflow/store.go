@@ -15,6 +15,32 @@ import (
 	"github.com/genai-io/san/internal/atomicfile"
 )
 
+// RunRecord keeps a definition and inputs fixed across execution attempts.
+// Activity is a bounded live tail; complete outputs remain in checkpoints.
+type RunRecord struct {
+	ID         string                `json:"id"`
+	Name       string                `json:"name"`
+	Definition string                `json:"definition"`
+	Inputs     map[string]string     `json:"inputs,omitempty"`
+	Status     string                `json:"status"`
+	TaskID     string                `json:"task_id,omitempty"`
+	StartedAt  time.Time             `json:"started_at"`
+	UpdatedAt  time.Time             `json:"updated_at"`
+	FinishedAt time.Time             `json:"finished_at,omitempty"`
+	Nodes      map[string]Checkpoint `json:"nodes"`
+	Activity   map[string][]string   `json:"activity,omitempty"`
+	Error      string                `json:"error,omitempty"`
+	Output     string                `json:"output,omitempty"`
+}
+
+const (
+	RunRunning     = "running"
+	RunSucceeded   = "succeeded"
+	RunFailed      = "failed"
+	RunStopped     = "stopped"
+	RunInterrupted = "interrupted"
+)
+
 var storeMu sync.Mutex
 
 // ErrRunActive means a live or uncertain owner prevents execution.

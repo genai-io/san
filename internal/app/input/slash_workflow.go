@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -103,7 +102,9 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 			cmds = append(cmds, c.env.Input.Workflow.OpenTask(svc, id, c.env.Width, c.env.Height))
 		}
 	}
-	return bounds + "\nTask ID: " + id + "\nLive activity: task area (Alt+T) · Stop: Ctrl+C (when idle) or /workflow stop " + id, tea.Batch(cmds...), nil
+	notice := bounds + "\nTask ID: " + id
+	notice += "\nLive activity: task area (Alt+T) · Stop: Ctrl+C (when idle) or /workflow stop " + id
+	return notice, tea.Batch(cmds...), nil
 }
 
 func (c *SlashCommandController) openWorkflow(svc WorkflowService, fields []string) (string, tea.Cmd, error) {
@@ -118,7 +119,19 @@ func (c *SlashCommandController) openWorkflow(svc WorkflowService, fields []stri
 		if len(fields) == 2 {
 			name = fields[1]
 		}
-		src := workflowDraft(name, "work --> review", "## work\nmode: explore\n\nComplete this task and report your findings:\n{{input.task}}\n\n## review\nmode: explore\n\nCheck these findings against the task and produce the final result.\nTask: {{input.task}}\nFindings: {{work}}\n")
+		src := workflowDraft(name, "work --> review", `## work
+mode: explore
+
+Complete this task and report your findings:
+{{input.task}}
+
+## review
+mode: explore
+
+Check these findings against the task and produce the final result.
+Task: {{input.task}}
+Findings: {{work}}
+`)
 		return "", view.OpenDraft(svc, name, src, "", w, h), nil
 	case "from-skill":
 		if len(fields) < 2 || len(fields) > 3 {
@@ -137,7 +150,16 @@ func (c *SlashCommandController) openWorkflow(svc WorkflowService, fields []stri
 		}
 		// Let the Skill loader retain its instructions and resource paths;
 		// guessing a graph from prose could change the original behavior.
-		prompt := fmt.Sprintf("## work\nmode: default\n\nUse the Skill tool to invoke %s for this task:\n{{input.task}}\n\nPreserve the skill's original order, constraints and resource paths. If it requires a parent-only tool, report that limitation rather than bypassing it.\n\nThis workflow references the live skill; its instructions are loaded when the node runs. Review this before saving.\n", strconv.Quote(sk.FullName()))
+		prompt := fmt.Sprintf(`## work
+mode: default
+
+Use the Skill tool to invoke %q for this task:
+{{input.task}}
+
+Preserve the skill's original order, constraints and resource paths. If it requires a parent-only tool, report that limitation rather than bypassing it.
+
+This workflow references the live skill; its instructions are loaded when the node runs. Review this before saving.
+`, sk.FullName())
 		return "", view.OpenDraft(svc, name, workflowDraft(name, "work", prompt), "", w, h), nil
 	case "edit":
 		if len(fields) != 2 {
@@ -158,7 +180,7 @@ func (c *SlashCommandController) openWorkflow(svc WorkflowService, fields []stri
 }
 
 func workflowDraft(name, graph, sections string) string {
-	return "---\nname: " + strconv.Quote(name) + "\nmax_parallel: 4\n---\n\n```mermaid\nflowchart LR\n  " + graph + "\n```\n\n" + sections
+	return fmt.Sprintf("---\nname: %q\nmax_parallel: 4\n---\n\n```mermaid\nflowchart LR\n  %s\n```\n\n%s", name, graph, sections)
 }
 
 func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, error) {
@@ -205,4 +227,12 @@ func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, e
 	return "Stopping workflow " + target.GetID() + ".", nil, nil
 }
 
-const workflowUsage = "Commands:\n  /workflow new [name]                   Create a reviewable draft\n  /workflow from-skill <skill> [name]    Create a Skill-derived draft\n  /workflow edit <name>                  Review and edit a definition\n  /workflow list                         List saved workflows\n  /workflow show <name>                  Preview a graph\n  /workflow run <name> [key=value …]     Run a workflow\n  /workflow inspect <run-id>             Inspect or resume a run\n  /workflow stop [task-id]               Stop a running workflow"
+const workflowUsage = `Commands:
+  /workflow new [name]                   Create a reviewable draft
+  /workflow from-skill <skill> [name]    Create a Skill-derived draft
+  /workflow edit <name>                  Review and edit a definition
+  /workflow list                         List saved workflows
+  /workflow show <name>                  Preview a graph
+  /workflow run <name> [key=value …]     Run a workflow
+  /workflow inspect <run-id>             Inspect or resume a run
+  /workflow stop [task-id]               Stop a running workflow`

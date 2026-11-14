@@ -124,35 +124,30 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   node's template scope is the outputs of every ancestor reached through a
   *taken* edge, inherited downstream; an untaken conditional edge hides that
   branch.
-- `resume.go`, `checkpoint.go` — `Options.Resume` and `OnCheckpoint` extend
-  the existing scheduler, not a second execution engine. Success reuse follows
-  recomputed routing; worker identity is position within a hashed ordered plan.
-  `Invalidate` deep-copies and invalidates a node and all descendants, retaining
-  attempt history; `Retry` preserves partial workers only at retry roots. The
-  tool and recovery preview share these operations. A failed checkpoint write
-  cancels scheduling.
-- `store.go` — one atomic, private JSON snapshot per run and exclusive executor
-  ownership, including conservative dead-process lock recovery. An empty store
-  directory provides in-memory operation for embedded callers and tests.
-- `internal/tool/workflow/runs.go` — composes storage, the existing background
-  Task and node executor. Handles live activity, interruption, stop and resume.
-- `internal/tool/workflow/definitions.go` — validated project saves with an
-  optimistic source check; user definitions are copied, not edited in place.
-- `internal/app/input/on_workflow*.go` — one management/review/run overlay;
-  source editing reuses textarea, inspection reuses viewport, and the graph
-  falls back to a dependency list. No model turn is needed for management.
+  `Options.Resume` and `OnCheckpoint` extend this same scheduler. Worker reuse
+  is keyed by position in a hashed ordered plan. `Invalidate` resets a node and
+  its descendants; `Retry` retains partial workers only at retry roots. The
+  execution path and recovery preview share these operations.
+- `store.go` — run record schema, private atomic snapshots and exclusive executor
+  ownership. `store_unix.go` / `store_windows.go` contain only platform-specific
+  owner checks. An empty directory uses memory for embedded callers and tests.
+- `internal/tool/workflow/workflow.go` — schema, validation, definition management
+  and launch entrypoints. `run.go` owns background task lifecycle, live callbacks
+  and the subagent adapter.
+- `internal/app/input/slash_workflow.go` — command routing and draft templates.
+  `on_workflow.go` owns navigation, editing, confirmation and polling;
+  `on_workflow_view.go` owns page, graph and preview rendering. Editing and
+  inspection reuse textarea and viewport; management needs no model turn.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   A node becomes `running` only after it acquires a shared execution slot, so
   work waiting at `max_parallel` remains pending in the live graph.
   `skipped` is contagion from an upstream failure; `omitted` means no
   upstream edge was taken. `continue_on_error` on the failing node stops the
-  contagion, and `whole` decides what its `{{id}}` still carries: a
-  `for_each` node's finished workers, nothing from a plain turn.
-- `Summary` is one status line per node followed by the output of each
-  succeeded sink; intermediate outputs stay in the node transcripts.
-- `view.go` renders a compact branch-and-join graph with live node phases for
-  launch previews and the TUI's task area. Dense graphs fall back to a
-  dependency list so no edges disappear from the display.
+  contagion. Downstream gets completed workers from a failed `for_each`, but
+  no unfinished output from an ordinary turn.
+- `view.go` owns the final summary and compact branch-and-join live views.
+  The summary contains status lines and successful sink outputs; dense graphs
+  fall back to an exact dependency list.
 - Streamed text stays provisional until that inference succeeds. A failed
   inference removes its buffered and displayed text before retrying, while
   accepted text and other nodes' activity remain. Animation styles only the
@@ -182,7 +177,7 @@ internal/workflow/view_test.go   — compact branches, live phases, conditional 
 internal/workflow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
 internal/workflow/store_test.go — atomic persistence, private files, IDs and executor ownership.
 internal/tool/workflow/workflow_test.go — pre-flight checks, node requests, live tools/text, quoted input commands, stream cleanup and task outcomes.
-internal/tool/workflow/runs_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
+internal/tool/workflow/run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
 internal/tool/workflow/definitions_test.go — validation, stale saves, filename collisions and project copies.
 internal/app/input/on_workflow_test.go — review/edit/input/run transitions, markers, activity, history, layout and recovery confirmations.
 internal/app/input/slash_workflow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management and argument parsing.
