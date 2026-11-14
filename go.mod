@@ -11,7 +11,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/creack/pty v1.1.24
-	github.com/genai-io/sdk-go v0.9.3-0.20261113082335-5c076d910ffa
+	github.com/genai-io/sdk-go v0.9.3-0.20261114012703-1b7a84e4748b
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
