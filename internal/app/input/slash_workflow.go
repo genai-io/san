@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -14,8 +15,7 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// IsWorkflowStopCommand identifies the one slash command that must bypass the
-// foreground turn's input queue: waiting for that turn would delay cancellation.
+// IsWorkflowStopCommand keeps cancellation out of the foreground input queue.
 func IsWorkflowStopCommand(input string) bool {
 	name, args, ok := command.ParseCommand(input)
 	if !ok || name != "workflow" {
@@ -25,19 +25,13 @@ func IsWorkflowStopCommand(input string) bool {
 	return len(fields) > 0 && fields[0] == "stop"
 }
 
-// workflowRunner is what /workflow needs from the Workflow tool.
 type workflowRunner interface {
 	Saved() string
 	Preview(name string, width int) (string, error)
 	Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
 }
 
-// handleWorkflowCommand runs a saved workflow directly. The user has already
-// named what to run, so there is nothing for a model turn to decide — routing
-// it through one would only add latency and a chance to get the call wrong.
-// Launch applies the same checks and starts the same background task as a
-// model's call; and because a tool the model is not offered is still
-// registered, this works with the tool disabled.
+// Management is explicit and needs no model turn or ambient authoring prompt.
 func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	fields, err := command.SplitArguments(args)
 	if err != nil {
@@ -54,15 +48,19 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 	if !ok {
 		return "", nil, errors.New("the Workflow tool is not available in this build")
 	}
+	if len(fields) == 0 && c.env.Input != nil {
+		if svc, ok := t.(WorkflowService); ok {
+			return "", c.env.Input.Workflow.Open(svc, c.env.Width, c.env.Height), nil
+		}
+	}
 	if len(fields) == 0 || fields[0] == "list" {
 		if len(fields) > 1 {
 			return "", nil, errors.New("usage: /workflow list")
 		}
-		list := wt.Saved()
-		if list == "" {
-			return "No saved workflows. Add one as .san/workflows/<name>.md.\n\n" + workflowUsage, nil, nil
+		if list := wt.Saved(); list != "" {
+			return "Saved workflows:" + list + "\n\n" + workflowUsage, nil, nil
 		}
-		return "Saved workflows:" + list + "\n\n" + workflowUsage, nil, nil
+		return "No saved workflows. Create one with /workflow new [name].\n\n" + workflowUsage, nil, nil
 	}
 	if fields[0] == "show" {
 		if len(fields) != 2 {
@@ -71,33 +69,96 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 		preview, err := wt.Preview(fields[1], c.env.Width)
 		return preview, nil, err
 	}
-
-	name, inputFields := fields[0], fields[1:]
-	if name == "run" {
-		if len(inputFields) == 0 {
+	if fields[0] == "new" || fields[0] == "from-skill" || fields[0] == "edit" || fields[0] == "inspect" {
+		svc, ok := t.(WorkflowService)
+		if !ok || c.env.Input == nil {
+			return "", nil, errors.New("workflow management is unavailable in this build")
+		}
+		return c.openWorkflow(svc, fields)
+	}
+	if fields[0] == "run" {
+		if len(fields) < 2 {
 			return "", nil, errors.New("usage: /workflow run <name> [key=value …]")
 		}
-		name, inputFields = inputFields[0], inputFields[1:]
+		fields = fields[1:]
 	}
 	inputs := map[string]string{}
-	for _, kv := range inputFields {
+	for _, kv := range fields[1:] {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k == "" {
 			return "", nil, fmt.Errorf("input %q is not key=value", kv)
 		}
 		inputs[k] = v
 	}
-	bounds, id, err := wt.Launch(name, inputs, c.env.Width)
+	bounds, id, err := wt.Launch(fields[0], inputs, c.env.Width)
 	if err != nil {
 		return "", nil, err
 	}
-	// A direct slash launch has no model stream to start the frame clock.
-	// Keep the pinned graph repainting while its background task runs.
-	var tick tea.Cmd
+	var cmds []tea.Cmd
 	if c.env.SpinnerTickCmd != nil {
-		tick = c.env.SpinnerTickCmd()
+		cmds = append(cmds, c.env.SpinnerTickCmd())
 	}
-	return bounds + "\nTask ID: " + id + "\nLive activity: task area (Alt+T) · Stop: Ctrl+C (when idle) or /workflow stop " + id, tick, nil
+	if c.env.Input != nil {
+		if svc, ok := t.(WorkflowService); ok {
+			cmds = append(cmds, c.env.Input.Workflow.OpenTask(svc, id, c.env.Width, c.env.Height))
+		}
+	}
+	return bounds + "\nTask ID: " + id + "\nLive activity: task area (Alt+T) · Stop: Ctrl+C (when idle) or /workflow stop " + id, tea.Batch(cmds...), nil
+}
+
+func (c *SlashCommandController) openWorkflow(svc WorkflowService, fields []string) (string, tea.Cmd, error) {
+	view := &c.env.Input.Workflow
+	w, h := c.env.Width, c.env.Height
+	switch fields[0] {
+	case "new":
+		if len(fields) > 2 {
+			return "", nil, errors.New("usage: /workflow new [name]")
+		}
+		name := "new-workflow"
+		if len(fields) == 2 {
+			name = fields[1]
+		}
+		src := workflowDraft(name, "work --> review", "## work\nmode: explore\n\nComplete this task and report your findings:\n{{input.task}}\n\n## review\nmode: explore\n\nCheck these findings against the task and produce the final result.\nTask: {{input.task}}\nFindings: {{work}}\n")
+		return "", view.OpenDraft(svc, name, src, "", w, h), nil
+	case "from-skill":
+		if len(fields) < 2 || len(fields) > 3 {
+			return "", nil, errors.New("usage: /workflow from-skill <skill> [name]")
+		}
+		if c.env.Skill == nil {
+			return "", nil, errors.New("skill registry is unavailable")
+		}
+		sk, ok := c.env.Skill.Get(fields[1])
+		if !ok || !sk.IsEnabled() {
+			return "", nil, fmt.Errorf("skill %q is missing or disabled", fields[1])
+		}
+		name := strings.ReplaceAll(sk.FullName(), ":", "-")
+		if len(fields) == 3 {
+			name = fields[2]
+		}
+		// Let the Skill loader retain its instructions and resource paths;
+		// guessing a graph from prose could change the original behavior.
+		prompt := fmt.Sprintf("## work\nmode: default\n\nUse the Skill tool to invoke %s for this task:\n{{input.task}}\n\nPreserve the skill's original order, constraints and resource paths. If it requires a parent-only tool, report that limitation rather than bypassing it.\n\nThis workflow references the live skill; its instructions are loaded when the node runs. Review this before saving.\n", strconv.Quote(sk.FullName()))
+		return "", view.OpenDraft(svc, name, workflowDraft(name, "work", prompt), "", w, h), nil
+	case "edit":
+		if len(fields) != 2 {
+			return "", nil, errors.New("usage: /workflow edit <name>")
+		}
+		src, err := svc.Definition(fields[1])
+		if err != nil {
+			return "", nil, err
+		}
+		return "", view.OpenDraft(svc, fields[1], src, src, w, h), nil
+	case "inspect":
+		if len(fields) != 2 {
+			return "", nil, errors.New("usage: /workflow inspect <run-id>")
+		}
+		return "", view.OpenRun(svc, fields[1], w, h), nil
+	}
+	return "", nil, errors.New("unknown workflow action")
+}
+
+func workflowDraft(name, graph, sections string) string {
+	return "---\nname: " + strconv.Quote(name) + "\nmax_parallel: 4\n---\n\n```mermaid\nflowchart LR\n  " + graph + "\n```\n\n" + sections
 }
 
 func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, error) {
@@ -144,4 +205,4 @@ func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, e
 	return "Stopping workflow " + target.GetID() + ".", nil, nil
 }
 
-const workflowUsage = "Commands:\n  /workflow list                         List saved workflows\n  /workflow show <name>                  Preview a graph\n  /workflow run <name> [key=value …]     Run a workflow\n  /workflow stop [task-id]               Stop a running workflow"
+const workflowUsage = "Commands:\n  /workflow new [name]                   Create a reviewable draft\n  /workflow from-skill <skill> [name]    Create a Skill-derived draft\n  /workflow edit <name>                  Review and edit a definition\n  /workflow list                         List saved workflows\n  /workflow show <name>                  Preview a graph\n  /workflow run <name> [key=value …]     Run a workflow\n  /workflow inspect <run-id>             Inspect or resume a run\n  /workflow stop [task-id]               Stop a running workflow"

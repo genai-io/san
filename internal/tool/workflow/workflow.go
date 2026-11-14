@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -29,7 +31,10 @@ type WorkflowTool struct {
 	executor tool.AgentExecutor
 	// dirs are the saved-workflow directories, in priority order. Rewired
 	// alongside executor whenever the app reconfigures the tool.
-	dirs []string
+	dirs  []string
+	mu    sync.Mutex
+	store *workflow.Store
+	live  map[string]*task.AgentTask
 }
 
 // NewWorkflowTool creates a WorkflowTool without an executor; the app wires
@@ -49,7 +54,18 @@ func (t *WorkflowTool) SetExecutor(executor tool.AgentExecutor) { t.executor = e
 // SetSearchPaths sets where saved workflows are looked up, highest priority
 // first. The app passes the project directory before the user one, matching
 // how subagent definitions resolve.
-func (t *WorkflowTool) SetSearchPaths(dirs []string) { t.dirs = dirs }
+func (t *WorkflowTool) SetSearchPaths(dirs []string) {
+	t.dirs = dirs
+	dir := ""
+	if len(dirs) > 0 {
+		dir = filepath.Join(filepath.Dir(dirs[0]), "workflow-runs")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.store == nil || len(dirs) > 0 {
+		t.store = workflow.NewStore(dir)
+	}
+}
 
 // Saved lists the definitions on disk, one "- name — description" per line:
 // the schema description carries it so the model can name one instead of
@@ -135,7 +151,7 @@ func (t *WorkflowTool) Schema() core.ToolSchema {
 // inline definition. Exactly one of the two.
 func (t *WorkflowTool) resolve(params map[string]any) (*workflow.Workflow, error) {
 	name := strings.TrimSpace(tool.GetString(params, "name"))
-	definition := strings.TrimSpace(tool.GetString(params, "definition"))
+	definition := tool.GetString(params, "definition")
 	switch {
 	case name != "" && definition != "":
 		return nil, fmt.Errorf("pass name or definition, not both")
@@ -270,7 +286,10 @@ func (t *WorkflowTool) Execute(ctx context.Context, params map[string]any, _ str
 			inputs[k] = fmt.Sprint(v)
 		}
 	}
-	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
+	id, err := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 	return toolresult.ToolResult{
 		Success: true,
 		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nStop: Ctrl+C (when foreground idle) or /workflow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
@@ -301,15 +320,18 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 	}
 	turns, _ := w.Bounds()
 	summary := fmt.Sprintf("Started workflow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
-	return summary, t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width, ""), nil
+	id, err := t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width, "")
+	return summary, id, err
 }
 
-// start runs the workflow under one background task and returns its id.
-func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int, parentToolCallID string) string {
+// start persists a snapshot before launching its background task.
+func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int, parentToolCallID string) (string, error) {
+	return t.startRecord(w, workflow.RunRecord{ID: task.NewID(), Name: w.Name, Definition: w.Source, Inputs: maps.Clone(inputs)}, description, width, parentToolCallID)
+}
+
+// attachLiveView connects the executor's events to the shared task-area view.
+func attachLiveView(w *workflow.Workflow, bg *task.AgentTask, runner *nodeRunner, width int) func(*workflow.Node, workflow.Status) {
 	width = workflowDisplayWidth(width)
-	executor := t.executor
-	ctx, cancel := context.WithCancel(context.Background())
-	bg := task.Default().CreateAgentTask(task.NewID(), "workflow", description, ctx, cancel)
 	statuses := make(map[string]workflow.Status, len(w.Nodes))
 	var events []workflow.ActivityEvent
 	textBuffers := make(map[string]string)
@@ -366,9 +388,7 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 	})
 	bg.SetLiveView(liveView(width))
 
-	go func() {
-		defer cancel()
-		runner := &nodeRunner{exec: executor, task: bg, name: w.Name, parentToolCallID: parentToolCallID}
+	{
 		flushText := func(nodeID, worker string) {
 			key := nodeID + "·" + worker
 			if content := strings.Join(strings.Fields(textBuffers[key]), " "); content != "" {
@@ -442,29 +462,14 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 			progressMu.Unlock()
 			bg.AppendProgress(nodeID + "·" + worker + ": " + string(status))
 		}
-		res := workflow.Run(ctx, w, runner, workflow.Options{
-			Inputs: inputs,
-			OnStatus: func(n *workflow.Node, s workflow.Status) {
-				progressMu.Lock()
-				statuses[n.ID] = s
-				bg.SetLiveView(liveView(width))
-				progressMu.Unlock()
-				bg.AppendProgress(n.ID + ": " + string(s))
-			},
-		})
-		bg.AppendOutput([]byte(res.Summary(w)))
-		switch {
-		case ctx.Err() != nil:
-			bg.Complete(ctx.Err())
-		case res.Failed(w):
-			// The notification shows the error in place of the output, so the
-			// verdict carries what failed; the full summary stays in the task.
-			bg.Complete(fmt.Errorf("workflow %s failed — %s", w.Name, strings.Join(res.Failures(w), "; ")))
-		default:
-			bg.Complete(nil)
-		}
-	}()
-	return bg.GetID()
+	}
+	return func(n *workflow.Node, s workflow.Status) {
+		progressMu.Lock()
+		statuses[n.ID] = s
+		bg.SetLiveView(liveView(width))
+		progressMu.Unlock()
+		bg.AppendProgress(n.ID + ": " + string(s))
+	}
 }
 
 func workflowDisplayWidth(terminalWidth int) int {

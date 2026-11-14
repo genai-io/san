@@ -19,6 +19,7 @@ import (
 
 // Workflow is a parsed, validated definition.
 type Workflow struct {
+	Source      string // Exact original document, retained for checkpoint persistence.
 	Name        string
 	Description string
 	MaxParallel int
@@ -106,7 +107,7 @@ var (
 // per graph node and vice versa, no cycle, templates referencing only
 // connected upstreams. Every problem found is reported at once.
 func Parse(src string) (*Workflow, error) {
-	w := &Workflow{MaxParallel: defaultMaxParallel, byID: map[string]*Node{}}
+	w := &Workflow{Source: src, MaxParallel: defaultMaxParallel, byID: map[string]*Node{}}
 
 	body, err := w.parseFrontmatter(src)
 	if err != nil {

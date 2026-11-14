@@ -38,7 +38,7 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 		return nil, false
 	}
 	verb := strings.ToLower(fields[0].Value)
-	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run") {
+	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run" && verb != "edit") {
 		return nil, false
 	}
 	if toolSvc == nil {
@@ -60,7 +60,7 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 		name = fields[1].Value
 	}
 	if len(fields) > 1 && fields[1].End < len(args) {
-		if verb == "show" {
+		if verb != "run" {
 			return nil, true
 		}
 		argsAfterName := strings.TrimLeftFunc(args[fields[1].End:], unicode.IsSpace)

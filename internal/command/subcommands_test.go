@@ -8,7 +8,7 @@ import (
 func TestMatchingCompletesSubcommandsByLevel(t *testing.T) {
 	r := &Registry{}
 	for query, want := range map[string][]string{
-		"/workflow ":           {"workflow list", "workflow show", "workflow run", "workflow stop"},
+		"/workflow ":           {"workflow list", "workflow show", "workflow run", "workflow stop", "workflow new", "workflow from-skill", "workflow edit", "workflow inspect"},
 		"/workflow sh":         {"workflow show"},
 		"/plugin marketplace ": {"plugin marketplace list", "plugin marketplace add", "plugin marketplace remove", "plugin marketplace sync"},
 		"/memory edit g":       {"memory edit global"},

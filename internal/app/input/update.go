@@ -12,6 +12,9 @@ import (
 
 // Update routes Source 1 overlay messages to the appropriate handler.
 func Update(deps OverlayDeps, msg tea.Msg) (tea.Cmd, bool) {
+	if cmd, ok := deps.State.Workflow.Update(msg); ok {
+		return cmd, true
+	}
 	if cmd, ok := UpdateProvider(deps, &deps.State.Provider, msg); ok {
 		return cmd, true
 	}
