@@ -6,8 +6,87 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 )
+
+const storedDefinition = "---\nname: review\n---\n```mermaid\nflowchart LR\n  work\n```\n\n## work\nReview {{input.task}}\n"
+
+func TestDefinitionStorageExactSourceAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveDefinition("review", storedDefinition, "", dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadDefinition("review", dir)
+	if err != nil || got != storedDefinition {
+		t.Fatalf("source = %q, error = %v", got, err)
+	}
+	w, err := Find("review", dir)
+	if err != nil || w.Source != storedDefinition {
+		t.Fatalf("parsed source = %+v, error = %v", w, err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "review.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatalf("definition mode = %v", info.Mode())
+	}
+	if _, err := ReadDefinition("missing", dir); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing definition = %v", err)
+	}
+	for _, name := range []string{"../review", "/tmp/review", "a/b", ""} {
+		if err := SaveDefinition(name, storedDefinition, "", dir); err == nil {
+			t.Errorf("accepted unsafe name %q", name)
+		}
+	}
+	if err := SaveDefinition("review", storedDefinition, ""); err == nil {
+		t.Fatal("accepted unconfigured storage")
+	}
+	if err := SaveDefinition("different", storedDefinition, "", dir); err == nil {
+		t.Fatal("accepted mismatched frontmatter name")
+	}
+	if err := SaveDefinition("review", "not a workflow", storedDefinition, dir); err == nil {
+		t.Fatal("accepted invalid definition")
+	}
+	if err := os.Remove(filepath.Join(dir, "review.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveDefinition("review", storedDefinition, storedDefinition, dir); err == nil || !strings.Contains(err.Error(), "was removed") {
+		t.Fatalf("removed definition save = %v", err)
+	}
+}
+
+func TestDefinitionConcurrentEditors(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveDefinition("review", storedDefinition, "", dir); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	results := make(chan error, 2)
+	for _, suffix := range []string{"First edit", "Second edit"} {
+		wg.Go(func() {
+			results <- SaveDefinition("review", storedDefinition+suffix, storedDefinition, dir)
+		})
+	}
+	wg.Wait()
+	close(results)
+	var saved, stale int
+	for err := range results {
+		switch {
+		case err == nil:
+			saved++
+		case strings.Contains(err.Error(), "changed on disk"):
+			stale++
+		default:
+			t.Fatalf("unexpected save error: %v", err)
+		}
+	}
+	if saved != 1 || stale != 1 {
+		t.Fatalf("concurrent edits: %d saved, %d stale", saved, stale)
+	}
+}
 
 func TestStoreDurabilityAndIsolation(t *testing.T) {
 	dir := t.TempDir()

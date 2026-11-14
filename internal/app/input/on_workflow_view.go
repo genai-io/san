@@ -21,8 +21,8 @@ func (v *WorkflowView) Render() string {
 	title, content, hint := v.renderPage()
 	switch v.confirm {
 	case "save":
-		title = "Confirm save · " + v.name
-		content = "Save project workflow · " + v.name + "\n" + v.body.View() + "\nSave these changes? y / n"
+		title = "Save · " + v.name
+		content = v.body.View() + "\nSave this workflow in the project? y / n"
 		hint = "y save · n cancel"
 	case "stop":
 		content = "Stop this run? In-flight work may have side effects. y / n"
@@ -55,21 +55,32 @@ func (v *WorkflowView) renderPage() (title, content, hint string) {
 		title, content = "Workflow · definitions and recent runs", v.renderHub()
 	case "review":
 		title = "Review · " + v.name
-		state := "Draft — save a valid definition before running"
-		hint = "e edit · s preview/save · Esc close"
+		hint = "e edit · s save · Esc close"
 		if v.saved {
-			state = "Saved — r supplies inputs and launches"
 			hint = "r run · " + hint
+		} else {
+			title += " · Unsaved"
 		}
-		content = state + "\nSave project workflow · " + v.name + "\nProject copy: saving does not modify a global/skill source.\n" + v.body.View()
+		for _, extra := range []string{"↑↓ step", "d limits", "PgUp/Dn scroll"} {
+			if ansi.StringWidth(hint+" · "+extra) <= v.width {
+				hint += " · " + extra
+			}
+		}
+		content = v.body.View()
+	case "details":
+		title, content = "Execution limits · "+v.name, v.body.View()
+		hint = "↑/↓ scroll · Esc review"
 	case "edit":
-		title, content = "Edit source · "+v.name, v.editor.View()
-		hint = "Ctrl+S validate and preview save · Esc review"
+		title = "Edit source · " + v.name
+		content = v.templateHelp() + "\n\n" + v.editor.View()
+		hint = "Ctrl+S preview save · Esc review"
 	case "inputs":
-		title, hint = "Run inputs · "+v.name, "Enter next / launch · Esc cancel"
-		content = "No input placeholders. Enter launches this saved definition."
+		title, hint = "Run · "+v.name, "Enter next / run · Esc cancel"
+		content = "No run inputs. Enter starts this workflow."
 		if len(v.keys) > 0 {
-			content = fmt.Sprintf("%s (%d/%d) — required\n", v.keys[v.field], v.field+1, len(v.keys)) + v.editor.View()
+			key := v.keys[v.field]
+			users := strings.Join(v.referenceUsers("input."+key), ", ")
+			content = fmt.Sprintf("%s · Required (%d/%d)\n{{input.%s}} takes the value below; used by %s.\n\n", key, v.field+1, len(v.keys), key, users) + v.editor.View()
 		}
 	case "run", "output":
 		return v.renderRun()
@@ -139,16 +150,127 @@ func (v *WorkflowView) renderRun() (title, content, hint string) {
 
 func (v *WorkflowView) renderReview() string {
 	if v.plan == nil {
-		return v.source
+		return "Press e to fix the source before reviewing its inputs and outputs."
 	}
-	preview := *v
-	preview.record = &workflow.RunRecord{Nodes: map[string]workflow.Checkpoint{}}
+	lines := []string{"Run inputs"}
+	if keys := v.plan.InputNames(); len(keys) == 0 {
+		lines = append(lines, "  No values to enter.")
+	} else {
+		for _, key := range keys {
+			lines = append(lines, "  "+key+" — you provide this before running")
+		}
+	}
+	lines = append(lines, "", "Steps")
+	start := max(0, min(v.selected-2, len(v.plan.Nodes)-5))
+	for i := start; i < min(len(v.plan.Nodes), start+5); i++ {
+		node := v.plan.Nodes[i]
+		label := "○ " + node.ID
+		var upstream []string
+		for _, edge := range node.Upstream() {
+			name := edge.From
+			if edge.Label != "" {
+				name += " [" + edge.Label + "]"
+			}
+			upstream = append(upstream, name)
+		}
+		if len(upstream) > 0 {
+			label += " ← " + strings.Join(upstream, ", ")
+		}
+		lines = append(lines, kit.RenderSelectableRow(label, i == v.selected))
+	}
+	node, ok := v.plan.Node(v.nodeID())
+	if !ok {
+		return strings.Join(lines, "\n")
+	}
+	lines = append(lines, "", node.ID)
+	if node.ForEach != "" {
+		lines = append(lines, "  Items   JSON array from "+node.ForEach)
+	}
+	if refs := node.References(); len(refs) == 0 {
+		lines = append(lines, "  Input   No inserted values; uses the instructions below.")
+	} else {
+		for _, ref := range refs {
+			origin := "final answer from step " + ref
+			if key, ok := strings.CutPrefix(ref, "input."); ok {
+				origin = key + " you enter before running"
+			} else if ref == "item" || strings.HasPrefix(ref, "item.") {
+				origin = "value from the current plan item"
+			}
+			lines = append(lines, "  Input   {{"+ref+"}} ← "+origin)
+		}
+	}
+	output := "this step's final answer"
+	if node.ForEach != "" {
+		output = "combined answers from completed workers"
+	}
+	lines = append(lines, "  Output  {{"+node.Base+"}} = "+output)
+	if users := v.referenceUsers(node.Base); len(users) > 0 {
+		lines = append(lines, "          Read by "+strings.Join(users, ", "))
+	} else if len(node.Downstream()) == 0 {
+		lines = append(lines, "          Final workflow result")
+	}
+	lines = append(lines, "", "Instructions", "  "+strings.ReplaceAll(node.Prompt, "\n", "\n  "))
+	return ansi.Wrap(strings.Join(lines, "\n"), max(1, v.width-4), " ")
+}
+
+func (v *WorkflowView) referenceUsers(ref string) []string {
+	var users []string
+	seen := map[string]bool{}
+	if v.plan != nil {
+		for _, node := range v.plan.Nodes {
+			refs := node.References()
+			if source, _, _ := strings.Cut(node.ForEach, "."); source != "" {
+				refs = append(refs, source)
+			}
+			for _, name := range refs {
+				if name == ref && !seen[node.Base] {
+					users = append(users, node.Base)
+					seen[node.Base] = true
+				}
+			}
+		}
+	}
+	return users
+}
+
+func (v *WorkflowView) templateHelp() string {
+	if v.plan == nil {
+		return "{{input.name}} = a value you enter before running\n{{step}} = the final answer from that upstream step"
+	}
+	var inputs, outputs []string
+	for _, key := range v.plan.InputNames() {
+		inputs = append(inputs, "{{input."+key+"}}")
+	}
+	seen := map[string]bool{}
+	for _, node := range v.plan.Nodes {
+		if !seen[node.Base] {
+			outputs = append(outputs, "{{"+node.Base+"}}")
+			seen[node.Base] = true
+		}
+	}
+	input := "No run inputs in this definition."
+	if len(inputs) > 0 {
+		input = strings.Join(inputs, ", ") + " = values you enter before running"
+	}
+	return input + "\n" + strings.Join(outputs, ", ") + " = step answers, available downstream"
+}
+
+func (v *WorkflowView) renderLimits() string {
+	if v.plan == nil {
+		return "Fix the source to inspect execution limits."
+	}
 	turns, bounds := v.plan.Bounds()
-	plan := fmt.Sprintf("%d nodes · up to %d agent runs · max %d parallel", len(v.plan.Nodes), turns, v.plan.MaxParallel)
-	if len(bounds) > 0 {
-		plan += "\n" + strings.Join(bounds, "\n")
+	lines := []string{
+		"At most " + kit.Plural(turns, "step execution") + ". Each may use multiple model calls and tools.",
+		"At most " + kit.Plural(v.plan.MaxParallel, "step") + " running at once; dependencies still determine their order.",
+		"",
+		"Each step starts in a fresh agent context. Run inputs and referenced step answers are inserted into its instructions.",
 	}
-	return plan + "\n\n" + preview.renderGraph() + "\n\nSource\n" + v.source
+	if len(bounds) > 0 {
+		lines = append(lines, "", "Worker and retry limits")
+		lines = append(lines, bounds...)
+	}
+	return ansi.Wrap(strings.Join(lines, "\n"), max(1, v.width-4), " ")
 }
 
 func (v *WorkflowView) diffPreview() string {

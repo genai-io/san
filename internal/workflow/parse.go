@@ -436,7 +436,7 @@ func (w *Workflow) validate(declared []string) error {
 				problems = append(problems, fmt.Sprintf("node %s: for_each reads %s but the graph has no path %s --> … --> %s", n.ID, src, src, n.ID))
 			}
 		}
-		for _, ref := range n.refs() {
+		for _, ref := range n.References() {
 			switch {
 			case strings.HasPrefix(ref, "input."):
 			case isItemRef(ref):
@@ -501,8 +501,8 @@ func (w *Workflow) cycle(edges []Edge) []string {
 	return left
 }
 
-// refs lists the template references in the prompt, in order, deduplicated.
-func (n *Node) refs() []string {
+// References lists template names in prompt order, without duplicates.
+func (n *Node) References() []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, m := range templateRe.FindAllStringSubmatch(n.Prompt, -1) {
@@ -520,7 +520,7 @@ func (w *Workflow) InputNames() []string {
 	seen := map[string]bool{}
 	var names []string
 	for _, n := range w.Nodes {
-		for _, ref := range n.refs() {
+		for _, ref := range n.References() {
 			if key, ok := strings.CutPrefix(ref, "input."); ok && !seen[key] {
 				seen[key] = true
 				names = append(names, key)
