@@ -4,9 +4,12 @@
 
 ## Status and scope
 
-Draft — 2026-11-08. Defines the target model for projects, sessions and their
-events on top of sdk-go's JSONL store. Storage stays file-backed; SQLite
-is out of scope (see [Alternatives](#alternatives-considered)).
+Implemented — status reconciled 2026-11-14 after San #764–766. Defines projects,
+sessions and their events on top of sdk-go's JSONL store. Current behavior is
+canonical in [session package documentation](../packages/session.md); delivery
+and recorded repository-gate results are in the
+[completed cutover plan](../../notes/completed/session-cutover.md).
+Storage stays file-backed; SQLite is out of scope (see [Alternatives](#alternatives-considered)).
 
 | Piece | Status |
 | --- | --- |
@@ -14,7 +17,7 @@ is out of scope (see [Alternatives](#alternatives-considered)).
 | [#737](https://github.com/genai-io/san/pull/737) | Historical foundation: project/worktree identity, checkout-local settings and private typed writer. Its earlier event vocabulary and runtime format are superseded by the unified implementation below. |
 | [#738](https://github.com/genai-io/san/pull/738) | Merged: optional SDK admission boundaries in core. |
 | Typed storage and public API | Implemented: 13 events, native projections and requests, blobs, attrs, cache, list/fork/clean and opened sessions. |
-| Runtime cutover | Unified native backend is the default for hosts, utility calls, child execution and inspector. Legacy persistence is removed; final shared-tree integration validation is tracked separately. This is a breaking change (see [Compatibility](#compatibility)). |
+| Runtime cutover | Unified native backend is the default for hosts, utility calls, child execution and inspector. Legacy persistence is removed; shared-tree integration gates passed as recorded in the completed cutover plan. ACP editor/live-provider acceptance and long-lived heap profiling remain separate [validation follow-ups](../../notes/active/acp-agent-entrypoint.md). This is a breaking change (see [Compatibility](#compatibility)). |
 
 ## Model
 

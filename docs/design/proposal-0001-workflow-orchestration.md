@@ -2,11 +2,13 @@
 
 ## Status
 
-Draft — 2026-09-11. No code accompanies this proposal.
-
-Once built, the behaviour belongs in `concepts/workflow.md`; this page stays
-as the record of how the design was arrived at. Whether any of it also needs
-an ADR is a question for that point, not this one.
+Implemented core — status reconciled 2026-11-14. Parsing, scheduling, saved
+workflows, bounded fan-out and bounded back edges (the P1–P3 scopes below) ship in
+`internal/workflow` and the Workflow tool. Current behavior lives in
+[workflow concepts](../concepts/workflow.md) and [package documentation](../packages/workflow.md).
+This page preserves the original rationale and staged design, not exact code
+structure or full feature parity. P4's optional full-screen lane graph remains
+future design, not an outstanding requirement for the delivered core.
 
 ## Motivation
 

@@ -1,6 +1,11 @@
 # PROP-0004: ACP agent entrypoint
 
-Draft — updated 2026-10-29. SDK typed endpoint implemented; San entrypoint pending.
+Implemented baseline — updated 2026-11-14. `san acp` uses the unified native
+session backend (San #764–766); numeric tool-schema fixes are merged in sdk-go
+#112 and San #767. [Current host behavior and declared limits](../packages/app.md#acp-stdio-host)
+are authoritative, not the full capability ambitions below. Real editor/live-provider
+acceptance and long-lived heap-retention profiling remain
+[open validation work](../../notes/active/acp-agent-entrypoint.md).
 
 ## Scope
 
@@ -8,12 +13,12 @@ Add opt-in `san acp` without changing native TUI/print behaviour. Design for San
 full capability set; foreground-first delivery is a milestone, not a permanent
 feature cut. Each release states what is available, extended or safely unavailable.
 
-Keep one active root session per process initially; child tasks remain distinct.
+ACP sessions are independently owned within a process; child tasks remain distinct.
 TUI-over-ACP, remote hosting and multi-client control remain out of scope.
 
 ## Architecture
 
-Target flow; the shared execution boundary and ACP adapter are not implemented:
+Implemented composition boundary (not a promise of identical host capabilities):
 
 ```text
 San TUI ── native calls ─────┐
@@ -24,11 +29,10 @@ External client ── ACP ──────┘
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
 - `internal/interaction`: request lifecycle and human-permission preparation,
   scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
-- `internal/session`: shared execution recording via `Session.RecordEvent`,
-  `RecordHookAudit` and `RecordSkillStateChange`, wired natively by TUI. Essential
-  producer write errors reach turn receipts before delivery; hook/skill audits
-  remain best effort. Recording never acknowledges consumer cleanup or releases
-  queued work.
+- `internal/session`: canonical typed events, projections and recording through
+  `Session.Append`, `Recorder` and inference admissions, shared by TUI and ACP.
+  See [session ownership and flow](../packages/session.md). Recording does not
+  acknowledge consumer cleanup or release queued work.
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
@@ -44,16 +48,17 @@ External client ── ACP ──────┘
   retain engine-owned execution/audit ordering, not completion ordering between hooks.
   TUI admits current, non-duplicate results and consumes handoffs before calling;
   worker handoffs stay run-local. Result filtering, recording and compaction are
-  not moved. The ACP adapter must supply equivalent admission and workspace wiring.
+  not moved. The ACP adapter supplies its own admission and workspace wiring.
 - `internal/agent`: shared normal-turn recording, Stop decisions and compaction
   policy; see [agent lifecycle](../packages/agent.md#lifecycle).
 - `internal/agent.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
   authorization composition; see [execution policy](../packages/agent.md#internals).
-- Remaining input and turn lifecycle: pending. Runtime assembly (result paging,
-  service/tool construction and interaction wiring), background-source admission,
-  compaction admission/projection and terminal cleanup remain in app.
-- ACP adapter: pending; capability negotiation, projections and extensions,
-  without duplicate authorization, persistence or task scheduling.
+- Host-specific runtime assembly, interaction wiring, compaction projection and
+  terminal cleanup remain in app by design; ACP composes the native helpers
+  without constructing the TUI.
+- ACP adapter: implemented capability negotiation, streaming/tool projection,
+  native load/replay, permissions and supported extensions. Authorization,
+  persistence and task scheduling retain their native owners.
 
 Native transcripts remain authoritative. Extract shared behaviour incrementally;
 shared feature packages must not import `internal/app`. The interaction extraction
@@ -61,7 +66,9 @@ is not a complete shared execution layer.
 
 ## Capability map
 
-Target mappings, not implemented guarantees. Pin [ACP v1 schema-v1.26.0](https://github.com/agentclientprotocol/agent-client-protocol/tree/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/schema/v1);
+Original design mappings, not implemented guarantees or a migration checklist.
+Unsupported capabilities in the host documentation are declared product limits;
+adding them requires separately scoped feature work. Pin [ACP v1 schema-v1.26.0](https://github.com/agentclientprotocol/agent-client-protocol/tree/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/schema/v1);
 prefer its standard/optional surfaces before extensions or draft features.
 
 | San capability | ACP surface / retained behaviour |
@@ -118,5 +125,5 @@ Informative patterns, not a promise that every client supports their extensions:
 - [Codex adapter](https://github.com/zed-industries/codex-acp/blob/296069e841634cd4bb9bc4515602d836e49231ec/src/thread.rs#L2412-L2523): exact approval option scopes, structured diffs and negotiated terminal display.
 - [Orca dialects](https://github.com/stablyai/orca/tree/v1.4.241/src/main/acp/acp-dialects): question, child-stop and background-kill gaps require explicit client support; do not copy vendor wire quirks.
 
-[Implementation plan](../../notes/active/acp-agent-entrypoint.md) ·
+[Validation follow-ups](../../notes/active/acp-agent-entrypoint.md) ·
 [ACP extensions](https://agentclientprotocol.com/protocol/v1/extensibility)

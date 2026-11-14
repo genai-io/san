@@ -1,5 +1,9 @@
 # Codebase Structure First Pass
 
+Status: completed; archived 2026-11-14. Current navigation and ownership live in
+[the documentation index](../../docs/index.md), [package map](../../docs/reference/package-map.md)
+and [dependency rules](../../docs/reference/dependency-rules.md).
+
 ## Goal
 
 Make the repository easier for engineers and agents to navigate before starting
@@ -28,8 +32,9 @@ larger package or file refactors.
 - Added `tools/layercheck` enforcement and later made it read package-layer
   assignments directly from `docs/reference/package-map.md`.
 
-## Next Candidates
+## Later maintenance (not part of this completed pass)
 
-- Split detailed content from `docs/packages/ui.md` into the new architecture
-  pages.
-- Split large `internal/app` files by lifecycle responsibility.
+The old UI-document split candidate is superseded by `docs/packages/app.md` and
+`docs/concepts/`. Further lifecycle file splits are ongoing maintenance, not a
+reason to keep this navigation pass active. Track concrete remaining structural
+work in [technical debt](../tech-debt.md), with package ownership in the package map.
