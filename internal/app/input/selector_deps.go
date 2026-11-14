@@ -2,12 +2,8 @@ package input
 
 import "github.com/genai-io/san/internal/setting"
 
-// SetSelectorDeps binds selectors to the current project services. Registry
-// replacement closes the affected picker and discards its cached rows; reopening
-// queries the new registry. Unchanged registries retain picker/operation state.
-// Composer, history, queue and pending invocations are not touched.
-// Evolve is intentionally constructor-bound: its workspace accessor is live and
-// its stores have an application lifetime, so reload must not replace its panels.
+// SetSelectorDeps rebinds pickers without changing input, queues or Evolve.
+// Replaced registries close stale pickers; unchanged plugin operations survive.
 func (m *Model) SetSelectorDeps(deps SelectorDeps) {
 	if m.Agent.registry != deps.AgentRegistry {
 		m.Agent = NewAgentSelector(deps.AgentRegistry)
@@ -30,8 +26,7 @@ func (m *Model) SetSelectorDeps(deps SelectorDeps) {
 	m.Tool.loadDisabled = deps.LoadDisabled
 	m.Tool.saveDisabled = deps.UpdateDisabled
 	m.Tool.heldOn = deps.HeldOn
-	// An open tool picker must not write a snapshot from the previous settings
-	// service through the new save callback. Keep navigation, refresh policy only.
+	// Refresh policy without resetting the open picker's navigation.
 	if m.Tool.IsActive() {
 		m.Tool.disabledByScope = make(map[setting.Scope]map[string]bool)
 		for _, scope := range []setting.Scope{setting.ScopeProject, setting.ScopeUser} {

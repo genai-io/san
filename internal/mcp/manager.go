@@ -34,7 +34,7 @@ type PluginServer struct {
 type Manager struct {
 	mu                    sync.RWMutex
 	connectionLifecycleMu sync.Mutex
-	retired               bool // guarded by mu; replacement permanently rejects new connections
+	retired               bool // guarded by mu
 	clients               map[string]*Client
 	configs               map[string]ServerConfig
 	disabled              map[string]bool   // servers explicitly disabled by the user
@@ -67,8 +67,7 @@ type mcpState struct {
 // (reloadProjectServices) while DefaultManager() is read elsewhere.
 var (
 	managerMu sync.RWMutex
-	// managerTransferMu serializes adoption, including lock ordering between
-	// the outgoing and incoming managers. It is not held during transport I/O.
+	// Serializes adoption lock ordering; never held during transport I/O.
 	managerTransferMu sync.Mutex
 	defaultManager    = newEmptyManager()
 )
@@ -189,8 +188,7 @@ func (r *Manager) Reload() error {
 
 	r.mu.Lock()
 	var stale []*Client
-	// Reload preserves existing connections for changed configs; it does not
-	// automatically reconnect them. Manager replacement applies stricter reuse.
+	// Only removed configs disconnect; changed configs keep their connections.
 	for name, client := range r.clients {
 		if _, ok := configs[name]; !ok {
 			stale = append(stale, client)

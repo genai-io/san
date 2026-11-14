@@ -92,7 +92,7 @@ type mcpConnectMsg struct {
 
 // mcpConnectResultMsg is sent when connection completes
 type mcpConnectResultMsg struct {
-	manager    *coremcp.Manager // nil preserves unscoped synthetic-message behavior
+	manager    *coremcp.Manager
 	ServerName string
 	Success    bool
 	ToolCount  int

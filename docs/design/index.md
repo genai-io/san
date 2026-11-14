@@ -29,8 +29,8 @@ sizable feature usually has both a proposal and a notes plan.
 - [Workflow orchestration](proposal-0001-workflow-orchestration.md) · [中文](proposal-0001-workflow-orchestration.zh.md) — Core implemented. Optional full-screen graph remains future design.
 - [Autonomous development management](proposal-0002-autonomous-dev-management.md) · [中文](proposal-0002-autonomous-dev-management.zh.md) — Draft. A persona team that manages the project end to end.
 - [Session groups](proposal-0003-session-groups.md) · [中文](proposal-0003-session-groups.zh.md) — Implemented. Local sessions join groups and message each other.
-- [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Baseline implemented. Independent editor/live-provider acceptance and long-lived heap profiling remain open.
-- [Session management and file-backed persistence](proposal-0005-session-management.md) · [中文](proposal-0005-session-management.zh.md) — Implemented. Unified native storage and hosts; [completed cutover](../../notes/completed/session-cutover.md) records validation and deferred follow-ups.
+- [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Baseline implemented; [validation remains](../../notes/active/acp-agent-entrypoint.md).
+- [Session management and file-backed persistence](proposal-0005-session-management.md) · [中文](proposal-0005-session-management.zh.md) — Implemented; see [completed cutover](../../notes/completed/session-cutover.md).
 
 ## Decision records
 

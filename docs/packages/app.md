@@ -47,11 +47,8 @@ on `*model`, never reaching down into root from a sub-model. Source 2
 
 ### Extension reload
 
-The [reload contract](../concepts/extension-model.md#reload-contract) defines
-triggers, registry replacement, UI rebinding, MCP connection ownership and failure
-boundaries. The UI loop reconciles dynamic MCP tools; a full consumer reload
-rebuilds captured agent dependencies before the next turn without replacing the
-native session owner.
+See the [reload contract](../concepts/extension-model.md#reload-contract) for
+triggers, state ownership and failure behavior.
 
 ### Human interactions
 

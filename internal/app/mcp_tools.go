@@ -32,8 +32,7 @@ func awaitMCPToolsChanged(changes <-chan struct{}) tea.Cmd {
 	}
 }
 
-// Notifications carry no old schemas or service pointers. The UI loop always
-// reconciles the current manager, even for a signal queued before a reload.
+// Reconcile current services on the UI loop, even for pre-reload signals.
 func (m *model) syncMCPTools() {
 	if m.services.Agent == nil {
 		return

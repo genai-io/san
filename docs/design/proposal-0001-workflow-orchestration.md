@@ -2,13 +2,9 @@
 
 ## Status
 
-Implemented core — status reconciled 2026-11-14. Parsing, scheduling, saved
-workflows, bounded fan-out and bounded back edges (the P1–P3 scopes below) ship in
-`internal/workflow` and the Workflow tool. Current behavior lives in
-[workflow concepts](../concepts/workflow.md) and [package documentation](../packages/workflow.md).
-This page preserves the original rationale and staged design, not exact code
-structure or full feature parity. P4's optional full-screen lane graph remains
-future design, not an outstanding requirement for the delivered core.
+Core implemented (2026-11-14): P1–P3 are delivered; P4's full-screen graph remains
+optional. Current behavior: [concepts](../concepts/workflow.md) and
+[package documentation](../packages/workflow.md).
 
 ## Motivation
 

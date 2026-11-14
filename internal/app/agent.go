@@ -454,9 +454,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 // message needs no round trip.
 type agentSendFailedMsg struct{ err error }
 
-// pendingInputReadyMsg crosses the UI boundary before stopping a stale runtime:
-// OnTurnEnd must return and acknowledge its consumer receipt before Stop waits.
-// Only capture the source, never pending input (which can be cancelled meanwhile).
+// Defer rebuild until OnTurnEnd acknowledges its consumer receipt.
 type pendingInputReadyMsg struct{ outbox <-chan core.Event }
 
 type pendingMessage = agent.PendingInput

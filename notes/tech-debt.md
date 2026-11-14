@@ -8,9 +8,7 @@ This file tracks structural follow-ups that are not tied to a single feature.
 
 ## Resolved Contracts
 
-- Extension reload behavior is documented in the
-  [extension model](../docs/concepts/extension-model.md#reload-contract), with
-  targeted app, selector and MCP lifecycle regressions.
+- Extension reload: [contract and boundaries](../docs/concepts/extension-model.md#reload-contract).
 
 ### Code refactors flagged by `docs/packages/*/Known Violations`
 

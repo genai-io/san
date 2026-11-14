@@ -1,11 +1,7 @@
 # PROP-0004: ACP agent entrypoint
 
-Implemented baseline — updated 2026-11-14. `san acp` uses the unified native
-session backend (San #764–766); numeric tool-schema fixes are merged in sdk-go
-#112 and San #767. [Current host behavior and declared limits](../packages/app.md#acp-stdio-host)
-are authoritative, not the full capability ambitions below. Real editor/live-provider
-acceptance and long-lived heap-retention profiling remain
-[open validation work](../../notes/active/acp-agent-entrypoint.md).
+Baseline implemented (2026-11-14). See [host capabilities](../packages/app.md#acp-stdio-host)
+and [remaining validation](../../notes/active/acp-agent-entrypoint.md).
 
 ## Scope
 
@@ -18,7 +14,7 @@ TUI-over-ACP, remote hosting and multi-client control remain out of scope.
 
 ## Architecture
 
-Implemented composition boundary (not a promise of identical host capabilities):
+Shared execution, host-specific capabilities:
 
 ```text
 San TUI ── native calls ─────┐
@@ -29,10 +25,8 @@ External client ── ACP ──────┘
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
 - `internal/interaction`: request lifecycle and human-permission preparation,
   scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
-- `internal/session`: canonical typed events, projections and recording through
-  `Session.Append`, `Recorder` and inference admissions, shared by TUI and ACP.
-  See [session ownership and flow](../packages/session.md). Recording does not
-  acknowledge consumer cleanup or release queued work.
+- `internal/session`: typed storage and recording shared by TUI and ACP;
+  see [session ownership](../packages/session.md).
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
@@ -53,12 +47,9 @@ External client ── ACP ──────┘
   policy; see [agent lifecycle](../packages/agent.md#lifecycle).
 - `internal/agent.PermissionPolicy`: native rule, memory, hook-waiver and reviewer
   authorization composition; see [execution policy](../packages/agent.md#internals).
-- Host-specific runtime assembly, interaction wiring, compaction projection and
-  terminal cleanup remain in app by design; ACP composes the native helpers
-  without constructing the TUI.
-- ACP adapter: implemented capability negotiation, streaming/tool projection,
-  native load/replay, permissions and supported extensions. Authorization,
-  persistence and task scheduling retain their native owners.
+- Host-specific runtime assembly and presentation stay in app.
+- The ACP adapter handles negotiation, streaming, load/replay, permissions and
+  supported extensions using native services.
 
 Native transcripts remain authoritative. Extract shared behaviour incrementally;
 shared feature packages must not import `internal/app`. The interaction extraction
@@ -66,9 +57,8 @@ is not a complete shared execution layer.
 
 ## Capability map
 
-Original design mappings, not implemented guarantees or a migration checklist.
-Unsupported capabilities in the host documentation are declared product limits;
-adding them requires separately scoped feature work. Pin [ACP v1 schema-v1.26.0](https://github.com/agentclientprotocol/agent-client-protocol/tree/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/schema/v1);
+Design targets; supported capabilities are listed in the [host docs](../packages/app.md#acp-stdio-host).
+Pin [ACP v1 schema-v1.26.0](https://github.com/agentclientprotocol/agent-client-protocol/tree/e2d83349bc9e28a4059ea3acefa1c91c966f74e2/schema/v1);
 prefer its standard/optional surfaces before extensions or draft features.
 
 | San capability | ACP surface / retained behaviour |

@@ -37,8 +37,7 @@ func TestMCPConnectResultIgnoresReplacedManager(t *testing.T) {
 			t.Fatal("stale completion modified current manager")
 		}
 	}
-	// A failed local lookup needs no process or network and proves production
-	// commands carry their captured manager across the asynchronous boundary.
+	// Connect results retain their source manager.
 	msg := mcpStartConnect(old, "missing")().(mcpConnectResultMsg)
 	if msg.manager != old {
 		t.Fatal("connect command omitted manager identity")

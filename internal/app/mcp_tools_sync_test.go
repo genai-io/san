@@ -62,8 +62,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	}
 }
 
-// Discovery and notifications can precede runtime construction or its first
-// submit; reconciliation has no live toolset to update in either case.
+// Discovery may precede runtime startup.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	for _, runtime := range []*agent.Runtime{nil, new(agent.Runtime)} {
 		m := &model{services: services{

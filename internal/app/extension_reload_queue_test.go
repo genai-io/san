@@ -52,8 +52,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 			m := reloadQueueModel(t)
 			owner, tools, outbox := m.services.Session, m.services.Agent.Tools(), m.AgentOutbox()
 			m.sendToAgent(pendingMessage{Message: core.UserMessage("original", nil), FromUser: true})
-			// Observe the actual original terminal event; leave its consumer receipt
-			// outstanding while reload and queue release run through the UI path.
+			// Keep the original consumer receipt pending during reload.
 			var end core.TurnEnded
 			deadline := time.After(5 * time.Second)
 		terminal:
@@ -79,7 +78,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 				}
 				m.sendToAgent(pendingMessage{Message: core.UserMessage("queued successor", nil), FromUser: true})
 				conv.Update(m, &m.conv, conv.AgentOutboxMsg{Outbox: outbox, Event: end})
-				// Finalization Update, not ensureAgentRuntime, releases held pending input.
+				// Release through cancellation finalization.
 				err := end.Result.Finalization.Wait(t.Context())
 				if err != nil && err != core.ErrTurnCompleted {
 					t.Fatal(err)
@@ -117,7 +116,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 			if m.services.Session != owner || m.AgentOutbox() == outbox {
 				t.Fatal("wrong recording owner or outbox")
 			}
-			// A duplicate handoff from the old source cannot affect the replacement.
+			// Ignore duplicate handoffs from the old runtime.
 			if _, cmd := m.Update(ready); cmd != nil {
 				t.Fatal("duplicate handoff was not fenced")
 			}
@@ -127,8 +126,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 
 func TestExtensionReloadCurrentTurnInjection(t *testing.T) {
 	m := reloadQueueModel(t)
-	// Keep a real original turn open while injecting, rather than merely
-	// setting the UI's stream flag on an idle runtime.
+	// Inject while a real turn is still running.
 	m.env.LLMProvider = acpTestProvider{aitest.Always(aitest.Hangs()).Client()}
 	if err := m.StopAgentRuntime(); err != nil {
 		t.Fatal(err)

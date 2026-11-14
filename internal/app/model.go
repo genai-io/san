@@ -177,8 +177,7 @@ type model struct {
 	// longer matches the current one, so a /tool enable/disable takes effect on
 	// the next turn.
 	agentDisabledToolsSignature string
-	// A service reload invalidates captured permission and extension dependencies
-	// for the next turn, without interrupting an already admitted turn.
+	// Rebuild captured dependencies at the next turn.
 	agentReloadPending bool
 
 	// turnOpenedBy is the message that started the running turn; messages
