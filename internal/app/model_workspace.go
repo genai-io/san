@@ -44,6 +44,11 @@ func (m *model) ReloadProjectContext(cwd string) {
 	m.reloadProjectServices(cwd)
 	m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()
 	m.syncSettingsToHookEngine()
+	m.applyPersonaSkills()
+	m.applyPersonaAgents()
+	if m.services.Reminder != nil {
+		m.services.Reminder.RequeueSystemReminders()
+	}
 }
 
 func (m *model) reloadPersonasIfChanged(filePath string) {

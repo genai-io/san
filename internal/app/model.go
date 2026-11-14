@@ -58,6 +58,8 @@ type model struct {
 	// interim messages) and self-learn notices land here; they show as a notice
 	// and then reach the main agent's real core.Agent inbox. See notify.go.
 	mainNotices chan mainNotice
+	// MCP notifications coalesce here; only the UI loop reads current services.
+	mcpToolsChanged chan struct{}
 	// taskCompletionsShown records notices appended on the UI goroutine, so
 	// completed tracker rows do not disappear while their notice is waiting.
 	taskCompletionsShown map[string]bool
@@ -175,6 +177,8 @@ type model struct {
 	// longer matches the current one, so a /tool enable/disable takes effect on
 	// the next turn.
 	agentDisabledToolsSignature string
+	// Rebuild captured dependencies at the next turn.
+	agentReloadPending bool
 
 	// turnOpenedBy is the message that started the running turn; messages
 	// that enter mid-turn belong to it.
@@ -210,6 +214,7 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartCronTicker(),
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
+		awaitMCPToolsChanged(m.mcpToolsChanged),
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),

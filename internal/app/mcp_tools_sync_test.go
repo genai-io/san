@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
@@ -58,15 +62,57 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	}
 }
 
-// MCP connects in Init and the agent starts on the first submit, so a server
-// that announces a change in between finds no toolset at all. Without the nil
-// guard that is a panic on the MCP session's goroutine, which takes San with
-// it — the ordinary startup path, not an edge.
+// Discovery may precede runtime startup.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
-	m := &model{services: services{
-		Agent:   &agent.Runtime{},
-		MCP:     mcp.NewManagerForTest(nil),
-		Setting: setting.Default(),
-	}}
-	m.syncMCPTools()
+	for _, runtime := range []*agent.Runtime{nil, new(agent.Runtime)} {
+		m := &model{services: services{
+			Agent: runtime, MCP: mcp.NewManagerForTest(nil), Setting: setting.Default(),
+		}}
+		m.syncMCPTools()
+	}
+}
+
+func TestMCPNotificationsReconcileOnTheUILoop(t *testing.T) {
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "reload-test", Version: "1"}, nil)
+	addTool := func(name string) {
+		server.AddTool(&sdkmcp.Tool{Name: name, InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+			return &sdkmcp.CallToolResult{Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "ok"}}}, nil
+		})
+	}
+	addTool("probe")
+	httpServer := httptest.NewServer(sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return server }, nil))
+	defer httpServer.Close()
+	manager := mcp.NewManagerForTest(map[string]mcp.ServerConfig{"reload": {Type: mcp.TransportHTTP, URL: httpServer.URL}})
+	defer func() { _ = manager.Close() }()
+	runtime := &agent.Runtime{}
+	if err := runtime.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer stopRuntime(t, runtime)
+	m := &model{services: services{Agent: runtime, MCP: manager, Setting: setting.New(setting.NewData())}}
+	m.bindMCPTools()
+	if err := manager.Connect(t.Context(), "reload"); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.Tools().Get("mcp__reload__probe") != nil {
+		t.Fatal("MCP callback mutated the live toolset outside the UI loop")
+	}
+	consume := func() {
+		t.Helper()
+		select {
+		case <-m.mcpToolsChanged:
+			m.dispatch(mcpToolsChangedMsg{})
+		case <-time.After(5 * time.Second):
+			t.Fatal("MCP tool notification did not reach the UI")
+		}
+	}
+	consume()
+	if runtime.Tools().Get("mcp__reload__probe") == nil {
+		t.Fatal("connected tools were not reconciled")
+	}
+	addTool("later")
+	consume()
+	if runtime.Tools().Get("mcp__reload__later") == nil {
+		t.Fatal("dynamic tools were not reconciled")
+	}
 }

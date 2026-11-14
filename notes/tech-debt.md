@@ -5,8 +5,10 @@ This file tracks structural follow-ups that are not tied to a single feature.
 ## Current Candidates
 
 - Continue reducing root `internal/app` file size by lifecycle responsibility.
-- Document extension reload behavior across skills, commands, MCP, plugins, and
-  settings.
+
+## Resolved Contracts
+
+- Extension reload: [contract and boundaries](../docs/concepts/extension-model.md#reload-contract).
 
 ### Code refactors flagged by `docs/packages/*/Known Violations`
 

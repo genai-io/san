@@ -2,11 +2,9 @@
 
 ## Status
 
-Draft — 2026-09-11. No code accompanies this proposal.
-
-Once built, the behaviour belongs in `concepts/workflow.md`; this page stays
-as the record of how the design was arrived at. Whether any of it also needs
-an ADR is a question for that point, not this one.
+Core implemented (2026-11-14): P1–P3 are delivered; P4's full-screen graph remains
+optional. Current behavior: [concepts](../concepts/workflow.md) and
+[package documentation](../packages/workflow.md).
 
 ## Motivation
 

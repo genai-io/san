@@ -91,6 +91,35 @@ Exact frontmatter fields vary by primitive — see the per-package docs:
 [`skill`](../packages/skill.md), [`subagent`](../packages/subagent.md),
 [`command`](../packages/command.md).
 
+## Reload Contract
+
+TUI reload is explicit; there is no general file watcher.
+
+| Trigger | Effect |
+|---|---|
+| `/reload-plugins` | Rescan plugins and reload their consumers. |
+| Plugin picker install / uninstall | Reload on success. Enable/disable and slash-command installs need `/reload-plugins`. |
+| Cwd change | Reload extensions and trusted project configuration. |
+| Settings / tool panels | Update settings without rescanning extensions. |
+| Persona edits reported by tools | Rescan personas and reapply their skills and agent restrictions. |
+| MCP tools-changed | Refresh tools and reconcile on the UI loop. |
+
+Reload replaces settings, skills, commands, personas and MCP; plugin and subagent
+registries update in place. Replaced pickers close; in-place pickers refresh on
+reopening. Input, queues, session ownership and unchanged plugin operations survive.
+
+The current turn continues. Captured dependencies rebuild before the next turn,
+including queued input, after the terminal receipt is acknowledged.
+
+MCP tools reconcile immediately. Unchanged connections are reused; notifications
+are rebound and the old manager retires. Removed, changed or late connections close.
+New/changed servers need an explicit connection or application restart;
+stale connection results are ignored.
+
+Reload is best effort, with no cross-registry rollback. MCP initialization or
+tools-refresh failure keeps the previous manager or tool list respectively.
+ACP loads session-local registries at new/load; TUI reload commands do not apply.
+
 ## See Also
 
 - [`concepts/harness-channels.md`](harness-channels.md) — how skill /

@@ -14,6 +14,7 @@ require (
 	github.com/genai-io/sdk-go v0.9.3-0.20261114014948-ef011ade9eea
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.28.0
 	golang.org/x/image v0.47.0
@@ -34,7 +35,6 @@ require (
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/kr/pty v1.1.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.8.0 // indirect
 	github.com/openai/openai-go/v3 v3.96.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect

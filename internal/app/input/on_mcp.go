@@ -92,6 +92,7 @@ type mcpConnectMsg struct {
 
 // mcpConnectResultMsg is sent when connection completes
 type mcpConnectResultMsg struct {
+	manager    *coremcp.Manager
 	ServerName string
 	Success    bool
 	ToolCount  int
@@ -452,6 +453,7 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 		ctx := context.Background()
 		if reg == nil {
 			return mcpConnectResultMsg{
+				manager:    reg,
 				ServerName: name,
 				Success:    false,
 				Err:        fmt.Errorf("MCP not initialized"),
@@ -460,6 +462,7 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 
 		if err := reg.Connect(ctx, name); err != nil {
 			return mcpConnectResultMsg{
+				manager:    reg,
 				ServerName: name,
 				Success:    false,
 				Err:        err,
@@ -472,6 +475,7 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 		}
 
 		return mcpConnectResultMsg{
+			manager:    reg,
 			ServerName: name,
 			Success:    true,
 			ToolCount:  toolCount,
@@ -492,6 +496,9 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 		return mcpStartConnect(state.Selector.registry, msg.ServerName), true
 
 	case mcpConnectResultMsg:
+		if msg.manager != nil && msg.manager != state.Selector.registry {
+			return nil, true
+		}
 		if state.Selector.registry != nil {
 			state.Selector.registry.SetConnecting(msg.ServerName, false)
 			if !msg.Success && msg.Err != nil {

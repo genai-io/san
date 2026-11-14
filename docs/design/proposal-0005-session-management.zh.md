@@ -4,8 +4,9 @@
 
 ## 状态与范围
 
-草案 — 2026-11-08。在 sdk-go 的 JSONL 存储之上，定义项目、会话及其事件的目标模型。
-存储保持文件形式；SQLite 不在范围内（见[备选方案](#备选方案)）。
+已实现（2026-11-14）。见[当前行为](../packages/session.md)和
+[已完成的切换计划](../../notes/completed/session-cutover.md)。
+存储保持文件形式，SQLite [不在范围内](#备选方案)。
 
 | 部分 | 状态 |
 | --- | --- |
@@ -13,7 +14,7 @@
 | [#737](https://github.com/genai-io/san/pull/737) | 历史基础：项目/worktree 身份、检出本地配置与私有 writer；早期事件词汇和运行时格式已由统一原生实现替代。 |
 | [#738](https://github.com/genai-io/san/pull/738) | 已合并：core 中可选的 SDK 准入边界。 |
 | 类型化存储与公共 API | 已实现：13 类事件、原生投影与请求、blob、attrs、缓存、list/fork/clean 和打开的会话。 |
-| runtime 切换 | 主机、辅助调用、子代理和检查器默认使用统一原生后端；旧持久化已删除，最终共享代码树的集成验证单独跟踪。切换是破坏性变更（见[兼容性](#兼容性)）。 |
+| runtime 切换 | 已完成，旧持久化已删除。[验证记录](../../notes/completed/session-cutover.md) · [ACP 后续项](../../notes/active/acp-agent-entrypoint.md)。破坏性变更见[兼容性](#兼容性)。 |
 
 ## 模型
 

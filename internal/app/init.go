@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/cron"
@@ -126,7 +127,6 @@ func discoverPlugins(cwd string) {
 func (m *model) reloadProjectServices(cwd string) {
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.Setting = setting.Default()
-	m.userInput.Settings.SetSettings(m.services.Setting)
 	m.learnedStores.Update(cwd, m.services.Setting)
 
 	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
@@ -148,10 +148,15 @@ func (m *model) reloadProjectServices(cwd string) {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 	m.services.MCP = mcp.DefaultManager()
-	m.services.MCP.SetOnToolsChanged(m.syncMCPTools)
 
 	persona.Initialize(cwd)
 	m.services.Persona = persona.Default()
+	m.userInput.SetSelectorDeps(selectorDeps(m.services, m.learnedStores))
+	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Tool))
+	m.userInput.Suggestions.SetCwd(cwd)
+	m.userInput.Suggestions.UpdateSuggestions(m.userInput.Textarea.Value())
+	m.agentReloadPending = true
+	m.bindMCPTools()
 }
 
 func pluginCommandPaths() []command.PluginCommandPath {

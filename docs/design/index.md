@@ -26,11 +26,11 @@ sizable feature usually has both a proposal and a notes plan.
 
 ## Proposals
 
-- [Workflow orchestration](proposal-0001-workflow-orchestration.md) · [中文](proposal-0001-workflow-orchestration.zh.md) — Draft. Subagent workflows defined in markdown.
+- [Workflow orchestration](proposal-0001-workflow-orchestration.md) · [中文](proposal-0001-workflow-orchestration.zh.md) — Core implemented. Optional full-screen graph remains future design.
 - [Autonomous development management](proposal-0002-autonomous-dev-management.md) · [中文](proposal-0002-autonomous-dev-management.zh.md) — Draft. A persona team that manages the project end to end.
 - [Session groups](proposal-0003-session-groups.md) · [中文](proposal-0003-session-groups.zh.md) — Implemented. Local sessions join groups and message each other.
-- [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Draft. Standard ACP and negotiated San capabilities over shared session behaviour.
-- [Session management and file-backed persistence](proposal-0005-session-management.md) · [中文](proposal-0005-session-management.zh.md) — Draft. Project/session ownership, typed events, APIs, file layout, and retention. Implementation tracked separately in [PR #737](https://github.com/genai-io/san/pull/737).
+- [ACP agent entrypoint](proposal-0004-acp-agent-entrypoint.md) — Baseline implemented; [validation remains](../../notes/active/acp-agent-entrypoint.md).
+- [Session management and file-backed persistence](proposal-0005-session-management.md) · [中文](proposal-0005-session-management.zh.md) — Implemented; see [completed cutover](../../notes/completed/session-cutover.md).
 
 ## Decision records
 

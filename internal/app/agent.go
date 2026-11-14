@@ -125,39 +125,6 @@ func (m *model) promptParams() agent.BuildParams {
 	}
 }
 
-// syncMCPTools replaces the mcp__* tools in the running agent's registry with
-// what the servers now advertise. A server that loads tools lazily, or gates
-// them behind a login, changes its list while connected, and the registry is
-// what the loop reads at every step — so the next step sees the change without
-// the agent being rebuilt.
-//
-// It runs on the MCP session's own goroutine, which is why it touches only
-// services: core.Tools locks, and so do Session.Tools and DisabledTools.
-func (m *model) syncMCPTools() {
-	tools := m.services.Agent.Tools()
-	if tools == nil {
-		return // no agent yet — whatever it is built with will be current
-	}
-	disabled := m.services.Setting.DisabledTools()
-
-	live := make(map[string]bool)
-	for _, t := range mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP) {
-		name := t.Schema().Name
-		// The /tool panel's disable applies to MCP tools here for the same
-		// reason agent.BuildParams applies it when the agent is built.
-		if disabled[name] {
-			continue
-		}
-		live[name] = true
-		tools.Add(t, "mcp:"+name)
-	}
-	for _, schema := range tools.Schemas() {
-		if mcp.IsMCPTool(schema.Name) && !live[schema.Name] {
-			tools.Remove(schema.Name, "mcp:"+schema.Name)
-		}
-	}
-}
-
 func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	if m.services.Setting == nil || m.env.SessionPermissions == nil {
 		return agent.BuildParams{}, fmt.Errorf("main-session runtime requires a permission policy")
@@ -421,7 +388,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		// stale session and fall through to rebuild with the current toolset —
 		// the one choke point every turn passes through, so all drift sources
 		// are covered uniformly.
-		if m.selfLearnCapabilities() == m.agentEvolveCaps &&
+		if !m.agentReloadPending && m.selfLearnCapabilities() == m.agentEvolveCaps &&
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
 			m.autoMemory() == m.agentAutoMemory {
 			return nil, nil
@@ -457,6 +424,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		return nil, err
 	}
 	m.agentSession = m.services.Session
+	m.agentReloadPending = false
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
@@ -486,6 +454,9 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 // message needs no round trip.
 type agentSendFailedMsg struct{ err error }
 
+// Defer rebuild until OnTurnEnd acknowledges its consumer receipt.
+type pendingInputReadyMsg struct{ outbox <-chan core.Event }
+
 type pendingMessage = agent.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
@@ -502,11 +473,15 @@ func (m *model) discardPendingMessages() {
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
-	if !m.pendingMessages.CanDeliver(false) {
+	if !m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() == 0 {
 		return nil
 	}
 	if !m.services.Agent.Active() {
 		return nil
+	}
+	if !m.conv.Stream.Active && m.agentReloadPending {
+		outbox := m.services.Agent.Outbox()
+		return func() tea.Msg { return pendingInputReadyMsg{outbox: outbox} }
 	}
 	if !m.conv.Stream.Active && m.pendingMessages.Len() > 0 {
 		m.turnOpenedBy = m.pendingMessages.First().ID
