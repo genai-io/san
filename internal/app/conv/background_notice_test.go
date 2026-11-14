@@ -47,7 +47,8 @@ func TestBackgroundIdentityAndSeverity(t *testing.T) {
 			case "interrupted", "timeout", "timed_out":
 				wantColor = kit.CurrentTheme.Warning
 			}
-			wantStatus := lipgloss.NewStyle().Foreground(wantColor).Render(status)
+			statusLabel := map[string]string{"completed": "Completed", "failed": "Failed", "interrupted": "Interrupted", "timeout": "Timed out", "timed_out": "Timed out", "stopped": "Stopped", "killed": "Stopped", "unknown": "unknown"}[status]
+			wantStatus := lipgloss.NewStyle().Foreground(wantColor).Render(statusLabel)
 			e := parseAgentEnvelope(`<task-notification task-id="task-a12" status="` + status + `" description="Run tests">Error: provider unavailable</task-notification>`)
 			view := e.render(100, nil)
 			if !strings.Contains(view, identity.Render("●")) || !strings.Contains(view, identity.Render("Run tests")) || !strings.Contains(view, wantStatus) {
@@ -66,7 +67,7 @@ func TestBackgroundIdentityAndSeverity(t *testing.T) {
 				if ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
 					t.Fatalf("width %d: %q", width, row)
 				}
-				if width >= 32 && !strings.Contains(ansi.Strip(row), status) {
+				if width >= 32 && !strings.Contains(ansi.Strip(row), statusLabel) {
 					t.Fatalf("status lost: %q", row)
 				}
 			}
@@ -88,13 +89,59 @@ func TestBackgroundShellCallDefaultWidth(t *testing.T) {
 	}
 }
 
+func TestAgentHeadingNormalizesIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, description, want string
+	}{
+		{"reviewer", "reviewer: Check", "reviewer: Check"},
+		{"reviewer", "REVIEWER: reviewer: Check", "reviewer: Check"},
+		{"reviewer", "reviewer", "reviewer"},
+		{"", "Check", "Agent: Check"},
+		{"reviewer", "reviewer-tools need checking", "reviewer: reviewer-tools need checking"},
+	} {
+		if got := formatAgentLabel(agentInput{Name: tc.name, Description: tc.description, Valid: true}); got != tc.want {
+			t.Errorf("name %q description %q: got %q, want %q", tc.name, tc.description, got, tc.want)
+		}
+	}
+}
+
+func TestBackgroundNoticeScreenshotIdentity(t *testing.T) {
+	identity := AgentDisplay{ID: "66b72423", Name: "input-reload-fix", ColorKey: 1}
+	ctx := RenderContext{Width: 100, AgentIdentities: map[string]AgentDisplay{"66b72423": identity, "native-session": identity}}
+	content := `<task-notification task-id="66b72423" agent-id="native-session" status="completed" description="input-reload-fix: Rebind extension selectors">Done</task-notification>`
+	want := "● input-reload-fix: Rebind extension selectors · Completed\n"
+	if got := ansi.Strip(parseAgentEnvelope(content).renderWithIdentity(ctx)); got != want {
+		t.Fatalf("screenshot regression: got %q, want %q", got, want)
+	}
+	// A restored transcript can resolve the native session even without its task alias.
+	delete(ctx.AgentIdentities, "66b72423")
+	if got := ansi.Strip(parseAgentEnvelope(content).renderWithIdentity(ctx)); got != want {
+		t.Fatalf("native session alias changed receipt: %q", got)
+	}
+	ctx.AgentIdentities["other"] = AgentDisplay{ID: "other", Name: identity.Name, ColorKey: 2}
+	got := ansi.Strip(parseAgentEnvelope(content).renderWithIdentity(ctx))
+	if !strings.Contains(got, "input-reload-fix · 66b72423: Rebind extension selectors · Completed") || strings.Count(got, identity.Name) != 1 {
+		t.Fatalf("duplicate-name disambiguation lost or duplicated: %q", got)
+	}
+}
+
+func TestBackgroundNoticeHTMLIdentity(t *testing.T) {
+	identity := AgentDisplay{ID: "worker", Name: `review & "verify"`, ColorKey: 0}
+	ctx := RenderContext{Width: 100, AgentIdentities: map[string]AgentDisplay{"worker": identity}}
+	content := `<task-notification task-id="worker" status="completed" description="review &amp; &quot;verify&quot;: Check &lt;selector&gt; &amp; dependencies">Done</task-notification>`
+	want := "● review & \"verify\": Check <selector> & dependencies · Completed\n"
+	if got := ansi.Strip(parseAgentEnvelope(content).renderWithIdentity(ctx)); got != want {
+		t.Fatalf("HTML attributes changed identity: got %q, want %q", got, want)
+	}
+}
+
 func TestBackgroundNoticeKeepsConfiguredAgentColor(t *testing.T) {
 	identity := AgentDisplay{ID: "agent-one", Name: "reviewer", ColorKey: 2}
 	ctx := RenderContext{Width: 100, AgentIdentities: map[string]AgentDisplay{"task-one": identity}, AgentColors: map[string]string{"reviewer": "blue"}}
 	e := parseAgentEnvelope(`<task-notification task-id="task-one" status="failed" description="Check">Error: denied</task-notification>`)
 	got := e.renderWithIdentity(ctx)
 	style := lipgloss.NewStyle().Foreground(agentIdentityColor(identity, ctx.AgentColors))
-	if !strings.Contains(got, style.Render("●")) || !strings.Contains(got, style.Render("reviewer · Check")) {
+	if !strings.Contains(got, style.Render("●")) || !strings.Contains(got, style.Render("reviewer")) || !strings.Contains(got, toolResultStyle.Render(": Check")) {
 		t.Fatalf("configured identity lost: %q", got)
 	}
 }

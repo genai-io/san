@@ -112,7 +112,7 @@ func TestHistoryExpandsBackgroundResultsWithoutChangingConversation(t *testing.T
 		t.Fatal("background result has no inspection entry")
 	}
 	collapsed := ansi.Strip(entries[0].Render(80, false))
-	if !strings.Contains(collapsed, "review failed · provider unavailable") || strings.Contains(collapsed, "finding") {
+	if !strings.Contains(collapsed, "review · Failed · provider unavailable") || strings.Contains(collapsed, "finding") {
 		t.Fatalf("background failure must show only the concise reason: %q", collapsed)
 	}
 	expanded := ansi.Strip(entries[0].Render(80, true))

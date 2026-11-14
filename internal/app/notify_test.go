@@ -17,7 +17,7 @@ func TestStoppedNotificationKeepsOneConciseDisplayLine(t *testing.T) {
 		m := commitTestModel()
 		m.showNoticeLine(fromBrokerMessage(msg))
 		view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, 0))
-		if strings.TrimSpace(view) != "● Security review stopped · worker" {
+		if strings.TrimSpace(view) != "● Security review · Stopped" {
 			t.Fatalf("stop has redundant type, detail, or completion row: %q", view)
 		}
 		if !strings.Contains(msg.Content, "Error: "+reason) {
@@ -35,7 +35,8 @@ func TestTaskFailureSummaryKeepsTerminalReasonAndStatus(t *testing.T) {
 			m.showNoticeLine(fromBrokerMessage(msg))
 			for _, width := range []int{30, 80} {
 				view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: width}, 0))
-				if !strings.Contains(view, string(status)) || strings.Contains(view, "nested diagnostic") {
+				wantStatus := map[task.TaskStatus]string{task.StatusFailed: "Failed", task.StatusStopped: "Stopped", task.StatusCompleted: "Completed"}[status]
+				if !strings.Contains(view, wantStatus) || strings.Contains(view, "nested diagnostic") {
 					t.Fatalf("status %s, width %d: summary lost outcome or took a reason from partial output: %q", status, width, view)
 				}
 				if status != task.StatusCompleted && width == 80 && !strings.Contains(view, "provider unavailable") {
@@ -99,7 +100,7 @@ func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
 	m := &model{conv: conv.NewModel(100)}
 	m.showNoticeLine(fromBrokerMessage(msg))
 	view := conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
-	if !strings.Contains(ansi.Strip(view), description+" completed") {
+	if !strings.Contains(ansi.Strip(view), description+" · Completed") {
 		t.Fatalf("escaped description did not round-trip through display: %q", view)
 	}
 }

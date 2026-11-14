@@ -80,7 +80,7 @@ func TestAgentLifecycleElapsedSharesTitle(t *testing.T) {
 		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-12 * time.Second)},
 		TaskActivity:  map[int][]string{0: {"Read(main.go)"}}, Width: 40}
 	got := ansi.Strip(RenderToolCalls(params))
-	if got != "● Agent · Review · 12s\n  Read(main.go)\n" {
+	if got != "● Agent: Review · 12s\n  Read(main.go)\n" {
 		t.Fatalf("timer should share the title row: %q", got)
 	}
 	params.CurrentIdx = 1
@@ -120,7 +120,7 @@ func TestAgentLifecycleShortLayoutKeepsStateAfterLongIdentity(t *testing.T) {
 			view, active := RenderActiveWorkers(params, 2)
 			plain := ansi.Strip(view)
 			lines := strings.Split(plain, "\n")
-			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● Agent · reviewer · ") || !strings.HasSuffix(lines[0], suffix) || ansi.StringWidth(lines[0]) > width || lines[1] != "  "+state {
+			if !active || len(lines) != 2 || !strings.HasPrefix(lines[0], "● reviewer: ") || !strings.HasSuffix(lines[0], suffix) || ansi.StringWidth(lines[0]) > width || lines[1] != "  "+state {
 				t.Fatalf("width %d: wrapped identity displaced current state: %q", width, plain)
 			}
 		}
@@ -187,7 +187,7 @@ func TestAgentLifecycleIdentityAndStateTransitions(t *testing.T) {
 				ToolName: "Agent", Content: "No vulnerabilities found", Details: toolresult.AgentDetails{},
 			}}
 			completedHeader, _, _ := strings.Cut(ansi.Strip(RenderToolCalls(params)), "\n")
-			if !strings.HasPrefix(completedHeader, "● Agent · ") || ansi.StringWidth(completedHeader) > width {
+			if !strings.HasPrefix(completedHeader, "● ") || strings.Contains(completedHeader, "Agent ·") || ansi.StringWidth(completedHeader) > width {
 				t.Fatalf("width %d: completed identity missing or overflowing: %q", width, completedHeader)
 			}
 			header = completedHeader + "\n"

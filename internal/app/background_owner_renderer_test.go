@@ -136,7 +136,7 @@ func TestBackgroundOwnerRenderer(t *testing.T) {
 				t.Fatal("main completion timeout")
 			}
 			all := waitFrame("MAIN-DONE")
-			if !strings.Contains(all, "completed") {
+			if !strings.Contains(all, "Completed") {
 				t.Fatalf("main completion status absent: %s", all)
 			}
 			for _, token := range []string{"CHILD-OK", "CHILD-FAIL", "child-secret"} {

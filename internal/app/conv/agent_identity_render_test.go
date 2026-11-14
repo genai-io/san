@@ -34,7 +34,7 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 				call := core.ToolCall{ID: "spawn", Name: "Agent", Input: `{"name":"reviewer","description":"Check"}`}
 				params := ToolCallsParams{AgentPreviewLines: 1, ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, Width: width,
 					AgentIdentities: identities, ToolStartedAt: map[string]time.Time{call.ID: time.Now()}}
-				header := renderAgentColoredLine("Agent · reviewer · Check", width, "●", memberPalette[slot])
+				header := renderAgentHeading("reviewer: Check", width, "●", memberPalette[slot])
 				live := RenderToolCalls(params)
 				spinner := RenderPendingToolSpinner(PendingToolSpinnerParams{
 					PendingCalls: params.PendingCalls, CurrentIdx: 0, Width: width, AgentPreviewLines: params.AgentPreviewLines,
@@ -43,8 +43,8 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 				if spinner != live {
 					t.Fatalf("pending spinner lost identity: %q != %q", spinner, live)
 				}
-				label := lipgloss.NewStyle().Foreground(memberPalette[slot]).Render("Agent · reviewer · Check")
-				if !strings.Contains(strings.SplitN(live, "\n", 2)[0], label) {
+				label := lipgloss.NewStyle().Foreground(memberPalette[slot]).Render("reviewer")
+				if !strings.Contains(strings.SplitN(live, "\n", 2)[0], label) || !strings.Contains(live, toolResultStyle.Render(": Check")) {
 					t.Fatalf("%s width %d: live identity changed: %q", theme, width, live)
 				}
 				params.ResultMap = map[string]ToolResultData{call.ID: {ToolName: "Agent", Content: "Useful finding", Details: toolresult.AgentDetails{}}}
@@ -68,10 +68,10 @@ func TestAgentIdentityColorAcrossLifecycle(t *testing.T) {
 				}
 				notice := parseAgentEnvelope(`<task-notification task-id="worker-route" status="failed" description="Check limits">Error: provider unavailable</task-notification>`).renderWithIdentity(ctx)
 				identityStyle := lipgloss.NewStyle().Foreground(memberPalette[slot])
-				if !strings.Contains(notice, identityStyle.Render("●")) || !strings.Contains(ansi.Strip(notice), "reviewer") || !strings.Contains(ansi.Strip(notice), "failed") {
+				if !strings.Contains(notice, identityStyle.Render("●")) || !strings.Contains(ansi.Strip(notice), "reviewer") || !strings.Contains(ansi.Strip(notice), "Failed") {
 					t.Fatalf("%s width %d: failure changed identity or lost outcome: %q", theme, width, notice)
 				}
-				if !strings.Contains(notice, backgroundStatusStyle("failed").Render("failed")) {
+				if !strings.Contains(notice, backgroundStatusStyle("failed").Render("Failed")) {
 					t.Fatalf("failure lost its separate error color: %q", notice)
 				}
 				for _, view := range []string{mail, received, notice} {

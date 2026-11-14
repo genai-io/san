@@ -113,10 +113,8 @@ func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 		}
 		if found {
 			name := AgentDisplayName(identity, p.AgentIdentities)
-			if e.description != "" && e.description != name {
-				name += " · " + e.description
-			}
-			return e.renderTaskNotice(p.Width, name, agentIdentityColor(identity, p.AgentColors))
+			description := agentDescription(identity.Name, e.description)
+			return e.renderTaskNotice(p.Width, name, description, agentIdentityColor(identity, p.AgentColors))
 		}
 	}
 	return e.render(p.Width, p.MemberColors)
@@ -127,7 +125,7 @@ func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 func (e agentEnvelope) render(width int, colors map[string]int) string {
 	summary := e.summary(width)
 	if e.kind == envelopeTask && e.attributed {
-		return e.renderTaskNotice(width, e.description, backgroundIdentityColor(e.taskID))
+		return e.renderTaskNotice(width, e.description, "", backgroundIdentityColor(e.taskID))
 	}
 	return RenderAgentNotice(summary, width, colors)
 }

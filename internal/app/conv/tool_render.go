@@ -1138,21 +1138,41 @@ func formatAgentLabel(agent agentInput) string {
 		return "Agent"
 	}
 
-	desc := ""
-	if agent.Description != "" {
-		desc = conciseAgentDescription(agent.Description)
-	} else if agent.Prompt != "" {
-		desc = conciseAgentDescription(agent.Prompt)
+	name := strings.TrimSpace(agent.Name)
+	if name == "" {
+		name = "Agent"
 	}
-
-	name := "Agent"
-	if agent.Name != "" && agent.Name != "Agent" {
-		name += " · " + agent.Name
+	desc := agent.Description
+	if desc == "" {
+		desc = agent.Prompt
 	}
+	desc = agentDescription(name, desc)
 	if desc != "" {
-		return name + " · " + desc
+		return name + ": " + conciseAgentDescription(desc)
 	}
 	return name
+}
+
+// Strip only explicit repeated name prefixes, not overlapping task wording.
+func agentDescription(name, desc string) string {
+	name, desc = strings.TrimSpace(name), strings.TrimSpace(desc)
+	for name != "" && len(desc) >= len(name) && strings.EqualFold(desc[:len(name)], name) {
+		rest := strings.TrimSpace(desc[len(name):])
+		if rest == "" {
+			return ""
+		}
+		found := false
+		for _, sep := range []string{":", "：", "·"} {
+			if after, ok := strings.CutPrefix(rest, sep); ok {
+				desc, found = strings.TrimSpace(after), true
+				break
+			}
+		}
+		if !found {
+			break
+		}
+	}
+	return desc
 }
 
 // sendMessageLabel names a SendMessage call by its recipient and opening words.
@@ -1464,7 +1484,21 @@ func extractBashCommand(input string) (command, description string) {
 }
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {
-	return renderAgentColoredLine(label, width, iconText, agentColor(color))
+	return renderAgentHeading(label, width, iconText, agentColor(color))
+}
+
+func renderAgentHeading(label string, width int, iconText string, color kit.AdaptiveColor) string {
+	style := toolCallStyle.Foreground(color)
+	icon := style.Width(kit.ToolIconWidth).Render(iconText)
+	name, desc, hasDesc := strings.Cut(label, ": ")
+	text := style.Render(name)
+	if hasDesc {
+		text += toolResultStyle.Render(": " + desc)
+	}
+	if width > 0 {
+		text = xansi.Hardwrap(text, max(1, width-kit.ToolIconWidth), true)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, icon, text)
 }
 
 func renderAgentColoredLine(label string, width int, iconText string, color kit.AdaptiveColor) string {
