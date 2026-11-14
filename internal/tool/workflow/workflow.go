@@ -8,10 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -29,7 +28,10 @@ type WorkflowTool struct {
 	executor tool.AgentExecutor
 	// dirs are the saved-workflow directories, in priority order. Rewired
 	// alongside executor whenever the app reconfigures the tool.
-	dirs []string
+	dirs  []string
+	mu    sync.Mutex
+	store *workflow.Store
+	live  map[string]*task.AgentTask
 }
 
 // NewWorkflowTool creates a WorkflowTool without an executor; the app wires
@@ -37,10 +39,13 @@ type WorkflowTool struct {
 func NewWorkflowTool() *WorkflowTool { return &WorkflowTool{} }
 
 func (t *WorkflowTool) Name() string { return tool.ToolWorkflow }
+
 func (t *WorkflowTool) Description() string {
 	return "Run a graph of subagents defined in markdown"
 }
-func (t *WorkflowTool) Icon() string             { return tool.IconAgent }
+
+func (t *WorkflowTool) Icon() string { return tool.IconAgent }
+
 func (t *WorkflowTool) RequiresPermission() bool { return true }
 
 // SetExecutor sets the subagent executor every node runs through.
@@ -49,7 +54,18 @@ func (t *WorkflowTool) SetExecutor(executor tool.AgentExecutor) { t.executor = e
 // SetSearchPaths sets where saved workflows are looked up, highest priority
 // first. The app passes the project directory before the user one, matching
 // how subagent definitions resolve.
-func (t *WorkflowTool) SetSearchPaths(dirs []string) { t.dirs = dirs }
+func (t *WorkflowTool) SetSearchPaths(dirs []string) {
+	t.dirs = dirs
+	dir := ""
+	if len(dirs) > 0 {
+		dir = filepath.Join(filepath.Dir(dirs[0]), "workflow-runs")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.store == nil || len(dirs) > 0 {
+		t.store = workflow.NewStore(dir)
+	}
+}
 
 // Saved lists the definitions on disk, one "- name — description" per line:
 // the schema description carries it so the model can name one instead of
@@ -135,7 +151,7 @@ func (t *WorkflowTool) Schema() core.ToolSchema {
 // inline definition. Exactly one of the two.
 func (t *WorkflowTool) resolve(params map[string]any) (*workflow.Workflow, error) {
 	name := strings.TrimSpace(tool.GetString(params, "name"))
-	definition := strings.TrimSpace(tool.GetString(params, "definition"))
+	definition := tool.GetString(params, "definition")
 	switch {
 	case name != "" && definition != "":
 		return nil, fmt.Errorf("pass name or definition, not both")
@@ -270,7 +286,10 @@ func (t *WorkflowTool) Execute(ctx context.Context, params map[string]any, _ str
 			inputs[k] = fmt.Sprint(v)
 		}
 	}
-	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
+	id, err := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 	return toolresult.ToolResult{
 		Success: true,
 		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nStop: Ctrl+C (when foreground idle) or /workflow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
@@ -301,345 +320,18 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 	}
 	turns, _ := w.Bounds()
 	summary := fmt.Sprintf("Started workflow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
-	return summary, t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width, ""), nil
+	id, err := t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width, "")
+	return summary, id, err
 }
 
-// start runs the workflow under one background task and returns its id.
-func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int, parentToolCallID string) string {
-	width = workflowDisplayWidth(width)
-	executor := t.executor
-	ctx, cancel := context.WithCancel(context.Background())
-	bg := task.Default().CreateAgentTask(task.NewID(), "workflow", description, ctx, cancel)
-	statuses := make(map[string]workflow.Status, len(w.Nodes))
-	var events []workflow.ActivityEvent
-	textBuffers := make(map[string]string)
-	trimEvents := func() {
-		if len(events) > workflow.ActivityWindow {
-			events = events[len(events)-workflow.ActivityWindow:]
-		}
-	}
-	addEvent := func(nodeID, worker, msg string) {
-		events = append(events, workflow.ActivityEvent{Node: nodeID, Worker: worker, Text: msg})
-		trimEvents()
-	}
-	addToolStart := func(nodeID, worker, id, call string) {
-		events = append(events, workflow.ActivityEvent{Node: nodeID, Worker: worker, ToolID: id, Text: call})
-		trimEvents()
-	}
-	finishTool := func(nodeID, worker, id, call, summary string, failed bool) {
-		for i := len(events) - 1; i >= 0; i-- {
-			if events[i].Node == nodeID && events[i].Worker == worker && events[i].ToolID == id && id != "" && !events[i].ToolFinished {
-				events[i].Text = call
-				events[i].ToolResult = summary
-				events[i].ToolFinished = true
-				events[i].ToolFailed = failed
-				return
-			}
-		}
-		events = append(events, workflow.ActivityEvent{Node: nodeID, Worker: worker, ToolID: id, Text: call, ToolResult: summary, ToolFinished: true, ToolFailed: failed})
-		trimEvents()
-	}
-	liveView := func(displayWidth int) string {
-		visibleEvents := events
-		if len(textBuffers) > 0 {
-			visibleEvents = append([]workflow.ActivityEvent(nil), events...)
-			keys := make([]string, 0, len(textBuffers))
-			for key := range textBuffers {
-				keys = append(keys, key)
-			}
-			slices.Sort(keys)
-			for _, key := range keys {
-				nodeID, worker, _ := strings.Cut(key, "·")
-				if content := strings.Join(strings.Fields(textBuffers[key]), " "); content != "" {
-					visibleEvents = append(visibleEvents, workflow.ActivityEvent{Node: nodeID, Worker: worker, Text: "› " + content})
-				}
-			}
-		}
-		return w.ActivityStreamView(visibleEvents, displayWidth) + "\n\n" +
-			w.CompactProgressView(statuses, displayWidth)
-	}
-	var progressMu sync.Mutex
-	bg.SetLiveViewRenderer(func(terminalWidth int) string {
-		progressMu.Lock()
-		defer progressMu.Unlock()
-		return liveView(workflowDisplayWidth(terminalWidth))
-	})
-	bg.SetLiveView(liveView(width))
-
-	go func() {
-		defer cancel()
-		runner := &nodeRunner{exec: executor, task: bg, name: w.Name, parentToolCallID: parentToolCallID}
-		flushText := func(nodeID, worker string) {
-			key := nodeID + "·" + worker
-			if content := strings.Join(strings.Fields(textBuffers[key]), " "); content != "" {
-				text := []rune(content)
-				for len(text) > 0 {
-					n := min(len(text), 160)
-					events = append(events, workflow.ActivityEvent{Node: nodeID, Worker: worker, Text: "› " + string(text[:n]), TextPending: true})
-					trimEvents()
-					text = text[n:]
-				}
-			}
-			delete(textBuffers, key)
-		}
-		runner.onTextDelta = func(nodeID, worker, fragment string) {
-			progressMu.Lock()
-			key := nodeID + "·" + worker
-			textBuffers[key] += fragment
-			if len([]rune(textBuffers[key])) >= 160 || strings.Contains(fragment, "\n") {
-				flushText(nodeID, worker)
-				bg.SetLiveView(liveView(width))
-			}
-			progressMu.Unlock()
-		}
-		runner.onTextEnd = func(nodeID, worker string, err error) {
-			progressMu.Lock()
-			if err != nil {
-				delete(textBuffers, nodeID+"·"+worker)
-				events = slices.DeleteFunc(events, func(event workflow.ActivityEvent) bool {
-					return event.Node == nodeID && event.Worker == worker && event.TextPending
-				})
-			} else {
-				flushText(nodeID, worker)
-				for i := range events {
-					if events[i].Node == nodeID && events[i].Worker == worker {
-						events[i].TextPending = false
-					}
-				}
-			}
-			bg.SetLiveView(liveView(width))
-			progressMu.Unlock()
-		}
-		runner.onActivity = func(nodeID, worker, msg string) {
-			if strings.HasPrefix(msg, "Usage:") {
-				return
-			}
-			msg = strings.Join(strings.Fields(msg), " ")
-			if msg == "" {
-				return
-			}
-			progressMu.Lock()
-			addEvent(nodeID, worker, msg)
-			bg.SetLiveView(liveView(width))
-			progressMu.Unlock()
-		}
-		runner.onToolStart = func(nodeID, worker, id, call string) {
-			progressMu.Lock()
-			addToolStart(nodeID, worker, id, call)
-			bg.SetLiveView(liveView(width))
-			progressMu.Unlock()
-		}
-		runner.onToolResult = func(nodeID, worker, id, call, summary string, failed bool) {
-			progressMu.Lock()
-			finishTool(nodeID, worker, id, call, summary, failed)
-			bg.SetLiveView(liveView(width))
-			progressMu.Unlock()
-		}
-		runner.onWorkerStatus = func(nodeID, worker string, status workflow.Status) {
-			progressMu.Lock()
-			addEvent(nodeID, worker, string(status))
-			bg.SetLiveView(liveView(width))
-			progressMu.Unlock()
-			bg.AppendProgress(nodeID + "·" + worker + ": " + string(status))
-		}
-		res := workflow.Run(ctx, w, runner, workflow.Options{
-			Inputs: inputs,
-			OnStatus: func(n *workflow.Node, s workflow.Status) {
-				progressMu.Lock()
-				statuses[n.ID] = s
-				bg.SetLiveView(liveView(width))
-				progressMu.Unlock()
-				bg.AppendProgress(n.ID + ": " + string(s))
-			},
-		})
-		bg.AppendOutput([]byte(res.Summary(w)))
-		switch {
-		case ctx.Err() != nil:
-			bg.Complete(ctx.Err())
-		case res.Failed(w):
-			// The notification shows the error in place of the output, so the
-			// verdict carries what failed; the full summary stays in the task.
-			bg.Complete(fmt.Errorf("workflow %s failed — %s", w.Name, strings.Join(res.Failures(w), "; ")))
-		default:
-			bg.Complete(nil)
-		}
-	}()
-	return bg.GetID()
+func (t *WorkflowTool) Definition(name string) (string, error) {
+	return workflow.ReadDefinition(name, t.dirs...)
 }
 
-func workflowDisplayWidth(terminalWidth int) int {
-	if terminalWidth <= 0 {
-		terminalWidth = 120
-	}
-	if terminalWidth < 30 {
-		return max(8, terminalWidth-2)
-	}
-	return terminalWidth * 9 / 10
-}
-
-// nodeRunner is the workflow.NodeRunner seam: one node is one subagent turn
-// through the same executor, and so the same permission gate, as Agent.
-type nodeRunner struct {
-	exec             tool.AgentExecutor
-	task             *task.AgentTask
-	name             string
-	parentToolCallID string
-	onActivity       func(nodeID, label, msg string)
-	onTextDelta      func(nodeID, label, fragment string)
-	onTextEnd        func(nodeID, label string, err error)
-	onToolStart      func(nodeID, worker, id, call string)
-	onToolResult     func(nodeID, worker, id, call, summary string, failed bool)
-	onWorkerStatus   func(nodeID, worker string, status workflow.Status)
-	usageMu          sync.Mutex
-	steps            int
-	tokens           int
-}
-
-func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, error) {
-	n := c.Node
-	var streamedText atomic.Bool
-	label := n.ID
-	if c.Label != "" {
-		label += "·" + c.Label
-		if r.onWorkerStatus != nil {
-			r.onWorkerStatus(n.ID, c.Label, workflow.StatusRunning)
-		}
-	}
-	res, err := r.exec.Run(ctx, tool.AgentExecRequest{
-		ParentToolCallID: r.parentToolCallID,
-		Workflow:         &tool.WorkflowOrigin{TaskID: r.task.GetID(), Name: r.name, NodeID: n.ID, WorkerLabel: c.Label},
-		Agent:            n.Config["agent"],
-		Prompt:           c.Prompt,
-		Description:      r.name + "/" + label,
-		Background:       true,
-		Model:            n.Config["model"],
-		Mode:             n.Config["mode"],
-		ActivityMaxChars: 320,
-		OnActivity: func(msg string) {
-			r.task.AppendProgress(label + " ▸ " + msg)
-			if r.onActivity != nil {
-				r.onActivity(n.ID, c.Label, msg)
-			}
-		},
-		OnTextDelta: func(fragment string) {
-			streamedText.Store(true)
-			if r.onTextDelta != nil {
-				r.onTextDelta(n.ID, c.Label, fragment)
-			}
-		},
-		OnTextEnd: func(err error) {
-			if r.onTextEnd != nil {
-				r.onTextEnd(n.ID, c.Label, err)
-			}
-		},
-		OnToolStart: func(id, call string) {
-			r.task.AppendProgress(label + " ▸ " + call)
-			if r.onToolStart != nil {
-				r.onToolStart(n.ID, c.Label, id, call)
-			}
-		},
-		OnToolResult: func(id, call, output string, toolErr error) {
-			summary := workflowToolResultSummary(output, toolErr)
-			marker := "✓"
-			if toolErr != nil {
-				marker = "✗"
-			}
-			r.task.AppendProgress(label + " ▸ " + marker + " " + call + " · " + summary)
-			if r.onToolResult != nil {
-				r.onToolResult(n.ID, c.Label, id, call, summary, toolErr != nil)
-			}
-		},
-	})
-	output := ""
-	if res != nil {
-		output = res.Content
-		r.usageMu.Lock()
-		r.steps += res.StepCount
-		r.tokens += res.TotalInputTokens + res.TotalOutputTokens
-		r.task.UpdateProgress(r.steps, r.tokens)
-		r.usageMu.Unlock()
-		if err == nil && !res.Success {
-			err = fmt.Errorf("%s", res.Error)
-		}
-	} else if err == nil {
-		err = fmt.Errorf("agent returned no result")
-	}
-	if err != nil {
-		if res != nil {
-			partial := output
-			if res.AgentID != "" {
-				partial += "\n\nAgentID: " + res.AgentID
-			}
-			if res.OutputFile != "" {
-				partial += "\n\nTranscript: " + res.OutputFile
-			}
-			if strings.TrimSpace(partial) != "" {
-				r.task.AppendOutput([]byte(fmt.Sprintf("\n## %s (unfinished)\n%s\n", label, partial)))
-			}
-		}
-		if r.onActivity != nil {
-			r.onActivity(n.ID, c.Label, "Error: "+err.Error())
-		}
-		r.workerFinished(n.ID, c.Label, workflow.StatusFailed)
-		return output, err
-	}
-	if preview := workflowResultPreview(res.Content); preview != "" && !streamedText.Load() {
-		activity := "Result: " + preview
-		r.task.AppendProgress(label + " ▸ " + activity)
-		if r.onActivity != nil {
-			r.onActivity(n.ID, c.Label, activity)
-		}
-	}
-	r.workerFinished(n.ID, c.Label, workflow.StatusSucceeded)
-	return res.Content, nil
-}
-
-func workflowToolResultSummary(output string, toolErr error) string {
-	if toolErr != nil {
-		return ansi.Truncate(strings.Join(strings.Fields(ansi.Strip(toolErr.Error())), " "), 140, "…")
-	}
-	if strings.TrimSpace(output) == "" || output == "(no output)" {
-		return "no output"
-	}
-	lines := strings.Count(output, "\n")
-	if !strings.HasSuffix(output, "\n") {
-		lines++
-	}
-	head := output[:min(len(output), 4096)]
-	first := ""
-	for line := range strings.SplitSeq(head, "\n") {
-		first = strings.Join(strings.Fields(ansi.Strip(line)), " ")
-		if first != "" {
-			break
-		}
-	}
-	first = ansi.Truncate(first, 56, "…")
-	if lines == 1 && len(output) <= 160 {
-		return first
-	}
-	size := fmt.Sprintf("%d B", len(output))
-	if len(output) >= 1024 {
-		size = fmt.Sprintf("%.1f KiB", float64(len(output))/1024)
-	}
-	summary := fmt.Sprintf("%d lines · %s", lines, size)
-	if first != "" {
-		summary += " · " + first
-	}
-	return summary
-}
-
-func workflowResultPreview(content string) string {
-	text := []rune(strings.Join(strings.Fields(content), " "))
-	if len(text) > 240 {
-		return string(text[:239]) + "…"
-	}
-	return string(text)
-}
-
-func (r *nodeRunner) workerFinished(nodeID, worker string, status workflow.Status) {
-	if worker != "" && r.onWorkerStatus != nil {
-		r.onWorkerStatus(nodeID, worker, status)
-	}
+// SaveDefinition saves a reviewed project copy. baseline is the source the
+// editor opened; a changed source must be reviewed again before replacement.
+func (t *WorkflowTool) SaveDefinition(name, definition, baseline string) error {
+	return workflow.SaveDefinition(name, definition, baseline, t.dirs...)
 }
 
 func init() {

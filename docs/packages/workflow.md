@@ -14,25 +14,22 @@ topology.
 The `Workflow` tool (`internal/tool/workflow`) hands this package a markdown
 document and gets back a validated graph, then runs it under one background
 task. The package owns the format (frontmatter, one mermaid block, one
-`## id` section per node), every validation, the scheduler, and the summary
-the parent conversation receives. It imports nothing from San — node
-execution enters through `NodeRunner` — so it can move to sdk-go as
-`pkg/agent/flow` once the schema settles. Design and rationale:
+`## id` section per node), validation, scheduling, checkpoints, run storage
+and the summary the parent conversation receives. Node execution enters
+through `NodeRunner`; storage reuses the infrastructure `atomicfile` helper.
+Design and rationale:
 [`design/proposal-0001-workflow-orchestration.md`](../design/proposal-0001-workflow-orchestration.md);
 user-facing behaviour: [`concepts/workflow.md`](../concepts/workflow.md).
 
 The tool description explains Agent as an alternative for already-delegated
 one-off work, without directing ordinary tasks to subagents.
 
-The app's `/workflow list|show|run|stop` commands use the Workflow tool's saved
-definition paths. The command registry owns static subcommand suggestions;
-the app adds saved workflow names after `show` and `run`, then completes
-referenced input keys after `run <name>`. `Workflow.InputNames` derives those
-keys from node templates; direct slash runs report missing keys before launch.
-Execution and completion share `command.ScanArguments` quote boundaries;
-generated preview and completion commands use `command.QuoteArgument` for
-saved names. Stop cancels immediately during a foreground stream, while its
-display-only result passes through the app's held-notice queue.
+The app's `/workflow` management and `list|show|run|stop` commands use the same
+saved-definition paths. Completion and execution share `command.ScanArguments`
+quote boundaries and `command.QuoteArgument`. `Workflow.InputNames` derives
+input keys from node templates; direct slash runs report missing keys before
+launch. Stop bypasses the foreground input queue while its display-only result
+passes through the app's held-notice queue.
 
 ## Contract
 
@@ -46,6 +43,13 @@ func Load(dirs ...string) []Saved
 // Find returns the definition named name, parsed and validated.
 func Find(name string, dirs ...string) (*Workflow, error)
 
+// ReadDefinition returns the highest-priority definition's exact source.
+func ReadDefinition(name string, dirs ...string) (string, error)
+
+// SaveDefinition validates and atomically saves in the first directory,
+// refusing to replace a source that no longer matches the editor's baseline.
+func SaveDefinition(name, source, baseline string, dirs ...string) error
+
 // Parse reads a definition and validates it: one mermaid block, one section
 // per graph node and vice versa, no cycle, templates referencing only
 // connected upstreams. Every problem found is reported at once.
@@ -54,7 +58,7 @@ func Parse(src string) (*Workflow, error)
 // NodeRunner executes one node with its rendered prompt. The host decides
 // what a node is; an error is a failed node.
 type NodeRunner interface {
-	RunNode(ctx context.Context, node *Node, prompt string) (output string, err error)
+	RunNode(ctx context.Context, c Call) (output string, err error)
 }
 
 // Run executes the graph: a node starts once every upstream has settled, at
@@ -72,6 +76,9 @@ func (w *Workflow) Bounds() (turns int, fanOut []string)
 
 // InputNames lists the distinct {{input.key}} references in node prompts.
 func (w *Workflow) InputNames() []string
+
+// References lists a node's template names in prompt order, without duplicates.
+func (n *Node) References() []string
 
 // CompactProgressView draws a short branch-and-join graph for parallel stages,
 // a line for simple stages, or an exact dependency list for complex edges.
@@ -111,9 +118,6 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   only place that bound is enforced, so the fan-out needs no gate of its own
   and queues for the run's shared slots like any other node. `Bounds` counts
   the worst case for the approval dialog.
-- `load.go` — directory listing, frontmatter only, so listing does not pay
-  for parsing every graph; `Find` does the full parse. Search paths come
-  from the caller, so the package still knows nothing about San's layout.
 - `run.go` — one goroutine per node waiting on its upstreams' done
   channels, a semaphore of `MaxParallel` held only while a turn executes
   (never while waiting, so a for_each node cannot deadlock against its own
@@ -127,18 +131,35 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   node's template scope is the outputs of every ancestor reached through a
   *taken* edge, inherited downstream; an untaken conditional edge hides that
   branch.
+  `Options.Resume` and `OnCheckpoint` extend this same scheduler. Worker reuse
+  is keyed by position in a hashed ordered plan. `Invalidate` resets a node and
+  its descendants; `Retry` retains partial workers only at retry roots. The
+  execution path and recovery preview share these operations.
+- `store.go` — saved-definition listing, lookup, exact-source reading and
+  optimistic saves, alongside run record schema, private atomic snapshots and
+  exclusive executor ownership. Listing reads only frontmatter; `Find` does the
+  full parse. Search paths come from the caller. `store_unix.go` /
+  `store_windows.go` contain only platform-specific owner checks. An empty run
+  directory uses memory for embedded callers and tests.
+- `internal/tool/workflow/workflow.go` — schema, validation and public entrypoints;
+  definition I/O delegates to core storage. `run.go` owns background task
+  lifecycle, live callbacks and the subagent adapter.
+- `internal/app/input/on_workflow.go` — command entrypoints, draft templates,
+  navigation, editing, confirmation and polling. `on_workflow_view.go` owns all
+  page, graph and preview rendering. Review explains run inputs and selected-step
+  data flow using `Node.References`; execution limits are a secondary page.
+  Editing and inspection reuse textarea and viewport; management needs no model
+  turn.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   A node becomes `running` only after it acquires a shared execution slot, so
   work waiting at `max_parallel` remains pending in the live graph.
   `skipped` is contagion from an upstream failure; `omitted` means no
   upstream edge was taken. `continue_on_error` on the failing node stops the
-  contagion, and `whole` decides what its `{{id}}` still carries: a
-  `for_each` node's finished workers, nothing from a plain turn.
-- `Summary` is one status line per node followed by the output of each
-  succeeded sink; intermediate outputs stay in the node transcripts.
-- `view.go` renders a compact branch-and-join graph with live node phases for
-  launch previews and the TUI's task area. Dense graphs fall back to a
-  dependency list so no edges disappear from the display.
+  contagion. Downstream gets completed workers from a failed `for_each`, but
+  no unfinished output from an ordinary turn.
+- `view.go` owns the final summary and compact branch-and-join live views.
+  The summary contains status lines and successful sink outputs; dense graphs
+  fall back to an exact dependency list.
 - Streamed text stays provisional until that inference succeeds. A failed
   inference removes its buffered and displayed text before retrying, while
   accepted text and other nodes' activity remain. Animation styles only the
@@ -152,7 +173,10 @@ unit tests stub out; graph semantics stay with the unit tests.
 `Parse` is pure. `Run` blocks until every node has settled and is safe to
 call concurrently on distinct workflows; the host owns the context, and
 cancelling it fails nodes that have not started (or that observe it) while
-finished results are kept. No state outlives the call.
+finished results are kept. `Run` itself retains no state; the tool persists
+checkpoints through its callback. Run snapshots fix definition and inputs,
+not external workspace state. Retries may repeat side effects; locks prevent
+concurrent ownership, not exactly-once external actions.
 
 ## Tests
 
@@ -162,11 +186,17 @@ internal/workflow/run_test.go    — order and data flow, max_parallel, conditio
 internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
 internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
 internal/workflow/view_test.go   — compact branches, live phases, conditional fallback, activity grouping and wrapping.
-internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, quoted missing-input commands, failed stream cleanup preserving accepted and parallel text, a failed run becoming a failed task.
-internal/app/input/slash_workflow_test.go — /workflow listing, launching through Launch with no model turn, the task naming the command, bad input.
+internal/workflow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
+internal/workflow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private files, IDs and executor ownership.
+internal/tool/workflow/workflow_test.go — pre-flight checks, node requests, live tools/text, quoted input commands, stream cleanup and task outcomes.
+internal/tool/workflow/run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
+internal/tool/workflow/definitions_test.go — validation, stale saves, filename collisions and project copies.
+internal/app/input/on_workflow_test.go — review/edit/input/run transitions, markers, activity, history, layout and recovery confirmations.
+internal/app/input/on_workflow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
+internal/app/input/slash_workflow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management and argument parsing.
 internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
 internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
-tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), a truncated turn failing its node, and failed stream text being discarded on retry.
+tests/integration/workflow/workflow_test.go — real subagent executor with scripted model, fan-out, truncated turns and failed-stream cleanup.
 ```
 
 ## See Also

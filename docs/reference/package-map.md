@@ -41,7 +41,7 @@ Agent, persistence, and orchestration:
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |
-| `internal/workflow` | `feature` | Workflow definition (markdown + mermaid subset), validation, DAG scheduler, `for_each` fan-out, bounded back edges, saved-definition loading, summary; imports nothing from San so it can move to sdk-go. |
+| `internal/workflow` | `feature` | Markdown + Mermaid definitions, validation, DAG scheduling, bounded loops and fan-out, node/worker checkpoints, run snapshots and executor ownership. Node execution stays behind `NodeRunner`. |
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | `internal/group` | `feature` | Groups of sessions on one machine: member files, per-member inboxes, online status from pid and process start time. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |

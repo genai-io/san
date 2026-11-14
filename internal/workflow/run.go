@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -42,12 +44,48 @@ type NodeRunner interface {
 	RunNode(ctx context.Context, c Call) (output string, err error)
 }
 
+// Checkpoint is the committed state of a node. Only successful results are
+// reusable; skipped and omitted nodes are recalculated from their upstreams.
+type Checkpoint struct {
+	Status     Status             `json:"status"`
+	Output     string             `json:"output,omitempty"`
+	Error      string             `json:"error,omitempty"`
+	StartedAt  time.Time          `json:"started_at,omitempty"`
+	FinishedAt time.Time          `json:"finished_at,omitempty"`
+	Duration   time.Duration      `json:"duration,omitempty"`
+	Attempt    int                `json:"attempt,omitempty"`
+	History    []Attempt          `json:"history,omitempty"`
+	PlanHash   string             `json:"plan_hash,omitempty"`
+	Workers    []WorkerCheckpoint `json:"workers,omitempty"`
+}
+
+// Attempt retains the outcome of an earlier execution without treating it as
+// the current result.
+type Attempt struct {
+	Number     int           `json:"number"`
+	Status     Status        `json:"status"`
+	Output     string        `json:"output,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	StartedAt  time.Time     `json:"started_at,omitempty"`
+	FinishedAt time.Time     `json:"finished_at,omitempty"`
+	Duration   time.Duration `json:"duration,omitempty"`
+}
+
+// Worker identity is its position in a fixed plan, never its display label.
+type WorkerCheckpoint struct {
+	Index int        `json:"index"`
+	Label string     `json:"label"`
+	State Checkpoint `json:"state"`
+}
+
 // Options tune one run.
 type Options struct {
 	// Inputs back {{input.key}} references.
 	Inputs map[string]string
 	// OnStatus observes every phase change, on the node's goroutine.
-	OnStatus func(node *Node, status Status)
+	OnStatus     func(node *Node, status Status)
+	Resume       map[string]Checkpoint
+	OnCheckpoint func(node *Node, state Checkpoint) error
 }
 
 // NodeResult is one node's outcome.
@@ -92,6 +130,9 @@ func (r *Result) Failed(w *Workflow) bool { return len(r.Failures(w)) > 0 }
 // while keeping what has finished.
 func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Result {
 	start := time.Now()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	resume := cloneStates(opts.Resume)
 	type slot struct {
 		done chan struct{}
 		res  NodeResult
@@ -114,6 +155,14 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 				s.res.Status = st
 				if opts.OnStatus != nil {
 					opts.OnStatus(n, st)
+				}
+				if (st == StatusSkipped || st == StatusOmitted) && opts.OnCheckpoint != nil {
+					state := cloneCheckpoint(resume[n.ID])
+					state.Status = st
+					if err := opts.OnCheckpoint(n, state); err != nil {
+						s.res.Status, s.res.Err = StatusFailed, err
+						cancel()
+					}
 				}
 			}
 			if err := ctx.Err(); err != nil {
@@ -193,14 +242,15 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			}
 
 			s.scope = scope
-			t0 := time.Now()
-			started := sync.OnceFunc(func() { setStatus(StatusRunning) })
-			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem, started)
-			s.res.Duration = time.Since(t0)
-			s.res.Output = out
-			if err == nil {
-				err = unanswered(n, out)
+			prior := resume[n.ID]
+			if prior.Status == StatusSucceeded {
+				s.res.Output, s.res.Duration = prior.Output, prior.Duration
+				setStatus(StatusSucceeded)
+				return
 			}
+			state, err := executeCheckpoint(ctx, n, scope, opts, runner, sem, prior, func() { setStatus(StatusRunning) }, cancel)
+			s.res.Duration = state.Duration
+			s.res.Output = state.Output
 			if err != nil {
 				s.res.Err = err
 				setStatus(StatusFailed)
@@ -217,45 +267,6 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 		r.Nodes[id] = &res
 	}
 	return r
-}
-
-// execute runs a node: one turn, or — with for_each — one turn per plan item,
-// bounded by the node's max_workers and by the run's shared slots.
-func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runner NodeRunner, sem chan struct{}, onStart func()) (string, error) {
-	if n.ForEach == "" {
-		return run1(ctx, runner, sem, Call{Node: n, Prompt: render(n.Prompt, scope, inputs, nil)}, onStart)
-	}
-	items, err := plan(n, scope)
-	if err != nil {
-		return "", err
-	}
-	// max_workers is enforced in plan(), which refuses a larger plan outright,
-	// so the fan-out is already at most that wide here and needs no second
-	// gate; the run's shared slots still decide how many turns are in flight.
-	outs := make([]string, len(items))
-	errs := make([]error, len(items))
-	var wg sync.WaitGroup
-	for i, item := range items {
-		wg.Go(func() {
-			outs[i], errs[i] = run1(ctx, runner, sem, Call{
-				Node:   n,
-				Prompt: render(n.Prompt, scope, inputs, item),
-				Label:  item[itemName],
-			}, onStart)
-		})
-	}
-	wg.Wait()
-
-	// Only the workers that finished are reported, so what a failed fan-out
-	// leaves behind is whole work rather than gaps under headings.
-	var b strings.Builder
-	for i, item := range items {
-		if errs[i] != nil {
-			continue
-		}
-		fmt.Fprintf(&b, "## %s\n%s\n\n", item[itemName], strings.TrimSpace(outs[i]))
-	}
-	return strings.TrimSpace(b.String()), errors.Join(errs...)
 }
 
 // unanswered fails a loop's tail when its answer takes none of its ways out.
@@ -283,73 +294,230 @@ func unanswered(n *Node, out string) error {
 	return fmt.Errorf("returned %q; its edges want %s", out, strings.Join(want, " or "))
 }
 
-// run1 takes a shared slot for the length of one turn. Waiting for a slot
-// happens here and nowhere else, so a node never holds one while it waits.
-func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call, onStart func()) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
+func cloneCheckpoint(c Checkpoint) Checkpoint {
+	c.History = append([]Attempt(nil), c.History...)
+	c.Workers = append([]WorkerCheckpoint(nil), c.Workers...)
+	for i := range c.Workers {
+		c.Workers[i].State = cloneCheckpoint(c.Workers[i].State)
 	}
-	select {
-	case sem <- struct{}{}:
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-	defer func() { <-sem }()
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	onStart()
-	out, err := runner.RunNode(ctx, c)
-	if err == nil && ctx.Err() != nil {
-		return out, ctx.Err()
-	}
-	return out, err
+	return c
 }
 
-// Summary renders the run for the conversation that launched it: one status
-// line per node, then the output of every sink node that succeeded. Sinks
-// are the workflow's product; intermediate outputs stay in the transcripts.
-func (r *Result) Summary(w *Workflow) string {
-	var b strings.Builder
-	verdict := "succeeded"
-	if r.Failed(w) {
-		verdict = "failed"
+func cloneStates(states map[string]Checkpoint) map[string]Checkpoint {
+	out := make(map[string]Checkpoint, len(states))
+	for id, c := range states {
+		out[id] = cloneCheckpoint(c)
 	}
-	fmt.Fprintf(&b, "workflow %s %s in %s\n", w.Name, verdict, r.Duration.Round(time.Second))
-	for _, n := range w.Nodes {
-		res := r.Nodes[n.ID]
-		fmt.Fprintf(&b, "  %s %s", statusGlyph(res.Status), n.ID)
-		if res.Duration > 0 {
-			fmt.Fprintf(&b, " (%s)", res.Duration.Round(time.Second))
-		}
-		if res.Err != nil {
-			fmt.Fprintf(&b, ": %v", res.Err)
-		}
-		b.WriteString("\n")
+	return out
+}
+
+// Invalidate returns an independent snapshot with from and its descendants
+// forced to execute again. Historical outcomes remain available for inspection.
+func Invalidate(w *Workflow, states map[string]Checkpoint, from string) (map[string]Checkpoint, error) {
+	if _, ok := w.Node(from); !ok {
+		return nil, fmt.Errorf("unknown workflow node %q", from)
 	}
+	out := cloneStates(states)
+	seen := map[string]bool{}
+	var visit func(string)
+	visit = func(id string) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		c := out[id]
+		c = nextAttempt(c)
+		c.Status = StatusPending
+		c.PlanHash = ""
+		c.Workers = nil
+		out[id] = c
+		for _, e := range w.byID[id].downstream {
+			visit(e.To)
+		}
+	}
+	visit(from)
+	return out, nil
+}
+
+// Retry preserves partial workers only at failed or unfinished roots. Results
+// below a retry root are invalidated because their inputs may change.
+func Retry(w *Workflow, original map[string]Checkpoint) (map[string]Checkpoint, error) {
+	retry := func(id string) bool {
+		c := original[id]
+		return c.Status == StatusFailed || c.Status == StatusRunning
+	}
+	var hasRetryAncestor func(*Node, map[string]bool) bool
+	hasRetryAncestor = func(n *Node, seen map[string]bool) bool {
+		for _, edge := range n.Upstream() {
+			if seen[edge.From] {
+				continue
+			}
+			seen[edge.From] = true
+			if retry(edge.From) || hasRetryAncestor(w.byID[edge.From], seen) {
+				return true
+			}
+		}
+		return false
+	}
+	states := cloneStates(original)
 	for _, n := range w.Nodes {
-		res := r.Nodes[n.ID]
-		if len(n.downstream) > 0 || res.Status != StatusSucceeded || strings.TrimSpace(res.Output) == "" {
+		if !retry(n.ID) || hasRetryAncestor(n, map[string]bool{}) {
 			continue
 		}
-		fmt.Fprintf(&b, "\n## %s\n%s\n", n.ID, strings.TrimSpace(res.Output))
+		var err error
+		states, err = Invalidate(w, states, n.ID)
+		if err != nil {
+			return nil, err
+		}
+		states[n.ID] = cloneCheckpoint(original[n.ID])
 	}
-	return b.String()
+	return states, nil
 }
 
-func statusGlyph(s Status) string {
-	switch s {
-	case StatusSucceeded:
-		return "✓"
-	case StatusFailed:
-		return "✗"
-	case StatusSkipped:
-		return "↷"
-	case StatusOmitted:
-		return "⊘"
-	case StatusRunning:
-		return "●"
-	default:
-		return "○"
+func nextAttempt(c Checkpoint) Checkpoint {
+	c = cloneCheckpoint(c)
+	if c.Status != "" && c.Status != StatusPending && c.Status != StatusSkipped && c.Status != StatusOmitted {
+		c.History = append(c.History, Attempt{Number: max(c.Attempt, 1), Status: c.Status, Output: c.Output, Error: c.Error, StartedAt: c.StartedAt, FinishedAt: c.FinishedAt, Duration: c.Duration})
+		c.Attempt = max(c.Attempt, 1) + 1
 	}
+	if c.Attempt == 0 {
+		c.Attempt = 1
+	}
+	c.Status = StatusPending
+	c.Output = ""
+	c.Error = ""
+	c.StartedAt = time.Time{}
+	c.FinishedAt = time.Time{}
+	c.Duration = 0
+	return c
+}
+
+func executeCheckpoint(ctx context.Context, n *Node, scope map[string]string, opts Options, runner NodeRunner, sem chan struct{}, prior Checkpoint, running func(), abort context.CancelFunc) (Checkpoint, error) {
+	state := nextAttempt(prior)
+	var mu sync.Mutex
+	var started sync.Once
+	var writeErr error
+	// All mutations and snapshots are protected, including nested worker state.
+	persist := func() error {
+		if writeErr != nil {
+			return writeErr
+		}
+		if opts.OnCheckpoint != nil {
+			if err := opts.OnCheckpoint(n, cloneCheckpoint(state)); err != nil {
+				writeErr = fmt.Errorf("checkpoint %s: %w", n.ID, err)
+				abort()
+				return writeErr
+			}
+		}
+		return nil
+	}
+	call := func(c Call, worker *Checkpoint) (string, error) {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+		defer func() { <-sem }()
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		mu.Lock()
+		started.Do(func() { state.StartedAt = time.Now(); state.Status = StatusRunning; running() })
+		if worker != nil {
+			worker.StartedAt = time.Now()
+			worker.Status = StatusRunning
+		}
+		err := persist()
+		mu.Unlock()
+		if err != nil {
+			return "", err
+		}
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		out, err := runner.RunNode(ctx, c)
+		if err == nil {
+			err = ctx.Err()
+		}
+		return out, err
+	}
+	var out string
+	var err error
+	if n.ForEach == "" {
+		out, err = call(Call{Node: n, Prompt: render(n.Prompt, scope, opts.Inputs, nil)}, nil)
+	} else {
+		items, planErr := plan(n, scope)
+		err = planErr
+		if err == nil {
+			raw, _ := json.Marshal(items)
+			hash := fmt.Sprintf("%x", sha256.Sum256(raw))
+			state.PlanHash = hash
+			state.Workers = make([]WorkerCheckpoint, len(items))
+			for i, item := range items {
+				wc := Checkpoint{}
+				if prior.PlanHash == hash && i < len(prior.Workers) && prior.Workers[i].Index == i {
+					wc = cloneCheckpoint(prior.Workers[i].State)
+				}
+				if wc.Status != StatusSucceeded {
+					wc = nextAttempt(wc)
+				}
+				state.Workers[i] = WorkerCheckpoint{Index: i, Label: item[itemName], State: wc}
+			}
+			var wg sync.WaitGroup
+			errs := make([]error, len(items))
+			for i, item := range items {
+				if state.Workers[i].State.Status == StatusSucceeded {
+					continue
+				}
+				wg.Go(func() {
+					wc := &state.Workers[i].State
+					output, e := call(Call{Node: n, Prompt: render(n.Prompt, scope, opts.Inputs, item), Label: item[itemName]}, wc)
+					mu.Lock()
+					defer mu.Unlock()
+					wc.Output = output
+					wc.FinishedAt = time.Now()
+					if !wc.StartedAt.IsZero() {
+						wc.Duration = wc.FinishedAt.Sub(wc.StartedAt)
+					}
+					wc.Status = StatusSucceeded
+					if e != nil {
+						wc.Status = StatusFailed
+						wc.Error = e.Error()
+					}
+					errs[i] = errors.Join(e, persist())
+				})
+			}
+			wg.Wait()
+			var b strings.Builder
+			for _, wc := range state.Workers {
+				if wc.State.Status == StatusSucceeded {
+					fmt.Fprintf(&b, "## %s\n%s\n\n", wc.Label, strings.TrimSpace(wc.State.Output))
+				}
+			}
+			out = strings.TrimSpace(b.String())
+			err = errors.Join(errs...)
+		}
+	}
+	if err == nil {
+		err = unanswered(n, out)
+	}
+	state.Output = out
+	state.FinishedAt = time.Now()
+	if !state.StartedAt.IsZero() {
+		state.Duration = state.FinishedAt.Sub(state.StartedAt)
+	}
+	state.Status = StatusSucceeded
+	if err != nil {
+		state.Status = StatusFailed
+		state.Error = err.Error()
+	}
+	if e := persist(); e != nil {
+		err = errors.Join(err, e)
+		state.Status = StatusFailed
+		state.Error = err.Error()
+	}
+	return state, err
 }

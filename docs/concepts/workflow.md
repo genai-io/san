@@ -55,12 +55,31 @@ Merge into one review: {{sec}} {{perf}}
 | `## id` | one node, one subagent turn. Every id in the graph needs a section and vice versa. |
 | `key: value` under the heading | the contiguous run of such lines is config: `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
 | `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before the run starts — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
-| `{{id}}` | the output of a node upstream of this one. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
-| `{{input.key}}` | a value passed in the tool's `inputs`. |
+| `{{id}}` | the complete final answer text of an upstream node, inserted into this node's prompt. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
+| `{{input.key}}` | an author-defined run parameter, collected before launch or supplied as `key=value`. |
 | `for_each` + `max_workers` | fans this node out over a plan; see below. |
 
 Every node is a fresh subagent with no memory of the others; brief each one
 fully, the way an `Agent` prompt is briefed.
+
+### Inputs and step answers
+
+`{{input.task}}` means “insert the run parameter named `task` here.” `task` is
+not a built-in task object or a reserved input name: the definition's prompts
+choose the keys. For example, replacing it with `{{input.topic}}` makes `topic`
+the required run field, supplied through the form or as `topic="review storage"`.
+
+`{{work}}` means “insert the complete final answer from the step whose ID is
+`work`.” It comes from `## work` in the definition, not from an agent name or a
+user input. A graph edge determines when a step may run; a template reference
+in its prompt determines which answer text it actually receives. In the starter
+`work --> review`, `work` reads `{{input.task}}`, and `review` reads both that
+same input and `{{work}}`. The `review` answer is the final workflow result.
+
+Ordinary step answers are text, not objects with automatic `{{work.field}}`
+access. The separate `for_each: plan.tasks` setting can select an array field
+from a step's JSON answer; its workers use `{{item}}` or `{{item.key}}` as
+explained below.
 
 ## Saved workflows
 
@@ -68,50 +87,53 @@ Definitions live in `.san/workflows/*.md` (project) and
 `~/.san/workflows/*.md` (user); the project copy wins when both define the
 same name, and the `name:` in frontmatter beats the filename. The `Workflow`
 tool lists what it finds in its own description, so the model can run one by
-`name` instead of rewriting it. The input box suggests subcommands after
-`/workflow ` and saved names after `/workflow show ` or `/workflow run `:
+`name` instead of rewriting it. Saved names and input keys are completed
+using the same quoted-argument rules as execution. `/workflow show <name>`
+previews the graph, step prompts and input keys without starting a task;
+`/workflow run <name>` reports missing inputs before launch.
 
-| Command | Result |
+`/workflow` opens the definitions and recent-runs view. Management is explicit
+and does not inject authoring instructions into ordinary model turns:
+
+| Command | Action |
 | --- | --- |
-| `/workflow list` | List saved definitions (`/workflow` also works). |
-| `/workflow show <name>` | Preview the compact dependency graph without starting a task. |
-| `/workflow run <name> [key=value …]` | Run it directly; the notice gives the task ID and the task area shows grouped activity above one status graph. |
-| `/workflow stop [task-id]` | Stop the sole running workflow, or name a task ID when several run at once. |
+| `/workflow new [name]` | Open an unsaved, read-only starter in Review. |
+| `/workflow from-skill <skill> [name]` | Create a one-node draft referencing an enabled Skill; review before saving. The Skill remains unchanged and its live instructions/resources are loaded when the node runs. No automatic splitting is attempted. |
+| `/workflow edit <name>` | Review or edit a saved definition. |
+| `/workflow show <name>` | Preview a saved definition without starting it. |
+| `/workflow inspect <run-id>` | Inspect a running or previous execution. |
+| `/workflow stop [task-id]` | Stop one workflow, or select it by task ID when several run. |
+| `/workflow list` | Print the saved definitions. |
+| `/workflow <name> key=value …` | Launch directly, with no model turn. Use `/workflow run <name> …` if its name conflicts with a management action. |
 
-`/workflow <name> [key=value …]` remains a shortcut for existing users.
-The preview labels itself as a preview, pairs graph node names with the first
-line of each step's prompt, shows referenced input keys, and prints a
-ready-to-fill `/workflow run` command. When typing that command,
-Tab completes saved names and input keys such as `topic=`. A direct run
-reports a missing referenced input before starting. San launches it without
-a model turn. Quote an input value that contains spaces, for example
-`/workflow run demo topic="HTTP caching"`. Quote a saved name containing spaces
-too: `/workflow run "release review" base=main`. Previews and name suggestions
-add those quotes automatically. Input-key completion treats a quoted value as
-one argument, including while its closing quote is still being typed.
+In Review, the page lists the values you supply before running. `↑`/`↓` selects
+a step and shows where its inserted inputs come from, what answer it produces,
+which steps read it, and its instructions. `e` opens the source editor with a
+template reminder; `Ctrl+S` validates and previews changes, then `y` saves.
+From Review, `s` opens the same save preview. Saving never launches a run.
 
-The preview and live view draw a small branch-and-join graph for parallel
-stages. Other simple stages use one line; graphs with more complex edges show
-an exact dependency list. During a run, the task area (Alt+T) groups the
-latest eight events in bordered blocks by node or `for_each` worker. Long calls
-wrap to about 90% of the current window width and reflow on resize. The
-single status graph sits below the activity. Its running mark keeps the
-original `●/◉` pulse. Running Activity calls use a `| / - \` line spinner.
-The workflow's separate Background row is hidden while this view is visible.
-The full event trail remains in the task log. The launch notice includes
-`/workflow stop <task-id>`; `/workflow stop` also works when only one workflow
-is running. Stop executes immediately even while the main agent is streaming;
-the scheduler does not start more nodes after cancellation. If an assistant
-message is still streaming, the stop notice waits until that message releases
-the conversation tail, so later text and tool-call details continue to arrive.
-With an empty input and no foreground response, Ctrl+C stops the sole running
-workflow. If several workflows are running, it shows their task IDs so you can
-choose one with `/workflow stop <task-id>`. While the main agent is responding,
-Ctrl+C interrupts that foreground response first. With no running workflow,
-the existing double Ctrl+C shortcut exits San.
+`d` opens execution limits rather than mixing them into the main review. These
+count step executions (including bounded workers and rounds), not individual
+model calls, tokens or cost. `max_parallel` is only a ceiling; dependencies
+still determine which steps can run together. The sequential starter uses 1.
 
-A file is parsed when it is run, not at startup: a broken definition is
-reported to whoever tried to run it, and never blocks the session.
+Existing user definitions become project copies; their source is not
+overwritten. A changed on-disk source must be reopened rather than silently
+replaced. `r` on a saved review collects required `{{input.key}}` values before
+launch. Direct command arguments support quoted spaces:
+`/workflow review base="main branch"`. Saved names with spaces are quoted too,
+for example `/workflow run "release review" base=main`.
+
+The existing task area (Alt+T) still groups recent node/worker activity above a
+compact status graph, reflows at terminal width and retains the full event
+trail in the task log. `/workflow stop` bypasses a foreground response's input
+queue; its notice waits for that response's conversation tail. With an empty
+input, Ctrl+C interrupts a foreground response first, otherwise stops the sole
+running workflow or lists IDs when several run. With no running workflow,
+the existing double Ctrl+C exit remains unchanged.
+
+A file is parsed when reviewed or run, not at startup: a broken definition
+never blocks the session.
 
 ### Try a full repository audit
 
@@ -341,9 +363,41 @@ workflow review succeeded in 1m24s
 …
 ```
 
-## Limits
+## Run view and recovery
 
-The terminal graph is compact; it falls back to a dependency list for wide
-graphs, more than three nodes in one column, or edges that skip columns. An
-unbounded cycle stays rejected: cost, progress and convergence are all
-undecidable without a bound.
+The run view uses a stable dependency graph, or a dependency list on narrow
+screens. Filled circles are completed nodes; running nodes keep a filled
+circle whose brightness breathes; hollow circles have not run. Normal node
+labels omit status words and times. Total elapsed time stays in the header;
+selected-node time and the last three activity lines stay below the graph.
+Manual selection pins the detail view; `f` follows active work. `Enter`
+inspects output, earlier attempts, workers and retained activity without
+forcing the scroll position. Errors remain visible outside that viewport.
+
+Runs are stored as private JSON snapshots in `.san/workflow-runs/`, separate
+from definitions. Each keeps the original definition and inputs, complete
+node results, worker checkpoints and attempt history. Successful checkpoints
+are committed before dependants can run; a persistence failure stops execution.
+An exited executor is shown as interrupted, not as a still-animated node.
+
+In the run view, `r` previews retry and continuation; `R` previews rerunning
+the selected node and its descendants. Confirmation is required. Default
+recovery reuses successful results outside the affected paths, recomputes
+conditional routing, and retries failed/unfinished work. Successful workers
+are reused only within the same ordered plan. Explicit rerun invalidates the
+selected node's workers too. The current saved definition is never silently
+substituted for the run snapshot.
+
+Recovery is at node boundaries, not inside an unfinished model turn. A retry
+can repeat side effects, especially after an interruption between an external
+action and checkpoint commit. Review the current workspace before continuing;
+checkpoints are not file rollback or exactly-once execution. Skills, agent
+configuration and external resources remain live dependencies. Only one
+executor may own a run; uncertain lock ownership blocks recovery rather than
+risking duplicate execution. Automatic stale-owner recovery requires a reliable
+process-liveness probe and is conservative on Windows.
+
+## Not yet
+
+Graphical topology editing, automatic retries, transactional workspace rollback
+and in-node continuation are not supported. Unbounded cycles remain rejected.
