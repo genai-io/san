@@ -33,29 +33,10 @@ type model struct {
     systemInput     trigger.Model      // Source 3: cron / async hook / file watcher
     conv            conv.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
-    services        services           // 16 injected feature-layer service refs
+    services        services           // feature-layer handles
 }
 
-// services holds references to feature-layer service singletons.
-// See internal/app/services.go for the full list and per-field source.
-type services struct {
-    Setting   setting.Service
-    LLM       llm.Service
-    Tool      tool.Service
-    Hook      hook.Service
-    Session   session.Service
-    Skill     skill.Service
-    Subagent  subagent.Service
-    Command   command.Service
-    Task      task.Service
-    Tracker   tracker.Service
-    Cron      cron.Service
-    MCP       mcp.Service
-    Plugin    plugin.Service
-    Agent     agent.Service
-    Identity  *identity.Registry
-    Reminder  *reminder.Reminder
-}
+// services stores the concrete feature handles in internal/app/services.go.
 ```
 
 Each sub-model package (`conv/`, `input/`, `trigger/`, `kit/`) defines its
@@ -63,6 +44,14 @@ own narrow `Runtime` interface. Root implements those via adapter methods
 on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
 [`broker`](broker.md), which the root opens as `broker.Main`.
+
+### Extension reload
+
+The [reload contract](../concepts/extension-model.md#reload-contract) defines
+triggers, registry replacement, UI rebinding, MCP connection ownership and failure
+boundaries. The UI loop reconciles dynamic MCP tools; a full consumer reload
+rebuilds captured agent dependencies before the next turn without replacing the
+native session owner.
 
 ### Human interactions
 

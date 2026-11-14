@@ -61,25 +61,11 @@ func newBaseModel() model {
 	learnedStores := newLearnedStoreContext(appCwd, svc.Setting)
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
-	return model{
-		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Tool), input.SelectorDeps{
-			AgentRegistry:   svc.Subagent,
-			PersonaRegistry: svc.Persona,
-			SkillRegistry:   svc.Skill,
-			MCPRegistry:     svc.MCP,
-			PluginRegistry:  svc.Plugin,
-			Setting:         svc.Setting,
-			LoadDisabled:    svc.Setting.DisabledToolsAt,
-			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
-			HeldOn:          toolsHeldOn,
-			Evolve: input.EvolveDeps{
-				Workspace: learnedStores.Snapshot,
-				Learned:   newLearnedSkillStore(learnedStores.Snapshot),
-				Recent:    newRecentLearnAccessor(svc.SelfLearn.Recent),
-			},
-		}),
+	m := model{
+		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Tool), selectorDeps(svc, learnedStores)),
 		conv:             conv.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
+		mcpToolsChanged:  make(chan struct{}, 1),
 		selfLearnStarts:  make(chan struct{}, 8),
 		systemInput:      trigger.New(),
 		env:              environment,
@@ -89,6 +75,22 @@ func newBaseModel() model {
 		judgeEscalations: new(atomic.Int64),
 		pendingDecisions: new(sync.Map),
 		autopilot:        new(atomic.Pointer[autopilotRuntime]),
+	}
+	m.bindMCPTools()
+	return m
+}
+
+func selectorDeps(svc services, learnedStores *learnedStoreContext) input.SelectorDeps {
+	return input.SelectorDeps{
+		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
+		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
+		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
+		HeldOn: toolsHeldOn,
+		Evolve: input.EvolveDeps{
+			Workspace: learnedStores.Snapshot,
+			Learned:   newLearnedSkillStore(learnedStores.Snapshot),
+			Recent:    newRecentLearnAccessor(svc.SelfLearn.Recent),
+		},
 	}
 }
 

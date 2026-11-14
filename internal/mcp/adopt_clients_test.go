@@ -1,10 +1,73 @@
 package mcp
 
 import (
+	"context"
 	"maps"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestAdoptLiveClientsRebindsNotifications(t *testing.T) {
+	cfg := ServerConfig{Name: "docs"}
+	client := connectedClient(t, cfg, newFakeSession())
+	t.Cleanup(func() { _ = client.Disconnect() })
+	old := registryWith(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
+	oldCalls, freshCalls := 0, 0
+	old.SetOnToolsChanged(func() { oldCalls++ })
+	client.SetOnToolsChanged(old.notifyToolsChanged)
+	fresh := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+	fresh.SetOnToolsChanged(func() { freshCalls++; fresh.mu.RLock(); fresh.mu.RUnlock() })
+	fresh.adoptLiveClients(old)
+	client.notifyToolsChanged()
+	old.notifyToolsChanged()
+	if oldCalls != 0 || freshCalls != 1 {
+		t.Fatalf("notifications: old=%d fresh=%d; want 0, 1", oldCalls, freshCalls)
+	}
+	// Reusing the retired source must not steal the already transferred client.
+	other := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+	other.adoptLiveClients(old)
+	if fresh.clients["docs"] != client || len(other.clients) != 0 {
+		t.Fatal("repeated adoption changed ownership")
+	}
+	if err := old.Connect(context.Background(), "docs"); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatalf("Connect on retired manager: %v", err)
+	}
+}
+
+func TestAdoptLiveClientsRejectsLateDial(t *testing.T) {
+	cfg := ServerConfig{Name: "docs"}
+	old := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+	started, release := make(chan struct{}), make(chan struct{})
+	tr := newFakeSession()
+	t.Cleanup(func() { _ = tr.Close() })
+	old.newClientForConfig = func(cfg ServerConfig) *Client {
+		client := NewClient(cfg)
+		client.dial = func(context.Context, func()) (conn, error) {
+			close(started)
+			<-release
+			return tr, nil
+		}
+		return client
+	}
+	result := make(chan error, 1)
+	go func() { result <- old.Connect(context.Background(), "docs") }()
+	<-started
+	fresh := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+	fresh.adoptLiveClients(old)
+	close(release)
+	if err := <-result; err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Errorf("late Connect: %v; want retirement error", err)
+	}
+	if len(old.clients) != 0 || len(fresh.clients) != 0 {
+		t.Fatal("late dial retained by a manager")
+	}
+	select {
+	case <-tr.done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("late dial transport was not closed")
+	}
+}
 
 func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Manager {
 	r := newEmptyManager()
@@ -58,7 +121,7 @@ func TestAdoptLiveClientsDisconnectsServersTheNewProjectDropped(t *testing.T) {
 	if _, ok := fresh.clients["old-proj"]; ok {
 		t.Error("a server the new project does not configure was adopted")
 	}
-	waitFor(t, "the dropped server's transport to close", tr.isClosed)
+	waitForSessionClose(t, tr)
 }
 
 // Same name, different command: the config changed, so the old process is not
@@ -78,20 +141,14 @@ func TestAdoptLiveClientsRejectsAChangedConfig(t *testing.T) {
 	if _, ok := fresh.clients["docs"]; ok {
 		t.Error("adopted a connection whose configuration no longer matches")
 	}
-	waitFor(t, "the stale server's transport to close", tr.isClosed)
+	waitForSessionClose(t, tr)
 }
 
-// waitFor polls cond, since the teardown of servers that did not survive runs
-// detached — Disconnect can block for seconds and Initialize is on the UI
-// goroutine.
-func waitFor(t *testing.T, what string, cond func() bool) {
+func waitForSessionClose(t *testing.T, session *fakeSession) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case <-session.done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for transport to close")
 	}
-	t.Errorf("timed out waiting for %s", what)
 }

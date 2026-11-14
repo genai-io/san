@@ -156,6 +156,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case mcpToolsChangedMsg:
+		m.syncMCPTools()
+		return m, awaitMCPToolsChanged(m.mcpToolsChanged)
 	case conv.PermGateMsg:
 		if msg.Gate != nil && msg.Gate != m.services.Agent.PermissionGate() {
 			return m, nil
@@ -546,6 +549,16 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.sendNextQueuedInput(true))
 		}
 		return m, tea.Batch(cmds...)
+	case pendingInputReadyMsg:
+		if msg.outbox != m.services.Agent.Outbox() || m.conv.Stream.Active ||
+			!m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() == 0 {
+			return m, nil
+		}
+		start, err := m.ensureAgentRuntime()
+		if err != nil {
+			return m, func() tea.Msg { return agentSendFailedMsg{err: err} }
+		}
+		return m, tea.Batch(start, m.sendPendingMessages())
 	case agentSendFailedMsg:
 		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
 		if m.conv.Stream.Waiting {

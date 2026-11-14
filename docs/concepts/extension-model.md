@@ -91,6 +91,62 @@ Exact frontmatter fields vary by primitive — see the per-package docs:
 [`skill`](../packages/skill.md), [`subagent`](../packages/subagent.md),
 [`command`](../packages/command.md).
 
+## Reload Contract
+
+The TUI reloads extensions at explicit lifecycle boundaries; it does not watch
+all extension or settings files for changes.
+
+| Trigger | Discovery and application |
+|---|---|
+| Startup / `--plugin-dir` | Load plugins before their consumers; build the first agent from the resulting catalogues. |
+| `/reload-plugins` | Rescan native and Claude-compatible plugins, then reload their consumers. |
+| Plugin picker install / uninstall | Reload consumers after a successful operation. Picker enable/disable and slash-command installation require `/reload-plugins`. |
+| Working-directory change | Rediscover plugins and trusted project configuration, then reload consumers for the new cwd. |
+| Settings / tool panels | Persist and reload the existing settings handle; this is not a full extension rescan. Agent toolset changes apply at the next turn. |
+| Persona file change reported by a tool | Rescan personas and reapply bundled skills and agent restrictions; not a general file watcher. |
+| MCP tools-changed notification | Refresh the connected server's tools, then reconcile on the UI loop. No filesystem discovery. |
+
+A full consumer reload replaces settings, skill, command, persona and MCP
+registries; subagent and plugin registries are updated in place. Selectors and
+tool-policy callbacks are rebound, and command suggestions use the new catalogue.
+Replacing a registry closes its old picker and discards cached rows; in-place
+registries refresh cached rows when their pickers reopen. Composer,
+history, queued messages and pending skill invocations remain intact; unchanged
+plugin operations and the Settings popup's selected tab remain intact too.
+Persona overlays, hooks and queued system reminders use the reloaded context.
+
+The current turn is not cancelled. Captured agent dependencies, including the
+permission policy, are rebuilt before the next turn against the same native
+session owner. Queued successors and cancellation-held input cross this boundary
+on a later UI update, after the terminal consumer acknowledgment; input injected
+into an already admitted turn does not restart it. This is not a retroactive
+policy change for admitted work.
+
+MCP replacement adopts only connected clients with identical configurations,
+rebinds their notifications and retires the outgoing manager. Removed or changed
+clients close asynchronously; a late connection into a retired manager closes
+instead of being published. New/changed servers are **not** automatically started
+by reload: connect explicitly through `/mcp` or on application startup. Live MCP
+tool wrappers are reconciled immediately, including removal of the last server;
+background notifications coalesce and read only the current services on the UI
+loop. Late connection results from an outgoing manager are ignored by the picker.
+
+Reload is best effort, not an atomic transaction. Plugin operation failures do
+not trigger consumer reload; loader failures are logged or skipped according to
+the owning package. MCP initialization failure keeps the previous manager. A
+failed tools-list refresh keeps its last successful list and does not notify.
+There is no cross-registry rollback. ACP sessions load their own registries at
+new/load and do not expose these TUI management commands.
+
+Entrypoints: `internal/app/init.go`, `model_lifecycle.go`, `model_workspace.go`
+and `mcp_tools.go`. Regressions: `extension_reload_test.go`,
+`extension_reload_queue_test.go`, `mcp_tools_sync_test.go`,
+`input/selector_deps_test.go` and `internal/mcp/adopt_clients_test.go`.
+
+```sh
+go test -race ./internal/app ./internal/app/input ./internal/mcp
+```
+
 ## See Also
 
 - [`concepts/harness-channels.md`](harness-channels.md) — how skill /

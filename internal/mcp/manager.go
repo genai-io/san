@@ -34,6 +34,7 @@ type PluginServer struct {
 type Manager struct {
 	mu                    sync.RWMutex
 	connectionLifecycleMu sync.Mutex
+	retired               bool // guarded by mu; replacement permanently rejects new connections
 	clients               map[string]*Client
 	configs               map[string]ServerConfig
 	disabled              map[string]bool   // servers explicitly disabled by the user
@@ -66,10 +67,8 @@ type mcpState struct {
 // (reloadProjectServices) while DefaultManager() is read elsewhere.
 var (
 	managerMu sync.RWMutex
-	// managerTransferMu serializes concurrent manager replacement. It is
-	// redundant given the per-manager connectionLifecycleMu locks (the only
-	// caller is Initialize on the single bubbletea goroutine) but kept as
-	// defence-in-depth against future reentrant call sites.
+	// managerTransferMu serializes adoption, including lock ordering between
+	// the outgoing and incoming managers. It is not held during transport I/O.
 	managerTransferMu sync.Mutex
 	defaultManager    = newEmptyManager()
 )
@@ -90,23 +89,40 @@ func (r *Manager) adoptLiveClients(old *Manager) {
 		return
 	}
 
+	managerTransferMu.Lock()
+	old.connectionLifecycleMu.Lock()
+	r.connectionLifecycleMu.Lock()
 	old.mu.Lock()
+	r.mu.Lock()
+	if old.retired || r.retired {
+		r.mu.Unlock()
+		old.mu.Unlock()
+		r.connectionLifecycleMu.Unlock()
+		old.connectionLifecycleMu.Unlock()
+		managerTransferMu.Unlock()
+		return
+	}
+	old.retired = true
+	old.onToolsChanged = nil
 	adopted := make(map[string]*Client)
 	var stale []*Client
 	for name, client := range old.clients {
 		cfg, stillConfigured := r.configs[name]
 		if stillConfigured && reflect.DeepEqual(cfg, old.configs[name]) && client.IsConnected() {
+			client.SetOnToolsChanged(r.notifyToolsChanged)
 			adopted[name] = client
 			continue
 		}
+		client.SetOnToolsChanged(nil)
 		stale = append(stale, client)
 	}
 	old.clients = make(map[string]*Client)
-	old.mu.Unlock()
-
-	r.mu.Lock()
 	maps.Copy(r.clients, adopted)
 	r.mu.Unlock()
+	old.mu.Unlock()
+	r.connectionLifecycleMu.Unlock()
+	old.connectionLifecycleMu.Unlock()
+	managerTransferMu.Unlock()
 
 	if len(stale) > 0 {
 		go func() {
@@ -172,10 +188,12 @@ func (r *Manager) Reload() error {
 	configs = r.mergePluginMCPConfigs(configs)
 
 	r.mu.Lock()
-	// Disconnect clients whose config was removed.
+	var stale []*Client
+	// Reload preserves existing connections for changed configs; it does not
+	// automatically reconnect them. Manager replacement applies stricter reuse.
 	for name, client := range r.clients {
 		if _, ok := configs[name]; !ok {
-			_ = client.Disconnect()
+			stale = append(stale, client)
 			delete(r.clients, name)
 			delete(r.connecting, name)
 			delete(r.connectErr, name)
@@ -183,6 +201,9 @@ func (r *Manager) Reload() error {
 	}
 	r.configs = configs
 	r.mu.Unlock()
+	for _, client := range stale {
+		_ = client.Disconnect()
+	}
 	return nil
 }
 
@@ -259,6 +280,11 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 
 	// Fast path: already connected — just mark as retained.
 	r.mu.Lock()
+	if r.retired {
+		r.mu.Unlock()
+		r.connectionLifecycleMu.Unlock()
+		return fmt.Errorf("MCP manager retired: cannot connect to %s", serverName)
+	}
 	config, ok := r.configs[serverName]
 	if !ok {
 		r.mu.Unlock()
@@ -289,6 +315,13 @@ func (r *Manager) Connect(ctx context.Context, serverName string) error {
 	r.connectionLifecycleMu.Lock()
 
 	r.mu.Lock()
+	if r.retired {
+		r.mu.Unlock()
+		r.connectionLifecycleMu.Unlock()
+		client.SetOnToolsChanged(nil)
+		_ = client.Disconnect()
+		return fmt.Errorf("MCP manager retired while connecting to %s", serverName)
+	}
 	r.clients[serverName] = client
 	r.mu.Unlock()
 	r.connectionLifecycleMu.Unlock()
@@ -434,7 +467,9 @@ func (r *Manager) CallTool(ctx context.Context, fullName string, arguments map[s
 func (r *Manager) SetOnToolsChanged(callback func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.onToolsChanged = callback
+	if !r.retired {
+		r.onToolsChanged = callback
+	}
 }
 
 // notifyToolsChanged calls the tools changed callback if set
