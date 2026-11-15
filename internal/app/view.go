@@ -135,7 +135,12 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 		footer = strings.TrimPrefix(footer, "\n")
 		inputRow--
 	}
-	indicators := m.renderChatIndicators(trackerView, footer)
+	queue := ""
+	if preview := m.renderQueuePreview(); preview != "" {
+		queue = "\n" + preview
+	}
+	// Reserve pending prompts before allocating the remaining rows to Tasks.
+	indicators := queue + m.renderChatIndicators(trackerView, queue+footer)
 	chatSection := m.chatTailAbove(indicators+footer, m.messageRenderParams())
 	if chatSection == "" && indicators == "" && strings.HasPrefix(footer, "\n") {
 		// With no chat row left, the footer starts the frame itself.
@@ -227,10 +232,6 @@ func headLines(s string, maxLines int) string {
 // renderFooter returns the footer and the input row for cursor placement.
 func (m *model) renderFooter(separator string) (string, int) {
 	var b strings.Builder
-	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
-		b.WriteString("\n")
-		b.WriteString(queuePreview)
-	}
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		// Candidates grow upward so opening them does not move the composer.
 		b.WriteString("\n")

@@ -301,6 +301,118 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 	}
 }
 
+func TestPendingMessagesAboveTasks(t *testing.T) {
+	tests := []struct {
+		name      string
+		queued    int
+		tasks     int
+		editing   bool
+		height    int
+		longReply bool
+	}{
+		{name: "pending and tasks", queued: 1, tasks: 1, height: 24},
+		{name: "multiple pending", queued: 2, tasks: 1, height: 24},
+		{name: "editing pending", queued: 2, tasks: 1, editing: true, height: 24},
+		{name: "pending without tasks", queued: 1, height: 24},
+		{name: "tasks without pending", tasks: 1, height: 24},
+		{name: "short terminal", queued: 2, tasks: 1, height: 12, longReply: true},
+		{name: "many tasks", queued: 2, tasks: 25, height: 24, editing: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const width = 80
+			m := fixedComposerModel(width, tt.height)
+			for range tt.tasks {
+				m.services.Tracker.Create("Current task", "", "", nil)
+			}
+			pending := []string{"First pending message", "Second pending message"}
+			for _, text := range pending[:tt.queued] {
+				m.userInput.Queue.Enqueue(text, nil)
+			}
+			m.userInput.Textarea.SetValue("Draft message")
+			if tt.editing {
+				m.userInput.EnterQueueSelection()
+			}
+			if tt.longReply {
+				m.conv.Messages = append(m.conv.Messages, core.ChatMessage{
+					Role:    core.ChatAssistant,
+					Content: strings.Repeat("Earlier output\n", 30) + "Latest output",
+				})
+			}
+
+			frame, cursor := m.viewString()
+			plain := ansi.Strip(frame)
+			separator := strings.Repeat("─", width-1)
+			aboveInput, _, ok := strings.Cut(plain, separator)
+			if !ok {
+				t.Fatalf("frame has no input separator:\n%s", plain)
+			}
+			visiblePending := tt.queued
+			if tt.height < 24 {
+				// Short screens may collapse the queue preview to its first row.
+				visiblePending = min(visiblePending, 1)
+			}
+			for _, text := range pending[:visiblePending] {
+				if count := strings.Count(aboveInput, text); count != 1 {
+					t.Fatalf("pending message %q occurs %d times above input, want once:\n%s", text, count, plain)
+				}
+				if taskAt := strings.Index(aboveInput, "Tasks"); taskAt >= 0 && strings.Index(aboveInput, text) > taskAt {
+					t.Fatalf("pending message appears below Tasks:\n%s", plain)
+				}
+			}
+			if tt.height >= 24 && tt.tasks > 0 && !strings.Contains(aboveInput, "Current task") {
+				t.Fatalf("frame lost the task list:\n%s", plain)
+			}
+			if tt.height >= 24 && tt.tasks > 0 && tt.tasks < 25 && tt.queued > 0 && !strings.Contains(aboveInput, "\n\n  Tasks") {
+				t.Fatalf("pending messages and Tasks need a blank row between them:\n%s", plain)
+			}
+			if tt.queued > 0 && (tt.editing || visiblePending == tt.queued) {
+				hint := "↑ edit"
+				if tt.editing {
+					hint = "enter done · ctrl+c delete"
+				}
+				if !strings.Contains(aboveInput, hint) {
+					t.Fatalf("frame lost the pending edit hint %q:\n%s", hint, plain)
+				}
+			}
+			lines := strings.Split(plain, "\n")
+			if len(lines) > tt.height {
+				t.Fatalf("frame has %d rows, exceeds height %d", len(lines), tt.height)
+			}
+			if cursor == nil || cursor.Position.Y >= len(lines) {
+				t.Fatalf("invalid composer cursor: %v", cursor)
+			}
+			wantInput := conv.InputPrompt + m.userInput.Textarea.Value()
+			if got := strings.TrimRight(lines[cursor.Position.Y], " "); got != wantInput {
+				t.Fatalf("cursor row = %q, want composer %q", got, wantInput)
+			}
+		})
+	}
+}
+
+func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
+	m := fixedComposerModel(80, 40)
+	m.services.Tracker.Create("Current task", "", "", nil)
+	m.userInput.Queue.Enqueue("Pending sentinel", nil)
+	m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
+	frame, _ := m.viewString()
+	plain := ansi.Strip(frame)
+	pendingAt := strings.Index(plain, "Pending sentinel")
+	tasksAt := strings.Index(plain, "Tasks")
+	waitingAt := strings.Index(plain, "On it")
+	separatorAt := strings.Index(plain, strings.Repeat("─", 79))
+	if pendingAt < 0 || tasksAt <= pendingAt || waitingAt <= tasksAt || separatorAt <= waitingAt {
+		t.Fatalf("want pending, Tasks, On it, then separator:\n%s", plain)
+	}
+	lines := strings.Split(plain, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "On it") && (i+1 >= len(lines) || lines[i+1] != strings.Repeat("─", 79)) {
+			t.Fatalf("waiting row is not directly above separator:\n%s", plain)
+		}
+	}
+}
+
 func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
@@ -578,6 +690,20 @@ func TestDockedModalKeepsPrecedingAssistantText(t *testing.T) {
 	}
 	if !strings.Contains(plain, "df -h") {
 		t.Fatalf("modal frame is missing the approval prompt itself:\n%s", frame)
+	}
+}
+
+func TestDockedModalHidesPendingPreview(t *testing.T) {
+	m := dockedModalModel(t, "about to check the disk")
+	m.userInput.Queue.Enqueue("Pending message sentinel", nil)
+
+	frame, cursor := m.viewString()
+	plain := ansi.Strip(frame)
+	if strings.Contains(plain, "Pending message sentinel") || strings.Contains(plain, "↑ edit") {
+		t.Fatalf("modal frame offers editing for hidden composer:\n%s", plain)
+	}
+	if cursor != nil {
+		t.Fatal("docked modal must not show the composer cursor")
 	}
 }
 

@@ -78,6 +78,15 @@ func TestFooterIntegratedHistoryQueueAndInferenceOrder(t *testing.T) {
 						t.Fatalf("roomy integrated footer lost %s:\n%s", label, plain)
 					}
 				}
+				pendingAt := strings.Index(plain, "pending-msg")
+				if pendingAt < 0 {
+					t.Fatalf("integrated footer lost pending message:\n%s", plain)
+				}
+				for _, label := range []string{"Tasks", "/tasks", "active-footer-worker"} {
+					if index := strings.Index(plain, label); index >= 0 && index < pendingAt {
+						t.Fatalf("pending message placed below %s:\n%s", label, plain)
+					}
+				}
 				if strings.Contains(plain, "past fixture error") || strings.Contains(plain, "subject-old") {
 					t.Fatalf("historical failure rows still crowd the live footer:\n%s", plain)
 				}

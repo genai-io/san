@@ -1,7 +1,5 @@
-// Package conv: the pending-prompt queue preview rendered above the input
-// separator. Queued messages draw as dim "❭" shadow prompts — already
-// submitted, visually on their way into the conversation — with a key hint
-// riding the active row.
+// Package conv: pending-prompt queue previews. Queued messages draw as dim
+// "❭" shadow prompts with a key hint riding the active row.
 package conv
 
 import (

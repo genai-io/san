@@ -160,14 +160,17 @@ View()
   4. otherwise (normal mode) ──► renderNormalView()
         ├─ chat section        ── recent settled rows + conv.RenderActiveContent
         ├─ spare space         ── keeps short conversations stable at the top
+        ├─ queue preview       ── pending prompts, above Tasks
         ├─ activity indicators ── tracker, compact and self-learning status
-        ├─ queue preview       ── if input was queued during a stream
         ├─ suggestion list     ── /-command and @-file autocomplete
         ├─ separator
         ├─ textarea            ── grows upward as input wraps
         ├─ separator
         └─ status line         ── model name, tokens, mode
 ```
+
+Pending prompts reserve space before Tasks so a long task list cannot hide the
+queue or its edit hint. Docked modals hide the queue while they own the keyboard.
 
 Popups (full-screen) and modals (wrapped) look like the same idea but
 have different render flows because the chat content stays visible

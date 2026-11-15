@@ -42,10 +42,6 @@ func TestFooterHierarchySinglePendingOmitsGroupLabel(t *testing.T) {
 							t.Fatalf("inference lost input adjacency:\n%s", plain)
 						}
 					}
-					footer, _ := m.renderFooter(separator)
-					if strings.HasPrefix(ansi.Strip(footer), "\n\n") {
-						t.Fatalf("removed caption left an empty grouping row: %q", ansi.Strip(footer))
-					}
 				})
 			}
 		}
@@ -87,7 +83,13 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 					t.Fatalf("incorrect dock order:\n%s", plain)
 				}
 				if height == 24 {
-					if !strings.Contains(plain, "Tasks") || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || lines[at-1] != "" {
+					tasksAt := -1
+					for i, line := range lines {
+						if strings.Contains(line, "Tasks") {
+							tasksAt = i
+						}
+					}
+					if tasksAt < 1 || lines[tasksAt-1] != "" || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || !strings.Contains(lines[at-1], "active-worker") || strings.Index(plain, "editing") > strings.Index(plain, "Tasks") {
 						t.Fatalf("roomy groups lack hierarchy:\n%s", plain)
 					}
 				} else {

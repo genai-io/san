@@ -92,11 +92,11 @@ test:
 # counted too (a plain `./internal/...` run drops ~6 points of real coverage).
 # covermode=atomic is required when -race is enabled. The race detector needs
 # cgo, so override the global CGO_ENABLED=0 here; this only affects the
-# ephemeral test binaries, not the statically linked release builds. -timeout
-# bounds a hung test to 2 minutes (no package legitimately runs that long) so a
-# deadlock fails fast instead of burning the 10-minute default.
+# ephemeral test binaries, not the statically linked release builds. The
+# five-minute package timeout allows for race and coverage overhead on CI while
+# still bounding a hung suite below Go's 10-minute default.
 cover:
-	CGO_ENABLED=1 go test -race -covermode=atomic -timeout 120s \
+	CGO_ENABLED=1 go test -race -covermode=atomic -timeout 5m \
 		-coverpkg=./internal/... -coverprofile=coverage.out \
 		./internal/... ./tests/integration/...
 
