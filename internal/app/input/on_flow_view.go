@@ -58,12 +58,7 @@ func (v *FlowView) renderPage() (title, content, hint string) {
 	title, hint = "Flow", "↑/↓ select · Enter open · Esc close"
 	switch v.page {
 	case "generate":
-		title, hint = "Create Flow", "Esc cancel"
-		content = "Goal\n" + ansi.Wrap(v.goal, max(1, v.width-4), " ") + "\n\nDrafting a blueprint for review. Nothing will run automatically."
-		if !v.drafting {
-			content = "Goal\n" + ansi.Wrap(v.goal, max(1, v.width-4), " ") + "\n\nNo draft was created."
-			hint = "Enter retry · Esc close"
-		}
+		return v.renderGeneration()
 	case "hub":
 		title, content = "Flow · definitions and recent runs", v.renderHub()
 	case "review":
@@ -99,6 +94,48 @@ func (v *FlowView) renderPage() (title, content, hint string) {
 		return v.renderRun()
 	}
 	return title, content, hint
+}
+
+func (v *FlowView) renderGeneration() (title, content, hint string) {
+	title, hint = "Create Flow", "Esc cancel"
+	status := "No draft was created."
+	var elapsed time.Duration
+	if v.IsGenerating(v.generation) {
+		elapsed = max(time.Duration(0), time.Since(v.draftStarted)).Truncate(time.Second)
+		status = kit.LiveDot(v.phase+2) + " Generating blueprint  " + kit.DimStyle().Render(elapsed.String())
+	} else {
+		hint = "Enter retry · Esc close"
+	}
+	lines := []string{status}
+	budget := max(1, v.height-6)
+	if v.message != "" {
+		budget = max(1, budget-2-strings.Count(v.message, "\n"))
+	}
+	if budget >= 7 {
+		journey := kit.SelectorSelectedLabelStyle().Render("Draft") + kit.DimStyle().Render(" → Review → Save → Run")
+		lines = append(lines, "", journey)
+	}
+	if budget >= 4 {
+		lines = append(lines, "", kit.DimStyle().Render("Goal"))
+	}
+	if remaining := budget - len(lines); remaining > 0 {
+		width := max(1, min(72, v.width-8))
+		goal := strings.Split(ansi.Wrap(v.goal, width, " "), "\n")
+		count := min(len(goal), min(5, remaining))
+		if count < len(goal) {
+			goal[count-1] = ansi.Truncate(goal[count-1], max(1, width-1), "") + "…"
+		}
+		inset := lipgloss.NewStyle().Background(kit.CurrentTheme.CommandBg).Padding(0, 1).MarginLeft(2)
+		lines = append(lines, inset.Render(strings.Join(goal[:count], "\n")))
+	}
+	if v.IsGenerating(v.generation) && budget-lipgloss.Height(strings.Join(lines, "\n")) >= 2 {
+		note := "No tools. Review before running."
+		if elapsed >= 20*time.Second {
+			note = "Waiting for model · Esc cancels"
+		}
+		lines = append(lines, "", kit.DimStyle().Render(ansi.Truncate(note, max(1, v.width-2), "…")))
+	}
+	return title, strings.Join(lines, "\n"), hint
 }
 
 func flowInputLabel(key string) string {

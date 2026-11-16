@@ -122,7 +122,9 @@ the findings` starts one drafting request from the current conversation. The
 blueprint guide and enabled agent/Skill discovery metadata are loaded only for
 that request. It advertises no tools, executes no commands, and adds neither its
 guide nor its reply to the main Agent's ordinary conversation context. The call
-is recorded under the session's `flow` inference purpose.
+is recorded under the session's `flow` inference purpose. While waiting, the
+Create Flow page shows a breathing dot and elapsed time; it switches to Review
+when the response completes.
 
 The model proposes the smallest useful topology: real dependencies form chains,
 independent work can run in parallel, and dynamic workers or evaluator loops

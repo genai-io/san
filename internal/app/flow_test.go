@@ -122,6 +122,22 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 	}
 }
 
+func TestFlowDraftUsesSharedAnimation(t *testing.T) {
+	m := draftTestModel(t)
+	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says(draftBlueprint)), ai.Model{ID: "m"})}
+	request := draftRequest(t, m, "Review the parser")
+	completion := m.generateFlow(request)
+	before := m.userInput.Flow.Render()
+	_, tick := m.Update(m.conv.Spinner.Tick())
+	if tick == nil || m.userInput.Flow.Render() == before {
+		t.Fatal("shared animation tick did not update the drafting overlay")
+	}
+	m.Update(draftResult(t, completion))
+	if m.flowDraft != nil || !strings.Contains(m.userInput.Flow.Render(), "Unsaved") {
+		t.Fatal("completion did not replace progress with unsaved Review")
+	}
+}
+
 func TestFlowDraftFailures(t *testing.T) {
 	for _, kind := range []string{"empty", "tool", "provider"} {
 		t.Run(kind, func(t *testing.T) {
