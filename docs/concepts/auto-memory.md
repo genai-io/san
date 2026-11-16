@@ -55,7 +55,7 @@ sequenceDiagram
     Note over A: first step starts at once, never waits
     A->>A: step 1 (thinks, calls tools)
     Sel--)App: up to 5 files
-    App->>A: memory-recall rides the first tool result after the pick
+    App->>A: memory-recall rides the next completed tool batch after the pick
     App-->>U: ⟡ Memory · recalled: … (at that result)
     Note over A: indexes and attached files count as read
     opt asked to remember or forget
@@ -106,16 +106,20 @@ general. It returns nothing when none does. It gives up after a minute.
 
 ### Where it lands
 
-The main agent never waits for the pick and never knows it is running. Each
-tool result passes the result filter on its way back to the model; the filter
-checks, without blocking, whether the pick has landed:
+The main agent never waits for the pick. It starts with the task's normal
+checks rather than proactively reading memory files; an explicit Read is a
+fallback for necessary information recall has not supplied, or for maintaining
+memory. The result filter checks for a ready pick at each tool batch's end:
 
 | When | What happens |
 |---|---|
-| A tool result returns before the pick lands | it goes back unchanged; the next result checks again |
-| The pick lands, then a tool result returns | the picked memories ride that result as the `memory-recall` reminder |
-| The agent Reads a memory before the pick lands | that memory is skipped when the pick attaches: never in context twice |
+| A tool batch finishes before the pick lands | results go back unchanged; the next batch checks again |
+| The pick lands, then a tool batch finishes | the picked memories ride the last completing result as the `memory-recall` reminder |
+| The agent Reads a memory before recall attaches | that memory is skipped, including reads in the same parallel batch |
 | The turn calls no tool | the pick is dropped at turn end; the agent still has the indexes to Read from |
+
+Parallel tools already finish before the next inference, so attaching at the
+batch boundary adds no model wait and lets every Read register before deduplication.
 
 Each pick attaches once. Every attached memory counts as read, so the agent
 can edit it without a Read, and shows the date of its file's last change. The
@@ -127,8 +131,8 @@ resumed session starts it over too.
 
 `Memory · recalled` names memories the pick attached; `Memory · read` names
 ones the agent Read itself. Both appear at the step that consumed them, not
-under the final answer. A slow pick mostly shows explicit reads: the agent
-found the memory in the index first.
+under the final answer. Necessary explicit reads still work when recall is
+late or misses a memory.
 
 For automatic recall, the SDK's `ToolEnd` contains the original tool output;
 the recall filter runs afterward. The UI therefore uses the subsequent
@@ -218,10 +222,10 @@ turns and edits skills, never memory.
 ## Design choices
 
 - **Recall never holds up the turn.** The pick takes 2–10 s on a reasoning
-  model; waiting for it would add that to every turn. Not waiting costs at
-  most one step: the agent Reads the memory from the index itself. A tool
-  result is the earliest place the pick can join without delaying anything,
-  since it is the next thing the model reads after its first step.
+  model; waiting for it would add that to every turn. Normal task tools give
+  recall time to land without an extra memory-read step; necessary missing
+  information can still be read explicitly. Recall attaches when the tool
+  batch finishes, before the model's next step.
 - **The pick is a side query, not a forked conversation.** Choosing from
   descriptions needs only the message, so a one-shot call does it and leaves
   the main conversation, its context and its prompt cache untouched.
@@ -256,9 +260,11 @@ turns and edits skills, never memory.
 ## Tests
 
 ```bash
-go test ./internal/app/conv ./internal/app ./internal/app/kit
+go test ./internal/agent ./internal/core/system ./internal/app/conv ./internal/app ./internal/app/kit
 ```
 
+- `internal/agent/memory_recall_test.go`: selection, one-shot delivery and
+  deduplication after parallel memory reads.
 - `internal/app/conv/memory_read_test.go`: placement among sibling tools,
   memory-only steps, breathing/static markers, expansion, failure, recall
   delivery, narrow-terminal wrapping and replay without the original file.

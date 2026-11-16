@@ -126,8 +126,8 @@ func memoryID(m system.Memory) string {
 }
 
 // Recall is one message's pick, made beside its turn so the turn never waits:
-// it rides the first tool result that completes after it lands, and a turn
-// that calls no tool goes without it.
+// it rides the next completed tool batch after it lands, and a turn that calls
+// no tool goes without it.
 type Recall struct {
 	mu        sync.Mutex
 	stopped   bool
@@ -210,9 +210,11 @@ func (p *Recall) Stop() error {
 	return p.err
 }
 
-// WithRecall attaches the current pick, once it lands, to the next tool result
-// the model is told about.
+// WithRecall attaches a ready pick to the last result of a tool batch, after
+// every parallel Read has recorded its view. The SDK serializes result filters.
 func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilter {
+	var batchID string
+	var pending map[string]bool
 	return func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
 		var out *sdkagent.Result
 		if next != nil {
@@ -221,6 +223,22 @@ func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilte
 				return r, err
 			}
 			out = r
+		}
+		if n := len(c.Messages); n > 0 {
+			message := c.Messages[n-1]
+			if calls := message.ToolCalls(); len(calls) > 1 {
+				if pending == nil || batchID != message.ID {
+					batchID = message.ID
+					pending = make(map[string]bool, len(calls))
+					for _, call := range calls {
+						pending[call.ID] = true
+					}
+				}
+				delete(pending, c.Call.ID)
+				if len(pending) > 0 {
+					return out, nil
+				}
+			}
 		}
 		text, err := current().Take()
 		if err != nil {
