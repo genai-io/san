@@ -226,9 +226,12 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 	ctx, cancel := context.WithCancel(task.WithSessionID(ctx, run.parentID()))
 	defer cancel()
-	worker := e.taskPool().CreateForegroundAgentTask(generateShortID(), run.cfg.config.Name, req.Description, ctx, cancel)
-	run.req.TaskID = worker.GetID()
-	run.checkpoint = newContinuationState(run, run.parentID(), worker.GetID())
+	run.req.TaskID = generateShortID()
+	run.checkpoint = newContinuationState(run, run.parentID(), run.req.TaskID)
+	if err := e.prepareInbox(ctx, run); err != nil {
+		return nil, err
+	}
+	worker := e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
 	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
 	result, err := e.runPrepared(ctx, run)
@@ -249,6 +252,9 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (out *AgentResult, runErr error) {
 	defer func() {
+		if run.inbox != nil {
+			run.inbox.close()
+		}
 		// Stop hooks may record asynchronously. Drain their owned handler while
 		// the child writer is still live, then release its claim exactly once.
 		if run.stopHooks != nil {
@@ -387,15 +393,24 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	identity := run.cfg.config.Name
 
 	if agentTask == nil {
+		run.req.TaskID = generateShortID()
+		run.checkpoint = newContinuationState(run, run.parentID(), run.req.TaskID)
+		if err := e.prepareInbox(ctx, run); err != nil {
+			cancel()
+			return nil, err
+		}
 		agentTask = e.taskPool().CreateAgentTask(
-			generateShortID(),
+			run.req.TaskID,
 			identity,
 			req.Description,
 			ctx,
 			cancel,
 		)
-		run.checkpoint = newContinuationState(run, run.parentID(), agentTask.GetID())
 		agentTask.SetLaunchState(run.checkpoint)
+	} else if err := e.prepareInbox(ctx, run); err != nil {
+		cancel()
+		agentTask.CompleteAttempt(agentTask.GetStatus().Attempt, err)
+		return nil, err
 	}
 	agentTask.SetIdentity(identity, "")
 	agentTask.SetPermissionMode(string(run.cfg.permMode))
@@ -665,6 +680,10 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
+	cause := "boot"
+	if run.recorder != nil || run.req.ResumeTaskID != "" {
+		cause = "resume"
+	}
 	recorder := session.NewRecorder(run.recording, rc.provider.Name())
 	run.recorder = recorder
 	permissionGate := tool.HookedPermission(run.hooks, childPermission{source: run.interactionSource, child: run.recording, config: rc.config, mode: rc.permMode, parent: e.permissionResolver, background: run.req.Background}, recorder.RecordPermission)
@@ -699,11 +718,6 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 			if text := section.Render(); text != "" {
 				instructions = append(instructions, session.NamedInstruction{Name: section.Name, InstructionSection: session.InstructionSection{Content: text, Slot: int(section.Slot)}})
 			}
-		}
-		cause := "boot"
-		snapshot := run.recording.Snapshot()
-		if len(snapshot.Events()) > 1 {
-			cause = "resume"
 		}
 		if err := recorder.RecordCatalogues(ctx, instructions, tools.Schemas(), nil, cause); err != nil {
 			cleanup()

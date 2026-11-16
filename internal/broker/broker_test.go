@@ -48,3 +48,33 @@ func TestUnregisterIsIdempotent(t *testing.T) {
 	t.Cleanup(Reset)
 	Unregister("never-registered") // must not panic
 }
+
+func TestRegistrationCleanupPreservesReplacement(t *testing.T) {
+	Reset()
+	t.Cleanup(Reset)
+	oldCleanup := Register("worker", func(Message) bool { return true })
+	var received int
+	newCleanup := Register("worker", func(Message) bool { received++; return true })
+	oldCleanup()
+	oldCleanup()
+	if !Send(Message{To: "worker"}) || received != 1 {
+		t.Fatal("retired registration removed its replacement")
+	}
+	newCleanup()
+	newCleanup()
+	if Send(Message{To: "worker"}) {
+		t.Fatal("cleaned registration still accepted mail")
+	}
+}
+
+func TestRegistrationCleanupAfterResetPreservesNewRoute(t *testing.T) {
+	Reset()
+	t.Cleanup(Reset)
+	cleanup := Register("worker", func(Message) bool { return true })
+	Reset()
+	Register("worker", func(Message) bool { return true })
+	cleanup()
+	if !Send(Message{To: "worker"}) {
+		t.Fatal("cleanup removed a route from a newer registry")
+	}
+}

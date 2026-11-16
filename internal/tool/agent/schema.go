@@ -98,7 +98,8 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 - Acceptance is not acknowledgment or completion. Verify the result before relying on it.
 - Background Bash processes have no agent inbox; inspect their output and use shell tools to manage them.
 - Group members appear in the <group> reminder. The result explains whether delivery waits for a step, user input, or session resume.
-- Keep messages brief and self-contained. They are attributed to you, not the recipient's user. Report results or blockers when asked; skip greetings and bare acknowledgments.`,
+- Keep messages brief, self-contained, and actionable: send instructions, new findings that affect the work, blockers needing a decision, or handoffs. They are attributed to you, not the recipient's user.
+- Do not send routine progress, greetings, bare acknowledgments, repeated unchanged blockers, or final results already delivered by task completion. Reply only when there is new actionable information or a requested answer; do not create acknowledgment/reply loops.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

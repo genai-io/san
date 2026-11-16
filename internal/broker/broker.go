@@ -68,15 +68,23 @@ var (
 )
 
 // Register makes deliver the recipient for addr, replacing any prior recipient,
-// and flushes retained completion mail in order. A rejection leaves the remaining
-// mail pending for a later registration. Deliver must not block.
-func Register(addr string, deliver Deliver) {
+// and flushes retained completion mail in order. The returned cleanup removes
+// only this registration, never a newer replacement. Deliver must not block.
+func Register(addr string, deliver Deliver) func() {
 	mu.Lock()
-	routes[addr] = &registration{deliver: deliver}
+	route := &registration{deliver: deliver}
+	routes[addr] = route
 	mail := pending[addr]
 	mu.Unlock()
 	if mail != nil {
 		flushCompletions(addr, mail)
+	}
+	return func() {
+		mu.Lock()
+		if routes[addr] == route {
+			delete(routes, addr)
+		}
+		mu.Unlock()
 	}
 }
 

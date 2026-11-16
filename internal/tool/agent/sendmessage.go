@@ -212,12 +212,9 @@ func senderLabel(id string) string {
 	return "task " + id
 }
 
-// undeliverableReason explains why a Send to `to` was not accepted, reading the
-// recipient's actual task state so the model gets an accurate next step instead
-// of a blanket "finished" verdict: a just-spawned worker is still starting up
-// (its broker route is registered a beat after its task id is handed out), a
-// running one may have a momentarily full inbox, and only a terminal one truly
-// cannot be reached.
+// undeliverableReason reports the observed task lifecycle, not an assumed
+// transport cause. A failed Send can mean an absent or rejecting route; it does
+// not establish that a mailbox is full or that retrying would help.
 func undeliverableReason(to string) string {
 	if to == broker.Main {
 		return "the main conversation is not currently reachable"
@@ -226,10 +223,11 @@ func undeliverableReason(to string) string {
 	if !found {
 		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
-	if bgTask.GetStatus().Status == task.StatusRunning {
-		return fmt.Sprintf("worker %q is still starting up or its inbox is momentarily full — wait a moment and send again", to)
+	info := bgTask.GetStatus()
+	if info.Status == task.StatusRunning {
+		return fmt.Sprintf("message to worker %q was not accepted by its delivery route; the task is still marked running. Inspect its task status and existing output before deciding how to continue; no continuation was started", to)
 	}
-	return terminalMessageReason(to, bgTask.GetStatus().Status)
+	return terminalMessageReason(to, info.Status)
 }
 
 func terminalMessageReason(to string, status task.TaskStatus) string {

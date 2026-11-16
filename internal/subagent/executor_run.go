@@ -35,6 +35,8 @@ type preparedRun struct {
 	originalPrompt    string
 	toolStarted       bool
 	continuationInput *core.Message // exact preaccepted prompt, retained across async launch
+	initialInput      *core.Message
+	inbox             *runInbox
 	priorFailure      string
 	// Capture original ownership before scheduling child work.
 	store       *session.Store
@@ -307,6 +309,10 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 
 	if run.req.ResumeTaskID != "" {
 		ag.SetMessages(run.history)
+	}
+	if run.initialInput != nil {
+		ag.Append(*run.initialInput)
+	} else if run.req.ResumeTaskID != "" {
 		ag.Append(*run.continuationInput)
 	} else if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
 		return nil, err
@@ -330,7 +336,10 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		// Session-owned hosts do not publish worker addresses in the TUI broker.
 		inboxID = ""
 	}
-	result, err := runWithInbox(ctx, ag, inboxID, run.cfg.maxSteps, run.recording)
+	if run.inbox == nil {
+		run.inbox = newRunInbox(ctx, inboxID, run.recording)
+	}
+	result, err := run.inbox.run(ctx, ag, run.cfg.maxSteps)
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
 	// or continuation instruction again.
@@ -345,13 +354,14 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		if run.rebindHooks != nil {
 			run.rebindHooks(run.cfg.provider, run.cfg.modelID)
 		}
+		run.inbox = newRunInbox(ctx, inboxID, run.recording)
 		fallback, cleanupFallback, buildErr := e.buildAgent(ctx, run, onToolExec, onEvent)
 		if buildErr != nil {
 			return result, buildErr
 		}
 		defer cleanupFallback()
 		fallback.SetMessages(messages)
-		result, err = runWithInbox(ctx, fallback, inboxID, run.cfg.maxSteps, run.recording)
+		result, err = run.inbox.run(ctx, fallback, run.cfg.maxSteps)
 	}
 	if err != nil {
 		if result != nil {

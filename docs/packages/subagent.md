@@ -133,10 +133,11 @@ the event log. Default host wiring remains legacy until the unified cutover.
 - Construction: `Initialize(Options{CWD, PluginAgentPaths})` loads
   definitions, initializes state stores.
 - Per-invocation: `NewExecutor(provider, cwd, model, hookEngine)` →
-  `Executor.Run(ctx, req)` spawns a `core.Agent`, blocks until end of
-  turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
-  the same run in a `task.AgentTask` goroutine and registers with the broker under
-  the task id so main can message it mid-run.
+  `Executor.Run(ctx, req)` runs a foreground agent; `RunBackground(req)` schedules
+  a background execution. TUI executions commit their launch input and register
+  a task-owned inbox before publishing the task ID. Mail received during setup
+  is committed to native history and queued in order until the agent attaches.
+  Session-owned hosts keep their existing transport and do not register TUI routes.
 - Tool authorization and execution share a cwd snapshot, unaffected by sibling
   calls. ACP matches relative/absolute file rules there; writes outside the parent's
   working directories require confirmation even in accept-edits mode. Background
@@ -180,9 +181,17 @@ the event log. Default host wiring remains legacy until the unified cutover.
 - Every execution exit fires `SubagentStop` with the same invocation ID as
   `SubagentStart`. Foreground and background agents retain a Task ID for follow-up
   through `SendMessage`. See [task lifecycle and continuation](task.md#continuation-and-failure-handling).
-- Inbox shutdown and message acceptance share a lock. Accepted input is processed
-  within the step budget or saved in native history on failure/cancellation.
-  A closing inbox rejects new input so the sender can retry after completion.
+- Inbox shutdown and message acceptance share a lock. At most 64 messages may
+  await consumption; rejected mail is not committed or silently dropped.
+  Accepted input is processed within the step budget or preserved in native
+  history on failure/cancellation, including before agent attachment. Normal
+  completion, setup failure and cancellation unregister the owned route and
+  release queued messages, agent/session references and cancellation callbacks.
+  Cleanup cannot remove a replacement execution's registration.
+- `SendMessage` is for actionable instructions, new findings, decision-worthy
+  blockers and handoffs, not routine progress, repeated unchanged blockers,
+  acknowledgments or final results already returned through task completion.
+  A rejected route does not prove an inbox is full or justify a retry loop.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
