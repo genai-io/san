@@ -308,7 +308,7 @@ func mutedThinkingBody(thinking string, width int, md *MDRenderer) string {
 		// Drop bold markers as the markdown pass does, so a "**Title**" line
 		// doesn't shift when the block settles.
 		wrapWidth := max(width-streamWrapReserve, minWrapWidth)
-		text = lipgloss.NewStyle().Width(wrapWidth).Render(strings.ReplaceAll(thinking, "**", ""))
+		text = renderStreamingText(strings.ReplaceAll(thinking, "**", ""), wrapWidth)
 	}
 	var lines []string
 	for line := range strings.SplitSeq(strings.Trim(text, "\n"), "\n") {
@@ -412,6 +412,16 @@ func RenderAssistantMessage(params AssistantParams) string {
 	return sb.String()
 }
 
+// renderStreamingText keeps live CJK text on the same Unicode line boundaries
+// as settled paragraphs. Expand tabs before measuring their display width.
+func renderStreamingText(content string, width int) string {
+	style := lipgloss.NewStyle()
+	if strings.ContainsFunc(content, paragraphCJK) {
+		content = wrapParagraph(style.Render(content), width)
+	}
+	return style.Width(width).Render(content)
+}
+
 // formatAssistantContent formats the assistant message content based on streaming state.
 func formatAssistantContent(params AssistantParams) string {
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
@@ -427,7 +437,7 @@ func formatAssistantContent(params AssistantParams) string {
 		// Plain-wrap the streaming tail so its \n-line count matches the height
 		// calc; reserve streamWrapReserve cols (gutter + last-column slack).
 		wrapWidth := max(params.Width-streamWrapReserve, minWrapWidth)
-		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content)
+		return renderStreamingText(params.Content, wrapWidth)
 	}
 
 	if params.Content == "" {

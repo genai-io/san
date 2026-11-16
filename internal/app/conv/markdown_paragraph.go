@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/glamour/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yuin/goldmark"
@@ -19,8 +20,14 @@ import (
 // without wrapping or padding, then apply Unicode line breaking to styled text.
 // Goldmark supplies the boundaries; this is not another Markdown block parser.
 func (r *MDRenderer) renderPlain(content string) (string, error) {
+	return renderParagraphs(content, r.width, r.renderer, r.paragraphRenderer)
+}
+
+// renderParagraphs shares paragraph layout between ordinary prose and narrowed,
+// dimmed quote bodies, while leaving code and reference documents to glamour.
+func renderParagraphs(content string, width int, normal, unwrapped *glamour.TermRenderer) (string, error) {
 	if !strings.ContainsFunc(content, paragraphCJK) {
-		return r.renderer.Render(content)
+		return normal.Render(content)
 	}
 	source := []byte(content)
 	md := goldmark.New(goldmark.WithExtensions(extension.GFM, extension.DefinitionList))
@@ -29,7 +36,7 @@ func (r *MDRenderer) renderPlain(content string) (string, error) {
 	// Reference definitions can live outside a paragraph's source span. Keep the
 	// complete document together rather than lose their resolution when slicing.
 	if len(context.References()) != 0 {
-		return r.renderer.Render(content)
+		return normal.Render(content)
 	}
 	var out strings.Builder
 	offset := 0
@@ -44,26 +51,26 @@ func (r *MDRenderer) renderPlain(content string) (string, error) {
 			continue
 		}
 		if start > offset {
-			rendered, err := r.renderer.Render(content[offset:start])
+			rendered, err := normal.Render(content[offset:start])
 			if err != nil {
 				return "", err
 			}
 			out.WriteString(rendered)
 		}
-		rendered, err := r.paragraphRenderer.Render(paragraph)
+		rendered, err := unwrapped.Render(paragraph)
 		if err != nil {
 			return "", err
 		}
 		out.WriteString("\n\n")
-		out.WriteString(wrapParagraph(rendered, r.width))
+		out.WriteString(wrapParagraph(rendered, width))
 		out.WriteString("\n\n")
 		offset = end
 	}
 	if offset == 0 {
-		return r.renderer.Render(content)
+		return normal.Render(content)
 	}
 	if offset < len(content) {
-		rendered, err := r.renderer.Render(content[offset:])
+		rendered, err := normal.Render(content[offset:])
 		if err != nil {
 			return "", err
 		}

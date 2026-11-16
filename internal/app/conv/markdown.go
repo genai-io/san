@@ -56,8 +56,10 @@ type MDRenderer struct {
 	// blockquotes ourselves (see renderBlockQuote) because glamour's native
 	// blockquote wrapping drops the │ prefix on CJK continuation lines.
 	blockQuoteRenderer *glamour.TermRenderer
-	width              int
-	darkBg             bool // tracks last known terminal background to detect theme changes
+	// blockQuoteParagraphRenderer styles quote prose without wrapping or padding.
+	blockQuoteParagraphRenderer *glamour.TermRenderer
+	width                       int
+	darkBg                      bool // tracks last known terminal background to detect theme changes
 	// cache memoizes Render output keyed by its raw input. The active tail is
 	// re-rendered on every frame — every spinner tick, for the whole duration a
 	// tool runs — while its content sits unchanged, so without this the full
@@ -140,6 +142,7 @@ func (r *MDRenderer) buildRenderers(dark bool) {
 	r.renderer = buildGlamourRenderer(r.width, dark, nil)
 	r.paragraphRenderer = buildGlamourRenderer(0, dark, nil)
 	r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
+	r.blockQuoteParagraphRenderer = buildGlamourRenderer(0, dark, &textDim)
 	r.darkBg = dark
 	// Rendered output is tied to this width/background; drop any stale entries.
 	r.cache = make(map[string]string)
@@ -401,8 +404,9 @@ func closesFence(line string, ch byte, length int) bool {
 // token. Rendering the inner markdown ourselves (dimmed, narrowed by the prefix)
 // and prefixing each line keeps the block intact.
 func (r *MDRenderer) renderBlockQuote(content string) string {
-	inner := stripBlockQuoteMarkers(content)
-	rendered, err := r.blockQuoteRenderer.Render(inner)
+	inner := normalizeLineBreaks(stripBlockQuoteMarkers(content))
+	quoteWidth := max(r.width-blockQuoteIndentWidth, minWrapWidth)
+	rendered, err := renderParagraphs(inner, quoteWidth, r.blockQuoteRenderer, r.blockQuoteParagraphRenderer)
 	if err != nil {
 		rendered = inner
 	} else {
@@ -595,7 +599,13 @@ func (r *MDRenderer) renderList(content string) string {
 
 		contentWidth := max(r.width-len(indent)-markerWidth, minWrapWidth/2)
 		styled := renderInlineMarkdown(itemText)
-		wrapped := strings.Split(xansi.Wrap(styled, contentWidth, " ,.;-+|"), "\n")
+		var flowed string
+		if strings.ContainsFunc(xansi.Strip(styled), paragraphCJK) {
+			flowed = wrapParagraph(styled, contentWidth)
+		} else {
+			flowed = xansi.Wrap(styled, contentWidth, " ,.;-+|")
+		}
+		wrapped := strings.Split(flowed, "\n")
 
 		for i, line := range wrapped {
 			if i == 0 {
