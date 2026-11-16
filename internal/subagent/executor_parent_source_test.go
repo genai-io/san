@@ -23,6 +23,7 @@ func TestParentBuildSendMessageContinuesOriginalChildWithNativeSource(t *testing
 	store, parent := continuationSessions(t, "owner")
 	d := aitest.New(aitest.Says("first answer"), aitest.Says("continued answer"))
 	e := NewExecutor(continuationProvider{d}, t.TempDir(), "aitest", nil)
+	e.ConfigureOwner(task.Default(), Default(), nil, nil)
 	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}

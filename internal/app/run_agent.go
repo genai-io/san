@@ -35,6 +35,7 @@ type AgentRunOptions struct {
 // policy before any worker can be admitted. A nil parent is a top-level run.
 func newHeadlessExecutor(provider llm.Provider, cwd, model string, settings *setting.Data, store *session.Store, registry *subagent.Registry, tasks *task.Manager) (*subagent.Executor, error) {
 	executor := subagent.NewExecutor(provider, cwd, model, nil)
+	executor.SetMessaging(false)
 	if err := executor.SetSessions(store, nil); err != nil {
 		return nil, err
 	}

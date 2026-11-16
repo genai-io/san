@@ -123,12 +123,13 @@ Continuation keeps its existing background execution contract.
 
 ## Lifecycle
 
-Typed execution is opt-in through `SetTypedSessions(store, parent)`. Creation
-commits the original parent/tool-call link before dispatch; continuation reopens
-only that parent's child and restores active native context. Typed parent policy
-uses `SetPermissionResolver` to retain actual decision authority. Results expose
-the committed child message sequence for later delivery; task logs never write to
-the event log. Default host wiring remains legacy until the unified cutover.
+`SetSessions(store, parent)` binds native persistence. Creation commits the
+original parent/tool-call link before dispatch; continuation reopens only that
+parent's child and restores active context. `ConfigureOwner` binds task ownership
+and permission policy; it does not select the message transport. TUI broker routes
+are enabled by default. ACP and headless hosts call `SetMessaging(false)`
+before launching workers. Results expose the committed child message sequence
+for later delivery; task logs never write to the event log.
 
 - Construction: `Initialize(Options{CWD, PluginAgentPaths})` loads
   definitions, initializes state stores.
@@ -148,7 +149,7 @@ the event log. Default host wiring remains legacy until the unified cutover.
   acceptance cancels admitted work and preserves its input. A model
   fallback hands the same registered inbox to the replacement agent; mail sent
   while it is built waits instead of being rejected.
-  Session-owned hosts keep their existing transport and do not register TUI routes.
+  ACP and headless hosts explicitly disable TUI routes and retain their own transport.
 - Tool authorization and execution share a cwd snapshot, unaffected by sibling
   calls. ACP matches relative/absolute file rules there; writes outside the parent's
   working directories require confirmation even in accept-edits mode. Background
