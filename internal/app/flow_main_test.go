@@ -94,7 +94,7 @@ func TestFlowMainReviewQueuedRequirementsOverrideAcceptance(t *testing.T) {
 	}
 	m.userInput.Queue.Enqueue("new requirement", nil)
 	reply := make(chan flowMainReply, 1)
-	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: context.Background(), review: true, accepted: true, reply: reply})
+	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: context.Background(), op: flowMainReview, accepted: true, reply: reply})
 	if r := <-reply; !r.revise || r.err != nil {
 		t.Fatalf("review = %+v", r)
 	}
@@ -105,7 +105,7 @@ func TestFlowMainReviewQueuedRequirementsOverrideAcceptance(t *testing.T) {
 		t.Fatal("review released input")
 	}
 	m.userInput.Queue.Dequeue()
-	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: context.Background(), review: true, accepted: true, reply: reply})
+	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: context.Background(), op: flowMainReview, accepted: true, reply: reply})
 	if r := <-reply; r.revise || r.err != nil {
 		t.Fatalf("review = %+v", r)
 	}
@@ -121,6 +121,11 @@ func TestFlowMainReviewQueuedRequirementsOverrideAcceptance(t *testing.T) {
 	default:
 	}
 	l.Close(nil)
+	if !m.flowMainCapturing() {
+		t.Fatal("close released accepted Flow before UI consumed its outcome")
+	}
+	m.onFlowMain(<-m.flowMain.events)
+	m.flowMain.bind(nil)
 }
 
 func TestFlowMainNativeRuntimeResultAndIdentity(t *testing.T) { testFlowMainNativeRuntime(t, true) }
@@ -158,7 +163,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 		t.Fatal("review notice entered native pending input or inference")
 	}
 	reviewReply := make(chan flowMainReply, 1)
-	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: t.Context(), review: true, accepted: false, reply: reviewReply})
+	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: t.Context(), op: flowMainReview, accepted: false, reply: reviewReply})
 	if review := <-reviewReply; review.err != nil || review.revise {
 		t.Fatal("ordinary notice counted as user revision")
 	}
@@ -335,7 +340,7 @@ func TestFlowMainBusyWaitsWithoutReleasingWriterDirections(t *testing.T) {
 	if m.userInput.Queue.Len() != 1 {
 		t.Fatal("old turn consumed writer directions")
 	}
-	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), cancel: true, reply: reply})
+	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), op: flowMainCancel, reply: reply})
 	if r := <-reply; r.err == nil {
 		t.Fatal("cancelled queued writer succeeded")
 	}
@@ -344,6 +349,44 @@ func TestFlowMainBusyWaitsWithoutReleasingWriterDirections(t *testing.T) {
 	}
 	if m.userInput.Queue.Len() != 1 || !m.pendingMessages.Held() {
 		t.Fatal("cancelled pending writer lost queue hold")
+	}
+}
+
+func TestFlowMainBusyStartsAtNativeTurnBoundary(t *testing.T) {
+	m, _ := compactQueueModel(t)
+	m.flowMain = newFlowMainBridge()
+	lease, err := m.flowMain.bind(m.services.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { m.retireFlowMain() })
+	m.conv.Stream.Active = true
+	m.userInput.Queue.Enqueue("for the next writer only", nil)
+	started := false
+	call := flow.Call{Prompt: "write", OnExecution: func(flow.Execution) { started = true }}
+	m.onFlowMain(flowMainMsg{lease: lease.(*flowMainLease), ctx: t.Context(), call: &call, reply: make(chan flowMainReply, 1)})
+	if started {
+		t.Fatal("writer interrupted the old main turn")
+	}
+	m.Update(conv.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: core.TurnEnded{Result: core.Result{StopReason: core.StopEndTurn}}})
+	if !started || m.flowMainRequest == nil || m.flowMainRequest.messageID == "" {
+		t.Fatal("normal native turn boundary did not start the waiting writer")
+	}
+}
+
+func TestFlowMainStaleCancelDoesNotReplyTwice(t *testing.T) {
+	m, _ := compactQueueModel(t)
+	m.flowMain = newFlowMainBridge()
+	lease, err := m.flowMain.bind(m.services.Session).Open(t.Context(), flow.MainRunInfo{SessionID: m.sessionID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := make(chan flowMainReply, 1)
+	reply <- flowMainReply{output: "already finished"}
+	m.retireFlowMain()
+	m.onFlowMain(flowMainMsg{op: flowMainCancel, lease: lease.(*flowMainLease), reply: reply})
+	if r := <-reply; r.output != "already finished" {
+		t.Fatal("stale cancellation replaced a completed reply")
 	}
 }
 

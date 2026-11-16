@@ -168,9 +168,6 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	if m.flowMainCapturing() || m.flowMainRequest != nil {
 		commitCmds = append(commitCmds, m.confirmFlowMainInput())
 		finalizationErr = m.appendTurnState()
-		if m.flowMainRequest != nil && m.flowMainRequest.messageID == "" {
-			commitCmds = append(commitCmds, func() tea.Msg { return flowMainReadyMsg{} })
-		}
 		return tea.Batch(append(commitCmds, m.ListenForAgentEvents())...)
 	}
 
@@ -217,14 +214,13 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 }
 
 func (m *model) OnAgentStop(err error) tea.Cmd {
-	if r := m.flowMainRequest; r != nil {
-		m.flowMainRequest = nil
+	if m.flowMainRequest != nil {
 		m.pendingMessages.Hold(nil)
 		failure := err
 		if failure == nil {
 			failure = errors.New("main runtime stopped")
 		}
-		replyFlowMain(r.msg, flowMainReply{err: failure})
+		m.failFlowMain(failure)
 	}
 	// /clear and manual stop cancel the active agent context; that is expected
 	// shutdown, not an agent failure the user needs to see.

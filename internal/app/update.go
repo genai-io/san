@@ -649,8 +649,6 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.onMainNotice(msg.notice)
 	case input.FlowDraftRequestMsg:
 		return m, m.generateFlow(msg)
-	case flowMainReadyMsg:
-		return m, m.startFlowMainNode()
 	case flowMainMsg:
 		return m, tea.Batch(m.onFlowMain(msg), awaitFlowMain(m.flowMain))
 	case flowDraftedMsg:
