@@ -62,6 +62,25 @@ func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
 	}
 }
 
+func TestSettledHistoryKeepsParsedRows(t *testing.T) {
+	m := fixedComposerModel(80, 8)
+	m.queueScrollbackPrint("\x1b[31mFIRST\n"+strings.Repeat("older row\n", 20)+"LATEST\x1b[0m", 0)
+	if len(m.flush.pendingPrints) != 1 {
+		t.Fatal("settled history did not overflow")
+	}
+	head := m.flush.pendingPrints[0]
+	if head.remaining != "" || len(head.rows) == 0 || head.width != 80 {
+		t.Fatal("parsed history was serialized for a second parse")
+	}
+	if head.rows[0][0].Style.Fg == nil {
+		t.Fatal("handoff lost cell styling")
+	}
+	m.env.Ready = false
+	if !strings.Contains(ansi.Strip(m.pendingScrollbackView()), "FIRST") {
+		t.Fatal("fallback handoff omitted queued cells")
+	}
+}
+
 func TestResizeSkipsRowsTheTerminalScrolledOff(t *testing.T) {
 	setup := func() (*model, []string) {
 		m := fixedComposerModel(80, 24)
@@ -78,7 +97,7 @@ func TestResizeSkipsRowsTheTerminalScrolledOff(t *testing.T) {
 	if len(m.flush.pendingPrints) != 1 {
 		t.Fatal("resize left no overflow to commit")
 	}
-	committed := ansi.Strip(m.flush.pendingPrints[0].remaining)
+	committed := ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows))
 	if strings.Contains(committed, "settled row 03") || !strings.HasPrefix(committed, "settled row 04") {
 		t.Fatalf("commit repeats or skips rows the terminal scrolled off: %q", committed)
 	}
@@ -86,7 +105,7 @@ func TestResizeSkipsRowsTheTerminalScrolledOff(t *testing.T) {
 	m, frame = setup()
 	frame[1] = "something else"
 	resizeTerminal(m, 80, 14, tea.ResizeScrollbackMsg{Known: true, Lines: frame[:4]})
-	if committed := ansi.Strip(m.flush.pendingPrints[0].remaining); !strings.HasPrefix(committed, "settled row 00") {
+	if committed := ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows)); !strings.HasPrefix(committed, "settled row 00") {
 		t.Fatalf("a report that does not match the frame dropped rows: %q", committed)
 	}
 }
@@ -200,7 +219,7 @@ func TestSettledLineReflowsAfterPartialHistoryHandoff(t *testing.T) {
 		if len(m.flush.pendingPrints) != 1 {
 			t.Fatal("long line did not overflow into history")
 		}
-		printed := strings.ReplaceAll(ansi.Strip(m.flush.pendingPrints[0].remaining), "\n", "")
+		printed := strings.ReplaceAll(ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows)), "\n", "")
 		retained := ansi.Strip(renderScrollbackLines(m.flush.visible))
 		if printed+retained != ansi.Strip(text) || strings.Contains(retained, "\n") {
 			t.Fatalf("partial handoff lost text or stored soft wraps: printed=%q, retained=%q", printed, retained)
@@ -220,7 +239,7 @@ func TestLiveOutputMovesCompletedReplyIntoHistory(t *testing.T) {
 	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "```text\n" + strings.Repeat("live output\n", 30)}}
 	m.Update(tea.KeyReleaseMsg{})
 	if len(m.flush.visible) != 0 || len(m.flush.pendingPrints) != 1 ||
-		!strings.Contains(m.flush.pendingPrints[0].remaining, "SETTLED-REPLY") {
+		!strings.Contains(renderScrollbackLines(m.flush.pendingPrints[0].rows), "SETTLED-REPLY") {
 		t.Fatal("growing live output hid settled text without queuing it for history")
 	}
 }
@@ -339,6 +358,12 @@ func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
 		{name: "wide graphemes", content: "界界界", width: 4, rows: 2, plain: "界界\n界"},
 		{name: "emoji graphemes", content: "🏳️‍🌈🏳️‍🌈🏳️‍🌈", width: 4, rows: 2, plain: "🏳️‍🌈🏳️‍🌈\n🏳️‍🌈"},
 		{name: "trailing newline", content: "a\n", width: 4, rows: 2, plain: "a\n"},
+		{name: "empty lines", content: "\n\n", width: 0, rows: 3, plain: "\n\n"},
+		{name: "style-only last row", content: "a\n\x1b[31m", width: 0, rows: 2, plain: "a\n"},
+		{name: "CRLF", content: "one\r\ntwo\r\n", width: 4, rows: 3, plain: "one\ntwo\n"},
+		{name: "carriage return overwrite", content: "abc\rd", width: 4, rows: 1, plain: "dbc"},
+		{name: "odd-width CJK", content: "界界界", width: 3, rows: 3, plain: "界\n界\n界"},
+		{name: "combining marks", content: "a\u0301b", width: 1, rows: 2, plain: "a\u0301\nb"},
 	}
 
 	for _, tt := range tests {

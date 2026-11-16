@@ -206,6 +206,17 @@ func ApplyEventBatch(base *Projection, sessionID string, events []Event, validat
 // The caller must discard the whole builder on error, not publish a partial
 // batch. A nil builder starts a new prefix. Never pass a published projection.
 func applyReplayEventBatch(p *Projection, sessionID string, events []Event, validation EventValidationContext) (*Projection, error) {
+	return applyEventBatch(p, sessionID, events, validation, false)
+}
+
+// applyDecodedEventBatch takes ownership of events freshly accepted by
+// decodeEventBatchPayload. Neither the builder nor the events may be published
+// or reused; discard the builder on error. JSON validation has already run.
+func applyDecodedEventBatch(p *Projection, sessionID string, events []Event, validation EventValidationContext) (*Projection, error) {
+	return applyEventBatch(p, sessionID, events, validation, true)
+}
+
+func applyEventBatch(p *Projection, sessionID string, events []Event, validation EventValidationContext, decoded bool) (*Projection, error) {
 	if p == nil {
 		p = &Projection{
 			data: projectionData{
@@ -229,15 +240,19 @@ func applyReplayEventBatch(p *Projection, sessionID string, events []Event, vali
 		if incoming.Type != incoming.Payload.eventType() {
 			return nil, fmt.Errorf("payload/type mismatch")
 		}
-		b, err := json.Marshal(incoming)
-		if err != nil {
-			return nil, err
-		}
 		var e Event
-		if err = json.Unmarshal(b, &e); err != nil {
-			return nil, err
+		if decoded {
+			e = incoming
+		} else {
+			b, err := json.Marshal(incoming)
+			if err != nil {
+				return nil, err
+			}
+			if err = json.Unmarshal(b, &e); err != nil {
+				return nil, err
+			}
 		}
-		if err = p.apply(e, validation); err != nil {
+		if err := p.apply(e, validation); err != nil {
 			return nil, fmt.Errorf("event %d (%s): %w", e.Seq, e.Type, err)
 		}
 		p.data.Events = append(p.data.Events, e)

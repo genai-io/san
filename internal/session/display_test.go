@@ -87,6 +87,27 @@ func TestNativeDisplayPersistedHistoryAndChild(t *testing.T) {
 	}
 }
 
+func TestNativeDisplayDetachesToolDetails(t *testing.T) {
+	result := ai.ToolResult{ToolCallID: "call", Content: ai.TextContent("original")}
+	p := Projection{data: projectionData{
+		Messages: []ai.Message{core.ToolResultMessage(result)},
+		Events: []Event{{Type: EventToolFinish, Payload: &ToolFinishPayload{
+			CallID: "call", Details: json.RawMessage(`{"future":"metadata"}`),
+		}}},
+	}}
+	before := eventCopy(p.data)
+	rows := (&Store{}).ChatRows(p)
+	raw, ok := rows[0].ToolDetails.(json.RawMessage)
+	if !ok {
+		t.Fatalf("unknown details = %T, want raw JSON", rows[0].ToolDetails)
+	}
+	raw[0] = ' '
+	rows[0].ToolResult.Content[0].Text = "changed"
+	if !reflect.DeepEqual(before, p.data) {
+		t.Fatal("display rows share mutable values with the projection")
+	}
+}
+
 func TestNativeDisplayPreviewDetailsAndWriterFreeRead(t *testing.T) {
 	ctx := context.Background()
 	store, err := openStoreIn(t.TempDir())

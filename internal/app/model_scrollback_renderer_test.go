@@ -811,7 +811,7 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 			for i := 1; i <= height*2; i++ {
 				rows = append(rows, fmt.Sprintf("REPLY-%03d", i))
 			}
-			program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
+			program.Send(fixedComposerCommitMsg("\x1b[31m" + strings.Join(rows, " 中文\n") + " 中文\x1b[0m"))
 			waitForCommit()
 			// The queue drains before the restored View is flushed.
 			inOrder := func(all string) string {

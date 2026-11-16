@@ -355,8 +355,7 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 		return nil
 	}
 	m.flush.dropVisibleRows(rows[:overflow])
-	printed := renderScrollbackLines(rows[:overflow])
-	return m.flush.queueScrollbackPrint(printed, 0)
+	return m.flush.enqueueScrollback(pendingScrollbackPrint{rows: rows[:overflow], width: m.env.Width})
 }
 
 // dropVisibleRows takes rows, the leading wrapped rows of visible, off it.
@@ -589,12 +588,12 @@ func (f *flushState) queueScrollbackPrint(content string, frameRows int) tea.Cmd
 	if content == "" {
 		return nil
 	}
+	return f.enqueueScrollback(pendingScrollbackPrint{remaining: content, frameRows: frameRows})
+}
+
+func (f *flushState) enqueueScrollback(pending pendingScrollbackPrint) tea.Cmd {
 	f.nextPrintID++
-	pending := pendingScrollbackPrint{
-		id:        f.nextPrintID,
-		remaining: content,
-		frameRows: frameRows,
-	}
+	pending.id = f.nextPrintID
 	f.pendingPrints = append(f.pendingPrints, pending)
 	if len(f.pendingPrints) > 1 {
 		return nil
@@ -744,6 +743,11 @@ func isPadding(c *uv.Cell) bool {
 		c.Style.Bg == nil && c.Style.UnderlineColor == nil && c.Style.Underline == uv.UnderlineNone
 }
 
+// Scrollback is parsed once; it needs no changed-cell tracking for redraws.
+type scrollbackBuffer struct{ *uv.Buffer }
+
+func (*scrollbackBuffer) WidthMethod() uv.WidthMethod { return ansi.GraphemeWidth }
+
 // scrollbackPhysicalLines decomposes content into explicit terminal rows before
 // handing it to Bubble Tea: ANSI escapes are zero-width, grapheme clusters
 // retain their terminal width, soft wraps consume rows, and a trailing newline
@@ -752,7 +756,7 @@ func scrollbackPhysicalLines(content string, width int) []uv.Line {
 	if content == "" {
 		return nil
 	}
-	height := len(strings.Split(content, "\n"))
+	height := strings.Count(content, "\n") + 1
 	bufferWidth := width
 	if bufferWidth <= 0 {
 		bufferWidth = 1
@@ -770,8 +774,7 @@ func scrollbackPhysicalLines(content string, width int) []uv.Line {
 		}
 	}
 
-	buffer := uv.NewScreenBuffer(bufferWidth, height)
-	buffer.Method = ansi.GraphemeWidth
+	buffer := &scrollbackBuffer{Buffer: uv.NewBuffer(bufferWidth, height)}
 	styled := uv.NewStyledString(content)
 	styled.Wrap = true
 	styled.Draw(buffer, buffer.Bounds())
@@ -836,6 +839,9 @@ func (m *model) pendingScrollbackView() string {
 	handoff := head.current
 	if !head.started {
 		handoff = head.remaining
+		if len(head.rows) > 0 {
+			handoff = renderScrollbackLines(slices.Clone(head.rows))
+		}
 	}
 	if handoff == "" {
 		return ""

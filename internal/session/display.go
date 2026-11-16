@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/genai-io/san/internal/atomicfile"
@@ -72,7 +73,7 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 	after := make(map[string][]core.ChatMessage)
 	details := make(map[string][]byte)
 	last := ""
-	for _, event := range projection.Events() {
+	for _, event := range projection.data.Events {
 		switch p := event.Payload.(type) {
 		case *MessageAppendPayload:
 			last = p.Messages[len(p.Messages)-1].ID
@@ -85,7 +86,7 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 			}
 			after[anchor] = append(after[anchor], core.ChatMessage{Role: core.ChatNotice, Content: p.Text, AgentNotice: p.ByAgent})
 		case *ToolFinishPayload:
-			details[p.CallID] = p.Details
+			details[p.CallID] = slices.Clone(p.Details)
 		}
 	}
 	marker := "\n\n[Full output persisted to blobs/tool-result/"
