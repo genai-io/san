@@ -1,6 +1,9 @@
 package broker
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestSendRoutesToRecipientOnly(t *testing.T) {
 	Reset()
@@ -76,5 +79,21 @@ func TestRegistrationCleanupAfterResetPreservesNewRoute(t *testing.T) {
 	cleanup()
 	if !Send(Message{To: "worker"}) {
 		t.Fatal("cleanup removed a route from a newer registry")
+	}
+}
+
+func TestSendErrReportsRejectionReason(t *testing.T) {
+	Reset()
+	t.Cleanup(Reset)
+	if err := SendErr(Message{To: "worker"}); !errors.Is(err, ErrNoRecipient) {
+		t.Fatalf("absent route = %v", err)
+	}
+	Register("plain", func(Message) bool { return false })
+	if err := SendErr(Message{To: "plain"}); !errors.Is(err, ErrRejected) {
+		t.Fatalf("plain rejection = %v", err)
+	}
+	RegisterAccept("worker", func(Message) error { return ErrInboxFull })
+	if err := SendErr(Message{To: "worker"}); !errors.Is(err, ErrInboxFull) || Send(Message{To: "worker"}) {
+		t.Fatalf("recipient reason lost: %v", err)
 	}
 }

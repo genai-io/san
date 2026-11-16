@@ -339,11 +339,16 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	if run.inbox == nil {
 		run.inbox = newRunInbox(ctx, inboxID, run.recording)
 	}
-	result, err := run.inbox.run(ctx, ag, run.cfg.maxSteps)
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
-	// or continuation instruction again.
-	if ctx.Err() == nil && run.recording.Err() == nil && (run.recorder == nil || run.recorder.Err() == nil) && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
+	// or continuation instruction again. The inbox stays registered across the
+	// handoff, so mail sent while the fallback is built waits for it.
+	fallbackModel := false
+	result, err := run.inbox.run(ctx, ag, run.cfg.maxSteps, func(err error) bool {
+		fallbackModel = ctx.Err() == nil && run.recording.Err() == nil && (run.recorder == nil || run.recorder.Err() == nil) && !run.toolStarted && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID)
+		return fallbackModel
+	})
+	if fallbackModel {
 		messages := ag.Messages()
 		run.cfg.provider, run.cfg.modelID = e.provider, e.parentModelID
 		if run.recording != nil {
@@ -354,14 +359,13 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		if run.rebindHooks != nil {
 			run.rebindHooks(run.cfg.provider, run.cfg.modelID)
 		}
-		run.inbox = newRunInbox(ctx, inboxID, run.recording)
 		fallback, cleanupFallback, buildErr := e.buildAgent(ctx, run, onToolExec, onEvent)
 		if buildErr != nil {
 			return result, buildErr
 		}
 		defer cleanupFallback()
 		fallback.SetMessages(messages)
-		result, err = run.inbox.run(ctx, fallback, run.cfg.maxSteps)
+		result, err = run.inbox.run(ctx, fallback, run.cfg.maxSteps, nil)
 	}
 	if err != nil {
 		if result != nil {

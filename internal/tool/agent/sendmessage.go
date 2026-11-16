@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -119,7 +120,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	display := brokerSubject(from, subject)
 	sourceSession, sourceSeq := tool.MessageSourceFromContext(ctx)
-	delivered := broker.Send(broker.Message{
+	sendErr := broker.SendErr(broker.Message{
 		SourceSession: sourceSession,
 		SourceSeq:     sourceSeq,
 		SessionID:     task.SessionIDFromContext(ctx),
@@ -128,13 +129,13 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		Subject:       display,
 		Content:       wrapAgentMessage(from, display, message),
 	})
-	if !delivered {
+	if sendErr != nil {
 		if worker, found := task.Default().Get(to); found && worker.GetType() == task.TaskTypeAgent {
 			if info := worker.GetStatus(); info.Status != task.StatusRunning {
 				return t.continueWorker(ctx, info, subject, message)
 			}
 		}
-		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to))
+		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to, sendErr))
 	}
 
 	return toolresult.ToolResult{
@@ -212,10 +213,9 @@ func senderLabel(id string) string {
 	return "task " + id
 }
 
-// undeliverableReason reports the observed task lifecycle, not an assumed
-// transport cause. A failed Send can mean an absent or rejecting route; it does
-// not establish that a mailbox is full or that retrying would help.
-func undeliverableReason(to string) string {
+// undeliverableReason reports the recipient's stated rejection and observed
+// task lifecycle, never an assumed transport cause or blind retry advice.
+func undeliverableReason(to string, sendErr error) string {
 	if to == broker.Main {
 		return "the main conversation is not currently reachable"
 	}
@@ -224,6 +224,9 @@ func undeliverableReason(to string) string {
 		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
 	info := bgTask.GetStatus()
+	if info.Status == task.StatusRunning && errors.Is(sendErr, broker.ErrInboxFull) {
+		return fmt.Sprintf("worker %q is running but already has the maximum number of unread messages; it was not queued. Do not resend: wait for the worker to read its queue, reply, or complete, then send only new actionable information", to)
+	}
 	if info.Status == task.StatusRunning {
 		return fmt.Sprintf("message to worker %q was not accepted by its delivery route; the task is still marked running. Inspect its task status and existing output before deciding how to continue; no continuation was started", to)
 	}

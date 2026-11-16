@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -29,7 +30,7 @@ type runInbox struct {
 func newRunInbox(ctx context.Context, taskID string, owner *session.Session) *runInbox {
 	inbox := &runInbox{ctx: ctx, owner: owner, accepting: true}
 	if taskID != "" {
-		inbox.unregister = broker.Register(taskID, inbox.deliver)
+		inbox.unregister = broker.RegisterAccept(taskID, inbox.deliver)
 	}
 	inbox.mu.Lock()
 	inbox.stop = context.AfterFunc(ctx, inbox.close)
@@ -37,31 +38,31 @@ func newRunInbox(ctx context.Context, taskID string, owner *session.Session) *ru
 	return inbox
 }
 
-func (inbox *runInbox) deliver(m broker.Message) bool {
+func (inbox *runInbox) deliver(m broker.Message) error {
 	inbox.mu.Lock()
 	defer inbox.mu.Unlock()
 	if !inbox.accepting || inbox.closed || inbox.ctx.Err() != nil || (inbox.owner != nil && inbox.owner.Err() != nil) {
-		return false
+		return broker.ErrRejected
 	}
 	pending := len(inbox.pending)
 	if inbox.agent != nil {
 		pending += inbox.agent.Pending()
 	}
 	if pending >= maxPendingWorkerMessages {
-		return false
+		return broker.ErrInboxFull
 	}
 	message := core.UserMessage(m.Content, nil)
 	var source *session.EventRef
 	if m.SourceSession != "" || m.SourceSeq != 0 {
 		if inbox.owner == nil || m.SourceSession == "" || m.SourceSeq == 0 {
-			return false
+			return broker.ErrRejected
 		}
 		source = &session.EventRef{Session: m.SourceSession, Seq: m.SourceSeq}
 	}
 	if inbox.owner != nil {
 		message.ID = core.NewMessageID()
 		if err := inbox.owner.AcceptInput(inbox.ctx, message, source); err != nil {
-			return false
+			return broker.ErrRejected
 		}
 	}
 	if inbox.agent == nil {
@@ -69,7 +70,7 @@ func (inbox *runInbox) deliver(m broker.Message) bool {
 	} else {
 		inbox.agent.Append(message)
 	}
-	return true
+	return nil
 }
 
 func (inbox *runInbox) close() {
@@ -108,8 +109,10 @@ func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
 	// Sourced continuations were already committed during their permission gate.
 	if run.req.ResumeTaskID == "" || (run.req.SourceSession == "" && run.req.SourceSeq == 0) {
 		if err := run.recording.AcceptInput(ctx, *input, nil); err != nil {
-			_ = run.recording.Close()
-			return err
+			if run.checkpoint != nil {
+				run.checkpoint.persistenceErr = err
+			}
+			return errors.Join(err, run.recording.Close())
 		}
 	}
 	run.initialInput = input
@@ -117,13 +120,16 @@ func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
 	return nil
 }
 
-// runWithInbox closes acceptance and drains late input within one execution budget.
-func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps int, owner *session.Session) (*core.Result, error) {
-	return newRunInbox(ctx, taskID, owner).run(ctx, ag, maxSteps)
-}
-
-func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int) (*core.Result, error) {
-	defer inbox.close()
+// run attaches ag, then closes acceptance and drains late input within one
+// execution budget. When handoff approves the failure, the route stays live and
+// later mail waits for the next run on this inbox instead of being rejected.
+func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int, handoff func(error) bool) (*core.Result, error) {
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			inbox.close()
+		}
+	}()
 	inbox.mu.Lock()
 	if inbox.closed || ctx.Err() != nil {
 		inbox.mu.Unlock()
@@ -153,7 +159,7 @@ func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int) (*c
 			result.StopReason = core.StopMaxSteps
 		}
 		if err != nil || ctx.Err() != nil || inbox.closed || result == nil || result.StopReason != core.StopEndTurn {
-			inbox.accepting = false
+			handedOff = inbox.finishLocked(err, handoff)
 			inbox.mu.Unlock()
 			// A canceled exchange settles accepted input into native history without inference.
 			if ag.Pending() > 0 {
@@ -179,7 +185,18 @@ func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int) (*c
 		result, err = next, nextErr
 		inbox.mu.Lock()
 	}
-	inbox.accepting = false
+	handedOff = inbox.finishLocked(err, handoff)
 	inbox.mu.Unlock()
 	return result, err
+}
+
+// finishLocked ends acceptance for this run unless handoff keeps the inbox for
+// a replacement agent; then new mail queues as pending until it attaches.
+func (inbox *runInbox) finishLocked(err error, handoff func(error) bool) bool {
+	if err != nil && handoff != nil && !inbox.closed && handoff(err) {
+		inbox.agent = nil
+		return true
+	}
+	inbox.accepting = false
+	return false
 }

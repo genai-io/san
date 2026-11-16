@@ -376,7 +376,17 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, err
 		}
+		// Prepare the route before the task becomes running again: a failure
+		// here is a rejected request, not an execution that consumes recovery
+		// budget, and a running task never lacks its inbox.
+		if err = e.prepareInbox(ctx, run); err != nil {
+			cancel()
+			return nil, err
+		}
 		if _, err = agentTask.BeginAttemptAfter(prior.Attempt, e.parentSessionID, ctx, cancel); err != nil {
+			if run.inbox != nil {
+				run.inbox.close()
+			}
 			if run.recording != nil {
 				_ = run.recording.Close()
 			}
@@ -407,10 +417,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel,
 		)
 		agentTask.SetLaunchState(run.checkpoint)
-	} else if err := e.prepareInbox(ctx, run); err != nil {
-		cancel()
-		agentTask.CompleteAttempt(agentTask.GetStatus().Attempt, err)
-		return nil, err
 	}
 	agentTask.SetIdentity(identity, "")
 	agentTask.SetPermissionMode(string(run.cfg.permMode))

@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"strings"
@@ -103,7 +104,7 @@ func TestInboxCancelReleasesStartupState(t *testing.T) {
 	cancel()
 	inbox.close()
 	inbox.close()
-	if staleDelivery(broker.Message{Content: "stale callback"}) || broker.Send(broker.Message{To: route}) {
+	if staleDelivery(broker.Message{Content: "stale callback"}) == nil || broker.Send(broker.Message{To: route}) {
 		t.Fatal("canceled inbox accepted mail")
 	}
 	inbox.mu.Lock()
@@ -122,8 +123,8 @@ func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 			t.Fatalf("startup message %d rejected", i)
 		}
 	}
-	if broker.Send(broker.Message{To: route, Content: "overflow"}) {
-		t.Fatal("inbox exceeded its pending limit")
+	if err := broker.SendErr(broker.Message{To: route, Content: "overflow"}); !errors.Is(err, broker.ErrInboxFull) {
+		t.Fatalf("overflow error = %v, want ErrInboxFull", err)
 	}
 	driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 		if len(req.Messages) != maxPendingWorkerMessages+1 {
@@ -141,7 +142,7 @@ func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 	}, aitest.Says("second"))
 	ag := core.NewAgent(core.Config{Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }, System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1, MaxSteps: 2})
 	ag.Append(core.UserMessage("initial task", nil))
-	result, err := inbox.run(context.Background(), ag, 2)
+	result, err := inbox.run(context.Background(), ag, 2, nil)
 	if err != nil || result.Content != "second" || result.Steps != 2 || ag.Pending() != 0 {
 		t.Fatalf("inbox did not drain: %+v, %v", result, err)
 	}

@@ -16,7 +16,10 @@
 // What delivered mail does is the recipient's business.
 package broker
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
 
 // Main is the well-known address of the main conversation.
 const Main = "main"
@@ -50,10 +53,22 @@ type TaskCompletion struct {
 // apart from "silently discarded".
 type Deliver func(Message) bool
 
+// Accept is a Deliver that explains a rejection. A nil error means accepted.
+type Accept func(Message) error
+
+var (
+	// ErrNoRecipient means no registration holds the address.
+	ErrNoRecipient = errors.New("no recipient holds the address")
+	// ErrRejected is the generic rejection reported for a Deliver returning false.
+	ErrRejected = errors.New("recipient rejected the message")
+	// ErrInboxFull means the recipient is live but has too much unread mail.
+	ErrInboxFull = errors.New("recipient inbox is full")
+)
+
 // A distinct registration lets a rejected delivery notice replacement while
 // its callback was running, without comparing functions or holding mu.
 type registration struct {
-	deliver Deliver
+	accept Accept
 }
 
 type completionMail struct {
@@ -71,8 +86,18 @@ var (
 // and flushes retained completion mail in order. The returned cleanup removes
 // only this registration, never a newer replacement. Deliver must not block.
 func Register(addr string, deliver Deliver) func() {
+	return RegisterAccept(addr, func(m Message) error {
+		if deliver(m) {
+			return nil
+		}
+		return ErrRejected
+	})
+}
+
+// RegisterAccept is Register for a recipient that explains its rejections.
+func RegisterAccept(addr string, accept Accept) func() {
 	mu.Lock()
-	route := &registration{deliver: deliver}
+	route := &registration{accept: accept}
 	routes[addr] = route
 	mail := pending[addr]
 	mu.Unlock()
@@ -103,13 +128,19 @@ func Unregister(addr string) {
 // that reports "delivered" only does so when the message was actually accepted.
 // The delivery function runs outside the lock and must not block.
 func Send(m Message) bool {
+	return SendErr(m) == nil
+}
+
+// SendErr is Send reporting why delivery failed: ErrNoRecipient, ErrRejected,
+// or the recipient's own reason such as ErrInboxFull.
+func SendErr(m Message) error {
 	mu.RLock()
-	deliver, ok := routes[m.To]
+	route, ok := routes[m.To]
 	mu.RUnlock()
 	if !ok {
-		return false
+		return ErrNoRecipient
 	}
-	return deliver.deliver(m)
+	return route.accept(m)
 }
 
 // SendCompletion accepts structured completion mail for a non-Main owner.
@@ -164,7 +195,7 @@ func flushCompletions(addr string, mail *completionMail) {
 		completion := *m.TaskCompletion
 		m.TaskCompletion = &completion
 		mu.Unlock()
-		accepted := route.deliver(m)
+		accepted := route.accept(m) == nil
 		mu.Lock()
 		if pending[addr] != mail { // Reset detached this in-flight queue.
 			mu.Unlock()

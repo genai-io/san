@@ -10,7 +10,7 @@ import (
 )
 
 func TestSendMessageRunningRouteFailure(t *testing.T) {
-	for _, route := range []string{"absent", "rejecting", "stopped during send"} {
+	for _, route := range []string{"absent", "rejecting", "full", "stopped during send"} {
 		t.Run(route, func(t *testing.T) {
 			broker.Reset()
 			t.Cleanup(broker.Reset)
@@ -20,21 +20,24 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 			t.Cleanup(func() { task.Default().Remove(id) })
 			calls := 0
 			if route != "absent" {
-				broker.Register(id, func(broker.Message) bool {
+				broker.RegisterAccept(id, func(broker.Message) error {
 					calls++
-					if route == "stopped during send" {
+					switch route {
+					case "stopped during send":
 						worker.Complete(context.Canceled)
+					case "full":
+						return broker.ErrInboxFull
 					}
-					return false
+					return broker.ErrRejected
 				})
 			}
 			result := NewSendMessageTool().Execute(ctx, map[string]any{"to": id, "message": "new instruction"}, ".")
 			if result.Success {
 				t.Fatalf("failed route reported success: %+v", result)
 			}
-			want := "still marked running"
-			if route == "stopped during send" {
-				want = "cannot be resumed automatically"
+			want := map[string]string{"full": "maximum number of unread messages", "stopped during send": "cannot be resumed automatically"}[route]
+			if want == "" {
+				want = "still marked running"
 			}
 			if !strings.Contains(result.Error, want) {
 				t.Fatalf("error = %q, want %q", result.Error, want)
@@ -53,7 +56,7 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 
 func TestSendMessageSchemaCadence(t *testing.T) {
 	description := NewSendMessageTool().Schema().Description
-	for _, guidance := range []string{"new findings", "blockers needing a decision", "handoffs", "routine progress", "bare acknowledgments", "repeated unchanged blockers", "final results already delivered", "acknowledgment/reply loops", "requested answer"} {
+	for _, guidance := range []string{"actionable", "routine progress", "acknowledgment/reply loops"} {
 		if !strings.Contains(description, guidance) {
 			t.Errorf("schema missing cadence guidance %q", guidance)
 		}

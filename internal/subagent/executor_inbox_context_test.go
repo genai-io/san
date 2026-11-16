@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,8 +20,11 @@ import (
 func TestPreparedInboxPreservesWorkerToolIdentity(t *testing.T) {
 	store, parent := continuationSessions(t, "context-owner")
 	var workerID string
+	var mu sync.Mutex
 	var received []broker.Message
 	cleanup := broker.Register(broker.Main, func(message broker.Message) bool {
+		mu.Lock()
+		defer mu.Unlock()
 		received = append(received, message)
 		return true
 	})
@@ -45,6 +49,8 @@ func TestPreparedInboxPreservesWorkerToolIdentity(t *testing.T) {
 	if !worker.WaitForCompletion(5 * time.Second) {
 		t.Fatal("worker did not finish")
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if len(received) != 1 || received[0].From != workerID || received[0].SessionID != parent.ID() {
 		t.Fatalf("outbound worker identity was lost: %+v", received)
 	}
