@@ -205,7 +205,7 @@ func TestWorkflowCommandOpensManagementWithoutAModelTurn(t *testing.T) {
 	if v.page != "review" || v.saved || v.plan == nil || v.plan.Name != "audit" {
 		t.Fatal("new workflow did not enter review as an unsaved valid draft")
 	}
-	if len(v.service.Definitions()) != 1 {
+	if len(v.service.SavedDefinitions()) != 1 {
 		t.Fatal("creating a draft wrote a runnable definition before review")
 	}
 	if _, _, err := c.handleWorkflowCommand(context.Background(), "edit review"); err != nil {
@@ -232,7 +232,7 @@ func TestWorkflowCommandFromSkillReferencesOriginalWithoutChangingIt(t *testing.
 	if !strings.Contains(v.source, `"team:audit"`) || !strings.Contains(v.source, "live skill") {
 		t.Fatalf("skill dependency is not explicit:\n%s", v.source)
 	}
-	if sk.State != skill.StateEnable || sk.SkillDir != "/skills/audit" || len(v.service.Definitions()) != 0 {
+	if sk.State != skill.StateEnable || sk.SkillDir != "/skills/audit" || len(v.service.SavedDefinitions()) != 0 {
 		t.Fatal("conversion changed the skill or saved a workflow without review")
 	}
 	sk.State = skill.StateDisable

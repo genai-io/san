@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -400,4 +401,52 @@ func (w *Workflow) topologicalNodes() []*Node {
 		}
 	}
 	return ordered
+}
+
+// Summary renders the run for the conversation that launched it: one status
+// line per node, then the output of every sink node that succeeded. Sinks
+// are the workflow's product; intermediate outputs stay in the transcripts.
+func (r *Result) Summary(w *Workflow) string {
+	var b strings.Builder
+	verdict := "succeeded"
+	if r.Failed(w) {
+		verdict = "failed"
+	}
+	fmt.Fprintf(&b, "workflow %s %s in %s\n", w.Name, verdict, r.Duration.Round(time.Second))
+	for _, n := range w.Nodes {
+		res := r.Nodes[n.ID]
+		fmt.Fprintf(&b, "  %s %s", statusGlyph(res.Status), n.ID)
+		if res.Duration > 0 {
+			fmt.Fprintf(&b, " (%s)", res.Duration.Round(time.Second))
+		}
+		if res.Err != nil {
+			fmt.Fprintf(&b, ": %v", res.Err)
+		}
+		b.WriteString("\n")
+	}
+	for _, n := range w.Nodes {
+		res := r.Nodes[n.ID]
+		if len(n.downstream) > 0 || res.Status != StatusSucceeded || strings.TrimSpace(res.Output) == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n## %s\n%s\n", n.ID, strings.TrimSpace(res.Output))
+	}
+	return b.String()
+}
+
+func statusGlyph(s Status) string {
+	switch s {
+	case StatusSucceeded:
+		return "✓"
+	case StatusFailed:
+		return "✗"
+	case StatusSkipped:
+		return "↷"
+	case StatusOmitted:
+		return "⊘"
+	case StatusRunning:
+		return "●"
+	default:
+		return "○"
+	}
 }
