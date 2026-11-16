@@ -43,6 +43,13 @@ func Load(dirs ...string) []Saved
 // Find returns the definition named name, parsed and validated.
 func Find(name string, dirs ...string) (*Workflow, error)
 
+// ReadDefinition returns the highest-priority definition's exact source.
+func ReadDefinition(name string, dirs ...string) (string, error)
+
+// SaveDefinition validates and atomically saves in the first directory,
+// refusing to replace a source that no longer matches the editor's baseline.
+func SaveDefinition(name, source, baseline string, dirs ...string) error
+
 // Parse reads a definition and validates it: one mermaid block, one section
 // per graph node and vice versa, no cycle, templates referencing only
 // connected upstreams. Every problem found is reported at once.
@@ -69,6 +76,9 @@ func (w *Workflow) Bounds() (turns int, fanOut []string)
 
 // InputNames lists the distinct {{input.key}} references in node prompts.
 func (w *Workflow) InputNames() []string
+
+// References lists a node's template names in prompt order, without duplicates.
+func (n *Node) References() []string
 
 // CompactProgressView draws a short branch-and-join graph for parallel stages,
 // a line for simple stages, or an exact dependency list for complex edges.
@@ -108,9 +118,6 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   only place that bound is enforced, so the fan-out needs no gate of its own
   and queues for the run's shared slots like any other node. `Bounds` counts
   the worst case for the approval dialog.
-- `load.go` — directory listing, frontmatter only, so listing does not pay
-  for parsing every graph; `Find` does the full parse. Search paths come
-  from the caller, so the package still knows nothing about San's layout.
 - `run.go` — one goroutine per node waiting on its upstreams' done
   channels, a semaphore of `MaxParallel` held only while a turn executes
   (never while waiting, so a for_each node cannot deadlock against its own
@@ -128,16 +135,21 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   is keyed by position in a hashed ordered plan. `Invalidate` resets a node and
   its descendants; `Retry` retains partial workers only at retry roots. The
   execution path and recovery preview share these operations.
-- `store.go` — run record schema, private atomic snapshots and exclusive executor
-  ownership. `store_unix.go` / `store_windows.go` contain only platform-specific
-  owner checks. An empty directory uses memory for embedded callers and tests.
-- `internal/tool/workflow/workflow.go` — schema, validation, definition management
-  and launch entrypoints. `run.go` owns background task lifecycle, live callbacks
-  and the subagent adapter.
-- `internal/app/input/slash_workflow.go` — command routing and draft templates.
-  `on_workflow.go` owns navigation, editing, confirmation and polling;
-  `on_workflow_view.go` owns page, graph and preview rendering. Editing and
-  inspection reuse textarea and viewport; management needs no model turn.
+- `store.go` — saved-definition listing, lookup, exact-source reading and
+  optimistic saves, alongside run record schema, private atomic snapshots and
+  exclusive executor ownership. Listing reads only frontmatter; `Find` does the
+  full parse. Search paths come from the caller. `store_unix.go` /
+  `store_windows.go` contain only platform-specific owner checks. An empty run
+  directory uses memory for embedded callers and tests.
+- `internal/tool/workflow/workflow.go` — schema, validation and public entrypoints;
+  definition I/O delegates to core storage. `run.go` owns background task
+  lifecycle, live callbacks and the subagent adapter.
+- `internal/app/input/on_workflow.go` — command entrypoints, draft templates,
+  navigation, editing, confirmation and polling. `on_workflow_view.go` owns all
+  page, graph and preview rendering. Review explains run inputs and selected-step
+  data flow using `Node.References`; execution limits are a secondary page.
+  Editing and inspection reuse textarea and viewport; management needs no model
+  turn.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   A node becomes `running` only after it acquires a shared execution slot, so
   work waiting at `max_parallel` remains pending in the live graph.
@@ -175,11 +187,12 @@ internal/workflow/expand_test.go — for_each over objects and strings, max_work
 internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
 internal/workflow/view_test.go   — compact branches, live phases, conditional fallback, activity grouping and wrapping.
 internal/workflow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
-internal/workflow/store_test.go — atomic persistence, private files, IDs and executor ownership.
+internal/workflow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private files, IDs and executor ownership.
 internal/tool/workflow/workflow_test.go — pre-flight checks, node requests, live tools/text, quoted input commands, stream cleanup and task outcomes.
 internal/tool/workflow/run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
 internal/tool/workflow/definitions_test.go — validation, stale saves, filename collisions and project copies.
 internal/app/input/on_workflow_test.go — review/edit/input/run transitions, markers, activity, history, layout and recovery confirmations.
+internal/app/input/on_workflow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
 internal/app/input/slash_workflow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management and argument parsing.
 internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
 internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.

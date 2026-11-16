@@ -1,12 +1,118 @@
 package input
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/workflow"
 )
+
+func TestWorkflowReviewExplainsInputsAndStepResults(t *testing.T) {
+	c := workflowController(t, nil)
+	c.env.Input, c.env.Width, c.env.Height = &Model{}, 96, 32
+	if _, _, err := c.handleWorkflowCommand(context.Background(), "new wf-smoke"); err != nil {
+		t.Fatal(err)
+	}
+	v := &c.env.Input.Workflow
+	initial := ansi.Strip(v.Render())
+	for _, want := range []string{"Run inputs", "task — you provide this before running", "{{input.task}} ← task you enter", "{{work}} = this step's final answer", "Read by review"} {
+		if !strings.Contains(initial, want) {
+			t.Fatalf("missing %q in review:\n%s", want, initial)
+		}
+	}
+	for _, unwanted := range []string{"Draft — save a valid", "Save project workflow", "Project copy:", "nodes · up to", "max_parallel", "```mermaid"} {
+		if strings.Contains(initial, unwanted) {
+			t.Fatalf("review exposes %q:\n%s", unwanted, initial)
+		}
+	}
+	v.HandleKeypress(workflowKey("down"))
+	if v.nodeID() != "review" || !strings.Contains(ansi.Strip(v.Render()), "{{work}} ← final answer from step work") {
+		t.Fatal("selecting a step did not reveal where its input comes from")
+	}
+	if !strings.Contains(ansi.Strip(v.Render()), "Final workflow result") {
+		t.Fatal("sink output is not identified as the workflow result")
+	}
+	v.HandleKeypress(workflowKey("d"))
+	limits := ansi.Strip(v.Render())
+	if v.page != "details" || !strings.Contains(limits, "At most 2 step executions") || !strings.Contains(limits, "At most 1 step running") {
+		t.Fatal("execution limits are missing or the starter is unnecessarily parallel")
+	}
+	v.HandleKeypress(workflowKey("esc"))
+	if v.page != "review" || !v.active || v.confirm != "" {
+		t.Fatal("leaving details closed the unsaved draft")
+	}
+	v.HandleKeypress(workflowKey("e"))
+	edit := ansi.Strip(v.Render())
+	if !strings.Contains(edit, "{{input.task}} = values you enter before running") || !strings.Contains(edit, "step answers, available downstream") {
+		t.Fatal("source editor does not explain template values")
+	}
+}
+
+func TestWorkflowReviewExplainsWorkerDataFlow(t *testing.T) {
+	source := workflowDraft("sample", "plan --> work --> result", "## plan\nReturn a JSON object with a tasks array.\n\n## work\nfor_each: plan.tasks\nmax_workers: 2\n\nDo {{item.task}}\n\n## result\nCombine {{work}}\n")
+	var v WorkflowView
+	v.OpenDraft(workflowUIFixture(), "sample", source, "", 96, 32)
+	if !strings.Contains(v.renderReview(), "Read by work") {
+		t.Fatal("plan does not identify the step reading its array")
+	}
+	v.HandleKeypress(workflowKey("down"))
+	for _, want := range []string{"Items   JSON array from plan.tasks", "{{item.task}} ← value from the current plan item", "combined answers from completed workers", "Read by result"} {
+		if !strings.Contains(v.renderReview(), want) {
+			t.Fatalf("worker review does not explain %q", want)
+		}
+	}
+}
+
+func TestWorkflowReviewKeepsPrimaryActionsVisible(t *testing.T) {
+	for _, saved := range []bool{false, true} {
+		var v WorkflowView
+		baseline := ""
+		if saved {
+			baseline = workflowUISource
+		}
+		v.OpenDraft(workflowUIFixture(), "sample", workflowUISource, baseline, 40, 24)
+		out := ansi.Strip(v.Render())
+		for _, action := range []string{"e edit", "s save", "Esc close"} {
+			if !strings.Contains(out, action) {
+				t.Fatalf("saved=%v: narrow review hides %q:\n%s", saved, action, out)
+			}
+		}
+		if saved && !strings.Contains(out, "r run") {
+			t.Fatal("saved review hides run action")
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if ansi.StringWidth(line) > 40 {
+				t.Fatalf("review exceeds terminal width: %q", line)
+			}
+		}
+	}
+}
+
+func TestWorkflowReviewSelectionAfterRemovingSteps(t *testing.T) {
+	for _, action := range []string{"esc", "ctrl+s"} {
+		t.Run(action, func(t *testing.T) {
+			var v WorkflowView
+			v.OpenDraft(workflowUIFixture(), "sample", workflowUISource, workflowUISource, 96, 32)
+			v.selected = 3
+			v.HandleKeypress(workflowKey("e"))
+			v.editor.SetValue(workflowDraft("sample", "a", "## a\nUse {{input.topic}}\n"))
+			v.HandleKeypress(workflowKey(action))
+			if action == "ctrl+s" {
+				v.HandleKeypress(workflowKey("y"))
+			}
+			if v.page != "review" || v.nodeID() != "a" {
+				t.Fatalf("edited review lost selection: page=%s node=%q", v.page, v.nodeID())
+			}
+			for _, want := range []string{"{{input.topic}}", "Output", "Instructions"} {
+				if !strings.Contains(ansi.Strip(v.Render()), want) {
+					t.Fatalf("edited review lost %s", want)
+				}
+			}
+		})
+	}
+}
 
 func TestWorkflowResumeModesAndWorkerPreview(t *testing.T) {
 	s := workflowUIFixture()

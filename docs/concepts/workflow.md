@@ -55,12 +55,31 @@ Merge into one review: {{sec}} {{perf}}
 | `## id` | one node, one subagent turn. Every id in the graph needs a section and vice versa. |
 | `key: value` under the heading | the contiguous run of such lines is config: `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
 | `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before the run starts — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
-| `{{id}}` | the output of a node upstream of this one. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
-| `{{input.key}}` | a value passed in the tool's `inputs`. |
+| `{{id}}` | the complete final answer text of an upstream node, inserted into this node's prompt. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
+| `{{input.key}}` | an author-defined run parameter, collected before launch or supplied as `key=value`. |
 | `for_each` + `max_workers` | fans this node out over a plan; see below. |
 
 Every node is a fresh subagent with no memory of the others; brief each one
 fully, the way an `Agent` prompt is briefed.
+
+### Inputs and step answers
+
+`{{input.task}}` means “insert the run parameter named `task` here.” `task` is
+not a built-in task object or a reserved input name: the definition's prompts
+choose the keys. For example, replacing it with `{{input.topic}}` makes `topic`
+the required run field, supplied through the form or as `topic="review storage"`.
+
+`{{work}}` means “insert the complete final answer from the step whose ID is
+`work`.” It comes from `## work` in the definition, not from an agent name or a
+user input. A graph edge determines when a step may run; a template reference
+in its prompt determines which answer text it actually receives. In the starter
+`work --> review`, `work` reads `{{input.task}}`, and `review` reads both that
+same input and `{{work}}`. The `review` answer is the final workflow result.
+
+Ordinary step answers are text, not objects with automatic `{{work.field}}`
+access. The separate `for_each: plan.tasks` setting can select an array field
+from a step's JSON answer; its workers use `{{item}}` or `{{item.key}}` as
+explained below.
 
 ## Saved workflows
 
@@ -87,11 +106,21 @@ and does not inject authoring instructions into ordinary model turns:
 | `/workflow list` | Print the saved definitions. |
 | `/workflow <name> key=value …` | Launch directly, with no model turn. Use `/workflow run <name> …` if its name conflicts with a management action. |
 
-In Review, `e` edits source, `Ctrl+S` validates and previews the changes, and
-`y` saves the project definition. Existing user definitions become project
-copies; their source is not overwritten. A changed on-disk source must be
-reopened rather than silently replaced. `r` collects required `{{input.key}}`
-values before launch. Direct command arguments support quoted spaces:
+In Review, the page lists the values you supply before running. `↑`/`↓` selects
+a step and shows where its inserted inputs come from, what answer it produces,
+which steps read it, and its instructions. `e` opens the source editor with a
+template reminder; `Ctrl+S` validates and previews changes, then `y` saves.
+From Review, `s` opens the same save preview. Saving never launches a run.
+
+`d` opens execution limits rather than mixing them into the main review. These
+count step executions (including bounded workers and rounds), not individual
+model calls, tokens or cost. `max_parallel` is only a ceiling; dependencies
+still determine which steps can run together. The sequential starter uses 1.
+
+Existing user definitions become project copies; their source is not
+overwritten. A changed on-disk source must be reopened rather than silently
+replaced. `r` on a saved review collects required `{{input.key}}` values before
+launch. Direct command arguments support quoted spaces:
 `/workflow review base="main branch"`. Saved names with spaces are quoted too,
 for example `/workflow run "release review" base=main`.
 

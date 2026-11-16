@@ -152,6 +152,9 @@ func TestWorkflowDraftValidationSaveAndInputs(t *testing.T) {
 	if v.page != "inputs" || len(v.keys) != 1 || v.keys[0] != "topic" {
 		t.Fatal("missing inferred input")
 	}
+	if help := ansi.Strip(v.Render()); !strings.Contains(help, "{{input.topic}} takes the value below") || !strings.Contains(help, "used by a") {
+		t.Fatal("run input does not explain how its value is used")
+	}
 	v.HandleKeypress(workflowKey("enter"))
 	if s.launches != 0 || v.message == "" {
 		t.Fatal("blank input launched")
@@ -254,8 +257,9 @@ func TestWorkflowRunRefusesSourceChangedAfterReview(t *testing.T) {
 	s := workflowUIFixture()
 	var v WorkflowView
 	v.OpenDraft(s, "sample", workflowUISource, workflowUISource, 90, 40)
-	if !strings.Contains(ansi.Strip(v.body.View()), "up to 4 agent runs") {
-		t.Fatal("review is missing the execution bound")
+	review := ansi.Strip(v.body.View())
+	if !strings.Contains(review, "Run inputs") || !strings.Contains(review, "{{input.topic}}") {
+		t.Fatal("review is missing the run input and its binding")
 	}
 	v.HandleKeypress(workflowKey("r"))
 	v.HandlePaste("topic")
