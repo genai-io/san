@@ -144,7 +144,6 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"think":          (*SlashCommandController).handleThinkCommand,
 		"loop":           (*SlashCommandController).handleLoopCommand,
 		"flow":           (*SlashCommandController).handleFlowCommand,
-		"workflow":       (*SlashCommandController).handleFlowCommand, // hidden compatibility alias
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,

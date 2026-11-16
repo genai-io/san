@@ -595,7 +595,7 @@ func (v *FlowView) scroll(key string) {
 // IsFlowStopCommand keeps cancellation out of the foreground input queue.
 func IsFlowStopCommand(input string) bool {
 	name, args, ok := command.ParseCommand(input)
-	if !ok || (name != "flow" && name != "workflow") {
+	if !ok || name != "flow" {
 		return false
 	}
 	fields := strings.Fields(args)

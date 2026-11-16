@@ -55,34 +55,33 @@ func flowController(t *testing.T, saved map[string]string) *SlashCommandControll
 
 const savedReview = "---\nname: review\ndescription: check the diff\n---\n```mermaid\nflowchart LR\n  a\n```\n\n## a\nReview {{input.base}}\n"
 
-func TestFlowCanonicalCommandAndHiddenCompatibilityAlias(t *testing.T) {
+func TestFlowCommandHasNoLegacyAlias(t *testing.T) {
 	catalog := (&command.Registry{}).BuiltinNames()
 	if _, ok := catalog["flow"]; !ok {
-		t.Fatal("canonical Flow command is missing from the catalog")
+		t.Fatal("Flow command is missing from the catalog")
 	}
 	if _, ok := catalog["workflow"]; ok {
-		t.Fatal("compatibility alias must stay hidden")
+		t.Fatal("removed command remains in the catalog")
 	}
-	for _, name := range []string{"flow", "workflow"} {
-		t.Run(name, func(t *testing.T) {
-			c := flowController(t, nil)
-			c.env.Input, c.env.Width, c.env.Height = &Model{}, 80, 24
-			notice, _, handled := c.Execute(context.Background(), "/"+name+" new example")
-			v := &c.env.Input.Flow
-			if !handled || notice != "" || !v.IsActive() || v.plan == nil || v.plan.Name != "example" || v.saved {
-				t.Fatalf("draft dispatch: handled=%v notice=%q view=%+v", handled, notice, v)
-			}
-			if len(v.service.SavedDefinitions()) != 0 {
-				t.Fatal("draft command saved a definition before review")
-			}
-		})
+	c := flowController(t, nil)
+	c.env.Input, c.env.Width, c.env.Height = &Model{}, 80, 24
+	if _, _, handled := c.executeBuiltinCommand(context.Background(), "workflow", "new example"); handled || c.env.Input.Flow.IsActive() {
+		t.Fatal("removed command still dispatches to Flow")
+	}
+	notice, _, handled := c.Execute(context.Background(), "/flow new example")
+	v := &c.env.Input.Flow
+	if !handled || notice != "" || !v.IsActive() || v.plan == nil || v.plan.Name != "example" || v.saved {
+		t.Fatalf("draft dispatch: handled=%v notice=%q view=%+v", handled, notice, v)
+	}
+	if len(v.service.SavedDefinitions()) != 0 {
+		t.Fatal("draft command saved a definition before review")
 	}
 }
 
-func TestFlowStopBypassAcceptsCanonicalAndCompatibilityCommands(t *testing.T) {
+func TestFlowStopBypassAcceptsOnlyFlowCommand(t *testing.T) {
 	for input, want := range map[string]bool{
 		"/flow stop": true, "/flow stop run-id": true,
-		"/workflow stop": true, "/workflow stop run-id": true,
+		"/workflow stop": false, "/workflow stop run-id": false,
 		"/flow new": false, "/workflow run review": false,
 		"/flow stopper": false, "/other stop": false,
 	} {

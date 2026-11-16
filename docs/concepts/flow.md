@@ -96,9 +96,6 @@ using the same quoted-argument rules as execution. `/flow show <name>`
 previews the graph, step prompts and input keys without starting a task;
 `/flow run <name>` reports missing inputs before launch.
 
-The `/workflow` spelling remains a compatibility alias; new commands and
-completion use `/flow`.
-
 `/flow` opens the definitions and recent-runs view. Management is explicit
 and does not inject authoring instructions into ordinary model turns:
 

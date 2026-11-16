@@ -29,7 +29,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/trust` | Trust the current folder so its own hooks, MCP servers, plugins and allow rules apply without restarting |
 | `/think` | Cycle the active model's advertised reasoning efforts; `/think <effort>` selects one directly |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
-| `/flow` | Create, review and run collaboration blueprints; inspect runs, retry or stop work. `/workflow` remains a compatibility alias. |
+| `/flow` | Create, review and run collaboration blueprints; inspect runs, retry or stop work. |
 | `/search` | Select search engine for web search |
 
 ## UI Interactions
