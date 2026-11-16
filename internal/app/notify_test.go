@@ -219,6 +219,32 @@ func TestManagedChildNoticeRetainsNativeDisplayMetadata(t *testing.T) {
 	}
 }
 
+func TestSchedulerNoticeUsesExplicitIdentity(t *testing.T) {
+	start := time.Now()
+	info := task.TaskInfo{
+		ID: "scheduler", Scheduler: true, Type: task.TaskTypeAgent, Status: task.StatusFailed,
+		AgentName: "Review & audit", Description: "/flow run InternalReview", AgentSessionID: "not-a-worker",
+		StartTime: start, EndTime: start.Add(12 * time.Second), Error: "checkpoint write denied", Output: "retained findings",
+	}
+	msg, ok := taskCompletionMessage(info)
+	var attributes struct {
+		Scheduler bool   `xml:"scheduler,attr"`
+		Name      string `xml:"agent-name,attr"`
+		Duration  int    `xml:"duration-ms,attr"`
+	}
+	if err := xml.Unmarshal([]byte(msg.Content), &attributes); !ok || err != nil || !attributes.Scheduler || attributes.Name != info.AgentName || attributes.Duration != 12000 {
+		t.Fatalf("scheduler metadata lost: %+v %v", attributes, err)
+	}
+	if !strings.Contains(msg.Content, "retained findings") || !strings.Contains(msg.Content, "checkpoint write denied") || strings.Contains(msg.Content, "Recovery decision required") || strings.Contains(msg.Subject, "/flow run") {
+		t.Fatalf("invalid scheduler notice: %+v", msg)
+	}
+	info.Scheduler, info.AgentName = false, "Flow"
+	ordinary, _ := taskCompletionMessage(info)
+	if strings.Contains(ordinary.Content, `scheduler="true"`) || !strings.Contains(ordinary.Content, "Recovery decision required") {
+		t.Fatal("ordinary Agent name was mistaken for scheduler identity")
+	}
+}
+
 func TestManagedChildNoticeLeavesRecoveryToScheduler(t *testing.T) {
 	msg, ok := taskCompletionMessage(task.TaskInfo{
 		ID: "child", ParentTaskID: "flow-parent", Type: task.TaskTypeAgent,

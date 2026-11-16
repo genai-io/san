@@ -83,7 +83,7 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 	nameWidth := available - ansi.StringWidth(suffix)
 	header := progress
 	if nameWidth > 0 {
-		header = ansi.Truncate(w.Title(), nameWidth, "…") + suffix
+		header = ansi.Truncate("Flow · "+w.Title(), nameWidth, "…") + suffix
 	}
 	header = strings.Repeat(" ", min(4, max(0, width-1))) + ansi.Truncate(header, available, "…")
 	if len(w.Loops) == 0 {

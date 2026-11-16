@@ -98,7 +98,10 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if status == "" {
 		return broker.Message{}, false
 	}
+	return taskMessage(info, status), true
+}
 
+func taskMessage(info task.TaskInfo, status string) broker.Message {
 	description := taskSubject(info)
 	if description == "" {
 		description = "Background task"
@@ -126,7 +129,10 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if info.AgentSessionID != "" {
 		fmt.Fprintf(&b, ` agent-id="%s"`, html.EscapeString(info.AgentSessionID))
 	}
-	if info.ParentTaskID != "" {
+	if info.Scheduler {
+		b.WriteString(` scheduler="true"`)
+	}
+	if info.Scheduler || info.ParentTaskID != "" {
 		fmt.Fprintf(&b, ` agent-name="%s"`, html.EscapeString(info.AgentName))
 		if !info.EndTime.IsZero() && info.EndTime.After(info.StartTime) {
 			fmt.Fprintf(&b, ` duration-ms="%d"`, info.EndTime.Sub(info.StartTime).Milliseconds())
@@ -166,7 +172,7 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	case result != "":
 		b.WriteString(tool.EscapeXMLText(result))
 	}
-	if info.ParentTaskID == "" && info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
+	if !info.Scheduler && info.ParentTaskID == "" && info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
 		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. Choose whether to finish directly, continue the existing worker, or report a blocker. For a safe continuation, use SendMessage with to set to this task ID and message containing only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Never bypass a denied command.")
 	}
 	b.WriteString("\n</task-notification>")
@@ -190,7 +196,7 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		TaskCompletion: &broker.TaskCompletion{
 			TaskID: info.ID, Attempt: info.Attempt,
 		},
-	}, true
+	}
 }
 
 func taskSourceSession(info task.TaskInfo) string {
@@ -202,6 +208,13 @@ func taskSourceSession(info task.TaskInfo) string {
 
 // taskSubject generates a human-readable subject line from task info.
 func taskSubject(info task.TaskInfo) string {
+	if info.Scheduler {
+		title := strings.TrimSpace(info.AgentName)
+		if title == "" {
+			title = "Untitled flow"
+		}
+		return "Flow · " + title
+	}
 	switch info.Type {
 	case task.TaskTypeAgent:
 		if s := joinNameDesc(info.AgentName, info.Description); s != "" {

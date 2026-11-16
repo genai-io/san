@@ -138,10 +138,6 @@ func (t *Service) Preview(name string, width int) (string, error) {
 	return preview, nil
 }
 
-// TaskAgentName labels a Flow scheduler task in the task area. Identity comes
-// from TaskInfo.Scheduler, never from this name, which a user agent may share.
-const TaskAgentName = "flow"
-
 // startInline validates and schedules an unsaved blueprint. Only tests use it;
 // users review and save definitions, then Launch them by name.
 func (t *Service) startInline(definition string, inputs map[string]string, width int) (bounds, taskID string, err error) {

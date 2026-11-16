@@ -10,7 +10,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/subagent"
@@ -48,6 +47,77 @@ func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
 	m.taskCompletionsShown = map[string]bool{taskCompletionKey("own", own.GetStatus().Attempt): true}
 	if shown := m.messageRenderParams().ManagedAgents; len(shown) != 0 {
 		t.Fatalf("delivered completion left a duplicate live worker: %+v", shown)
+	}
+}
+
+func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
+	for _, status := range []string{"failed", "stopped"} {
+		for _, busy := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/busy=%t", status, busy), func(t *testing.T) {
+				m, provider := noticeDeliveryModel(t)
+				attachTurnSession(t, m)
+				m.services.Task = task.NewManager()
+				m.services.Task.SetSessionID(m.sessionID())
+				m.mainNotices = make(chan mainNotice, 8)
+				m.conv.OnNotice = m.recordNotice
+				m.wireTaskLifecycle(nil)
+				t.Cleanup(func() { task.SetLifecycleHandler(nil) })
+				m.conv.Stream.Active = busy
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				parent := m.services.Task.CreateSchedulerTask("scheduler", "Security audit", "raw-launch-name", ctx, cancel)
+				select {
+				case n := <-m.mainNotices:
+					if n.Content != "" || n.FinishedTaskID != "" || !strings.Contains(n.Display, `status="running"`) {
+						t.Fatalf("invalid scheduler start: %+v", n)
+					}
+					runCmd(m.deliverNotice(n))
+				case <-time.After(time.Second):
+					t.Fatal("missing scheduler start")
+				}
+				if status == "failed" {
+					parent.Complete(fmt.Errorf("checkpoint write denied"))
+				} else {
+					if err := parent.Stop(); err != nil {
+						t.Fatal(err)
+					}
+					parent.Complete(context.Canceled)
+				}
+				select {
+				case n := <-m.mainNotices:
+					if n.Content != "" || !n.FromAgent || n.FinishedTaskID != parent.GetID() || n.SessionID != m.sessionID() ||
+						!strings.Contains(n.Display, `scheduler="true"`) || !strings.Contains(n.Display, `status="`+status+`"`) ||
+						!strings.Contains(n.Display, `agent-name="Security audit"`) {
+						t.Fatalf("invalid terminal scheduler receipt: %+v", n)
+					}
+					if status == "failed" && !strings.Contains(n.Display, "checkpoint write denied") {
+						t.Fatalf("terminal diagnostic lost: %+v", n)
+					}
+					runCmd(m.deliverNotice(n))
+				case <-time.After(time.Second):
+					t.Fatal("missing terminal scheduler receipt")
+				}
+				snapshot := m.services.Session.Snapshot()
+				if len(m.conv.Messages) != 2 || len(snapshot.Messages()) != 0 {
+					t.Fatalf("scheduler receipts entered model history or were hidden: %+v", m.conv.Messages)
+				}
+				select {
+				case req := <-provider.requests:
+					t.Fatalf("scheduler woke main model: %+v", req)
+				default:
+				}
+
+				// A late completion from a different session must not leak into
+				// either the visible transcript or the current model's queue.
+				foreign := m.services.Task.CreateSchedulerTask("foreign", "Foreign audit", "foreign", task.WithSessionID(context.Background(), "other-session"), nil)
+				foreign.Complete(fmt.Errorf("foreign diagnostic"))
+				select {
+				case n := <-m.mainNotices:
+					t.Fatalf("foreign scheduler crossed session fence: %+v", n)
+				default:
+				}
+			})
+		}
 	}
 }
 
@@ -104,9 +174,6 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if err := svc.SaveDefinition("native-children", definition, ""); err != nil {
 		t.Fatal(err)
 	}
-	final := make(chan broker.Message, 2)
-	broker.Register(broker.Main, func(msg broker.Message) bool { final <- msg; return true })
-	t.Cleanup(func() { broker.Unregister(broker.Main) })
 	_, parentID, err := svc.Launch("native-children", nil, 80)
 	if err != nil {
 		t.Fatal(err)
@@ -115,13 +182,47 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if !ok {
 		t.Fatal("missing native scheduler")
 	}
+	if info := parent.GetStatus(); !info.Scheduler || info.AgentName != "Native children" || info.Description != "/flow run native-children" {
+		t.Fatalf("scheduler identity lost human title or raw launch description: %+v", info)
+	}
 	t.Cleanup(func() {
 		cancel()
-		select {
-		case <-final:
-		case <-time.After(5 * time.Second):
+		deadline := time.After(5 * time.Second)
+		for parent.GetStatus().Status == task.StatusRunning {
+			select {
+			case <-deadline:
+				t.Error("scheduler did not stop during cleanup")
+				return
+			case <-time.After(time.Millisecond):
+			}
 		}
 	})
+	deliverScheduler := func(status string) {
+		t.Helper()
+		select {
+		case n := <-m.mainNotices:
+			if n.Content != "" || !n.FromAgent || n.SessionID != m.sessionID() ||
+				!strings.Contains(n.Display, `scheduler="true"`) ||
+				!strings.Contains(n.Display, `agent-name="Native children"`) ||
+				!strings.Contains(n.Display, `status="`+status+`"`) {
+				t.Fatalf("not an attributed display-only scheduler receipt: %+v", n)
+			}
+			if status == "running" && n.FinishedTaskID != "" {
+				t.Fatalf("start marked scheduler complete: %+v", n)
+			}
+			if status != "running" && n.FinishedTaskID != parentID {
+				t.Fatalf("terminal receipt lost scheduler identity: %+v", n)
+			}
+			runCmd(m.deliverNotice(n))
+			rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+			if !strings.Contains(rendered, "Native children") || strings.Contains(rendered, "actual answer") || strings.Contains(rendered, "fourth hidden detail") {
+				t.Fatalf("scheduler receipt duplicated output or lost title: %s", rendered)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("missing scheduler %s receipt", status)
+		}
+	}
+	deliverScheduler("running")
 	awaitStart := func() string {
 		t.Helper()
 		select {
@@ -239,15 +340,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	deliverChild()
 	close(gates["report"])
 	deliverChild()
-	select {
-	case msg := <-final:
-		if msg.From != parentID {
-			t.Fatalf("unexpected scheduler completion: %+v", msg)
-		}
-		final <- msg
-	case <-time.After(5 * time.Second):
-		t.Fatal("scheduler did not complete")
-	}
+	deliverScheduler("completed")
 	record, err := svc.InspectRun(parentID)
 	if err != nil {
 		t.Fatal(err)
@@ -287,8 +380,8 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := m.services.SessionStore.ChatRows(saved)
-	if len(restored) != 4 {
-		t.Fatalf("persisted child annotations=%d", len(restored))
+	if len(restored) != 6 || len(m.conv.Messages) != 6 {
+		t.Fatalf("persisted lifecycle annotations=%d, live=%d", len(restored), len(m.conv.Messages))
 	}
 	for i, row := range restored {
 		if row.Role != core.ChatNotice || !row.AgentNotice || row.Content != m.conv.Messages[i].Content {

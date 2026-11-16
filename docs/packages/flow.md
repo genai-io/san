@@ -182,8 +182,10 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   observers still run. The app projects their recent activity and completed
   answers into native Agent blocks, without model turns or fabricated tool calls.
   A visible graph replaces duplicate child tracker rows in the footer.
-  `ParentTaskID` keeps recovery scheduler-owned; ordinary foreground Agent
-  presentation is unchanged.
+  Scheduler creation and completion also publish display-only receipts, using
+  the blueprint's readable title; completion never starts another main turn.
+  Explicit nodes own synthesis. `ParentTaskID` keeps recovery scheduler-owned;
+  ordinary foreground Agent presentation is unchanged.
 
 `tests/integration/flow/` covers the node ↔ subagent-turn seam the
 unit tests stub out; graph semantics stay with the unit tests.

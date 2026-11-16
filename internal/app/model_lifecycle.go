@@ -244,6 +244,10 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			// short-lived task complete an entry that did not exist yet.
 			if info.OwnerAgentID == "" {
 				todo.TrackWorker(trackerSvc, info)
+				if info.Scheduler {
+					msg := taskMessage(info, "running")
+					m.notifyMain(mainNotice{SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true})
+				}
 			}
 		},
 		onCompleted: func(info task.TaskInfo) {
@@ -262,7 +266,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 				return
 			}
 			if msg, ok := taskCompletionMessage(info); ok {
-				if info.ParentTaskID != "" && info.OwnerAgentID == "" {
+				if (info.Scheduler || info.ParentTaskID != "") && info.OwnerAgentID == "" {
 					m.notifyMain(mainNotice{
 						SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true,
 						FinishedTaskID: info.ID, FinishedAttempt: info.Attempt,

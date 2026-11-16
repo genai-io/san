@@ -67,11 +67,12 @@ func ResetDefaultTracker()         // test-only
   schedules child agent tasks (a Flow run) with `TaskInfo.Scheduler` set before
   lifecycle observers see it. `CreateChildAgentTask` sets `ParentTaskID` before
   registration; children publish ordinary creation, progress and completion.
-  Hosts identify schedulers by that flag, not by display name. Scheduler-owned
-  child activity and completions use display-only native Agent blocks without
-  waking the main model. `TaskInfo.Activity` is a detached snapshot of the last
-  12 meaningful progress entries, capped at 4096 bytes each; full progress stays
-  in the task log. Ordinary subagents retain their existing tracker rows.
+  Hosts identify schedulers by that flag, not by display name. A scheduler's
+  name carries its readable run title, while its description retains the launch
+  command. Scheduler lifecycle receipts and child activity/completions are
+  display-only and do not wake the main model. `TaskInfo.Activity` is a detached
+  snapshot of the last 12 meaningful progress entries, capped at 4096 bytes each;
+  full progress stays in the task log. Ordinary subagents retain their tracker rows.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the

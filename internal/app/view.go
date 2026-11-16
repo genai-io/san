@@ -511,9 +511,25 @@ func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, widt
 }
 
 func styleFlowLiveView(live string, frame int) string {
-	colors := []kit.AdaptiveColor{kit.CurrentTheme.Muted, kit.CurrentTheme.Accent, kit.CurrentTheme.Primary, kit.CurrentTheme.TextBright, kit.CurrentTheme.Primary, kit.CurrentTheme.Accent}
-	marker := lipgloss.NewStyle().Foreground(colors[frame%len(colors)]).Render("●")
-	return strings.ReplaceAll(live, "◉", marker)
+	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	marker := body.Faint(frame%6 < 2).Render("●")
+	lines := strings.Split(strings.ReplaceAll(live, "◉", marker), "\n")
+	if len(lines) > 0 {
+		indent := len(lines[0]) - len(strings.TrimLeft(lines[0], " "))
+		header := lines[0][indent:]
+		if title, ok := strings.CutPrefix(header, "Flow · "); ok {
+			name, count := title, ""
+			last := strings.LastIndex(title, " · ")
+			if last >= 0 {
+				name, count = title[:last], title[last+len(" · "):]
+			}
+			lines[0] = lines[0][:indent] + kit.FlowLabel(name)
+			if last >= 0 {
+				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" · " + count)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) renderModeStatus() string {

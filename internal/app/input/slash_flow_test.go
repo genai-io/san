@@ -43,11 +43,37 @@ func flowController(t *testing.T, saved map[string]string) *SlashCommandControll
 			t.Fatal(err)
 		}
 	}
-	svc := flow.NewService(task.Default())
+	tasks := task.NewManager()
+	svc := flow.NewService(tasks)
 	svc.SetExecutor(okExecutor{})
 	svc.SetSearchPaths([]string{dir})
-	c := NewSlashCommandController(SlashCommandEnv{Flow: svc, TaskSvc: task.Default(), Width: 120})
+	c := NewSlashCommandController(SlashCommandEnv{Flow: svc, TaskSvc: tasks, Width: 120})
 	return &c
+}
+
+// launchedFlowTask finds the scheduler through the fixture's private manager,
+// independently of presentation receipts and native child task registration.
+func launchedFlowTask(t *testing.T, c *SlashCommandController) task.BackgroundTask {
+	t.Helper()
+	var scheduler task.BackgroundTask
+	for _, bg := range c.env.TaskSvc.List() {
+		info := bg.GetStatus()
+		if !info.Scheduler {
+			continue
+		}
+		if scheduler != nil {
+			t.Fatal("launch registered multiple schedulers")
+		}
+		var ok bool
+		scheduler, ok = c.env.TaskSvc.Get(info.ID)
+		if !ok {
+			t.Fatalf("scheduler %q disappeared", info.ID)
+		}
+	}
+	if scheduler == nil || !scheduler.WaitForCompletion(5*time.Second) {
+		t.Fatal("scheduler did not run to completion")
+	}
+	return scheduler
 }
 
 const savedReview = "---\nname: review\ndescription: check the diff\n---\n```mermaid\nflowchart LR\n  a\n```\n\n## a\nReview {{input.base}}\n"
@@ -136,20 +162,10 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("/flow must launch the run itself, not hand a prompt to the model")
 	}
-	if !strings.HasPrefix(notice, "Started flow Review · /flow stop ") || strings.Contains(notice, "\n") {
-		t.Fatalf("notice = %q; want a single-line launch receipt with stop command", notice)
+	if notice != "" {
+		t.Fatalf("slash launch duplicated native scheduler start: %q", notice)
 	}
-	for _, noisy := range []string{"Run ID", "Task ID", "steps", "turns", "parallel", "limits", "╭"} {
-		if strings.Contains(notice, noisy) {
-			t.Fatalf("launch receipt contains technical dump %q: %s", noisy, notice)
-		}
-	}
-
-	_, id, _ := strings.Cut(notice, " · /flow stop ")
-	bg, ok := task.Default().Get(id)
-	if !ok || !bg.WaitForCompletion(5*time.Second) {
-		t.Fatalf("task %q did not run to completion", id)
-	}
+	bg := launchedFlowTask(t, c)
 	// The task names the command that started it, so its completion reads as
 	// the result of the user's /flow rather than an unexplained run.
 	if got := bg.GetDescription(); got != "/flow run review" {
@@ -160,7 +176,7 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 	}
 }
 
-func TestFlowLaunchReceiptUsesHumanTitle(t *testing.T) {
+func TestFlowSchedulerUsesHumanTitle(t *testing.T) {
 	const name = "InternalFlowReadOnlyReview"
 	body := strings.Replace(savedReview, "name: review", "name: "+name, 1)
 	c := flowController(t, map[string]string{name: body})
@@ -168,14 +184,12 @@ func TestFlowLaunchReceiptUsesHumanTitle(t *testing.T) {
 	if err != nil || cmd != nil {
 		t.Fatalf("launch command = %v, error = %v", cmd, err)
 	}
-	prefix := "Started flow Internal Flow Read Only Review · /flow stop "
-	if !strings.HasPrefix(notice, prefix) || strings.Contains(notice, "\n") {
-		t.Fatalf("launch receipt = %q", notice)
+	if notice != "" {
+		t.Fatalf("slash launch duplicated native scheduler start: %q", notice)
 	}
-	_, id, _ := strings.Cut(notice, " · /flow stop ")
-	bg, ok := task.Default().Get(id)
-	if !ok || !bg.WaitForCompletion(5*time.Second) {
-		t.Fatalf("stop command does not identify launched task %q", id)
+	bg := launchedFlowTask(t, c)
+	if info := bg.GetStatus(); info.AgentName != "Internal Flow Read Only Review" {
+		t.Fatalf("scheduler human title = %q", info.AgentName)
 	}
 	if bg.GetDescription() != "/flow run "+name {
 		t.Fatal("display title changed task identity")
@@ -184,7 +198,7 @@ func TestFlowLaunchReceiptUsesHumanTitle(t *testing.T) {
 
 func TestFlowCommandPreviewsWithoutRunning(t *testing.T) {
 	c := flowController(t, map[string]string{"review": savedReview})
-	before := len(task.Default().List())
+	before := len(c.env.TaskSvc.List())
 	notice, cmd, err := c.handleFlowCommand(context.Background(), "show review")
 	if err != nil || cmd != nil {
 		t.Fatalf("preview command = %v, err = %v", cmd, err)
@@ -200,7 +214,7 @@ func TestFlowCommandPreviewsWithoutRunning(t *testing.T) {
 			t.Errorf("preview missing %q:\n%s", want, notice)
 		}
 	}
-	if after := len(task.Default().List()); after != before {
+	if after := len(c.env.TaskSvc.List()); after != before {
 		t.Fatalf("preview created a task: before %d, after %d", before, after)
 	}
 }
@@ -221,10 +235,12 @@ func TestFlowPreviewCommandRunsQuotedName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated command %q failed: %v", run, err)
 	}
-	_, id, _ := strings.Cut(notice, " · /flow stop ")
-	bg, ok := task.Default().Get(id)
-	if !ok || !bg.WaitForCompletion(5*time.Second) || bg.GetStatus().Status != task.StatusCompleted {
-		t.Fatalf("generated command did not complete: task=%q", id)
+	if notice != "" {
+		t.Fatalf("slash launch duplicated native scheduler start: %q", notice)
+	}
+	bg := launchedFlowTask(t, c)
+	if bg.GetStatus().Status != task.StatusCompleted {
+		t.Fatalf("generated command did not complete: %+v", bg.GetStatus())
 	}
 }
 
@@ -240,11 +256,10 @@ func TestFlowCommandStartsLiveRepaint(t *testing.T) {
 	if got := cmd(); got != "flow-tick" {
 		t.Fatalf("launch scheduled %v, want the frame clock", got)
 	}
-	_, id, _ := strings.Cut(notice, " · /flow stop ")
-	bg, ok := task.Default().Get(id)
-	if !ok || !bg.WaitForCompletion(5*time.Second) {
-		t.Fatalf("flow task %q did not finish", id)
+	if notice != "" {
+		t.Fatalf("slash launch duplicated native scheduler start: %q", notice)
 	}
+	launchedFlowTask(t, c)
 }
 
 func TestFlowCommandRefusesBadInput(t *testing.T) {

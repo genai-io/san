@@ -191,7 +191,7 @@ func (t *Service) launchRecord(w *Blueprint, r RunRecord, description string, re
 		return "", err
 	}
 	executor := t.executor
-	bg := t.tasks.CreateSchedulerTask(id, TaskAgentName, description, ctx, cancel)
+	bg := t.tasks.CreateSchedulerTask(id, w.Title(), description, ctx, cancel)
 	t.mu.Lock()
 	if t.live == nil {
 		t.live = map[string]*task.AgentTask{}

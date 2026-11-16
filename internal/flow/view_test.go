@@ -45,14 +45,14 @@ func TestCompactFlowHeaders(t *testing.T) {
 		statuses map[string]Status
 		want     string
 	}{
-		{nil, "    Readonly review · 1 step"},
-		{map[string]Status{}, "    Readonly review · 0/1"},
-		{map[string]Status{"a": StatusPending}, "    Readonly review · 0/1"},
-		{map[string]Status{"a": StatusRunning}, "    Readonly review · 0/1"},
-		{map[string]Status{"a": StatusSucceeded}, "    Readonly review · 1/1"},
-		{map[string]Status{"a": StatusFailed}, "    Readonly review · 1/1"},
-		{map[string]Status{"a": StatusSkipped}, "    Readonly review · 1/1"},
-		{map[string]Status{"a": StatusOmitted}, "    Readonly review · 1/1"},
+		{nil, "    Flow · Readonly review · 1 step"},
+		{map[string]Status{}, "    Flow · Readonly review · 0/1"},
+		{map[string]Status{"a": StatusPending}, "    Flow · Readonly review · 0/1"},
+		{map[string]Status{"a": StatusRunning}, "    Flow · Readonly review · 0/1"},
+		{map[string]Status{"a": StatusSucceeded}, "    Flow · Readonly review · 1/1"},
+		{map[string]Status{"a": StatusFailed}, "    Flow · Readonly review · 1/1"},
+		{map[string]Status{"a": StatusSkipped}, "    Flow · Readonly review · 1/1"},
+		{map[string]Status{"a": StatusOmitted}, "    Flow · Readonly review · 1/1"},
 	} {
 		header, _, _ := strings.Cut(w.CompactProgressView(tc.statuses, 80), "\n")
 		if header != tc.want {
@@ -60,7 +60,7 @@ func TestCompactFlowHeaders(t *testing.T) {
 		}
 	}
 	w.Nodes = append(w.Nodes, &Node{ID: "b"})
-	if header, _, _ := strings.Cut(w.CompactProgressView(nil, 80), "\n"); header != "    Readonly review · 2 steps" {
+	if header, _, _ := strings.Cut(w.CompactProgressView(nil, 80), "\n"); header != "    Flow · Readonly review · 2 steps" {
 		t.Fatalf("plural preview header = %q", header)
 	}
 }

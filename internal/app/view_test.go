@@ -83,7 +83,7 @@ func TestLiveFlowReflows(t *testing.T) {
 func TestLiveFlowBreathesOnlyRunningGraphNodes(t *testing.T) {
 	const graph = "  Flow demo · 1/3 finished\n    completed ● → running ◉ → pending ○"
 	first := styleFlowLiveView(graph, 0)
-	if first == styleFlowLiveView(graph, 1) {
+	if first == styleFlowLiveView(graph, 3) {
 		t.Fatal("running marker should breathe with the frame clock")
 	}
 	for frame := range 6 {

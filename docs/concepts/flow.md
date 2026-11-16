@@ -340,13 +340,16 @@ bound counts every round, and the saved-definition preview names the loop:
 While a Flow runs, its parent task displays the animated dependency graph in
 the existing task area. Other Agent and Bash tasks keep their ordinary display.
 Launching returns to the composer instead of automatically opening a separate
-run panel. `Alt+T` still controls task-area visibility.
+run panel. Start, graph and completion use the same neutral **Flow** label and
+readable title. `Alt+T` still controls task-area visibility.
 
 Nodes execute through the native subagent executor, with its existing model,
 tools, permissions and sessions. Running nodes use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
-answer previews. These are display-only; children remain background/parallel
-and do not start extra main-agent turns. The footer keeps the dependency graph
+answer previews. The scheduler's own start and terminal notices are display-only
+too: completing a Flow does not ask the main Agent to summarize it again. Add an
+explicit downstream node when synthesis is needed. Children remain background/
+parallel. The footer keeps the dependency graph
 without duplicate child task rows or a redundant Tasks caption. Inspecting a
 node opens native task detail, not a second Flow activity viewer. Fan-out workers
 and earlier attempts retain their own execution references.
