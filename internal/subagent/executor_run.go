@@ -293,8 +293,9 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		}
 	}
 	onEvent := func(ev core.Event) {
+		// Queued input entering the conversation frees inbox room.
 		if event, ok := ev.(sdkagent.MessageAdded); ok && event.Message.Role == ai.RoleUser && run.inbox != nil {
-			run.inbox.ready()
+			run.inbox.signalCapacity()
 		}
 		if event, ok := ev.(sdkagent.ToolEnd); ok && e.postTool != nil {
 			effect, _ := run.sideEffects.Load(event.ID)

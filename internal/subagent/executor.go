@@ -364,13 +364,14 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
 		// Reject stopped, stale or competing starts before touching native input.
-		if _, err = agentTask.StartAttemptAfter(prior.Attempt, e.parentSessionID, ctx, cancel, func() error {
-			return e.openSession(ctx, run)
-		}, func() error {
-			if err := e.acceptContinuationInput(ctx, run); err != nil {
-				return err
-			}
-			return e.prepareInbox(ctx, run)
+		if _, err = agentTask.BeginAttemptWithSetup(ctx, cancel, prior.Attempt, e.parentSessionID, task.AttemptSetup{
+			Prepare: func() error {
+				if err := e.openSession(ctx, run); err != nil {
+					return err
+				}
+				return e.prepareInbox(ctx, run)
+			},
+			Accept: func() error { return e.acceptContinuationInput(ctx, run) },
 		}); err != nil {
 			if run.inbox != nil {
 				run.inbox.close()
@@ -383,6 +384,9 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			}
 			cancel()
 			return nil, err
+		}
+		if run.inbox != nil {
+			run.inbox.signalCapacity() // Outside the task lock: delivery persists retained mail.
 		}
 	} else {
 		run, err = e.prepareRun(ctx, req)

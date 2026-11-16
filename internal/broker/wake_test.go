@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRetryCompletionsCapacityAndFIFO(t *testing.T) {
+func TestWakeCompletionsCapacityAndFIFO(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
 	first, second := completionMessage("first", 1), completionMessage("second", 1)
@@ -22,8 +22,8 @@ func TestRetryCompletionsCapacityAndFIFO(t *testing.T) {
 	SendCompletion(second)
 	SendCompletion(first) // Pending duplicates remain coalesced across a wake.
 	full = false
-	RetryCompletions("owner")
-	RetryCompletions("owner")
+	WakeCompletions("owner")
+	WakeCompletions("owner")
 	if !reflect.DeepEqual(got, []Message{first, second}) {
 		t.Fatalf("delivered = %#v", got)
 	}
@@ -34,7 +34,7 @@ func TestRetryCompletionsCapacityAndFIFO(t *testing.T) {
 	}
 }
 
-func TestRetryCompletionsDuringInflightRejection(t *testing.T) {
+func TestWakeCompletionsDuringInflightRejection(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -55,8 +55,8 @@ func TestRetryCompletionsDuringInflightRejection(t *testing.T) {
 	<-entered
 	SendCompletion(first)
 	SendCompletion(second)
-	RetryCompletions("owner")
-	RetryCompletions("owner") // Coalesce wakes; never run a second callback concurrently.
+	WakeCompletions("owner")
+	WakeCompletions("owner") // Coalesce wakes; never run a second callback concurrently.
 	close(release)
 	<-done
 	if calls != 3 || !reflect.DeepEqual(got, []Message{first, second}) {
@@ -64,14 +64,14 @@ func TestRetryCompletionsDuringInflightRejection(t *testing.T) {
 	}
 }
 
-func TestRetryCompletionsReentrantWakeConsumedOnce(t *testing.T) {
+func TestWakeCompletionsReentrantWakeConsumedOnce(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
 	calls := 0
 	RegisterAccept("owner", func(Message) error {
 		calls++
 		if calls == 1 {
-			RetryCompletions("owner")
+			WakeCompletions("owner")
 		}
 		return ErrInboxFull
 	})
@@ -79,29 +79,29 @@ func TestRetryCompletionsReentrantWakeConsumedOnce(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("calls = %d, want one retry", calls)
 	}
-	RetryCompletions("owner")
+	WakeCompletions("owner")
 	if calls != 3 {
 		t.Fatalf("calls = %d, want fresh wake retry", calls)
 	}
 }
 
-func TestRetryCompletionsNoFallbackStartupOrOrdinaryMail(t *testing.T) {
+func TestWakeCompletionsNoFallbackStartupOrOrdinaryMail(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
 	Register(Main, func(Message) bool { t.Error("retry fell back to Main"); return true })
-	RetryCompletions("unknown")
+	WakeCompletions("unknown")
 	if Send(Message{To: "unknown"}) {
 		t.Fatal("retry registered absent owner")
 	}
 	SendCompletion(completionMessage("retained", 1))
-	RetryCompletions("owner")
+	WakeCompletions("owner")
 	if Send(Message{To: "owner"}) {
 		t.Fatal("retry started absent owner")
 	}
 	calls := 0
 	cleanup := Register("ordinary", func(Message) bool { calls++; return false })
 	Send(Message{To: "ordinary", Content: "not retained"})
-	RetryCompletions("ordinary")
+	WakeCompletions("ordinary")
 	if calls != 1 {
 		t.Fatalf("ordinary delivery calls = %d", calls)
 	}
@@ -113,11 +113,11 @@ func TestRetryCompletionsNoFallbackStartupOrOrdinaryMail(t *testing.T) {
 	}
 }
 
-func TestRetryCompletionsResetAndReplacementDuringWake(t *testing.T) {
+func TestWakeCompletionsResetAndReplacementDuringWake(t *testing.T) {
 	Reset()
 	t.Cleanup(Reset)
 	oldCleanup := RegisterAccept("owner", func(Message) error {
-		RetryCompletions("owner")
+		WakeCompletions("owner")
 		Reset()
 		Register("owner", func(m Message) bool {
 			if m.TaskCompletion != nil {
@@ -129,7 +129,7 @@ func TestRetryCompletionsResetAndReplacementDuringWake(t *testing.T) {
 	})
 	SendCompletion(completionMessage("old", 1))
 	oldCleanup()
-	RetryCompletions("owner")
+	WakeCompletions("owner")
 	if !Send(Message{To: "owner"}) {
 		t.Fatal("old cleanup removed replacement")
 	}

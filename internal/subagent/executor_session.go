@@ -29,7 +29,8 @@ func newContinuationState(run *preparedRun, parent, taskID string) *continuation
 }
 
 // acceptContinuationInput binds the exact native prompt before async execution
-// and before returning a positive SendMessage acknowledgement to its sender.
+// and before returning a positive SendMessage acknowledgement to its sender,
+// then opens the held route so later mail queues behind it.
 func (e *Executor) acceptContinuationInput(ctx context.Context, run *preparedRun) error {
 	message := core.UserMessage(fmt.Sprintf("Continuation (previous execution: %s; current cwd: %s). Verify current filesystem/external state before retrying any interrupted tool with unknown outcome.\n", run.priorFailure, run.currentCwd())+run.req.Prompt, nil)
 	message.ID = core.NewMessageID()
@@ -44,6 +45,9 @@ func (e *Executor) acceptContinuationInput(ctx context.Context, run *preparedRun
 		return err
 	}
 	run.continuationInput = &message
+	if run.inbox != nil {
+		run.inbox.open()
+	}
 	return nil
 }
 

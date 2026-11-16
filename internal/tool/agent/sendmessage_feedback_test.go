@@ -51,14 +51,7 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 				}
 			}
 			if route == "full" || route == "wrapped full" {
-				for _, guidance := range []string{
-					"not queued or accepted",
-					"will not be retried automatically",
-					"Do not enter tight retry or polling loops",
-					"Retain responsibility for the undelivered actionable instruction",
-					"after the worker drains its queue, replies, or completes",
-					"reconsider delivery if the instruction is still needed",
-				} {
+				for _, guidance := range []string{"not queued", "will not be retried automatically", "do not retry or poll in a loop"} {
 					if !strings.Contains(result.Error, guidance) {
 						t.Errorf("queue-full feedback = %q, missing %q", result.Error, guidance)
 					}

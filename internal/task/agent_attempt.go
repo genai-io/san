@@ -107,13 +107,23 @@ func (t *AgentTask) BeginAttempt(parent string, ctx context.Context, cancel cont
 // BeginAttemptAfter fences approval/preflight against a newer execution.
 // Zero retains the current-task behavior for internal callers.
 func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.Context, cancel context.CancelFunc) (int, error) {
-	return t.StartAttemptAfter(previous, parent, ctx, cancel, nil, nil)
+	return t.BeginAttemptWithSetup(ctx, cancel, previous, parent, AttemptSetup{})
 }
 
-// StartAttemptAfter checks eligibility before setup without counting an attempt.
-// prepare runs outside the task lock and can be canceled by Stop. accept persists
-// input under the lock before publication; it must not call this task's methods.
-func (t *AgentTask) StartAttemptAfter(previous int, parent string, ctx context.Context, cancel context.CancelFunc, prepare, accept func() error) (int, error) {
+// AttemptSetup is the work a continuation does between its eligibility check
+// and publication. Prepare runs outside the task lock and is canceled by Stop.
+// Accept runs under the task lock, so Stop cannot interleave between accepting
+// input and publishing the attempt; keep it to one bounded commit, and never
+// call this task's methods or deliver queued mail from it.
+type AttemptSetup struct {
+	Prepare func() error
+	Accept  func() error
+}
+
+// BeginAttemptWithSetup is BeginAttemptAfter with setup between eligibility
+// and publication. Only one start runs at a time; a rejected start consumes no
+// attempt or recovery budget.
+func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.CancelFunc, previous int, parent string, setup AttemptSetup) (int, error) {
 	t.mu.Lock()
 	if t.starting {
 		t.mu.Unlock()
@@ -128,23 +138,23 @@ func (t *AgentTask) StartAttemptAfter(previous int, parent string, ctx context.C
 		return 0, err
 	}
 	t.starting, t.startCancel = true, cancel
-	previous = t.attempt
+	observed := t.attempt // Fence setup even when the caller passed zero.
 	t.mu.Unlock()
-	starting := true
+	ownsStart := true
 	defer func() {
-		if starting {
+		if ownsStart {
 			t.mu.Lock()
 			t.starting, t.startCancel = false, nil
 			t.mu.Unlock()
 		}
 	}()
-	if prepare != nil {
-		if err := prepare(); err != nil {
+	if setup.Prepare != nil {
+		if err := setup.Prepare(); err != nil {
 			return 0, err
 		}
 	}
 	t.mu.Lock()
-	if err := t.checkAttemptLocked(previous, parent); err != nil {
+	if err := t.checkAttemptLocked(observed, parent); err != nil {
 		t.mu.Unlock()
 		return 0, err
 	}
@@ -152,15 +162,15 @@ func (t *AgentTask) StartAttemptAfter(previous int, parent string, ctx context.C
 		t.mu.Unlock()
 		return 0, err
 	}
-	if accept != nil {
-		if err := accept(); err != nil {
+	if setup.Accept != nil {
+		if err := setup.Accept(); err != nil {
 			t.mu.Unlock()
 			return 0, err
 		}
 	}
 	// Once acceptance succeeds, a concurrent Stop cancels admitted work rather
 	// than turning persisted input into a rejected continuation.
-	t.starting, t.startCancel, starting = false, nil, false
+	t.starting, t.startCancel, ownsStart = false, nil, false
 	t.foreground = false
 	t.attempt++
 	n := t.attempt

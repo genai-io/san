@@ -139,10 +139,13 @@ the event log. Default host wiring remains legacy until the unified cutover.
   is committed to native history and queued in order until the agent attaches.
   Acceptance means durably recorded, not guaranteed processed: if setup fails,
   that mail stays in native history for inspection or continuation but is not
-  run. Continuations check and serialize startup before changing session history;
-  preparation remains cancelable, and input acceptance is serialized with Stop.
-  Rejected starts change neither conversation input nor attempt/recovery budget.
-  A stop after acceptance cancels admitted work and preserves its input. A model
+  run. Continuations use `task.BeginAttemptWithSetup`: eligibility is checked
+  before history is opened, preparation (opening history, registering a held
+  route that rejects mail) can be canceled by Stop, and only the continuation
+  input commit runs under the task lock. Retained completions are delivered
+  after the attempt is published, outside that lock. Rejected starts change
+  neither conversation input nor attempt/recovery budget. A stop after
+  acceptance cancels admitted work and preserves its input. A model
   fallback hands the same registered inbox to the replacement agent; mail sent
   while it is built waits instead of being rejected.
   Session-owned hosts keep their existing transport and do not register TUI routes.
@@ -195,15 +198,16 @@ the event log. Default host wiring remains legacy until the unified cutover.
   history on failure/cancellation, including before agent attachment. Normal
   completion, setup failure and cancellation unregister the owned route and
   release queued messages, agent/session references and cancellation callbacks.
-  Cleanup cannot remove a replacement execution's registration. Consuming input
-  wakes retained completion mail for the same worker, including while it remains
-  running; capacity recovery needs no re-registration or polling.
+  Cleanup cannot remove a replacement execution's registration. Queued input
+  entering the conversation calls `broker.WakeCompletions` for the same worker,
+  so retained completion mail arrives while it is still running, with no
+  re-registration or polling.
 - `SendMessage` is for actionable instructions, new findings, decision-worthy
   blockers and handoffs, not routine progress, repeated unchanged blockers,
   acknowledgments or final results already returned through task completion.
-  A full inbox reports that the message was not accepted: the sender retains
-  responsibility and reconsiders delivery after progress, without tight retry
-  loops or automatic retries. Other rejections report the observed task state.
+  A full inbox reports that the message was not queued and will not be retried:
+  the sender still owns the instruction, must not retry in a loop, and delivers
+  it later only if still needed. Other rejections report the observed task state.
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.

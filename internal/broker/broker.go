@@ -11,9 +11,9 @@
 //     holds is dropped, like a call to a number that's no longer in service.
 //
 // SendCompletion additionally retains task completion mail for an absent or
-// rejecting owner until it registers again or signals recovered inbox capacity.
-// Retention is process-local; there
-// are no topics, broadcasts, fallback recipients, or agent startup side effects.
+// rejecting owner until it registers again or wakes it with WakeCompletions.
+// Retention is process-local; there are no topics, broadcasts, fallback
+// recipients, or agent startup side effects.
 // What delivered mail does is the recipient's business.
 package broker
 
@@ -76,7 +76,7 @@ type registration struct {
 type completionMail struct {
 	messages []Message // includes the in-flight head, for pending deduplication
 	draining bool
-	retry    bool // capacity wake received during an in-flight admission
+	woken    bool // WakeCompletions arrived during an in-flight admission
 }
 
 var (
@@ -106,7 +106,7 @@ func RegisterAccept(addr string, accept Accept) func() {
 	mail := pending[addr]
 	mu.Unlock()
 	if mail != nil {
-		flushCompletions(addr, mail)
+		flushCompletions(addr, mail, false)
 	}
 	return func() {
 		mu.Lock()
@@ -149,9 +149,9 @@ func SendErr(m Message) error {
 
 // SendCompletion accepts structured completion mail for a non-Main owner.
 // True means accepted for delivery or process-lifetime retention, not necessarily
-// delivered. Absent/rejecting owners retain mail until Register or a capacity
-// wake via RetryCompletions; no fallback or
-// auto-start occurs. Pending duplicates (owner, session, task, attempt) coalesce.
+// delivered. Absent/rejecting owners retain mail until Register or
+// WakeCompletions; no fallback or auto-start occurs. Pending duplicates (owner,
+// session, task, attempt) coalesce.
 func SendCompletion(m Message) bool {
 	if m.TaskCompletion == nil || m.To == "" || m.To == Main {
 		return false
@@ -173,36 +173,33 @@ func SendCompletion(m Message) bool {
 	}
 	mail.messages = append(mail.messages, m)
 	mu.Unlock()
-	flushCompletions(m.To, mail)
+	flushCompletions(m.To, mail, false)
 	return true
 }
 
-// RetryCompletions signals recovered inbox capacity for the same owner address.
-// It retries only retained completion mail against a live registration, without
-// registering, starting an agent, or delivering ordinary mail. It may invoke
-// admission synchronously; concurrent/reentrant wakes coalesce with the active
-// drainer, including a wake arriving before an in-flight rejection returns.
-func RetryCompletions(addr string) {
+// WakeCompletions tells the broker that addr's inbox has room again. It retries
+// only retained completion mail against the live registration: it never
+// registers, starts an agent, or redelivers ordinary mail. Delivery may run
+// synchronously. A wake during an in-flight admission is recorded instead, and
+// the active drainer retries if that admission rejects.
+func WakeCompletions(addr string) {
 	mu.Lock()
 	mail := pending[addr]
-	if mail == nil || routes[addr] == nil {
-		mu.Unlock()
-		return
-	}
-	if mail.draining {
-		mail.retry = true
-		mu.Unlock()
-		return
-	}
 	mu.Unlock()
-	flushCompletions(addr, mail)
+	if mail != nil {
+		flushCompletions(addr, mail, true)
+	}
 }
 
 // One drainer per owner preserves FIFO order, including across replacement
 // registrations. Callbacks may reenter the broker; they never run under mu.
-func flushCompletions(addr string, mail *completionMail) {
+// A woken flush that finds a drainer leaves the wake for it to observe.
+func flushCompletions(addr string, mail *completionMail, woken bool) {
 	mu.Lock()
 	if pending[addr] != mail || mail.draining {
+		if woken && pending[addr] == mail {
+			mail.woken = true
+		}
 		mu.Unlock()
 		return
 	}
@@ -217,9 +214,9 @@ func flushCompletions(addr string, mail *completionMail) {
 			mu.Unlock()
 			return
 		}
-		// This admission observes all earlier capacity signals. Only a new wake
-		// during the callback warrants retrying a rejection by the same route.
-		mail.retry = false
+		// This admission observes every earlier wake. Only a new wake during
+		// the callback warrants retrying a rejection by the same route.
+		mail.woken = false
 		m := mail.messages[0]
 		completion := *m.TaskCompletion
 		m.TaskCompletion = &completion
@@ -233,7 +230,7 @@ func flushCompletions(addr string, mail *completionMail) {
 		if accepted {
 			mail.messages[0] = Message{}
 			mail.messages = mail.messages[1:]
-		} else if routes[addr] == route && !mail.retry {
+		} else if routes[addr] == route && !mail.woken {
 			mail.draining = false
 			mu.Unlock()
 			return

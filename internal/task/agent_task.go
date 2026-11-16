@@ -36,7 +36,7 @@ type AgentTask struct {
 	inspectionFile   string // Native transcript fallback; never receives task-log records.
 	finishing        bool
 	starting         bool
-	startCancel      context.CancelFunc
+	startCancel      context.CancelFunc // Pending attempt's cancel, so Stop can abort setup.
 	stopRequested    bool
 	foreground       bool
 	attemptOutput    bytes.Buffer

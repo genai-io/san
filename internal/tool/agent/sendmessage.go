@@ -225,7 +225,7 @@ func undeliverableReason(to string, sendErr error) string {
 	}
 	info := bgTask.GetStatus()
 	if info.Status == task.StatusRunning && errors.Is(sendErr, broker.ErrInboxFull) {
-		return fmt.Sprintf("worker %q is running but already has the maximum number of unread messages; this message was not queued or accepted and will not be retried automatically. Do not enter tight retry or polling loops. Retain responsibility for the undelivered actionable instruction; after the worker drains its queue, replies, or completes, reconsider delivery if the instruction is still needed", to)
+		return fmt.Sprintf("worker %q is running but already has the maximum number of unread messages; this message was not queued and will not be retried automatically. You still own this instruction: do not retry or poll in a loop; once the worker drains its queue, replies, or completes, deliver it only if it is still needed", to)
 	}
 	if info.Status == task.StatusRunning {
 		return fmt.Sprintf("message to worker %q was not accepted by its delivery route; the task is still marked running. Inspect its task status and existing output before deciding how to continue; no continuation was started", to)
