@@ -233,7 +233,7 @@ behaviors are intentional and not glamour defaults:
 | Background | Auto-detects dark vs light. `rebuildIfNeeded()` rebuilds inside `Render` if the terminal flipped themes. |
 | Tables | Pulled out before glamour sees them; rendered with lipgloss table primitives for full border control. |
 | Soft line breaks | LLMs hard-wrap at ~80 cols. Soft-wrapped paragraphs get joined before glamour so it can re-wrap at the real width. |
-| CJK paragraphs | Top-level Chinese/Japanese/Korean paragraphs use Unicode line boundaries. Segments with reference-link definitions retain native rendering to preserve link resolution. |
+| CJK wrapping | Chinese/Japanese/Korean paragraphs, live text, reasoning, list items, and quotes share Unicode line boundaries. Markdown segments with reference-link definitions retain native rendering to preserve link resolution. |
 | Inline tokens | A custom inline-markdown pass styles things glamour handles poorly (e.g. backticks inside other formatting). |
 
 Width matters: glamour computes column widths from its configured

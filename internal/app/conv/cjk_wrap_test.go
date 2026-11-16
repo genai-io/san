@@ -24,6 +24,93 @@ func nonEmptyLines(out string) []string {
 	return lines
 }
 
+func TestCJKProseUsesAvailableWidth(t *testing.T) {
+	const src = "对，这个独立的 `reservation` 对象确实让实现绕了一层。我会去掉这个对象和文件，收进现有的“启动下一轮任务”方法里：先检查能否启动，再做准备，最后写入输入并开始执行。并发保护保留，但不再暴露一个需要额外理解的概念。"
+	for _, mode := range []string{"paragraph", "streaming", "thinking", "blockquote", "list"} {
+		t.Run(mode, func(t *testing.T) {
+			for _, termWidth := range []int{80, 120, 164} {
+				r := NewMDRenderer(termWidth)
+				var out string
+				var err error
+				switch mode {
+				case "streaming":
+					out = formatAssistantContent(AssistantParams{Content: src, StreamActive: true, IsLast: true, Width: termWidth})
+				case "thinking":
+					out = mutedThinkingBody(src, termWidth, nil)
+				case "blockquote":
+					out, err = r.Render("> " + src)
+				case "list":
+					out, err = r.Render("- " + src)
+				default:
+					out, err = r.Render(src)
+				}
+				if err != nil {
+					t.Fatalf("width=%d: render: %v", termWidth, err)
+				}
+				lines := nonEmptyLines(out)
+				if len(lines) == 0 {
+					t.Fatalf("width=%d: no output", termWidth)
+				}
+				first := strings.TrimRight(xansi.Strip(lines[0]), " ")
+				// Leave room for a CJK character plus its closing punctuation.
+				if w := lipgloss.Width(first); w < r.width-4 {
+					t.Errorf("width=%d: prose wraps early at %d columns: %q", termWidth, w, first)
+				}
+				var joined strings.Builder
+				for i, line := range lines {
+					if w := lipgloss.Width(line); w > r.width {
+						t.Errorf("width=%d line %d: width %d exceeds %d", termWidth, i, w, r.width)
+					}
+					plain := strings.TrimSpace(xansi.Strip(line))
+					plain = strings.TrimPrefix(strings.TrimPrefix(plain, "│ "), "• ")
+					joined.WriteString(plain)
+				}
+				normalize := strings.NewReplacer("`", "", " ", "")
+				if got, want := normalize.Replace(joined.String()), normalize.Replace(src); got != want {
+					t.Errorf("width=%d: content changed:\n got %q\nwant %q", termWidth, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestCJKStreamingTabsMatchExpandedInput(t *testing.T) {
+	const src = "简短文字\t" + "对，这个独立的 `reservation` 对象确实让实现绕了一层。我会去掉这个对象和文件，收进现有的“启动下一轮任务”方法里。"
+	params := AssistantParams{Content: src, StreamActive: true, IsLast: true, Width: 80}
+	got := formatAssistantContent(params)
+	params.Content = lipgloss.NewStyle().Render(src)
+	if want := formatAssistantContent(params); got != want {
+		t.Errorf("tabs must expand before wrapping:\n got %q\nwant %q", got, want)
+	}
+	if got, want := mutedThinkingBody(src, 80, nil), mutedThinkingBody(params.Content, 80, nil); got != want {
+		t.Errorf("reasoning tabs must expand before wrapping:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestCJKStreamingPreservesGraphemes(t *testing.T) {
+	for _, cluster := range []string{"1️⃣", "#️⃣", "e\u0301", "👩🏽‍💻"} {
+		text := strings.Repeat("中文"+cluster+" reservation ", 13)
+		out := renderStreamingText(text, 44)
+		compact := func(s string) string { return strings.Join(strings.Fields(xansi.Strip(s)), "") }
+		if compact(out) != compact(text) || strings.Count(out, cluster) != 13 {
+			t.Errorf("grapheme content changed for %q: %q", cluster, out)
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if w := xansi.StringWidth(line); w > 44 {
+				t.Errorf("grapheme %q: width %d exceeds 44: %q", cluster, w, line)
+			}
+		}
+	}
+}
+
+func TestStreamingTextKeepsEnglishLayout(t *testing.T) {
+	for _, text := range []string{"short text", "first line\n\nsecond line", "\tindented text", strings.Repeat("English words ", 20)} {
+		if got, want := renderStreamingText(text, 76), lipgloss.NewStyle().Width(76).Render(text); got != want {
+			t.Errorf("English layout changed:\n got %q\nwant %q", got, want)
+		}
+	}
+}
+
 func TestBlockquoteCJKKeepsPrefixAndWidth(t *testing.T) {
 	src := "> 最近 San 的几次更新，表面上看是 Persona、Self-Learning、Subscription、Autopilot。但放在一起看，它们其实都指向同一个问题：一个 Agent Harness，应该怎样帮助开发者把 Agent 真正带进工作流？"
 

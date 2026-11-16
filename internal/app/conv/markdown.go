@@ -47,15 +47,9 @@ func trimStyledBlankLines(s string) string {
 // reuses the renderer from a background goroutine.
 type MDRenderer struct {
 	mu       sync.Mutex
-	renderer *glamour.TermRenderer
-	// paragraphRenderer preserves hard breaks and disables glamour's wrapping
-	// and width padding so ordinary CJK prose can use Unicode line boundaries.
-	paragraphRenderer *glamour.TermRenderer
-	// blockQuoteRenderer renders blockquote inner content: dimmed, and narrowed by the
-	// "│ " prefix so glamour wraps to a width that leaves room for it. We render
-	// blockquotes ourselves (see renderBlockQuote) because glamour's native
-	// blockquote wrapping drops the │ prefix on CJK continuation lines.
-	blockQuoteRenderer *glamour.TermRenderer
+	renderer *blockRenderer
+	// Quote bodies share the block renderer at a narrower width and muted color.
+	blockQuoteRenderer *blockRenderer
 	width              int
 	darkBg             bool // tracks last known terminal background to detect theme changes
 	// cache memoizes Render output keyed by its raw input. The active tail is
@@ -137,9 +131,8 @@ func (r *MDRenderer) rebuildIfNeeded() {
 // dimmed to the muted tone glamour gives blockquote bodies.
 func (r *MDRenderer) buildRenderers(dark bool) {
 	textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
-	r.renderer = buildGlamourRenderer(r.width, dark, nil)
-	r.paragraphRenderer = buildGlamourRenderer(0, dark, nil)
-	r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
+	r.renderer = newBlockRenderer(r.width, dark, nil)
+	r.blockQuoteRenderer = newBlockRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
 	r.darkBg = dark
 	// Rendered output is tied to this width/background; drop any stale entries.
 	r.cache = make(map[string]string)
@@ -185,7 +178,7 @@ func (r *MDRenderer) Render(content string) (string, error) {
 		case segList:
 			parts = append(parts, r.renderList(seg.content))
 		default:
-			rendered, err := r.renderPlain(seg.content)
+			rendered, err := r.renderer.Render(seg.content)
 			if err != nil {
 				parts = append(parts, seg.content)
 			} else {
@@ -401,7 +394,7 @@ func closesFence(line string, ch byte, length int) bool {
 // token. Rendering the inner markdown ourselves (dimmed, narrowed by the prefix)
 // and prefixing each line keeps the block intact.
 func (r *MDRenderer) renderBlockQuote(content string) string {
-	inner := stripBlockQuoteMarkers(content)
+	inner := normalizeLineBreaks(stripBlockQuoteMarkers(content))
 	rendered, err := r.blockQuoteRenderer.Render(inner)
 	if err != nil {
 		rendered = inner
@@ -595,7 +588,13 @@ func (r *MDRenderer) renderList(content string) string {
 
 		contentWidth := max(r.width-len(indent)-markerWidth, minWrapWidth/2)
 		styled := renderInlineMarkdown(itemText)
-		wrapped := strings.Split(xansi.Wrap(styled, contentWidth, " ,.;-+|"), "\n")
+		var flowed string
+		if strings.ContainsFunc(xansi.Strip(styled), paragraphCJK) {
+			flowed = wrapParagraph(styled, contentWidth)
+		} else {
+			flowed = xansi.Wrap(styled, contentWidth, " ,.;-+|")
+		}
+		wrapped := strings.Split(flowed, "\n")
 
 		for i, line := range wrapped {
 			if i == 0 {
