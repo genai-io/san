@@ -336,8 +336,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	ctx = task.WithSessionID(ctx, run.parentID())
 
 	inboxID := run.req.TaskID
-	if e.tasks != nil {
-		// Session-owned hosts do not publish worker addresses in the TUI broker.
+	if !e.messaging {
 		inboxID = ""
 	}
 	if run.inbox == nil {

@@ -131,8 +131,8 @@ func (inbox *runInbox) close() {
 // A continuation's route starts held: acceptContinuationInput commits its input
 // and opens the route while the task begins the next attempt.
 func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
-	if e.tasks != nil {
-		return nil // Session-owned hosts do not publish TUI broker addresses.
+	if !e.messaging {
+		return nil
 	}
 	if err := e.openSession(ctx, run); err != nil {
 		return err

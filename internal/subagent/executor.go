@@ -60,6 +60,7 @@ type Executor struct {
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 	tasks                      *task.Manager
+	messaging                  bool
 	permissionResolver         func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
 	toolContext                func(context.Context, string) context.Context
 	postTool                   func(hook.Handler, core.ToolResult, any) error
@@ -84,6 +85,7 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 	return &Executor{
 		provider:      llmProvider,
 		registry:      Default(),
+		messaging:     true,
 		cwd:           cwd,
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
@@ -96,6 +98,10 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 func (e *Executor) ConfigureOwner(tasks *task.Manager, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
 	e.tasks, e.registry, e.permissionResolver, e.toolContext = tasks, registry, permission, toolContext
 }
+
+// SetMessaging controls TUI message routes independently of task ownership.
+// Hosts with their own transport disable it before launching workers.
+func (e *Executor) SetMessaging(enabled bool) { e.messaging = enabled }
 
 // SetChildHooks supplies a fresh handler bound to the created child's owner.
 // It must not reconfigure a handler shared with the parent or another child.

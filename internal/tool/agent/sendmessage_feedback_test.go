@@ -71,7 +71,7 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 
 func TestSendMessageSchemaCadence(t *testing.T) {
 	description := NewSendMessageTool().Schema().Description
-	for _, guidance := range []string{"actionable", "routine progress", "acknowledgment/reply loops"} {
+	for _, guidance := range []string{"actionable", "routine progress", "test-pass updates", "final result automatically", "pre-sent final results", "needs to decide or act", "explicitly requested", "acknowledgment/reply loops"} {
 		if !strings.Contains(description, guidance) {
 			t.Errorf("schema missing cadence guidance %q", guidance)
 		}
