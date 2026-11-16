@@ -166,7 +166,7 @@ func TestFlowCommandPreviewsWithoutRunning(t *testing.T) {
 	if err != nil || cmd != nil {
 		t.Fatalf("preview command = %v, err = %v", cmd, err)
 	}
-	if !strings.Contains(notice, "Flow review · 1 step") || !strings.Contains(notice, "  a\n") {
+	if !strings.Contains(notice, "Review · 1 step") || !strings.Contains(notice, "  a\n") {
 		t.Fatalf("preview lacks the graph:\n%s", notice)
 	}
 	if strings.Contains(notice, "○ pending") {

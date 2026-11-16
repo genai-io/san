@@ -9,6 +9,65 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestBlueprintTitle(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"flow_readonly_review", "Readonly review"},
+		{"normal name", "Normal name"},
+		{" FLOW--équipe\t检查 ", "Équipe 检查"},
+		{"flow_API_HTTP", "API HTTP"},
+		{"iOS-review", "IOS review"},
+		{"flow", "Flow"},
+		{"", "Untitled flow"},
+		{" _-\t", "Untitled flow"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := &Blueprint{Name: tc.name, Nodes: []*Node{{ID: "original_ID"}}}
+			if got := w.Title(); got != tc.want {
+				t.Fatalf("Title() = %q, want %q", got, tc.want)
+			}
+			if w.Name != tc.name || w.Nodes[0].ID != "original_ID" {
+				t.Fatal("display title changed name or node ID")
+			}
+		})
+	}
+}
+
+func TestCompactFlowHeaders(t *testing.T) {
+	w := &Blueprint{Name: "flow_readonly_review", Nodes: []*Node{{ID: "a"}}}
+	for _, tc := range []struct {
+		statuses map[string]Status
+		want     string
+	}{
+		{nil, "  Readonly review · 1 step"},
+		{map[string]Status{}, "  Readonly review · 0/1 steps"},
+		{map[string]Status{"a": StatusPending}, "  Readonly review · 0/1 steps"},
+		{map[string]Status{"a": StatusRunning}, "  Readonly review · 0/1 steps"},
+		{map[string]Status{"a": StatusSucceeded}, "  Readonly review · 1/1 steps"},
+		{map[string]Status{"a": StatusFailed}, "  Readonly review · 1/1 steps"},
+		{map[string]Status{"a": StatusSkipped}, "  Readonly review · 1/1 steps"},
+		{map[string]Status{"a": StatusOmitted}, "  Readonly review · 1/1 steps"},
+	} {
+		header, _, _ := strings.Cut(w.CompactProgressView(tc.statuses, 80), "\n")
+		if header != tc.want {
+			t.Errorf("header = %q, want %q", header, tc.want)
+		}
+	}
+	w.Nodes = append(w.Nodes, &Node{ID: "b"})
+	if header, _, _ := strings.Cut(w.CompactProgressView(nil, 80), "\n"); header != "  Readonly review · 2 steps" {
+		t.Fatalf("plural preview header = %q", header)
+	}
+}
+
+func TestCompactFlowHeaderPreservesProgressAtNarrowWidths(t *testing.T) {
+	w := &Blueprint{Name: strings.Repeat("检查", 20), Nodes: []*Node{{ID: "a"}}}
+	for _, width := range []int{14, 20, 30} {
+		header, _, _ := strings.Cut(w.CompactProgressView(map[string]Status{}, width), "\n")
+		if ansi.StringWidth(header) > width || !strings.HasSuffix(header, "0/1 steps") {
+			t.Errorf("header at width %d = %q", width, header)
+		}
+	}
+}
+
 func TestCompactFlowViewDrawsBranchAndJoinWithoutRepeatedDetails(t *testing.T) {
 	w, err := Parse("---\nname: audit\n---\n```mermaid\nflowchart LR\n  map --> bugs & risk & lean --> report\n```\n\n## map\nmode: explore\n\nMap\n\n## bugs\nmode: explore\n\nBugs\n\n## risk\nmode: explore\n\nRisk\n\n## lean\nmode: explore\n\nLean\n\n## report\nmode: explore\n\nReport\n")
 	if err != nil {

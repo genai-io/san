@@ -198,7 +198,7 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	if !bg.WaitForCompletion(5 * time.Second) {
 		t.Fatal("flow did not complete")
 	}
-	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Flow (unnamed) · 1/1 finished") || !strings.Contains(view, "only ●") {
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Untitled flow · 1/1 steps") || !strings.Contains(view, "only ●") {
 		t.Fatalf("finished graph did not update:\n%s", view)
 	}
 }

@@ -48,7 +48,7 @@ func (m *flowRouteModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func TestFlowDraftSlashUpdateRoute(t *testing.T) {
-	for _, scenario := range []string{"success", "blocked-release", "blocked-escape", "blocked-session-switch"} {
+	for _, scenario := range []string{"success", "hub", "blocked-release", "blocked-escape", "blocked-session-switch"} {
 		t.Run(scenario, func(t *testing.T) {
 			m := draftTestModel(t)
 			originalOwner := m.services.Session
@@ -67,7 +67,7 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 					t.Error("slash goal changed")
 				}
 				started <- struct{}{}
-				if call == 1 && scenario != "success" {
+				if call == 1 && strings.HasPrefix(scenario, "blocked") {
 					select {
 					case <-release:
 					case <-ctx.Done():
@@ -105,10 +105,24 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 			}
 			submit := func() {
 				t.Helper()
-				program.Send(initialPromptMsg("/flow Inspect this repository"))
+				prompt := "/flow Inspect this repository"
+				if scenario == "hub" {
+					prompt = "/flow"
+				}
+				program.Send(initialPromptMsg(prompt))
 				opened := next()
 				if _, ok := opened.msg.(initialPromptMsg); !ok || !opened.active {
-					t.Fatalf("slash did not open generation: %+v", opened)
+					t.Fatalf("slash did not open Flow: %+v", opened)
+				}
+				if scenario == "hub" {
+					program.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+					goal := next()
+					if !strings.Contains(goal.rendered, "Generate blueprint") || goal.pending {
+						t.Fatalf("hub did not open goal entry: %+v", goal)
+					}
+					program.Send(tea.PasteMsg{Content: "Inspect this repository"})
+					program.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+					next()
 				}
 				requested := next()
 				if _, ok := requested.msg.(input.FlowDraftRequestMsg); !ok || !requested.pending || !requested.generating {

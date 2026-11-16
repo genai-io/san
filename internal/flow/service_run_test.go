@@ -30,7 +30,7 @@ func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
 	if r.TaskID != info.ID || r.Status != RunSucceeded || r.Nodes["a"].Status != StatusSucceeded {
 		t.Fatalf("task and persisted checkpoint diverged: %+v", r)
 	}
-	if strings.Contains(info.LiveView, "Read(example.go)") || !strings.Contains(info.LiveView, "1/1 finished") {
+	if strings.Contains(info.LiveView, "Read(example.go)") || !strings.Contains(info.LiveView, "1/1 steps") {
 		t.Fatalf("parent task should show the graph, not duplicate child activity: %s", info.LiveView)
 	}
 }

@@ -188,6 +188,15 @@ func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
 	return nil
 }
 
+func (v *FlowView) openGoal() tea.Cmd {
+	v.page = "goal"
+	v.draftAt = time.Time{}
+	v.Resize(v.width, v.height)
+	v.editor.Placeholder = "Describe the work and the result you want"
+	v.editor.SetValue(v.goal)
+	return v.editor.Focus()
+}
+
 func (v *FlowView) OpenGeneration(s FlowService, goal string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.page, v.goal = "generate", goal
@@ -262,6 +271,9 @@ func (v *FlowView) Resize(w, h int) {
 		v.body.SetContent(v.renderLimits())
 	} else if v.page == "inputs" {
 		v.resizeInputs()
+	} else if v.page == "goal" {
+		v.editor.SetWidth(max(1, min(72, v.width-8)))
+		v.editor.SetHeight(max(1, min(6, v.height-10)))
 	}
 }
 
@@ -295,7 +307,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return v.tick(), true
 	}
-	if v.active && (v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys))) {
+	if v.active && (v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys))) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd, true
@@ -304,7 +316,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 }
 
 func (v *FlowView) HandlePaste(s string) tea.Cmd {
-	if v.confirm == "" && (v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys))) {
+	if v.confirm == "" && (v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys))) {
 		v.editor.InsertString(s)
 	}
 	return nil
@@ -321,11 +333,27 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch v.page {
+	case "goal":
+		switch key {
+		case "enter":
+			goal := strings.TrimSpace(v.editor.Value())
+			if goal == "" {
+				v.message = "Describe a goal to continue"
+				return nil
+			}
+			return v.OpenGeneration(v.service, goal, v.width, v.height)
+		case "shift+enter", "alt+enter", "ctrl+j":
+			v.editor.InsertString("\n")
+			return nil
+		}
 	case "generate":
 		if key == "enter" && v.draftAt.IsZero() {
 			v.generation++
 			v.draftAt, v.phase = time.Now(), 0
 			return v.draftRequest()
+		}
+		if key == "e" && v.draftAt.IsZero() {
+			return v.openGoal()
 		}
 	case "hub":
 		return v.handleHub(key)
@@ -374,7 +402,7 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	case "details":
 		v.scroll(key)
 	}
-	if v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys)) {
+	if v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys)) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd
@@ -387,10 +415,15 @@ func (v *FlowView) handleHub(key string) tea.Cmd {
 	case "up", "k":
 		v.cursor = max(0, v.cursor-1)
 	case "down", "j":
-		v.cursor = min(max(0, len(v.definitions)+len(v.runs)-1), v.cursor+1)
+		v.cursor = min(len(v.definitions)+len(v.runs), v.cursor+1)
+	case "n":
+		return v.openGoal()
 	case "enter":
-		if v.cursor < len(v.definitions) {
-			name := v.definitions[v.cursor].Name
+		if v.cursor == 0 {
+			return v.openGoal()
+		}
+		if v.cursor <= len(v.definitions) {
+			name := v.definitions[v.cursor-1].Name
 			source, err := v.service.Definition(name)
 			if err != nil {
 				v.setError(err)
@@ -398,7 +431,7 @@ func (v *FlowView) handleHub(key string) tea.Cmd {
 			}
 			return v.OpenDraft(v.service, name, source, source, v.width, v.height)
 		}
-		if i := v.cursor - len(v.definitions); i >= 0 && i < len(v.runs) {
+		if i := v.cursor - len(v.definitions) - 1; i >= 0 && i < len(v.runs) {
 			return v.OpenRun(v.service, v.runs[i].ID, v.width, v.height)
 		}
 	}
@@ -406,6 +439,14 @@ func (v *FlowView) handleHub(key string) tea.Cmd {
 }
 
 func (v *FlowView) handleReview(key string) tea.Cmd {
+	if key == "enter" {
+		key = "s"
+		if v.plan == nil {
+			key = "e"
+		} else if v.saved {
+			key = "r"
+		}
+	}
 	switch key {
 	case "up", "k", "down", "j":
 		if v.plan != nil {
@@ -553,6 +594,9 @@ func (v *FlowView) handleRun(key string) tea.Cmd {
 }
 
 func (v *FlowView) handleConfirm(key string) tea.Cmd {
+	if key == "enter" && v.confirm == "save" {
+		key = "y"
+	}
 	var started tea.Cmd
 	switch key {
 	case "y":

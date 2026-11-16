@@ -93,9 +93,17 @@ input keys are completed using the same quoted-argument rules as execution.
 starting a task. In the TUI, `/flow run <name>` opens a guided form for missing
 inputs; supplying every required value launches directly.
 
-`/flow` opens the definitions and recent-runs view. Management is explicit
-and does not inject authoring instructions into ordinary model turns. A
-subcommand is recognized only in its exact shape (`edit` takes one name,
+`/flow` opens a hub with **Create a flow**, saved blueprints and recent runs.
+Choose Create a flow to describe a goal without remembering command syntax.
+The main action appears directly below each page title; secondary shortcuts
+stay in the footer:
+
+```text
+Describe → Review → Save → Run
+```
+
+Management is explicit and does not inject authoring instructions into ordinary
+model turns. A subcommand is recognized only in its exact shape (`edit` takes one name,
 `run` takes a saved name or `key=value` inputs, and so on); anything else is a
 goal, so `/flow run the tests and fix failures` drafts a blueprint:
 
@@ -114,8 +122,10 @@ goal, so `/flow run the tests and fix failures` drafts a blueprint:
 Review keeps the dependency graph above one selected step. `↑`/`↓` walks through
 steps; the detail shows the agent configuration, each inserted input's source,
 the output's consumers, and the instructions. Scrolling the instructions does not hide the graph.
-`e` opens source editing; `Ctrl+S` validates and previews changes, then `y`
-saves. From Review, `s` opens the same save preview. Saving never launches a run.
+Enter follows the visible action: save the draft, confirm the save preview,
+then prepare the saved blueprint for running. Saving never launches a run.
+`e` edits source, `Ctrl+S` previews changes, and the existing `s`, `y`, and `r`
+shortcuts remain available.
 
 For example, `/flow Check this package's security and performance, then combine
 the findings` starts one drafting request from the current conversation. The
@@ -159,7 +169,9 @@ Full command arguments remain an optional shortcut and support quoted spaces:
 for example `/flow run "release review" base=main`.
 
 The task area (Alt+T) shows Flow's animated dependency graph alongside ordinary
-tasks. Native subagents keep their own progress and output. `/flow stop` bypasses
+tasks. Headings use readable names, such as `Readonly review · 0/5 steps`, without
+changing saved identifiers. Counts show settled steps, not acceptance of results.
+Native subagents keep their own progress and output. `/flow stop` bypasses
 a foreground response's input queue; its notice waits for that response's
 conversation tail. With an empty input, Ctrl+C interrupts a foreground response
 first, otherwise stops the sole running Flow or lists IDs when several run.

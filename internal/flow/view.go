@@ -4,9 +4,26 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 )
+
+// Title returns a display label without changing the authored name.
+func (w *Blueprint) Title() string {
+	words := strings.FieldsFunc(w.Name, func(r rune) bool {
+		return r == '_' || r == '-' || unicode.IsSpace(r)
+	})
+	if len(words) > 1 && strings.EqualFold(words[0], "flow") {
+		words = words[1:]
+	}
+	if len(words) == 0 {
+		return "Untitled flow"
+	}
+	title := []rune(strings.Join(words, " "))
+	title[0] = unicode.ToUpper(title[0])
+	return string(title)
+}
 
 // CompactProgressView shows one small graph. A branch and join uses a few
 // aligned rows; other complete stages use one line. Complex dependencies keep
@@ -22,19 +39,22 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 			finished++
 		}
 	}
-	name := w.Name
-	if name == "" {
-		name = "(unnamed)"
-	}
-	header := fmt.Sprintf("Flow %s · %d/%d finished", name, finished, len(w.Nodes))
+	progress := fmt.Sprintf("%d/%d steps", finished, len(w.Nodes))
 	if statuses == nil {
 		unit := "steps"
 		if len(w.Nodes) == 1 {
 			unit = "step"
 		}
-		header = fmt.Sprintf("Flow %s · %d %s", name, len(w.Nodes), unit)
+		progress = fmt.Sprintf("%d %s", len(w.Nodes), unit)
 	}
-	header = "  " + ansi.Truncate(header, max(1, width-2), "…")
+	available := max(1, width-2)
+	suffix := " · " + progress
+	nameWidth := available - ansi.StringWidth(suffix)
+	header := progress
+	if nameWidth > 0 {
+		header = ansi.Truncate(w.Title(), nameWidth, "…") + suffix
+	}
+	header = "  " + ansi.Truncate(header, available, "…")
 	if len(w.Loops) == 0 {
 		ordered := w.topologicalNodes()
 		layer := make(map[string]int, len(ordered))
