@@ -140,6 +140,10 @@ history. Send only the new instruction—the child restores its own conversation
 - After two consecutive failed attempts, continuation is blocked. A successful
   attempt resets this count. Main can instead finish the work directly or report
   a blocker. Check uncertain side effects before retrying; never repeat denied commands.
+- Continuation startup checks ownership, attempt and recovery eligibility before
+  opening history or accepting input. Setup is cancelable; final acceptance and
+  publication are serialized with Stop. Rejection consumes no attempt and adds
+  no conversation input; cancellation after acceptance preserves admitted input.
 - Stopped/killed agents, unknown IDs, and missing or damaged history produce an
   error. They never silently create a replacement session.
 - Completion releases execution resources. Task identities remain until process

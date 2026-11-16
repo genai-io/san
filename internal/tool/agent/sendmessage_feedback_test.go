@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 )
 
 func TestSendMessageRunningRouteFailure(t *testing.T) {
-	for _, route := range []string{"absent", "rejecting", "full", "stopped during send"} {
+	for _, route := range []string{"absent", "rejecting", "full", "wrapped full", "stopped during send"} {
 		t.Run(route, func(t *testing.T) {
 			broker.Reset()
 			t.Cleanup(broker.Reset)
@@ -27,6 +28,8 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 						worker.Complete(context.Canceled)
 					case "full":
 						return broker.ErrInboxFull
+					case "wrapped full":
+						return fmt.Errorf("delivery rejected: %w", broker.ErrInboxFull)
 					}
 					return broker.ErrRejected
 				})
@@ -35,7 +38,7 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 			if result.Success {
 				t.Fatalf("failed route reported success: %+v", result)
 			}
-			want := map[string]string{"full": "maximum number of unread messages", "stopped during send": "cannot be resumed automatically"}[route]
+			want := map[string]string{"full": "maximum number of unread messages", "wrapped full": "maximum number of unread messages", "stopped during send": "cannot be resumed automatically"}[route]
 			if want == "" {
 				want = "still marked running"
 			}
@@ -45,6 +48,25 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 			for _, misleading := range []string{"inbox is momentarily full", "still starting up", "send again", "wait a moment"} {
 				if strings.Contains(result.Error, misleading) {
 					t.Fatalf("misleading retry advice: %q", result.Error)
+				}
+			}
+			if route == "full" || route == "wrapped full" {
+				for _, guidance := range []string{
+					"not queued or accepted",
+					"will not be retried automatically",
+					"Do not enter tight retry or polling loops",
+					"Retain responsibility for the undelivered actionable instruction",
+					"after the worker drains its queue, replies, or completes",
+					"reconsider delivery if the instruction is still needed",
+				} {
+					if !strings.Contains(result.Error, guidance) {
+						t.Errorf("queue-full feedback = %q, missing %q", result.Error, guidance)
+					}
+				}
+				for _, misleading := range []string{"Do not resend", "only new actionable information"} {
+					if strings.Contains(result.Error, misleading) {
+						t.Errorf("queue-full feedback drops responsibility: %q", result.Error)
+					}
 				}
 			}
 			if calls > 1 {

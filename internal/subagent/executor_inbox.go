@@ -18,6 +18,7 @@ const maxPendingWorkerMessages = 64
 type runInbox struct {
 	mu         sync.Mutex
 	ctx        context.Context
+	taskID     string
 	owner      *session.Session
 	agent      core.Agent
 	pending    []core.Message
@@ -28,7 +29,7 @@ type runInbox struct {
 }
 
 func newRunInbox(ctx context.Context, taskID string, owner *session.Session) *runInbox {
-	inbox := &runInbox{ctx: ctx, owner: owner, accepting: true}
+	inbox := &runInbox{ctx: ctx, taskID: taskID, owner: owner, accepting: true}
 	if taskID != "" {
 		inbox.unregister = broker.RegisterAccept(taskID, inbox.deliver)
 	}
@@ -73,6 +74,17 @@ func (inbox *runInbox) deliver(m broker.Message) error {
 	return nil
 }
 
+// ready wakes retained completions after the SDK consumes queued input.
+func (inbox *runInbox) ready() {
+	inbox.mu.Lock()
+	ready := inbox.accepting && !inbox.closed && inbox.ctx.Err() == nil && inbox.agent != nil && inbox.agent.Pending() < maxPendingWorkerMessages
+	id := inbox.taskID
+	inbox.mu.Unlock()
+	if ready && id != "" {
+		broker.RetryCompletions(id)
+	}
+}
+
 func (inbox *runInbox) close() {
 	inbox.mu.Lock()
 	if inbox.closed {
@@ -97,7 +109,7 @@ func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
 	if e.tasks != nil {
 		return nil // Session-owned hosts do not publish TUI broker addresses.
 	}
-	if err := e.openNative(ctx, run); err != nil {
+	if err := e.openSession(ctx, run); err != nil {
 		return err
 	}
 	input := run.continuationInput
@@ -106,8 +118,8 @@ func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
 		message.ID = core.NewMessageID()
 		input = &message
 	}
-	// Sourced continuations were already committed during their permission gate.
-	if run.req.ResumeTaskID == "" || (run.req.SourceSession == "" && run.req.SourceSeq == 0) {
+	// Continuation input is committed while starting the next attempt.
+	if run.req.ResumeTaskID == "" {
 		if err := run.recording.AcceptInput(ctx, *input, nil); err != nil {
 			if run.checkpoint != nil {
 				run.checkpoint.persistenceErr = err
@@ -145,6 +157,7 @@ func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int, han
 	inbox.agent = ag
 	inbox.mu.Unlock()
 	result, err := ag.ThinkAct(ctx)
+	inbox.ready()
 	inbox.mu.Lock()
 	for {
 		unread := ag.Pending() > 0
@@ -177,6 +190,7 @@ func (inbox *runInbox) run(ctx context.Context, ag core.Agent, maxSteps int, han
 		}
 		inbox.mu.Unlock()
 		next, nextErr := ag.ThinkAct(ctx)
+		inbox.ready()
 		if next != nil && result != nil {
 			next.Steps += result.Steps
 			next.ToolUses += result.ToolUses

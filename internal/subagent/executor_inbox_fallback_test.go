@@ -113,6 +113,10 @@ func TestResumeRejectedBeforeAttemptReleasesInbox(t *testing.T) {
 		t.Fatal("stopped worker did not settle")
 	}
 	before := worker.GetStatus()
+	history, err := store.Read(context.Background(), before.AgentSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.RunBackground(tool.AgentExecRequest{ResumeTaskID: worker.GetID(), Prompt: "continue"}); err == nil {
 		t.Fatal("deliberately stopped worker resumed")
 	}
@@ -125,6 +129,10 @@ func TestResumeRejectedBeforeAttemptReleasesInbox(t *testing.T) {
 	child, err := store.Open(context.Background(), before.AgentSessionID)
 	if err != nil {
 		t.Fatalf("rejected continuation leaked its writer claim: %v", err)
+	}
+	snapshot := child.Snapshot()
+	if len(snapshot.ActiveMessages()) != len(history.ActiveMessages()) {
+		t.Error("rejected continuation changed the conversation history")
 	}
 	_ = child.Close()
 }

@@ -33,19 +33,21 @@ func newContinuationState(run *preparedRun, parent, taskID string) *continuation
 func (e *Executor) acceptContinuationInput(ctx context.Context, run *preparedRun) error {
 	message := core.UserMessage(fmt.Sprintf("Continuation (previous execution: %s; current cwd: %s). Verify current filesystem/external state before retrying any interrupted tool with unknown outcome.\n", run.priorFailure, run.currentCwd())+run.req.Prompt, nil)
 	message.ID = core.NewMessageID()
+	var source *session.EventRef
 	if run.req.SourceSession != "" || run.req.SourceSeq != 0 {
 		if run.req.SourceSession == "" || run.req.SourceSeq == 0 {
 			return fmt.Errorf("incomplete continuation input source")
 		}
-		if err := run.recording.AcceptInput(ctx, message, &session.EventRef{Session: run.req.SourceSession, Seq: run.req.SourceSeq}); err != nil {
-			return err
-		}
+		source = &session.EventRef{Session: run.req.SourceSession, Seq: run.req.SourceSeq}
+	}
+	if err := run.recording.AcceptInput(ctx, message, source); err != nil {
+		return err
 	}
 	run.continuationInput = &message
 	return nil
 }
 
-func (e *Executor) openNative(ctx context.Context, run *preparedRun) error {
+func (e *Executor) openSession(ctx context.Context, run *preparedRun) error {
 	if run.store == nil {
 		return fmt.Errorf("agent execution requires session persistence")
 	}

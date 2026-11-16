@@ -262,7 +262,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err := e.openNative(ctx, run); err != nil {
+		if err := e.openSession(ctx, run); err != nil {
 			return nil, err
 		}
 	}
@@ -293,6 +293,9 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		}
 	}
 	onEvent := func(ev core.Event) {
+		if event, ok := ev.(sdkagent.MessageAdded); ok && event.Message.Role == ai.RoleUser && run.inbox != nil {
+			run.inbox.ready()
+		}
 		if event, ok := ev.(sdkagent.ToolEnd); ok && e.postTool != nil {
 			effect, _ := run.sideEffects.Load(event.ID)
 			if err := e.postTool(run.hooks, core.ToolResult{ToolCallID: event.ID, ToolName: event.Name, Content: event.Result.Content, IsError: event.Err != nil}, effect); err != nil {
