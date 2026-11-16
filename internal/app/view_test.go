@@ -81,7 +81,7 @@ func TestLiveFlowReflows(t *testing.T) {
 }
 
 func TestLiveFlowBreathesOnlyRunningGraphNodes(t *testing.T) {
-	const graph = "  Flow demo · 1/3 finished\n    completed ● → running ◉ → pending ○"
+	const graph = "  Flow demo · 1/3 finished\n    ● completed → ◉ running → ○ pending"
 	first := styleFlowLiveView(graph, 0)
 	if first == styleFlowLiveView(graph, 3) {
 		t.Fatal("running marker should breathe with the frame clock")
@@ -91,7 +91,7 @@ func TestLiveFlowBreathesOnlyRunningGraphNodes(t *testing.T) {
 		if ansi.Strip(got) != strings.ReplaceAll(graph, "◉", "●") {
 			t.Fatalf("frame %d changed graph content: %q", frame, got)
 		}
-		if !strings.Contains(got, "completed ● → running ") || !strings.Contains(got, " → pending ○") {
+		if !strings.Contains(got, "● completed → ") || !strings.Contains(got, " → ○ pending") {
 			t.Fatal("completed and pending nodes should stay static")
 		}
 	}
@@ -103,7 +103,7 @@ func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	mgr := task.NewManager()
 	tracker := todo.NewStore()
 	wf := mgr.CreateSchedulerTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
-	wf.SetLiveView("Flow demo · 0/1 finished\n  map ●")
+	wf.SetLiveView("Flow demo · 0/1 finished\n  ● map")
 	todo.TrackWorker(tracker, wf.GetStatus())
 	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: conv.NewModel(100)}
 	m.conv.ShowTasks = true

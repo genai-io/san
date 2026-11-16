@@ -124,7 +124,7 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 					for _, n := range stage {
 						label := n.ID
 						if statuses != nil {
-							label += " " + progressGlyph(statuses[n.ID])
+							label = progressGlyph(statuses[n.ID]) + " " + label
 						}
 						labels = append(labels, label)
 					}
@@ -156,7 +156,7 @@ func branchJoinGraph(stages [][]*Node, statuses map[string]Status, width int) (s
 		if statuses == nil {
 			return n.ID
 		}
-		return n.ID + " " + progressGlyph(statuses[n.ID])
+		return progressGlyph(statuses[n.ID]) + " " + n.ID
 	}
 	left := "    " + label(stages[0][0]) + " ─"
 	indent := strings.Repeat(" ", ansi.StringWidth(left))

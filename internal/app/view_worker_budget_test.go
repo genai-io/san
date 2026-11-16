@@ -17,7 +17,7 @@ func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 		tracker := todo.NewStore()
 		ctx := context.Background()
 		flow := mgr.CreateSchedulerTask("footer-flow", "flow", "DUPLICATE_SCHEDULER", ctx, nil)
-		flow.SetLiveView("    Internal Flow Read Only Review · 0/2 steps\n    map ◉ → review ○")
+		flow.SetLiveView("    Internal Flow Read Only Review · 0/2 steps\n    ◉ map → ○ review")
 		child := mgr.CreateChildAgentTask("footer-child", flow.GetID(), "Reviewer", "DUPLICATE_CHILD", ctx, nil)
 		todo.TrackWorker(tracker, flow.GetStatus())
 		todo.TrackWorker(tracker, child.GetStatus())

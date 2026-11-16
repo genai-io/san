@@ -85,8 +85,47 @@ func TestCompactFlowViewDrawsBranchAndJoinWithoutRepeatedDetails(t *testing.T) {
 		t.Fatalf("preview is not compact:\n%s", preview)
 	}
 	running := w.CompactProgressView(map[string]Status{"map": StatusSucceeded, "bugs": StatusRunning}, 100)
-	if !strings.Contains(running, "map ● ─┬──▶ bugs ◉") || !strings.Contains(running, "risk ○") || !strings.Contains(running, "report ○") {
+	if !strings.Contains(running, "● map ─┬──▶ ◉ bugs") || !strings.Contains(running, "○ risk") || !strings.Contains(running, "○ report") {
 		t.Fatalf("running topology:\n%s", running)
+	}
+}
+
+func TestCompactFlowMarkersPrecedeNodeNames(t *testing.T) {
+	ids := []string{"inventory", "correctness", "security", "maintainability", "summary"}
+	statuses := map[string]Status{
+		"inventory": StatusSucceeded, "correctness": StatusRunning,
+		"security": StatusRunning, "maintainability": StatusRunning,
+	}
+	for _, tc := range []struct{ name, graph string }{
+		{"chain", "inventory --> correctness --> security --> maintainability --> summary"},
+		{"fork-join", "inventory --> correctness & security & maintainability --> summary"},
+		{"parallel-stage", "inventory --> correctness & security --> maintainability --> summary"},
+		{"conditional", "inventory --> correctness --> security --> maintainability --> summary\ninventory -->|YES| summary"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := "```mermaid\nflowchart LR\n" + tc.graph + "\n```\n"
+			for _, id := range ids {
+				source += "\n## " + id + "\nInspect\n"
+			}
+			w, err := Parse(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, width := range []int{48, 80, 120} {
+				view := w.CompactProgressView(statuses, width)
+				for _, id := range ids {
+					glyph := progressGlyph(statuses[id])
+					if !strings.Contains(view, glyph+" "+id) || strings.Contains(view, id+" "+glyph) {
+						t.Fatalf("width %d misplaced %s status:\n%s", width, id, view)
+					}
+				}
+				for line := range strings.SplitSeq(view, "\n") {
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("width %d overflowed: %q", width, line)
+					}
+				}
+			}
+		})
 	}
 }
 

@@ -419,8 +419,9 @@ flow review succeeded in 1m24s
 
 ## Run view and recovery
 
-The task-area graph uses filled circles for completed nodes and breathing
-filled circles for genuinely running nodes; hollow circles have not run.
+The task-area graph places each status circle before its node name: filled for
+completed nodes, breathing filled for genuinely running nodes, hollow before
+execution.
 Exceptional states remain explicit. Inspection uses a stable dependency graph,
 or a dependency list on narrow screens. Manual selection stays pinned; `f`
 follows active work. `Enter` selects a recorded subagent execution and opens

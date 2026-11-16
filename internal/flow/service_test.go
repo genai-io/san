@@ -191,14 +191,14 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("node did not start")
 	}
-	if view := bg.GetStatus().LiveView; !strings.Contains(view, "only ◉") || strings.Contains(view, "Read(example.go)") || strings.Contains(view, "package main") || strings.Contains(view, "Activity") {
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "◉ only") || strings.Contains(view, "Read(example.go)") || strings.Contains(view, "package main") || strings.Contains(view, "Activity") {
 		t.Fatalf("live view must contain the running graph, not copied tool activity:\n%s", view)
 	}
 	releaseNode()
 	if !bg.WaitForCompletion(5 * time.Second) {
 		t.Fatal("flow did not complete")
 	}
-	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Untitled flow · 1/1") || !strings.Contains(view, "only ●") {
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Untitled flow · 1/1") || !strings.Contains(view, "● only") {
 		t.Fatalf("finished graph did not update:\n%s", view)
 	}
 }
@@ -248,7 +248,7 @@ func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 			t.Fatalf("tool activity %q was copied into the parent graph:\n%s", copied, view)
 		}
 	}
-	if !strings.Contains(view, "only ◉") {
+	if !strings.Contains(view, "◉ only") {
 		t.Fatalf("running graph is missing:\n%s", view)
 	}
 	releaseNode()
