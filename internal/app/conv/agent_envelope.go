@@ -216,15 +216,9 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 	if width <= 0 {
 		width = 80
 	}
-	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
-	heading := body.Render("● ") + kit.FlowLabel("") + body.Render(" result")
-	if title := strings.Join(strings.Fields(envelopeAttr(e.tag, "agent-name")), " "); title != "" {
-		heading += body.Render(" · " + title)
-	}
-	heading = ansi.Truncate(heading, width, "…")
 	result := e.text()
 	if strings.TrimSpace(result) == "" {
-		return "\n" + heading + "\n" + toolResultStyle.Render(ansi.Truncate("No final result", width, "…")) + "\n"
+		return "\n" + toolResultStyle.Render(ansi.Truncate("No final result", width, "…")) + "\n"
 	}
 	md := p.MDRenderer
 	if md == nil {
@@ -239,7 +233,7 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 		}
 		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, width, true))
 	}
-	return "\n" + heading + "\n" + strings.TrimRight(rendered, "\n") + "\n"
+	return "\n" + strings.TrimRight(rendered, "\n") + "\n"
 }
 
 // envelopeAttr returns the value of a name="value" attribute within an opening

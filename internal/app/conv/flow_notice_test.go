@@ -114,8 +114,11 @@ func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
 			if strings.Contains(plain, "/flow inspect") || strings.Contains(plain, "More:") {
 				t.Fatalf("complete result still requires inspection: %q", plain)
 			}
-			if width >= 40 && !strings.Contains(plain, "\n\n● Flow result · Review\n") {
-				t.Fatalf("result is not a separate top-level block: %q", plain)
+			if width >= 40 {
+				_, report, found := strings.Cut(plain, "\n\n")
+				if !found || !strings.HasPrefix(report, "Conclusion") || strings.Count(plain, "● Flow") != 1 || strings.Contains(plain, "Flow result") {
+					t.Fatalf("report should follow the receipt directly without a repeated heading: %q", plain)
+				}
 			}
 			for line := range strings.SplitSeq(got, "\n") {
 				if ansi.StringWidth(line) > width {

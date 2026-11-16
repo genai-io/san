@@ -347,10 +347,11 @@ Nodes execute through the native subagent executor, with its existing model,
 tools, permissions and sessions. Running nodes use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
 answer previews. On completion, Flow renders its complete final sink answer as
-an independent top-level Markdown result in the main conversation, separate from
-the completion receipt and independent of child preview limits. One sink returns
-its answer; multiple successful sinks retain labeled sections. No inspection
-command is needed to read the report; empty results are reported explicitly.
+an independent top-level Markdown result in the main conversation, separated from
+the completion receipt by a blank line, without another generated heading. Child
+preview limits do not apply. One sink returns its answer; multiple successful
+sinks retain labeled sections. No inspection command is needed to read the report;
+empty results are reported explicitly.
 The scheduler's own start and terminal notices remain display-only: completing
 a Flow does not ask the main Agent to summarize it again. Add an explicit
 downstream node when synthesis is needed. Children remain background/parallel.
