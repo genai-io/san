@@ -3,7 +3,6 @@ package flow
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -29,7 +28,7 @@ func (t *Service) SetSearchPaths(dirs []string) {
 	t.dirs = append([]string(nil), dirs...)
 	dir := ""
 	if len(dirs) > 0 {
-		dir = filepath.Join(filepath.Dir(dirs[0]), "workflow-runs")
+		dir = runDir(dirs[0])
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -139,9 +138,13 @@ func (t *Service) Preview(name string, width int) (string, error) {
 	return preview, nil
 }
 
-// Start validates and schedules an inline blueprint. Interactive callers save
-// and review definitions before using Launch instead.
-func (t *Service) Start(definition string, inputs map[string]string, width int) (bounds, taskID string, err error) {
+// TaskAgentName labels a Flow scheduler task in the task area. Identity comes
+// from TaskInfo.Scheduler, never from this name, which a user agent may share.
+const TaskAgentName = "flow"
+
+// startInline validates and schedules an unsaved blueprint. Only tests use it;
+// users review and save definitions, then Launch them by name.
+func (t *Service) startInline(definition string, inputs map[string]string, width int) (bounds, taskID string, err error) {
 	w, err := Parse(definition)
 	if err != nil {
 		return "", "", fmt.Errorf("invalid flow:\n%w", err)
@@ -177,9 +180,9 @@ func (t *Service) launch(w *Blueprint, inputs map[string]string, width int) (str
 		return "", "", err
 	}
 	turns, _ := w.Bounds()
-	summary := fmt.Sprintf("Started flow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
-	id, err := t.start(w, inputs, "/flow run "+command.QuoteArgument(w.Name), width, "")
-	return summary, id, err
+	runID, taskID, err := t.start(w, inputs, "/flow run "+command.QuoteArgument(w.Name), width)
+	summary := fmt.Sprintf("Started flow %s · up to %d turns · max %d parallel\nRun ID: %s", w.Name, turns, w.MaxParallel, runID)
+	return summary, taskID, err
 }
 func (t *Service) Definition(name string) (string, error) { return ReadDefinition(name, t.dirs...) }
 

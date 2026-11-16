@@ -35,6 +35,7 @@ func TestLiveFlowGraphAppearsWithTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := task.NewAgentTask("wf-1", "flow", "/flow demo", ctx, cancel, "")
+	wf.MarkScheduler()
 	wf.SetLiveView("Flow demo (1/3 finished)\n  ╭────╮\n  │ ●  │\n  ╰────╯")
 	other := task.NewAgentTask("other", "Explore", "search", ctx, cancel, "")
 	view := appendLiveFlowViews("Background", []task.BackgroundTask{other, wf}, 0, 100)
@@ -67,6 +68,7 @@ func TestLiveFlowReflows(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := task.NewAgentTask("wf-width", "flow", "/flow demo", ctx, cancel, "")
+	wf.MarkScheduler()
 	wf.SetLiveView("snapshot ●")
 	wf.SetLiveViewRenderer(func(width int) string { return fmt.Sprintf("width %d ●", width) })
 	running := []task.BackgroundTask{wf}
@@ -100,7 +102,7 @@ func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	defer cancel()
 	mgr := task.NewManager()
 	tracker := todo.NewStore()
-	wf := mgr.CreateAgentTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
+	wf := mgr.CreateSchedulerTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
 	wf.SetLiveView("Flow demo · 0/1 finished\n  map ●")
 	todo.TrackWorker(tracker, wf.GetStatus())
 	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: conv.NewModel(100)}
@@ -526,6 +528,7 @@ func addTallFlowActivity(t *testing.T, m *model) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	wf := task.NewAgentTask("flow-height", "flow", "review", ctx, cancel, "")
+	wf.MarkScheduler()
 	wf.SetLiveView(w.CompactProgressView(nil, m.env.Width))
 	m.services.Task = task.NewManager()
 	m.services.Task.RegisterTask(wf)

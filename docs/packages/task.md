@@ -61,8 +61,11 @@ func ResetDefaultTracker()         // test-only
   results. Callers may
   publish an in-memory `LiveView` snapshot and an optional width-aware renderer
   for the TUI, independently of append-only progress events in the output
-  file. Workflows reflow their activity and graph when the terminal resizes;
-  the full event trail stays in the task log. Ordinary subagents publish their
+  file. Flows reflow their graph when the terminal resizes; the full event
+  trail stays in the task log. `CreateSchedulerTask` registers a task that
+  schedules child agent tasks (a Flow run) with `TaskInfo.Scheduler` set before
+  lifecycle observers see it; children carry its ID in `ParentTaskID`. Hosts
+  identify schedulers by that flag, not by display name. Ordinary subagents publish their
   latest progress under the existing tracker row; recoverable errors stay there
   rather than becoming independent main-conversation notices.
 - `output_store.go` — filesystem-backed per-task output files under

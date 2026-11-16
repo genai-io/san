@@ -112,6 +112,7 @@ type AttemptInfo struct {
 
 type TaskInfo struct {
 	ParentTaskID    string
+	Scheduler       bool // A Flow-style scheduler task; its children carry ParentTaskID.
 	Attempt         int
 	Attempts        []AttemptInfo
 	ParentSessionID string

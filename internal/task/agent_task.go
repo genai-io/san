@@ -12,6 +12,7 @@ import (
 // It implements the BackgroundTask interface
 type AgentTask struct {
 	parentTaskID    string
+	scheduler       bool   // coordinates child agent tasks instead of running a turn
 	parentSessionID string // fixed before registration
 
 	ID          string     // Unique task ID
@@ -88,6 +89,14 @@ func (t *AgentTask) SetParentTaskID(id string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.parentTaskID = id
+}
+
+// MarkScheduler identifies a task that schedules child agent tasks, such as a
+// Flow run. Mark before registration so lifecycle observers see it.
+func (t *AgentTask) MarkScheduler() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.scheduler = true
 }
 
 // SetSourceMessageSeq retains evidence only for the selected execution.
@@ -356,6 +365,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		Attempt:         t.attempt,
 		Attempts:        append([]AttemptInfo(nil), t.attempts...),
 		ParentTaskID:    t.parentTaskID,
+		Scheduler:       t.scheduler,
 		ParentSessionID: t.parentSessionID,
 
 		ID:               t.ID,

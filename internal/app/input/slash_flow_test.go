@@ -81,6 +81,7 @@ func TestFlowStopBypassAcceptsOnlyFlowCommand(t *testing.T) {
 		"/workflow stop": false, "/workflow stop run-id": false,
 		"/flow new": false, "/workflow run review": false,
 		"/flow stopper": false, "/other stop": false,
+		"/flow stop the server when idle": false,
 	} {
 		if got := IsFlowStopCommand(input); got != want {
 			t.Errorf("IsFlowStopCommand(%q) = %v, want %v", input, got, want)
@@ -89,7 +90,7 @@ func TestFlowStopBypassAcceptsOnlyFlowCommand(t *testing.T) {
 }
 
 func TestFlowNaturalLanguageDoesNotUseRunShorthand(t *testing.T) {
-	for _, goal := range []string{`检查 John's "parser"，安全和性能分别审查后汇总`, "review", "review base=main", "runbook for deployment"} {
+	for _, goal := range []string{`检查 John's "parser"，安全和性能分别审查后汇总`, "review", "review base=main", "runbook for deployment", "run the tests and fix failures", "edit README typos", "new onboarding checklist", "list all open TODOs", "show how auth works", "stop the server when idle"} {
 		t.Run(goal, func(t *testing.T) {
 			svc := flowUIFixture()
 			c := NewSlashCommandController(SlashCommandEnv{Flow: svc, Input: &Model{}, Width: 100, Height: 40})
@@ -232,7 +233,6 @@ func TestFlowCommandRefusesBadInput(t *testing.T) {
 		"run nope":         "no flow named nope",
 		"run review =main": `input "=main" is not key=value`,
 		"run":              "usage: /flow run <name>",
-		"list extra":       "usage: /flow list",
 		"run review":       "needs input base",
 	}
 	for args, want := range cases {
@@ -303,7 +303,7 @@ func TestFlowStopTargetsOnlyFlowTasks(t *testing.T) {
 	c := NewSlashCommandController(SlashCommandEnv{TaskSvc: mgr})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := mgr.CreateAgentTask("flow-test", "flow", "/flow run test", ctx, cancel)
+	wf := mgr.CreateSchedulerTask("flow-test", "flow", "/flow run test", ctx, cancel)
 	otherCtx, otherCancel := context.WithCancel(context.Background())
 	defer otherCancel()
 	other := mgr.CreateAgentTask("other-test", "Explore", "some agent", otherCtx, otherCancel)

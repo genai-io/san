@@ -40,6 +40,7 @@ func TestFlowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
 		m := fixedComposerModel(80, height)
 		m.services.Task = task.Default()
 		flow := task.NewAgentTask("live-flow", "flow", "Run flow", context.Background(), nil, "")
+		flow.MarkScheduler()
 		flow.SetLiveView(strings.Repeat("WORKFLOW_ACTIVITY\n", 40))
 		m.services.Task.RegisterTask(flow)
 		calls := reviewerCalls(4)

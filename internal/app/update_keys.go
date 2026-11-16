@@ -226,7 +226,7 @@ func (m *model) hasRunningFlow() bool {
 		return false
 	}
 	for _, bg := range m.services.Task.ListRunning() {
-		if bg.GetStatus().AgentName == "flow" {
+		if bg.GetStatus().Scheduler {
 			return true
 		}
 	}

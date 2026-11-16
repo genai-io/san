@@ -436,7 +436,7 @@ func (m *model) renderTrackerList() string {
 		liveFlowIDs := make(map[string]bool)
 		for _, bg := range running {
 			info := bg.GetStatus()
-			if info.AgentName == "flow" && info.LiveView != "" {
+			if info.Scheduler && info.LiveView != "" {
 				liveFlowIDs[info.ID] = true
 			}
 		}
@@ -480,7 +480,7 @@ func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, widt
 	var flows []liveFlow
 	for _, bg := range running {
 		info := bg.GetStatus()
-		if info.AgentName == "flow" && info.LiveView != "" {
+		if info.Scheduler && info.LiveView != "" {
 			flows = append(flows, liveFlow{info: info, task: bg})
 		}
 	}

@@ -37,7 +37,7 @@ func (s *flowUIService) InspectRun(string) (*flow.RunRecord, error) {
 	r := s.r
 	return &r, nil
 }
-func (s *flowUIService) ResumeRun(_ string, from string) (string, string, error) {
+func (s *flowUIService) ResumeRun(_ string, from string, _ int) (string, string, error) {
 	s.from = from
 	s.resumes++
 	s.r.Status = flow.RunRunning
@@ -55,7 +55,7 @@ func (s *flowUIService) Definition(string) (string, error) {
 }
 func (s *flowUIService) SaveDefinition(string, string, string) error { s.saves++; return s.err }
 func flowUIFixture() *flowUIService {
-	return &flowUIService{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Status: flow.StatusSucceeded, Duration: 7 * time.Second}, "b": {Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}, "c": {Status: flow.StatusPending}, "d": {Status: flow.StatusPending}}, Activity: map[string][]string{"b": {"old", "one", "two", "latest"}}}}
+	return &flowUIService{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Status: flow.StatusSucceeded, Duration: 7 * time.Second}, "b": {Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}, "c": {Status: flow.StatusPending}, "d": {Status: flow.StatusPending}}}}
 }
 func flowKey(k string) tea.KeyMsg {
 	switch k {

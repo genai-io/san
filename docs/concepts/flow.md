@@ -94,7 +94,10 @@ starting a task. In the TUI, `/flow run <name>` opens a guided form for missing
 inputs; supplying every required value launches directly.
 
 `/flow` opens the definitions and recent-runs view. Management is explicit
-and does not inject authoring instructions into ordinary model turns:
+and does not inject authoring instructions into ordinary model turns. A
+subcommand is recognized only in its exact shape (`edit` takes one name,
+`run` takes a saved name or `key=value` inputs, and so on); anything else is a
+goal, so `/flow run the tests and fix failures` drafts a blueprint:
 
 | Command | Action |
 | --- | --- |
@@ -103,8 +106,8 @@ and does not inject authoring instructions into ordinary model turns:
 | `/flow from-skill <skill> [name]` | Create a one-node draft referencing an enabled Skill; review before saving. The Skill remains unchanged and its live instructions/resources are loaded when the node runs. No automatic splitting is attempted. |
 | `/flow edit <name>` | Review or edit a saved definition. |
 | `/flow show <name>` | Preview a saved definition without starting it. |
-| `/flow inspect <run-id>` | Inspect a running or previous execution. |
-| `/flow stop [task-id]` | Stop one workflow, or select it by task ID when several run. |
+| `/flow inspect <run-id\|task-id>` | Inspect a running or previous execution. |
+| `/flow stop [run-id\|task-id]` | Stop one flow, or name it when several run. |
 | `/flow list` | Print the saved definitions. |
 | `/flow run <name> [key=value …]` | Run a saved blueprint; missing inputs open a guided form in the TUI. No model turn. |
 
@@ -369,7 +372,8 @@ these are distinct from continuing an individual Agent conversation.
 
 ## What comes back
 
-The run command returns immediately with the task id. When the run settles, the
+The run command returns immediately with the run ID and task ID; either
+works with `/flow inspect` and `/flow stop`. When the run settles, the
 task's completion notification carries the summary — one status line per
 node, then the output of every sink (a node with nothing downstream). On
 failure the notification names the failed and skipped nodes; the full
@@ -417,9 +421,9 @@ can repeat side effects, especially after an interruption between an external
 action and checkpoint commit. Review the current workspace before continuing;
 checkpoints are not file rollback or exactly-once execution. Skills, agent
 configuration and external resources remain live dependencies. Only one
-executor may own a run; uncertain lock ownership blocks recovery rather than
-risking duplicate execution. Automatic stale-owner recovery requires a reliable
-process-liveness probe and is conservative on Windows.
+executor may own a run. Ownership is an operating-system file lock, released
+when its process exits, so a crashed run becomes `interrupted` and can be
+resumed on every platform without deleting lock files by hand.
 
 ## Not yet
 

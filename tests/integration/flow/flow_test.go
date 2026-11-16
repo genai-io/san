@@ -108,10 +108,7 @@ func run(t *testing.T, provider llm.Provider, params map[string]any) task.TaskIn
 			inputs[key] = value.(string)
 		}
 	}
-	_, id, err := wt.Start(params["definition"].(string), inputs, 120)
-	if err != nil {
-		t.Fatalf("start flow: %v", err)
-	}
+	id := testutil.LaunchFlow(t, wt, params["definition"].(string), inputs)
 	bg, ok := task.Default().Get(id)
 	if !ok {
 		t.Fatalf("task %s was not registered", id)

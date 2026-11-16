@@ -32,7 +32,7 @@ func TestFlowStopBypassesStreamingInputQueue(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("flow-stop-now", "flow", "/flow run audit", ctx, cancel)
+	wf := manager.CreateSchedulerTask("flow-stop-now", "flow", "/flow run audit", ctx, cancel)
 	m := flowInputModel(manager)
 	m.conv.Stream.Active = true
 	m.userInput.Textarea.SetValue("/flow stop flow-stop-now")
@@ -56,13 +56,13 @@ func TestFlowStopPreservesStreamingAssistant(t *testing.T) {
 		canceled              bool
 	}{
 		{"stop", "/flow stop flow-stream", "Stopping flow flow-stream", true},
-		{"error", "/flow stop missing", "Error: flow task missing not found", false},
+		{"error", "/flow stop missing", "Error: running flow missing not found", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := task.NewManager()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			wf := manager.CreateAgentTask("flow-stream", "flow", "audit", ctx, cancel)
+			wf := manager.CreateSchedulerTask("flow-stream", "flow", "audit", ctx, cancel)
 			defer func() { wf.Stop(); wf.Complete(ctx.Err()) }()
 			m := flowInputModel(manager)
 			m.conv.Stream.Active = true
@@ -101,7 +101,7 @@ func TestCtrlCStopsSoleIdleFlow(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("flow-ctrl-c", "flow", "/flow run audit", ctx, cancel)
+	wf := manager.CreateSchedulerTask("flow-ctrl-c", "flow", "/flow run audit", ctx, cancel)
 	m := flowInputModel(manager)
 	m.userInput.LastCtrlC = time.Now() // A stop must disarm even a pending exit shortcut.
 
@@ -128,8 +128,8 @@ func TestCtrlCDoesNotGuessBetweenMultipleFlows(t *testing.T) {
 	ctxB, cancelB := context.WithCancel(context.Background())
 	defer cancelA()
 	defer cancelB()
-	a := manager.CreateAgentTask("flow-a", "flow", "audit a", ctxA, cancelA)
-	b := manager.CreateAgentTask("flow-b", "flow", "audit b", ctxB, cancelB)
+	a := manager.CreateSchedulerTask("flow-a", "flow", "audit a", ctxA, cancelA)
+	b := manager.CreateSchedulerTask("flow-b", "flow", "audit b", ctxB, cancelB)
 	m := flowInputModel(manager)
 
 	m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
@@ -152,7 +152,7 @@ func TestCtrlCStopsForegroundBeforeBackgroundFlow(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("flow-in-background", "flow", "audit", ctx, cancel)
+	wf := manager.CreateSchedulerTask("flow-in-background", "flow", "audit", ctx, cancel)
 	m := flowInputModel(manager)
 	m.services.Agent = &agent.Runtime{}
 	m.conv.Stream.Active = true

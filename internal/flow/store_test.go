@@ -2,6 +2,7 @@ package flow
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 const storedDefinition = "---\nname: review\n---\n```mermaid\nflowchart LR\n  work\n```\n\n## work\nReview {{input.task}}\n"
@@ -30,7 +32,7 @@ func TestDefinitionStorageExactSourceAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0644 {
 		t.Fatalf("definition mode = %v", info.Mode())
 	}
 	if _, err := ReadDefinition("missing", dir); !errors.Is(err, ErrNotFound) {
@@ -181,14 +183,64 @@ func TestStoreProcessLock(t *testing.T) {
 	run(true)
 	release()
 	run(false)
-	if runtime.GOOS == "windows" {
-		return
-	} // uncertain liveness is intentionally not stolen
+	// The child exited holding the lock; the operating system released it.
 	release, err = s.Acquire("process")
 	if err != nil {
 		t.Fatalf("dead owner recovery: %v", err)
 	}
 	release()
+}
+
+func TestStoreListSkipsUnreadableRecords(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if err := s.Put(RunRecord{ID: "good", Status: RunSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"broken.json": "{", "not.valid.json": "{}", "good.lock": ""} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records, err := s.List()
+	if err != nil || len(records) != 1 || records[0].ID != "good" {
+		t.Fatalf("records = %+v, err = %v", records, err)
+	}
+}
+
+func TestStorePruneKeepsNewestFinishedAndActiveRuns(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	base := time.Now()
+	for i, status := range []string{RunSucceeded, RunFailed, RunRunning, RunStopped, RunSucceeded} {
+		id := fmt.Sprintf("run-%d", i)
+		if err := s.Put(RunRecord{ID: id, Status: status, StartedAt: base.Add(time.Duration(i) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// run-1 is finished but locked by a resuming executor.
+	release, err := s.Acquire("run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if err := s.Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	records, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range records {
+		ids = append(ids, r.ID)
+	}
+	if got := strings.Join(ids, ","); got != "run-4,run-2,run-1" {
+		t.Fatalf("kept %s", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "run-0.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pruned run left its lock file: %v", err)
+	}
 }
 
 func TestStoreMemoryDeepCopy(t *testing.T) {

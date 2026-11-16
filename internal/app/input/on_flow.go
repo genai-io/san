@@ -23,7 +23,7 @@ type FlowService interface {
 	Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
 	Runs() ([]flow.RunRecord, error)
 	InspectRun(id string) (*flow.RunRecord, error)
-	ResumeRun(id, from string) (bounds, taskID string, err error)
+	ResumeRun(id, from string, width int) (bounds, taskID string, err error)
 	StopRun(id string) error
 	SavedDefinitions() []flow.Saved
 	Definition(name string) (string, error)
@@ -562,7 +562,7 @@ func (v *FlowView) handleConfirm(key string) tea.Cmd {
 			v.setError(v.service.StopRun(v.record.ID))
 			v.refreshRun()
 		case "resume":
-			_, _, err := v.service.ResumeRun(v.record.ID, v.resumeFrom)
+			_, _, err := v.service.ResumeRun(v.record.ID, v.resumeFrom, v.width)
 			v.setError(err)
 			if err == nil {
 				started = func() tea.Msg { return FlowStartedMsg{} }
@@ -700,26 +700,51 @@ func IsFlowStopCommand(input string) bool {
 	if !ok || name != "flow" {
 		return false
 	}
-	fields := strings.Fields(args)
-	return len(fields) > 0 && fields[0] == "stop"
+	fields, err := command.SplitArguments(args)
+	return err == nil && len(fields) > 0 && fields[0] == "stop" && isFlowSubcommand(fields, nil)
+}
+
+// isFlowSubcommand reports whether fields have the exact shape of a /flow
+// subcommand. Anything else, such as "run the tests and fix failures", is a
+// natural-language goal even when it starts with a subcommand word. A run of a
+// saved flow stays a command so a malformed input is reported, not drafted.
+func isFlowSubcommand(fields []string, saved func(string) bool) bool {
+	n := len(fields)
+	if n == 0 {
+		return true
+	}
+	switch fields[0] {
+	case "list":
+		return n == 1
+	case "show", "edit", "inspect":
+		return n == 2
+	case "stop", "new":
+		return n <= 2
+	case "from-skill":
+		return n == 2 || n == 3
+	case "run":
+		if n < 2 || saved != nil && saved(fields[1]) {
+			return true
+		}
+		for _, kv := range fields[2:] {
+			if k, _, ok := strings.Cut(kv, "="); !ok || k == "" {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // Authoring is loaded only for an explicit natural-language /flow request.
 func (c *SlashCommandController) handleFlowCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	args = strings.TrimSpace(args)
-	if words := strings.Fields(args); len(words) > 0 {
-		switch words[0] {
-		case "list", "show", "run", "stop", "new", "from-skill", "edit", "inspect":
-		default:
-			if c.env.Flow == nil || c.env.Input == nil {
-				return "", nil, errors.New("flow authoring is unavailable in this build")
-			}
-			return "", c.env.Input.Flow.OpenGeneration(c.env.Flow, args, c.env.Width, c.env.Height), nil
-		}
-	}
 	fields, err := command.SplitArguments(args)
-	if err != nil {
-		return "", nil, err
+	if err != nil || !isFlowSubcommand(fields, c.savedFlow) {
+		if c.env.Flow == nil || c.env.Input == nil {
+			return "", nil, errors.New("flow authoring is unavailable in this build")
+		}
+		return "", c.env.Input.Flow.OpenGeneration(c.env.Flow, args, c.env.Width, c.env.Height), nil
 	}
 	if len(fields) > 0 && fields[0] == "stop" {
 		return c.stopFlow(fields[1:])
@@ -795,6 +820,18 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 	return notice, tea.Batch(cmds...), nil
 }
 
+func (c *SlashCommandController) savedFlow(name string) bool {
+	if c.env.Flow == nil {
+		return false
+	}
+	for _, saved := range c.env.Flow.SavedDefinitions() {
+		if saved.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *SlashCommandController) openFlow(svc FlowService, fields []string) (string, tea.Cmd, error) {
 	view := &c.env.Input.Flow
 	w, h := c.env.Width, c.env.Height
@@ -865,47 +902,46 @@ func flowDraft(name, graph, sections string) string {
 }
 
 func (c *SlashCommandController) stopFlow(args []string) (string, tea.Cmd, error) {
-	if len(args) > 1 {
-		return "", nil, errors.New("usage: /flow stop [task-id]")
-	}
 	if c.env.TaskSvc == nil {
 		return "", nil, errors.New("task manager is unavailable")
 	}
-	var target task.BackgroundTask
 	if len(args) == 1 {
-		var ok bool
-		target, ok = c.env.TaskSvc.Get(args[0])
-		if !ok || target.GetStatus().AgentName != "flow" {
-			return "", nil, fmt.Errorf("flow task %s not found", args[0])
-		}
-		if !target.IsRunning() {
-			return "", nil, fmt.Errorf("flow task %s has already finished", args[0])
-		}
-	} else {
-		var running []task.BackgroundTask
-		for _, bg := range c.env.TaskSvc.ListRunning() {
-			if bg.GetStatus().AgentName == "flow" {
-				running = append(running, bg)
+		if target, ok := c.env.TaskSvc.Get(args[0]); ok && target.GetStatus().Scheduler {
+			if !target.IsRunning() {
+				return "", nil, fmt.Errorf("flow task %s has already finished", args[0])
 			}
-		}
-		switch len(running) {
-		case 0:
-			return "No running flows.", nil, nil
-		case 1:
-			target = running[0]
-		default:
-			ids := make([]string, 0, len(running))
-			for _, bg := range running {
-				ids = append(ids, bg.GetID())
+			if err := target.Stop(); err != nil {
+				return "", nil, err
 			}
-			sort.Strings(ids)
-			return "Several flows are running. Choose one: /flow stop <task-id>\n  " + strings.Join(ids, "\n  "), nil, nil
+			return "Stopping flow " + target.GetID() + ".", nil, nil
+		}
+		// A run ID, as shown at launch and in /flow, names the same execution.
+		if c.env.Flow != nil && c.env.Flow.StopRun(args[0]) == nil {
+			return "Stopping flow run " + args[0] + ".", nil, nil
+		}
+		return "", nil, fmt.Errorf("running flow %s not found", args[0])
+	}
+	var running []task.BackgroundTask
+	for _, bg := range c.env.TaskSvc.ListRunning() {
+		if bg.GetStatus().Scheduler {
+			running = append(running, bg)
 		}
 	}
-	if err := target.Stop(); err != nil {
-		return "", nil, err
+	switch len(running) {
+	case 0:
+		return "No running flows.", nil, nil
+	case 1:
+		if err := running[0].Stop(); err != nil {
+			return "", nil, err
+		}
+		return "Stopping flow " + running[0].GetID() + ".", nil, nil
 	}
-	return "Stopping flow " + target.GetID() + ".", nil, nil
+	ids := make([]string, 0, len(running))
+	for _, bg := range running {
+		ids = append(ids, bg.GetID())
+	}
+	sort.Strings(ids)
+	return "Several flows are running. Choose one: /flow stop <task-id>\n  " + strings.Join(ids, "\n  "), nil, nil
 }
 
 const flowUsage = `Commands:
@@ -916,5 +952,5 @@ const flowUsage = `Commands:
   /flow list                         List saved flows
   /flow show <name>                  Preview a graph
   /flow run <name> [key=value …]     Run a flow
-  /flow inspect <run-id>             Inspect or resume a run
-  /flow stop [task-id]               Stop a running flow`
+  /flow inspect <run-id|task-id>     Inspect or resume a run
+  /flow stop [run-id|task-id]        Stop a running flow`

@@ -10,12 +10,14 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/log"
 )
 
 // Saved is a flow definition found on disk. Only the frontmatter is read
@@ -113,7 +115,7 @@ func head(path string) string {
 
 const headBytes = 4 << 10
 
-// Serialize definition saves without coupling them to running executions.
+// Serialize definition saves in this process; WithLock covers other processes.
 var definitionWrites sync.Mutex
 var definitionName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 
@@ -136,7 +138,19 @@ func SaveDefinition(name, source, baseline string, dirs ...string) error {
 
 	definitionWrites.Lock()
 	defer definitionWrites.Unlock()
+	// The lock lives beside the run records, outside the shared definition
+	// directory, and serializes the conflict check with other processes.
+	return atomicfile.WithLock(filepath.Join(runDir(dirs[0]), ".definitions.lock"), func() error {
+		return saveDefinition(name, source, baseline, dirs)
+	})
+}
 
+// runDir keeps run records next to, not inside, the definition directory.
+func runDir(definitions string) string {
+	return filepath.Join(filepath.Dir(definitions), "workflow-runs")
+}
+
+func saveDefinition(name, source, baseline string, dirs []string) error {
 	target := filepath.Join(dirs[0], name+".md")
 	found := false
 	for _, entry := range Load(dirs...) {
@@ -169,11 +183,13 @@ func SaveDefinition(name, source, baseline string, dirs ...string) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return atomicfile.Write(target, []byte(source), 0o600)
+	// Definitions are project files meant to be shared, like skills.
+	return atomicfile.Write(target, []byte(source), 0o644)
 }
 
 // RunRecord keeps a definition and inputs fixed across execution attempts.
-// Activity is a bounded live tail; complete outputs remain in checkpoints.
+// Complete outputs live in node checkpoints; live progress belongs to the
+// native task view and is not persisted here.
 type RunRecord struct {
 	ID         string                `json:"id"`
 	Name       string                `json:"name"`
@@ -183,9 +199,8 @@ type RunRecord struct {
 	TaskID     string                `json:"task_id,omitempty"`
 	StartedAt  time.Time             `json:"started_at"`
 	UpdatedAt  time.Time             `json:"updated_at"`
-	FinishedAt time.Time             `json:"finished_at,omitempty"`
+	FinishedAt time.Time             `json:"finished_at,omitzero"`
 	Nodes      map[string]Checkpoint `json:"nodes"`
-	Activity   map[string][]string   `json:"activity,omitempty"`
 	Error      string                `json:"error,omitempty"`
 	Output     string                `json:"output,omitempty"`
 }
@@ -198,10 +213,14 @@ const (
 	RunInterrupted = "interrupted"
 )
 
+// maxFinishedRuns bounds the run history kept on disk. Older finished runs are
+// pruned when a new one starts; running and unreadable records are never touched.
+const maxFinishedRuns = 50
+
 var storeMu sync.Mutex
 
-// ErrRunActive means a live or uncertain owner prevents execution.
-var ErrRunActive = errors.New("run already active or owner liveness uncertain")
+// ErrRunActive means a live owner, in this or another process, holds the run.
+var ErrRunActive = errors.New("run already active in another executor")
 var validRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 var memoryLocks = map[*Store]map[string]bool{}
 
@@ -242,7 +261,7 @@ func (s *Store) get(id string) (*RunRecord, error) {
 	}
 	var r RunRecord
 	if err = json.Unmarshal(b, &r); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run %s: %w", id, err)
 	}
 	return &r, nil
 }
@@ -273,9 +292,16 @@ func (s *Store) Update(id string, fn func(*RunRecord)) error {
 	r.UpdatedAt = time.Now()
 	return s.put(*r)
 }
+
+// List returns readable records, newest first. A corrupt or foreign file is
+// skipped and logged so one bad record cannot hide the rest of the history.
 func (s *Store) List() ([]RunRecord, error) {
 	storeMu.Lock()
 	defer storeMu.Unlock()
+	return s.list()
+}
+
+func (s *Store) list() ([]RunRecord, error) {
 	out := []RunRecord{}
 	if s.dir == "" {
 		for _, r := range s.records {
@@ -290,12 +316,14 @@ func (s *Store) List() ([]RunRecord, error) {
 			return nil, err
 		}
 		for _, e := range entries {
-			if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			id, ok := strings.CutSuffix(e.Name(), ".json")
+			if e.IsDir() || !ok {
 				continue
 			}
-			r, err := s.get(e.Name()[:len(e.Name())-5])
+			r, err := s.get(id)
 			if err != nil {
-				return nil, err
+				log.Logger().Warn("flow: skipping unreadable run record", zap.String("file", e.Name()), zap.Error(err))
+				continue
 			}
 			out = append(out, *r)
 		}
@@ -304,15 +332,71 @@ func (s *Store) List() ([]RunRecord, error) {
 	return out, nil
 }
 
-// Acquire excludes concurrent executors, including other processes. Unknown owners
-// are never stolen. Only a positively dead PID permits stale lock recovery.
+// FindByTask returns the run whose latest execution is the given task.
+func (s *Store) FindByTask(taskID string) (*RunRecord, error) {
+	records, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range records {
+		if r.TaskID == taskID {
+			return &r, nil
+		}
+	}
+	return nil, os.ErrNotExist
+}
+
+// Prune deletes the oldest finished runs beyond keep. A run is deleted only
+// while its lock is held, so an active or resuming run is never removed.
+func (s *Store) Prune(keep int) error {
+	records, err := s.List()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	finished := 0
+	for _, r := range records {
+		if r.Status == RunRunning {
+			continue
+		}
+		if finished++; finished <= keep {
+			continue
+		}
+		release, err := s.Acquire(r.ID)
+		if errors.Is(err, ErrRunActive) {
+			continue
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		storeMu.Lock()
+		if s.dir == "" {
+			delete(s.records, r.ID)
+		} else if err := os.Remove(filepath.Join(s.dir, r.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, err)
+		}
+		storeMu.Unlock()
+		release()
+		if s.dir != "" {
+			// After release; a concurrent opener of the removed inode then
+			// finds no record and refuses to run.
+			_ = os.Remove(filepath.Join(s.dir, r.ID+".lock"))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// Acquire excludes concurrent executors, including other processes. The lock
+// is an operating-system file lock, released automatically when its holder
+// exits, so a crashed owner never blocks recovery.
 func (s *Store) Acquire(id string) (func(), error) {
-	storeMu.Lock()
-	defer storeMu.Unlock()
 	if err := checkID(id); err != nil {
 		return nil, err
 	}
 	if s.dir == "" {
+		storeMu.Lock()
+		defer storeMu.Unlock()
 		if memoryLocks[s] == nil {
 			memoryLocks[s] = map[string]bool{}
 		}
@@ -332,57 +416,9 @@ func (s *Store) Acquire(id string) (func(), error) {
 			})
 		}, nil
 	}
-	if err := os.MkdirAll(s.dir, 0700); err != nil {
-		return nil, err
+	release, err := atomicfile.TryLock(filepath.Join(s.dir, id+".lock"))
+	if errors.Is(err, atomicfile.ErrLocked) {
+		return nil, fmt.Errorf("run %s: %w", id, ErrRunActive)
 	}
-	p := filepath.Join(s.dir, id+".lock")
-	for attempt := 0; attempt < 2; attempt++ {
-		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err == nil {
-			_, err = f.WriteString(strconv.Itoa(os.Getpid()))
-			closeErr := f.Close()
-			if err == nil {
-				err = closeErr
-			}
-			if err != nil {
-				_ = os.Remove(p)
-				return nil, err
-			}
-			var once sync.Once
-			return func() { once.Do(func() { storeMu.Lock(); _ = os.Remove(p); storeMu.Unlock() }) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		b, readErr := os.ReadFile(p)
-		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			return nil, readErr
-		}
-		pid, parseErr := strconv.Atoi(string(b))
-		if readErr != nil || parseErr != nil || !processDead(pid) {
-			return nil, fmt.Errorf("run %s: %w", id, ErrRunActive)
-		}
-		// Serialize stale recovery and recheck under that guard: another
-		// process may have replaced the dead owner's lock since our read.
-		guard, guardErr := os.OpenFile(p+".recovery", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if guardErr != nil {
-			if errors.Is(guardErr, os.ErrExist) {
-				return nil, fmt.Errorf("run %s recovery uncertain: %w", id, ErrRunActive)
-			}
-			return nil, fmt.Errorf("run %s recovery busy: %w", id, guardErr)
-		}
-		_ = guard.Close()
-		b, readErr = os.ReadFile(p)
-		pid, parseErr = strconv.Atoi(string(b))
-		if readErr != nil || parseErr != nil || !processDead(pid) {
-			_ = os.Remove(p + ".recovery")
-			return nil, fmt.Errorf("run %s: %w", id, ErrRunActive)
-		}
-		err = os.Remove(p)
-		_ = os.Remove(p + ".recovery")
-		if err != nil {
-			return nil, err
-		}
-	}
-	return nil, fmt.Errorf("run %s lock unavailable", id)
+	return release, err
 }

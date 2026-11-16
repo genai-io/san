@@ -3,9 +3,11 @@ package testutil
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -112,3 +114,27 @@ func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolre
 // ---------------------------------------------------------------------------
 // Fake / mock providers
 // ---------------------------------------------------------------------------
+
+// LaunchFlow saves definition as a project flow and launches it by name, the
+// way users start one, returning the scheduler task ID.
+func LaunchFlow(t testing.TB, flows *flow.Service, definition string, inputs map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), ".san", "workflows")
+	flows.SetSearchPaths([]string{dir})
+	w, err := flow.Parse(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := w.Name
+	if name == "" {
+		name = "inline"
+	}
+	if err := flow.SaveDefinition(name, definition, "", dir); err != nil {
+		t.Fatal(err)
+	}
+	_, id, err := flows.Launch(name, inputs, 120)
+	if err != nil {
+		t.Fatalf("launch flow: %v", err)
+	}
+	return id
+}

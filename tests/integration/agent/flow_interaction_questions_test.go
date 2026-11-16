@@ -30,10 +30,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	flows := flow.NewService(task.Default())
 	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: questions\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nAsk first\n\n## second\nAsk second\n"
-	_, runID, err := flows.Start(definition, nil, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runID := testutil.LaunchFlow(t, flows, definition, nil)
 	bg, ok := task.Default().Get(runID)
 	if !ok {
 		t.Fatal("flow task missing")

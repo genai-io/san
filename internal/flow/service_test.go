@@ -122,14 +122,14 @@ func TestNodeRunnerFlowOrigin(t *testing.T) {
 	defer cancel()
 	bg := task.NewAgentTask("flow-run", "flow", "review", ctx, cancel, "")
 	exec := &scriptedExecutor{}
-	runner := &nodeRunner{exec: exec, task: bg, name: "review", parentToolCallID: "spawning-call"}
+	runner := &nodeRunner{exec: exec, task: bg, name: "review"}
 	_, err := runner.RunNode(ctx, Call{Node: &Node{ID: "check", Config: map[string]string{}}, Label: "item-2"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := exec.reqs[0]
 	want := tool.FlowOrigin{TaskID: "flow-run", Name: "review", NodeID: "check", WorkerLabel: "item-2"}
-	if req.Flow == nil || *req.Flow != want || req.ParentToolCallID != "spawning-call" || req.TaskID != "" {
+	if req.Flow == nil || *req.Flow != want || req.ParentToolCallID != "" || req.TaskID != "" {
 		t.Fatalf("wrong attribution or shared broker address: %+v", req)
 	}
 }
@@ -178,7 +178,7 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	src := "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"
-	_, id, err := wt.Start(src, nil, 120)
+	_, id, err := wt.startInline(src, nil, 120)
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
@@ -216,30 +216,20 @@ func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 			req.OnToolResult("first", "Bash(cat first.go)", "first result", nil)
 		},
 	}
-	// Callback IDs, rather than parent presentation rows, preserve pairing.
+	// Each result line names the call it answers, whatever order they finish in.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	calls, results := map[string]string{}, map[string]string{}
-	runner := &nodeRunner{
-		exec:        &scriptedExecutor{toolEvents: exec.toolEvents},
-		task:        task.NewAgentTask("callback-pairing", "flow", "review", ctx, cancel, ""),
-		onToolStart: func(_, _, id, call string) { calls[id] = call },
-		onToolResult: func(_, _, id, call, summary string, failed bool) {
-			if failed || calls[id] != call {
-				t.Errorf("result callback lost call identity: id=%q call=%q failed=%v", id, call, failed)
-			}
-			results[id] = summary
-		},
-	}
+	scheduler := task.NewAgentTask("callback-pairing", "flow", "review", ctx, cancel, "")
+	runner := &nodeRunner{exec: &scriptedExecutor{toolEvents: exec.toolEvents}, task: scheduler}
 	if _, err := runner.RunNode(ctx, Call{Node: &Node{ID: "only", Config: map[string]string{}}}); err != nil {
 		t.Fatal(err)
 	}
-	if results["first"] != "first result" || results["second"] != "second result" {
-		t.Fatalf("parallel callback results = %v", results)
+	if got := scheduler.GetStatus().Progress; got != "only ▸ ✓ Bash(cat first.go) · first result" {
+		t.Fatalf("latest result lost its call: %q", got)
 	}
 	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	_, id, err := wt.Start("```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
+	_, id, err := wt.startInline("```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
@@ -288,21 +278,21 @@ func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
 		if strings.HasSuffix(req.Description, "/a") {
 			req.OnTextDelta("previous accepted")
-			req.OnTextEnd(nil)
+			textEnd(req, nil)
 			req.OnTextDelta(strings.Repeat("discarded draft ", 16))
 			req.OnTextDelta("unflushed tail")
 			close(firstStreaming)
 			<-secondStreaming
-			req.OnTextEnd(errors.New("stream failed"))
+			textEnd(req, errors.New("stream failed"))
 			close(firstDiscarded)
 			req.OnTextDelta("accepted retry")
-			req.OnTextEnd(nil)
+			textEnd(req, nil)
 		} else {
 			<-firstStreaming
 			req.OnTextDelta("parallel accepted")
 			close(secondStreaming)
 			<-firstDiscarded
-			req.OnTextEnd(nil)
+			textEnd(req, nil)
 		}
 	}}
 	wt := NewService(task.Default())
@@ -323,11 +313,11 @@ func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
 
-	if _, _, err := wt.Start(definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
+	if _, _, err := wt.startInline(definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
 		t.Fatalf("disabled agent err = %v", err)
 	}
 	broken := strings.Replace(definition, "{{diff}}", "{{dif}}", 1)
-	if _, _, err := wt.Start(broken, nil, 120); err == nil || !strings.Contains(err.Error(), "invalid flow") {
+	if _, _, err := wt.startInline(broken, nil, 120); err == nil || !strings.Contains(err.Error(), "invalid flow") {
 		t.Fatalf("invalid definition err = %v", err)
 	}
 }
@@ -337,7 +327,7 @@ func TestFlowServiceRejectsATypoedAgentName(t *testing.T) {
 	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
 	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
 
-	_, _, err := wt.Start(src, map[string]string{"base": "main"}, 120)
+	_, _, err := wt.startInline(src, map[string]string{"base": "main"}, 120)
 	if err == nil || !strings.Contains(err.Error(), `node diff: no agent named "Explorr"`) {
 		t.Fatalf("err = %v; a written-down name that resolves to nothing is a typo, not a label", err)
 	}
@@ -351,7 +341,7 @@ func TestFlowServiceAcceptsANodeWithNoAgent(t *testing.T) {
 	wt.SetExecutor(&scriptedExecutor{})
 	src := strings.Replace(definition, "agent: explorer\n", "", 1)
 
-	if _, _, err := wt.Start(src, map[string]string{"base": "main"}, 120); err != nil {
+	if _, _, err := wt.startInline(src, map[string]string{"base": "main"}, 120); err != nil {
 		t.Fatalf("a node without an agent takes the default one: %v", err)
 	}
 }
@@ -509,7 +499,7 @@ func startServiceParams(wt *Service, params map[string]any) (string, string, err
 		return wt.Launch(name, inputs, 120)
 	}
 	source, _ := params["definition"].(string)
-	return wt.Start(source, inputs, 120)
+	return wt.startInline(source, inputs, 120)
 }
 
 // runToCompletion starts a service run and waits for its background task.
@@ -613,5 +603,12 @@ func TestFlowServiceFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 		if r.Description == "polish/ship" {
 			t.Fatal("a draft that never passed review reached ship")
 		}
+	}
+}
+
+// textEnd mirrors the executor, which skips an absent end-of-text observer.
+func textEnd(req tool.AgentExecRequest, err error) {
+	if req.OnTextEnd != nil {
+		req.OnTextEnd(err)
 	}
 }

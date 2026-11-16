@@ -44,8 +44,12 @@ package flow
 
 // The app injects the native task manager and executor into the direct service.
 func NewService(tasks *task.Manager) *Service
-func (s *Service) Start(definition string, inputs map[string]string, width int) (bounds, taskID string, err error)
+// Launch runs a saved, reviewed definition. bounds ends with "Run ID: <id>";
+// InspectRun, ResumeRun and StopRun accept that run ID or the task ID.
 func (s *Service) Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
+func (s *Service) InspectRun(id string) (*RunRecord, error)
+func (s *Service) ResumeRun(id, from string, width int) (bounds, taskID string, err error)
+func (s *Service) StopRun(id string) error
 
 // Load lists the `*.md` definitions in dirs, earliest directory winning when
 // a name appears twice, sorted by name.
@@ -191,6 +195,25 @@ checkpoints through its callback. Run snapshots fix definition and inputs,
 not external workspace state. Retries may repeat side effects; locks prevent
 concurrent ownership, not exactly-once external actions.
 
+- Ownership: each run holds an operating-system file lock
+  (`atomicfile.TryLock`, `flock`/`LockFileEx`) on `<run-id>.lock` for as long as
+  it executes. The OS drops it when the holder exits, so a crashed process never
+  blocks recovery on any platform; a record still `running` with no holder is
+  reported `interrupted`. Lock files are kept, not removed, while a run exists.
+- Persistence: a record holds the definition snapshot, inputs, checkpoints and
+  the final summary. Live tool activity is not persisted; it goes to the
+  scheduler task's progress tail, and native child tasks keep the transcripts.
+  Only checkpoint and final-status writes can fail a run.
+- History: `List` skips (and logs) unreadable records. Starting a run prunes
+  finished runs beyond the newest 50; running or locked runs are never pruned.
+- Identity: the scheduler task is created with `CreateSchedulerTask`, which sets
+  `TaskInfo.Scheduler`. The app identifies Flow tasks by that flag, never by the
+  `flow` display name, which a user agent may share.
+- Definitions are saved `0644`, as shared project files. Saves hold an
+  in-process mutex and a cross-process `atomicfile.WithLock` on
+  `workflow-runs/.definitions.lock`, so the on-disk conflict check cannot race
+  another San instance.
+
 ## Tests
 
 ```
@@ -200,15 +223,15 @@ internal/flow/expand_test.go — for_each over objects and strings, max_workers 
 internal/flow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
 internal/flow/view_test.go   — compact branches, circular progress, conditional fallback and preview width.
 internal/flow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
-internal/flow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private files, IDs and executor ownership.
+internal/flow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private run files, IDs, OS-lock ownership and crash release, unreadable-record skipping, pruning.
 internal/flow/service_test.go — preflight, node requests, native callbacks, stream cleanup and task outcomes.
-internal/flow/service_run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
+internal/flow/service_run_test.go — snapshot recovery, unpersisted activity, retry roots, stop, task-ID lookup, interruption and write failures.
 internal/flow/definitions_test.go — validation, stale saves, filename collisions and project copies.
 internal/app/flow_test.go — one-shot no-tools authoring, recording, cancellation and stale-result fences.
 internal/session/flow_completion_test.go — Flow-purpose inference recording without ordinary conversation messages.
 internal/app/input/on_flow_test.go — review/edit/input/run transitions, graph layout and recovery confirmations.
 internal/app/input/on_flow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
-internal/app/input/slash_flow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management and argument parsing.
+internal/app/input/slash_flow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management, argument parsing and verb-led goals.
 internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
 internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
 tests/integration/flow/flow_test.go — real subagent executor with scripted model, fan-out, truncated turns and failed-stream cleanup.

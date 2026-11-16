@@ -65,11 +65,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 	definition := "---\nname: review\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nCheck first\n\n## second\nCheck second\n"
 	var runIDs []string
 	for range 2 {
-		_, id, err := flows.Start(definition, nil, 100)
-		if err != nil {
-			t.Fatal(err)
-		}
-		runIDs = append(runIDs, id)
+		runIDs = append(runIDs, testutil.LaunchFlow(t, flows, definition, nil))
 	}
 	groups := make(map[string][]pendingApproval)
 	agentIDs := make(map[string]bool)

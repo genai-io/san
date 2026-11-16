@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func TestPersistedRunSharesLiveTaskAndToolActivity(t *testing.T) {
+func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
 		req.OnToolStart("read-1", "Read(example.go)")
@@ -32,10 +33,6 @@ func TestPersistedRunSharesLiveTaskAndToolActivity(t *testing.T) {
 	if strings.Contains(info.LiveView, "Read(example.go)") || !strings.Contains(info.LiveView, "1/1 finished") {
 		t.Fatalf("parent task should show the graph, not duplicate child activity: %s", info.LiveView)
 	}
-	activity := strings.Join(r.Activity["a"], "\n")
-	if !strings.Contains(activity, "Read(example.go)") || !strings.Contains(activity, "✓ Read(example.go) · package main") {
-		t.Fatalf("tool activity not persisted: %s", activity)
-	}
 }
 
 func TestResumeRetainsSavedFilenameName(t *testing.T) {
@@ -45,7 +42,7 @@ func TestResumeRetainsSavedFilenameName(t *testing.T) {
 	if err := wt.runStore().Put(RunRecord{ID: "named", Name: "filename-name", Definition: definition}); err != nil {
 		t.Fatal(err)
 	}
-	bounds, _, err := wt.ResumeRun("named", "")
+	bounds, _, err := wt.ResumeRun("named", "", 120)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +80,7 @@ func TestRunActualActivityAndStop(t *testing.T) {
 	wt := NewService(task.Default())
 	e := &activityExecutor{ready: make(chan struct{})}
 	wt.SetExecutor(e)
-	_, _, err := wt.Start("```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
+	_, _, err := wt.startInline("```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +94,10 @@ func TestRunActualActivityAndStop(t *testing.T) {
 		t.Fatalf("runs %v %v", records, err)
 	}
 	r := records[0]
-	if len(r.Activity["a"]) != 100 || r.Activity["a"][0] != "actual 20" {
-		t.Fatalf("activity %v", r.Activity)
+	if data, err := json.Marshal(r); err != nil || strings.Contains(string(data), "actual 1") {
+		t.Fatalf("live activity was persisted into the run record: %s %v", data, err)
 	}
-	if _, _, err := wt.ResumeRun(r.ID, ""); err == nil {
+	if _, _, err := wt.ResumeRun(r.ID, "", 120); err == nil {
 		t.Fatal("duplicate resume accepted")
 	}
 	if err := wt.StopRun(r.ID); err != nil {
@@ -183,7 +180,7 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	wt = NewService(task.Default())
 	wt.SetSearchPaths(paths)
 	wt.SetExecutor(exec)
-	_, _, err := wt.ResumeRun("retry", "")
+	_, _, err := wt.ResumeRun("retry", "", 120)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,10 +215,35 @@ func TestLaunchRefusesInitialStoreFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = wt.startRecord(w, RunRecord{ID: "blocked", Definition: w.Source}, "test", 120, ""); err == nil {
+	if _, err = wt.startRecord(w, RunRecord{ID: "blocked", Definition: w.Source}, "test", 120); err == nil {
 		t.Fatal("expected write failure")
 	}
 	if len(exec.reqs) != 0 {
 		t.Fatal("untracked execution")
+	}
+}
+
+func TestInspectAndStopAcceptTaskID(t *testing.T) {
+	wt := NewService(task.Default())
+	e := &activityExecutor{ready: make(chan struct{})}
+	wt.SetExecutor(e)
+	bounds, taskID, err := wt.startInline("```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-e.ready
+	r, err := wt.InspectRun(taskID)
+	if err != nil || r.TaskID != taskID || r.ID == taskID {
+		t.Fatalf("task ID did not resolve to its run: %+v %v", r, err)
+	}
+	if !strings.Contains(bounds, "Run ID: "+r.ID) {
+		t.Fatalf("launch summary hides the run ID: %s", bounds)
+	}
+	if err := wt.StopRun(taskID); err != nil {
+		t.Fatal(err)
+	}
+	bg, _ := task.Default().Get(taskID)
+	if !bg.WaitForCompletion(5*time.Second) || !bg.GetStatus().Scheduler {
+		t.Fatalf("scheduler task did not stop: %+v", bg.GetStatus())
 	}
 }
