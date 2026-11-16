@@ -101,13 +101,7 @@ func RecoveryBudgetAvailable(attempts []AttemptInfo) bool {
 
 // BeginAttempt atomically rejects overlapping and deliberately terminated work.
 func (t *AgentTask) BeginAttempt(parent string, ctx context.Context, cancel context.CancelFunc) (int, error) {
-	return t.BeginAttemptAfter(0, parent, ctx, cancel)
-}
-
-// BeginAttemptAfter fences approval/preflight against a newer execution.
-// Zero retains the current-task behavior for internal callers.
-func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.Context, cancel context.CancelFunc) (int, error) {
-	return t.BeginAttemptWithSetup(ctx, cancel, previous, parent, AttemptSetup{})
+	return t.BeginAttemptWithSetup(ctx, cancel, 0, parent, AttemptSetup{})
 }
 
 // AttemptSetup is the work a continuation does between its eligibility check
@@ -120,9 +114,10 @@ type AttemptSetup struct {
 	Accept  func() error
 }
 
-// BeginAttemptWithSetup is BeginAttemptAfter with setup between eligibility
-// and publication. Only one start runs at a time; a rejected start consumes no
-// attempt or recovery budget.
+// BeginAttemptWithSetup runs setup between eligibility and publication. A
+// nonzero previous fences approval/preflight against a newer execution; zero
+// accepts the current one. Only one start runs at a time; a rejected start
+// consumes no attempt or recovery budget.
 func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.CancelFunc, previous int, parent string, setup AttemptSetup) (int, error) {
 	t.mu.Lock()
 	if t.starting {

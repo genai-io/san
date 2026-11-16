@@ -194,10 +194,10 @@ func WakeCompletions(addr string) {
 // One drainer per owner preserves FIFO order, including across replacement
 // registrations. Callbacks may reenter the broker; they never run under mu.
 // A woken flush that finds a drainer leaves the wake for it to observe.
-func flushCompletions(addr string, mail *completionMail, woken bool) {
+func flushCompletions(addr string, mail *completionMail, wake bool) {
 	mu.Lock()
 	if pending[addr] != mail || mail.draining {
-		if woken && pending[addr] == mail {
+		if wake && pending[addr] == mail {
 			mail.woken = true
 		}
 		mu.Unlock()

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestStartAttemptPreparationDoesNotPublishOrOverlap(t *testing.T) {
+func TestBeginAttemptWithSetupPreparationDoesNotPublishOrOverlap(t *testing.T) {
 	worker := NewAgentTask("start", "worker", "work", context.Background(), nil, "")
 	worker.Complete(nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -36,7 +36,7 @@ func TestStartAttemptPreparationDoesNotPublishOrOverlap(t *testing.T) {
 	worker.Complete(nil)
 }
 
-func TestStopDuringStartPreparationRejectsBeforeAcceptance(t *testing.T) {
+func TestBeginAttemptWithSetupStopDuringPreparationRejects(t *testing.T) {
 	worker := NewAgentTask("stop-start", "worker", "work", context.Background(), nil, "")
 	worker.Complete(nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -72,7 +72,7 @@ func TestStopDuringStartPreparationRejectsBeforeAcceptance(t *testing.T) {
 	}
 }
 
-func TestStartAcceptanceFailureDoesNotConsumeAttempt(t *testing.T) {
+func TestBeginAttemptWithSetupAcceptFailureConsumesNoAttempt(t *testing.T) {
 	worker := NewAgentTask("accept-failure", "worker", "work", context.Background(), nil, "")
 	worker.Complete(nil)
 	failure := errors.New("input rejected")
@@ -88,7 +88,7 @@ func TestStartAcceptanceFailureDoesNotConsumeAttempt(t *testing.T) {
 	worker.Complete(nil)
 }
 
-func TestStopDuringAcceptanceCancelsAdmittedAttempt(t *testing.T) {
+func TestBeginAttemptWithSetupStopDuringAcceptCancelsAttempt(t *testing.T) {
 	worker := NewAgentTask("commit-stop", "worker", "work", context.Background(), nil, "")
 	worker.Complete(nil)
 	ctx, cancel := context.WithCancel(context.Background())
