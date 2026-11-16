@@ -128,6 +128,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, next)
 	}
 	m.syncTaskViewerSession()
+	m.syncFlowDraft()
 	if tick := m.taskViewerTick(); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
@@ -610,6 +611,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:
 		return m, m.onMainNotice(msg.notice)
+	case input.FlowDraftRequestMsg:
+		return m, m.generateFlow(msg)
+	case flowDraftedMsg:
+		return m, m.onFlowDrafted(msg)
 	case btwAnswerMsg:
 		return m, m.onBtwAnswer(msg)
 	case tea.BlurMsg:
@@ -664,6 +669,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
+		m.flowDraft != nil ||
 		m.btwWaiting() ||
 		m.recap.show ||
 		m.services.Task.HasRunning()

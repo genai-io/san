@@ -7,7 +7,6 @@ import (
 	_ "github.com/genai-io/san/internal/tool/ask"
 	_ "github.com/genai-io/san/internal/tool/cron"
 	_ "github.com/genai-io/san/internal/tool/evolve"
-	_ "github.com/genai-io/san/internal/tool/flow"
 	_ "github.com/genai-io/san/internal/tool/fs"
 	_ "github.com/genai-io/san/internal/tool/skill"
 	_ "github.com/genai-io/san/internal/tool/todo"

@@ -7,6 +7,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
@@ -38,6 +39,7 @@ type services struct {
 	Subagent     *subagent.Registry
 	Command      *command.Registry
 	Task         *task.Manager
+	Flow         *flow.Service
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
 	MCP          *mcp.Manager
@@ -95,6 +97,7 @@ type selfLearnSession struct {
 }
 
 func newServices() services {
+	tasks := task.Default()
 	return services{
 		Setting:      setting.Default(),
 		LLM:          llm.Default(),
@@ -105,7 +108,8 @@ func newServices() services {
 		Skill:        skill.Default(),
 		Subagent:     subagent.Default(),
 		Command:      command.Default(),
-		Task:         task.Default(),
+		Task:         tasks,
+		Flow:         flow.NewService(tasks),
 		Tracker:      todo.Default(),
 		Cron:         cron.Default(),
 		MCP:          mcp.DefaultManager(),

@@ -43,6 +43,20 @@ func TestToolGuidanceRespectsUserChoices(t *testing.T) {
 	}
 }
 
+func TestFlowIsNotAModelTool(t *testing.T) {
+	if _, ok := tool.Get("Flow"); ok {
+		t.Fatal("Flow must not register a model tool")
+	}
+	for _, schemas := range [][]core.ToolSchema{tool.GetToolSchemas(), tool.GetManageableToolSchemasWith(tool.SchemaOptions{})} {
+		if _, ok := findSchema(schemas, "Flow"); ok {
+			t.Fatal("Flow must not appear in model or manageable tool schemas")
+		}
+	}
+	if tool.IsParentOnlyTool("Flow") {
+		t.Fatal("Flow must not remain in the tool policy registry")
+	}
+}
+
 func TestGroupControlIsNotAModelTool(t *testing.T) {
 	if _, ok := tool.Get("Group"); ok {
 		t.Fatal("group control must not register a model tool")

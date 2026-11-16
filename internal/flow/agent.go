@@ -12,22 +12,21 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-func (t *FlowTool) runStore() *flow.Store {
+func (t *Service) runStore() *Store {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.store == nil {
-		t.store = flow.NewStore("")
+		t.store = NewStore("")
 	}
 	return t.store
 }
 
-func (t *FlowTool) Runs() ([]flow.RunRecord, error) {
+func (t *Service) Runs() ([]RunRecord, error) {
 	records, err := t.runStore().List()
 	if err != nil {
 		return nil, err
@@ -42,26 +41,26 @@ func (t *FlowTool) Runs() ([]flow.RunRecord, error) {
 	return records, nil
 }
 
-func (t *FlowTool) InspectRun(id string) (*flow.RunRecord, error) {
+func (t *Service) InspectRun(id string) (*RunRecord, error) {
 	s := t.runStore()
 	r, err := s.Get(id)
 	if err != nil {
 		return nil, err
 	}
-	if r.Status != flow.RunRunning {
+	if r.Status != RunRunning {
 		return r, nil
 	}
 	release, err := s.Acquire(id)
 	if err != nil {
-		if errors.Is(err, flow.ErrRunActive) {
+		if errors.Is(err, ErrRunActive) {
 			return r, nil
 		}
 		return nil, err
 	}
 	defer release()
-	err = s.Update(id, func(r *flow.RunRecord) {
-		if r.Status == flow.RunRunning {
-			r.Status = flow.RunInterrupted
+	err = s.Update(id, func(r *RunRecord) {
+		if r.Status == RunRunning {
+			r.Status = RunInterrupted
 			r.Error = "executor interrupted"
 		}
 	})
@@ -71,7 +70,7 @@ func (t *FlowTool) InspectRun(id string) (*flow.RunRecord, error) {
 	return s.Get(id)
 }
 
-func (t *FlowTool) StopRun(id string) error {
+func (t *Service) StopRun(id string) error {
 	t.mu.Lock()
 	bg := t.live[id]
 	t.mu.Unlock()
@@ -81,7 +80,7 @@ func (t *FlowTool) StopRun(id string) error {
 	return bg.Stop()
 }
 
-func (t *FlowTool) ResumeRun(id, from string) (string, string, error) {
+func (t *Service) ResumeRun(id, from string) (string, string, error) {
 	s := t.runStore()
 	release, err := s.Acquire(id)
 	if err != nil {
@@ -92,7 +91,13 @@ func (t *FlowTool) ResumeRun(id, from string) (string, string, error) {
 		release()
 		return "", "", err
 	}
-	w, err := t.prepare(map[string]any{"definition": r.Definition})
+	w, err := Parse(r.Definition)
+	if err == nil {
+		err = t.preflight(w)
+	}
+	if err == nil {
+		err = validateInputs(w, r.Inputs)
+	}
 	if err != nil {
 		release()
 		return "", "", err
@@ -100,9 +105,9 @@ func (t *FlowTool) ResumeRun(id, from string) (string, string, error) {
 	w.Name = r.Name
 	states := r.Nodes
 	if from != "" {
-		states, err = flow.Invalidate(w, states, from)
+		states, err = Invalidate(w, states, from)
 	} else {
-		states, err = flow.Retry(w, states)
+		states, err = Retry(w, states)
 	}
 	if err != nil {
 		release()
@@ -114,11 +119,11 @@ func (t *FlowTool) ResumeRun(id, from string) (string, string, error) {
 }
 
 // start persists a snapshot before launching its background task.
-func (t *FlowTool) start(w *flow.Blueprint, inputs map[string]string, description string, width int, parentToolCallID string) (string, error) {
-	return t.startRecord(w, flow.RunRecord{ID: task.NewID(), Name: w.Name, Definition: w.Source, Inputs: maps.Clone(inputs)}, description, width, parentToolCallID)
+func (t *Service) start(w *Blueprint, inputs map[string]string, description string, width int, parentToolCallID string) (string, error) {
+	return t.startRecord(w, RunRecord{ID: task.NewID(), Name: w.Name, Definition: w.Source, Inputs: maps.Clone(inputs)}, description, width, parentToolCallID)
 }
 
-func (t *FlowTool) startRecord(w *flow.Blueprint, r flow.RunRecord, description string, width int, parentToolCallID string) (string, error) {
+func (t *Service) startRecord(w *Blueprint, r RunRecord, description string, width int, parentToolCallID string) (string, error) {
 	release, err := t.runStore().Acquire(r.ID)
 	if err != nil {
 		return "", err
@@ -126,13 +131,13 @@ func (t *FlowTool) startRecord(w *flow.Blueprint, r flow.RunRecord, description 
 	return t.launchRecord(w, r, description, release, width, parentToolCallID)
 }
 
-func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description string, release func(), width int, parentToolCallID string) (string, error) {
+func (t *Service) launchRecord(w *Blueprint, r RunRecord, description string, release func(), width int, parentToolCallID string) (string, error) {
 	s := t.runStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	id := task.NewID()
 	now := time.Now()
 	r.TaskID = id
-	r.Status = flow.RunRunning
+	r.Status = RunRunning
 	r.UpdatedAt = now
 	r.FinishedAt = time.Time{}
 	r.Error = ""
@@ -140,7 +145,7 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 		r.StartedAt = now
 	}
 	if r.Nodes == nil {
-		r.Nodes = map[string]flow.Checkpoint{}
+		r.Nodes = map[string]Checkpoint{}
 	}
 	if r.Activity == nil {
 		r.Activity = map[string][]string{}
@@ -151,7 +156,7 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 		return "", err
 	}
 	executor := t.executor
-	bg := task.Default().CreateAgentTask(id, "flow", description, ctx, cancel)
+	bg := t.tasks.CreateAgentTask(id, "flow", description, ctx, cancel)
 	t.mu.Lock()
 	if t.live == nil {
 		t.live = map[string]*task.AgentTask{}
@@ -164,7 +169,7 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 		defer func() { t.mu.Lock(); delete(t.live, r.ID); t.mu.Unlock() }()
 		var persistMu sync.Mutex
 		var persistErr error
-		update := func(fn func(*flow.RunRecord)) error {
+		update := func(fn func(*RunRecord)) error {
 			persistMu.Lock()
 			defer persistMu.Unlock()
 			if persistErr != nil {
@@ -182,7 +187,7 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 			if worker != "" {
 				msg = worker + " ▸ " + msg
 			}
-			_ = update(func(r *flow.RunRecord) {
+			_ = update(func(r *RunRecord) {
 				if r.Activity == nil {
 					r.Activity = map[string][]string{}
 				}
@@ -206,27 +211,27 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 			}
 			recordActivity(node, worker, marker+call+" · "+summary)
 		}
-		res := flow.Run(ctx, w, runner, flow.Options{Inputs: r.Inputs, Resume: r.Nodes, OnStatus: onStatus, OnCheckpoint: func(n *flow.Node, c flow.Checkpoint) error {
-			return update(func(r *flow.RunRecord) { r.Nodes[n.ID] = c })
+		res := Run(ctx, w, runner, Options{Inputs: r.Inputs, Resume: r.Nodes, OnStatus: onStatus, OnCheckpoint: func(n *Node, c Checkpoint) error {
+			return update(func(r *RunRecord) { r.Nodes[n.ID] = c })
 		}})
 		output := res.Summary(w)
 		bg.AppendOutput([]byte(output))
 		var runErr error
-		status := flow.RunSucceeded
+		status := RunSucceeded
 		if ctx.Err() != nil {
-			status = flow.RunStopped
+			status = RunStopped
 			runErr = ctx.Err()
 		} else if res.Failed(w) {
-			status = flow.RunFailed
+			status = RunFailed
 			runErr = fmt.Errorf("flow %s failed: %v", w.Name, res.Failures(w))
 		}
 		persistMu.Lock()
 		if persistErr != nil {
 			runErr = persistErr
-			status = flow.RunFailed
+			status = RunFailed
 		}
 		persistMu.Unlock()
-		err := s.Update(r.ID, func(r *flow.RunRecord) {
+		err := s.Update(r.ID, func(r *RunRecord) {
 			r.Status = status
 			r.Output = output
 			r.FinishedAt = time.Now()
@@ -243,9 +248,9 @@ func (t *FlowTool) launchRecord(w *flow.Blueprint, r flow.RunRecord, description
 }
 
 // attachLiveView publishes scheduler progress in the existing task area.
-func attachLiveView(w *flow.Blueprint, bg *task.AgentTask, width int) func(*flow.Node, flow.Status) {
+func attachLiveView(w *Blueprint, bg *task.AgentTask, width int) func(*Node, Status) {
 	width = flowDisplayWidth(width)
-	statuses := make(map[string]flow.Status, len(w.Nodes))
+	statuses := make(map[string]Status, len(w.Nodes))
 	liveView := func(displayWidth int) string {
 		return w.CompactProgressView(statuses, displayWidth)
 	}
@@ -257,7 +262,7 @@ func attachLiveView(w *flow.Blueprint, bg *task.AgentTask, width int) func(*flow
 	})
 	bg.SetLiveView(liveView(width))
 
-	return func(n *flow.Node, s flow.Status) {
+	return func(n *Node, s Status) {
 		progressMu.Lock()
 		statuses[n.ID] = s
 		bg.SetLiveView(liveView(width))
@@ -276,7 +281,7 @@ func flowDisplayWidth(terminalWidth int) int {
 	return terminalWidth * 9 / 10
 }
 
-// nodeRunner is the flow.NodeRunner seam: one node is one subagent turn
+// nodeRunner is the NodeRunner seam: one node is one subagent turn
 // through the same executor, and so the same permission gate, as Agent.
 type nodeRunner struct {
 	exec             tool.AgentExecutor
@@ -288,26 +293,26 @@ type nodeRunner struct {
 	onTextEnd        func(nodeID, label string, err error)
 	onToolStart      func(nodeID, worker, id, call string)
 	onToolResult     func(nodeID, worker, id, call, summary string, failed bool)
-	onWorkerStatus   func(nodeID, worker string, status flow.Status)
+	onWorkerStatus   func(nodeID, worker string, status Status)
 	usageMu          sync.Mutex
 	steps            int
 	tokens           int
 }
 
-func (r *nodeRunner) RunNode(ctx context.Context, c flow.Call) (string, error) {
+func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 	n := c.Node
 	var streamedText atomic.Bool
 	label := n.ID
 	if c.Label != "" {
 		label += "·" + c.Label
 		if r.onWorkerStatus != nil {
-			r.onWorkerStatus(n.ID, c.Label, flow.StatusRunning)
+			r.onWorkerStatus(n.ID, c.Label, StatusRunning)
 		}
 	}
 	res, err := r.exec.Run(ctx, tool.AgentExecRequest{
 		OnIdentity: func(identity toolresult.AgentIdentity) {
 			if c.OnExecution != nil {
-				c.OnExecution(flow.Execution{TaskID: identity.ID, SessionID: identity.SessionID})
+				c.OnExecution(Execution{TaskID: identity.ID, SessionID: identity.SessionID})
 			}
 		},
 		ParentToolCallID: r.parentToolCallID,
@@ -357,7 +362,7 @@ func (r *nodeRunner) RunNode(ctx context.Context, c flow.Call) (string, error) {
 	output := ""
 	if res != nil {
 		if c.OnExecution != nil && (res.Identity.ID != "" || res.Identity.SessionID != "") {
-			c.OnExecution(flow.Execution{TaskID: res.Identity.ID, SessionID: res.Identity.SessionID})
+			c.OnExecution(Execution{TaskID: res.Identity.ID, SessionID: res.Identity.SessionID})
 		}
 		output = res.Content
 		r.usageMu.Lock()
@@ -387,7 +392,7 @@ func (r *nodeRunner) RunNode(ctx context.Context, c flow.Call) (string, error) {
 		if r.onActivity != nil {
 			r.onActivity(n.ID, c.Label, "Error: "+err.Error())
 		}
-		r.workerFinished(n.ID, c.Label, flow.StatusFailed)
+		r.workerFinished(n.ID, c.Label, StatusFailed)
 		return output, err
 	}
 	if preview := flowResultPreview(res.Content); preview != "" && !streamedText.Load() {
@@ -397,7 +402,7 @@ func (r *nodeRunner) RunNode(ctx context.Context, c flow.Call) (string, error) {
 			r.onActivity(n.ID, c.Label, activity)
 		}
 	}
-	r.workerFinished(n.ID, c.Label, flow.StatusSucceeded)
+	r.workerFinished(n.ID, c.Label, StatusSucceeded)
 	return res.Content, nil
 }
 
@@ -443,7 +448,7 @@ func flowResultPreview(content string) string {
 	return string(text)
 }
 
-func (r *nodeRunner) workerFinished(nodeID, worker string, status flow.Status) {
+func (r *nodeRunner) workerFinished(nodeID, worker string, status Status) {
 	if worker != "" && r.onWorkerStatus != nil {
 		r.onWorkerStatus(nodeID, worker, status)
 	}

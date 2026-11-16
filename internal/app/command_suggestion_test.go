@@ -8,20 +8,48 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
-	"github.com/genai-io/san/internal/tool"
-	toolflow "github.com/genai-io/san/internal/tool/flow"
+	"github.com/genai-io/san/internal/flow"
+	"github.com/genai-io/san/internal/task"
 )
+
+func TestFlowServiceIsWiredDirectlyToSlashCommands(t *testing.T) {
+	manager := task.NewManager()
+	svc := services{Task: manager, Flow: flow.NewService(manager)}
+	if svc.Flow == nil {
+		t.Fatal("app services must construct a direct Flow service")
+	}
+	m := &model{services: svc}
+	if got := m.slashCommandEnv().Flow; got != svc.Flow {
+		t.Fatal("slash commands did not receive the app-owned Flow service")
+	}
+}
+
+func TestFlowStorageDoesNotRequireAProviderOrToolRegistry(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	manager := task.NewManager()
+	m := &model{services: services{Task: manager, Flow: flow.NewService(manager)}}
+	m.env.CWD = t.TempDir()
+	m.ReconfigureAgentTool()
+	source := "---\nname: offline\n---\n```mermaid\nflowchart LR\n work\n```\n## work\nInspect {{input}}\n"
+	if err := m.services.Flow.SaveDefinition("offline", source, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := m.services.Flow.Definition("offline"); err != nil || got != source {
+		t.Fatalf("offline definition=%q error=%v", got, err)
+	}
+	if got := (&model{}).slashCommandEnv().Flow; got != nil {
+		t.Fatal("missing service should not become a typed nil interface")
+	}
+}
 
 func TestFlowSuggestionsWalkCommandsThenSavedNames(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "demo.md"), []byte("---\nname: demo\ndescription: Example flow\n---\n```mermaid\nflowchart LR\n  a\n```\n\n## a\nUse {{input.topic}} and {{input.style}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := toolflow.NewFlowTool()
-	wt.SetSearchPaths([]string{dir})
-	tools := tool.NewRegistry()
-	tools.Register(wt)
-	match := commandSuggestionMatcher(&command.Registry{}, tools)
+	flows := flow.NewService(task.NewManager())
+	flows.SetSearchPaths([]string{dir})
+	match := commandSuggestionMatcher(&command.Registry{}, flows)
 	names := func(query string) []string {
 		var out []string
 		for _, item := range match(query) {
@@ -89,11 +117,9 @@ func TestFlowSuggestionsQuoteSavedNames(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := toolflow.NewFlowTool()
-	wt.SetSearchPaths([]string{dir})
-	tools := tool.NewRegistry()
-	tools.Register(wt)
-	match := commandSuggestionMatcher(&command.Registry{}, tools)
+	flows := flow.NewService(task.NewManager())
+	flows.SetSearchPaths([]string{dir})
+	match := commandSuggestionMatcher(&command.Registry{}, flows)
 	for _, tc := range []struct {
 		query string
 		want  []string

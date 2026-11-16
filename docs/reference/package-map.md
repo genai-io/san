@@ -36,7 +36,7 @@ Agent, persistence, and orchestration:
 | `internal/interaction` | `feature` | Request lifecycle and human-permission preparation, scopes and audit-before-reply; no execution, transport or presentation. |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
-| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `flow`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
+| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
 | `internal/session` | `feature` | Canonical project/session identity, typed events and native messages, request/state/display projections, assets, resume, fork and retention. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |

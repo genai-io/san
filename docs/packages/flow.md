@@ -12,18 +12,21 @@ permission or conversation lifecycle.
 
 ## Purpose
 
-The `Flow` tool (`internal/tool/flow`) passes a markdown blueprint for validation
-and schedules it under one parent task. This package owns definition format,
-dependency validation, scheduling, checkpoints, run storage and final summary.
-`NodeRunner` is the execution seam into the native Agent executor; storage
-reuses `atomicfile`. Native child task/session references live in checkpoints
-and attempt history, so inspection uses existing task detail.
+`Service` is the direct slash-command boundary: named and inline scheduling,
+preflight, definitions and run recovery. It receives the native task manager and
+subagent executor explicitly; it has no tool schema or registry entry. The
+package owns definition format, dependency validation, scheduling, checkpoints,
+run storage and final summary. Native child task/session references live in
+checkpoints and attempt history, so inspection uses existing task detail.
 Design and rationale:
 [`design/proposal-0001-workflow-orchestration.md`](../design/proposal-0001-workflow-orchestration.md);
 user-facing behaviour: [`concepts/flow.md`](../concepts/flow.md).
 
-The tool description explains Agent as an alternative for already-delegated
-one-off work, without directing ordinary tasks to subagents.
+Natural-language authoring is explicit and app-owned: one side completion,
+with a one-time guide and no tool schemas, opens an unsaved Review only on normal
+completion. Token truncation, refusal or an unexpected stop reason surfaces as a
+generation failure requiring explicit retry, not Review. It does not save or
+launch. Ordinary main-Agent messages and tool schemas are unchanged.
 
 The app's `/flow` management and `list|show|run|stop` commands use the same
 saved-definition paths. Completion and execution share `command.ScanArguments`
@@ -36,6 +39,11 @@ passes through the app's held-notice queue.
 
 ```go
 package flow
+
+// The app injects the native task manager and executor into the direct service.
+func NewService(tasks *task.Manager) *Service
+func (s *Service) Start(definition string, inputs map[string]string, width int) (bounds, taskID string, err error)
+func (s *Service) Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
 
 // Load lists the `*.md` definitions in dirs, earliest directory winning when
 // a name appears twice, sorted by name.
@@ -107,8 +115,8 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   nodes between target and source), and unrolled into one copy per round
   wired head-to-tail, each round keeping its own escape edges; an edge that
   leaves one loop enters whatever follows at its first round. `xN` is capped
-  at 10 in `validate`, before unrolling, because parsing runs while the
-  approval dialog is built. Validation runs on the graph as drawn, so
+  at 10 in `validate`, before unrolling, to bound parsing work during Review,
+  preview and launch validation. Validation runs on the graph as drawn, so
   `{{review}}` inside `draft` resolves; the cycle check and the unroller
   work on the forward edges alone. The for_each
   plan: the first JSON value that decodes in the
@@ -117,7 +125,7 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   `max_workers` fails the node rather than losing its tail — which is the
   only place that bound is enforced, so the fan-out needs no gate of its own
   and queues for the run's shared slots like any other node. `Bounds` counts
-  the worst case for the approval dialog.
+  the worst case for execution-limit displays and service previews/launch summaries.
 - `run.go` — one goroutine per node waiting on its upstreams' done
   channels, a semaphore of `MaxParallel` held only while a turn executes
   (never while waiting, so a for_each node cannot deadlock against its own
@@ -141,9 +149,13 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   full parse. Search paths come from the caller. `store_unix.go` /
   `store_windows.go` contain only platform-specific owner checks. An empty run
   directory uses memory for embedded callers and tests.
-- `internal/tool/flow/flow.go` — tool schema, validation and public
-  entrypoints; definition I/O delegates to core storage. `run.go` adapts native
-  subagent execution and publishes graph-only progress on the parent task.
+- `service.go` — typed service configuration, executor preflight, saved/inline
+  launch, definitions and preview. `agent.go` binds record lifecycle and graph
+  progress to the native task/subagent infrastructure; no tool adapter package
+  or whole-Flow tool-approval wrapper remains.
+- `internal/app/flow.go` — explicit one-shot blueprint authoring, cancellation,
+  session/view fences and `PurposeFlow` recording. It reuses `sideRequest` without
+  advertising tools or changing the main conversation chain.
 - `internal/app/input/on_flow.go` — explicit commands, authoring, save/input
   interaction and graph-level inspection/recovery. `on_flow_view.go` renders
   those pages. Review keeps the graph above selected-step data flow; launching
@@ -172,7 +184,7 @@ unit tests stub out; graph semantics stay with the unit tests.
 `Parse` is pure. `Run` blocks until every node has settled and is safe to
 call concurrently on distinct workflows; the host owns the context, and
 cancelling it fails nodes that have not started (or that observe it) while
-finished results are kept. `Run` itself retains no state; the tool persists
+finished results are kept. `Run` itself retains no state; `Service` persists
 checkpoints through its callback. Run snapshots fix definition and inputs,
 not external workspace state. Retries may repeat side effects; locks prevent
 concurrent ownership, not exactly-once external actions.
@@ -187,9 +199,11 @@ internal/flow/loop_test.go   — unrolled shape, previous-round binding, early e
 internal/flow/view_test.go   — compact branches, circular progress, conditional fallback and preview width.
 internal/flow/resume_test.go — branch/round/worker reuse, invalidation, attempt history, cancellation and checkpoint write failure.
 internal/flow/store_test.go — exact definition source, validated saves, concurrent editors, atomic run persistence, private files, IDs and executor ownership.
-internal/tool/flow/flow_test.go — pre-flight checks, node requests, live tools/text, quoted input commands, stream cleanup and task outcomes.
-internal/tool/flow/run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
-internal/tool/flow/definitions_test.go — validation, stale saves, filename collisions and project copies.
+internal/flow/service_test.go — preflight, node requests, native callbacks, stream cleanup and task outcomes.
+internal/flow/service_run_test.go — snapshot recovery, live activity, retry roots, stop, interruption and write failures.
+internal/flow/definitions_test.go — validation, stale saves, filename collisions and project copies.
+internal/app/flow_test.go — one-shot no-tools authoring, recording, cancellation and stale-result fences.
+internal/session/flow_completion_test.go — Flow-purpose inference recording without ordinary conversation messages.
 internal/app/input/on_flow_test.go — review/edit/input/run transitions, graph layout and recovery confirmations.
 internal/app/input/on_flow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
 internal/app/input/slash_flow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management and argument parsing.
@@ -200,7 +214,7 @@ tests/integration/flow/flow_test.go — real subagent executor with scripted mod
 
 ## See Also
 
-- Code: `internal/flow/`, `internal/tool/flow/`
+- Code: `internal/flow/`
 - Related packages: [`subagent`](subagent.md) (what runs a node),
   [`task`](task.md) (the background task a run lives under),
   [`tool`](tool.md) (registration and the parent-only rule)

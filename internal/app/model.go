@@ -42,6 +42,7 @@ import (
 const defaultWidth = 80
 
 type model struct {
+	flowDraft         *flowDraftRequest
 	pendingCompaction *pendingCompaction
 	pendingStopHook   *pendingStopHook // current idle decision; invalidated by input, cancellation or teardown
 	agentSession      *session.Session // opened writer captured when the selected runtime started

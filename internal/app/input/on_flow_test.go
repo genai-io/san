@@ -22,6 +22,8 @@ type flowUIService struct {
 	values                                 map[string]string
 }
 
+func (s *flowUIService) Saved() string                       { return "" }
+func (s *flowUIService) Preview(string, int) (string, error) { return "", s.err }
 func (s *flowUIService) Launch(_ string, in map[string]string, _ int) (string, string, error) {
 	s.launches++
 	s.values = in

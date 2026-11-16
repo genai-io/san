@@ -5,13 +5,11 @@ which can run together, and which route an answer selects. The scheduler runs
 that blueprint through the existing Agent executor and task infrastructure; it
 is not another Agent or a separate permission/session system.
 
-Definitions are markdown documents, saved under `.san/workflows/` or supplied
-to the `Flow` tool. The existing storage directories are retained so renaming
-the feature does not migrate or hide saved definitions and runs. San validates
-the graph before execution and reports its outcome as one parent task.
-
-The `Flow` tool ships **disabled**: enable it from `/tools` to let the
-model start Flows on its own. Saved blueprints run with `/flow` either way.
+Definitions are markdown documents saved under `.san/workflows/`. The existing
+storage directories are retained so saved definitions and runs remain available.
+`/flow` calls the scheduling service directly: there is no model-facing Flow
+tool or schema. San validates the graph before execution and reports its outcome
+as one parent task.
 
 Use a Flow when the arrangement matters more than any single job — a
 dependency order a long turn could forget, or a fan-out whose intermediate
@@ -89,18 +87,17 @@ explained below.
 
 Definitions live in `.san/workflows/*.md` (project) and
 `~/.san/workflows/*.md` (user); the project copy wins when both define the
-same name, and the `name:` in frontmatter beats the filename. The `Flow`
-tool lists what it finds in its own description, so the model can run one by
-`name` instead of rewriting it. Saved names and input keys are completed
-using the same quoted-argument rules as execution. `/flow show <name>`
-previews the graph, step prompts and input keys without starting a task;
-`/flow run <name>` reports missing inputs before launch.
+same name, and the `name:` in frontmatter beats the filename. Saved names and
+input keys are completed using the same quoted-argument rules as execution.
+`/flow show <name>` previews the graph, step prompts and input keys without
+starting a task; `/flow run <name>` reports missing inputs before launch.
 
 `/flow` opens the definitions and recent-runs view. Management is explicit
 and does not inject authoring instructions into ordinary model turns:
 
 | Command | Action |
 | --- | --- |
+| `/flow <goal>` | Generate a blueprint for Review from a natural-language goal. Never saves or runs automatically. |
 | `/flow new [name]` | Open a one-step manual draft in Review; no review agent is added automatically. |
 | `/flow from-skill <skill> [name]` | Create a one-node draft referencing an enabled Skill; review before saving. The Skill remains unchanged and its live instructions/resources are loaded when the node runs. No automatic splitting is attempted. |
 | `/flow edit <name>` | Review or edit a saved definition. |
@@ -108,17 +105,33 @@ and does not inject authoring instructions into ordinary model turns:
 | `/flow inspect <run-id>` | Inspect a running or previous execution. |
 | `/flow stop [task-id]` | Stop one workflow, or select it by task ID when several run. |
 | `/flow list` | Print the saved definitions. |
-| `/flow <name> key=value …` | Launch directly, with no model turn. Use `/flow run <name> …` if its name conflicts with a management action. |
+| `/flow run <name> key=value …` | Launch a saved blueprint directly, without a model turn. |
 
 Review keeps the dependency graph above one selected step. `↑`/`↓` walks through
-steps; the detail shows each inserted input's source, the output's consumers,
-and the instructions. Scrolling the instructions does not hide the graph.
+steps; the detail shows the agent configuration, each inserted input's source,
+the output's consumers, and the instructions. Scrolling the instructions does not hide the graph.
 `e` opens source editing; `Ctrl+S` validates and previews changes, then `y`
 saves. From Review, `s` opens the same save preview. Saving never launches a run.
 
-The starter is only a minimal editable blueprint, not a task-specific plan.
-There is no automatic goal-to-pattern selection: sequencing, parallel branches,
-conditional routes, bounded workers and review loops are expressed in the graph.
+For example, `/flow Check this package's security and performance, then combine
+the findings` starts one drafting request from the current conversation. The
+blueprint guide and enabled agent/Skill discovery metadata are loaded only for
+that request. It advertises no tools, executes no commands, and adds neither its
+guide nor its reply to the main Agent's ordinary conversation context. The call
+is recorded under the session's `flow` inference purpose.
+
+The model proposes the smallest useful topology: real dependencies form chains,
+independent work can run in parallel, and dynamic workers or evaluator loops
+need explicit bounds. It does not carry out the goal. A manual `/flow new`
+starter remains a one-step editable blank, not a task-specific plan.
+
+Only a normally completed draft opens as an unsaved Review. Invalid source is
+retained for manual repair; there is no automatic repair loop. Token truncation,
+refusal or an unexpected stop reason is a visible generation failure, not a
+Review, and requires an explicit retry. Escape cancels drafting, and late results
+from a closed/replaced view or another session cannot reopen it. Saving and running remain separate
+choices. Reserved management verbs take priority; `/flow <name>` is no longer a
+run shortcut—use `/flow run <name>`.
 
 `d` opens execution limits rather than mixing them into the main review. These
 count step executions (including bounded workers and rounds), not individual
@@ -129,7 +142,7 @@ Existing user definitions become project copies; their source is not
 overwritten. A changed on-disk source must be reopened rather than silently
 replaced. `r` on a saved review collects required `{{input.key}}` values before
 launch. Direct command arguments support quoted spaces:
-`/flow review base="main branch"`. Saved names with spaces are quoted too,
+`/flow run review base="main branch"`. Saved names with spaces are quoted too,
 for example `/flow run "release review" base=main`.
 
 The task area (Alt+T) shows Flow's animated dependency graph alongside ordinary
@@ -244,8 +257,10 @@ Merge: {{review}}
   ordinary nodes, each through the same permission gate with its own
   transcript, so nothing recurses.
 
-The approval dialog states the bound it buys: `up to 14 subagent turns` and
-`review: up to 8 workers over plan.tasks`.
+The saved-definition preview reports the worst-case bound, for example
+`up to 14 turns` and `review: up to 8 workers over plan.tasks`. Launch validates
+the definition, agent selections and required inputs; there is no whole-Flow
+approval dialog. Native child permissions remain unchanged.
 
 ## Drafting until a review passes
 
@@ -284,16 +299,16 @@ follows falls out of that:
 | an early round passing | the remaining rounds are omitted, never run |
 | every round used up, still `FAIL` | the workflow **fails** — the condition was never met, and a result that failed review must not flow on |
 | `review` answering neither `FAIL` nor `PASS` | that round **fails**, in any round. The node carrying the back edge is the one place every answer is declared (the retry label plus the escapes), so an answer outside them is a model gone off-script, not a quiet stop. Any other node — a gate outside the loop or inside its body — keeps gate semantics: an unmatched `NO` means "stop here" and succeeds |
-| the bound | required, from `x1` to `x10`. A back edge without `xN` is the cycle error it would otherwise be. The cap is checked before anything is unrolled, since unrolling happens while the approval dialog is being built |
+| the bound | required, from `x1` to `x10`. A back edge without `xN` is the cycle error it would otherwise be. The cap is checked during parsing before anything is unrolled, including during Review and launch validation |
 | one loop after another | the second is always entered at its first round, however many rounds the first one took |
 | the target | must be an ancestor of the source, or there is no loop to bound |
 | a node in two loops, or `for_each` inside one | rejected: rounds × rounds and dynamic × iteration are both cartesian explosions |
 | an edge into the body from outside | rejected — route it through the loop's head, or a later round would re-read a node that ran once |
 
 The point of splitting `draft` from `review` is that the review runs in a
-clean context instead of grading what it just wrote. The approval dialog
-counts every round in its worst case, and names the loop: `draft/review: up
-to 3 rounds`.
+clean context instead of grading what it just wrote. The worst-case execution
+bound counts every round, and the saved-definition preview names the loop:
+`draft/review: up to 3 rounds`.
 
 ## How it runs
 
@@ -341,12 +356,12 @@ these are distinct from continuing an individual Agent conversation.
   worker address; parallel nodes keep independent replies and cancellation.
 - `AgentStop` on the workflow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
-- The `Flow` tool is parent-only, like `Agent`: a subagent cannot start
-  one.
+- Flow is started by the user's slash command, not a model tool call; its
+  nodes do not acquire another scheduling tool.
 
 ## What comes back
 
-The tool returns immediately with the task id. When the run settles, the
+The run command returns immediately with the task id. When the run settles, the
 task's completion notification carries the summary — one status line per
 node, then the output of every sink (a node with nothing downstream). On
 failure the notification names the failed and skipped nodes; the full

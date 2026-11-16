@@ -5,13 +5,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/task"
 )
 
 const editable = "---\nname: review\n---\n```mermaid\nflowchart LR\n  work\n```\n\n## work\nmode: explore\n\nReview {{input.task}}"
 
 func TestDefinitionSaveRequiresValidReviewedSource(t *testing.T) {
 	dir := t.TempDir()
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	if err := wt.SaveDefinition("review", editable, ""); err != nil {
 		t.Fatal(err)
@@ -49,7 +51,7 @@ func TestDefinitionEditPreservesSourceFilename(t *testing.T) {
 	if err := os.WriteFile(path, []byte(editable), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	changed := editable + " carefully"
 	if err := wt.SaveDefinition("review", changed, editable); err != nil {
@@ -69,7 +71,7 @@ func TestDefinitionSaveMakesProjectCopyWithoutChangingUserSource(t *testing.T) {
 	if err := os.WriteFile(path, []byte(editable), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetSearchPaths([]string{project, user})
 	changed := editable + " carefully"
 	if err := wt.SaveDefinition("review", changed, editable); err != nil {
@@ -89,7 +91,7 @@ func TestDefinitionSaveDoesNotOverwriteDifferentNamedFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(other), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	if err := wt.SaveDefinition("review", editable, ""); err == nil {
 		t.Fatal("save overwrote a different flow sharing the destination filename")

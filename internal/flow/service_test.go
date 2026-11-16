@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	flowmodel "github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -89,7 +88,7 @@ func TestFlowPreservesUnfinishedResultsAndUsage(t *testing.T) {
 			Content: "verified partial findings", Error: "step budget exhausted", AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
 			StepCount: 2, TotalInputTokens: 100, TotalOutputTokens: 25,
 		}, err: runErr}
-		wt := NewFlowTool()
+		wt := NewService(task.Default())
 		wt.SetExecutor(exec)
 		info := runToCompletion(t, wt, map[string]any{"definition": "```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nReview\n\n## second\nReview\n"})
 		if info.Status != task.StatusFailed || info.StepCount != 4 || info.TokenUsage != 250 {
@@ -110,7 +109,7 @@ func TestFlowPreservesUnfinishedResultsAndUsage(t *testing.T) {
 	worker := task.NewAgentTask("flow-1", "flow", "Review", ctx, cancel, "")
 	runErr := errors.New("provider unavailable")
 	runner := &nodeRunner{exec: &unfinishedExecutor{err: runErr}, task: worker, name: "review"}
-	output, err := runner.RunNode(ctx, flowmodel.Call{Node: &flowmodel.Node{ID: "only", Config: map[string]string{}}})
+	output, err := runner.RunNode(ctx, Call{Node: &Node{ID: "only", Config: map[string]string{}}})
 	if output != "" || !errors.Is(err, runErr) {
 		t.Fatalf("failure before any result changed: output=%q err=%v", output, err)
 	}
@@ -124,7 +123,7 @@ func TestNodeRunnerFlowOrigin(t *testing.T) {
 	bg := task.NewAgentTask("flow-run", "flow", "review", ctx, cancel, "")
 	exec := &scriptedExecutor{}
 	runner := &nodeRunner{exec: exec, task: bg, name: "review", parentToolCallID: "spawning-call"}
-	_, err := runner.RunNode(ctx, flowmodel.Call{Node: &flowmodel.Node{ID: "check", Config: map[string]string{}}, Label: "item-2"})
+	_, err := runner.RunNode(ctx, Call{Node: &Node{ID: "check", Config: map[string]string{}}, Label: "item-2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,19 +134,11 @@ func TestNodeRunnerFlowOrigin(t *testing.T) {
 	}
 }
 
-func TestFlowToolRunsNodesThroughTheExecutor(t *testing.T) {
+func TestFlowServiceRunsNodesThroughTheExecutor(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	params := map[string]any{"definition": definition, "inputs": map[string]any{"base": "main"}}
-
-	req, err := wt.PreparePermission(context.Background(), params, ".")
-	if err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
-	if req.Description != "Run flow review: 4 nodes, up to 4 subagent turns, max 4 parallel" {
-		t.Fatalf("description = %q", req.Description)
-	}
 
 	info := runToCompletion(t, wt, params)
 	if info.Status != task.StatusCompleted {
@@ -179,20 +170,18 @@ func TestFlowToolRunsNodesThroughTheExecutor(t *testing.T) {
 	}
 }
 
-func TestFlowToolPublishesLiveNodeGraph(t *testing.T) {
+func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	releaseNode := sync.OnceFunc(func() { close(release) })
 	defer releaseNode()
 	exec := &scriptedExecutor{outputs: map[string]string{"only": "done"}, started: started, release: release, toolResult: "package main\nfunc main() {}\n"}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	src := "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"
-	result := wt.Execute(context.Background(), map[string]any{"definition": src}, ".")
-	if !result.Success {
-		t.Fatalf("launch: %+v", result)
+	_, id, err := wt.Start(src, nil, 120)
+	if err != nil {
+		t.Fatalf("launch: %v", err)
 	}
-	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
 	bg, ok := task.Default().Get(id)
 	if !ok {
 		t.Fatalf("task %q not registered", id)
@@ -214,7 +203,7 @@ func TestFlowToolPublishesLiveNodeGraph(t *testing.T) {
 	}
 }
 
-func TestFlowToolPairsParallelResultsWithTheirCalls(t *testing.T) {
+func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	releaseNode := sync.OnceFunc(func() { close(release) })
 	defer releaseNode()
@@ -242,20 +231,18 @@ func TestFlowToolPairsParallelResultsWithTheirCalls(t *testing.T) {
 			results[id] = summary
 		},
 	}
-	if _, err := runner.RunNode(ctx, flowmodel.Call{Node: &flowmodel.Node{ID: "only", Config: map[string]string{}}}); err != nil {
+	if _, err := runner.RunNode(ctx, Call{Node: &Node{ID: "only", Config: map[string]string{}}}); err != nil {
 		t.Fatal(err)
 	}
 	if results["first"] != "first result" || results["second"] != "second result" {
 		t.Fatalf("parallel callback results = %v", results)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	result := wt.Execute(context.Background(), map[string]any{"definition": "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"}, ".")
-	if !result.Success {
-		t.Fatalf("launch: %+v", result)
+	_, id, err := wt.Start("```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
+	if err != nil {
+		t.Fatalf("launch: %v", err)
 	}
-	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
 	bg, ok := task.Default().Get(id)
 	if !ok {
 		t.Fatalf("task %q not registered", id)
@@ -280,7 +267,7 @@ func TestFlowToolPairsParallelResultsWithTheirCalls(t *testing.T) {
 	}
 }
 
-func TestFlowToolResultSummaryStaysSmallAndReadable(t *testing.T) {
+func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
 	if got := flowToolResultSummary("hello", nil); got != "hello" {
 		t.Fatalf("short result = %q", got)
 	}
@@ -296,7 +283,7 @@ func TestFlowToolResultSummaryStaysSmallAndReadable(t *testing.T) {
 	}
 }
 
-func TestFlowToolParallelStreamsStayOutOfParentGraph(t *testing.T) {
+func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	firstStreaming, secondStreaming, firstDiscarded := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
 		if strings.HasSuffix(req.Description, "/a") {
@@ -318,7 +305,7 @@ func TestFlowToolParallelStreamsStayOutOfParentGraph(t *testing.T) {
 			req.OnTextEnd(nil)
 		}
 	}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	const definition = "```mermaid\nflowchart LR\n  a\n  b\n```\n\n## a\ngo\n\n## b\ngo\n"
 	info := runToCompletion(t, wt, map[string]any{"definition": definition})
@@ -332,25 +319,25 @@ func TestFlowToolParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	}
 }
 
-func TestFlowToolRejectsBeforeRunning(t *testing.T) {
-	wt := NewFlowTool()
+func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
 
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{"definition": definition}, "."); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
+	if _, _, err := wt.Start(definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
 		t.Fatalf("disabled agent err = %v", err)
 	}
 	broken := strings.Replace(definition, "{{diff}}", "{{dif}}", 1)
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{"definition": broken}, "."); err == nil || !strings.Contains(err.Error(), "invalid flow") {
+	if _, _, err := wt.Start(broken, nil, 120); err == nil || !strings.Contains(err.Error(), "invalid flow") {
 		t.Fatalf("invalid definition err = %v", err)
 	}
 }
 
-func TestFlowToolRejectsATypoedAgentName(t *testing.T) {
-	wt := NewFlowTool()
+func TestFlowServiceRejectsATypoedAgentName(t *testing.T) {
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
 	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
 
-	_, err := wt.PreparePermission(context.Background(), map[string]any{"definition": src}, ".")
+	_, _, err := wt.Start(src, map[string]string{"base": "main"}, 120)
 	if err == nil || !strings.Contains(err.Error(), `node diff: no agent named "Explorr"`) {
 		t.Fatalf("err = %v; a written-down name that resolves to nothing is a typo, not a label", err)
 	}
@@ -359,44 +346,28 @@ func TestFlowToolRejectsATypoedAgentName(t *testing.T) {
 	}
 }
 
-func TestFlowToolAcceptsANodeWithNoAgent(t *testing.T) {
-	wt := NewFlowTool()
+func TestFlowServiceAcceptsANodeWithNoAgent(t *testing.T) {
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	src := strings.Replace(definition, "agent: explorer\n", "", 1)
 
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{"definition": src}, "."); err != nil {
+	if _, _, err := wt.Start(src, map[string]string{"base": "main"}, 120); err != nil {
 		t.Fatalf("a node without an agent takes the default one: %v", err)
 	}
 }
 
-const orchestrator = "---\nname: split\n---\n```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n## plan\nSplit it up\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n## merge\nMerge {{review}}\n"
+const serviceOrchestrator = "---\nname: split\n---\n```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n## plan\nSplit it up\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n## merge\nMerge {{review}}\n"
 
-func TestFlowToolStatesTheWorstCase(t *testing.T) {
-	wt := NewFlowTool()
-	wt.SetExecutor(&scriptedExecutor{})
-	req, err := wt.PreparePermission(context.Background(), map[string]any{"definition": orchestrator}, ".")
-	if err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
-	want := "Run flow split: 3 nodes, up to 6 subagent turns, max 4 parallel\nreview: up to 4 workers over plan.tasks"
-	if req.Description != want {
-		t.Fatalf("description = %q,\nwant %q", req.Description, want)
-	}
-}
-
-func TestFlowToolFansOutOverAPlan(t *testing.T) {
+func TestFlowServiceFansOutOverAPlan(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{
 		"plan":        `{"tasks":[{"name":"llm","prompt":"errors"},{"name":"tool","prompt":"perms"}]}`,
 		"review·llm":  "L",
 		"review·tool": "T",
 		"merge":       "done",
 	}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": orchestrator}
-	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
+	params := map[string]any{"definition": serviceOrchestrator}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusCompleted {
@@ -425,7 +396,7 @@ func TestFlowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
 	_, runID, err := wt.Launch("review", map[string]string{"base": "main"}, 100)
@@ -446,48 +417,42 @@ func TestFlowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
 	}
 }
 
-func TestFlowToolRunsASavedFlow(t *testing.T) {
+func TestFlowServiceRunsASavedFlow(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
 
-	if list := wt.Schema().Description; !strings.Contains(list, "Saved flows") || !strings.Contains(list, "- review") {
-		t.Fatalf("schema does not list the saved flow:\n%s", list)
+	if list := wt.Saved(); !strings.Contains(list, "- review") {
+		t.Fatalf("saved flows missing review:\n%s", list)
 	}
 
 	params := map[string]any{"name": "review", "inputs": map[string]any{"base": "main"}}
-	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
 	info := runToCompletion(t, wt, params)
 	if info.Status != task.StatusCompleted || !strings.Contains(info.Output, "## report\nR") {
 		t.Fatalf("status = %s output:\n%s", info.Status, info.Output)
 	}
 }
 
-func TestFlowToolNameErrors(t *testing.T) {
+func TestFlowServiceNameErrors(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 
-	_, err := wt.PreparePermission(context.Background(), map[string]any{"name": "nope"}, ".")
+	_, _, err := wt.Launch("nope", nil, 120)
 	if err == nil || !strings.Contains(err.Error(), "no flow named nope") || !strings.Contains(err.Error(), "- review") {
 		t.Fatalf("err = %v, want it to list what is saved", err)
 	}
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{}, "."); err == nil || !strings.Contains(err.Error(), "name or definition is required") {
-		t.Fatalf("empty call err = %v", err)
-	}
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{"name": "review", "definition": definition}, "."); err == nil || !strings.Contains(err.Error(), "not both") {
-		t.Fatalf("both err = %v", err)
+	if _, _, err := wt.Launch("", nil, 120); err == nil || !strings.Contains(err.Error(), "flow name is required") {
+		t.Fatalf("empty name err = %v", err)
 	}
 }
 
@@ -497,7 +462,7 @@ func TestFlowBareInputPreflight(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 	names, err := wt.SavedInputNames("review")
@@ -511,18 +476,19 @@ func TestFlowBareInputPreflight(t *testing.T) {
 	if _, _, err := wt.Launch("review", nil, 100); err == nil || !strings.Contains(err.Error(), "input") {
 		t.Fatalf("missing input: %v", err)
 	}
-	if _, err := wt.PreparePermission(context.Background(), map[string]any{"name": "review", "inputs": map[string]any{"input": "main"}}, "."); err != nil {
-		t.Fatal(err)
+	info := runToCompletion(t, wt, map[string]any{"name": "review", "inputs": map[string]any{"input": "main"}})
+	if info.Status != task.StatusCompleted {
+		t.Fatalf("status = %s: %s", info.Status, info.Error)
 	}
 }
 
-func TestFlowToolMissingInputQuotesSavedName(t *testing.T) {
+func TestFlowServiceMissingInputQuotesSavedName(t *testing.T) {
 	dir := t.TempDir()
 	body := strings.Replace(definition, "name: review", "name: release review", 1)
 	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 	_, _, err := wt.Launch("release review", nil, 100)
@@ -531,15 +497,28 @@ func TestFlowToolMissingInputQuotesSavedName(t *testing.T) {
 	}
 }
 
-// runToCompletion executes an approved call and waits for its background task.
-func runToCompletion(t *testing.T, wt *FlowTool, params map[string]any) task.TaskInfo {
-	t.Helper()
-	result := wt.ExecuteApproved(context.Background(), params, ".")
-	if !result.Success {
-		t.Fatalf("Execute: %s", result.Error)
+// startServiceParams adapts legacy test fixtures to the typed service API.
+func startServiceParams(wt *Service, params map[string]any) (string, string, error) {
+	inputs := map[string]string{}
+	if values, ok := params["inputs"].(map[string]any); ok {
+		for key, value := range values {
+			inputs[key] = value.(string)
+		}
 	}
-	id := result.Output[strings.Index(result.Output, "Task ID: ")+len("Task ID: "):]
-	id = id[:strings.Index(id, "\n")]
+	if name, ok := params["name"].(string); ok {
+		return wt.Launch(name, inputs, 120)
+	}
+	source, _ := params["definition"].(string)
+	return wt.Start(source, inputs, 120)
+}
+
+// runToCompletion starts a service run and waits for its background task.
+func runToCompletion(t *testing.T, wt *Service, params map[string]any) task.TaskInfo {
+	t.Helper()
+	_, id, err := startServiceParams(wt, params)
+	if err != nil {
+		t.Fatalf("start flow: %v", err)
+	}
 	bg, ok := task.Default().Get(id)
 	if !ok {
 		t.Fatalf("task %s not registered", id)
@@ -562,7 +541,7 @@ func TestFlowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
 	t.Cleanup(task.ResetDefaultTracker)
 	task.Default().SetSessionID("first")
 	first, second := &scriptedExecutor{}, &scriptedExecutor{}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(first)
 	// Switch after registration, before the background goroutine can start.
 	task.SetLifecycleHandler(switchExecutorOnLaunch(func() {
@@ -576,33 +555,17 @@ func TestFlowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
 	}
 }
 
-const optimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
+const serviceOptimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
 
-func TestFlowToolStatesLoopRounds(t *testing.T) {
-	wt := NewFlowTool()
-	wt.SetExecutor(&scriptedExecutor{})
-	req, err := wt.PreparePermission(context.Background(), map[string]any{"definition": optimizer}, ".")
-	if err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
-	want := "Run flow polish: 7 nodes, up to 7 subagent turns, max 4 parallel\ndraft/review: up to 3 rounds"
-	if req.Description != want {
-		t.Fatalf("description = %q,\nwant %q", req.Description, want)
-	}
-}
-
-func TestFlowToolRetriesUntilReviewPasses(t *testing.T) {
+func TestFlowServiceRetriesUntilReviewPasses(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{
 		"draft#1": "v1", "review#1": "FAIL",
 		"draft#2": "v2", "review#2": "PASS",
 		"ship": "shipped",
 	}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": optimizer}
-	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
+	params := map[string]any{"definition": serviceOptimizer}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusCompleted {
@@ -625,7 +588,7 @@ func TestFlowToolRetriesUntilReviewPasses(t *testing.T) {
 	}
 }
 
-func TestFlowToolFailsTheTaskWhenALoopRunsOut(t *testing.T) {
+func TestFlowServiceFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 	// How a failed flow reaches the conversation: a failed task whose
 	// error names the node, so the notification says what went wrong.
 	exec := &scriptedExecutor{outputs: map[string]string{
@@ -633,12 +596,9 @@ func TestFlowToolFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 		"draft#2": "v2", "review#2": "FAIL",
 		"draft#3": "v3", "review#3": "FAIL",
 	}}
-	wt := NewFlowTool()
+	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": optimizer}
-	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
-		t.Fatalf("PreparePermission: %v", err)
-	}
+	params := map[string]any{"definition": serviceOptimizer}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusFailed {
@@ -653,27 +613,5 @@ func TestFlowToolFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 		if r.Description == "polish/ship" {
 			t.Fatal("a draft that never passed review reached ship")
 		}
-	}
-}
-
-func TestFlowToolExecuteRefusesATypoedAgentWithoutApproval(t *testing.T) {
-	// Execute is the only check that holds on the model's path: an allow rule
-	// skips PreparePermission, and the approval prompt drops its error anyway.
-	// So Execute must refuse a plan it would otherwise launch with the default
-	// agent in place of the misspelled one.
-	wt := NewFlowTool()
-	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
-	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
-
-	res := wt.Execute(context.Background(), map[string]any{"definition": src}, ".")
-	if res.Success || !strings.Contains(res.Error, `no agent named "Explorr"`) {
-		t.Fatalf("Execute = %+v; an unapproved call must get the same checks as an approved one", res)
-	}
-}
-
-func TestFlowSchemaDoesNotRequireDelegation(t *testing.T) {
-	description := NewFlowTool().Schema().Description
-	if !strings.Contains(description, "For already-delegated work") || strings.Contains(description, "For one bounded job, or a one-off fan-out, use Agent instead") {
-		t.Fatalf("flow schema redirects ordinary work to agents: %s", description)
 	}
 }

@@ -49,7 +49,7 @@ func builtinCommands() []Info {
 		{Name: "reload-plugins", Description: "Reload plugins and refresh plugin-backed skills, agents, MCP, and hooks"},
 		{Name: "think", Description: "Toggle provider-native thinking effort"},
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
-		{Name: "flow", Description: "Create, review and run Flow collaboration blueprints; inspect runs and resume interrupted work"},
+		{Name: "flow", Description: "Describe a goal to draft a Flow; review, run and recover saved blueprints"},
 		{Name: "search", Description: "Select search engine for web search"},
 		{Name: "settings", Description: "Configure appearance, permissions and other settings"},
 		{Name: "evolve", Description: "Configure self-learning (skills & memory)"},

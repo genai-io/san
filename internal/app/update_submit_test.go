@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -19,7 +20,7 @@ import (
 
 func flowInputModel(manager *task.Manager) *model {
 	m := &model{
-		services:  services{Task: manager, Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
+		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      conv.NewModel(80),
 		userInput: input.New("", 80, nil, input.SelectorDeps{}),
 	}

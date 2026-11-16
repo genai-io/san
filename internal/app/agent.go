@@ -679,6 +679,13 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.Perm
 }
 
 func (m *model) ReconfigureAgentTool() {
+	if m.services.Flow != nil {
+		dirs := []string{filepath.Join(confdir.Dir(m.env.CWD), "workflows")}
+		if home, _ := os.UserHomeDir(); home != "" {
+			dirs = append(dirs, filepath.Join(confdir.Dir(home), "workflows"))
+		}
+		m.services.Flow.SetSearchPaths(dirs)
+	}
 	if m.env.LLMProvider == nil || m.services.Session == nil {
 		return
 	}
@@ -727,9 +734,7 @@ func (m *model) ReconfigureAgentTool() {
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
-	type searchPathSetter interface{ SetSearchPaths([]string) }
-	home, _ := os.UserHomeDir()
-	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolFlow} {
+	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage} {
 		t, ok := m.services.Tool.Get(name)
 		if !ok {
 			continue
@@ -737,16 +742,10 @@ func (m *model) ReconfigureAgentTool() {
 		if setter, ok := t.(executorSetter); ok {
 			setter.SetExecutor(adapter)
 		}
-		// Saved Flow blueprints resolve project-first, then user, the way subagent
-		// definitions do. A home directory we could not read is left out
-		// rather than joined from "", which would name the project twice.
-		if setter, ok := t.(searchPathSetter); ok {
-			dirs := []string{filepath.Join(confdir.Dir(m.env.CWD), "workflows")}
-			if home != "" {
-				dirs = append(dirs, filepath.Join(confdir.Dir(home), "workflows"))
-			}
-			setter.SetSearchPaths(dirs)
-		}
+	}
+	if m.services.Flow != nil {
+		// Use the same session-owned native executor as ordinary agent tools.
+		m.services.Flow.SetExecutor(adapter)
 	}
 }
 

@@ -1,10 +1,10 @@
-// Package flow_test drives the Flow tool through the real subagent
-// executor. The tool's own tests stub that executor at tool.AgentExecutor,
+// Package flow_test drives the Flow service through the real subagent
+// executor. The service's unit tests stub that executor at tool.AgentExecutor,
 // so what they cannot see is everything beneath it: that a rendered prompt
 // reaches the model, that the turn's answer comes back as the node's output,
 // and how a turn's ending is judged. Each test here asserts one of those.
 // Graph semantics — omission, loops, the summary's wording — are owned by
-// internal/flow and internal/tool/flow, not re-asserted here.
+// internal/flow, not re-asserted here.
 package flow_test
 
 import (
@@ -19,12 +19,11 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
-	toolflow "github.com/genai-io/san/internal/tool/flow"
-	_ "github.com/genai-io/san/internal/tool/register"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
@@ -100,19 +99,19 @@ func run(t *testing.T, provider llm.Provider, params map[string]any) task.TaskIn
 	if err := executor.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
-	wt := toolflow.NewFlowTool()
+	executor.ConfigureOwner(task.Default(), nil, nil, nil)
+	wt := flow.NewService(task.Default())
 	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
-
-	if _, err := wt.PreparePermission(context.Background(), params, cwd); err != nil {
-		t.Fatalf("PreparePermission: %v", err)
+	inputs := map[string]string{}
+	if values, ok := params["inputs"].(map[string]any); ok {
+		for key, value := range values {
+			inputs[key] = value.(string)
+		}
 	}
-	result := wt.ExecuteApproved(context.Background(), params, cwd)
-	if !result.Success {
-		t.Fatalf("Execute: %s", result.Error)
+	_, id, err := wt.Start(params["definition"].(string), inputs, 120)
+	if err != nil {
+		t.Fatalf("start flow: %v", err)
 	}
-
-	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
 	bg, ok := task.Default().Get(id)
 	if !ok {
 		t.Fatalf("task %s was not registered", id)

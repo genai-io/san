@@ -1,18 +1,16 @@
 package subagent_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
-	flowtool "github.com/genai-io/san/internal/tool/flow"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
@@ -29,15 +27,13 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	}}
 	executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 	executor.SetInteractions(bridge)
-	wt := flowtool.NewFlowTool()
-	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
+	flows := flow.NewService(task.Default())
+	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: questions\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nAsk first\n\n## second\nAsk second\n"
-	result := wt.Execute(core.WithToolCallID(context.Background(), "flow-call"), map[string]any{"definition": definition}, ".")
-	if !result.Success {
-		t.Fatal(result.Output)
+	_, runID, err := flows.Start(definition, nil, 100)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
-	runID, _, _ := strings.Cut(rest, "\n")
 	bg, ok := task.Default().Get(runID)
 	if !ok {
 		t.Fatal("flow task missing")
@@ -52,7 +48,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	for range 2 {
 		req := pollWorkerInteraction(t, bridge)
 		source := req.Source
-		if req.Question == nil || source.Flow == nil || source.Flow.Name != "questions" || source.Flow.TaskID != runID || source.ParentToolCallID != "flow-call" || source.ToolCallID != "question-call" || source.TaskID == "" || source.TaskID == source.Flow.TaskID || source.AgentID == "" {
+		if req.Question == nil || source.Flow == nil || source.Flow.Name != "questions" || source.Flow.TaskID != runID || source.ParentToolCallID != "" || source.ToolCallID != "question-call" || source.TaskID == "" || source.TaskID == source.Flow.TaskID || source.AgentID == "" {
 			t.Fatalf("question lost flow/node provenance: %+v", source)
 		}
 		if !strings.Contains(source.Label(), source.Flow.NodeID) || !strings.Contains(source.Label(), runID) {

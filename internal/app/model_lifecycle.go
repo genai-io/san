@@ -62,7 +62,7 @@ func newBaseModel() model {
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	m := model{
-		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Tool), selectorDeps(svc, learnedStores)),
+		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorDeps(svc, learnedStores)),
 		conv:             conv.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
 		mcpToolsChanged:  make(chan struct{}, 1),

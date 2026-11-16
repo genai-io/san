@@ -6,13 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
-	flowtool "github.com/genai-io/san/internal/tool/flow"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -61,14 +60,16 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 			return interaction.PermissionDecision{Request: request}
 		}
 	})
-	wt := flowtool.NewFlowTool()
-	wt.SetExecutor(subagent.NewExecutorAdapter(executor))
+	flows := flow.NewService(task.Default())
+	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: review\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nCheck first\n\n## second\nCheck second\n"
-	for _, parent := range []string{"parent-one", "parent-two"} {
-		result := wt.Execute(core.WithToolCallID(context.Background(), parent), map[string]any{"definition": definition}, ".")
-		if !result.Success {
-			t.Fatal(result.Output)
+	var runIDs []string
+	for range 2 {
+		_, id, err := flows.Start(definition, nil, 100)
+		if err != nil {
+			t.Fatal(err)
 		}
+		runIDs = append(runIDs, id)
 	}
 	groups := make(map[string][]pendingApproval)
 	agentIDs := make(map[string]bool)
@@ -83,12 +84,15 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 			if !strings.Contains(s.Label(), s.Flow.TaskID) {
 				t.Fatalf("missing run label: %q", s.Label())
 			}
-			groups[s.ParentToolCallID] = append(groups[s.ParentToolCallID], p)
+			if s.ParentToolCallID != "" {
+				t.Fatal("direct Flow service invented a spawning tool call")
+			}
+			groups[s.Flow.TaskID] = append(groups[s.Flow.TaskID], p)
 		case <-time.After(5 * time.Second):
 			t.Fatal("parallel approvals did not arrive")
 		}
 	}
-	for _, parent := range []string{"parent-one", "parent-two"} {
+	for _, parent := range runIDs {
 		workers := groups[parent]
 		if len(workers) != 2 {
 			t.Fatalf("wrong spawning call correlation: %+v", groups)
@@ -97,17 +101,17 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 			t.Fatal("nodes lost their shared run or distinct node identity")
 		}
 	}
-	if groups["parent-one"][0].source.Flow.TaskID == groups["parent-two"][0].source.Flow.TaskID {
+	if groups[runIDs[0]][0].source.Flow.TaskID == groups[runIDs[1]][0].source.Flow.TaskID {
 		t.Fatal("runs share task identity")
 	}
-	stopped, ok := task.Default().Get(groups["parent-one"][0].source.Flow.TaskID)
+	stopped, ok := task.Default().Get(groups[runIDs[0]][0].source.Flow.TaskID)
 	if !ok {
 		t.Fatal("flow task missing")
 	}
 	if err := stopped.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range groups["parent-one"] {
+	for _, p := range groups[runIDs[0]] {
 		select {
 		case <-p.cancelled:
 		case <-time.After(5 * time.Second):
@@ -116,9 +120,9 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 	}
 	// Opposite replies belong to distinct worker invocations, even after the
 	// other flow's cancellation has torn down its routing scope.
-	groups["parent-two"][0].reply <- false
-	groups["parent-two"][1].reply <- true
-	running, ok := task.Default().Get(groups["parent-two"][0].source.Flow.TaskID)
+	groups[runIDs[1]][0].reply <- false
+	groups[runIDs[1]][1].reply <- true
+	running, ok := task.Default().Get(groups[runIDs[1]][0].source.Flow.TaskID)
 	if !ok || !running.WaitForCompletion(5*time.Second) {
 		t.Fatal("surviving flow did not finish")
 	}
@@ -138,7 +142,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 			}
 		}
 	}
-	if len(outcomes) != 2 || outcomes["Check "+groups["parent-two"][0].source.Flow.NodeID] || !outcomes["Check "+groups["parent-two"][1].source.Flow.NodeID] {
+	if len(outcomes) != 2 || outcomes["Check "+groups[runIDs[1]][0].source.Flow.NodeID] || !outcomes["Check "+groups[runIDs[1]][1].source.Flow.NodeID] {
 		t.Fatalf("approval decisions reached the wrong nodes: %v", outcomes)
 	}
 }

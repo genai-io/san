@@ -174,9 +174,8 @@ the event log. Default host wiring remains legacy until the unified cutover.
   so their reachable edit schemas and project instructions are retained.
   Flow nodes also carry `FlowOrigin` (blueprint name, run task ID, node,
   and optional fan-out label) into prompt headers and permission audit details.
-  This provenance stays separate from each worker's execution/broker identity;
-  a model-launched Flow retains its spawning call ID, while a slash launch
-  has none.
+  This provenance stays separate from each worker's execution/broker identity.
+  A slash-launched Flow has no spawning model tool call.
 - Worker models are configuration-driven: `subagentModel` in scoped
   `settings.json` selects the default worker model (ID, alias, or `vendor/model`).
   Empty/unset uses the current main-session model; `"inherit"` explicitly resets
@@ -328,7 +327,7 @@ internal/app/notice_step_inject_test.go  — one live/persisted completion, deli
 internal/app/model_history_test.go       — inspectable background results without state mutation.
 internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
 tests/integration/agent/result_view_test.go — real result → adapter → writer → resumed UI.
-internal/tool/flow/flow_test.go    — unfinished node output, identity, and parallel usage.
+internal/flow/service_test.go    — unfinished node output, identity, and parallel usage.
 internal/app/group_test.go                — live and persisted batch context.
 tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.
 ```

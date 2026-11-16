@@ -51,6 +51,13 @@ func (v *FlowView) Render() string {
 func (v *FlowView) renderPage() (title, content, hint string) {
 	title, hint = "Flow", "↑/↓ select · Enter open · Esc close"
 	switch v.page {
+	case "generate":
+		title, hint = "Create Flow", "Esc cancel"
+		content = "Goal\n" + ansi.Wrap(v.goal, max(1, v.width-4), " ") + "\n\nDrafting a blueprint for review. Nothing will run automatically."
+		if !v.drafting {
+			content = "Goal\n" + ansi.Wrap(v.goal, max(1, v.width-4), " ") + "\n\nNo draft was created."
+			hint = "Enter retry · Esc close"
+		}
 	case "hub":
 		title, content = "Flow · definitions and recent runs", v.renderHub()
 	case "review":
@@ -166,6 +173,16 @@ func (v *FlowView) renderReview() string {
 		return "Select a step to review its inputs and output."
 	}
 	lines := []string{fmt.Sprintf("Step %d/%d · %s", v.selected+1, len(v.plan.Nodes), node.ID), ""}
+	agent := node.Config["agent"]
+	if agent == "" {
+		agent = "default"
+	}
+	for _, key := range []string{"mode", "model"} {
+		if value := node.Config[key]; value != "" {
+			agent += " · " + value
+		}
+	}
+	lines = append(lines, "  Agent   "+agent)
 	if node.ForEach != "" {
 		lines = append(lines, "  Items   JSON array from "+node.ForEach)
 	}

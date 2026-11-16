@@ -2,12 +2,60 @@ package input
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/flow"
 )
+
+func TestFlowGeneratedDraftNeedsManualSaveAndRun(t *testing.T) {
+	s := flowUIFixture()
+	var v FlowView
+	request := v.OpenGeneration(s, "Review the parser", 100, 40)().(FlowDraftRequestMsg)
+	if !v.DraftReady(request.Generation, flowUISource, nil) || v.page != "review" || v.saved || v.source != flowUISource {
+		t.Fatal("generated source did not open an unsaved review")
+	}
+	if v.DraftReady(request.Generation, "stale source", nil) {
+		t.Fatal("completed generation accepted another result")
+	}
+	v.HandleKeypress(flowKey("r"))
+	if s.saves != 0 || s.launches != 0 || v.page != "review" {
+		t.Fatal("generated source became runnable without an explicit save")
+	}
+	v.HandleKeypress(flowKey("e"))
+	v.editor.SetValue(strings.Replace(flowUISource, "name: sample", "name: parser-review", 1))
+	v.HandleKeypress(flowKey("esc"))
+	if v.name != "parser-review" || v.saved {
+		t.Fatal("unsaved draft name cannot be edited before first save")
+	}
+}
+
+func TestFlowGenerationFailureRetryAndClose(t *testing.T) {
+	s := flowUIFixture()
+	var v FlowView
+	request := v.OpenGeneration(s, "Review", 100, 40)().(FlowDraftRequestMsg)
+	if !v.DraftReady(request.Generation, "", errors.New("provider unavailable")) || v.IsGenerating(request.Generation) || !strings.Contains(v.Render(), "provider unavailable") {
+		t.Fatal("generation failure remained live or was hidden")
+	}
+	retry := v.HandleKeypress(flowKey("enter"))().(FlowDraftRequestMsg)
+	if retry.Generation == request.Generation || retry.Goal != request.Goal || !v.IsGenerating(retry.Generation) {
+		t.Fatal("retry did not create a fresh authoring generation")
+	}
+	v.HandleKeypress(flowKey("esc"))
+	if v.DraftReady(retry.Generation, flowUISource, nil) || v.IsActive() || s.saves != 0 || s.launches != 0 {
+		t.Fatal("closed authoring request accepted a late result")
+	}
+	request = v.OpenGeneration(s, "Review", 100, 40)().(FlowDraftRequestMsg)
+	if !v.DraftReady(request.Generation, "invalid raw source", nil) || v.page != "review" || v.source != "invalid raw source" || v.plan != nil {
+		t.Fatal("invalid generated source was not preserved for manual repair")
+	}
+	v.HandleKeypress(flowKey("s"))
+	if v.confirm != "" || s.saves != 0 {
+		t.Fatal("invalid generation was saved")
+	}
+}
 
 func TestFlowNewStartsWithOneStep(t *testing.T) {
 	c := flowController(t, nil)
@@ -20,7 +68,7 @@ func TestFlowNewStartsWithOneStep(t *testing.T) {
 		t.Fatal("starter should have one step and a simple input")
 	}
 	initial := ansi.Strip(v.Render())
-	for _, want := range []string{"○ work", "Step 1/1 · work", "{{input}} ← what you enter before running", "{{work}} = this step's final answer", "Final flow result"} {
+	for _, want := range []string{"○ work", "Step 1/1 · work", "Agent   default · explore", "{{input}} ← what you enter before running", "{{work}} = this step's final answer", "Final flow result"} {
 		if !strings.Contains(initial, want) {
 			t.Fatalf("missing %q in review:\n%s", want, initial)
 		}

@@ -7,10 +7,14 @@ import (
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/flow"
-	"github.com/genai-io/san/internal/tool"
 )
 
-func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) func(string) []suggest.Suggestion {
+type flowSuggestionService interface {
+	SavedDefinitions() []flow.Saved
+	SavedInputNames(string) ([]string, error)
+}
+
+func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionService) func(string) []suggest.Suggestion {
 	return func(query string) []suggest.Suggestion {
 		// Dynamic branches depend on the current group or saved definitions.
 		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
@@ -18,7 +22,7 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 			case "group":
 				return groupSuggestions(args)
 			case "flow":
-				if suggestions, handled := flowNameSuggestions(toolSvc, args); handled {
+				if suggestions, handled := flowNameSuggestions(flows, args); handled {
 					return suggestions
 				}
 			}
@@ -32,7 +36,7 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 	}
 }
 
-func flowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggestion, bool) {
+func flowNameSuggestions(lister flowSuggestionService, args string) ([]suggest.Suggestion, bool) {
 	fields, _ := command.ScanArguments(args)
 	if len(fields) == 0 {
 		return nil, false
@@ -41,18 +45,7 @@ func flowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggest
 	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run" && verb != "edit") {
 		return nil, false
 	}
-	if toolSvc == nil {
-		return nil, true
-	}
-	t, ok := toolSvc.Get(tool.ToolFlow)
-	if !ok {
-		return nil, true
-	}
-	lister, ok := t.(interface {
-		SavedDefinitions() []flow.Saved
-		SavedInputNames(string) ([]string, error)
-	})
-	if !ok {
+	if lister == nil {
 		return nil, true
 	}
 	name := ""

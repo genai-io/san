@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/tool"
 )
 
 // FlowService is the UI's project-scoped flow boundary.
@@ -28,6 +27,8 @@ type FlowService interface {
 	SavedDefinitions() []flow.Saved
 	Definition(name string) (string, error)
 	SaveDefinition(name, definition, baseline string) error
+	Saved() string
+	Preview(name string, width int) (string, error)
 }
 
 type flowTick struct{ generation uint64 }
@@ -51,6 +52,8 @@ type FlowView struct {
 	cursor           int
 	name             string
 	source, baseline string
+	goal             string
+	drafting         bool
 	saved            bool
 	keys             []string
 	inputs           map[string]string
@@ -65,6 +68,11 @@ type FlowView struct {
 	generation uint64
 	polling    bool
 	phase      int
+}
+
+type FlowDraftRequestMsg struct {
+	Generation uint64
+	Goal       string
 }
 
 type FlowStartedMsg struct{}
@@ -179,6 +187,38 @@ func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
 	return nil
 }
 
+func (v *FlowView) OpenGeneration(s FlowService, goal string, w, h int) tea.Cmd {
+	v.init(s, w, h)
+	v.page, v.goal, v.drafting = "generate", goal, true
+	return v.draftRequest()
+}
+
+func (v *FlowView) draftRequest() tea.Cmd {
+	msg := FlowDraftRequestMsg{Generation: v.generation, Goal: v.goal}
+	return func() tea.Msg { return msg }
+}
+
+func (v *FlowView) IsGenerating(generation uint64) bool {
+	return v.active && v.page == "generate" && v.drafting && v.generation == generation
+}
+
+func (v *FlowView) DraftReady(generation uint64, source string, err error) bool {
+	if !v.IsGenerating(generation) {
+		return false
+	}
+	v.drafting = false
+	if err != nil {
+		v.setError(err)
+		return true
+	}
+	name := "new-flow"
+	if plan, parseErr := flow.Parse(source); parseErr == nil && plan.Name != "" {
+		name = plan.Name
+	}
+	v.OpenDraft(v.service, name, source, "", v.width, v.height)
+	return true
+}
+
 func (v *FlowView) OpenDraft(s FlowService, name, definition, baseline string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.name, v.source, v.baseline = name, definition, baseline
@@ -271,6 +311,12 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch v.page {
+	case "generate":
+		if key == "enter" && !v.drafting {
+			v.generation++
+			v.drafting = true
+			return v.draftRequest()
+		}
 	case "hub":
 		return v.handleHub(key)
 	case "review":
@@ -526,6 +572,9 @@ func (v *FlowView) validate() bool {
 	v.plan, err = flow.Parse(v.source)
 	if err == nil {
 		v.selected = max(0, min(v.selected, len(v.plan.Nodes)-1))
+		if v.baseline == "" && v.plan.Name != "" {
+			v.name = v.plan.Name
+		}
 	}
 	v.message = ""
 	v.setError(err)
@@ -602,14 +651,19 @@ func IsFlowStopCommand(input string) bool {
 	return len(fields) > 0 && fields[0] == "stop"
 }
 
-type flowRunner interface {
-	Saved() string
-	Preview(name string, width int) (string, error)
-	Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
-}
-
-// Management is explicit and needs no model turn or ambient authoring prompt.
+// Authoring is loaded only for an explicit natural-language /flow request.
 func (c *SlashCommandController) handleFlowCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	args = strings.TrimSpace(args)
+	if words := strings.Fields(args); len(words) > 0 {
+		switch words[0] {
+		case "list", "show", "run", "stop", "new", "from-skill", "edit", "inspect":
+		default:
+			if c.env.Flow == nil || c.env.Input == nil {
+				return "", nil, errors.New("flow authoring is unavailable in this build")
+			}
+			return "", c.env.Input.Flow.OpenGeneration(c.env.Flow, args, c.env.Width, c.env.Height), nil
+		}
+	}
 	fields, err := command.SplitArguments(args)
 	if err != nil {
 		return "", nil, err
@@ -617,57 +671,47 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 	if len(fields) > 0 && fields[0] == "stop" {
 		return c.stopFlow(fields[1:])
 	}
-	if c.env.ToolSvc == nil {
-		return "", nil, errors.New("the Flow tool is not available in this build")
-	}
-	t, _ := c.env.ToolSvc.Get(tool.ToolFlow)
-	wt, ok := t.(flowRunner)
-	if !ok {
-		return "", nil, errors.New("the Flow tool is not available in this build")
+	svc := c.env.Flow
+	if svc == nil {
+		return "", nil, errors.New("flow service is unavailable in this build")
 	}
 	if len(fields) == 0 && c.env.Input != nil {
-		if svc, ok := t.(FlowService); ok {
-			return "", c.env.Input.Flow.Open(svc, c.env.Width, c.env.Height), nil
-		}
+		return "", c.env.Input.Flow.Open(svc, c.env.Width, c.env.Height), nil
 	}
 	if len(fields) == 0 || fields[0] == "list" {
 		if len(fields) > 1 {
 			return "", nil, errors.New("usage: /flow list")
 		}
-		if list := wt.Saved(); list != "" {
+		if list := svc.Saved(); list != "" {
 			return "Saved flows:" + list + "\n\n" + flowUsage, nil, nil
 		}
-		return "No saved flows. Create one with /flow new [name].\n\n" + flowUsage, nil, nil
+		return "No saved flows. Describe a goal with /flow <goal>.\n\n" + flowUsage, nil, nil
 	}
 	if fields[0] == "show" {
 		if len(fields) != 2 {
 			return "", nil, errors.New("usage: /flow show <name>")
 		}
-		preview, err := wt.Preview(fields[1], c.env.Width)
+		preview, err := svc.Preview(fields[1], c.env.Width)
 		return preview, nil, err
 	}
 	if fields[0] == "new" || fields[0] == "from-skill" || fields[0] == "edit" || fields[0] == "inspect" {
-		svc, ok := t.(FlowService)
-		if !ok || c.env.Input == nil {
+		if c.env.Input == nil {
 			return "", nil, errors.New("flow management is unavailable in this build")
 		}
 		return c.openFlow(svc, fields)
 	}
-	if fields[0] == "run" {
-		if len(fields) < 2 {
-			return "", nil, errors.New("usage: /flow run <name> [key=value …]")
-		}
-		fields = fields[1:]
+	if len(fields) < 2 {
+		return "", nil, errors.New("usage: /flow run <name> [key=value …]")
 	}
 	inputs := map[string]string{}
-	for _, kv := range fields[1:] {
+	for _, kv := range fields[2:] {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k == "" {
 			return "", nil, fmt.Errorf("input %q is not key=value", kv)
 		}
 		inputs[k] = v
 	}
-	bounds, id, err := wt.Launch(fields[0], inputs, c.env.Width)
+	bounds, id, err := svc.Launch(fields[1], inputs, c.env.Width)
 	if err != nil {
 		return "", nil, err
 	}
@@ -794,7 +838,8 @@ func (c *SlashCommandController) stopFlow(args []string) (string, tea.Cmd, error
 }
 
 const flowUsage = `Commands:
-  /flow new [name]                   Create a reviewable draft
+  /flow <goal>                       Generate a blueprint for review
+  /flow new [name]                   Create a manual draft
   /flow from-skill <skill> [name]    Create a Skill-derived draft
   /flow edit <name>                  Review and edit a definition
   /flow list                         List saved flows

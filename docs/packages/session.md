@@ -105,8 +105,8 @@ permits execution. `tool.finish` records a call that ran; denied calls do not ge
 fabricated finishes. Raw tool display details stay separate from filtered
 model-facing result content. Observer/persistence failures block later admissions.
 
-Utility scopes cover judge, hook, autopilot, group, compaction, recall, BTW, recap
-and suggestion calls. Failed attempts close before retries. Accepted outputs join
+Utility scopes cover judge, hook, autopilot, group, compaction, recall, BTW, recap,
+Flow drafting and suggestion calls. Failed attempts close before retries. Accepted outputs join
 their final inference finish atomically; stale or canceled work finishes accounting
 without publishing a conversation result. Queued and detached work retains its
 original owner. Child hook factories receive the actually selected provider/model;

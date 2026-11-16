@@ -64,6 +64,7 @@ type SlashCommandEnv struct {
 	Cron         *cron.Scheduler
 	ToolSvc      *tool.Registry
 	TaskSvc      *task.Manager
+	Flow         FlowService
 	Command      *command.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and

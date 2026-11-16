@@ -18,12 +18,9 @@ import (
 // back the main plan it has no business reading.
 // Cron is parent-only for the same reason again: scheduling creates state
 // that outlives the worker and belongs to the session owner.
-// Flow schedules a blueprint through the existing subagent executor, so it is
-// parent-only: a worker that could start a Flow could spawn workers.
 var parentOnlyTools = map[string]bool{
 	ToolAgent:      true,
 	ToolAgentStop:  true,
-	ToolFlow:       true,
 	ToolTaskCreate: true,
 	ToolTaskUpdate: true,
 	ToolTaskGet:    true,

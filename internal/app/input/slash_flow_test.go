@@ -11,10 +11,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
-	toolflow "github.com/genai-io/san/internal/tool/flow"
 )
 
 // okExecutor finishes every node at once, so a launched run completes.
@@ -34,8 +34,7 @@ func (okExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any,
 }
 func (okExecutor) ParentModelID() string { return "m" }
 
-// flowController wires /flow to a Flow tool reading dir, holding
-// the given saved definitions.
+// flowController wires /flow directly to a service with saved definitions.
 func flowController(t *testing.T, saved map[string]string) *SlashCommandController {
 	t.Helper()
 	dir := t.TempDir()
@@ -44,12 +43,10 @@ func flowController(t *testing.T, saved map[string]string) *SlashCommandControll
 			t.Fatal(err)
 		}
 	}
-	wt := toolflow.NewFlowTool()
-	wt.SetExecutor(okExecutor{})
-	wt.SetSearchPaths([]string{dir})
-	reg := tool.NewRegistry()
-	reg.Register(wt)
-	c := NewSlashCommandController(SlashCommandEnv{ToolSvc: reg, TaskSvc: task.Default(), Width: 120})
+	svc := flow.NewService(task.Default())
+	svc.SetExecutor(okExecutor{})
+	svc.SetSearchPaths([]string{dir})
+	c := NewSlashCommandController(SlashCommandEnv{Flow: svc, TaskSvc: task.Default(), Width: 120})
 	return &c
 }
 
@@ -88,6 +85,26 @@ func TestFlowStopBypassAcceptsOnlyFlowCommand(t *testing.T) {
 		if got := IsFlowStopCommand(input); got != want {
 			t.Errorf("IsFlowStopCommand(%q) = %v, want %v", input, got, want)
 		}
+	}
+}
+
+func TestFlowNaturalLanguageDoesNotUseRunShorthand(t *testing.T) {
+	for _, goal := range []string{`检查 John's "parser"，安全和性能分别审查后汇总`, "review", "review base=main", "runbook for deployment"} {
+		t.Run(goal, func(t *testing.T) {
+			svc := flowUIFixture()
+			c := NewSlashCommandController(SlashCommandEnv{Flow: svc, Input: &Model{}, Width: 100, Height: 40})
+			notice, cmd, err := c.handleFlowCommand(context.Background(), goal)
+			if err != nil || cmd == nil || notice != "" {
+				t.Fatalf("goal request: notice=%q cmd=%v error=%v", notice, cmd, err)
+			}
+			request := cmd().(FlowDraftRequestMsg)
+			if request.Goal != goal || !c.env.Input.Flow.IsGenerating(request.Generation) {
+				t.Fatal("natural-language goal was tokenized or did not enter authoring")
+			}
+			if svc.saves != 0 || svc.launches != 0 || svc.polls != 0 || c.env.ToolSvc != nil {
+				t.Fatal("authoring must not save/run a flow or need a tool registry")
+			}
+		})
 	}
 }
 
@@ -133,7 +150,7 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 	}
 	// The task names the command that started it, so its completion reads as
 	// the result of the user's /flow rather than an unexplained run.
-	if got := bg.GetDescription(); got != "/flow review" {
+	if got := bg.GetDescription(); got != "/flow run review" {
 		t.Fatalf("task description = %q", got)
 	}
 	if info := bg.GetStatus(); info.Status != task.StatusCompleted {
@@ -193,7 +210,7 @@ func TestFlowCommandStartsLiveRepaint(t *testing.T) {
 	c.env.SpinnerTickCmd = func() tea.Cmd {
 		return func() tea.Msg { return "flow-tick" }
 	}
-	notice, cmd, err := c.handleFlowCommand(context.Background(), "review base=main")
+	notice, cmd, err := c.handleFlowCommand(context.Background(), "run review base=main")
 	if err != nil || cmd == nil {
 		t.Fatalf("launch should schedule a repaint: cmd=%v, err=%v", cmd, err)
 	}
@@ -211,12 +228,12 @@ func TestFlowCommandStartsLiveRepaint(t *testing.T) {
 func TestFlowCommandRefusesBadInput(t *testing.T) {
 	c := flowController(t, map[string]string{"review": savedReview})
 	cases := map[string]string{
-		"review base":  `input "base" is not key=value`,
-		"nope":         "no flow named nope",
-		"review =main": `input "=main" is not key=value`,
-		"run":          "usage: /flow run <name>",
-		"list extra":   "usage: /flow list",
-		"run review":   "needs input base",
+		"run review base":  `input "base" is not key=value`,
+		"run nope":         "no flow named nope",
+		"run review =main": `input "=main" is not key=value`,
+		"run":              "usage: /flow run <name>",
+		"list extra":       "usage: /flow list",
+		"run review":       "needs input base",
 	}
 	for args, want := range cases {
 		if _, _, err := c.handleFlowCommand(context.Background(), args); err == nil || !strings.Contains(err.Error(), want) {
