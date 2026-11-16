@@ -11,8 +11,8 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-// TaskViewItem is a display-only snapshot. Output is recent bounded output, not
-// a promise of a complete historical log. Status preserves the backend lifecycle.
+// TaskViewItem is a display-only snapshot. Live output is a bounded preview;
+// recorded Flow results contain the immutable checkpoint answer, not a transcript.
 type TaskViewItem struct {
 	ID, AgentName, Description, Subject, Progress, Output, Error string
 	OutputFile                                                   string
@@ -170,7 +170,11 @@ func (v *TaskViewer) rebuild() {
 		if !ok {
 			lines = []string{"Task no longer available."}
 		} else {
-			lines = []string{taskViewSubject(item), "Owner: " + item.AgentName, "ID: " + item.ID, "Status: " + taskViewStatus(item)}
+			lines = []string{taskViewSubject(item)}
+			if item.AgentName != "" {
+				lines = append(lines, "Owner: "+item.AgentName)
+			}
+			lines = append(lines, "ID: "+item.ID, "Status: "+taskViewStatus(item))
 			if item.SessionID != "" {
 				lines = append(lines, "Session: "+item.SessionID)
 			}
@@ -199,7 +203,10 @@ func (v *TaskViewer) rebuild() {
 				}
 				lines = append(lines, label+item.Error)
 			}
-			label := "Recent output"
+			label, empty := "Recent output", "No recent output available."
+			if item.Recorded {
+				label, empty = "Recorded output", "No recorded output available."
+			}
 			if item.OutputTruncated {
 				label += " (truncated)"
 			}
@@ -208,7 +215,7 @@ func (v *TaskViewer) rebuild() {
 				output = ""
 			}
 			if output == "" {
-				output = "No recent output available."
+				output = empty
 			}
 			lines = append(lines, "", label, output)
 		}

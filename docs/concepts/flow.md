@@ -398,12 +398,13 @@ these are distinct from continuing an individual Agent conversation.
 ## What comes back
 
 The run command returns immediately with the run ID and task ID; either
-works with `/flow inspect` and `/flow stop`. When the run settles, the
-task's completion notification carries the summary — one status line per
-node, then the output of every sink (a node with nothing downstream). On
-failure the notification names the failed and skipped nodes; the full
-summary stays in the task output. Each node's transcript is saved under the
-session like any subagent's.
+works with `/flow inspect` and `/flow stop`. When the run succeeds, its
+completion receipt shows the beginning of the successful sink answers (nodes
+with nothing downstream). The persisted run keeps the full status summary and
+sink outputs. Failed runs retain diagnostics and partial results. Each node's
+transcript is saved under the session like any subagent's.
+
+A persisted run summary looks like:
 
 ```
 flow review succeeded in 1m24s
@@ -423,9 +424,12 @@ filled circles for genuinely running nodes; hollow circles have not run.
 Exceptional states remain explicit. Inspection uses a stable dependency graph,
 or a dependency list on narrow screens. Manual selection stays pinned; `f`
 follows active work. `Enter` selects a recorded subagent execution and opens
-the existing task detail, rather than another output/activity renderer. If its
-native task is no longer available, inspection reports that explicitly; it never
-starts replacement work. Saved checkpoints remain available for Flow recovery.
+the existing task detail, rather than another output/activity renderer. After
+restart, an exact completed execution can open its full checkpoint answer in
+that same viewer as read-only recorded detail, including earlier attempts and
+fan-out workers. This is the saved result, not a reconstructed transcript.
+Missing identities or unfinished checkpoints remain unavailable; inspection
+never starts, continues or retries work.
 
 Runs are stored as private JSON snapshots in `.san/workflow-runs/`, separate
 from definitions. Each keeps the original definition and inputs, complete

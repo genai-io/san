@@ -176,6 +176,9 @@ history. Send only the new instruction—the child restores its own conversation
   stays on the same task when it ends or starts a new attempt. Persisted ended
   tracker entries whose workers are gone remain inspectable as recorded history,
   with their stored failure reason but no fabricated live output or actions.
+  Flow inspection can supply the full immutable checkpoint answer for an exact
+  recorded task/session identity in this same viewer; it does not restore a
+  worker or enable Continue, Stop or approval actions.
 - `/tasks` details show the child session, output-log path when available, and
   attempt history. `c` on an eligible ended
   worker asks main to choose a safe continuation; the UI does not directly launch

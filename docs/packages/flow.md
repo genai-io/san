@@ -166,7 +166,10 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   interaction and graph-level inspection/recovery. `on_flow_view.go` renders
   those pages. Review keeps the graph above selected-step data flow; launching
   returns to the composer. Node executions open the existing `TaskViewer`, not
-  a second output/activity viewer. Session and view generations fence navigation.
+  a second output/activity viewer. When the native worker is gone, exact completed
+  checkpoint identities provide full read-only answers, including historical
+  attempts and fan-out workers; no task is registered or resumed. Session and
+  view generations fence navigation.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   A node becomes `running` only after it acquires a shared execution slot, so
   work waiting at `max_parallel` remains pending in the live graph.

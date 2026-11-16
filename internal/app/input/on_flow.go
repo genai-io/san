@@ -87,6 +87,7 @@ type FlowOpenTaskMsg struct {
 type flowExecutionChoice struct {
 	label     string
 	execution flow.Execution
+	state     flow.Checkpoint
 }
 
 func (v *FlowView) SyncSession(sessionID string) {
@@ -101,7 +102,32 @@ func (v *FlowView) SyncSession(sessionID string) {
 }
 
 func (v *FlowView) AcceptTaskOpen(msg FlowOpenTaskMsg) bool {
-	return v.active && v.generation == msg.Generation && v.page == "executions"
+	if !v.active || v.generation != msg.Generation || v.page != "executions" {
+		return false
+	}
+	choices := v.executionChoices()
+	return v.cursor >= 0 && v.cursor < len(choices) && choices[v.cursor].execution == msg.Execution && msg.Execution.SessionID != ""
+}
+
+// RecordedTask derives read-only detail from the accepted checkpoint, never from
+// event payloads or a session loader. Pending work is not a recorded result.
+func (v *FlowView) RecordedTask(msg FlowOpenTaskMsg) (TaskViewItem, bool) {
+	if !v.AcceptTaskOpen(msg) {
+		return TaskViewItem{}, false
+	}
+	choice := v.executionChoices()[v.cursor]
+	state := choice.state
+	status := task.StatusCompleted
+	switch state.Status {
+	case flow.StatusSucceeded:
+	case flow.StatusFailed:
+		status = task.StatusFailed
+	default:
+		return TaskViewItem{}, false
+	}
+	return TaskViewItem{ID: choice.execution.TaskID, SessionID: choice.execution.SessionID,
+		Subject: choice.label, Attempt: state.Attempt, Status: status,
+		Output: state.Output, Error: state.Error, Recorded: true}, true
 }
 
 func (v *FlowView) TaskUnavailable() {
@@ -115,17 +141,18 @@ func (v *FlowView) executionChoices() []flowExecutionChoice {
 	node := v.record.Nodes[v.nodeID()]
 	var choices []flowExecutionChoice
 	seen := map[flow.Execution]bool{}
-	addChoice := func(label string, number int, execution flow.Execution) {
+	addChoice := func(label string, state flow.Checkpoint) {
+		execution, number := state.Execution, state.Attempt
 		if execution.TaskID != "" && !seen[execution] {
-			choices = append(choices, flowExecutionChoice{fmt.Sprintf("%s · attempt %d · %s", label, max(1, number), execution.TaskID), execution})
+			choices = append(choices, flowExecutionChoice{fmt.Sprintf("%s · attempt %d · %s", label, max(1, number), execution.TaskID), execution, state})
 			seen[execution] = true
 		}
 	}
 	var add func(string, flow.Checkpoint)
 	add = func(label string, state flow.Checkpoint) {
-		addChoice(label, state.Attempt, state.Execution)
+		addChoice(label, state)
 		for _, a := range state.History {
-			addChoice(label, a.Number, a.Execution)
+			addChoice(label, flow.Checkpoint{Execution: a.Execution, Attempt: a.Number, Status: a.Status, Output: a.Output, Error: a.Error})
 			for _, worker := range a.Workers {
 				add(fmt.Sprintf("Worker %d · flow attempt %d", worker.Index+1, a.Number), worker.State)
 			}
@@ -138,7 +165,7 @@ func (v *FlowView) executionChoices() []flowExecutionChoice {
 			add(fmt.Sprintf("Worker %d", worker.Index+1), worker.State)
 		}
 		for _, a := range node.History {
-			addChoice(v.nodeID(), a.Number, a.Execution)
+			addChoice(v.nodeID(), flow.Checkpoint{Execution: a.Execution, Attempt: a.Number, Status: a.Status, Output: a.Output, Error: a.Error})
 			for _, worker := range a.Workers {
 				add(fmt.Sprintf("Worker %d · flow attempt %d", worker.Index+1, a.Number), worker.State)
 			}
