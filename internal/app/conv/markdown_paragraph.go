@@ -14,20 +14,25 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-// renderPlain leaves block layout to glamour, except for top-level CJK
-// paragraphs. Glamour 2.0.1's paragraph wrapper treats an unspaced CJK run as
-// one word, moving it wholesale onto the next line. Render those paragraphs
-// without wrapping or padding, then apply Unicode line breaking to styled text.
-// Goldmark supplies the boundaries; this is not another Markdown block parser.
-func (r *MDRenderer) renderPlain(content string) (string, error) {
-	return renderParagraphs(content, r.width, r.renderer, r.paragraphRenderer)
+// blockRenderer keeps native Markdown layout, except for CJK prose, which is
+// styled without wrapping and reflowed at Unicode line boundaries.
+type blockRenderer struct {
+	native    *glamour.TermRenderer
+	paragraph *glamour.TermRenderer
+	width     int
 }
 
-// renderParagraphs shares paragraph layout between ordinary prose and narrowed,
-// dimmed quote bodies, while leaving code and reference documents to glamour.
-func renderParagraphs(content string, width int, normal, unwrapped *glamour.TermRenderer) (string, error) {
+func newBlockRenderer(width int, dark bool, documentColor *string) *blockRenderer {
+	return &blockRenderer{
+		native:    buildGlamourRenderer(width, dark, documentColor),
+		paragraph: buildGlamourRenderer(0, dark, documentColor),
+		width:     width,
+	}
+}
+
+func (r *blockRenderer) Render(content string) (string, error) {
 	if !strings.ContainsFunc(content, paragraphCJK) {
-		return normal.Render(content)
+		return r.native.Render(content)
 	}
 	source := []byte(content)
 	md := goldmark.New(goldmark.WithExtensions(extension.GFM, extension.DefinitionList))
@@ -36,7 +41,7 @@ func renderParagraphs(content string, width int, normal, unwrapped *glamour.Term
 	// Reference definitions can live outside a paragraph's source span. Keep the
 	// complete document together rather than lose their resolution when slicing.
 	if len(context.References()) != 0 {
-		return normal.Render(content)
+		return r.native.Render(content)
 	}
 	var out strings.Builder
 	offset := 0
@@ -51,26 +56,26 @@ func renderParagraphs(content string, width int, normal, unwrapped *glamour.Term
 			continue
 		}
 		if start > offset {
-			rendered, err := normal.Render(content[offset:start])
+			rendered, err := r.native.Render(content[offset:start])
 			if err != nil {
 				return "", err
 			}
 			out.WriteString(rendered)
 		}
-		rendered, err := unwrapped.Render(paragraph)
+		rendered, err := r.paragraph.Render(paragraph)
 		if err != nil {
 			return "", err
 		}
 		out.WriteString("\n\n")
-		out.WriteString(wrapParagraph(rendered, width))
+		out.WriteString(wrapParagraph(rendered, r.width))
 		out.WriteString("\n\n")
 		offset = end
 	}
 	if offset == 0 {
-		return normal.Render(content)
+		return r.native.Render(content)
 	}
 	if offset < len(content) {
-		rendered, err := normal.Render(content[offset:])
+		rendered, err := r.native.Render(content[offset:])
 		if err != nil {
 			return "", err
 		}

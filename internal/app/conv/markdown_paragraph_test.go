@@ -55,7 +55,7 @@ func TestMDRendererCJKParagraphInlineStyles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wide, err := r.paragraphRenderer.Render(src)
+	wide, err := r.renderer.paragraph.Render(src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestMDRendererCJKParagraphLeavesOtherBlocksNative(t *testing.T) {
 		t.Run(block[:min(len(block), 15)], func(t *testing.T) {
 			r := NewMDRenderer(40)
 			// Compare the native block in a mixed document with its standalone render.
-			native, err := r.renderer.Render(block)
+			native, err := r.renderer.native.Render(block)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,11 +289,11 @@ func BenchmarkWrapParagraph(b *testing.B) {
 func TestMDRendererCJKReferenceParagraphStaysNative(t *testing.T) {
 	r := NewMDRenderer(40)
 	src := "中文 [引用][ref] " + strings.Repeat("内容", 30) + "\n\n[ref]: https://example.com"
-	got, err := r.renderPlain(src)
+	got, err := r.renderer.Render(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := r.renderer.Render(src)
+	want, err := r.renderer.native.Render(src)
 	if err != nil {
 		t.Fatal(err)
 	}
