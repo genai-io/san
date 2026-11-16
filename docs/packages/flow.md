@@ -174,9 +174,10 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   upstream edge was taken. `continue_on_error` on the failing node stops the
   contagion. Downstream gets completed workers from a failed `for_each`, but
   no unfinished output from an ordinary turn.
-- `view.go` owns the final summary and compact branch-and-join live views.
-  The summary contains status lines and successful sink outputs; dense graphs
-  fall back to an exact dependency list.
+- `view.go` owns `FinalOutput`, the status `Summary`, and compact live graphs.
+  `FinalOutput` returns successful sink answers verbatim (labeled when multiple).
+  Scheduler task output carries that result; `RunRecord.Output` retains the
+  status summary. Dense graphs fall back to an exact dependency list.
 - Native subagents keep their tools, permissions, session history and output.
   Managed children register through `CreateChildAgentTask`, so normal lifecycle
   observers still run. The app projects their recent activity and completed
@@ -184,6 +185,9 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   A visible graph replaces duplicate child tracker rows in the footer.
   Scheduler creation and completion also publish display-only receipts, using
   the blueprint's readable title; completion never starts another main turn.
+  Completed results show the first 12 rendered nonblank Markdown lines, not the
+  child activity tail. Large notices retain a UTF-8-safe leading excerpt and
+  point to native inspection; full answers remain in task logs and checkpoints.
   Explicit nodes own synthesis. `ParentTaskID` keeps recovery scheduler-owned;
   ordinary foreground Agent presentation is unchanged.
 

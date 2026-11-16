@@ -31,8 +31,11 @@ func TestSchedulerNoticeReceipt(t *testing.T) {
 	for _, status := range []string{"running", "completed", "failed", "stopped", "killed"} {
 		var previous string
 		for _, id := range []string{"purple-worker", "blue-worker"} {
-			content := fmt.Sprintf(`<task-notification scheduler="true" task-id="%s" agent-name="Review" status="%s" duration-ms="1200">Error: context canceled
-Partial output: repeated output</task-notification>`, id, status)
+			body := "Error: context canceled\nPartial output: repeated output"
+			if status == "completed" {
+				body = "## Conclusion\nFinal answer"
+			}
+			content := fmt.Sprintf(`<task-notification scheduler="true" task-id="%s" agent-name="Review" status="%s" duration-ms="1200">%s</task-notification>`, id, status, body)
 			e := parseAgentEnvelope(content)
 			got := e.renderDisplayNotice(RenderContext{Width: 80})
 			if !strings.Contains(got, kit.FlowLabel("Review")) {
@@ -48,6 +51,9 @@ Partial output: repeated output</task-notification>`, id, status)
 			}
 			if !strings.HasPrefix(plain, "● Flow · Review · ") || !strings.Contains(plain, " · 1s") || strings.Contains(plain, "repeated output") {
 				t.Fatalf("bad receipt: %q", plain)
+			}
+			if strings.Contains(plain, "Final answer") != (status == "completed") {
+				t.Fatalf("final result policy: %q", plain)
 			}
 			if strings.Contains(plain, "context canceled") != (status == "failed") {
 				t.Fatalf("diagnostic policy: %q", plain)
@@ -74,8 +80,9 @@ func TestSchedulerOutcomePriorityAndOptionalElapsed(t *testing.T) {
 			t.Fatalf("unexpected receipt: %q", got)
 		}
 		width := len(backgroundStatusLabel(status))
-		if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: width})); strings.TrimSpace(got) != backgroundStatusLabel(status) {
-			t.Fatalf("outcome lost at width %d: %q", width, got)
+		heading, _, _ := strings.Cut(ansi.Strip(e.renderDisplayNotice(RenderContext{Width: width})), "\n")
+		if strings.TrimSpace(heading) != backgroundStatusLabel(status) {
+			t.Fatalf("outcome lost at width %d: %q", width, heading)
 		}
 	}
 	e := parseAgentEnvelope(`<task-notification scheduler="true" agent-name="Review" status="failed">Error: provider unavailable</task-notification>`)
@@ -86,6 +93,49 @@ func TestSchedulerOutcomePriorityAndOptionalElapsed(t *testing.T) {
 	e.attributed = false
 	if e.isScheduler() {
 		t.Fatal("unattributed envelope mistaken for scheduler")
+	}
+}
+
+func TestSchedulerFinalResultShowsLeadingConclusion(t *testing.T) {
+	result := "## Conclusion\n\n**Do not merge yet.**\n\n- Three issues need review.\n"
+	for i := range 30 {
+		result += fmt.Sprintf("\n- Supporting detail %02d.\n", i)
+	}
+	result += "\nTAIL_ONLY_DISCLAIMER"
+	e := parseAgentEnvelope(`<task-notification scheduler="true" task-id="flow-final" agent-name="Review" status="completed">` + result + `</task-notification>`)
+	for _, width := range []int{1, 20, 40, 80} {
+		for _, budget := range []int{0, 1, 3, 50} {
+			p := RenderContext{Width: width, AgentPreviewLines: budget, MDRenderer: NewMDRenderer(width)}
+			got := e.renderDisplayNotice(p)
+			plain := ansi.Strip(got)
+			if width >= 40 && (!strings.Contains(plain, "Do not merge yet.") || !strings.Contains(plain, "/flow inspect flow-final") || strings.Contains(plain, "**Do not merge")) {
+				t.Fatalf("leading Markdown conclusion lost at width %d budget %d: %q", width, budget, plain)
+			}
+			if strings.Contains(plain, "TAIL_ONLY_DISCLAIMER") {
+				t.Fatalf("result showed the tail instead of the conclusion: %q", plain)
+			}
+			for line := range strings.SplitSeq(got, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("result overflows width %d: %q", width, line)
+				}
+			}
+			if e.renderWithIdentity(p) != got {
+				t.Fatal("restored final result differs from live result")
+			}
+		}
+	}
+}
+
+func TestSchedulerFinalResultEmptyAndTruncated(t *testing.T) {
+	for _, body := range []string{"", " \n\t"} {
+		e := parseAgentEnvelope(`<task-notification scheduler="true" status="completed">` + body + `</task-notification>`)
+		if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: 80})); !strings.Contains(got, "No final result") {
+			t.Fatalf("empty successful result was hidden: %q", got)
+		}
+	}
+	e := parseAgentEnvelope(`<task-notification scheduler="true" task-id="flow-final" status="completed" result-truncated="true">Visible conclusion</task-notification>`)
+	if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: 80})); !strings.Contains(got, "Visible conclusion") || !strings.Contains(got, "/flow inspect flow-final") {
+		t.Fatalf("serialized prefix lost its full-result hint: %q", got)
 	}
 }
 

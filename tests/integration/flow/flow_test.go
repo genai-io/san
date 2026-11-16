@@ -141,13 +141,8 @@ func TestFlow_SectioningThroughRealSubagents(t *testing.T) {
 	if info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s (%s)\n%s", info.Status, info.Error, info.Output)
 	}
-	if !strings.Contains(info.Output, "flow review succeeded") {
-		t.Fatalf("summary:\n%s", info.Output)
-	}
-	// The sink's output is the flow's product, carried back to the
-	// conversation that launched it.
-	if !strings.Contains(info.Output, "## report\nship it") {
-		t.Fatalf("summary lost the sink output:\n%s", info.Output)
+	if info.Output != "ship it" {
+		t.Fatalf("final sink answer:\n%s", info.Output)
 	}
 	if strings.Contains(info.LiveView, "ship it") || strings.Contains(info.LiveView, "Activity") || !strings.Contains(info.LiveView, "report") {
 		t.Fatalf("parent must show only its graph:\n%s", info.LiveView)

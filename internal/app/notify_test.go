@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
@@ -171,6 +172,28 @@ func TestTaskCompletionMessageOversizedWithoutFileInlines(t *testing.T) {
 	})
 	if !strings.Contains(msg.Content, big) {
 		t.Fatalf("without an output file the full result must be inlined, got %d-byte content", len(msg.Content))
+	}
+}
+
+func TestSchedulerCompletionKeepsLeadingResult(t *testing.T) {
+	report := "## Conclusion\nDo not merge: 检查 <boundary> & retry.\n" + strings.Repeat("细节\n", maxTaskOutputInNotification) + "TAIL_NOT_PREVIEWED"
+	for _, outputFile := range []string{"", "/tmp/scheduler.log"} {
+		info := task.TaskInfo{ID: "scheduler", Scheduler: true, Type: task.TaskTypeAgent, Status: task.StatusCompleted, Output: report, OutputFile: outputFile}
+		msg, ok := taskCompletionMessage(info)
+		var decoded struct {
+			Truncated bool   `xml:"result-truncated,attr"`
+			Body      string `xml:",chardata"`
+		}
+		if err := xml.Unmarshal([]byte(msg.Content), &decoded); !ok || err != nil || !decoded.Truncated {
+			t.Fatalf("invalid final-result prefix: %+v %v", decoded, err)
+		}
+		body := strings.TrimSpace(decoded.Body)
+		if len(body) > maxTaskOutputInNotification || !utf8.ValidString(body) || !strings.HasPrefix(body, "## Conclusion\nDo not merge: 检查 <boundary> & retry.") || strings.Contains(body, "TAIL_NOT_PREVIEWED") || strings.Contains(body, "too large to inline") {
+			t.Fatalf("final conclusion lost or prefix not bounded: %d bytes", len(body))
+		}
+		if info.Output != report {
+			t.Fatal("notification mutated the authoritative result")
+		}
 	}
 }
 

@@ -178,6 +178,25 @@ func (t *AgentTask) GetDescription() string {
 	return t.Description
 }
 
+// SetResult publishes a final answer in place of intermediate output. The display
+// retains its bounded UTF-8-safe head; the append-only log retains the full answer
+// and all prior output records.
+func (t *AgentTask) SetResult(result string) {
+	end := len(result)
+	if end > maxOutputBufferSize {
+		end = maxOutputBufferSize
+		for end > 0 && result[end]&0xc0 == 0x80 {
+			end--
+		}
+	}
+	t.mu.Lock()
+	t.attemptOutput.Reset()
+	t.attemptOutput.WriteString(result[:end])
+	outputFile := t.OutputFile
+	t.mu.Unlock()
+	t.recordOutput(outputFile, outputRecord{Event: "task.output", Content: result})
+}
+
 // AppendOutput appends data to the output buffer
 func (t *AgentTask) AppendOutput(data []byte) {
 	t.mu.Lock()

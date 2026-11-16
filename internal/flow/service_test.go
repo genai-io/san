@@ -147,7 +147,7 @@ func TestFlowServiceRunsNodesThroughTheExecutor(t *testing.T) {
 	if !strings.Contains(info.LiveView, "diff") || !strings.Contains(info.LiveView, "report") || strings.Contains(info.LiveView, "Result:") || strings.Contains(info.LiveView, "Activity") {
 		t.Fatalf("node result handoff is missing from live view:\n%s", info.LiveView)
 	}
-	if !strings.Contains(info.Output, "flow review succeeded") || !strings.Contains(info.Output, "## report\nR") {
+	if info.Output != "R" {
 		t.Fatalf("output:\n%s", info.Output)
 	}
 	if info.StepCount != 4 {
@@ -444,7 +444,7 @@ func TestFlowServiceRunsASavedFlow(t *testing.T) {
 
 	params := map[string]any{"name": "review", "inputs": map[string]any{"base": "main"}}
 	info := runToCompletion(t, wt, params)
-	if info.Status != task.StatusCompleted || !strings.Contains(info.Output, "## report\nR") {
+	if info.Status != task.StatusCompleted || info.Output != "R" {
 		t.Fatalf("status = %s output:\n%s", info.Status, info.Output)
 	}
 }

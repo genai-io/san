@@ -100,7 +100,7 @@ func (e agentEnvelope) summary(width int) string {
 // Display-only worker answers use the same Agent block as their live activity.
 func (e agentEnvelope) renderDisplayNotice(p RenderContext) string {
 	if e.isScheduler() {
-		return e.renderFlowNotice(p.Width)
+		return e.renderFlowNotice(p)
 	}
 	v := AgentView{
 		ID: e.taskID, SessionID: e.agentID, Name: envelopeAttr(e.tag, "agent-name"),
@@ -125,7 +125,7 @@ func (e agentEnvelope) renderDisplayNotice(p RenderContext) string {
 
 func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
 	if e.isScheduler() {
-		return e.renderFlowNotice(p.Width)
+		return e.renderFlowNotice(p)
 	}
 	if p.Width <= 0 {
 		p.Width = 80
@@ -162,7 +162,8 @@ func (e agentEnvelope) isScheduler() bool {
 	return e.kind == envelopeTask && e.attributed && envelopeAttr(e.tag, " scheduler") == "true"
 }
 
-func (e agentEnvelope) renderFlowNotice(width int) string {
+func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
+	width := p.Width
 	if width <= 0 {
 		width = 80
 	}
@@ -179,7 +180,7 @@ func (e agentEnvelope) renderFlowNotice(width int) string {
 	outcome := statusStyle.Render(status)
 	// Reserve the outcome before optional title and elapsed detail.
 	if width < ansi.StringWidth("● Flow · ")+ansi.StringWidth(outcome) {
-		return ansi.Truncate(outcome, width, "…") + "\n"
+		return ansi.Truncate(outcome, width, "…") + "\n" + e.renderFlowResult(p)
 	}
 	elapsed := ""
 	if milliseconds, err := strconv.ParseInt(envelopeAttr(e.tag, "duration-ms"), 10, 64); err == nil {
@@ -187,7 +188,6 @@ func (e agentEnvelope) renderFlowNotice(width int) string {
 	}
 	detail := body.Render(" · ") + outcome
 	baseWidth := ansi.StringWidth("● Flow")
-	// Completion is a receipt, not a second copy of scheduler/child output.
 	// Reserve genuine diagnostics before optional title and elapsed detail.
 	diagnostic := ""
 	if reason, ok := strings.CutPrefix(strings.TrimSpace(e.text()), "Error: "); ok && e.status != "completed" && e.status != "running" {
@@ -205,7 +205,50 @@ func (e agentEnvelope) renderFlowNotice(width int) string {
 	title := strings.Join(strings.Fields(envelopeAttr(e.tag, "agent-name")), " ")
 	label := body.Render("● ") + kit.FlowLabel(title)
 	label = ansi.Truncate(label, width-ansi.StringWidth(detail), "…")
-	return label + detail + "\n"
+	return label + detail + "\n" + e.renderFlowResult(p)
+}
+
+const maxFlowResultLines = 12
+
+func (e agentEnvelope) renderFlowResult(p RenderContext) string {
+	if e.status != "completed" {
+		return ""
+	}
+	width := p.Width
+	if width <= 0 {
+		width = 80
+	}
+	indent := strings.Repeat(" ", min(2, max(0, width-1)))
+	room := max(1, width-len(indent))
+	result := e.text()
+	if strings.TrimSpace(result) == "" {
+		return indent + toolResultStyle.Render(ansi.Truncate("No final result", room, "…")) + "\n"
+	}
+	md := p.MDRenderer
+	if md == nil {
+		md = NewMDRenderer(width)
+	}
+	rendered := renderMarkdownContent(md, result)
+	var lines []string
+	for line := range strings.SplitSeq(ansi.Hardwrap(rendered, room, true), "\n") {
+		if strings.TrimSpace(ansi.Strip(line)) != "" {
+			lines = append(lines, strings.TrimRight(line, " "))
+		}
+	}
+	var b strings.Builder
+	for _, line := range lines[:min(len(lines), maxFlowResultLines)] {
+		b.WriteString(indent + line + "\n")
+	}
+	if len(lines) > maxFlowResultLines || envelopeAttr(e.tag, "result-truncated") == "true" {
+		hint := "… More in task details"
+		if e.taskID != "" {
+			hint = "… More: /flow inspect " + e.taskID
+		}
+		for line := range strings.SplitSeq(ansi.Hardwrap(hint, room, true), "\n") {
+			b.WriteString(indent + toolResultStyle.Render(line) + "\n")
+		}
+	}
+	return b.String()
 }
 
 // envelopeAttr returns the value of a name="value" attribute within an opening

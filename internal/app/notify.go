@@ -83,13 +83,8 @@ func (n mainNotice) input(message core.Message) pendingMessage {
 	return input
 }
 
-// maxTaskOutputInNotification is the largest task output, in bytes, inlined
-// whole into the completion notification. At or below it, the full result rides
-// in the notification so the reader needs no follow-up read; above it, the body
-// is omitted and only the output-file pointer is given, so a large report is
-// fetched in one deliberate read rather than a truncated preview plus a second
-// read for the rest. Byte-sized, so a CJK report (3 bytes/char) inlines up to
-// roughly a third as many characters — ~6.6K.
+// maxTaskOutputInNotification is the inline threshold in bytes. Large ordinary
+// results use their log when available; Flow keeps a bounded leading excerpt.
 const maxTaskOutputInNotification = 20000
 
 // taskCompletionMessage addresses a terminal result to its launching agent.
@@ -108,6 +103,14 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	}
 
 	result := strings.TrimSpace(info.Output)
+	resultTruncated := info.Scheduler && status == "completed" && len(result) > maxTaskOutputInNotification
+	if resultTruncated {
+		end := maxTaskOutputInNotification
+		for end > 0 && !utf8.RuneStart(result[end]) {
+			end--
+		}
+		result = result[:end]
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, `<task-notification task-id="%s" status="%s"`, html.EscapeString(info.ID), status)
@@ -131,6 +134,9 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	}
 	if info.Scheduler {
 		b.WriteString(` scheduler="true"`)
+		if resultTruncated {
+			b.WriteString(` result-truncated="true"`)
+		}
 	}
 	if info.Scheduler || info.ParentTaskID != "" {
 		fmt.Fprintf(&b, ` agent-name="%s"`, html.EscapeString(info.AgentName))

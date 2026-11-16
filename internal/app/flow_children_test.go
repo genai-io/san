@@ -51,7 +51,7 @@ func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
 }
 
 func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
-	for _, status := range []string{"failed", "stopped"} {
+	for _, status := range []string{"failed", "stopped", "completed"} {
 		for _, busy := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/busy=%t", status, busy), func(t *testing.T) {
 				m, provider := noticeDeliveryModel(t)
@@ -77,6 +77,8 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 				}
 				if status == "failed" {
 					parent.Complete(fmt.Errorf("checkpoint write denied"))
+				} else if status == "completed" {
+					parent.Complete(nil)
 				} else {
 					if err := parent.Stop(); err != nil {
 						t.Fatal(err)
@@ -93,7 +95,16 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 					if status == "failed" && !strings.Contains(n.Display, "checkpoint write denied") {
 						t.Fatalf("terminal diagnostic lost: %+v", n)
 					}
+					if status != "completed" && strings.Contains(n.Display, `status="completed"`) {
+						t.Fatalf("unsuccessful scheduler presented success: %+v", n)
+					}
 					runCmd(m.deliverNotice(n))
+					if status == "completed" {
+						rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+						if !strings.Contains(rendered, "No final result") {
+							t.Fatalf("empty scheduler answer invented or hid a conclusion: %s", rendered)
+						}
+					}
 				case <-time.After(time.Second):
 					t.Fatal("missing terminal scheduler receipt")
 				}
@@ -139,6 +150,12 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	for _, name := range []string{"map", "security", "performance", "report"} {
 		gates[name] = make(chan struct{})
 	}
+	const conclusion = "Final conclusion: boundary checks need repair"
+	reportOutput := "## " + conclusion + "\n\n"
+	for i := 1; i <= 40; i++ {
+		reportOutput += fmt.Sprintf("Report detail %02d: supporting evidence.\n\n", i)
+	}
+	reportOutput += "TAIL DISCLAIMER: report actual answer is not a substitute for review."
 	childProvider := &compactHTTPProvider{client: aitest.Always(func(callCtx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 		text := req.Messages[len(req.Messages)-1].Text()
 		name := ""
@@ -158,6 +175,9 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			return aitest.Fails(ctx.Err())(callCtx, req)
 		case <-callCtx.Done():
 			return aitest.Fails(callCtx.Err())(callCtx, req)
+		}
+		if name == "report" {
+			return aitest.Says(reportOutput)(callCtx, req)
 		}
 		return aitest.Says("fourth hidden detail\n"+strings.Repeat("supporting detail ", 40)+"\n"+name+" actual answer")(callCtx, req)
 	}).Client()}
@@ -215,8 +235,28 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			}
 			runCmd(m.deliverNotice(n))
 			rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
-			if !strings.Contains(rendered, "Native children") || strings.Contains(rendered, "actual answer") || strings.Contains(rendered, "fourth hidden detail") {
-				t.Fatalf("scheduler receipt duplicated output or lost title: %s", rendered)
+			if !strings.Contains(rendered, "Native children") || strings.Contains(rendered, "fourth hidden detail") {
+				t.Fatalf("scheduler notice lost title or leaked intermediate output: %s", rendered)
+			}
+			if status == "completed" {
+				for _, previewLines := range []int{0, 1, 3, 50} {
+					params := m.messageRenderParams()
+					params.AgentPreviewLines = previewLines
+					got := ansi.Strip(conv.RenderSingleMessage(params, len(m.conv.Messages)-1))
+					if got != rendered {
+						t.Fatalf("scheduler answer depends on child preview setting %d:\n%s\n%s", previewLines, rendered, got)
+					}
+				}
+				if !strings.Contains(rendered, conclusion) || !strings.Contains(rendered, "Report detail 11") ||
+					strings.Contains(rendered, "Report detail 12") || strings.Contains(rendered, "TAIL DISCLAIMER") ||
+					!strings.Contains(rendered, "/flow inspect "+parentID) {
+					t.Fatalf("scheduler did not show first 12 nonblank report lines and full-result hint: %s", rendered)
+				}
+				if rows := len(strings.Split(strings.TrimSpace(rendered), "\n")); rows > 18 {
+					t.Fatalf("scheduler answer is not bounded: %d rows\n%s", rows, rendered)
+				}
+			} else if strings.Contains(rendered, conclusion) {
+				t.Fatalf("scheduler start invented a final answer: %s", rendered)
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatalf("missing scheduler %s receipt", status)
@@ -347,6 +387,12 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	}
 	if record.Status != flow.RunSucceeded || len(record.Nodes) != 4 {
 		t.Fatalf("wrong final checkpoint: %+v", record)
+	}
+	if got := parent.GetStatus().Output; got != reportOutput {
+		t.Fatalf("scheduler output is not the full actual sink answer:\n%s", got)
+	}
+	if !strings.Contains(record.Output, conclusion) || !strings.Contains(record.Output, "TAIL DISCLAIMER") || record.Output == reportOutput {
+		t.Fatalf("inspect lost full status summary and final answer: %s", record.Output)
 	}
 	for name, checkpoint := range record.Nodes {
 		identity := checkpoint.Execution

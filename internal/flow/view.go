@@ -313,6 +313,32 @@ func (w *Blueprint) topologicalNodes() []*Node {
 	return ordered
 }
 
+// FinalOutput returns successful sink answers without synthesizing new content.
+// A sole answer stands alone; multiple answers retain definition-order labels.
+func (r *Result) FinalOutput(w *Blueprint) string {
+	var answers []string
+	var ids []string
+	for _, n := range w.Nodes {
+		res := r.Nodes[n.ID]
+		if res == nil {
+			continue
+		}
+		text := strings.TrimSpace(res.Output)
+		if len(n.downstream) > 0 || res.Status != StatusSucceeded || text == "" {
+			continue
+		}
+		answers = append(answers, text)
+		ids = append(ids, n.ID)
+	}
+	if len(answers) == 1 {
+		return answers[0]
+	}
+	for i := range answers {
+		answers[i] = "## " + ids[i] + "\n" + answers[i]
+	}
+	return strings.Join(answers, "\n\n")
+}
+
 // Summary renders the run for the conversation that launched it: one status
 // line per node, then the output of every sink node that succeeded. Sinks
 // are the flow's product; intermediate outputs stay in the transcripts.

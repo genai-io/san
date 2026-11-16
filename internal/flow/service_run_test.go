@@ -17,7 +17,7 @@ import (
 
 func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
 	wt := NewService(task.Default())
-	wt.SetExecutor(&scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
+	wt.SetExecutor(&scriptedExecutor{outputs: map[string]string{"a": " final answer \n"}, toolEvents: func(req tool.AgentExecRequest) {
 		req.OnToolStart("read-1", "Read(example.go)")
 		req.OnToolResult("read-1", "Read(example.go)", "package main", nil)
 	}})
@@ -27,6 +27,9 @@ func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
 		t.Fatalf("runs: %v, %v", records, err)
 	}
 	r := records[0]
+	if info.Output != "final answer" || !strings.Contains(r.Output, "succeeded in") || !strings.Contains(r.Output, "## a\nfinal answer") {
+		t.Fatalf("task answer and persisted summary contracts diverged: task=%q record=%q", info.Output, r.Output)
+	}
 	if r.TaskID != info.ID || r.Status != RunSucceeded || r.Nodes["a"].Status != StatusSucceeded {
 		t.Fatalf("task and persisted checkpoint diverged: %+v", r)
 	}

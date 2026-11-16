@@ -222,7 +222,6 @@ func (t *Service) launchRecord(w *Blueprint, r RunRecord, description string, re
 			return update(func(r *RunRecord) { r.Nodes[n.ID] = c })
 		}})
 		output := res.Summary(w)
-		bg.AppendOutput([]byte(output))
 		var runErr error
 		status := RunSucceeded
 		if ctx.Err() != nil {
@@ -248,6 +247,11 @@ func (t *Service) launchRecord(w *Blueprint, r RunRecord, description string, re
 		})
 		if err != nil {
 			runErr = err
+		}
+		if runErr == nil {
+			bg.SetResult(res.FinalOutput(w))
+		} else {
+			bg.AppendOutput([]byte(res.FinalOutput(w)))
 		}
 		bg.Complete(runErr)
 	}()

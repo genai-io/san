@@ -346,10 +346,14 @@ readable title. `Alt+T` still controls task-area visibility.
 Nodes execute through the native subagent executor, with its existing model,
 tools, permissions and sessions. Running nodes use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
-answer previews. The scheduler's own start and terminal notices are display-only
-too: completing a Flow does not ask the main Agent to summarize it again. Add an
-explicit downstream node when synthesis is needed. Children remain background/
-parallel. The footer keeps the dependency graph
+answer previews. On completion, Flow shows the beginning of its final sink answer
+as Markdown, independently of child preview limits. One sink returns its answer;
+multiple successful sinks retain labeled sections. A bounded preview links to
+native inspection for the full result; empty results are reported explicitly.
+The scheduler's own start and terminal notices remain display-only: completing
+a Flow does not ask the main Agent to summarize it again. Add an explicit
+downstream node when synthesis is needed. Children remain background/parallel.
+The footer keeps the dependency graph
 without duplicate child task rows or a redundant Tasks caption. Inspecting a
 node opens native task detail, not a second Flow activity viewer. Fan-out workers
 and earlier attempts retain their own execution references.

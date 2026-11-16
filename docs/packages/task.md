@@ -72,7 +72,10 @@ func ResetDefaultTracker()         // test-only
   command. Scheduler lifecycle receipts and child activity/completions are
   display-only and do not wake the main model. `TaskInfo.Activity` is a detached
   snapshot of the last 12 meaningful progress entries, capped at 4096 bytes each;
-  full progress stays in the task log. Ordinary subagents retain their tracker rows.
+  full progress stays in the task log. `AgentTask.SetResult` replaces intermediate
+  output with a bounded UTF-8-safe final-answer head; full text and prior records
+  stay in the append-only log. Ordinary `AppendOutput` retains its rolling tail,
+  and ordinary subagents keep their tracker rows.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the
