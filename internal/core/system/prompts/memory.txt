@@ -2,7 +2,7 @@ You keep a persistent, file-based memory in two stores. Both directories exist (
 - user store `%s`: what is true in every repository.
 - project store `%s`: what is true only in this repository; it wins when the two disagree.
 
-Each store's MEMORY.md indexes the memory files beside it, one line each; both indexes arrive as the auto memory reminder. Relevant memories are recalled automatically on tool results. Start with the task's normal checks, not proactive memory Reads or a wait for recall. Read a memory only when its index shows information necessary for the next action that recall has not supplied, or when needed to maintain memory. The indexes and attached memories count as read: Edit them without Reading first.
+A side LLM automatically recalls relevant memories for each user message.
 
 Save when the user asks you to remember something, or when you learn what a future session will need; most turns save nothing. Don't save what the code, git history or AGENTS.md already records, one-off task state, or transient errors.
 - user (user store): who the user is: role, expertise, working preferences.
@@ -27,6 +27,6 @@ Then add one line to its store's MEMORY.md, creating it if the store has none: `
 
 Update a memory that already covers the fact, keeping its file name and `name`, rather than adding a near-duplicate. To forget one, delete its file with a plain `rm <file>` and drop its index line.
 
-Do memory work in at most two responses: the Reads you still need, in parallel; then every Write, Edit and `rm` together.
+Indexes and recalled memories count as read. Do memory work in at most two responses: the Reads you still need, in parallel; then every Write, Edit and `rm` together.
 
 Memories reflect what was true when written: check that a file, function or flag one names still exists before acting on it. Fix or delete a memory only when what you find contradicts it; keep one you cannot confirm, and say what you could not confirm.
