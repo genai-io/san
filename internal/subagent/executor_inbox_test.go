@@ -7,11 +7,17 @@ import (
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
+
+// runWithInbox runs ag behind a fresh inbox registered at taskID.
+func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps int, owner *session.Session) (*core.Result, error) {
+	return newRunInbox(ctx, taskID, owner).run(ctx, ag, maxSteps, nil)
+}
 
 // boundaryAgent delivers mail after the SDK's last pending check, optionally
 // settling it into history before returning, as the SDK's finalizer does.

@@ -37,18 +37,23 @@ type Message struct {
 	Content string // body delivered to the recipient
 }
 
-func Register(addr string, deliver func(Message) bool) // add a recipient
-func Unregister(addr string)                      // remove it (idempotent)
-func Send(m Message) bool                          // routes to m.To; false when no one holds it
-func SendCompletion(m Message) bool                // delivered or retained for its child owner
-func Reset()                                       // test-only
+func Register(addr string, deliver func(Message) bool) func() // register; return scoped cleanup
+func RegisterAccept(addr string, accept func(Message) error) func() // same, with rejection reasons
+func Unregister(addr string)                        // remove the current recipient
+func Send(m Message) bool                           // false when absent or rejected
+func SendErr(m Message) error                       // ErrNoRecipient, ErrRejected or recipient reason
+func SendCompletion(m Message) bool                 // delivered or retained for its child owner
+func Reset()                                        // test-only
 ```
 
 Addresses identify logical agents — a task id (`generateShortID()`) or `Main` — so
-an address is held by exactly one agent at a time; `Register`/`Unregister` are
-a plain add/remove on the map. The registry is a process-wide singleton, like
-`task.Default()`. The delivery function runs outside the lock and must not
-block (it enqueues for the recipient and returns).
+an address is held by exactly one registration at a time. Use the cleanup
+returned by `Register` for execution-owned routes: it is idempotent and cannot
+remove a later replacement. `Unregister` removes whichever route is current.
+The registry is a process-wide singleton, like `task.Default()`. The delivery
+function runs outside the lock and must not block. `RegisterAccept` recipients
+may return `ErrInboxFull` (or another reason) so `SendErr` callers can report
+the actual cause; a plain `Register` rejection surfaces as `ErrRejected`.
 Worker messages and completion notices carry their launching session. Main
 rejects a different session both before enqueueing and before applying a queued
 notice, so a switch cannot inject an old worker's result into the new session.
