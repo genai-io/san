@@ -126,6 +126,12 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if info.AgentSessionID != "" {
 		fmt.Fprintf(&b, ` agent-id="%s"`, html.EscapeString(info.AgentSessionID))
 	}
+	if info.ParentTaskID != "" {
+		fmt.Fprintf(&b, ` agent-name="%s"`, html.EscapeString(info.AgentName))
+		if !info.EndTime.IsZero() && info.EndTime.After(info.StartTime) {
+			fmt.Fprintf(&b, ` duration-ms="%d"`, info.EndTime.Sub(info.StartTime).Milliseconds())
+		}
+	}
 	if description != "" {
 		fmt.Fprintf(&b, ` description="%s"`, html.EscapeString(description))
 	}

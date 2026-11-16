@@ -68,9 +68,10 @@ func ResetDefaultTracker()         // test-only
   lifecycle observers see it. `CreateChildAgentTask` sets `ParentTaskID` before
   registration; children publish ordinary creation, progress and completion.
   Hosts identify schedulers by that flag, not by display name. Scheduler-owned
-  child completions are shown to the user without waking the main model.
-  Ordinary subagents publish their latest progress under the existing tracker
-  row; recoverable errors stay there rather than becoming independent notices.
+  child activity and completions use display-only native Agent blocks without
+  waking the main model. `TaskInfo.Activity` is a detached snapshot of the last
+  12 meaningful progress entries, capped at 4096 bytes each; full progress stays
+  in the task log. Ordinary subagents retain their existing tracker rows.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the

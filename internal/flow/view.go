@@ -14,6 +14,36 @@ func (w *Blueprint) Title() string {
 	words := strings.FieldsFunc(w.Name, func(r rune) bool {
 		return r == '_' || r == '-' || unicode.IsSpace(r)
 	})
+	// Split CamelCase and acronym-to-word boundaries for display only. Keep
+	// acronyms intact (HTTPReview becomes HTTP Review, not H T T P Review).
+	var splitWords []string
+	for _, word := range words {
+		runes := []rune(word)
+		// Keep mixed-case acronyms such as iOS together rather than
+		// treating their single lowercase prefix as a separate word.
+		mixedAcronym := len(runes) > 1 && unicode.IsLower(runes[0])
+		for _, r := range runes[1:] {
+			mixedAcronym = mixedAcronym && unicode.IsUpper(r)
+		}
+		if mixedAcronym {
+			splitWords = append(splitWords, word)
+			continue
+		}
+		var title strings.Builder
+		for j, r := range runes {
+			if j > 0 && unicode.IsUpper(r) {
+				previous := runes[j-1]
+				wordStart := unicode.IsLower(previous) || unicode.IsDigit(previous)
+				acronymEnd := unicode.IsUpper(previous) && j+1 < len(runes) && unicode.IsLower(runes[j+1])
+				if wordStart || acronymEnd {
+					title.WriteByte(' ')
+				}
+			}
+			title.WriteRune(r)
+		}
+		splitWords = append(splitWords, strings.Fields(title.String())...)
+	}
+	words = splitWords
 	if len(words) > 1 && strings.EqualFold(words[0], "flow") {
 		words = words[1:]
 	}
@@ -39,7 +69,7 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 			finished++
 		}
 	}
-	progress := fmt.Sprintf("%d/%d steps", finished, len(w.Nodes))
+	progress := fmt.Sprintf("%d/%d", finished, len(w.Nodes))
 	if statuses == nil {
 		unit := "steps"
 		if len(w.Nodes) == 1 {
@@ -47,14 +77,15 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		}
 		progress = fmt.Sprintf("%d %s", len(w.Nodes), unit)
 	}
-	available := max(1, width-2)
+	// Align the title and progress with the graph's left edge.
+	available := max(1, width-4)
 	suffix := " · " + progress
 	nameWidth := available - ansi.StringWidth(suffix)
 	header := progress
 	if nameWidth > 0 {
 		header = ansi.Truncate(w.Title(), nameWidth, "…") + suffix
 	}
-	header = "  " + ansi.Truncate(header, available, "…")
+	header = strings.Repeat(" ", min(4, max(0, width-1))) + ansi.Truncate(header, available, "…")
 	if len(w.Loops) == 0 {
 		ordered := w.topologicalNodes()
 		layer := make(map[string]int, len(ordered))

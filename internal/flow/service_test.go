@@ -129,7 +129,7 @@ func TestNodeRunnerFlowOrigin(t *testing.T) {
 	}
 	req := exec.reqs[0]
 	want := tool.FlowOrigin{TaskID: "flow-run", Name: "review", NodeID: "check", WorkerLabel: "item-2"}
-	if req.Flow == nil || *req.Flow != want || req.ParentToolCallID != "" || req.TaskID != "" {
+	if req.Flow == nil || *req.Flow != want || req.ParentToolCallID != "" || req.TaskID != "" || req.Description != "check·item-2" {
 		t.Fatalf("wrong attribution or shared broker address: %+v", req)
 	}
 }
@@ -158,14 +158,14 @@ func TestFlowServiceRunsNodesThroughTheExecutor(t *testing.T) {
 	for _, r := range exec.reqs {
 		byNode[r.Description] = r
 	}
-	diff := byNode["review/diff"]
+	diff := byNode["diff"]
 	if diff.Agent != "explorer" || diff.Prompt != "Summarize main..HEAD" || !diff.Background {
 		t.Fatalf("diff request = %+v", diff)
 	}
-	if sec := byNode["review/sec"]; sec.Mode != "explore" || sec.Prompt != "Security: D" {
+	if sec := byNode["sec"]; sec.Mode != "explore" || sec.Prompt != "Security: D" {
 		t.Fatalf("sec request = %+v", sec)
 	}
-	if report := byNode["review/report"]; report.Prompt != "Merge S P" {
+	if report := byNode["report"]; report.Prompt != "Merge S P" {
 		t.Fatalf("report prompt = %q", report.Prompt)
 	}
 }
@@ -198,7 +198,7 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	if !bg.WaitForCompletion(5 * time.Second) {
 		t.Fatal("flow did not complete")
 	}
-	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Untitled flow · 1/1 steps") || !strings.Contains(view, "only ●") {
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Untitled flow · 1/1") || !strings.Contains(view, "only ●") {
 		t.Fatalf("finished graph did not update:\n%s", view)
 	}
 }
@@ -297,7 +297,7 @@ func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 				req.OnTextDelta(text)
 			}
 		}
-		if strings.HasSuffix(req.Description, "/a") {
+		if req.Flow.NodeID == "a" {
 			emit("previous accepted")
 			textEnd(req, nil)
 			emit(strings.Repeat("discarded draft ", 16))
@@ -393,10 +393,10 @@ func TestFlowServiceFansOutOverAPlan(t *testing.T) {
 		byNode[r.Description] = r
 	}
 	exec.mu.Unlock()
-	if got := byNode["split/review·llm"]; got.Prompt != "Review errors" || got.Mode != "explore" {
+	if got := byNode["review·llm"]; got.Prompt != "Review errors" || got.Mode != "explore" {
 		t.Fatalf("llm worker = %+v", got)
 	}
-	if got := byNode["split/merge"].Prompt; !strings.Contains(got, "## llm\nL") || !strings.Contains(got, "## tool\nT") {
+	if got := byNode["merge"].Prompt; !strings.Contains(got, "## llm\nL") || !strings.Contains(got, "## tool\nT") {
 		t.Fatalf("merge prompt = %q", got)
 	}
 }
@@ -588,13 +588,13 @@ func TestFlowServiceRetriesUntilReviewPasses(t *testing.T) {
 		byNode[r.Description] = r
 	}
 	exec.mu.Unlock()
-	if got := byNode["polish/draft#2"].Prompt; got != "Write it. Last review: FAIL" {
+	if got := byNode["draft#2"].Prompt; got != "Write it. Last review: FAIL" {
 		t.Fatalf("second draft prompt = %q", got)
 	}
-	if got := byNode["polish/ship"].Prompt; got != "Ship v2" {
+	if got := byNode["ship"].Prompt; got != "Ship v2" {
 		t.Fatalf("ship prompt = %q", got)
 	}
-	if _, ran := byNode["polish/draft#3"]; ran {
+	if _, ran := byNode["draft#3"]; ran {
 		t.Fatal("round 3 ran although round 2 passed")
 	}
 }
@@ -621,7 +621,7 @@ func TestFlowServiceFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 	exec.mu.Lock()
 	defer exec.mu.Unlock()
 	for _, r := range exec.reqs {
-		if r.Description == "polish/ship" {
+		if r.Flow.NodeID == "ship" {
 			t.Fatal("a draft that never passed review reached ship")
 		}
 	}

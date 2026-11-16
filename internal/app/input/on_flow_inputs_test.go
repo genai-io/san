@@ -100,7 +100,7 @@ func TestFlowDirectRunWithUIStaysImmediate(t *testing.T) {
 		ticks := 0
 		c := NewSlashCommandController(SlashCommandEnv{Flow: s, Input: &Model{}, Width: 96, Height: 32, SpinnerTickCmd: func() tea.Cmd { ticks++; return func() tea.Msg { return "tick" } }})
 		notice, cmd, err := c.handleFlowCommand(context.Background(), "run sample topic=supplied")
-		if err != nil || s.launches != 1 || c.env.Input.Flow.active || ticks != 1 || cmd == nil || cmd() != "tick" || !strings.Contains(notice, "Task ID: task") || !strings.Contains(notice, "Flow graph: task area") {
+		if err != nil || s.launches != 1 || c.env.Input.Flow.active || ticks != 1 || cmd == nil || cmd() != "tick" || notice != "Started flow Sample · /flow stop task" {
 			t.Fatalf("direct run changed: notice=%q err=%v", notice, err)
 		}
 	}

@@ -316,7 +316,7 @@ func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 		Flow:             &tool.FlowOrigin{TaskID: r.task.GetID(), Name: r.name, NodeID: n.ID, WorkerLabel: c.Label},
 		Agent:            n.Config["agent"],
 		Prompt:           c.Prompt,
-		Description:      r.name + "/" + label,
+		Description:      label,
 		Background:       true,
 		Model:            n.Config["model"],
 		Mode:             n.Config["mode"],

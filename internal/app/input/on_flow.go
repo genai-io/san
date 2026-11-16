@@ -859,7 +859,7 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 			}
 		}
 	}
-	bounds, id, err := svc.Launch(fields[1], inputs, c.env.Width)
+	_, id, err := svc.Launch(fields[1], inputs, c.env.Width)
 	if err != nil {
 		return "", nil, err
 	}
@@ -867,8 +867,8 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 	if c.env.SpinnerTickCmd != nil {
 		cmds = append(cmds, c.env.SpinnerTickCmd())
 	}
-	notice := bounds + "\nTask ID: " + id
-	notice += "\nFlow graph: task area (Alt+T) · Stop: Ctrl+C (when idle) or /flow stop " + id
+	title := (&flow.Blueprint{Name: fields[1]}).Title()
+	notice := "Started flow " + title + " · /flow stop " + id
 	return notice, tea.Batch(cmds...), nil
 }
 

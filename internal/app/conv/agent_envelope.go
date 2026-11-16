@@ -5,6 +5,7 @@ import (
 	"html"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
@@ -95,27 +96,27 @@ func (e agentEnvelope) summary(width int) string {
 	return "Background agent message"
 }
 
-// renderDisplayNotice adds worker prose only for display-only task annotations.
-// The heading already carries the outcome, including genuine failure diagnostics.
+// Display-only worker answers use the same Agent block as their live activity.
 func (e agentEnvelope) renderDisplayNotice(p RenderContext) string {
-	heading := e.renderWithIdentity(p)
-	if p.AgentPreviewLines <= 0 {
-		return heading
+	v := AgentView{
+		ID: e.taskID, SessionID: e.agentID, Name: envelopeAttr(e.tag, "agent-name"),
+		Description: e.description, Status: e.status, Output: e.text(),
 	}
-	body := e.text()
+	if milliseconds, err := strconv.ParseInt(envelopeAttr(e.tag, "duration-ms"), 10, 64); err == nil && milliseconds > 0 {
+		v.Duration = time.Duration(milliseconds) * time.Millisecond
+	}
 	switch e.status {
 	case "failed", "stopped", "killed", "interrupted", "timeout", "timed_out":
-		if strings.HasPrefix(body, "Error: ") {
-			_, body, _ = strings.Cut(body, "\n")
+		if reason, ok := strings.CutPrefix(v.Output, "Error: "); ok {
+			v.Error, v.Output, _ = strings.Cut(reason, "\n")
 		}
-		if kit.IsRoutineStopReason(strings.TrimSpace(body)) {
-			body = ""
+		v.Output = strings.TrimSpace(v.Output)
+		v.Output = strings.TrimSpace(strings.TrimPrefix(v.Output, "Partial output:"))
+		if kit.IsRoutineStopReason(v.Output) {
+			v.Output = ""
 		}
 	}
-	if strings.TrimSpace(body) == "" {
-		return heading
-	}
-	return heading + renderAgentResponsePreview(body, p.Width, p.MDRenderer, p.AgentPreviewLines)
+	return renderAgentView(v, p)
 }
 
 func (e agentEnvelope) renderWithIdentity(p RenderContext) string {

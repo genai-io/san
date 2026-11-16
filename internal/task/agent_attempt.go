@@ -177,6 +177,7 @@ func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.Ca
 	t.sourceMessageSeq = 0
 	t.StepCount, t.TokenUsage = 0, 0
 	t.progress, t.liveView, t.liveRender = "", "", nil
+	t.activity = nil
 	t.ctx, t.cancel = ctx, cancel
 	t.done = make(chan struct{})
 	t.mu.Unlock()

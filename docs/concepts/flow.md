@@ -343,12 +343,13 @@ Launching returns to the composer instead of automatically opening a separate
 run panel. `Alt+T` still controls task-area visibility.
 
 Nodes execute through the native subagent executor, with its existing model,
-tools, permissions and sessions. They appear as ordinary background workers in
-Tasks, with real tool progress; completed answers use the native Agent result
-preview in the conversation. These child reports are display-only and do not
-start extra main-agent turns. Inspecting a node opens native task detail, not a
-second Flow activity viewer. Fan-out workers and earlier attempts retain their
-own execution references.
+tools, permissions and sessions. Running nodes use native Agent blocks in the
+conversation: identity, elapsed time and recent activity, followed by bounded
+answer previews. These are display-only; children remain background/parallel
+and do not start extra main-agent turns. The footer keeps the dependency graph
+without duplicate child task rows or a redundant Tasks caption. Inspecting a
+node opens native task detail, not a second Flow activity viewer. Fan-out workers
+and earlier attempts retain their own execution references.
 An explicit Flow inspector provides graph-level stop, retry and rerun controls;
 these are distinct from continuing an individual Agent conversation.
 

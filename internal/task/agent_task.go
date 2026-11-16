@@ -44,6 +44,7 @@ type AgentTask struct {
 	attemptOutput    bytes.Buffer
 	launchState      any
 	permissionMode   string           // Effective mode resolved before the worker starts.
+	activity         []string         // Bounded recent meaningful progress for native presentation.
 	progress         string           // Latest non-metadata activity for the live tracker.
 	outputErr        string           // First output-log failure; a nonempty path alone is not proof of durability.
 	liveView         string           // Current structured progress, if the caller supplies one.
@@ -190,6 +191,12 @@ func (t *AgentTask) AppendOutput(data []byte) {
 	})
 }
 
+// Activity is a compact display snapshot, not a replacement for the task log.
+const (
+	maxActivityEntries    = 12
+	maxActivityEntryBytes = 4096
+)
+
 // AppendProgress appends a progress message
 func (t *AgentTask) AppendProgress(msg string) {
 	msg = strings.TrimSpace(msg)
@@ -198,6 +205,23 @@ func (t *AgentTask) AppendProgress(msg string) {
 		// The tracker needs the latest action, not a token line that replaces it.
 		// Tool descriptions are already bounded by the executor.
 		t.progress = msg
+		entry := msg
+		if len(entry) > maxActivityEntryBytes {
+			end := maxActivityEntryBytes
+			// Do not split a UTF-8 rune at the display limit.
+			for end > 0 && entry[end]&0xc0 == 0x80 {
+				end--
+			}
+			entry = entry[:end]
+		}
+		// Clone even short substrings so history cannot retain a large input.
+		entry = strings.Clone(entry)
+		if len(t.activity) == maxActivityEntries {
+			copy(t.activity, t.activity[1:])
+			t.activity[len(t.activity)-1] = entry
+		} else {
+			t.activity = append(t.activity, entry)
+		}
 	}
 	outputFile := t.OutputFile
 	t.mu.Unlock()
@@ -379,6 +403,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		OutputFile:       t.inspectionPathLocked(),
 		OutputError:      t.outputErr,
 		Progress:         t.progress,
+		Activity:         append([]string(nil), t.activity...),
 		AgentName:        t.AgentName,
 		PermissionMode:   t.permissionMode,
 		SourceMessageSeq: t.sourceMessageSeq,

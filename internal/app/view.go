@@ -443,7 +443,14 @@ func (m *model) renderTrackerList() string {
 		if len(liveFlowIDs) > 0 {
 			filtered := make([]*todo.Item, 0, len(items))
 			for _, item := range items {
-				if !liveFlowIDs[todo.BackgroundTaskID(item)] {
+				id := todo.BackgroundTaskID(item)
+				covered := liveFlowIDs[id]
+				if worker, ok := m.services.Task.Get(id); ok {
+					// Only hide children represented by a visible scheduler graph.
+					// Unrelated workers (and children without a graph) keep their rows.
+					covered = covered || liveFlowIDs[worker.GetStatus().ParentTaskID]
+				}
+				if !covered {
 					filtered = append(filtered, item)
 				}
 			}
@@ -580,6 +587,8 @@ func (m model) renderQueuePreview() string {
 
 func (m model) messageRenderParams() conv.RenderContext {
 	var activeAgentIDs []string
+	var managedAgents []conv.AgentView
+	waiting := m.pendingTaskApprovals()
 	if m.services.Task != nil {
 		for _, worker := range m.services.Task.List() {
 			info := worker.GetStatus()
@@ -591,9 +600,23 @@ func (m model) messageRenderParams() conv.RenderContext {
 			}
 			if info.Status == task.StatusRunning || !m.taskCompletionsShown[taskCompletionKey(info.ID, info.Attempt)] {
 				activeAgentIDs = append(activeAgentIDs, info.ID, info.AgentSessionID)
+				if info.ParentTaskID != "" && info.OwnerAgentID == "" {
+					managedAgents = append(managedAgents, conv.AgentView{
+						ID: info.ID, SessionID: info.AgentSessionID, Name: info.AgentName, Description: info.Description,
+						StartedAt: info.StartTime, Duration: info.EndTime.Sub(info.StartTime), Activity: info.Activity,
+						Status: string(info.Status), Output: info.Output, Error: info.Error, AwaitingApproval: waiting[info.ID],
+					})
+				}
 			}
 		}
 	}
+	sort.Slice(managedAgents, func(i, j int) bool {
+		a, b := managedAgents[i], managedAgents[j]
+		if a.StartedAt.Equal(b.StartedAt) {
+			return a.ID < b.ID
+		}
+		return a.StartedAt.Before(b.StartedAt)
+	})
 	m.conv.SetActiveAgentIdentities(activeAgentIDs)
 	return conv.RenderContext{
 		// Conversation state
@@ -637,6 +660,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		AgentColors:     m.agentColors(),
 		MemberColors:    m.grp.colors,
 		TaskActivity:    m.conv.TaskActivity,
+		ManagedAgents:   managedAgents,
 		TaskOwnerMap:    buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock is left false here and set by

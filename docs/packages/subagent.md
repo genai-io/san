@@ -185,8 +185,9 @@ the event log. Default host wiring remains legacy until the unified cutover.
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
   Flow nodes remain scheduler-owned background workers. Synchronous `Run`
-  registers them as native child tasks, with tool progress and completion
-  reports; the app displays their answers without waking the main model.
+  registers them as native child tasks. The app renders their activity and
+  answers with the native Agent presentation, without waking the main model.
+  Successful tools produce one activity entry, not a duplicate completion row.
   Recoverable errors do not send completion notices: a failed attempt is not
   a failed task. Ordinary foreground/background Agent presentation is unchanged.
 - Every execution exit fires `SubagentStop` with the same invocation ID as

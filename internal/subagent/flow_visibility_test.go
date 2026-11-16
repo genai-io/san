@@ -19,6 +19,47 @@ type flowLifecycleObserver struct{ created, completed []task.TaskInfo }
 func (o *flowLifecycleObserver) TaskCreated(i task.TaskInfo)   { o.created = append(o.created, i) }
 func (o *flowLifecycleObserver) TaskCompleted(i task.TaskInfo) { o.completed = append(o.completed, i) }
 
+func TestFlowManagedToolFailureProgressBeforeCallback(t *testing.T) {
+	store, parent := continuationSessions(t, "flow-error-owner")
+	d := aitest.New(aitest.Replies(ai.Response{Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "read", Name: "Read", Input: `{"file_path":"missing.txt"}`})}}), aitest.Says("missing file"))
+	e := NewExecutor(continuationProvider{d}, t.TempDir(), "aitest", nil)
+	if err := e.SetSessions(store, parent); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	starts, results := 0, 0
+	_, err := e.Run(context.Background(), tool.AgentExecRequest{
+		Prompt: "read missing file", Background: true, Flow: &tool.FlowOrigin{TaskID: "scheduler"},
+		OnIdentity: func(identity toolresult.AgentIdentity) { id = identity.ID },
+		OnToolStart: func(toolID, call string) {
+			starts++
+			child, _ := e.taskPool().Get(id)
+			if toolID != "read" || child.GetStatus().Progress != call {
+				t.Error("start callback arguments or ordering changed")
+			}
+		},
+		OnToolResult: func(toolID, call, output string, toolErr error) {
+			results++
+			if starts != 1 || toolID != "read" || toolErr == nil || output == "" {
+				t.Errorf("result callback arguments/order: %q %q %v", toolID, output, toolErr)
+				return
+			}
+			child, _ := e.taskPool().Get(id)
+			info := child.GetStatus()
+			want := call + " · failed: " + toolErr.Error()
+			if info.Progress != want || len(info.Activity) != 3 || info.Activity[1] != call || !strings.HasPrefix(want, info.Activity[2]) {
+				t.Errorf("failure not visible before callback: %+v", info)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starts != 1 || results != 1 {
+		t.Fatalf("callbacks: starts=%d results=%d", starts, results)
+	}
+}
+
 func TestFlowManagedRunPublishesNativeLifecycleAndToolProgress(t *testing.T) {
 	store, parent := continuationSessions(t, "flow-owner")
 	cwd := t.TempDir()
@@ -48,8 +89,9 @@ func TestFlowManagedRunPublishesNativeLifecycleAndToolProgress(t *testing.T) {
 		OnToolResult: func(_, call, output string, toolErr error) {
 			ends++
 			child, _ := e.taskPool().Get(id)
-			if !strings.Contains(child.GetStatus().Progress, call+" · completed") || output == "" || toolErr != nil {
-				t.Errorf("native result progress missing: %+v, %q, %v", child.GetStatus(), output, toolErr)
+			info := child.GetStatus()
+			if info.Progress != call || len(info.Activity) != 2 || info.Activity[1] != call || output == "" || toolErr != nil {
+				t.Errorf("native result changed start activity or callback output: %+v, %q, %v", info, output, toolErr)
 			}
 		},
 	})

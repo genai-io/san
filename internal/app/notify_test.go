@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
@@ -191,6 +192,30 @@ func TestTaskCompletionMessagePreservesFailedOutput(t *testing.T) {
 				t.Fatalf("large partial findings must use output-file pointer: %s", msg.Content)
 			}
 		}
+	}
+}
+
+func TestManagedChildNoticeRetainsNativeDisplayMetadata(t *testing.T) {
+	start := time.Now()
+	info := task.TaskInfo{
+		ID: "child", ParentTaskID: "scheduler", Type: task.TaskTypeAgent, Status: task.StatusCompleted,
+		AgentName: "api & audit", Description: "Check boundaries", StartTime: start, EndTime: start.Add(12 * time.Second), Output: "Useful finding",
+	}
+	msg, ok := taskCompletionMessage(info)
+	if !ok {
+		t.Fatal("no managed completion")
+	}
+	var attributes struct {
+		Name     string `xml:"agent-name,attr"`
+		Duration int    `xml:"duration-ms,attr"`
+	}
+	if err := xml.Unmarshal([]byte(msg.Content), &attributes); err != nil || attributes.Name != info.AgentName || attributes.Duration != 12000 {
+		t.Fatalf("native metadata did not round-trip: %+v %v", attributes, err)
+	}
+	info.ParentTaskID = ""
+	ordinary, _ := taskCompletionMessage(info)
+	if strings.Contains(ordinary.Content, "agent-name=") || strings.Contains(ordinary.Content, "duration-ms=") {
+		t.Fatal("managed display metadata changed ordinary completion envelopes")
 	}
 }
 

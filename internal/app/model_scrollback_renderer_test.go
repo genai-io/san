@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -730,96 +731,120 @@ func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
 
 // Exercise the real padded View and its print geometry, not a stand-in frame.
 func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
-	const width, height = 80, 24
-	m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
-	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
-	terminal := newTerminalHistoryState(width, height)
-	m.flush.output = &terminalOutput{writer: terminal}
-	startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
-	program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
-		tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
-		tea.WithFPS(60), tea.WithWindowSize(width, height))
-	done := make(chan error, 1)
-	go func() { _, err := program.Run(); done <- err }()
-	defer func() {
-		program.Quit()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("stop fixed composer model: %v", err)
+	for _, managed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("managed-child=%v", managed), func(t *testing.T) {
+			const width, height = 80, 24
+			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
+			m.env.AgentPreviewLines = 3
+			var liveMarkers []string
+			if managed {
+				// Create a real managed child before launching Bubble Tea: the app must
+				// project it into native conversation activity, not just a footer row.
+				m.services.Task = task.NewManager()
+				child := m.services.Task.CreateChildAgentTask("native-child", "scheduler", "reviewer", "CHILD-LIVE", task.WithSessionID(context.Background(), m.sessionID()), nil)
+				child.AppendProgress("Read(CHILD-ACTIVITY-LIVE.go)")
+				t.Cleanup(func() { child.Complete(nil) })
+				liveMarkers = []string{"reviewer: CHILD-LIVE", "Read(CHILD-ACTIVITY-LIVE.go)"}
 			}
-		case <-time.After(3 * time.Second):
-			program.Kill()
-			<-done
-			t.Error("timed out stopping fixed composer model")
-		}
-	}()
-	waitFor := func(marker string) (string, string) {
-		t.Helper()
-		deadline := time.Now().Add(3 * time.Second)
-		for {
-			history, screen := terminal.snapshot()
-			if strings.Contains(screen, marker) && strings.Contains(screen, "COMPOSER-LIVE") {
-				terminal.mu.Lock()
-				_, y := terminal.state.Cursor()
-				terminal.mu.Unlock()
-				if y == height-3 {
-					return history, screen
+			m.userInput.Textarea.SetValue("COMPOSER-LIVE")
+			terminal := newTerminalHistoryState(width, height)
+			m.flush.output = &terminalOutput{writer: terminal}
+			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
+			program := tea.NewProgram(startup, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+				tea.WithFPS(60), tea.WithWindowSize(width, height))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Errorf("stop fixed composer model: %v", err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping fixed composer model")
+				}
+			}()
+			waitFor := func(marker string) (string, string) {
+				t.Helper()
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					history, screen := terminal.snapshot()
+					liveVisible := true
+					for _, live := range liveMarkers {
+						liveVisible = liveVisible && strings.Contains(screen, live)
+					}
+					if liveVisible && strings.Contains(screen, marker) && strings.Contains(screen, "COMPOSER-LIVE") {
+						terminal.mu.Lock()
+						_, y := terminal.state.Cursor()
+						terminal.mu.Unlock()
+						if y == height-3 {
+							return history, screen
+						}
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %q with composer at bottom:\n%s", marker, screen)
+					}
+					time.Sleep(time.Millisecond)
 				}
 			}
-			if time.Now().After(deadline) {
-				t.Fatalf("timed out waiting for %q with composer at bottom:\n%s", marker, screen)
+			startup.wait(t)
+			waitFor("COMPOSER-LIVE")
+			waitForCommit := func() {
+				t.Helper()
+				select {
+				case <-m.settled:
+				case <-time.After(3 * time.Second):
+					t.Fatal("timed out waiting for the native print queue to drain")
+				}
 			}
-			time.Sleep(time.Millisecond)
-		}
-	}
-	startup.wait(t)
-	waitFor("COMPOSER-LIVE")
-	waitForCommit := func() {
-		t.Helper()
-		select {
-		case <-m.settled:
-		case <-time.After(3 * time.Second):
-			t.Fatal("timed out waiting for the native print queue to drain")
-		}
-	}
-	program.Send(fixedComposerCommitMsg("REPLY-000"))
-	waitForCommit()
-	history, _ := waitFor("REPLY-000")
-	if strings.Contains(history, "REPLY-000") {
-		t.Fatal("short reply should remain visible")
-	}
-	var rows []string
-	for i := 1; i <= height*2; i++ {
-		rows = append(rows, fmt.Sprintf("REPLY-%03d", i))
-	}
-	program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
-	waitForCommit()
-	// The queue drains before the restored View is flushed.
-	inOrder := func(all string) string {
-		previous := -1
-		for _, row := range append([]string{"REPLY-000"}, rows...) {
-			at := strings.Index(all, row)
-			if strings.Count(all, row) != 1 || at <= previous {
-				return row
+			program.Send(fixedComposerCommitMsg("REPLY-000"))
+			waitForCommit()
+			history, _ := waitFor("REPLY-000")
+			if strings.Contains(history, "REPLY-000") {
+				t.Fatal("short reply should remain visible")
 			}
-			previous = at
-		}
-		return ""
-	}
-	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(time.Millisecond) {
-		h, screen := waitFor(rows[len(rows)-1])
-		history = h
-		bad := inOrder(h + "\n" + screen)
-		if bad == "" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("reply missing, duplicated, or out of order at %q:\n%s\n%s", bad, h, screen)
-		}
-	}
-	if strings.Contains(history, "COMPOSER-LIVE") {
-		t.Fatalf("input leaked into native history:\n%s", history)
+			var rows []string
+			for i := 1; i <= height*2; i++ {
+				rows = append(rows, fmt.Sprintf("REPLY-%03d", i))
+			}
+			program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
+			waitForCommit()
+			// The queue drains before the restored View is flushed.
+			inOrder := func(all string) string {
+				previous := -1
+				for _, row := range append([]string{"REPLY-000"}, rows...) {
+					at := strings.Index(all, row)
+					if strings.Count(all, row) != 1 || at <= previous {
+						return row
+					}
+					previous = at
+				}
+				return ""
+			}
+			for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(time.Millisecond) {
+				h, screen := waitFor(rows[len(rows)-1])
+				history = h
+				bad := inOrder(h + "\n" + screen)
+				if bad == "" {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("reply missing, duplicated, or out of order at %q:\n%s\n%s", bad, h, screen)
+				}
+			}
+			if !strings.Contains(history, "REPLY-000") {
+				t.Fatalf("overflow did not exercise native history:\n%s", history)
+			}
+			for _, live := range append(liveMarkers, "COMPOSER-LIVE") {
+				if strings.Contains(history, live) {
+					t.Fatalf("live content %q leaked into native history:\n%s", live, history)
+				}
+			}
+		})
 	}
 }
 

@@ -258,11 +258,9 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		}
 		onToolResult := run.req.OnToolResult
 		run.req.OnToolResult = func(id, call, output string, toolErr error) {
-			status := "completed"
 			if toolErr != nil {
-				status = "failed: " + toolErr.Error()
+				worker.AppendProgress(call + " · failed: " + toolErr.Error())
 			}
-			worker.AppendProgress(call + " · " + status)
 			if onToolResult != nil {
 				onToolResult(id, call, output, toolErr)
 			}

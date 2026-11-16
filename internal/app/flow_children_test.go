@@ -20,6 +20,37 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
+func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.env.AgentPreviewLines = 3
+	m.services.Task = task.NewManager()
+	task.SetLifecycleHandler(nil)
+	own := m.services.Task.CreateChildAgentTask("own", "scheduler", "reviewer", "Security review", task.WithSessionID(context.Background(), m.sessionID()), nil)
+	own.SetIdentity("reviewer", "child-session")
+	own.AppendProgress("Read(boundary.go)")
+	foreign := m.services.Task.CreateChildAgentTask("foreign", "other-scheduler", "reviewer", "Foreign review", task.WithSessionID(context.Background(), "other-session"), nil)
+	ordinary := m.services.Task.CreateAgentTask("ordinary", "reviewer", "Ordinary review", context.Background(), nil)
+	t.Cleanup(func() { own.Complete(nil); foreign.Complete(nil); ordinary.Complete(nil) })
+	p := m.messageRenderParams()
+	if len(p.ManagedAgents) != 1 || p.ManagedAgents[0].ID != "own" || p.ManagedAgents[0].SessionID != "child-session" {
+		t.Fatalf("wrong managed worker projection: %+v", p.ManagedAgents)
+	}
+	if got := ansi.Strip(conv.RenderActiveBody(p)); !strings.Contains(got, "reviewer: Security review") || !strings.Contains(got, "Read(boundary.go)") || strings.Contains(got, "Foreign review") {
+		t.Fatalf("wrong native activity: %s", got)
+	}
+	if len(m.conv.Messages) != 0 || len(m.conv.Tool.PendingCalls) != 0 || m.conv.Stream.Active {
+		t.Fatal("worker presentation fabricated conversation or model activity")
+	}
+	own.Complete(nil)
+	if pending := m.messageRenderParams().ManagedAgents; len(pending) != 1 || pending[0].Status != "completed" {
+		t.Fatalf("worker disappeared before its completion notice: %+v", pending)
+	}
+	m.taskCompletionsShown = map[string]bool{taskCompletionKey("own", own.GetStatus().Attempt): true}
+	if shown := m.messageRenderParams().ManagedAgents; len(shown) != 0 {
+		t.Fatalf("delivered completion left a duplicate live worker: %+v", shown)
+	}
+}
+
 func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	m, mainProvider := noticeDeliveryModel(t)
 	attachTurnSession(t, m)
@@ -113,9 +144,14 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		if !strings.Contains(view, "Native children") {
 			t.Fatalf("scheduler graph missing from task area: %s", view)
 		}
+		if strings.Contains(view, "Tasks") || strings.Contains(view, "native-children/") {
+			t.Fatalf("managed children duplicated in footer: %s", view)
+		}
+		params := m.messageRenderParams()
+		live := ansi.Strip(conv.RenderActiveBody(params))
 		for _, name := range names {
-			if !strings.Contains(view, "native-children/"+name) {
-				t.Fatalf("native worker %s missing from task area: %s", name, view)
+			if !strings.Contains(live, "Agent: "+name) || !strings.Contains(live, "Thinking...") {
+				t.Fatalf("native worker %s missing from conversation: %s", name, live)
 			}
 			found := false
 			for _, bg := range m.services.Task.ListRunning() {
@@ -137,6 +173,15 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				if !tracked {
 					t.Fatalf("native child %s absent from worker tracker", info.ID)
 				}
+				projected := false
+				for _, agent := range params.ManagedAgents {
+					if agent.ID == info.ID && agent.SessionID == info.AgentSessionID && agent.Description == name {
+						projected = true
+					}
+				}
+				if !projected {
+					t.Fatalf("native child identity missing from conversation: %+v", info)
+				}
 				found = true
 			}
 			if !found {
@@ -157,8 +202,13 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				t.Fatalf("child result not shown as native notice: %+v", msg)
 			}
 			rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
-			if !strings.Contains(rendered, "actual answer") || strings.Contains(rendered, "fourth hidden detail") {
-				t.Fatalf("wrong bounded answer preview: %s", rendered)
+			if !strings.Contains(rendered, "actual answer") || strings.Contains(rendered, "fourth hidden detail") || !strings.Contains(rendered, "Agent:") {
+				t.Fatalf("wrong native bounded answer preview: %s", rendered)
+			}
+			for _, agent := range m.messageRenderParams().ManagedAgents {
+				if agent.ID == n.FinishedTaskID {
+					t.Fatalf("shown result retained a duplicate live block: %+v", agent)
+				}
 			}
 			select {
 			case req := <-mainProvider.requests:

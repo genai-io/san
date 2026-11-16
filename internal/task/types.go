@@ -127,8 +127,9 @@ type TaskInfo struct {
 	EndTime     time.Time
 	Output      string
 	OutputFile  string
-	OutputError string // First output-log failure, separate from execution outcome.
-	Progress    string // Latest meaningful activity, separate from final model-facing output.
+	OutputError string   // First output-log failure, separate from execution outcome.
+	Activity    []string // Detached, bounded recent meaningful agent activity, oldest first.
+	Progress    string   // Latest meaningful activity, separate from final model-facing output.
 	Error       string
 	Failure     FailureInfo
 	Lifetime    Lifetime

@@ -136,15 +136,16 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("/flow must launch the run itself, not hand a prompt to the model")
 	}
-	if !strings.Contains(notice, "Started flow review") || !strings.Contains(notice, "Task ID:") {
-		t.Fatalf("notice = %q; want the launch and task ID", notice)
+	if !strings.HasPrefix(notice, "Started flow Review · /flow stop ") || strings.Contains(notice, "\n") {
+		t.Fatalf("notice = %q; want a single-line launch receipt with stop command", notice)
 	}
-	if strings.Contains(notice, "╭") {
-		t.Fatalf("launch duplicated the live graph in its notice:\n%s", notice)
+	for _, noisy := range []string{"Run ID", "Task ID", "steps", "turns", "parallel", "limits", "╭"} {
+		if strings.Contains(notice, noisy) {
+			t.Fatalf("launch receipt contains technical dump %q: %s", noisy, notice)
+		}
 	}
 
-	_, rest, _ := strings.Cut(notice, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
+	_, id, _ := strings.Cut(notice, " · /flow stop ")
 	bg, ok := task.Default().Get(id)
 	if !ok || !bg.WaitForCompletion(5*time.Second) {
 		t.Fatalf("task %q did not run to completion", id)
@@ -156,6 +157,28 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 	}
 	if info := bg.GetStatus(); info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s (%s)", info.Status, info.Error)
+	}
+}
+
+func TestFlowLaunchReceiptUsesHumanTitle(t *testing.T) {
+	const name = "InternalFlowReadOnlyReview"
+	body := strings.Replace(savedReview, "name: review", "name: "+name, 1)
+	c := flowController(t, map[string]string{name: body})
+	notice, cmd, err := c.handleFlowCommand(context.Background(), "run "+name+" base=main")
+	if err != nil || cmd != nil {
+		t.Fatalf("launch command = %v, error = %v", cmd, err)
+	}
+	prefix := "Started flow Internal Flow Read Only Review · /flow stop "
+	if !strings.HasPrefix(notice, prefix) || strings.Contains(notice, "\n") {
+		t.Fatalf("launch receipt = %q", notice)
+	}
+	_, id, _ := strings.Cut(notice, " · /flow stop ")
+	bg, ok := task.Default().Get(id)
+	if !ok || !bg.WaitForCompletion(5*time.Second) {
+		t.Fatalf("stop command does not identify launched task %q", id)
+	}
+	if bg.GetDescription() != "/flow run "+name {
+		t.Fatal("display title changed task identity")
 	}
 }
 
@@ -198,8 +221,7 @@ func TestFlowPreviewCommandRunsQuotedName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated command %q failed: %v", run, err)
 	}
-	_, rest, _ := strings.Cut(notice, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
+	_, id, _ := strings.Cut(notice, " · /flow stop ")
 	bg, ok := task.Default().Get(id)
 	if !ok || !bg.WaitForCompletion(5*time.Second) || bg.GetStatus().Status != task.StatusCompleted {
 		t.Fatalf("generated command did not complete: task=%q", id)
@@ -218,8 +240,7 @@ func TestFlowCommandStartsLiveRepaint(t *testing.T) {
 	if got := cmd(); got != "flow-tick" {
 		t.Fatalf("launch scheduled %v, want the frame clock", got)
 	}
-	_, rest, _ := strings.Cut(notice, "Task ID: ")
-	id, _, _ := strings.Cut(rest, "\n")
+	_, id, _ := strings.Cut(notice, " · /flow stop ")
 	bg, ok := task.Default().Get(id)
 	if !ok || !bg.WaitForCompletion(5*time.Second) {
 		t.Fatalf("flow task %q did not finish", id)

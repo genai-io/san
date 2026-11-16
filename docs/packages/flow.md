@@ -179,8 +179,9 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   fall back to an exact dependency list.
 - Native subagents keep their tools, permissions, session history and output.
   Managed children register through `CreateChildAgentTask`, so normal lifecycle
-  observers and task progress remain visible. The app renders completed child
-  answers as display-only native Agent previews, without extra main-agent turns.
+  observers still run. The app projects their recent activity and completed
+  answers into native Agent blocks, without model turns or fabricated tool calls.
+  A visible graph replaces duplicate child tracker rows in the footer.
   `ParentTaskID` keeps recovery scheduler-owned; ordinary foreground Agent
   presentation is unchanged.
 
