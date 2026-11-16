@@ -43,6 +43,9 @@ Partial output: repeated output</task-notification>`, id, status)
 			}
 			previous = got
 			plain := ansi.Strip(got)
+			if status == "running" && (!strings.Contains(plain, " · Started") || strings.Contains(plain, "Running") || e.status != "running") {
+				t.Fatalf("start receipt changed runtime status or used a live-state label: %q", plain)
+			}
 			if !strings.HasPrefix(plain, "● Flow · Review · ") || !strings.Contains(plain, " · 1s") || strings.Contains(plain, "repeated output") {
 				t.Fatalf("bad receipt: %q", plain)
 			}

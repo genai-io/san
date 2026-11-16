@@ -170,7 +170,7 @@ func (e agentEnvelope) renderFlowNotice(width int) string {
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	status := backgroundStatusLabel(e.status)
 	if e.status == "running" {
-		status = "Running"
+		status = "Started"
 	}
 	statusStyle := backgroundStatusStyle(e.status).Bold(false)
 	if status == "Stopped" {
