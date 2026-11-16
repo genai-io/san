@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -36,7 +37,12 @@ func (v *FlowView) Render() string {
 		content = v.body.View() + "\n" + action + "? y / n"
 	}
 	if v.message != "" {
-		content = v.message + "\n\n" + content
+		if v.page == "inputs" && v.field < len(v.keys) {
+			// Keep validation feedback from pushing the focused editor offscreen.
+			content += "\n" + kit.DimStyle().Render(ansi.Truncate(strings.ReplaceAll(v.message, "\n", " "), max(1, v.width-2), "…"))
+		} else {
+			content = v.message + "\n\n" + content
+		}
 	}
 	// Bound content here, including errors outside the scrollable viewport.
 	lines := strings.Split(content, "\n")
@@ -88,23 +94,82 @@ func (v *FlowView) renderPage() (title, content, hint string) {
 		content = v.templateHelp() + "\n\n" + v.editor.View()
 		hint = "Ctrl+S preview save · Esc review"
 	case "inputs":
-		title, hint = "Run · "+v.name, "Enter next / run · Esc cancel"
-		content = "No run inputs. Enter starts this flow."
-		if len(v.keys) > 0 {
-			key := v.keys[v.field]
-			label, ref := key, "input."+key
-			if key == "input" {
-				if _, ok := v.plan.InputKey("input"); ok {
-					label, ref = "Input", "input"
-				}
-			}
-			users := strings.Join(v.referenceUsers(ref), ", ")
-			content = fmt.Sprintf("%s (%d/%d)\n{{%s}} takes the value below; used by %s.\n\n", label, v.field+1, len(v.keys), ref, users) + v.editor.View()
-		}
+		return v.renderInputs()
 	case "run", "executions":
 		return v.renderRun()
 	}
 	return title, content, hint
+}
+
+func flowInputLabel(key string) string {
+	if key == "input" {
+		return "Request"
+	}
+	words := strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(key))
+	if len(words) == 0 {
+		return "Request"
+	}
+	label := strings.Join(words, " ")
+	runes := []rune(label)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+func (v *FlowView) renderInputs() (title, content, hint string) {
+	title = "Run · " + v.name
+	if v.field >= len(v.keys) {
+		hint = "Enter run · Esc review"
+		content = v.body.View()
+	} else {
+		hint = "Enter next · Esc review"
+		key := v.keys[v.field]
+		label := kit.SelectorSelectedLabelStyle().Render("● " + flowInputLabel(key))
+		progress := kit.DimStyle().Render(fmt.Sprintf("Input %d of %d", v.field+1, len(v.keys)))
+		budget := max(1, v.height-6)
+		if v.message != "" {
+			budget = max(1, budget-1)
+		}
+		editor := lipgloss.NewStyle().Background(kit.CurrentTheme.CommandBg).
+			Padding(0, 1).MarginLeft(2).Render(v.editor.View())
+		header := label + "\n" + progress
+		if budget < lipgloss.Height(editor)+3 {
+			header = label
+		}
+		if users := v.referenceUsers("input." + key); len(users) > 0 && budget >= lipgloss.Height(editor)+4 {
+			header += "\n" + kit.DimStyle().Render(ansi.Truncate("Used by "+strings.Join(users, ", "), max(1, v.width-2), "…"))
+		}
+		if budget <= 1 {
+			content = editor
+		} else {
+			content = header + "\n" + editor
+		}
+	}
+	for _, extra := range []string{"Shift+Tab back", "Shift+Enter newline"} {
+		if extra == "Shift+Enter newline" && v.field >= len(v.keys) {
+			continue
+		}
+		if ansi.StringWidth(hint+" · "+extra) <= v.width {
+			hint += " · " + extra
+		}
+	}
+	return title, content, hint
+}
+
+// renderInputSummary supplies the scrollable confirmation body, not the run graph.
+func (v *FlowView) renderInputSummary() string {
+	lines := []string{kit.SelectorSelectedLabelStyle().Render("● Ready to run")}
+	if v.plan != nil {
+		lines = append(lines, kit.DimStyle().Render(kit.Plural(len(v.plan.Nodes), "step")))
+	}
+	if len(v.keys) == 0 {
+		lines = append(lines, "", "No inputs needed.")
+	}
+	for _, key := range v.keys {
+		lines = append(lines, "", kit.SelectorSelectedLabelStyle().Render(flowInputLabel(key)))
+		value := ansi.Wrap(v.inputs[key], max(1, v.width-6), " ")
+		lines = append(lines, "  "+strings.ReplaceAll(value, "\n", "\n  "))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (v *FlowView) renderHub() string {

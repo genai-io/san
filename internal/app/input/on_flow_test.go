@@ -67,6 +67,12 @@ func flowKey(k string) tea.KeyMsg {
 		return tea.KeyPressMsg{Code: tea.KeyDown}
 	case "up":
 		return tea.KeyPressMsg{Code: tea.KeyUp}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "shift+enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
 	case "ctrl+s":
 		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	}
@@ -154,7 +160,7 @@ func TestFlowDraftValidationSaveAndInputs(t *testing.T) {
 	if v.page != "inputs" || len(v.keys) != 1 || v.keys[0] != "topic" {
 		t.Fatal("missing inferred input")
 	}
-	if help := ansi.Strip(v.Render()); !strings.Contains(help, "{{input.topic}} takes the value below") || !strings.Contains(help, "used by a") {
+	if help := ansi.Strip(v.Render()); !strings.Contains(help, "Topic") || !strings.Contains(help, "Used by a") || !strings.Contains(help, "Input 1 of 1") {
 		t.Fatal("run input does not explain how its value is used")
 	}
 	v.HandleKeypress(flowKey("enter"))
@@ -162,6 +168,10 @@ func TestFlowDraftValidationSaveAndInputs(t *testing.T) {
 		t.Fatal("blank input launched")
 	}
 	v.HandlePaste("my topic")
+	v.HandleKeypress(flowKey("enter"))
+	if s.launches != 0 || v.field != len(v.keys) {
+		t.Fatal("last value bypassed final confirmation")
+	}
 	v.HandleKeypress(flowKey("enter"))
 	if s.launches != 1 || s.values["topic"] != "my topic" || v.IsActive() {
 		t.Fatal("input launch did not enter run")
@@ -266,6 +276,10 @@ func TestFlowRunRefusesSourceChangedAfterReview(t *testing.T) {
 	v.HandleKeypress(flowKey("r"))
 	v.HandlePaste("topic")
 	s.source = flowUISource + "\nExternal edit\n"
+	v.HandleKeypress(flowKey("enter"))
+	if v.page != "inputs" || v.field != len(v.keys) || s.launches != 0 {
+		t.Fatal("committing last field should only open summary")
+	}
 	v.HandleKeypress(flowKey("enter"))
 	if s.launches != 0 || v.saved || v.page != "review" || !strings.Contains(v.message, "changed since review") {
 		t.Fatal("changed source was launched without another review")

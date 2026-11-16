@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -252,6 +253,8 @@ func (v *FlowView) Resize(w, h int) {
 	} else if v.page == "details" {
 		v.body.SetHeight(max(1, v.height-6))
 		v.body.SetContent(v.renderLimits())
+	} else if v.page == "inputs" {
+		v.resizeInputs()
 	}
 }
 
@@ -285,7 +288,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return v.tick(), true
 	}
-	if v.active && (v.page == "edit" || v.page == "inputs") {
+	if v.active && (v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys))) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd, true
@@ -294,7 +297,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 }
 
 func (v *FlowView) HandlePaste(s string) tea.Cmd {
-	if v.confirm == "" && (v.page == "edit" || v.page == "inputs") {
+	if v.confirm == "" && (v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys))) {
 		v.editor.InsertString(s)
 	}
 	return nil
@@ -328,8 +331,34 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 	case "inputs":
-		if key == "enter" {
-			return v.submitInput()
+		switch key {
+		case "enter", "tab":
+			if v.field < len(v.keys) {
+				if strings.TrimSpace(v.editor.Value()) == "" {
+					v.message = "Enter a value to continue"
+					return nil
+				}
+				v.inputs[v.keys[v.field]] = strings.TrimSpace(v.editor.Value())
+				return v.openInputs()
+			}
+			if key == "enter" {
+				return v.submitInput()
+			}
+		case "shift+tab":
+			if len(v.keys) > 0 {
+				v.keepInput()
+				v.field = max(0, v.field-1)
+				return v.showInput()
+			}
+		case "shift+enter":
+			if v.field < len(v.keys) {
+				v.editor.InsertString("\n")
+			}
+			return nil
+		default:
+			if v.field == len(v.keys) {
+				v.scroll(key)
+			}
 		}
 	case "run":
 		return v.handleRun(key)
@@ -338,7 +367,7 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	case "details":
 		v.scroll(key)
 	}
-	if v.page == "edit" || v.page == "inputs" {
+	if v.page == "edit" || (v.page == "inputs" && v.field < len(v.keys)) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd
@@ -390,13 +419,13 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 		}
 	case "e":
 		v.page = "edit"
+		v.Resize(v.width, v.height)
+		v.editor.Placeholder = ""
 		v.editor.SetValue(v.source)
 		return v.editor.Focus()
 	case "r":
 		if v.saved && v.validate() {
-			v.keys, v.field, v.page = v.plan.InputNames(), 0, "inputs"
-			v.editor.SetValue("")
-			v.editor.Focus()
+			return v.openInputs()
 		}
 	case "s":
 		v.previewSave()
@@ -415,22 +444,42 @@ func (v *FlowView) previewSave() {
 	}
 }
 
-func (v *FlowView) submitInput() tea.Cmd {
-	if len(v.keys) > 0 {
-		value := strings.TrimSpace(v.editor.Value())
-		if value == "" {
-			v.message = "A nonempty value is required"
-			return nil
-		}
-		v.inputs[v.keys[v.field]] = value
+func (v *FlowView) openInputs() tea.Cmd {
+	v.page, v.keys, v.field = "inputs", v.plan.InputNames(), 0
+	for v.field < len(v.keys) && strings.TrimSpace(v.inputs[v.keys[v.field]]) != "" {
 		v.field++
-		v.editor.SetValue("")
-		if v.field < len(v.keys) {
-			return nil
-		}
-		v.field = len(v.keys) - 1
-		v.editor.SetValue(v.inputs[v.keys[v.field]])
 	}
+	return v.showInput()
+}
+
+func (v *FlowView) showInput() tea.Cmd {
+	v.editor.Blur()
+	v.resizeInputs()
+	if v.field == len(v.keys) {
+		v.body.GotoTop()
+		return nil
+	}
+	v.editor.Placeholder = "Enter a value…"
+	v.editor.SetValue(v.inputs[v.keys[v.field]])
+	return v.editor.Focus()
+}
+
+func (v *FlowView) resizeInputs() {
+	v.editor.SetWidth(max(1, min(72, v.width-8)))
+	v.editor.SetHeight(max(1, min(5, v.height-13)))
+	v.body.SetHeight(max(1, v.height-8))
+	if v.field == len(v.keys) {
+		v.body.SetContent(v.renderInputSummary())
+	}
+}
+
+func (v *FlowView) keepInput() {
+	if v.field < len(v.keys) {
+		v.inputs[v.keys[v.field]] = v.editor.Value()
+	}
+}
+
+func (v *FlowView) submitInput() tea.Cmd {
 	current, err := v.service.Definition(v.name)
 	if err != nil || current != v.source {
 		v.saved = false
@@ -549,7 +598,11 @@ func (v *FlowView) back() {
 		}
 	case "executions":
 		v.page = "run"
-	case "inputs", "details":
+	case "inputs":
+		v.keepInput()
+		v.editor.Blur()
+		v.showReview()
+	case "details":
 		v.showReview()
 	default:
 		v.close()
@@ -710,6 +763,24 @@ func (c *SlashCommandController) handleFlowCommand(_ context.Context, args strin
 			return "", nil, fmt.Errorf("input %q is not key=value", kv)
 		}
 		inputs[k] = v
+	}
+	if c.env.Input != nil {
+		source, err := svc.Definition(fields[1])
+		if err != nil {
+			return "", nil, err
+		}
+		plan, err := flow.Parse(source)
+		if err != nil {
+			return "", nil, err
+		}
+		for _, key := range plan.InputNames() {
+			if strings.TrimSpace(inputs[key]) == "" {
+				view := &c.env.Input.Flow
+				view.OpenDraft(svc, fields[1], source, source, c.env.Width, c.env.Height)
+				view.inputs = maps.Clone(inputs)
+				return "", view.openInputs(), nil
+			}
+		}
 	}
 	bounds, id, err := svc.Launch(fields[1], inputs, c.env.Width)
 	if err != nil {

@@ -31,9 +31,11 @@ launch. Ordinary main-Agent messages and tool schemas are unchanged.
 The app's `/flow` management and `list|show|run|stop` commands use the same
 saved-definition paths. Completion and execution share `command.ScanArguments`
 quote boundaries and `command.QuoteArgument`. `Blueprint.InputNames` derives
-input keys from node templates; direct slash runs report missing keys before
-launch. Stop bypasses the foreground input queue while its display-only result
-passes through the app's held-notice queue.
+input keys from node templates. In the TUI, missing slash-run inputs open the
+same guided form as Review; supplied values are retained. The form confirms a
+summary before launch and checks the saved source has not changed. Direct
+service callers still get missing-input errors. Stop bypasses the foreground
+input queue while its display-only result passes through the app's held-notice queue.
 
 ## Contract
 

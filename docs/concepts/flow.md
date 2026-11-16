@@ -90,7 +90,8 @@ Definitions live in `.san/workflows/*.md` (project) and
 same name, and the `name:` in frontmatter beats the filename. Saved names and
 input keys are completed using the same quoted-argument rules as execution.
 `/flow show <name>` previews the graph, step prompts and input keys without
-starting a task; `/flow run <name>` reports missing inputs before launch.
+starting a task. In the TUI, `/flow run <name>` opens a guided form for missing
+inputs; supplying every required value launches directly.
 
 `/flow` opens the definitions and recent-runs view. Management is explicit
 and does not inject authoring instructions into ordinary model turns:
@@ -105,7 +106,7 @@ and does not inject authoring instructions into ordinary model turns:
 | `/flow inspect <run-id>` | Inspect a running or previous execution. |
 | `/flow stop [task-id]` | Stop one workflow, or select it by task ID when several run. |
 | `/flow list` | Print the saved definitions. |
-| `/flow run <name> key=value …` | Launch a saved blueprint directly, without a model turn. |
+| `/flow run <name> [key=value …]` | Run a saved blueprint; missing inputs open a guided form in the TUI. No model turn. |
 
 Review keeps the dependency graph above one selected step. `↑`/`↓` walks through
 steps; the detail shows the agent configuration, each inserted input's source,
@@ -122,8 +123,10 @@ is recorded under the session's `flow` inference purpose.
 
 The model proposes the smallest useful topology: real dependencies form chains,
 independent work can run in parallel, and dynamic workers or evaluator loops
-need explicit bounds. It does not carry out the goal. A manual `/flow new`
-starter remains a one-step editable blank, not a task-specific plan.
+need explicit bounds. It does not carry out the goal. Concrete goal details stay
+in the instructions rather than becoming redundant run parameters; inputs are
+for missing or deliberately reusable values. A manual `/flow new` starter
+remains a one-step editable blank, not a task-specific plan.
 
 Only a normally completed draft opens as an unsaved Review. Invalid source is
 retained for manual repair; there is no automatic repair loop. Token truncation,
@@ -140,8 +143,13 @@ still determine which steps can run together. The one-step starter uses 1.
 
 Existing user definitions become project copies; their source is not
 overwritten. A changed on-disk source must be reopened rather than silently
-replaced. `r` on a saved review collects required `{{input.key}}` values before
-launch. Direct command arguments support quoted spaces:
+replaced. `r` on a saved review collects any required values in the same form as
+`/flow run <name>`. Enter or Tab advances; Shift+Tab goes back, Shift+Enter adds
+a newline, and Escape returns to Review without losing edits. A final summary
+shows the values before Enter starts the run. No tasks start while filling in
+the form. Short field labels replace template syntax in this view.
+
+Full command arguments remain an optional shortcut and support quoted spaces:
 `/flow run review base="main branch"`. Saved names with spaces are quoted too,
 for example `/flow run "release review" base=main`.
 

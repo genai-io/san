@@ -128,10 +128,14 @@ func TestFlowSimpleInputCollection(t *testing.T) {
 	var v FlowView
 	v.OpenDraft(s, "sample", s.source, s.source, 96, 32)
 	v.HandleKeypress(flowKey("r"))
-	if v.page != "inputs" || len(v.keys) != 1 || v.keys[0] != "input" || !strings.Contains(ansi.Strip(v.Render()), "{{input}} takes the value below") {
+	if v.page != "inputs" || len(v.keys) != 1 || v.keys[0] != "input" || !strings.Contains(ansi.Strip(v.Render()), "Request") {
 		t.Fatal("simple input did not open one explained field")
 	}
 	v.HandlePaste("Check storage")
+	v.HandleKeypress(flowKey("enter"))
+	if s.launches != 0 || v.field != len(v.keys) {
+		t.Fatal("last field must await summary confirmation")
+	}
 	cmd := v.HandleKeypress(flowKey("enter"))
 	if s.launches != 1 || s.values["input"] != "Check storage" || v.IsActive() || cmd == nil {
 		t.Fatal("simple input did not launch nonblocking with a task-area clock signal")
