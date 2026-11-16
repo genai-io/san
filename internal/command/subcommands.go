@@ -12,6 +12,10 @@ var builtinSubcommands = map[string][]Info{
 		{Name: "workflow show", Description: "Preview a saved workflow graph"},
 		{Name: "workflow run", Description: "Run a saved workflow with optional key=value inputs"},
 		{Name: "workflow stop", Description: "Stop a running workflow"},
+		{Name: "workflow new", Description: "Create a reviewable workflow draft"},
+		{Name: "workflow from-skill", Description: "Create a draft from an enabled Skill"},
+		{Name: "workflow edit", Description: "Review and edit a saved workflow"},
+		{Name: "workflow inspect", Description: "Inspect or resume a previous run"},
 	},
 	"loop": {
 		{Name: "loop once", Description: "Schedule a prompt to run once"},

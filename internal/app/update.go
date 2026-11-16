@@ -84,6 +84,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Settings,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
+		&m.userInput.Workflow,
 		&m.userInput.Transcript,
 		&m.userInput.Tasks,
 	}

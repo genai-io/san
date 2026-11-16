@@ -47,7 +47,9 @@ type Options struct {
 	// Inputs back {{input.key}} references.
 	Inputs map[string]string
 	// OnStatus observes every phase change, on the node's goroutine.
-	OnStatus func(node *Node, status Status)
+	OnStatus     func(node *Node, status Status)
+	Resume       map[string]Checkpoint
+	OnCheckpoint func(node *Node, state Checkpoint) error
 }
 
 // NodeResult is one node's outcome.
@@ -92,6 +94,9 @@ func (r *Result) Failed(w *Workflow) bool { return len(r.Failures(w)) > 0 }
 // while keeping what has finished.
 func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Result {
 	start := time.Now()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	resume := cloneStates(opts.Resume)
 	type slot struct {
 		done chan struct{}
 		res  NodeResult
@@ -114,6 +119,14 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 				s.res.Status = st
 				if opts.OnStatus != nil {
 					opts.OnStatus(n, st)
+				}
+				if (st == StatusSkipped || st == StatusOmitted) && opts.OnCheckpoint != nil {
+					state := cloneCheckpoint(resume[n.ID])
+					state.Status = st
+					if err := opts.OnCheckpoint(n, state); err != nil {
+						s.res.Status, s.res.Err = StatusFailed, err
+						cancel()
+					}
 				}
 			}
 			if err := ctx.Err(); err != nil {
@@ -193,14 +206,15 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			}
 
 			s.scope = scope
-			t0 := time.Now()
-			started := sync.OnceFunc(func() { setStatus(StatusRunning) })
-			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem, started)
-			s.res.Duration = time.Since(t0)
-			s.res.Output = out
-			if err == nil {
-				err = unanswered(n, out)
+			prior := resume[n.ID]
+			if prior.Status == StatusSucceeded {
+				s.res.Output, s.res.Duration = prior.Output, prior.Duration
+				setStatus(StatusSucceeded)
+				return
 			}
+			state, err := executeCheckpoint(ctx, n, scope, opts, runner, sem, prior, func() { setStatus(StatusRunning) }, cancel)
+			s.res.Duration = state.Duration
+			s.res.Output = state.Output
 			if err != nil {
 				s.res.Err = err
 				setStatus(StatusFailed)
@@ -217,45 +231,6 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 		r.Nodes[id] = &res
 	}
 	return r
-}
-
-// execute runs a node: one turn, or — with for_each — one turn per plan item,
-// bounded by the node's max_workers and by the run's shared slots.
-func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runner NodeRunner, sem chan struct{}, onStart func()) (string, error) {
-	if n.ForEach == "" {
-		return run1(ctx, runner, sem, Call{Node: n, Prompt: render(n.Prompt, scope, inputs, nil)}, onStart)
-	}
-	items, err := plan(n, scope)
-	if err != nil {
-		return "", err
-	}
-	// max_workers is enforced in plan(), which refuses a larger plan outright,
-	// so the fan-out is already at most that wide here and needs no second
-	// gate; the run's shared slots still decide how many turns are in flight.
-	outs := make([]string, len(items))
-	errs := make([]error, len(items))
-	var wg sync.WaitGroup
-	for i, item := range items {
-		wg.Go(func() {
-			outs[i], errs[i] = run1(ctx, runner, sem, Call{
-				Node:   n,
-				Prompt: render(n.Prompt, scope, inputs, item),
-				Label:  item[itemName],
-			}, onStart)
-		})
-	}
-	wg.Wait()
-
-	// Only the workers that finished are reported, so what a failed fan-out
-	// leaves behind is whole work rather than gaps under headings.
-	var b strings.Builder
-	for i, item := range items {
-		if errs[i] != nil {
-			continue
-		}
-		fmt.Fprintf(&b, "## %s\n%s\n\n", item[itemName], strings.TrimSpace(outs[i]))
-	}
-	return strings.TrimSpace(b.String()), errors.Join(errs...)
 }
 
 // unanswered fails a loop's tail when its answer takes none of its ways out.
@@ -281,29 +256,6 @@ func unanswered(n *Node, out string) error {
 		want = append(want, e.Label)
 	}
 	return fmt.Errorf("returned %q; its edges want %s", out, strings.Join(want, " or "))
-}
-
-// run1 takes a shared slot for the length of one turn. Waiting for a slot
-// happens here and nowhere else, so a node never holds one while it waits.
-func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call, onStart func()) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	select {
-	case sem <- struct{}{}:
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-	defer func() { <-sem }()
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	onStart()
-	out, err := runner.RunNode(ctx, c)
-	if err == nil && ctx.Err() != nil {
-		return out, ctx.Err()
-	}
-	return out, err
 }
 
 // Summary renders the run for the conversation that launched it: one status

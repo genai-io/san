@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	toolworkflow "github.com/genai-io/san/internal/tool/workflow"
@@ -184,6 +185,59 @@ func TestWorkflowCommandRefusesBadInput(t *testing.T) {
 		if _, _, err := c.handleWorkflowCommand(context.Background(), args); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("/workflow %s: err = %v, want it to mention %q", args, err, want)
 		}
+	}
+}
+
+func TestWorkflowCommandOpensManagementWithoutAModelTurn(t *testing.T) {
+	c := workflowController(t, map[string]string{"review": savedReview})
+	c.env.Input = &Model{}
+	c.env.Width, c.env.Height = 80, 24
+	if notice, _, err := c.handleWorkflowCommand(context.Background(), ""); err != nil || notice != "" {
+		t.Fatalf("open hub: notice=%q err=%v", notice, err)
+	}
+	if !c.env.Input.Workflow.IsActive() || c.env.Input.Workflow.page != "hub" {
+		t.Fatal("/workflow did not open its management view")
+	}
+	if _, _, err := c.handleWorkflowCommand(context.Background(), "new audit"); err != nil {
+		t.Fatal(err)
+	}
+	v := &c.env.Input.Workflow
+	if v.page != "review" || v.saved || v.plan == nil || v.plan.Name != "audit" {
+		t.Fatal("new workflow did not enter review as an unsaved valid draft")
+	}
+	if len(v.service.Definitions()) != 1 {
+		t.Fatal("creating a draft wrote a runnable definition before review")
+	}
+	if _, _, err := c.handleWorkflowCommand(context.Background(), "edit review"); err != nil {
+		t.Fatal(err)
+	}
+	if !c.env.Input.Workflow.saved || c.env.Input.Workflow.source != savedReview {
+		t.Fatal("edit did not load the current saved definition")
+	}
+}
+
+func TestWorkflowCommandFromSkillReferencesOriginalWithoutChangingIt(t *testing.T) {
+	c := workflowController(t, nil)
+	c.env.Input = &Model{}
+	c.env.Width, c.env.Height = 80, 24
+	sk := &skill.Skill{Name: "audit", Namespace: "team", State: skill.StateEnable, SkillDir: "/skills/audit", AllowedTools: []string{"Read"}}
+	c.env.Skill = skill.NewRegistryForTest(map[string]*skill.Skill{"team:audit": sk}, nil, nil)
+	if _, _, err := c.handleWorkflowCommand(context.Background(), "from-skill team:audit"); err != nil {
+		t.Fatal(err)
+	}
+	v := &c.env.Input.Workflow
+	if v.plan == nil || len(v.plan.Nodes) != 1 || v.plan.Name != "team-audit" || v.saved {
+		t.Fatal("skill conversion should produce one reviewable draft, not guess a graph")
+	}
+	if !strings.Contains(v.source, `"team:audit"`) || !strings.Contains(v.source, "live skill") {
+		t.Fatalf("skill dependency is not explicit:\n%s", v.source)
+	}
+	if sk.State != skill.StateEnable || sk.SkillDir != "/skills/audit" || len(v.service.Definitions()) != 0 {
+		t.Fatal("conversion changed the skill or saved a workflow without review")
+	}
+	sk.State = skill.StateDisable
+	if _, _, err := c.handleWorkflowCommand(context.Background(), "from-skill team:audit"); err == nil {
+		t.Fatal("disabled skill was converted")
 	}
 }
 

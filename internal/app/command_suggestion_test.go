@@ -29,7 +29,7 @@ func TestWorkflowSuggestionsWalkCommandsThenSavedNames(t *testing.T) {
 		}
 		return out
 	}
-	if got := names("/workflow "); !slices.Equal(got, []string{"workflow list", "workflow show", "workflow run", "workflow stop"}) {
+	if got := names("/workflow "); !slices.Equal(got, []string{"workflow list", "workflow show", "workflow run", "workflow stop", "workflow new", "workflow from-skill", "workflow edit", "workflow inspect"}) {
 		t.Fatalf("workflow subcommands = %v", got)
 	}
 	for _, query := range []string{"/workflow show ", "/workflow run de"} {
@@ -40,6 +40,12 @@ func TestWorkflowSuggestionsWalkCommandsThenSavedNames(t *testing.T) {
 		if got := names(query); !slices.Equal(got, []string{"workflow " + verb + " demo"}) {
 			t.Errorf("%s -> %v", query, got)
 		}
+	}
+	if got := names("/workflow edit de"); !slices.Equal(got, []string{"workflow edit demo"}) {
+		t.Fatalf("edit names = %v", got)
+	}
+	if got := names("/workflow edit demo "); got != nil {
+		t.Fatalf("edit must not suggest run inputs: %v", got)
 	}
 	if got := names("/workflow run demo "); !slices.Equal(got, []string{"workflow run demo style=", "workflow run demo topic="}) {
 		t.Errorf("input keys = %v", got)

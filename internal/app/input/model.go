@@ -68,6 +68,7 @@ type Model struct {
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
 	Transcript TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
 	Tasks      TaskViewer        // /tasks: inspect background work and review pending approvals
+	Workflow   WorkflowView      // /workflow: management, review, and live runs
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation
