@@ -92,7 +92,7 @@ func (v *FlowView) renderPrimaryAction() string {
 	case flowPageRun:
 		label = "Inspect selected step"
 	case flowPageExecutions:
-		label = "Open native task"
+		label = "Open " + v.nativeExecutionTarget()
 	}
 	switch v.confirm {
 	case flowConfirmSave:
@@ -333,11 +333,19 @@ func (v *FlowView) canInspect() bool {
 		choices = choices[v.cursor : v.cursor+1]
 	}
 	for _, choice := range choices {
-		if choice.execution.TaskID != "" && choice.execution.SessionID != "" {
+		if (choice.execution.TaskID != "" || choice.execution.MessageID != "") && choice.execution.SessionID != "" {
 			return true
 		}
 	}
 	return false
+}
+
+func (v *FlowView) nativeExecutionTarget() string {
+	choices := v.executionChoices()
+	if v.cursor >= 0 && v.cursor < len(choices) && choices[v.cursor].execution.MessageID != "" {
+		return "native history"
+	}
+	return "native task"
 }
 
 func (v *FlowView) renderRun() (title, content, hint string) {
@@ -356,7 +364,7 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 	title = left + strings.Repeat(" ", max(1, v.width-4-lipgloss.Width(left)-len(right))) + right
 	if v.page == flowPageExecutions {
 		content = "Executions · " + v.nodeID() + "\n" + v.renderExecutions()
-		hint = "↑/↓ select · Enter native task · Esc graph"
+		hint = "↑/↓ select · Enter " + v.nativeExecutionTarget() + " · Esc graph"
 	} else {
 		content = v.renderGraph() + "\n\n" + v.renderDetail()
 		switch v.record.Status {
@@ -370,7 +378,7 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 	}
 	if !v.canInspect() {
 		hint = strings.Replace(hint, " · Enter inspect", "", 1)
-		hint = strings.Replace(hint, " · Enter native task", "", 1)
+		hint = strings.Replace(hint, " · Enter "+v.nativeExecutionTarget(), "", 1)
 	}
 	if v.record.Status == flow.RunFailed || v.record.Status == flow.RunStopped || v.record.Status == flow.RunInterrupted {
 		content = "Run " + strings.ToUpper(string(v.record.Status)) + "\n" + content
@@ -390,6 +398,11 @@ func (v *FlowView) renderReview() string {
 		return "Select a step to review its inputs and output."
 	}
 	lines := []string{fmt.Sprintf("Step %d/%d · %s", v.selected+1, len(v.plan.Nodes), node.ID), ""}
+	executor := "subagent (default)"
+	if node.Executor == "main" {
+		executor = "main · current conversation"
+	}
+	lines = append(lines, "  Executor "+executor)
 	agent := node.Config["agent"]
 	if agent == "" {
 		agent = "default"
@@ -398,6 +411,9 @@ func (v *FlowView) renderReview() string {
 		if value := node.Config[key]; value != "" {
 			agent += " · " + value
 		}
+	}
+	if node.Executor == "main" {
+		agent = "current main agent · inherited settings"
 	}
 	lines = append(lines, "  Agent   "+agent)
 	if node.ForEach != "" {
@@ -504,7 +520,7 @@ func (v *FlowView) renderLimits() string {
 		"At most " + kit.Plural(turns, "step execution") + ". Each may use multiple model calls and tools.",
 		"At most " + kit.Plural(v.plan.MaxParallel, "step") + " running at once; dependencies still determine their order.",
 		"",
-		"Each step starts in a fresh agent context. Run inputs and referenced step answers are inserted into its instructions.",
+		"Subagent steps start in fresh contexts; main steps use the current conversation. Run inputs and referenced step answers are inserted into their instructions.",
 	}
 	if len(bounds) > 0 {
 		lines = append(lines, "", "Worker and retry limits")

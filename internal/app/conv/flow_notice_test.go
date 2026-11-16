@@ -132,6 +132,16 @@ func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
 	}
 }
 
+func TestSchedulerMainResultIsNotRepeated(t *testing.T) {
+	e := parseAgentEnvelope(`<task-notification scheduler="true" task-id="flow-final" agent-name="Review" status="completed" result-displayed="true">NATIVE_MAIN_ANSWER</task-notification>`)
+	for _, rendered := range []string{e.renderDisplayNotice(RenderContext{Width: 80}), e.renderWithIdentity(RenderContext{Width: 80})} {
+		plain := ansi.Strip(rendered)
+		if !strings.Contains(plain, "Flow · Review · Completed") || strings.Contains(plain, "NATIVE_MAIN_ANSWER") || strings.Contains(plain, "No final result") || strings.Count(plain, "\n") != 1 {
+			t.Fatalf("native main result duplicated or receipt lost: %q", plain)
+		}
+	}
+}
+
 func TestSchedulerFinalResultEmptyAndLegacyExcerpt(t *testing.T) {
 	for _, body := range []string{"", " \n\t"} {
 		e := parseAgentEnvelope(`<task-notification scheduler="true" status="completed">` + body + `</task-notification>`)

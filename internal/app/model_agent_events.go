@@ -62,7 +62,8 @@ func (m *model) OnStepEnd() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	notices := tea.Batch(m.CommitMessages()...)
+	admitted := m.confirmFlowMainInput()
+	notices := tea.Batch(admitted, tea.Batch(m.CommitMessages()...))
 	if m.drainedThisStep {
 		return notices
 	}
@@ -110,7 +111,10 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 	m.pendingStopHook = nil
 	finalizationErr := core.ErrTurnCompleted
-	defer func() { result.Finalization.Acknowledge(finalizationErr) }()
+	defer func() {
+		result.Finalization.Acknowledge(finalizationErr)
+		m.finishFlowMain(result, finalizationErr)
+	}()
 	// A dismissed start/resume offer comes back once the turn is over.
 	m.autopilotOfferDismissed = false
 	// Only a list the model closed out is safe to discard. An item left open —
@@ -161,6 +165,15 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		return tea.Batch(append(commitCmds, m.ListenForAgentEvents())...)
 	}
 
+	if m.flowMainCapturing() || m.flowMainRequest != nil {
+		commitCmds = append(commitCmds, m.confirmFlowMainInput())
+		finalizationErr = m.appendTurnState()
+		if m.flowMainRequest != nil && m.flowMainRequest.messageID == "" {
+			commitCmds = append(commitCmds, func() tea.Msg { return flowMainReadyMsg{} })
+		}
+		return tea.Batch(append(commitCmds, m.ListenForAgentEvents())...)
+	}
+
 	// Cancellation must finish cleanup and persistence before admitting another
 	// turn. turnFinalizedMsg resumes explicitly queued user input after the
 	// receipt settles; it does not drain cron/hook queues or revive autopilot.
@@ -204,6 +217,15 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 }
 
 func (m *model) OnAgentStop(err error) tea.Cmd {
+	if r := m.flowMainRequest; r != nil {
+		m.flowMainRequest = nil
+		m.pendingMessages.Hold(nil)
+		failure := err
+		if failure == nil {
+			failure = errors.New("main runtime stopped")
+		}
+		replyFlowMain(r.msg, flowMainReply{err: failure})
+	}
 	// /clear and manual stop cancel the active agent context; that is expected
 	// shutdown, not an agent failure the user needs to see.
 	failed := err != nil && !errors.Is(err, context.Canceled)

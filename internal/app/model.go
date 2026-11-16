@@ -42,6 +42,8 @@ import (
 const defaultWidth = 80
 
 type model struct {
+	flowMain          *flowMainBridge
+	flowMainRequest   *flowMainRequest
 	flowDraft         *flowDraftRequest
 	pendingCompaction *pendingCompaction
 	pendingStopHook   *pendingStopHook // current idle decision; invalidated by input, cancellation or teardown
@@ -215,6 +217,7 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartCronTicker(),
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
+		awaitFlowMain(m.flowMain),
 		awaitMCPToolsChanged(m.mcpToolsChanged),
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),

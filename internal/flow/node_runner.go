@@ -18,16 +18,72 @@ import (
 // Progress goes to the scheduler task's live tail only; the native child task
 // owns the complete transcript.
 type nodeRunner struct {
-	exec    tool.AgentExecutor
-	task    *task.AgentTask
-	name    string
-	usageMu sync.Mutex
-	steps   int
-	tokens  int
+	blueprint      *Blueprint
+	instructions   map[string]string
+	onInstructions func(*Node, string) error
+	main           MainRunExecutor
+	exec           tool.AgentExecutor
+	task           *task.AgentTask
+	name           string
+	usageMu        sync.Mutex
+	steps          int
+	tokens         int
+}
+
+func (r *nodeRunner) snapshot(id string) string {
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	return r.instructions[id]
+}
+
+func (r *nodeRunner) revisionInstructions(n *Node) string {
+	if r.blueprint == nil {
+		return ""
+	}
+	ancestors := r.blueprint.ancestors(n)
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	// Loop copies are ordered by round. The latest completed ancestor is
+	// the draft actually available to this revision's critic and decision.
+	for i := len(r.blueprint.Nodes) - 1; i >= 0; i-- {
+		writer := r.blueprint.Nodes[i]
+		if writer.Executor != "main" || !ancestors[writer.ID] {
+			continue
+		}
+		if instructions, ok := r.instructions[writer.ID]; ok {
+			return instructions
+		}
+	}
+	return ""
 }
 
 func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 	n := c.Node
+	if n.Executor == "main" {
+		if r.main == nil {
+			return "", fmt.Errorf("main executor not configured")
+		}
+		out, err := r.main.RunNode(ctx, c)
+		if err != nil {
+			return out, err
+		}
+		instructions := r.main.Instructions()
+		r.usageMu.Lock()
+		if r.instructions == nil {
+			r.instructions = map[string]string{}
+		}
+		r.instructions[n.ID] = instructions
+		r.usageMu.Unlock()
+		if r.onInstructions != nil {
+			if err := r.onInstructions(n, instructions); err != nil {
+				return out, err
+			}
+		}
+		return out, nil
+	}
+	if instructions := r.revisionInstructions(n); strings.TrimSpace(instructions) != "" {
+		c.Prompt += "\n\nAccepted user amendments for the current writer revision:\n" + instructions
+	}
 	label := n.ID
 	if c.Label != "" {
 		label += "·" + c.Label

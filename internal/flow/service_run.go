@@ -138,6 +138,20 @@ func (s *Service) ResumeRun(id, from string, width int) (string, error) {
 	if err == nil {
 		err = validateInputs(b, r.Inputs)
 	}
+	if err == nil && b.hasMain() {
+		if s.tasks == nil || r.SessionID == "" || r.SessionID != s.tasks.SessionID() {
+			err = fmt.Errorf("main flow resume requires its original session")
+		}
+		if err == nil && from == "" {
+			for _, n := range b.Nodes {
+				c := r.Nodes[n.ID]
+				if n.Executor == "main" && (c.Status == StatusFailed || c.Status == StatusRunning) {
+					err = fmt.Errorf("main node %s may already have side effects; confirm rerun with explicit from", n.ID)
+					break
+				}
+			}
+		}
+	}
 	if err == nil {
 		b.Name = r.Name
 		if from != "" {
@@ -173,6 +187,35 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 	st := s.runStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	id := task.NewID()
+	s.mu.Lock()
+	executor, mainExecutor := s.executor, s.mainExecutor
+	s.mu.Unlock()
+	var main MainRunExecutor
+	if b.hasMain() {
+		fail := func(err error) (string, error) { cancel(); release(); return "", err }
+		if s.tasks == nil || s.tasks.SessionID() == "" {
+			return fail(fmt.Errorf("main flow requires an active session"))
+		}
+		if r.SessionID != "" && r.SessionID != s.tasks.SessionID() {
+			return fail(fmt.Errorf("main flow belongs to a different session"))
+		}
+		r.SessionID = s.tasks.SessionID()
+		ctx = task.WithSessionID(ctx, r.SessionID)
+		if mainExecutor == nil {
+			return fail(fmt.Errorf("main executor not configured"))
+		}
+		var err error
+		main, err = mainExecutor.Open(ctx, MainRunInfo{ID: r.ID, TaskID: id, SessionID: r.SessionID, Instructions: r.Instructions})
+		if err != nil {
+			if main != nil {
+				main.Close(err)
+			}
+			return fail(err)
+		}
+		if main == nil {
+			return fail(fmt.Errorf("main executor returned no lease"))
+		}
+	}
 	now := time.Now()
 	r.TaskID = id
 	r.Status = RunRunning
@@ -186,11 +229,13 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 		r.Nodes = map[string]Checkpoint{}
 	}
 	if err := st.Put(r); err != nil {
+		if main != nil {
+			main.Close(err)
+		}
 		cancel()
 		release()
 		return "", err
 	}
-	executor := s.executor
 	bg := s.tasks.CreateSchedulerTask(id, b.Title(), description, ctx, cancel)
 	s.mu.Lock()
 	if s.live == nil {
@@ -199,6 +244,10 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 	s.live[r.ID] = bg
 	s.mu.Unlock()
 	go func() {
+		var runErr error
+		if main != nil {
+			defer func() { main.Close(runErr) }()
+		}
 		defer cancel()
 		defer release()
 		defer func() { s.mu.Lock(); delete(s.live, r.ID); s.mu.Unlock() }()
@@ -216,13 +265,28 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 			}
 			return persistErr
 		}
-		runner := &nodeRunner{exec: executor, task: bg, name: b.Name}
+		snapshots := map[string]string{}
+		for _, n := range b.Nodes {
+			if c := r.Nodes[n.ID]; n.Executor == "main" && c.Status == StatusSucceeded {
+				snapshots[n.ID] = c.Instructions
+			}
+		}
+		runner := &nodeRunner{exec: executor, main: main, task: bg, name: b.Name, blueprint: b, instructions: snapshots, onInstructions: func(n *Node, instructions string) error {
+			return update(func(r *RunRecord) {
+				r.Instructions = instructions
+				c := r.Nodes[n.ID]
+				c.Instructions = instructions
+				r.Nodes[n.ID] = c
+			})
+		}}
 		onStatus := attachLiveView(b, bg, width)
-		res := Run(ctx, b, runner, Options{Inputs: r.Inputs, Resume: r.Nodes, OnStatus: onStatus, OnCheckpoint: func(n *Node, c Checkpoint) error {
+		res := Run(ctx, b, runner, Options{Route: mainRoute(ctx, b, main), Inputs: r.Inputs, Resume: r.Nodes, OnStatus: onStatus, OnCheckpoint: func(n *Node, c Checkpoint) error {
+			if n.Executor == "main" {
+				c.Instructions = runner.snapshot(n.ID)
+			}
 			return update(func(r *RunRecord) { r.Nodes[n.ID] = c })
 		}})
 		output := res.Summary(b)
-		var runErr error
 		status := RunSucceeded
 		if ctx.Err() != nil {
 			status = RunStopped
@@ -250,6 +314,9 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 		}
 		if runErr == nil {
 			bg.SetResult(res.FinalOutput(b))
+			if soleMainSink(b, res) {
+				bg.MarkResultDisplayed()
+			}
 		} else {
 			bg.AppendOutput([]byte(res.FinalOutput(b)))
 		}

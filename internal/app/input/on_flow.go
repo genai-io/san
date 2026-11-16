@@ -137,6 +137,9 @@ func (v *FlowView) RecordedTask(msg FlowOpenTaskMsg) (TaskViewItem, bool) {
 		return TaskViewItem{}, false
 	}
 	choice := v.executionChoices()[v.cursor]
+	if choice.execution.MessageID != "" {
+		return TaskViewItem{}, false
+	}
 	state := choice.state
 	status := task.StatusCompleted
 	switch state.Status {
@@ -164,8 +167,12 @@ func (v *FlowView) executionChoices() []flowExecutionChoice {
 	seen := map[flow.Execution]bool{}
 	addChoice := func(label string, state flow.Checkpoint) {
 		execution, number := state.Execution, state.Attempt
-		if execution.TaskID != "" && !seen[execution] {
-			choices = append(choices, flowExecutionChoice{fmt.Sprintf("%s · attempt %d · %s", label, max(1, number), execution.TaskID), execution, state})
+		if (execution.TaskID != "" || execution.MessageID != "") && !seen[execution] {
+			identity := execution.TaskID
+			if execution.MessageID != "" {
+				identity = "main message " + execution.MessageID
+			}
+			choices = append(choices, flowExecutionChoice{fmt.Sprintf("%s · attempt %d · %s", label, max(1, number), identity), execution, state})
 			seen[execution] = true
 		}
 	}
@@ -205,7 +212,7 @@ func (v *FlowView) handleExecutions(key string) tea.Cmd {
 	case "enter":
 		if v.cursor < len(choices) {
 			e := choices[v.cursor].execution
-			if e.TaskID == "" || e.SessionID == "" {
+			if (e.TaskID == "" && e.MessageID == "") || e.SessionID == "" {
 				v.TaskUnavailable()
 				return nil
 			}

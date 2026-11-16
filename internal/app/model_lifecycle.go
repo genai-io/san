@@ -65,6 +65,7 @@ func newBaseModel() model {
 		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorDeps(svc, learnedStores)),
 		conv:             conv.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
+		flowMain:         newFlowMainBridge(),
 		mcpToolsChanged:  make(chan struct{}, 1),
 		selfLearnStarts:  make(chan struct{}, 8),
 		systemInput:      trigger.New(),

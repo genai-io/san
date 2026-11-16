@@ -30,6 +30,7 @@ const (
 
 // Execution associates a scheduled call with its native child task and session.
 type Execution struct {
+	MessageID string `json:"message_id,omitempty"`
 	TaskID    string `json:"task_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 }
@@ -53,15 +54,17 @@ type NodeRunner interface {
 // Outcome is one execution of a node or worker: what ran, how it ended and
 // what it returned.
 type Outcome struct {
-	Execution  Execution          `json:"execution"`
-	Status     Status             `json:"status"`
-	Output     string             `json:"output,omitempty"`
-	Error      string             `json:"error,omitempty"`
-	StartedAt  time.Time          `json:"started_at,omitempty"`
-	FinishedAt time.Time          `json:"finished_at,omitempty"`
-	Duration   time.Duration      `json:"duration,omitempty"`
-	PlanHash   string             `json:"plan_hash,omitempty"`
-	Workers    []WorkerCheckpoint `json:"workers,omitempty"`
+	Instructions string             `json:"instructions,omitempty"`
+	Route        string             `json:"route,omitempty"`
+	Execution    Execution          `json:"execution"`
+	Status       Status             `json:"status"`
+	Output       string             `json:"output,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	StartedAt    time.Time          `json:"started_at,omitempty"`
+	FinishedAt   time.Time          `json:"finished_at,omitempty"`
+	Duration     time.Duration      `json:"duration,omitempty"`
+	PlanHash     string             `json:"plan_hash,omitempty"`
+	Workers      []WorkerCheckpoint `json:"workers,omitempty"`
 }
 
 // Checkpoint is the committed state of a node. Only successful results are
@@ -88,6 +91,7 @@ type WorkerCheckpoint struct {
 
 // Options tune one run.
 type Options struct {
+	Route func(*Node, string) (string, error)
 	// Inputs back {{input.key}} references and {{input}} under the key "input".
 	Inputs map[string]string
 	// OnStatus observes every phase change, on the node's goroutine.
@@ -98,6 +102,7 @@ type Options struct {
 
 // NodeResult is one node's outcome.
 type NodeResult struct {
+	Route    string
 	Status   Status
 	Output   string
 	Err      error
@@ -211,7 +216,7 @@ func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Re
 				}
 				switch up.res.Status {
 				case StatusSucceeded:
-					if e.Label == "" || strings.TrimSpace(up.res.Output) == e.Label {
+					if e.Label == "" || effectiveRoute(up.res.Route, up.res.Output) == e.Label {
 						take(e, up, up.res.Output)
 					}
 				case StatusFailed:
@@ -252,13 +257,14 @@ func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Re
 			s.scope = scope
 			prior := resume[n.ID]
 			if prior.Status == StatusSucceeded {
-				s.res.Output, s.res.Duration = prior.Output, prior.Duration
+				s.res.Output, s.res.Duration, s.res.Route = prior.Output, prior.Duration, prior.Route
 				setStatus(StatusSucceeded)
 				return
 			}
 			state, err := b.executeCheckpoint(ctx, n, scope, opts, runner, sem, prior, func() { setStatus(StatusRunning) }, cancel)
 			s.res.Duration = state.Duration
 			s.res.Output = state.Output
+			s.res.Route = state.Route
 			if err != nil {
 				s.res.Err = err
 				setStatus(StatusFailed)
@@ -287,6 +293,13 @@ func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Re
 // Every other node, a gate inside a loop body included, is exempt: a gate's
 // unmatched NO is how it says "stop here", and nothing in the graph tells a
 // gate from a router.
+func effectiveRoute(route, output string) string {
+	if route != "" {
+		return strings.TrimSpace(route)
+	}
+	return strings.TrimSpace(output)
+}
+
 func unanswered(n *Node, out string) error {
 	if !n.tail || len(n.downstream) == 0 {
 		return nil
@@ -524,8 +537,11 @@ func (b *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[st
 			err = errors.Join(errs...)
 		}
 	}
+	if err == nil && opts.Route != nil {
+		state.Route, err = opts.Route(n, out)
+	}
 	if err == nil {
-		err = unanswered(n, out)
+		err = unanswered(n, effectiveRoute(state.Route, out))
 	}
 	state.Output = out
 	state.FinishedAt = time.Now()

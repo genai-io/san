@@ -16,9 +16,10 @@ const maxQueueSize = 50
 // moment the item is fully owned by the TUI — editable, cancelable,
 // reorderable.
 type QueueItem struct {
-	ID      int
-	Content string
-	Images  []core.Attachment
+	ID                   int
+	Content              string
+	Images               []core.Attachment
+	NeedsPromptAdmission bool // Flow-captured input not yet admitted as a user prompt.
 }
 
 type Queue struct {
@@ -39,6 +40,15 @@ func (q *Queue) Enqueue(content string, images []core.Attachment) int {
 	q.nextID++
 	q.items = append(q.items, QueueItem{ID: q.nextID, Content: content, Images: images})
 	return q.nextID
+}
+
+func (q *Queue) RequirePromptAdmission(id int) {
+	for i := range q.items {
+		if q.items[i].ID == id {
+			q.items[i].NeedsPromptAdmission = true
+			return
+		}
+	}
 }
 
 func (q *Queue) Dequeue() (QueueItem, bool) {

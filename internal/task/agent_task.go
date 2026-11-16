@@ -44,6 +44,7 @@ type AgentTask struct {
 	foreground       bool
 	attemptOutput    bytes.Buffer
 	result           string // Full final answer for the current attempt; independent of bounded output.
+	resultDisplayed  bool   // The answer already rendered through its native main turn.
 	launchState      any
 	permissionMode   string           // Effective mode resolved before the worker starts.
 	activity         []string         // Bounded recent meaningful progress for native presentation.
@@ -182,11 +183,19 @@ func (t *AgentTask) GetDescription() string {
 func (t *AgentTask) SetResult(result string) {
 	t.mu.Lock()
 	t.result = result
+	t.resultDisplayed = false
 	t.attemptOutput.Reset()
 	t.attemptOutput.WriteString(utf8Head(result, maxOutputBufferSize))
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 	t.recordOutput(outputFile, outputRecord{Event: "task.output", Content: result})
+}
+
+// MarkResultDisplayed avoids repeating a result already shown by a native turn.
+func (t *AgentTask) MarkResultDisplayed() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.resultDisplayed = true
 }
 
 // AppendOutput appends data to the output buffer
@@ -453,6 +462,7 @@ func (t *AgentTask) statusLocked() TaskInfo {
 		Error:            t.Error,
 		Output:           t.attemptOutput.String(),
 		Result:           t.result,
+		ResultDisplayed:  t.resultDisplayed,
 		OutputFile:       t.inspectionPathLocked(),
 		OutputError:      t.outputErr,
 		Progress:         t.progress,

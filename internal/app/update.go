@@ -129,6 +129,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.syncTaskViewerSession()
 	m.syncFlowDraft()
+	if next := m.startFlowMainNode(); next != nil {
+		cmd = tea.Batch(cmd, next)
+	}
 	if tick := m.taskViewerTick(); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
@@ -238,6 +241,13 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.FlowOpenTaskMsg:
 		if !m.userInput.Flow.AcceptTaskOpen(msg) {
 			return m, nil
+		}
+		if msg.Execution.MessageID != "" && msg.Execution.TaskID == "" {
+			if msg.Execution.SessionID != m.sessionID() {
+				m.userInput.Flow.TaskUnavailable()
+				return m, nil
+			}
+			return m, m.openHistoryAt(msg.Execution.MessageID)
 		}
 		var recorded *input.TaskViewItem
 		live := false
@@ -639,6 +649,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.onMainNotice(msg.notice)
 	case input.FlowDraftRequestMsg:
 		return m, m.generateFlow(msg)
+	case flowMainReadyMsg:
+		return m, m.startFlowMainNode()
+	case flowMainMsg:
+		return m, tea.Batch(m.onFlowMain(msg), awaitFlowMain(m.flowMain))
 	case flowDraftedMsg:
 		return m, m.onFlowDrafted(msg)
 	case btwAnswerMsg:

@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/task"
 )
@@ -19,6 +21,44 @@ type flowTaskService struct {
 
 func (s flowTaskService) GetRun(string) (*flow.RunRecord, error) {
 	return &s.record, nil
+}
+
+func TestFlowMainStepOpensNativeHistoryAndReturns(t *testing.T) {
+	m := flowInputModel(nil)
+	m.services.sessionID = "main-session"
+	m.env.Height = 30
+	m.conv.Append(core.ChatMessage{ID: "writer-input", Role: core.ChatUser, Content: "WRITER_NATIVE_INPUT"})
+	m.conv.Append(core.ChatMessage{ID: "writer-answer", Role: core.ChatAssistant, Content: "WRITER_NATIVE_ANSWER"})
+	s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
+		Definition: "```mermaid\nflowchart LR\n writer\n```\n## writer\nexecutor: main\n\nWrite\n",
+		Nodes: map[string]flow.Checkpoint{"writer": {Outcome: flow.Outcome{Status: flow.StatusSucceeded,
+			Execution: flow.Execution{SessionID: "main-session", MessageID: "writer-input"}}}}}}
+	m.userInput.Flow.OpenRun(s, "run", 80, 30)
+	open := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if open == nil {
+		t.Fatal("main node did not request inspection")
+	}
+	msg := open().(input.FlowOpenTaskMsg)
+	foreign := msg
+	foreign.Execution.SessionID = "other"
+	m.dispatch(foreign)
+	if m.userInput.Transcript.IsActive() {
+		t.Fatal("foreign main identity opened history")
+	}
+	_, load := m.dispatch(msg)
+	if load == nil {
+		t.Fatal("main identity did not open native history")
+	}
+	m.dispatch(load())
+	panel, active := m.activeOverlay()
+	view := ansi.Strip(m.userInput.Transcript.Render())
+	if !active || panel != &m.userInput.Transcript || !strings.Contains(view, "WRITER_NATIVE_INPUT") || !strings.Contains(view, "WRITER_NATIVE_ANSWER") || m.userInput.Tasks.IsActive() {
+		t.Fatalf("main execution did not use exact native conversation history:\n%s", view)
+	}
+	m.userInput.Transcript.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if panel, active := m.activeOverlay(); !active || panel != &m.userInput.Flow {
+		t.Fatal("closing native main history lost the Flow inspector")
+	}
 }
 
 func TestFlowChildUsesNativeTaskOverlayAndReturns(t *testing.T) {

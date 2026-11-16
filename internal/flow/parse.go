@@ -35,7 +35,8 @@ type Blueprint struct {
 
 // Node is one section of the definition: one subagent turn.
 type Node struct {
-	ID string
+	Executor string
+	ID       string
 	// Base is the id as written in the graph. It differs from ID only for a
 	// loop instance (`draft#2`), and it is what templates name: `{{draft}}`
 	// inside a later round reads the round before it.
@@ -93,7 +94,7 @@ const maxRounds = 10
 
 // configKeys are the keys accepted under a node heading. Anything else that
 // looks like `key: value` on the first lines is a typo, not prompt text.
-var configKeys = []string{"agent", "mode", "model", "continue_on_error", "for_each", "max_workers"}
+var configKeys = []string{"executor", "agent", "mode", "model", "continue_on_error", "for_each", "max_workers"}
 
 var (
 	idRe       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
@@ -321,6 +322,8 @@ func (b *Blueprint) parseSections(rest string) error {
 }
 
 func (n *Node) fill(lines []string) error {
+	n.Executor = "subagent"
+	hostileMainConfig := false
 	i := 0
 	for ; i < len(lines); i++ {
 		m := configRe.FindStringSubmatch(lines[i])
@@ -328,7 +331,15 @@ func (n *Node) fill(lines []string) error {
 			break
 		}
 		key, value := m[1], strings.TrimSpace(m[2])
+		if key == "for_each" || key == "continue_on_error" {
+			hostileMainConfig = true
+		}
 		switch key {
+		case "executor":
+			if value != "main" && value != "subagent" {
+				return fmt.Errorf("node %s: executor must be main or subagent", n.ID)
+			}
+			n.Executor = value
 		case "continue_on_error":
 			b, err := strconv.ParseBool(value)
 			if err != nil {
@@ -360,6 +371,16 @@ func (n *Node) fill(lines []string) error {
 		}
 	}
 	n.Prompt = strings.TrimSpace(strings.Join(lines[i:], "\n"))
+	if n.Executor == "main" {
+		if hostileMainConfig {
+			return fmt.Errorf("node %s: main executor disallows for_each and continue_on_error", n.ID)
+		}
+		for _, key := range []string{"agent", "mode", "model"} {
+			if _, ok := n.Config[key]; ok {
+				return fmt.Errorf("node %s: main executor inherits native config; %s is not allowed", n.ID, key)
+			}
+		}
+	}
 
 	switch {
 	case n.ForEach == "" && n.MaxWorkers > 0:
@@ -430,6 +451,9 @@ func (b *Blueprint) validate(declared []string) error {
 	if err := b.checkLoops(forward); err != nil {
 		return err
 	}
+	if err := b.validateMain(forward); err != nil {
+		return err
+	}
 
 	for _, n := range b.Nodes {
 		ancestors := b.ancestors(n)
@@ -453,6 +477,58 @@ func (b *Blueprint) validate(declared []string) error {
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%s", strings.Join(problems, "\n"))
+	}
+	return nil
+}
+
+func (b *Blueprint) validateMain(forward []Edge) error {
+	var target *Node
+	for _, n := range b.Nodes {
+		if n.Executor != "main" {
+			continue
+		}
+		if target != nil {
+			return fmt.Errorf("only one authored node may use executor main")
+		}
+		target = n
+	}
+	if target == nil {
+		return nil
+	}
+	if l := b.loopOf[target.ID]; l != nil {
+		if l.To != target.ID {
+			return fmt.Errorf("main node %s must be the head of its bounded loop", target.ID)
+		}
+		escapes := 0
+		for _, e := range forward {
+			if b.loopOf[e.From] != l || b.loopOf[e.To] == l {
+				continue
+			}
+			if e.From != l.From {
+				return fmt.Errorf("main loop %s: acceptance must leave through tail %s, not %s", l.String(), l.From, e.From)
+			}
+			if e.Label == "" || e.Label == l.Label {
+				return fmt.Errorf("main loop %s: acceptance escapes require explicit labels distinct from retry label %q", l.String(), l.Label)
+			}
+			escapes++
+		}
+		if escapes == 0 {
+			return fmt.Errorf("main loop %s requires at least one explicit labeled acceptance escape", l.String())
+		}
+		return nil
+	}
+	up := map[string][]string{}
+	for _, e := range forward {
+		if e.From == target.ID {
+			return fmt.Errorf("main node %s must be a global final sink or bounded loop head", target.ID)
+		}
+		up[e.To] = append(up[e.To], e.From)
+	}
+	ancestors := reach(target.ID, up)
+	for _, n := range b.Nodes {
+		if !ancestors[n.ID] {
+			return fmt.Errorf("main sink %s must join every executable node", target.ID)
+		}
 	}
 	return nil
 }

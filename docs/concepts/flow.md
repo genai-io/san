@@ -52,16 +52,18 @@ Merge into one review: {{sec}} {{perf}}
 | --- | --- |
 | frontmatter | optional: `name`, `description`, `max_parallel` (default 4) |
 | mermaid block | the only source of topology. Starts with `flowchart LR`; then bare ids joined by `-->` (sequence), `&` (fan-out and fan-in), `-->\|LABEL\|` (conditional) and `-->\|LABEL xN\|` pointing back at an ancestor (a bounded retry; see below). Node shapes, subgraphs and other mermaid syntax are errors, not silently ignored — a dropped edge is a silently wrong graph. |
-| `## id` | one node, one subagent turn. Every id in the graph needs a section and vice versa. |
-| `key: value` under the heading | the contiguous run of such lines is config: `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
+| `## id` | one node, one agent turn. Every id in the graph needs a section and vice versa. |
+| `key: value` under the heading | the contiguous run of such lines is config: `executor`, `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
+| `executor:` | `subagent` by default. Explicit `main` uses the current main conversation for a final join or bounded-loop writer; see below. |
 | `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before the run starts — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
 | `{{id}}` | the complete final answer text of an upstream node, inserted into this node's prompt. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
 | `{{input}}` | the simple run parameter, supplied as `input=value`. |
 | `{{input.key}}` | an author-defined named parameter, collected before launch or supplied as `key=value`. |
 | `for_each` + `max_workers` | fans this node out over a plan; see below. |
 
-Every node is a fresh subagent with no memory of the others; brief each one
-fully, the way an `Agent` prompt is briefed.
+By default each node is a fresh subagent with no memory of the others; brief it
+fully, the way an `Agent` prompt is briefed. An explicit `executor: main` node
+instead uses the current main conversation and its existing context.
 
 ### Inputs and step answers
 
@@ -335,6 +337,59 @@ clean context instead of grading what it just wrote. The worst-case execution
 bound counts every round, and the saved-definition preview names the loop:
 `draft/review: up to 3 rounds`.
 
+## Interactive writers in the main conversation
+
+**Subagent execution remains the default.** To opt a writer into the actual main
+conversation, set `executor: main` under its heading. `executor: subagent` is the
+explicit default; existing definitions need no changes. Review discloses the target.
+Main execution streams and persists as a normal main Agent turn, not a copied
+subagent answer or an extra summary request.
+
+One authored node may use main: either the final global join/sink, or the head of
+a bounded writer–critic loop. It inherits the current main model, permissions and
+context, so it cannot override `agent`, `mode` or `model`, use `for_each`, or tolerate
+failure with `continue_on_error`. Other steps remain native subagents. Only one
+main-enabled Flow can own a conversation at a time; an existing main turn finishes
+before its writer starts.
+
+While a critic evaluates, ordinary user input stays in the editable input queue.
+The next writer receives these amendments before its first inference, even when
+it uses no tools. Accepted amendments also accompany the next critic/decision;
+newly queued instructions do not change the criteria of an ongoing review. A
+`PASS` with pending amendments takes the next writer round instead of ending the
+Flow. The original verdict and the effective route are both checkpointed. Reaching
+the round limit with pending changes fails explicitly rather than accepting the
+old draft or retrying forever.
+
+`/flow stop` cancels the run; it does not resume a partially completed critic after
+the draft changes. A changed draft always gets a new assessment. Failed/interrupted
+main turns require explicit rerun confirmation, even if no input identity was
+saved; resuming in another conversation is refused. Undelivered queued input is
+retained rather than silently starting work after cancellation.
+
+### Try the writer–critic example
+
+[`examples/flows/writer-critic.md`](../../examples/flows/writer-critic.md) starts
+with a deliberately rough draft so the revision path is visible. The writer,
+critic, exact-label decision and final result are separate steps; the loop has
+three rounds total. Install without replacing an existing definition:
+
+```bash
+mkdir -p .san/workflows
+cp -n examples/flows/writer-critic.md .san/workflows/writer-critic.md
+```
+
+Run `/flow edit writer-critic`, change the writer's `executor: subagent` to
+`executor: main`, and save. Then run:
+
+```text
+/flow run writer-critic input="给初中生写一篇解释什么是缓存的短文"
+```
+
+While the critic is running, send a refinement such as “不要用浏览器缓存作例子，改用图书馆和书桌，并以一句总结收尾。”
+It waits for the current review, then enters the next writer revision. Leaving
+`executor: subagent` unchanged runs the ordinary non-interactive subagent loop.
+
 ## How it runs
 
 While a Flow runs, its parent task displays the animated dependency graph in
@@ -343,15 +398,17 @@ Launching returns to the composer instead of automatically opening a separate
 run panel. Start, graph and completion use the same neutral **Flow** label and
 readable title. `Alt+T` still controls task-area visibility.
 
-Nodes execute through the native subagent executor, with its existing model,
-tools, permissions and sessions. Running nodes use native Agent blocks in the
+Subagent nodes execute through the native subagent executor, with its existing
+model, tools, permissions and sessions. They use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
-answer previews. On completion, Flow renders its complete final sink answer as
+answer previews. Main nodes use the current conversation's native turns and
+history instead. On completion, Flow renders its complete final sink answer as
 an independent top-level Markdown result in the main conversation, separated from
-the completion receipt by a blank line, without another generated heading. Child
-preview limits do not apply. One sink returns its answer; multiple successful
-sinks retain labeled sections. No inspection command is needed to read the report;
-empty results are reported explicitly.
+the completion receipt by a blank line, without another generated heading. A
+main final sink already shown natively is not repeated. Child preview limits do
+not apply. One sink returns its answer; multiple successful sinks retain labeled
+sections. No inspection command is needed to read the report; empty results are
+reported explicitly.
 The scheduler's own start and terminal notices remain display-only: completing
 a Flow does not ask the main Agent to summarize it again. Add an explicit
 downstream node when synthesis is needed. Children remain background/parallel.

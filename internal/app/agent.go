@@ -460,6 +460,9 @@ type pendingInputReadyMsg struct{ outbox <-chan core.Event }
 type pendingMessage = agent.PendingInput
 
 func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
+	if m.deferFlowMainInput(p) {
+		return nil
+	}
 	m.pendingStopHook = nil
 	m.pendingMessages.Enqueue(p)
 	return m.sendPendingMessages()
@@ -473,6 +476,9 @@ func (m *model) discardPendingMessages() {
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
+	if m.flowMainBlocksQueue() {
+		return nil
+	}
 	if !m.pendingMessages.CanDeliver(false) || m.pendingMessages.Len() == 0 {
 		return nil
 	}
@@ -752,6 +758,10 @@ func (m *model) ReconfigureAgentTool() {
 	if m.services.Flow != nil {
 		// Use the same session-owned native executor as ordinary agent tools.
 		m.services.Flow.SetExecutor(adapter)
+		if m.flowMain == nil {
+			m.flowMain = newFlowMainBridge()
+		}
+		m.services.Flow.SetMainExecutor(m.flowMain.bind(m.services.Session))
 	}
 }
 

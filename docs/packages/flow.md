@@ -7,7 +7,8 @@ layer: feature
 
 Parses a collaboration blueprint and schedules its subagents: dependencies,
 parallel work, conditional routes, bounded workers and retries. Nodes run
-through the existing subagent executor; Flow does not own another Agent,
+through the existing subagent executor by default; explicit main steps reuse the
+current main conversation. Flow owns neither another Agent runtime nor a separate
 permission or conversation lifecycle.
 
 ## Purpose
@@ -175,6 +176,17 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   as a native subagent turn, setting `AgentExecRequest.ParentTaskID` so the
   executor registers it as a scheduler-owned child. No tool adapter package or
   whole-Flow tool-approval wrapper remains.
+- `main_executor.go` — explicit `executor: main` leases the originating main
+  conversation through a host callback. Defaults stay subagent. One main target
+  is allowed: a global final join or a bounded-loop head. Accepted writer amendments
+  are stored separately from fixed launch inputs; the next critic gets that frozen
+  snapshot, not future queued edits. `Outcome.Route` records a pending-amendment
+  retry without rewriting the critic's original answer. Main retries are session
+  bound and uncertain native turns need explicit rerun confirmation.
+- `internal/app/flow_main.go` — marshals main-step requests onto the native UI
+  admission/event loop. Native input IDs associate results with the correct
+  session, request and turn; editable user input waits during review. Native
+  final-sink answers are not printed again by the scheduler receipt.
 - `internal/app/flow.go` — runs the one-shot authoring completion, cancellation,
   session/view fences and `PurposeFlow` recording. It reuses `sideRequest` without
   advertising tools or changing the main conversation chain.
@@ -182,11 +194,11 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   run and stop. `on_flow.go` — the `FlowView` page state machine (`flowPage`,
   `flowConfirm`): authoring, save/input interaction and graph-level
   inspection/recovery. `on_flow_view.go` renders those pages. Review keeps the graph above selected-step data flow; launching
-  returns to the composer. Node executions open the existing `TaskViewer`, not
-  a second output/activity viewer. When the native worker is gone, exact completed
-  checkpoint identities provide full read-only answers, including historical
-  attempts and fan-out workers; no task is registered or resumed. Session and
-  view generations fence navigation.
+  returns to the composer. Subagent executions open the existing `TaskViewer`;
+  main executions focus the exact input message in native conversation history.
+  When the native worker is gone, exact completed checkpoint identities provide
+  full read-only answers, including historical attempts and fan-out workers;
+  no task is registered or resumed. Session and view generations fence navigation.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   A node becomes `running` only after it acquires a shared execution slot, so
   work waiting at `max_parallel` remains pending in the live graph.

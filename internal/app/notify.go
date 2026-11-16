@@ -134,6 +134,9 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	}
 	if info.Scheduler {
 		b.WriteString(` scheduler="true"`)
+		if fullResult && info.ResultDisplayed {
+			b.WriteString(` result-displayed="true"`)
+		}
 		if resultTruncated {
 			b.WriteString(` result-truncated="true"`)
 		}

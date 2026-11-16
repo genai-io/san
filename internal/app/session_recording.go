@@ -23,6 +23,7 @@ func bindSessionHooks(engine *hook.Engine, provider llm.Provider, owner *session
 // closeSessionRecording runs after runtime and task shutdown, while hooks can
 // still commit their outcomes to the original writer.
 func (m *model) closeSessionRecording() error {
+	m.retireFlowMain()
 	if m.services.Hook != nil {
 		m.services.Hook.Shutdown()
 	}

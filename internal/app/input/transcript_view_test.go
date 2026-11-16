@@ -17,6 +17,25 @@ func numberedLines(n int) []string {
 	return lines
 }
 
+func TestTranscriptFocusesExactMessage(t *testing.T) {
+	var h TranscriptViewer
+	h.EnterEntries([]TranscriptEntry{
+		{ID: "old", Render: func(int, bool) string { return strings.Repeat("old\n", 30) }},
+		{ID: "writer", Render: func(int, bool) string { return "WRITER_INPUT\n" + strings.Repeat("answer\n", 30) }},
+	}, 80, 12)
+	if h.FocusMessage("missing") || !h.FocusMessage("writer") || !strings.Contains(h.Render(), "WRITER_INPUT") {
+		t.Fatal("exact message focus lost")
+	}
+	h.Resize(48, 12)
+	if !strings.Contains(h.Render(), "WRITER_INPUT") {
+		t.Fatal("resize lost focused main turn")
+	}
+	h.cancel()
+	if h.FocusMessage("writer") {
+		t.Fatal("closed history accepted focus")
+	}
+}
+
 func TestTranscriptToolsNavigateAndExpandIndependently(t *testing.T) {
 	var h TranscriptViewer
 	renders := [2]int{}

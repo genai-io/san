@@ -141,6 +141,7 @@ type TaskInfo struct {
 
 	// Agent-specific fields
 	Result           string // Full final answer from SetResult; empty until set or after a new attempt.
+	ResultDisplayed  bool   // Already visible as a native main response; keep the completion receipt only.
 	AgentName        string
 	PermissionMode   string // Effective launch-time mode for ordinary subagent tasks.
 	SourceMessageSeq uint64

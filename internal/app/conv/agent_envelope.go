@@ -209,7 +209,7 @@ func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
 }
 
 func (e agentEnvelope) renderFlowResult(p RenderContext) string {
-	if e.status != "completed" {
+	if e.status != "completed" || envelopeAttr(e.tag, "result-displayed") == "true" {
 		return ""
 	}
 	width := p.Width

@@ -220,13 +220,14 @@ func TestAgentAttemptContinuation(t *testing.T) {
 func TestAgentAttemptClearsResult(t *testing.T) {
 	a := NewAgentTask("result", "flow", "work", context.Background(), nil, "")
 	a.SetResult("prior final report")
+	a.MarkResultDisplayed()
 	a.Complete(nil)
 	snapshot := a.GetStatus()
 	n, err := a.BeginAttempt("", context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info := a.GetStatus(); info.Result != "" || info.Output != "" {
+	if info := a.GetStatus(); info.Result != "" || info.Output != "" || info.ResultDisplayed {
 		t.Fatal("new attempt leaked prior result or output")
 	}
 	a.CompleteAttempt(n, nil)
