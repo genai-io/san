@@ -310,7 +310,12 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 			return nil
 		}
 	}
-	m.conv.AddNotice(notice)
+	if r.recording != nil || r.owner != nil {
+		// Already persisted through the captured owner; do not invoke OnNotice again.
+		m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatNotice, Content: notice})
+	} else {
+		m.conv.AddNotice(notice)
+	}
 	return tea.Batch(m.CommitMessages()...)
 }
 

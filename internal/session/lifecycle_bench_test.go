@@ -9,6 +9,25 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+func BenchmarkSessionDisplay(b *testing.B) {
+	for _, size := range []int{64, 16384} {
+		b.Run(fmt.Sprintf("bytes=%d", size), func(b *testing.B) {
+			projection, err := ReplayEventBatches(testSession, projectionBenchmarkBatches(1001, size), EventValidationContext{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			store := &Store{}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if rows := store.ChatRows(*projection); len(rows) != 1000 {
+					b.Fatalf("displayed %d rows, want 1000", len(rows))
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkSessionLifecycle(b *testing.B) {
 	for _, count := range []int{100, 1000} {
 		for _, operation := range []string{"Read", "Fork"} {

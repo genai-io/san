@@ -68,6 +68,9 @@ they are not authoritative conversation facts. Request blobs sync before the
 referencing event commits. SDK transport recovery remains in sdk-go; product
 validation and projection remain in `session`.
 
+Disk replay transfers strictly decoded events into its unpublished projection
+without another JSON round trip. Public replay still detaches caller-owned values.
+
 An incomplete transport suffix is ignored by readers, not repaired by them.
 Unsupported versions, invalid references and complete corruption block validated
 resume rather than being silently skipped. Files from earlier releases under
@@ -128,7 +131,9 @@ raw structured tool details and hydrated paged output. Unanchored annotations
 stay at their event position. Package `ChatRows(messages)` is the reusable native
 message conversion. Image source notes injected for the model stay persisted but
 are filtered from display; image/text order stays intact. Display never rewrites
-the persisted native messages.
+the persisted native messages. Historical recap callback echoes are hidden only
+when an identical unsourced annotation immediately follows a sourced recap result
+and its successful inference finish; ambiguous or intentional repeats remain.
 
 `PersistToolResult` writes the complete output beneath the selected session;
 ResultPager's marker remains `blobs/tool-result/<sid>/<call-id>`. Forked native

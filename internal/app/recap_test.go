@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
@@ -99,6 +98,7 @@ func TestRecapCapturedOwnerAnnotation(t *testing.T) {
 			_, owner := autopilotRecordingModel(t)
 			m := newRecapModel(t)
 			m.services.Session, m.services.sessionID = owner, owner.ID()
+			m.conv.OnNotice = m.recordNotice
 			r := recapReadyMsg{owner: owner, sessionID: m.sessionID(), chainLen: m.chainLen(), text: "Done; waiting for the user."}
 			if superseded {
 				m.services.Session = nil
@@ -151,20 +151,39 @@ func TestPersistedRecapDoesNotRepeatOnReturn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: conv.RecapNotice("away 1h04m", "Done; waiting for the user.")}}); err != nil {
+	m := newRecapModel(t)
+	m.services.Session, m.services.sessionID = opened, opened.ID()
+	m.conv.OnNotice = m.recordNotice
+	m.conv.Messages = store.ChatRows(opened.Snapshot())
+	recording := opened.Completion(session.PurposeRecap)
+	if _, err := llm.Complete(t.Context(), provider, llm.CompletionOptions{Model: "recap-fixture", Messages: []core.Message{core.UserMessage("Recap the work.", nil)}, Admission: recording.Admission()}); err != nil {
 		t.Fatal(err)
 	}
+	m.showRecap(recapReadyMsg{owner: opened, recording: recording, sessionID: opened.ID(), chainLen: m.chainLen(), text: "Done; waiting for the user."})
+	m.conv.AddNotice("A distinct notice.")
+	m.conv.AddNotice("A distinct notice.")
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := store.Read(context.Background(), "recap-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := newRecapModel(t)
-	m.conv.Messages = store.ChatRows(history)
-	if last := m.conv.Messages[len(m.conv.Messages)-1]; last.Role != core.ChatNotice || !strings.HasPrefix(last.Content, "/recap ") {
-		t.Fatalf("restored recap notice = %+v", last)
+	for range 3 {
+		history, err := store.Read(context.Background(), "recap-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.resetRecap()
+		m.conv.Messages = store.ChatRows(history)
+		recaps, distinct := 0, 0
+		for _, row := range m.conv.Messages {
+			if row.Role == core.ChatNotice && strings.HasPrefix(row.Content, "/recap ") {
+				recaps++
+			}
+			if row.Role == core.ChatNotice && row.Content == "A distinct notice." {
+				distinct++
+			}
+		}
+		if recaps != 1 || distinct != 2 {
+			t.Fatalf("restored notices: recaps=%d distinct=%d", recaps, distinct)
+		}
 	}
 	if cmd := m.onBlur(); cmd != nil {
 		t.Fatal("scheduled another recap despite no new turns")

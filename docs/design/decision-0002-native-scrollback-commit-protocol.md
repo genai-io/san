@@ -206,7 +206,10 @@ Do not compensate by replaying whole messages or heuristically joining rows.
   full frame and scrolls it off; the composer and live activity stay put below
   it and never scroll.
   Queued payloads are parsed into physical rows once, then consumed without
-  reparsing the remainder on every chunk. A width change rewraps everything
+  reparsing the remainder on every chunk. Retained overflow transfers its parsed
+  cells directly to the print queue, without serializing and parsing them again.
+  Parsing uses a plain cell buffer, without redraw change tracking.
+  A width change rewraps everything
   still queued once (`fitPendingRows`): a handoff draws those rows in the
   frame, and a row wider than the terminal makes the frame taller than it. `/clear` drops both unparsed payloads and cached rows.
 - Activity is capped after reserving the composer or docked modal, with the

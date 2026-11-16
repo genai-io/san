@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/genai-io/san/internal/atomicfile"
@@ -72,20 +73,24 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 	after := make(map[string][]core.ChatMessage)
 	details := make(map[string][]byte)
 	last := ""
-	for _, event := range projection.Events() {
+	events := projection.data.Events
+	for i, event := range events {
 		switch p := event.Payload.(type) {
 		case *MessageAppendPayload:
 			last = p.Messages[len(p.Messages)-1].ID
 		case *ContextCompactPayload:
 			last = p.Summary.ID
 		case *AnnotationAddPayload:
+			if legacyRecapEcho(events, i) {
+				continue
+			}
 			anchor := p.AfterMessage
 			if anchor == "" {
 				anchor = last
 			}
 			after[anchor] = append(after[anchor], core.ChatMessage{Role: core.ChatNotice, Content: p.Text, AgentNotice: p.ByAgent})
 		case *ToolFinishPayload:
-			details[p.CallID] = p.Details
+			details[p.CallID] = slices.Clone(p.Details)
 		}
 	}
 	marker := "\n\n[Full output persisted to blobs/tool-result/"
@@ -131,6 +136,34 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 		}
 	}
 	return out
+}
+
+// Older recap delivery persisted its sourced result, then recorded it again via
+// the notice callback. Hide only that adjacent provenance-proven echo, not facts.
+func legacyRecapEcho(events []Event, i int) bool {
+	if i < 2 || events[i].Source != nil {
+		return false
+	}
+	a, finish, b := events[i-2], events[i-1], events[i]
+	original, ok := a.Payload.(*AnnotationAddPayload)
+	if !ok || a.Source == nil || a.Source.Session != "" || !strings.HasPrefix(original.Text, "/recap ") {
+		return false
+	}
+	echo, ok := b.Payload.(*AnnotationAddPayload)
+	if !ok || *original != *echo || finish.Source == nil || *finish.Source != *a.Source {
+		return false
+	}
+	outcome, ok := finish.Payload.(*InferenceFinishPayload)
+	if !ok || outcome.Outcome != OutcomeSuccess || a.Seq+1 != finish.Seq || finish.Seq+1 != b.Seq {
+		return false
+	}
+	seq := a.Source.Seq
+	if seq == 0 || seq >= a.Seq || seq > uint64(len(events)) {
+		return false
+	}
+	start := events[seq-1]
+	request, ok := start.Payload.(*InferenceStartPayload)
+	return ok && start.Seq == seq && request.Purpose == PurposeRecap
 }
 
 func (s *Store) toolResultsDir(id string) string {

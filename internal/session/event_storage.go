@@ -238,7 +238,7 @@ func (s *Store) readEventsIn(ctx context.Context, dir, id string, tailLimit *sdk
 		if err != nil {
 			return nil, err
 		}
-		state.projection, err = applyReplayEventBatch(state.projection, id, payload.Events, validation)
+		state.projection, err = applyDecodedEventBatch(state.projection, id, payload.Events, validation)
 		if err != nil {
 			return nil, err
 		}
