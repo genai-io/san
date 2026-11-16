@@ -54,7 +54,7 @@ type FlowView struct {
 	name             string
 	source, baseline string
 	goal             string
-	draftStarted     time.Time
+	draftAt          time.Time
 	saved            bool
 	keys             []string
 	inputs           map[string]string
@@ -191,7 +191,7 @@ func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
 func (v *FlowView) OpenGeneration(s FlowService, goal string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.page, v.goal = "generate", goal
-	v.draftStarted = time.Now()
+	v.draftAt = time.Now()
 	return v.draftRequest()
 }
 
@@ -207,14 +207,14 @@ func (v *FlowView) draftRequest() tea.Cmd {
 }
 
 func (v *FlowView) IsGenerating(generation uint64) bool {
-	return v.active && v.page == "generate" && !v.draftStarted.IsZero() && v.generation == generation
+	return v.active && v.page == "generate" && !v.draftAt.IsZero() && v.generation == generation
 }
 
 func (v *FlowView) DraftReady(generation uint64, source string, err error) bool {
 	if !v.IsGenerating(generation) {
 		return false
 	}
-	v.draftStarted = time.Time{}
+	v.draftAt = time.Time{}
 	if err != nil {
 		v.setError(err)
 		return true
@@ -322,9 +322,9 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	}
 	switch v.page {
 	case "generate":
-		if key == "enter" && v.draftStarted.IsZero() {
+		if key == "enter" && v.draftAt.IsZero() {
 			v.generation++
-			v.draftStarted, v.phase = time.Now(), 0
+			v.draftAt, v.phase = time.Now(), 0
 			return v.draftRequest()
 		}
 	case "hub":
@@ -618,7 +618,7 @@ func (v *FlowView) back() {
 
 func (v *FlowView) close() {
 	v.active = false
-	v.draftStarted = time.Time{}
+	v.draftAt = time.Time{}
 	v.generation++
 }
 

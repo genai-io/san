@@ -101,7 +101,7 @@ func (v *FlowView) renderGeneration() (title, content, hint string) {
 	status := "No draft was created."
 	var elapsed time.Duration
 	if v.IsGenerating(v.generation) {
-		elapsed = max(time.Duration(0), time.Since(v.draftStarted)).Truncate(time.Second)
+		elapsed = max(time.Duration(0), time.Since(v.draftAt)).Truncate(time.Second)
 		status = kit.LiveDot(v.phase+2) + " Generating blueprint  " + kit.DimStyle().Render(elapsed.String())
 	} else {
 		hint = "Enter retry · Esc close"
