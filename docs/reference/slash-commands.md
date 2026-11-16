@@ -29,12 +29,12 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/trust` | Trust the current folder so its own hooks, MCP servers, plugins and allow rules apply without restarting |
 | `/think` | Cycle the active model's advertised reasoning efforts; `/think <effort>` selects one directly |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
-| `/workflow` | List saved workflows; `show <name>` previews, `run <name> [key=value …]` starts, and `stop [task-id]` cancels one |
+| `/flow` | Describe a goal to generate a blueprint for Review; `run <name>` launches a saved blueprint. Inspect, retry and stop through explicit subcommands. |
 | `/search` | Select search engine for web search |
 
 ## UI Interactions
 
-- Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/workflow `, `/plugin `, `/mcp `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/workflow show ` and `/workflow run ` offer saved workflow names; after `/workflow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
+- Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/flow `, `/plugin `, `/mcp `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/flow show ` and `/flow run ` offer saved blueprint names; after `/flow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/history`, or **Ctrl+O when idle**, opens the session transcript in the

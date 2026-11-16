@@ -147,9 +147,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.LastCtrlC = time.Time{}
 			return m.handleStreamCancel(), true
 		}
-		if m.hasRunningWorkflow() {
+		if m.hasRunningFlow() {
 			m.userInput.LastCtrlC = time.Time{}
-			cmd, _ := m.runSlashCommandIfMatched("/workflow stop")
+			cmd, _ := m.runSlashCommandIfMatched("/flow stop")
 			return cmd, true
 		}
 		// Idle with nothing typed: arm exit, never clear — Ctrl+L and /clear do that.
@@ -221,12 +221,12 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (m *model) hasRunningWorkflow() bool {
+func (m *model) hasRunningFlow() bool {
 	if m.services.Task == nil {
 		return false
 	}
 	for _, bg := range m.services.Task.ListRunning() {
-		if bg.GetStatus().AgentName == "workflow" {
+		if bg.GetStatus().Scheduler {
 			return true
 		}
 	}

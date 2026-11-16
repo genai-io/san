@@ -111,6 +111,8 @@ type AttemptInfo struct {
 }
 
 type TaskInfo struct {
+	ParentTaskID    string
+	Scheduler       bool // A Flow-style scheduler task; its children carry ParentTaskID.
 	Attempt         int
 	Attempts        []AttemptInfo
 	ParentSessionID string
@@ -125,8 +127,9 @@ type TaskInfo struct {
 	EndTime     time.Time
 	Output      string
 	OutputFile  string
-	OutputError string // First output-log failure, separate from execution outcome.
-	Progress    string // Latest meaningful activity, separate from final model-facing output.
+	OutputError string   // First output-log failure, separate from execution outcome.
+	Activity    []string // Detached, bounded recent meaningful agent activity, oldest first.
+	Progress    string   // Latest meaningful activity, separate from final model-facing output.
 	Error       string
 	Failure     FailureInfo
 	Lifetime    Lifetime
@@ -137,6 +140,7 @@ type TaskInfo struct {
 	ExitCode int
 
 	// Agent-specific fields
+	Result           string // Full final answer from SetResult; empty until set or after a new attempt.
 	AgentName        string
 	PermissionMode   string // Effective launch-time mode for ordinary subagent tasks.
 	SourceMessageSeq uint64
@@ -145,3 +149,10 @@ type TaskInfo struct {
 	TokenUsage       int
 	LiveView         string // Current display for a running structured task, if any.
 }
+
+// ScheduledChild reports a task launched by a scheduler task such as a Flow run.
+func (info TaskInfo) ScheduledChild() bool { return info.ParentTaskID != "" }
+
+// SchedulerManaged reports a scheduler task or one of its children. Their
+// lifecycle is shown to the user, not delivered to the main model.
+func (info TaskInfo) SchedulerManaged() bool { return info.Scheduler || info.ScheduledChild() }

@@ -6,19 +6,23 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/workflow"
+	"github.com/genai-io/san/internal/flow"
 )
 
-func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) func(string) []suggest.Suggestion {
+type flowSuggestionService interface {
+	SavedDefinitions() []flow.SavedDefinition
+	SavedInputNames(string) ([]string, error)
+}
+
+func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionService) func(string) []suggest.Suggestion {
 	return func(query string) []suggest.Suggestion {
 		// Dynamic branches depend on the current group or saved definitions.
 		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
 			switch strings.ToLower(name) {
 			case "group":
 				return groupSuggestions(args)
-			case "workflow":
-				if suggestions, handled := workflowNameSuggestions(toolSvc, args); handled {
+			case "flow":
+				if suggestions, handled := flowNameSuggestions(flows, args); handled {
 					return suggestions
 				}
 			}
@@ -32,27 +36,16 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 	}
 }
 
-func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggestion, bool) {
+func flowNameSuggestions(lister flowSuggestionService, args string) ([]suggest.Suggestion, bool) {
 	fields, _ := command.ScanArguments(args)
 	if len(fields) == 0 {
 		return nil, false
 	}
 	verb := strings.ToLower(fields[0].Value)
-	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run") {
+	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run" && verb != "edit") {
 		return nil, false
 	}
-	if toolSvc == nil {
-		return nil, true
-	}
-	t, ok := toolSvc.Get(tool.ToolWorkflow)
-	if !ok {
-		return nil, true
-	}
-	lister, ok := t.(interface {
-		SavedDefinitions() []workflow.Saved
-		SavedInputNames(string) ([]string, error)
-	})
-	if !ok {
+	if lister == nil {
 		return nil, true
 	}
 	name := ""
@@ -60,24 +53,24 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 		name = fields[1].Value
 	}
 	if len(fields) > 1 && fields[1].End < len(args) {
-		if verb == "show" {
+		if verb != "run" {
 			return nil, true
 		}
 		argsAfterName := strings.TrimLeftFunc(args[fields[1].End:], unicode.IsSpace)
-		return workflowInputSuggestions(lister, name, argsAfterName), true
+		return flowInputSuggestions(lister, name, argsAfterName), true
 	}
 	var out []suggest.Suggestion
 	for _, definition := range lister.SavedDefinitions() {
 		if strings.HasPrefix(strings.ToLower(definition.Name), strings.ToLower(name)) {
 			out = append(out, suggest.Suggestion{
-				Name: "workflow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
+				Name: "flow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
 			})
 		}
 	}
 	return out, true
 }
 
-func workflowInputSuggestions(lister interface {
+func flowInputSuggestions(lister interface {
 	SavedInputNames(string) ([]string, error)
 }, name, args string) []suggest.Suggestion {
 	keys, err := lister.SavedInputNames(name)
@@ -106,7 +99,7 @@ func workflowInputSuggestions(lister interface {
 	var out []suggest.Suggestion
 	for _, key := range keys {
 		if !used[key] && strings.HasPrefix(key, fragment) {
-			out = append(out, suggest.Suggestion{Name: "workflow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
+			out = append(out, suggest.Suggestion{Name: "flow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
 		}
 	}
 	return out

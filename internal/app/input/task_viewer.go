@@ -11,8 +11,8 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-// TaskViewItem is a display-only snapshot. Output is recent bounded output, not
-// a promise of a complete historical log. Status preserves the backend lifecycle.
+// TaskViewItem is a display-only snapshot. Live output is a bounded preview;
+// recorded Flow results contain the immutable checkpoint answer, not a transcript.
 type TaskViewItem struct {
 	ID, AgentName, Description, Subject, Progress, Output, Error string
 	OutputFile                                                   string
@@ -66,6 +66,20 @@ func (v *TaskViewer) Show(items []TaskViewItem, width, height int) {
 	v.Resize(width, height)
 	v.Refresh(items)
 }
+
+// ShowTask opens an exact native task identity, never falling back to another row.
+func (v *TaskViewer) ShowTask(items []TaskViewItem, id, sessionID string, width, height int) bool {
+	for _, item := range items {
+		if item.ID == id && sessionID != "" && item.SessionID == sessionID {
+			v.Show(items, width, height)
+			v.selected, v.detail = id, true
+			v.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
 func (v *TaskViewer) Resize(width, height int) {
 	v.width, v.height = max(1, width), max(1, height)
 	v.body.SetWidth(max(1, v.width-1))
@@ -156,7 +170,11 @@ func (v *TaskViewer) rebuild() {
 		if !ok {
 			lines = []string{"Task no longer available."}
 		} else {
-			lines = []string{taskViewSubject(item), "Owner: " + item.AgentName, "ID: " + item.ID, "Status: " + taskViewStatus(item)}
+			lines = []string{taskViewSubject(item)}
+			if item.AgentName != "" {
+				lines = append(lines, "Owner: "+item.AgentName)
+			}
+			lines = append(lines, "ID: "+item.ID, "Status: "+taskViewStatus(item))
 			if item.SessionID != "" {
 				lines = append(lines, "Session: "+item.SessionID)
 			}
@@ -185,7 +203,10 @@ func (v *TaskViewer) rebuild() {
 				}
 				lines = append(lines, label+item.Error)
 			}
-			label := "Recent output"
+			label, empty := "Recent output", "No recent output available."
+			if item.Recorded {
+				label, empty = "Recorded output", "No recorded output available."
+			}
 			if item.OutputTruncated {
 				label += " (truncated)"
 			}
@@ -194,7 +215,7 @@ func (v *TaskViewer) rebuild() {
 				output = ""
 			}
 			if output == "" {
-				output = "No recent output available."
+				output = empty
 			}
 			lines = append(lines, "", label, output)
 		}

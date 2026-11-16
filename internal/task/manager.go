@@ -61,6 +61,24 @@ func (m *Manager) CreateAgentTask(id, agentName, description string, ctx context
 	return task
 }
 
+// CreateChildAgentTask registers a managed child with ownership set before publication.
+func (m *Manager) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+	task := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
+	task.parentSessionID = m.ownerSession(ctx)
+	task.parentTaskID = parentID
+	m.RegisterTask(task)
+	return task
+}
+
+// CreateSchedulerTask registers a task that schedules child agent tasks.
+func (m *Manager) CreateSchedulerTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+	task := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
+	task.parentSessionID = m.ownerSession(ctx)
+	task.MarkScheduler()
+	m.RegisterTask(task)
+	return task
+}
+
 // SetOutputDir changes only this manager's output store. Multiple managers can
 // therefore coexist without redirecting one another's task logs.
 func (m *Manager) SetOutputDir(dir string) error {

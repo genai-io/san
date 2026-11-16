@@ -12,6 +12,10 @@ import (
 )
 
 func (m *model) slashCommandEnv() input.SlashCommandEnv {
+	var flows input.FlowService
+	if m.services.Flow != nil {
+		flows = m.services.Flow
+	}
 	return input.SlashCommandEnv{
 		// UI state
 		Input:        &m.userInput,
@@ -35,6 +39,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		Cron:         m.services.Cron,
 		ToolSvc:      m.services.Tool,
 		TaskSvc:      m.services.Task,
+		Flow:         flows,
 
 		// Env callbacks
 		GetThinkingEffort: func() string { return m.env.EffectiveThinkingEffort() },

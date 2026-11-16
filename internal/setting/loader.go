@@ -436,10 +436,6 @@ var defaultDisabledTools = map[string]bool{
 	// Stopping a background agent is uncommon and destructive. It remains
 	// available through /tool when a user wants the model to manage workers.
 	"AgentStop": true,
-	// Workflow runs a graph of subagents as one background task. It is opt-in:
-	// its schema is the longest of any tool and lists every saved workflow, and
-	// a model that has it will reach for it where one Agent call would do.
-	"Workflow": true,
 	// Self-learning is opt-in; saving /evolve capabilities enables its trigger.
 	"Evolve": true,
 }

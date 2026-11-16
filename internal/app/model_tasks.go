@@ -22,6 +22,7 @@ type taskViewerState struct {
 	sessionID                string
 	actionID, pollID, stopID uint64
 	review                   *conv.InteractionRequest
+	recorded                 *input.TaskViewItem
 }
 
 type taskViewerTickMsg struct {
@@ -157,16 +158,29 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 			ApprovalQueued:   waiting[info.ID] && activeTask != info.ID,
 		})
 	}
+	// Keep a recorded inspection pinned even if a colliding runtime ID appears.
+	if snapshot := m.tasks.recorded; snapshot != nil && m.tasks.sessionID == sessionID {
+		for i := range items {
+			if items[i].ID == snapshot.ID {
+				items[i] = *snapshot
+				return items
+			}
+		}
+		items = append(items, *snapshot)
+	}
 	return items
 }
 
 func canContinueTask(info task.TaskInfo) bool {
-	return info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
+	return !info.ScheduledChild() && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
 }
 
 // continueViewedTask asks main to choose a safe incremental instruction. This
 // never directly launches a worker or bypasses the Agent tool's permission gate.
 func (m *model) continueViewedTask(msg input.TaskContinueMsg) tea.Cmd {
+	if m.tasks.recorded != nil && m.tasks.recorded.ID == msg.TaskID {
+		return nil
+	}
 	if !m.consumeTaskAction(msg.ViewID) {
 		return nil
 	}
@@ -230,6 +244,7 @@ func (m *model) resumeTaskViewer() {
 // syncTaskViewerSession invalidates a viewer after a session switch without
 // copying worker output or rebuilding the viewport on unrelated UI messages.
 func (m *model) syncTaskViewerSession() {
+	m.userInput.Flow.SyncSession(m.sessionID())
 	if m.tasks.sessionID != m.sessionID() && (m.tasks != (taskViewerState{}) || m.userInput.Tasks.IsActive() || m.userInput.Tasks.ActionPending()) {
 		m.hideTaskViewer()
 	}
@@ -254,6 +269,9 @@ func (m *model) consumeTaskAction(viewID uint64) bool {
 }
 
 func (m *model) reviewTaskApproval(msg input.TaskReviewApprovalMsg) tea.Cmd {
+	if m.tasks.recorded != nil && m.tasks.recorded.ID == msg.TaskID {
+		return nil
+	}
 	if !m.consumeTaskAction(msg.ViewID) {
 		return nil
 	}
@@ -273,6 +291,9 @@ func (m *model) reviewTaskApproval(msg input.TaskReviewApprovalMsg) tea.Cmd {
 }
 
 func (m *model) stopViewedTask(msg input.TaskStopMsg) tea.Cmd {
+	if m.tasks.recorded != nil && m.tasks.recorded.ID == msg.TaskID {
+		return nil
+	}
 	if !m.consumeTaskAction(msg.ViewID) {
 		return nil
 	}

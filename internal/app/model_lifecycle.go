@@ -62,7 +62,7 @@ func newBaseModel() model {
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	m := model{
-		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Tool), selectorDeps(svc, learnedStores)),
+		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorDeps(svc, learnedStores)),
 		conv:             conv.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
 		mcpToolsChanged:  make(chan struct{}, 1),
@@ -244,6 +244,10 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			// short-lived task complete an entry that did not exist yet.
 			if info.OwnerAgentID == "" {
 				todo.TrackWorker(trackerSvc, info)
+				if info.Scheduler {
+					msg := taskMessage(info, "running")
+					m.notifyMain(mainNotice{SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true})
+				}
 			}
 		},
 		onCompleted: func(info task.TaskInfo) {
@@ -262,6 +266,13 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 				return
 			}
 			if msg, ok := taskCompletionMessage(info); ok {
+				if info.SchedulerManaged() && info.OwnerAgentID == "" {
+					m.notifyMain(mainNotice{
+						SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true,
+						FinishedTaskID: info.ID, FinishedAttempt: info.Attempt,
+					})
+					return
+				}
 				if info.OwnerAgentID != "" {
 					broker.SendCompletion(msg)
 				} else {

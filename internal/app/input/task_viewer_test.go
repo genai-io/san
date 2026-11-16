@@ -177,6 +177,33 @@ func TestTaskViewerCurrentPrefersLiveSnapshot(t *testing.T) {
 	}
 }
 
+func TestTaskViewerRecordedOutputIsReadOnly(t *testing.T) {
+	for _, status := range []task.TaskStatus{task.StatusCompleted, task.StatusFailed, task.StatusRunning} {
+		var v TaskViewer
+		item := TaskViewItem{ID: "saved", SessionID: "saved-session", Recorded: true, Status: status,
+			CanContinue: true, AwaitingApproval: true, Output: "full checkpoint answer"}
+		if !v.ShowTask([]TaskViewItem{item}, item.ID, item.SessionID, 80, 24) {
+			t.Fatal("recorded task did not open")
+		}
+		view := ansi.Strip(v.Render())
+		for _, want := range []string{"Session: saved-session", "Recorded task", "Recorded output", "full checkpoint answer"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("missing %q: %s", want, view)
+			}
+		}
+		for _, unwanted := range []string{"Owner:", "Recent output", "s stop", "r approval", "c continue", "c ask main"} {
+			if strings.Contains(view, unwanted) {
+				t.Fatalf("recorded task advertised %q", unwanted)
+			}
+		}
+		for _, key := range []string{"s", "r", "c"} {
+			if cmd := v.HandleKeypress(taskKey(key)); cmd != nil || v.confirm || v.ActionPending() || !v.IsActive() {
+				t.Fatalf("recorded task accepted %q", key)
+			}
+		}
+	}
+}
+
 func TestTaskViewerUnknownStatus(t *testing.T) {
 	for _, status := range []task.TaskStatus{"", "future-status"} {
 		want := string(status)

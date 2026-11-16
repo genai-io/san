@@ -18,17 +18,17 @@ import (
 
 func TestSuggestionCompletesInputKeyWithoutAddingSpace(t *testing.T) {
 	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(query string) []suggest.Suggestion {
-		if query == "/workflow run demo " {
-			return []suggest.Suggestion{{Name: "workflow run demo topic="}}
+		if query == "/flow run demo " {
+			return []suggest.Suggestion{{Name: "flow run demo topic="}}
 		}
 		return nil
 	})}
-	m.Textarea.SetValue("/workflow run demo ")
+	m.Textarea.SetValue("/flow run demo ")
 	m.Suggestions.UpdateSuggestions(m.Textarea.Value())
 	if _, handled := m.HandleSuggestionKey(tea.KeyPressMsg{Code: tea.KeyTab}); !handled {
 		t.Fatal("Tab did not accept the input key")
 	}
-	if got := m.Textarea.Value(); got != "/workflow run demo topic=" {
+	if got := m.Textarea.Value(); got != "/flow run demo topic=" {
 		t.Fatalf("completed input = %q", got)
 	}
 }

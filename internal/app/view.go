@@ -433,17 +433,24 @@ func (m *model) renderTrackerList() string {
 	var running []task.BackgroundTask
 	if m.services.Task != nil {
 		running = m.services.Task.ListRunning()
-		liveWorkflowIDs := make(map[string]bool)
+		liveFlowIDs := make(map[string]bool)
 		for _, bg := range running {
 			info := bg.GetStatus()
-			if info.AgentName == "workflow" && info.LiveView != "" {
-				liveWorkflowIDs[info.ID] = true
+			if info.Scheduler && info.LiveView != "" {
+				liveFlowIDs[info.ID] = true
 			}
 		}
-		if len(liveWorkflowIDs) > 0 {
+		if len(liveFlowIDs) > 0 {
 			filtered := make([]*todo.Item, 0, len(items))
 			for _, item := range items {
-				if !liveWorkflowIDs[todo.BackgroundTaskID(item)] {
+				id := todo.BackgroundTaskID(item)
+				covered := liveFlowIDs[id]
+				if worker, ok := m.services.Task.Get(id); ok {
+					// Only hide children represented by a visible scheduler graph.
+					// Unrelated workers (and children without a graph) keep their rows.
+					covered = covered || liveFlowIDs[worker.GetStatus().ParentTaskID]
+				}
+				if !covered {
 					filtered = append(filtered, item)
 				}
 			}
@@ -469,28 +476,28 @@ func (m *model) renderTrackerList() string {
 			return task.TaskInfo{}
 		},
 	})
-	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
+	return appendLiveFlowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }
 
-func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, width int) string {
-	type liveWorkflow struct {
+func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, width int) string {
+	type liveFlow struct {
 		info task.TaskInfo
 		task task.BackgroundTask
 	}
-	var workflows []liveWorkflow
+	var flows []liveFlow
 	for _, bg := range running {
 		info := bg.GetStatus()
-		if info.AgentName == "workflow" && info.LiveView != "" {
-			workflows = append(workflows, liveWorkflow{info: info, task: bg})
+		if info.Scheduler && info.LiveView != "" {
+			flows = append(flows, liveFlow{info: info, task: bg})
 		}
 	}
-	sort.Slice(workflows, func(i, j int) bool {
-		if workflows[i].info.StartTime.Equal(workflows[j].info.StartTime) {
-			return workflows[i].info.ID < workflows[j].info.ID
+	sort.Slice(flows, func(i, j int) bool {
+		if flows[i].info.StartTime.Equal(flows[j].info.StartTime) {
+			return flows[i].info.ID < flows[j].info.ID
 		}
-		return workflows[i].info.StartTime.Before(workflows[j].info.StartTime)
+		return flows[i].info.StartTime.Before(flows[j].info.StartTime)
 	})
-	for _, wf := range workflows {
+	for _, wf := range flows {
 		if view != "" {
 			view += "\n"
 		}
@@ -498,51 +505,29 @@ func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, 
 		if renderer, ok := wf.task.(interface{ RenderLiveView(int) string }); ok {
 			live = renderer.RenderLiveView(width)
 		}
-		view += styleWorkflowLiveView(live, frame)
+		view += styleFlowLiveView(live, frame)
 	}
 	return view
 }
 
-var (
-	activityDoneStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
-	activityFailedStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Bold(true)
-)
-
-func styleWorkflowLiveView(live string, frame int) string {
-	if strings.HasPrefix(live, "  Activity") {
-		activity, graph, found := strings.Cut(live, "\n\n")
-		if found {
-			return styleWorkflowActivity(activity, frame) + "\n\n" + graph
+func styleFlowLiveView(live string, frame int) string {
+	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	marker := body.Faint(frame%6 < 2).Render("●")
+	lines := strings.Split(strings.ReplaceAll(live, "◉", marker), "\n")
+	if len(lines) > 0 {
+		indent := len(lines[0]) - len(strings.TrimLeft(lines[0], " "))
+		header := lines[0][indent:]
+		if title, ok := strings.CutPrefix(header, "Flow · "); ok {
+			name, count := title, ""
+			last := strings.LastIndex(title, " · ")
+			if last >= 0 {
+				name, count = title[:last], title[last+len(" · "):]
+			}
+			lines[0] = lines[0][:indent] + kit.FlowLabel(name)
+			if last >= 0 {
+				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" · " + count)
+			}
 		}
-		return styleWorkflowActivity(activity, frame)
-	}
-	return live
-}
-
-func styleWorkflowActivity(activity string, frame int) string {
-	running := kit.LiveDot(frame)
-	const prefix = "    │  "
-	lines := strings.Split(activity, "\n")
-	for i, line := range lines {
-		content, ok := strings.CutPrefix(line, prefix)
-		if !ok {
-			continue
-		}
-		marker, text, ok := strings.Cut(content, " ")
-		if !ok {
-			continue
-		}
-		switch marker {
-		case "●":
-			marker = running
-		case "✓":
-			marker = activityDoneStyle.Render(marker)
-		case "✗":
-			marker = activityFailedStyle.Render(marker)
-		default:
-			continue
-		}
-		lines[i] = prefix + marker + " " + text
 	}
 	return strings.Join(lines, "\n")
 }
@@ -618,6 +603,8 @@ func (m model) renderQueuePreview() string {
 
 func (m model) messageRenderParams() conv.RenderContext {
 	var activeAgentIDs []string
+	var managedAgents []conv.AgentView
+	waiting := m.pendingTaskApprovals()
 	if m.services.Task != nil {
 		for _, worker := range m.services.Task.List() {
 			info := worker.GetStatus()
@@ -629,9 +616,23 @@ func (m model) messageRenderParams() conv.RenderContext {
 			}
 			if info.Status == task.StatusRunning || !m.taskCompletionsShown[taskCompletionKey(info.ID, info.Attempt)] {
 				activeAgentIDs = append(activeAgentIDs, info.ID, info.AgentSessionID)
+				if info.ScheduledChild() && info.OwnerAgentID == "" {
+					managedAgents = append(managedAgents, conv.AgentView{
+						ID: info.ID, SessionID: info.AgentSessionID, Name: info.AgentName, Description: info.Description,
+						StartedAt: info.StartTime, Duration: info.EndTime.Sub(info.StartTime), Activity: info.Activity,
+						Status: string(info.Status), Output: info.Output, Error: info.Error, AwaitingApproval: waiting[info.ID],
+					})
+				}
 			}
 		}
 	}
+	sort.Slice(managedAgents, func(i, j int) bool {
+		a, b := managedAgents[i], managedAgents[j]
+		if a.StartedAt.Equal(b.StartedAt) {
+			return a.ID < b.ID
+		}
+		return a.StartedAt.Before(b.StartedAt)
+	})
 	m.conv.SetActiveAgentIdentities(activeAgentIDs)
 	return conv.RenderContext{
 		// Conversation state
@@ -675,6 +676,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		AgentColors:     m.agentColors(),
 		MemberColors:    m.grp.colors,
 		TaskActivity:    m.conv.TaskActivity,
+		ManagedAgents:   managedAgents,
 		TaskOwnerMap:    buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock is left false here and set by

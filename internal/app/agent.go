@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -23,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/interaction"
@@ -678,7 +678,20 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.Perm
 	return interaction.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.services.Setting, m.env.SessionPermissions)
 }
 
+// configureFlowPaths points Flow at the project definitions, then the user's.
+func (m *model) configureFlowPaths() {
+	if m.services.Flow == nil {
+		return
+	}
+	dirs := []string{flow.DefinitionDir(confdir.Dir(m.env.CWD))}
+	if home, _ := os.UserHomeDir(); home != "" {
+		dirs = append(dirs, flow.DefinitionDir(confdir.Dir(home)))
+	}
+	m.services.Flow.SetSearchPaths(dirs)
+}
+
 func (m *model) ReconfigureAgentTool() {
+	m.configureFlowPaths()
 	if m.env.LLMProvider == nil || m.services.Session == nil {
 		return
 	}
@@ -727,9 +740,7 @@ func (m *model) ReconfigureAgentTool() {
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
-	type searchPathSetter interface{ SetSearchPaths([]string) }
-	home, _ := os.UserHomeDir()
-	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolWorkflow} {
+	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage} {
 		t, ok := m.services.Tool.Get(name)
 		if !ok {
 			continue
@@ -737,16 +748,10 @@ func (m *model) ReconfigureAgentTool() {
 		if setter, ok := t.(executorSetter); ok {
 			setter.SetExecutor(adapter)
 		}
-		// Saved workflows resolve project-first, then user, the way subagent
-		// definitions do. A home directory we could not read is left out
-		// rather than joined from "", which would name the project twice.
-		if setter, ok := t.(searchPathSetter); ok {
-			dirs := []string{filepath.Join(confdir.Dir(m.env.CWD), "workflows")}
-			if home != "" {
-				dirs = append(dirs, filepath.Join(confdir.Dir(home), "workflows"))
-			}
-			setter.SetSearchPaths(dirs)
-		}
+	}
+	if m.services.Flow != nil {
+		// Use the same session-owned native executor as ordinary agent tools.
+		m.services.Flow.SetExecutor(adapter)
 	}
 }
 

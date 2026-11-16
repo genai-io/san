@@ -64,7 +64,7 @@ func ResetDefaultRegistry()          // test-only
 - `Info` carries name, description, namespace, source path.
 - `subcommands.go` — static command paths and descriptions for the slash
   palette. The app adds suggestions that require live state: `/group` values
-  and saved names after `/workflow show` or `/workflow run`. Each handler
+  and saved names after `/flow show` or `/flow run`. Each handler
   still owns execution and argument validation.
 - `arguments.go` — quote-aware argument parsing with source ranges for
   completion. Scanning preserves unfinished quoted fields; execution rejects

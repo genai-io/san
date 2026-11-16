@@ -26,7 +26,7 @@
 
 - **Small and fast** — A single native Go binary with minimal context overhead. No Node.js or Python required.
 - **A less opinionated harness** — A model-agnostic runtime with a consistent interface for shaping agent behavior through system prompts, personas, skills, and tools.
-- **Multi-agent coordination** — Subagent collaboration, cross-session messaging, and dynamic workflows.
+- **Multi-agent coordination** — Subagents, cross-session messaging, and Flow collaboration blueprints.
 - **Control and visibility** — Configure execution permissions and inspect model context and tool calls.
 
 [Features](docs/features.md) · [Architecture](docs/concepts/architecture.md)

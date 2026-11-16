@@ -11,7 +11,7 @@
 - [Subagents](packages/subagent.md)
 - [Agent messaging](packages/broker.md)
 - [Session groups](design/proposal-0003-session-groups.md)
-- [Workflows](packages/workflow.md)
+- [Flow: collaboration blueprints](packages/flow.md)
 
 ## Sessions, tasks, and automation
 

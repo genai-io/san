@@ -152,7 +152,7 @@ func (m *model) reloadProjectServices(cwd string) {
 	persona.Initialize(cwd)
 	m.services.Persona = persona.Default()
 	m.userInput.SetSelectorDeps(selectorDeps(m.services, m.learnedStores))
-	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Tool))
+	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Flow))
 	m.userInput.Suggestions.SetCwd(cwd)
 	m.userInput.Suggestions.UpdateSuggestions(m.userInput.Textarea.Value())
 	m.agentReloadPending = true

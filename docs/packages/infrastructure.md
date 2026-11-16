@@ -150,6 +150,10 @@ by rename. Failed writes remove the temporary file and retain the old contents.
   read/modify/write operations. Keep that file in place: locking a replaced data
   file, or removing an active lock file, would allow writers to lock different
   inodes. Locks release when the callback exits or the process dies.
+- `TryLock(path)` takes the same kind of lock without waiting, returning
+  `ErrLocked` when another handle (in this or another process) holds it, and a
+  release func otherwise. Use it for long-lived ownership such as a Flow run;
+  the OS releases it if the holder crashes.
 - Tests: `internal/atomicfile/` covers concurrent replacement, process locking,
   permissions and path resolution.
 

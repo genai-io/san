@@ -54,6 +54,11 @@ provides; when san grows a generic piece, move it to sdk-go and drop san's
 copy. san keeps its own policy and UI. See sdk-go's CONTRIBUTING.md, "What
 belongs here".
 
+## Writing Style
+
+- Keep docs concise and clear; prefer diagrams over long prose.
+- Code comments are optional. Keep only brief notes on non-obvious intent or constraints.
+
 ## Common Commands
 
 See `docs/operations/development.md` for build / test / lint / format

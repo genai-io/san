@@ -30,7 +30,7 @@ func TestTaskHistoryRecordedFailuresRemainInspectable(t *testing.T) {
 	m.userInput.Tasks.HandleKeypress(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	m.userInput.Tasks.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 	plain = ansi.Strip(m.userInput.Tasks.Render())
-	for _, want := range []string{"Previous validation", info.Error, "Recorded task; live worker unavailable.", "No recent output available."} {
+	for _, want := range []string{"Previous validation", info.Error, "Recorded task; live worker unavailable.", "No recorded output available."} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("recorded history hid %q:\n%s", want, plain)
 		}

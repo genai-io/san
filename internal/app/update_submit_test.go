@@ -12,14 +12,15 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
 
-func workflowInputModel(manager *task.Manager) *model {
+func flowInputModel(manager *task.Manager) *model {
 	m := &model{
-		services:  services{Task: manager, Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
+		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      conv.NewModel(80),
 		userInput: input.New("", 80, nil, input.SelectorDeps{}),
 	}
@@ -27,18 +28,18 @@ func workflowInputModel(manager *task.Manager) *model {
 	return m
 }
 
-func TestWorkflowStopBypassesStreamingInputQueue(t *testing.T) {
+func TestFlowStopBypassesStreamingInputQueue(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("workflow-stop-now", "workflow", "/workflow run audit", ctx, cancel)
-	m := workflowInputModel(manager)
+	wf := manager.CreateSchedulerTask("flow-stop-now", "flow", "/flow run audit", ctx, cancel)
+	m := flowInputModel(manager)
 	m.conv.Stream.Active = true
-	m.userInput.Textarea.SetValue("/workflow stop workflow-stop-now")
+	m.userInput.Textarea.SetValue("/flow stop flow-stop-now")
 	m.handleSubmit()
 
 	if ctx.Err() != context.Canceled {
-		t.Fatalf("workflow context = %v; stop was queued behind the foreground turn", ctx.Err())
+		t.Fatalf("flow context = %v; stop was queued behind the foreground turn", ctx.Err())
 	}
 	if m.userInput.Queue.Len() != 0 {
 		t.Fatal("stop command entered the input queue")
@@ -49,21 +50,21 @@ func TestWorkflowStopBypassesStreamingInputQueue(t *testing.T) {
 	wf.Complete(ctx.Err())
 }
 
-func TestWorkflowStopPreservesStreamingAssistant(t *testing.T) {
+func TestFlowStopPreservesStreamingAssistant(t *testing.T) {
 	for _, tc := range []struct {
 		name, command, notice string
 		canceled              bool
 	}{
-		{"stop", "/workflow stop workflow-stream", "Stopping workflow workflow-stream", true},
-		{"error", "/workflow stop missing", "Error: workflow task missing not found", false},
+		{"stop", "/flow stop flow-stream", "Stopping flow flow-stream", true},
+		{"error", "/flow stop missing", "Error: running flow missing not found", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := task.NewManager()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			wf := manager.CreateAgentTask("workflow-stream", "workflow", "audit", ctx, cancel)
+			wf := manager.CreateSchedulerTask("flow-stream", "flow", "audit", ctx, cancel)
 			defer func() { wf.Stop(); wf.Complete(ctx.Err()) }()
-			m := workflowInputModel(manager)
+			m := flowInputModel(manager)
 			m.conv.Stream.Active = true
 			assistant := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Before "})
 			m.conv.Stream.MessageID = assistant.ID
@@ -71,7 +72,7 @@ func TestWorkflowStopPreservesStreamingAssistant(t *testing.T) {
 
 			m.handleSubmit()
 			if got := ctx.Err() == context.Canceled; got != tc.canceled {
-				t.Fatalf("workflow canceled = %v, want %v", got, tc.canceled)
+				t.Fatalf("flow canceled = %v, want %v", got, tc.canceled)
 			}
 			if len(m.conv.Messages) != 2 || m.conv.CommittedCount != 0 || !strings.Contains(m.conv.Messages[1].Content, tc.notice) {
 				t.Fatalf("stop notice missing or committed the stream: messages=%+v committed=%d", m.conv.Messages, m.conv.CommittedCount)
@@ -96,49 +97,49 @@ func TestWorkflowStopPreservesStreamingAssistant(t *testing.T) {
 	}
 }
 
-func TestCtrlCStopsSoleIdleWorkflow(t *testing.T) {
+func TestCtrlCStopsSoleIdleFlow(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("workflow-ctrl-c", "workflow", "/workflow run audit", ctx, cancel)
-	m := workflowInputModel(manager)
+	wf := manager.CreateSchedulerTask("flow-ctrl-c", "flow", "/flow run audit", ctx, cancel)
+	m := flowInputModel(manager)
 	m.userInput.LastCtrlC = time.Now() // A stop must disarm even a pending exit shortcut.
 
 	_, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if !handled || ctx.Err() != context.Canceled {
-		t.Fatalf("Ctrl+C handled=%v, workflow context=%v; want immediate stop", handled, ctx.Err())
+		t.Fatalf("Ctrl+C handled=%v, flow context=%v; want immediate stop", handled, ctx.Err())
 	}
 	if !m.userInput.LastCtrlC.IsZero() {
-		t.Fatal("workflow stop left the exit shortcut armed")
+		t.Fatal("flow stop left the exit shortcut armed")
 	}
-	if len(m.conv.Messages) == 0 || !strings.Contains(m.conv.Messages[len(m.conv.Messages)-1].Content, "Stopping workflow workflow-ctrl-c") {
+	if len(m.conv.Messages) == 0 || !strings.Contains(m.conv.Messages[len(m.conv.Messages)-1].Content, "Stopping flow flow-ctrl-c") {
 		t.Fatalf("stop notice missing: %+v", m.conv.Messages)
 	}
 	wf.Complete(ctx.Err())
 	_, handled = m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if !handled || m.userInput.LastCtrlC.IsZero() {
-		t.Fatal("Ctrl+C should arm exit after the workflow has stopped")
+		t.Fatal("Ctrl+C should arm exit after the flow has stopped")
 	}
 }
 
-func TestCtrlCDoesNotGuessBetweenMultipleWorkflows(t *testing.T) {
+func TestCtrlCDoesNotGuessBetweenMultipleFlows(t *testing.T) {
 	manager := task.NewManager()
 	ctxA, cancelA := context.WithCancel(context.Background())
 	ctxB, cancelB := context.WithCancel(context.Background())
 	defer cancelA()
 	defer cancelB()
-	a := manager.CreateAgentTask("workflow-a", "workflow", "audit a", ctxA, cancelA)
-	b := manager.CreateAgentTask("workflow-b", "workflow", "audit b", ctxB, cancelB)
-	m := workflowInputModel(manager)
+	a := manager.CreateSchedulerTask("flow-a", "flow", "audit a", ctxA, cancelA)
+	b := manager.CreateSchedulerTask("flow-b", "flow", "audit b", ctxB, cancelB)
+	m := flowInputModel(manager)
 
 	m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if ctxA.Err() != nil || ctxB.Err() != nil {
-		t.Fatal("Ctrl+C chose a workflow when several were running")
+		t.Fatal("Ctrl+C chose a flow when several were running")
 	}
 	if !m.userInput.LastCtrlC.IsZero() {
-		t.Fatal("multiple workflow hint armed exit")
+		t.Fatal("multiple flow hint armed exit")
 	}
-	if len(m.conv.Messages) == 0 || !strings.Contains(m.conv.Messages[len(m.conv.Messages)-1].Content, "Several workflows are running") {
+	if len(m.conv.Messages) == 0 || !strings.Contains(m.conv.Messages[len(m.conv.Messages)-1].Content, "Several flows are running") {
 		t.Fatalf("task ID hint missing: %+v", m.conv.Messages)
 	}
 	a.Stop()
@@ -147,12 +148,12 @@ func TestCtrlCDoesNotGuessBetweenMultipleWorkflows(t *testing.T) {
 	b.Complete(ctxB.Err())
 }
 
-func TestCtrlCStopsForegroundBeforeBackgroundWorkflow(t *testing.T) {
+func TestCtrlCStopsForegroundBeforeBackgroundFlow(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := manager.CreateAgentTask("workflow-in-background", "workflow", "audit", ctx, cancel)
-	m := workflowInputModel(manager)
+	wf := manager.CreateSchedulerTask("flow-in-background", "flow", "audit", ctx, cancel)
+	m := flowInputModel(manager)
 	m.services.Agent = &agent.Runtime{}
 	m.conv.Stream.Active = true
 
@@ -161,7 +162,7 @@ func TestCtrlCStopsForegroundBeforeBackgroundWorkflow(t *testing.T) {
 		t.Fatal("foreground stream stayed active")
 	}
 	if ctx.Err() != nil {
-		t.Fatal("first Ctrl+C stopped the background workflow instead of the foreground turn")
+		t.Fatal("first Ctrl+C stopped the background flow instead of the foreground turn")
 	}
 	wf.Stop()
 	wf.Complete(ctx.Err())

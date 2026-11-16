@@ -137,7 +137,7 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 }
 
 func TestResumedCompletedWorkerDoesNotWaitForLiveNotice(t *testing.T) {
-	m := workflowInputModel(task.NewManager())
+	m := flowInputModel(task.NewManager())
 	worker := m.services.Tracker.Create("Already finished", "", "", map[string]any{"background_task_id": "previous-process"})
 	if err := m.services.Tracker.Update(worker.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)

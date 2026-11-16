@@ -47,8 +47,12 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 		t.Fatal("explicit messaging disable was ignored")
 	}
 
+	if IsDefaultDisabledTool("Flow") {
+		t.Fatal("Flow is a slash-command service, not a disabled model tool")
+	}
+
 	// Optional tools ship disabled and can be enabled explicitly.
-	for _, name := range []string{"AgentStop", "Workflow", "Evolve"} {
+	for _, name := range []string{"AgentStop", "Evolve"} {
 		if !IsDefaultDisabledTool(name) || !WithDefaultDisabledTools(nil)[name] {
 			t.Fatalf("%s should be disabled by default", name)
 		}

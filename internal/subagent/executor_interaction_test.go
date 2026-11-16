@@ -7,18 +7,18 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-func TestWorkflowInteractionSourceIsAnIndependentSnapshot(t *testing.T) {
-	origin := &tool.WorkflowOrigin{TaskID: "workflow-run", Name: "review", NodeID: "check", WorkerLabel: "item-2"}
+func TestFlowInteractionSourceIsAnIndependentSnapshot(t *testing.T) {
+	origin := &tool.FlowOrigin{TaskID: "flow-run", Name: "review", NodeID: "check", WorkerLabel: "item-2"}
 	run := &preparedRun{
-		req:    tool.AgentExecRequest{Workflow: origin, ParentToolCallID: "workflow-call"},
+		req:    tool.AgentExecRequest{Flow: origin, ParentToolCallID: "flow-call"},
 		cfg:    &runConfig{displayName: "worker", permMode: PermissionDefault},
 		hookID: "worker-id", cwd: "/worker/cwd",
 	}
 	source := run.interactionSource(context.Background())
-	if source.Workflow == nil || source.Workflow == origin || *source.Workflow != *origin || source.AgentID != "worker-id" || source.TaskID != "" || source.ParentToolCallID != "workflow-call" || source.WorkingDirectory != "/worker/cwd" {
+	if source.Flow == nil || source.Flow == origin || *source.Flow != *origin || source.AgentID != "worker-id" || source.TaskID != "" || source.ParentToolCallID != "flow-call" || source.WorkingDirectory != "/worker/cwd" {
 		t.Fatalf("source lost provenance or worker identity: %+v", source)
 	}
-	source.Workflow.NodeID = "changed-by-consumer"
+	source.Flow.NodeID = "changed-by-consumer"
 	if origin.NodeID != "check" {
 		t.Fatal("interaction consumer changed the execution request's origin")
 	}

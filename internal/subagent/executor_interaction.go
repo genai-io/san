@@ -8,9 +8,9 @@ import (
 )
 
 func (r *preparedRun) interactionSource(ctx context.Context) tool.AgentInteractionSource {
-	var origin *tool.WorkflowOrigin
-	if r.req.Workflow != nil {
-		copy := *r.req.Workflow
+	var origin *tool.FlowOrigin
+	if r.req.Flow != nil {
+		copy := *r.req.Flow
 		origin = &copy
 	}
 	// Interaction names are UI identity, not the normalized runtime name.
@@ -19,8 +19,8 @@ func (r *preparedRun) interactionSource(ctx context.Context) tool.AgentInteracti
 		name = r.cfg.config.Name
 	}
 	return tool.AgentInteractionSource{
-		Workflow: origin,
-		AgentID:  r.hookID, TaskID: r.req.TaskID, AgentName: name,
+		Flow:    origin,
+		AgentID: r.hookID, TaskID: r.req.TaskID, AgentName: name,
 		ParentToolCallID: r.req.ParentToolCallID,
 		ToolCallID:       core.ToolCallIDFromContext(ctx), WorkingDirectory: r.currentCwd(),
 		PermissionMode: string(r.cfg.permMode),

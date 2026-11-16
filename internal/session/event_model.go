@@ -171,6 +171,7 @@ type ContextCompactPayload struct {
 // one event that holds its result.
 const (
 	PurposeTurn       = "turn"
+	PurposeFlow       = "flow"
 	PurposeBtw        = "btw"
 	PurposeRecap      = "recap"
 	PurposeSuggest    = "suggest"

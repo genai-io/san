@@ -64,8 +64,8 @@ type pasteHandler interface {
 }
 
 // overlayPanels lists every panel that may be in front, in keyboard-priority
-// order: the docked modals win over the slash-command pickers. At most one is
-// active at a time; activeOverlay returns the first that reports IsActive().
+// order: docked modals win over slash-command pickers. Native task detail may
+// temporarily cover a Flow inspector; the first active panel owns focus.
 func (m *model) overlayPanels() []overlayPanel {
 	return []overlayPanel{
 		m.conv.Modal.Question, // docked modals (rendered between separators)
@@ -85,7 +85,8 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
 		&m.userInput.Transcript,
-		&m.userInput.Tasks,
+		&m.userInput.Tasks, // Native child detail can sit above a Flow inspector.
+		&m.userInput.Flow,
 	}
 }
 
@@ -127,6 +128,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, next)
 	}
 	m.syncTaskViewerSession()
+	m.syncFlowDraft()
 	if tick := m.taskViewerTick(); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
@@ -220,6 +222,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.needsSpinner() {
 			var cmd tea.Cmd
 			m.conv.Spinner, cmd = m.conv.Spinner.Update(msg)
+			if cmd != nil {
+				m.userInput.Flow.SetDraftFrame(m.conv.Spinner.Frame())
+			}
 			return m, cmd
 		}
 		return m, nil
@@ -227,6 +232,42 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleCtrlOSingleTick()
 	case historyLoadedMsg:
 		m.historyLoaded(msg)
+		return m, nil
+	case input.FlowStartedMsg:
+		return m, m.SpinnerTickCmd()
+	case input.FlowOpenTaskMsg:
+		if !m.userInput.Flow.AcceptTaskOpen(msg) {
+			return m, nil
+		}
+		var recorded *input.TaskViewItem
+		live := false
+		if m.services.Task != nil {
+			if worker, exists := m.services.Task.Get(msg.Execution.TaskID); exists {
+				info := worker.GetStatus()
+				if info.AgentSessionID != msg.Execution.SessionID || (info.ParentSessionID != "" && info.ParentSessionID != m.sessionID()) {
+					m.userInput.Flow.TaskUnavailable()
+					return m, nil
+				}
+				live = true
+			}
+		}
+		items := m.taskSnapshots()
+		if !live {
+			if snapshot, ok := m.userInput.Flow.RecordedTask(msg); ok {
+				recorded = &snapshot
+				// Replace incomplete tracker rows with this exact checkpoint.
+				items = []input.TaskViewItem{snapshot}
+			} else {
+				m.userInput.Flow.TaskUnavailable()
+				return m, nil
+			}
+		}
+		if m.userInput.Tasks.ShowTask(items, msg.Execution.TaskID, msg.Execution.SessionID, m.env.Width, m.env.Height) {
+			m.tasks = taskViewerState{sessionID: m.sessionID(), recorded: recorded}
+			m.tasks.actionID = m.userInput.Tasks.ViewID()
+			return m, m.taskViewerTick()
+		}
+		m.userInput.Flow.TaskUnavailable()
 		return m, nil
 	case input.TaskStopMsg:
 		return m, m.stopViewedTask(msg)
@@ -596,6 +637,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:
 		return m, m.onMainNotice(msg.notice)
+	case input.FlowDraftRequestMsg:
+		return m, m.generateFlow(msg)
+	case flowDraftedMsg:
+		return m, m.onFlowDrafted(msg)
 	case btwAnswerMsg:
 		return m, m.onBtwAnswer(msg)
 	case tea.BlurMsg:
@@ -650,6 +695,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
+		m.flowDraft != nil ||
 		m.btwWaiting() ||
 		m.recap.show ||
 		m.services.Task.HasRunning()

@@ -53,7 +53,7 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 		Hook: hook.NewEngine(setting.NewData(), "", cwd, ""),
 	}
 	m := &model{env: env{CWD: cwd}, services: svc, learnedStores: newLearnedStoreContext(cwd, svc.Setting)}
-	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(svc.Command, svc.Tool), input.SelectorDeps{
+	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(svc.Command, svc.Flow), input.SelectorDeps{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,

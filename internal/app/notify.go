@@ -83,13 +83,8 @@ func (n mainNotice) input(message core.Message) pendingMessage {
 	return input
 }
 
-// maxTaskOutputInNotification is the largest task output, in bytes, inlined
-// whole into the completion notification. At or below it, the full result rides
-// in the notification so the reader needs no follow-up read; above it, the body
-// is omitted and only the output-file pointer is given, so a large report is
-// fetched in one deliberate read rather than a truncated preview plus a second
-// read for the rest. Byte-sized, so a CJK report (3 bytes/char) inlines up to
-// roughly a third as many characters — ~6.6K.
+// maxTaskOutputInNotification bounds ordinary model-facing notifications.
+// Completed Flow reports are display-only and retain their full result.
 const maxTaskOutputInNotification = 20000
 
 // taskCompletionMessage addresses a terminal result to its launching agent.
@@ -98,13 +93,24 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if status == "" {
 		return broker.Message{}, false
 	}
+	return taskMessage(info, status), true
+}
 
+func taskMessage(info task.TaskInfo, status string) broker.Message {
 	description := taskSubject(info)
 	if description == "" {
 		description = "Background task"
 	}
 
 	result := strings.TrimSpace(info.Output)
+	fullResult := info.Scheduler && status == "completed" && info.OwnerAgentID == ""
+	if fullResult && info.Result != "" {
+		result = strings.TrimSpace(info.Result)
+	}
+	resultTruncated := info.Scheduler && status == "completed" && !fullResult && len(result) > maxTaskOutputInNotification
+	if resultTruncated {
+		result = utf8Head(result, maxTaskOutputInNotification)
+	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, `<task-notification task-id="%s" status="%s"`, html.EscapeString(info.ID), status)
@@ -126,6 +132,18 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if info.AgentSessionID != "" {
 		fmt.Fprintf(&b, ` agent-id="%s"`, html.EscapeString(info.AgentSessionID))
 	}
+	if info.Scheduler {
+		b.WriteString(` scheduler="true"`)
+		if resultTruncated {
+			b.WriteString(` result-truncated="true"`)
+		}
+	}
+	if info.SchedulerManaged() {
+		fmt.Fprintf(&b, ` agent-name="%s"`, html.EscapeString(info.AgentName))
+		if !info.EndTime.IsZero() && info.EndTime.After(info.StartTime) {
+			fmt.Fprintf(&b, ` duration-ms="%d"`, info.EndTime.Sub(info.StartTime).Milliseconds())
+		}
+	}
 	if description != "" {
 		fmt.Fprintf(&b, ` description="%s"`, html.EscapeString(description))
 	}
@@ -146,13 +164,12 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		b.WriteString("\nPartial output:\n")
 	}
 	switch {
+	case fullResult:
+		b.WriteString(tool.EscapeXMLText(result))
 	case len(result) > maxTaskOutputInNotification && info.OutputError != "":
-		end := maxTaskOutputInNotification
-		for end > 0 && !utf8.RuneStart(result[end]) {
-			end--
-		}
-		b.WriteString(tool.EscapeXMLText(result[:end]))
-		fmt.Fprintf(&b, "\n… %d retained bytes omitted. The output log is incomplete; this is only a preview.", len(result)-end)
+		head := utf8Head(result, maxTaskOutputInNotification)
+		b.WriteString(tool.EscapeXMLText(head))
+		fmt.Fprintf(&b, "\n… %d retained bytes omitted. The output log is incomplete; this is only a preview.", len(result)-len(head))
 	case len(result) > maxTaskOutputInNotification && info.OutputFile != "":
 		// Too large to inline without bloating the main context. Point at the
 		// full result instead of dumping a partial preview.
@@ -160,7 +177,7 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	case result != "":
 		b.WriteString(tool.EscapeXMLText(result))
 	}
-	if info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
+	if !info.SchedulerManaged() && info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
 		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. Choose whether to finish directly, continue the existing worker, or report a blocker. For a safe continuation, use SendMessage with to set to this task ID and message containing only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Never bypass a denied command.")
 	}
 	b.WriteString("\n</task-notification>")
@@ -184,7 +201,18 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		TaskCompletion: &broker.TaskCompletion{
 			TaskID: info.ID, Attempt: info.Attempt,
 		},
-	}, true
+	}
+}
+
+// utf8Head returns at most n bytes of s without splitting a rune.
+func utf8Head(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func taskSourceSession(info task.TaskInfo) string {
@@ -196,6 +224,13 @@ func taskSourceSession(info task.TaskInfo) string {
 
 // taskSubject generates a human-readable subject line from task info.
 func taskSubject(info task.TaskInfo) string {
+	if info.Scheduler {
+		title := strings.TrimSpace(info.AgentName)
+		if title == "" {
+			title = "Untitled flow"
+		}
+		return "Flow · " + title
+	}
 	switch info.Type {
 	case task.TaskTypeAgent:
 		if s := joinNameDesc(info.AgentName, info.Description); s != "" {

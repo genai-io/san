@@ -5,17 +5,16 @@ import (
 	"html"
 	"strconv"
 	"strings"
+	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// Background agents reach the main conversation as harness-injected envelopes: a
-// <task-notification> when a background task finishes, an <agent-message> for an
-// interim/relayed note, or an <agent-messages> batch of them. They are submitted
-// to the model as user turns (so it can act on them) and persisted in that form.
-// Live and resumed sessions render that same message as a one-line notice,
-// leaving the model's Content untouched.
+// Interim notes and ordinary background completions arrive as model-visible user
+// envelopes and render as one-line notices. Display-only task annotations reuse
+// the same identity heading with a bounded worker-answer preview.
 
 // IsAgentEnvelope reports whether a user message's content is one of those
 // injected agent-comms envelopes rather than text the user typed.
@@ -98,7 +97,36 @@ func (e agentEnvelope) summary(width int) string {
 	return "Background agent message"
 }
 
+// Display-only worker answers use the same Agent block as their live activity.
+func (e agentEnvelope) renderDisplayNotice(p RenderContext) string {
+	if e.isScheduler() {
+		return e.renderFlowNotice(p)
+	}
+	v := AgentView{
+		ID: e.taskID, SessionID: e.agentID, Name: envelopeAttr(e.tag, "agent-name"),
+		Description: e.description, Status: e.status, Output: e.text(),
+	}
+	if milliseconds, err := strconv.ParseInt(envelopeAttr(e.tag, "duration-ms"), 10, 64); err == nil && milliseconds > 0 {
+		v.Duration = time.Duration(milliseconds) * time.Millisecond
+	}
+	switch e.status {
+	case "failed", "stopped", "killed", "interrupted", "timeout", "timed_out":
+		if reason, ok := strings.CutPrefix(v.Output, "Error: "); ok {
+			v.Error, v.Output, _ = strings.Cut(reason, "\n")
+		}
+		v.Output = strings.TrimSpace(v.Output)
+		v.Output = strings.TrimSpace(strings.TrimPrefix(v.Output, "Partial output:"))
+		if kit.IsRoutineStopReason(v.Output) {
+			v.Output = ""
+		}
+	}
+	return renderAgentView(v, p)
+}
+
 func (e agentEnvelope) renderWithIdentity(p RenderContext) string {
+	if e.isScheduler() {
+		return e.renderFlowNotice(p)
+	}
 	if p.Width <= 0 {
 		p.Width = 80
 	}
@@ -130,10 +158,87 @@ func (e agentEnvelope) render(width int, colors map[string]int) string {
 	return RenderAgentNotice(summary, width, colors)
 }
 
+func (e agentEnvelope) isScheduler() bool {
+	return e.kind == envelopeTask && e.attributed && envelopeAttr(e.tag, "scheduler") == "true"
+}
+
+func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
+	width := p.Width
+	if width <= 0 {
+		width = 80
+	}
+	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	status := backgroundStatusLabel(e.status)
+	if e.status == "running" {
+		status = "Started"
+	}
+	statusStyle := backgroundStatusStyle(e.status).Bold(false)
+	if status == "Stopped" {
+		statusStyle = muted
+	}
+	outcome := statusStyle.Render(status)
+	// Reserve the outcome before optional title and elapsed detail.
+	if width < ansi.StringWidth("● Flow · ")+ansi.StringWidth(outcome) {
+		return ansi.Truncate(outcome, width, "…") + "\n" + e.renderFlowResult(p)
+	}
+	elapsed := ""
+	if milliseconds, err := strconv.ParseInt(envelopeAttr(e.tag, "duration-ms"), 10, 64); err == nil {
+		elapsed = muted.Render(" · " + (time.Duration(max(int64(0), milliseconds)) * time.Millisecond).Truncate(time.Second).String())
+	}
+	detail := body.Render(" · ") + outcome
+	baseWidth := ansi.StringWidth("● Flow")
+	// Reserve genuine diagnostics before optional title and elapsed detail.
+	diagnostic := ""
+	if reason, ok := strings.CutPrefix(strings.TrimSpace(e.text()), "Error: "); ok && e.status != "completed" && e.status != "running" {
+		reason, _, _ = strings.Cut(reason, "\n")
+		if e.status == "failed" || !kit.IsRoutineStopReason(reason) {
+			if budget := width - baseWidth - ansi.StringWidth(detail) - 3; budget > 0 {
+				diagnostic = body.Render(" · " + ansi.Truncate(reason, budget, "…"))
+			}
+		}
+	}
+	if baseWidth+ansi.StringWidth(detail)+ansi.StringWidth(diagnostic)+ansi.StringWidth(elapsed) > width {
+		elapsed = ""
+	}
+	detail += elapsed + diagnostic
+	title := strings.Join(strings.Fields(envelopeAttr(e.tag, "agent-name")), " ")
+	label := body.Render("● ") + kit.FlowLabel(title)
+	label = ansi.Truncate(label, width-ansi.StringWidth(detail), "…")
+	return label + detail + "\n" + e.renderFlowResult(p)
+}
+
+func (e agentEnvelope) renderFlowResult(p RenderContext) string {
+	if e.status != "completed" {
+		return ""
+	}
+	width := p.Width
+	if width <= 0 {
+		width = 80
+	}
+	result := e.text()
+	if strings.TrimSpace(result) == "" {
+		return "\n" + toolResultStyle.Render(ansi.Truncate("No final result", width, "…")) + "\n"
+	}
+	md := p.MDRenderer
+	if md == nil {
+		md = NewMDRenderer(width)
+	}
+	rendered := ansi.Hardwrap(renderMarkdownContent(md, result), width, true)
+	// Older persisted notices may contain only an excerpt.
+	if envelopeAttr(e.tag, "result-truncated") == "true" {
+		hint := "Recorded excerpt; full result in task details"
+		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, width, true))
+	}
+	return "\n" + strings.TrimRight(rendered, "\n") + "\n"
+}
+
 // envelopeAttr returns the value of a name="value" attribute within an opening
 // tag, or "" when absent.
 func envelopeAttr(tag, name string) string {
-	_, after, found := strings.Cut(tag, name+`="`)
+	// Attributes are space-separated and values are escaped, so a leading space
+	// keeps "agent-id" from matching inside another attribute's name.
+	_, after, found := strings.Cut(tag, " "+name+`="`)
 	if !found {
 		return ""
 	}

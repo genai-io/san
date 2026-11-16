@@ -5,7 +5,7 @@
 ## 状态
 
 核心已实现（2026-11-14）：P1–P3 已交付，P4 全屏泳道图仍为可选设计。
-当前行为见[概念文档](../concepts/workflow.md)和[包文档](../packages/workflow.md)。
+该功能现命名为 Flow，当前行为见[概念文档](../concepts/flow.md)和[包文档](../packages/flow.md)。
 
 ## 动机
 

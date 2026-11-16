@@ -25,6 +25,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
@@ -231,7 +232,13 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err := e.prepareInbox(ctx, run); err != nil {
 		return nil, err
 	}
-	worker := e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+	var worker *task.AgentTask
+	if req.Background && req.ParentTaskID != "" {
+		worker = e.taskPool().CreateChildAgentTask(run.req.TaskID, req.ParentTaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+		mirrorChildProgress(worker, run.cfg.config.Name, &run.req)
+	} else {
+		worker = e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+	}
 	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
 	result, err := e.runPrepared(ctx, run)
@@ -322,6 +329,10 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, fmt.Errorf("task not found in parent session")
 		}
+		if agentTask.GetStatus().ScheduledChild() {
+			cancel()
+			return nil, fmt.Errorf("task is scheduler-owned; resume its parent run")
+		}
 		if agentTask.IsRunning() {
 			cancel()
 			return nil, fmt.Errorf("task is currently running")
@@ -348,7 +359,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		next.Background = true
 		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
 		next.SourceSession, next.SourceSeq = req.SourceSession, req.SourceSeq
-		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
+		next.ParentToolCallID, next.Flow = req.ParentToolCallID, req.Flow
 		next.OnIdentity = req.OnIdentity
 		next.OnQuestion = req.OnQuestion
 		next.OnTextDelta, next.OnTextEnd = req.OnTextDelta, req.OnTextEnd
@@ -1149,4 +1160,36 @@ func generateShortID() string {
 		panic("crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)
+}
+
+// mirrorChildProgress makes a scheduler-owned child task record its own
+// identity and activity, then passes each event on to the scheduler.
+func mirrorChildProgress(worker *task.AgentTask, agentName string, req *tool.AgentExecRequest) {
+	onIdentity, onActivity, onToolStart, onToolResult := req.OnIdentity, req.OnActivity, req.OnToolStart, req.OnToolResult
+	req.OnIdentity = func(identity toolresult.AgentIdentity) {
+		worker.SetIdentity(agentName, identity.SessionID)
+		if onIdentity != nil {
+			onIdentity(identity)
+		}
+	}
+	req.OnActivity = func(msg string) {
+		worker.AppendProgress(msg)
+		if onActivity != nil {
+			onActivity(msg)
+		}
+	}
+	req.OnToolStart = func(id, call string) {
+		worker.AppendProgress(call)
+		if onToolStart != nil {
+			onToolStart(id, call)
+		}
+	}
+	req.OnToolResult = func(id, call, output string, toolErr error) {
+		if toolErr != nil {
+			worker.AppendProgress(call + " · failed: " + toolErr.Error())
+		}
+		if onToolResult != nil {
+			onToolResult(id, call, output, toolErr)
+		}
+	}
 }

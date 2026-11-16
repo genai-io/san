@@ -783,12 +783,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			detail := ""
 			if tc.Name != tool.ToolSendMessage {
 				if result, ok := params.ResultMap[tc.ID].Details.(toolresult.AgentDetails); hasResult && ok && result.TaskID == "" && result.Duration > 0 {
-					seconds := int(result.Duration / time.Second)
-					elapsed := fmt.Sprintf("%ds", seconds)
-					if seconds >= 60 {
-						elapsed = fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
-					}
-					detail = toolResultStyle.Render(" · " + elapsed)
+					detail = agentElapsed(result.Duration)
 				} else if !hasResult && params.agentExecuting(tc) && !params.parkedOnUser(tc.ID) {
 					detail = runningRowDetail(tc, params)
 				}

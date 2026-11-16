@@ -6,11 +6,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // AgentTask represents a background agent task
 // It implements the BackgroundTask interface
 type AgentTask struct {
+	parentTaskID    string // scheduler that launched this task; fixed before registration
+	scheduler       bool   // coordinates child agent tasks instead of running a turn
 	parentSessionID string // fixed before registration
 
 	ID          string     // Unique task ID
@@ -40,8 +43,10 @@ type AgentTask struct {
 	stopRequested    bool
 	foreground       bool
 	attemptOutput    bytes.Buffer
+	result           string // Full final answer for the current attempt; independent of bounded output.
 	launchState      any
 	permissionMode   string           // Effective mode resolved before the worker starts.
+	activity         []string         // Bounded recent meaningful progress for native presentation.
 	progress         string           // Latest non-metadata activity for the live tracker.
 	outputErr        string           // First output-log failure; a nonempty path alone is not proof of durability.
 	liveView         string           // Current structured progress, if the caller supplies one.
@@ -80,6 +85,14 @@ func NewAgentTask(id, agentName, description string, ctx context.Context, cancel
 		},
 	})
 	return task
+}
+
+// MarkScheduler identifies a task that schedules child agent tasks, such as a
+// Flow run. Mark before registration so lifecycle observers see it.
+func (t *AgentTask) MarkScheduler() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.scheduler = true
 }
 
 // SetSourceMessageSeq retains evidence only for the selected execution.
@@ -160,6 +173,19 @@ func (t *AgentTask) GetDescription() string {
 	return t.Description
 }
 
+// SetResult retains the full final answer in TaskInfo.Result and replaces the
+// bounded output with its UTF-8-safe head. The append-only log still records the
+// full answer and all prior output records.
+func (t *AgentTask) SetResult(result string) {
+	t.mu.Lock()
+	t.result = result
+	t.attemptOutput.Reset()
+	t.attemptOutput.WriteString(utf8Head(result, maxOutputBufferSize))
+	outputFile := t.OutputFile
+	t.mu.Unlock()
+	t.recordOutput(outputFile, outputRecord{Event: "task.output", Content: result})
+}
+
 // AppendOutput appends data to the output buffer
 func (t *AgentTask) AppendOutput(data []byte) {
 	t.mu.Lock()
@@ -173,6 +199,23 @@ func (t *AgentTask) AppendOutput(data []byte) {
 	})
 }
 
+// utf8Head returns at most n bytes of s without splitting a rune.
+func utf8Head(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// Activity is a compact display snapshot, not a replacement for the task log.
+const (
+	maxActivityEntries    = 12
+	maxActivityEntryBytes = 4096
+)
+
 // AppendProgress appends a progress message
 func (t *AgentTask) AppendProgress(msg string) {
 	msg = strings.TrimSpace(msg)
@@ -181,6 +224,14 @@ func (t *AgentTask) AppendProgress(msg string) {
 		// The tracker needs the latest action, not a token line that replaces it.
 		// Tool descriptions are already bounded by the executor.
 		t.progress = msg
+		// Clone even short substrings so history cannot retain a large input.
+		entry := strings.Clone(utf8Head(msg, maxActivityEntryBytes))
+		if len(t.activity) == maxActivityEntries {
+			copy(t.activity, t.activity[1:])
+			t.activity[len(t.activity)-1] = entry
+		} else {
+			t.activity = append(t.activity, entry)
+		}
 	}
 	outputFile := t.OutputFile
 	t.mu.Unlock()
@@ -347,6 +398,8 @@ func (t *AgentTask) GetStatus() TaskInfo {
 	return TaskInfo{
 		Attempt:         t.attempt,
 		Attempts:        append([]AttemptInfo(nil), t.attempts...),
+		ParentTaskID:    t.parentTaskID,
+		Scheduler:       t.scheduler,
 		ParentSessionID: t.parentSessionID,
 
 		ID:               t.ID,
@@ -357,9 +410,11 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		EndTime:          t.EndTime,
 		Error:            t.Error,
 		Output:           t.attemptOutput.String(),
+		Result:           t.result,
 		OutputFile:       t.inspectionPathLocked(),
 		OutputError:      t.outputErr,
 		Progress:         t.progress,
+		Activity:         append([]string(nil), t.activity...),
 		AgentName:        t.AgentName,
 		PermissionMode:   t.permissionMode,
 		SourceMessageSeq: t.sourceMessageSeq,

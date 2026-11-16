@@ -44,11 +44,11 @@ func TestWorkerResolverPreservesModeSourceAndOnceOnlyApproval(t *testing.T) {
 	grants := setting.NewSessionPermissions()
 	bridge := conv.NewAgentToUI(1)
 	defer bridge.Close()
-	origin := tool.WorkflowOrigin{TaskID: "workflow-run", Name: "review-pipeline", NodeID: "review", WorkerLabel: "item-7"}
-	inputSource := tool.AgentInteractionSource{AgentID: "worker-address", TaskID: "executor-task", AgentName: "reviewer", ParentToolCallID: "launch-call", ToolCallID: "previous-call", WorkingDirectory: "/worker", PermissionMode: "normal", Workflow: &origin}
+	origin := tool.FlowOrigin{TaskID: "flow-run", Name: "review-pipeline", NodeID: "review", WorkerLabel: "item-7"}
+	inputSource := tool.AgentInteractionSource{AgentID: "worker-address", TaskID: "executor-task", AgentName: "reviewer", ParentToolCallID: "launch-call", ToolCallID: "previous-call", WorkingDirectory: "/worker", PermissionMode: "normal", Flow: &origin}
 	expectedSource := inputSource
 	expectedOrigin := origin
-	expectedSource.Workflow = &expectedOrigin
+	expectedSource.Flow = &expectedOrigin
 	expectedSource.ToolCallID = "worker-call"
 	resolver := newWorkerResolver(settings, grants, system.MemoryStores{}, bridge, child, inputSource)
 	origin.Name = "changed after capture"
@@ -79,9 +79,9 @@ func TestWorkerResolverPreservesModeSourceAndOnceOnlyApproval(t *testing.T) {
 		if got.Decision != "allow" || got.By != "user" || got.Scope != "once" || got.Asked == nil {
 			t.Fatalf("resolution=%+v", got)
 		}
-		for _, metadata := range []string{"executor-task", "reviewer", "workflow-run", "review-pipeline", "review", "item-7"} {
+		for _, metadata := range []string{"executor-task", "reviewer", "flow-run", "review-pipeline", "review", "item-7"} {
 			if !strings.Contains(string(got.Asked.Detail), metadata) {
-				t.Fatalf("shown workflow metadata %q missing: %s", metadata, got.Asked.Detail)
+				t.Fatalf("shown flow metadata %q missing: %s", metadata, got.Asked.Detail)
 			}
 		}
 	case <-time.After(time.Second):

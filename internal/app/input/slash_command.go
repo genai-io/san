@@ -64,6 +64,7 @@ type SlashCommandEnv struct {
 	Cron         *cron.Scheduler
 	ToolSvc      *tool.Registry
 	TaskSvc      *task.Manager
+	Flow         FlowService
 	Command      *command.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and
@@ -143,7 +144,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
 		"think":          (*SlashCommandController).handleThinkCommand,
 		"loop":           (*SlashCommandController).handleLoopCommand,
-		"workflow":       (*SlashCommandController).handleWorkflowCommand,
+		"flow":           (*SlashCommandController).handleFlowCommand,
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,

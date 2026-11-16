@@ -31,6 +31,7 @@ type Manager struct { /* internal fields */ }
 
 func (m *Manager) CreateBashTask(...) *BashTask
 func (m *Manager) CreateAgentTask(...) *AgentTask
+func (m *Manager) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask
 func (m *Manager) RegisterTask(t BackgroundTask)
 func (m *Manager) Get(id string) (BackgroundTask, bool)
 func (m *Manager) List() []BackgroundTask
@@ -61,10 +62,24 @@ func ResetDefaultTracker()         // test-only
   results. Callers may
   publish an in-memory `LiveView` snapshot and an optional width-aware renderer
   for the TUI, independently of append-only progress events in the output
-  file. Workflows reflow their activity and graph when the terminal resizes;
-  the full event trail stays in the task log. Ordinary subagents publish their
-  latest progress under the existing tracker row; recoverable errors stay there
-  rather than becoming independent main-conversation notices.
+  file. Flows reflow their graph when the terminal resizes; the full event
+  trail stays in the task log. `CreateSchedulerTask` registers a task that
+  schedules child agent tasks (a Flow run) with `TaskInfo.Scheduler` set before
+  lifecycle observers see it. `CreateChildAgentTask` sets `ParentTaskID` before
+  registration; children publish ordinary creation, progress and completion.
+  `TaskInfo.ScheduledChild` and `TaskInfo.SchedulerManaged` are the shared
+  predicates hosts use to keep these tasks display-only.
+  Hosts identify schedulers by that flag, not by display name. A scheduler's
+  name carries its readable run title, while its description retains the launch
+  command. Scheduler lifecycle receipts and child activity/completions are
+  display-only and do not wake the main model. `TaskInfo.Activity` is a detached
+  snapshot of the last 12 meaningful progress entries, capped at 4096 bytes each;
+  full progress stays in the task log. `AgentTask.SetResult` replaces intermediate
+  output with a bounded UTF-8-safe final-answer head and retains the complete
+  immutable answer in `TaskInfo.Result` for full display-only delivery. A new
+  attempt clears that result. Full text and prior records stay in the append-only
+  log. Ordinary `AppendOutput` retains its rolling tail,
+  and ordinary subagents keep their tracker rows.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the
@@ -165,6 +180,9 @@ history. Send only the new instruction—the child restores its own conversation
   stays on the same task when it ends or starts a new attempt. Persisted ended
   tracker entries whose workers are gone remain inspectable as recorded history,
   with their stored failure reason but no fabricated live output or actions.
+  Flow inspection can supply the full immutable checkpoint answer for an exact
+  recorded task/session identity in this same viewer; it does not restore a
+  worker or enable Continue, Stop or approval actions.
 - `/tasks` details show the child session, output-log path when available, and
   attempt history. `c` on an eligible ended
   worker asks main to choose a safe continuation; the UI does not directly launch

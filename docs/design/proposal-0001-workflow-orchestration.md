@@ -3,8 +3,8 @@
 ## Status
 
 Core implemented (2026-11-14): P1–P3 are delivered; P4's full-screen graph remains
-optional. Current behavior: [concepts](../concepts/workflow.md) and
-[package documentation](../packages/workflow.md).
+optional. The feature is now named Flow. Current behavior: [concepts](../concepts/flow.md) and
+[package documentation](../packages/flow.md).
 
 ## Motivation
 

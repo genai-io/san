@@ -22,9 +22,9 @@ func TestInteractionUsesFullConfiguredNameWithoutChangingRuntime(t *testing.T) {
 		if run.cfg.displayName != "Agent" {
 			t.Fatal("runtime name changed")
 		}
-		run.req.Workflow = &tool.WorkflowOrigin{Name: "flow", NodeID: "node", TaskID: "run"}
-		if got := run.interactionSource(context.Background()).Label(); got != "workflow flow / node node (run)" {
-			t.Fatalf("workflow identity changed: %q", got)
+		run.req.Flow = &tool.FlowOrigin{Name: "flow", NodeID: "node", TaskID: "run"}
+		if got := run.interactionSource(context.Background()).Label(); got != "flow flow / node node (run)" {
+			t.Fatalf("flow identity changed: %q", got)
 		}
 	}
 }

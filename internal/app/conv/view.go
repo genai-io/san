@@ -71,6 +71,7 @@ type RenderContext struct {
 	MemberColors    map[string]int // group member → palette slot, fixed for the session
 	TaskActivity    map[int][]string
 	TaskOwnerMap    map[string]string
+	ManagedAgents   []AgentView
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
 	// DockedModalActive marks the frames where a Question / Approval / secret
@@ -268,7 +269,12 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		}
 	case core.ChatNotice:
 		if msg.AgentNotice {
-			sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
+			envelope := parseAgentEnvelope(msg.Content)
+			if envelope.kind == envelopeTask && envelope.attributed {
+				sb.WriteString(envelope.renderDisplayNotice(p))
+			} else {
+				sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
+			}
 		} else if rest, ok := strings.CutPrefix(msg.Content, memoryRecallNoticePrefix); ok {
 			sb.WriteString(renderMemoryRecallNotice(rest, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, recapNoticePrefix); ok {
@@ -410,7 +416,7 @@ func activeWorkerCalls(p RenderContext) []activeWorkerCall {
 		pending[call.ID] = true
 	}
 	var calls []activeWorkerCall
-	hasWorker := false
+	hasWorker := len(p.ManagedAgents) > 0
 	for i := p.CommittedCount; i < len(p.Messages); i++ {
 		msg := p.Messages[i]
 		results := p.InlinedResults.resultsFor(i)
@@ -476,6 +482,10 @@ func renderActiveMessageRange(p RenderContext) string {
 			i = end - 1
 		}
 	}
+	for _, worker := range p.ManagedAgents {
+		sb.WriteString("\n")
+		sb.WriteString(renderAgentView(worker, p))
+	}
 	sb.WriteString(renderPendingToolSpinnerFromParams(p, p.CommittedCount < len(p.Messages)))
 	return sb.String()
 }
@@ -489,11 +499,10 @@ func latestActiveNoticeIndex(p RenderContext) int {
 	return -1
 }
 
-// ActiveWorkerRows reserves one identity per pending tool, plus the latest
-// notice, before background indicators spend the remaining terminal height.
-// It returns zero when no foreground worker layout is needed.
+// ActiveWorkerRows reserves worker identities and the latest notice before
+// background indicators spend the remaining terminal height.
 func ActiveWorkerRows(p RenderContext) int {
-	rows := len(activeWorkerCalls(p))
+	rows := len(activeWorkerCalls(p)) + len(p.ManagedAgents)
 	if rows > 0 && latestActiveNoticeIndex(p) >= 0 {
 		rows++
 	}
@@ -525,6 +534,11 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
 		})
 		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
+		headers = append(headers, lines[0])
+		details = append(details, strings.Join(lines[1:], "\n"))
+	}
+	for _, worker := range p.ManagedAgents {
+		lines := strings.Split(strings.TrimRight(renderAgentView(worker, p), "\n"), "\n")
 		headers = append(headers, lines[0])
 		details = append(details, strings.Join(lines[1:], "\n"))
 	}

@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-func TestWorkflowInteractionLabel(t *testing.T) {
-	source := AgentInteractionSource{AgentID: "worker-id", AgentName: "agent", Workflow: &WorkflowOrigin{
+func TestFlowInteractionLabel(t *testing.T) {
+	source := AgentInteractionSource{AgentID: "worker-id", AgentName: "agent", Flow: &FlowOrigin{
 		TaskID: "run-id", Name: "review\n", NodeID: "check\x1b", WorkerLabel: "item\r",
 	}}
 	label := source.Label()
-	for _, want := range []string{"workflow review", "node check", "worker item", "run-id", `\n`, `\r`, `\x1b`} {
+	for _, want := range []string{"flow review", "node check", "worker item", "run-id", `\n`, `\r`, `\x1b`} {
 		if !strings.Contains(label, want) {
 			t.Errorf("label %q missing %q", label, want)
 		}
