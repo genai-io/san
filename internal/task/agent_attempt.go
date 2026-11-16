@@ -174,6 +174,7 @@ func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.Ca
 	t.EndTime = time.Time{}
 	t.attemptStart = time.Now()
 	t.attemptOutput.Reset()
+	t.result = ""
 	t.sourceMessageSeq = 0
 	t.StepCount, t.TokenUsage = 0, 0
 	t.progress, t.liveView, t.liveRender = "", "", nil

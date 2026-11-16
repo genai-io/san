@@ -140,6 +140,7 @@ type TaskInfo struct {
 	ExitCode int
 
 	// Agent-specific fields
+	Result           string // Full final answer from SetResult; empty until set or after a new attempt.
 	AgentName        string
 	PermissionMode   string // Effective launch-time mode for ordinary subagent tasks.
 	SourceMessageSeq uint64

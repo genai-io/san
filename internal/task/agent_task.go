@@ -42,6 +42,7 @@ type AgentTask struct {
 	stopRequested    bool
 	foreground       bool
 	attemptOutput    bytes.Buffer
+	result           string // Full final answer for the current attempt; independent of bounded output.
 	launchState      any
 	permissionMode   string           // Effective mode resolved before the worker starts.
 	activity         []string         // Bounded recent meaningful progress for native presentation.
@@ -178,9 +179,9 @@ func (t *AgentTask) GetDescription() string {
 	return t.Description
 }
 
-// SetResult publishes a final answer in place of intermediate output. The display
-// retains its bounded UTF-8-safe head; the append-only log retains the full answer
-// and all prior output records.
+// SetResult retains the full final answer in TaskInfo.Result and replaces the
+// bounded output with its UTF-8-safe head. The append-only log still records the
+// full answer and all prior output records.
 func (t *AgentTask) SetResult(result string) {
 	end := len(result)
 	if end > maxOutputBufferSize {
@@ -190,6 +191,7 @@ func (t *AgentTask) SetResult(result string) {
 		}
 	}
 	t.mu.Lock()
+	t.result = result
 	t.attemptOutput.Reset()
 	t.attemptOutput.WriteString(result[:end])
 	outputFile := t.OutputFile
@@ -419,6 +421,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		EndTime:          t.EndTime,
 		Error:            t.Error,
 		Output:           t.attemptOutput.String(),
+		Result:           t.result,
 		OutputFile:       t.inspectionPathLocked(),
 		OutputError:      t.outputErr,
 		Progress:         t.progress,

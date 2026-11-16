@@ -188,9 +188,10 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   A visible graph replaces duplicate child tracker rows in the footer.
   Scheduler creation and completion also publish display-only receipts, using
   the blueprint's readable title; completion never starts another main turn.
-  Completed results show the first 12 rendered nonblank Markdown lines, not the
-  child activity tail. Large notices retain a UTF-8-safe leading excerpt and
-  point to native inspection; full answers remain in task logs and checkpoints.
+  Completed results render as separate top-level Markdown blocks in full,
+  independent of child preview settings. Display-only completion annotations
+  retain the complete committed answer, not the bounded task output preview;
+  restored conversations render the same report without an inspection command.
   Explicit nodes own synthesis. `ParentTaskID` keeps recovery scheduler-owned;
   ordinary foreground Agent presentation is unchanged.
 

@@ -175,25 +175,45 @@ func TestTaskCompletionMessageOversizedWithoutFileInlines(t *testing.T) {
 	}
 }
 
-func TestSchedulerCompletionKeepsLeadingResult(t *testing.T) {
-	report := "## Conclusion\nDo not merge: 检查 <boundary> & retry.\n" + strings.Repeat("细节\n", maxTaskOutputInNotification) + "TAIL_NOT_PREVIEWED"
+func TestSchedulerCompletionInlinesFullResult(t *testing.T) {
+	report := "## Conclusion\nDo not merge: 检查 <boundary> & retry.\n" + strings.Repeat("细节\n", 100000) + "FULL_REPORT_TAIL"
 	for _, outputFile := range []string{"", "/tmp/scheduler.log"} {
-		info := task.TaskInfo{ID: "scheduler", Scheduler: true, Type: task.TaskTypeAgent, Status: task.StatusCompleted, Output: report, OutputFile: outputFile}
-		msg, ok := taskCompletionMessage(info)
-		var decoded struct {
-			Truncated bool   `xml:"result-truncated,attr"`
-			Body      string `xml:",chardata"`
+		for _, outputError := range []string{"", "log write failed"} {
+			info := task.TaskInfo{ID: "scheduler", Scheduler: true, Type: task.TaskTypeAgent, Status: task.StatusCompleted,
+				Output: "bounded native preview", Result: report, OutputFile: outputFile, OutputError: outputError}
+			msg, ok := taskCompletionMessage(info)
+			var decoded struct {
+				Truncated bool   `xml:"result-truncated,attr"`
+				Body      string `xml:",chardata"`
+			}
+			if err := xml.Unmarshal([]byte(msg.Content), &decoded); !ok || err != nil || decoded.Truncated {
+				t.Fatalf("invalid full final result: %v", err)
+			}
+			if !utf8.ValidString(decoded.Body) || !strings.Contains(decoded.Body, report) || strings.Contains(decoded.Body, "bounded native preview") || strings.Contains(decoded.Body, "too large to inline") {
+				t.Fatalf("full report lost or replaced: %d bytes", len(decoded.Body))
+			}
+			if info.Result != report || info.Output != "bounded native preview" {
+				t.Fatal("notification mutated the task snapshot")
+			}
 		}
-		if err := xml.Unmarshal([]byte(msg.Content), &decoded); !ok || err != nil || !decoded.Truncated {
-			t.Fatalf("invalid final-result prefix: %+v %v", decoded, err)
-		}
-		body := strings.TrimSpace(decoded.Body)
-		if len(body) > maxTaskOutputInNotification || !utf8.ValidString(body) || !strings.HasPrefix(body, "## Conclusion\nDo not merge: 检查 <boundary> & retry.") || strings.Contains(body, "TAIL_NOT_PREVIEWED") || strings.Contains(body, "too large to inline") {
-			t.Fatalf("final conclusion lost or prefix not bounded: %d bytes", len(body))
-		}
-		if info.Output != report {
-			t.Fatal("notification mutated the authoritative result")
-		}
+	}
+}
+
+func TestAgentOwnedSchedulerKeepsBoundedNotification(t *testing.T) {
+	msg, ok := taskCompletionMessage(task.TaskInfo{
+		ID: "owned-scheduler", Scheduler: true, Type: task.TaskTypeAgent,
+		Status: task.StatusCompleted, OwnerAgentID: "worker",
+		Output: strings.Repeat("x", maxTaskOutputInNotification+100), Result: "DISPLAY_ONLY_FULL_RESULT",
+	})
+	var decoded struct {
+		Truncated bool   `xml:"result-truncated,attr"`
+		Body      string `xml:",chardata"`
+	}
+	if err := xml.Unmarshal([]byte(msg.Content), &decoded); !ok || err != nil || !decoded.Truncated || msg.To != "worker" {
+		t.Fatalf("agent-owned completion routing changed: %v", err)
+	}
+	if len(strings.TrimSpace(decoded.Body)) != maxTaskOutputInNotification || strings.Contains(msg.Content, "DISPLAY_ONLY_FULL_RESULT") {
+		t.Fatal("full display result entered an agent-owned notification")
 	}
 }
 

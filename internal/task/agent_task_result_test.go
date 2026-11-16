@@ -18,6 +18,10 @@ func TestAgentTaskSetResultReplacesPreviewAndPreservesFullLog(t *testing.T) {
 	task.AppendOutput([]byte("unfinished findings"))
 	result := "Conclusion\n" + strings.Repeat("界", maxOutputBufferSize/3+10) + "final trailing evidence"
 	task.SetResult(result)
+	snapshot := task.GetStatus()
+	if snapshot.Result != result || snapshot.Output != task.GetOutput() {
+		t.Fatal("snapshot did not retain full result independently of bounded output")
+	}
 	got := task.GetOutput()
 	if !strings.HasPrefix(got, "Conclusion\n") || strings.Contains(got, "unfinished") || len(got) > maxOutputBufferSize || len(got) < maxOutputBufferSize-3 || !utf8.ValidString(got) {
 		t.Fatalf("result head invalid: bytes=%d valid=%v", len(got), utf8.ValidString(got))
@@ -48,9 +52,34 @@ func TestAgentTaskSetResultReplacesPreviewAndPreservesFullLog(t *testing.T) {
 	if got := task.GetOutput(); got != "short answer" {
 		t.Fatalf("short replacement = %q", got)
 	}
+	if got := task.GetStatus().Result; got != "short answer" {
+		t.Fatalf("short result replacement = %q", got)
+	}
 	task.SetResult("")
+	if task.GetStatus().Result != "" || snapshot.Result != result {
+		t.Fatal("empty result did not replace prior value or mutated an existing snapshot")
+	}
 	if got := task.GetOutput(); got != "" {
 		t.Fatalf("empty replacement = %q", got)
+	}
+}
+
+func TestAgentTaskResultIndependentOfOutputLog(t *testing.T) {
+	for _, path := range []string{"", t.TempDir()} {
+		t.Run(path, func(t *testing.T) {
+			task := NewAgentTask("result", "flow", "result", context.Background(), nil, path)
+			result := strings.Repeat("full report\n", maxOutputBufferSize) + "final evidence"
+			task.SetResult(result)
+			task.AppendOutput([]byte(strings.Repeat("x", maxOutputBufferSize) + "tail"))
+			task.Complete(nil)
+			info := task.GetStatus()
+			if info.Status != StatusCompleted || info.Result != result || len(info.Output) != maxOutputBufferSize || !strings.HasSuffix(info.Output, "tail") {
+				t.Fatal("full result depends on log availability or bounded output")
+			}
+			if path != "" && info.OutputError == "" {
+				t.Fatal("expected unavailable log error")
+			}
+		})
 	}
 }
 

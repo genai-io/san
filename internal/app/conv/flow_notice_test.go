@@ -96,7 +96,7 @@ func TestSchedulerOutcomePriorityAndOptionalElapsed(t *testing.T) {
 	}
 }
 
-func TestSchedulerFinalResultShowsLeadingConclusion(t *testing.T) {
+func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
 	result := "## Conclusion\n\n**Do not merge yet.**\n\n- Three issues need review.\n"
 	for i := range 30 {
 		result += fmt.Sprintf("\n- Supporting detail %02d.\n", i)
@@ -108,11 +108,14 @@ func TestSchedulerFinalResultShowsLeadingConclusion(t *testing.T) {
 			p := RenderContext{Width: width, AgentPreviewLines: budget, MDRenderer: NewMDRenderer(width)}
 			got := e.renderDisplayNotice(p)
 			plain := ansi.Strip(got)
-			if width >= 40 && (!strings.Contains(plain, "Do not merge yet.") || !strings.Contains(plain, "/flow inspect flow-final") || strings.Contains(plain, "**Do not merge")) {
-				t.Fatalf("leading Markdown conclusion lost at width %d budget %d: %q", width, budget, plain)
+			if width >= 40 && (!strings.Contains(plain, "Do not merge yet.") || !strings.Contains(plain, "TAIL_ONLY_DISCLAIMER") || strings.Contains(plain, "**Do not merge")) {
+				t.Fatalf("full Markdown report lost at width %d budget %d: %q", width, budget, plain)
 			}
-			if strings.Contains(plain, "TAIL_ONLY_DISCLAIMER") {
-				t.Fatalf("result showed the tail instead of the conclusion: %q", plain)
+			if strings.Contains(plain, "/flow inspect") || strings.Contains(plain, "More:") {
+				t.Fatalf("complete result still requires inspection: %q", plain)
+			}
+			if width >= 40 && !strings.Contains(plain, "\n\n● Flow result · Review\n") {
+				t.Fatalf("result is not a separate top-level block: %q", plain)
 			}
 			for line := range strings.SplitSeq(got, "\n") {
 				if ansi.StringWidth(line) > width {
@@ -126,7 +129,7 @@ func TestSchedulerFinalResultShowsLeadingConclusion(t *testing.T) {
 	}
 }
 
-func TestSchedulerFinalResultEmptyAndTruncated(t *testing.T) {
+func TestSchedulerFinalResultEmptyAndLegacyExcerpt(t *testing.T) {
 	for _, body := range []string{"", " \n\t"} {
 		e := parseAgentEnvelope(`<task-notification scheduler="true" status="completed">` + body + `</task-notification>`)
 		if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: 80})); !strings.Contains(got, "No final result") {

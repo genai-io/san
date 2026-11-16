@@ -83,8 +83,8 @@ func (n mainNotice) input(message core.Message) pendingMessage {
 	return input
 }
 
-// maxTaskOutputInNotification is the inline threshold in bytes. Large ordinary
-// results use their log when available; Flow keeps a bounded leading excerpt.
+// maxTaskOutputInNotification bounds ordinary model-facing notifications.
+// Completed Flow reports are display-only and retain their full result.
 const maxTaskOutputInNotification = 20000
 
 // taskCompletionMessage addresses a terminal result to its launching agent.
@@ -103,7 +103,11 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	}
 
 	result := strings.TrimSpace(info.Output)
-	resultTruncated := info.Scheduler && status == "completed" && len(result) > maxTaskOutputInNotification
+	fullResult := info.Scheduler && status == "completed" && info.OwnerAgentID == ""
+	if fullResult && info.Result != "" {
+		result = strings.TrimSpace(info.Result)
+	}
+	resultTruncated := info.Scheduler && status == "completed" && !fullResult && len(result) > maxTaskOutputInNotification
 	if resultTruncated {
 		end := maxTaskOutputInNotification
 		for end > 0 && !utf8.RuneStart(result[end]) {
@@ -164,6 +168,8 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 		b.WriteString("\nPartial output:\n")
 	}
 	switch {
+	case fullResult:
+		b.WriteString(tool.EscapeXMLText(result))
 	case len(result) > maxTaskOutputInNotification && info.OutputError != "":
 		end := maxTaskOutputInNotification
 		for end > 0 && !utf8.RuneStart(result[end]) {

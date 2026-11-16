@@ -81,6 +81,24 @@ func TestAgentAttemptContinuation(t *testing.T) {
 	}
 }
 
+func TestAgentAttemptClearsResult(t *testing.T) {
+	a := NewAgentTask("result", "flow", "work", context.Background(), nil, "")
+	a.SetResult("prior final report")
+	a.Complete(nil)
+	snapshot := a.GetStatus()
+	n, err := a.BeginAttempt("", context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := a.GetStatus(); info.Result != "" || info.Output != "" {
+		t.Fatal("new attempt leaked prior result or output")
+	}
+	a.CompleteAttempt(n, nil)
+	if a.GetStatus().Result != "" || snapshot.Result != "prior final report" {
+		t.Fatal("completion leaked stale result or mutated prior snapshot")
+	}
+}
+
 func TestAttemptOutputFailureIsIndependent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

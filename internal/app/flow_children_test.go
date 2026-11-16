@@ -75,6 +75,9 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 				case <-time.After(time.Second):
 					t.Fatal("missing scheduler start")
 				}
+				if status != "completed" {
+					parent.SetResult("UNSUCCESSFUL RESULT MUST NOT BE SHOWN")
+				}
 				if status == "failed" {
 					parent.Complete(fmt.Errorf("checkpoint write denied"))
 				} else if status == "completed" {
@@ -99,8 +102,11 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 						t.Fatalf("unsuccessful scheduler presented success: %+v", n)
 					}
 					runCmd(m.deliverNotice(n))
+					rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+					if status != "completed" && (strings.Contains(rendered, "Flow result") || strings.Contains(rendered, "UNSUCCESSFUL RESULT")) {
+						t.Fatalf("unsuccessful scheduler displayed a success result: %s", rendered)
+					}
 					if status == "completed" {
-						rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
 						if !strings.Contains(rendered, "No final result") {
 							t.Fatalf("empty scheduler answer invented or hid a conclusion: %s", rendered)
 						}
@@ -151,11 +157,18 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		gates[name] = make(chan struct{})
 	}
 	const conclusion = "Final conclusion: boundary checks need repair"
-	reportOutput := "## " + conclusion + "\n\n"
-	for i := 1; i <= 40; i++ {
-		reportOutput += fmt.Sprintf("Report detail %02d: supporting evidence.\n\n", i)
+	const taskOutputLimit = 512 * 1024 // Native task output_buffer.go cap; Result must not share it.
+	var report strings.Builder
+	report.WriteString("## " + conclusion + "\n\n")
+	for i := 1; i <= 7000; i++ {
+		fmt.Fprintf(&report, "Report detail %04d: supporting evidence for the full independent Markdown report, not a preview.\n\n", i)
 	}
-	reportOutput += "TAIL DISCLAIMER: report actual answer is not a substitute for review."
+	const reportTail = "TAIL DISCLAIMER: report actual answer is not a substitute for review."
+	report.WriteString(reportTail)
+	reportOutput := report.String()
+	if len(reportOutput) <= taskOutputLimit || len(reportOutput) <= maxTaskOutputInNotification {
+		t.Fatal("fixture must exceed both task output and notification preview limits")
+	}
 	childProvider := &compactHTTPProvider{client: aitest.Always(func(callCtx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 		text := req.Messages[len(req.Messages)-1].Text()
 		name := ""
@@ -247,13 +260,21 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 						t.Fatalf("scheduler answer depends on child preview setting %d:\n%s\n%s", previewLines, rendered, got)
 					}
 				}
-				if !strings.Contains(rendered, conclusion) || !strings.Contains(rendered, "Report detail 11") ||
-					strings.Contains(rendered, "Report detail 12") || strings.Contains(rendered, "TAIL DISCLAIMER") ||
-					!strings.Contains(rendered, "/flow inspect "+parentID) {
-					t.Fatalf("scheduler did not show first 12 nonblank report lines and full-result hint: %s", rendered)
+				for _, marker := range []string{conclusion, "Report detail 0001", "Report detail 3500", "Report detail 7000", reportTail} {
+					if !strings.Contains(rendered, marker) {
+						t.Fatalf("full scheduler report lost %q", marker)
+					}
 				}
-				if rows := len(strings.Split(strings.TrimSpace(rendered), "\n")); rows > 18 {
-					t.Fatalf("scheduler answer is not bounded: %d rows\n%s", rows, rendered)
+				if !strings.Contains(rendered, "\n\n● Flow result · Native children\n") || strings.Contains(rendered, "More:") || strings.Contains(rendered, "/flow inspect") {
+					t.Fatalf("scheduler report is not an independent top-level result block: %.1000s", rendered)
+				}
+				for _, line := range strings.Split(rendered, "\n") {
+					if ansi.StringWidth(line) > m.env.Width {
+						t.Fatalf("full report line exceeds viewport width: %q", line)
+					}
+					if strings.Contains(line, conclusion) && strings.HasPrefix(line, " ") {
+						t.Fatalf("report is indented beneath completion receipt: %q", line)
+					}
 				}
 			} else if strings.Contains(rendered, conclusion) {
 				t.Fatalf("scheduler start invented a final answer: %s", rendered)
@@ -334,16 +355,22 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		t.Helper()
 		select {
 		case n := <-m.mainNotices:
-			if n.Content != "" || !n.FromAgent || n.FinishedTaskID == "" || n.SessionID != m.sessionID() || !strings.Contains(n.Display, "actual answer") {
+			expected := "actual answer"
+			if strings.Contains(n.Display, `description="report"`) {
+				// Ordinary child notifications retain their existing size guard;
+				// only the scheduler's independent final report bypasses it.
+				expected = "too large to inline"
+			}
+			if n.Content != "" || !n.FromAgent || n.FinishedTaskID == "" || n.SessionID != m.sessionID() || !strings.Contains(n.Display, expected) {
 				t.Fatalf("not a display-only native answer: %+v", n)
 			}
 			runCmd(m.deliverNotice(n))
 			msg := m.conv.Messages[len(m.conv.Messages)-1]
-			if msg.Role != core.ChatNotice || !msg.AgentNotice || !strings.Contains(msg.Content, "actual answer") {
+			if msg.Role != core.ChatNotice || !msg.AgentNotice || !strings.Contains(msg.Content, expected) {
 				t.Fatalf("child result not shown as native notice: %+v", msg)
 			}
 			rendered := ansi.Strip(conv.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
-			if !strings.Contains(rendered, "actual answer") || strings.Contains(rendered, "fourth hidden detail") || !strings.Contains(rendered, "Agent:") {
+			if !strings.Contains(rendered, expected) || strings.Contains(rendered, "fourth hidden detail") || !strings.Contains(rendered, "Agent:") {
 				t.Fatalf("wrong native bounded answer preview: %s", rendered)
 			}
 			for _, agent := range m.messageRenderParams().ManagedAgents {
@@ -388,8 +415,14 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if record.Status != flow.RunSucceeded || len(record.Nodes) != 4 {
 		t.Fatalf("wrong final checkpoint: %+v", record)
 	}
-	if got := parent.GetStatus().Output; got != reportOutput {
-		t.Fatalf("scheduler output is not the full actual sink answer:\n%s", got)
+	if got := parent.GetStatus().Result; got != reportOutput {
+		t.Fatalf("scheduler Result differs from full sink answer: got %d bytes, want %d", len(got), len(reportOutput))
+	}
+	if got := parent.GetStatus().Output; got != reportOutput[:taskOutputLimit] {
+		t.Fatalf("scheduler Output no longer preserves bounded prefix: got %d bytes", len(got))
+	}
+	if got := record.Nodes["report"].Output; got != reportOutput {
+		t.Fatalf("authoritative sink checkpoint lost full report: got %d bytes, want %d", len(got), len(reportOutput))
 	}
 	if !strings.Contains(record.Output, conclusion) || !strings.Contains(record.Output, "TAIL DISCLAIMER") || record.Output == reportOutput {
 		t.Fatalf("inspect lost full status summary and final answer: %s", record.Output)

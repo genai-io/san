@@ -208,8 +208,6 @@ func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
 	return label + detail + "\n" + e.renderFlowResult(p)
 }
 
-const maxFlowResultLines = 12
-
 func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 	if e.status != "completed" {
 		return ""
@@ -218,37 +216,30 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 	if width <= 0 {
 		width = 80
 	}
-	indent := strings.Repeat(" ", min(2, max(0, width-1)))
-	room := max(1, width-len(indent))
+	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	heading := body.Render("● ") + kit.FlowLabel("") + body.Render(" result")
+	if title := strings.Join(strings.Fields(envelopeAttr(e.tag, "agent-name")), " "); title != "" {
+		heading += body.Render(" · " + title)
+	}
+	heading = ansi.Truncate(heading, width, "…")
 	result := e.text()
 	if strings.TrimSpace(result) == "" {
-		return indent + toolResultStyle.Render(ansi.Truncate("No final result", room, "…")) + "\n"
+		return "\n" + heading + "\n" + toolResultStyle.Render(ansi.Truncate("No final result", width, "…")) + "\n"
 	}
 	md := p.MDRenderer
 	if md == nil {
 		md = NewMDRenderer(width)
 	}
-	rendered := renderMarkdownContent(md, result)
-	var lines []string
-	for line := range strings.SplitSeq(ansi.Hardwrap(rendered, room, true), "\n") {
-		if strings.TrimSpace(ansi.Strip(line)) != "" {
-			lines = append(lines, strings.TrimRight(line, " "))
-		}
-	}
-	var b strings.Builder
-	for _, line := range lines[:min(len(lines), maxFlowResultLines)] {
-		b.WriteString(indent + line + "\n")
-	}
-	if len(lines) > maxFlowResultLines || envelopeAttr(e.tag, "result-truncated") == "true" {
-		hint := "… More in task details"
+	rendered := ansi.Hardwrap(renderMarkdownContent(md, result), width, true)
+	// Older persisted notices may contain only an excerpt.
+	if envelopeAttr(e.tag, "result-truncated") == "true" {
+		hint := "Recorded excerpt; full result in task details"
 		if e.taskID != "" {
-			hint = "… More: /flow inspect " + e.taskID
+			hint = "Recorded excerpt; full result: /flow inspect " + e.taskID
 		}
-		for line := range strings.SplitSeq(ansi.Hardwrap(hint, room, true), "\n") {
-			b.WriteString(indent + toolResultStyle.Render(line) + "\n")
-		}
+		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, width, true))
 	}
-	return b.String()
+	return "\n" + heading + "\n" + strings.TrimRight(rendered, "\n") + "\n"
 }
 
 // envelopeAttr returns the value of a name="value" attribute within an opening

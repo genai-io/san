@@ -346,10 +346,11 @@ readable title. `Alt+T` still controls task-area visibility.
 Nodes execute through the native subagent executor, with its existing model,
 tools, permissions and sessions. Running nodes use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
-answer previews. On completion, Flow shows the beginning of its final sink answer
-as Markdown, independently of child preview limits. One sink returns its answer;
-multiple successful sinks retain labeled sections. A bounded preview links to
-native inspection for the full result; empty results are reported explicitly.
+answer previews. On completion, Flow renders its complete final sink answer as
+an independent top-level Markdown result in the main conversation, separate from
+the completion receipt and independent of child preview limits. One sink returns
+its answer; multiple successful sinks retain labeled sections. No inspection
+command is needed to read the report; empty results are reported explicitly.
 The scheduler's own start and terminal notices remain display-only: completing
 a Flow does not ask the main Agent to summarize it again. Add an explicit
 downstream node when synthesis is needed. Children remain background/parallel.
@@ -398,10 +399,11 @@ these are distinct from continuing an individual Agent conversation.
 ## What comes back
 
 The run command returns immediately with the run ID and task ID; either
-works with `/flow inspect` and `/flow stop`. When the run succeeds, its
-completion receipt shows the beginning of the successful sink answers (nodes
-with nothing downstream). The persisted run keeps the full status summary and
-sink outputs. Failed runs retain diagnostics and partial results. Each node's
+works with `/flow inspect` and `/flow stop`. When the run succeeds, a short
+completion receipt is followed by a separate full report in the main conversation:
+the successful sink answers (nodes with nothing downstream). The persisted run
+keeps the full status summary and sink outputs. Failed runs retain diagnostics
+and partial results. Each node's
 transcript is saved under the session like any subagent's.
 
 A persisted run summary looks like:
