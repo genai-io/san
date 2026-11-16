@@ -10,12 +10,9 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// Background agents reach the main conversation as harness-injected envelopes: a
-// <task-notification> when a background task finishes, an <agent-message> for an
-// interim/relayed note, or an <agent-messages> batch of them. They are submitted
-// to the model as user turns (so it can act on them) and persisted in that form.
-// Live and resumed sessions render that same message as a one-line notice,
-// leaving the model's Content untouched.
+// Interim notes and ordinary background completions arrive as model-visible user
+// envelopes and render as one-line notices. Display-only task annotations reuse
+// the same identity heading with a bounded worker-answer preview.
 
 // IsAgentEnvelope reports whether a user message's content is one of those
 // injected agent-comms envelopes rather than text the user typed.
@@ -96,6 +93,29 @@ func (e agentEnvelope) summary(width int) string {
 		}
 	}
 	return "Background agent message"
+}
+
+// renderDisplayNotice adds worker prose only for display-only task annotations.
+// The heading already carries the outcome, including genuine failure diagnostics.
+func (e agentEnvelope) renderDisplayNotice(p RenderContext) string {
+	heading := e.renderWithIdentity(p)
+	if p.AgentPreviewLines <= 0 {
+		return heading
+	}
+	body := e.text()
+	switch e.status {
+	case "failed", "stopped", "killed", "interrupted", "timeout", "timed_out":
+		if strings.HasPrefix(body, "Error: ") {
+			_, body, _ = strings.Cut(body, "\n")
+		}
+		if kit.IsRoutineStopReason(strings.TrimSpace(body)) {
+			body = ""
+		}
+	}
+	if strings.TrimSpace(body) == "" {
+		return heading
+	}
+	return heading + renderAgentResponsePreview(body, p.Width, p.MDRenderer, p.AgentPreviewLines)
 }
 
 func (e agentEnvelope) renderWithIdentity(p RenderContext) string {

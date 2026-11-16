@@ -262,6 +262,13 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 				return
 			}
 			if msg, ok := taskCompletionMessage(info); ok {
+				if info.ParentTaskID != "" && info.OwnerAgentID == "" {
+					m.notifyMain(mainNotice{
+						SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true,
+						FinishedTaskID: info.ID, FinishedAttempt: info.Attempt,
+					})
+					return
+				}
 				if info.OwnerAgentID != "" {
 					broker.SendCompletion(msg)
 				} else {

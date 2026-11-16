@@ -177,10 +177,12 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
 - `view.go` owns the final summary and compact branch-and-join live views.
   The summary contains status lines and successful sink outputs; dense graphs
   fall back to an exact dependency list.
-- Native subagents retain their original streamed text, tools, permissions,
-  session history and output handling. A managed child's `ParentTaskID` binds it
-  to its scheduler task. Native continuation is not offered as a substitute for
-  graph-level retry; Flow owns checkpoint/dependency decisions only.
+- Native subagents keep their tools, permissions, session history and output.
+  Managed children register through `CreateChildAgentTask`, so normal lifecycle
+  observers and task progress remain visible. The app renders completed child
+  answers as display-only native Agent previews, without extra main-agent turns.
+  `ParentTaskID` keeps recovery scheduler-owned; ordinary foreground Agent
+  presentation is unchanged.
 
 `tests/integration/flow/` covers the node ↔ subagent-turn seam the
 unit tests stub out; graph semantics stay with the unit tests.

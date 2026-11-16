@@ -31,6 +31,7 @@ type Manager struct { /* internal fields */ }
 
 func (m *Manager) CreateBashTask(...) *BashTask
 func (m *Manager) CreateAgentTask(...) *AgentTask
+func (m *Manager) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask
 func (m *Manager) RegisterTask(t BackgroundTask)
 func (m *Manager) Get(id string) (BackgroundTask, bool)
 func (m *Manager) List() []BackgroundTask
@@ -64,10 +65,12 @@ func ResetDefaultTracker()         // test-only
   file. Flows reflow their graph when the terminal resizes; the full event
   trail stays in the task log. `CreateSchedulerTask` registers a task that
   schedules child agent tasks (a Flow run) with `TaskInfo.Scheduler` set before
-  lifecycle observers see it; children carry its ID in `ParentTaskID`. Hosts
-  identify schedulers by that flag, not by display name. Ordinary subagents publish their
-  latest progress under the existing tracker row; recoverable errors stay there
-  rather than becoming independent main-conversation notices.
+  lifecycle observers see it. `CreateChildAgentTask` sets `ParentTaskID` before
+  registration; children publish ordinary creation, progress and completion.
+  Hosts identify schedulers by that flag, not by display name. Scheduler-owned
+  child completions are shown to the user without waking the main model.
+  Ordinary subagents publish their latest progress under the existing tracker
+  row; recoverable errors stay there rather than becoming independent notices.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the

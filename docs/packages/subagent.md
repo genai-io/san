@@ -184,10 +184,11 @@ the event log. Default host wiring remains legacy until the unified cutover.
 - Recoverable tool errors and inference retries stay in the worker's progress
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
-  Flow callbacks finish the existing tool row rather than
-  adding a duplicate error row. These events do not send broker notices to main:
-  a failed attempt is not a failed task. Terminal results and explicit
-  `SendMessage` calls are the parent communication boundary.
+  Flow nodes remain scheduler-owned background workers. Synchronous `Run`
+  registers them as native child tasks, with tool progress and completion
+  reports; the app displays their answers without waking the main model.
+  Recoverable errors do not send completion notices: a failed attempt is not
+  a failed task. Ordinary foreground/background Agent presentation is unchanged.
 - Every execution exit fires `SubagentStop` with the same invocation ID as
   `SubagentStart`. Foreground and background agents retain a Task ID for follow-up
   through `SendMessage`. See [task lifecycle and continuation](task.md#continuation-and-failure-handling).

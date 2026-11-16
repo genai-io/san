@@ -257,6 +257,22 @@ func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 	}
 }
 
+func TestNodeRunnerTextResultPreviewWithoutDiscardCallback(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	scheduler := task.NewAgentTask("text-result", "flow", "review", ctx, cancel, "")
+	exec := &scriptedExecutor{outputs: map[string]string{"only": "actual streamed answer"}, toolEvents: func(req tool.AgentExecRequest) {
+		if req.OnTextDelta != nil {
+			t.Fatal("Flow installed a text callback without a native text consumer")
+		}
+	}}
+	runner := &nodeRunner{exec: exec, task: scheduler, name: "review"}
+	output, err := runner.RunNode(ctx, Call{Node: &Node{ID: "only", Config: map[string]string{}}})
+	if err != nil || output != "actual streamed answer" || scheduler.GetStatus().Progress != "only ▸ Result: actual streamed answer" {
+		t.Fatalf("text-only result lost: output=%q progress=%q err=%v", output, scheduler.GetStatus().Progress, err)
+	}
+}
+
 func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
 	if got := flowToolResultSummary("hello", nil); got != "hello" {
 		t.Fatalf("short result = %q", got)
@@ -276,20 +292,25 @@ func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
 func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	firstStreaming, secondStreaming, firstDiscarded := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
+		emit := func(text string) {
+			if req.OnTextDelta != nil {
+				req.OnTextDelta(text)
+			}
+		}
 		if strings.HasSuffix(req.Description, "/a") {
-			req.OnTextDelta("previous accepted")
+			emit("previous accepted")
 			textEnd(req, nil)
-			req.OnTextDelta(strings.Repeat("discarded draft ", 16))
-			req.OnTextDelta("unflushed tail")
+			emit(strings.Repeat("discarded draft ", 16))
+			emit("unflushed tail")
 			close(firstStreaming)
 			<-secondStreaming
 			textEnd(req, errors.New("stream failed"))
 			close(firstDiscarded)
-			req.OnTextDelta("accepted retry")
+			emit("accepted retry")
 			textEnd(req, nil)
 		} else {
 			<-firstStreaming
-			req.OnTextDelta("parallel accepted")
+			emit("parallel accepted")
 			close(secondStreaming)
 			<-firstDiscarded
 			textEnd(req, nil)

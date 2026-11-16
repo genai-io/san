@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -304,7 +303,6 @@ type nodeRunner struct {
 
 func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 	n := c.Node
-	var streamedText atomic.Bool
 	label := n.ID
 	if c.Label != "" {
 		label += "·" + c.Label
@@ -326,7 +324,6 @@ func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 		OnActivity: func(msg string) {
 			r.task.AppendProgress(label + " ▸ " + msg)
 		},
-		OnTextDelta: func(string) { streamedText.Store(true) },
 		OnToolStart: func(_, call string) {
 			r.task.AppendProgress(label + " ▸ " + call)
 		},
@@ -370,7 +367,7 @@ func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 		}
 		return output, err
 	}
-	if preview := flowResultPreview(res.Content); preview != "" && !streamedText.Load() {
+	if preview := flowResultPreview(res.Content); preview != "" {
 		r.task.AppendProgress(label + " ▸ Result: " + preview)
 	}
 	return res.Content, nil

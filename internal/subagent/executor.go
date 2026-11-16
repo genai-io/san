@@ -232,9 +232,9 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err := e.prepareInbox(ctx, run); err != nil {
 		return nil, err
 	}
-	worker := e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+	var worker *task.AgentTask
 	if req.Background && req.Flow != nil {
-		worker.SetParentTaskID(req.Flow.TaskID)
+		worker = e.taskPool().CreateChildAgentTask(run.req.TaskID, req.Flow.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
 		onIdentity := run.req.OnIdentity
 		run.req.OnIdentity = func(identity toolresult.AgentIdentity) {
 			worker.SetIdentity(run.cfg.config.Name, identity.SessionID)
@@ -249,6 +249,26 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 				onActivity(msg)
 			}
 		}
+		onToolStart := run.req.OnToolStart
+		run.req.OnToolStart = func(id, call string) {
+			worker.AppendProgress(call)
+			if onToolStart != nil {
+				onToolStart(id, call)
+			}
+		}
+		onToolResult := run.req.OnToolResult
+		run.req.OnToolResult = func(id, call, output string, toolErr error) {
+			status := "completed"
+			if toolErr != nil {
+				status = "failed: " + toolErr.Error()
+			}
+			worker.AppendProgress(call + " · " + status)
+			if onToolResult != nil {
+				onToolResult(id, call, output, toolErr)
+			}
+		}
+	} else {
+		worker = e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
 	}
 	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
@@ -339,6 +359,10 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		if !ok || agentTask.GetStatus().ParentSessionID != e.parentSessionID {
 			cancel()
 			return nil, fmt.Errorf("task not found in parent session")
+		}
+		if agentTask.GetStatus().ParentTaskID != "" {
+			cancel()
+			return nil, fmt.Errorf("task is scheduler-owned; resume its parent run")
 		}
 		if agentTask.IsRunning() {
 			cancel()

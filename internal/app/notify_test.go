@@ -194,6 +194,19 @@ func TestTaskCompletionMessagePreservesFailedOutput(t *testing.T) {
 	}
 }
 
+func TestManagedChildNoticeLeavesRecoveryToScheduler(t *testing.T) {
+	msg, ok := taskCompletionMessage(task.TaskInfo{
+		ID: "child", ParentTaskID: "flow-parent", Type: task.TaskTypeAgent,
+		Status: task.StatusFailed, AgentSessionID: "child-session", Error: "provider unavailable", Output: "partial finding",
+	})
+	if !ok || !strings.Contains(msg.Content, "partial finding") || !strings.Contains(msg.Content, "provider unavailable") {
+		t.Fatal("managed result lost output or diagnostics")
+	}
+	if strings.Contains(msg.Content, "SendMessage") || strings.Contains(msg.Content, "Recovery decision required") {
+		t.Fatal("managed child advertised independent recovery")
+	}
+}
+
 func TestFailedAgentNoticeWeighsContinuationAgainstDirectWork(t *testing.T) {
 	msg, ok := taskCompletionMessage(task.TaskInfo{ID: "worker", Type: task.TaskTypeAgent, Status: task.StatusFailed, AgentSessionID: "child"})
 	if !ok || !strings.Contains(msg.Content, "Choose whether to finish directly, continue the existing worker, or report a blocker") || !strings.Contains(msg.Content, "Never bypass a denied command") {
