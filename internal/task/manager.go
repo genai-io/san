@@ -63,11 +63,11 @@ func (m *Manager) CreateAgentTask(id, agentName, description string, ctx context
 
 // CreateChildAgentTask registers a managed child with ownership set before publication.
 func (m *Manager) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
-	t := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
-	t.parentSessionID = m.ownerSession(ctx)
-	t.SetParentTaskID(parentID)
-	m.RegisterTask(t)
-	return t
+	task := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
+	task.parentSessionID = m.ownerSession(ctx)
+	task.parentTaskID = parentID
+	m.RegisterTask(task)
+	return task
 }
 
 // CreateSchedulerTask registers a task that schedules child agent tasks.

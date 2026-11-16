@@ -22,30 +22,29 @@ type flowUIService struct {
 	values                                 map[string]string
 }
 
-func (s *flowUIService) Saved() string                       { return "" }
 func (s *flowUIService) Preview(string, int) (string, error) { return "", s.err }
-func (s *flowUIService) Launch(_ string, in map[string]string, _ int) (string, string, error) {
+func (s *flowUIService) Launch(_ string, in map[string]string, _ int) (string, error) {
 	s.launches++
 	s.values = in
-	return "bounds", "task", s.err
+	return "task", s.err
 }
 func (s *flowUIService) Runs() ([]flow.RunRecord, error) {
 	return []flow.RunRecord{s.r}, nil
 }
-func (s *flowUIService) InspectRun(string) (*flow.RunRecord, error) {
+func (s *flowUIService) GetRun(string) (*flow.RunRecord, error) {
 	s.polls++
 	r := s.r
 	return &r, nil
 }
-func (s *flowUIService) ResumeRun(_ string, from string, _ int) (string, string, error) {
+func (s *flowUIService) ResumeRun(_ string, from string, _ int) (string, error) {
 	s.from = from
 	s.resumes++
 	s.r.Status = flow.RunRunning
-	return "", "task", s.err
+	return "task", s.err
 }
 func (s *flowUIService) StopRun(string) error { s.stops++; return s.err }
-func (s *flowUIService) SavedDefinitions() []flow.Saved {
-	return []flow.Saved{{Name: "sample", Path: "/global/sample.md"}}
+func (s *flowUIService) SavedDefinitions() []flow.SavedDefinition {
+	return []flow.SavedDefinition{{Name: "sample", Path: "/global/sample.md"}}
 }
 func (s *flowUIService) Definition(string) (string, error) {
 	if s.source != "" {
@@ -53,9 +52,17 @@ func (s *flowUIService) Definition(string) (string, error) {
 	}
 	return flowUISource, nil
 }
+func (s *flowUIService) SavedInputNames(name string) ([]string, error) {
+	source, _ := s.Definition(name)
+	b, err := flow.Parse(source)
+	if err != nil {
+		return nil, err
+	}
+	return b.InputNames(), nil
+}
 func (s *flowUIService) SaveDefinition(string, string, string) error { s.saves++; return s.err }
 func flowUIFixture() *flowUIService {
-	return &flowUIService{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Status: flow.StatusSucceeded, Duration: 7 * time.Second}, "b": {Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}, "c": {Status: flow.StatusPending}, "d": {Status: flow.StatusPending}}}}
+	return &flowUIService{r: flow.RunRecord{ID: "run", Name: "sample", TaskID: "task", Definition: flowUISource, Status: flow.RunRunning, StartedAt: time.Now().Add(-time.Minute), Nodes: map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Duration: 7 * time.Second}}, "b": {Outcome: flow.Outcome{Status: flow.StatusRunning, StartedAt: time.Now().Add(-time.Second)}}, "c": {Outcome: flow.Outcome{Status: flow.StatusPending}}, "d": {Outcome: flow.Outcome{Status: flow.StatusPending}}}}}
 }
 func flowKey(k string) tea.KeyMsg {
 	switch k {
@@ -202,7 +209,7 @@ func TestFlowEditorsKeepActionKeysAsText(t *testing.T) {
 			v.HandleKeypress(flowKey(key))
 			before := v.editor.Value()
 			v.HandleKeypress(flowKey("s"))
-			if v.page != page || v.editor.Value() == before || v.confirm != "" || s.saves != 0 || s.stops != 0 {
+			if v.page != flowPage(page) || v.editor.Value() == before || v.confirm != "" || s.saves != 0 || s.stops != 0 {
 				t.Fatal("typing in an editor triggered a flow action")
 			}
 		})
@@ -214,8 +221,8 @@ func TestFlowResponsiveInspectAndConfirmations(t *testing.T) {
 	c := s.r.Nodes["b"]
 	c.Output = strings.Repeat("output\n", 50)
 	c.Error = "pinned failure"
-	c.History = []flow.Attempt{{Number: 1, Output: "prior output"}}
-	c.Workers = []flow.WorkerCheckpoint{{Index: 0, Label: "worker", State: flow.Checkpoint{Output: "worker result", Execution: flow.Execution{TaskID: "worker-task", SessionID: "worker-session"}}}}
+	c.History = []flow.Attempt{{Outcome: flow.Outcome{Output: "prior output"}, Number: 1}}
+	c.Workers = []flow.WorkerCheckpoint{{Index: 0, Label: "worker", State: flow.Checkpoint{Outcome: flow.Outcome{Output: "worker result", Execution: flow.Execution{TaskID: "worker-task", SessionID: "worker-session"}}}}}
 	s.r.Nodes["b"] = c
 	var v FlowView
 	v.OpenRun(s, "run", 100, 40)
@@ -296,7 +303,7 @@ func TestFlowPollStopsWhenSettledAndRestartsOnRerun(t *testing.T) {
 		t.Fatal("duplicate poll loop scheduled")
 	}
 	s.r.Status = flow.RunSucceeded
-	s.r.Nodes["d"] = flow.Checkpoint{Status: flow.StatusSucceeded, Output: "done"}
+	s.r.Nodes["d"] = flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusSucceeded, Output: "done"}}
 	if cmd, _ := v.Update(flowTick{v.generation}); cmd != nil {
 		t.Fatal("settled view kept polling and animating")
 	}
@@ -313,7 +320,7 @@ func TestFlowCompletedShowsResultNotActivity(t *testing.T) {
 	s := flowUIFixture()
 	s.r.Status = flow.RunSucceeded
 	s.r.Output = "all graph statuses summary"
-	s.r.Nodes["d"] = flow.Checkpoint{Status: flow.StatusSucceeded, Output: "final result"}
+	s.r.Nodes["d"] = flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusSucceeded, Output: "final result"}}
 	var v FlowView
 	v.OpenRun(s, "run", 90, 35)
 	detail := v.renderDetail()

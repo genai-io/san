@@ -159,7 +159,7 @@ func (e agentEnvelope) render(width int, colors map[string]int) string {
 }
 
 func (e agentEnvelope) isScheduler() bool {
-	return e.kind == envelopeTask && e.attributed && envelopeAttr(e.tag, " scheduler") == "true"
+	return e.kind == envelopeTask && e.attributed && envelopeAttr(e.tag, "scheduler") == "true"
 }
 
 func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
@@ -228,9 +228,6 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 	// Older persisted notices may contain only an excerpt.
 	if envelopeAttr(e.tag, "result-truncated") == "true" {
 		hint := "Recorded excerpt; full result in task details"
-		if e.taskID != "" {
-			hint = "Recorded excerpt; full result: /flow inspect " + e.taskID
-		}
 		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, width, true))
 	}
 	return "\n" + strings.TrimRight(rendered, "\n") + "\n"
@@ -239,7 +236,9 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 // envelopeAttr returns the value of a name="value" attribute within an opening
 // tag, or "" when absent.
 func envelopeAttr(tag, name string) string {
-	_, after, found := strings.Cut(tag, name+`="`)
+	// Attributes are space-separated and values are escaped, so a leading space
+	// keeps "agent-id" from matching inside another attribute's name.
+	_, after, found := strings.Cut(tag, " "+name+`="`)
 	if !found {
 		return ""
 	}

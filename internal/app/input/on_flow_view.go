@@ -21,15 +21,15 @@ func (v *FlowView) Render() string {
 	}
 	title, content, hint := v.renderPage()
 	switch v.confirm {
-	case "save":
+	case flowConfirmSave:
 		title = "Save · " + flowTitle(v.name)
 		content = v.body.View() + "\nSave this flow in the project? y / n"
 		hint = "y save · n cancel"
-	case "stop":
+	case flowConfirmStop:
 		content = "Stop this run? In-flight work may have side effects. y / n"
-	case "discard":
+	case flowConfirmDiscard:
 		content = "Close and discard this unsaved draft? y / n"
-	case "resume":
+	case flowConfirmResume:
 		action := "Resume unfinished work"
 		if v.resumeFrom != "" {
 			action = "Rerun from " + v.resumeFrom
@@ -37,7 +37,7 @@ func (v *FlowView) Render() string {
 		content = v.body.View() + "\n" + action + "? y / n"
 	}
 	if v.message != "" {
-		if v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys)) {
+		if v.page == flowPageGoal || (v.page == flowPageInputs && v.field < len(v.keys)) {
 			// Keep validation feedback from pushing the focused editor offscreen.
 			content += "\n" + kit.DimStyle().Render(ansi.Truncate(strings.ReplaceAll(v.message, "\n", " "), max(1, v.width-2), "…"))
 		} else {
@@ -59,59 +59,59 @@ func flowTitle(name string) string { return (&flow.Blueprint{Name: name}).Title(
 func (v *FlowView) renderPrimaryAction() string {
 	key, label := "Enter", "Open"
 	switch v.page {
-	case "hub":
+	case flowPageHub:
 		label = "Create a flow"
 		if v.cursor > 0 && v.cursor <= len(v.definitions) {
 			label = "Review blueprint"
 		} else if v.cursor > len(v.definitions) {
 			label = "Inspect run"
 		}
-	case "goal":
+	case flowPageGoal:
 		label = "Generate blueprint"
-	case "generate":
+	case flowPageGenerate:
 		key, label = "Esc", "Cancel generation"
 		if v.draftAt.IsZero() {
 			key, label = "Enter", "Try again"
 		}
-	case "review":
+	case flowPageReview:
 		label = "Save blueprint"
 		if v.plan == nil {
 			label = "Edit blueprint"
 		} else if v.saved {
 			label = "Prepare run"
 		}
-	case "inputs":
+	case flowPageInputs:
 		label = "Continue"
 		if v.field == len(v.keys) {
 			label = "Run flow"
 		}
-	case "edit":
+	case flowPageEdit:
 		key, label = "Ctrl+S", "Review changes"
-	case "details":
+	case flowPageDetails:
 		key, label = "Esc", "Back to review"
-	case "run":
+	case flowPageRun:
 		label = "Inspect selected step"
-	case "executions":
+	case flowPageExecutions:
 		label = "Open native task"
 	}
 	switch v.confirm {
-	case "save":
+	case flowConfirmSave:
 		key, label = "Enter", "Confirm save"
-	case "discard":
+	case flowConfirmDiscard:
 		key, label = "y", "Discard draft"
-	case "stop":
+	case flowConfirmStop:
 		key, label = "y", "Stop run"
-	case "resume":
+	case flowConfirmResume:
 		key, label = "y", "Resume run"
 		if v.resumeFrom != "" {
 			label = "Rerun from selected step"
 		}
 	}
-	if v.confirm == "" && (v.page == "run" || v.page == "executions") && !v.canInspect() {
+	if v.confirm == "" && (v.page == flowPageRun || v.page == flowPageExecutions) && !v.canInspect() {
 		return kit.DimStyle().Render(ansi.Truncate("No execution to inspect", v.width, "…"))
 	}
 	action := keycap(key) + " " + kit.SelectorSelectedLabelStyle().Render(label)
-	if v.page == "review" && v.plan != nil && v.confirm == "" {
+	if v.page == flowPageReview && v.plan != nil && v.confirm == "" {
 		edit := "   " + keycap("e") + " Edit"
 		if ansi.StringWidth(action+edit) <= v.width {
 			action += edit
@@ -123,14 +123,14 @@ func (v *FlowView) renderPrimaryAction() string {
 func (v *FlowView) renderPage() (title, content, hint string) {
 	title, hint = "Flow", "↑/↓ select · Enter open · Esc close"
 	switch v.page {
-	case "goal":
+	case flowPageGoal:
 		title, hint = "Create Flow", "Shift+Enter newline · Esc close"
 		content = v.renderGoal()
-	case "generate":
+	case flowPageGenerate:
 		return v.renderGeneration()
-	case "hub":
+	case flowPageHub:
 		title, content = "Flow", v.renderHub()
-	case "review":
+	case flowPageReview:
 		title = "Review · " + flowTitle(v.name)
 		hint = "e edit · s save · Esc close"
 		if v.saved {
@@ -150,16 +150,16 @@ func (v *FlowView) renderPage() (title, content, hint string) {
 		if v.plan != nil {
 			content = v.renderGraph() + "\n\n" + content
 		}
-	case "details":
+	case flowPageDetails:
 		title, content = "Execution limits · "+flowTitle(v.name), v.body.View()
 		hint = "↑/↓ scroll · Esc review"
-	case "edit":
+	case flowPageEdit:
 		title = "Edit source · " + flowTitle(v.name)
 		content = v.templateHelp() + "\n\n" + v.editor.View()
 		hint = "Ctrl+S preview save · Esc review"
-	case "inputs":
+	case flowPageInputs:
 		return v.renderInputs()
-	case "run", "executions":
+	case flowPageRun, flowPageExecutions:
 		return v.renderRun()
 	}
 	return title, content, hint
@@ -326,7 +326,7 @@ func (v *FlowView) renderHub() string {
 
 func (v *FlowView) canInspect() bool {
 	choices := v.executionChoices()
-	if v.page == "executions" {
+	if v.page == flowPageExecutions {
 		if v.cursor < 0 || v.cursor >= len(choices) {
 			return false
 		}
@@ -354,7 +354,7 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 	left, right := "Run · "+flowTitle(v.record.Name), elapsed.Round(time.Second).String()
 	left = ansi.Truncate(left, max(1, v.width-5-ansi.StringWidth(right)), "…")
 	title = left + strings.Repeat(" ", max(1, v.width-4-lipgloss.Width(left)-len(right))) + right
-	if v.page == "executions" {
+	if v.page == flowPageExecutions {
 		content = "Executions · " + v.nodeID() + "\n" + v.renderExecutions()
 		hint = "↑/↓ select · Enter native task · Esc graph"
 	} else {
@@ -373,7 +373,7 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 		hint = strings.Replace(hint, " · Enter native task", "", 1)
 	}
 	if v.record.Status == flow.RunFailed || v.record.Status == flow.RunStopped || v.record.Status == flow.RunInterrupted {
-		content = "Run " + strings.ToUpper(v.record.Status) + "\n" + content
+		content = "Run " + strings.ToUpper(string(v.record.Status)) + "\n" + content
 	}
 	if v.record.Error != "" {
 		content = "Error: " + v.record.Error + "\n" + content

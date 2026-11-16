@@ -616,7 +616,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 			}
 			if info.Status == task.StatusRunning || !m.taskCompletionsShown[taskCompletionKey(info.ID, info.Attempt)] {
 				activeAgentIDs = append(activeAgentIDs, info.ID, info.AgentSessionID)
-				if info.ParentTaskID != "" && info.OwnerAgentID == "" {
+				if info.ScheduledChild() && info.OwnerAgentID == "" {
 					managedAgents = append(managedAgents, conv.AgentView{
 						ID: info.ID, SessionID: info.AgentSessionID, Name: info.AgentName, Description: info.Description,
 						StartedAt: info.StartTime, Duration: info.EndTime.Sub(info.StartTime), Activity: info.Activity,

@@ -11,18 +11,11 @@ import (
 
 func TestBlueprintTitle(t *testing.T) {
 	for _, tc := range []struct{ name, want string }{
-		{"InternalFlowReadOnlyReview", "Internal Flow Read Only Review"},
-		{"HTTPReview", "HTTP Review"},
-		{"parseHTTPResponse", "Parse HTTP Response"},
-		{"reviewUI", "Review UI"},
-		{"review2UI", "Review2 UI"},
-		{"FlowReadonlyReview", "Readonly Review"},
+		{"InternalReview", "InternalReview"},
 		{"flow_readonly_review", "Readonly review"},
 		{"normal name", "Normal name"},
 		{" FLOW--équipe\t检查 ", "Équipe 检查"},
-		{"flow_API_HTTP", "API HTTP"},
 		{"iOS-review", "IOS review"},
-		{"eBPF-review", "EBPF review"},
 		{"flow", "Flow"},
 		{"", "Untitled flow"},
 		{" _-\t", "Untitled flow"},

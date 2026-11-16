@@ -207,7 +207,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	if err := svc.SaveDefinition("native-children", definition, ""); err != nil {
 		t.Fatal(err)
 	}
-	_, parentID, err := svc.Launch("native-children", nil, 80)
+	parentID, err := svc.Launch("native-children", nil, 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	close(gates["report"])
 	deliverChild()
 	deliverScheduler("completed")
-	record, err := svc.InspectRun(parentID)
+	record, err := svc.GetRun(parentID)
 	if err != nil {
 		t.Fatal(err)
 	}

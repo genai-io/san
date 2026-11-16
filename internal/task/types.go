@@ -149,3 +149,10 @@ type TaskInfo struct {
 	TokenUsage       int
 	LiveView         string // Current display for a running structured task, if any.
 }
+
+// ScheduledChild reports a task launched by a scheduler task such as a Flow run.
+func (info TaskInfo) ScheduledChild() bool { return info.ParentTaskID != "" }
+
+// SchedulerManaged reports a scheduler task or one of its children. Their
+// lifecycle is shown to the user, not delivered to the main model.
+func (info TaskInfo) SchedulerManaged() bool { return info.Scheduler || info.ScheduledChild() }

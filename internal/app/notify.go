@@ -109,11 +109,7 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	}
 	resultTruncated := info.Scheduler && status == "completed" && !fullResult && len(result) > maxTaskOutputInNotification
 	if resultTruncated {
-		end := maxTaskOutputInNotification
-		for end > 0 && !utf8.RuneStart(result[end]) {
-			end--
-		}
-		result = result[:end]
+		result = utf8Head(result, maxTaskOutputInNotification)
 	}
 
 	var b strings.Builder
@@ -142,7 +138,7 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 			b.WriteString(` result-truncated="true"`)
 		}
 	}
-	if info.Scheduler || info.ParentTaskID != "" {
+	if info.SchedulerManaged() {
 		fmt.Fprintf(&b, ` agent-name="%s"`, html.EscapeString(info.AgentName))
 		if !info.EndTime.IsZero() && info.EndTime.After(info.StartTime) {
 			fmt.Fprintf(&b, ` duration-ms="%d"`, info.EndTime.Sub(info.StartTime).Milliseconds())
@@ -171,12 +167,9 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	case fullResult:
 		b.WriteString(tool.EscapeXMLText(result))
 	case len(result) > maxTaskOutputInNotification && info.OutputError != "":
-		end := maxTaskOutputInNotification
-		for end > 0 && !utf8.RuneStart(result[end]) {
-			end--
-		}
-		b.WriteString(tool.EscapeXMLText(result[:end]))
-		fmt.Fprintf(&b, "\n… %d retained bytes omitted. The output log is incomplete; this is only a preview.", len(result)-end)
+		head := utf8Head(result, maxTaskOutputInNotification)
+		b.WriteString(tool.EscapeXMLText(head))
+		fmt.Fprintf(&b, "\n… %d retained bytes omitted. The output log is incomplete; this is only a preview.", len(result)-len(head))
 	case len(result) > maxTaskOutputInNotification && info.OutputFile != "":
 		// Too large to inline without bloating the main context. Point at the
 		// full result instead of dumping a partial preview.
@@ -184,7 +177,7 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 	case result != "":
 		b.WriteString(tool.EscapeXMLText(result))
 	}
-	if !info.Scheduler && info.ParentTaskID == "" && info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
+	if !info.SchedulerManaged() && info.Status == task.StatusFailed && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
 		b.WriteString("\n\nRecovery decision required: inspect the failure and available partial findings. Choose whether to finish directly, continue the existing worker, or report a blocker. For a safe continuation, use SendMessage with to set to this task ID and message containing only a short corrective instruction; the original child session is restored internally. Do not copy its full history into the parent or blindly repeat uncertain side effects. Never bypass a denied command.")
 	}
 	b.WriteString("\n</task-notification>")
@@ -209,6 +202,17 @@ func taskMessage(info task.TaskInfo, status string) broker.Message {
 			TaskID: info.ID, Attempt: info.Attempt,
 		},
 	}
+}
+
+// utf8Head returns at most n bytes of s without splitting a rune.
+func utf8Head(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func taskSourceSession(info task.TaskInfo) string {

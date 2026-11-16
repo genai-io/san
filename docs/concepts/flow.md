@@ -183,7 +183,7 @@ never blocks the session.
 ### Try a full repository audit
 
 [`examples/flows/ponytail-audit.md`](../../examples/flows/ponytail-audit.md)
-preserves the original `ponytail-audit` instructions in a read-only workflow.
+preserves the original `ponytail-audit` instructions in a read-only flow.
 It keeps all six check categories, the evidence rules, the report format and
 its example. The instructions are split into five subagent turns:
 
@@ -243,7 +243,7 @@ prompts; installing a separate Ponytail skill is not required.
 ## Fanning out over a plan
 
 A node with `for_each` runs once per item of a plan an upstream node
-produced, which is how one workflow splits work it could not know in advance:
+produced, which is how one flow splits work it could not know in advance:
 
 ````markdown
 ## plan
@@ -322,7 +322,7 @@ follows falls out of that:
 | `{{review}}` inside `draft` | the previous round's review; empty on the first |
 | `{{draft}}` inside `ship` | the round that actually passed |
 | an early round passing | the remaining rounds are omitted, never run |
-| every round used up, still `FAIL` | the workflow **fails** — the condition was never met, and a result that failed review must not flow on |
+| every round used up, still `FAIL` | the flow **fails** — the condition was never met, and a result that failed review must not flow on |
 | `review` answering neither `FAIL` nor `PASS` | that round **fails**, in any round. The node carrying the back edge is the one place every answer is declared (the retry label plus the escapes), so an answer outside them is a model gone off-script, not a quiet stop. Any other node — a gate outside the loop or inside its body — keeps gate semantics: an unmatched `NO` means "stop here" and succeeds |
 | the bound | required, from `x1` to `x10`. A back edge without `xN` is the cycle error it would otherwise be. The cap is checked during parsing before anything is unrolled, including during Review and launch validation |
 | one loop after another | the second is always entered at its first round, however many rounds the first one took |
@@ -371,9 +371,9 @@ these are distinct from continuing an individual Agent conversation.
 - A node sees the outputs of the ancestors reached through taken edges. An
   untaken conditional edge hides that branch: in `a -->|X| d`, `{{a}}`
   inside `d` is `a`'s output only when `a` said `X`.
-- A failed node **skips** everything downstream and fails the workflow.
+- A failed node **skips** everything downstream and fails the flow.
   `continue_on_error: true` on the failing node lets downstream run and
-  keeps the workflow's verdict clean. What `{{id}}` then renders to depends
+  keeps the flow's verdict clean. What `{{id}}` then renders to depends
   on whether anything whole survived: nothing for an ordinary node, since
   its content is the half-answer it stopped on and a downstream node would
   read that as the finished thing; for a `for_each` node, the workers that
@@ -389,18 +389,19 @@ these are distinct from continuing an individual Agent conversation.
   `explore`, `edit` and `default` only. A UI answer grants that invocation once,
   never overrides hard denials or changes the node's policy. What `default`
   resolves to remains the subagent layer's business, the same as for `Agent`.
-  Approval and question headers name the workflow, run task ID, node, and
+  Approval and question headers name the flow, run task ID, node, and
   `for_each` worker label when present. These identify the source, not a shared
   worker address; parallel nodes keep independent replies and cancellation.
-- `AgentStop` on the workflow's task cancels it: nodes that have not started
+- `AgentStop` on the flow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
 - Flow is started by the user's slash command, not a model tool call; its
   nodes do not acquire another scheduling tool.
 
 ## What comes back
 
-The run command returns immediately with the run ID and task ID; either
-works with `/flow inspect` and `/flow stop`. When the run succeeds, a short
+The run starts immediately and a start receipt appears in the conversation;
+`/flow` lists the run. Its run ID or task ID works with `/flow inspect` and
+`/flow stop`. When the run succeeds, a short
 completion receipt is followed by a separate full report in the main conversation:
 the successful sink answers (nodes with nothing downstream). The persisted run
 keeps the full status summary and sink outputs. Failed runs retain diagnostics

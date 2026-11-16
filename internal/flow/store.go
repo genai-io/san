@@ -20,20 +20,20 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// Saved is a flow definition found on disk. Only the frontmatter is read
+// SavedDefinition is a flow definition found on disk. Only the frontmatter is read
 // while listing; Parse runs when one is actually launched, so a broken
 // definition is reported to whoever tried to run it rather than at startup.
-type Saved struct {
+type SavedDefinition struct {
 	Name        string
 	Description string
 	Path        string
 }
 
-// Load lists the `*.md` definitions in dirs, earliest directory winning when
+// ListDefinitions lists the `*.md` definitions in dirs, earliest directory winning when
 // a name appears twice, sorted by name. Callers pass the directories in
 // priority order; a missing directory is not an error.
-func Load(dirs ...string) []Saved {
-	var out []Saved
+func ListDefinitions(dirs ...string) []SavedDefinition {
+	var out []SavedDefinition
 	seen := map[string]bool{}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
@@ -45,7 +45,7 @@ func Load(dirs ...string) []Saved {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
-			s := Saved{Name: strings.TrimSuffix(e.Name(), ".md"), Path: path}
+			s := SavedDefinition{Name: strings.TrimSuffix(e.Name(), ".md"), Path: path}
 			// Only the head is read and only the header parsed: listing a
 			// directory should cost neither the whole of a file nobody is
 			// running nor the graph inside it. A definition whose header does
@@ -64,29 +64,29 @@ func Load(dirs ...string) []Saved {
 			out = append(out, s)
 		}
 	}
-	slices.SortFunc(out, func(a, b Saved) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(out, func(a, b SavedDefinition) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 
-// Find returns the definition named name, parsed and validated.
-func Find(name string, dirs ...string) (*Blueprint, error) {
+// FindDefinition returns the definition named name, parsed and validated.
+func FindDefinition(name string, dirs ...string) (*Blueprint, error) {
 	source, err := ReadDefinition(name, dirs...)
 	if err != nil {
 		return nil, err
 	}
-	w, err := Parse(source)
+	b, err := Parse(source)
 	if err != nil {
 		return nil, err
 	}
-	if w.Name == "" {
-		w.Name = name
+	if b.Name == "" {
+		b.Name = name
 	}
-	return w, nil
+	return b, nil
 }
 
 // ReadDefinition returns the exact source of the highest-priority named definition.
 func ReadDefinition(name string, dirs ...string) (string, error) {
-	for _, entry := range Load(dirs...) {
+	for _, entry := range ListDefinitions(dirs...) {
 		if entry.Name == name {
 			data, err := os.ReadFile(entry.Path)
 			return string(data), err
@@ -128,32 +128,42 @@ func SaveDefinition(name, source, baseline string, dirs ...string) error {
 	if !definitionName.MatchString(name) {
 		return fmt.Errorf("flow name must start with a letter and contain only letters, numbers, - or _")
 	}
-	w, err := Parse(source)
+	b, err := Parse(source)
 	if err != nil {
 		return err
 	}
-	if w.Name != "" && w.Name != name {
-		return fmt.Errorf("frontmatter name %q must match %q", w.Name, name)
+	if b.Name != "" && b.Name != name {
+		return fmt.Errorf("frontmatter name %q must match %q", b.Name, name)
 	}
 
 	definitionWrites.Lock()
 	defer definitionWrites.Unlock()
 	// The lock lives beside the run records, outside the shared definition
 	// directory, and serializes the conflict check with other processes.
-	return atomicfile.WithLock(filepath.Join(runDir(dirs[0]), ".definitions.lock"), func() error {
+	return atomicfile.WithLock(filepath.Join(RunDir(dirs[0]), ".definitions.lock"), func() error {
 		return saveDefinition(name, source, baseline, dirs)
 	})
 }
 
-// runDir keeps run records next to, not inside, the definition directory.
-func runDir(definitions string) string {
-	return filepath.Join(filepath.Dir(definitions), "workflow-runs")
+// The on-disk names predate the rename to Flow; they are kept so definitions
+// and runs saved by earlier releases remain available.
+const (
+	definitionDirName = "workflows"
+	runDirName        = "workflow-runs"
+)
+
+// DefinitionDir is the definition directory under a San config root.
+func DefinitionDir(configRoot string) string { return filepath.Join(configRoot, definitionDirName) }
+
+// RunDir keeps run records next to, not inside, the definition directory.
+func RunDir(definitions string) string {
+	return filepath.Join(filepath.Dir(definitions), runDirName)
 }
 
 func saveDefinition(name, source, baseline string, dirs []string) error {
 	target := filepath.Join(dirs[0], name+".md")
 	found := false
-	for _, entry := range Load(dirs...) {
+	for _, entry := range ListDefinitions(dirs...) {
 		if entry.Name != name {
 			continue
 		}
@@ -195,7 +205,7 @@ type RunRecord struct {
 	Name       string                `json:"name"`
 	Definition string                `json:"definition"`
 	Inputs     map[string]string     `json:"inputs,omitempty"`
-	Status     string                `json:"status"`
+	Status     RunStatus             `json:"status"`
 	TaskID     string                `json:"task_id,omitempty"`
 	StartedAt  time.Time             `json:"started_at"`
 	UpdatedAt  time.Time             `json:"updated_at"`
@@ -205,32 +215,38 @@ type RunRecord struct {
 	Output     string                `json:"output,omitempty"`
 }
 
+// RunStatus is a run's lifecycle phase; Status is the phase of one node.
+type RunStatus string
+
 const (
-	RunRunning     = "running"
-	RunSucceeded   = "succeeded"
-	RunFailed      = "failed"
-	RunStopped     = "stopped"
-	RunInterrupted = "interrupted"
+	RunRunning     RunStatus = "running"
+	RunSucceeded   RunStatus = "succeeded"
+	RunFailed      RunStatus = "failed"
+	RunStopped     RunStatus = "stopped"
+	RunInterrupted RunStatus = "interrupted"
 )
 
 // maxFinishedRuns bounds the run history kept on disk. Older finished runs are
 // pruned when a new one starts; running and unreadable records are never touched.
 const maxFinishedRuns = 50
 
-var storeMu sync.Mutex
-
 // ErrRunActive means a live owner, in this or another process, holds the run.
 var ErrRunActive = errors.New("run already active in another executor")
 var validRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
-var memoryLocks = map[*Store]map[string]bool{}
 
-// Store persists immutable-definition run snapshots. An empty directory uses memory.
+// Store persists immutable-definition run snapshots. An empty directory uses
+// memory. mu serializes record read-modify-writes in this process; Acquire's
+// file lock excludes executors in other processes.
 type Store struct {
 	dir     string
+	mu      sync.Mutex
 	records map[string]RunRecord
+	locks   map[string]bool // memory-mode run locks
 }
 
-func NewStore(dir string) *Store { return &Store{dir: dir, records: map[string]RunRecord{}} }
+func NewStore(dir string) *Store {
+	return &Store{dir: dir, records: map[string]RunRecord{}, locks: map[string]bool{}}
+}
 func checkID(id string) error {
 	if !validRunID.MatchString(id) {
 		return fmt.Errorf("invalid run ID %q", id)
@@ -275,15 +291,15 @@ func (s *Store) put(r RunRecord) error {
 	}
 	return atomicfile.WriteJSON(filepath.Join(s.dir, r.ID+".json"), r, 0600)
 }
-func (s *Store) Put(r RunRecord) error { storeMu.Lock(); defer storeMu.Unlock(); return s.put(r) }
+func (s *Store) Put(r RunRecord) error { s.mu.Lock(); defer s.mu.Unlock(); return s.put(r) }
 func (s *Store) Get(id string) (*RunRecord, error) {
-	storeMu.Lock()
-	defer storeMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.get(id)
 }
 func (s *Store) Update(id string, fn func(*RunRecord)) error {
-	storeMu.Lock()
-	defer storeMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	r, err := s.get(id)
 	if err != nil {
 		return err
@@ -296,8 +312,8 @@ func (s *Store) Update(id string, fn func(*RunRecord)) error {
 // List returns readable records, newest first. A corrupt or foreign file is
 // skipped and logged so one bad record cannot hide the rest of the history.
 func (s *Store) List() ([]RunRecord, error) {
-	storeMu.Lock()
-	defer storeMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.list()
 }
 
@@ -370,13 +386,13 @@ func (s *Store) Prune(keep int) error {
 			errs = append(errs, err)
 			continue
 		}
-		storeMu.Lock()
+		s.mu.Lock()
 		if s.dir == "" {
 			delete(s.records, r.ID)
 		} else if err := os.Remove(filepath.Join(s.dir, r.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}
-		storeMu.Unlock()
+		s.mu.Unlock()
 		release()
 		if s.dir != "" {
 			// After release; a concurrent opener of the removed inode then
@@ -395,24 +411,18 @@ func (s *Store) Acquire(id string) (func(), error) {
 		return nil, err
 	}
 	if s.dir == "" {
-		storeMu.Lock()
-		defer storeMu.Unlock()
-		if memoryLocks[s] == nil {
-			memoryLocks[s] = map[string]bool{}
-		}
-		if memoryLocks[s][id] {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.locks[id] {
 			return nil, fmt.Errorf("run %s: %w", id, ErrRunActive)
 		}
-		memoryLocks[s][id] = true
+		s.locks[id] = true
 		var once sync.Once
 		return func() {
 			once.Do(func() {
-				storeMu.Lock()
-				delete(memoryLocks[s], id)
-				if len(memoryLocks[s]) == 0 {
-					delete(memoryLocks, s)
-				}
-				storeMu.Unlock()
+				s.mu.Lock()
+				delete(s.locks, id)
+				s.mu.Unlock()
 			})
 		}, nil
 	}

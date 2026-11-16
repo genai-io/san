@@ -9,41 +9,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Title returns a display label without changing the authored name.
-func (w *Blueprint) Title() string {
-	words := strings.FieldsFunc(w.Name, func(r rune) bool {
+// Title returns a display label without changing the authored name:
+// separators become spaces, a leading "flow" word is dropped, and the first
+// letter is capitalized.
+func (b *Blueprint) Title() string {
+	words := strings.FieldsFunc(b.Name, func(r rune) bool {
 		return r == '_' || r == '-' || unicode.IsSpace(r)
 	})
-	// Split CamelCase and acronym-to-word boundaries for display only. Keep
-	// acronyms intact (HTTPReview becomes HTTP Review, not H T T P Review).
-	var splitWords []string
-	for _, word := range words {
-		runes := []rune(word)
-		// Keep mixed-case acronyms such as iOS together rather than
-		// treating their single lowercase prefix as a separate word.
-		mixedAcronym := len(runes) > 1 && unicode.IsLower(runes[0])
-		for _, r := range runes[1:] {
-			mixedAcronym = mixedAcronym && unicode.IsUpper(r)
-		}
-		if mixedAcronym {
-			splitWords = append(splitWords, word)
-			continue
-		}
-		var title strings.Builder
-		for j, r := range runes {
-			if j > 0 && unicode.IsUpper(r) {
-				previous := runes[j-1]
-				wordStart := unicode.IsLower(previous) || unicode.IsDigit(previous)
-				acronymEnd := unicode.IsUpper(previous) && j+1 < len(runes) && unicode.IsLower(runes[j+1])
-				if wordStart || acronymEnd {
-					title.WriteByte(' ')
-				}
-			}
-			title.WriteRune(r)
-		}
-		splitWords = append(splitWords, strings.Fields(title.String())...)
-	}
-	words = splitWords
 	if len(words) > 1 && strings.EqualFold(words[0], "flow") {
 		words = words[1:]
 	}
@@ -58,24 +30,24 @@ func (w *Blueprint) Title() string {
 // CompactProgressView shows one small graph. A branch and join uses a few
 // aligned rows; other complete stages use one line. Complex dependencies keep
 // their exact edge list instead of being squeezed into a misleading picture.
-func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) string {
+func (b *Blueprint) CompactProgressView(statuses map[string]Status, width int) string {
 	if width <= 0 {
 		width = 108
 	}
 	finished := 0
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		switch statuses[n.ID] {
 		case StatusSucceeded, StatusFailed, StatusSkipped, StatusOmitted:
 			finished++
 		}
 	}
-	progress := fmt.Sprintf("%d/%d", finished, len(w.Nodes))
+	progress := fmt.Sprintf("%d/%d", finished, len(b.Nodes))
 	if statuses == nil {
 		unit := "steps"
-		if len(w.Nodes) == 1 {
+		if len(b.Nodes) == 1 {
 			unit = "step"
 		}
-		progress = fmt.Sprintf("%d %s", len(w.Nodes), unit)
+		progress = fmt.Sprintf("%d %s", len(b.Nodes), unit)
 	}
 	// Align the title and progress with the graph's left edge.
 	available := max(1, width-4)
@@ -83,11 +55,11 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 	nameWidth := available - ansi.StringWidth(suffix)
 	header := progress
 	if nameWidth > 0 {
-		header = ansi.Truncate("Flow · "+w.Title(), nameWidth, "…") + suffix
+		header = ansi.Truncate("Flow · "+b.Title(), nameWidth, "…") + suffix
 	}
 	header = strings.Repeat(" ", min(4, max(0, width-1))) + ansi.Truncate(header, available, "…")
-	if len(w.Loops) == 0 {
-		ordered := w.topologicalNodes()
+	if len(b.Loops) == 0 {
+		ordered := b.topologicalNodes()
 		layer := make(map[string]int, len(ordered))
 		var stages [][]*Node
 		for _, n := range ordered {
@@ -103,10 +75,10 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		for i := 1; i < len(stages); i++ {
 			expected += len(stages[i-1]) * len(stages[i])
 		}
-		if len(ordered) > 0 && len(w.Edges) == expected {
+		if len(ordered) > 0 && len(b.Edges) == expected {
 			valid := true
-			seen := make(map[string]bool, len(w.Edges))
-			for _, e := range w.Edges {
+			seen := make(map[string]bool, len(b.Edges))
+			for _, e := range b.Edges {
 				key := e.From + "\x00" + e.To
 				if e.Label != "" || layer[e.To] != layer[e.From]+1 || seen[key] {
 					valid = false
@@ -142,7 +114,7 @@ func (w *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		}
 	}
 	var lines []string
-	for line := range strings.SplitSeq(w.dependencyList(statuses), "\n") {
+	for line := range strings.SplitSeq(b.dependencyList(statuses), "\n") {
 		lines = append(lines, "    "+wrapLine(strings.TrimPrefix(line, "  "), max(1, width-4), "      "))
 	}
 	return header + "\n" + strings.Join(lines, "\n")
@@ -227,13 +199,13 @@ func wrapLine(s string, width int, indent string) string {
 
 // PreviewSteps pairs graph labels with prompt summaries that fit the current
 // display width. Retry rounds share one authored node and appear only once.
-func (w *Blueprint) PreviewSteps(width int) string {
+func (b *Blueprint) PreviewSteps(width int) string {
 	if width <= 0 {
 		width = 108
 	}
 	seen := make(map[string]bool)
 	var lines []string
-	for _, n := range w.topologicalNodes() {
+	for _, n := range b.topologicalNodes() {
 		if seen[n.Base] {
 			continue
 		}
@@ -253,43 +225,43 @@ func (w *Blueprint) PreviewSteps(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (w *Blueprint) dependencyList(statuses map[string]Status) string {
-	var b strings.Builder
-	for _, n := range w.topologicalNodes() {
+func (b *Blueprint) dependencyList(statuses map[string]Status) string {
+	var sb strings.Builder
+	for _, n := range b.topologicalNodes() {
 		if statuses == nil {
-			fmt.Fprintf(&b, "  %s", n.ID)
+			fmt.Fprintf(&sb, "  %s", n.ID)
 		} else {
 			status := statuses[n.ID]
 			if status == "" {
 				status = StatusPending
 			}
-			fmt.Fprintf(&b, "  %s %s", progressGlyph(status), n.ID)
+			fmt.Fprintf(&sb, "  %s %s", progressGlyph(status), n.ID)
 		}
 		if len(n.upstream) > 0 {
-			b.WriteString("  ← ")
+			sb.WriteString("  ← ")
 			for i, edge := range n.upstream {
 				if i > 0 {
-					b.WriteString(", ")
+					sb.WriteString(", ")
 				}
-				b.WriteString(edge.From)
+				sb.WriteString(edge.From)
 				if edge.Label != "" {
-					fmt.Fprintf(&b, " [%s]", edge.Label)
+					fmt.Fprintf(&sb, " [%s]", edge.Label)
 				}
 			}
 		}
-		b.WriteByte('\n')
+		sb.WriteByte('\n')
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	return strings.TrimSuffix(sb.String(), "\n")
 }
 
 // topologicalNodes keeps the view in execution order even if markdown
 // sections were written in another order.
-func (w *Blueprint) topologicalNodes() []*Node {
-	ordered := make([]*Node, 0, len(w.Nodes))
-	seen := make(map[string]bool, len(w.Nodes))
-	for len(ordered) < len(w.Nodes) {
+func (b *Blueprint) topologicalNodes() []*Node {
+	ordered := make([]*Node, 0, len(b.Nodes))
+	seen := make(map[string]bool, len(b.Nodes))
+	for len(ordered) < len(b.Nodes) {
 		advanced := false
-		for _, n := range w.Nodes {
+		for _, n := range b.Nodes {
 			if seen[n.ID] {
 				continue
 			}
@@ -315,10 +287,10 @@ func (w *Blueprint) topologicalNodes() []*Node {
 
 // FinalOutput returns successful sink answers without synthesizing new content.
 // A sole answer stands alone; multiple answers retain definition-order labels.
-func (r *Result) FinalOutput(w *Blueprint) string {
+func (r *Result) FinalOutput(b *Blueprint) string {
 	var answers []string
 	var ids []string
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		res := r.Nodes[n.ID]
 		if res == nil {
 			continue
@@ -342,32 +314,32 @@ func (r *Result) FinalOutput(w *Blueprint) string {
 // Summary renders the run for the conversation that launched it: one status
 // line per node, then the output of every sink node that succeeded. Sinks
 // are the flow's product; intermediate outputs stay in the transcripts.
-func (r *Result) Summary(w *Blueprint) string {
-	var b strings.Builder
+func (r *Result) Summary(b *Blueprint) string {
+	var sb strings.Builder
 	verdict := "succeeded"
-	if r.Failed(w) {
+	if r.Failed(b) {
 		verdict = "failed"
 	}
-	fmt.Fprintf(&b, "flow %s %s in %s\n", w.Name, verdict, r.Duration.Round(time.Second))
-	for _, n := range w.Nodes {
+	fmt.Fprintf(&sb, "flow %s %s in %s\n", b.Name, verdict, r.Duration.Round(time.Second))
+	for _, n := range b.Nodes {
 		res := r.Nodes[n.ID]
-		fmt.Fprintf(&b, "  %s %s", statusGlyph(res.Status), n.ID)
+		fmt.Fprintf(&sb, "  %s %s", statusGlyph(res.Status), n.ID)
 		if res.Duration > 0 {
-			fmt.Fprintf(&b, " (%s)", res.Duration.Round(time.Second))
+			fmt.Fprintf(&sb, " (%s)", res.Duration.Round(time.Second))
 		}
 		if res.Err != nil {
-			fmt.Fprintf(&b, ": %v", res.Err)
+			fmt.Fprintf(&sb, ": %v", res.Err)
 		}
-		b.WriteString("\n")
+		sb.WriteString("\n")
 	}
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		res := r.Nodes[n.ID]
 		if len(n.downstream) > 0 || res.Status != StatusSucceeded || strings.TrimSpace(res.Output) == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "\n## %s\n%s\n", n.ID, strings.TrimSpace(res.Output))
+		fmt.Fprintf(&sb, "\n## %s\n%s\n", n.ID, strings.TrimSpace(res.Output))
 	}
-	return b.String()
+	return sb.String()
 }
 
 // The host styles ◉ as a breathing filled circle; completed circles stay static.

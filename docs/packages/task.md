@@ -67,6 +67,8 @@ func ResetDefaultTracker()         // test-only
   schedules child agent tasks (a Flow run) with `TaskInfo.Scheduler` set before
   lifecycle observers see it. `CreateChildAgentTask` sets `ParentTaskID` before
   registration; children publish ordinary creation, progress and completion.
+  `TaskInfo.ScheduledChild` and `TaskInfo.SchedulerManaged` are the shared
+  predicates hosts use to keep these tasks display-only.
   Hosts identify schedulers by that flag, not by display name. A scheduler's
   name carries its readable run title, while its description retains the launch
   command. Scheduler lifecycle receipts and child activity/completions are

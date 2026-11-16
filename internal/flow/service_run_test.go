@@ -45,16 +45,16 @@ func TestResumeRetainsSavedFilenameName(t *testing.T) {
 	if err := wt.runStore().Put(RunRecord{ID: "named", Name: "filename-name", Definition: definition}); err != nil {
 		t.Fatal(err)
 	}
-	bounds, _, err := wt.ResumeRun("named", "", 120)
+	taskID, err := wt.ResumeRun("named", "", 120)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(bounds, "filename-name") {
-		t.Fatalf("lost name: %s", bounds)
+	if bg, ok := task.Default().Get(taskID); !ok || bg.GetStatus().AgentName != "Filename name" {
+		t.Fatalf("resume lost the saved name: %+v", bg)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		r, err := wt.InspectRun("named")
+		r, err := wt.GetRun("named")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func TestRunActualActivityAndStop(t *testing.T) {
 	wt := NewService(task.Default())
 	e := &activityExecutor{ready: make(chan struct{})}
 	wt.SetExecutor(e)
-	_, _, err := wt.startInline("```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
+	_, err := startInline(wt, "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestRunActualActivityAndStop(t *testing.T) {
 	if data, err := json.Marshal(r); err != nil || strings.Contains(string(data), "actual 1") {
 		t.Fatalf("live activity was persisted into the run record: %s %v", data, err)
 	}
-	if _, _, err := wt.ResumeRun(r.ID, "", 120); err == nil {
+	if _, err := wt.ResumeRun(r.ID, "", 120); err == nil {
 		t.Fatal("duplicate resume accepted")
 	}
 	if err := wt.StopRun(r.ID); err != nil {
@@ -108,7 +108,7 @@ func TestRunActualActivityAndStop(t *testing.T) {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		r, err := wt.InspectRun(r.ID)
+		r, err := wt.GetRun(r.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestFlowRetainsHistoricalRunDirectoryAndLockExclusion(t *testing.T) {
 	defer release()
 	wt := NewService(task.Default())
 	wt.SetSearchPaths([]string{filepath.Join(root, ".san", "workflows")})
-	r, err := wt.InspectRun("existing")
+	r, err := wt.GetRun("existing")
 	if err != nil || r.Status != RunRunning {
 		t.Fatalf("historical run is hidden or its active lock ignored: record=%+v err=%v", r, err)
 	}
@@ -153,12 +153,12 @@ func TestRunInterruptionRequiresAbsentOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := wt.InspectRun("run")
+	r, err := wt.GetRun("run")
 	if err != nil || r.Status != RunRunning {
 		t.Fatalf("live %+v %v", r, err)
 	}
 	release()
-	r, err = wt.InspectRun("run")
+	r, err = wt.GetRun("run")
 	if err != nil || r.Status != RunInterrupted {
 		t.Fatalf("dead %+v %v", r, err)
 	}
@@ -176,20 +176,20 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"sec": "S", "report": "R"}}
 	wt.SetExecutor(exec)
-	r := RunRecord{ID: "retry", Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Status: StatusSucceeded, Output: "D", Attempt: 1}, "sec": {Status: StatusFailed, Error: "oops", Attempt: 1}, "perf": {Status: StatusSucceeded, Output: "P", Attempt: 1}}}
+	r := RunRecord{ID: "retry", Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}, Attempt: 1}, "sec": {Outcome: Outcome{Status: StatusFailed, Error: "oops"}, Attempt: 1}, "perf": {Outcome: Outcome{Status: StatusSucceeded, Output: "P"}, Attempt: 1}}}
 	if err := wt.runStore().Put(r); err != nil {
 		t.Fatal(err)
 	}
 	wt = NewService(task.Default())
 	wt.SetSearchPaths(paths)
 	wt.SetExecutor(exec)
-	_, _, err := wt.ResumeRun("retry", "", 120)
+	_, err := wt.ResumeRun("retry", "", 120)
 	if err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		got, err := wt.InspectRun("retry")
+		got, err := wt.GetRun("retry")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -230,17 +230,14 @@ func TestInspectAndStopAcceptTaskID(t *testing.T) {
 	wt := NewService(task.Default())
 	e := &activityExecutor{ready: make(chan struct{})}
 	wt.SetExecutor(e)
-	bounds, taskID, err := wt.startInline("```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
+	taskID, err := startInline(wt, "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-e.ready
-	r, err := wt.InspectRun(taskID)
+	r, err := wt.GetRun(taskID)
 	if err != nil || r.TaskID != taskID || r.ID == taskID {
 		t.Fatalf("task ID did not resolve to its run: %+v %v", r, err)
-	}
-	if !strings.Contains(bounds, "Run ID: "+r.ID) {
-		t.Fatalf("launch summary hides the run ID: %s", bounds)
 	}
 	if err := wt.StopRun(taskID); err != nil {
 		t.Fatal(err)

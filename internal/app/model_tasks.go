@@ -172,7 +172,7 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 }
 
 func canContinueTask(info task.TaskInfo) bool {
-	return info.ParentTaskID == "" && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
+	return !info.ScheduledChild() && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
 }
 
 // continueViewedTask asks main to choose a safe incremental instruction. This

@@ -214,7 +214,7 @@ func TestFlowResumeModesAndWorkerPreview(t *testing.T) {
 	s.r.Status = flow.RunFailed
 	c := s.r.Nodes["b"]
 	c.Status = flow.StatusFailed
-	c.Workers = []flow.WorkerCheckpoint{{State: flow.Checkpoint{Status: flow.StatusSucceeded}}}
+	c.Workers = []flow.WorkerCheckpoint{{State: flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusSucceeded}}}}
 	s.r.Nodes["b"] = c
 	var v FlowView
 	v.OpenRun(s, "run", 110, 40)
@@ -275,7 +275,7 @@ func TestFlowCircularExceptionsAndNeverStartedDetail(t *testing.T) {
 	var v FlowView
 	v.OpenRun(s, "run", 120, 40)
 	for _, status := range []flow.Status{flow.StatusFailed, flow.StatusSkipped, flow.StatusOmitted} {
-		v.record.Nodes["c"] = flow.Checkpoint{Status: status}
+		v.record.Nodes["c"] = flow.Checkpoint{Outcome: flow.Outcome{Status: status}}
 		m := ansi.Strip(v.marker("c"))
 		if m != "○" && m != "●" {
 			t.Fatalf("noncircular exception marker %q", m)

@@ -24,7 +24,7 @@ func TestDefinitionStorageExactSourceAndValidation(t *testing.T) {
 	if err != nil || got != storedDefinition {
 		t.Fatalf("source = %q, error = %v", got, err)
 	}
-	w, err := Find("review", dir)
+	w, err := FindDefinition("review", dir)
 	if err != nil || w.Source != storedDefinition {
 		t.Fatalf("parsed source = %+v, error = %v", w, err)
 	}
@@ -93,7 +93,7 @@ func TestDefinitionConcurrentEditors(t *testing.T) {
 func TestStoreDurabilityAndIsolation(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
-	r := RunRecord{ID: "run-1", Definition: "exact\n", Inputs: map[string]string{"a": "original"}, Nodes: map[string]Checkpoint{"n": {Output: "kept"}}}
+	r := RunRecord{ID: "run-1", Definition: "exact\n", Inputs: map[string]string{"a": "original"}, Nodes: map[string]Checkpoint{"n": {Outcome: Outcome{Output: "kept"}}}}
 	if err := s.Put(r); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestStorePruneKeepsNewestFinishedAndActiveRuns(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
 	base := time.Now()
-	for i, status := range []string{RunSucceeded, RunFailed, RunRunning, RunStopped, RunSucceeded} {
+	for i, status := range []RunStatus{RunSucceeded, RunFailed, RunRunning, RunStopped, RunSucceeded} {
 		id := fmt.Sprintf("run-%d", i)
 		if err := s.Put(RunRecord{ID: id, Status: status, StartedAt: base.Add(time.Duration(i) * time.Minute)}); err != nil {
 			t.Fatal(err)

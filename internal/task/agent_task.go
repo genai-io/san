@@ -6,12 +6,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // AgentTask represents a background agent task
 // It implements the BackgroundTask interface
 type AgentTask struct {
-	parentTaskID    string
+	parentTaskID    string // scheduler that launched this task; fixed before registration
 	scheduler       bool   // coordinates child agent tasks instead of running a turn
 	parentSessionID string // fixed before registration
 
@@ -84,13 +85,6 @@ func NewAgentTask(id, agentName, description string, ctx context.Context, cancel
 		},
 	})
 	return task
-}
-
-// SetParentTaskID associates a managed child with its scheduler task.
-func (t *AgentTask) SetParentTaskID(id string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.parentTaskID = id
 }
 
 // MarkScheduler identifies a task that schedules child agent tasks, such as a
@@ -183,17 +177,10 @@ func (t *AgentTask) GetDescription() string {
 // bounded output with its UTF-8-safe head. The append-only log still records the
 // full answer and all prior output records.
 func (t *AgentTask) SetResult(result string) {
-	end := len(result)
-	if end > maxOutputBufferSize {
-		end = maxOutputBufferSize
-		for end > 0 && result[end]&0xc0 == 0x80 {
-			end--
-		}
-	}
 	t.mu.Lock()
 	t.result = result
 	t.attemptOutput.Reset()
-	t.attemptOutput.WriteString(result[:end])
+	t.attemptOutput.WriteString(utf8Head(result, maxOutputBufferSize))
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 	t.recordOutput(outputFile, outputRecord{Event: "task.output", Content: result})
@@ -212,6 +199,17 @@ func (t *AgentTask) AppendOutput(data []byte) {
 	})
 }
 
+// utf8Head returns at most n bytes of s without splitting a rune.
+func utf8Head(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
 // Activity is a compact display snapshot, not a replacement for the task log.
 const (
 	maxActivityEntries    = 12
@@ -226,17 +224,8 @@ func (t *AgentTask) AppendProgress(msg string) {
 		// The tracker needs the latest action, not a token line that replaces it.
 		// Tool descriptions are already bounded by the executor.
 		t.progress = msg
-		entry := msg
-		if len(entry) > maxActivityEntryBytes {
-			end := maxActivityEntryBytes
-			// Do not split a UTF-8 rune at the display limit.
-			for end > 0 && entry[end]&0xc0 == 0x80 {
-				end--
-			}
-			entry = entry[:end]
-		}
 		// Clone even short substrings so history cannot retain a large input.
-		entry = strings.Clone(entry)
+		entry := strings.Clone(utf8Head(msg, maxActivityEntryBytes))
 		if len(t.activity) == maxActivityEntries {
 			copy(t.activity, t.activity[1:])
 			t.activity[len(t.activity)-1] = entry

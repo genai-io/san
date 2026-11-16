@@ -2,7 +2,11 @@
 // Blueprints are markdown documents with a mermaid flowchart for topology
 // (docs/design/proposal-0001-workflow-orchestration.md).
 //
-// Nodes execute through NodeRunner; persistence reuses private atomic files.
+// The graph engine — parse.go, expand.go, run.go, view.go and authoring.go —
+// imports nothing from San: nodes execute through the NodeRunner seam, so the
+// engine can move to sdk-go once the schema settles. service.go,
+// service_run.go, node_runner.go and store.go bind it to San's executor,
+// tasks and run storage.
 package flow
 
 import (
@@ -69,8 +73,8 @@ type Edge struct {
 }
 
 // Node returns the node with the given id.
-func (w *Blueprint) Node(id string) (*Node, bool) {
-	n, ok := w.byID[id]
+func (b *Blueprint) Node(id string) (*Node, bool) {
+	n, ok := b.byID[id]
 	return n, ok
 }
 
@@ -105,9 +109,9 @@ var (
 // per graph node and vice versa, no cycle, templates referencing only
 // connected upstreams. Every problem found is reported at once.
 func Parse(src string) (*Blueprint, error) {
-	w := &Blueprint{Source: src, MaxParallel: defaultMaxParallel, byID: map[string]*Node{}}
+	b := &Blueprint{Source: src, MaxParallel: defaultMaxParallel, byID: map[string]*Node{}}
 
-	body, err := w.parseFrontmatter(src)
+	body, err := b.parseFrontmatter(src)
 	if err != nil {
 		return nil, err
 	}
@@ -115,21 +119,21 @@ func Parse(src string) (*Blueprint, error) {
 	if err != nil {
 		return nil, err
 	}
-	declared, err := w.parseGraph(graph)
+	declared, err := b.parseGraph(graph)
 	if err != nil {
 		return nil, err
 	}
-	if err := w.parseSections(rest); err != nil {
+	if err := b.parseSections(rest); err != nil {
 		return nil, err
 	}
-	if err := w.validate(declared); err != nil {
+	if err := b.validate(declared); err != nil {
 		return nil, err
 	}
-	w.unroll()
-	return w, nil
+	b.unroll()
+	return b, nil
 }
 
-func (w *Blueprint) parseFrontmatter(src string) (string, error) {
+func (b *Blueprint) parseFrontmatter(src string) (string, error) {
 	src = strings.TrimLeft(src, "\n")
 	if !strings.HasPrefix(src, "---\n") {
 		return src, nil
@@ -146,12 +150,12 @@ func (w *Blueprint) parseFrontmatter(src string) (string, error) {
 	if err := yaml.Unmarshal([]byte(src[4:4+end]), &fm); err != nil {
 		return "", fmt.Errorf("frontmatter: %w", err)
 	}
-	w.Name, w.Description = fm.Name, fm.Description
+	b.Name, b.Description = fm.Name, fm.Description
 	if fm.MaxParallel < 0 {
 		return "", fmt.Errorf("max_parallel must be at least 1")
 	}
 	if fm.MaxParallel > 0 {
-		w.MaxParallel = fm.MaxParallel
+		b.MaxParallel = fm.MaxParallel
 	}
 	rest := src[4+end+4:]
 	return strings.TrimPrefix(rest, "\n"), nil
@@ -190,7 +194,7 @@ func splitMermaid(body string) (graph, rest string, err error) {
 // parseGraph reads the mermaid subset: a `flowchart` header, then edge lines
 // built from bare ids, `-->`, `&` and `|LABEL|`. It returns the ids the graph
 // declares, in first-seen order.
-func (w *Blueprint) parseGraph(graph string) ([]string, error) {
+func (b *Blueprint) parseGraph(graph string) ([]string, error) {
 	var declared []string
 	seen := map[string]bool{}
 	declare := func(id string) {
@@ -232,7 +236,7 @@ func (w *Blueprint) parseGraph(graph string) ([]string, error) {
 						return nil, fmt.Errorf("edge %s --> %s appears twice", from, to)
 					}
 					edgeSeen[key] = true
-					w.Edges = append(w.Edges, Edge{From: from, To: to, Label: labels[i-1]})
+					b.Edges = append(b.Edges, Edge{From: from, To: to, Label: labels[i-1]})
 				}
 			}
 		}
@@ -279,7 +283,7 @@ func splitArrows(line string) (groups [][]string, labels []string, err error) {
 // parseSections reads every `## id` section: leading `key: value` lines are
 // config, everything after them is the prompt. Text before the first heading
 // is ignored so a definition can open with prose.
-func (w *Blueprint) parseSections(rest string) error {
+func (b *Blueprint) parseSections(rest string) error {
 	var cur *Node
 	var buf []string
 	inFence := false
@@ -290,8 +294,8 @@ func (w *Blueprint) parseSections(rest string) error {
 		if err := cur.fill(buf); err != nil {
 			return err
 		}
-		w.Nodes = append(w.Nodes, cur)
-		w.byID[cur.ID] = cur
+		b.Nodes = append(b.Nodes, cur)
+		b.byID[cur.ID] = cur
 		cur, buf = nil, nil
 		return nil
 	}
@@ -303,7 +307,7 @@ func (w *Blueprint) parseSections(rest string) error {
 			if err := flush(); err != nil {
 				return err
 			}
-			if _, dup := w.byID[m[1]]; dup {
+			if _, dup := b.byID[m[1]]; dup {
 				return fmt.Errorf("node %s is defined twice", m[1])
 			}
 			cur = &Node{ID: m[1], Base: m[1], Config: map[string]string{}}
@@ -334,11 +338,11 @@ func (n *Node) fill(lines []string) error {
 		case "for_each":
 			n.ForEach = value
 		case "max_workers":
-			w, err := strconv.Atoi(value)
-			if err != nil || w < 1 {
+			b, err := strconv.Atoi(value)
+			if err != nil || b < 1 {
 				return fmt.Errorf("node %s: max_workers must be a positive number", n.ID)
 			}
-			n.MaxWorkers = w
+			n.MaxWorkers = b
 		case "mode":
 			// A trust boundary: a definition is a project file, so it may
 			// narrow a node's permissions but never request bypass.
@@ -377,14 +381,14 @@ func isItemRef(ref string) bool { return ref == "item" || strings.HasPrefix(ref,
 
 // validate cross-checks graph and sections, rejects cycles, and checks every
 // template reference. Problems are collected so one round trip fixes them all.
-func (w *Blueprint) validate(declared []string) error {
+func (b *Blueprint) validate(declared []string) error {
 	var problems []string
 	for _, id := range declared {
-		if _, ok := w.byID[id]; !ok {
+		if _, ok := b.byID[id]; !ok {
 			problems = append(problems, fmt.Sprintf("node %s is in the graph but has no `## %s` section", id, id))
 		}
 	}
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		if !slices.Contains(declared, n.ID) {
 			problems = append(problems, fmt.Sprintf("section `## %s` is not in the graph", n.ID))
 		}
@@ -399,13 +403,13 @@ func (w *Blueprint) validate(declared []string) error {
 	// Linked as drawn, back edges included, so that {{review}} inside draft
 	// resolves. Unrolling relinks the executable graph when there are loops;
 	// without them the graph as drawn is the executable one.
-	w.link(w.Edges)
+	b.link(b.Edges)
 
 	// A labelled edge carrying a bound is a declared back edge; it is held
 	// out of the acyclic graph and unrolled later. Everything else must
 	// leave a DAG behind.
 	var forward []Edge
-	for _, e := range w.Edges {
+	for _, e := range b.Edges {
 		if m := boundRe.FindStringSubmatch(e.Label); m != nil {
 			// Checked before unroll allocates anything: parsing runs while
 			// the approval dialog is built. An overflowing number parses as
@@ -414,28 +418,28 @@ func (w *Blueprint) validate(declared []string) error {
 			if rounds < 1 || rounds > maxRounds {
 				return fmt.Errorf("back edge %s --> %s: x%s must be between 1 and %d rounds", e.From, e.To, m[2], maxRounds)
 			}
-			w.Loops = append(w.Loops, Loop{From: e.From, To: e.To, Label: m[1], Rounds: rounds})
+			b.Loops = append(b.Loops, Loop{From: e.From, To: e.To, Label: m[1], Rounds: rounds})
 			continue
 		}
 		forward = append(forward, e)
 	}
-	w.Edges = forward
-	if left := w.cycle(forward); len(left) > 0 {
+	b.Edges = forward
+	if left := b.cycle(forward); len(left) > 0 {
 		return fmt.Errorf("graph has a cycle through %s; a back edge needs a bound, as in `%s -->|FAIL x3| %s`", strings.Join(left, ", "), left[len(left)-1], left[0])
 	}
-	if err := w.checkLoops(forward); err != nil {
+	if err := b.checkLoops(forward); err != nil {
 		return err
 	}
 
-	for _, n := range w.Nodes {
-		ancestors := w.ancestors(n)
+	for _, n := range b.Nodes {
+		ancestors := b.ancestors(n)
 		if n.ForEach != "" {
 			if src := n.forEachNode; !ancestors[src] {
 				problems = append(problems, fmt.Sprintf("node %s: for_each reads %s but the graph has no path %s --> … --> %s", n.ID, src, src, n.ID))
 			}
 		}
 		for _, ref := range n.References() {
-			_, isInput := w.InputKey(ref)
+			_, isInput := b.InputKey(ref)
 			switch {
 			case isInput:
 			case isItemRef(ref):
@@ -454,16 +458,16 @@ func (w *Blueprint) validate(declared []string) error {
 }
 
 // link records each edge on both of its ends.
-func (w *Blueprint) link(edges []Edge) {
+func (b *Blueprint) link(edges []Edge) {
 	for _, e := range edges {
-		w.byID[e.From].downstream = append(w.byID[e.From].downstream, e)
-		w.byID[e.To].upstream = append(w.byID[e.To].upstream, e)
+		b.byID[e.From].downstream = append(b.byID[e.From].downstream, e)
+		b.byID[e.To].upstream = append(b.byID[e.To].upstream, e)
 	}
 }
 
 // cycle runs Kahn's algorithm over the given edges and returns the nodes it
 // could not remove — empty for a DAG.
-func (w *Blueprint) cycle(edges []Edge) []string {
+func (b *Blueprint) cycle(edges []Edge) []string {
 	indeg := map[string]int{}
 	out := map[string][]Edge{}
 	for _, e := range edges {
@@ -471,7 +475,7 @@ func (w *Blueprint) cycle(edges []Edge) []string {
 		out[e.From] = append(out[e.From], e)
 	}
 	var queue []string
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		if indeg[n.ID] == 0 {
 			queue = append(queue, n.ID)
 		}
@@ -488,11 +492,11 @@ func (w *Blueprint) cycle(edges []Edge) []string {
 			}
 		}
 	}
-	if removed == len(w.Nodes) {
+	if removed == len(b.Nodes) {
 		return nil
 	}
 	var left []string
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		if indeg[n.ID] > 0 {
 			left = append(left, n.ID)
 		}
@@ -516,12 +520,12 @@ func (n *Node) References() []string {
 // InputKey classifies a template reference as a run input. Named input refs
 // always use the suffix after input.; bare input uses the key "input" unless
 // a node has that base ID, in which case it remains a node-output reference.
-func (w *Blueprint) InputKey(ref string) (key string, ok bool) {
+func (b *Blueprint) InputKey(ref string) (key string, ok bool) {
 	if key, ok := strings.CutPrefix(ref, "input."); ok {
 		return key, true
 	}
 	if ref == "input" {
-		for _, n := range w.Nodes {
+		for _, n := range b.Nodes {
 			if n.Base == "input" {
 				return "", false
 			}
@@ -533,12 +537,12 @@ func (w *Blueprint) InputKey(ref string) (key string, ok bool) {
 
 // InputNames lists the input keys referenced by the blueprint's node prompts.
 // Unrolled loop copies are deduplicated, and names are stable for display.
-func (w *Blueprint) InputNames() []string {
+func (b *Blueprint) InputNames() []string {
 	seen := map[string]bool{}
 	var names []string
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		for _, ref := range n.References() {
-			if key, ok := w.InputKey(ref); ok && !seen[key] {
+			if key, ok := b.InputKey(ref); ok && !seen[key] {
 				seen[key] = true
 				names = append(names, key)
 			}
@@ -550,14 +554,14 @@ func (w *Blueprint) InputNames() []string {
 
 // ancestors returns every node with a path into n. Templates may reference
 // any of them: data flows along edges, not just across the last one.
-func (w *Blueprint) ancestors(n *Node) map[string]bool {
+func (b *Blueprint) ancestors(n *Node) map[string]bool {
 	seen := map[string]bool{}
 	var walk func(*Node)
 	walk = func(m *Node) {
 		for _, e := range m.upstream {
 			if !seen[e.From] {
 				seen[e.From] = true
-				walk(w.byID[e.From])
+				walk(b.byID[e.From])
 			}
 		}
 	}
@@ -568,10 +572,10 @@ func (w *Blueprint) ancestors(n *Node) map[string]bool {
 // render substitutes {{id}} with an ancestor's output, {{input.key}} with the
 // trigger parameter, and {{item}} / {{item.key}} with the for_each item;
 // anything unset renders empty.
-func (w *Blueprint) render(prompt string, outputs, inputs, item map[string]string) string {
+func (b *Blueprint) render(prompt string, outputs, inputs, item map[string]string) string {
 	return templateRe.ReplaceAllStringFunc(prompt, func(m string) string {
 		ref := templateRe.FindStringSubmatch(m)[1]
-		switch key, isInput := w.InputKey(ref); {
+		switch key, isInput := b.InputKey(ref); {
 		case isInput:
 			return inputs[key]
 		case isItemRef(ref):

@@ -11,7 +11,7 @@ func TestFlowNativeExecutionRouting(t *testing.T) {
 	s := flowUIFixture()
 	c := s.r.Nodes["b"]
 	c.Execution = flow.Execution{TaskID: "child", SessionID: "child-session"}
-	c.History = []flow.Attempt{{Number: 1, Execution: flow.Execution{TaskID: "old-child", SessionID: "old-session"}}}
+	c.History = []flow.Attempt{{Outcome: flow.Outcome{Execution: flow.Execution{TaskID: "old-child", SessionID: "old-session"}}, Number: 1}}
 	s.r.Nodes["b"] = c
 	var v FlowView
 	v.OpenRun(s, "run", 100, 40)
@@ -37,10 +37,10 @@ func TestFlowHistoricalWorkersUseOriginalExecutions(t *testing.T) {
 	s := flowUIFixture()
 	c := s.r.Nodes["b"]
 	c.Execution = flow.Execution{}
-	c.History = []flow.Attempt{{Number: 1, Workers: []flow.WorkerCheckpoint{
-		{Index: 0, Label: "same", State: flow.Checkpoint{Attempt: 1, Execution: flow.Execution{TaskID: "old-one", SessionID: "one-session"}}},
-		{Index: 1, Label: "same", State: flow.Checkpoint{Attempt: 1, Execution: flow.Execution{TaskID: "old-two", SessionID: "two-session"}}},
-	}}}
+	c.History = []flow.Attempt{{Outcome: flow.Outcome{Workers: []flow.WorkerCheckpoint{
+		{Index: 0, Label: "same", State: flow.Checkpoint{Outcome: flow.Outcome{Execution: flow.Execution{TaskID: "old-one", SessionID: "one-session"}}, Attempt: 1}},
+		{Index: 1, Label: "same", State: flow.Checkpoint{Outcome: flow.Outcome{Execution: flow.Execution{TaskID: "old-two", SessionID: "two-session"}}, Attempt: 1}},
+	}}, Number: 1}}
 	s.r.Nodes["b"] = c
 	var v FlowView
 	v.OpenRun(s, "run", 100, 40)

@@ -93,6 +93,7 @@ type AgentExecRequest struct {
 	ResumeAttempt       int                            // Internal approval-time execution fence; not model-facing.
 	ParentToolCallID    string                         // internal spawning call correlation; never model-facing
 	Flow                *FlowOrigin                    // internal Flow attribution; never model-facing
+	ParentTaskID        string                         // scheduler task that owns this run; never model-facing
 	Agent               string
 	ResolvedAgentConfig any // exact approval-time configuration; never model-facing
 	Prompt              string

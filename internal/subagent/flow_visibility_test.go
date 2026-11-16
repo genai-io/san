@@ -29,7 +29,7 @@ func TestFlowManagedToolFailureProgressBeforeCallback(t *testing.T) {
 	var id string
 	starts, results := 0, 0
 	_, err := e.Run(context.Background(), tool.AgentExecRequest{
-		Prompt: "read missing file", Background: true, Flow: &tool.FlowOrigin{TaskID: "scheduler"},
+		Prompt: "read missing file", Background: true, ParentTaskID: "scheduler", Flow: &tool.FlowOrigin{TaskID: "scheduler"},
 		OnIdentity: func(identity toolresult.AgentIdentity) { id = identity.ID },
 		OnToolStart: func(toolID, call string) {
 			starts++
@@ -77,7 +77,7 @@ func TestFlowManagedRunPublishesNativeLifecycleAndToolProgress(t *testing.T) {
 	var id string
 	starts, ends := 0, 0
 	result, err := e.Run(context.Background(), tool.AgentExecRequest{
-		Prompt: "read evidence", Background: true, Flow: &tool.FlowOrigin{TaskID: "scheduler"},
+		Prompt: "read evidence", Background: true, ParentTaskID: "scheduler", Flow: &tool.FlowOrigin{TaskID: "scheduler"},
 		OnIdentity: func(identity toolresult.AgentIdentity) { id = identity.ID },
 		OnToolStart: func(_, call string) {
 			starts++

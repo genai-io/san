@@ -39,7 +39,7 @@ func TestSynchronousManagedChildHasNativeOwnershipAndProgress(t *testing.T) {
 				}
 			}}
 			if managed {
-				req.Flow = &tool.FlowOrigin{TaskID: "scheduler", NodeID: "node"}
+				req.ParentTaskID, req.Flow = "scheduler", &tool.FlowOrigin{TaskID: "scheduler", NodeID: "node"}
 			}
 			result, err := NewExecutorAdapter(e).Run(context.Background(), req)
 			if err != nil || result == nil || !result.Success {

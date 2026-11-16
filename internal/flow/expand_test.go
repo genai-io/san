@@ -164,7 +164,7 @@ func TestLoadAndFind(t *testing.T) {
 	write(user, "broken.md", "---\nname: broken\n---\nno graph here\n")
 	write(user, "notes.txt", "ignored")
 
-	got := Load(project, user)
+	got := ListDefinitions(project, user)
 	var names []string
 	for _, s := range got {
 		names = append(names, s.Name)
@@ -176,14 +176,14 @@ func TestLoadAndFind(t *testing.T) {
 		t.Fatalf("review description = %q, want the project copy to win", got[2].Description)
 	}
 
-	w, err := Find("release", project, user)
+	w, err := FindDefinition("release", project, user)
 	if err != nil || w.Name != "release" {
 		t.Fatalf("Find(release) = %+v, %v; want the filename as its name", w, err)
 	}
-	if _, err := Find("broken", project, user); err == nil || !strings.Contains(err.Error(), "no ```mermaid block") {
+	if _, err := FindDefinition("broken", project, user); err == nil || !strings.Contains(err.Error(), "no ```mermaid block") {
 		t.Fatalf("Find(broken) err = %v, want the parse error", err)
 	}
-	if _, err := Find("nope", project, user); !errors.Is(err, ErrNotFound) {
+	if _, err := FindDefinition("nope", project, user); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Find(nope) err = %v, want ErrNotFound", err)
 	}
 }

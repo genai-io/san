@@ -266,7 +266,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 				return
 			}
 			if msg, ok := taskCompletionMessage(info); ok {
-				if (info.Scheduler || info.ParentTaskID != "") && info.OwnerAgentID == "" {
+				if info.SchedulerManaged() && info.OwnerAgentID == "" {
 					m.notifyMain(mainNotice{
 						SessionID: info.ParentSessionID, Display: msg.Content, FromAgent: true,
 						FinishedTaskID: info.ID, FinishedAttempt: info.Attempt,

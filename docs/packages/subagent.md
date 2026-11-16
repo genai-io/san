@@ -184,8 +184,10 @@ the event log. Default host wiring remains legacy until the unified cutover.
 - Recoverable tool errors and inference retries stay in the worker's progress
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
-  Flow nodes remain scheduler-owned background workers. Synchronous `Run`
-  registers them as native child tasks. The app renders their activity and
+  Flow nodes remain scheduler-owned background workers. A synchronous `Run`
+  with `AgentExecRequest.ParentTaskID` set registers a native child task of that
+  scheduler and mirrors identity and activity into it (`mirrorChildProgress`);
+  the executor does not inspect `FlowOrigin` to decide this. The app renders their activity and
   answers with the native Agent presentation, without waking the main model.
   Successful tools produce one activity entry, not a duplicate completion row.
   Recoverable errors do not send completion notices: a failed attempt is not

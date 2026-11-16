@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -71,7 +72,7 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 					t.Error("draft advertised tools")
 				}
 				last := req.Messages[len(req.Messages)-1].Content.Text()
-				if !strings.HasSuffix(last, goal) || !strings.Contains(last, flowAuthoringInstructions) {
+				if !strings.HasSuffix(last, goal) || !strings.Contains(last, flow.AuthoringPrompt("", "")) {
 					t.Errorf("goal/instructions changed: %q", last)
 				}
 				return aitest.Says(source)(ctx, req)
@@ -313,23 +314,5 @@ func TestFlowDraftQueuedResultCannotReplaceNewRequest(t *testing.T) {
 	p := m.services.Session.Snapshot()
 	if len(p.Unfinished().Inferences) != 0 {
 		t.Fatal("recording remained open")
-	}
-}
-
-func TestUnwrapFlowDraft(t *testing.T) {
-	for _, wrapper := range []string{"", "```markdown", "````md", "`````"} {
-		source := strings.TrimSpace(draftBlueprint)
-		wrapped := source
-		if wrapper != "" {
-			n := len(wrapper) - len(strings.TrimLeft(wrapper, "`"))
-			wrapped = wrapper + "\n" + source + "\n" + strings.Repeat("`", n)
-		}
-		if got := unwrapFlowDraft(wrapped); got != source {
-			t.Fatalf("wrapper %q: %q", wrapper, got)
-		}
-	}
-	mermaid := "```mermaid\nflowchart LR\n a\n```"
-	if unwrapFlowDraft(mermaid) != mermaid {
-		t.Fatal("inner mermaid fence removed")
 	}
 }

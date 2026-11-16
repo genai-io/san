@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,7 +179,7 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	src := "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"
-	_, id, err := wt.startInline(src, nil, 120)
+	id, err := startInline(wt, src, nil, 120)
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 	}
 	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
-	_, id, err := wt.startInline("```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
+	id, err := startInline(wt, "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
 	if err != nil {
 		t.Fatalf("launch: %v", err)
 	}
@@ -274,16 +275,16 @@ func TestNodeRunnerTextResultPreviewWithoutDiscardCallback(t *testing.T) {
 }
 
 func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
-	if got := flowToolResultSummary("hello", nil); got != "hello" {
+	if got := toolResultSummary("hello", nil); got != "hello" {
 		t.Fatalf("short result = %q", got)
 	}
-	if got := flowToolResultSummary("", nil); got != "no output" {
+	if got := toolResultSummary("", nil); got != "no output" {
 		t.Fatalf("empty result = %q", got)
 	}
-	if got := flowToolResultSummary("", errors.New("permission denied")); got != "permission denied" {
+	if got := toolResultSummary("", errors.New("permission denied")); got != "permission denied" {
 		t.Fatalf("failed result = %q", got)
 	}
-	got := flowToolResultSummary("\x1b[31mfirst\x1b[0m\nsecond\n", nil)
+	got := toolResultSummary("\x1b[31mfirst\x1b[0m\nsecond\n", nil)
 	if !strings.Contains(got, "2 lines") || !strings.HasSuffix(got, " · first") || strings.Contains(got, "\x1b") {
 		t.Fatalf("multiline result = %q", got)
 	}
@@ -334,11 +335,11 @@ func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
 
-	if _, _, err := wt.startInline(definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
+	if _, err := startInline(wt, definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
 		t.Fatalf("disabled agent err = %v", err)
 	}
 	broken := strings.Replace(definition, "{{diff}}", "{{dif}}", 1)
-	if _, _, err := wt.startInline(broken, nil, 120); err == nil || !strings.Contains(err.Error(), "invalid flow") {
+	if _, err := startInline(wt, broken, nil, 120); err == nil || !strings.Contains(err.Error(), "invalid flow") {
 		t.Fatalf("invalid definition err = %v", err)
 	}
 }
@@ -348,7 +349,7 @@ func TestFlowServiceRejectsATypoedAgentName(t *testing.T) {
 	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
 	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
 
-	_, _, err := wt.startInline(src, map[string]string{"base": "main"}, 120)
+	_, err := startInline(wt, src, map[string]string{"base": "main"}, 120)
 	if err == nil || !strings.Contains(err.Error(), `node diff: no agent named "Explorr"`) {
 		t.Fatalf("err = %v; a written-down name that resolves to nothing is a typo, not a label", err)
 	}
@@ -362,7 +363,7 @@ func TestFlowServiceAcceptsANodeWithNoAgent(t *testing.T) {
 	wt.SetExecutor(&scriptedExecutor{})
 	src := strings.Replace(definition, "agent: explorer\n", "", 1)
 
-	if _, _, err := wt.startInline(src, map[string]string{"base": "main"}, 120); err != nil {
+	if _, err := startInline(wt, src, map[string]string{"base": "main"}, 120); err != nil {
 		t.Fatalf("a node without an agent takes the default one: %v", err)
 	}
 }
@@ -410,7 +411,7 @@ func TestFlowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
-	_, runID, err := wt.Launch("review", map[string]string{"base": "main"}, 100)
+	runID, err := wt.Launch("review", map[string]string{"base": "main"}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,8 +439,8 @@ func TestFlowServiceRunsASavedFlow(t *testing.T) {
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
 
-	if list := wt.Saved(); !strings.Contains(list, "- review") {
-		t.Fatalf("saved flows missing review:\n%s", list)
+	if saved := wt.SavedDefinitions(); len(saved) != 1 || saved[0].Name != "review" {
+		t.Fatalf("saved flows missing review: %+v", saved)
 	}
 
 	params := map[string]any{"name": "review", "inputs": map[string]any{"base": "main"}}
@@ -458,11 +459,11 @@ func TestFlowServiceNameErrors(t *testing.T) {
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 
-	_, _, err := wt.Launch("nope", nil, 120)
+	_, err := wt.Launch("nope", nil, 120)
 	if err == nil || !strings.Contains(err.Error(), "no flow named nope") || !strings.Contains(err.Error(), "- review") {
 		t.Fatalf("err = %v, want it to list what is saved", err)
 	}
-	if _, _, err := wt.Launch("", nil, 120); err == nil || !strings.Contains(err.Error(), "flow name is required") {
+	if _, err := wt.Launch("", nil, 120); err == nil || !strings.Contains(err.Error(), "flow name is required") {
 		t.Fatalf("empty name err = %v", err)
 	}
 }
@@ -484,7 +485,7 @@ func TestFlowBareInputPreflight(t *testing.T) {
 	if err != nil || !strings.Contains(preview, "input") {
 		t.Fatalf("preview=%q err=%v", preview, err)
 	}
-	if _, _, err := wt.Launch("review", nil, 100); err == nil || !strings.Contains(err.Error(), "input") {
+	if _, err := wt.Launch("review", nil, 100); err == nil || !strings.Contains(err.Error(), "input") {
 		t.Fatalf("missing input: %v", err)
 	}
 	info := runToCompletion(t, wt, map[string]any{"name": "review", "inputs": map[string]any{"input": "main"}})
@@ -502,14 +503,30 @@ func TestFlowServiceMissingInputQuotesSavedName(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
-	_, _, err := wt.Launch("release review", nil, 100)
+	_, err := wt.Launch("release review", nil, 100)
 	if err == nil || !strings.Contains(err.Error(), `use /flow show "release review"`) {
 		t.Fatalf("missing-input command is not quoted: %v", err)
 	}
 }
 
+// startInline validates and schedules an unsaved blueprint, bypassing the
+// saved-definition lookup that users go through.
+func startInline(s *Service, definition string, inputs map[string]string, width int) (string, error) {
+	b, err := Parse(definition)
+	if err != nil {
+		return "", fmt.Errorf("invalid flow:\n%w", err)
+	}
+	if err := s.preflight(b); err != nil {
+		return "", err
+	}
+	if err := validateInputs(b, inputs); err != nil {
+		return "", err
+	}
+	return s.start(b, inputs, "/flow run "+b.Name, width)
+}
+
 // startServiceParams adapts legacy test fixtures to the typed service API.
-func startServiceParams(wt *Service, params map[string]any) (string, string, error) {
+func startServiceParams(wt *Service, params map[string]any) (string, error) {
 	inputs := map[string]string{}
 	if values, ok := params["inputs"].(map[string]any); ok {
 		for key, value := range values {
@@ -520,13 +537,13 @@ func startServiceParams(wt *Service, params map[string]any) (string, string, err
 		return wt.Launch(name, inputs, 120)
 	}
 	source, _ := params["definition"].(string)
-	return wt.startInline(source, inputs, 120)
+	return startInline(wt, source, inputs, 120)
 }
 
 // runToCompletion starts a service run and waits for its background task.
 func runToCompletion(t *testing.T, wt *Service, params map[string]any) task.TaskInfo {
 	t.Helper()
-	_, id, err := startServiceParams(wt, params)
+	id, err := startServiceParams(wt, params)
 	if err != nil {
 		t.Fatalf("start flow: %v", err)
 	}

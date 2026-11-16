@@ -16,11 +16,11 @@ func capture(states map[string]Checkpoint) func(*Node, Checkpoint) error {
 
 func TestRetryInvalidatesFailedDescendantWorkers(t *testing.T) {
 	w := mustParse(t, chain)
-	worker := []WorkerCheckpoint{{Index: 0, State: Checkpoint{Status: StatusSucceeded, Output: "old"}}}
+	worker := []WorkerCheckpoint{{Index: 0, State: Checkpoint{Outcome: Outcome{Status: StatusSucceeded, Output: "old"}}}}
 	original := map[string]Checkpoint{
-		"a": {Status: StatusFailed, Workers: worker, Attempt: 1},
-		"b": {Status: StatusFailed, Workers: worker, Attempt: 1},
-		"c": {Status: StatusSucceeded, Output: "stale", Attempt: 1},
+		"a": {Outcome: Outcome{Status: StatusFailed, Workers: worker}, Attempt: 1},
+		"b": {Outcome: Outcome{Status: StatusFailed, Workers: worker}, Attempt: 1},
+		"c": {Outcome: Outcome{Status: StatusSucceeded, Output: "stale"}, Attempt: 1},
 	}
 	states, err := Retry(w, original)
 	if err != nil {
@@ -81,7 +81,7 @@ func TestCheckpointLoopRoundResume(t *testing.T) {
 
 func TestCheckpointPreservesIndependentSuccess(t *testing.T) {
 	w := mustParse(t, "```mermaid\nflowchart LR\n a --> b\n c --> d\n```\n## a\na\n## b\nb\n## c\nc\n## d\nd\n")
-	states := map[string]Checkpoint{"a": {Status: StatusFailed}, "b": {Status: StatusSkipped}, "c": {Status: StatusSucceeded, Output: "C"}, "d": {Status: StatusSucceeded, Output: "D"}}
+	states := map[string]Checkpoint{"a": {Outcome: Outcome{Status: StatusFailed}}, "b": {Outcome: Outcome{Status: StatusSkipped}}, "c": {Outcome: Outcome{Status: StatusSucceeded, Output: "C"}}, "d": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}}}
 	r := &stubRunner{}
 	res := Run(context.Background(), w, r, Options{Resume: states})
 	if res.Failed(w) || !slices.Equal(r.calls, []string{"a", "b"}) || res.Nodes["d"].Output != "D" {
@@ -92,9 +92,9 @@ func TestCheckpointPreservesIndependentSuccess(t *testing.T) {
 func TestCheckpointInvalidatedFailedUpstreamRerunsSuccessfulDescendants(t *testing.T) {
 	w := mustParse(t, chain)
 	states := map[string]Checkpoint{
-		"a": {Status: StatusFailed, Attempt: 1},
-		"b": {Status: StatusSucceeded, Output: "stale B", Attempt: 1},
-		"c": {Status: StatusSucceeded, Output: "stale C", Attempt: 1},
+		"a": {Outcome: Outcome{Status: StatusFailed}, Attempt: 1},
+		"b": {Outcome: Outcome{Status: StatusSucceeded, Output: "stale B"}, Attempt: 1},
+		"c": {Outcome: Outcome{Status: StatusSucceeded, Output: "stale C"}, Attempt: 1},
 	}
 	invalidated, err := Invalidate(w, states, "a")
 	if err != nil {
@@ -138,7 +138,7 @@ func TestCheckpointWriteFailureStopsChildren(t *testing.T) {
 
 func TestCheckpointInvalidateClonesHistory(t *testing.T) {
 	w := mustParse(t, chain)
-	states := map[string]Checkpoint{"a": {Status: StatusSucceeded, Output: "full", Attempt: 1, Workers: []WorkerCheckpoint{{State: Checkpoint{Status: StatusSucceeded, Output: "worker"}}}}, "b": {Status: StatusFailed, Output: "partial", Attempt: 2}}
+	states := map[string]Checkpoint{"a": {Outcome: Outcome{Status: StatusSucceeded, Output: "full", Workers: []WorkerCheckpoint{{State: Checkpoint{Outcome: Outcome{Status: StatusSucceeded, Output: "worker"}}}}}, Attempt: 1}, "b": {Outcome: Outcome{Status: StatusFailed, Output: "partial"}, Attempt: 2}}
 	out, err := Invalidate(w, states, "a")
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +160,7 @@ func TestCheckpointInvalidateClonesHistory(t *testing.T) {
 func TestCheckpointReroutesOmittedBranch(t *testing.T) {
 	src := "```mermaid\nflowchart LR\n a -->|YES| b\n a -->|NO| c\n```\n## a\nroute\n## b\nyes\n## c\nno\n"
 	w := mustParse(t, src)
-	states := map[string]Checkpoint{"a": {Status: StatusFailed}, "b": {Status: StatusSucceeded, Output: "old"}, "c": {Status: StatusOmitted}}
+	states := map[string]Checkpoint{"a": {Outcome: Outcome{Status: StatusFailed}}, "b": {Outcome: Outcome{Status: StatusSucceeded, Output: "old"}}, "c": {Outcome: Outcome{Status: StatusOmitted}}}
 	r := &stubRunner{outputs: map[string]string{"a": "NO", "c": "new"}}
 	res := Run(context.Background(), w, r, Options{Resume: states})
 	if res.Nodes["b"].Status != StatusOmitted || res.Nodes["c"].Output != "new" {

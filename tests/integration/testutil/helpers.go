@@ -119,7 +119,7 @@ func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolre
 // way users start one, returning the scheduler task ID.
 func LaunchFlow(t testing.TB, flows *flow.Service, definition string, inputs map[string]string) string {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), ".san", "workflows")
+	dir := flow.DefinitionDir(filepath.Join(t.TempDir(), ".san"))
 	flows.SetSearchPaths([]string{dir})
 	w, err := flow.Parse(definition)
 	if err != nil {
@@ -132,7 +132,7 @@ func LaunchFlow(t testing.TB, flows *flow.Service, definition string, inputs map
 	if err := flow.SaveDefinition(name, definition, "", dir); err != nil {
 		t.Fatal(err)
 	}
-	_, id, err := flows.Launch(name, inputs, 120)
+	id, err := flows.Launch(name, inputs, 120)
 	if err != nil {
 		t.Fatalf("launch flow: %v", err)
 	}

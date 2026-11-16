@@ -17,7 +17,7 @@ type flowTaskService struct {
 	record flow.RunRecord
 }
 
-func (s flowTaskService) InspectRun(string) (*flow.RunRecord, error) {
+func (s flowTaskService) GetRun(string) (*flow.RunRecord, error) {
 	return &s.record, nil
 }
 
@@ -33,7 +33,7 @@ func TestFlowChildUsesNativeTaskOverlayAndReturns(t *testing.T) {
 	s := flowTaskService{record: flow.RunRecord{
 		ID: "run", Status: flow.RunSucceeded,
 		Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
-		Nodes:      map[string]flow.Checkpoint{"a": {Status: flow.StatusSucceeded, Execution: flow.Execution{TaskID: "child", SessionID: "child-session"}}},
+		Nodes:      map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Execution: flow.Execution{TaskID: "child", SessionID: "child-session"}}}},
 	}}
 	m.userInput.Flow.OpenRun(s, "run", 80, 30)
 	cmd := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -66,10 +66,10 @@ func TestFlowRecordedCheckpointInspection(t *testing.T) {
 			m := flowInputModel(manager)
 			m.env.Height = 35
 			answer := "checkpoint answer " + strings.Repeat("full answer\n", 4000)
-			state := flow.Checkpoint{Status: flow.StatusSucceeded, Execution: current, Attempt: 2, Output: answer}
+			state := flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusSucceeded, Execution: current, Output: answer}, Attempt: 2}
 			want := current
 			if historical {
-				state = flow.Checkpoint{Status: flow.StatusPending, History: []flow.Attempt{{Number: 2, Workers: []flow.WorkerCheckpoint{{State: flow.Checkpoint{Execution: old, Attempt: 1, Status: flow.StatusFailed, Output: answer, Error: "old failure"}}}}}}
+				state = flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusPending}, History: []flow.Attempt{{Outcome: flow.Outcome{Workers: []flow.WorkerCheckpoint{{State: flow.Checkpoint{Outcome: flow.Outcome{Execution: old, Status: flow.StatusFailed, Output: answer, Error: "old failure"}, Attempt: 1}}}}, Number: 2}}}
 				want = old
 			}
 			s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
@@ -148,7 +148,7 @@ func TestFlowRecordedRejectsConflictingLiveIdentity(t *testing.T) {
 		m := flowInputModel(manager)
 		s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
 			Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
-			Nodes:      map[string]flow.Checkpoint{"a": {Status: flow.StatusSucceeded, Output: "saved", Execution: flow.Execution{TaskID: "child", SessionID: "saved-session"}}}}}
+			Nodes:      map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Output: "saved", Execution: flow.Execution{TaskID: "child", SessionID: "saved-session"}}}}}}
 		m.userInput.Flow.OpenRun(s, "run", 80, 30)
 		cmd := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 		m.dispatch(cmd())

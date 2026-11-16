@@ -107,8 +107,8 @@ func extractJSON(s string) (any, error) {
 // Bounds reports the worst case a run can reach: how many subagent turns it
 // can start, and the fan-out bound of each for_each node. The approval
 // dialog states this, which is the whole reason dynamic fan-out is allowed.
-func (w *Blueprint) Bounds() (turns int, fanOut []string) {
-	for _, n := range w.Nodes {
+func (b *Blueprint) Bounds() (turns int, fanOut []string) {
+	for _, n := range b.Nodes {
 		if n.ForEach == "" {
 			turns++
 			continue
@@ -116,7 +116,7 @@ func (w *Blueprint) Bounds() (turns int, fanOut []string) {
 		turns += n.MaxWorkers
 		fanOut = append(fanOut, fmt.Sprintf("%s: up to %d workers over %s", n.ID, n.MaxWorkers, n.ForEach))
 	}
-	for _, l := range w.Loops {
+	for _, l := range b.Loops {
 		fanOut = append(fanOut, l.String())
 	}
 	return turns, fanOut
@@ -139,30 +139,30 @@ func (l Loop) String() string {
 // checkLoops resolves each loop's body — the nodes on a forward path from
 // its head to its tail — and rejects the shapes the unroller cannot turn back
 // into a plain DAG.
-func (w *Blueprint) checkLoops(forward []Edge) error {
+func (b *Blueprint) checkLoops(forward []Edge) error {
 	down := map[string][]string{}
 	up := map[string][]string{}
 	for _, e := range forward {
 		down[e.From] = append(down[e.From], e.To)
 		up[e.To] = append(up[e.To], e.From)
 	}
-	w.loopOf = map[string]*Loop{}
-	for i := range w.Loops {
-		l := &w.Loops[i]
+	b.loopOf = map[string]*Loop{}
+	for i := range b.Loops {
+		l := &b.Loops[i]
 		fromHead, toTail := reach(l.To, down), reach(l.From, up)
 		if !fromHead[l.From] {
 			return fmt.Errorf("back edge %s -->|%s x%d| %s: %s is not an ancestor of %s, so there is no loop to bound",
 				l.From, l.Label, l.Rounds, l.To, l.To, l.From)
 		}
 		inBody := func(id string) bool { return fromHead[id] && toTail[id] }
-		for _, n := range w.Nodes {
+		for _, n := range b.Nodes {
 			if !inBody(n.ID) {
 				continue
 			}
-			if prev := w.loopOf[n.ID]; prev != nil {
+			if prev := b.loopOf[n.ID]; prev != nil {
 				return fmt.Errorf("node %s is inside two loops (%s and %s); nested rounds are a cartesian explosion", n.ID, prev, l)
 			}
-			w.loopOf[n.ID] = l
+			b.loopOf[n.ID] = l
 			if n.ForEach != "" {
 				return fmt.Errorf("node %s has for_each inside the loop %s; dynamic fan-out times iteration is a cartesian explosion", n.ID, l)
 			}
@@ -181,11 +181,11 @@ func (w *Blueprint) checkLoops(forward []Edge) error {
 // unroll replaces each loop's body with one copy per round, wired
 // head-to-tail, and gives every round its own escape edges. What is left is
 // an ordinary DAG.
-func (w *Blueprint) unroll() {
-	if len(w.Loops) == 0 {
+func (b *Blueprint) unroll() {
+	if len(b.Loops) == 0 {
 		return
 	}
-	inBody := w.loopOf
+	inBody := b.loopOf
 	instance := func(id string, round int) string {
 		if inBody[id] == nil {
 			return id
@@ -194,7 +194,7 @@ func (w *Blueprint) unroll() {
 	}
 
 	var nodes []*Node
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		l := inBody[n.ID]
 		if l == nil {
 			nodes = append(nodes, n)
@@ -209,7 +209,7 @@ func (w *Blueprint) unroll() {
 	}
 
 	var edges []Edge
-	for _, e := range w.Edges {
+	for _, e := range b.Edges {
 		from, to := inBody[e.From], inBody[e.To]
 		rounds := 1
 		if from != nil {
@@ -230,18 +230,18 @@ func (w *Blueprint) unroll() {
 	// The back edge becomes the chain: round i's tail feeds round i+1's head.
 	// The last round has nowhere to go on a retry, which is what exhaustion
 	// means; the scheduler fails that round when its answer takes no edge.
-	for _, l := range w.Loops {
+	for _, l := range b.Loops {
 		for round := 1; round < l.Rounds; round++ {
 			edges = append(edges, Edge{From: instance(l.From, round), To: instance(l.To, round+1), Label: l.Label})
 		}
 	}
 
-	w.Nodes, w.Edges, w.byID = nodes, edges, map[string]*Node{}
+	b.Nodes, b.Edges, b.byID = nodes, edges, map[string]*Node{}
 	for _, n := range nodes {
 		n.upstream, n.downstream = nil, nil
-		w.byID[n.ID] = n
+		b.byID[n.ID] = n
 	}
-	w.link(edges)
+	b.link(edges)
 }
 
 // reach returns every node reachable from start, inclusive.

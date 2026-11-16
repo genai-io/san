@@ -140,7 +140,7 @@ func TestSchedulerFinalResultEmptyAndLegacyExcerpt(t *testing.T) {
 		}
 	}
 	e := parseAgentEnvelope(`<task-notification scheduler="true" task-id="flow-final" status="completed" result-truncated="true">Visible conclusion</task-notification>`)
-	if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: 80})); !strings.Contains(got, "Visible conclusion") || !strings.Contains(got, "/flow inspect flow-final") {
+	if got := ansi.Strip(e.renderDisplayNotice(RenderContext{Width: 80})); !strings.Contains(got, "Visible conclusion") || !strings.Contains(got, "full result in task details") {
 		t.Fatalf("serialized prefix lost its full-result hint: %q", got)
 	}
 }

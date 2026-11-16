@@ -1,11 +1,8 @@
 package input
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"maps"
-	"sort"
 	"strings"
 	"time"
 
@@ -13,26 +10,50 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/task"
 )
 
 // FlowService is the UI's project-scoped flow boundary.
 type FlowService interface {
-	Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error)
+	Launch(name string, inputs map[string]string, width int) (taskID string, err error)
 	Runs() ([]flow.RunRecord, error)
-	InspectRun(id string) (*flow.RunRecord, error)
-	ResumeRun(id, from string, width int) (bounds, taskID string, err error)
+	GetRun(id string) (*flow.RunRecord, error)
+	ResumeRun(id, from string, width int) (taskID string, err error)
 	StopRun(id string) error
-	SavedDefinitions() []flow.Saved
+	SavedDefinitions() []flow.SavedDefinition
+	SavedInputNames(name string) ([]string, error)
 	Definition(name string) (string, error)
 	SaveDefinition(name, definition, baseline string) error
-	Saved() string
 	Preview(name string, width int) (string, error)
 }
 
 type flowTick struct{ generation uint64 }
+
+// flowPage is the FlowView screen.
+type flowPage string
+
+const (
+	flowPageHub        flowPage = "hub"
+	flowPageGoal       flowPage = "goal"
+	flowPageGenerate   flowPage = "generate"
+	flowPageReview     flowPage = "review"
+	flowPageDetails    flowPage = "details"
+	flowPageEdit       flowPage = "edit"
+	flowPageInputs     flowPage = "inputs"
+	flowPageRun        flowPage = "run"
+	flowPageExecutions flowPage = "executions"
+)
+
+// flowConfirm is the action awaiting confirmation; empty when none is.
+type flowConfirm string
+
+const (
+	flowConfirmSave    flowConfirm = "save"
+	flowConfirmStop    flowConfirm = "stop"
+	flowConfirmDiscard flowConfirm = "discard"
+	flowConfirmResume  flowConfirm = "resume"
+)
 
 // FlowView owns command entrypoints, navigation and interaction.
 // Rendering lives in on_flow_view.go.
@@ -41,14 +62,14 @@ type FlowView struct {
 	ownerSession  string
 	active        bool
 	width, height int
-	page          string
-	confirm       string
+	page          flowPage
+	confirm       flowConfirm
 	message       string
 	editor        textarea.Model
 	body          viewport.Model
 
 	// Definition list and draft.
-	definitions      []flow.Saved
+	definitions      []flow.SavedDefinition
 	runs             []flow.RunRecord
 	cursor           int
 	name             string
@@ -102,7 +123,7 @@ func (v *FlowView) SyncSession(sessionID string) {
 }
 
 func (v *FlowView) AcceptTaskOpen(msg FlowOpenTaskMsg) bool {
-	if !v.active || v.generation != msg.Generation || v.page != "executions" {
+	if !v.active || v.generation != msg.Generation || v.page != flowPageExecutions {
 		return false
 	}
 	choices := v.executionChoices()
@@ -152,7 +173,7 @@ func (v *FlowView) executionChoices() []flowExecutionChoice {
 	add = func(label string, state flow.Checkpoint) {
 		addChoice(label, state)
 		for _, a := range state.History {
-			addChoice(label, flow.Checkpoint{Execution: a.Execution, Attempt: a.Number, Status: a.Status, Output: a.Output, Error: a.Error})
+			addChoice(label, flow.Checkpoint{Outcome: a.Outcome, Attempt: a.Number})
 			for _, worker := range a.Workers {
 				add(fmt.Sprintf("Worker %d · flow attempt %d", worker.Index+1, a.Number), worker.State)
 			}
@@ -165,7 +186,7 @@ func (v *FlowView) executionChoices() []flowExecutionChoice {
 			add(fmt.Sprintf("Worker %d", worker.Index+1), worker.State)
 		}
 		for _, a := range node.History {
-			addChoice(v.nodeID(), flow.Checkpoint{Execution: a.Execution, Attempt: a.Number, Status: a.Status, Output: a.Output, Error: a.Error})
+			addChoice(v.nodeID(), flow.Checkpoint{Outcome: a.Outcome, Attempt: a.Number})
 			for _, worker := range a.Workers {
 				add(fmt.Sprintf("Worker %d · flow attempt %d", worker.Index+1, a.Number), worker.State)
 			}
@@ -207,7 +228,7 @@ func (v *FlowView) init(s FlowService, w, h int) {
 
 func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
 	v.init(s, w, h)
-	v.page = "hub"
+	v.page = flowPageHub
 	v.definitions = s.SavedDefinitions()
 	var err error
 	v.runs, err = s.Runs()
@@ -216,7 +237,7 @@ func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
 }
 
 func (v *FlowView) openGoal() tea.Cmd {
-	v.page = "goal"
+	v.page = flowPageGoal
 	v.draftAt = time.Time{}
 	v.Resize(v.width, v.height)
 	v.editor.Placeholder = "Describe the work and the result you want"
@@ -226,7 +247,7 @@ func (v *FlowView) openGoal() tea.Cmd {
 
 func (v *FlowView) OpenGeneration(s FlowService, goal string, w, h int) tea.Cmd {
 	v.init(s, w, h)
-	v.page, v.goal = "generate", goal
+	v.page, v.goal = flowPageGenerate, goal
 	v.draftAt = time.Now()
 	return v.draftRequest()
 }
@@ -243,7 +264,7 @@ func (v *FlowView) draftRequest() tea.Cmd {
 }
 
 func (v *FlowView) IsGenerating(generation uint64) bool {
-	return v.active && v.page == "generate" && !v.draftAt.IsZero() && v.generation == generation
+	return v.active && v.page == flowPageGenerate && !v.draftAt.IsZero() && v.generation == generation
 }
 
 func (v *FlowView) DraftReady(generation uint64, source string, err error) bool {
@@ -274,9 +295,9 @@ func (v *FlowView) OpenDraft(s FlowService, name, definition, baseline string, w
 
 func (v *FlowView) OpenRun(s FlowService, id string, w, h int) tea.Cmd {
 	v.init(s, w, h)
-	v.page = "run"
+	v.page = flowPageRun
 	var err error
-	v.record, err = s.InspectRun(id)
+	v.record, err = s.GetRun(id)
 	v.setError(err)
 	if v.record != nil {
 		v.plan, _ = flow.Parse(v.record.Definition)
@@ -291,21 +312,21 @@ func (v *FlowView) Resize(w, h int) {
 	v.editor.SetHeight(max(1, h-9))
 	v.body.SetWidth(max(1, w-4))
 	v.body.SetHeight(max(1, h-10))
-	if v.page == "review" && v.confirm == "" {
+	if v.page == flowPageReview && v.confirm == "" {
 		v.showReview()
-	} else if v.page == "details" {
+	} else if v.page == flowPageDetails {
 		v.body.SetHeight(max(1, v.height-6))
 		v.body.SetContent(v.renderLimits())
-	} else if v.page == "inputs" {
+	} else if v.page == flowPageInputs {
 		v.resizeInputs()
-	} else if v.page == "goal" {
+	} else if v.page == flowPageGoal {
 		v.editor.SetWidth(max(1, min(72, v.width-8)))
 		v.editor.SetHeight(max(1, min(6, v.height-10)))
 	}
 }
 
 func (v *FlowView) showReview() {
-	v.page = "review"
+	v.page = flowPageReview
 	v.body.SetHeight(max(1, v.height-6))
 	if v.plan != nil {
 		v.body.SetHeight(max(1, v.height-8-strings.Count(v.renderGraph(), "\n")))
@@ -334,7 +355,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return v.tick(), true
 	}
-	if v.active && (v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys))) {
+	if v.active && (v.page == flowPageEdit || v.page == flowPageGoal || (v.page == flowPageInputs && v.field < len(v.keys))) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd, true
@@ -343,7 +364,7 @@ func (v *FlowView) Update(msg tea.Msg) (tea.Cmd, bool) {
 }
 
 func (v *FlowView) HandlePaste(s string) tea.Cmd {
-	if v.confirm == "" && (v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys))) {
+	if v.confirm == "" && (v.page == flowPageEdit || v.page == flowPageGoal || (v.page == flowPageInputs && v.field < len(v.keys))) {
 		v.editor.InsertString(s)
 	}
 	return nil
@@ -360,7 +381,7 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch v.page {
-	case "goal":
+	case flowPageGoal:
 		switch key {
 		case "enter":
 			goal := strings.TrimSpace(v.editor.Value())
@@ -373,7 +394,7 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 			v.editor.InsertString("\n")
 			return nil
 		}
-	case "generate":
+	case flowPageGenerate:
 		if key == "enter" && v.draftAt.IsZero() {
 			v.generation++
 			v.draftAt, v.phase = time.Now(), 0
@@ -382,17 +403,17 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		if key == "e" && v.draftAt.IsZero() {
 			return v.openGoal()
 		}
-	case "hub":
+	case flowPageHub:
 		return v.handleHub(key)
-	case "review":
+	case flowPageReview:
 		return v.handleReview(key)
-	case "edit":
+	case flowPageEdit:
 		if key == "ctrl+s" {
 			v.source, v.saved = v.editor.Value(), false
 			v.previewSave()
 			return nil
 		}
-	case "inputs":
+	case flowPageInputs:
 		switch key {
 		case "enter", "tab":
 			if v.field < len(v.keys) {
@@ -422,14 +443,14 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 				v.scroll(key)
 			}
 		}
-	case "run":
+	case flowPageRun:
 		return v.handleRun(key)
-	case "executions":
+	case flowPageExecutions:
 		return v.handleExecutions(key)
-	case "details":
+	case flowPageDetails:
 		v.scroll(key)
 	}
-	if v.page == "edit" || v.page == "goal" || (v.page == "inputs" && v.field < len(v.keys)) {
+	if v.page == flowPageEdit || v.page == flowPageGoal || (v.page == flowPageInputs && v.field < len(v.keys)) {
 		var cmd tea.Cmd
 		v.editor, cmd = v.editor.Update(msg)
 		return cmd
@@ -487,13 +508,13 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 		}
 	case "d":
 		if v.plan != nil {
-			v.page = "details"
+			v.page = flowPageDetails
 			v.body.SetHeight(max(1, v.height-6))
 			v.body.SetContent(v.renderLimits())
 			v.body.GotoTop()
 		}
 	case "e":
-		v.page = "edit"
+		v.page = flowPageEdit
 		v.Resize(v.width, v.height)
 		v.editor.Placeholder = ""
 		v.editor.SetValue(v.source)
@@ -512,15 +533,23 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 
 func (v *FlowView) previewSave() {
 	if v.validate() {
-		v.confirm = "save"
+		v.confirm = flowConfirmSave
 		v.body.SetHeight(max(1, v.height-9))
 		v.body.SetContent(v.diffPreview())
 		v.body.GotoTop()
 	}
 }
 
+// OpenRunInputs opens the run form for a saved definition, keeping the
+// inputs already supplied on the command line.
+func (v *FlowView) OpenRunInputs(s FlowService, name, definition string, inputs map[string]string, w, h int) tea.Cmd {
+	v.OpenDraft(s, name, definition, definition, w, h)
+	v.inputs = maps.Clone(inputs)
+	return v.openInputs()
+}
+
 func (v *FlowView) openInputs() tea.Cmd {
-	v.page, v.keys, v.field = "inputs", v.plan.InputNames(), 0
+	v.page, v.keys, v.field = flowPageInputs, v.plan.InputNames(), 0
 	for v.field < len(v.keys) && strings.TrimSpace(v.inputs[v.keys[v.field]]) != "" {
 		v.field++
 	}
@@ -563,7 +592,7 @@ func (v *FlowView) submitInput() tea.Cmd {
 		v.setError(err)
 		return nil
 	}
-	_, _, err = v.service.Launch(v.name, v.inputs, v.width)
+	_, err = v.service.Launch(v.name, v.inputs, v.width)
 	v.setError(err)
 	if err != nil {
 		return nil
@@ -593,13 +622,13 @@ func (v *FlowView) handleRun(key string) tea.Cmd {
 			v.TaskUnavailable()
 			return nil
 		}
-		v.page, v.cursor = "executions", 0
+		v.page, v.cursor = flowPageExecutions, 0
 		if len(choices) == 1 {
 			return v.handleExecutions("enter")
 		}
 	case "s":
 		if v.record != nil && v.record.Status == flow.RunRunning {
-			v.confirm = "stop"
+			v.confirm = flowConfirmStop
 		}
 	case "r", "R":
 		if v.record == nil || v.record.Status == flow.RunRunning {
@@ -613,7 +642,7 @@ func (v *FlowView) handleRun(key string) tea.Cmd {
 		if key == "R" {
 			v.resumeFrom = v.nodeID()
 		}
-		v.confirm = "resume"
+		v.confirm = flowConfirmResume
 		v.body.SetContent(v.resumePreview())
 		v.body.GotoTop()
 	}
@@ -621,32 +650,32 @@ func (v *FlowView) handleRun(key string) tea.Cmd {
 }
 
 func (v *FlowView) handleConfirm(key string) tea.Cmd {
-	if key == "enter" && v.confirm == "save" {
+	if key == "enter" && v.confirm == flowConfirmSave {
 		key = "y"
 	}
 	var started tea.Cmd
 	switch key {
 	case "y":
 		switch v.confirm {
-		case "save":
+		case flowConfirmSave:
 			if v.validate() {
 				err := v.service.SaveDefinition(v.name, v.source, v.baseline)
 				v.setError(err)
 				if err == nil {
-					v.baseline, v.saved, v.page = v.source, true, "review"
+					v.baseline, v.saved, v.page = v.source, true, flowPageReview
 				}
 			}
-		case "stop":
+		case flowConfirmStop:
 			v.setError(v.service.StopRun(v.record.ID))
 			v.refreshRun()
-		case "resume":
-			_, _, err := v.service.ResumeRun(v.record.ID, v.resumeFrom, v.width)
+		case flowConfirmResume:
+			_, err := v.service.ResumeRun(v.record.ID, v.resumeFrom, v.width)
 			v.setError(err)
 			if err == nil {
 				started = func() tea.Msg { return FlowStartedMsg{} }
 			}
 			v.refreshRun()
-		case "discard":
+		case flowConfirmDiscard:
 			v.close()
 		}
 		v.confirm = ""
@@ -655,7 +684,7 @@ func (v *FlowView) handleConfirm(key string) tea.Cmd {
 	default:
 		v.scroll(key)
 	}
-	if v.confirm == "" && v.page == "review" {
+	if v.confirm == "" && v.page == flowPageReview {
 		v.showReview()
 	}
 	return tea.Batch(v.tick(), started)
@@ -663,24 +692,24 @@ func (v *FlowView) handleConfirm(key string) tea.Cmd {
 
 func (v *FlowView) back() {
 	switch v.page {
-	case "edit":
+	case flowPageEdit:
 		v.source = v.editor.Value()
 		v.saved = v.baseline != "" && v.source == v.baseline
 		v.validate()
 		v.showReview()
-	case "review":
+	case flowPageReview:
 		if !v.saved {
-			v.confirm = "discard"
+			v.confirm = flowConfirmDiscard
 		} else {
 			v.close()
 		}
-	case "executions":
-		v.page = "run"
-	case "inputs":
+	case flowPageExecutions:
+		v.page = flowPageRun
+	case flowPageInputs:
 		v.keepInput()
 		v.editor.Blur()
 		v.showReview()
-	case "details":
+	case flowPageDetails:
 		v.showReview()
 	default:
 		v.close()
@@ -717,7 +746,7 @@ func (v *FlowView) refreshRun() bool {
 	if v.record == nil {
 		return false
 	}
-	record, err := v.service.InspectRun(v.record.ID)
+	record, err := v.service.GetRun(v.record.ID)
 	v.setError(err)
 	if record == nil {
 		return false
@@ -772,262 +801,3 @@ func (v *FlowView) scroll(key string) {
 		v.body.GotoBottom()
 	}
 }
-
-// IsFlowStopCommand keeps cancellation out of the foreground input queue.
-func IsFlowStopCommand(input string) bool {
-	name, args, ok := command.ParseCommand(input)
-	if !ok || name != "flow" {
-		return false
-	}
-	fields, err := command.SplitArguments(args)
-	return err == nil && len(fields) > 0 && fields[0] == "stop" && isFlowSubcommand(fields, nil)
-}
-
-// isFlowSubcommand reports whether fields have the exact shape of a /flow
-// subcommand. Anything else, such as "run the tests and fix failures", is a
-// natural-language goal even when it starts with a subcommand word. A run of a
-// saved flow stays a command so a malformed input is reported, not drafted.
-func isFlowSubcommand(fields []string, saved func(string) bool) bool {
-	n := len(fields)
-	if n == 0 {
-		return true
-	}
-	switch fields[0] {
-	case "list":
-		return n == 1
-	case "show", "edit", "inspect":
-		return n == 2
-	case "stop", "new":
-		return n <= 2
-	case "from-skill":
-		return n == 2 || n == 3
-	case "run":
-		if n < 2 || saved != nil && saved(fields[1]) {
-			return true
-		}
-		for _, kv := range fields[2:] {
-			if k, _, ok := strings.Cut(kv, "="); !ok || k == "" {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-// Authoring is loaded only for an explicit natural-language /flow request.
-func (c *SlashCommandController) handleFlowCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	args = strings.TrimSpace(args)
-	fields, err := command.SplitArguments(args)
-	if err != nil || !isFlowSubcommand(fields, c.savedFlow) {
-		if c.env.Flow == nil || c.env.Input == nil {
-			return "", nil, errors.New("flow authoring is unavailable in this build")
-		}
-		return "", c.env.Input.Flow.OpenGeneration(c.env.Flow, args, c.env.Width, c.env.Height), nil
-	}
-	if len(fields) > 0 && fields[0] == "stop" {
-		return c.stopFlow(fields[1:])
-	}
-	svc := c.env.Flow
-	if svc == nil {
-		return "", nil, errors.New("flow service is unavailable in this build")
-	}
-	if len(fields) == 0 && c.env.Input != nil {
-		return "", c.env.Input.Flow.Open(svc, c.env.Width, c.env.Height), nil
-	}
-	if len(fields) == 0 || fields[0] == "list" {
-		if len(fields) > 1 {
-			return "", nil, errors.New("usage: /flow list")
-		}
-		if list := svc.Saved(); list != "" {
-			return "Saved flows:" + list + "\n\n" + flowUsage, nil, nil
-		}
-		return "No saved flows. Describe a goal with /flow <goal>.\n\n" + flowUsage, nil, nil
-	}
-	if fields[0] == "show" {
-		if len(fields) != 2 {
-			return "", nil, errors.New("usage: /flow show <name>")
-		}
-		preview, err := svc.Preview(fields[1], c.env.Width)
-		return preview, nil, err
-	}
-	if fields[0] == "new" || fields[0] == "from-skill" || fields[0] == "edit" || fields[0] == "inspect" {
-		if c.env.Input == nil {
-			return "", nil, errors.New("flow management is unavailable in this build")
-		}
-		return c.openFlow(svc, fields)
-	}
-	if len(fields) < 2 {
-		return "", nil, errors.New("usage: /flow run <name> [key=value …]")
-	}
-	inputs := map[string]string{}
-	for _, kv := range fields[2:] {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" {
-			return "", nil, fmt.Errorf("input %q is not key=value", kv)
-		}
-		inputs[k] = v
-	}
-	if c.env.Input != nil {
-		source, err := svc.Definition(fields[1])
-		if err != nil {
-			return "", nil, err
-		}
-		plan, err := flow.Parse(source)
-		if err != nil {
-			return "", nil, err
-		}
-		for _, key := range plan.InputNames() {
-			if strings.TrimSpace(inputs[key]) == "" {
-				view := &c.env.Input.Flow
-				view.OpenDraft(svc, fields[1], source, source, c.env.Width, c.env.Height)
-				view.inputs = maps.Clone(inputs)
-				return "", view.openInputs(), nil
-			}
-		}
-	}
-	_, _, err = svc.Launch(fields[1], inputs, c.env.Width)
-	if err != nil {
-		return "", nil, err
-	}
-	var cmds []tea.Cmd
-	if c.env.SpinnerTickCmd != nil {
-		cmds = append(cmds, c.env.SpinnerTickCmd())
-	}
-	return "", tea.Batch(cmds...), nil
-}
-
-func (c *SlashCommandController) savedFlow(name string) bool {
-	if c.env.Flow == nil {
-		return false
-	}
-	for _, saved := range c.env.Flow.SavedDefinitions() {
-		if saved.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-func (c *SlashCommandController) openFlow(svc FlowService, fields []string) (string, tea.Cmd, error) {
-	view := &c.env.Input.Flow
-	w, h := c.env.Width, c.env.Height
-	switch fields[0] {
-	case "new":
-		if len(fields) > 2 {
-			return "", nil, errors.New("usage: /flow new [name]")
-		}
-		name := "new-flow"
-		if len(fields) == 2 {
-			name = fields[1]
-		}
-		src := flowDraft(name, "work", `## work
-mode: explore
-
-Complete the request below and return the result:
-{{input}}
-`)
-		return "", view.OpenDraft(svc, name, src, "", w, h), nil
-	case "from-skill":
-		if len(fields) < 2 || len(fields) > 3 {
-			return "", nil, errors.New("usage: /flow from-skill <skill> [name]")
-		}
-		if c.env.Skill == nil {
-			return "", nil, errors.New("skill registry is unavailable")
-		}
-		sk, ok := c.env.Skill.Get(fields[1])
-		if !ok || !sk.IsEnabled() {
-			return "", nil, fmt.Errorf("skill %q is missing or disabled", fields[1])
-		}
-		name := strings.ReplaceAll(sk.FullName(), ":", "-")
-		if len(fields) == 3 {
-			name = fields[2]
-		}
-		// Let the Skill loader retain its instructions and resource paths;
-		// guessing a graph from prose could change the original behavior.
-		prompt := fmt.Sprintf(`## work
-mode: default
-
-Use the Skill tool to invoke %q for this request:
-{{input}}
-
-Preserve the skill's original order, constraints and resource paths. If it requires a parent-only tool, report that limitation rather than bypassing it.
-
-This flow references the live skill; its instructions are loaded when the node runs. Review this before saving.
-`, sk.FullName())
-		return "", view.OpenDraft(svc, name, flowDraft(name, "work", prompt), "", w, h), nil
-	case "edit":
-		if len(fields) != 2 {
-			return "", nil, errors.New("usage: /flow edit <name>")
-		}
-		src, err := svc.Definition(fields[1])
-		if err != nil {
-			return "", nil, err
-		}
-		return "", view.OpenDraft(svc, fields[1], src, src, w, h), nil
-	case "inspect":
-		if len(fields) != 2 {
-			return "", nil, errors.New("usage: /flow inspect <run-id>")
-		}
-		return "", view.OpenRun(svc, fields[1], w, h), nil
-	}
-	return "", nil, errors.New("unknown flow action")
-}
-
-func flowDraft(name, graph, sections string) string {
-	return fmt.Sprintf("---\nname: %q\nmax_parallel: 1\n---\n\n```mermaid\nflowchart LR\n  %s\n```\n\n%s", name, graph, sections)
-}
-
-func (c *SlashCommandController) stopFlow(args []string) (string, tea.Cmd, error) {
-	if c.env.TaskSvc == nil {
-		return "", nil, errors.New("task manager is unavailable")
-	}
-	if len(args) == 1 {
-		if target, ok := c.env.TaskSvc.Get(args[0]); ok && target.GetStatus().Scheduler {
-			if !target.IsRunning() {
-				return "", nil, fmt.Errorf("flow task %s has already finished", args[0])
-			}
-			if err := target.Stop(); err != nil {
-				return "", nil, err
-			}
-			return "Stopping flow " + target.GetID() + ".", nil, nil
-		}
-		// A run ID, as shown at launch and in /flow, names the same execution.
-		if c.env.Flow != nil && c.env.Flow.StopRun(args[0]) == nil {
-			return "Stopping flow run " + args[0] + ".", nil, nil
-		}
-		return "", nil, fmt.Errorf("running flow %s not found", args[0])
-	}
-	var running []task.BackgroundTask
-	for _, bg := range c.env.TaskSvc.ListRunning() {
-		if bg.GetStatus().Scheduler {
-			running = append(running, bg)
-		}
-	}
-	switch len(running) {
-	case 0:
-		return "No running flows.", nil, nil
-	case 1:
-		if err := running[0].Stop(); err != nil {
-			return "", nil, err
-		}
-		return "Stopping flow " + running[0].GetID() + ".", nil, nil
-	}
-	ids := make([]string, 0, len(running))
-	for _, bg := range running {
-		ids = append(ids, bg.GetID())
-	}
-	sort.Strings(ids)
-	return "Several flows are running. Choose one: /flow stop <task-id>\n  " + strings.Join(ids, "\n  "), nil, nil
-}
-
-const flowUsage = `Commands:
-  /flow <goal>                       Generate a blueprint for review
-  /flow new [name]                   Create a manual draft
-  /flow from-skill <skill> [name]    Create a Skill-derived draft
-  /flow edit <name>                  Review and edit a definition
-  /flow list                         List saved flows
-  /flow show <name>                  Preview a graph
-  /flow run <name> [key=value …]     Run a flow
-  /flow inspect <run-id|task-id>     Inspect or resume a run
-  /flow stop [run-id|task-id]        Stop a running flow`

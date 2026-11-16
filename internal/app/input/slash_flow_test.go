@@ -177,7 +177,7 @@ func TestFlowCommandRunsWithoutAModelTurn(t *testing.T) {
 }
 
 func TestFlowSchedulerUsesHumanTitle(t *testing.T) {
-	const name = "InternalFlowReadOnlyReview"
+	const name = "internal_read-only_review"
 	body := strings.Replace(savedReview, "name: review", "name: "+name, 1)
 	c := flowController(t, map[string]string{name: body})
 	notice, cmd, err := c.handleFlowCommand(context.Background(), "run "+name+" base=main")
@@ -188,7 +188,7 @@ func TestFlowSchedulerUsesHumanTitle(t *testing.T) {
 		t.Fatalf("slash launch duplicated native scheduler start: %q", notice)
 	}
 	bg := launchedFlowTask(t, c)
-	if info := bg.GetStatus(); info.AgentName != "Internal Flow Read Only Review" {
+	if info := bg.GetStatus(); info.AgentName != "Internal read only review" {
 		t.Fatalf("scheduler human title = %q", info.AgentName)
 	}
 	if bg.GetDescription() != "/flow run "+name {

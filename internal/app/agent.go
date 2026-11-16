@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -23,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/interaction"
@@ -678,14 +678,20 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) (*perm.Perm
 	return interaction.PreparePermission(req, m.env.CWD, m.env.SessionMode(), m.services.Setting, m.env.SessionPermissions)
 }
 
-func (m *model) ReconfigureAgentTool() {
-	if m.services.Flow != nil {
-		dirs := []string{filepath.Join(confdir.Dir(m.env.CWD), "workflows")}
-		if home, _ := os.UserHomeDir(); home != "" {
-			dirs = append(dirs, filepath.Join(confdir.Dir(home), "workflows"))
-		}
-		m.services.Flow.SetSearchPaths(dirs)
+// configureFlowPaths points Flow at the project definitions, then the user's.
+func (m *model) configureFlowPaths() {
+	if m.services.Flow == nil {
+		return
 	}
+	dirs := []string{flow.DefinitionDir(confdir.Dir(m.env.CWD))}
+	if home, _ := os.UserHomeDir(); home != "" {
+		dirs = append(dirs, flow.DefinitionDir(confdir.Dir(home)))
+	}
+	m.services.Flow.SetSearchPaths(dirs)
+}
+
+func (m *model) ReconfigureAgentTool() {
+	m.configureFlowPaths()
 	if m.env.LLMProvider == nil || m.services.Session == nil {
 		return
 	}

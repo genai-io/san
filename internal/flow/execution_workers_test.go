@@ -66,7 +66,7 @@ func TestFanOutHistoryRetainsWorkerExecutions(t *testing.T) {
 				t.Fatal("expected one failed worker")
 			}
 			prior := states["work"]
-			prior.Workers[0].State.History = []Attempt{{Number: 1, Execution: Execution{TaskID: "earlier", SessionID: "earlier-session"}}}
+			prior.Workers[0].State.History = []Attempt{{Outcome: Outcome{Execution: Execution{TaskID: "earlier", SessionID: "earlier-session"}}, Number: 1}}
 			states["work"] = prior
 			if explicit {
 				var err error

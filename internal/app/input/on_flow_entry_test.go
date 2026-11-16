@@ -104,7 +104,7 @@ func TestFlowEntryGoalRequestAndRepair(t *testing.T) {
 
 func TestFlowEntryReviewEnterProgression(t *testing.T) {
 	for _, confirm := range []string{"enter", "y"} {
-		t.Run(confirm, func(t *testing.T) {
+		t.Run(string(confirm), func(t *testing.T) {
 			s := flowUIFixture()
 			var v FlowView
 			v.OpenDraft(s, "sample", flowUISource, "", 80, 32)
@@ -159,8 +159,8 @@ func TestFlowEntrySummaryPreservesDriftGuard(t *testing.T) {
 }
 
 func TestFlowEntryDestructiveConfirmationsRequireY(t *testing.T) {
-	for _, confirm := range []string{"discard", "stop", "resume"} {
-		t.Run(confirm, func(t *testing.T) {
+	for _, confirm := range []flowConfirm{flowConfirmDiscard, flowConfirmStop, flowConfirmResume} {
+		t.Run(string(confirm), func(t *testing.T) {
 			s := flowUIFixture()
 			var v FlowView
 			v.OpenRun(s, "run", 80, 24)
@@ -185,10 +185,10 @@ func TestFlowEntryInspectionAvailability(t *testing.T) {
 	var v FlowView
 	v.OpenRun(flowUIFixture(), "run", 80, 24)
 	for _, state := range []flow.Checkpoint{
-		{Status: flow.StatusPending},
-		{Status: flow.StatusSkipped},
-		{Status: flow.StatusRunning},
-		{Status: flow.StatusSucceeded, Execution: flow.Execution{TaskID: "legacy"}},
+		{Outcome: flow.Outcome{Status: flow.StatusPending}},
+		{Outcome: flow.Outcome{Status: flow.StatusSkipped}},
+		{Outcome: flow.Outcome{Status: flow.StatusRunning}},
+		{Outcome: flow.Outcome{Status: flow.StatusSucceeded, Execution: flow.Execution{TaskID: "legacy"}}},
 	} {
 		v.record.Nodes[v.nodeID()] = state
 		action := ansi.Strip(v.renderPrimaryAction())
@@ -196,9 +196,9 @@ func TestFlowEntryInspectionAvailability(t *testing.T) {
 			t.Fatalf("unavailable execution advertises inspection: %s", action)
 		}
 	}
-	v.record.Nodes[v.nodeID()] = flow.Checkpoint{Execution: flow.Execution{TaskID: "child", SessionID: "session"}}
+	v.record.Nodes[v.nodeID()] = flow.Checkpoint{Outcome: flow.Outcome{Execution: flow.Execution{TaskID: "child", SessionID: "session"}}}
 	flowEntryPrimary(t, &v, "Enter", "Inspect selected step")
-	v.page = "executions"
+	v.page = flowPageExecutions
 	flowEntryPrimary(t, &v, "Enter", "Open native task")
 	v.cursor = 1
 	if strings.Contains(ansi.Strip(v.renderPrimaryAction()), "Enter") {

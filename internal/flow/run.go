@@ -50,9 +50,9 @@ type NodeRunner interface {
 	RunNode(ctx context.Context, c Call) (output string, err error)
 }
 
-// Checkpoint is the committed state of a node. Only successful results are
-// reusable; skipped and omitted nodes are recalculated from their upstreams.
-type Checkpoint struct {
+// Outcome is one execution of a node or worker: what ran, how it ended and
+// what it returned.
+type Outcome struct {
 	Execution  Execution          `json:"execution"`
 	Status     Status             `json:"status"`
 	Output     string             `json:"output,omitempty"`
@@ -60,25 +60,23 @@ type Checkpoint struct {
 	StartedAt  time.Time          `json:"started_at,omitempty"`
 	FinishedAt time.Time          `json:"finished_at,omitempty"`
 	Duration   time.Duration      `json:"duration,omitempty"`
-	Attempt    int                `json:"attempt,omitempty"`
-	History    []Attempt          `json:"history,omitempty"`
 	PlanHash   string             `json:"plan_hash,omitempty"`
 	Workers    []WorkerCheckpoint `json:"workers,omitempty"`
+}
+
+// Checkpoint is the committed state of a node. Only successful results are
+// reusable; skipped and omitted nodes are recalculated from their upstreams.
+type Checkpoint struct {
+	Outcome
+	Attempt int       `json:"attempt,omitempty"`
+	History []Attempt `json:"history,omitempty"`
 }
 
 // Attempt retains the outcome of an earlier execution without treating it as
 // the current result.
 type Attempt struct {
-	Execution  Execution          `json:"execution"`
-	Number     int                `json:"number"`
-	Status     Status             `json:"status"`
-	Output     string             `json:"output,omitempty"`
-	Error      string             `json:"error,omitempty"`
-	StartedAt  time.Time          `json:"started_at,omitempty"`
-	FinishedAt time.Time          `json:"finished_at,omitempty"`
-	Duration   time.Duration      `json:"duration,omitempty"`
-	PlanHash   string             `json:"plan_hash,omitempty"`
-	Workers    []WorkerCheckpoint `json:"workers,omitempty"`
+	Outcome
+	Number int `json:"number"`
 }
 
 // Worker identity is its position in a fixed plan, never its display label.
@@ -117,9 +115,9 @@ type Result struct {
 // says the graph may carry on without it, so it is not part of the verdict.
 // Cancellation is the exception, because a node that never finished tolerates
 // nothing.
-func (r *Result) Failures(w *Blueprint) []string {
+func (r *Result) Failures(b *Blueprint) []string {
 	var out []string
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		switch res := r.Nodes[n.ID]; res.Status {
 		case StatusSkipped:
 			out = append(out, n.ID+": skipped")
@@ -133,12 +131,12 @@ func (r *Result) Failures(w *Blueprint) []string {
 }
 
 // Failed reports whether the run failed, by the same rule Failures lists.
-func (r *Result) Failed(w *Blueprint) bool { return len(r.Failures(w)) > 0 }
+func (r *Result) Failed(b *Blueprint) bool { return len(r.Failures(b)) > 0 }
 
 // Run executes the graph: a node starts once every upstream has settled, at
 // most MaxParallel run at once, and cancelling ctx stops what has not started
 // while keeping what has finished.
-func Run(ctx context.Context, w *Blueprint, runner NodeRunner, opts Options) *Result {
+func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Result {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -150,14 +148,14 @@ func Run(ctx context.Context, w *Blueprint, runner NodeRunner, opts Options) *Re
 		// ancestor reached through a taken edge. Downstream inherits it.
 		scope map[string]string
 	}
-	slots := make(map[string]*slot, len(w.Nodes))
-	for _, n := range w.Nodes {
+	slots := make(map[string]*slot, len(b.Nodes))
+	for _, n := range b.Nodes {
 		slots[n.ID] = &slot{done: make(chan struct{}), res: NodeResult{Status: StatusPending}}
 	}
-	sem := make(chan struct{}, max(w.MaxParallel, 1))
+	sem := make(chan struct{}, max(b.MaxParallel, 1))
 
 	var wg sync.WaitGroup
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		wg.Go(func() {
 			s := slots[n.ID]
 			defer close(s.done)
@@ -194,7 +192,7 @@ func Run(ctx context.Context, w *Blueprint, runner NodeRunner, opts Options) *Re
 			// instances, so the name resolves to the right one.
 			take := func(e Edge, up *slot, output string) {
 				maps.Copy(scope, up.scope)
-				scope[w.byID[e.From].Base] = output
+				scope[b.byID[e.From].Base] = output
 				active = true
 			}
 			for _, e := range n.upstream {
@@ -217,7 +215,7 @@ func Run(ctx context.Context, w *Blueprint, runner NodeRunner, opts Options) *Re
 						take(e, up, up.res.Output)
 					}
 				case StatusFailed:
-					from := w.byID[e.From]
+					from := b.byID[e.From]
 					switch {
 					case !from.ContinueOnError:
 						blocked = true
@@ -258,7 +256,7 @@ func Run(ctx context.Context, w *Blueprint, runner NodeRunner, opts Options) *Re
 				setStatus(StatusSucceeded)
 				return
 			}
-			state, err := w.executeCheckpoint(ctx, n, scope, opts, runner, sem, prior, func() { setStatus(StatusRunning) }, cancel)
+			state, err := b.executeCheckpoint(ctx, n, scope, opts, runner, sem, prior, func() { setStatus(StatusRunning) }, cancel)
 			s.res.Duration = state.Duration
 			s.res.Output = state.Output
 			if err != nil {
@@ -331,8 +329,8 @@ func cloneStates(states map[string]Checkpoint) map[string]Checkpoint {
 
 // Invalidate returns an independent snapshot with from and its descendants
 // forced to execute again. Historical outcomes remain available for inspection.
-func Invalidate(w *Blueprint, states map[string]Checkpoint, from string) (map[string]Checkpoint, error) {
-	if _, ok := w.Node(from); !ok {
+func Invalidate(b *Blueprint, states map[string]Checkpoint, from string) (map[string]Checkpoint, error) {
+	if _, ok := b.Node(from); !ok {
 		return nil, fmt.Errorf("unknown flow node %q", from)
 	}
 	out := cloneStates(states)
@@ -349,7 +347,7 @@ func Invalidate(w *Blueprint, states map[string]Checkpoint, from string) (map[st
 		c.PlanHash = ""
 		c.Workers = nil
 		out[id] = c
-		for _, e := range w.byID[id].downstream {
+		for _, e := range b.byID[id].downstream {
 			visit(e.To)
 		}
 	}
@@ -359,7 +357,7 @@ func Invalidate(w *Blueprint, states map[string]Checkpoint, from string) (map[st
 
 // Retry preserves partial workers only at failed or unfinished roots. Results
 // below a retry root are invalidated because their inputs may change.
-func Retry(w *Blueprint, original map[string]Checkpoint) (map[string]Checkpoint, error) {
+func Retry(b *Blueprint, original map[string]Checkpoint) (map[string]Checkpoint, error) {
 	retry := func(id string) bool {
 		c := original[id]
 		return c.Status == StatusFailed || c.Status == StatusRunning
@@ -371,19 +369,19 @@ func Retry(w *Blueprint, original map[string]Checkpoint) (map[string]Checkpoint,
 				continue
 			}
 			seen[edge.From] = true
-			if retry(edge.From) || hasRetryAncestor(w.byID[edge.From], seen) {
+			if retry(edge.From) || hasRetryAncestor(b.byID[edge.From], seen) {
 				return true
 			}
 		}
 		return false
 	}
 	states := cloneStates(original)
-	for _, n := range w.Nodes {
+	for _, n := range b.Nodes {
 		if !retry(n.ID) || hasRetryAncestor(n, map[string]bool{}) {
 			continue
 		}
 		var err error
-		states, err = Invalidate(w, states, n.ID)
+		states, err = Invalidate(b, states, n.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -395,23 +393,19 @@ func Retry(w *Blueprint, original map[string]Checkpoint) (map[string]Checkpoint,
 func nextAttempt(c Checkpoint) Checkpoint {
 	c = cloneCheckpoint(c)
 	if c.Status != "" && c.Status != StatusPending && c.Status != StatusSkipped && c.Status != StatusOmitted {
-		c.History = append(c.History, Attempt{Execution: c.Execution, Number: max(c.Attempt, 1), Status: c.Status, Output: c.Output, Error: c.Error, StartedAt: c.StartedAt, FinishedAt: c.FinishedAt, Duration: c.Duration, PlanHash: c.PlanHash, Workers: cloneWorkers(c.Workers)})
+		prior := c.Outcome
+		prior.Workers = cloneWorkers(c.Workers)
+		c.History = append(c.History, Attempt{Outcome: prior, Number: max(c.Attempt, 1)})
 		c.Attempt = max(c.Attempt, 1) + 1
 	}
 	if c.Attempt == 0 {
 		c.Attempt = 1
 	}
-	c.Status = StatusPending
-	c.Execution = Execution{}
-	c.Output = ""
-	c.Error = ""
-	c.StartedAt = time.Time{}
-	c.FinishedAt = time.Time{}
-	c.Duration = 0
+	c.Outcome = Outcome{Status: StatusPending, PlanHash: c.PlanHash, Workers: c.Workers}
 	return c
 }
 
-func (w *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[string]string, opts Options, runner NodeRunner, sem chan struct{}, prior Checkpoint, running func(), abort context.CancelFunc) (Checkpoint, error) {
+func (b *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[string]string, opts Options, runner NodeRunner, sem chan struct{}, prior Checkpoint, running func(), abort context.CancelFunc) (Checkpoint, error) {
 	state := nextAttempt(prior)
 	var mu sync.Mutex
 	var started sync.Once
@@ -476,7 +470,7 @@ func (w *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[st
 	var out string
 	var err error
 	if n.ForEach == "" {
-		out, err = call(Call{Node: n, Prompt: w.render(n.Prompt, scope, opts.Inputs, nil)}, nil)
+		out, err = call(Call{Node: n, Prompt: b.render(n.Prompt, scope, opts.Inputs, nil)}, nil)
 	} else {
 		items, planErr := plan(n, scope)
 		err = planErr
@@ -503,7 +497,7 @@ func (w *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[st
 				}
 				wg.Go(func() {
 					wc := &state.Workers[i].State
-					output, e := call(Call{Node: n, Prompt: w.render(n.Prompt, scope, opts.Inputs, item), Label: item[itemName]}, wc)
+					output, e := call(Call{Node: n, Prompt: b.render(n.Prompt, scope, opts.Inputs, item), Label: item[itemName]}, wc)
 					mu.Lock()
 					defer mu.Unlock()
 					wc.Output = output
@@ -520,13 +514,13 @@ func (w *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[st
 				})
 			}
 			wg.Wait()
-			var b strings.Builder
+			var sb strings.Builder
 			for _, wc := range state.Workers {
 				if wc.State.Status == StatusSucceeded {
-					fmt.Fprintf(&b, "## %s\n%s\n\n", wc.Label, strings.TrimSpace(wc.State.Output))
+					fmt.Fprintf(&sb, "## %s\n%s\n\n", wc.Label, strings.TrimSpace(wc.State.Output))
 				}
 			}
-			out = strings.TrimSpace(b.String())
+			out = strings.TrimSpace(sb.String())
 			err = errors.Join(errs...)
 		}
 	}

@@ -233,38 +233,9 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 	var worker *task.AgentTask
-	if req.Background && req.Flow != nil {
-		worker = e.taskPool().CreateChildAgentTask(run.req.TaskID, req.Flow.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
-		onIdentity := run.req.OnIdentity
-		run.req.OnIdentity = func(identity toolresult.AgentIdentity) {
-			worker.SetIdentity(run.cfg.config.Name, identity.SessionID)
-			if onIdentity != nil {
-				onIdentity(identity)
-			}
-		}
-		onActivity := run.req.OnActivity
-		run.req.OnActivity = func(msg string) {
-			worker.AppendProgress(msg)
-			if onActivity != nil {
-				onActivity(msg)
-			}
-		}
-		onToolStart := run.req.OnToolStart
-		run.req.OnToolStart = func(id, call string) {
-			worker.AppendProgress(call)
-			if onToolStart != nil {
-				onToolStart(id, call)
-			}
-		}
-		onToolResult := run.req.OnToolResult
-		run.req.OnToolResult = func(id, call, output string, toolErr error) {
-			if toolErr != nil {
-				worker.AppendProgress(call + " · failed: " + toolErr.Error())
-			}
-			if onToolResult != nil {
-				onToolResult(id, call, output, toolErr)
-			}
-		}
+	if req.Background && req.ParentTaskID != "" {
+		worker = e.taskPool().CreateChildAgentTask(run.req.TaskID, req.ParentTaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+		mirrorChildProgress(worker, run.cfg.config.Name, &run.req)
 	} else {
 		worker = e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
 	}
@@ -358,7 +329,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			cancel()
 			return nil, fmt.Errorf("task not found in parent session")
 		}
-		if agentTask.GetStatus().ParentTaskID != "" {
+		if agentTask.GetStatus().ScheduledChild() {
 			cancel()
 			return nil, fmt.Errorf("task is scheduler-owned; resume its parent run")
 		}
@@ -1189,4 +1160,36 @@ func generateShortID() string {
 		panic("crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)
+}
+
+// mirrorChildProgress makes a scheduler-owned child task record its own
+// identity and activity, then passes each event on to the scheduler.
+func mirrorChildProgress(worker *task.AgentTask, agentName string, req *tool.AgentExecRequest) {
+	onIdentity, onActivity, onToolStart, onToolResult := req.OnIdentity, req.OnActivity, req.OnToolStart, req.OnToolResult
+	req.OnIdentity = func(identity toolresult.AgentIdentity) {
+		worker.SetIdentity(agentName, identity.SessionID)
+		if onIdentity != nil {
+			onIdentity(identity)
+		}
+	}
+	req.OnActivity = func(msg string) {
+		worker.AppendProgress(msg)
+		if onActivity != nil {
+			onActivity(msg)
+		}
+	}
+	req.OnToolStart = func(id, call string) {
+		worker.AppendProgress(call)
+		if onToolStart != nil {
+			onToolStart(id, call)
+		}
+	}
+	req.OnToolResult = func(id, call, output string, toolErr error) {
+		if toolErr != nil {
+			worker.AppendProgress(call + " · failed: " + toolErr.Error())
+		}
+		if onToolResult != nil {
+			onToolResult(id, call, output, toolErr)
+		}
+	}
 }

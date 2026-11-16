@@ -10,7 +10,7 @@ import (
 )
 
 type flowSuggestionService interface {
-	SavedDefinitions() []flow.Saved
+	SavedDefinitions() []flow.SavedDefinition
 	SavedInputNames(string) ([]string, error)
 }
 

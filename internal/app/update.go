@@ -84,9 +84,9 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Settings,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
+		&m.userInput.Transcript,
 		&m.userInput.Tasks, // Native child detail can sit above a Flow inspector.
 		&m.userInput.Flow,
-		&m.userInput.Transcript,
 	}
 }
 
