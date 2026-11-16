@@ -140,6 +140,12 @@ history. Send only the new instruction—the child restores its own conversation
 - After two consecutive failed attempts, continuation is blocked. A successful
   attempt resets this count. Main can instead finish the work directly or report
   a blocker. Check uncertain side effects before retrying; never repeat denied commands.
+- `BeginAttemptWithSetup` checks ownership, attempt and recovery eligibility
+  before any setup and admits one start at a time. `AttemptSetup.Prepare` runs
+  outside the task lock and Stop cancels it; `AttemptSetup.Accept` runs under
+  the lock, so Stop cannot fall between accepting input and publishing the
+  attempt. Keep Accept to one bounded commit. Rejection consumes no attempt and
+  adds no conversation input; cancellation after acceptance preserves it.
 - Stopped/killed agents, unknown IDs, and missing or damaged history produce an
   error. They never silently create a replacement session.
 - Completion releases execution resources. Task identities remain until process

@@ -18,6 +18,7 @@ const maxPendingWorkerMessages = 64
 type runInbox struct {
 	mu         sync.Mutex
 	ctx        context.Context
+	taskID     string
 	owner      *session.Session
 	agent      core.Agent
 	pending    []core.Message
@@ -27,8 +28,19 @@ type runInbox struct {
 	stop       func() bool
 }
 
+// newRunInbox registers an inbox that accepts mail immediately.
 func newRunInbox(ctx context.Context, taskID string, owner *session.Session) *runInbox {
-	inbox := &runInbox{ctx: ctx, owner: owner, accepting: true}
+	return registerRunInbox(ctx, taskID, owner, true)
+}
+
+// newHeldRunInbox registers an inbox that rejects mail without touching history
+// until open, so retained completions stay with the broker meanwhile.
+func newHeldRunInbox(ctx context.Context, taskID string, owner *session.Session) *runInbox {
+	return registerRunInbox(ctx, taskID, owner, false)
+}
+
+func registerRunInbox(ctx context.Context, taskID string, owner *session.Session, accepting bool) *runInbox {
+	inbox := &runInbox{ctx: ctx, taskID: taskID, owner: owner, accepting: accepting}
 	if taskID != "" {
 		inbox.unregister = broker.RegisterAccept(taskID, inbox.deliver)
 	}
@@ -44,11 +56,7 @@ func (inbox *runInbox) deliver(m broker.Message) error {
 	if !inbox.accepting || inbox.closed || inbox.ctx.Err() != nil || (inbox.owner != nil && inbox.owner.Err() != nil) {
 		return broker.ErrRejected
 	}
-	pending := len(inbox.pending)
-	if inbox.agent != nil {
-		pending += inbox.agent.Pending()
-	}
-	if pending >= maxPendingWorkerMessages {
+	if inbox.queuedLocked() >= maxPendingWorkerMessages {
 		return broker.ErrInboxFull
 	}
 	message := core.UserMessage(m.Content, nil)
@@ -73,6 +81,33 @@ func (inbox *runInbox) deliver(m broker.Message) error {
 	return nil
 }
 
+func (inbox *runInbox) queuedLocked() int {
+	queued := len(inbox.pending)
+	if inbox.agent != nil {
+		queued += inbox.agent.Pending()
+	}
+	return queued
+}
+
+// open starts accepting mail on a held inbox. It delivers nothing itself; call
+// signalCapacity once no caller lock is held.
+func (inbox *runInbox) open() {
+	inbox.mu.Lock()
+	inbox.accepting = true
+	inbox.mu.Unlock()
+}
+
+// signalCapacity wakes retained completion mail when the inbox has room. It may
+// deliver synchronously, so callers must not hold locks that delivery needs.
+func (inbox *runInbox) signalCapacity() {
+	inbox.mu.Lock()
+	hasRoom := inbox.accepting && !inbox.closed && inbox.ctx.Err() == nil && inbox.queuedLocked() < maxPendingWorkerMessages
+	inbox.mu.Unlock()
+	if hasRoom && inbox.taskID != "" {
+		broker.WakeCompletions(inbox.taskID)
+	}
+}
+
 func (inbox *runInbox) close() {
 	inbox.mu.Lock()
 	if inbox.closed {
@@ -93,29 +128,28 @@ func (inbox *runInbox) close() {
 }
 
 // prepareInbox commits launch input before publishing a route that accepts mail.
+// A continuation's route starts held: acceptContinuationInput commits its input
+// and opens the route while the task begins the next attempt.
 func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
 	if e.tasks != nil {
 		return nil // Session-owned hosts do not publish TUI broker addresses.
 	}
-	if err := e.openNative(ctx, run); err != nil {
+	if err := e.openSession(ctx, run); err != nil {
 		return err
 	}
-	input := run.continuationInput
-	if input == nil {
-		message := core.UserMessage(run.originalPrompt, nil)
-		message.ID = core.NewMessageID()
-		input = &message
+	if run.req.ResumeTaskID != "" {
+		run.inbox = newHeldRunInbox(ctx, run.req.TaskID, run.recording)
+		return nil
 	}
-	// Sourced continuations were already committed during their permission gate.
-	if run.req.ResumeTaskID == "" || (run.req.SourceSession == "" && run.req.SourceSeq == 0) {
-		if err := run.recording.AcceptInput(ctx, *input, nil); err != nil {
-			if run.checkpoint != nil {
-				run.checkpoint.persistenceErr = err
-			}
-			return errors.Join(err, run.recording.Close())
+	message := core.UserMessage(run.originalPrompt, nil)
+	message.ID = core.NewMessageID()
+	if err := run.recording.AcceptInput(ctx, message, nil); err != nil {
+		if run.checkpoint != nil {
+			run.checkpoint.persistenceErr = err
 		}
+		return errors.Join(err, run.recording.Close())
 	}
-	run.initialInput = input
+	run.initialInput = &message
 	run.inbox = newRunInbox(ctx, run.req.TaskID, run.recording)
 	return nil
 }

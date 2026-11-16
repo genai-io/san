@@ -93,7 +93,7 @@ func TestPreparedTypedChildRetainsOriginalOwners(t *testing.T) {
 	if err := e.SetSessions(original, replacement); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.openNative(ctx, run); err != nil {
+	if err := e.openSession(ctx, run); err != nil {
 		t.Fatal(err)
 	}
 	defer run.recording.Close()

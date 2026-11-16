@@ -275,7 +275,7 @@ func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (out *Agen
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := e.openNative(ctx, run); err != nil {
+	if err := e.openSession(ctx, run); err != nil {
 		return nil, err
 	}
 	if run.hookFactory != nil && !run.hooksBound {
@@ -363,35 +363,30 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		}
 		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
-		// Validate and claim native history before changing task state. A broken
-		// checkpoint is a failed continuation request, not another execution
-		// failure that wakes main and invites an unbounded recovery loop.
-		if err = e.openNative(ctx, run); err != nil {
-			cancel()
-			return nil, err
-		}
-		if err = e.acceptContinuationInput(ctx, run); err != nil {
-			state.persistenceErr = err
-			err = errors.Join(err, run.recording.Close())
-			cancel()
-			return nil, err
-		}
-		// Prepare the route before the task becomes running again: a failure
-		// here is a rejected request, not an execution that consumes recovery
-		// budget, and a running task never lacks its inbox.
-		if err = e.prepareInbox(ctx, run); err != nil {
-			cancel()
-			return nil, err
-		}
-		if _, err = agentTask.BeginAttemptAfter(prior.Attempt, e.parentSessionID, ctx, cancel); err != nil {
+		// Reject stopped, stale or competing starts before touching native input.
+		if _, err = agentTask.BeginAttemptWithSetup(ctx, cancel, prior.Attempt, e.parentSessionID, task.AttemptSetup{
+			Prepare: func() error {
+				if err := e.openSession(ctx, run); err != nil {
+					return err
+				}
+				return e.prepareInbox(ctx, run)
+			},
+			Accept: func() error { return e.acceptContinuationInput(ctx, run) },
+		}); err != nil {
 			if run.inbox != nil {
 				run.inbox.close()
 			}
 			if run.recording != nil {
-				_ = run.recording.Close()
+				if storageErr := run.recording.Err(); storageErr != nil {
+					state.persistenceErr = storageErr
+				}
+				err = errors.Join(err, run.recording.Close())
 			}
 			cancel()
 			return nil, err
+		}
+		if run.inbox != nil {
+			run.inbox.signalCapacity() // Outside the task lock: delivery persists retained mail.
 		}
 	} else {
 		run, err = e.prepareRun(ctx, req)

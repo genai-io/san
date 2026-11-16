@@ -44,6 +44,9 @@ func (t *AgentTask) StopAttempt(n int) error {
 		return fmt.Errorf("attempt %d is no longer current", n)
 	}
 	t.stopRequested = true
+	if t.startCancel != nil {
+		t.startCancel()
+	}
 	if t.Status != StatusRunning {
 		if t.Status != StatusKilled {
 			t.Status = StatusStopped
@@ -98,25 +101,71 @@ func RecoveryBudgetAvailable(attempts []AttemptInfo) bool {
 
 // BeginAttempt atomically rejects overlapping and deliberately terminated work.
 func (t *AgentTask) BeginAttempt(parent string, ctx context.Context, cancel context.CancelFunc) (int, error) {
-	return t.BeginAttemptAfter(0, parent, ctx, cancel)
+	return t.BeginAttemptWithSetup(ctx, cancel, 0, parent, AttemptSetup{})
 }
 
-// BeginAttemptAfter also fences approval/preflight against a newer execution.
-// Zero retains the legacy current-task behavior for internal callers.
-func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.Context, cancel context.CancelFunc) (int, error) {
+// AttemptSetup is the work a continuation does between its eligibility check
+// and publication. Prepare runs outside the task lock and is canceled by Stop.
+// Accept runs under the task lock, so Stop cannot interleave between accepting
+// input and publishing the attempt; keep it to one bounded commit, and never
+// call this task's methods or deliver queued mail from it.
+type AttemptSetup struct {
+	Prepare func() error
+	Accept  func() error
+}
+
+// BeginAttemptWithSetup runs setup between eligibility and publication. A
+// nonzero previous fences approval/preflight against a newer execution; zero
+// accepts the current one. Only one start runs at a time; a rejected start
+// consumes no attempt or recovery budget.
+func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.CancelFunc, previous int, parent string, setup AttemptSetup) (int, error) {
 	t.mu.Lock()
-	if previous > 0 && previous != t.attempt {
+	if t.starting {
 		t.mu.Unlock()
-		return 0, fmt.Errorf("selected execution changed before continuation")
+		return 0, fmt.Errorf("a continuation is already starting")
 	}
-	if t.finishing || parent != t.parentSessionID || t.Status == StatusRunning || t.Status == StatusStopped || t.Status == StatusKilled {
+	if err := t.checkAttemptLocked(previous, parent); err != nil {
 		t.mu.Unlock()
-		return 0, fmt.Errorf("task cannot be continued: wrong owner, running, or deliberately stopped")
+		return 0, err
 	}
-	if !RecoveryBudgetAvailable(t.attempts) {
+	if err := ctx.Err(); err != nil {
 		t.mu.Unlock()
-		return 0, fmt.Errorf("recovery budget exhausted after two consecutive failed executions; report the blocker and choose a new plan")
+		return 0, err
 	}
+	t.starting, t.startCancel = true, cancel
+	observed := t.attempt // Fence setup even when the caller passed zero.
+	t.mu.Unlock()
+	ownsStart := true
+	defer func() {
+		if ownsStart {
+			t.mu.Lock()
+			t.starting, t.startCancel = false, nil
+			t.mu.Unlock()
+		}
+	}()
+	if setup.Prepare != nil {
+		if err := setup.Prepare(); err != nil {
+			return 0, err
+		}
+	}
+	t.mu.Lock()
+	if err := t.checkAttemptLocked(observed, parent); err != nil {
+		t.mu.Unlock()
+		return 0, err
+	}
+	if err := ctx.Err(); err != nil {
+		t.mu.Unlock()
+		return 0, err
+	}
+	if setup.Accept != nil {
+		if err := setup.Accept(); err != nil {
+			t.mu.Unlock()
+			return 0, err
+		}
+	}
+	// Once acceptance succeeds, a concurrent Stop cancels admitted work rather
+	// than turning persisted input into a rejected continuation.
+	t.starting, t.startCancel, ownsStart = false, nil, false
 	t.foreground = false
 	t.attempt++
 	n := t.attempt
@@ -127,13 +176,23 @@ func (t *AgentTask) BeginAttemptAfter(previous int, parent string, ctx context.C
 	t.attemptOutput.Reset()
 	t.sourceMessageSeq = 0
 	t.StepCount, t.TokenUsage = 0, 0
-	t.progress = ""
-	t.liveView = ""
-	t.liveRender = nil
-	t.ctx = ctx
-	t.cancel = cancel
+	t.progress, t.liveView, t.liveRender = "", "", nil
+	t.ctx, t.cancel = ctx, cancel
 	t.done = make(chan struct{})
 	t.mu.Unlock()
 	notifyTaskCreated(t.GetStatus())
 	return n, nil
+}
+
+func (t *AgentTask) checkAttemptLocked(previous int, parent string) error {
+	if previous > 0 && previous != t.attempt {
+		return fmt.Errorf("selected execution changed before continuation")
+	}
+	if t.finishing || parent != t.parentSessionID || t.Status == StatusRunning || t.Status == StatusStopped || t.Status == StatusKilled {
+		return fmt.Errorf("task cannot be continued: wrong owner, running, or deliberately stopped")
+	}
+	if !RecoveryBudgetAvailable(t.attempts) {
+		return fmt.Errorf("recovery budget exhausted after two consecutive failed executions; report the blocker and choose a new plan")
+	}
+	return nil
 }
