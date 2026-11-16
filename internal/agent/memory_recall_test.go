@@ -156,7 +156,7 @@ func TestWithRecallWaitsForParallelReads(t *testing.T) {
 }
 
 func TestWithRecallAcrossBatches(t *testing.T) {
-	for _, state := range []string{"abandoned", "completed"} {
+	for _, state := range []string{"single", "abandoned", "completed"} {
 		t.Run(state, func(t *testing.T) {
 			finishFirst := state == "completed"
 			path := filepath.Join(t.TempDir(), "memory.md")
@@ -181,6 +181,9 @@ func TestWithRecallAcrossBatches(t *testing.T) {
 				}
 			}
 			calls := []ai.ToolCall{{ID: "a", Name: "Bash"}, {ID: "b", Name: "Bash"}}
+			if state == "single" {
+				calls = calls[:1]
+			}
 			first := core.AssistantMessage("", "", calls)
 			first.ID = "first"
 			apply(first, calls[0], false)

@@ -214,7 +214,7 @@ func (p *Recall) Stop() error {
 // every parallel Read has recorded its view. The SDK serializes result filters.
 func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilter {
 	var batchID string
-	var pending map[string]bool
+	var completed int
 	return func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
 		var out *sdkagent.Result
 		if next != nil {
@@ -226,18 +226,12 @@ func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilte
 		}
 		if n := len(c.Messages); n > 0 {
 			message := c.Messages[n-1]
-			if calls := message.ToolCalls(); len(calls) > 1 {
-				if pending == nil || batchID != message.ID {
-					batchID = message.ID
-					pending = make(map[string]bool, len(calls))
-					for _, call := range calls {
-						pending[call.ID] = true
-					}
-				}
-				delete(pending, c.Call.ID)
-				if len(pending) > 0 {
-					return out, nil
-				}
+			if batchID != message.ID {
+				batchID, completed = message.ID, 0
+			}
+			completed++
+			if completed < len(message.ToolCalls()) {
+				return out, nil
 			}
 		}
 		text, err := current().Take()
