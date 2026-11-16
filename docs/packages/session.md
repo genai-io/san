@@ -128,8 +128,7 @@ raw structured tool details and hydrated paged output. Unanchored annotations
 stay at their event position. Package `ChatRows(messages)` is the reusable native
 message conversion. Image source notes injected for the model stay persisted but
 are filtered from display; image/text order stays intact. Display never rewrites
-the persisted native messages. Proven duplicate recaps are hidden; intentional
-repeats remain visible.
+the persisted native messages.
 
 `PersistToolResult` writes the complete output beneath the selected session;
 ResultPager's marker remains `blobs/tool-result/<sid>/<call-id>`. Forked native
