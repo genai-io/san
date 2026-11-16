@@ -217,7 +217,7 @@ Set it from `/settings` → Appearance → THINKING, or directly in
 ## UI Interactions
 
 - **`/tools`**: shows which tools are disabled via `disabledTools`. Some
-  tools ship disabled — `Cron` and `Workflow`, for example; the full set is
+  tools ship disabled — `Cron` and `Flow`, for example; the full set is
   `defaultDisabledTools` in `internal/setting/loader.go`. An explicit
   `"Cron": false` entry — what the panel writes when you enable it —
   overrides the factory default.

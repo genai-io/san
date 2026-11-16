@@ -172,10 +172,10 @@ the event log. Default host wiring remains legacy until the unified cutover.
   Actual questions also forward in YOLO. Hard denials remain hard denials, and
   absent/closed UI fails promptly. Interactive default workers can request edits,
   so their reachable edit schemas and project instructions are retained.
-  Workflow nodes also carry `WorkflowOrigin` (workflow name, run task ID, node,
+  Flow nodes also carry `FlowOrigin` (blueprint name, run task ID, node,
   and optional fan-out label) into prompt headers and permission audit details.
   This provenance stays separate from each worker's execution/broker identity;
-  a model-launched workflow retains its spawning call ID, while a slash launch
+  a model-launched Flow retains its spawning call ID, while a slash launch
   has none.
 - Worker models are configuration-driven: `subagentModel` in scoped
   `settings.json` selects the default worker model (ID, alias, or `vendor/model`).
@@ -185,7 +185,7 @@ the event log. Default host wiring remains legacy until the unified cutover.
 - Recoverable tool errors and inference retries stay in the worker's progress
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
-  Structured workflow callbacks finish the existing tool row rather than
+  Flow callbacks finish the existing tool row rather than
   adding a duplicate error row. These events do not send broker notices to main:
   a failed attempt is not a failed task. Terminal results and explicit
   `SendMessage` calls are the parent communication boundary.
@@ -254,10 +254,10 @@ the event log. Default host wiring remains legacy until the unified cutover.
   The UI does not parse these values out of worker prose. Legacy header-based
   transcripts still render, including `Tokens: in=N out=M`.
 - Cancellation and inference failure can return both an unfinished result and
-  an error. `ExecutorAdapter`, the Agent tool, Workflow, and headless `agent run` preserve the partial content,
+  an error. `ExecutorAdapter`, the Agent tool, Flow, and headless `agent run` preserve the partial content,
   usage, agent session id, and transcript path. A failed foreground tool result
   includes its transcript path so the parent can inspect work already done.
-  Workflow records unfinished node findings and inspection pointers in the task
+  Flow records unfinished node findings and inspection pointers in the task
   output, and counts failed workers' steps and tokens while retaining failure.
 - Legacy tool adaptation keeps stdout/stderr and the failure reason in the
   model-facing content, but uses the separate error reason for error notices.
@@ -308,8 +308,8 @@ the event log. Default host wiring remains legacy until the unified cutover.
 ```
 tests/integration/agent/interaction_forwarding_test.go — real tool execution after approval/rejection.
 tests/integration/agent/interaction_questions_test.go — YOLO questions, independent cancellation, unavailable UI.
-tests/integration/agent/workflow_interaction_origin_test.go — concurrent workflow origins, independent approvals and cancellation.
-tests/integration/agent/workflow_interaction_questions_test.go — parallel node attribution and exact answer routing.
+tests/integration/agent/flow_interaction_origin_test.go — concurrent Flow origins, independent approvals and cancellation.
+tests/integration/agent/flow_interaction_questions_test.go — parallel node attribution and exact answer routing.
 internal/app/interactions_scrollback_test.go — canceled modals resume held history before the next worker prompt.
 internal/app/interactions_renderer_test.go — real TUI keyboard approval/answer routing to workers.
 internal/app/conv/interaction_test.go — original reply endpoints and transport closure.
@@ -328,7 +328,7 @@ internal/app/notice_step_inject_test.go  — one live/persisted completion, deli
 internal/app/model_history_test.go       — inspectable background results without state mutation.
 internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
 tests/integration/agent/result_view_test.go — real result → adapter → writer → resumed UI.
-internal/tool/workflow/workflow_test.go    — unfinished node output, identity, and parallel usage.
+internal/tool/flow/flow_test.go    — unfinished node output, identity, and parallel usage.
 internal/app/group_test.go                — live and persisted batch context.
 tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.
 ```

@@ -66,6 +66,20 @@ func (v *TaskViewer) Show(items []TaskViewItem, width, height int) {
 	v.Resize(width, height)
 	v.Refresh(items)
 }
+
+// ShowTask opens an exact native task identity, never falling back to another row.
+func (v *TaskViewer) ShowTask(items []TaskViewItem, id, sessionID string, width, height int) bool {
+	for _, item := range items {
+		if item.ID == id && sessionID != "" && item.SessionID == sessionID {
+			v.Show(items, width, height)
+			v.selected, v.detail = id, true
+			v.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
 func (v *TaskViewer) Resize(width, height int) {
 	v.width, v.height = max(1, width), max(1, height)
 	v.body.SetWidth(max(1, v.width-1))

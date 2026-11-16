@@ -4,18 +4,18 @@ import "strings"
 
 // builtinSubcommands keeps the discoverable command paths together. Names are
 // complete paths so a suggestion can be inserted directly into the input.
-// Commands with state-dependent arguments (group and workflow names) add those
+// Commands with state-dependent arguments (group and flow names) add those
 // suggestions in the app, after this static catalog has chosen the subcommand.
 var builtinSubcommands = map[string][]Info{
-	"workflow": {
-		{Name: "workflow list", Description: "List saved workflows"},
-		{Name: "workflow show", Description: "Preview a saved workflow graph"},
-		{Name: "workflow run", Description: "Run a saved workflow with optional key=value inputs"},
-		{Name: "workflow stop", Description: "Stop a running workflow"},
-		{Name: "workflow new", Description: "Create a reviewable workflow draft"},
-		{Name: "workflow from-skill", Description: "Create a draft from an enabled Skill"},
-		{Name: "workflow edit", Description: "Review and edit a saved workflow"},
-		{Name: "workflow inspect", Description: "Inspect or resume a previous run"},
+	"flow": {
+		{Name: "flow list", Description: "List saved flows"},
+		{Name: "flow show", Description: "Preview a saved flow graph"},
+		{Name: "flow run", Description: "Run a saved flow with optional key=value inputs"},
+		{Name: "flow stop", Description: "Stop a running flow"},
+		{Name: "flow new", Description: "Create a reviewable flow draft"},
+		{Name: "flow from-skill", Description: "Create a draft from an enabled Skill"},
+		{Name: "flow edit", Description: "Review and edit a saved flow"},
+		{Name: "flow inspect", Description: "Inspect or resume a previous run"},
 	},
 	"loop": {
 		{Name: "loop once", Description: "Schedule a prompt to run once"},

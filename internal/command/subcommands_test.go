@@ -8,11 +8,11 @@ import (
 func TestMatchingCompletesSubcommandsByLevel(t *testing.T) {
 	r := &Registry{}
 	for query, want := range map[string][]string{
-		"/workflow ":           {"workflow list", "workflow show", "workflow run", "workflow stop", "workflow new", "workflow from-skill", "workflow edit", "workflow inspect"},
-		"/workflow sh":         {"workflow show"},
+		"/flow ":               {"flow list", "flow show", "flow run", "flow stop", "flow new", "flow from-skill", "flow edit", "flow inspect"},
+		"/flow sh":             {"flow show"},
 		"/plugin marketplace ": {"plugin marketplace list", "plugin marketplace add", "plugin marketplace remove", "plugin marketplace sync"},
 		"/memory edit g":       {"memory edit global"},
-		"/workflow show ":      nil,
+		"/flow show ":          nil,
 	} {
 		var got []string
 		for _, info := range r.Matching(query) {

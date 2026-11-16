@@ -27,7 +27,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 | [subagent](subagent.md) | Subagent definitions and execution |
 | [task](task.md) | Background tasks and progress |
 | [tool](tool.md) | Tool schemas and execution |
-| [workflow](workflow.md) | Multi-agent workflow scheduling |
+| [flow](flow.md) | Collaboration blueprints and subagent scheduling |
 
 Use package names for filenames and `.zh.md` for translations.
 New package pages follow the [template](TEMPLATE.md).

@@ -25,7 +25,7 @@ func SessionIDFromContext(ctx context.Context) string {
 	return id
 }
 
-// SetSessionID selects the owner for work launched outside an agent, such as /workflow.
+// SetSessionID selects the owner for work launched outside an agent, such as /flow.
 func (m *Manager) SetSessionID(id string) {
 	m.mu.Lock()
 	m.sessionID = id

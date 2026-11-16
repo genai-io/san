@@ -32,16 +32,16 @@ func TestWorkerOverflowPreservesOrdinaryToolSibling(t *testing.T) {
 	}
 }
 
-func TestWorkflowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
+func TestFlowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
 	task.ResetDefaultTracker()
 	t.Cleanup(task.ResetDefaultTracker)
 	for _, height := range []int{10, 24} {
 		task.ResetDefaultTracker()
 		m := fixedComposerModel(80, height)
 		m.services.Task = task.Default()
-		workflow := task.NewAgentTask("live-workflow", "workflow", "Run workflow", context.Background(), nil, "")
-		workflow.SetLiveView(strings.Repeat("WORKFLOW_ACTIVITY\n", 40))
-		m.services.Task.RegisterTask(workflow)
+		flow := task.NewAgentTask("live-flow", "flow", "Run flow", context.Background(), nil, "")
+		flow.SetLiveView(strings.Repeat("WORKFLOW_ACTIVITY\n", 40))
+		m.services.Task.RegisterTask(flow)
 		calls := reviewerCalls(4)
 		m.conv.Messages = []core.ChatMessage{
 			{Role: core.ChatAssistant, ToolCalls: calls, ToolCallsExpanded: true},
@@ -51,15 +51,15 @@ func TestWorkflowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
 		frame, cursor := m.viewString()
 		plain := ansi.Strip(frame)
 		if !strings.Contains(plain, "WORKFLOW_ERROR_MARKER") {
-			t.Errorf("workflow hid the latest error notice:\n%s", plain)
+			t.Errorf("flow hid the latest error notice:\n%s", plain)
 		}
 		for _, call := range calls {
 			if !strings.Contains(plain, call.ID) {
-				t.Errorf("height=%d workflow hid %s:\n%s", height, call.ID, plain)
+				t.Errorf("height=%d flow hid %s:\n%s", height, call.ID, plain)
 			}
 		}
 		if rowCount(frame) != height || cursor.Position.Y != height-3 {
-			t.Fatalf("workflow displaced composer:\n%s", plain)
+			t.Fatalf("flow displaced composer:\n%s", plain)
 		}
 	}
 }

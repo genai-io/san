@@ -15,7 +15,7 @@ const (
 	ToolAgent       = "Agent"
 	ToolAgentStop   = "AgentStop"
 	ToolSendMessage = "SendMessage"
-	ToolWorkflow    = "Workflow"
+	ToolFlow        = "Flow"
 
 	ToolSkill           = "Skill"
 	ToolTaskCreate      = "TaskCreate"
@@ -68,7 +68,7 @@ type SchemaOptions struct {
 var builtinToolOrder = []string{
 	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolPowerShell, ToolAskUserQuestion,
 	ToolSkill,
-	ToolAgent, ToolAgentStop, ToolSendMessage, ToolWorkflow,
+	ToolAgent, ToolAgentStop, ToolSendMessage, ToolFlow,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate,
 	ToolCron,
 }

@@ -729,7 +729,7 @@ func (m *model) ReconfigureAgentTool() {
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
 	type searchPathSetter interface{ SetSearchPaths([]string) }
 	home, _ := os.UserHomeDir()
-	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolWorkflow} {
+	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolFlow} {
 		t, ok := m.services.Tool.Get(name)
 		if !ok {
 			continue
@@ -737,7 +737,7 @@ func (m *model) ReconfigureAgentTool() {
 		if setter, ok := t.(executorSetter); ok {
 			setter.SetExecutor(adapter)
 		}
-		// Saved workflows resolve project-first, then user, the way subagent
+		// Saved Flow blueprints resolve project-first, then user, the way subagent
 		// definitions do. A home directory we could not read is left out
 		// rather than joined from "", which would name the project twice.
 		if setter, ok := t.(searchPathSetter); ok {

@@ -1,0 +1,339 @@
+// Package flow exposes the Flow tool: a markdown-defined graph of
+// subagent turns, validated at approval time and run as one background task.
+// Parent-only, like Agent — main launches flows, workers do not.
+package flow
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
+)
+
+// FlowTool runs a flow definition through the subagent executor.
+type FlowTool struct {
+	executor tool.AgentExecutor
+	// dirs are the saved-flow directories, in priority order. Rewired
+	// alongside executor whenever the app reconfigures the tool.
+	dirs  []string
+	mu    sync.Mutex
+	store *flow.Store
+	live  map[string]*task.AgentTask
+}
+
+// NewFlowTool creates a FlowTool without an executor; the app wires
+// one in through SetExecutor, as it does for Agent.
+func NewFlowTool() *FlowTool { return &FlowTool{} }
+
+func (t *FlowTool) Name() string { return tool.ToolFlow }
+
+func (t *FlowTool) Description() string {
+	return "Run a graph of subagents defined in markdown"
+}
+
+func (t *FlowTool) Icon() string { return tool.IconAgent }
+
+func (t *FlowTool) RequiresPermission() bool { return true }
+
+// SetExecutor sets the subagent executor every node runs through.
+func (t *FlowTool) SetExecutor(executor tool.AgentExecutor) { t.executor = executor }
+
+// SetSearchPaths sets where saved flows are looked up, highest priority
+// first. The app passes the project directory before the user one, matching
+// how subagent definitions resolve.
+func (t *FlowTool) SetSearchPaths(dirs []string) {
+	t.dirs = dirs
+	dir := ""
+	if len(dirs) > 0 {
+		dir = filepath.Join(filepath.Dir(dirs[0]), "workflow-runs")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.store == nil || len(dirs) > 0 {
+		t.store = flow.NewStore(dir)
+	}
+}
+
+// Saved lists the definitions on disk, one "- name — description" per line:
+// the schema description carries it so the model can name one instead of
+// rewriting it, and /flow shows it to the user.
+func (t *FlowTool) Saved() string {
+	entries := t.SavedDefinitions()
+	if len(entries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, s := range entries {
+		b.WriteString("\n- " + s.Name)
+		if s.Description != "" {
+			b.WriteString(" — " + s.Description)
+		}
+	}
+	return b.String()
+}
+
+// SavedDefinitions exposes the same ordered names used by /flow and the
+// tool schema, so command completion follows the configured search paths.
+func (t *FlowTool) SavedDefinitions() []flow.Saved {
+	return flow.Load(t.dirs...)
+}
+
+// SavedInputNames returns the named definition's template inputs for command
+// completion. The same parsed definition is used by preview and launch.
+func (t *FlowTool) SavedInputNames(name string) ([]string, error) {
+	w, err := flow.Find(name, t.dirs...)
+	if err != nil {
+		return nil, err
+	}
+	return w.InputNames(), nil
+}
+
+func (t *FlowTool) Schema() core.ToolSchema {
+	var b strings.Builder
+	b.WriteString("Run a Flow collaboration blueprint: schedule a graph of existing subagent turns in the background, reporting one summary when done. " +
+		"Use it only when the same arrangement is worth keeping — a dependency order a long turn could forget, or a fan-out whose intermediate results should stay out of this conversation. " +
+		"For already-delegated work, Agent supports a single task or a one-off fan-out without a flow definition.\n\n")
+	if list := t.Saved(); list != "" {
+		b.WriteString("Saved flows — pass one of these as `name`:" + list + "\n\n")
+	}
+	b.WriteString("Otherwise pass `definition`: a markdown document. Optional frontmatter sets name and max_parallel (default 4). " +
+		"One ```mermaid block gives the topology: `a --> b` runs b after a with a's output; `a --> b & c` fans out; `a -->|HIGH| b` runs b only when a's trimmed output equals HIGH. " +
+		"Each node is a `## id` section: optional leading `agent:`, `mode:` (explore|edit|default), `model:`, `continue_on_error:` lines, then the prompt. " +
+		"`{{id}}` inserts the output of any node upstream on a taken path; `{{input}}` inserts inputs.input (slash command: input=value), and `{{input.key}}` inserts inputs.key for named/multiple inputs. If a node is named input, bare `{{input}}` remains its upstream output.\n\n" +
+		"A node with `for_each: plan.tasks` and `max_workers: N` runs once per item of the JSON array its upstream returned, up to N — `{{item}}` is the item, `{{item.key}}` one of its fields. " +
+		"A plan with more items than max_workers is refused, so state a limit in the planning node's prompt too.\n\n" +
+		"A conditional edge pointing back at an ancestor is a bounded retry and must carry its bound: `review -->|FAIL x3| draft` redoes draft/review up to three times, escaping through `review -->|PASS| ship`. " +
+		"Inside a round, `{{review}}` is the previous round's output, empty on the first; using every round without escaping fails the flow.\n\n" +
+		"Every node is a fresh subagent — brief each one fully. Validation errors come back before anything runs.")
+
+	return core.ToolSchema{
+		Name:        t.Name(),
+		Description: b.String(),
+		Definition: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{
+					"type":        "string",
+					"description": "A saved flow to run. Mutually exclusive with definition",
+				},
+				"definition": map[string]any{
+					"type":        "string",
+					"description": "The flow document: frontmatter, one mermaid flowchart, one `## id` section per node",
+				},
+				"description": map[string]any{
+					"type":        "string",
+					"description": "One line on what this run is for (shown to the user)",
+				},
+				"inputs": map[string]any{
+					"type":                 "object",
+					"additionalProperties": map[string]any{"type": "string"},
+					"description":          "Values for {{input}} (key: input) and {{input.key}} (key: key) references",
+				},
+			},
+		},
+	}
+}
+
+// resolve returns the flow the call names: a saved one by name, or the
+// inline definition. Exactly one of the two.
+func (t *FlowTool) resolve(params map[string]any) (*flow.Blueprint, error) {
+	name := strings.TrimSpace(tool.GetString(params, "name"))
+	definition := tool.GetString(params, "definition")
+	switch {
+	case name != "" && definition != "":
+		return nil, fmt.Errorf("pass name or definition, not both")
+	case name != "":
+		w, err := flow.Find(name, t.dirs...)
+		switch {
+		case errors.Is(err, flow.ErrNotFound):
+			return nil, fmt.Errorf("%w. Saved flows:%s", err, cmp.Or(t.Saved(), " (none saved)"))
+		case err != nil:
+			return nil, fmt.Errorf("flow %s is invalid:\n%w", name, err)
+		}
+		return w, nil
+	case definition != "":
+		w, err := flow.Parse(definition)
+		if err != nil {
+			return nil, fmt.Errorf("invalid flow:\n%w", err)
+		}
+		return w, nil
+	default:
+		return nil, fmt.Errorf("name or definition is required")
+	}
+}
+
+// prepare resolves the call's flow and checks every node's agent. Every
+// way in calls it, so a plan that cannot run is refused however it started;
+// nothing carries between stages — each parses its own copy of the arguments.
+func (t *FlowTool) prepare(params map[string]any) (*flow.Blueprint, error) {
+	if t.executor == nil {
+		return nil, errors.New("agent executor not configured")
+	}
+	w, err := t.resolve(params)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range w.Nodes {
+		agent := n.Config["agent"]
+		info, _, ok := t.executor.ResolveAgentSelection(agent)
+		if !ok {
+			return nil, fmt.Errorf("node %s: agent %q is disabled", n.ID, agent)
+		}
+		// An unknown name resolves to a display label rather than an error,
+		// which is right for an Agent call the model just named on the spot.
+		// A flow is the opposite case: the name was written down, so the
+		// only way it fails to resolve is a typo, and nobody is watching the
+		// run to notice that the node quietly got the default agent instead.
+		// Every registered definition carries where it was loaded from.
+		if agent != "" && info.Source == "" {
+			return nil, fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
+		}
+	}
+	return w, nil
+}
+
+// PreparePermission shows the user what they are approving: the plan and the
+// worst case it can reach.
+func (t *FlowTool) PreparePermission(_ context.Context, params map[string]any, _ string) (*perm.PermissionRequest, error) {
+	w, err := t.prepare(params)
+	if err != nil {
+		return nil, err
+	}
+	return &perm.PermissionRequest{
+		ID:          tool.GenerateRequestID(),
+		ToolName:    t.Name(),
+		Description: describe(w, tool.GetString(params, "description")),
+	}, nil
+}
+
+// describe is the approval title: what runs, and the worst case it can reach.
+// The approval view has no flow preview yet, so this is what the user
+// approves; the definition itself is in the tool_use block.
+func describe(w *flow.Blueprint, description string) string {
+	name := w.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	if description == "" {
+		description = w.Description
+	}
+	turns, fanOut := w.Bounds()
+	s := fmt.Sprintf("Run flow %s: %d nodes, up to %d subagent turns, max %d parallel", name, len(w.Nodes), turns, w.MaxParallel)
+	if description != "" {
+		s += " — " + description
+	}
+	for _, line := range fanOut {
+		s += "\n" + line
+	}
+	return s
+}
+
+// Preview validates a saved flow and shows its topology without running it.
+func (t *FlowTool) Preview(name string, width int) (string, error) {
+	w, err := t.prepare(map[string]any{"name": name})
+	if err != nil {
+		return "", err
+	}
+	turns, fanOut := w.Bounds()
+	preview := fmt.Sprintf("Preview only · up to %d turns · max %d parallel\n\n%s", turns, w.MaxParallel, w.CompactProgressView(nil, flowDisplayWidth(width)))
+	if w.Description != "" {
+		preview += "\nAbout: " + ansi.Truncate(w.Description, max(8, flowDisplayWidth(width)-7), "…")
+	}
+	for _, line := range fanOut {
+		preview += "\n" + line
+	}
+	if steps := w.PreviewSteps(flowDisplayWidth(width)); steps != "" {
+		preview += "\nSteps:\n" + steps
+	}
+	inputs := w.InputNames()
+	if len(inputs) > 0 {
+		preview += "\nInputs: " + strings.Join(inputs, ", ")
+	}
+	preview += "\nRun: /flow run " + command.QuoteArgument(name)
+	for _, key := range inputs {
+		preview += " " + key + "=<value>"
+	}
+	return preview, nil
+}
+
+func (t *FlowTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+	return t.Execute(ctx, params, cwd)
+}
+
+// Execute launches the run as one background task and returns at once; the
+// summary arrives as that task's completion notification.
+func (t *FlowTool) Execute(ctx context.Context, params map[string]any, _ string) toolresult.ToolResult {
+	w, err := t.prepare(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
+	inputs := map[string]string{}
+	if raw, ok := params["inputs"].(map[string]any); ok {
+		for k, v := range raw {
+			inputs[k] = fmt.Sprint(v)
+		}
+	}
+	id, err := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run flow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
+	return toolresult.ToolResult{
+		Success: true,
+		Output: fmt.Sprintf("Flow %s started in background.\nTask ID: %s\nStop: Ctrl+C (when foreground idle) or /flow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
+			w.Name, id, id, w.CompactProgressView(nil, 120)),
+		Metadata: toolresult.ResultMetadata{
+			Title:    t.Name(),
+			Icon:     t.Icon(),
+			Subtitle: fmt.Sprintf("[background] %s: %s", w.Name, id),
+		},
+	}
+}
+
+// Launch runs a saved flow for a user's /flow: the same checks and
+// background task as a model's call, returning the plan's bounds and task id.
+func (t *FlowTool) Launch(name string, inputs map[string]string, width int) (bounds, taskID string, err error) {
+	w, err := t.prepare(map[string]any{"name": name})
+	if err != nil {
+		return "", "", err
+	}
+	var missing []string
+	for _, key := range w.InputNames() {
+		if _, ok := inputs[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		return "", "", fmt.Errorf("flow %s needs input %s; use /flow show %s to see the run command", name, strings.Join(missing, ", "), command.QuoteArgument(name))
+	}
+	turns, _ := w.Bounds()
+	summary := fmt.Sprintf("Started flow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
+	id, err := t.start(w, inputs, "/flow "+command.QuoteArgument(name), width, "")
+	return summary, id, err
+}
+
+func (t *FlowTool) Definition(name string) (string, error) {
+	return flow.ReadDefinition(name, t.dirs...)
+}
+
+// SaveDefinition saves a reviewed project copy. baseline is the source the
+// editor opened; a changed source must be reviewed again before replacement.
+func (t *FlowTool) SaveDefinition(name, definition, baseline string) error {
+	return flow.SaveDefinition(name, definition, baseline, t.dirs...)
+}
+
+func init() {
+	tool.Register(NewFlowTool())
+}

@@ -25,6 +25,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
@@ -232,6 +233,23 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 	worker := e.taskPool().CreateForegroundAgentTask(run.req.TaskID, run.cfg.config.Name, req.Description, ctx, cancel)
+	if req.Background && req.Flow != nil {
+		worker.SetParentTaskID(req.Flow.TaskID)
+		onIdentity := run.req.OnIdentity
+		run.req.OnIdentity = func(identity toolresult.AgentIdentity) {
+			worker.SetIdentity(run.cfg.config.Name, identity.SessionID)
+			if onIdentity != nil {
+				onIdentity(identity)
+			}
+		}
+		onActivity := run.req.OnActivity
+		run.req.OnActivity = func(msg string) {
+			worker.AppendProgress(msg)
+			if onActivity != nil {
+				onActivity(msg)
+			}
+		}
+	}
 	worker.SetLaunchState(run.checkpoint)
 	worker.SetPermissionMode(string(run.cfg.permMode))
 	result, err := e.runPrepared(ctx, run)
@@ -348,7 +366,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		next.Background = true
 		next.Prompt, next.ResumeTaskID = req.Prompt, req.ResumeTaskID
 		next.SourceSession, next.SourceSeq = req.SourceSession, req.SourceSeq
-		next.ParentToolCallID, next.Workflow = req.ParentToolCallID, req.Workflow
+		next.ParentToolCallID, next.Flow = req.ParentToolCallID, req.Flow
 		next.OnIdentity = req.OnIdentity
 		next.OnQuestion = req.OnQuestion
 		next.OnTextDelta, next.OnTextEnd = req.OnTextDelta, req.OnTextEnd

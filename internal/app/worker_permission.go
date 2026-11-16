@@ -26,9 +26,9 @@ type workerResolver struct {
 }
 
 func newWorkerResolver(settings *setting.Settings, grants *setting.SessionPermissions, memory system.MemoryStores, bridge *conv.AgentToUI, child *session.Session, source tool.AgentInteractionSource) tool.Resolver {
-	if source.Workflow != nil {
-		workflow := *source.Workflow
-		source.Workflow = &workflow
+	if source.Flow != nil {
+		flow := *source.Flow
+		source.Flow = &flow
 	}
 	p := &workerResolver{settings: settings, grants: grants, memory: memory, bridge: bridge, child: child, cwd: source.WorkingDirectory, mode: setting.ModeNormal, source: source}
 	if child != nil {

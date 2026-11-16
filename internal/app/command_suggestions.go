@@ -6,8 +6,8 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/workflow"
 )
 
 func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) func(string) []suggest.Suggestion {
@@ -17,8 +17,8 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 			switch strings.ToLower(name) {
 			case "group":
 				return groupSuggestions(args)
-			case "workflow":
-				if suggestions, handled := workflowNameSuggestions(toolSvc, args); handled {
+			case "flow":
+				if suggestions, handled := flowNameSuggestions(toolSvc, args); handled {
 					return suggestions
 				}
 			}
@@ -32,7 +32,7 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 	}
 }
 
-func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggestion, bool) {
+func flowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggestion, bool) {
 	fields, _ := command.ScanArguments(args)
 	if len(fields) == 0 {
 		return nil, false
@@ -44,12 +44,12 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 	if toolSvc == nil {
 		return nil, true
 	}
-	t, ok := toolSvc.Get(tool.ToolWorkflow)
+	t, ok := toolSvc.Get(tool.ToolFlow)
 	if !ok {
 		return nil, true
 	}
 	lister, ok := t.(interface {
-		SavedDefinitions() []workflow.Saved
+		SavedDefinitions() []flow.Saved
 		SavedInputNames(string) ([]string, error)
 	})
 	if !ok {
@@ -64,20 +64,20 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 			return nil, true
 		}
 		argsAfterName := strings.TrimLeftFunc(args[fields[1].End:], unicode.IsSpace)
-		return workflowInputSuggestions(lister, name, argsAfterName), true
+		return flowInputSuggestions(lister, name, argsAfterName), true
 	}
 	var out []suggest.Suggestion
 	for _, definition := range lister.SavedDefinitions() {
 		if strings.HasPrefix(strings.ToLower(definition.Name), strings.ToLower(name)) {
 			out = append(out, suggest.Suggestion{
-				Name: "workflow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
+				Name: "flow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
 			})
 		}
 	}
 	return out, true
 }
 
-func workflowInputSuggestions(lister interface {
+func flowInputSuggestions(lister interface {
 	SavedInputNames(string) ([]string, error)
 }, name, args string) []suggest.Suggestion {
 	keys, err := lister.SavedInputNames(name)
@@ -106,7 +106,7 @@ func workflowInputSuggestions(lister interface {
 	var out []suggest.Suggestion
 	for _, key := range keys {
 		if !used[key] && strings.HasPrefix(key, fragment) {
-			out = append(out, suggest.Suggestion{Name: "workflow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
+			out = append(out, suggest.Suggestion{Name: "flow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
 		}
 	}
 	return out

@@ -92,7 +92,7 @@ type AgentExecRequest struct {
 	ResumeTaskID        string                         // Continue the same task and native child session with Prompt only.
 	ResumeAttempt       int                            // Internal approval-time execution fence; not model-facing.
 	ParentToolCallID    string                         // internal spawning call correlation; never model-facing
-	Workflow            *WorkflowOrigin                // internal workflow attribution; never model-facing
+	Flow                *FlowOrigin                    // internal Flow attribution; never model-facing
 	Agent               string
 	ResolvedAgentConfig any // exact approval-time configuration; never model-facing
 	Prompt              string

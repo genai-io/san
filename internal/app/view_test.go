@@ -11,13 +11,13 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/kit"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
@@ -27,20 +27,19 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/workflow"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
+func TestLiveFlowGraphAppearsWithTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := task.NewAgentTask("wf-1", "workflow", "/workflow demo", ctx, cancel, "")
-	wf.SetLiveView("Workflow demo (1/3 finished)\n  ╭────╮\n  │ ●  │\n  ╰────╯")
+	wf := task.NewAgentTask("wf-1", "flow", "/flow demo", ctx, cancel, "")
+	wf.SetLiveView("Flow demo (1/3 finished)\n  ╭────╮\n  │ ●  │\n  ╰────╯")
 	other := task.NewAgentTask("other", "Explore", "search", ctx, cancel, "")
-	view := appendLiveWorkflowViews("Background", []task.BackgroundTask{other, wf}, 0, 100)
-	if !strings.Contains(view, "Workflow demo (1/3 finished)") || strings.Contains(view, "search") {
-		t.Fatalf("live workflow graph was not attached selectively:\n%s", view)
+	view := appendLiveFlowViews("Background", []task.BackgroundTask{other, wf}, 0, 100)
+	if !strings.Contains(view, "Flow demo (1/3 finished)") || strings.Contains(view, "search") {
+		t.Fatalf("live flow graph was not attached selectively:\n%s", view)
 	}
 }
 
@@ -64,66 +63,50 @@ func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
 	}
 }
 
-func TestLiveWorkflowReflows(t *testing.T) {
+func TestLiveFlowReflows(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	wf := task.NewAgentTask("wf-width", "workflow", "/workflow demo", ctx, cancel, "")
+	wf := task.NewAgentTask("wf-width", "flow", "/flow demo", ctx, cancel, "")
 	wf.SetLiveView("snapshot ●")
 	wf.SetLiveViewRenderer(func(width int) string { return fmt.Sprintf("width %d ●", width) })
 	running := []task.BackgroundTask{wf}
-	if got := ansi.Strip(appendLiveWorkflowViews("", running, 0, 80)); got != "width 80 ●" {
+	if got := ansi.Strip(appendLiveFlowViews("", running, 0, 80)); got != "width 80 ●" {
 		t.Fatalf("initial view = %q", got)
 	}
-	if got := ansi.Strip(appendLiveWorkflowViews("", running, 3, 120)); got != "width 120 ●" {
+	if got := ansi.Strip(appendLiveFlowViews("", running, 3, 120)); got != "width 120 ●" {
 		t.Fatalf("resized view = %q", got)
 	}
 }
 
-func TestLiveWorkflowBlinksOnlyActivityAndKeepsFinishedMarkersFixed(t *testing.T) {
-	activity := "  Activity\n    │  ● running\n    │  ✓ done\n    │  ✗ failed"
-	graph := "  Workflow demo · 0/1 finished\n    map ● → next ○"
-	input := activity + "\n\n" + graph
-	for frame := range 5 {
-		got := styleWorkflowLiveView(input, frame)
-		marker := ansi.Strip(kit.LiveDot(frame))
-		want := strings.Replace(activity, "● running", marker+" running", 1) + "\n\n" + graph
-		if ansi.Strip(got) != want {
-			t.Fatalf("frame %d: got %q, want %q", frame, got, want)
+func TestLiveFlowBreathesOnlyRunningGraphNodes(t *testing.T) {
+	const graph = "  Flow demo · 1/3 finished\n    completed ● → running ◉ → pending ○"
+	first := styleFlowLiveView(graph, 0)
+	if first == styleFlowLiveView(graph, 1) {
+		t.Fatal("running marker should breathe with the frame clock")
+	}
+	for frame := range 6 {
+		got := styleFlowLiveView(graph, frame)
+		if ansi.Strip(got) != strings.ReplaceAll(graph, "◉", "●") {
+			t.Fatalf("frame %d changed graph content: %q", frame, got)
 		}
-		if !strings.Contains(got, activityDoneStyle.Render("✓")) || !strings.Contains(got, activityFailedStyle.Render("✗")) {
-			t.Fatalf("frame %d: finished markers lost their styles: %q", frame, got)
+		if !strings.Contains(got, "completed ● → running ") || !strings.Contains(got, " → pending ○") {
+			t.Fatal("completed and pending nodes should stay static")
 		}
 	}
 }
 
-func TestLiveWorkflowActivityPreservesToolContent(t *testing.T) {
-	const activity = "  Activity\n    ╭─ map\n" +
-		"    │  ● Bash(printf '● ✓ ✗')\n" +
-		"    │  ✓ Bash(printf '●')\n" +
-		"    │    └ ● ✓ ✗\n" +
-		"    │      ● wrapped result\n    ╰─"
-	for frame := range 4 {
-		marker := ansi.Strip(kit.LiveDot(frame))
-		got := ansi.Strip(styleWorkflowActivity(activity, frame))
-		want := strings.Replace(activity, "│  ● Bash", "│  "+marker+" Bash", 1)
-		if got != want {
-			t.Fatalf("frame %d changed tool content:\n%s\nwant:\n%s", frame, got, want)
-		}
-	}
-}
-
-func TestLiveWorkflowReplacesItsBackgroundTrackerRow(t *testing.T) {
+func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mgr := task.NewManager()
 	tracker := todo.NewStore()
-	wf := mgr.CreateAgentTask("wf-tracker", "workflow", "/workflow demo", ctx, cancel)
-	wf.SetLiveView("Workflow demo · 0/1 finished\n  map ●")
+	wf := mgr.CreateAgentTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
+	wf.SetLiveView("Flow demo · 0/1 finished\n  map ●")
 	todo.TrackWorker(tracker, wf.GetStatus())
 	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: conv.NewModel(100)}
 	m.conv.ShowTasks = true
 	view := m.renderTrackerList()
-	if strings.Contains(view, "Background") || !strings.Contains(view, "Workflow demo · 0/1 finished") {
+	if strings.Contains(view, "Background") || !strings.Contains(view, "Flow demo · 0/1 finished") {
 		t.Fatalf("duplicate tracker row:\n%s", view)
 	}
 }
@@ -525,23 +508,25 @@ func TestModeStatusOmitsPersistentHistoryHint(t *testing.T) {
 	}
 }
 
-func addTallWorkflowActivity(t *testing.T, m *model) {
+func addTallFlowActivity(t *testing.T, m *model) {
 	t.Helper()
-	w, err := workflow.Parse("```mermaid\nflowchart LR\n plan --> review --> merge\n```\n\n## plan\nPlan\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\n\nReview {{item.prompt}}\n\n## merge\nMerge\n")
+	var source strings.Builder
+	source.WriteString("```mermaid\nflowchart LR\n")
+	for i := range 24 {
+		fmt.Fprintf(&source, " node%d -->|NEXT| node%d\n", i, i+1)
+	}
+	source.WriteString("```\n")
+	for i := range 25 {
+		fmt.Fprintf(&source, "\n## node%d\nWork\n", i)
+	}
+	w, err := flow.Parse(source.String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var events []workflow.ActivityEvent
-	for i := 0; i < 8; i++ {
-		events = append(events, workflow.ActivityEvent{
-			Node: "review", Worker: fmt.Sprintf("worker-%d", i),
-			Text: "Read(file.go)", ToolID: fmt.Sprintf("tool-%d", i),
-		})
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	wf := task.NewAgentTask("workflow-height", "workflow", "review", ctx, cancel, "")
-	wf.SetLiveView(w.ActivityStreamView(events, m.env.Width) + "\n\n" + w.CompactProgressView(nil, m.env.Width))
+	wf := task.NewAgentTask("flow-height", "flow", "review", ctx, cancel, "")
+	wf.SetLiveView(w.CompactProgressView(nil, m.env.Width))
 	m.services.Task = task.NewManager()
 	m.services.Task.RegisterTask(wf)
 }
@@ -557,16 +542,16 @@ func TestActivityReservesComposerAndModalSpace(t *testing.T) {
 	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
 		t.Fatalf("tasks displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
 	}
-	addTallWorkflowActivity(t, m)
+	addTallFlowActivity(t, m)
 	frame, cursor = m.viewString()
 	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
-		t.Fatalf("workflow displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
+		t.Fatalf("flow displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
 	}
 	modal := dockedModalModel(t, "why this command is needed")
-	addTallWorkflowActivity(t, modal)
+	addTallFlowActivity(t, modal)
 	frame, _ = modal.viewString()
 	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "1. Allow once") || !strings.Contains(ansi.Strip(frame), "2. Deny") {
-		t.Fatalf("workflow displaced approval options:\n%s", ansi.Strip(frame))
+		t.Fatalf("flow displaced approval options:\n%s", ansi.Strip(frame))
 	}
 }
 

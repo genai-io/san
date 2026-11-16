@@ -161,7 +161,7 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 }
 
 func canContinueTask(info task.TaskInfo) bool {
-	return info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
+	return info.ParentTaskID == "" && info.Type == task.TaskTypeAgent && info.AgentSessionID != "" && (info.Status == task.StatusFailed || info.Status == task.StatusCompleted) && task.RecoveryBudgetAvailable(info.Attempts)
 }
 
 // continueViewedTask asks main to choose a safe incremental instruction. This
@@ -230,6 +230,7 @@ func (m *model) resumeTaskViewer() {
 // syncTaskViewerSession invalidates a viewer after a session switch without
 // copying worker output or rebuilding the viewport on unrelated UI messages.
 func (m *model) syncTaskViewerSession() {
+	m.userInput.Flow.SyncSession(m.sessionID())
 	if m.tasks.sessionID != m.sessionID() && (m.tasks != (taskViewerState{}) || m.userInput.Tasks.IsActive() || m.userInput.Tasks.ActionPending()) {
 		m.hideTaskViewer()
 	}

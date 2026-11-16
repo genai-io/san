@@ -11,6 +11,7 @@ import (
 // AgentTask represents a background agent task
 // It implements the BackgroundTask interface
 type AgentTask struct {
+	parentTaskID    string
 	parentSessionID string // fixed before registration
 
 	ID          string     // Unique task ID
@@ -80,6 +81,13 @@ func NewAgentTask(id, agentName, description string, ctx context.Context, cancel
 		},
 	})
 	return task
+}
+
+// SetParentTaskID associates a managed child with its scheduler task.
+func (t *AgentTask) SetParentTaskID(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.parentTaskID = id
 }
 
 // SetSourceMessageSeq retains evidence only for the selected execution.
@@ -347,6 +355,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 	return TaskInfo{
 		Attempt:         t.attempt,
 		Attempts:        append([]AttemptInfo(nil), t.attempts...),
+		ParentTaskID:    t.parentTaskID,
 		ParentSessionID: t.parentSessionID,
 
 		ID:               t.ID,

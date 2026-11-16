@@ -143,7 +143,8 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
 		"think":          (*SlashCommandController).handleThinkCommand,
 		"loop":           (*SlashCommandController).handleLoopCommand,
-		"workflow":       (*SlashCommandController).handleWorkflowCommand,
+		"flow":           (*SlashCommandController).handleFlowCommand,
+		"workflow":       (*SlashCommandController).handleFlowCommand, // hidden compatibility alias
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,

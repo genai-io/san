@@ -77,7 +77,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		return nil, false
 	}
 	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) {
-		if input.IsSideCommand(head.Content) || input.IsWorkflowStopCommand(head.Content) {
+		if input.IsSideCommand(head.Content) || input.IsFlowStopCommand(head.Content) {
 			// Side commands stay local even when a queued edit turns into one.
 			m.userInput.Queue.Dequeue()
 			text, cmd, _ := m.executeCommand(context.Background(), head.Content)

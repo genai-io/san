@@ -15,4 +15,4 @@ for task how-tos see [`../guides/index.md`](../guides/index.md).
 | [`permission-model`](permission-model.md) | How tool-call permissions are decided and gated. |
 | [`compaction`](compaction.md) | Automatic and manual conversation compaction. |
 | [`persona`](persona.md) | Switchable system prompt + skills + config bundles. |
-| [`workflow`](workflow.md) | Several subagent turns as a graph: the definition format, execution semantics, what comes back. |
+| [`flow`](flow.md) | Subagent collaboration blueprints, scheduling, task-area graphs and recovery. |

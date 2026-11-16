@@ -64,8 +64,8 @@ type pasteHandler interface {
 }
 
 // overlayPanels lists every panel that may be in front, in keyboard-priority
-// order: the docked modals win over the slash-command pickers. At most one is
-// active at a time; activeOverlay returns the first that reports IsActive().
+// order: docked modals win over slash-command pickers. Native task detail may
+// temporarily cover a Flow inspector; the first active panel owns focus.
 func (m *model) overlayPanels() []overlayPanel {
 	return []overlayPanel{
 		m.conv.Modal.Question, // docked modals (rendered between separators)
@@ -84,9 +84,9 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Settings,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
-		&m.userInput.Workflow,
+		&m.userInput.Tasks, // Native child detail can sit above a Flow inspector.
+		&m.userInput.Flow,
 		&m.userInput.Transcript,
-		&m.userInput.Tasks,
 	}
 }
 
@@ -228,6 +228,19 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleCtrlOSingleTick()
 	case historyLoadedMsg:
 		m.historyLoaded(msg)
+		return m, nil
+	case input.FlowStartedMsg:
+		return m, m.SpinnerTickCmd()
+	case input.FlowOpenTaskMsg:
+		if !m.userInput.Flow.AcceptTaskOpen(msg) {
+			return m, nil
+		}
+		if m.userInput.Tasks.ShowTask(m.taskSnapshots(), msg.Execution.TaskID, msg.Execution.SessionID, m.env.Width, m.env.Height) {
+			m.tasks = taskViewerState{sessionID: m.sessionID()}
+			m.tasks.actionID = m.userInput.Tasks.ViewID()
+			return m, m.taskViewerTick()
+		}
+		m.userInput.Flow.TaskUnavailable()
 		return m, nil
 	case input.TaskStopMsg:
 		return m, m.stopViewedTask(msg)

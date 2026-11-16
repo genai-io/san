@@ -433,17 +433,17 @@ func (m *model) renderTrackerList() string {
 	var running []task.BackgroundTask
 	if m.services.Task != nil {
 		running = m.services.Task.ListRunning()
-		liveWorkflowIDs := make(map[string]bool)
+		liveFlowIDs := make(map[string]bool)
 		for _, bg := range running {
 			info := bg.GetStatus()
-			if info.AgentName == "workflow" && info.LiveView != "" {
-				liveWorkflowIDs[info.ID] = true
+			if info.AgentName == "flow" && info.LiveView != "" {
+				liveFlowIDs[info.ID] = true
 			}
 		}
-		if len(liveWorkflowIDs) > 0 {
+		if len(liveFlowIDs) > 0 {
 			filtered := make([]*todo.Item, 0, len(items))
 			for _, item := range items {
-				if !liveWorkflowIDs[todo.BackgroundTaskID(item)] {
+				if !liveFlowIDs[todo.BackgroundTaskID(item)] {
 					filtered = append(filtered, item)
 				}
 			}
@@ -469,28 +469,28 @@ func (m *model) renderTrackerList() string {
 			return task.TaskInfo{}
 		},
 	})
-	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
+	return appendLiveFlowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }
 
-func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, width int) string {
-	type liveWorkflow struct {
+func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, width int) string {
+	type liveFlow struct {
 		info task.TaskInfo
 		task task.BackgroundTask
 	}
-	var workflows []liveWorkflow
+	var flows []liveFlow
 	for _, bg := range running {
 		info := bg.GetStatus()
-		if info.AgentName == "workflow" && info.LiveView != "" {
-			workflows = append(workflows, liveWorkflow{info: info, task: bg})
+		if info.AgentName == "flow" && info.LiveView != "" {
+			flows = append(flows, liveFlow{info: info, task: bg})
 		}
 	}
-	sort.Slice(workflows, func(i, j int) bool {
-		if workflows[i].info.StartTime.Equal(workflows[j].info.StartTime) {
-			return workflows[i].info.ID < workflows[j].info.ID
+	sort.Slice(flows, func(i, j int) bool {
+		if flows[i].info.StartTime.Equal(flows[j].info.StartTime) {
+			return flows[i].info.ID < flows[j].info.ID
 		}
-		return workflows[i].info.StartTime.Before(workflows[j].info.StartTime)
+		return flows[i].info.StartTime.Before(flows[j].info.StartTime)
 	})
-	for _, wf := range workflows {
+	for _, wf := range flows {
 		if view != "" {
 			view += "\n"
 		}
@@ -498,53 +498,15 @@ func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, 
 		if renderer, ok := wf.task.(interface{ RenderLiveView(int) string }); ok {
 			live = renderer.RenderLiveView(width)
 		}
-		view += styleWorkflowLiveView(live, frame)
+		view += styleFlowLiveView(live, frame)
 	}
 	return view
 }
 
-var (
-	activityDoneStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
-	activityFailedStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Bold(true)
-)
-
-func styleWorkflowLiveView(live string, frame int) string {
-	if strings.HasPrefix(live, "  Activity") {
-		activity, graph, found := strings.Cut(live, "\n\n")
-		if found {
-			return styleWorkflowActivity(activity, frame) + "\n\n" + graph
-		}
-		return styleWorkflowActivity(activity, frame)
-	}
-	return live
-}
-
-func styleWorkflowActivity(activity string, frame int) string {
-	running := kit.LiveDot(frame)
-	const prefix = "    │  "
-	lines := strings.Split(activity, "\n")
-	for i, line := range lines {
-		content, ok := strings.CutPrefix(line, prefix)
-		if !ok {
-			continue
-		}
-		marker, text, ok := strings.Cut(content, " ")
-		if !ok {
-			continue
-		}
-		switch marker {
-		case "●":
-			marker = running
-		case "✓":
-			marker = activityDoneStyle.Render(marker)
-		case "✗":
-			marker = activityFailedStyle.Render(marker)
-		default:
-			continue
-		}
-		lines[i] = prefix + marker + " " + text
-	}
-	return strings.Join(lines, "\n")
+func styleFlowLiveView(live string, frame int) string {
+	colors := []kit.AdaptiveColor{kit.CurrentTheme.Muted, kit.CurrentTheme.Accent, kit.CurrentTheme.Primary, kit.CurrentTheme.TextBright, kit.CurrentTheme.Primary, kit.CurrentTheme.Accent}
+	marker := lipgloss.NewStyle().Foreground(colors[frame%len(colors)]).Render("●")
+	return strings.ReplaceAll(live, "◉", marker)
 }
 
 func (m model) renderModeStatus() string {

@@ -111,6 +111,7 @@ type AttemptInfo struct {
 }
 
 type TaskInfo struct {
+	ParentTaskID    string
 	Attempt         int
 	Attempts        []AttemptInfo
 	ParentSessionID string

@@ -552,9 +552,9 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 	}
 }
 
-func TestTallWorkflowKeepsNativeCursorInComposer(t *testing.T) {
+func TestTallFlowKeepsNativeCursorInComposer(t *testing.T) {
 	m := &fixedComposerRendererModel{model: fixedComposerModel(80, 24), settled: make(chan struct{}, 1)}
-	addTallWorkflowActivity(t, m.model)
+	addTallFlowActivity(t, m.model)
 	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
 	terminal := newTerminalHistoryState(80, 24)
 	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
@@ -567,12 +567,12 @@ func TestTallWorkflowKeepsNativeCursorInComposer(t *testing.T) {
 		select {
 		case err := <-done:
 			if err != nil {
-				t.Errorf("stop workflow model: %v", err)
+				t.Errorf("stop flow model: %v", err)
 			}
 		case <-time.After(3 * time.Second):
 			program.Kill()
 			<-done
-			t.Error("timed out stopping workflow model")
+			t.Error("timed out stopping flow model")
 		}
 	}()
 	deadline := time.Now().Add(3 * time.Second)
@@ -583,12 +583,12 @@ func TestTallWorkflowKeepsNativeCursorInComposer(t *testing.T) {
 			_, y := terminal.state.Cursor()
 			terminal.mu.Unlock()
 			if y != 21 || !strings.Contains(strings.Split(screen, "\n")[y], "COMPOSER-LIVE") {
-				t.Fatalf("workflow moved cursor outside composer to row %d:\n%s", y, screen)
+				t.Fatalf("flow moved cursor outside composer to row %d:\n%s", y, screen)
 			}
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for workflow composer:\n%s", screen)
+			t.Fatalf("timed out waiting for flow composer:\n%s", screen)
 		}
 		time.Sleep(time.Millisecond)
 	}
