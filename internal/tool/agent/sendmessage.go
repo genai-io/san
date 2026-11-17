@@ -105,6 +105,8 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	// A stale broker route must never make an inactive execution or a non-agent
 	// task messageable. Idle sessions must pass the continuation gate.
+	var observedWorker *task.AgentTask
+	var observedAttempt int
 	if bgTask, found := task.Default().Get(to); found {
 		info := bgTask.GetStatus()
 		if sessionID := task.SessionIDFromContext(ctx); sessionID != "" && info.ParentSessionID != "" && sessionID != info.ParentSessionID {
@@ -113,7 +115,12 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		if bgTask.GetType() != task.TaskTypeAgent {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q is a %s task, not an agent with a message inbox; inspect its output file and continue with the shell tools", to, bgTask.GetType()))
 		}
+		observedWorker, _ = bgTask.(*task.AgentTask)
+		observedAttempt = info.Attempt
 		if info.Status != task.StatusRunning {
+			if observedWorker != nil && (info.Status == task.StatusCompleted || info.Status == task.StatusFailed) {
+				return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
+			}
 			return t.continueWorker(ctx, info, subject, message)
 		}
 	}
@@ -130,9 +137,16 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		Content:       wrapAgentMessage(from, display, message),
 	})
 	if sendErr != nil {
-		if worker, found := task.Default().Get(to); found && worker.GetType() == task.TaskTypeAgent {
-			if info := worker.GetStatus(); info.Status != task.StatusRunning {
-				return t.continueWorker(ctx, info, subject, message)
+		if errors.Is(sendErr, broker.ErrInboxClosing) && observedWorker != nil {
+			return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
+		}
+		if errors.Is(sendErr, broker.ErrNoRecipient) && observedWorker != nil {
+			current, found := task.Default().Get(to)
+			info := observedWorker.GetStatus()
+			if found && current == observedWorker && info.Attempt == observedAttempt &&
+				(info.Status == task.StatusCompleted || info.Status == task.StatusFailed) &&
+				tool.AgentIDFromContext(ctx) == "" && task.SessionIDFromContext(ctx) != "" && task.SessionIDFromContext(ctx) == info.ParentSessionID {
+				return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
 			}
 		}
 		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to, sendErr))
@@ -228,9 +242,12 @@ func undeliverableReason(to string, sendErr error) string {
 		return fmt.Sprintf("worker %q is running but already has the maximum number of unread messages; this message was not queued and will not be retried automatically. You still own this instruction: do not retry or poll in a loop; once the worker drains its queue, replies, or completes, deliver it only if it is still needed", to)
 	}
 	if info.Status == task.StatusRunning {
-		return fmt.Sprintf("message to worker %q was not accepted by its delivery route; the task is still marked running. Inspect its task status and existing output before deciding how to continue; no continuation was started", to)
+		return fmt.Sprintf("worker %q is still marked running, but message delivery failed: %v. This message was not queued; no continuation was started", to, sendErr)
 	}
-	return terminalMessageReason(to, info.Status)
+	if info.Status == task.StatusStopped || info.Status == task.StatusKilled {
+		return terminalMessageReason(to, info.Status)
+	}
+	return fmt.Sprintf("worker %q (status %s) did not accept the message: %v. This message was not queued; no continuation was started", to, info.Status, sendErr)
 }
 
 func terminalMessageReason(to string, status task.TaskStatus) string {
@@ -261,6 +278,28 @@ type continuationApproval struct {
 	TaskID         string `json:"task_id"`
 	Attempt        int    `json:"attempt"`
 	PermissionMode string `json:"permission_mode"`
+}
+
+// A sealed inbox, or a route removed after terminal publication, can hand off
+// the same execution. Missing routes never wait for a still-running worker.
+func (t *SendMessageTool) handoffClosingWorker(ctx context.Context, worker *task.AgentTask, attempt int, subject, message string) toolresult.ToolResult {
+	fail := func(reason string) toolresult.ToolResult { return toolresult.NewErrorResult(t.Name(), reason) }
+	info := worker.GetStatus()
+	owner := task.SessionIDFromContext(ctx)
+	if tool.AgentIDFromContext(ctx) != "" || owner == "" || owner != info.ParentSessionID {
+		return fail("only the owning main conversation can continue a closing agent; this message was not queued")
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := worker.WaitForAttemptCompletionContext(waitCtx, attempt); err != nil {
+		return fail(fmt.Sprintf("worker %q is closing; this message was not queued and no continuation was started: %v", info.ID, err))
+	}
+	current, found := task.Default().Get(info.ID)
+	info = worker.GetStatus()
+	if !found || current != worker || info.Attempt != attempt || info.ParentSessionID != owner {
+		return fail("selected agent execution changed during closing; this message was not queued and no continuation was started")
+	}
+	return t.continueWorker(ctx, info, subject, message)
 }
 
 func (t *SendMessageTool) continueWorker(ctx context.Context, info task.TaskInfo, subject, message string) toolresult.ToolResult {

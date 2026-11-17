@@ -163,6 +163,14 @@ history. Send only the new instruction—the child restores its own conversation
   adds no conversation input; cancellation after acceptance preserves it.
 - Stopped/killed agents, unknown IDs, and missing or damaged history produce an
   error. They never silently create a replacement session.
+- An owning main's message to a normally sealed inbox waits once for that exact
+  attempt to retire (caller cancellation or five seconds bounds the wait), then
+  uses the ordinary continuation gate. Changed executions and other delivery
+  errors, including inbox-full and persistence rejection, do not trigger retries.
+- Agent completion releases attempt waiters and permits eligible continuation
+  before notifying observers. Per-task lifecycle snapshots remain ordered even
+  when an observer starts or completes the next attempt synchronously; callbacks
+  run outside the task lock.
 - Completion releases execution resources. Task identities remain until process
   exit, without idle expiry; continuation is unavailable after restart.
 - Message acceptance is not acknowledgment or completion. Main must verify the

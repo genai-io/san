@@ -52,6 +52,9 @@ type AgentTask struct {
 	liveView         string           // Current structured progress, if the caller supplies one.
 	liveRender       func(int) string // Optional width-aware live renderer.
 	done             chan struct{}    // Closed when task completes
+
+	lifecyclePending    []TaskInfo
+	lifecyclePublishing bool
 }
 
 // Verify AgentTask implements BackgroundTask
@@ -336,7 +339,7 @@ func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText s
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
-	// File I/O and done channel outside lock
+	// File I/O stays outside the task lock.
 	t.recordOutput(outputFile, outputRecord{
 		Event:  "task.completed",
 		Status: string(status),
@@ -346,13 +349,49 @@ func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText s
 		},
 	})
 
-	if !t.foreground {
-		notifyTaskCompleted(t.GetStatus())
-	}
+	// Finish retirement before exposing completion to lifecycle observers.
 	t.mu.Lock()
 	t.finishing = false
 	close(done)
+	publish := false
+	if !t.foreground {
+		publish = t.queueLifecycleLocked()
+	}
 	t.mu.Unlock()
+	if publish {
+		t.publishLifecycle()
+	}
+}
+
+// queueLifecycleLocked snapshots transitions in order, including transitions
+// started reentrantly by an observer. Only one caller drains the queue.
+func (t *AgentTask) queueLifecycleLocked() bool {
+	t.lifecyclePending = append(t.lifecyclePending, t.statusLocked())
+	if t.lifecyclePublishing {
+		return false
+	}
+	t.lifecyclePublishing = true
+	return true
+}
+
+func (t *AgentTask) publishLifecycle() {
+	for {
+		t.mu.Lock()
+		if len(t.lifecyclePending) == 0 {
+			t.lifecyclePublishing = false
+			t.mu.Unlock()
+			return
+		}
+		info := t.lifecyclePending[0]
+		t.lifecyclePending[0] = TaskInfo{}
+		t.lifecyclePending = t.lifecyclePending[1:]
+		t.mu.Unlock()
+		if info.Status == StatusRunning {
+			notifyTaskCreated(info)
+		} else {
+			notifyTaskCompleted(info)
+		}
+	}
 }
 
 // IsRunning returns true if the task is still running
@@ -394,7 +433,10 @@ func (t *AgentTask) Kill() error {
 func (t *AgentTask) GetStatus() TaskInfo {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
+	return t.statusLocked()
+}
 
+func (t *AgentTask) statusLocked() TaskInfo {
 	return TaskInfo{
 		Attempt:         t.attempt,
 		Attempts:        append([]AttemptInfo(nil), t.attempts...),

@@ -114,6 +114,25 @@ func TestInboxCancelReleasesStartupState(t *testing.T) {
 	}
 }
 
+func TestHeldInboxIsNotClosing(t *testing.T) {
+	route := task.NewID()
+	inbox := newHeldRunInbox(context.Background(), route, nil)
+	defer inbox.close()
+	if err := broker.SendErr(broker.Message{To: route}); !errors.Is(err, broker.ErrRejected) || errors.Is(err, broker.ErrInboxClosing) {
+		t.Fatalf("unpublished continuation rejection = %v", err)
+	}
+	if len(inbox.pending) != 0 {
+		t.Fatal("held inbox queued input before its continuation")
+	}
+	inbox.open()
+	inbox.mu.Lock()
+	inbox.finishLocked(nil, nil)
+	inbox.mu.Unlock()
+	if err := broker.SendErr(broker.Message{To: route}); !errors.Is(err, broker.ErrInboxClosing) {
+		t.Fatalf("sealed execution rejection = %v", err)
+	}
+}
+
 func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 	route := task.NewID()
 	inbox := newRunInbox(context.Background(), route, nil)

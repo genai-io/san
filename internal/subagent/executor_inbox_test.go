@@ -16,7 +16,9 @@ import (
 
 // runWithInbox runs ag behind a fresh inbox registered at taskID.
 func runWithInbox(ctx context.Context, ag core.Agent, taskID string, maxSteps int, owner *session.Session) (*core.Result, error) {
-	return newRunInbox(ctx, taskID, owner).run(ctx, ag, maxSteps, nil)
+	inbox := newRunInbox(ctx, taskID, owner)
+	defer inbox.close()
+	return inbox.run(ctx, ag, maxSteps, nil)
 }
 
 // boundaryAgent delivers mail after the SDK's last pending check, optionally
