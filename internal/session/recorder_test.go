@@ -449,3 +449,28 @@ func TestRecorderCatalogueNoopsAndExplicitFacts(t *testing.T) {
 		t.Fatal(r.Err())
 	}
 }
+
+func TestRecorderStateRejectsInvalidJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value any
+	}{
+		{name: "unsupported value", value: make(chan int)},
+		{name: "malformed JSON", value: json.RawMessage("{")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := createTyped(t, cleanStore(t), CreateOptions{})
+			r := NewRecorder(s, "test")
+			update := SessionUpdatePayload{Config: &ConfigPatch{GenerationOptions: SetField(GenerationOptions{
+				Version: 1, SamplingParams: map[string]any{"value": tc.value},
+			})}}
+			if err := r.RecordState(t.Context(), update); err == nil {
+				t.Fatal("accepted invalid state JSON")
+			}
+			if r.Err() == nil {
+				t.Fatal("state JSON error not latched")
+			}
+			recorderGolden(t, s, "session.create")
+		})
+	}
+}

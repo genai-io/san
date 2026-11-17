@@ -58,6 +58,72 @@ func TestNativePolicyAndTrackerStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRecorderStateUsesPersistedRepresentation(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		name   string
+		update SessionUpdatePayload
+	}{
+		{
+			name: "todo timestamps",
+			update: SessionUpdatePayload{State: &StatePatch{Todos: SetField([]todo.Item{{
+				ID: "one", Subject: "work", Status: todo.StatusPending,
+				CreatedAt: now, UpdatedAt: now, StatusChangedAt: now,
+			}})}},
+		},
+		{
+			name: "todo metadata",
+			update: SessionUpdatePayload{State: &StatePatch{Todos: SetField([]todo.Item{{
+				ID: "one", Subject: "work", Status: todo.StatusPending,
+				Metadata: map[string]any{"priority": 1, "labels": []string{"test"}},
+			}})}},
+		},
+		{
+			name: "empty generation options",
+			update: SessionUpdatePayload{Config: &ConfigPatch{GenerationOptions: SetField(GenerationOptions{
+				Version: 1, StopSequences: []string{}, SamplingParams: map[string]any{},
+			})}},
+		},
+		{
+			name: "sampling parameters",
+			update: SessionUpdatePayload{Config: &ConfigPatch{GenerationOptions: SetField(GenerationOptions{
+				Version: 1, SamplingParams: map[string]any{"top_k": 4},
+			})}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := cleanStore(t)
+			s := createTyped(t, store, CreateOptions{})
+			r := NewRecorder(s, "test")
+			for range 3 {
+				if err := r.RecordState(t.Context(), tc.update); err != nil {
+					t.Fatal(err)
+				}
+			}
+			recorderGolden(t, s, "session.create", "session.update")
+			if err := r.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.RecordState(t.Context(), SessionUpdatePayload{State: &StatePatch{Title: SetField("changed")}}); err != nil {
+				t.Fatal(err)
+			}
+			recorderGolden(t, s, "session.create", "session.update", "session.update")
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := store.Open(t.Context(), s.ID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = reopened.Close() })
+			if err := NewRecorder(reopened, "test").RecordState(t.Context(), tc.update); err != nil {
+				t.Fatal(err)
+			}
+			recorderGolden(t, reopened, "session.create", "session.update", "session.update")
+		})
+	}
+}
+
 func TestNativePolicyRejectsProgressAndInvalidTracker(t *testing.T) {
 	store := cleanStore(t)
 	if _, err := store.Create(t.Context(), CreateOptions{ID: "invalid-policy", Config: &EventConfig{AutopilotPolicy: &AutopilotPolicy{Version: 1, Settings: setting.AutoPilotSettings{MissionState: setting.MissionRunning}}}}); err == nil {

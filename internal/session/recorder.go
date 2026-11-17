@@ -553,20 +553,29 @@ func (r *Recorder) RecordState(ctx context.Context, update SessionUpdatePayload)
 	if err := r.check(ctx); err != nil {
 		return err
 	}
+	// Diff the persisted representation, not runtime timestamps or map types.
+	raw, err := json.Marshal(update)
+	if err != nil {
+		return r.remember(err)
+	}
+	var next SessionUpdatePayload
+	if err := strictEventJSON(raw, &next); err != nil {
+		return r.remember(err)
+	}
 	return r.remember(r.session.write(ctx, func(p *Projection) ([]Event, error) {
-		if update.Config == nil && update.State == nil {
+		if next.Config == nil && next.State == nil {
 			return nil, fmt.Errorf("empty session update")
 		}
 		config, state := p.data.Config, p.data.State
-		if update.Config != nil {
-			applyConfigPatch(&config, *update.Config)
+		if next.Config != nil {
+			applyConfigPatch(&config, *next.Config)
 		}
-		if update.State != nil {
-			applyStatePatch(&state, *update.State)
+		if next.State != nil {
+			applyStatePatch(&state, *next.State)
 		}
 		if reflect.DeepEqual(config, p.data.Config) && reflect.DeepEqual(state, p.data.State) {
 			return nil, nil
 		}
-		return []Event{{Payload: update}}, nil
+		return []Event{{Payload: next}}, nil
 	}))
 }

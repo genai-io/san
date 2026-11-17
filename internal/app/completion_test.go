@@ -47,6 +47,7 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 	for _, scenario := range []string{"no-hooks", "allow", "block", "changed-while-pending", "closed-while-pending"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, _ := compactQueueModel(t)
+			m.services.Tracker.Create("Verify state persistence", "", "", map[string]any{"priority": 1})
 			m.env.AutoPilot.Mission = "completed state"
 			called := false
 			if scenario != "no-hooks" {
@@ -98,14 +99,12 @@ func TestNormalIdleTurnStateRecordCount(t *testing.T) {
 			if got := turnStateRecordCount(t, m) - before; got != want {
 				t.Fatalf("native state records = %d, want %d", got, want)
 			}
-			if scenario == "closed-while-pending" {
-				found := false
-				for _, row := range m.conv.Messages {
-					found = found || strings.HasPrefix(row.Content, "Session was not saved:")
-				}
-				if !found {
-					t.Fatal("unchanged state bypassed the closed-session error")
-				}
+			found := false
+			for _, row := range m.conv.Messages {
+				found = found || strings.HasPrefix(row.Content, "Session was not saved:")
+			}
+			if want := scenario == "closed-while-pending"; found != want {
+				t.Fatalf("save failure notice = %t, want %t", found, want)
 			}
 		})
 	}
