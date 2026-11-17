@@ -532,7 +532,7 @@ func styleFlowLiveView(live string, frame int) string {
 	})
 	live = liveFlowEdge.ReplaceAllStringFunc(live, func(edge string) string {
 		if strings.HasPrefix(edge, "━") {
-			return focus.Bold(true).Faint(frame%6 < 2).Render(edge)
+			return focus.Faint(frame%6 < 2).Render(edge)
 		}
 		return body.Foreground(kit.CurrentTheme.TextDim).Render(edge)
 	})
@@ -543,12 +543,16 @@ func styleFlowLiveView(live string, frame int) string {
 		if title, ok := strings.CutPrefix(header, "Flow · "); ok {
 			name, count := title, ""
 			last := strings.LastIndex(title, " · ")
-			if last >= 0 {
-				name, count = title[:last], title[last+len(" · "):]
+			if round := strings.LastIndex(title, " · round "); round >= 0 {
+				last = round
 			}
-			lines[0] = lines[0][:indent] + kit.FlowLabel(name)
 			if last >= 0 {
-				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" · " + count)
+				name, count = title[:last], title[last:]
+			}
+			lines[0] = lines[0][:indent] + kit.FlowLabel(strings.TrimRight(name, " "))
+			if last >= 0 {
+				padding := len(name) - len(strings.TrimRight(name, " "))
+				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(strings.Repeat(" ", padding) + count)
 			}
 		}
 	}

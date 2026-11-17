@@ -216,21 +216,25 @@ func (e agentEnvelope) renderFlowResult(p RenderContext) string {
 	if width <= 0 {
 		width = 80
 	}
+	// Apply the native continuation gutter after Markdown rendering.
+	gutter := ansi.Truncate(contentGutter(false), max(0, width-1), "")
+	bodyWidth := width - ansi.StringWidth(gutter)
 	result := e.text()
 	if strings.TrimSpace(result) == "" {
-		return "\n" + toolResultStyle.Render(ansi.Truncate("No final result", width, "…")) + "\n"
+		body := toolResultStyle.Render(ansi.Truncate("No final result", bodyWidth, "…"))
+		return "\n" + lipgloss.JoinHorizontal(lipgloss.Top, gutter, body) + "\n"
 	}
 	md := p.MDRenderer
 	if md == nil {
 		md = NewMDRenderer(width)
 	}
-	rendered := ansi.Hardwrap(renderMarkdownContent(md, result), width, true)
+	rendered := ansi.Hardwrap(renderMarkdownContent(md, result), bodyWidth, true)
 	// Older persisted notices may contain only an excerpt.
 	if envelopeAttr(e.tag, "result-truncated") == "true" {
 		hint := "Recorded excerpt; full result in task details"
-		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, width, true))
+		rendered += "\n\n" + toolResultStyle.Render(ansi.Hardwrap(hint, bodyWidth, true))
 	}
-	return "\n" + strings.TrimRight(rendered, "\n") + "\n"
+	return "\n" + lipgloss.JoinHorizontal(lipgloss.Top, gutter, strings.TrimRight(rendered, "\n")) + "\n"
 }
 
 // envelopeAttr returns the value of a name="value" attribute within an opening

@@ -407,8 +407,8 @@ model, tools, permissions and sessions. They use native Agent blocks in the
 conversation: identity, elapsed time and recent activity, followed by bounded
 answer previews. Main nodes use the current conversation's native turns and
 history instead. On completion, Flow renders its complete final sink answer as
-an independent top-level Markdown result in the main conversation, separated from
-the completion receipt by a blank line, without another generated heading. A
+Markdown beneath the completion receipt, separated by a blank line and aligned
+with the normal message-body gutter, without another generated heading. A
 main final sink already shown natively is not repeated. Child preview limits do
 not apply. One sink returns its answer; multiple successful sinks retain labeled
 sections. No inspection command is needed to read the report; empty results are

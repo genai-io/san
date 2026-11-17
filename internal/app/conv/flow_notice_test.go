@@ -96,7 +96,7 @@ func TestSchedulerOutcomePriorityAndOptionalElapsed(t *testing.T) {
 	}
 }
 
-func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
+func TestSchedulerFinalResultIsFullAndIndented(t *testing.T) {
 	result := "## Conclusion\n\n**Do not merge yet.**\n\n- Three issues need review.\n"
 	for i := range 30 {
 		result += fmt.Sprintf("\n- Supporting detail %02d.\n", i)
@@ -116,7 +116,7 @@ func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
 			}
 			if width >= 40 {
 				_, report, found := strings.Cut(plain, "\n\n")
-				if !found || !strings.HasPrefix(report, "Conclusion") || strings.Count(plain, "● Flow") != 1 || strings.Contains(plain, "Flow result") {
+				if !found || !strings.HasPrefix(report, "  Conclusion") || strings.Count(plain, "● Flow") != 1 || strings.Contains(plain, "Flow result") {
 					t.Fatalf("report should follow the receipt directly without a repeated heading: %q", plain)
 				}
 			}
@@ -128,6 +128,37 @@ func TestSchedulerFinalResultIsFullAndTopLevel(t *testing.T) {
 			if e.renderWithIdentity(p) != got {
 				t.Fatal("restored final result differs from live result")
 			}
+		}
+	}
+}
+
+func TestSchedulerResultUsesNativeMarkdownGutter(t *testing.T) {
+	result := "## Findings\n\n**Important** report.\n\n- Parent item\n  - Nested item\n\n```go\nfunc answer() {\n    println(42)\n}\n```\n\nFinal paragraph."
+	e := parseAgentEnvelope(`<task-notification scheduler="true" agent-name="Review" status="completed">` + result + `</task-notification>`)
+	for _, width := range []int{80, 60, 80} {
+		md := NewMDRenderer(width)
+		p := RenderContext{Width: width, MDRenderer: md}
+		got := e.renderDisplayNotice(p)
+		_, report, found := strings.Cut(got, "\n\n")
+		want := RenderCommittedContentBlock(result, false, md) + "\n"
+		if !found || report != want {
+			t.Fatalf("width %d: result differs from native Markdown body\ngot: %q\nwant: %q", width, report, want)
+		}
+		plain := ansi.Strip(report)
+		for _, text := range []string{"Important", "Parent item", "Nested item", "func answer()", "println(42)", "Final paragraph."} {
+			if !strings.Contains(plain, text) {
+				t.Fatalf("Markdown content lost: %q in %q", text, plain)
+			}
+		}
+		if strings.Contains(plain, "```") || strings.Contains(plain, "**Important**") {
+			t.Fatalf("Markdown rendered as raw text: %q", plain)
+		}
+		if e.text() != result || e.renderWithIdentity(p) != got {
+			t.Fatal("result mutated or historical projection differs")
+		}
+		p.MDRenderer = nil
+		if restored := e.renderWithIdentity(p); restored != got {
+			t.Fatalf("width %d: default and shared renderers wrap the report differently", width)
 		}
 	}
 }

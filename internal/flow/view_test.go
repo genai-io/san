@@ -17,12 +17,12 @@ func TestCompactLoopActiveRoutes(t *testing.T) {
 		want     string
 		retry    bool
 	}{
-		{nil, "[draft]", false},
-		{map[string]Status{"review#1": StatusRunning}, "━▶[◉ review]", false},
+		{nil, "draft", false},
+		{map[string]Status{"review#1": StatusRunning}, "━━▶   ◉ review", false},
 		{map[string]Status{"draft#2": StatusRunning}, "REVISE ×1 ━", true},
 		{map[string]Status{"review#2": StatusRunning}, "REVISE ×1 ─", true},
 		{map[string]Status{"draft#3": StatusRunning}, "REVISE ×2 ━", true},
-		{map[string]Status{"review#2": StatusSucceeded, "ship": StatusRunning}, "━PASS▶[◉ ship]", true},
+		{map[string]Status{"review#2": StatusSucceeded, "ship": StatusRunning}, "━━▶   ◉ ship", true},
 	} {
 		view := w.CompactProgressView(tc.statuses, 80)
 		if !strings.Contains(view, tc.want) {
@@ -31,7 +31,7 @@ func TestCompactLoopActiveRoutes(t *testing.T) {
 		if strings.Contains(view, "×") != tc.retry {
 			t.Fatal(view)
 		}
-		if strings.Count(view, "\n") != 3 {
+		if strings.Count(view, "\n") != 4 {
 			t.Fatal(view)
 		}
 	}
@@ -70,11 +70,31 @@ func TestCompactLoopProgress(t *testing.T) {
 						t.Fatalf("width %d: %q", width, line)
 					}
 				}
-				if width >= 80 && strings.Count(view, "\n") != 3 {
+				if width >= 80 && strings.Count(view, "\n") != 4 {
 					t.Fatalf("not horizontal:\n%s", view)
 				}
 			}
 		})
+	}
+}
+
+func TestCompactLoopSpacing(t *testing.T) {
+	w := mustParse(t, optimizer)
+	for _, width := range []int{72, 108} {
+		view := w.CompactProgressView(map[string]Status{}, width)
+		lines := strings.Split(view, "\n")
+		if len(lines) != 5 || lines[1] != "" || strings.ContainsAny(view, "[]") {
+			t.Fatalf("loop has crowded node frames or no title separation:\n%s", view)
+		}
+		if strings.Contains(lines[2], "PASS") || !strings.Contains(lines[3], "PASS") {
+			t.Fatalf("condition should sit below its connector:\n%s", view)
+		}
+		if !strings.Contains(lines[2], "   ──▶   ") && width == 72 {
+			t.Fatalf("nodes have no breathing room:\n%s", view)
+		}
+		if ansi.StringWidth(lines[0]) != width {
+			t.Fatalf("progress is not aligned to the right edge: %q", lines[0])
+		}
 	}
 }
 

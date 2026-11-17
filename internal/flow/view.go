@@ -59,11 +59,15 @@ func (b *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 	nameWidth := available - ansi.StringWidth(suffix)
 	header := progress
 	if nameWidth > 0 {
-		header = ansi.Truncate("Flow · "+b.Title(), nameWidth, "…") + suffix
+		title := ansi.Truncate("Flow · "+b.Title(), nameWidth, "…")
+		if loopGraph != "" {
+			title += strings.Repeat(" ", nameWidth-ansi.StringWidth(title))
+		}
+		header = title + suffix
 	}
 	header = strings.Repeat(" ", min(4, max(0, width-1))) + ansi.Truncate(header, available, "…")
 	if loopGraph != "" {
-		return header + "\n" + loopGraph
+		return header + "\n\n" + loopGraph
 	}
 	if len(b.Loops) == 0 {
 		ordered := b.topologicalNodes()
@@ -237,7 +241,6 @@ func (b *Blueprint) compactLoop(statuses map[string]Status, width int) (string, 
 			running[i] = statuses[nodeID] == StatusRunning
 			labels[i] = progressGlyph(statuses[nodeID]) + " " + id
 		}
-		labels[i] = "[" + labels[i] + "]"
 	}
 	returnLabel := " " + loop.Label
 	if round > 1 {
@@ -248,31 +251,47 @@ func (b *Blueprint) compactLoop(statuses map[string]Status, width int) (string, 
 	if round > 1 && running[head] {
 		returnStroke = "━"
 	}
-	line := "    "
-	left, right := 0, 0
-	for i, label := range labels {
-		if i > 0 {
-			stroke := "─"
-			if running[i] && !(i == head && round > 1) {
-				stroke = "━"
+	gap := 3
+	if width >= 100 {
+		gap = 5
+	}
+	for ; gap >= 1; gap-- {
+		line, left, right := "    ", 0, 0
+		exit, exitAt := "", 0
+		for i, label := range labels {
+			if i > 0 {
+				stroke := "─"
+				if running[i] && !(i == head && round > 1) {
+					stroke = "━"
+				}
+				edgeLabel := next[chain[i-1]].Label
+				connector := max(2*gap+3, ansi.StringWidth(edgeLabel)+2)
+				if i == tail {
+					center := ansi.StringWidth(line) + connector + ansi.StringWidth(label)/2
+					connector += max(0, ansi.StringWidth(returnLabel)+2-(center-left))
+				}
+				if edgeLabel != "" {
+					exit, exitAt = edgeLabel, ansi.StringWidth(line)+(connector-ansi.StringWidth(edgeLabel))/2
+				}
+				line += strings.Repeat(" ", gap) + strings.Repeat(stroke, connector-2*gap-1) + "▶" + strings.Repeat(" ", gap)
+			}
+			center := ansi.StringWidth(line) + ansi.StringWidth(label)/2
+			if i == head {
+				left = center
 			}
 			if i == tail {
-				stroke = strings.Repeat(stroke, max(1, ansi.StringWidth(returnLabel)+2-(ansi.StringWidth(line)-left)-ansi.StringWidth(next[chain[i-1]].Label)))
+				right = center
 			}
-			line += stroke + next[chain[i-1]].Label + "▶"
+			line += label
 		}
-		if i == head {
-			left = ansi.StringWidth(line)
+		if ansi.StringWidth(line) > width || right-left < ansi.StringWidth(returnLabel)+2 {
+			continue
 		}
-		if i == tail {
-			right = ansi.StringWidth(line)
-		}
-		line += label
-	}
-	if ansi.StringWidth(line) <= width && right-left >= ansi.StringWidth(returnLabel)+2 {
 		span := right - left - 1
 		middle := strings.Repeat(" ", left) + "↑" + strings.Repeat(" ", span) + "│"
-		bottom := strings.Repeat(" ", left) + "╰" + returnLabel + strings.Repeat(returnStroke, span-ansi.StringWidth(returnLabel)) + "╯"
+		middle += strings.Repeat(" ", max(0, exitAt-ansi.StringWidth(middle))) + exit
+		padding := (span - ansi.StringWidth(returnLabel)) / 2
+		bottom := strings.Repeat(" ", left) + "╰" + strings.Repeat(returnStroke, padding) + returnLabel + strings.Repeat(returnStroke, span-padding-ansi.StringWidth(returnLabel)) + "╯"
 		return line + "\n" + middle + "\n" + bottom, progress
 	}
 	// Reflow as a forward chain plus an explicit labeled return edge. Never

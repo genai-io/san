@@ -265,15 +265,15 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 						t.Fatalf("full scheduler report lost %q", marker)
 					}
 				}
-				if !strings.Contains(rendered, "\n\n"+conclusion) || strings.Contains(rendered, "Flow result") || strings.Count(rendered, "● Flow") != 1 || strings.Contains(rendered, "More:") || strings.Contains(rendered, "/flow inspect") {
-					t.Fatalf("full report should follow the receipt without a repeated heading: %.1000s", rendered)
+				if !strings.Contains(rendered, "\n\n  "+conclusion) || strings.Contains(rendered, "Flow result") || strings.Count(rendered, "● Flow") != 1 || strings.Contains(rendered, "More:") || strings.Contains(rendered, "/flow inspect") {
+					t.Fatalf("full report should follow the receipt in the native body gutter without a repeated heading: %.1000s", rendered)
 				}
 				for _, line := range strings.Split(rendered, "\n") {
 					if ansi.StringWidth(line) > m.env.Width {
 						t.Fatalf("full report line exceeds viewport width: %q", line)
 					}
-					if strings.Contains(line, conclusion) && strings.HasPrefix(line, " ") {
-						t.Fatalf("report is indented beneath completion receipt: %q", line)
+					if strings.Contains(line, conclusion) && !strings.HasPrefix(line, "  ") {
+						t.Fatalf("report is missing the native message body gutter: %q", line)
 					}
 				}
 			} else if strings.Contains(rendered, conclusion) {
