@@ -200,9 +200,12 @@ for later delivery; task logs never write to the event log.
   await consumption; rejected mail is not committed or silently dropped.
   Accepted input is processed within the step budget or preserved in native
   history on failure/cancellation, including before agent attachment. Normal
-  completion, setup failure and cancellation unregister the owned route and
-  release queued messages, agent/session references and cancellation callbacks.
-  Cleanup cannot remove a replacement execution's registration. Queued input
+  completion seals admission but keeps a closing route through cleanup and task
+  retirement. The owning main may wait once, up to five seconds, then use the
+  existing permission-gated continuation. Other rejections never enter that wait.
+  Final cleanup unregisters the owned route and releases queued messages,
+  agent/session references and cancellation callbacks without removing a
+  replacement execution's registration. Queued input
   entering the conversation calls `broker.WakeCompletions` for the same worker,
   so retained completion mail arrives while it is still running, with no
   re-registration or polling.

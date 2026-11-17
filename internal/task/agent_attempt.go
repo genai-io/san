@@ -88,6 +88,31 @@ func (t *AgentTask) WaitForAttemptCompletion(n int, timeout time.Duration) bool 
 	}
 }
 
+// WaitForAttemptCompletionContext waits only for the selected generation, not
+// its successor. Retirement releases waiters before lifecycle callbacks run.
+func (t *AgentTask) WaitForAttemptCompletionContext(ctx context.Context, n int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	t.mu.RLock()
+	if n != t.attempt {
+		retired := n > 0 && n < t.attempt
+		t.mu.RUnlock()
+		if retired {
+			return nil
+		}
+		return fmt.Errorf("attempt %d is not a current or retired execution", n)
+	}
+	done := t.done
+	t.mu.RUnlock()
+	select {
+	case <-done:
+		return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // RecoveryBudgetAvailable permits one corrective execution after a failure.
 // Successful follow-ups reset the chain. Exhaustion requires a new plan, rather
 // than silently turning completion notifications into an infinite retry loop.
@@ -181,8 +206,11 @@ func (t *AgentTask) BeginAttemptWithSetup(ctx context.Context, cancel context.Ca
 	t.activity = nil
 	t.ctx, t.cancel = ctx, cancel
 	t.done = make(chan struct{})
+	publish := t.queueLifecycleLocked()
 	t.mu.Unlock()
-	notifyTaskCreated(t.GetStatus())
+	if publish {
+		t.publishLifecycle()
+	}
 	return n, nil
 }
 

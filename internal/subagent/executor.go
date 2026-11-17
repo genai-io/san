@@ -238,6 +238,11 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err := e.prepareInbox(ctx, run); err != nil {
 		return nil, err
 	}
+	defer func() {
+		if run.inbox != nil {
+			run.inbox.close()
+		}
+	}()
 	var worker *task.AgentTask
 	if req.Background && req.ParentTaskID != "" {
 		worker = e.taskPool().CreateChildAgentTask(run.req.TaskID, req.ParentTaskID, run.cfg.config.Name, req.Description, ctx, cancel)
@@ -266,7 +271,7 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (out *AgentResult, runErr error) {
 	defer func() {
 		if run.inbox != nil {
-			run.inbox.close()
+			run.inbox.seal()
 		}
 		// Stop hooks may record asynchronously. Drain their owned handler while
 		// the child writer is still live, then release its claim exactly once.
@@ -449,6 +454,11 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	generation := agentTask.GetStatus().Attempt
 	e.taskPool().Run(func() {
 		defer cancel()
+		defer func() {
+			if run.inbox != nil {
+				run.inbox.close()
+			}
+		}()
 
 		result, err := e.runPrepared(ctx, run)
 		if result != nil {

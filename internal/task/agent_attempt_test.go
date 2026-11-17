@@ -4,9 +4,145 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 )
+
+type attemptWaitContext struct {
+	context.Context
+	waiting chan struct{}
+}
+
+func (c attemptWaitContext) Done() <-chan struct{} {
+	close(c.waiting)
+	return c.Context.Done()
+}
+
+func TestWaitForAttemptCompletionContext(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canceled=%t", canceled), func(t *testing.T) {
+			worker := NewAgentTask("wait", "worker", "work", context.Background(), nil, "")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			waiting := make(chan struct{})
+			result := make(chan error, 1)
+			go func() {
+				result <- worker.WaitForAttemptCompletionContext(attemptWaitContext{ctx, waiting}, 1)
+			}()
+			<-waiting
+			if canceled {
+				cancel()
+				if err := <-result; !errors.Is(err, context.Canceled) {
+					t.Fatalf("canceled wait = %v", err)
+				}
+				if !worker.IsRunning() {
+					t.Fatal("canceling sender wait canceled recipient")
+				}
+				return
+			}
+			worker.CompleteAttempt(1, nil)
+			if _, err := worker.BeginAttempt("", context.Background(), nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-result; err != nil {
+				t.Fatalf("retired attempt wait = %v", err)
+			}
+			if err := worker.WaitForAttemptCompletionContext(context.Background(), 1); err != nil {
+				t.Fatalf("wait followed successor: %v", err)
+			}
+			if err := worker.WaitForAttemptCompletionContext(context.Background(), 3); err == nil {
+				t.Fatal("future execution accepted")
+			}
+		})
+	}
+}
+
+type continuationLifecycleObserver struct {
+	created   func(TaskInfo)
+	completed func(TaskInfo)
+}
+
+func (o *continuationLifecycleObserver) TaskCreated(info TaskInfo) {
+	if o.created != nil {
+		o.created(info)
+	}
+}
+func (o *continuationLifecycleObserver) TaskCompleted(info TaskInfo) { o.completed(info) }
+
+func TestCompletedNotificationAllowsConcurrentContinuation(t *testing.T) {
+	worker := NewAgentTask("completion", "worker", "work", context.Background(), nil, "")
+	worker.parentSessionID = "parent"
+	published := make(chan TaskInfo, 1)
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	var created TaskInfo
+	SetLifecycleHandler(&continuationLifecycleObserver{
+		created: func(info TaskInfo) { created = info },
+		completed: func(info TaskInfo) {
+			published <- info
+			<-release
+		},
+	})
+	defer SetLifecycleHandler(nil)
+	go func() {
+		worker.Complete(nil)
+		close(finished)
+	}()
+	info := <-published
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n, err := worker.BeginAttemptWithSetup(ctx, cancel, info.Attempt, "parent", AttemptSetup{})
+	// Always release the callback before assertions, including on regression.
+	close(release)
+	<-finished
+	if err != nil {
+		t.Fatalf("published completed task rejects immediate follow-up: %v", err)
+	}
+	if info.Status != StatusCompleted || info.Attempt != 1 || n != 2 || created.Status != StatusRunning || created.Attempt != 2 {
+		t.Fatalf("wrong lifecycle snapshots: completed=%+v created=%+v next=%d", info, created, n)
+	}
+	if worker.WaitForAttemptCompletion(n, time.Millisecond) {
+		t.Fatal("retiring predecessor closed successor's done channel")
+	}
+}
+
+func TestCompletionObserverCanContinueAndCompleteReentrantly(t *testing.T) {
+	worker := NewAgentTask("reentrant", "worker", "work", context.Background(), nil, "")
+	worker.parentSessionID = "parent"
+	var events []string
+	var snapshots []TaskInfo
+	SetLifecycleHandler(&continuationLifecycleObserver{
+		created: func(info TaskInfo) {
+			events = append(events, fmt.Sprintf("created:%d", info.Attempt))
+			snapshots = append(snapshots, info)
+		},
+		completed: func(info TaskInfo) {
+			events = append(events, fmt.Sprintf("completed:%d", info.Attempt))
+			snapshots = append(snapshots, info)
+			if info.Attempt != 1 {
+				return
+			}
+			if !worker.WaitForAttemptCompletion(1, time.Millisecond) {
+				t.Error("published completion has not released waiters")
+			}
+			n, err := worker.BeginAttemptWithSetup(context.Background(), nil, 1, "parent", AttemptSetup{})
+			if err != nil {
+				t.Errorf("reentrant continuation: %v", err)
+				return
+			}
+			worker.CompleteAttempt(n, nil)
+		},
+	})
+	defer SetLifecycleHandler(nil)
+	worker.CompleteAttempt(1, nil)
+	if want := []string{"completed:1", "created:2", "completed:2"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("lifecycle events = %v, want %v", events, want)
+	}
+	if snapshots[1].Status != StatusRunning || len(snapshots[1].Attempts) != 1 || snapshots[2].Status != StatusCompleted || len(snapshots[2].Attempts) != 2 {
+		t.Fatalf("queued lifecycle snapshots changed after publication: %+v", snapshots)
+	}
+}
 
 func TestAgentCompletionClassification(t *testing.T) {
 	cases := []struct {

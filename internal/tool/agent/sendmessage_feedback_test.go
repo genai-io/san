@@ -11,7 +11,7 @@ import (
 )
 
 func TestSendMessageRunningRouteFailure(t *testing.T) {
-	for _, route := range []string{"absent", "rejecting", "full", "wrapped full", "stopped during send"} {
+	for _, route := range []string{"absent", "rejecting", "provenance", "storage", "full", "wrapped full", "stopped during send"} {
 		t.Run(route, func(t *testing.T) {
 			broker.Reset()
 			t.Cleanup(broker.Reset)
@@ -24,6 +24,10 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 				broker.RegisterAccept(id, func(broker.Message) error {
 					calls++
 					switch route {
+					case "provenance":
+						return fmt.Errorf("%w: incomplete message provenance", broker.ErrRejected)
+					case "storage":
+						return fmt.Errorf("%w: worker session is not writable", broker.ErrRejected)
 					case "stopped during send":
 						worker.Complete(context.Canceled)
 					case "full":
@@ -38,7 +42,7 @@ func TestSendMessageRunningRouteFailure(t *testing.T) {
 			if result.Success {
 				t.Fatalf("failed route reported success: %+v", result)
 			}
-			want := map[string]string{"full": "maximum number of unread messages", "wrapped full": "maximum number of unread messages", "stopped during send": "cannot be resumed automatically"}[route]
+			want := map[string]string{"provenance": "incomplete message provenance", "storage": "worker session is not writable", "full": "maximum number of unread messages", "wrapped full": "maximum number of unread messages", "stopped during send": "cannot be resumed automatically"}[route]
 			if want == "" {
 				want = "still marked running"
 			}

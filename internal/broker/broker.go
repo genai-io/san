@@ -65,6 +65,8 @@ var (
 	ErrRejected = errors.New("recipient rejected the message")
 	// ErrInboxFull means the recipient is live but has too much unread mail.
 	ErrInboxFull = errors.New("recipient inbox is full")
+	// ErrInboxClosing means this execution has sealed admission during cleanup.
+	ErrInboxClosing = errors.New("recipient inbox is closing")
 )
 
 // A distinct registration lets a rejected delivery notice replacement while

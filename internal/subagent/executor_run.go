@@ -341,6 +341,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 	}
 	if run.inbox == nil {
 		run.inbox = newRunInbox(ctx, inboxID, run.recording)
+		defer run.inbox.close()
 	}
 	// One safe fallback, never an outer replay of a tool-bearing execution.
 	// Reuse the exact conversation and native writer; do not append the task
