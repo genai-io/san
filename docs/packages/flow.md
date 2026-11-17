@@ -209,7 +209,10 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
 - `view.go` owns `FinalOutput`, the status `Summary`, and compact live graphs.
   `FinalOutput` returns successful sink answers verbatim (labeled when multiple).
   Scheduler task output carries that result; `RunRecord.Output` retains the
-  status summary. Dense graphs fall back to an exact dependency list.
+  status summary. Linear bounded loops collapse to authored nodes, with a return
+  edge, active-path markers and counts limited to entered rounds. The host styles
+  live nodes and edges with the existing frame clock. Other dense graphs fall back
+  to an exact dependency list.
 - Native subagents keep their tools, permissions, session history and output.
   Managed children register through `CreateChildAgentTask`; the app renders
   them, and the scheduler's display-only receipts and full final report, as

@@ -49,6 +49,10 @@ func (b *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		}
 		progress = fmt.Sprintf("%d %s", len(b.Nodes), unit)
 	}
+	loopGraph, loopProgress := b.compactLoop(statuses, width)
+	if loopGraph != "" {
+		progress = loopProgress
+	}
 	// Align the title and progress with the graph's left edge.
 	available := max(1, width-4)
 	suffix := " · " + progress
@@ -58,6 +62,9 @@ func (b *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		header = ansi.Truncate("Flow · "+b.Title(), nameWidth, "…") + suffix
 	}
 	header = strings.Repeat(" ", min(4, max(0, width-1))) + ansi.Truncate(header, available, "…")
+	if loopGraph != "" {
+		return header + "\n" + loopGraph
+	}
 	if len(b.Loops) == 0 {
 		ordered := b.topologicalNodes()
 		layer := make(map[string]int, len(ordered))
@@ -118,6 +125,168 @@ func (b *Blueprint) CompactProgressView(statuses map[string]Status, width int) s
 		lines = append(lines, "    "+wrapLine(strings.TrimPrefix(line, "  "), max(1, width-4), "      "))
 	}
 	return header + "\n" + strings.Join(lines, "\n")
+}
+
+// compactLoop accepts only a single authored chain with one bounded return.
+// Anything else keeps the exact dependency view.
+func (b *Blueprint) compactLoop(statuses map[string]Status, width int) (string, string) {
+	if len(b.Loops) != 1 {
+		return "", ""
+	}
+	loop := b.Loops[0]
+	bases := map[string]string{}
+	instances := map[string][]*Node{}
+	for _, n := range b.Nodes {
+		base := n.Base
+		if base == "" {
+			base = n.ID
+		}
+		bases[n.ID] = base
+		instances[base] = append(instances[base], n)
+	}
+	next := map[string]Edge{}
+	incoming := map[string]bool{}
+	for _, e := range b.Edges {
+		from, to := bases[e.From], bases[e.To]
+		if from == loop.From && to == loop.To && e.Label == loop.Label {
+			continue // Synthetic bridge between retry instances.
+		}
+		edge := Edge{From: from, To: to, Label: e.Label}
+		if prev, ok := next[from]; ok {
+			if prev != edge {
+				return "", ""
+			}
+			continue
+		}
+		if incoming[to] || (e.Label != "" && from != loop.From) {
+			return "", ""
+		}
+		next[from], incoming[to] = edge, true
+	}
+	start := ""
+	for base := range instances {
+		if !incoming[base] {
+			if start != "" {
+				return "", ""
+			}
+			start = base
+		}
+	}
+	var chain []string
+	for id := start; id != "" && len(chain) <= len(instances); id = next[id].To {
+		chain = append(chain, id)
+	}
+	if len(chain) != len(instances) {
+		return "", ""
+	}
+	head, tail := -1, -1
+	for i, id := range chain {
+		if id == loop.To {
+			head = i
+		}
+		if id == loop.From {
+			tail = i
+		}
+	}
+	if head < 0 || tail < head || tail+1 >= len(chain) || next[loop.From].Label == "" {
+		return "", ""
+	}
+	round := 1
+	for i := head; i <= tail; i++ {
+		for _, n := range instances[chain[i]] {
+			switch statuses[n.ID] {
+			case StatusRunning, StatusSucceeded, StatusFailed:
+				var r int
+				if _, err := fmt.Sscanf(strings.TrimPrefix(n.ID, n.Base+"#"), "%d", &r); err == nil {
+					round = max(round, r)
+				}
+			}
+		}
+	}
+	done, total := 0, 0
+	for i, id := range chain {
+		rounds := 1
+		if i >= head && i <= tail {
+			rounds = round
+		}
+		for r := 1; r <= rounds; r++ {
+			nodeID := instances[id][0].ID
+			if i >= head && i <= tail {
+				nodeID = fmt.Sprintf("%s#%d", id, r)
+			}
+			total++
+			switch statuses[nodeID] {
+			case StatusSucceeded, StatusFailed, StatusSkipped, StatusOmitted:
+				done++
+			}
+		}
+	}
+	progress := fmt.Sprintf("round %d/%d · %d/%d", round, loop.Rounds, done, total)
+	if statuses == nil {
+		progress = fmt.Sprintf("up to %d rounds", loop.Rounds)
+	}
+	labels := make([]string, len(chain))
+	running := make([]bool, len(chain))
+	for i, id := range chain {
+		labels[i] = id
+		if statuses != nil {
+			nodeID := instances[id][0].ID
+			if i >= head && i <= tail {
+				nodeID = fmt.Sprintf("%s#%d", id, round)
+			}
+			running[i] = statuses[nodeID] == StatusRunning
+			labels[i] = progressGlyph(statuses[nodeID]) + " " + id
+		}
+		labels[i] = "[" + labels[i] + "]"
+	}
+	returnLabel := " " + loop.Label
+	if round > 1 {
+		returnLabel += fmt.Sprintf(" ×%d", round-1)
+	}
+	returnLabel += " "
+	returnStroke := "─"
+	if round > 1 && running[head] {
+		returnStroke = "━"
+	}
+	line := "    "
+	left, right := 0, 0
+	for i, label := range labels {
+		if i > 0 {
+			stroke := "─"
+			if running[i] && !(i == head && round > 1) {
+				stroke = "━"
+			}
+			if i == tail {
+				stroke = strings.Repeat(stroke, max(1, ansi.StringWidth(returnLabel)+2-(ansi.StringWidth(line)-left)-ansi.StringWidth(next[chain[i-1]].Label)))
+			}
+			line += stroke + next[chain[i-1]].Label + "▶"
+		}
+		if i == head {
+			left = ansi.StringWidth(line)
+		}
+		if i == tail {
+			right = ansi.StringWidth(line)
+		}
+		line += label
+	}
+	if ansi.StringWidth(line) <= width && right-left >= ansi.StringWidth(returnLabel)+2 {
+		span := right - left - 1
+		middle := strings.Repeat(" ", left) + "↑" + strings.Repeat(" ", span) + "│"
+		bottom := strings.Repeat(" ", left) + "╰" + returnLabel + strings.Repeat(returnStroke, span-ansi.StringWidth(returnLabel)) + "╯"
+		return line + "\n" + middle + "\n" + bottom, progress
+	}
+	// Reflow as a forward chain plus an explicit labeled return edge. Never
+	// truncate a whole graph row: doing so would silently erase dependencies.
+	var lines []string
+	for i, label := range labels {
+		lines = append(lines, "    "+ansi.Truncate(label, max(1, width-4), "…"))
+		if i+1 < len(labels) {
+			lines = append(lines, "    "+ansi.Truncate("↓ "+next[chain[i]].Label, max(1, width-4), "…"))
+		}
+	}
+	back := loop.From + " " + returnStroke + strings.TrimSpace(returnLabel) + "▶ " + loop.To
+	lines = append(lines, "    "+wrapLine(back, max(1, width-6), "    "))
+	return strings.Join(lines, "\n"), progress
 }
 
 func branchJoinGraph(stages [][]*Node, statuses map[string]Status, width int) (string, bool) {

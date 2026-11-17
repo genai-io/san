@@ -335,7 +335,11 @@ follows falls out of that:
 The point of splitting `draft` from `review` is that the review runs in a
 clean context instead of grading what it just wrote. The worst-case execution
 bound counts every round, and the saved-definition preview names the loop:
-`draft/review: up to 3 rounds`.
+`draft/review: up to 3 rounds`. The live footer folds linear loops back into
+one topology with a labeled return arrow. Fixed node positions and highlighted
+active paths follow the Intro's graph presentation; retry labels count actual
+returns. The running node breathes, and the round and step count grow only when
+another round starts, not from all possible future rounds.
 
 ## Interactive writers in the main conversation
 

@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,127 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestCompactLoopActiveRoutes(t *testing.T) {
+	w := mustParse(t, strings.ReplaceAll(optimizer, "FAIL", "REVISE"))
+	for _, tc := range []struct {
+		statuses map[string]Status
+		want     string
+		retry    bool
+	}{
+		{nil, "[draft]", false},
+		{map[string]Status{"review#1": StatusRunning}, "━▶[◉ review]", false},
+		{map[string]Status{"draft#2": StatusRunning}, "REVISE ×1 ━", true},
+		{map[string]Status{"review#2": StatusRunning}, "REVISE ×1 ─", true},
+		{map[string]Status{"draft#3": StatusRunning}, "REVISE ×2 ━", true},
+		{map[string]Status{"review#2": StatusSucceeded, "ship": StatusRunning}, "━PASS▶[◉ ship]", true},
+	} {
+		view := w.CompactProgressView(tc.statuses, 80)
+		if !strings.Contains(view, tc.want) {
+			t.Fatalf("missing %q:\n%s", tc.want, view)
+		}
+		if strings.Contains(view, "×") != tc.retry {
+			t.Fatal(view)
+		}
+		if strings.Count(view, "\n") != 3 {
+			t.Fatal(view)
+		}
+	}
+}
+
+func TestCompactLoopProgress(t *testing.T) {
+	w := mustParse(t, strings.ReplaceAll(optimizer, "FAIL", "REVISE"))
+	for _, tc := range []struct {
+		name          string
+		statuses      map[string]Status
+		round, marker string
+	}{
+		{"preview", nil, "up to 3 rounds", "draft"},
+		{"draft", map[string]Status{"draft#1": StatusRunning}, "round 1/3", "◉ draft"},
+		{"review", map[string]Status{"draft#1": StatusSucceeded, "review#1": StatusRunning}, "round 1/3", "◉ review"},
+		{"retry", map[string]Status{"draft#1": StatusSucceeded, "review#1": StatusSucceeded, "draft#2": StatusRunning}, "round 2/3", "○ review"},
+		{"accepted", map[string]Status{"draft#2": StatusSucceeded, "review#2": StatusSucceeded, "draft#3": StatusOmitted, "review#3": StatusSkipped, "ship": StatusRunning}, "round 2/3", "◉ ship"},
+		{"exhausted", map[string]Status{"review#3": StatusFailed}, "round 3/3", "● Failed review"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, width := range []int{32, 48, 80, 120} {
+				view := w.CompactProgressView(tc.statuses, width)
+				for _, want := range []string{tc.round, tc.marker, "PASS", "REVISE", "spec", "ship"} {
+					if !strings.Contains(view, want) {
+						t.Fatalf("missing %q:\n%s", want, view)
+					}
+				}
+				if strings.Contains(view, "#") || view != w.CompactProgressView(tc.statuses, width) {
+					t.Fatalf("unfolded or unstable:\n%s", view)
+				}
+				if tc.statuses == nil && strings.ContainsAny(view, "○●◉") {
+					t.Fatal(view)
+				}
+				for line := range strings.SplitSeq(view, "\n") {
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("width %d: %q", width, line)
+					}
+				}
+				if width >= 80 && strings.Count(view, "\n") != 3 {
+					t.Fatalf("not horizontal:\n%s", view)
+				}
+			}
+		})
+	}
+}
+
+func TestCompactLoopDynamicCounts(t *testing.T) {
+	w := mustParse(t, "```mermaid\nflowchart LR\na --> b --> c\nc -->|REVISE x3| a\nc -->|PASS| result\n```\n## a\nA\n## b\nB\n## c\nC\n## result\nResult\n")
+	statuses := map[string]Status{}
+	steps := []struct{ id, count string }{
+		{"a#1", "0/4"}, {"b#1", "1/4"}, {"c#1", "2/4"},
+		{"a#2", "3/7"}, {"b#2", "4/7"}, {"c#2", "5/7"},
+		{"a#3", "6/10"}, {"b#3", "7/10"}, {"c#3", "8/10"},
+	}
+	for i, step := range steps {
+		if i > 0 {
+			statuses[steps[i-1].id] = StatusSucceeded
+		}
+		statuses[step.id] = StatusRunning
+		for _, width := range []int{80, 120} {
+			header, _, _ := strings.Cut(w.CompactProgressView(statuses, width), "\n")
+			if !strings.HasSuffix(header, step.count) {
+				t.Fatalf("%s: %s", step.id, header)
+			}
+		}
+	}
+	statuses["c#3"], statuses["result"] = StatusFailed, StatusSkipped
+	if view := w.CompactProgressView(statuses, 80); !strings.Contains(view, "round 3/3 · 10/10") {
+		t.Fatal(view)
+	}
+	for _, accepted := range []int{1, 2} {
+		statuses = map[string]Status{"result": StatusSucceeded}
+		for _, n := range w.Nodes {
+			if n.ID == "result" {
+				continue
+			}
+			statuses[n.ID] = StatusOmitted
+			for r := 1; r <= accepted; r++ {
+				if strings.HasSuffix(n.ID, fmt.Sprintf("#%d", r)) {
+					statuses[n.ID] = StatusSucceeded
+				}
+			}
+		}
+		want := fmt.Sprintf("round %d/3 · %d/%d", accepted, accepted*3+1, accepted*3+1)
+		if view := w.CompactProgressView(statuses, 80); !strings.Contains(view, want) {
+			t.Fatal(view)
+		}
+	}
+}
+
+func TestCompactLoopBranchFallback(t *testing.T) {
+	source := strings.Replace(optimizer, "spec --> draft --> review", "spec --> draft --> review\n draft --> check --> review", 1) + "\n## check\nCheck\n"
+	w := mustParse(t, source)
+	view := w.CompactProgressView(nil, 120)
+	if !strings.Contains(view, "review#1 ← draft#1, check#1") || !strings.Contains(view, "[FAIL]") || !strings.Contains(view, "[PASS]") {
+		t.Fatal(view)
+	}
+}
 
 func TestBlueprintTitle(t *testing.T) {
 	for _, tc := range []struct{ name, want string }{

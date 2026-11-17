@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ import (
 )
 
 var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+var liveFlowNode = regexp.MustCompile(`(◉|●|○) (?:Failed |Blocked |Not selected )?[A-Za-z][A-Za-z0-9_#-]*`)
+var liveFlowEdge = regexp.MustCompile(`[─━┄]+[▶→]?|[→↑│╰╯]`)
 
 // View dispatches to one of four layouts, top-down:
 //
@@ -512,7 +515,27 @@ func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, widt
 
 func styleFlowLiveView(live string, frame int) string {
 	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
-	marker := body.Faint(frame%6 < 2).Render("●")
+	focus := body.Foreground(kit.CurrentTheme.Focus)
+	marker := focus.Faint(frame%6 < 2).Render("●")
+	live = liveFlowNode.ReplaceAllStringFunc(live, func(node string) string {
+		glyph, name, _ := strings.Cut(node, " ")
+		switch {
+		case glyph == "◉":
+			return marker + " " + focus.Bold(true).Render(name)
+		case strings.HasPrefix(name, "Failed "):
+			return body.Foreground(kit.CurrentTheme.Error).Render(node)
+		case glyph == "●":
+			return body.Foreground(kit.CurrentTheme.TextDim).Render(node)
+		default:
+			return body.Foreground(kit.CurrentTheme.TextDisabled).Render(node)
+		}
+	})
+	live = liveFlowEdge.ReplaceAllStringFunc(live, func(edge string) string {
+		if strings.HasPrefix(edge, "━") {
+			return focus.Bold(true).Faint(frame%6 < 2).Render(edge)
+		}
+		return body.Foreground(kit.CurrentTheme.TextDim).Render(edge)
+	})
 	lines := strings.Split(strings.ReplaceAll(live, "◉", marker), "\n")
 	if len(lines) > 0 {
 		indent := len(lines[0]) - len(strings.TrimLeft(lines[0], " "))
