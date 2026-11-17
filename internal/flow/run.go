@@ -91,6 +91,7 @@ type WorkerCheckpoint struct {
 
 // Options tune one run.
 type Options struct {
+	// Route may override the label a finished node routes by; its output is kept.
 	Route func(*Node, string) (string, error)
 	// Inputs back {{input.key}} references and {{input}} under the key "input".
 	Inputs map[string]string
@@ -283,6 +284,14 @@ func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Re
 	return r
 }
 
+// effectiveRoute prefers a host-chosen route over the node's literal answer.
+func effectiveRoute(route, output string) string {
+	if route != "" {
+		return strings.TrimSpace(route)
+	}
+	return strings.TrimSpace(output)
+}
+
 // unanswered fails a loop's tail when its answer takes none of its ways out.
 //
 // The node carrying a back edge is the one place the author declares every
@@ -293,13 +302,6 @@ func Run(ctx context.Context, b *Blueprint, runner NodeRunner, opts Options) *Re
 // Every other node, a gate inside a loop body included, is exempt: a gate's
 // unmatched NO is how it says "stop here", and nothing in the graph tells a
 // gate from a router.
-func effectiveRoute(route, output string) string {
-	if route != "" {
-		return strings.TrimSpace(route)
-	}
-	return strings.TrimSpace(output)
-}
-
 func unanswered(n *Node, out string) error {
 	if !n.tail || len(n.downstream) == 0 {
 		return nil

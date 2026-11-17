@@ -275,7 +275,7 @@ func (m *model) onFlowMain(msg flowMainMsg) tea.Cmd {
 		}
 		return nil
 	case flowMainReview:
-		revise := m.userInput.Queue.Len() > 0 || m.pendingMessages.Len() > 0
+		revise := len(m.flowMainAmendments()) > 0 || m.pendingMessages.Len() > 0
 		if msg.accepted && !revise {
 			msg.lease.bridge.mu.Lock()
 			msg.lease.capture = false

@@ -434,3 +434,24 @@ func TestFlowMainCancelledRequestNeverReachesUI(t *testing.T) {
 	}
 	l.Close(nil)
 }
+
+func TestFlowMainReviewIgnoresQueuedCommands(t *testing.T) {
+	m, _ := compactQueueModel(t)
+	m.flowMain = newFlowMainBridge()
+	e := m.flowMain.bind(m.services.Session)
+	l, err := e.Open(context.Background(), flow.MainRunInfo{SessionID: e.owner.ID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.flowMain.bind(nil)
+	m.userInput.Queue.Enqueue("/model", nil)
+	m.userInput.Queue.Enqueue("amendment behind a command", nil)
+	reply := make(chan flowMainReply, 1)
+	m.onFlowMain(flowMainMsg{lease: l.(*flowMainLease), ctx: context.Background(), op: flowMainReview, accepted: true, reply: reply})
+	if r := <-reply; r.revise || r.err != nil {
+		t.Fatalf("queued command forced an empty revision: %+v", r)
+	}
+	if m.flowMainCapturing() {
+		t.Fatal("acceptance did not seal input capture")
+	}
+}

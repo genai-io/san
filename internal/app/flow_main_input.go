@@ -41,10 +41,7 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 	var amendments []string
 	var prepared []input.QueueItem
 	var attachments []core.Attachment
-	for _, item := range m.userInput.Queue.Items() {
-		if m.isSlashCommand(item.Content) || input.IsExitRequest(item.Content) {
-			break
-		}
+	for _, item := range m.flowMainAmendments() {
 		if blocked, reason := m.checkPromptHook(context.Background(), item.Content); blocked {
 			return core.Message{}, nil, nil, fmt.Errorf("queued writer input blocked: %s", reason)
 		}
@@ -84,6 +81,18 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 		return core.Message{}, nil, nil, fmt.Errorf("Flow writer input could not be prepared")
 	}
 	return message, start, m.acceptFlowMainInput(m.flowMainLease(), prepared, strings.Join(amendments, "\n\n"), nil, true), nil
+}
+
+// flowMainAmendments is the queued prefix a writer revision consumes; a
+// command or exit request ends it and runs after Flow releases input.
+func (m *model) flowMainAmendments() []input.QueueItem {
+	items := m.userInput.Queue.Items()
+	for i, item := range items {
+		if m.isSlashCommand(item.Content) || input.IsExitRequest(item.Content) {
+			return items[:i]
+		}
+	}
+	return items
 }
 
 // acceptFlowMainInput captures accepted text independently of later queue edits.
