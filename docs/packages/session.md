@@ -140,7 +140,9 @@ separate from digest-addressed request blobs and are not blob-GC candidates.
 chain. Autopilot policy contains full native settings with mission progress kept
 separately. Todos retain native tracker descriptions, metadata, dependencies,
 owners and timestamps. User-renamed titles live in attrs and override generated
-state titles. `RecordState` and `RecordCatalogues` write nothing when unchanged.
+state titles. `RecordState` diffs the JSON-normalized patch against committed
+state, so runtime timestamps and map value types do not create false changes.
+`RecordState` and `RecordCatalogues` write nothing when unchanged.
 
 ## Fork, organization and retention
 
