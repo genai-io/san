@@ -8,9 +8,68 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func TestBatchReaderWaitsForMoveButDoesNotLockStream(t *testing.T) {
+	ctx := t.Context()
+	store := cleanStore(t)
+	s := createTyped(t, store, CreateOptions{ID: "moving"})
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	id := s.ID()
+	lib := library{root: store.projectDir}
+	if err := os.MkdirAll(lib.trashRoot(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	read := func() error {
+		_, err := store.Read(ctx, id)
+		return err
+	}
+	result := make(chan error, 1)
+	err := lib.withPathLock(func() error {
+		started := make(chan struct{})
+		go func() {
+			close(started)
+			result <- read()
+		}()
+		<-started
+		select {
+		case err := <-result:
+			t.Fatalf("read finished during move: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+		return os.Rename(lib.sessionDir(id), lib.trashDir(id))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read after move: %v", err)
+	}
+	if err := store.Restore(ctx, id); err != nil {
+		t.Fatalf("reader obstructed restore: %v", err)
+	}
+	for _, err := range store.CommittedBatches(ctx, id) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() { result <- read() }()
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("stream held the path lock across yield")
+		}
+		return
+	}
+	t.Fatal("restored stream was empty")
+}
 
 func TestStoreReadOnlyNativeRequests(t *testing.T) {
 	ctx := context.Background()

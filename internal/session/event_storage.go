@@ -225,7 +225,7 @@ func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession
 // readEventsIn reads the session whose directory is dir, live or trashed.
 func (s *Store) readEventsIn(ctx context.Context, dir, id string, tailLimit *sdksession.Tail) (*eventState, error) {
 	state := newEventState()
-	for committed, err := range readEventBatches(ctx, dir) {
+	for committed, err := range s.readEventBatches(ctx, dir) {
 		if err != nil {
 			return nil, err
 		}
