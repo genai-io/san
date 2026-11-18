@@ -29,6 +29,9 @@ func (acpTestProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
 	return []llm.ModelInfo{{ID: "test", ContextWindow: 200000}}, nil
 }
 
+// Session persistence needs headroom under CI's race and coverage instrumentation.
+const acpTestRequestTimeout = 30 * time.Second
+
 type acpFixture struct {
 	host     *acpHost
 	endpoint *acp.Agent
@@ -116,7 +119,7 @@ func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(c
 			}
 		}
 	})
-	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	initCtx, cancel := context.WithTimeout(ctx, acpTestRequestTimeout)
 	defer cancel()
 	if _, err := f.client.Initialize(initCtx, init); err != nil {
 		t.Fatal(err)
@@ -126,7 +129,7 @@ func newACPFixtureOptions(t testing.TB, driver *aitest.Driver, permission func(c
 
 func (f *acpFixture) session(t testing.TB, cwd string) protocol.SessionID {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(f.ctx, acpTestRequestTimeout)
 	defer cancel()
 	res, err := f.client.CreateSession(ctx, protocol.NewSessionRequest{CWD: cwd, MCPServers: []protocol.MCPServer{}})
 	if err != nil {
@@ -135,7 +138,7 @@ func (f *acpFixture) session(t testing.TB, cwd string) protocol.SessionID {
 	return res.SessionID
 }
 func (f *acpFixture) prompt(id protocol.SessionID, text string) (protocol.PromptResponse, error) {
-	ctx, cancel := context.WithTimeout(f.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(f.ctx, acpTestRequestTimeout)
 	defer cancel()
 	return f.client.Prompt(ctx, protocol.PromptRequest{SessionID: id, Prompt: []protocol.ContentBlock{acpText(text)}})
 }

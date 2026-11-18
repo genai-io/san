@@ -13,6 +13,7 @@ func toModelInfo(m ai.Model) ModelInfo {
 		ID:            m.ID,
 		Name:          m.Name,
 		DisplayName:   m.Name,
+		Description:   m.Description,
 		ContextWindow: m.ContextWindow,
 		MaxOutput:     m.MaxOutput,
 		Lifecycle:     toModelLifecycle(m.Stage),

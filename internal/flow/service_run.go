@@ -245,6 +245,8 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 	s.mu.Unlock()
 	go func() {
 		var runErr error
+		// Completion must follow executor cleanup so waiters can safely resume.
+		defer func() { bg.Complete(runErr) }()
 		if main != nil {
 			defer func() { main.Close(runErr) }()
 		}
@@ -320,7 +322,6 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 		} else {
 			bg.AppendOutput([]byte(res.FinalOutput(b)))
 		}
-		bg.Complete(runErr)
 	}()
 	return id, nil
 }

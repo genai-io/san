@@ -56,8 +56,9 @@ belongs here".
 
 ## Writing Style
 
-- Keep docs concise and clear; prefer diagrams over long prose.
-- Code comments are optional. Keep only brief notes on non-obvious intent or constraints.
+- Keep docs concise and clear; prefer short bullets or diagrams over long prose.
+- Keep comments brief and focused on non-obvious intent or constraints; do not narrate code.
+- Document durable behavior, not task-local setup notes or implementation history.
 
 ## Common Commands
 
