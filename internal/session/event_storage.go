@@ -129,6 +129,15 @@ func (s *Store) createSession(ctx context.Context, batchID, sessionID string, cr
 	if err != nil {
 		return nil, err
 	}
+	return s.publishSession(ctx, opened, func(_ string) error {
+		_, err := opened.commitEventBatch(ctx, prepared)
+		return err
+	})
+}
+
+// publishSession stages the complete session before handing off its writer at the final path.
+func (s *Store) publishSession(ctx context.Context, opened *eventSession, populate func(stage string) error) (*eventSession, error) {
+	sessionID := opened.id
 	final := s.sessionDir(sessionID)
 	if _, err := os.Stat(final); err == nil {
 		return nil, fmt.Errorf("session %s already exists", sessionID)
@@ -146,7 +155,7 @@ func (s *Store) createSession(ctx context.Context, batchID, sessionID string, cr
 	if opened.log, err = openEventLog(ctx, stage); err != nil {
 		return nil, err
 	}
-	receipt, err := opened.commitEventBatch(ctx, prepared)
+	err = populate(stage)
 	if err = errors.Join(err, opened.log.close()); err != nil {
 		return nil, err
 	}
@@ -156,7 +165,7 @@ func (s *Store) createSession(ctx context.Context, batchID, sessionID string, cr
 	if opened.log, err = openEventLog(ctx, final); err != nil {
 		return nil, err
 	}
-	if tail, err := opened.log.tail(); err != nil || tail != receipt.Tail {
+	if tail, err := opened.log.tail(); err != nil || tail != opened.state.tail {
 		return nil, errors.Join(sdksession.ErrTail, err, opened.log.close())
 	}
 	return opened, nil
@@ -216,7 +225,7 @@ func (s *Store) readEvents(ctx context.Context, id string, tailLimit *sdksession
 // readEventsIn reads the session whose directory is dir, live or trashed.
 func (s *Store) readEventsIn(ctx context.Context, dir, id string, tailLimit *sdksession.Tail) (*eventState, error) {
 	state := newEventState()
-	for committed, err := range readEventBatches(ctx, dir) {
+	for committed, err := range s.readEventBatches(ctx, dir) {
 		if err != nil {
 			return nil, err
 		}

@@ -63,8 +63,10 @@ mode never grants permission that current startup policy did not grant.
   trash/<sid>/                  whole deleted session directory
 ```
 
-Project `.locks/<sid>` paths coordinate short append/attrs/directory/GC mutations;
-they are not authoritative conversation facts. Request blobs sync before the
+Project `.locks/<sid>` paths coordinate short append/attrs/directory/GC mutations.
+A separate project `.session-paths.lock` serializes the reader's existence check
+and SDK open with trash, restore and purge renames. Readers release it before
+replaying or streaming batches. Request blobs sync before the
 referencing event commits. SDK transport recovery remains in sdk-go; product
 validation and projection remain in `session`.
 
@@ -145,6 +147,10 @@ state, so runtime timestamps and map value types do not create false changes.
 `RecordState` and `RecordCatalogues` write nothing when unchanged.
 
 ## Fork, organization and retention
+
+`Create` and `Fork` build in a hidden directory and publish it by one rename.
+Before returning a writer, both reopen the published log and verify its tail
+against the last staged commit.
 
 `Fork` copies a validated event prefix into an independent session, retaining
 native message IDs, provenance and unfinished operations. It changes creation

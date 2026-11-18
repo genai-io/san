@@ -51,7 +51,8 @@ type ToolToggleMsg struct {
 type ToolSelector struct {
 	list         tabbedList[toolItem]
 	loadDisabled func(scope setting.Scope) map[string]bool
-	saveDisabled func(disabled map[string]bool, scope setting.Scope) error
+	saveDisabled func(name string, disabled *bool, scope setting.Scope) error
+	saveError    string
 	// disabledByScope holds each scope's explicit disabled entries, loaded
 	// once per open and mutated by Toggle.
 	disabledByScope map[setting.Scope]map[string]bool
@@ -62,7 +63,7 @@ type ToolSelector struct {
 // NewToolSelector creates a new ToolSelector with injected load/save callbacks.
 func NewToolSelector(
 	loadDisabled func(scope setting.Scope) map[string]bool,
-	saveDisabled func(disabled map[string]bool, scope setting.Scope) error,
+	saveDisabled func(name string, disabled *bool, scope setting.Scope) error,
 	heldOn func() map[string]string,
 ) ToolSelector {
 	return ToolSelector{
@@ -95,6 +96,7 @@ func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.Too
 		setting.ScopeProject: s.loadDisabled(setting.ScopeProject),
 		setting.ScopeUser:    s.loadDisabled(setting.ScopeUser),
 	}
+	s.saveError = ""
 	s.held = nil
 	if s.heldOn != nil {
 		s.held = s.heldOn()
@@ -140,18 +142,21 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 
 	// A factory-default-disabled tool needs an explicit "false" entry when
 	// enabled — deleting its key would fall back to the disabled default.
-	m := s.disabledByScope[scope]
-	switch {
-	case enabling && setting.IsDefaultDisabledTool(name):
-		m[name] = false
-	case enabling:
-		delete(m, name)
-	case setting.IsDefaultDisabledTool(name):
-		delete(m, name)
-	default:
-		m[name] = true
+	disabled := !enabling
+	var explicit *bool
+	if disabled != setting.IsDefaultDisabledTool(name) {
+		explicit = &disabled
 	}
-	_ = s.saveDisabled(m, scope)
+	if err := s.saveDisabled(name, explicit, scope); err != nil {
+		s.saveError = fmt.Sprintf("Could not save %s setting: %v", name, err)
+		return nil
+	}
+	s.saveError = ""
+	if explicit == nil {
+		delete(s.disabledByScope[scope], name)
+	} else {
+		s.disabledByScope[scope][name] = disabled
+	}
 
 	return func() tea.Msg {
 		return ToolToggleMsg{ToolName: name, Enabled: enabling}
@@ -169,6 +174,10 @@ func (s *ToolSelector) Render() string {
 }
 
 func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
+	if s.saveError != "" {
+		sb.WriteString(kit.SelectorStatusError().Render(s.saveError))
+		sb.WriteByte('\n')
+	}
 	startIdx, endIdx := s.list.nav.VisibleRange()
 
 	if startIdx > 0 {

@@ -48,7 +48,9 @@ So the right mental model:
 [`plugin`](../packages/plugin.md) discovers plugins and **pushes** the
 per-primitive contributions to each consuming package at startup via
 callbacks (see `Options.PluginSkillPaths`, `Options.PluginAgentPaths`,
-etc.). The consumer doesn't import `plugin`.
+etc.). The consumer doesn't import `plugin`. TUI and ACP use the same path and
+MCP translations but read different registries. Only project and local plugin
+scopes count as project skill and command paths.
 
 ## Discovery Order
 

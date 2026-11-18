@@ -17,13 +17,16 @@ var (
 )
 
 type LoopCommand struct {
-	Prompt string
-	Cron   string
-	Human  string
-	Note   string
+	Prompt   string
+	Cron     string
+	Human    string
+	Note     string
+	deadline time.Time
+	days     int
 }
 
 type loopCadence struct {
+	days     int
 	cronExpr string
 	label    string
 	note     string
@@ -69,11 +72,18 @@ func buildLoopCommand(prompt, interval string, now time.Time) (LoopCommand, erro
 	if err != nil {
 		return LoopCommand{}, err
 	}
+	var deadline time.Time
+	if cadence.days > 0 {
+		anchor := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), chooseLoopScheduleMinute(now.Minute()), 0, 0, now.Location())
+		deadline = anchor.AddDate(0, 0, cadence.days)
+	}
 	return LoopCommand{
-		Prompt: prompt,
-		Cron:   cadence.cronExpr,
-		Human:  cadence.label,
-		Note:   cadence.note,
+		days:     cadence.days,
+		deadline: deadline,
+		Prompt:   prompt,
+		Cron:     cadence.cronExpr,
+		Human:    cadence.label,
+		Note:     cadence.note,
 	}, nil
 }
 
@@ -112,8 +122,18 @@ func buildLoopOnceCommand(prompt, interval string, now time.Time) (LoopCommand, 
 	if err != nil {
 		return LoopCommand{}, err
 	}
-	minutes := intervalSpecToMinutes(spec)
-	target := now.Add(time.Duration(minutes) * time.Minute).Truncate(time.Minute)
+	// Bound the delay before converting user-supplied units to a time.Duration.
+	unit := map[string]time.Duration{"s": time.Second, "m": time.Minute, "h": time.Hour, "d": 24 * time.Hour}[spec.Unit]
+	maxDelay := time.Duration(1<<63 - 1).Truncate(time.Minute)
+	if int64(spec.Value) > int64(maxDelay/unit) {
+		return LoopCommand{}, fmt.Errorf("interval too long")
+	}
+	delay := time.Duration(spec.Value) * unit
+	minutes := int(delay / time.Minute)
+	if delay%time.Minute != 0 {
+		minutes++
+	}
+	target := now.Add(time.Duration(minutes) * time.Minute)
 
 	note := ""
 	if spec.Unit == "s" {
@@ -121,10 +141,10 @@ func buildLoopOnceCommand(prompt, interval string, now time.Time) (LoopCommand, 
 	}
 
 	return LoopCommand{
-		Prompt: prompt,
-		Cron:   fmt.Sprintf("%d %d %d %d *", target.Minute(), target.Hour(), target.Day(), int(target.Month())),
-		Human:  fmt.Sprintf("once at %s", target.Format("2006-01-02 15:04")),
-		Note:   note,
+		Prompt:   prompt,
+		deadline: target,
+		Human:    fmt.Sprintf("once at %s", target.Format("2006-01-02 15:04:05")),
+		Note:     note,
 	}, nil
 }
 
@@ -260,8 +280,8 @@ func cadenceFromMinutes(totalMinutes int, now time.Time) loopCadence {
 		}
 	}
 	return loopCadence{
-		cronExpr: fmt.Sprintf("%d %d */%d * *", minute, hour, days),
-		label:    humanizeMinutes(totalMinutes),
+		days:  days,
+		label: humanizeMinutes(totalMinutes),
 	}
 }
 

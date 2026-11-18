@@ -233,12 +233,14 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 		settingsPath = filepath.Join(confdir.Dir(homeDir), "settings.json")
 	}
 
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+	if err := atomicfile.WithWriteLock(settingsPath, func() error { return writePluginEnabled(settingsPath, name, enabled) }); err != nil {
 		return err
 	}
+	hook.FireConfigChange(scopeConfigSource(scope), settingsPath)
+	return nil
+}
 
-	// Load existing settings
+func writePluginEnabled(settingsPath, name string, enabled bool) error {
 	var settings map[string]any
 	if err := atomicfile.ReadJSON(settingsPath, &settings); err != nil {
 		return err
@@ -255,12 +257,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	enabledPlugins[name] = enabled
 	settings["enabledPlugins"] = enabledPlugins
 
-	// Write back
-	if err := atomicfile.WriteJSON(settingsPath, settings, 0o644); err != nil {
-		return err
-	}
-	hook.FireConfigChange(scopeConfigSource(scope), settingsPath)
-	return nil
+	return atomicfile.WriteJSON(settingsPath, settings, 0o644)
 }
 
 func scopeConfigSource(scope Scope) string {

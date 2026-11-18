@@ -55,7 +55,7 @@ func TestCompletionAcceptanceBatch(t *testing.T) {
 		t.Fatalf("lost accounting or invented output: %+v", outcome)
 	}
 	var sizes []int
-	for batch, err := range readEventBatches(t.Context(), store.sessionDir(s.ID())) {
+	for batch, err := range store.CommittedBatches(t.Context(), s.ID()) {
 		if err != nil {
 			t.Fatal(err)
 		}

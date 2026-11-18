@@ -68,7 +68,7 @@ func recorderGolden(t *testing.T, s *Session, want ...string) {
 func recorderBatches(t *testing.T, store *Store, s *Session) [][]string {
 	t.Helper()
 	var out [][]string
-	for b, err := range readEventBatches(context.Background(), store.sessionDir(s.ID())) {
+	for b, err := range store.CommittedBatches(context.Background(), s.ID()) {
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -148,6 +148,55 @@ func TestForkAtAnEarlierPoint(t *testing.T) {
 	}
 }
 
+func TestCreateAndForkCompeteForDestination(t *testing.T) {
+	ctx := context.Background()
+	store, src, create := eventStorageFixture(t)
+	start := make(chan struct{})
+	type result struct {
+		fork   bool
+		opened *eventSession
+		err    error
+	}
+	results := make(chan result, 2)
+	go func() {
+		<-start
+		s, err := store.createSession(ctx, "create", "dest", create, EventValidationContext{})
+		results <- result{false, s, err}
+	}()
+	go func() {
+		<-start
+		s, err := store.forkSession(ctx, src.ID(), "dest", 1, forkNow)
+		results <- result{true, s, err}
+	}()
+	close(start)
+	a, b := <-results, <-results
+	if a.err != nil {
+		a, b = b, a
+	}
+	if a.opened != nil {
+		defer a.opened.Close()
+	}
+	if b.opened != nil {
+		defer b.opened.Close()
+	}
+	if a.err != nil || a.opened == nil || b.err == nil || b.opened != nil {
+		t.Fatalf("expected one publisher: %+v, %+v", a, b)
+	}
+	p, err := store.Read(ctx, "dest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (p.Identity().Fork != nil) != a.fork {
+		t.Fatal("destination does not match winner")
+	}
+	if other, err := store.openSession(ctx, "dest"); !errors.Is(err, sdksession.ErrBusy) {
+		if other != nil {
+			other.Close()
+		}
+		t.Fatalf("winning writer does not own destination: %v", err)
+	}
+}
+
 func TestForkFailuresLeaveNothing(t *testing.T) {
 	ctx := context.Background()
 	store, _ := openStoreIn(t.TempDir())

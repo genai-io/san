@@ -125,7 +125,7 @@ func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (a
 	return acp.CreateSessionResult{NewSessionResponse: response, Commands: acpCommandCatalog(catalog)}, nil
 }
 
-func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resumeID string) (protocol.NewSessionResponse, error) {
+func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resumeID string) (_ protocol.NewSessionResponse, err error) {
 	if !filepath.IsAbs(req.CWD) {
 		return protocol.NewSessionResponse{}, fmt.Errorf("session cwd must be absolute")
 	}
@@ -142,41 +142,36 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	var opened *session.Session
 	var history *session.Projection
-	if resumeID == "" {
-		opened, err = store.Create(ctx, session.CreateOptions{InitialCWD: req.CWD, Config: &session.EventConfig{Provider: new(h.provider.Name()), Model: new(h.model), GenerationOptions: &session.GenerationOptions{Version: 1, MaxTokens: new(setting.DefaultMaxTokens)}}})
-	} else {
-		opened, err = store.Open(ctx, resumeID)
-		if err == nil {
-			snapshot := opened.Snapshot()
-			history = &snapshot
-		}
-	}
-	if err != nil {
-		_ = store.Close()
-		return protocol.NewSessionResponse{}, err
-	}
-	openedOwned := true
 	defer func() {
-		if openedOwned {
-			_ = opened.Close()
-			_ = store.Close()
+		if err == nil {
+			return
 		}
+		if opened != nil {
+			err = errors.Join(err, opened.Close())
+			if resumeID == "" {
+				// Roll back only this unpublished new session, never a loaded one.
+				err = errors.Join(err, store.Delete(context.WithoutCancel(ctx), opened.ID()))
+			}
+		}
+		err = errors.Join(err, store.Close())
 	}()
-	if history != nil {
+	if resumeID != "" {
+		opened, err = store.Open(ctx, resumeID)
+		if err != nil {
+			return protocol.NewSessionResponse{}, err
+		}
+		snapshot := opened.Snapshot()
+		history = &snapshot
 		cwd := history.Identity().InitialCWD
 		if saved := history.State().ExecutionCWD; saved != nil {
 			cwd = *saved
 		}
 		if err := validateResumeDirectory(cwd, req.CWD); err != nil {
-			_ = opened.Close()
-			_ = store.Close()
 			return protocol.NewSessionResponse{}, err
 		}
 	}
 	settings, err := setting.LoadForCwd(req.CWD)
 	if err != nil {
-		_ = opened.Close()
-		_ = store.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	modelID := h.model
@@ -199,30 +194,35 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 			}
 		}
 		if !found || (saved.Provider != nil && *saved.Provider != "" && *saved.Provider != h.provider.Name()) {
-			_ = opened.Close()
 			return protocol.NewSessionResponse{}, fmt.Errorf("saved model is unavailable from the configured provider")
 		}
 		modelID = *saved.Model
 	}
 	plugins, skills, servers, err := acpExtensions(ctx, req.CWD, settings, req.MCPServers)
 	if err != nil {
-		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
-	s := &acpSession{nativeSession: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
-	s.commands = acpCommands(req.CWD, plugins)
-	s.agents, err = subagent.Load(req.CWD, agentPathsFromPlugins(plugins.AgentPaths()))
+	s := &acpSession{reminders: reminder.New(), mcp: servers, models: models}
+	ext := pluginSource{plugins}
+	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: ext.commandPaths})
+	s.agents, err = subagent.Load(req.CWD, ext.agentPaths())
 	if err != nil {
 		_ = servers.Close()
-		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
+	if opened == nil {
+		opened, err = store.Create(ctx, session.CreateOptions{InitialCWD: req.CWD, Config: &session.EventConfig{Provider: new(h.provider.Name()), Model: new(h.model), GenerationOptions: &session.GenerationOptions{Version: 1, MaxTokens: new(setting.DefaultMaxTokens)}}})
+		if err != nil {
+			_ = servers.Close()
+			return protocol.NewSessionResponse{}, err
+		}
+	}
+	s.nativeSession = agent.MainSession{Session: opened, Store: store}
 	tasks := task.NewManager()
 	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
 	if err := s.nativeSession.Validate(); err != nil {
 		_ = servers.Close()
-		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.Path())
@@ -287,7 +287,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	var hookRecording *hook.RecordingError
 	var completionRecording *llm.RecordingError
 	if errors.As(outcome.Error, &hookRecording) || errors.As(outcome.Error, &completionRecording) {
-		_ = s.close()
+		_ = s.closeRuntime()
 		return protocol.NewSessionResponse{}, outcome.Error
 	}
 	if outcome.AdditionalContext != "" {
@@ -296,28 +296,26 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	if err := ctx.Err(); err != nil {
 		s.hooks.Shutdown()
 		_ = servers.Close()
-		_ = opened.Close()
 		return protocol.NewSessionResponse{}, err
 	}
 	if history != nil {
 		if err := s.configureAgents(); err != nil {
-			_ = s.close()
+			_ = s.closeRuntime()
 			return protocol.NewSessionResponse{}, err
 		}
 		if _, err := s.runtime.Resume(s.runtimeBuildParams); err != nil {
-			_ = s.close()
+			_ = s.closeRuntime()
 			return protocol.NewSessionResponse{}, err
 		}
 	}
 	if err := s.recordState(); err != nil {
-		_ = s.close()
+		_ = s.closeRuntime()
 		return protocol.NewSessionResponse{}, err
 	}
 	id := protocol.SessionID(opened.ID())
 	h.mu.Lock()
 	h.sessions[id] = s
 	h.mu.Unlock()
-	openedOwned = false
 	return protocol.NewSessionResponse{SessionID: id, Modes: protocol.Some(s.modes()), ConfigOptions: protocol.Some(s.configOptions())}, nil
 }
 
@@ -333,6 +331,10 @@ func (h *acpHost) prompt(ctx context.Context, turn *acp.Turn, req protocol.Promp
 
 // close runs after the endpoint has joined all session callbacks.
 func (s *acpSession) close() error {
+	return errors.Join(s.closeRuntime(), s.nativeSession.Session.Close(), s.nativeSession.Store.Close())
+}
+
+func (s *acpSession) closeRuntime() error {
 	if gate := s.runtime.PermissionGate(); gate != nil {
 		gate.Close()
 	}
@@ -349,7 +351,7 @@ func (s *acpSession) close() error {
 	if s.mcp != nil {
 		err = errors.Join(err, s.mcp.Close())
 	}
-	return errors.Join(err, s.nativeSession.Session.Close(), s.nativeSession.Store.Close())
+	return err
 }
 
 func (s *acpSession) refreshMemory() {

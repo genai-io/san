@@ -21,7 +21,7 @@
 ## UI Interactions
 
 - **Interactive mode**: full TUI with input box, streaming output, and status bar.
-- **Print mode (`-p`)**: no TUI; response is written to stdout line by line.
+- **Print mode (`-p`)**: `san -p ""` reads a prompt from stdin. An empty or whitespace-only prompt exits with an error instead of opening the TUI.
 - **Plan mode**: status bar shows `[PLAN MODE]`; write tools are blocked.
 - **Session resume (`-r`)**: a scrollable session picker is shown before the TUI starts.
 

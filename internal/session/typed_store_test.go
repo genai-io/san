@@ -57,7 +57,7 @@ func TestTypedSessionAppendAndReopen(t *testing.T) {
 		t.Fatal("projection accessor leaked storage")
 	}
 	batches := 0
-	for batch, err := range readEventBatches(ctx, store.sessionDir(s.ID())) {
+	for batch, err := range store.CommittedBatches(ctx, s.ID()) {
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -8,7 +8,9 @@ layer: feature
 Data loader, merger, and the central permission decision gate.
 Reads `~/.san/settings.json` and `<project>/.san/settings.json`, merges
 project-over-user with documented precedence, and decides allow / deny /
-ask for every tool call.
+ask for every tool call. San writers lock a persistent `.lock` sibling of the
+write destination before reading settings and hold it through atomic replacement.
+User dotfile symlinks lock beside their targets; project file symlinks are replaced.
 
 ## Purpose
 
@@ -45,7 +47,7 @@ func (s *Settings) CheckPermission(toolName string, args map[string]any, session
 func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision
 func (s *Settings) CanApproveByHook(toolName string, args map[string]any, session *SessionPermissions) bool
 func (s *Settings) DisabledToolsAt(scope Scope) map[string]bool
-func (s *Settings) UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error
+func (s *Settings) UpdateDisabledToolAt(name string, disabled *bool, scope Scope) error
 
 // Package-level access
 func Initialize(opts Options)

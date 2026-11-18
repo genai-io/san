@@ -92,17 +92,18 @@ func initExtensions(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
-	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
+	source := pluginSource{plugin.Default()}
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.skillPaths})
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
-		PluginCommandPaths: pluginCommandPaths,
+		PluginCommandPaths: source.commandPaths,
 	})
-	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.agentPaths}); err != nil {
 		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
 	}
-	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.mcpServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 }
@@ -129,22 +130,23 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.services.Setting = setting.Default()
 	m.learnedStores.Update(cwd, m.services.Setting)
 
-	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
+	source := pluginSource{plugin.Default()}
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.skillPaths})
 	m.services.Skill = skill.Default()
 
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
-		PluginCommandPaths: pluginCommandPaths,
+		PluginCommandPaths: source.commandPaths,
 	})
 	m.services.Command = command.Default()
 
-	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.agentPaths}); err != nil {
 		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
 	}
 	m.services.Subagent = subagent.Default()
 
-	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.mcpServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 	m.services.MCP = mcp.DefaultManager()
@@ -157,63 +159,4 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.userInput.Suggestions.UpdateSuggestions(m.userInput.Textarea.Value())
 	m.agentReloadPending = true
 	m.bindMCPTools()
-}
-
-func pluginCommandPaths() []command.PluginCommandPath {
-	pPaths := plugin.GetPluginCommandPaths()
-	paths := make([]command.PluginCommandPath, len(pPaths))
-	for i, p := range pPaths {
-		paths[i] = command.PluginCommandPath{
-			Path:      p.Path,
-			Namespace: p.Namespace,
-			IsProject: p.Scope == plugin.ScopeProject || p.Scope == plugin.ScopeLocal,
-		}
-	}
-	return paths
-}
-
-func pluginAgentPaths() []subagent.PluginAgentPath {
-	return agentPathsFromPlugins(plugin.GetPluginAgentPaths())
-}
-
-func agentPathsFromPlugins(pPaths []plugin.PluginPath) []subagent.PluginAgentPath {
-	paths := make([]subagent.PluginAgentPath, len(pPaths))
-	for i, p := range pPaths {
-		paths[i] = subagent.PluginAgentPath{
-			Path:      p.Path,
-			Namespace: p.Namespace,
-		}
-	}
-	return paths
-}
-
-func pluginSkillPaths() []skill.PluginSkillPath {
-	pPaths := plugin.GetPluginSkillPaths()
-	paths := make([]skill.PluginSkillPath, len(pPaths))
-	for i, p := range pPaths {
-		paths[i] = skill.PluginSkillPath{
-			Path:      p.Path,
-			Namespace: p.Namespace,
-			IsProject: p.Scope == plugin.ScopeProject || p.Scope == plugin.ScopeLocal,
-		}
-	}
-	return paths
-}
-
-func pluginMCPServers() []mcp.PluginServer {
-	pServers := plugin.GetPluginMCPServers()
-	servers := make([]mcp.PluginServer, len(pServers))
-	for i, s := range pServers {
-		servers[i] = mcp.PluginServer{
-			Name:    s.Name,
-			Type:    string(s.Config.Type),
-			Command: s.Config.Command,
-			Args:    append([]string(nil), s.Config.Args...),
-			Env:     s.Config.Env,
-			URL:     s.Config.URL,
-			Headers: s.Config.Headers,
-			Scope:   string(s.Scope),
-		}
-	}
-	return servers
 }

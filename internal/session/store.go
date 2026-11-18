@@ -33,7 +33,8 @@ func OpenStore(ctx context.Context, startDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{cwd: project.InitialCwd, projectID: project.ID, projectDir: project.Root, project: &project, workspace: project.Workspace}, nil
+	store := &Store{cwd: project.InitialCwd, projectID: project.ID, projectDir: project.Root, project: &project, workspace: project.Workspace}
+	return store.initPathLock()
 }
 
 // openStoreIn opens a store rooted at dir with dir itself as the workspace. It
@@ -42,7 +43,16 @@ func openStoreIn(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
-	return &Store{cwd: dir, projectID: deriveProjectID("directory", dir), projectDir: dir, workspace: dir}, nil
+	store := &Store{cwd: dir, projectID: deriveProjectID("directory", dir), projectDir: dir, workspace: dir}
+	return store.initPathLock()
+}
+
+// Initialize the project's stable lock once so readers never add files to a store.
+func (s *Store) initPathLock() (*Store, error) {
+	if err := (library{root: s.projectDir}).withPathLock(func() error { return nil }); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // Close prevents new operations. Sessions opened from the store must be closed first.

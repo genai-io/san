@@ -51,13 +51,20 @@ func (l *eventLog) close() error { return l.w.Close() }
 
 // readEventBatches reads whole checked batches without claiming the writer or
 // repairing anything. A directory without events is os.ErrNotExist.
-func readEventBatches(ctx context.Context, dir string) iter.Seq2[sdksession.CommittedBatch, error] {
+func (s *Store) readEventBatches(ctx context.Context, dir string) iter.Seq2[sdksession.CommittedBatch, error] {
 	return func(yield func(sdksession.CommittedBatch, error) bool) {
-		if _, err := os.Stat(filepath.Join(dir, eventsFileName)); err != nil {
-			yield(sdksession.CommittedBatch{}, err)
-			return
-		}
-		st, err := sdksession.Open(dir)
+		path := filepath.Join(dir, eventsFileName)
+		// Both sessions/<id> and trash/<id> move under the same lock.
+		lib := library{root: s.projectDir}
+		var st *sdksession.Store
+		err := lib.withPathLock(func() error {
+			if _, err := os.Stat(path); err != nil {
+				return err
+			}
+			var err error
+			st, err = sdksession.Open(dir)
+			return err
+		})
 		if err != nil {
 			yield(sdksession.CommittedBatch{}, err)
 			return

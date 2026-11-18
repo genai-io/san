@@ -182,6 +182,15 @@ func TestNonInteractivePrintMode(t *testing.T) {
 	if !strings.Contains(strings.ToLower(output), "provider") {
 		t.Errorf("-p error output should mention 'provider', got: %q", output)
 	}
+
+	for _, stdin := range []string{"", " \t\n"} {
+		cmd := exec.CommandContext(t.Context(), bin, "-p", "")
+		cmd.Env, cmd.Stdin = env, strings.NewReader(stdin)
+		out, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "--print requires a prompt") {
+			t.Errorf("empty print input %q: got %q (%v)", stdin, out, err)
+		}
+	}
 }
 
 // TestSessionFork_IsIndependent verifies that forking a session creates a new,

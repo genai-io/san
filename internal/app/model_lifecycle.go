@@ -85,7 +85,7 @@ func selectorDeps(svc services, learnedStores *learnedStoreContext) input.Select
 	return input.SelectorDeps{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
-		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
+		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
 		Evolve: input.EvolveDeps{
 			Workspace: learnedStores.Snapshot,

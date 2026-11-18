@@ -22,10 +22,7 @@ commands + MCP servers + hooks。本包处理安装/卸载、marketplace 查找�
 
 ## 契约
 
-本包直接暴露 `*Registry`，外加一组包级自由函数作为跨域集成面。没有
-生产者侧的接口——每个下游消费者（skill / subagent / command / mcp /
-setting）各自取用一小撮不同的自由函数，统一成一个接口只会把互不相关的
-方法凑到一起。
+宿主从自己的 `*Registry` 读取插件路径、MCP 服务器和钩子。
 
 ```go
 package plugin
@@ -56,19 +53,17 @@ func (r *Registry) Unregister(name string)
 // 构造 Installer（包级自由函数）
 func NewInstaller(reg *Registry, cwd string) *Installer
 
-// 跨域集成（包级自由函数；从包级默认 registry 读取）。
-// 每个需要插件贡献数据的消费者 import plugin 并调用其中之一：
-func GetPluginAgentPaths() []PluginPath
-func GetPluginSkillPaths() []PluginPath
-func GetPluginCommandPaths() []PluginPath
-func GetPluginMCPServers() []PluginMCPServer
-func GetPluginHooks() map[string][]setting.Hook
-func PluginEnv() []string
+// 从当前宿主的注册表读取（TUI 默认注册表或 ACP 会话注册表）。
+func (r *Registry) AgentPaths() []PluginPath
+func (r *Registry) SkillPaths() []PluginPath
+func (r *Registry) CommandPaths() []PluginPath
+func (r *Registry) MCPServers() []PluginMCPServer
+func (r *Registry) Hooks() map[string][]setting.Hook
+func PluginEnv(ctx context.Context) []string
 
-// 插件根目录追踪（进程级全局状态；包级函数）
-func SetActivePluginRoot(path string)
-func ClearActivePluginRoot()
-func FindPluginRootForPath(path string) string
+// 当前调用的插件根目录
+func WithRoot(ctx context.Context, root string) context.Context
+func (r *Registry) RootForPath(path string) string
 
 // 包级访问
 func Initialize(ctx context.Context, opts Options) error
@@ -90,8 +85,7 @@ func ResetDefaultRegistry()           // 仅测试
 
 ## 生命周期
 
-- 构造：`Initialize(ctx, Options{CWD})` 是最早一批 `Initialize` 调用之一，
-  因为每个 feature 包的 `Initialize` 都会拉 `plugin.*Paths()`。
+- 构造：先加载注册表，再把已启用插件的路径传给各功能包。
 - 重载：启用/禁用一个插件会触发受影响 feature 包
   （commands/skills/subagents/MCP）的重载。
 

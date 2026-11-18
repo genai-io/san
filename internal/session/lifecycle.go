@@ -55,6 +55,17 @@ func (l library) withLock(ctx context.Context, id string, fn func() error) error
 	})
 }
 
+// withPathLock serializes SDK reader setup with project directory moves. It is
+// separate from lifecycle locks: forking and appending can read another ID
+// while holding one. Never replay, yield, or take a lifecycle lock inside it.
+func (l library) withPathLock(fn func() error) error {
+	return atomicfile.WithLock(filepath.Join(l.root, ".session-paths.lock"), fn)
+}
+
+func (l library) move(src, dst string) error {
+	return l.withPathLock(func() error { return os.Rename(src, dst) })
+}
+
 type deletedRecord struct {
 	DeletedAt int64 `json:"deleted_at"` // Unix ms
 }
@@ -133,7 +144,7 @@ func (l library) trashLocked(ctx context.Context, id string, now time.Time, guar
 		_ = os.Remove(marker)
 		return err
 	}
-	if err := os.Rename(dir, target); err != nil {
+	if err := l.move(dir, target); err != nil {
 		_ = os.Remove(marker)
 		return err
 	}
@@ -161,7 +172,7 @@ func (l library) restoreLocked(id string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return err
 	}
-	if err := os.Rename(src, dst); err != nil {
+	if err := l.move(src, dst); err != nil {
 		return fmt.Errorf("%w: %v", ErrExists, err)
 	}
 	_ = os.Remove(filepath.Join(dst, deletedFile))
@@ -261,7 +272,7 @@ func (l library) purge(ctx context.Context, now time.Time, dryRun bool, only map
 					return nil
 				}
 				if !dryRun {
-					if err := os.Rename(l.trashDir(t.ID), hidden); err != nil {
+					if err := l.move(l.trashDir(t.ID), hidden); err != nil {
 						return err
 					}
 				}

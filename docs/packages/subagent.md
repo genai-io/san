@@ -140,7 +140,8 @@ for later delivery; task logs never write to the event log.
   is committed to native history and queued in order until the agent attaches.
   Acceptance means durably recorded, not guaranteed processed: if setup fails,
   that mail stays in native history for inspection or continuation but is not
-  run. Continuations use `task.BeginAttemptWithSetup`: eligibility is checked
+  run. `Executor.admitContinuation` owns setup, rejection cleanup, and waking
+  retained mail. It uses `AgentTask.BeginAttemptWithSetup`: eligibility is checked
   before history is opened, preparation (opening history, registering a held
   route that rejects mail) can be canceled by Stop, and only the continuation
   input commit runs under the task lock. Retained completions are delivered

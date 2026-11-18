@@ -235,7 +235,7 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	defer cancel()
 	run.req.TaskID = generateShortID()
 	run.checkpoint = newContinuationState(run, run.parentID(), run.req.TaskID)
-	if err := e.prepareInbox(ctx, run); err != nil {
+	if err := e.prepareLaunchInbox(ctx, run); err != nil {
 		return nil, err
 	}
 	defer func() {
@@ -385,30 +385,8 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		}
 		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
-		// Reject stopped, stale or competing starts before touching native input.
-		if _, err = agentTask.BeginAttemptWithSetup(ctx, cancel, prior.Attempt, e.parentSessionID, task.AttemptSetup{
-			Prepare: func() error {
-				if err := e.openSession(ctx, run); err != nil {
-					return err
-				}
-				return e.prepareInbox(ctx, run)
-			},
-			Accept: func() error { return e.acceptContinuationInput(ctx, run) },
-		}); err != nil {
-			if run.inbox != nil {
-				run.inbox.close()
-			}
-			if run.recording != nil {
-				if storageErr := run.recording.Err(); storageErr != nil {
-					state.persistenceErr = storageErr
-				}
-				err = errors.Join(err, run.recording.Close())
-			}
-			cancel()
+		if err := e.admitContinuation(ctx, cancel, agentTask, prior.Attempt, run); err != nil {
 			return nil, err
-		}
-		if run.inbox != nil {
-			run.inbox.signalCapacity() // Outside the task lock: delivery persists retained mail.
 		}
 	} else {
 		run, err = e.prepareRun(ctx, req)
@@ -422,7 +400,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if agentTask == nil {
 		run.req.TaskID = generateShortID()
 		run.checkpoint = newContinuationState(run, run.parentID(), run.req.TaskID)
-		if err := e.prepareInbox(ctx, run); err != nil {
+		if err := e.prepareLaunchInbox(ctx, run); err != nil {
 			cancel()
 			return nil, err
 		}

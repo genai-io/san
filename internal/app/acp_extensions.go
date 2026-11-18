@@ -18,23 +18,13 @@ func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supp
 		return nil, nil, nil, err
 	}
 	plugins.MergeHooksIntoSettings(settings)
-	skills := skill.Load(skill.Options{CWD: cwd, PluginSkillPaths: func() []skill.PluginSkillPath {
-		var paths []skill.PluginSkillPath
-		for _, p := range plugins.SkillPaths() {
-			paths = append(paths, skill.PluginSkillPath{Path: p.Path, Namespace: p.Namespace, IsProject: p.Scope != plugin.ScopeUser})
-		}
-		return paths
-	}})
+	source := pluginSource{plugins}
+	skills := skill.Load(skill.Options{CWD: cwd, PluginSkillPaths: source.skillPaths})
 	configs, err := acpMCPConfigs(supplied)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	var contributions []mcp.PluginServer
-	for _, p := range plugins.MCPServers() {
-		c := p.Config
-		contributions = append(contributions, mcp.PluginServer{Name: p.Name, Type: c.Type, Command: c.Command, Args: c.Args, Env: c.Env, URL: c.URL, Headers: c.Headers, Scope: string(p.Scope)})
-	}
-	servers, err := mcp.NewSession(cwd, contributions, configs)
+	servers, err := mcp.NewSession(cwd, source.mcpServers(), configs)
 	if err != nil {
 		return nil, nil, nil, err
 	}

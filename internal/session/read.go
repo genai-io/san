@@ -81,6 +81,6 @@ func (s *Store) CommittedBatches(ctx context.Context, id string) iter.Seq2[sdkse
 			yield(sdksession.CommittedBatch{}, err)
 			return
 		}
-		readEventBatches(ctx, s.sessionDir(id))(yield)
+		s.readEventBatches(ctx, s.sessionDir(id))(yield)
 	}
 }
