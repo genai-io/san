@@ -276,3 +276,60 @@ func TestSessionJobsStayOutOfTheSharedFile(t *testing.T) {
 		t.Error("a session-only job was persisted")
 	}
 }
+
+func makeDue(s *Scheduler) {
+	for _, job := range s.jobs {
+		job.NextFire = time.Now().Add(-time.Second)
+	}
+}
+
+// Every window loads the shared durable jobs; a due job must still run once.
+func TestDurableOneShotFiresInOneWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	windowA := instanceOn(t, path)
+	if _, err := windowA.Create("* * * * *", "deploy", false, true); err != nil {
+		t.Fatal(err)
+	}
+	windowB := instanceOn(t, path)
+	makeDue(windowA)
+	makeDue(windowB)
+
+	if got := len(windowA.Tick()) + len(windowB.Tick()); got != 1 {
+		t.Fatalf("one-shot durable job fired %d times across two windows, want 1", got)
+	}
+	if !windowB.Empty() || !windowA.Empty() {
+		t.Error("a fired one-shot job stays scheduled")
+	}
+}
+
+func TestDurableRecurringFiresInOneWindowPerRun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	windowA := instanceOn(t, path)
+	job, err := windowA.Create("*/5 * * * *", "run the tests", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowB := instanceOn(t, path)
+	makeDue(windowA)
+	makeDue(windowB)
+
+	if got := len(windowA.Tick()) + len(windowB.Tick()); got != 1 {
+		t.Fatalf("recurring durable job fired %d times across two windows, want 1", got)
+	}
+	adopted := windowB.jobs[job.ID]
+	if adopted == nil {
+		t.Fatal("the window that lost the claim dropped the recurring job")
+	}
+	if adopted.FiredCount != 1 || !adopted.NextFire.After(time.Now()) {
+		t.Errorf("losing window did not adopt the run: count=%d next=%v", adopted.FiredCount, adopted.NextFire)
+	}
+
+	// The next run, scheduled after the first, is again claimed by exactly one window.
+	time.Sleep(2 * time.Millisecond)
+	next := time.Now()
+	windowA.jobs[job.ID].NextFire = next
+	adopted.NextFire = next
+	if got := len(windowB.Tick()) + len(windowA.Tick()); got != 1 {
+		t.Fatalf("second run fired %d times, want 1", got)
+	}
+}
