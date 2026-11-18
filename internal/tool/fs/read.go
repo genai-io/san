@@ -221,6 +221,9 @@ func readCappedLine(r *bufio.Reader, capBytes int) (line string, cut bool, err e
 	total := 0
 	for {
 		chunk, isPrefix, err := r.ReadLine()
+		if err == io.EOF && total > 0 {
+			return string(buf), total > capBytes, nil
+		}
 		if err != nil {
 			return "", false, err
 		}

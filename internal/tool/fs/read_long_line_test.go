@@ -43,3 +43,17 @@ func TestReadLineEndings(t *testing.T) {
 		t.Errorf("lines = %q", got)
 	}
 }
+
+func TestReadKeepsFinalLineAtBufferBoundary(t *testing.T) {
+	for _, length := range []int{4096, 8192} {
+		path := filepath.Join(t.TempDir(), "no-newline.txt")
+		if err := os.WriteFile(path, []byte(strings.Repeat("x", length)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := (&ReadTool{}).Execute(context.Background(), map[string]any{"file_path": path}, "")
+		want := strings.Repeat("x", maxLineLen) + lineTruncationMarker
+		if !got.Success || len(got.Lines) != 1 || got.Lines[0].Text != want {
+			t.Errorf("last line of %d bytes: got %d lines, error %q", length, len(got.Lines), got.Error)
+		}
+	}
+}
