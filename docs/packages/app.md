@@ -126,7 +126,8 @@ and TaskOutput/TaskStop, subject to disabled tools and native permission rules.
 - **Extensions** (`acp_extensions.go`, `acp_commands.go`): each session loads its
   own skills, plugins, agent definitions and native/client MCP servers under
   native workspace trust. Client MCP config is not saved; conflicting native
-  names fail. Stdio servers use the session cwd; schemas are fixed at setup.
+  names fail. Extension setup precedes creation of a new transcript. Stdio
+  servers use the session cwd; each prompt uses the latest cached MCP schemas.
   Only prompt commands execute, including plugin commands; TUI management
   commands fail. SDK sends the initial catalog after `session/new` responds,
   before prompt output; unchanged catalogs are not resent.
