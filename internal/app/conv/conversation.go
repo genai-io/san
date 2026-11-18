@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"slices"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -90,7 +91,27 @@ func (m *ConversationModel) AddNotice(content string) {
 // AddAgentNotice adds a notice that came from a background agent (a subagent
 // completion or interim report), rendered distinctly from a plain system notice.
 func (m *ConversationModel) AddAgentNotice(content string) {
-	m.Append(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
+	m.appendNotice(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
+}
+
+// AppendAgentMessage adds a notice whose body is also sent to the model.
+func (m *ConversationModel) AppendAgentMessage(content string) core.ChatMessage {
+	return m.appendNotice(core.ChatMessage{Role: core.ChatUser, Content: content})
+}
+
+func (m *ConversationModel) appendNotice(msg core.ChatMessage) core.ChatMessage {
+	notice := m.Append(msg)
+	idx := m.StreamMessageIndex()
+	if !m.Stream.Active || idx < m.CommittedCount {
+		return notice
+	}
+	reply := m.Messages[idx]
+	if reply.Content == "" && reply.Thinking == "" && len(reply.ToolCalls) == 0 {
+		// An empty reply has no visible position yet.
+		copy(m.Messages[idx:], m.Messages[idx+1:])
+		m.Messages[len(m.Messages)-1] = reply
+	}
+	return notice
 }
 
 func (m *ConversationModel) StreamMessageIndex() int {
@@ -147,6 +168,79 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 		return
 	}
 	last.AutopilotNote = note
+}
+
+// CommitRows renders rows for scrollback and advances the display cursor.
+func (m *ConversationModel) CommitRows(p RenderContext, checkReady bool) []string {
+	if checkReady && m.splitToolBatch() {
+		p.Messages = m.Messages
+		p.InlinedResults = PrecomputeInlinedResults(m.Messages, m.CommittedCount, m.Tool.PendingCalls...)
+	}
+	var rows []string
+	stream := m.StreamMessageIndex()
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
+		msg := m.Messages[i]
+		if checkReady && (m.Stream.Active && i == stream || m.Tool.hasPending(msg.ToolCalls)) {
+			break
+		}
+		if rendered := RenderSingleMessage(p, i); rendered != "" {
+			rows = append(rows, rendered)
+		}
+		m.Messages[i].ResetStreamCommit()
+		m.CommittedCount = i + 1
+	}
+	return rows
+}
+
+// Separate finished output from pending calls before committing the display.
+func (m *ConversationModel) splitToolBatch() bool {
+	if len(m.Tool.PendingCalls) == 0 {
+		return false
+	}
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
+		msg := m.Messages[i]
+		if msg.Role != core.ChatAssistant || !m.Tool.hasPending(msg.ToolCalls) || m.Stream.Active && msg.ID == m.Stream.MessageID {
+			continue
+		}
+		end := i + 1
+		var rows []core.ChatMessage
+		finished := make(map[string]bool)
+		for ; end < len(m.Messages); end++ {
+			row := m.Messages[end]
+			if !settledNotice(row) {
+				if row.ToolResult == nil {
+					break
+				}
+				id := row.ToolResult.ToolCallID
+				callIdx := slices.IndexFunc(msg.ToolCalls, func(call core.ToolCall) bool { return call.ID == id })
+				if callIdx < 0 || finished[id] {
+					break
+				}
+				finished[id] = true
+				rows = append(rows, core.ChatMessage{ID: core.NewMessageID(), Role: core.ChatAssistant,
+					ToolCalls: []core.ToolCall{msg.ToolCalls[callIdx]}, ToolCallsExpanded: msg.ToolCallsExpanded})
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) == 0 {
+			return false
+		}
+		pending := core.ChatMessage{ID: msg.ID, Role: core.ChatAssistant, ToolCallsExpanded: msg.ToolCallsExpanded}
+		for _, call := range msg.ToolCalls {
+			if !finished[call.ID] {
+				pending.ToolCalls = append(pending.ToolCalls, call)
+			}
+		}
+		if msg.Content != "" || msg.Thinking != "" || msg.ThinkingSignature != "" {
+			msg.ToolCalls = nil
+			m.Messages[i] = msg
+			i++
+			pending.ID = core.NewMessageID()
+		}
+		m.Messages = slices.Replace(m.Messages, i, end, append(rows, pending)...)
+		return true
+	}
+	return false
 }
 
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.JudgeDecision) {

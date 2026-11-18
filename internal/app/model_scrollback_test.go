@@ -614,15 +614,8 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	}
 }
 
-func TestToolBatchCommitsCallsAndResultsTogether(t *testing.T) {
-	m := &model{
-		env:  env{Width: 100, Height: 24},
-		conv: conv.NewModel(100),
-		services: services{
-			Subagent: subagent.NewRegistry(),
-			Tracker:  todo.NewStore(),
-		},
-	}
+func TestToolResultsCommitAsTheyFinish(t *testing.T) {
+	m := fixedComposerModel(100, 30)
 	calls := []core.ToolCall{
 		{ID: "read-1", Name: "Read", Input: `{"file_path":"first.go"}`},
 		{ID: "read-2", Name: "Read", Input: `{"file_path":"second.go"}`},
@@ -641,29 +634,34 @@ func TestToolBatchCommitsCallsAndResultsTogether(t *testing.T) {
 		if i == 0 {
 			m.conv.AddNotice("Background task finished")
 		}
-		cmds := m.CommitMessages()
-		if i < 2 {
-			if len(cmds) != 0 || m.conv.CommittedCount != 0 {
-				t.Fatalf("committed an incomplete batch after result %s", calls[idx].ID)
-			}
-			continue
+		m.CommitMessages()
+		settled := ansi.Strip(renderScrollbackLines(m.flush.visible))
+		if !strings.Contains(settled, []string{"first.go", "second.go", "third.go"}[idx]) {
+			t.Fatalf("result %s did not settle immediately:\n%s", calls[idx].ID, settled)
 		}
-		if len(cmds) != 1 || m.conv.CommittedCount != len(m.conv.Messages) {
-			t.Fatalf("completed batch must commit together: commands=%d, committed=%d", len(cmds), m.conv.CommittedCount)
+		if i == 0 && (strings.Contains(settled, "first.go") || strings.Contains(settled, "second.go")) {
+			t.Fatalf("unfinished calls entered the completed area:\n%s", settled)
 		}
 	}
-	printed := ansi.Strip(m.flush.pendingPrints[0].remaining)
-	for _, pair := range []string{
-		"● Read(first.go)\n  └ 1 line\n",
-		"● Read(second.go)\n  └ 2 lines\n",
+	if m.conv.CommittedCount != len(m.conv.Messages) {
+		t.Fatalf("finished batch left uncommitted rows: %d of %d", m.conv.CommittedCount, len(m.conv.Messages))
+	}
+	printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
+	last := -1
+	for _, text := range []string{
 		"● Read(third.go)\n  └ 3 lines",
+		"Background task finished",
+		"● Read(first.go)\n  └ 1 line",
+		"● Read(second.go)\n  └ 2 lines",
 	} {
-		if strings.Count(printed, pair) != 1 {
-			t.Fatalf("call and result must appear together once; missing %q:\n%s", pair, printed)
+		at := strings.Index(printed, text)
+		if at <= last || strings.Count(printed, text) != 1 {
+			t.Fatalf("call/result or notice is missing, duplicated, or out of order (%q):\n%s", text, printed)
 		}
+		last = at
 	}
-	if strings.Contains(printed, "Read →") || strings.Count(printed, "Background task finished") != 1 {
-		t.Fatalf("batch should have no standalone results and retain its notice:\n%s", printed)
+	if strings.Contains(printed, "Read →") {
+		t.Fatalf("batch should have no standalone results:\n%s", printed)
 	}
 }
 

@@ -12,18 +12,18 @@ func TestStreamMetadataSkipsNotices(t *testing.T) {
 	m.Stream = StreamState{Active: true, MessageID: owner.ID}
 	m.AddNotice("background error")
 	m.AddAgentNotice("another task completed")
-	if m.StreamMessageIndex() != 0 {
-		t.Fatal("notices hid the streaming assistant")
+	if m.StreamMessageIndex() != 2 {
+		t.Fatal("empty reply should follow the notices")
 	}
 	m.AppendStream("text", "reasoning")
 	m.SetStreamToolCalls([]core.ToolCall{{ID: "read-1", Name: "Read"}})
 	m.Stream.Active = false // Done arrives before InferenceEnd supplies the signature.
 	m.SetStreamThinkingSignature("signature")
-	got := m.Messages[0]
-	if got.Content != "text" || got.Thinking != "reasoning" || len(got.ToolCalls) != 1 || got.ThinkingSignature != "signature" {
+	got := m.Messages[2]
+	if got.ID != owner.ID || got.Content != "text" || got.Thinking != "reasoning" || len(got.ToolCalls) != 1 || got.ThinkingSignature != "signature" {
 		t.Fatalf("stream metadata was lost: %+v", got)
 	}
-	if m.Messages[1].Content != "background error" || m.Messages[2].Content != "another task completed" {
+	if m.Messages[0].Content != "background error" || m.Messages[1].Content != "another task completed" {
 		t.Fatal("stream updates corrupted notices")
 	}
 }

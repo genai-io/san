@@ -88,41 +88,38 @@ type RenderContext struct {
 
 	// waitingAtTail keeps transient waiting chrome after settled notices without
 	// moving the owning assistant's reasoning or response text.
-	waitingAtTail     bool
-	toolsAfterNotices bool
+	waitingAtTail bool
 }
 
-// inlinedToolResults precomputes which ToolResult messages should be
-// drawn inline with their owning assistant rather than as standalone
-// messages, in one linear pass over the message slice. Three render
-// helpers used to re-derive this independently with subtly different
-// scans; centralising it here eliminates the drift risk.
+type toolBlock struct {
+	assistantIdx int
+	calls        []core.ToolCall
+}
+
+// inlinedToolResults pairs tool results with calls and places their rows.
 type inlinedToolResults struct {
-	// resultOwner: ToolResult message index → owning assistant index.
-	// Used to know which results to SKIP when rendering a range (they
-	// will be drawn inline with their owning assistant instead).
-	resultOwner map[int]int
-	// resultsForAssistant: assistant index → (toolCallID → ToolResultData)
-	// Used by renderAssistantWithTools to draw the paired-results block.
-	resultsForAssistant map[int]map[string]ToolResultData
+	resultOwner         map[int]int                       // result index → assistant index
+	resultsForAssistant map[int]map[string]ToolResultData // assistant index → call ID → result
+	toolBlocks          map[int]toolBlock                 // row overrides, including empty assistant rows
 }
 
-// PrecomputeInlinedResults walks `messages[from:]` once and returns the
-// inlining map. `from` is the caller's CommittedCount: the render only ever
-// draws [from:] (committed messages live in native scrollback), so scanning the
-// whole conversation every frame is pure waste that grows with session length.
-// Absolute indices are preserved — the maps key by position in the full slice,
-// and a result at index ≥ from is always owned by an assistant at index ≥ from
-// (an assistant commits together with its tool results), so nothing is missed.
-// Exported because the model builds it inside messageRenderParams; everything
-// else in this package reads RenderContext.InlinedResults.
-func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedToolResults {
+// PrecomputeInlinedResults lays out tools from the first uncommitted message.
+// Calls with results follow the last notice before that result; pending calls
+// follow the last notice in the batch.
+func PrecomputeInlinedResults(messages []core.ChatMessage, from int, pending ...core.ToolCall) inlinedToolResults {
 	p := inlinedToolResults{
 		resultOwner:         make(map[int]int),
 		resultsForAssistant: make(map[int]map[string]ToolResultData),
 	}
 	if from < 0 {
 		from = 0
+	}
+	var running map[string]bool
+	if len(pending) > 0 {
+		running = make(map[string]bool, len(pending))
+		for _, call := range pending {
+			running[call.ID] = true
+		}
 	}
 	for i := from; i < len(messages); i++ {
 		msg := messages[i]
@@ -133,9 +130,12 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 		for _, tc := range msg.ToolCalls {
 			owned[tc.ID] = struct{}{}
 		}
+		anchor := i
+		var resultAnchors map[string]int
 		for j := i + 1; j < len(messages); j++ {
 			next := messages[j]
-			if next.Role == core.ChatNotice || (next.Role == core.ChatUser && next.ToolResult == nil && IsAgentEnvelope(next.Content)) {
+			if settledNotice(next) {
+				anchor = j
 				continue
 			}
 			if next.ToolResult == nil {
@@ -144,6 +144,12 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 			callID := next.ToolResult.ToolCallID
 			if _, ok := owned[callID]; !ok {
 				continue
+			}
+			if anchor != i {
+				if resultAnchors == nil {
+					resultAnchors = make(map[string]int)
+				}
+				resultAnchors[callID] = anchor
 			}
 			p.resultOwner[j] = i
 			results := p.resultsForAssistant[i]
@@ -159,6 +165,28 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 				Decision: next.Decision,
 				Details:  next.ToolDetails,
 			}
+		}
+		if anchor == i {
+			continue
+		}
+		for _, call := range msg.ToolCalls {
+			at, moved := resultAnchors[call.ID]
+			if !moved {
+				at = i
+				if _, done := p.resultsFor(i)[call.ID]; !done && running[call.ID] {
+					at = anchor
+				}
+			}
+			if p.toolBlocks == nil {
+				p.toolBlocks = make(map[int]toolBlock)
+			}
+			group := p.toolBlocks[at]
+			group.assistantIdx = i
+			group.calls = append(group.calls, call)
+			p.toolBlocks[at] = group
+		}
+		if _, ok := p.toolBlocks[i]; !ok {
+			p.toolBlocks[i] = toolBlock{assistantIdx: i}
 		}
 	}
 	return p
@@ -205,13 +233,41 @@ func adjacentCompletionNotice(p RenderContext, idx int) bool {
 		if p.InlinedResults.IsResultInlined(i) {
 			continue
 		}
-		return completionNotice(p.Messages[i])
+		return completionNotice(p.Messages[i]) && len(p.InlinedResults.toolBlocks[i].calls) == 0
 	}
 	return false
 }
 
 func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
+	body := renderMessageBody(p, idx, isStreaming)
+	if group, ok := p.InlinedResults.toolBlocks[idx]; ok && group.assistantIdx != idx {
+		owner := p.Messages[group.assistantIdx]
+		if !p.memoryStep(owner, group.assistantIdx) {
+			owner.ToolCalls = group.calls
+			owner.Content = ""
+			if tools := renderMessageTools(p, owner, group.assistantIdx); tools != "" {
+				return body + "\n" + tools
+			}
+		}
+	}
+	return body
+}
+
+func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 	msg := p.Messages[idx]
+	if p.memoryStep(msg, idx) {
+		return p.memoryStepView(msg, idx)
+	}
+	if msg.Role == core.ChatAssistant {
+		if group, ok := p.InlinedResults.toolBlocks[idx]; ok {
+			msg.ToolCalls = group.calls
+		}
+		// A tool-only message whose calls moved below a notice has no row.
+		if body := renderAssistantWithTools(p, msg, idx, isStreaming); body != "" {
+			return "\n" + body
+		}
+		return ""
+	}
 	var sb strings.Builder
 
 	// A copilot-produced turn (continuation or rewrite) wears a "⎿ autopilot ·
@@ -219,9 +275,6 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	// the trailer corner hangs it under the instruction; the normal blank line
 	// above still separates it from the turn before.
 	autopilotDriven := msg.Role == core.ChatUser && msg.ToolResult == nil && msg.AutopilotNote != ""
-	if p.memoryStep(msg, idx) {
-		return p.memoryStepView(msg, idx)
-	}
 
 	if msg.ToolResult == nil && !adjacentCompletionNotice(p, idx) {
 		sb.WriteString("\n")
@@ -286,10 +339,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		} else {
 			sb.WriteString(RenderSystemMessage(msg.Content))
 		}
-	case core.ChatAssistant:
-		sb.WriteString(renderAssistantWithTools(p, msg, idx, isStreaming))
 	}
-
 	return sb.String()
 }
 
@@ -322,7 +372,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 	}
 	base := RenderAssistantMessage(params)
 
-	if len(msg.ToolCalls) == 0 || p.toolsAfterNotices {
+	if len(msg.ToolCalls) == 0 {
 		return base
 	}
 	return base + renderMessageTools(p, msg, idx)
@@ -440,48 +490,9 @@ func settledNotice(msg core.ChatMessage) bool {
 	return msg.Role == core.ChatNotice || msg.Role == core.ChatUser && msg.ToolResult == nil && IsAgentEnvelope(msg.Content)
 }
 
-// Only live tool chrome yields to following notices; transcript text stays put.
 func renderActiveMessageRange(p RenderContext) string {
 	var sb strings.Builder
-	for i := p.CommittedCount; i < len(p.Messages); i++ {
-		if p.InlinedResults.IsResultInlined(i) {
-			continue
-		}
-		msg := p.Messages[i]
-		pending := false
-		for _, call := range msg.ToolCalls {
-			if _, done := p.InlinedResults.resultsFor(i)[call.ID]; done {
-				continue
-			}
-			for _, running := range p.PendingCalls {
-				if call.ID == running.ID {
-					pending = true
-				}
-			}
-		}
-		end := i + 1
-		hasNotice := false
-		if pending {
-			for end < len(p.Messages) && (settledNotice(p.Messages[end]) || p.InlinedResults.ownerOf(end) == i) {
-				hasNotice = hasNotice || settledNotice(p.Messages[end])
-				end++
-			}
-		}
-		live := p.StreamActive && msg.ID != "" && msg.ID == p.StreamMessageID
-		q := p
-		q.toolsAfterNotices = hasNotice
-		sb.WriteString(RenderMessageAt(q, i, live))
-		if q.toolsAfterNotices {
-			for j := i + 1; j < end; j++ {
-				if !p.InlinedResults.IsResultInlined(j) {
-					sb.WriteString(RenderMessageAt(p, j, false))
-				}
-			}
-			sb.WriteString("\n")
-			sb.WriteString(renderMessageTools(p, msg, i))
-			i = end - 1
-		}
-	}
+	sb.WriteString(RenderMessageRange(p, p.CommittedCount, len(p.Messages), false))
 	for _, worker := range p.ManagedAgents {
 		sb.WriteString("\n")
 		sb.WriteString(renderAgentView(worker, p))
@@ -552,7 +563,7 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 	// must not hide the error delivery fixed in #613.
 	notice := ""
 	if i := latestActiveNoticeIndex(p); i >= 0 {
-		notice = strings.TrimSpace(RenderMessageAt(p, i, false))
+		notice = strings.TrimSpace(renderMessageBody(p, i, false))
 		notice = strings.Join(strings.Fields(notice), " ")
 	}
 	workerHeight := height

@@ -30,10 +30,11 @@ func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
 		t.Fatal("Done lost the identity before final metadata arrived")
 	}
 	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Response: response})
-	if m.Stream.MessageID != "" || m.Messages[0].ID != owner || m.Messages[0].Content != "reply" || m.Messages[0].ThinkingSignature != "signature" {
+	reply := m.Messages[1]
+	if m.Stream.MessageID != "" || reply.ID != owner || reply.Content != "reply" || reply.ThinkingSignature != "signature" {
 		t.Fatalf("metadata did not reach its inference: %+v", m)
 	}
-	if m.Messages[1].Content != "background completed" {
+	if m.Messages[0].Content != "background completed" {
 		t.Fatal("inference corrupted the notice")
 	}
 }

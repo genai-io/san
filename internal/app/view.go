@@ -665,7 +665,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		// Conversation state
 		Messages:       m.conv.Messages,
 		CommittedCount: m.conv.CommittedCount,
-		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount),
+		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
 
 		// Streaming + tool execution
 		StreamActive:    m.conv.Stream.Active,

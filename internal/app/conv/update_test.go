@@ -50,6 +50,7 @@ func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	return &tr
 }
 func (r *postToolRuntime) TakeJudgeDecision(string) *core.JudgeDecision { return nil }
+func (r *postToolRuntime) CommitMessages() []tea.Cmd                    { return nil }
 func (r *postToolRuntime) OnStepEnd() tea.Cmd {
 	r.drainCalls++
 	return nil
