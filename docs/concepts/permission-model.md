@@ -100,7 +100,9 @@ This replaces the retired Grep/Glob tools — search runs through Bash
 without approval prompts, in every mode including explore. Deny/ask rules
 and the safety checks still run first and override it. The safety checks
 are layered: the circuit breaker (a recursive removal of the filesystem
-root or the home directory) holds in every mode, bypass included; the
+root or the home directory, including literal directory changes followed by
+recursive removal of its contents in the same shell scope) holds in every mode,
+bypass included; the
 confirmation tiers — unrecoverable (destructive commands, sensitive paths,
 data exfiltration) and recoverable (work-discarding git,
 out-of-working-dir writes) — are skipped by `bypassPermissions` mode.

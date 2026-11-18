@@ -725,6 +725,9 @@ func TestIsRootOrHomeRemoval(t *testing.T) {
 		"rm -rf $HOME", "rm -rf ${HOME}/",
 		"sudo rm -rf /", "sudo timeout 5 rm -rf /", "git diff && rm -rf ~",
 		`echo "$(rm -rf ~)"`, "echo `rm -rf /`",
+		"cd ~ && rm -rf .", "cd / && rm -rf *", "cd && rm -rf ./*", "cd $HOME; rm -rf .*",
+		"(cd ~ && sudo rm -rf *)", "pushd / && rm -r .",
+		"cd / && (rm -rf ./*)", "cd / && (cd /tmp); rm -rf ./*",
 	}
 	for _, cmd := range trips {
 		if !isRootOrHomeRemoval(cmd) {
@@ -735,6 +738,8 @@ func TestIsRootOrHomeRemoval(t *testing.T) {
 	passes := []string{
 		"rm -rf /tmp/x", "rm -rf ~/project", "rm file.txt", "rm -rf ./build",
 		"echo rm -rf /", "ls /", "git push --force origin main",
+		"cd ~/project && rm -rf .", "cd build && rm -rf *", "cd ~ && cd repo && rm -rf .",
+		"cd ~ && rm -rf build", "cd / && rm *",
 	}
 	for _, cmd := range passes {
 		if isRootOrHomeRemoval(cmd) {
@@ -1199,5 +1204,14 @@ func TestBashAllowRuleMatchesCommandAsWritten(t *testing.T) {
 	}
 	if !IsReadOnlyBashCommand("grep x f") || IsReadOnlyBashCommand("./x/grep x f") {
 		t.Error("only the grep on PATH is a known read-only command")
+	}
+}
+
+func TestDirectoryChangeInSubshellDoesNotChangeParent(t *testing.T) {
+	// Classification only: no shell command is executed.
+	for _, cmd := range []string{"(cd /); rm -rf ./*", "cd / | cat; rm -rf ./*", "cd / & rm -rf ./*"} {
+		if isRootOrHomeRemoval(cmd) {
+			t.Errorf("isolated directory change affected the parent: %q", cmd)
+		}
 	}
 }
