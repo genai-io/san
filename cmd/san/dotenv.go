@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/joho/godotenv"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 // A working-directory .env may come from a cloned repository, so it may supply
@@ -33,9 +36,13 @@ func decidesWhereCredentialsGo(name string) bool {
 // loadWorkingDirEnv applies ./.env without overriding the environment, skipping
 // and returning (sorted) the names that decide where credentials go.
 func loadWorkingDirEnv() (refused []string) {
-	vars, err := godotenv.Read()
+	cwd, err := os.Getwd()
+	if err != nil || setting.WorkingDirEnvNeedsTrust(cwd) {
+		return nil
+	}
+	vars, err := godotenv.Read(filepath.Join(cwd, ".env"))
 	if err != nil {
-		return nil // no .env, or unreadable — same as before
+		return nil // no .env, or unreadable
 	}
 	for name, value := range vars {
 		if decidesWhereCredentialsGo(name) {

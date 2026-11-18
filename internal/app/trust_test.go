@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +30,29 @@ func TestProjectModelRoutingRequiresTrustReview(t *testing.T) {
 	}
 	if setting.IsWorkspaceTrusted(cwd) {
 		t.Fatal("project model routing was silently trusted")
+	}
+}
+
+func TestTrackedDotenvAloneRequiresTrustReview(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("SAN_TRUST_WORKSPACE", "")
+	cwd := t.TempDir()
+	if out, err := exec.Command("git", "-C", cwd, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".env"), []byte("SAN_TEST_DOTENV=local\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", cwd, "add", "-f", ".env").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	findings := pendingTrustFindings(cwd)
+	if len(findings) != 1 || !strings.Contains(findings[0], ".env") || setting.IsWorkspaceTrusted(cwd) {
+		t.Fatalf("tracked .env should require trust review, got %v", findings)
 	}
 }
 

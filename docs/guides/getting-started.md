@@ -58,7 +58,9 @@ a directory you wrote. It may therefore supply credentials but not the endpoint
 they are sent to: names ending in `_BASE_URL`, the proxy variables and
 `SSL_CERT_FILE` / `SSL_CERT_DIR` are ignored there, and San names them at
 startup when it skips one. Export the variable in your shell, or set the base
-URL from `/models`, to override an endpoint.
+URL from `/models`, to override an endpoint. For a `.env` tracked by Git, trust
+the workspace and restart San from that directory to load it. An untracked
+(for example gitignored) `.env` or one outside a Git repository loads at startup.
 
 Two providers take a subscription instead of a key: **ChatGPT Subscription**
 (OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in
