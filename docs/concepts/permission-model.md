@@ -107,7 +107,8 @@ out-of-working-dir writes) — are skipped by `bypassPermissions` mode.
 
 Git global path options (`-C`, `--git-dir`, `--work-tree`) are parsed with their
 operands before classifying the subcommand. Unknown options, configuration and
-executable overrides, and unsafe output/helper flags do not qualify as reads.
+executable overrides, unsafe output/helper flags, and `git grep -O`
+(`--open-files-in-pager`, which runs its value) do not qualify as reads.
 `symbolic-ref` is read-only only for a one-ref query with known query flags;
 two-ref writes and deletion are rejected. `reflog` permits the no-argument query
 and explicit `show`, `exists`, or `list` modes, not metadata mutations such as

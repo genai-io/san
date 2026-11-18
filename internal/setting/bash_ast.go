@@ -494,6 +494,9 @@ func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	if hasUnsafeReadOnlyGitFlag(rest) {
 		return false
 	}
+	if subcommand == "grep" && hasGrepPagerFlag(rest) {
+		return false
+	}
 	if readOnlyGitSubcommands[subcommand] {
 		return true
 	}
@@ -539,6 +542,21 @@ func hasUnsafeReadOnlyGitFlag(args []string) bool {
 	for _, arg := range args {
 		switch {
 		case arg == "--output", strings.HasPrefix(arg, "--output="), arg == "--ext-diff", arg == "--textconv":
+			return true
+		}
+	}
+	return false
+}
+
+// hasGrepPagerFlag reports git grep's -O/--open-files-in-pager, whose value
+// is a command git runs on the matching files.
+func hasGrepPagerFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if strings.HasPrefix(arg, "--open-files-in-pager") ||
+			!strings.HasPrefix(arg, "--") && strings.HasPrefix(arg, "-") && strings.Contains(arg, "O") {
 			return true
 		}
 	}
