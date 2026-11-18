@@ -157,16 +157,13 @@ const (
 
 // ModelInfo is one model as the picker and the store see it.
 //
-// Two rules, both because this record is cached to disk. Every field is a fact
-// rather than a rendering of one, since prose here would fix the wording in a
-// file that outlives the release that wrote it. And each flag is phrased so the
-// common case is the zero value, since a listing written by an older San
-// decodes with them unset and that has to read as "nothing unusual" rather than
-// as a claim. A zero token limit likewise means unknown, not zero.
+// Cached fields are provider metadata, not UI labels. Missing fields from older
+// caches retain their zero values; a zero token limit means unknown.
 type ModelInfo struct {
 	ID            string               `json:"id"`
 	Name          string               `json:"name"`
 	DisplayName   string               `json:"displayName,omitempty"`
+	Description   string               `json:"description,omitempty"`
 	ContextWindow int                  `json:"inputTokenLimit,omitempty"`
 	MaxOutput     int                  `json:"outputTokenLimit,omitempty"`
 	Reasoning     *ReasoningCapability `json:"reasoning,omitempty"`

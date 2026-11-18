@@ -3,8 +3,10 @@ package input
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
 )
@@ -41,6 +43,14 @@ func (s *ProviderSelector) Render() string {
 	} else {
 		s.renderItemList(&body)
 	}
+	if description := s.renderModelDescription(); description != "" {
+		lines := strings.Split(strings.TrimRight(body.String(), "\n"), "\n")
+		for len(lines) < panel.BodyHeight()-2 {
+			lines = append(lines, "")
+		}
+		body.Reset()
+		body.WriteString(strings.Join(lines, "\n") + "\n" + description + "\n")
+	}
 	sb.WriteString(panel.PadViewport(body.String()))
 
 	// Separator before hints
@@ -64,9 +74,50 @@ func (s *ProviderSelector) emptyFilterMsg() string {
 	return kit.DimStyle().PaddingLeft(2).Render("No providers match the filter")
 }
 
+func (s *ProviderSelector) modelListLimit() int {
+	if s.activeTab != providerTabModels {
+		return s.maxVisible
+	}
+	// Reserve two detail rows and both paging indicators, independent of selection.
+	return max(1, min(s.maxVisible, s.panel().BodyHeight()-4))
+}
+
+func (s *ProviderSelector) renderModelDescription() string {
+	if s.activeTab != providerTabModels || s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
+		return ""
+	}
+	item := s.visibleItems[s.selectedIdx]
+	if item.Kind != providerItemModel || item.Model == nil {
+		return ""
+	}
+	text := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			return ' '
+		}
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, ansi.Strip(item.Model.Description))
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return ""
+	}
+	width := max(1, min(s.panel().ContentWidth()-6, s.width-10))
+	lines := strings.Split(ansi.Hardwrap(text, width, true), "\n")
+	if len(lines) > 2 {
+		lines = lines[:2]
+		lines[1] = kit.TruncateText(lines[1]+"…", width)
+	}
+	for i := range lines {
+		lines[i] = kit.DimStyle().PaddingLeft(2).Render(kit.TruncateText(lines[i], width))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // renderItemList renders the scrollable item list into the builder.
 func (s *ProviderSelector) renderItemList(sb *strings.Builder) {
-	endIdx := min(s.scrollOffset+s.maxVisible, len(s.visibleItems))
+	endIdx := min(s.scrollOffset+s.modelListLimit(), len(s.visibleItems))
 
 	if s.scrollOffset > 0 {
 		sb.WriteString(kit.DimStyle().PaddingLeft(2).Render("↑ more above"))

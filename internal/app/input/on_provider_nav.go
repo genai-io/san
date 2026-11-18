@@ -15,8 +15,8 @@ func (s *ProviderSelector) ensureVisible() {
 	if s.selectedIdx < s.scrollOffset {
 		s.scrollOffset = s.selectedIdx
 	}
-	if s.selectedIdx >= s.scrollOffset+s.maxVisible {
-		s.scrollOffset = s.selectedIdx - s.maxVisible + 1
+	if s.selectedIdx >= s.scrollOffset+s.modelListLimit() {
+		s.scrollOffset = s.selectedIdx - s.modelListLimit() + 1
 	}
 }
 

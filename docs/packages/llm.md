@@ -132,15 +132,19 @@ Worth knowing beyond the names:
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 
-OpenAI subscription discovery uses the ChatGPT Codex catalog, with
-`codexClientVersion` in the SDK's `pkg/ai/driver/openai/responses/responses.go`
-pinned to Codex CLI `0.161.0`
-([official changelog](https://learn.chatgpt.com/docs/changelog)). The backend
-uses that version to select the lineup; update it when new models require a
-newer client. `/models` shows the cache immediately and refreshes connected
-providers in the background, so reopening it after a San upgrade fetches the
-new lineup. Model availability and reasoning levels come from the account's
-live catalog, including models absent from the built-in snapshot.
+OpenAI subscription discovery uses the account's live ChatGPT Codex catalog.
+The SDK resolves `client_version` from the official npm `@openai/codex/latest`
+metadata, using an unauthenticated client separate from subscription credentials.
+The version is cached across provider instances for 24 hours within the process;
+a failed lookup retries after five minutes and keeps the last resolved version,
+or a bundled fallback on a cold start. Metadata lookup has a two-second timeout
+within the catalog fetch's eight-second budget. New model IDs and reasoning
+levels come from the live catalog, not the built-in snapshot. `/models` shows
+cached models immediately, then refreshes connected providers in the background.
+SDK callers can pin `OpenAIResponsesCompat.CodexClientVersion` to skip discovery.
+Provider descriptions are preserved in the model cache. The Models tab shows the
+highlighted model's description below the list, capped at two plain-text rows;
+models without a description keep the detail area empty.
 
 Interactive credentials use the SDK's `auth.RefreshLocker`: a cross-process
 lock covers reading the latest stored credential, refreshing it, and saving
