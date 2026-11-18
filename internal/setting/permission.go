@@ -79,39 +79,45 @@ func matchAnyForm(toolName string, args map[string]any, patterns []string) strin
 	return ""
 }
 
-// pathForms returns the call's args followed by copies whose absolute
-// file_path is cleaned and then symlink-resolved, skipping duplicates.
+// pathForms includes the submitted path, its cleaned form, and the resolved
+// target when the path is absolute.
 func pathForms(toolName string, args map[string]any) []map[string]any {
 	forms := []map[string]any{args}
-	switch toolName {
-	case "Read", "Write", "Edit", "NotebookEdit":
-	default:
+	raw := ruleFilePath(toolName, args)
+	if raw == "" {
 		return forms
 	}
-	raw, _ := args["file_path"].(string)
-	if raw == "" || !filepath.IsAbs(raw) {
-		return forms
-	}
-	seen := map[string]bool{raw: true}
-	for _, alt := range []string{filepath.Clean(raw), resolvePath(raw)} {
-		if seen[alt] {
-			continue
-		}
-		seen[alt] = true
+	cleaned := filepath.Clean(raw)
+	if cleaned != raw {
 		form := maps.Clone(args)
-		form["file_path"] = alt
+		form["file_path"] = cleaned
 		forms = append(forms, form)
+	}
+	if filepath.IsAbs(raw) {
+		if resolved := resolvePath(raw); resolved != raw && resolved != cleaned {
+			form := maps.Clone(args)
+			form["file_path"] = resolved
+			forms = append(forms, form)
+		}
 	}
 	return forms
 }
 
-// cleanPathArgs returns args with an absolute file_path cleaned, so an allow
-// rule on a directory cannot admit "dir/../elsewhere".
+func ruleFilePath(toolName string, args map[string]any) string {
+	switch toolName {
+	case "Read", "Write", "Edit", "NotebookEdit":
+		path, _ := args["file_path"].(string)
+		return path
+	}
+	return ""
+}
+
+// cleanPathArgs normalizes the file path before matching an allow rule.
 func cleanPathArgs(toolName string, args map[string]any) map[string]any {
-	if forms := pathForms(toolName, args); len(forms) > 1 {
-		if fp, _ := args["file_path"].(string); filepath.Clean(fp) != fp {
-			return forms[1]
-		}
+	path := ruleFilePath(toolName, args)
+	if path != "" && filepath.Clean(path) != path {
+		args = maps.Clone(args)
+		args["file_path"] = filepath.Clean(path)
 	}
 	return args
 }
@@ -513,6 +519,18 @@ func MatchesToolPattern(toolName string, args map[string]any, rule, pattern stri
 	if toolName == "PowerShell" {
 		cmd, _ := args["command"].(string)
 		return matchPowerShellDeny(cmd, pattern)
+	}
+	if path := ruleFilePath(toolName, args); path != "" {
+		name, glob := parseRule(pattern)
+		if name != toolName {
+			return false
+		}
+		path = strings.TrimPrefix(filepath.ToSlash(path), "./")
+		glob = strings.TrimPrefix(filepath.ToSlash(glob), "./")
+		if dir, ok := strings.CutSuffix(glob, "/**"); ok && !strings.ContainsAny(dir, "*?") {
+			return path == dir || strings.HasPrefix(path, dir+"/")
+		}
+		return matchGlob(path, glob)
 	}
 	if toolName == "Bash" && isBareShellRule(pattern) {
 		return true
