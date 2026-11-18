@@ -112,6 +112,10 @@ registration itself does not grant trust or restore historical authorizations.
   credentials remain user-wide.
 - Repository-supplied overrides require workspace trust; untracked personal
   overrides do not.
+- A working-directory `.env` loads only credential-shaped names (`*_API_KEY`,
+  `*_TOKEN`, `*_SECRET`, cloud project and region). It cannot set `SAN_*`
+  switches, base URLs, proxies, or variables such as `BASH_ENV` and `PATH`;
+  export those in your shell.
 
 **settings.json schema:**
 

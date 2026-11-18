@@ -66,6 +66,41 @@ func TestLoadWorkingDirEnv(t *testing.T) {
 	}
 }
 
+func TestIsCredentialName(t *testing.T) {
+	for _, name := range []string{"DEEPSEEK_API_KEY", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "GOOGLE_CLOUD_PROJECT", "CLOUD_ML_REGION", "GOOGLE_CLOUD_LOCATION"} {
+		if !isCredentialName(name) {
+			t.Errorf("%s should load from a working-directory .env", name)
+		}
+	}
+	for _, name := range []string{"SAN_TRUST_WORKSPACE", "SAN_DEBUG", "CLAUDE_API_KEY", "BASH_ENV", "ENV", "PATH", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "DYLD_INSERT_LIBRARIES", "LD_PRELOAD", "EDITOR", "DATABASE_URL"} {
+		if isCredentialName(name) {
+			t.Errorf("%s must not load from a working-directory .env", name)
+		}
+	}
+}
+
+// A cloned repository's .env must not trust its own workspace or make the
+// shell and git run code before the user has approved anything.
+func TestWorkingDirEnvCannotSetControls(t *testing.T) {
+	t.Chdir(t.TempDir())
+	names := []string{"SAN_TRUST_WORKSPACE", "BASH_ENV", "GIT_CONFIG_COUNT"}
+	for _, name := range names {
+		t.Setenv(name, "")
+		os.Unsetenv(name)
+	}
+	if err := os.WriteFile(".env", []byte("SAN_TRUST_WORKSPACE=1\nBASH_ENV=./x.sh\nGIT_CONFIG_COUNT=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if refused := loadWorkingDirEnv(); refused != nil {
+		t.Errorf("non-endpoint names are skipped silently, got warning for %v", refused)
+	}
+	for _, name := range names {
+		if v, ok := os.LookupEnv(name); ok {
+			t.Errorf("%s leaked from .env: %q", name, v)
+		}
+	}
+}
+
 func TestLoadWorkingDirEnvWithoutFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if refused := loadWorkingDirEnv(); refused != nil {
