@@ -91,7 +91,7 @@ type RenderContext struct {
 	waitingAtTail bool
 }
 
-type toolGroup struct {
+type toolBlock struct {
 	assistantIdx int
 	calls        []core.ToolCall
 }
@@ -100,7 +100,7 @@ type toolGroup struct {
 type inlinedToolResults struct {
 	resultOwner         map[int]int                       // result index → assistant index
 	resultsForAssistant map[int]map[string]ToolResultData // assistant index → call ID → result
-	toolsByRow          map[int]toolGroup                 // row overrides, including empty assistant rows
+	toolBlocks          map[int]toolBlock                 // row overrides, including empty assistant rows
 }
 
 // PrecomputeInlinedResults lays out tools from the first uncommitted message.
@@ -177,16 +177,16 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int, pending ...
 					at = anchor
 				}
 			}
-			if p.toolsByRow == nil {
-				p.toolsByRow = make(map[int]toolGroup)
+			if p.toolBlocks == nil {
+				p.toolBlocks = make(map[int]toolBlock)
 			}
-			group := p.toolsByRow[at]
+			group := p.toolBlocks[at]
 			group.assistantIdx = i
 			group.calls = append(group.calls, call)
-			p.toolsByRow[at] = group
+			p.toolBlocks[at] = group
 		}
-		if _, ok := p.toolsByRow[i]; !ok {
-			p.toolsByRow[i] = toolGroup{assistantIdx: i}
+		if _, ok := p.toolBlocks[i]; !ok {
+			p.toolBlocks[i] = toolBlock{assistantIdx: i}
 		}
 	}
 	return p
@@ -233,14 +233,14 @@ func adjacentCompletionNotice(p RenderContext, idx int) bool {
 		if p.InlinedResults.IsResultInlined(i) {
 			continue
 		}
-		return completionNotice(p.Messages[i]) && len(p.InlinedResults.toolsByRow[i].calls) == 0
+		return completionNotice(p.Messages[i]) && len(p.InlinedResults.toolBlocks[i].calls) == 0
 	}
 	return false
 }
 
 func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	body := renderMessageBody(p, idx, isStreaming)
-	if group, ok := p.InlinedResults.toolsByRow[idx]; ok && group.assistantIdx != idx {
+	if group, ok := p.InlinedResults.toolBlocks[idx]; ok && group.assistantIdx != idx {
 		owner := p.Messages[group.assistantIdx]
 		if !p.memoryStep(owner, group.assistantIdx) {
 			owner.ToolCalls = group.calls
@@ -259,7 +259,7 @@ func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 		return p.memoryStepView(msg, idx)
 	}
 	if msg.Role == core.ChatAssistant {
-		if group, ok := p.InlinedResults.toolsByRow[idx]; ok {
+		if group, ok := p.InlinedResults.toolBlocks[idx]; ok {
 			msg.ToolCalls = group.calls
 		}
 		// A tool-only message whose calls moved below a notice has no row.

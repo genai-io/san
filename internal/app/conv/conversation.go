@@ -90,7 +90,27 @@ func (m *ConversationModel) AddNotice(content string) {
 // AddAgentNotice adds a notice that came from a background agent (a subagent
 // completion or interim report), rendered distinctly from a plain system notice.
 func (m *ConversationModel) AddAgentNotice(content string) {
-	m.Append(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
+	m.appendNotice(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
+}
+
+// AppendAgentMessage adds a notice whose body is also sent to the model.
+func (m *ConversationModel) AppendAgentMessage(content string) core.ChatMessage {
+	return m.appendNotice(core.ChatMessage{Role: core.ChatUser, Content: content})
+}
+
+func (m *ConversationModel) appendNotice(msg core.ChatMessage) core.ChatMessage {
+	notice := m.Append(msg)
+	idx := m.StreamMessageIndex()
+	if !m.Stream.Active || idx < m.CommittedCount {
+		return notice
+	}
+	reply := m.Messages[idx]
+	if reply.Content == "" && reply.Thinking == "" && len(reply.ToolCalls) == 0 {
+		// An empty reply has no visible position yet.
+		copy(m.Messages[idx:], m.Messages[idx+1:])
+		m.Messages[len(m.Messages)-1] = reply
+	}
+	return notice
 }
 
 func (m *ConversationModel) StreamMessageIndex() int {
@@ -103,20 +123,6 @@ func (m *ConversationModel) StreamMessageIndex() int {
 		}
 	}
 	return -1
-}
-
-// MoveEmptyReplyToTail lets a notice come first without moving visible output.
-func (m *ConversationModel) MoveEmptyReplyToTail() {
-	idx := m.StreamMessageIndex()
-	if !m.Stream.Active || idx < m.CommittedCount || idx == len(m.Messages)-1 {
-		return
-	}
-	msg := m.Messages[idx]
-	if msg.Content != "" || msg.Thinking != "" || len(msg.ToolCalls) != 0 {
-		return
-	}
-	copy(m.Messages[idx:], m.Messages[idx+1:])
-	m.Messages[len(m.Messages)-1] = msg
 }
 
 func (m *ConversationModel) AppendStream(text, thinking string) {

@@ -188,15 +188,11 @@ func (m *model) showNoticeLine(n mainNotice) core.Message {
 	if n.FromAgent && n.Content != "" {
 		// The envelope is already recorded by the agent. Render that same row
 		// live rather than persisting a second notice for resume to repeat.
-		chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: n.Content})
-		message.ID = chat.ID
+		message.ID = m.conv.AppendAgentMessage(n.Content).ID
 	} else if n.FromAgent && n.Display != "" {
 		m.conv.AddAgentNotice(n.Display)
 	} else if n.Display != "" {
 		m.conv.AddNotice(n.Display)
-	}
-	if n.FromAgent && (n.Content != "" || n.Display != "") {
-		m.conv.MoveEmptyReplyToTail()
 	}
 	if n.FinishedTaskID != "" {
 		if m.taskCompletionsShown == nil {
