@@ -251,29 +251,6 @@ func autopilotMissionDone() string {
 	return autopilotDoneMark.Render("✓ autopilot") + autopilotHintDim.Render(" · mission complete")
 }
 
-// marshalAutoPilot encodes the live config for session persistence, returning
-// "" for an unset config so untouched sessions carry no autopilot state.
-func marshalAutoPilot(a setting.AutoPilotSettings) string {
-	if a.IsZero() {
-		return ""
-	}
-	b, err := json.Marshal(a)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-// parseAutoPilot decodes a persisted config blob; a blank or malformed blob
-// yields the zero config.
-func parseAutoPilot(s string) setting.AutoPilotSettings {
-	var a setting.AutoPilotSettings
-	if s != "" {
-		_ = json.Unmarshal([]byte(s), &a)
-	}
-	return a
-}
-
 // autopilotWithoutSessionFields returns the config with its per-session fields
 // cleared — the copy written to settings.json as the default for new sessions.
 // The mission and the inline system prompt belong to the session that set them:
@@ -1079,11 +1056,6 @@ func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 		answers, ok, err := autopilotAnswerQuestionResult(r.ctx, provider, modelID, systemPrompt, mission, transcript, req)
 		return autopilotQuestionMsg{request: r, req: req, answers: answers, answer: ok, err: err}
 	}
-}
-
-func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, transcript string, req *tool.QuestionRequest) (map[int][]string, bool) {
-	a, ok, _ := autopilotAnswerQuestionResult(ctx, provider, modelID, systemPrompt, mission, transcript, req)
-	return a, ok
 }
 
 func autopilotAnswerQuestionResult(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, transcript string, req *tool.QuestionRequest) (map[int][]string, bool, error) {

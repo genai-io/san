@@ -61,12 +61,6 @@ type PluginPath struct {
 	Scope     Scope
 }
 
-// GetPluginHooks returns all hooks from enabled plugins in setting.Hook format.
-// This can be merged with the application's settings.Hooks.
-func GetPluginHooks() map[string][]setting.Hook {
-	return defaultRegistry.Hooks()
-}
-
 // Hooks returns this registry's enabled hook contributions.
 func (r *Registry) Hooks() map[string][]setting.Hook {
 	result := make(map[string][]setting.Hook)

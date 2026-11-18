@@ -8,18 +8,13 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-const approvalDefaultMaxCommandLines = 20
-
 type approvalBashPreview struct {
-	bashMeta   *perm.BashMetadata
-	expanded   bool
-	maxVisible int
+	bashMeta *perm.BashMetadata
 }
 
 func newApprovalBashPreview(meta *perm.BashMetadata) *approvalBashPreview {
-	return &approvalBashPreview{bashMeta: meta, maxVisible: approvalDefaultMaxCommandLines}
+	return &approvalBashPreview{bashMeta: meta}
 }
-func (b *approvalBashPreview) toggleExpand() { b.expanded = !b.expanded }
 func (b *approvalBashPreview) render(width int) string {
 	if b.bashMeta == nil {
 		return ""
@@ -33,7 +28,4 @@ func (b *approvalBashPreview) render(width int) string {
 		rows = append(rows, ansi.Hardwrap(b.bashMeta.Description, max(1, width), true))
 	}
 	return strings.Join(rows, "\n")
-}
-func (b *approvalBashPreview) needsExpand() bool {
-	return b.bashMeta != nil && len(strings.Split(b.bashMeta.Command, "\n")) > b.maxVisible
 }

@@ -32,10 +32,6 @@ func newApprovalDiffPreview(diffMeta *perm.DiffMetadata, filePath string) *appro
 	}
 }
 
-func (d *approvalDiffPreview) toggleExpand() {
-	d.expanded = !d.expanded
-}
-
 func approvalDiffAddedStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 }
@@ -46,13 +42,6 @@ func approvalDiffRemovedStyle() lipgloss.Style {
 
 func approvalDiffContextStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-}
-
-func approvalDiffLineNoStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.TextDisabled).
-		Width(5).
-		Align(lipgloss.Right)
 }
 
 func approvalDiffMoreStyle() lipgloss.Style {
