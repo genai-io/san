@@ -36,8 +36,6 @@ var cliOpts struct {
 }
 
 func init() {
-	// Load ./.env, minus the entries that decide where credentials are sent.
-	warnRefusedEnv(loadWorkingDirEnv())
 	// Initialize logging (enabled via SAN_DEBUG=1)
 	_ = log.Init()
 
