@@ -115,6 +115,13 @@ func TestCompletionNoticeKeepsItsRowDuringShellExecution(t *testing.T) {
 		return noticeRow
 	}
 	first := rows("running")
+	m.CommitMessages()
+	if settled := ansi.Strip(renderScrollbackLines(m.flush.visible)); !strings.Contains(settled, "check file · Completed") || strings.Contains(settled, "printf late-output") {
+		t.Fatalf("notice must settle independently of the running command:\n%s", settled)
+	}
+	if row := rows("notice committed"); row != first {
+		t.Fatalf("committing the notice moved it from row %d to %d", first, row)
+	}
 	m.conv.Tool.MarkComplete(shell.ID)
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
 		ToolCallID: shell.ID, ToolName: shell.Name, Content: ai.TextContent("late-output"),
@@ -125,5 +132,26 @@ func TestCompletionNoticeKeepsItsRowDuringShellExecution(t *testing.T) {
 	m.CommitMessages()
 	if row := rows("committed"); row != first {
 		t.Fatalf("commit moved completion from row %d to %d", first, row)
+	}
+}
+
+func TestLiveShellOutputHandsOffSettledNotice(t *testing.T) {
+	m := fixedComposerModel(100, 12)
+	m.env.BashPreviewLines = 20
+	shell := core.ToolCall{ID: "shell", Name: tool.ToolBash, Input: `{"command":"long-running-command"}`}
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{shell}})
+	m.conv.Tool.Track([]core.ToolCall{shell})
+	m.showNoticeLine(mainNotice{FromAgent: true, Content: `<task-notification status="completed" description="worker">done</task-notification>`})
+	m.CommitMessages()
+	m.conv.Tool.SetProgress(shell.ID, "20 lines\n"+strings.Repeat("rolling output\n", 20))
+	m.flushVisibleOverflow()
+
+	var history strings.Builder
+	for _, print := range m.flush.pendingPrints {
+		history.WriteString(print.remaining)
+		history.WriteString(renderScrollbackLines(print.rows))
+	}
+	if out := ansi.Strip(history.String()); strings.Count(out, "worker · Completed") != 1 || strings.Contains(out, "rolling output") {
+		t.Fatalf("notice should enter scrollback without the live tool output:\n%s", out)
 	}
 }

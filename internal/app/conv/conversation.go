@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"slices"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -167,6 +168,57 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 		return
 	}
 	last.AutopilotNote = note
+}
+
+// SettleToolRows puts arrived notices and results before the unfinished calls.
+// Only the live display rows move; the agent still receives the original batch.
+func (m *ConversationModel) SettleToolRows() {
+	if len(m.Tool.PendingCalls) == 0 {
+		return
+	}
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
+		msg := m.Messages[i]
+		if msg.Role != core.ChatAssistant || !m.Tool.HasPending(msg.ToolCalls) || m.Stream.Active && msg.ID == m.Stream.MessageID {
+			continue
+		}
+		end := i + 1
+		var rows []core.ChatMessage
+		finished := make(map[string]bool)
+		for ; end < len(m.Messages); end++ {
+			row := m.Messages[end]
+			if !settledNotice(row) {
+				if row.ToolResult == nil {
+					break
+				}
+				id := row.ToolResult.ToolCallID
+				callIdx := slices.IndexFunc(msg.ToolCalls, func(call core.ToolCall) bool { return call.ID == id })
+				if callIdx < 0 || finished[id] {
+					break
+				}
+				finished[id] = true
+				rows = append(rows, core.ChatMessage{ID: core.NewMessageID(), Role: core.ChatAssistant,
+					ToolCalls: []core.ToolCall{msg.ToolCalls[callIdx]}, ToolCallsExpanded: msg.ToolCallsExpanded})
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) == 0 {
+			return
+		}
+		pending := core.ChatMessage{ID: msg.ID, Role: core.ChatAssistant, ToolCallsExpanded: msg.ToolCallsExpanded}
+		for _, call := range msg.ToolCalls {
+			if !finished[call.ID] {
+				pending.ToolCalls = append(pending.ToolCalls, call)
+			}
+		}
+		if msg.Content != "" || msg.Thinking != "" || msg.ThinkingSignature != "" {
+			msg.ToolCalls = nil
+			m.Messages[i] = msg
+			i++
+			pending.ID = core.NewMessageID()
+		}
+		m.Messages = slices.Replace(m.Messages, i, end, append(rows, pending)...)
+		return
+	}
 }
 
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.JudgeDecision) {

@@ -317,13 +317,17 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	if sig := resp.Content.ThinkingSignature(); sig != "" {
 		m.SetStreamThinkingSignature(sig)
 	}
-	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
+	calls := resp.Content.ToolCalls()
+	if len(calls) > 0 {
 		m.SetStreamToolCalls(calls)
 		m.Tool.Track(calls)
 		m.reserveAgentCalls(calls)
 	}
 	m.Stream.MessageID = ""
 	m.Stream.BuildingTool = ""
+	if len(calls) > 0 {
+		return tea.Batch(rt.CommitMessages()...)
+	}
 	return nil
 }
 
@@ -374,7 +378,7 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cm
 	if batchComplete {
 		return rt.OnStepEnd()
 	}
-	return nil
+	return tea.Batch(rt.CommitMessages()...)
 }
 
 // --- Activity handling (operates on output Model directly) ---

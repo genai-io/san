@@ -110,6 +110,15 @@ func (t *ToolExecState) IndexOf(toolCallID string) int {
 	return -1
 }
 
+func (t *ToolExecState) HasPending(calls []core.ToolCall) bool {
+	for _, call := range calls {
+		if !t.completed[call.ID] && t.IndexOf(call.ID) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *ToolExecState) MarkComplete(toolCallID string) bool {
 	if t.IndexOf(toolCallID) < 0 || t.completed[toolCallID] {
 		return false

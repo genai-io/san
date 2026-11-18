@@ -70,15 +70,12 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				t.Fatalf("InferenceEnd should release identity, not end the turn: %+v", m.conv.Stream)
 			}
 			if withTools {
-				if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "read-1" || len(m.conv.Tool.PendingCalls) != 1 {
-					t.Fatalf("successful call not installed and tracked: %+v / %+v", assistant, m.conv.Tool)
-				}
-				if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 1 {
-					t.Fatal("pending tools allowed premature commit")
+				if len(m.conv.Tool.PendingCalls) != 1 || m.conv.CommittedCount != 3 || len(m.conv.Messages) != 4 || len(m.conv.Messages[3].ToolCalls) != 1 || m.conv.Messages[3].ToolCalls[0].ID != "read-1" {
+					t.Fatal("the reply and notices should settle without committing the pending tool")
 				}
 				deliver(sdkagent.ToolStart{ID: "read-1", Name: tool.ToolRead, Args: `{"file_path":"example.go"}`})
 				deliver(sdkagent.ToolEnd{ID: "read-1", Name: tool.ToolRead, Result: sdkagent.TextResult("source contents")})
-				if len(m.conv.Tool.PendingCalls) != 0 || m.conv.Messages[3].ToolResult == nil || m.conv.Messages[3].ToolResult.IsError {
+				if len(m.conv.Tool.PendingCalls) != 0 || m.conv.Messages[4].ToolResult == nil || m.conv.Messages[4].ToolResult.IsError {
 					t.Fatal("successful tool result did not complete its batch")
 				}
 				// The SDK continues with another inference before a successful turn ends.

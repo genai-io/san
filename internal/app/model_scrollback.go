@@ -289,6 +289,9 @@ func (m *model) commitAllMessages() []tea.Cmd {
 }
 
 func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
+	if checkReady {
+		m.conv.SettleToolRows()
+	}
 	var parts []string
 	assistantIdx := m.conv.StreamMessageIndex()
 	params := m.messageRenderParams()
@@ -305,8 +308,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 			if i == assistantIdx && m.conv.Stream.Active {
 				break
 			}
-			// Keep calls live until their whole batch can be printed with its results.
-			if msg.Role == core.ChatAssistant && len(msg.ToolCalls) > 0 && len(m.conv.Tool.PendingCalls) > 0 {
+			if m.conv.Tool.HasPending(msg.ToolCalls) {
 				break
 			}
 		}

@@ -397,7 +397,8 @@ Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
 exception status. Finished tasks leave the tracker when their completion notice
-appears. New replies and later tool results stay below it, including in scrollback.
+appears. Notices and completed tool results settle without waiting for running
+tools, which remain below them.
 Inference output uses a stable message ID; each retry gets a new one.
 Completion notices and output records remain available. Resumed completed
 records whose workers are absent have no live notice to wait for. Announced
