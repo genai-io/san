@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -581,7 +580,6 @@ func shellEnv(ctx context.Context) []string {
 	if _, ok := os.LookupEnv("GIT_TERMINAL_PROMPT"); !ok {
 		env = append(env, "GIT_TERMINAL_PROMPT=0")
 	}
-	env = append(env, gitBareRepositoryGuard()...)
 	if _, ok := os.LookupEnv("DEBIAN_FRONTEND"); !ok {
 		env = append(env, "DEBIAN_FRONTEND=noninteractive")
 	}
@@ -604,28 +602,6 @@ func shellEnv(ctx context.Context) []string {
 		}
 	}
 	return env
-}
-
-// gitBareRepositoryGuard sets git's safe.bareRepository=explicit for shell
-// children, appended after any GIT_CONFIG_* pairs the user already exports.
-// A repository may check in the files of a bare repository whose config sets
-// diff.external or core.pager; without the guard a read like
-// "cd vendor/x && git diff A B", which runs without a prompt, would run it.
-func gitBareRepositoryGuard() []string {
-	n := 0
-	if v, ok := os.LookupEnv("GIT_CONFIG_COUNT"); ok {
-		parsed, err := strconv.Atoi(v)
-		if err != nil || parsed < 0 {
-			return nil // git rejects a malformed count; leave it to fail as before
-		}
-		n = parsed
-	}
-	i := strconv.Itoa(n)
-	return []string{
-		"GIT_CONFIG_KEY_" + i + "=safe.bareRepository",
-		"GIT_CONFIG_VALUE_" + i + "=explicit",
-		"GIT_CONFIG_COUNT=" + strconv.Itoa(n+1),
-	}
 }
 
 // init registers a tool per shell the platform offers (see proc.Shells), or

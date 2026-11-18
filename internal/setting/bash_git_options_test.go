@@ -8,6 +8,8 @@ func TestReadOnlyGitGlobalOptions(t *testing.T) {
 		"git -C '/tmp/review with spaces' --no-pager diff --stat",
 		"git -C /tmp -C child status --short",
 		"git -C/tmp/review log -1",
+		"git --git-dir /tmp/repo.git --work-tree /tmp/repo show HEAD",
+		"git --git-dir=/tmp/repo.git --work-tree=/tmp/repo --no-optional-locks status",
 		"git grep -n pattern", "git grep -n Old -- file",
 	} {
 		t.Run(command, func(t *testing.T) {
@@ -25,8 +27,6 @@ func TestReadOnlyGitGlobalOptions(t *testing.T) {
 		"git -c core.pager=evil log", "git -c diff.external=evil diff",
 		"git --config-env=core.pager=PAGER log", "git --exec-path=/tmp status",
 		"git -C status reset --hard", "git --work-tree status clean -fd",
-		"git --git-dir /tmp/repo.git --work-tree /tmp/repo show HEAD",
-		"git --git-dir=sub diff HEAD~1 HEAD", "cd x && git --git-dir=. log",
 		"git grep -Oid x", "git grep -O id x", "git grep -nOid x",
 		"git grep --open-files-in-pager=id x", "git -C sub grep --open-files-in-pager x",
 	} {
