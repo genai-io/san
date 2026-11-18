@@ -396,14 +396,9 @@ the tracker is visible, and shows progress only when plan items are present.
 Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
-exception status. Terminal background tasks leave their individual tracker rows after their
-completion notice enters the conversation. Notices appear immediately during
-inference, ahead of replies that haven't started. Tool results stay on their
-side of each notice when the batch settles and enters scrollback. Each inference
-binds to a message ID at `InferenceStart`; stream updates, rendering, and
-scrollback commits use that identity regardless of display order. `InferenceEnd` releases the identity after final metadata arrives;
-cancellation clears it immediately, and retries bind a new message. Turn end
-cannot reset a worker before its notice arrives.
+exception status. Finished tasks leave the tracker when their completion notice
+appears. New replies and later tool results stay below it, including in scrollback.
+Inference output uses a stable message ID; each retry gets a new one.
 Completion notices and output records remain available. Resumed completed
 records whose workers are absent have no live notice to wait for. Announced
 failed, stopped, killed, and interrupted workers share one muted, non-actionable

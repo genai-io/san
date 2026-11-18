@@ -92,37 +92,20 @@ type RenderContext struct {
 }
 
 type toolGroup struct {
-	owner int
-	calls []core.ToolCall
+	assistantIdx int
+	calls        []core.ToolCall
 }
 
-// inlinedToolResults precomputes which ToolResult messages should be
-// drawn inline with their owning assistant rather than as standalone
-// messages, in one linear pass over the message slice. Three render
-// helpers used to re-derive this independently with subtly different
-// scans; centralising it here eliminates the drift risk.
+// inlinedToolResults pairs tool results with calls and places their rows.
 type inlinedToolResults struct {
-	// resultOwner: ToolResult message index → owning assistant index.
-	// Used to know which results to SKIP when rendering a range (they
-	// will be drawn inline with their owning assistant instead).
-	resultOwner map[int]int
-	// resultsForAssistant: assistant index → (toolCallID → ToolResultData)
-	// Used by renderAssistantWithTools to draw the paired-results block.
-	resultsForAssistant map[int]map[string]ToolResultData
-	// toolGroups overrides the default placement at the assistant row. Each
-	// result uses the latest notice that preceded it, even after commit.
-	toolGroups map[int]toolGroup
+	resultOwner         map[int]int                       // result index → assistant index
+	resultsForAssistant map[int]map[string]ToolResultData // assistant index → call ID → result
+	toolsByRow          map[int]toolGroup                 // row overrides, including empty assistant rows
 }
 
-// PrecomputeInlinedResults walks `messages[from:]` once and returns the
-// inlining map. `from` is the caller's CommittedCount: the render only ever
-// draws [from:] (committed messages live in native scrollback), so scanning the
-// whole conversation every frame is pure waste that grows with session length.
-// Absolute indices are preserved — the maps key by position in the full slice,
-// and a result at index ≥ from is always owned by an assistant at index ≥ from
-// (an assistant commits together with its tool results), so nothing is missed.
-// Exported because the model builds it inside messageRenderParams; everything
-// else in this package reads RenderContext.InlinedResults.
+// PrecomputeInlinedResults lays out tools from the first uncommitted message.
+// Calls with results follow the last notice before that result; pending calls
+// follow the last notice in the batch.
 func PrecomputeInlinedResults(messages []core.ChatMessage, from int, pending ...core.ToolCall) inlinedToolResults {
 	p := inlinedToolResults{
 		resultOwner:         make(map[int]int),
@@ -194,16 +177,16 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int, pending ...
 					at = anchor
 				}
 			}
-			if p.toolGroups == nil {
-				p.toolGroups = make(map[int]toolGroup)
+			if p.toolsByRow == nil {
+				p.toolsByRow = make(map[int]toolGroup)
 			}
-			group := p.toolGroups[at]
-			group.owner = i
+			group := p.toolsByRow[at]
+			group.assistantIdx = i
 			group.calls = append(group.calls, call)
-			p.toolGroups[at] = group
+			p.toolsByRow[at] = group
 		}
-		if _, ok := p.toolGroups[i]; !ok {
-			p.toolGroups[i] = toolGroup{owner: i}
+		if _, ok := p.toolsByRow[i]; !ok {
+			p.toolsByRow[i] = toolGroup{assistantIdx: i}
 		}
 	}
 	return p
@@ -250,19 +233,19 @@ func adjacentCompletionNotice(p RenderContext, idx int) bool {
 		if p.InlinedResults.IsResultInlined(i) {
 			continue
 		}
-		return completionNotice(p.Messages[i]) && len(p.InlinedResults.toolGroups[i].calls) == 0
+		return completionNotice(p.Messages[i]) && len(p.InlinedResults.toolsByRow[i].calls) == 0
 	}
 	return false
 }
 
 func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	body := renderMessageBody(p, idx, isStreaming)
-	if group, ok := p.InlinedResults.toolGroups[idx]; ok && group.owner != idx {
-		owner := p.Messages[group.owner]
-		if !p.memoryStep(owner, group.owner) {
+	if group, ok := p.InlinedResults.toolsByRow[idx]; ok && group.assistantIdx != idx {
+		owner := p.Messages[group.assistantIdx]
+		if !p.memoryStep(owner, group.assistantIdx) {
 			owner.ToolCalls = group.calls
 			owner.Content = ""
-			if tools := renderMessageTools(p, owner, group.owner); tools != "" {
+			if tools := renderMessageTools(p, owner, group.assistantIdx); tools != "" {
 				return body + "\n" + tools
 			}
 		}
@@ -276,7 +259,7 @@ func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 		return p.memoryStepView(msg, idx)
 	}
 	if msg.Role == core.ChatAssistant {
-		if group, ok := p.InlinedResults.toolGroups[idx]; ok {
+		if group, ok := p.InlinedResults.toolsByRow[idx]; ok {
 			msg.ToolCalls = group.calls
 		}
 		// A tool-only message whose calls moved below a notice has no row.

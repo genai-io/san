@@ -196,7 +196,7 @@ func (m *model) showNoticeLine(n mainNotice) core.Message {
 		m.conv.AddNotice(n.Display)
 	}
 	if n.FromAgent && (n.Content != "" || n.Display != "") {
-		m.conv.PlaceEmptyStreamAtTail()
+		m.conv.MoveEmptyReplyToTail()
 	}
 	if n.FinishedTaskID != "" {
 		if m.taskCompletionsShown == nil {

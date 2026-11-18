@@ -105,9 +105,8 @@ func (m *ConversationModel) StreamMessageIndex() int {
 	return -1
 }
 
-// PlaceEmptyStreamAtTail takes an unseen inference placeholder out of the way
-// of a notice without retargeting its stream or moving output already on screen.
-func (m *ConversationModel) PlaceEmptyStreamAtTail() {
+// MoveEmptyReplyToTail lets a notice come first without moving visible output.
+func (m *ConversationModel) MoveEmptyReplyToTail() {
 	idx := m.StreamMessageIndex()
 	if !m.Stream.Active || idx < m.CommittedCount || idx == len(m.Messages)-1 {
 		return
