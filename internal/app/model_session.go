@@ -120,6 +120,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 	retiring := previous != nil || m.sessionID() != opened.ID()
 	var closeErr error
 	if changed {
+		m.retireFlowMain()
 		m.resetRecap()
 		m.cancelAutopilot()
 		m.cancelGroupControl()

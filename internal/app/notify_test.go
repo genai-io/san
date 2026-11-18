@@ -199,6 +199,20 @@ func TestSchedulerCompletionInlinesFullResult(t *testing.T) {
 	}
 }
 
+func TestSchedulerCompletionMarksNativeMainResult(t *testing.T) {
+	info := task.TaskInfo{ID: "main-result", Scheduler: true, Status: task.StatusCompleted,
+		Result: "retained answer", ResultDisplayed: true}
+	msg, ok := taskCompletionMessage(info)
+	if !ok || !strings.Contains(msg.Content, `result-displayed="true"`) || !strings.Contains(msg.Content, "retained answer") {
+		t.Fatal("native result display metadata or full result lost")
+	}
+	info.Scheduler = false
+	ordinary, _ := taskCompletionMessage(info)
+	if strings.Contains(ordinary.Content, "result-displayed=") {
+		t.Fatal("ordinary notifications acquired scheduler display suppression")
+	}
+}
+
 func TestAgentOwnedSchedulerKeepsBoundedNotification(t *testing.T) {
 	msg, ok := taskCompletionMessage(task.TaskInfo{
 		ID: "owned-scheduler", Scheduler: true, Type: task.TaskTypeAgent,

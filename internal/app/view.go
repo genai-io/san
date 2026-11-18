@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ import (
 )
 
 var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+var liveFlowNode = regexp.MustCompile(`(◉|●|○) (?:Failed |Blocked |Not selected )?[A-Za-z][A-Za-z0-9_#-]*`)
+var liveFlowEdge = regexp.MustCompile(`[─━┄]+[▶→]?|[→↑│╰╯]`)
 
 // View dispatches to one of four layouts, top-down:
 //
@@ -512,7 +515,27 @@ func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, widt
 
 func styleFlowLiveView(live string, frame int) string {
 	body := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
-	marker := body.Faint(frame%6 < 2).Render("●")
+	focus := body.Foreground(kit.CurrentTheme.Focus)
+	marker := focus.Faint(frame%6 < 2).Render("●")
+	live = liveFlowNode.ReplaceAllStringFunc(live, func(node string) string {
+		glyph, name, _ := strings.Cut(node, " ")
+		switch {
+		case glyph == "◉":
+			return marker + " " + focus.Bold(true).Render(name)
+		case strings.HasPrefix(name, "Failed "):
+			return body.Foreground(kit.CurrentTheme.Error).Render(node)
+		case glyph == "●":
+			return body.Foreground(kit.CurrentTheme.TextDim).Render(node)
+		default:
+			return body.Foreground(kit.CurrentTheme.TextDisabled).Render(node)
+		}
+	})
+	live = liveFlowEdge.ReplaceAllStringFunc(live, func(edge string) string {
+		if strings.HasPrefix(edge, "━") {
+			return focus.Faint(frame%6 < 2).Render(edge)
+		}
+		return body.Foreground(kit.CurrentTheme.TextDim).Render(edge)
+	})
 	lines := strings.Split(strings.ReplaceAll(live, "◉", marker), "\n")
 	if len(lines) > 0 {
 		indent := len(lines[0]) - len(strings.TrimLeft(lines[0], " "))
@@ -520,12 +543,16 @@ func styleFlowLiveView(live string, frame int) string {
 		if title, ok := strings.CutPrefix(header, "Flow · "); ok {
 			name, count := title, ""
 			last := strings.LastIndex(title, " · ")
-			if last >= 0 {
-				name, count = title[:last], title[last+len(" · "):]
+			if round := strings.LastIndex(title, " · round "); round >= 0 {
+				last = round
 			}
-			lines[0] = lines[0][:indent] + kit.FlowLabel(name)
 			if last >= 0 {
-				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" · " + count)
+				name, count = title[:last], title[last:]
+			}
+			lines[0] = lines[0][:indent] + kit.FlowLabel(strings.TrimRight(name, " "))
+			if last >= 0 {
+				padding := len(name) - len(strings.TrimRight(name, " "))
+				lines[0] += lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(strings.Repeat(" ", padding) + count)
 			}
 		}
 	}

@@ -14,16 +14,21 @@ import (
 
 // Service schedules reviewed blueprints through the native subagent executor.
 type Service struct {
-	executor tool.AgentExecutor
-	tasks    *task.Manager
-	dirs     []string
-	mu       sync.Mutex
-	store    *Store
-	live     map[string]*task.AgentTask
+	mainExecutor MainExecutor
+	executor     tool.AgentExecutor
+	tasks        *task.Manager
+	dirs         []string
+	mu           sync.Mutex
+	store        *Store
+	live         map[string]*task.AgentTask
 }
 
-func NewService(tasks *task.Manager) *Service              { return &Service{tasks: tasks} }
-func (s *Service) SetExecutor(executor tool.AgentExecutor) { s.executor = executor }
+func NewService(tasks *task.Manager) *Service { return &Service{tasks: tasks} }
+func (s *Service) SetExecutor(executor tool.AgentExecutor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.executor = executor
+}
 
 // SetSearchPaths sets the definition directories in priority order. Run
 // records live beside the first one; the store is replaced only when that
@@ -59,13 +64,22 @@ func (s *Service) SaveDefinition(name, definition, baseline string) error {
 }
 
 func (s *Service) preflight(b *Blueprint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.executor == nil {
-		return errors.New("agent executor not configured")
+		for _, n := range b.Nodes {
+			if n.Executor != "main" {
+				return errors.New("agent executor not configured")
+			}
+		}
 	}
 	if s.tasks == nil {
 		return errors.New("task manager not configured")
 	}
 	for _, n := range b.Nodes {
+		if n.Executor == "main" {
+			continue
+		}
 		agent := n.Config["agent"]
 		info, _, ok := s.executor.ResolveAgentSelection(agent)
 		if !ok {

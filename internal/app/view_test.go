@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
@@ -91,9 +92,98 @@ func TestLiveFlowBreathesOnlyRunningGraphNodes(t *testing.T) {
 		if ansi.Strip(got) != strings.ReplaceAll(graph, "◉", "●") {
 			t.Fatalf("frame %d changed graph content: %q", frame, got)
 		}
-		if !strings.Contains(got, "● completed → ") || !strings.Contains(got, " → ○ pending") {
+		completed := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Render("● completed")
+		pending := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled).Render("○ pending")
+		if !strings.Contains(got, completed) || !strings.Contains(got, pending) {
 			t.Fatal("completed and pending nodes should stay static")
 		}
+	}
+}
+
+func TestLiveFlowEmphasizesOnlyActivePaths(t *testing.T) {
+	const graph = "Flow · Demo · round 2/3 · 3/7\n◉ writer   ──▶   ○ critic\n╰━━ REVISE ×1 ━━━━━╯"
+	for _, frame := range []int{0, 3} {
+		got := styleFlowLiveView(graph, frame)
+		active := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Faint(frame%6 < 2).Render("━━━━━")
+		if !strings.Contains(got, active) || ansi.Strip(got) != strings.ReplaceAll(graph, "◉", "●") {
+			t.Fatalf("frame %d lost the actual active path:\n%s", frame, got)
+		}
+	}
+}
+
+func TestLiveFlowQuietProgressPreservesAlignment(t *testing.T) {
+	const graph = "    Flow · Demo                 · round 2/3 · 3/7\n\n    ◉ writer   ──▶   ○ critic"
+	got := styleFlowLiveView(graph, 0)
+	metadata := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render("                 · round 2/3 · 3/7")
+	if !strings.Contains(got, metadata) || ansi.Strip(got) != strings.ReplaceAll(graph, "◉", "●") {
+		t.Fatalf("secondary progress lost its quiet alignment: %q", got)
+	}
+}
+
+func TestLiveFlowLoopFollowsCurrentRound(t *testing.T) {
+	b, err := flow.Parse("```mermaid\nflowchart LR\nwriter --> critic --> decision\ndecision -->|REVISE x3| writer\ndecision -->|PASS| result\n```\n## writer\nwrite\n## critic\nreview\n## decision\nroute\n## result\nfinish\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	wf := task.NewAgentTask("loop-live", "flow", "write", ctx, cancel, "")
+	wf.MarkScheduler()
+	statuses := map[string]flow.Status{}
+	wf.SetLiveView("loop")
+	wf.SetLiveViewRenderer(func(width int) string { return b.CompactProgressView(statuses, width) })
+	for _, step := range []struct{ active, progress string }{
+		{"writer#1", "0/4"}, {"critic#1", "1/4"}, {"decision#1", "2/4"},
+		{"writer#2", "3/7"}, {"critic#2", "4/7"}, {"decision#2", "5/7"},
+	} {
+		statuses[step.active] = flow.StatusRunning
+		for _, width := range []int{80, 120} {
+			first := appendLiveFlowViews("", []task.BackgroundTask{wf}, 0, width)
+			if first == appendLiveFlowViews("", []task.BackgroundTask{wf}, 3, width) {
+				t.Fatal("current loop node did not animate")
+			}
+			plain := ansi.Strip(first)
+			if strings.Contains(plain, "#") || !strings.Contains(plain, "REVISE") || !strings.Contains(plain, "PASS") || !strings.Contains(plain, step.progress) {
+				t.Fatalf("loop did not follow %s:\n%s", step.active, plain)
+			}
+			active, _, _ := strings.Cut(step.active, "#")
+			bold := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true).Render(active)
+			if !strings.Contains(first, bold) {
+				t.Fatalf("active loop node %s was not emphasized", active)
+			}
+			if strings.Count(plain, "\n") > 4 {
+				t.Fatalf("loop expanded into a round list:\n%s", plain)
+			}
+		}
+		statuses[step.active] = flow.StatusSucceeded
+	}
+}
+
+func TestLiveFlowSpacingKeepsPendingAndComposerVisible(t *testing.T) {
+	b, err := flow.Parse("```mermaid\nflowchart LR\nwriter --> critic --> decision\ndecision -->|REVISE x3| writer\ndecision -->|PASS| result\n```\n## writer\nwrite\n## critic\nreview\n## decision\nroute\n## result\nfinish\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := fixedComposerModel(80, 24)
+	m.services.Task = task.NewManager()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	wf := m.services.Task.CreateSchedulerTask("loop-spacing", "flow", "write", ctx, cancel)
+	statuses := map[string]flow.Status{"writer#1": flow.StatusRunning}
+	wf.SetLiveView(b.CompactProgressView(statuses, 80))
+	wf.SetLiveViewRenderer(func(width int) string { return b.CompactProgressView(statuses, width) })
+	m.conv.ShowTasks = true
+	m.userInput.Queue.Enqueue("PENDING-DIRECTION", nil)
+	m.userInput.Textarea.SetValue("COMPOSER-DRAFT")
+	frame, cursor := m.viewString()
+	plain := ansi.Strip(frame)
+	for _, text := range []string{"PENDING-DIRECTION", "COMPOSER-DRAFT", "writer", "critic", "decision", "result", "PASS", "REVISE"} {
+		if !strings.Contains(plain, text) {
+			t.Fatalf("spaced loop hid %q:\n%s", text, plain)
+		}
+	}
+	if rowCount(frame) != 24 || cursor == nil || cursor.Position.Y != 21 {
+		t.Fatalf("spaced loop displaced composer: %#v\n%s", cursor, plain)
 	}
 }
 

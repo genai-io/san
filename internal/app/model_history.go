@@ -19,13 +19,16 @@ type historyLoadedMsg struct {
 	owner      *session.Session
 	generation uint64
 	sessionID  string
+	focusID    string
 	messages   []core.ChatMessage
 	err        error
 }
 
-func (m *model) openHistory() tea.Cmd {
+func (m *model) openHistory() tea.Cmd { return m.openHistoryAt("") }
+
+func (m *model) openHistoryAt(messageID string) tea.Cmd {
 	m.userInput.Transcript.Enter("History · Loading…", nil, m.env.Width, m.env.Height)
-	msg := historyLoadedMsg{owner: m.services.Session, generation: m.userInput.Transcript.Generation(), messages: slices.Clone(m.conv.Messages)}
+	msg := historyLoadedMsg{owner: m.services.Session, generation: m.userInput.Transcript.Generation(), focusID: messageID, messages: slices.Clone(m.conv.Messages)}
 	var load func(string) ([]core.ChatMessage, error)
 	if m.sessionID() != "" {
 		msg.sessionID = m.sessionID()
@@ -70,6 +73,9 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 		return
 	}
 	viewer.EnterEntries(entries, m.env.Width, m.env.Height)
+	if msg.focusID != "" && !viewer.FocusMessage(msg.focusID) {
+		viewer.Enter("History", []string{"Selected main turn is unavailable."}, m.env.Width, m.env.Height)
+	}
 }
 
 // historyEntries reuses the conversation renderers with settled, full messages.
@@ -126,7 +132,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 			if agentMessage {
 				label = "Agent message"
 			}
-			entries = append(entries, input.TranscriptEntry{Label: label, Tool: agentMessage, Render: func(width int, expanded bool) string {
+			entries = append(entries, input.TranscriptEntry{ID: msg.ID, Label: label, Tool: agentMessage, Render: func(width int, expanded bool) string {
 				p := params
 				msg.Expanded = expanded
 				p.Width, p.MDRenderer = width, renderer(width)

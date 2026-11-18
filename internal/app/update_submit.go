@@ -53,6 +53,10 @@ func (m *model) handleSubmit() tea.Cmd {
 	// member was holding ride on this input.
 	m.grp.unattended, m.grp.userTyped = 0, true
 
+	if m.flowMainCapturing() && !m.isSlashCommand(raw) && !input.IsExitRequest(raw) {
+		return m.enqueueInput(raw)
+	}
+
 	if m.conv.Stream.Active {
 		// A Flow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
@@ -85,9 +89,13 @@ func (m *model) handleSubmit() tea.Cmd {
 // exit drain it automatically unless cancellation holds it for explicit input.
 func (m *model) enqueueInput(raw string) tea.Cmd {
 	images := m.userInput.PendingImages()
-	if m.userInput.Queue.Enqueue(raw, images) < 0 {
+	id := m.userInput.Queue.Enqueue(raw, images)
+	if id < 0 {
 		m.conv.AddNotice("Input queue is full. Please wait for the current turn to complete.")
 		return nil
+	}
+	if m.flowMainCapturing() {
+		m.userInput.Queue.RequirePromptAdmission(id)
 	}
 	m.userInput.Reset()
 	log.Logger().Sugar().Debugf("enqueueInput: queued %q queueLen=%d", raw, m.userInput.Queue.Len())
@@ -237,6 +245,12 @@ func (m *model) sendNextQueuedInput(explicit bool) tea.Cmd {
 func (m *model) sendQueuedInputs(explicit bool) (tea.Cmd, bool) {
 	var cmds []tea.Cmd
 	for m.userInput.Queue.Len() > 0 {
+		if m.flowMainBlocksQueue() {
+			head, _ := m.userInput.Queue.At(0)
+			if !m.isSlashCommand(head.Content) && !input.IsExitRequest(head.Content) {
+				return tea.Batch(cmds...), true
+			}
+		}
 		if !m.pendingMessages.CanDeliver(explicit) || m.conv.Compact.Active || m.conv.Stream.Active || m.userInput.Queue.SelectIdx == 0 {
 			break
 		}
@@ -297,6 +311,9 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 
 // submit is SubmitToAgent for any message, a harness one included.
 func (m *model) submit(p pendingMessage) tea.Cmd {
+	if m.deferFlowMainInput(p) {
+		return tea.Batch(m.CommitMessages()...)
+	}
 	if p.Completion != nil {
 		if m.env.LLMProvider == nil {
 			closeAutopilot(p.Completion)

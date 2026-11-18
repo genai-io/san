@@ -4,8 +4,40 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/genai-io/san/internal/flow"
 )
+
+func TestFlowMainExecutionUsesMessageIdentity(t *testing.T) {
+	s := flowUIFixture()
+	c := s.r.Nodes["b"]
+	c.Execution = flow.Execution{SessionID: "main-session", MessageID: "writer-input"}
+	s.r.Nodes["b"] = c
+	var v FlowView
+	v.OpenRun(s, "run", 100, 40)
+	v.SyncSession("main-session")
+	cmd := v.HandleKeypress(flowKey("enter"))
+	if cmd == nil || !v.canInspect() {
+		t.Fatal("main execution did not offer native inspection")
+	}
+	msg := cmd().(FlowOpenTaskMsg)
+	if msg.Execution != c.Execution || !v.AcceptTaskOpen(msg) || !strings.Contains(v.executionChoices()[0].label, "main message writer-input") {
+		t.Fatal("main execution lost its actual message identity")
+	}
+	if _, ok := v.RecordedTask(msg); ok {
+		t.Fatal("main message was fabricated as a child task")
+	}
+	for _, want := range []string{"Open native history", "Enter native history"} {
+		if got := ansi.Strip(v.Render()); !strings.Contains(got, want) {
+			t.Fatalf("main execution inspection mislabeled: %s", got)
+		}
+	}
+	msg.Execution.MessageID = "forged"
+	if v.AcceptTaskOpen(msg) {
+		t.Fatal("different main turn accepted")
+	}
+}
 
 func TestFlowNativeExecutionRouting(t *testing.T) {
 	s := flowUIFixture()

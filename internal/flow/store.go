@@ -201,18 +201,20 @@ func saveDefinition(name, source, baseline string, dirs []string) error {
 // Complete outputs live in node checkpoints; live progress belongs to the
 // native task view and is not persisted here.
 type RunRecord struct {
-	ID         string                `json:"id"`
-	Name       string                `json:"name"`
-	Definition string                `json:"definition"`
-	Inputs     map[string]string     `json:"inputs,omitempty"`
-	Status     RunStatus             `json:"status"`
-	TaskID     string                `json:"task_id,omitempty"`
-	StartedAt  time.Time             `json:"started_at"`
-	UpdatedAt  time.Time             `json:"updated_at"`
-	FinishedAt time.Time             `json:"finished_at,omitzero"`
-	Nodes      map[string]Checkpoint `json:"nodes"`
-	Error      string                `json:"error,omitempty"`
-	Output     string                `json:"output,omitempty"`
+	Instructions string                `json:"instructions,omitempty"`
+	SessionID    string                `json:"session_id,omitempty"`
+	ID           string                `json:"id"`
+	Name         string                `json:"name"`
+	Definition   string                `json:"definition"`
+	Inputs       map[string]string     `json:"inputs,omitempty"`
+	Status       RunStatus             `json:"status"`
+	TaskID       string                `json:"task_id,omitempty"`
+	StartedAt    time.Time             `json:"started_at"`
+	UpdatedAt    time.Time             `json:"updated_at"`
+	FinishedAt   time.Time             `json:"finished_at,omitzero"`
+	Nodes        map[string]Checkpoint `json:"nodes"`
+	Error        string                `json:"error,omitempty"`
+	Output       string                `json:"output,omitempty"`
 }
 
 // RunStatus is a run's lifecycle phase; Status is the phase of one node.

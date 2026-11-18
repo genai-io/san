@@ -15,6 +15,7 @@ import (
 
 // TranscriptEntry is one message or tool call, rendered at the viewer's width.
 type TranscriptEntry struct {
+	ID     string
 	Label  string
 	Tool   bool
 	Render func(width int, expanded bool) string
@@ -33,6 +34,7 @@ type TranscriptViewer struct {
 	tools      []int
 	offsets    []int
 	selected   int
+	focusID    string
 	generation uint64
 }
 
@@ -42,6 +44,7 @@ func (h *TranscriptViewer) Enter(title string, lines []string, width, height int
 	h.active = true
 	h.title = title
 	h.entries, h.tools, h.offsets = nil, nil, nil
+	h.focusID = ""
 	h.body = viewport.New()
 	h.body.FillHeight = true
 	h.body.SetContentLines(lines)
@@ -66,6 +69,21 @@ func (h *TranscriptViewer) EnterEntries(entries []TranscriptEntry, width, height
 	} else {
 		h.body.GotoBottom()
 	}
+}
+
+// FocusMessage selects an exact recorded message without changing its content.
+func (h *TranscriptViewer) FocusMessage(id string) bool {
+	if !h.active || id == "" {
+		return false
+	}
+	for i, entry := range h.entries {
+		if entry.ID == id {
+			h.focusID = id
+			h.body.SetYOffset(h.offsets[i])
+			return true
+		}
+	}
+	return false
 }
 
 // Generation lets the app discard a load that completed after close/reopen.
@@ -126,6 +144,9 @@ func (h *TranscriptViewer) rebuildLines() {
 }
 
 func (h *TranscriptViewer) gotoSelected() {
+	if h.focusID != "" && h.FocusMessage(h.focusID) {
+		return
+	}
 	if len(h.tools) > 0 {
 		h.body.SetYOffset(h.offsets[h.tools[h.selected]])
 	}
@@ -150,6 +171,7 @@ func (h *TranscriptViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		if len(h.tools) == 0 {
 			return nil
 		}
+		h.focusID = ""
 		h.selected = max(0, h.selected-1)
 		h.rebuildLines()
 		h.gotoSelected()
@@ -157,6 +179,7 @@ func (h *TranscriptViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		if len(h.tools) == 0 {
 			return nil
 		}
+		h.focusID = ""
 		h.selected = max(0, min(len(h.tools)-1, h.selected+1))
 		h.rebuildLines()
 		h.gotoSelected()

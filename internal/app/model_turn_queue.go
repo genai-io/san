@@ -73,6 +73,9 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 // Shared by the step-boundary (OnStepEnd) and turn-boundary
 // (drainTurnQueues) drains.
 func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
+	if m.flowMainBlocksQueue() {
+		return nil, false
+	}
 	if !m.pendingMessages.CanDeliver(false) || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
@@ -93,6 +96,16 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 			return nil, false
 		}
 		return m.sendNextQueuedInputIfIdle(), true
+	}
+	if m.flowMainWriterActive() {
+		return m.releaseFlowMainStepInput()
+	}
+	if head, ok := m.userInput.Queue.At(0); ok && head.NeedsPromptAdmission {
+		if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+			m.pendingMessages.Hold(nil)
+			m.conv.AddNotice("Queued input was blocked: " + reason)
+			return tea.Batch(m.CommitMessages()...), false
+		}
 	}
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
@@ -126,6 +139,9 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
+	if m.flowMainCapturing() {
+		return nil, true
+	}
 	var cmds []tea.Cmd
 	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) && !m.conv.Stream.Active {
 		cmd, waiting := m.sendQueuedInputs(false)

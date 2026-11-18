@@ -83,6 +83,20 @@ func TestAgentTaskResultIndependentOfOutputLog(t *testing.T) {
 	}
 }
 
+func TestAgentTaskResultDisplayedMetadata(t *testing.T) {
+	a := NewAgentTask("main-result", "flow", "work", context.Background(), nil, "")
+	a.SetResult("native answer")
+	a.MarkResultDisplayed()
+	snapshot := a.GetStatus()
+	if !snapshot.ResultDisplayed || snapshot.Result != "native answer" {
+		t.Fatal("displayed metadata lost the retained native result")
+	}
+	a.SetResult("replacement")
+	if a.GetStatus().ResultDisplayed || !snapshot.ResultDisplayed {
+		t.Fatal("replacement retained display flag or mutated prior snapshot")
+	}
+}
+
 func TestAgentTaskAppendOutputStillRetainsTail(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

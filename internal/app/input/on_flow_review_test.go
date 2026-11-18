@@ -10,6 +10,28 @@ import (
 	"github.com/genai-io/san/internal/flow"
 )
 
+func TestFlowReviewExecutorSelection(t *testing.T) {
+	for _, tc := range []struct{ config, want string }{
+		{"", "Executor subagent (default)"},
+		{"executor: subagent\n", "Executor subagent (default)"},
+		{"executor: main\n", "Executor main · current conversation"},
+	} {
+		var v FlowView
+		source := "```mermaid\nflowchart LR\n summary\n```\n\n## summary\n" + tc.config + "\nReturn a report.\n"
+		v.OpenDraft(flowUIFixture(), "executor", source, source, 100, 40)
+		got := ansi.Strip(v.renderReview())
+		if !strings.Contains(got, tc.want) {
+			t.Fatalf("execution target not disclosed: %s", got)
+		}
+		if strings.Contains(tc.config, "main") && !strings.Contains(got, "current main agent · inherited settings") {
+			t.Fatal("main node did not disclose inherited settings")
+		}
+		if limits := ansi.Strip(v.renderLimits()); !strings.Contains(limits, "main steps use the current conversation") {
+			t.Fatalf("execution limits misstate conversation ownership: %s", limits)
+		}
+	}
+}
+
 func TestFlowGeneratedDraftNeedsManualSaveAndRun(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView
