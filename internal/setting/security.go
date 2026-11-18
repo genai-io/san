@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // destructiveCommands are patterns that should always require user confirmation,
@@ -67,51 +69,96 @@ func isRootOrHomeRemoval(cmd string) bool {
 	if file == nil {
 		return crudeRootOrHomeRemovalScan(cmd)
 	}
-	// atRootOrHome tracks a literal "cd" to the root or home directory, after
-	// which "rm -rf ." or "rm -rf *" removes that directory's contents.
-	atRootOrHome := false
 	for _, c := range extractCommandsAST(file) {
-		name, args := c.Name, c.Args
-		if name == "cd" || name == "pushd" {
-			// A bare cd goes home.
-			atRootOrHome = len(args) == 0 || len(args) == 1 && isRootOrHomePath(args[0])
-			continue
-		}
-		// Unwrap sudo, and after it any neutral wrapper it exposed, so
-		// "sudo rm -rf /" and "sudo timeout 5 rm -rf /" trip too. Arg skipping
-		// reuses looksLikeCommand — the same heuristic extractFromCall applies
-		// when it strips wrappers — so the two paths cannot drift.
-		for (name == "sudo" || safeWrapperCommands[name]) && len(args) > 0 {
-			for len(args) > 0 && !looksLikeCommand(args[0]) {
-				args = args[1:]
-			}
-			if len(args) == 0 {
-				break
-			}
-			name, args = filepath.Base(args[0]), args[1:]
-		}
-		if name != "rm" {
-			continue
-		}
-		recursive := false
-		var targets []string
-		for _, a := range args {
-			if strings.HasPrefix(a, "-") {
-				if a == "--recursive" || (!strings.HasPrefix(a, "--") && strings.ContainsAny(a, "rR")) {
-					recursive = true
-				}
-				continue
-			}
-			targets = append(targets, a)
-		}
-		if recursive && slices.ContainsFunc(targets, isRootOrHomePath) {
-			return true
-		}
-		if recursive && atRootOrHome && slices.ContainsFunc(targets, isWorkingDirContents) {
+		if slices.ContainsFunc(recursiveRemovalTargets(c), isRootOrHomePath) {
 			return true
 		}
 	}
-	return false
+	return removesWorkingDirectory(file)
+}
+
+// removesWorkingDirectory tracks literal directory changes in their shell scope.
+// A child inherits the current directory, but only changes its own copy.
+func removesWorkingDirectory(file *syntax.File) bool {
+	type frame struct {
+		node         syntax.Node
+		restoreDir   bool
+		atRootOrHome bool
+	}
+	var stack []frame
+	atRootOrHome, found := false, false
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if node == nil {
+			current := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if call, ok := current.node.(*syntax.CallExpr); ok && !found {
+				c := extractFromCall(call, false, false)
+				switch c.Argv0 {
+				case "cd", "pushd":
+					atRootOrHome = c.Argv0 == "cd" && len(c.Args) == 0 ||
+						len(c.Args) == 1 && isRootOrHomePath(c.Args[0])
+				case "popd":
+					atRootOrHome = false
+				default:
+					found = atRootOrHome && slices.ContainsFunc(recursiveRemovalTargets(c), isWorkingDirContents)
+				}
+			}
+			if current.restoreDir {
+				atRootOrHome = current.atRootOrHome
+			}
+			return true
+		}
+		if found {
+			return false
+		}
+
+		isolated := false
+		switch n := node.(type) {
+		case *syntax.Subshell, *syntax.CmdSubst, *syntax.ProcSubst, *syntax.CoprocClause, *syntax.FuncDecl:
+			isolated = true
+		case *syntax.Stmt:
+			isolated = n.Background
+			if len(stack) > 0 {
+				if parent, ok := stack[len(stack)-1].node.(*syntax.BinaryCmd); ok {
+					isolated = isolated || parent.Op == syntax.Pipe || parent.Op == syntax.PipeAll
+				}
+			}
+		}
+		stack = append(stack, frame{node: node, restoreDir: isolated, atRootOrHome: atRootOrHome})
+		return true
+	})
+	return found
+}
+
+func recursiveRemovalTargets(c parsedCommand) []string {
+	name, args := c.Name, c.Args
+	// Unwrap sudo and any neutral wrapper it exposes.
+	for (name == "sudo" || safeWrapperCommands[name]) && len(args) > 0 {
+		for len(args) > 0 && !looksLikeCommand(args[0]) {
+			args = args[1:]
+		}
+		if len(args) == 0 {
+			break
+		}
+		name, args = filepath.Base(args[0]), args[1:]
+	}
+	if name != "rm" {
+		return nil
+	}
+	recursive := false
+	var targets []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			recursive = recursive || arg == "--recursive" ||
+				!strings.HasPrefix(arg, "--") && strings.ContainsAny(arg, "rR")
+			continue
+		}
+		targets = append(targets, arg)
+	}
+	if !recursive {
+		return nil
+	}
+	return targets
 }
 
 // crudeRootOrHomeRemovalScan is the parse-failure fallback for
