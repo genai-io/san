@@ -328,12 +328,6 @@ func (e *Engine) getCwd(ctx context.Context) string {
 	return e.cwd
 }
 
-func (e *Engine) getLLMCompleter() LLMCompleter {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.llmCompleter
-}
-
 func (e *Engine) resolveModel(cmd setting.HookCmd) string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

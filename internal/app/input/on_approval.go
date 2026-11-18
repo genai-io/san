@@ -447,23 +447,6 @@ type approvalAgentPreview struct {
 	agentMeta *perm.AgentMetadata
 }
 
-// renderMessagePreview shows what a SendMessage would send, wrapped and
-// capped, so the person approves the words and not just the recipient.
-func renderMessagePreview(body string, width int) string {
-	const maxLines = 8
-	wrapped := lipgloss.NewStyle().Width(max(width-4, 20)).Render(strings.TrimSpace(body))
-	lines := strings.Split(wrapped, "\n")
-	if len(lines) > maxLines {
-		lines = append(lines[:maxLines], fmt.Sprintf("… %d more lines", len(lines)-maxLines))
-	}
-	dim := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	var sb strings.Builder
-	for _, line := range lines {
-		sb.WriteString("   " + dim.Render(strings.TrimRight(line, " ")) + "\n")
-	}
-	return sb.String()
-}
-
 func newApprovalAgentPreview(meta *perm.AgentMetadata) *approvalAgentPreview {
 	return &approvalAgentPreview{agentMeta: meta}
 }
