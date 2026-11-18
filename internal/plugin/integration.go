@@ -10,29 +10,14 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// GetPluginSkillPaths returns all skill directory paths from enabled plugins.
-func GetPluginSkillPaths() []PluginPath {
-	return defaultRegistry.SkillPaths()
-}
-
 // SkillPaths returns this registry's enabled skill directories.
 func (r *Registry) SkillPaths() []PluginPath {
 	return r.collectPaths(func(p *Plugin) []string { return p.Components.Skills })
 }
 
-// GetPluginAgentPaths returns all agent file paths from enabled plugins.
-func GetPluginAgentPaths() []PluginPath {
-	return defaultRegistry.AgentPaths()
-}
-
 // AgentPaths returns this registry's enabled agent definitions.
 func (r *Registry) AgentPaths() []PluginPath {
 	return r.collectPaths(func(p *Plugin) []string { return p.Components.Agents })
-}
-
-// GetPluginCommandPaths returns all command file paths from enabled plugins.
-func GetPluginCommandPaths() []PluginPath {
-	return defaultRegistry.CommandPaths()
 }
 
 // CommandPaths returns this registry's enabled command definitions.
@@ -106,11 +91,6 @@ type PluginMCPServer struct {
 	Name   string          // Full name with namespace (e.g., "plugin:server")
 	Config MCPServerConfig // Server configuration
 	Scope  Scope           // Plugin scope
-}
-
-// GetPluginMCPServers returns all MCP servers from enabled plugins.
-func GetPluginMCPServers() []PluginMCPServer {
-	return defaultRegistry.MCPServers()
 }
 
 // MCPServers returns this registry's enabled MCP contributions.

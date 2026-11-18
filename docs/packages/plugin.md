@@ -24,11 +24,7 @@ contributes without importing `plugin` directly.
 
 ## Contract
 
-The package exposes `*Registry` directly plus package-level free
-functions for the cross-domain integration surface. No producer-side
-interface — each downstream consumer (skill / subagent / command / mcp
-/ setting) pulls a different small set of free functions, so a unified
-interface would just collect unrelated methods.
+The host reads plugin paths, MCP servers and hooks from its own `*Registry`.
 
 ```go
 package plugin
@@ -59,20 +55,17 @@ func (r *Registry) Unregister(name string)
 // Installer construction (package-level free function)
 func NewInstaller(reg *Registry, cwd string) *Installer
 
-// Cross-domain integration (package-level free functions; read from
-// the package-level default registry). Each consumer that needs
-// plugin-contributed data imports plugin and calls one of these:
-func GetPluginAgentPaths() []PluginPath
-func GetPluginSkillPaths() []PluginPath
-func GetPluginCommandPaths() []PluginPath
-func GetPluginMCPServers() []PluginMCPServer
-func GetPluginHooks() map[string][]setting.Hook
-func PluginEnv() []string
+// Read from the host's registry (TUI default or ACP session).
+func (r *Registry) AgentPaths() []PluginPath
+func (r *Registry) SkillPaths() []PluginPath
+func (r *Registry) CommandPaths() []PluginPath
+func (r *Registry) MCPServers() []PluginMCPServer
+func (r *Registry) Hooks() map[string][]setting.Hook
+func PluginEnv(ctx context.Context) []string
 
-// Plugin root tracking (process-global state; package-level functions)
-func SetActivePluginRoot(path string)
-func ClearActivePluginRoot()
-func FindPluginRootForPath(path string) string
+// Plugin root for the current invocation
+func WithRoot(ctx context.Context, root string) context.Context
+func (r *Registry) RootForPath(path string) string
 
 // Package-level access
 func Initialize(ctx context.Context, opts Options) error
@@ -96,9 +89,7 @@ func ResetDefaultRegistry()           // test-only
 
 ## Lifecycle
 
-- Construction: `Initialize(ctx, Options{CWD})` is one of the first
-  `Initialize` calls because every feature package's `Initialize`
-  pulls `plugin.*Paths()`.
+- Construction: load the registry before wiring enabled plugin paths into the feature packages.
 - Reload: enabling/disabling a plugin triggers a reload of the
   affected feature packages (commands/skills/subagents/MCP).
 
