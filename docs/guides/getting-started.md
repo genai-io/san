@@ -51,9 +51,15 @@ for Anthropic). Supported providers and the env var each one reads:
 | SenseNova | `SENSENOVA_API_KEY` |
 | Agnes-AI | `AGNESAI_API_KEY` |
 
-You can also set them in `~/.san/providers.json`, or save a key from `/models`.
-San does not read a `.env` from the directory you launch it in: that directory
-may be a repository you did not write.
+You can also set them in `.env` or `~/.san/providers.json`.
+
+A `.env` is read from the directory you launch San in, which is not necessarily
+a directory you wrote. It may therefore supply API keys (names ending in
+`_API_KEY`) and nothing else; in particular not the endpoint they are sent to:
+names ending in `_BASE_URL`, the proxy variables and
+`SSL_CERT_FILE` / `SSL_CERT_DIR` are ignored there, and San names them at
+startup when it skips one. Export the variable in your shell, or set the base
+URL from `/models`, to override an endpoint.
 
 Two providers take a subscription instead of a key: **ChatGPT Subscription**
 (OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in

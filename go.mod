@@ -13,6 +13,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/genai-io/sdk-go v0.9.3-0.20261118022523-f66df487c9ac
 	github.com/hexops/gotextdiff v1.0.3
+	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.28.0
