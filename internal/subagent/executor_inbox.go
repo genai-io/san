@@ -146,19 +146,13 @@ func (inbox *runInbox) close() {
 	}
 }
 
-// prepareInbox commits launch input before publishing a route that accepts mail.
-// A continuation's route starts held: acceptContinuationInput commits its input
-// and opens the route while the task begins the next attempt.
-func (e *Executor) prepareInbox(ctx context.Context, run *preparedRun) error {
+// prepareLaunchInbox commits launch input before publishing a route that accepts mail.
+func (e *Executor) prepareLaunchInbox(ctx context.Context, run *preparedRun) error {
 	if !e.messaging {
 		return nil
 	}
 	if err := e.openSession(ctx, run); err != nil {
 		return err
-	}
-	if run.req.ResumeTaskID != "" {
-		run.inbox = newHeldRunInbox(ctx, run.req.TaskID, run.recording)
-		return nil
 	}
 	message := core.UserMessage(run.originalPrompt, nil)
 	message.ID = core.NewMessageID()

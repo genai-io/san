@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
-
-	sdksession "github.com/genai-io/sdk-go/pkg/session"
 )
 
 // forkSession copies the first atSeq events of a live session into a new
@@ -46,23 +43,43 @@ func (s *Store) forkSession(ctx context.Context, srcID, newID string, atSeq uint
 	create.Parent = nil
 	prefix[0].Time = now.UnixMilli()
 
-	final := s.sessionDir(newID)
-	if _, err := os.Stat(final); err == nil {
-		return nil, fmt.Errorf("session %s already exists", newID)
-	}
-	if err := os.MkdirAll(s.sessionsRoot(), 0o700); err != nil {
-		return nil, err
-	}
-	stage, err := os.MkdirTemp(s.sessionsRoot(), "."+newID+"-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(stage) // a no-op once renamed
+	opened := &eventSession{id: newID, path: s.eventsPath(newID), state: newEventState()}
+	return s.publishSession(ctx, opened, func(stage string) error {
+		if err := s.copyForkBlobs(srcID, stage, prefix); err != nil {
+			return err
+		}
+		// Carry the evidence the copied events were accepted under.
+		validation := EventValidationContext{ForeignEvents: src.validation.ForeignEvents, ForkPrefixes: map[string]uint64{srcID: atSeq}}
+		commit := func(id string, events []Event, validation EventValidationContext) error {
+			p, err := opened.prepareEventBatch(id, events, validation)
+			if err != nil {
+				return err
+			}
+			_, err = opened.commitEventBatch(ctx, p)
+			return err
+		}
+		if err := commit("fork-create", prefix[:1], validation); err != nil {
+			return err
+		}
+		if atSeq > 1 {
+			if err := commit("fork-copy", prefix[1:], EventValidationContext{}); err != nil {
+				return err
+			}
+		}
+		if opened.state.projection.State().GroupHint != nil {
+			clear := Event{Seq: atSeq + 1, Type: EventSessionUpdate, SchemaVersion: 1, Time: now.UnixMilli(), Payload: SessionUpdatePayload{State: &StatePatch{GroupHint: ClearField[GroupHint]()}}}
+			return commit("fork-group", []Event{clear}, EventValidationContext{})
+		}
+		return nil
+	})
+}
+
+func (s *Store) copyForkBlobs(srcID, stage string, prefix []Event) error {
 
 	srcBlobs := blobStore{dir: filepath.Join(s.sessionDir(srcID), "blobs")}
 	dstBlobs := blobStore{dir: filepath.Join(stage, "blobs")}
 	if err := copyDisplayAssets(srcBlobs.dir, dstBlobs.dir); err != nil {
-		return nil, err
+		return err
 	}
 	for _, e := range prefix {
 		in, ok := e.Payload.(*InferenceStartPayload)
@@ -71,60 +88,11 @@ func (s *Store) forkSession(ctx context.Context, srcID, newID string, atSeq uint
 		}
 		data, err := srcBlobs.Get(in.Input.Standalone)
 		if err != nil {
-			return nil, fmt.Errorf("fork needs request %s: %w", in.Input.Standalone, err)
+			return fmt.Errorf("fork needs request %s: %w", in.Input.Standalone, err)
 		}
 		if _, err := dstBlobs.Put(data); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
-	// Evidence a copied event was accepted under travels with it, and the fork
-	// point is the prefix this fork was validated against.
-	validation := EventValidationContext{ForeignEvents: src.validation.ForeignEvents, ForkPrefixes: map[string]uint64{srcID: atSeq}}
-	opened := &eventSession{id: newID, path: s.eventsPath(newID), state: newEventState()}
-	first, err := opened.prepareEventBatch("fork-create", prefix[:1], validation)
-	if err != nil {
-		return nil, err
-	}
-	if opened.log, err = openEventLog(ctx, stage); err != nil {
-		return nil, err
-	}
-	closeLog := func(err error) error { return errors.Join(err, opened.log.close()) }
-	receipt, err := opened.commitEventBatch(ctx, first)
-	if err != nil {
-		return nil, closeLog(err)
-	}
-	if atSeq > 1 {
-		rest, err := opened.prepareEventBatch("fork-copy", prefix[1:], EventValidationContext{})
-		if err != nil {
-			return nil, closeLog(err)
-		}
-		if receipt, err = opened.commitEventBatch(ctx, rest); err != nil {
-			return nil, closeLog(err)
-		}
-	}
-	if opened.state.projection.State().GroupHint != nil {
-		clear := Event{Seq: atSeq + 1, Type: EventSessionUpdate, SchemaVersion: 1, Time: now.UnixMilli(),
-			Payload: SessionUpdatePayload{State: &StatePatch{GroupHint: ClearField[GroupHint]()}}}
-		p, err := opened.prepareEventBatch("fork-group", []Event{clear}, EventValidationContext{})
-		if err != nil {
-			return nil, closeLog(err)
-		}
-		if receipt, err = opened.commitEventBatch(ctx, p); err != nil {
-			return nil, closeLog(err)
-		}
-	}
-	if err := opened.log.close(); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(stage, final); err != nil {
-		return nil, fmt.Errorf("session %s already exists: %w", newID, err)
-	}
-	if opened.log, err = openEventLog(ctx, final); err != nil {
-		return nil, err
-	}
-	if tail, err := opened.log.tail(); err != nil || tail != receipt.Tail {
-		return nil, errors.Join(sdksession.ErrTail, err, opened.log.close())
-	}
-	return opened, nil
+	return nil
 }

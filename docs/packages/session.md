@@ -146,6 +146,10 @@ state, so runtime timestamps and map value types do not create false changes.
 
 ## Fork, organization and retention
 
+`Create` and `Fork` build in a hidden directory and publish it by one rename.
+Before returning a writer, both reopen the published log and verify its tail
+against the last staged commit.
+
 `Fork` copies a validated event prefix into an independent session, retaining
 native message IDs, provenance and unfinished operations. It changes creation
 identity, clears parent/group links, verifies referenced request blobs and copies

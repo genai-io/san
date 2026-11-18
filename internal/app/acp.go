@@ -211,8 +211,9 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
 	s := &acpSession{nativeSession: agent.MainSession{Session: opened, Store: store}, reminders: reminder.New(), mcp: servers, models: models}
-	s.commands = acpCommands(req.CWD, plugins)
-	s.agents, err = subagent.Load(req.CWD, agentPathsFromPlugins(plugins.AgentPaths()))
+	ext := pluginSource{plugins}
+	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: ext.commandPaths})
+	s.agents, err = subagent.Load(req.CWD, ext.agentPaths())
 	if err != nil {
 		_ = servers.Close()
 		_ = opened.Close()
