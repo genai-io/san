@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,16 +108,23 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		return toolresult.NewErrorResult(t.Name(), "failed to seek file: "+err.Error())
 	}
 
-	// Read lines — use a larger buffer to handle files with very long lines.
+	// Read lines without a length limit: a line longer than any buffer (a
+	// minified bundle) is cut to maxLineLen, never an error for the whole file.
 	var lines []toolresult.ContentLine
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), 1024*1024)
+	reader := bufio.NewReader(file)
 	lineNo := 0
 	readCount := 0
 	emittedBytes := 0
 	truncated := false
 
-	for scanner.Scan() {
+	for {
+		text, cut, err := readCappedLine(reader, maxLineLen*utf8.UTFMax)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return toolresult.NewErrorResult(t.Name(), "error reading file: "+err.Error())
+		}
 		lineNo++
 
 		// Skip lines before offset
@@ -130,12 +138,10 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 			break
 		}
 
-		text := scanner.Text()
-
 		// Truncate long lines (rune-aware to avoid splitting multi-byte characters)
-		if utf8.RuneCountInString(text) > maxLineLen {
+		if cut || utf8.RuneCountInString(text) > maxLineLen {
 			runes := []rune(text)
-			text = string(runes[:maxLineLen]) + lineTruncationMarker
+			text = string(runes[:min(len(runes), maxLineLen)]) + lineTruncationMarker
 		}
 
 		lines = append(lines, toolresult.ContentLine{
@@ -145,10 +151,6 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		})
 		readCount++
 		emittedBytes += len(text) + 8 // content plus the line-number prefix
-	}
-
-	if err := scanner.Err(); err != nil {
-		return toolresult.NewErrorResult(t.Name(), "error reading file: "+err.Error())
 	}
 
 	recordFileRead(filePath, info, ctx)
@@ -209,6 +211,27 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	}
 
 	return result
+}
+
+// readCappedLine reads one line without its line ending, keeping at most
+// capBytes of it and discarding the rest. cut reports a discarded tail. It
+// returns io.EOF only when no line is left.
+func readCappedLine(r *bufio.Reader, capBytes int) (line string, cut bool, err error) {
+	var buf []byte
+	total := 0
+	for {
+		chunk, isPrefix, err := r.ReadLine()
+		if err != nil {
+			return "", false, err
+		}
+		total += len(chunk)
+		if room := capBytes - len(buf); room > 0 {
+			buf = append(buf, chunk[:min(len(chunk), room)]...)
+		}
+		if !isPrefix {
+			return string(buf), total > capBytes, nil
+		}
+	}
 }
 
 // isImagePath reports whether the file is an image by extension, matching

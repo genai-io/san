@@ -122,13 +122,8 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		oldContent = string(old)
 	}
 
-	// Get optional mode parameter (default 0644).
-	// Clamp to valid permission bits — JSON numbers are decimal, so an LLM
-	// sending 755 would otherwise become octal 01363 (setgid + wrong perms).
-	mode := os.FileMode(tool.GetInt(params, "mode", 0o644)) & 0o7777
-
-	// Write file
-	if err := atomicfile.WriteFile(filePath, []byte(content), mode); err != nil {
+	// A new file gets 0644 less the umask; an existing one keeps its mode.
+	if err := atomicfile.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
 	RecordFileWritten(filePath, ctx)
