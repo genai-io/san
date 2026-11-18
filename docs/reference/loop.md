@@ -45,10 +45,11 @@ Current scope:
 
 - `/loop once ...` creates a one-shot cron job.
 - It does not execute immediately.
-- It fires once and is then automatically removed.
+- It fires on the first scheduler tick at or after the absolute deadline, then is automatically removed. The delay is measured from command entry, not the start of the current minute.
 
 ### Scheduling Semantics
 
+- Multi-day loops count calendar days from the command date, without resetting at month boundaries or accumulating jitter. The seven-day expiry still applies.
 - Minute-based recurring intervals map to 5-field cron when cleanly representable.
 - Non-clean intervals are rounded to the nearest supported cadence, and the user-visible note explains the adjustment.
 - Recurring schedules avoid clustering through:

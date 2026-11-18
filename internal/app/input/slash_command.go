@@ -661,28 +661,32 @@ func (c *SlashCommandController) handleLoopCommand(_ context.Context, args strin
 		if err != nil {
 			return loopUsage(), nil, nil
 		}
-		job, err := c.env.Cron.Create(parsed.Cron, parsed.Prompt, false, false)
+		job, err := c.env.Cron.CreateLoop(parsed)
 		if err != nil {
 			return "", nil, err
 		}
 		if c.env.Conversation.Messages == nil {
 			*c.env.Conversation = conv.NewConversation()
 		}
-		c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled one-shot task %s (%s, cron `%s`).%s It will fire once and auto-delete.", job.ID, parsed.Human, parsed.Cron, parsed.Note))
+		c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled one-shot task %s (%s).%s It will fire once and auto-delete.", job.ID, parsed.Human, parsed.Note))
 		return "", nil, nil
 	}
 	parsed, err := cron.ParseLoopCommand(args, time.Now())
 	if err != nil {
 		return loopUsage(), nil, nil
 	}
-	job, err := c.env.Cron.Create(parsed.Cron, parsed.Prompt, true, false)
+	job, err := c.env.Cron.CreateLoop(parsed)
 	if err != nil {
 		return "", nil, err
 	}
 	if c.env.Conversation.Messages == nil {
 		*c.env.Conversation = conv.NewConversation()
 	}
-	c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled recurring task %s (%s, cron `%s`).%s Auto-expires after 7 days. Executing now.", job.ID, parsed.Human, parsed.Cron, parsed.Note))
+	schedule := parsed.Human
+	if parsed.Cron != "" {
+		schedule += fmt.Sprintf(", cron `%s`", parsed.Cron)
+	}
+	c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled recurring task %s (%s).%s Auto-expires after 7 days. Executing now.", job.ID, schedule, parsed.Note))
 	msg, _ := c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: parsed.Prompt}).ToMessage()
 	return "", c.env.SubmitToAgent(msg), nil
 }

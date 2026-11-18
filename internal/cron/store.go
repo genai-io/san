@@ -39,7 +39,9 @@ type Job struct {
 	LastFired  time.Time `json:"lastFired"`  // last time this job fired
 	FiredCount int       `json:"firedCount"` // total times fired
 
-	expr *expression // parsed expression (not serialized)
+	expr     *expression // parsed expression (not serialized)
+	loopDays int         // anchored calendar interval for session-only loops
+	loopBase time.Time   // unjittered scheduled occurrence
 }
 
 // Scheduler manages cron jobs with thread-safe access.
@@ -69,38 +71,43 @@ func (s *Scheduler) Create(cronExpr, prompt string, recurring, durable bool) (*J
 		return nil, err
 	}
 
-	now := time.Now()
+	return s.create(Job{Cron: cronExpr, Prompt: prompt, Recurring: recurring, Durable: durable, expr: expr})
+}
 
+// CreateLoop installs a parsed, session-only slash-command schedule.
+func (s *Scheduler) CreateLoop(cmd LoopCommand) (*Job, error) {
+	if cmd.deadline.IsZero() {
+		return s.Create(cmd.Cron, cmd.Prompt, true, false)
+	}
+	return s.create(Job{Cron: cmd.Human, Prompt: cmd.Prompt, NextFire: cmd.deadline, Recurring: cmd.days > 0, loopDays: cmd.days, loopBase: cmd.deadline})
+}
+
+func (s *Scheduler) create(spec Job) (*Job, error) {
+	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(s.jobs) >= maxJobs {
 		return nil, fmt.Errorf("cron: maximum number of jobs (%d) reached", maxJobs)
 	}
-
-	expiresAt := time.Time{}
-	if recurring {
-		expiresAt = now.Add(defaultExpiry)
+	job := &spec
+	job.ID = generateID()
+	job.CreatedAt = now
+	if job.Recurring {
+		job.ExpiresAt = now.Add(defaultExpiry)
 	}
-
-	job := &Job{
-		ID:        generateID(),
-		Cron:      cronExpr,
-		Prompt:    prompt,
-		Recurring: recurring,
-		Durable:   durable,
-		CreatedAt: now,
-		ExpiresAt: expiresAt,
-		expr:      expr,
+	if job.loopDays > 0 {
+		job.NextFire = job.jitteredLoopBase()
+	} else if job.expr != nil {
+		job.NextFire = computeNextFire(job.expr, now, job.ID, job.Recurring)
 	}
-	job.NextFire = computeNextFire(expr, now, job.ID, recurring)
 	if job.NextFire.IsZero() {
-		return nil, fmt.Errorf("cron: no valid fire time found for %q", cronExpr)
+		return nil, fmt.Errorf("cron: no valid fire time found for %q", job.Cron)
 	}
 
 	s.jobs[job.ID] = job
 
-	if durable {
+	if job.Durable {
 		s.durableChanges[job.ID] = true
 		if err := s.saveDurableLocked(); err != nil {
 			delete(s.jobs, job.ID)
@@ -253,6 +260,15 @@ func (s *Scheduler) fire(job *Job, now time.Time, fired []FiredJob, toDelete []s
 
 	if !job.Recurring {
 		return fired, append(toDelete, job.ID)
+	}
+	if job.loopDays > 0 {
+		for {
+			job.loopBase = job.loopBase.AddDate(0, 0, job.loopDays)
+			job.NextFire = job.jitteredLoopBase()
+			if job.NextFire.After(now) {
+				return fired, toDelete
+			}
+		}
 	}
 	if job.expr == nil {
 		expr, err := parse(job.Cron)
@@ -443,7 +459,15 @@ func computeNextFire(expr *expression, from time.Time, jobID string, recurring b
 }
 
 func computeRecurringJitter(expr *expression, base time.Time, jobID string) time.Duration {
-	period := estimateRecurringPeriod(expr, base)
+	return recurringJitter(estimateRecurringPeriod(expr, base), expr.Raw, base, jobID)
+}
+
+func (j *Job) jitteredLoopBase() time.Time {
+	period := j.loopBase.AddDate(0, 0, j.loopDays).Sub(j.loopBase)
+	return j.loopBase.Add(recurringJitter(period, j.Cron, j.loopBase, j.ID))
+}
+
+func recurringJitter(period time.Duration, schedule string, base time.Time, jobID string) time.Duration {
 	if period <= 0 {
 		return 0
 	}
@@ -456,7 +480,7 @@ func computeRecurringJitter(expr *expression, base time.Time, jobID string) time
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(jobID))
 	_, _ = h.Write([]byte("|"))
-	_, _ = h.Write([]byte(expr.Raw))
+	_, _ = h.Write([]byte(schedule))
 	_, _ = h.Write([]byte("|"))
 	_, _ = h.Write([]byte(base.Format("2006-01-02T15:04")))
 
