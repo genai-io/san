@@ -15,7 +15,9 @@ second event schema, projector or writer.
 that store to `inspector.New(store *session.Store) *Server`.
 `Server.Handler() http.Handler` serves an embedded SPA and a small HTTP/SSE API.
 The command binds only to loopback; session contents may contain sensitive model
-inputs and outputs, and the local API has no authentication.
+inputs and outputs, and the local API has no authentication. The handler also
+refuses any request whose `Host` is not `127.0.0.1`, `::1` or `localhost`, so a
+page that rebinds its domain to loopback (DNS rebinding) cannot read it.
 
 Authoritative logs live under
 `~/.san/projects/<project>/sessions/<sid>/events.jsonl`. There is no older-format

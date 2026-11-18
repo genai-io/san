@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,7 +33,31 @@ func New(store *session.Store) *Server {
 	s.mux.HandleFunc("/api/sessions/", s.handleSessionRoute)
 	return s
 }
-func (s *Server) Handler() http.Handler { return s.mux }
+
+// Handler serves only requests addressed to a loopback name. Binding to
+// loopback is not enough: a page that rebinds its own domain to 127.0.0.1
+// would otherwise read every transcript through the browser.
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackHost(r.Host) {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		s.mux.ServeHTTP(w, r)
+	})
+}
+
+func isLoopbackHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	switch strings.ToLower(strings.Trim(host, "[]")) {
+	case "127.0.0.1", "::1", "localhost":
+		return true
+	}
+	return false
+}
 
 type sessionListItem struct {
 	ID         string    `json:"id"`
@@ -60,15 +85,19 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		item := sessionListItem{ID: entry.Name(), UpdatedAt: info.ModTime(), Size: info.Size()}
-		if p, e := s.store.Read(r.Context(), entry.Name()); e == nil {
-			if title := p.State().Title; title != nil {
-				item.Title = *title
-			}
-		}
 		if attrs, e := s.store.Attrs(r.Context(), entry.Name()); e != nil {
 			item.AttrsError = e.Error()
-		} else if attrs.Title != "" {
+		} else {
 			item.Title = attrs.Title
+		}
+		// Replaying the event log costs the whole session; do it only when the
+		// attributes carry no title.
+		if item.Title == "" {
+			if p, e := s.store.Read(r.Context(), entry.Name()); e == nil {
+				if title := p.State().Title; title != nil {
+					item.Title = *title
+				}
+			}
 		}
 		items = append(items, item)
 	}
