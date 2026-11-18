@@ -58,13 +58,62 @@ func decide(b perm.Decision, by, reason string) PermissionDecision {
 
 // DenyRule returns the deny rule that matches the call, or "".
 func (s *Data) DenyRule(toolName string, args map[string]any) string {
-	rule := BuildRule(toolName, args)
-	for _, pattern := range s.Permissions.Deny {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return pattern
+	return matchAnyForm(toolName, args, s.Permissions.Deny)
+}
+
+// matchAnyForm returns the first pattern matching any spelling of the call's
+// path (see pathForms), or "". Deny and ask rules use it: a rule on a
+// directory must also hold for "dir/../dir/x", "dir//x" and a symlink into it.
+func matchAnyForm(toolName string, args map[string]any, patterns []string) string {
+	if len(patterns) == 0 {
+		return ""
+	}
+	for _, form := range pathForms(toolName, args) {
+		rule := BuildRule(toolName, form)
+		for _, pattern := range patterns {
+			if MatchesToolPattern(toolName, form, rule, pattern) {
+				return pattern
+			}
 		}
 	}
 	return ""
+}
+
+// pathForms returns the call's args followed by copies whose absolute
+// file_path is cleaned and then symlink-resolved, skipping duplicates.
+func pathForms(toolName string, args map[string]any) []map[string]any {
+	forms := []map[string]any{args}
+	switch toolName {
+	case "Read", "Write", "Edit", "NotebookEdit":
+	default:
+		return forms
+	}
+	raw, _ := args["file_path"].(string)
+	if raw == "" || !filepath.IsAbs(raw) {
+		return forms
+	}
+	seen := map[string]bool{raw: true}
+	for _, alt := range []string{filepath.Clean(raw), resolvePath(raw)} {
+		if seen[alt] {
+			continue
+		}
+		seen[alt] = true
+		form := maps.Clone(args)
+		form["file_path"] = alt
+		forms = append(forms, form)
+	}
+	return forms
+}
+
+// cleanPathArgs returns args with an absolute file_path cleaned, so an allow
+// rule on a directory cannot admit "dir/../elsewhere".
+func cleanPathArgs(toolName string, args map[string]any) map[string]any {
+	if forms := pathForms(toolName, args); len(forms) > 1 {
+		if fp, _ := args["file_path"].(string); filepath.Clean(fp) != fp {
+			return forms[1]
+		}
+	}
+	return args
 }
 
 // HasPermissionToUseTool is the central permission gate that determines
@@ -76,8 +125,6 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	// directories separately — reading them live would let a single decision
 	// straddle two postures.
 	session = session.Snapshot()
-
-	rule := BuildRule(toolName, args)
 
 	// ── Step 1: Deny rules ──
 	if pattern := s.DenyRule(toolName, args); pattern != "" {
@@ -104,13 +151,12 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	}
 
 	// ── Step 5: Ask rules ──
-	for _, pattern := range s.Permissions.Ask {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return coerceAsk(decide(perm.Prompt, "config", "ask rule: "+pattern), session)
-		}
+	if pattern := matchAnyForm(toolName, args, s.Permissions.Ask); pattern != "" {
+		return coerceAsk(decide(perm.Prompt, "config", "ask rule: "+pattern), session)
 	}
 
 	// ── Step 6: Session permissions ──
+	args = cleanPathArgs(toolName, args)
 	if session != nil {
 		if session.IsToolAllowed(toolName) {
 			return decide(perm.Permit, "grant", "session: allow all "+toolName)
@@ -233,11 +279,8 @@ func (s *Data) CanApproveByHook(toolName string, args map[string]any, session *S
 	// the UI goroutine whenever the user cycles the mode mid-turn.
 	session = session.Snapshot()
 
-	rule := BuildRule(toolName, args)
-	for _, pattern := range s.Permissions.Deny {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return false
-		}
+	if s.DenyRule(toolName, args) != "" {
+		return false
 	}
 	// A hook cannot vouch for anything a safety check holds — the circuit
 	// breaker or either confirmation tier: there is no judge in this path to
@@ -248,12 +291,7 @@ func (s *Data) CanApproveByHook(toolName string, args map[string]any, session *S
 	if reason, _ := s.confirmationPromptReason(toolName, args, session); reason != "" {
 		return false
 	}
-	for _, pattern := range s.Permissions.Ask {
-		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return false
-		}
-	}
-	return true
+	return matchAnyForm(toolName, args, s.Permissions.Ask) == ""
 }
 
 // CheckPermission is a convenience wrapper returning just the behavior.

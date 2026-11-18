@@ -260,7 +260,8 @@ When a rule is in the `ask` list, executing that tool presents a 4-option approv
 
 - **Protected paths**: `.git/`, `.claude/`, `.vscode/`, `.idea/`, `.husky/`, shell configs, MCP configs are **never** auto-approved except in `bypassPermissions`.
 - **Read-only commands**: Built-in safe commands (`ls`, `cat`, `grep`, `find`, `git log`, etc.) run without prompts in all modes.
-- **Symlinks**: Allow rules check both symlink and target; deny rules block if either matches.
+- **Path spellings**: Deny and ask rules match a file path as written, cleaned (`..`, `//`), and symlink-resolved, and block if any form matches; allow rules match the cleaned path.
+- **Bash wrappers**: Deny and ask rules see the command behind `\cmd`, `env`, `command`, `exec`, `nice`/`timeout`-style wrappers, and literal `sh -c '…'` scripts.
 
 ## Other Considerations
 
