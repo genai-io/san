@@ -170,9 +170,8 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 	last.AutopilotNote = note
 }
 
-// SettleToolRows puts arrived notices and results before the unfinished calls.
-// Only the live display rows move; the agent still receives the original batch.
-func (m *ConversationModel) SettleToolRows() {
+// SplitToolBatch separates finished output from pending calls in the display.
+func (m *ConversationModel) SplitToolBatch() {
 	if len(m.Tool.PendingCalls) == 0 {
 		return
 	}

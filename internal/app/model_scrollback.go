@@ -290,7 +290,7 @@ func (m *model) commitAllMessages() []tea.Cmd {
 
 func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if checkReady {
-		m.conv.SettleToolRows()
+		m.conv.SplitToolBatch()
 	}
 	var parts []string
 	assistantIdx := m.conv.StreamMessageIndex()
