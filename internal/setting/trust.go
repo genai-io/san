@@ -102,6 +102,15 @@ func UntrackedInRepo(path string) bool {
 	return errors.As(err, &exit) && exit.ExitCode() == 1 // 1: known to git as untracked
 }
 
+// WorkingDirEnvNeedsTrust reports whether a repository's .env needs approval.
+func WorkingDirEnvNeedsTrust(cwd string) bool {
+	path := filepath.Join(cwd, ".env")
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		return false
+	}
+	return IsGitRepo(confdir.RepoRoot(cwd)) && !IsWorkspaceTrusted(cwd) && !UntrackedInRepo(path)
+}
+
 // ProjectSettingsFindings lists what cwd's settings files would turn on that
 // waits for trust, one line per item, each naming its file. Untracked local
 // files are the user's own and are left out.

@@ -21,6 +21,9 @@ import (
 func workspaceTrustFindings(cwd string) []string {
 	findings := llm.ProjectModelFindings(cwd)
 	findings = append(findings, setting.ProjectSettingsFindings(cwd)...)
+	if setting.WorkingDirEnvNeedsTrust(cwd) {
+		findings = append(findings, "load .env on the next launch from this directory")
+	}
 	findings = append(findings, mcp.ProjectServerFindings(cwd)...)
 	return append(findings, plugin.ProjectPluginFindings(cwd)...)
 }

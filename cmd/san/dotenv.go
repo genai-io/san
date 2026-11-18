@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -35,14 +36,13 @@ func decidesWhereCredentialsGo(name string) bool {
 // loadWorkingDirEnv applies ./.env without overriding the environment, skipping
 // and returning (sorted) the names that decide where credentials go.
 func loadWorkingDirEnv() (refused []string) {
-	vars, err := godotenv.Read()
-	if err != nil {
-		return nil // no .env, or unreadable — same as before
-	}
-	// Like the folder's settings, its .env applies once the folder is trusted,
-	// or when git does not track it: a clone brings only tracked files.
-	if !setting.IsWorkspaceTrusted(".") && !setting.UntrackedInRepo(".env") {
+	cwd, err := os.Getwd()
+	if err != nil || setting.WorkingDirEnvNeedsTrust(cwd) {
 		return nil
+	}
+	vars, err := godotenv.Read(filepath.Join(cwd, ".env"))
+	if err != nil {
+		return nil // no .env, or unreadable
 	}
 	for name, value := range vars {
 		if decidesWhereCredentialsGo(name) {

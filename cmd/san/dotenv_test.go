@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/genai-io/san/internal/setting"
+
 	"github.com/genai-io/san/internal/secret"
 )
 
@@ -142,4 +144,34 @@ func TestWorkingDirEnvFollowsWorkspaceTrust(t *testing.T) {
 		}
 	}
 	os.Unsetenv("SAN_TRUST_WORKSPACE")
+	os.Unsetenv("SAN_TEST_DOTENV")
+	if out, err := exec.Command("git", "add", ".env").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if !setting.WorkingDirEnvNeedsTrust(repo) {
+		t.Fatal("tracked .env should appear in workspace trust review")
+	}
+	if err := setting.TrustWorkspace(repo); err != nil {
+		t.Fatal(err)
+	}
+	loadWorkingDirEnv()
+	if got := os.Getenv("SAN_TEST_DOTENV"); got != "loaded" {
+		t.Fatalf("after trusting workspace: SAN_TEST_DOTENV = %q", got)
+	}
+}
+
+func TestWorkingDirEnvOutsideGit(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("SAN_TRUST_WORKSPACE", "")
+	t.Setenv("SAN_TEST_DOTENV", "")
+	t.Chdir(t.TempDir())
+	os.Unsetenv("SAN_TEST_DOTENV")
+	if err := os.WriteFile(".env", []byte("SAN_TEST_DOTENV=local\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadWorkingDirEnv()
+	if got := os.Getenv("SAN_TEST_DOTENV"); got != "local" {
+		t.Fatalf("local environment = %q, want local", got)
+	}
 }
