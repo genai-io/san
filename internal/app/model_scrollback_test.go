@@ -653,17 +653,21 @@ func TestToolBatchCommitsCallsAndResultsTogether(t *testing.T) {
 		}
 	}
 	printed := ansi.Strip(m.flush.pendingPrints[0].remaining)
-	for _, pair := range []string{
-		"● Read(first.go)\n  └ 1 line\n",
-		"● Read(second.go)\n  └ 2 lines\n",
+	last := -1
+	for _, text := range []string{
 		"● Read(third.go)\n  └ 3 lines",
+		"Background task finished",
+		"● Read(first.go)\n  └ 1 line",
+		"● Read(second.go)\n  └ 2 lines",
 	} {
-		if strings.Count(printed, pair) != 1 {
-			t.Fatalf("call and result must appear together once; missing %q:\n%s", pair, printed)
+		at := strings.Index(printed, text)
+		if at <= last || strings.Count(printed, text) != 1 {
+			t.Fatalf("call/result or notice is missing, duplicated, or out of order (%q):\n%s", text, printed)
 		}
+		last = at
 	}
-	if strings.Contains(printed, "Read →") || strings.Count(printed, "Background task finished") != 1 {
-		t.Fatalf("batch should have no standalone results and retain its notice:\n%s", printed)
+	if strings.Contains(printed, "Read →") {
+		t.Fatalf("batch should have no standalone results:\n%s", printed)
 	}
 }
 

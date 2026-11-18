@@ -26,6 +26,7 @@ func TestToolActivityFollowsNoticesWithoutMovingText(t *testing.T) {
 		}
 		before := append([]core.ChatMessage(nil), messages...)
 		p := RenderContext{Messages: messages, Width: 100, PendingCalls: []core.ToolCall{call}}
+		p.InlinedResults = PrecomputeInlinedResults(messages, 0, p.PendingCalls...)
 		out := ansi.Strip(RenderActiveBody(p))
 		last := -1
 		for _, token := range []string{"user-before", "assistant-before", "notice-token", "second-notice", "live-worker", "user-after", "assistant-after"} {
@@ -38,17 +39,22 @@ func TestToolActivityFollowsNoticesWithoutMovingText(t *testing.T) {
 		if !reflect.DeepEqual(messages, before) {
 			t.Fatal("render changed transcript")
 		}
-		history := ansi.Strip(RenderMessageRange(p, 0, len(messages), false))
+		historyParams := p
+		historyParams.PendingCalls = nil
+		historyParams.InlinedResults = PrecomputeInlinedResults(messages, 0)
+		history := ansi.Strip(RenderMessageRange(historyParams, 0, len(messages), false))
 		if strings.Index(history, "live-worker") >= strings.Index(history, "notice-token") {
-			t.Fatalf("history no longer follows transcript order: %s", history)
+			t.Fatalf("a historical call without a result moved: %s", history)
 		}
 		// Exercise each notice representation as the compact layout's newest row.
 		p.Messages = messages[:3]
+		p.InlinedResults = PrecomputeInlinedResults(p.Messages, 0, p.PendingCalls...)
 		for _, height := range []int{2, 4, 20} {
 			compact, ok := RenderActiveWorkers(p, height)
 			compact = ansi.Strip(compact)
-			if !ok || strings.Index(compact, "notice-token") < 0 || strings.Index(compact, "live-worker") <= strings.Index(compact, "notice-token") {
-				t.Fatalf("compact order: %s", compact)
+			noticeRow, workerRow, _ := strings.Cut(compact, "\n")
+			if !ok || !strings.Contains(noticeRow, "notice-token") || !strings.Contains(workerRow, "live-worker") || strings.Count(compact, "live-worker") != 1 {
+				t.Fatalf("compact notice or worker placement: %s", compact)
 			}
 		}
 	}

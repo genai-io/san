@@ -398,9 +398,10 @@ executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
 exception status. Terminal background tasks leave their individual tracker rows after their
 completion notice enters the conversation. Notices appear immediately during
-inference. Each inference binds to a message ID at `InferenceStart`; stream
-updates, rendering, and scrollback commits use that identity regardless of
-display order. `InferenceEnd` releases the identity after final metadata arrives;
+inference, ahead of replies that haven't started. Tool results stay on their
+side of each notice when the batch settles and enters scrollback. Each inference
+binds to a message ID at `InferenceStart`; stream updates, rendering, and
+scrollback commits use that identity regardless of display order. `InferenceEnd` releases the identity after final metadata arrives;
 cancellation clears it immediately, and retries bind a new message. Turn end
 cannot reset a worker before its notice arrives.
 Completion notices and output records remain available. Resumed completed

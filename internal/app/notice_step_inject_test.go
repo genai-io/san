@@ -177,15 +177,15 @@ func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
 	m.conv.Stream.MessageID = owner.ID
 	m.deliverNotice(taskNotice())
 
-	view := conv.RenderActiveContent(m.messageRenderParams())
+	view := m.renderChatSection(conv.RenderActiveContent(m.messageRenderParams()))
 	if !strings.Contains(ansi.Strip(view), "research · Completed") || !hasWaitingRow(view) {
 		t.Fatalf("completion must be visible while inference is still running:\n%s", view)
 	}
-	if m.conv.CommittedCount != 0 {
-		t.Fatal("notice committed the unfinished inference")
+	if m.conv.CommittedCount != 1 || m.conv.Stream.MessageID != owner.ID {
+		t.Fatal("notice should settle without committing or retargeting the empty inference")
 	}
 	m.conv.AppendStream("continuing", "")
-	if got := m.conv.Messages[0].Content; got != "continuing" {
+	if got := m.conv.Messages[1].Content; got != "continuing" {
 		t.Fatalf("notice displaced subsequent stream output: %q", got)
 	}
 }

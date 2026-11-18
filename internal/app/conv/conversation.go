@@ -105,6 +105,21 @@ func (m *ConversationModel) StreamMessageIndex() int {
 	return -1
 }
 
+// PlaceEmptyStreamAtTail takes an unseen inference placeholder out of the way
+// of a notice without retargeting its stream or moving output already on screen.
+func (m *ConversationModel) PlaceEmptyStreamAtTail() {
+	idx := m.StreamMessageIndex()
+	if !m.Stream.Active || idx < m.CommittedCount || idx == len(m.Messages)-1 {
+		return
+	}
+	msg := m.Messages[idx]
+	if msg.Content != "" || msg.Thinking != "" || len(msg.ToolCalls) != 0 {
+		return
+	}
+	copy(m.Messages[idx:], m.Messages[idx+1:])
+	m.Messages[len(m.Messages)-1] = msg
+}
+
 func (m *ConversationModel) AppendStream(text, thinking string) {
 	idx := m.StreamMessageIndex()
 	if idx < 0 {

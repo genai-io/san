@@ -50,8 +50,9 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			if strings.Count(live, "✦") != 1 || strings.Contains(live, "Generating") || strings.Contains(live, "bytes") || m.conv.Stream.GeneratedBytes != 1024 || len(m.conv.Tool.PendingCalls) != 0 {
 				t.Fatalf("generation progress was hidden or started a tool: %q", live)
 			}
-			if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 0 {
-				t.Fatal("notices committed the assistant before inference finished")
+			m.CommitMessages()
+			if m.conv.CommittedCount != 1 {
+				t.Fatal("only the notice preceding the inference should settle")
 			}
 			response := &ai.Response{Content: ai.Content{{Type: ai.BlockThinking, Signature: "final-signature"}}}
 			if withTools {
@@ -61,7 +62,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			}
 			// sdk-go forwards InferenceEnd, not the EventDone it consumes internally.
 			deliver(sdkagent.InferenceEnd{Response: response})
-			assistant := m.conv.Messages[0]
+			assistant := m.conv.Messages[1]
 			if assistant.ID != owner || assistant.Content != "Original assistant reply" || assistant.ThinkingSignature != "final-signature" {
 				t.Fatalf("inference metadata attached to the wrong row: %+v", assistant)
 			}
@@ -72,7 +73,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ID != "read-1" || len(m.conv.Tool.PendingCalls) != 1 {
 					t.Fatalf("successful call not installed and tracked: %+v / %+v", assistant, m.conv.Tool)
 				}
-				if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 0 {
+				if len(m.CommitMessages()) != 0 || m.conv.CommittedCount != 1 {
 					t.Fatal("pending tools allowed premature commit")
 				}
 				deliver(sdkagent.ToolStart{ID: "read-1", Name: tool.ToolRead, Args: `{"file_path":"example.go"}`})
@@ -91,7 +92,8 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			if m.conv.Stream.Active || m.conv.Stream.MessageID != "" || len(m.conv.Tool.PendingCalls) != 0 || m.conv.CommittedCount != len(m.conv.Messages) {
 				t.Fatalf("real OnTurnEnd did not commit all rows: stream=%+v, committed=%d/%d", m.conv.Stream, m.conv.CommittedCount, len(m.conv.Messages))
 			}
-			for _, notice := range m.conv.Messages[1:3] {
+			for _, idx := range []int{0, 2} {
+				notice := m.conv.Messages[idx]
 				if notice.ThinkingSignature != "" || len(notice.ToolCalls) != 0 {
 					t.Fatalf("assistant metadata leaked to a notice: %+v", notice)
 				}
@@ -101,7 +103,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 				t.Fatal("transient generation progress leaked into scrollback")
 			}
 			last := -1
-			for _, text := range []string{"Original assistant reply", "background completed", "background failure"} {
+			for _, text := range []string{"background completed", "Original assistant reply", "background failure"} {
 				index := strings.Index(printed, text)
 				if index <= last || strings.Count(printed, text) != 1 {
 					t.Fatalf("committed rows missing, duplicated or out of order (%q): %q", text, printed)
