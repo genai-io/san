@@ -35,6 +35,15 @@ var safeWrapperCommands = map[string]bool{
 	"stdbuf":  true,
 }
 
+// execWrapperCommands run their operand as the command but, unlike
+// safeWrapperCommands, are not plain pass-throughs: env can rewrite the
+// environment, and command/exec bypass functions and aliases.
+var execWrapperCommands = map[string]bool{
+	"env":     true,
+	"command": true,
+	"exec":    true,
+}
+
 // parseBashAST parses a bash command string into an AST.
 // Returns nil on parse failure (caller should fall back to regex).
 func parseBashAST(cmd string) *syntax.File {
@@ -77,7 +86,36 @@ func extractCommandsAST(file *syntax.File) []parsedCommand {
 		return true
 	})
 
+	// A shell handed a literal script ("bash -c 'curl x'") runs the commands
+	// in it; parse them so rules and safety checks see them too.
+	for _, cmd := range commands {
+		if script, ok := shellScriptArg(cmd); ok {
+			if inner := parseBashAST(script); inner != nil {
+				commands = append(commands, extractCommandsAST(inner)...)
+			}
+		}
+	}
+
 	return commands
+}
+
+// shellScriptArg returns the script of a "sh -c <script>" invocation.
+func shellScriptArg(cmd parsedCommand) (string, bool) {
+	if !shellInterpreters[cmd.Name] {
+		return "", false
+	}
+	for i, arg := range cmd.Args {
+		if !strings.HasPrefix(arg, "-") {
+			return "", false
+		}
+		if strings.HasPrefix(arg, "--") || !strings.Contains(arg, "c") {
+			continue
+		}
+		if i+1 < len(cmd.Args) {
+			return cmd.Args[i+1], true
+		}
+	}
+	return "", false
 }
 
 // expandsAtRunTime reports whether the command computes any of its text when
@@ -252,15 +290,19 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 		return parsedCommand{}
 	}
 
-	// Strip path prefix from command name
-	argv0 := words[0]
+	// Strip path prefix from command name. A leading backslash only
+	// suppresses alias expansion; "\curl" still runs curl.
+	argv0 := strings.TrimPrefix(words[0], "\\")
 	name := filepath.Base(argv0)
+	hasAssign := len(call.Assigns) > 0
 
-	// Strip safe wrapper commands
+	// Strip wrapper commands, which run their operand as the command.
 	args := words[1:]
-	for safeWrapperCommands[name] && len(args) > 0 {
-		// Skip wrapper flags and their value arguments
-		for len(args) > 0 && !looksLikeCommand(args[0]) {
+	for (safeWrapperCommands[name] || execWrapperCommands[name]) && len(args) > 0 {
+		// Skip wrapper flags and their value arguments; env's NAME=value
+		// operands change the command's environment like a prefix assignment.
+		for len(args) > 0 && (!looksLikeCommand(args[0]) || name == "env" && strings.Contains(args[0], "=")) {
+			hasAssign = hasAssign || name == "env" && strings.Contains(args[0], "=")
 			args = args[1:]
 		}
 		// The next command-like arg is the actual command
@@ -279,7 +321,7 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 		Args:       args,
 		HasPipe:    inPipe,
 		InSubshell: inSubshell,
-		HasAssign:  len(call.Assigns) > 0,
+		HasAssign:  hasAssign,
 	}
 }
 

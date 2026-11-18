@@ -38,17 +38,16 @@ func (s ScopedPermissions) prepare(name string, args map[string]any) (*Data, map
 	}
 	data := *s.Data
 	// Preserve original-path matches without changing deny/ask/allow precedence.
-	extend := func(rules []string) []string {
-		for _, pattern := range rules {
-			if MatchesToolPattern(name, args, BuildRule(name, args), pattern) {
-				return append(append([]string(nil), rules...), name+"(**)")
-			}
+	extend := func(rules []string, matched bool) []string {
+		if matched {
+			return append(append([]string(nil), rules...), name+"(**)")
 		}
 		return rules
 	}
-	data.Permissions.Deny = extend(data.Permissions.Deny)
-	data.Permissions.Ask = extend(data.Permissions.Ask)
-	data.Permissions.Allow = extend(data.Permissions.Allow)
+	data.Permissions.Deny = extend(data.Permissions.Deny, matchAnyForm(name, args, data.Permissions.Deny) != "")
+	data.Permissions.Ask = extend(data.Permissions.Ask, matchAnyForm(name, args, data.Permissions.Ask) != "")
+	_, allowed := MatchAllowList(name, cleanPathArgs(name, args), data.Permissions.Allow)
+	data.Permissions.Allow = extend(data.Permissions.Allow, allowed)
 	return &data, resolved
 }
 func (s ScopedPermissions) DenyRule(name string, args map[string]any) string {

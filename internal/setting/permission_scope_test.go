@@ -51,3 +51,25 @@ func TestScopedPermissions(t *testing.T) {
 		}
 	}
 }
+
+func TestScopedAllowUsesCleanRelativePath(t *testing.T) {
+	data := &Data{}
+	cleaned := filepath.Join("src", "settings.txt")
+	data.Permissions.Allow = []string{"Write(./src/**)"}
+	scoped := ScopedPermissions{Data: data, CWD: t.TempDir()}
+	session := NewSessionPermissions()
+	path := "src" + string(filepath.Separator) + "." + string(filepath.Separator) + "settings.txt"
+	for path, want := range map[string]perm.Decision{
+		cleaned: perm.Permit,
+		path:    perm.Permit,
+		filepath.Join("src-other", "settings.txt"): perm.Prompt,
+	} {
+		args := map[string]any{"file_path": path}
+		if got := scoped.HasPermissionToUseTool("Write", args, session); got.Behavior != want {
+			t.Errorf("relative spelling %q: %+v", path, got)
+		}
+		if args["file_path"] != path {
+			t.Fatal("model input mutated")
+		}
+	}
+}
