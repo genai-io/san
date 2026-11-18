@@ -3,6 +3,19 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.4] - 2026-11-18
+
+### Fixed
+- Require workspace trust before loading a Git-tracked `.env`, while continuing to load untracked local files ([@yanmxa](https://github.com/yanmxa) in [#786](https://github.com/genai-io/san/pull/786))
+- Enforce deny rules across equivalent file paths and shell command wrappers ([@yanmxa](https://github.com/yanmxa) in [#788](https://github.com/genai-io/san/pull/788))
+- Require approval when `git grep` is asked to open matches in a pager ([@yanmxa](https://github.com/yanmxa) in [#787](https://github.com/genai-io/san/pull/787))
+- Block recursive deletion of the home directory after a shell changes into it ([@yanmxa](https://github.com/yanmxa) in [#792](https://github.com/genai-io/san/pull/792))
+- Reject inspector requests whose `Host` header does not identify a loopback address or localhost ([@yanmxa](https://github.com/yanmxa) in [#791](https://github.com/genai-io/san/pull/791))
+- Preserve session and settings data across windows, and honor one-shot deadlines and multi-day scheduling intervals ([@yanmxa](https://github.com/yanmxa) in [#796](https://github.com/genai-io/san/pull/796))
+- Run each shared scheduled job in only one window when it comes due ([@yanmxa](https://github.com/yanmxa) in [#789](https://github.com/genai-io/san/pull/789))
+- Keep background completion notices in their original position as tool results arrive ([@yanmxa](https://github.com/yanmxa) in [#794](https://github.com/genai-io/san/pull/794))
+- Read files with very long lines and remove the unused `mode` parameter from Write ([@yanmxa](https://github.com/yanmxa) in [#790](https://github.com/genai-io/san/pull/790))
+
 ## [v1.25.3] - 2026-11-16
 
 ### Added
