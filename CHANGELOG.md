@@ -3,6 +3,22 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.3] - 2026-11-16
+
+### Added
+- Add agent blueprints and resumable scheduling ([@yanmxa](https://github.com/yanmxa) in [#771](https://github.com/genai-io/san/pull/771))
+### Changed
+- Bump the go-minor-and-patch group with 5 updates ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#776](https://github.com/genai-io/san/pull/776))
+### Fixed
+- Prioritize recall and deduplicate parallel reads ([@yanmxa](https://github.com/yanmxa) in [#780](https://github.com/genai-io/san/pull/780))
+- Restore TUI messaging and tighten update cadence ([@yanmxa](https://github.com/yanmxa) in [#778](https://github.com/genai-io/san/pull/778))
+- Speed up resume and avoid duplicate recaps ([@yanmxa](https://github.com/yanmxa) in [#777](https://github.com/genai-io/san/pull/777))
+- Close message admission and delivery gaps ([@yanmxa](https://github.com/yanmxa) in [#774](https://github.com/genai-io/san/pull/774))
+- Unify CJK wrapping across streaming and blocks ([@yanmxa](https://github.com/yanmxa) in [#775](https://github.com/genai-io/san/pull/775))
+- Initialize inboxes before publishing workers ([@yanmxa](https://github.com/yanmxa) in [#773](https://github.com/genai-io/san/pull/773))
+- Show pending messages above Tasks ([@yanmxa](https://github.com/yanmxa) in [#772](https://github.com/genai-io/san/pull/772))
+- Keep subagent lifecycle notices consistent ([@yanmxa](https://github.com/yanmxa) in [#770](https://github.com/genai-io/san/pull/770))
+- Enforce extension reload lifecycle contracts ([@yanmxa](https://github.com/yanmxa) in [#769](https://github.com/genai-io/san/pull/769))
 ## [v1.25.2] - 2026-11-09
 
 ### Added
