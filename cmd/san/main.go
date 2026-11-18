@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,7 +80,16 @@ Non-interactive mode:
 	Run: func(cmd *cobra.Command, args []string) {
 		printPrompt := cliOpts.print
 		if printPrompt == "" {
-			printPrompt = readStdin()
+			var err error
+			printPrompt, err = readStdin()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error reading stdin:", err)
+				os.Exit(1)
+			}
+		}
+		if cmd.Flags().Changed("print") && strings.TrimSpace(printPrompt) == "" {
+			fmt.Fprintln(os.Stderr, "Error: --print requires a prompt or non-empty stdin")
+			os.Exit(1)
 		}
 
 		// When -r is used with an argument, treat it as a session ID
@@ -111,16 +119,13 @@ Non-interactive mode:
 }
 
 // readStdin returns piped stdin data, or empty string if stdin is a terminal.
-func readStdin() string {
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		reader := bufio.NewReader(os.Stdin)
-		data, err := io.ReadAll(reader)
-		if err == nil && len(data) > 0 {
-			return strings.TrimSpace(string(data))
-		}
+func readStdin() (string, error) {
+	stat, err := os.Stdin.Stat()
+	if err != nil || stat.Mode()&os.ModeCharDevice != 0 {
+		return "", err
 	}
-	return ""
+	data, err := io.ReadAll(os.Stdin)
+	return strings.TrimSpace(string(data)), err
 }
 
 var versionCmd = &cobra.Command{
