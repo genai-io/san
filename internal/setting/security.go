@@ -67,8 +67,16 @@ func isRootOrHomeRemoval(cmd string) bool {
 	if file == nil {
 		return crudeRootOrHomeRemovalScan(cmd)
 	}
+	// atRootOrHome tracks a literal "cd" to the root or home directory, after
+	// which "rm -rf ." or "rm -rf *" removes that directory's contents.
+	atRootOrHome := false
 	for _, c := range extractCommandsAST(file) {
 		name, args := c.Name, c.Args
+		if name == "cd" || name == "pushd" {
+			// A bare cd goes home.
+			atRootOrHome = len(args) == 0 || len(args) == 1 && isRootOrHomePath(args[0])
+			continue
+		}
 		// Unwrap sudo, and after it any neutral wrapper it exposed, so
 		// "sudo rm -rf /" and "sudo timeout 5 rm -rf /" trip too. Arg skipping
 		// reuses looksLikeCommand — the same heuristic extractFromCall applies
@@ -97,6 +105,9 @@ func isRootOrHomeRemoval(cmd string) bool {
 			targets = append(targets, a)
 		}
 		if recursive && slices.ContainsFunc(targets, isRootOrHomePath) {
+			return true
+		}
+		if recursive && atRootOrHome && slices.ContainsFunc(targets, isWorkingDirContents) {
 			return true
 		}
 	}
@@ -138,6 +149,16 @@ func isRootOrHomePath(target string) bool {
 		if t == strings.TrimSuffix(home, "/") {
 			return true
 		}
+	}
+	return false
+}
+
+// isWorkingDirContents reports whether an rm target names the current
+// directory itself or all of its entries.
+func isWorkingDirContents(target string) bool {
+	switch strings.TrimSuffix(target, "/") {
+	case ".", "*", "./*", ".*", "./.*":
+		return true
 	}
 	return false
 }

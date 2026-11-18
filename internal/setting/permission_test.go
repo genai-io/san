@@ -725,6 +725,8 @@ func TestIsRootOrHomeRemoval(t *testing.T) {
 		"rm -rf $HOME", "rm -rf ${HOME}/",
 		"sudo rm -rf /", "sudo timeout 5 rm -rf /", "git diff && rm -rf ~",
 		`echo "$(rm -rf ~)"`, "echo `rm -rf /`",
+		"cd ~ && rm -rf .", "cd / && rm -rf *", "cd && rm -rf ./*", "cd $HOME; rm -rf .*",
+		"(cd ~ && sudo rm -rf *)", "pushd / && rm -r .",
 	}
 	for _, cmd := range trips {
 		if !isRootOrHomeRemoval(cmd) {
@@ -735,6 +737,8 @@ func TestIsRootOrHomeRemoval(t *testing.T) {
 	passes := []string{
 		"rm -rf /tmp/x", "rm -rf ~/project", "rm file.txt", "rm -rf ./build",
 		"echo rm -rf /", "ls /", "git push --force origin main",
+		"cd ~/project && rm -rf .", "cd build && rm -rf *", "cd ~ && cd repo && rm -rf .",
+		"cd ~ && rm -rf build", "cd / && rm *",
 	}
 	for _, cmd := range passes {
 		if isRootOrHomeRemoval(cmd) {
