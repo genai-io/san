@@ -29,13 +29,6 @@ cache when needed:
 GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
-## Local SDK Changes
-
-To test San against a sibling `sdk-go` checkout without changing the published
-dependency, run `go work init . ../sdk-go` from the San root. Keep `go.work` and
-`go.work.sum` local; they are not release dependencies. Remove the workspace or
-set `GOWORK=off` to use the SDK version pinned in `go.mod`.
-
 ## Formatting
 
 `make format` runs `gofmt` and `goimports`. Install `goimports` with:
