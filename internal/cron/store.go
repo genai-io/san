@@ -165,6 +165,8 @@ func (s *Scheduler) Empty() bool {
 
 // Tick checks all jobs and returns prompts for any that should fire now.
 // It advances fired jobs to their next fire time or removes one-shot/expired jobs.
+// A due durable job is claimed under the shared file's lock first, so when
+// several windows share the file only one of them fires it.
 func (s *Scheduler) Tick() []FiredJob {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -172,6 +174,7 @@ func (s *Scheduler) Tick() []FiredJob {
 	now := time.Now()
 	var fired []FiredJob
 	var toDelete []string
+	var dueDurable []*Job
 
 	for _, job := range s.jobs {
 		// Check expiry
@@ -184,47 +187,92 @@ func (s *Scheduler) Tick() []FiredJob {
 		if now.Before(job.NextFire) {
 			continue
 		}
-
-		fired = append(fired, FiredJob{
-			ID:     job.ID,
-			Prompt: job.Prompt,
-		})
-
-		job.LastFired = now
-		job.FiredCount++
-		if job.Durable {
-			s.durableChanges[job.ID] = true
+		if job.Durable && s.storagePath != "" {
+			dueDurable = append(dueDurable, job)
+			continue
 		}
+		fired, toDelete = s.fire(job, now, fired, toDelete)
+	}
 
-		if !job.Recurring {
-			toDelete = append(toDelete, job.ID)
-		} else {
-			if job.expr == nil {
-				if expr, err := parse(job.Cron); err == nil {
-					job.expr = expr
-				} else {
-					// Can't compute next fire — delete to prevent infinite fire loop
-					toDelete = append(toDelete, job.ID)
+	if len(dueDurable) > 0 {
+		claimed := false
+		err := s.saveDurableWith(func(onDisk map[string]*Job) {
+			claimed = true
+			for _, job := range dueDurable {
+				d := onDisk[job.ID]
+				if d == nil {
+					delete(s.jobs, job.ID)
+					delete(s.durableChanges, job.ID)
 					continue
 				}
+				job.LastFired, job.FiredCount = d.LastFired, d.FiredCount
+				if !d.NextFire.IsZero() {
+					job.NextFire = d.NextFire
+				}
+				if now.Before(job.NextFire) {
+					delete(s.durableChanges, job.ID)
+					continue
+				}
+				fired, toDelete = s.fire(job, now, fired, toDelete)
 			}
-			if job.expr != nil {
-				job.NextFire = computeNextFire(job.expr, now, job.ID, true)
+			s.deleteJobsLocked(toDelete)
+			toDelete = nil
+		})
+		if err != nil {
+			log.Logger().Error("cron: claim durable jobs", zap.Error(err))
+		}
+		if !claimed {
+			// The shared file is unavailable: firing is better than losing the job.
+			for _, job := range dueDurable {
+				fired, toDelete = s.fire(job, now, fired, toDelete)
 			}
 		}
 	}
 
-	for _, id := range toDelete {
-		if s.jobs[id].Durable {
-			s.durableChanges[id] = false
-		}
-		delete(s.jobs, id)
-	}
+	s.deleteJobsLocked(toDelete)
 	if err := s.saveDurableLocked(); err != nil {
 		log.Logger().Error("cron: persist durable jobs", zap.Error(err))
 	}
 
 	return fired
+}
+
+// fire records that job fired at now and schedules its next run, queueing a
+// finished job on toDelete.
+func (s *Scheduler) fire(job *Job, now time.Time, fired []FiredJob, toDelete []string) ([]FiredJob, []string) {
+	fired = append(fired, FiredJob{
+		ID:     job.ID,
+		Prompt: job.Prompt,
+	})
+
+	job.LastFired = now
+	job.FiredCount++
+	if job.Durable {
+		s.durableChanges[job.ID] = true
+	}
+
+	if !job.Recurring {
+		return fired, append(toDelete, job.ID)
+	}
+	if job.expr == nil {
+		expr, err := parse(job.Cron)
+		if err != nil {
+			// Can't compute next fire — delete to prevent infinite fire loop
+			return fired, append(toDelete, job.ID)
+		}
+		job.expr = expr
+	}
+	job.NextFire = computeNextFire(job.expr, now, job.ID, true)
+	return fired, toDelete
+}
+
+func (s *Scheduler) deleteJobsLocked(ids []string) {
+	for _, id := range ids {
+		if job := s.jobs[id]; job != nil && job.Durable {
+			s.durableChanges[id] = false
+		}
+		delete(s.jobs, id)
+	}
 }
 
 // FiredJob is returned by Tick when a job fires.
@@ -427,7 +475,16 @@ func estimateRecurringPeriod(expr *expression, base time.Time) time.Duration {
 // Apply only local mutations to the latest shared file; stale jobs must not
 // undo another window's deletion or scheduling update.
 func (s *Scheduler) saveDurableLocked() error {
-	if s.storagePath == "" || len(s.durableChanges) == 0 {
+	if len(s.durableChanges) == 0 {
+		return nil
+	}
+	return s.saveDurableWith(nil)
+}
+
+// saveDurableWith is saveDurableLocked with claim run on the file's current
+// jobs, under its lock, before the local changes are applied.
+func (s *Scheduler) saveDurableWith(claim func(onDisk map[string]*Job)) error {
+	if s.storagePath == "" {
 		return nil
 	}
 	return atomicfile.WithLock(s.storagePath+".lock", func() error {
@@ -441,6 +498,12 @@ func (s *Scheduler) saveDurableLocked() error {
 				return fmt.Errorf("cron: null durable job")
 			}
 			onDisk[job.ID] = job
+		}
+		if claim != nil {
+			claim(onDisk)
+		}
+		if len(s.durableChanges) == 0 {
+			return nil
 		}
 		for id, present := range s.durableChanges {
 			if !present {

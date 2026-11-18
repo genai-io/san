@@ -301,10 +301,7 @@ func TestStoreTick_DurableRecurringPersistsUpdatedState(t *testing.T) {
 		t.Fatalf("Create durable recurring failed: %v", err)
 	}
 
-	store.mu.Lock()
-	store.jobs[job.ID].NextFire = time.Now().Add(-time.Minute)
-	store.mu.Unlock()
-
+	makeDue(t, store, job)
 	fired := store.Tick()
 	if len(fired) != 1 {
 		t.Fatalf("expected 1 fired job, got %d", len(fired))
