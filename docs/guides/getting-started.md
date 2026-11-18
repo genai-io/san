@@ -54,12 +54,13 @@ for Anthropic). Supported providers and the env var each one reads:
 You can also set them in `.env` or `~/.san/providers.json`.
 
 A `.env` is read from the directory you launch San in, which is not necessarily
-a directory you wrote. It may therefore supply API keys (names ending in
-`_API_KEY`) and nothing else; in particular not the endpoint they are sent to:
-names ending in `_BASE_URL`, the proxy variables and
+a directory you wrote. It may therefore supply credentials but not the endpoint
+they are sent to: names ending in `_BASE_URL`, the proxy variables and
 `SSL_CERT_FILE` / `SSL_CERT_DIR` are ignored there, and San names them at
 startup when it skips one. Export the variable in your shell, or set the base
-URL from `/models`, to override an endpoint.
+URL from `/models`, to override an endpoint. Like the folder's own settings, a
+`.env` that git tracks applies only once you trust the folder; an untracked
+(for example gitignored) `.env` applies right away.
 
 Two providers take a subscription instead of a key: **ChatGPT Subscription**
 (OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in

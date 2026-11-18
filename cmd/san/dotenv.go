@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 // A working-directory .env may come from a cloned repository, so it may supply
@@ -30,22 +32,21 @@ func decidesWhereCredentialsGo(name string) bool {
 	return networkControlEnv[upper] || strings.HasSuffix(upper, "_BASE_URL")
 }
 
-// loadWorkingDirEnv applies the API keys in ./.env without overriding the
-// environment, skipping and returning (sorted) the names that decide where
-// credentials go.
+// loadWorkingDirEnv applies ./.env without overriding the environment, skipping
+// and returning (sorted) the names that decide where credentials go.
 func loadWorkingDirEnv() (refused []string) {
 	vars, err := godotenv.Read()
 	if err != nil {
 		return nil // no .env, or unreadable — same as before
 	}
+	// Like the folder's settings, its .env applies once the folder is trusted,
+	// or when git does not track it: a clone brings only tracked files.
+	if !setting.IsWorkspaceTrusted(".") && !setting.UntrackedInRepo(".env") {
+		return nil
+	}
 	for name, value := range vars {
 		if decidesWhereCredentialsGo(name) {
 			refused = append(refused, name)
-			continue
-		}
-		// Only API keys: anything else could switch San's own behavior
-		// (SAN_TRUST_WORKSPACE) or make shells run code (BASH_ENV).
-		if !strings.HasSuffix(strings.ToUpper(name), "_API_KEY") {
 			continue
 		}
 		if _, ok := os.LookupEnv(name); ok {
