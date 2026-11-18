@@ -283,6 +283,15 @@ func (s *Settings) DisabledToolsAt(scope Scope) map[string]bool {
 	return DisabledToolsAt(scope)
 }
 
-func (s *Settings) UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error {
-	return UpdateDisabledToolsAt(disabledTools, scope)
+func (s *Settings) UpdateDisabledToolAt(name string, disabled *bool, scope Scope) error {
+	return updateSettingsFile(scope, func(d *Data) {
+		if disabled == nil {
+			delete(d.DisabledTools, name)
+			return
+		}
+		if d.DisabledTools == nil {
+			d.DisabledTools = make(map[string]bool)
+		}
+		d.DisabledTools[name] = *disabled
+	})
 }

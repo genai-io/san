@@ -231,11 +231,7 @@ func (l *Loader) SaveToUser(settings *Data) error {
 }
 
 func (l *Loader) saveToFile(path string, settings *Data) error {
-	existing := NewData()
-	if err := atomicfile.ReadJSON(path, existing); err != nil {
-		return err
-	}
-	return atomicfile.WriteJSON(path, mergeSettings(existing, settings), 0o644)
+	return mutateSettingsPath(path, func(d *Data) { *d = *mergeSettings(d, settings) })
 }
 
 var (
@@ -276,18 +272,6 @@ func defaultData() *Data {
 	return NewData()
 }
 
-// UpdateDisabledToolsAt updates disabled tools at user level (true) or project
-// level (false). It replaces the whole disabledTools block rather than routing
-// through the merging save: the caller passes the complete desired map for the
-// level, and merging would OR it with the file's previous keys so a re-enable
-// (a removed key) or a default-disabled tool toggled back off could never
-// persist. Cross-level layering still ORs on Load by design.
-func UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error {
-	return updateSettingsFile(scope, func(d *Data) {
-		d.DisabledTools = disabledTools
-	})
-}
-
 // updateSettingsFile reads the settings file at the requested level (true =
 // user-wide, false = project-local), lets mutate replace a single block, and
 // writes it back — leaving every other setting in the file untouched. It
@@ -302,15 +286,21 @@ func updateSettingsFile(scope Scope, mutate func(*Data)) error {
 	loader := NewLoader()
 	path := filepath.Join(loader.dir(scope), "settings.json")
 
-	existing := NewData()
-	if err := atomicfile.ReadJSON(path, existing); err != nil {
-		return err
-	}
-	mutate(existing)
-	if err := atomicfile.WriteJSON(path, existing, 0o644); err != nil {
-		return err
-	}
+	return mutateSettingsPath(path, mutate)
+}
 
+func mutateSettingsPath(path string, mutate func(*Data)) error {
+	err := atomicfile.WithWriteLock(path, func() error {
+		existing := NewData()
+		if err := atomicfile.ReadJSON(path, existing); err != nil {
+			return err
+		}
+		mutate(existing)
+		return atomicfile.WriteJSON(path, existing, 0o644)
+	})
+	if err != nil {
+		return err
+	}
 	invalidateLoaded()
 	return nil
 }
@@ -516,11 +506,7 @@ func LoadTheme() string {
 
 // SaveTheme persists the chosen theme to ~/.san/settings.json.
 func SaveTheme(t string) error {
-	if err := NewLoader().SaveToUser(&Data{Theme: t}); err != nil {
-		return err
-	}
-	invalidateLoaded()
-	return nil
+	return NewLoader().SaveToUser(&Data{Theme: t})
 }
 
 // SaveContextBar persists the context-usage bar on/off choice to
@@ -528,21 +514,13 @@ func SaveTheme(t string) error {
 // "off" choice overrides any inherited "on" instead of being dropped as a
 // zero value (see Data.ContextBar).
 func SaveContextBar(on bool) error {
-	if err := NewLoader().SaveToUser(&Data{ContextBar: &on}); err != nil {
-		return err
-	}
-	invalidateLoaded()
-	return nil
+	return NewLoader().SaveToUser(&Data{ContextBar: &on})
 }
 
 // SaveGitBar persists the optional Git status row to ~/.san/settings.json.
 // An explicit false is retained so switching the bar off survives a reload.
 func SaveGitBar(on bool) error {
-	if err := NewLoader().SaveToUser(&Data{GitBar: &on}); err != nil {
-		return err
-	}
-	invalidateLoaded()
-	return nil
+	return NewLoader().SaveToUser(&Data{GitBar: &on})
 }
 
 // SaveThinkingDisplay persists the reasoning-display choice to
@@ -615,16 +593,5 @@ func SavePersonaAt(cwd, name string, scope Scope) error {
 	}
 	path := filepath.Join(dir, "settings.json")
 
-	existing := NewData()
-	if err := atomicfile.ReadJSON(path, existing); err != nil {
-		return err
-	}
-	existing.Persona = name
-
-	if err := atomicfile.WriteJSON(path, existing, 0o644); err != nil {
-		return err
-	}
-
-	invalidateLoaded()
-	return nil
+	return mutateSettingsPath(path, func(d *Data) { d.Persona = name })
 }

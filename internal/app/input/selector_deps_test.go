@@ -80,15 +80,15 @@ func TestSetSelectorDepsToolUsesReplacementCallbacks(t *testing.T) {
 	for _, open := range []bool{false, true} {
 		t.Run(map[bool]string{false: "inactive", true: "open"}[open], func(t *testing.T) {
 			oldSaves, newSaves := 0, 0
-			deps := SelectorDeps{LoadDisabled: func(setting.Scope) map[string]bool { return map[string]bool{"demo": true} }, UpdateDisabled: func(map[string]bool, setting.Scope) error { oldSaves++; return nil }}
+			deps := SelectorDeps{LoadDisabled: func(setting.Scope) map[string]bool { return map[string]bool{"demo": true} }, UpdateDisabled: func(string, *bool, setting.Scope) error { oldSaves++; return nil }}
 			m := New(t.TempDir(), 80, nil, deps)
 			if open {
 				_ = m.Tool.EnterSelect(100, 40, nil)
 			}
 			deps.LoadDisabled = func(setting.Scope) map[string]bool { return map[string]bool{"demo": false} }
-			deps.UpdateDisabled = func(disabled map[string]bool, _ setting.Scope) error {
+			deps.UpdateDisabled = func(name string, disabled *bool, _ setting.Scope) error {
 				newSaves++
-				if !disabled["demo"] {
+				if name != "demo" || disabled == nil || !*disabled {
 					t.Error("toggle used stale disabled cache")
 				}
 				return nil

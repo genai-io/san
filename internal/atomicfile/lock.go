@@ -8,6 +8,12 @@ import (
 	"sync"
 )
 
+// WithWriteLock locks a stable sibling of Write's destination, including when
+// a user config symlink points into a dotfiles repository.
+func WithWriteLock(path string, fn func() error) error {
+	return WithLock(writeTarget(path)+".lock", fn)
+}
+
 // WithLock serializes a read-modify-write across processes. The lock file must
 // have a stable name separate from the data file, which Write replaces.
 func WithLock(path string, fn func() error) error {

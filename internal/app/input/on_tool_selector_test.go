@@ -1,6 +1,7 @@
 package input
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 func TestToolSelectorShowsTheRuntimeLayerOverTheSetting(t *testing.T) {
 	s := NewToolSelector(
 		func(setting.Scope) map[string]bool { return map[string]bool{"SendMessage": true} },
-		func(map[string]bool, setting.Scope) error { return nil },
+		func(string, *bool, setting.Scope) error { return nil },
 		func() map[string]string { return map[string]string{"SendMessage": "on while in a group"} },
 	)
 	if err := s.EnterSelect(120, 60, nil); err != nil {
@@ -31,4 +32,18 @@ func TestToolSelectorShowsTheRuntimeLayerOverTheSetting(t *testing.T) {
 		}
 	}
 	t.Fatal("SendMessage row not rendered")
+}
+
+func TestToolToggleSaveFailure(t *testing.T) {
+	s := NewToolSelector(func(setting.Scope) map[string]bool { return map[string]bool{"demo": true} }, func(string, *bool, setting.Scope) error { return errors.New("read-only") }, nil)
+	if err := s.EnterSelect(120, 60, nil); err != nil {
+		t.Fatal(err)
+	}
+	s.list.load([]toolItem{{Name: "demo"}}, 120, 60)
+	if s.Toggle() != nil || !s.effectiveDisabled(s.activeScope(), "demo") {
+		t.Fatal("failed save reported or applied toggle")
+	}
+	if !strings.Contains(xansi.Strip(s.Render()), "Could not save demo setting: read-only") {
+		t.Fatal("missing save error")
+	}
 }

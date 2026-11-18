@@ -105,23 +105,31 @@ func (s *Data) SessionGrantTakesEffect(toolName string, args map[string]any, ses
 // the file's path.
 func addLocalAllowRules(cwd string, rules []string) (string, error) {
 	path := filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
+	err := atomicfile.WithWriteLock(path, func() error { return appendAllowRules(path, rules) })
+	if err == nil {
+		invalidateLoaded()
+	}
+	return path, err
+}
+
+func appendAllowRules(path string, rules []string) error {
 	var doc map[string]any
 	if err := atomicfile.ReadJSON(path, &doc); err != nil {
-		return path, err
+		return err
 	}
 	if doc == nil {
 		doc = map[string]any{}
 	}
 	perms, ok := doc["permissions"].(map[string]any)
 	if !ok && doc["permissions"] != nil {
-		return path, fmt.Errorf("%s: permissions is not an object", path)
+		return fmt.Errorf("%s: permissions is not an object", path)
 	}
 	if perms == nil {
 		perms = map[string]any{}
 	}
 	allow, ok := perms["allow"].([]any)
 	if !ok && perms["allow"] != nil {
-		return path, fmt.Errorf("%s: permissions.allow is not a list", path)
+		return fmt.Errorf("%s: permissions.allow is not a list", path)
 	}
 	for _, r := range rules {
 		if !slices.Contains(allow, any(r)) {
@@ -130,9 +138,5 @@ func addLocalAllowRules(cwd string, rules []string) (string, error) {
 	}
 	perms["allow"] = allow
 	doc["permissions"] = perms
-	if err := atomicfile.WriteJSON(path, doc, 0o644); err != nil {
-		return path, err
-	}
-	invalidateLoaded()
-	return path, nil
+	return atomicfile.WriteJSON(path, doc, 0o644)
 }

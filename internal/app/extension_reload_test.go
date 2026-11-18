@@ -56,7 +56,7 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 	m.userInput = input.New(cwd, 80, commandSuggestionMatcher(svc.Command, svc.Flow), input.SelectorDeps{
 		AgentRegistry: svc.Subagent, PersonaRegistry: svc.Persona, SkillRegistry: svc.Skill,
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
-		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
+		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 	})
 	return m
 }

@@ -121,7 +121,7 @@ type SelectorDeps struct {
 	PluginRegistry  *coreplugin.Registry
 	Setting         *coresetting.Settings
 	LoadDisabled    func(scope setting.Scope) map[string]bool
-	UpdateDisabled  func(disabled map[string]bool, scope setting.Scope) error
+	UpdateDisabled  func(name string, disabled *bool, scope setting.Scope) error
 	// HeldOn names the tools the session keeps on over the settings, and why.
 	HeldOn func() map[string]string
 	// Evolve bundles the /evolve popup's dependencies: the live workspace
