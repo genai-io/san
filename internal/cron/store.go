@@ -200,18 +200,20 @@ func (s *Scheduler) Tick() []FiredJob {
 			claimed = true
 			for _, job := range dueDurable {
 				d := onDisk[job.ID]
-				if d != nil && d.LastFired.Before(job.NextFire) {
-					fired, toDelete = s.fire(job, now, fired, toDelete)
-					continue
-				}
-				// Another window fired or removed it since this one scheduled it.
-				if d == nil || !job.Recurring || job.expr == nil {
+				if d == nil {
 					delete(s.jobs, job.ID)
 					delete(s.durableChanges, job.ID)
 					continue
 				}
 				job.LastFired, job.FiredCount = d.LastFired, d.FiredCount
-				job.NextFire = computeNextFire(job.expr, now, job.ID, true)
+				if !d.NextFire.IsZero() {
+					job.NextFire = d.NextFire
+				}
+				if now.Before(job.NextFire) {
+					delete(s.durableChanges, job.ID)
+					continue
+				}
+				fired, toDelete = s.fire(job, now, fired, toDelete)
 			}
 			s.deleteJobsLocked(toDelete)
 			toDelete = nil

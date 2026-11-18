@@ -277,9 +277,12 @@ func TestSessionJobsStayOutOfTheSharedFile(t *testing.T) {
 	}
 }
 
-func makeDue(s *Scheduler) {
-	for _, job := range s.jobs {
-		job.NextFire = time.Now().Add(-time.Second)
+func makeDue(t *testing.T, s *Scheduler, job *Job) {
+	t.Helper()
+	job.NextFire = time.Now().Add(-time.Second)
+	s.durableChanges[job.ID] = true
+	if err := s.saveDurableLocked(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -287,12 +290,12 @@ func makeDue(s *Scheduler) {
 func TestDurableOneShotFiresInOneWindow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
 	windowA := instanceOn(t, path)
-	if _, err := windowA.Create("* * * * *", "deploy", false, true); err != nil {
+	job, err := windowA.Create("* * * * *", "deploy", false, true)
+	if err != nil {
 		t.Fatal(err)
 	}
+	makeDue(t, windowA, job)
 	windowB := instanceOn(t, path)
-	makeDue(windowA)
-	makeDue(windowB)
 
 	if got := len(windowA.Tick()) + len(windowB.Tick()); got != 1 {
 		t.Fatalf("one-shot durable job fired %d times across two windows, want 1", got)
@@ -310,8 +313,8 @@ func TestDurableRecurringFiresInOneWindowPerRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	windowB := instanceOn(t, path)
-	makeDue(windowA)
-	makeDue(windowB)
+	makeDue(t, windowA, job)
+	windowB.jobs[job.ID].NextFire = job.NextFire
 
 	if got := len(windowA.Tick()) + len(windowB.Tick()); got != 1 {
 		t.Fatalf("recurring durable job fired %d times across two windows, want 1", got)
@@ -324,12 +327,36 @@ func TestDurableRecurringFiresInOneWindowPerRun(t *testing.T) {
 		t.Errorf("losing window did not adopt the run: count=%d next=%v", adopted.FiredCount, adopted.NextFire)
 	}
 
-	// The next run, scheduled after the first, is again claimed by exactly one window.
-	time.Sleep(2 * time.Millisecond)
-	next := time.Now()
-	windowA.jobs[job.ID].NextFire = next
-	adopted.NextFire = next
+	// The next run is again claimed by exactly one window.
+	makeDue(t, windowA, job)
+	adopted.NextFire = job.NextFire
 	if got := len(windowB.Tick()) + len(windowA.Tick()); got != 1 {
 		t.Fatalf("second run fired %d times, want 1", got)
+	}
+}
+
+func TestDurableRecurringClaimsOverdueRunFromDisk(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	first := instanceOn(t, path)
+	job, err := first.Create("* * * * *", "run the tests", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := instanceOn(t, path)
+	now := time.Now()
+	second.jobs[job.ID].NextFire = now.Add(-2 * time.Minute)
+	job.LastFired = now.Add(-90 * time.Second)
+	job.NextFire = now.Add(-time.Minute)
+	job.FiredCount = 1
+	first.durableChanges[job.ID] = true
+	if err := first.saveDurableLocked(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(second.Tick()); got != 1 {
+		t.Fatalf("already-due next run fired %d times, want 1", got)
+	}
+	if got := second.jobs[job.ID].FiredCount; got != 2 {
+		t.Errorf("adopted fire count = %d, want 2", got)
 	}
 }

@@ -65,10 +65,10 @@ func ResetDefaultScheduler()        // test-only
   reported and left untouched; failed Add/Create/Delete operations retain
   their previous in-memory state. Failed tick writes remain pending and retry
   on the next tick without firing a completed one-shot job again.
-- Firing: a due durable job is claimed under the same lock and fires only if
-  the file shows no later run, so windows sharing the file fire it once. The
-  window that loses adopts the run (recurring) or drops the job (one-shot). If
-  the file cannot be read, the window fires rather than lose the job.
+- Firing: a window checks the shared job's stored next fire time under the
+  same lock. If due, it claims that run by saving the next scheduled time or
+  removing the one-shot job. Other windows adopt the stored schedule.
+  A storage failure falls back to local firing and can produce duplicates.
 - Calendar days advance by date; hour/minute searches advance in elapsed
   minutes. Both remain monotonic across repeated hours and missing midnights
   during daylight-saving transitions.
