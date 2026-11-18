@@ -494,6 +494,9 @@ func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	if hasUnsafeReadOnlyGitFlag(rest) {
 		return false
 	}
+	if subcommand == "grep" && hasGrepPagerFlag(rest) {
+		return false
+	}
 	if readOnlyGitSubcommands[subcommand] {
 		return true
 	}
@@ -545,6 +548,21 @@ func hasUnsafeReadOnlyGitFlag(args []string) bool {
 	return false
 }
 
+// hasGrepPagerFlag reports git grep's -O/--open-files-in-pager, whose value
+// is a command git runs on the matching files.
+func hasGrepPagerFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if strings.HasPrefix(arg, "--open-files-in-pager") ||
+			!strings.HasPrefix(arg, "--") && strings.HasPrefix(arg, "-") && strings.Contains(arg, "O") {
+			return true
+		}
+	}
+	return false
+}
+
 func gitSubcommandAndArgs(args []string) (string, []string) {
 	idx := gitSubcommandIndex(args)
 	if idx == -1 {
@@ -557,21 +575,23 @@ func gitSubcommandIndex(args []string) int {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "-C" || arg == "--git-dir" || arg == "--work-tree":
-			// These options take a path, not a subcommand. A missing value is
-			// never evidence that the command is safe.
+		case arg == "-C":
+			// -C takes a path, not a subcommand. A missing value is never
+			// evidence that the command is safe.
 			i++
 			if i >= len(args) {
 				return -1
 			}
-		case strings.HasPrefix(arg, "-C") && len(arg) > 2,
-			strings.HasPrefix(arg, "--git-dir="), strings.HasPrefix(arg, "--work-tree="):
+		case strings.HasPrefix(arg, "-C") && len(arg) > 2:
 		case arg == "--no-pager" || arg == "--no-optional-locks" || arg == "--bare" ||
 			arg == "--literal-pathspecs" || arg == "--glob-pathspecs" ||
 			arg == "--noglob-pathspecs" || arg == "--icase-pathspecs":
 		case arg == "" || strings.HasPrefix(arg, "-"):
 			// Unknown options, config overrides (-c/--config-env), and
 			// executable overrides can change a read into code execution.
+			// So can --git-dir: it opens a bare repository even under
+			// safe.bareRepository=explicit, and that repository's config
+			// (diff.external, core.pager) may come from checked-in files.
 			return -1
 		default:
 			return i
