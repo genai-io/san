@@ -170,14 +170,36 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 	last.AutopilotNote = note
 }
 
-// SplitToolBatch separates finished output from pending calls in the display.
-func (m *ConversationModel) SplitToolBatch() {
+// CommitRows renders rows for scrollback and advances the display cursor.
+func (m *ConversationModel) CommitRows(p RenderContext, checkReady bool) []string {
+	if checkReady && m.splitToolBatch() {
+		p.Messages = m.Messages
+		p.InlinedResults = PrecomputeInlinedResults(m.Messages, m.CommittedCount, m.Tool.PendingCalls...)
+	}
+	var rows []string
+	stream := m.StreamMessageIndex()
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
+		msg := m.Messages[i]
+		if checkReady && (m.Stream.Active && i == stream || m.Tool.hasPending(msg.ToolCalls)) {
+			break
+		}
+		if rendered := RenderSingleMessage(p, i); rendered != "" {
+			rows = append(rows, rendered)
+		}
+		m.Messages[i].ResetStreamCommit()
+		m.CommittedCount = i + 1
+	}
+	return rows
+}
+
+// Separate finished output from pending calls before committing the display.
+func (m *ConversationModel) splitToolBatch() bool {
 	if len(m.Tool.PendingCalls) == 0 {
-		return
+		return false
 	}
 	for i := m.CommittedCount; i < len(m.Messages); i++ {
 		msg := m.Messages[i]
-		if msg.Role != core.ChatAssistant || !m.Tool.HasPending(msg.ToolCalls) || m.Stream.Active && msg.ID == m.Stream.MessageID {
+		if msg.Role != core.ChatAssistant || !m.Tool.hasPending(msg.ToolCalls) || m.Stream.Active && msg.ID == m.Stream.MessageID {
 			continue
 		}
 		end := i + 1
@@ -201,7 +223,7 @@ func (m *ConversationModel) SplitToolBatch() {
 			rows = append(rows, row)
 		}
 		if len(rows) == 0 {
-			return
+			return false
 		}
 		pending := core.ChatMessage{ID: msg.ID, Role: core.ChatAssistant, ToolCallsExpanded: msg.ToolCallsExpanded}
 		for _, call := range msg.ToolCalls {
@@ -216,8 +238,9 @@ func (m *ConversationModel) SplitToolBatch() {
 			pending.ID = core.NewMessageID()
 		}
 		m.Messages = slices.Replace(m.Messages, i, end, append(rows, pending)...)
-		return
+		return true
 	}
+	return false
 }
 
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.JudgeDecision) {

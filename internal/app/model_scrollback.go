@@ -289,11 +289,6 @@ func (m *model) commitAllMessages() []tea.Cmd {
 }
 
 func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
-	if checkReady {
-		m.conv.SplitToolBatch()
-	}
-	var parts []string
-	assistantIdx := m.conv.StreamMessageIndex()
 	params := m.messageRenderParams()
 	// Once sized, queueScrollbackPrint measures the retained rows itself.
 	preCommitRows := 0
@@ -301,27 +296,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		preCommitRows = rowCount(conv.RenderActiveContent(params))
 	}
 
-	for i := m.conv.CommittedCount; i < len(m.conv.Messages); i++ {
-		msg := m.conv.Messages[i]
-
-		if checkReady {
-			if i == assistantIdx && m.conv.Stream.Active {
-				break
-			}
-			if m.conv.Tool.HasPending(msg.ToolCalls) {
-				break
-			}
-		}
-
-		if rendered := conv.RenderSingleMessage(params, i); rendered != "" {
-			parts = append(parts, rendered)
-		}
-		// Fully in scrollback now (any progressively-flushed prefix plus this
-		// remainder). Clear the commit offsets so a later full rebuild (resize
-		// reflow, compact reprint) renders the message whole, not just its tail.
-		m.conv.Messages[i].ResetStreamCommit()
-		m.conv.CommittedCount = i + 1
-	}
+	parts := m.conv.CommitRows(params, checkReady)
 
 	if len(parts) == 0 {
 		return nil
