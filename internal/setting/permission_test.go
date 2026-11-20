@@ -374,6 +374,29 @@ func TestGitDiscardingTierIsFlooredButJudgeable(t *testing.T) {
 	}
 }
 
+func TestShellAutopilotPermissionPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		tool, name, command string
+		want                perm.Decision
+		judgeable           bool
+	}{
+		{"Bash", "read", `git status --short`, perm.Permit, false},
+		{"Bash", "review", `base=$(git rev-parse 'HEAD^') && git branch docs/update "$base"`, perm.Prompt, true},
+		{"Bash", "confirm", `rm -rf build`, perm.Prompt, false},
+		{"PowerShell", "read", `Get-ChildItem -Filter *.go`, perm.Permit, false},
+		{"PowerShell", "review", `$base = git rev-parse 'HEAD^'; if ($LASTEXITCODE -eq 0) { git branch docs/update $base }`, perm.Prompt, true},
+		{"PowerShell", "confirm", `Remove-Item -Recurse -Force build`, perm.Prompt, false},
+	} {
+		t.Run(tc.tool+"/"+tc.name, func(t *testing.T) {
+			args := map[string]any{"command": tc.command}
+			d := (&Data{}).HasPermissionToUseTool(tc.tool, args, &SessionPermissions{Mode: ModeAutoPilot})
+			if d.Behavior != tc.want || d.Judgeable != tc.judgeable {
+				t.Fatalf("got %+v; want %v, judgeable=%v", d, tc.want, tc.judgeable)
+			}
+		})
+	}
+}
+
 func TestDenyRulesPriorityOverSession(t *testing.T) {
 	settings := &Data{
 		Permissions: PermissionSettings{
