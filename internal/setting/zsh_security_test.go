@@ -130,16 +130,17 @@ func TestNativeZshPermissionPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		permissions PermissionSettings
-		session     SessionPermissions
+		headless    bool
 		want        perm.Decision
 		reason      string
 	}{
-		{"explicit ask", PermissionSettings{Ask: []string{"Bash"}}, SessionPermissions{Mode: ModeAutoPilot}, perm.Prompt, "ask rule:"},
-		{"explicit deny", PermissionSettings{Deny: []string{"Bash"}}, SessionPermissions{Mode: ModeAutoPilot}, perm.Reject, "deny rule:"},
-		{"headless", PermissionSettings{}, SessionPermissions{Mode: ModeAutoPilot, ShouldAvoidPrompts: true}, perm.Reject, "headless:"},
+		{"explicit ask", PermissionSettings{Ask: []string{"Bash"}}, false, perm.Prompt, "ask rule:"},
+		{"explicit deny", PermissionSettings{Deny: []string{"Bash"}}, false, perm.Reject, "deny rule:"},
+		{"headless", PermissionSettings{}, true, perm.Reject, "headless:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := (&Data{Permissions: tc.permissions}).HasPermissionToUseTool("Bash", args, &tc.session)
+			session := &SessionPermissions{Mode: ModeAutoPilot, ShouldAvoidPrompts: tc.headless}
+			d := (&Data{Permissions: tc.permissions}).HasPermissionToUseTool("Bash", args, session)
 			if d.Behavior != tc.want || d.Judgeable || !strings.HasPrefix(d.Reason, tc.reason) {
 				t.Fatalf("expected %v with %q, got %+v", tc.want, tc.reason, d)
 			}
