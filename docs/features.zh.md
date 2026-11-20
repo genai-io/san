@@ -2,6 +2,8 @@
 
 [English](features.md)
 
+**设计说明：** [Minimal overhead：San 把开销省在哪里？](concepts/minimal-overhead.zh.md) 介绍运行占用、精简系统提示词和多轮缓存复用。
+
 ```text
 +-----+
 | San |

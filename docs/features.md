@@ -2,6 +2,8 @@
 
 [简体中文](features.zh.md)
 
+**Design note:** [Minimal overhead (Chinese)](concepts/minimal-overhead.zh.md) explains San’s runtime footprint, lean system prompt, and prompt cache reuse.
+
 ```text
 +-----+
 | San |
