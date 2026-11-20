@@ -2,283 +2,55 @@
 
 [简体中文](features.zh.md)
 
+```text
+San
+|-- Memory and learning: Auto memory, project instructions, self-learning
+|-- Collaboration: Subagents, agent messaging, session groups, Flow
+|-- Sessions and automation: Sessions, tasks and processes, Autopilot, scheduling
+|-- Tools and extensions: Built-in tools, web search, skills, plugins,
+|                         MCP, hooks, slash commands
+|-- Models and controls: Models and providers, personas, settings, permissions
+`-- Interaction and inspection: CLI, Inspector
+```
+
 ## Memory and learning
 
-### [Auto memory](concepts/auto-memory.md)
-
-The main agent keeps durable notes in user and project Markdown stores. Recall runs in the background; if ready in time, relevant notes enter the context with a tool result without blocking the turn.
-
-```mermaid
-flowchart LR
-    A[User and project notes] --> B[Background recall]
-    B -->|If ready| C[Tool-result context]
-```
-
-### [Project instructions](concepts/harness-channels.md)
-
-File-based instructions keep repo conventions alongside code. San loads user and project `AGENTS.md` files, rules, and local overrides in scope order, then delivers them as reminders within a shared size limit.
-
-```mermaid
-flowchart LR
-    A[User instructions] --> B[Instructions from repo root to workdir]
-    B --> C[Local overrides]
-    C --> D[Bounded reminders]
-```
-
-### [Self-learning](packages/selflearn.md)
-
-Off by default, self-learning turns lessons from a completed turn into reusable skills. An eligible `Evolve` request starts a background reviewer that can manage agent-owned skills but cannot edit user-authored ones.
-
-```mermaid
-flowchart LR
-    A[Completed turn with Evolve request] --> B[Review eligibility]
-    B -->|Eligible| C[Background reviewer]
-    C --> D[Agent-owned skills]
-```
+- [Auto memory](concepts/auto-memory.md) — The main agent stores durable Markdown notes. Background recall adds relevant notes to a tool result if ready, without blocking the turn. `User/project notes -> recall -> context`
+- [Project instructions](concepts/harness-channels.md) — Repo conventions live alongside code. San loads user and project `AGENTS.md` files, rules, and local overrides in scope order, within a shared size limit. `Scoped files -> reminders`
+- [Self-learning](packages/selflearn.md) — Off by default. After an eligible `Evolve` request, a background reviewer can manage agent-owned skills, but not edit user-authored ones. `Completed turn -> review -> reusable skill`
 
 ## Agent and session collaboration
 
-### [Subagents](packages/subagent.md)
-
-The `Agent` tool delegates work to a worker with its own conversation and effective permissions. Foreground workers return a tool result; background workers report through the task lifecycle.
-
-```mermaid
-flowchart LR
-    A[Agent tool] --> B[Separate worker loop]
-    B -->|Foreground| C[Tool result]
-    B -->|Background| D[Tracked task]
-```
-
-### [Agent messaging](packages/broker.md)
-
-The in-process broker routes messages to the main agent or a worker by task ID. Ordinary messages require a receptive recipient; child completions can be retained in memory for their owning worker.
-
-```mermaid
-flowchart LR
-    A[Addressed message] --> B[In-process broker]
-    B --> C[Main inbox]
-    B --> D[Worker inbox]
-```
-
-### [Session groups](design/proposal-0003-session-groups.md)
-
-`/group` lets separate San sessions on one machine collaborate. A disk-backed roster and per-member inboxes route messages across processes and retain mail for offline members.
-
-```mermaid
-flowchart LR
-    A[Sending session] --> B[On-disk roster lookup]
-    B --> C[Member inbox on disk]
-    C --> D[Receiving session]
-```
-
-### [Flow: collaboration blueprints](packages/flow.md)
-
-A Flow blueprint describes dependencies between steps. `/flow run` schedules ready steps through San's native task runtime and records checkpoints for retry or resume at step boundaries.
-
-```mermaid
-flowchart LR
-    A[Validated blueprint] --> B[Dependency scheduler]
-    B --> C[Native task runtime]
-    C --> D[Step checkpoints]
-    D -->|Resume| B
-```
+- [Subagents](packages/subagent.md) — Delegate work to an agent with its own conversation and effective permissions. `Agent call -> worker -> foreground result or background task`
+- [Agent messaging](packages/broker.md) — A process-local broker routes to the main agent or a worker by task ID. Child completions can wait in memory for their owner. `Message -> broker -> recipient`
+- [Session groups](design/proposal-0003-session-groups.md) — `/group` connects independent sessions on the same machine. Disk-backed inboxes retain messages for offline members. `Sender -> member inbox on disk -> receiver`
+- [Flow: collaboration blueprints](packages/flow.md) — `/flow run` schedules steps once their dependencies are met, using native tasks and checkpoints for retry or resume. `Blueprint -> scheduler -> tasks -> checkpoints`
 
 ## Sessions, tasks, and automation
 
-### [Sessions](packages/session.md)
-
-Committed event batches are the source of truth for a session. Validated replay rebuilds both the history and the active context; compaction changes the active context without erasing history.
-
-```mermaid
-flowchart LR
-    A[Committed event log] --> B[Validated replay]
-    B --> C[Conversation history]
-    B --> D[Active context for resume]
-```
-
-### [Tasks and processes](packages/task.md)
-
-The task manager tracks background work separately from planning todos. It associates shell jobs, workers, and schedulers with their launching session and exposes status, output, and stop controls.
-
-```mermaid
-flowchart LR
-    A[Shell, worker, or scheduler] --> B[Session-owned task]
-    B --> C[Status and output]
-    B --> D[Stop control]
-```
-
-### [Autopilot](guides/autopilot.md)
-
-Autopilot uses a side model to weigh eligible approvals or suggest the next instruction. It starts another turn automatically only while a mission is active and within its limit.
-
-```mermaid
-flowchart LR
-    A[Turn ends] --> B{Running mission within limit?}
-    B -->|Yes| C[Judge next step]
-    C -->|Continue| D[Queue next instruction]
-    B -->|No| E[Wait for input]
-    C -->|Stop| E
-```
-
-### [Scheduling](packages/cron.md)
-
-An in-process scheduler checks cron jobs while San is running. Due prompts enter the conversation when idle or wait in a queue when busy. Durable definitions survive restarts; no separate daemon runs them.
-
-```mermaid
-flowchart LR
-    A[In-process tick] --> B[Due prompt]
-    B -->|Idle| C[Start turn]
-    B -->|Busy| D[Pending queue]
-    D -->|When idle| C
-```
+- [Sessions](packages/session.md) — Committed events are the source of truth. Replay restores history and active context; compaction changes only the active context. `Event log -> validated replay -> history and context`
+- [Tasks and processes](packages/task.md) — Shell jobs, workers, and schedulers are tracked separately from planning todos. Their owning session can inspect status and output or stop them. `Background work -> session-owned task -> inspect or stop`
+- [Autopilot](guides/autopilot.md) — A side model weighs eligible approvals and decides whether to continue an active mission within its limit. `Turn ends -> mission check -> judge -> continue or wait`
+- [Scheduling](packages/cron.md) — Cron jobs are checked inside the running San process, not by a daemon. Durable definitions survive restart. `Due prompt -> start if idle or queue if busy`
 
 ## Tools and extensions
 
-### [Built-in tools](packages/tool.md)
-
-File, shell, and other built-ins register by name and expose schemas to the model. The agent checks permissions before dispatching a call and returns the result to the conversation.
-
-```mermaid
-flowchart LR
-    A[Model tool call] --> B[Permission gate]
-    B -->|Allowed| C[Registered tool]
-    C --> D[Tool result]
-```
-
-### [Web search](packages/search.md)
-
-`WebSearch` uses a swappable backend selected in `/search`, with Exa as the default. The adapter normalizes titles, URLs, and snippets before the tool formats them for the model.
-
-```mermaid
-flowchart LR
-    A[WebSearch] --> B[Configured provider]
-    B --> C[Normalized results]
-    C --> D[Markdown response]
-```
-
-### [Skills](packages/skill.md)
-
-San discovers reusable instructions from `SKILL.md` files. Active skills advertise their metadata to the model; invoking an available skill loads its full instructions on demand.
-
-```mermaid
-flowchart LR
-    A[SKILL.md] --> B[Skill registry]
-    B -->|Active| C[Model-visible metadata]
-    B -->|Invoked| D[Full instructions]
-```
-
-### [Plugins](packages/plugin.md)
-
-Plugins bundle skills, agents, commands, MCP servers, and hooks for installation together. The registry tracks which bundles are enabled; their contributions feed the corresponding extension registries.
-
-```mermaid
-flowchart LR
-    A[Plugin bundle] --> B[Enabled plugin registry]
-    B --> C[Skills, agents, and commands]
-    B --> D[MCP servers and hooks]
-```
-
-### [MCP](packages/mcp.md)
-
-MCP makes external tools available through the agent's tool interface. San connects to enabled servers over stdio or HTTP, publishes their tool schemas, and routes permitted calls to the owning server.
-
-```mermaid
-flowchart LR
-    A[MCP server] -->|Advertises schemas| B[MCP manager]
-    B -->|Exposes tools| C[Agent]
-    C -->|Permitted call| B
-    B -->|Dispatches call| A
-```
-
-### [Hooks](packages/hook.md)
-
-Hooks extend lifecycle events without changing the agent loop. The engine matches configured handlers to an event; synchronous outcomes can continue or stop the operation, while async hooks run separately.
-
-```mermaid
-flowchart LR
-    A[Lifecycle event] --> B[Match handlers]
-    B -->|Sync| C[Apply outcome]
-    B -->|Async| D[Run separately]
-```
-
-### [Commands](packages/command.md)
-
-One slash palette combines built-in commands, dynamic entries, and custom Markdown prompts. Input is resolved to a handler or a prompt to submit to the agent.
-
-```mermaid
-flowchart LR
-    A[Slash input] --> B[Command lookup]
-    B --> C[Run handler]
-    B --> D[Submit expanded prompt]
-```
+- [Built-in tools](packages/tool.md) — File, shell, and other tools register by name and expose parameter schemas to the model. `Tool call -> permission check -> execute -> result`
+- [Web search](packages/search.md) — `/search` chooses the backend; Exa is the default. Adapters normalize titles, links, and snippets for the model. `Query -> provider -> normalized results`
+- [Skills](packages/skill.md) — San discovers reusable instructions in `SKILL.md`. Active skills expose their metadata; invocation loads the full instructions on demand. `SKILL.md -> registry -> instructions when invoked`
+- [Plugins](packages/plugin.md) — Bundle skills, agents, commands, MCP servers, and hooks for installation together. `Plugin bundle -> enable -> load contributions`
+- [MCP](packages/mcp.md) — San connects over stdio or HTTP to discover external tool schemas and route permitted calls back to the owning server. `Agent <-> MCP manager <-> server`
+- [Hooks](packages/hook.md) — Match handlers to lifecycle events. Synchronous outcomes can stop an operation; async hooks run separately. `Event -> matching hook -> apply outcome or run separately`
+- [Commands](packages/command.md) — One slash palette combines built-in, dynamic, and custom Markdown commands. `Slash input -> lookup -> handler or expanded prompt`
 
 ## Models, behavior, and permissions
 
-### [Models and providers](packages/llm.md)
-
-A shared inference interface keeps the agent independent of model vendors. `/models` manages connections and model selection; each inference uses the resolved provider and model.
-
-```mermaid
-flowchart LR
-    A[Connections and model selection] --> B[Resolve provider and model]
-    B --> C[Inference client]
-    C --> D[Provider response]
-```
-
-### [Personas](concepts/persona.md)
-
-A persona bundles prompt parts, skills, and a settings overlay. Switching personas updates the prompt and skills for the next inference; tool and permission changes take effect on agent rebuild.
-
-```mermaid
-flowchart LR
-    A[Select persona] --> B[Apply persona overlay]
-    B --> C[Next inference: prompt and skills]
-    B --> D[Agent rebuild: tools and permissions]
-```
-
-### [Settings](packages/setting.md)
-
-Layered settings keep personal defaults separate from repository overrides. San merges user, project, and local files with field-specific precedence and filters untrusted project settings before they take effect.
-
-```mermaid
-flowchart LR
-    A[User settings] --> C[Field-specific merge]
-    B[Project and local settings] --> T[Workspace trust filter]
-    T --> C
-    C --> D[Effective settings]
-```
-
-### [Permissions](concepts/permission-model.md)
-
-Tool policy resolves ordered rules, safety checks, and mode defaults into allow, deny, or ask. A call that still requires approval is refused when no prompt can be shown.
-
-```mermaid
-flowchart LR
-    A[Tool request] --> B[Ordered policy checks]
-    B --> C[Allow]
-    B --> D[Deny]
-    B --> E[Ask or refuse if headless]
-```
+- [Models and providers](packages/llm.md) — A common inference interface keeps the agent independent of model vendors. `/models` manages connections and selection. `Provider and model choice -> inference -> response`
+- [Personas](concepts/persona.md) — A persona bundles prompt parts, skills, and settings. Prompts and skills update for the next inference; tool and permission settings wait for agent rebuild. `Select persona -> update prompt and skills / rebuild for tool policy`
+- [Settings](packages/setting.md) — San merges user, project, and local settings with field-specific precedence and filters untrusted project settings. `Settings files -> trust filter and merge -> effective settings`
+- [Permissions](concepts/permission-model.md) — Ordered rules, safety checks, and mode defaults decide each tool call. A required prompt becomes a refusal if nobody can answer. `Tool request -> policy -> allow, deny, or ask`
 
 ## Interaction and inspection
 
-### [CLI](guides/getting-started.md)
-
-`san` opens an interactive terminal UI. `san -p` or piped input uses the print path, running the agent once and writing the answer to stdout without an interactive UI.
-
-```mermaid
-flowchart LR
-    A[san] -->|Interactive| B[Terminal UI]
-    A -->|Print or pipe| C[One-shot run]
-    C --> D[Standard output]
-```
-
-### [Inspector](packages/inspector.md)
-
-`san inspector` serves a read-only browser UI on loopback. It uses the native session store to replay committed events and stream new batches over SSE, without writing a second history.
-
-```mermaid
-flowchart LR
-    A[Native session store] --> B[Read-only local server]
-    B -->|Replay and SSE| C[Browser inspector]
-```
+- [CLI](guides/getting-started.md) — `san` opens an interactive terminal UI; `san -p` or piped input runs once and writes the answer to stdout. `Input -> interactive UI or one-shot output`
+- [Inspector](packages/inspector.md) — `san inspector` serves a read-only browser UI on loopback. It replays committed session events and streams new batches over SSE. `Session store -> local read-only server -> browser`
