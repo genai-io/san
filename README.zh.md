@@ -29,7 +29,7 @@
 - **多 Agent 协作** —— 子 Agent 协作、跨会话消息通信与动态工作流。
 - **控制与可观测性** —— 配置执行权限，检查模型上下文与工具调用。
 
-[功能](docs/features.md) · [架构](docs/concepts/architecture.md)
+[功能](docs/features.zh.md) · [架构](docs/concepts/architecture.md)
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 
@@ -124,7 +124,7 @@ san --resume                 # 选择历史会话恢复
 ## 文档
 
 - [开始使用](docs/index.md#get-started) —— 安装、配置、命令与权限。
-- [功能](docs/features.md) —— 功能清单与详细文档。
+- [功能](docs/features.zh.md) —— 功能清单与详细文档。
 - [定制与扩展](docs/index.md#customize-and-extend) —— 提示词、persona、技能与集成。
 - [开发与贡献](docs/index.md#develop-and-contribute) —— 架构、开发流程与设计。
 
