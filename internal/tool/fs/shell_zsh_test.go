@@ -98,7 +98,7 @@ func TestZshSchemaKeepsBashIdentityAndNamesInterpreter(t *testing.T) {
 	if schema.Name != "Bash" || !strings.Contains(schema.Description, "Executes a zsh command") || !strings.Contains(schema.Description, "zsh -f") {
 		t.Fatalf("incorrect shell contract: %+v", schema)
 	}
-	if !strings.Contains(schema.Description, "human confirmation") {
-		t.Fatal("native syntax confirmation boundary is missing")
+	if !strings.Contains(schema.Description, "requires review") || !strings.Contains(schema.Description, "Autopilot can review it") {
+		t.Fatal("native syntax review policy is missing")
 	}
 }

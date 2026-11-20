@@ -125,7 +125,7 @@ func (t *ShellTool) SchemaWithDirectoryHelp(help string) core.ToolSchema {
 	if name == tool.ToolPowerShell {
 		description = fmt.Sprintf(powerShellDescription, shell, help)
 	} else if shell.Kind == proc.ShellZsh {
-		description += "\n\nUses zsh -f (no user startup files) and inherited environment. Complex/native expansions require human confirmation. Tool/rule name stays Bash."
+		description += "\n\nUses zsh -f (no user startup files) and inherited environment. Complex or native syntax requires review; Autopilot can review it. Tool/rule name stays Bash."
 	}
 	// The second shell is only in play once the user turns it on, so the
 	// division of labour is written there and never names a missing tool.

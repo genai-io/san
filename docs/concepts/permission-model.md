@@ -16,7 +16,7 @@ For the Claude-Code-compatible rule syntax see
 | **Mode** | Session-wide policy. See the mode table below. |
 | **Rule** | A pattern matched against `toolName + args`. E.g. `Bash(git status:*)`, `Write(./src/**)`. |
 | **Session permissions** | Per-session rules accumulated from hook responses and approval modals. Reset on session end. |
-| **Confirmation tier** | Why a call needs a human: *unrecoverable* (real destruction, sensitive paths, data exfiltration) or *recoverable* (work-discarding git, out-of-working-dir writes). Only the recoverable tier may be delegated to the judge. |
+| **Confirmation tier** | A check that outranks allow rules. Some require a human; others can be reviewed by Autopilot. |
 
 ## Modes
 
@@ -26,7 +26,7 @@ For the Claude-Code-compatible rule syntax see
 |---|---|---|
 | `ModeNormal` | `normal` | Safe tools auto-allow; everything else prompts. |
 | `ModeAutoAccept` | `accept edits` | Edit/Write auto-allow; other gated tools prompt. |
-| `ModeAutoPilot` | `autopilot` | Edits auto-allow; every other gated call becomes a **judgeable** prompt the judge may answer. |
+| `ModeAutoPilot` | `autopilot` | Edits auto-allow; other gated calls go to the judge unless policy requires a human. |
 | `ModeBypassPermissions` | `YOLO` | Allow everything except deny rules and the circuit breaker. |
 | `ModeDontAsk` | `don't ask` | Coerce `ask` → `deny`; never prompt. |
 | `ModeReadOnly` | `read-only` | Safe tools only; everything else denied. |
@@ -58,12 +58,12 @@ function in `internal/setting/permission.go` — keep the two in sync.
 2. **Circuit breaker** — a recursive removal of the filesystem root or the
    home directory. The one check no mode may skip, bypass included.
 3. **BypassPermissions mode** — allow everything that got past 1 and 2.
-4. **Confirmation checks** (skipped by bypass) — the unrecoverable tier
-   (destructive bash, sensitive paths, data exfiltration; never
-   judgeable) and the recoverable tier (work-discarding git,
-   out-of-working-dir writes; the AutoPilot judge may weigh the git case).
-5. **Ask rules** — `permissions.ask`. An explicit ask outranks any session
-   grant, so "allow for this session" cannot silence it.
+4. **Confirmation checks** (skipped by bypass) — destruction, sensitive paths,
+   data exfiltration, and out-of-working-directory edits require a human.
+   Work-discarding git and native zsh syntax require review even with a grant,
+   but Autopilot can review them unless an explicit ask rule matches.
+5. **Ask rules** — `permissions.ask`. An explicit ask outranks Autopilot and
+   grants.
 6. **Session permissions** — rules accumulated during the run from approval
    modals and hook updates.
 7. **Allow rules** — `permissions.allow`.
@@ -102,10 +102,7 @@ and the safety checks still run first and override it. The safety checks
 are layered: the circuit breaker (a recursive removal of the filesystem
 root or the home directory, including literal directory changes followed by
 recursive removal of its contents in the same shell scope) holds in every mode,
-bypass included; the
-confirmation tiers — unrecoverable (destructive commands, sensitive paths,
-data exfiltration) and recoverable (work-discarding git,
-out-of-working-dir writes) — are skipped by `bypassPermissions` mode.
+bypass included. Confirmation tiers are skipped by `bypassPermissions` mode.
 
 Git global path options (`-C`, `--git-dir`, `--work-tree`) are parsed with their
 operands before classifying the subcommand. Unknown options, configuration and
@@ -169,19 +166,18 @@ and the judge has no say in it:
 
 - `PermissionDecision.Judgeable` (`internal/setting/permission.go`) marks a
   prompt the judge may weigh.
-- `setting.ModeDefault` sets it **only** for the AutoPilot non-edit default
-  (step 8). Nothing else in the pipeline sets it.
+- The mode default and judgeable confirmation checks set it only in Autopilot mode.
 - `PermissionGate.Check` (`internal/agent/permission.go`) offers a judgeable
   prompt to the judge; `allow` short-circuits, anything else falls through to
   the human prompt.
 - The judge fails closed: `PermJudgeFunc` must return the zero value on any
   error, so a broken or slow judge escalates rather than approves.
 
-The load-bearing safety property is which prompts never reach the judge.
-`ConfirmationTier` splits the confirmation reasons in two, and only the
-**recoverable** tier is judgeable. The unrecoverable tier — real
-destruction, sensitive paths, data exfiltration — and the circuit breaker
-stay the human's call in every mode.
+The circuit breaker and human-only confirmation checks never reach the judge.
+Native zsh syntax (including `$(...)`) can reach Autopilot for review of the
+whole command, but cannot create an exact allow rule or be pre-approved by a
+hook or existing grant. Outside Autopilot it requires human confirmation
+unless bypass is active.
 
 The judge itself lives in `internal/judge/`.
 

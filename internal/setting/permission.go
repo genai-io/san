@@ -21,9 +21,8 @@ type PermissionDecision struct {
 	// Scope describes authorization scope, not config storage. Only runtime
 	// session grants set it to "session"; config and mode leave it empty.
 	Scope string
-	// Judgeable marks a Prompt the judge may judge. It is set only
-	// for the autopilot gray-zone default — never for a confirmation safety
-	// check or an ask-rule prompt — so those always escalate to the human.
+	// Judgeable marks a prompt the Autopilot judge may review. Human-only
+	// safety checks and explicit ask rules never set it.
 	Judgeable bool
 }
 
@@ -46,10 +45,9 @@ func decide(b perm.Decision, by, reason string) PermissionDecision {
 //  2. Circuit breaker — recursive removal of the filesystem root or the home
 //     directory; the one check held even in bypass mode
 //  3. BypassPermissions mode → allow everything else
-//  4. Confirmation checks (skipped by bypass): the unrecoverable tier
-//     (destructive bash, sensitive paths, data exfiltration — never
-//     judgeable) and the recoverable tier (work-discarding git,
-//     out-of-working-dir writes — the AutoPilot judge may weigh git)
+//  4. Confirmation checks (skipped by bypass): human-only safety checks first;
+//     judgeable checks (work-discarding git and native zsh syntax) still yield
+//     to explicit ask rules, but outrank grants
 //  5. Ask rules — an explicit ask outranks any session grant
 //  6. Session permissions (runtime overrides)
 //  7. Allow rules
@@ -149,16 +147,20 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		return decide(perm.Permit, "mode", "mode: bypass permissions")
 	}
 
-	// ── Step 4: Confirmation checks ──
-	if reason, judgeable := s.confirmationPromptReason(toolName, args, session); reason != "" {
-		d := decide(perm.Prompt, "config", reason)
-		d.Judgeable = judgeable
-		return coerceAsk(d, session)
+	// ── Step 4: Human-only confirmation checks ──
+	confirmation, judgeable := s.confirmationPromptReason(toolName, args, session)
+	if confirmation != "" && !judgeable {
+		return coerceAsk(decide(perm.Prompt, "config", confirmation), session)
 	}
 
 	// ── Step 5: Ask rules ──
 	if pattern := matchAnyForm(toolName, args, s.Permissions.Ask); pattern != "" {
 		return coerceAsk(decide(perm.Prompt, "config", "ask rule: "+pattern), session)
+	}
+	if confirmation != "" {
+		d := decide(perm.Prompt, "config", confirmation)
+		d.Judgeable = session != nil && session.Mode == ModeAutoPilot
+		return coerceAsk(d, session)
 	}
 
 	// ── Step 6: Session permissions ──
@@ -182,10 +184,7 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 }
 
 // confirmationPromptReason reports why a call requires confirmation and whether
-// the AutoPilot judge may weigh it. Bypass mode skips this step entirely. Only
-// the recoverable git tier is the judge's to weigh; every other reason here —
-// real destruction, a sensitive path, a write reaching outside the working
-// directory — stays the human's call.
+// the Autopilot judge may weigh it. Bypass mode skips this step entirely.
 func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, judgeable bool) {
 	if reason, recoverable := ConfirmationTier(toolName, args); reason != "" {
 		return "confirmation: " + reason, recoverable
@@ -639,18 +638,19 @@ func CircuitBreakerReason(toolName string, args map[string]any) string {
 	return ""
 }
 
-// ConfirmationTier classifies a call against both confirmation tiers in one
-// pass: why it is held, and whether it is the recoverable tier the AutoPilot
-// judge may weigh. The tier travels with the reason rather than being
-// re-derived at each gate, so a reason added later cannot land in the judge's
-// lap by omission. Gates that cannot ask — the subagent gate outside bypass
-// mode — turn any reason into a hard deny.
-func ConfirmationTier(toolName string, args map[string]any) (reason string, recoverable bool) {
+// ConfirmationTier reports why a call is held and whether Autopilot may
+// review it. Gates without a judge must still respect either tier.
+func ConfirmationTier(toolName string, args map[string]any) (reason string, judgeable bool) {
 	if reason := UnrecoverableReason(toolName, args); reason != "" {
 		return reason, false
 	}
 	if reason := RecoverableReason(toolName, args); reason != "" {
 		return reason, true
+	}
+	if cmd, ok := shellCommandArg("Bash", toolName, args); ok {
+		if reason := nativeZshReviewReason(cmd); reason != "" {
+			return reason, true
+		}
 	}
 	return "", false
 }
@@ -667,11 +667,9 @@ func RecoverableReason(toolName string, args map[string]any) string {
 	return ""
 }
 
-// UnrecoverableReason is the unrecoverable confirmation tier: the calls whose
-// effect nothing can bring back. Bypass mode skips it (only the circuit
-// breaker survives bypass); in every other mode it prompts, and the AutoPilot
-// judge can never approve it — the judge may only weigh the recoverable tier
-// (RecoverableReason).
+// UnrecoverableReason reports confirmation checks that Autopilot cannot waive,
+// such as destructive commands or sensitive paths. Bypass mode skips these
+// checks, but not the circuit breaker.
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
