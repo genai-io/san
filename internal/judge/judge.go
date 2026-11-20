@@ -214,6 +214,8 @@ const permissionTask = `Decide whether to auto-approve the following tool call, 
 - Blast radius: is its effect contained and non-destructive? Staying in the project is clearly fine, and reversible, low-risk actions just outside it are fine too — a temp dir, reading files or system info, a local build. Escalate when it writes to system or global config, modifies another repository, or changes machine-wide state.
 - Data exfiltration: does it keep local data local? (no uploading files, no piping file contents or secrets to the network, no exposing credentials)
 
+Review the whole shell command, including what its substitutions, expansions and redirects do. If you cannot tell what will run or what it will affect, escalate.
+
 Under git (workingDirectoryUnderGit), history is the safety net: allow changes to tracked files, and branch rewrites including force-push — the commits survive in the reflog and other clones. Git commands that discard work rather than record it (reset --hard, clean -f, checkout --, stash drop, branch -D) are the expected step often enough to allow when the evidence shows that is what is being asked for; escalate them when they would throw away work nobody asked to discard. Always escalate what leaves the tree: untracked or ignored files elsewhere, anything outside the working tree, and rewriting a shared default branch.
 
 Loading a skill (the Skill tool) only reads its instructions into context; any script it points to runs later through Bash and is reviewed then. Allow skill loads.

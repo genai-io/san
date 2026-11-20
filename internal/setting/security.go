@@ -297,7 +297,7 @@ func IsReadOnlyBashCommand(cmd string) bool {
 		strings.Contains(cmd, "<(") || strings.Contains(cmd, ">(") {
 		return false
 	}
-	if isDestructiveCommand(cmd) || checkBashSecurity(cmd) != "" {
+	if isDestructiveCommand(cmd) || nativeZshReviewReason(cmd) != "" || checkBashSecurity(cmd) != "" {
 		return false
 	}
 	file := parseBashAST(cmd)
@@ -480,13 +480,7 @@ var bashSecurityPatterns = []struct {
 	{hasSuspiciousRedirection, "suspicious redirection"},
 }
 
-// checkBashSecurity performs security analysis on a bash command beyond simple
-// destructive pattern matching. Returns a reason string if the command is
-// suspicious, or empty string if it appears safe.
 func checkBashSecurity(cmd string) string {
-	if reason := nativeZshReviewReason(cmd); reason != "" {
-		return reason
-	}
 	// AST-based checks first (more accurate, structural analysis)
 	if file := parseBashAST(cmd); file != nil {
 		if reason := checkASTSecurity(file); reason != "" {

@@ -51,8 +51,10 @@ While it drives — these act only in Autopilot mode, and are drawn dim outside 
   rules are fixed and always apply.
 - **Model** — optional; pick provider, model, then thinking rung. Stored as
   `vendor/model`, so it keeps its provider when the session model changes.
-- **Approve** — judges permission requests; risky or failed checks go to you.
-  A skill load is safe; scripts it runs are judged as Bash calls.
+- **Approve** — on by default in Autopilot, including for Bash, zsh, and
+  PowerShell. Commands that need approval go to the judge first unless a rule
+  or safety check requires a human. Risky or unclear requests go back to you.
+  Loading a skill is safe; any shell commands it runs follow the same policy.
 - **Answer** — answers `AskUserQuestion` and a command's `[y/N]` prompts.
 - **Continue** — after each turn of a running mission, sends the next step until
   it is done or the limit (default 20) is reached.

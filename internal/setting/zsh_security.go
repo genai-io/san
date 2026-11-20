@@ -7,9 +7,8 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// nativeZshReviewReason fences automatic grants made by the Bash parser. It is
-// deliberately not a zsh parser: native expansions need human review, even when
-// mvdan accepts their text as Bash (notably code-bearing glob qualifiers).
+// nativeZshReviewReason fences automatic grants made by the Bash parser.
+// This is not a zsh parser: even Bash-parseable text can have zsh semantics.
 func nativeZshReviewReason(cmd string) string {
 	shell, err := proc.DefaultShell()
 	if err != nil {
@@ -22,7 +21,7 @@ func zshReviewReason(cmd string, kind proc.ShellKind) string {
 	if kind != proc.ShellZsh {
 		return ""
 	}
-	const reason = "native zsh syntax requires human confirmation"
+	const reason = "native zsh syntax requires review"
 	file := parseBashAST(cmd)
 	if file == nil {
 		return reason

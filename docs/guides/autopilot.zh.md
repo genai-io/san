@@ -46,8 +46,9 @@ While it drives 一节只在 Autopilot 模式下生效,模式外整节变暗:
 - **System** —— 副驾 system prompt 中可编辑的部分;安全规则固定且始终生效。
 - **Model** —— 可选;依次选 provider、模型、thinking 档位。存为 `vendor/model`,
   切换会话模型后仍留在原 provider。
-- **Approve** —— 审查权限请求;有风险或判断失败的交给你。加载 skill 是安全的,
-  它运行的脚本按 Bash 调用审查。
+- **Approve** —— 在 Autopilot 模式中默认开启，适用于 Bash、zsh 和 PowerShell。
+  需要审批的命令先由副驾判断，但明确要求人工确认的规则和安全检查不变。
+  风险较高或判断不清时交还给你。加载 skill 本身是安全的，它运行的命令也遵循这套规则。
 - **Answer** —— 回答 `AskUserQuestion` 和命令的 `[y/N]` 提示。
 - **Continue** —— 运行中的 mission 每轮结束后发出下一步,直到完成或达到上限
   (默认 20)。
