@@ -26,7 +26,7 @@
    |   Models and providers / Personas / Settings / Permissions
    |
    +-- [ Interaction and inspection ]
-       CLI / Inspector
+       CLI / ACP / Inspector
 ```
 
 ## Memory and learning
@@ -146,6 +146,19 @@
 - [CLI](guides/getting-started.md) — Offers both interactive work and one-shot use from scripts. `san` opens the terminal UI, where turns can pause for input or approvals. `san -p` or piped input selects the headless path, which runs one request and writes the answer to stdout.
 
   `Input -> interactive UI or one-shot run -> stdout for print mode`
+
+- [ACP: Agent Client Protocol](packages/app.md#acp-stdio-host) — Separates the client interface from San's native agent runtime. A compatible desktop client can start `san acp` over stdin/stdout to send prompts, receive streamed text and tool progress, and answer approval requests. A phone or other remote client can use the same integration if it provides a bridge to the machine running San. `san acp` itself does not expose a network endpoint or synchronize live sessions across devices.
+
+  ```text
+  [Desktop ACP client] ---------------------------+
+  [Phone or remote client] --> [External bridge] -+
+                                                  |
+                                                  v
+                                        [san acp / stdio]
+                                                  |
+                                                  v
+                                        [San runtime on host]
+  ```
 
 - [Inspector](packages/inspector.md) — Reads the original run record instead of maintaining a separate debug history. `san inspector` serves a read-only browser UI on loopback, using the native store to replay committed events and reconstruct requests. New committed batches reach the browser over SSE.
 
