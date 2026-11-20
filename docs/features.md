@@ -3,54 +3,148 @@
 [简体中文](features.zh.md)
 
 ```text
-San
-|-- Memory and learning: Auto memory, project instructions, self-learning
-|-- Collaboration: Subagents, agent messaging, session groups, Flow
-|-- Sessions and automation: Sessions, tasks and processes, Autopilot, scheduling
-|-- Tools and extensions: Built-in tools, web search, skills, plugins,
-|                         MCP, hooks, slash commands
-|-- Models and controls: Models and providers, personas, settings, permissions
-`-- Interaction and inspection: CLI, Inspector
++-----+
+| San |
++--+--+
+   |
+   +-- [ Memory and learning ]
+   |   Auto memory / Project instructions / Self-learning
+   |
+   +-- [ Agent and session collaboration ]
+   |   Subagents / Agent messaging / Session groups / Flow
+   |
+   +-- [ Sessions, tasks, and automation ]
+   |   Sessions / Tasks and processes / Autopilot / Scheduling
+   |
+   +-- [ Tools and extensions ]
+   |   Built-in tools / Web search / Skills / Plugins
+   |   MCP / Hooks / Slash commands
+   |
+   +-- [ Models, behavior, and permissions ]
+   |   Models and providers / Personas / Settings / Permissions
+   |
+   +-- [ Interaction and inspection ]
+       CLI / Inspector
 ```
 
 ## Memory and learning
 
-- [Auto memory](concepts/auto-memory.md) — The main agent stores durable Markdown notes. Background recall adds relevant notes to a tool result if ready, without blocking the turn. `User/project notes -> recall -> context`
-- [Project instructions](concepts/harness-channels.md) — Repo conventions live alongside code. San loads user and project `AGENTS.md` files, rules, and local overrides in scope order, within a shared size limit. `Scoped files -> reminders`
-- [Self-learning](packages/selflearn.md) — Off by default. After an eligible `Evolve` request, a background reviewer can manage agent-owned skills, but not edit user-authored ones. `Completed turn -> review -> reusable skill`
+- [Auto memory](concepts/auto-memory.md) — Carries durable knowledge between sessions without putting every note in the prompt. The main agent saves Markdown notes in user and project stores; a background recall selects relevant notes from their descriptions and attaches them to a tool result if ready. The turn never waits for recall.
+
+  ```text
+  [User and project notes] --> [Background recall]
+                                      |
+                                      v (when ready)
+                               [Tool-result context]
+  ```
+
+- [Project instructions](concepts/harness-channels.md) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
+
+  `User files + project files + local overrides -> bounded reminders`
+
+- [Self-learning](packages/selflearn.md) — Turns lessons about how to work into reusable skills rather than memory notes. Off by default, it starts a background reviewer with skill-management tools only after an eligible `Evolve` request from a completed turn. It can update agent-owned skills but cannot edit user-authored ones.
+
+  `Completed turn + Evolve -> background reviewer -> agent-owned skills`
 
 ## Agent and session collaboration
 
-- [Subagents](packages/subagent.md) — Delegate work to an agent with its own conversation and effective permissions. `Agent call -> worker -> foreground result or background task`
-- [Agent messaging](packages/broker.md) — A process-local broker routes to the main agent or a worker by task ID. Child completions can wait in memory for their owner. `Message -> broker -> recipient`
-- [Session groups](design/proposal-0003-session-groups.md) — `/group` connects independent sessions on the same machine. Disk-backed inboxes retain messages for offline members. `Sender -> member inbox on disk -> receiver`
-- [Flow: collaboration blueprints](packages/flow.md) — `/flow run` schedules steps once their dependencies are met, using native tasks and checkpoints for retry or resume. `Blueprint -> scheduler -> tasks -> checkpoints`
+- [Subagents](packages/subagent.md) — Delegation separates a job from the parent's conversation. The `Agent` tool starts a worker with its own context and effective tool permissions. Foreground work returns a tool result; background work gets a task ID so the parent can continue.
+
+  `Agent call -> separate worker -> foreground result or background task`
+
+- [Agent messaging](packages/broker.md) — Lets agents in one San process exchange messages without sharing a conversation. The broker routes to the main agent or a registered worker task ID. Ordinary messages need a recipient that can accept them; child completions can wait in memory for their owning worker.
+
+  `Addressed message -> in-process broker -> recipient inbox`
+
+- [Session groups](design/proposal-0003-session-groups.md) — Lets independent San sessions collaborate on the same machine without sharing a process. `/group` registers members in a roster on disk. Sending writes to a member's inbox directory, so messages can wait while the recipient is offline.
+
+  `[Sending session] --> [Member inbox on disk] --> [Receiving session]`
+
+- [Flow: collaboration blueprints](packages/flow.md) — Declares which steps depend on each other instead of relying on one agent to remember the order. The scheduler can launch independent ready steps through San's existing task system. Step checkpoints let retries or resumes reuse completed work outside the rerun scope.
+
+  ```text
+  [Blueprint] --> [Scheduler]
+                       +--> [Ready step A] --> checkpoint A
+                       +--> [Ready step B] --> checkpoint B
+  ```
 
 ## Sessions, tasks, and automation
 
-- [Sessions](packages/session.md) — Committed events are the source of truth. Replay restores history and active context; compaction changes only the active context. `Event log -> validated replay -> history and context`
-- [Tasks and processes](packages/task.md) — Shell jobs, workers, and schedulers are tracked separately from planning todos. Their owning session can inspect status and output or stop them. `Background work -> session-owned task -> inspect or stop`
-- [Autopilot](guides/autopilot.md) — A side model weighs eligible approvals and decides whether to continue an active mission within its limit. `Turn ends -> mission check -> judge -> continue or wait`
-- [Scheduling](packages/cron.md) — Cron jobs are checked inside the running San process, not by a daemon. Durable definitions survive restart. `Due prompt -> start if idle or queue if busy`
+- [Sessions](packages/session.md) — Uses committed event batches as the source of truth rather than storing only the latest prompt. Validated replay reconstructs conversation history and the active model context. Compaction changes what the model sees on the next turn without erasing the history.
+
+  `Committed events -> validated replay -> history and active context`
+
+- [Tasks and processes](packages/task.md) — Tracks actual running work separately from the agent's planning todos. Shell jobs, workers, and schedulers are tied to their launching session; the manager tracks lifecycle state and streams shell output to task logs. The UI can inspect or stop live work.
+
+  `Background work -> session-owned task -> status, output, or stop`
+
+- [Autopilot](guides/autopilot.md) — Lets a side model take over selected decisions, not the whole permission policy. It can weigh eligible approvals; explicit denials and safety limits still apply. At turn end, a running mission within its limit can queue another instruction if the judge recommends continuing.
+
+  `Turn ends -> mission and limit check -> judge -> next instruction or wait`
+
+- [Scheduling](packages/cron.md) — Turns a time trigger into an ordinary conversation turn. While San runs, its scheduler checks which cron jobs are due; the UI submits a prompt when idle or queues it when busy. Durable job definitions survive restart, but there is no separate daemon.
+
+  `Cron tick -> due prompt -> run now or queue until idle`
 
 ## Tools and extensions
 
-- [Built-in tools](packages/tool.md) — File, shell, and other tools register by name and expose parameter schemas to the model. `Tool call -> permission check -> execute -> result`
-- [Web search](packages/search.md) — `/search` chooses the backend; Exa is the default. Adapters normalize titles, links, and snippets for the model. `Query -> provider -> normalized results`
-- [Skills](packages/skill.md) — San discovers reusable instructions in `SKILL.md`. Active skills expose their metadata; invocation loads the full instructions on demand. `SKILL.md -> registry -> instructions when invoked`
-- [Plugins](packages/plugin.md) — Bundle skills, agents, commands, MCP servers, and hooks for installation together. `Plugin bundle -> enable -> load contributions`
-- [MCP](packages/mcp.md) — San connects over stdio or HTTP to discover external tool schemas and route permitted calls back to the owning server. `Agent <-> MCP manager <-> server`
-- [Hooks](packages/hook.md) — Match handlers to lifecycle events. Synchronous outcomes can stop an operation; async hooks run separately. `Event -> matching hook -> apply outcome or run separately`
-- [Commands](packages/command.md) — One slash palette combines built-in, dynamic, and custom Markdown commands. `Slash input -> lookup -> handler or expanded prompt`
+- [Built-in tools](packages/tool.md) — Gives the model named operations with structured arguments instead of direct access to the runtime. San exposes tool schemas, checks permissions on a requested operation, and dispatches it to the registered implementation. The result goes back into the conversation.
+
+  `Schema -> model call -> permission gate -> tool result`
+
+- [Web search](packages/search.md) — Separates web queries from any one search backend. `/search` selects the provider, with Exa as the default. Each adapter handles its own request format and returns the same title, URL, and snippet shape to `WebSearch`.
+
+  `Query -> selected provider -> normalized results`
+
+- [Skills](packages/skill.md) — Keeps reusable procedures out of the default context until needed. San discovers `SKILL.md` files and advertises only metadata for active skills. Invocation loads the full instructions and points the agent to bundled resources.
+
+  `SKILL.md -> metadata catalog -> full instructions on invocation`
+
+- [Plugins](packages/plugin.md) — Packages related extensions so they can be installed and enabled together. The plugin registry tracks enablement by scope; only enabled plugins contribute skills, agents, commands, MCP servers, and hooks to their corresponding loaders.
+
+  `Plugin bundle -> scoped enablement -> extension loaders`
+
+- [MCP](packages/mcp.md) — Reuses the agent's tool interface for programs outside San. The manager connects to enabled servers over stdio or HTTP, discovers their tool schemas, and exposes namespaced tools to the agent. An allowed call is routed back to the server that advertised it.
+
+  `Discover schemas from server -> expose tools -> route allowed calls back`
+
+- [Hooks](packages/hook.md) — Adds behavior at lifecycle events without changing the agent loop. The engine matches handlers against the event and its input, such as a tool name. Synchronous results can affect whether an operation continues; async hooks run separately.
+
+  `Lifecycle event -> matching handlers -> sync outcome or async work`
+
+- [Commands](packages/command.md) — Provides one slash palette for both app actions and reusable prompts. The registry combines built-in handlers, dynamic entries, and custom Markdown commands. At invocation, San dispatches a handler or expands the prompt and submits it to the agent.
+
+  `Slash input -> registry lookup -> handler or expanded prompt`
 
 ## Models, behavior, and permissions
 
-- [Models and providers](packages/llm.md) — A common inference interface keeps the agent independent of model vendors. `/models` manages connections and selection. `Provider and model choice -> inference -> response`
-- [Personas](concepts/persona.md) — A persona bundles prompt parts, skills, and settings. Prompts and skills update for the next inference; tool and permission settings wait for agent rebuild. `Select persona -> update prompt and skills / rebuild for tool policy`
-- [Settings](packages/setting.md) — San merges user, project, and local settings with field-specific precedence and filters untrusted project settings. `Settings files -> trust filter and merge -> effective settings`
-- [Permissions](concepts/permission-model.md) — Ordered rules, safety checks, and mode defaults decide each tool call. A required prompt becomes a refusal if nobody can answer. `Tool request -> policy -> allow, deny, or ask`
+- [Models and providers](packages/llm.md) — Separates model choice and credentials from the agent loop. `/models` manages provider connections and model selection. At inference time, a shared client invokes the resolved provider and streams its response back to the runtime.
+
+  `Connections and model selection -> inference client -> provider stream`
+
+- [Personas](concepts/persona.md) — Switches how the agent works without starting a new conversation. A persona supplies prompt parts, skills, and a settings overlay. Prompt and skill changes reach the next inference; tool and permission changes take effect when the agent is rebuilt.
+
+  `Select persona -> prompt and skills now / tool policy on rebuild`
+
+- [Settings](packages/setting.md) — Separates personal defaults from shared repo policy and local overrides. San reads scoped files, limits what untrusted project files can contribute, then merges fields according to their semantics. For example, restrictive permission rules can accumulate rather than being replaced by a higher-priority file.
+
+  `Scoped configuration -> workspace trust filter -> field-specific merge`
+
+- [Permissions](concepts/permission-model.md) — Separates a model's request from authority to execute it. The policy evaluates explicit rules, safety checks, session grants, and mode defaults in order. It returns allow, deny, or ask; if approval is still required and nobody can answer, the call is refused.
+
+  ```text
+  Tool request --> [Permission policy]
+                           +-- allow --> execute
+                           +-- deny  --> stop
+                           +-- ask   --> approval, or deny if unavailable
+  ```
 
 ## Interaction and inspection
 
-- [CLI](guides/getting-started.md) — `san` opens an interactive terminal UI; `san -p` or piped input runs once and writes the answer to stdout. `Input -> interactive UI or one-shot output`
-- [Inspector](packages/inspector.md) — `san inspector` serves a read-only browser UI on loopback. It replays committed session events and streams new batches over SSE. `Session store -> local read-only server -> browser`
+- [CLI](guides/getting-started.md) — Offers both interactive work and one-shot use from scripts. `san` opens the terminal UI, where turns can pause for input or approvals. `san -p` or piped input selects the headless path, which runs one request and writes the answer to stdout.
+
+  `Input -> interactive UI or one-shot run -> stdout for print mode`
+
+- [Inspector](packages/inspector.md) — Reads the original run record instead of maintaining a separate debug history. `san inspector` serves a read-only browser UI on loopback, using the native store to replay committed events and reconstruct requests. New committed batches reach the browser over SSE.
+
+  `Native event store -> replay and SSE -> local browser`
