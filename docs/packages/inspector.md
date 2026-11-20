@@ -31,9 +31,11 @@ reader, cwd-hash partition lookup or fallback to `transcripts/`.
 - `GET /api/sessions/{id}/records`: JSON containing unchanged committed SDK batches
   and checked tails. A read failure returns the valid prefix, an error and bounded
   explicitly unvalidated diagnostic text; diagnostics are not projected events.
-- `GET /api/sessions/{id}/state/{seq}`: validated native state or the exact
-  historical request at an `inference.start`. Event identity is sequence within
-  the session, not a line number or byte offset. Invalid projections fail closed.
+- `GET /api/sessions/{id}/state/{seq}`: validated context after the selected
+  event and, at `inference.start`, the exact admitted request. Sequence `0`
+  returns the latest committed context and full message history, with `seq` set
+  to the last included event. Historical step snapshots omit session-wide history.
+  Event sequence is not a line number or byte offset. Invalid projections fail closed.
 - `GET /api/sessions/{id}/stream`: SSE of committed batches. Polling compares the
   entire prior tail chain, emits only complete new batches and closes with a
   diagnostic if the prefix is replaced or corrupt. Partial suffixes wait.
@@ -46,11 +48,12 @@ catalogues and native context at the admitted prefix; standalone requests load
 verified immutable blobs. Unsupported data remains inspectable as raw diagnostic
 text, never silently normalized into supported events.
 
-The UI exposes all thirteen event families, native content blocks, provenance,
-permission authority and asked snapshots, raw tool details, child-session links,
-compaction boundaries and inference accounting. Filters select event families;
-request generations and stream identity fence stale browser responses. Markdown
-links allow HTTP, HTTPS, mailto and relative URLs, not executable schemes.
+The UI renders event-specific details before requesting a validated snapshot.
+Tool details show recorded execution metadata separately from model-facing
+results. The details pane and system prompt drawer share the selected snapshot;
+expand the raw disclosures for exact batch and snapshot JSON. Filters select
+event families, and request generations and stream identity fence stale browser
+responses.
 
 ## Lifecycle and configuration
 

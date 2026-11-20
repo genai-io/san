@@ -37,14 +37,21 @@ bytes can be diagnosed rather than disappearing silently.
 The timeline exposes thirteen event families: session creation/update, native
 messages, context compaction, inference start/finish, permission decisions, tool
 finishes, instruction/toolset/skill catalogues, hook finishes and annotations.
-Filters let you focus on related facts. Events have stable sequence positions
-within their session; sequence numbers are not JSONL line numbers, because one
-committed line may contain multiple events.
+Filters let you focus on related facts. Rows show a short event label, preview,
+and any recorded outcome. Full hook commands and attached system reminders are
+available in the details rather than mixed into the timeline. Sequence positions
+are stable within each session and are not JSONL line numbers: one committed line
+may contain multiple events.
 
-Select an event to inspect its raw typed payload and provenance. Raw committed
-SDK batches remain available unchanged. If transport validation fails, the server
-reports the checked prefix and explicitly unvalidated bounded diagnostic text;
-that text is never treated as projected history.
+Select a timeline step to see its recorded details. Message steps show the ordered
+native blocks. Permission and tool steps link to the requested invocation; tool
+finishes show any recorded file diff, shell output or agent result separately
+from what was returned to the model. Source links jump to the referenced event.
+
+Expand **Technical details** for the event payload, historical context and exact
+JSON. If transport validation fails, the server reports the checked prefix and
+explicitly unvalidated bounded diagnostic text; that text is never treated as
+projected history.
 
 ## Reconstruct the model request
 
@@ -54,12 +61,12 @@ instructions, tool schemas and repaired active native messages; a standalone
 request loads its immutable, verified blob. Current settings and later catalogue
 changes do not substitute for the historical input.
 
-For other events, cumulative context is reconstructed at the selected sequence.
-Compaction changes active context, not full history: earlier turns remain
-inspectable. Native images, provider signatures, encrypted reasoning and content
-ordering are retained rather than being flattened into a replacement transcript.
-Unsupported event versions or invalid provenance fail validated replay instead
-of being silently skipped.
+For other events, historical context includes changes made by the selected step.
+The separate **Session history** view shows all committed messages through the
+indicated step, including turns before compaction. Native images, provider
+signatures, encrypted reasoning and content ordering are retained. Unsupported
+event versions or invalid provenance fail validated replay instead of being
+silently skipped.
 
 ## Outcomes and interrupted work
 

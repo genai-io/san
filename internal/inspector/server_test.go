@@ -112,9 +112,15 @@ func TestServerNativeReadsDoNotModifyFilesOrClaimWriter(t *testing.T) {
 	if len(records.Batches) != 3 || records.Error != "" {
 		t.Fatalf("records: %+v", records)
 	}
+	var created nativeState
+	getJSON(t, srv, "/api/sessions/session/state/1", &created)
+	if created.Seq != 1 || created.Event == nil || created.Event.Type != session.EventSessionCreate ||
+		len(created.Context.Messages) != 0 || len(created.History) != 0 {
+		t.Fatalf("creation snapshot includes later state: %+v", created)
+	}
 	var st nativeState
 	getJSON(t, srv, "/api/sessions/session/state/0", &st)
-	if len(st.Context.Messages) != 1 || st.Context.Messages[0].ID != "u" {
+	if st.Seq != 3 || st.Event != nil || len(st.History) != 1 || len(st.Context.Messages) != 1 || st.Context.Messages[0].ID != "u" {
 		t.Fatalf("state: %+v", st)
 	}
 	after := diskSnapshot(t, store.ProjectDir())

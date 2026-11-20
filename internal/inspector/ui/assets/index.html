@@ -19,7 +19,7 @@
     <div class="brand-tag">conversation forensics ·&nbsp;<em>read the wire, not the chat</em></div>
     <div class="brand-spacer"></div>
     <span id="status" class="status idle"></span>
-    <button id="toggle-prompt" class="toggle">
+    <button id="toggle-prompt" class="toggle" aria-expanded="false" aria-controls="prompt">
       <span class="toggle-icon" aria-hidden="true">⌥</span>
       <span class="toggle-label">system prompt</span>
       <span class="toggle-caret">▸</span>
@@ -41,8 +41,11 @@
 
     <section id="viewer">
       <div id="timeline-header">
-        <div class="header-row">
+        <div class="header-row timeline-heading">
+          <h2>Event timeline</h2>
+          <span id="timeline-count"></span>
           <span id="session-meta">No session selected.</span>
+          <button id="show-history" class="toggle" type="button" aria-controls="detail-body" aria-pressed="false" disabled>Session history</button>
         </div>
         <div class="header-row filters-row" role="toolbar" aria-label="event type filters">
           <label class="chip"><input type="checkbox" id="filter-state" checked><span class="chip-dot" data-kind="state"></span>state</label>
@@ -59,7 +62,7 @@
 
     <section id="detail" class="detail">
       <div class="detail-rail" aria-hidden="true"></div>
-      <div id="detail-body"><pre class="detail-empty">Select a record from the timeline.<br><em>The record's raw payload renders here. Inference rows additionally render the composed system prompt the model received and the active message chain.</em></pre></div>
+      <div id="detail-body"><p class="detail-empty">Select a step to inspect its details.</p></div>
     </section>
 
     <div id="prompt-backdrop" class="prompt-backdrop"></div>
@@ -72,7 +75,7 @@
         </div>
         <span id="prompt-meta">— at selected record</span>
         <div class="prompt-actions">
-          <button id="prompt-expand" title="Toggle full width" aria-label="Toggle full width">⤢</button>
+          <button id="prompt-expand" title="Toggle full width" aria-label="Toggle full width" aria-pressed="false">⤢</button>
           <button id="prompt-close" title="Close" aria-label="Close">✕</button>
         </div>
       </div>
@@ -82,6 +85,7 @@
     </section>
   </main>
 
+  <script src="/detail.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
