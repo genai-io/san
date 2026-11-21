@@ -192,7 +192,14 @@ func snapshot(path string, req Request) (s storeSnapshot, err error) {
 		}
 	}
 	seen := map[string]bool{}
-	for line := range strings.SplitSeq(s.index.text, "\n") {
+	literal := literalIndexLines(s.index.text)
+	offset := 0
+	for line := range strings.SplitAfterSeq(s.index.text, "\n") {
+		isLiteral := literal[offset]
+		offset += len(line)
+		if isLiteral {
+			continue
+		}
 		link := indexLink.FindStringSubmatch(line)
 		if link == nil {
 			continue

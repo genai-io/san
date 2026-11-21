@@ -83,6 +83,60 @@ func claude(t *testing.T, e *stubServer) *vendorProvider {
 		endpoint.Config{APIKey: "test-key", BaseURL: e.server.URL})
 }
 
+func TestBoundedCodexCompletionSkipsColdListing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/responses" {
+			t.Errorf("bounded Codex call used %s %s, want POST /responses", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"model\":\"gpt-6.2-sol\",\"status\":\"completed\",\"output\":[]}}\n\n")
+	}))
+	defer server.Close()
+	vendor, ok := catalog.Find(codexVendor)
+	if !ok {
+		t.Fatal("Codex vendor missing from the catalog")
+	}
+	provider := newVendorProvider("openai:subscription", vendor, endpoint.Config{APIKey: "test-key", BaseURL: server.URL})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	admitted, finished := false, false
+	_, err := Complete(ctx, provider, CompletionOptions{
+		Model: "gpt-6.2-sol", Messages: []core.Message{core.UserMessage("recall", nil)},
+		Admission: func(context.Context, string, ai.Model, *ai.Request) (CompletionFinish, error) {
+			admitted = true
+			return func(context.Context, *ai.Response, error) error { finished = true; return nil }, nil
+		},
+	})
+	if err != nil || !admitted || !finished {
+		t.Fatalf("cold Codex completion: admitted=%t finished=%t err=%v", admitted, finished, err)
+	}
+	if provider.listed || len(provider.clients) != 0 {
+		t.Fatal("an unrefreshed template must not prevent later model discovery")
+	}
+}
+
+func TestCompleteCancelsColdModelListing(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Errorf("unexpected model request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		cancel()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	provider := claude(t, &stubServer{server: server})
+	_, err := Complete(ctx, provider, CompletionOptions{Model: "claude-sonnet-4", Messages: []core.Message{core.UserMessage("recall", nil)}})
+	if err != context.Canceled {
+		t.Fatalf("expected canceled model discovery, got %v", err)
+	}
+}
+
 // collect drains a turn the way the agent loop now does: over the SDK's own
 // stream, since the chunk bridge San used to keep in between is gone.
 func collect(t *testing.T, p *vendorProvider, opts CompletionOptions) (text, thinking string, resp *CompletionResponse, err error) {

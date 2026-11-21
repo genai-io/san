@@ -80,7 +80,11 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return response, err
 	}
 	if prepared.Handled {
-		return protocol.PromptResponse{StopReason: protocol.StopReasonEndTurn}, turn.SendUpdate(protocol.SessionNotification{Update: acpMessageChunk(prepared.Notice)})
+		response := protocol.PromptResponse{StopReason: protocol.StopReasonEndTurn}
+		if prepared.Notice == "" {
+			return response, nil
+		}
+		return response, turn.SendUpdate(protocol.SessionNotification{Update: acpMessageChunk(prepared.Notice)})
 	}
 
 	s.runtime.SetPluginRoot(pluginRoot)

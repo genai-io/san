@@ -45,6 +45,23 @@ func TestACPShowsMaintenanceNoticeWithoutMainInference(t *testing.T) {
 	t.Fatalf("missing maintenance notice in %+v", f.updates)
 }
 
+func TestACPMemoryNoChangeSendsNoMessage(t *testing.T) {
+	driver := aitest.New(aitest.Says(`{"action":"none"}`))
+	f := newACPFixture(t, driver, nil)
+	id := f.session(t, t.TempDir())
+	response, err := f.prompt(id, memoryMaintenancePrompt)
+	if err != nil || response.StopReason != protocol.StopReasonEndTurn || driver.Calls() != 1 {
+		t.Fatalf("response=%+v err=%v calls=%d", response, err, driver.Calls())
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, notification := range f.updates {
+		if _, ok := notification.Update.Value.(protocol.SessionUpdateAgentMessageChunkVariant); ok {
+			t.Fatal("memory no-op should not emit an agent message")
+		}
+	}
+}
+
 func TestACPConcurrentSessions(t *testing.T) {
 	driver := aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 		if len(req.Tools) != 0 {

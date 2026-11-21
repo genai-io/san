@@ -13,6 +13,16 @@ func TestForgetIndexPreservesFencedExamples(t *testing.T) {
 	}
 }
 
+func TestRememberAppendsAfterClosedLiteralBlock(t *testing.T) {
+	for _, index := range []string{"```\r\n- [Example](topic.md)\r\n```", "<!--\r\n- [Example](topic.md)\r\n-->"} {
+		got, err := editIndex(index, proposal{Action: actionRemember, File: "topic.md", Name: "Topic", Description: "Details"})
+		want := index + "\r\n- [Topic](topic.md) — Details\r\n"
+		if err != nil || got != want {
+			t.Fatalf("editIndex = %q, %v; want %q", got, err, want)
+		}
+	}
+}
+
 func TestForgetIndexRefusesCaseAmbiguity(t *testing.T) {
 	for _, index := range []string{
 		"- [Uppercase](Topic.md)\n",

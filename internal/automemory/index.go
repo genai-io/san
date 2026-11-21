@@ -15,25 +15,41 @@ import (
 // Refuse ambiguous entries rather than removing prose or another note's link.
 var indexEntry = regexp.MustCompile(`^[-*+] \[[^\[\]]+\]\((?:\./)?([A-Za-z0-9_-]+\.md)\)(?:[ \t]+[^\[\]<>]*)?$`)
 
-func editIndex(text string, p proposal) (string, error) {
-	mention := regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])` + regexp.QuoteMeta(p.File) + `([^a-z0-9_.-]|$)`)
-	// Parse block boundaries, but splice the original lines so unrelated
-	// Markdown (including line endings) isn't re-rendered.
-	source := []byte(text)
+// Parse block boundaries, but operate on original lines rather than
+// re-rendering Markdown.
+func literalIndexLines(text string) map[int]bool {
 	literal := map[int]bool{}
-	_ = ast.Walk(goldmark.DefaultParser().Parse(mdtext.NewReader(source)), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering {
-			switch n.Kind() {
-			case ast.KindFencedCodeBlock, ast.KindCodeBlock, ast.KindHTMLBlock:
-				for i := 0; i < n.Lines().Len(); i++ {
-					segment := n.Lines().At(i)
-					start := strings.LastIndexByte(text[:segment.Start], '\n') + 1
-					literal[start] = true
-				}
+	mark := func(offset int) {
+		literal[strings.LastIndexByte(text[:offset], '\n')+1] = true
+	}
+	_ = ast.Walk(goldmark.DefaultParser().Parse(mdtext.NewReader([]byte(text))), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch block := n.(type) {
+		case *ast.FencedCodeBlock:
+			if block.Info != nil {
+				mark(block.Info.Segment.Start)
 			}
+		case *ast.HTMLBlock:
+			if block.HasClosure() {
+				mark(block.ClosureLine.Start)
+			}
+		case *ast.CodeBlock:
+		default:
+			return ast.WalkContinue, nil
+		}
+		for i := 0; i < n.Lines().Len(); i++ {
+			mark(n.Lines().At(i).Start)
 		}
 		return ast.WalkContinue, nil
 	})
+	return literal
+}
+
+func editIndex(text string, p proposal) (string, error) {
+	mention := regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])` + regexp.QuoteMeta(p.File) + `([^a-z0-9_.-]|$)`)
+	literal := literalIndexLines(text)
 	var out strings.Builder
 	offset := 0
 	for line := range strings.SplitAfterSeq(text, "\n") {
@@ -65,7 +81,13 @@ func editIndex(text string, p proposal) (string, error) {
 		if text != "" && !strings.HasSuffix(text, "\n") {
 			out.WriteString(newline)
 		}
+		entryStart := out.Len()
 		fmt.Fprintf(&out, "- [%s](%s) — %s%s", p.Name, p.File, p.Description, newline)
+		// Test the actual append: EOF alone can terminate a literal block
+		// that would otherwise swallow the new line.
+		if literalIndexLines(out.String())[entryStart] {
+			return "", errors.New("cannot append memory index entry inside a Markdown literal block")
+		}
 	}
 	if out.Len() > maxIndex {
 		return "", errors.New("memory index would exceed size limit")

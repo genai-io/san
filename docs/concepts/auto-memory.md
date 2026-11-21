@@ -28,7 +28,7 @@ forget project memory package-manager.md
 
 `remember:` defaults to project memory. `update` and `forget` require the store (`project` or `user`) and exact note filename. Ordinary conversational uses of “remember” or “forget” are not write authorization.
 
-Maintenance sends no tools to the model. It proposes one change, and San validates the operation, store, note, and revision before applying it. A successful write returns a display-only Notice. A no-op or failure does not claim a write succeeded. San preserves the existing Markdown format and updates the affected index entry. Routine recall does not write anything.
+Maintenance sends no tools to the model. It proposes one change, and San validates the operation, store, note, and revision before applying it. A successful write returns a display-only Notice. A no-op or failure does not claim a write succeeded. San preserves the existing Markdown format, ignores example links in literal blocks, and refuses to append an index entry inside an unclosed block. Routine recall does not write anything.
 
 ## Settings and inspection
 

@@ -165,6 +165,38 @@ func TestRememberEvidenceAndNoOp(t *testing.T) {
 	}
 }
 
+func TestRememberRefusesLiteralEOFWithoutWrites(t *testing.T) {
+	for _, index := range []string{"# Memory\r\n\r\n```markdown", "~~~\nexample\n", "<!--\nexample\n", "<div>\nexample\n"} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, system.AutoMemoryIndexName)
+		put(t, path, index)
+		m := Maintainer{Provider: fakeProvider{aitest.New(aitest.Says(`{"action":"remember","file":"build.md","name":"Build","description":"Build preference","type":"project","body":"Use make."}`))}}
+		notice, err := m.Run(t.Context(), system.MemoryStores{Project: dir}, request(t, "remember: Use make."))
+		if notice != "" || err == nil || !strings.Contains(err.Error(), "Markdown literal block") || get(t, path) != index {
+			t.Fatalf("index %q: notice=%q err=%v; want refusal and unchanged index", index, notice, err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "build.md")); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("index %q: unexpected note stat result: %v", index, err)
+		}
+	}
+}
+
+func TestRememberEvidenceSkipsLiteralExamples(t *testing.T) {
+	dir := t.TempDir()
+	put(t, filepath.Join(dir, system.AutoMemoryIndexName),
+		"```markdown\r\n- [Formatter](fenced.md)\r\n```\r\n\r\n"+
+			"    - [Formatter](indented.md)\r\n\r\n"+
+			"<!--\r\n- [Formatter](comment.md)\r\n-->\r\n\r\n"+
+			"- [Formatter](actual.md)\r\n")
+	for _, name := range []string{"fenced.md", "indented.md", "comment.md", "actual.md"} {
+		put(t, filepath.Join(dir, name), "note body")
+	}
+	s, err := snapshot(dir, request(t, "remember: Our formatter is gofmt"))
+	if err != nil || len(s.notes) != 1 || s.notes[0].name != "actual.md" {
+		t.Fatalf("unexpected evidence: %+v, %v", s.notes, err)
+	}
+}
+
 func TestRejectSymlinkNote(t *testing.T) {
 	dir := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "outside.md")
