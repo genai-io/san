@@ -135,10 +135,13 @@ func TestParseDir_ToleratesBrokenSettings(t *testing.T) {
 func TestParseDir_OverlayFields(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "overlay")
 	writeFile(t, filepath.Join(dir, "settings.json"),
-		`{"description":"o","disabledTools":{"WebSearch":true},"permissions":{"allow":["Bash(pytest:*)"]}}`)
+		`{"description":"o","disabledTools":{"WebSearch":true,"Evolve":true},"permissions":{"allow":["Bash(pytest:*)"]},"selfLearn":{"strategy":"review reusable workflows"}}`)
 	p, ok := parseDir(dir)
-	if !ok {
-		t.Fatal("expected persona to load")
+	if !ok || p.Settings == nil {
+		t.Fatal("expected persona settings to load")
+	}
+	if p.Description != "o" || p.Settings.AutoSkill.Strategy != "review reusable workflows" || !p.Settings.DisabledTools["ReviewSkill"] {
+		t.Fatalf("persona metadata or legacy overlay did not load: %+v", p.Settings)
 	}
 	if !p.Settings.DisabledTools["WebSearch"] {
 		t.Errorf("overlay disabledTools not parsed: %+v", p.Settings.DisabledTools)
