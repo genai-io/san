@@ -19,7 +19,7 @@ class Element {
   scrollIntoView(){}
   focus(){}
 }
-async function viewer(sessionPage=()=>({items:[]}), url='http://localhost/'){
+async function viewer(sessionPage=()=>({items:[]}), url='http://localhost/', sessionSummary=()=>({ok:false})){
   const elements=new Map(), requests=[], sessionRequests=[], documentListeners={};
   const element=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
   const context=vm.createContext({URL,Element,AbortController,location:{href:url},document:{querySelector:element,createElement:tag=>new Element(tag),
@@ -30,6 +30,7 @@ async function viewer(sessionPage=()=>({items:[]}), url='http://localhost/'){
         sessionRequests.push(url);
         return Promise.resolve(sessionPage(url)).then(body=>({ok:true,json:async()=>body}));
       }
+      if(url.endsWith('/summary')) return Promise.resolve(sessionSummary(url));
       return new Promise((resolve,reject)=>requests.push({url,signal,reject,
         resolve:body=>resolve({ok:true,json:async()=>body,text:async()=>JSON.stringify(body)}),
         resolveText:text=>resolve({ok:true,text:async()=>text})}));
@@ -90,6 +91,21 @@ test('session row keeps metadata inside the clickable button and supports a dire
   v.openSession('another');
   button.listeners.click();
   assert.equal(v.state.currentSession,'fresh');
+});
+
+test('subagent identity appears in the sidebar and off-page header',async()=>{
+  const v=await viewer(()=>({items:[{id:'listed',subagent:true}]}), 'http://localhost/?session=child', url=>({
+    ok:url.endsWith('/child/summary'), json:async()=>({title:'Review tests',subagent:true,parent:'parent'}),
+  }));
+  assert.equal(v.element('#session-list').textContent,'Subagent');
+  assert.equal(v.element('#session-meta').textContent,'Subagent · Review tests');
+  assert.equal(v.element('#session-parent').hidden,false);
+  assert.equal(v.element('#session-parent').href,'?session=parent');
+  v.openSession('large');
+  assert.equal(v.element('#session-parent').hidden,true);
+  v.ingestBatch(batch(1,[event(1,'session.create',{agent_id:'worker-address',parent:{session:'other'}})]));
+  assert.equal(v.element('#session-meta').textContent,'Subagent');
+  assert.equal(v.element('#session-parent').href,'?session=other');
 });
 
 test('expanding details preserves the selected step, payload, and timeline',async()=>{
@@ -250,9 +266,11 @@ test('timeline separates hook status, message preview and source from raw payloa
   const command='node -e "'+'long command '.repeat(40)+'"';
   const reminder='<system-reminder source="memory-project">\nproject context\n</system-reminder>';
   const notice='<system-reminder>\nnotice\n</system-reminder>';
+  const promptHook='<system-reminder source="hook-user-prompt-submit">\nhook context\n</system-reminder>';
+  const skills='<system-reminder source="skills-directory">\nvisible skills\n</system-reminder>';
   const userEvent=(seq,text)=>event(seq,'message.append',{messages:[message('m'+seq,'user',textBlock(text))]});
   v.ingestBatch(batch(1,[event(1,'hook.finish',{hook:command,trigger:'SessionStart',outcome:'blocked',duration_ms:87}),
-    userEvent(2,'你好\n\n'+reminder+'\n\n'+notice),userEvent(3,reminder),userEvent(4,'literal '+reminder),
+    userEvent(2,['你好',promptHook,skills,reminder,notice].join('\n\n')),userEvent(3,reminder),userEvent(4,'literal '+reminder),
     event(5,'inference.finish',{outcome:'success',stop_reason:'end_turn',duration_ms:12},{seq:2}),
     userEvent(6,'x'.repeat(400))]));
   const timeline=v.element('#timeline'), [hook,user,system,literal,finish,long]=timeline.children;
@@ -276,8 +294,8 @@ test('timeline separates hook status, message preview and source from raw payloa
   await v.showDetail(1);
   const details=expand(detail,'Event');
   assert.doesNotMatch(details.textContent,/project context|notice/);
-  const reminders=expand(details,'System reminders · 2');
-  assert.match(reminders.textContent,/Project instructions.*project context.*Reminder.*notice/s);
+  const reminders=expand(details,'System reminders · 4');
+  assert.match(reminders.textContent,/User prompt hook.*hook context.*Skills directory.*visible skills.*Project instructions.*project context.*Source not recorded.*notice/s);
   const raw=expand(detail,'Raw batch').children.at(-1);
   const events=JSON.parse(raw.textContent).batch.records[0].data.events;
   assert.ok(events.find(rec=>rec.seq===2).payload.messages[0].content[0].text.includes(reminder));

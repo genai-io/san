@@ -77,8 +77,16 @@ func overviewOf(sessionID string, p *Projection) Overview {
 }
 
 // LastUserPrompt returns a short display title from the latest user message.
-func (p *Projection) LastUserPrompt() string {
-	for i := len(p.data.Messages) - 1; i >= 0; i-- {
+func (p *Projection) LastUserPrompt() string { return p.userPrompt(true) }
+
+// FirstUserPrompt returns a short display title from the first user message.
+func (p *Projection) FirstUserPrompt() string { return p.userPrompt(false) }
+
+func (p *Projection) userPrompt(latest bool) string {
+	for i := range p.data.Messages {
+		if latest {
+			i = len(p.data.Messages) - 1 - i
+		}
 		m := p.data.Messages[i]
 		if m.Role != ai.RoleUser || len(m.ToolResults()) != 0 {
 			continue

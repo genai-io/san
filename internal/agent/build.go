@@ -425,7 +425,7 @@ func postCompactReminders(cwd string, files *filecache.Cache, budget int) []stri
 		}
 	}
 	if len(restored) > 0 {
-		reminders = append(reminders, reminder.Wrap(filecache.FormatRestoredFiles(restored)))
+		reminders = append(reminders, reminder.WrapWithSource(filecache.FormatRestoredFiles(restored), reminder.SourceRestoredFiles))
 	}
 	return reminders
 }

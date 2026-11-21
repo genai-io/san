@@ -21,6 +21,7 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 )
@@ -156,7 +157,7 @@ func (m *model) fireStartupHooks() {
 	// keeps SessionStart context out of the visible chat and lets it
 	// re-emerge after PostCompact alongside other harness reminders.
 	if outcome.AdditionalContext != "" {
-		m.services.Reminder.Enqueue(outcome.AdditionalContext)
+		m.services.Reminder.EnqueueWithSource(outcome.AdditionalContext, reminder.SourceSessionStart)
 	}
 }
 

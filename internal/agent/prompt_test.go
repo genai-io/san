@@ -44,7 +44,7 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 				}
 				// Blocked context deliberately leaks into the next delivered input.
 				next := r.PrepareInput(core.UserMessage("later input", nil)).Text()
-				if !strings.Contains(next, "already pending") || (extra != "" && !strings.Contains(next, extra)) {
+				if !strings.Contains(next, "already pending") || (extra != "" && !strings.Contains(next, reminder.WrapWithSource(extra, reminder.SourceUserPromptSubmit))) {
 					t.Fatalf("later input = %q", next)
 				}
 				if again := r.PrepareInput(core.UserMessage("another", nil)).Text(); again != "another" {

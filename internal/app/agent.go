@@ -461,6 +461,10 @@ func (m *model) discardPendingMessages() {
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
+	return m.sendPendingMessagesSince(time.Time{})
+}
+
+func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 	if m.flowMainBlocksQueue() {
 		return nil
 	}
@@ -494,7 +498,10 @@ func (m *model) sendPendingMessages() tea.Cmd {
 			return tea.Batch(append(cmds, func() tea.Msg { return agentSendFailedMsg{err: err} })...)
 		}
 		if !m.conv.Stream.Active {
-			m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: time.Now()}
+			if startedAt.IsZero() {
+				startedAt = time.Now()
+			}
+			m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: startedAt}
 			cmds = append(cmds, m.conv.Spinner.Tick)
 		}
 	}

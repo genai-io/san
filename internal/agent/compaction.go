@@ -133,7 +133,7 @@ func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Re
 	}
 	if trigger == "manual" && files != nil {
 		if restored, _ := files.RestoreRecent(); len(restored) > 0 {
-			reminders.Enqueue(filecache.FormatRestoredFiles(restored))
+			reminders.EnqueueWithSource(filecache.FormatRestoredFiles(restored), reminder.SourceRestoredFiles)
 			return len(restored)
 		}
 	}

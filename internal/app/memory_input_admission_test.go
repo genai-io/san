@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/session"
@@ -65,6 +66,18 @@ func TestFlowMemoryMaintenanceAdmission(t *testing.T) {
 				assertMemoryRecording(t, m, 0)
 			}
 		})
+	}
+}
+
+func TestMemoryRecallCarriesWaitIntoSubmission(t *testing.T) {
+	m, _ := memoryAdmissionModel(t)
+	head := pendingMessage{Message: core.UserMessage("How do we build?", nil), FromUser: true}
+	m.pendingMessages.Enqueue(head)
+	m.prepareMemoryInput(head)
+	request := m.memoryInput
+	m.onMemoryInput(memoryInputMsg{input: request, result: agent.PreparedMemory{Message: head.Message}})
+	if m.memoryInput != nil || !m.conv.Stream.Waiting || m.conv.Stream.StartedAt != request.startedAt {
+		t.Fatal("recall did not hand the wait clock to the main turn")
 	}
 }
 

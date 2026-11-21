@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
@@ -18,13 +19,15 @@ import (
 
 // memoryInput is a preparation for the current queue head, not a main turn.
 type memoryInput struct {
-	owner  *session.Session
-	outbox <-chan core.Event
-	stores system.MemoryStores
-	head   pendingMessage
-	parent context.Context
-	cancel context.CancelFunc
-	accept func(memoryInputMsg) tea.Cmd
+	owner       *session.Session
+	outbox      <-chan core.Event
+	stores      system.MemoryStores
+	head        pendingMessage
+	parent      context.Context
+	cancel      context.CancelFunc
+	accept      func(memoryInputMsg) tea.Cmd
+	startedAt   time.Time
+	maintenance bool
 }
 
 type memoryInputMsg struct {
@@ -47,8 +50,12 @@ func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
 
 func (m *model) startMemoryInput(parent context.Context, head pendingMessage, accept func(memoryInputMsg) tea.Cmd) tea.Cmd {
 	ctx, cancel := context.WithCancel(parent)
-	r := &memoryInput{owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.agentAutoMemory, head: head, parent: parent, cancel: cancel, accept: accept}
-	if agent.IsMemoryMaintenance(head.Message) {
+	r := &memoryInput{
+		owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.agentAutoMemory,
+		head: head, parent: parent, cancel: cancel, accept: accept,
+		startedAt: time.Now(), maintenance: agent.IsMemoryMaintenance(head.Message),
+	}
+	if r.maintenance {
 		r.stores = m.autoMemory()
 	}
 	startSpinner := !m.needsSpinner()
@@ -175,7 +182,7 @@ func (m *model) onMemoryInput(msg memoryInputMsg) tea.Cmd {
 		return func() tea.Msg { return agentSendFailedMsg{err: msg.err} }
 	case memoryAdmit:
 		m.pendingMessages.ReplaceFirst(head)
-		return m.sendPendingMessages()
+		return m.sendPendingMessagesSince(r.startedAt)
 	}
 	return m.sendPendingMessages()
 }

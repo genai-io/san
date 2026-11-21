@@ -98,7 +98,11 @@ function contentBlock(block) {
 }
 
 const reminderTitles = new Map([
-  ['memory-user', 'User instructions'], ['memory-project', 'Project instructions'], ['memory-auto', 'Auto memory'],
+  ['memory-user', 'User instructions'], ['memory-project', 'Project instructions'],
+  ['memory-auto', 'Auto Memory index'], ['memory-recall', 'Auto Memory recall'],
+  ['skills-directory', 'Skills directory'], ['group', 'Session group'],
+  ['hook-session-start', 'Session start hook'], ['hook-user-prompt-submit', 'User prompt hook'],
+  ['restored-files', 'Files restored after compaction'],
 ]);
 
 function contentNodes(content, role) {
@@ -110,7 +114,7 @@ function contentNodes(content, role) {
     if (!reminders.length) return [contentBlock(block)];
     reminders.reverse();
     return [...(text ? [textElement('pre', text, 'message-text')] : []),
-      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(reminderTitles.get(source) || source || 'Reminder',
+      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(reminderTitles.get(source) || source || 'Source not recorded',
         textElement('pre', body, 'message-text'))))];
   });
 }

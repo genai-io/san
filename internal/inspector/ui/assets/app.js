@@ -5,6 +5,7 @@ const state = {
   records: [], seenIDs: new Set(), bySequence: new Map(), rows: new Map(), eventSource: null,
   calls: new Map(), results: new Map(), inferences: new Map(), outputPanel: null,
   selectedState: null, contextAbort: null, pendingSequence: null,
+  sessionSummary: null, streamIdentity: null,
   filters: {message:true, inference:true, tool:true, system:true, state:true, hook:true, permission:true},
 };
 const timeline = $('#timeline'), detail = $('#detail-body');
@@ -52,15 +53,33 @@ function renderInline(text) {
     } catch (_) { return escapeHTML(part); }
   }).join('');
 }
-const sessionPages = {cursors:[''], index:0, next:'', loading:false, titles:new Map()};
+const sessionPages = {cursors:[''], index:0, next:'', loading:false, items:new Map()};
 
-function sessionLabel(title) {
-  return title?.trim() || 'Untitled session';
+function sessionLabel(item) {
+  const title = item?.title?.trim();
+  return item?.subagent ? (title ? 'Subagent · ' + title : 'Subagent') : (title || 'Untitled session');
 }
 function displaySession(id) {
+  const item = {...(state.sessionSummary || sessionPages.items.get(id)), ...state.streamIdentity};
   const meta = $('#session-meta');
-  meta.textContent = sessionLabel(sessionPages.titles.get(id));
-  meta.title = id;
+  meta.textContent = sessionLabel(item);
+  meta.title = sessionLabel(item) + ' · ' + id;
+  const parent = $('#session-parent');
+  parent.hidden = !item.parent;
+  if (item.parent) {
+    parent.href = '?session=' + encodeURIComponent(item.parent);
+    parent.title = item.parent;
+  }
+}
+async function loadSessionSummary(id, current) {
+  try {
+    const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/summary');
+    if (!response.ok) return;
+    const summary = await response.json();
+    if (!current()) return;
+    state.sessionSummary = summary;
+    displaySession(id);
+  } catch (_) { /* The timeline can still supply identity. */ }
 }
 
 function sessionPageControls() {
@@ -78,17 +97,17 @@ async function loadSessions(index = 0, cursor = '') {
     const response = await fetch('/api/sessions' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
     if (!response.ok) throw new Error(response.statusText);
     const page = await response.json();
-    sessionPages.titles = new Map(page.items.map(item => [item.id, item.title]));
-    if (sessionPages.titles.has(state.currentSession)) displaySession(state.currentSession);
+    sessionPages.items = new Map(page.items.map(item => [item.id, item]));
+    if (sessionPages.items.has(state.currentSession)) displaySession(state.currentSession);
     const nodes = page.items.map(item => {
       const node = textElement('li', '');
       node.dataset.session = item.id;
       node.classList.toggle('active', item.id === state.currentSession);
       const button = textElement('button', '', 'session-button');
       button.type = 'button';
-      button.title = item.title ? item.title + ' · ' + item.id : item.id;
+      button.title = sessionLabel(item) + ' · ' + item.id;
       button.addEventListener('click', () => openSession(item.id));
-      button.appendChild(textElement('span', sessionLabel(item.title), 'session-label'));
+      button.appendChild(textElement('span', sessionLabel(item), 'session-label'));
       const date = new Date(item.updatedAt);
       if (!Number.isNaN(date.getTime())) {
         const time = textElement('time', date.toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}), 'id');
@@ -125,6 +144,7 @@ $('#sessions-refresh').addEventListener('click', () => loadSessions());
 function openSession(id, sequence = null) {
   if (state.eventSource) state.eventSource.close();
   state.currentSession = id; state.selectedRecordID = null;
+  state.sessionSummary = state.streamIdentity = null;
   for (const row of $('#session-list').children) row.classList.toggle('active', row.dataset.session === id);
   state.detailRequest++; state.promptRequest++;
   cancelContextLoad();
@@ -143,6 +163,7 @@ function openSession(id, sequence = null) {
   const source = new EventSource('/api/sessions/' + encodeURIComponent(id) + '/stream');
   state.eventSource = source;
   const current = () => state.currentSession === id && state.eventSource === source;
+  loadSessionSummary(id, current);
   source.onmessage = event => {
     if (!current()) return;
     try { ingestBatch(JSON.parse(event.data), event.data); setStatus('live'); }
@@ -183,6 +204,14 @@ function ingestBatch(envelope, exactJSON) {
     for (let ei = 0; ei < events.length; ei++) {
       const raw = events[ei];
       const rec = raw && typeof raw === 'object' ? raw : {raw};
+      if (rec.seq === 1 && rec.type === 'session.create' && rec.v === 1 && state.currentSession) {
+        const parent = rec.payload?.parent?.session;
+        const agent = rec.payload?.agent_id;
+        if (parent || (agent && agent !== 'main')) {
+          state.streamIdentity = {subagent:true, parent};
+          displaySession(state.currentSession);
+        }
+      }
       if (Number.isSafeInteger(rec.seq) && rec.seq > 0 && !state.bySequence.has(rec.seq)) {
         state.bySequence.set(rec.seq, state.records.length);
       }

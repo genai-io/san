@@ -105,6 +105,11 @@ func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryS
 	defer func() {
 		if prepared.Completion == nil {
 			if closeErr := scope.Close(); closeErr != nil {
+				// The optional recall budget may expire before the recording lock is acquired.
+				// Only this timeout can fall back; other recording errors still surface.
+				if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(closeErr, context.DeadlineExceeded) {
+					return
+				}
 				err = errors.Join(err, &llm.RecordingError{Err: closeErr})
 			}
 		}

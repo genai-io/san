@@ -86,6 +86,39 @@ func TestSessionPageUsesLatestUserPromptWhenUntitled(t *testing.T) {
 	}
 }
 
+func TestSubagentSessionSummaryAndPage(t *testing.T) {
+	store, parent, srv := fixture(t)
+	child, err := store.Create(t.Context(), session.CreateOptions{
+		ID: "child", AgentID: "worker-address", Parent: &session.ParentLink{Session: parent.ID()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer child.Close()
+	getSummary := func() (item sessionListItem) {
+		getJSON(t, srv, "/api/sessions/child/summary", &item)
+		return item
+	}
+	if item := getSummary(); !item.Subagent || item.Parent != parent.ID() || item.Title != "" {
+		t.Fatalf("untitled child: %+v", item)
+	}
+	appendPayload(t, child, session.MessageAppendPayload{Messages: []ai.Message{
+		message("task", "Review tests"), message("follow-up", "Write a summary"),
+	}})
+	if item := getSummary(); item.Title != "Review tests" {
+		t.Fatalf("child summary: %+v", item)
+	}
+	for _, item := range getSessionPage(t, srv, "").Items {
+		if item.ID == child.ID() {
+			if !item.Subagent || item.Title != "Review tests" || item.Parent != parent.ID() {
+				t.Fatalf("child list item: %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatal("child not listed")
+}
+
 func TestSessionPageRejectsInvalidBounds(t *testing.T) {
 	_, _, srv := fixture(t)
 	for _, query := range []string{"?limit=0", "?limit=101", "?limit=bad", "?cursor=bad!"} {

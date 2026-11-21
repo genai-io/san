@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
@@ -697,6 +699,25 @@ func RenderInferenceStatus(p RenderContext) string {
 		label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
 	}
 	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label)
+}
+
+// RenderPreparationStatus keeps input preparation in the same row as inference.
+func RenderPreparationStatus(p RenderContext, startedAt time.Time, detail string) string {
+	if p.DockedModalActive {
+		return ""
+	}
+	p.Width = max(1, p.Width-1)
+	row := RenderInferenceStatus(p)
+	if row == "" {
+		row = renderModelWait(p.Frame, p.Width, startedAt, startedAt, "On it")
+	}
+	if detail != "" {
+		suffix := "  (" + detail + ")"
+		if lipgloss.Width(row)+lipgloss.Width(suffix) <= p.Width {
+			row += sideMarkStyle.Render(suffix)
+		}
+	}
+	return row
 }
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {

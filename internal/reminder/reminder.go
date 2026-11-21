@@ -37,6 +37,10 @@ const (
 	ProviderMemoryRecall = "memory-recall"
 	// ProviderGroup is the roster of the group this session joined.
 	ProviderGroup = "group"
+
+	SourceSessionStart     = "hook-session-start"
+	SourceUserPromptSubmit = "hook-user-prompt-submit"
+	SourceRestoredFiles    = "restored-files"
 )
 
 // provider is a long-lived reminder source: render produces its body on every
@@ -120,11 +124,15 @@ func (s *Reminder) Unregister(id string) {
 // Empty bodies are dropped silently. Notices persist independently of
 // RequeueSystemReminders — the latter only touches provider-emitted entries.
 func (s *Reminder) Enqueue(body string) {
-	body = strings.TrimSpace(body)
-	if body == "" {
+	s.EnqueueWithSource(body, "")
+}
+
+// EnqueueWithSource queues one-time context with a source for inspection.
+func (s *Reminder) EnqueueWithSource(body, source string) {
+	wrapped := WrapWithSource(body, source)
+	if wrapped == "" {
 		return
 	}
-	wrapped := Wrap(body)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pending = append(s.pending, pendingEntry{wrapped: wrapped})

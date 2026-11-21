@@ -290,7 +290,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, outcome.Error
 	}
 	if outcome.AdditionalContext != "" {
-		s.reminders.Enqueue(outcome.AdditionalContext)
+		s.reminders.EnqueueWithSource(outcome.AdditionalContext, reminder.SourceSessionStart)
 	}
 	if err := ctx.Err(); err != nil {
 		s.hooks.Shutdown()

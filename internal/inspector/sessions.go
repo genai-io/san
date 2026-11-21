@@ -29,6 +29,8 @@ type sessionListItem struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 	Size       int64     `json:"size"`
 	AttrsError string    `json:"attrsError,omitempty"`
+	Subagent   bool      `json:"subagent,omitempty"`
+	Parent     string    `json:"parent,omitempty"`
 }
 
 type sessionPage struct {
@@ -143,18 +145,51 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		if ctx.Err() != nil {
 			return
 		}
-		item := &page.Items[i]
-		if attrs, err := s.store.Attrs(ctx, item.ID); err != nil {
-			item.AttrsError = err.Error()
-		} else {
-			item.Title = strings.TrimSpace(attrs.Title)
-		}
-		if item.Title == "" && item.Size > 0 && item.Size <= budget {
-			budget -= item.Size
-			if projection, err := s.store.Read(ctx, item.ID); err == nil {
-				item.Title = projection.LastUserPrompt()
-			}
-		}
+		s.describeSession(ctx, &page.Items[i], &budget)
 	}
 	writeJSON(w, page)
+}
+
+func (s *Server) describeSession(ctx context.Context, item *sessionListItem, budget *int64) {
+	if attrs, err := s.store.Attrs(ctx, item.ID); err != nil {
+		item.AttrsError = err.Error()
+	} else {
+		item.Title = strings.TrimSpace(attrs.Title)
+	}
+	if item.Size <= 0 || item.Size > *budget {
+		return
+	}
+	*budget -= item.Size
+	projection, err := s.store.Read(ctx, item.ID)
+	if err != nil {
+		return
+	}
+	identity := projection.Identity()
+	if identity.Parent != nil {
+		item.Parent = identity.Parent.Session
+	}
+	item.Subagent = item.Parent != "" || (identity.AgentID != "" && identity.AgentID != "main")
+	if item.Title == "" {
+		if item.Subagent {
+			item.Title = projection.FirstUserPrompt()
+		} else {
+			item.Title = projection.LastUserPrompt()
+		}
+	}
+}
+
+func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request, id string) {
+	if session.ValidateStorageID(id) != nil {
+		http.NotFound(w, r)
+		return
+	}
+	info, err := os.Stat(filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
+	budget := int64(sessionTitleBudget)
+	s.describeSession(r.Context(), &item, &budget)
+	writeJSON(w, item)
 }

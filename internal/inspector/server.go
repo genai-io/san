@@ -73,6 +73,8 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case len(parts) == 2 && parts[1] == "summary":
+		s.handleSessionSummary(w, r, id)
 	case len(parts) == 2 && parts[1] == "records":
 		batches, err := s.readBatches(r.Context(), id)
 		if os.IsNotExist(err) {

@@ -242,9 +242,21 @@ func (m *model) renderFooter(separator string) (string, int) {
 	}
 	// Task status owns the row; update information uses only the space left.
 	params := m.messageRenderParams()
-	status := conv.RenderInferenceStatus(params)
-	if m.conv.Compact.Active && !params.DockedModalActive {
+	var status string
+	switch {
+	case m.conv.Compact.Active && !params.DockedModalActive:
 		status = conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact)
+	case m.memoryInput != nil:
+		detail := ""
+		if time.Since(m.memoryInput.startedAt) >= 250*time.Millisecond {
+			detail = "Retrieving memory"
+			if m.memoryInput.maintenance {
+				detail = "Updating memory"
+			}
+		}
+		status = conv.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
+	default:
+		status = conv.RenderInferenceStatus(params)
 	}
 	if status != "" && m.footerHasBreathingRoom() {
 		b.WriteString("\n")
@@ -365,9 +377,6 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 		}
 	}
 
-	if m.memoryInput != nil {
-		parts = append(parts, "", m.conv.Spinner.View()+" Auto Memory…", "")
-	}
 	if live := m.btwLive(); live != "" {
 		parts = append(parts, "", live, "")
 	}
