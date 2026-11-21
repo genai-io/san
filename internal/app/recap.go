@@ -161,7 +161,7 @@ func (m *model) recapReady() bool {
 
 // clearRecapCache resolves an unshown result against its original writer.
 func (m *model) clearRecapCache() {
-	closeSide(m.recap.ready.recording)
+	closeAside(m.recap.ready.recording)
 	m.recap.ready = recapReadyMsg{}
 }
 
@@ -170,7 +170,7 @@ func (m *model) resetRecap() {
 	if m.recap.cancel != nil {
 		m.recap.cancel()
 	}
-	closeSide(m.recap.pending)
+	closeAside(m.recap.pending)
 	m.clearRecapCache()
 	m.recap = recapState{}
 }
@@ -241,10 +241,10 @@ func (m *model) writeRecap() tea.Cmd {
 	if goal := m.recapGoal(); goal != "" {
 		facts += "\nThe overall goal is AutoPilot's mission: " + goal
 	}
-	req := m.newSideRequest("recap", strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
+	req := m.newAsideRequest(session.PurposeRecap, true, strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
 	ctx, cancel := context.WithTimeout(context.Background(), recapTimeout)
-	m.recap.requestID, m.recap.cancel, m.recap.pending = core.NewMessageID(), cancel, req.recording
-	ready := recapReadyMsg{requestID: m.recap.requestID, sessionID: m.sessionID(), chainLen: len(req.chain), owner: req.owner, recording: req.recording}
+	m.recap.requestID, m.recap.cancel, m.recap.pending = core.NewMessageID(), cancel, req.snapshot.Recording()
+	ready := recapReadyMsg{requestID: m.recap.requestID, sessionID: m.sessionID(), chainLen: req.chainLen, owner: req.owner, recording: req.snapshot.Recording()}
 	return func() tea.Msg {
 		defer cancel()
 		resp, err := req.complete(ctx)
@@ -255,7 +255,7 @@ func (m *model) writeRecap() tea.Cmd {
 
 func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	if msg.requestID != m.recap.requestID {
-		closeSide(msg.recording)
+		closeAside(msg.recording)
 		return nil
 	}
 	m.recap.pending, m.recap.cancel = nil, nil
@@ -264,11 +264,11 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	m.recap.show = false
 	if msg.sessionID != m.sessionID() || msg.owner != m.services.Session ||
 		(msg.owner != nil && msg.owner.Err() != nil) || msg.chainLen != m.chainLen() {
-		closeSide(msg.recording)
+		closeAside(msg.recording)
 		return nil
 	}
 	if msg.err != nil || msg.text == "" {
-		closeSide(msg.recording)
+		closeAside(msg.recording)
 		log.Logger().Debug("recap not written", zap.Error(msg.err))
 		if show {
 			m.conv.AddNotice("Couldn't write a recap.")
@@ -294,11 +294,11 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 	}
 	m.recap.ready = recapReadyMsg{}
 	if r.recording != nil && (r.sessionID != m.sessionID() || r.owner != m.services.Session || r.chainLen != m.chainLen()) {
-		closeSide(r.recording)
+		closeAside(r.recording)
 		return nil
 	}
 	notice := conv.RecapNotice(m.recapFacts(), r.text)
-	if r.recording != nil && !finishSide(r.recording, notice) {
+	if r.recording != nil && !finishAside(r.recording, notice) {
 		return nil
 	}
 	if r.recording == nil && r.owner != nil {

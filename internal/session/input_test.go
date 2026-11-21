@@ -157,15 +157,16 @@ func TestAcceptedInputRejectsChangedDuplicateAndPreservesOnCompaction(t *testing
 	}
 }
 
-func TestCompletionAcceptMessageFinishesAndOwnsInputAtomically(t *testing.T) {
+func TestCompletionAcceptMessageFinishesRecallAndOwnsInputAtomically(t *testing.T) {
 	store := cleanStore(t)
 	owner := createTyped(t, store, CreateOptions{})
-	scope := owner.Completion(PurposeAutopilot)
+	scope := owner.Completion(PurposeRecall)
 	finish, err := scope.Admission()(t.Context(), "test", ai.Model{ID: "model"}, &ai.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := finish(t.Context(), &ai.Response{Content: ai.TextContent("utility output")}, nil); err != nil {
+	const raw = "raw Recall response"
+	if err := finish(t.Context(), &ai.Response{Content: ai.TextContent(raw)}, nil); err != nil {
 		t.Fatal(err)
 	}
 	message := eventText("prepared", ai.RoleUser, "prepared utility input")
@@ -178,6 +179,16 @@ func TestCompletionAcceptMessageFinishesAndOwnsInputAtomically(t *testing.T) {
 	p := owner.Snapshot()
 	if len(p.Unfinished().Inferences) != 0 || len(p.data.Accepted) != 1 || !reflect.DeepEqual(p.ActiveMessages(), []ai.Message{message}) {
 		t.Fatal("utility acceptance did not finish and own exact input")
+	}
+	events := p.Events()
+	start, accepted, finished := events[len(events)-3], events[len(events)-2], events[len(events)-1]
+	ref := EventRef{Seq: start.Seq}
+	if start.Type != EventInferenceStart || accepted.Source == nil || *accepted.Source != ref || finished.Source == nil || *finished.Source != ref {
+		t.Fatalf("accepted input and finish must link to the Recall start: %+v, %+v, %+v", start, accepted, finished)
+	}
+	result, ok := finished.Payload.(*InferenceFinishPayload)
+	if !ok || result.Outcome != OutcomeSuccess || result.Output == nil || result.Output.Text != raw || result.Output.Truncated {
+		t.Fatalf("finish did not preserve the raw Recall response: %+v", result)
 	}
 	batches := recorderBatches(t, store, owner)
 	if last := batches[len(batches)-1]; !reflect.DeepEqual(last, []string{"message.append", "inference.finish"}) {

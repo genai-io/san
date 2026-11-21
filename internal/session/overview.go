@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -72,6 +74,45 @@ func overviewOf(sessionID string, p *Projection) Overview {
 		}
 	}
 	return s
+}
+
+// LastUserPrompt returns a short display title from the latest user message.
+func (p *Projection) LastUserPrompt() string { return p.userPrompt(true) }
+
+// FirstUserPrompt returns a short display title from the first user message.
+func (p *Projection) FirstUserPrompt() string { return p.userPrompt(false) }
+
+func (p *Projection) userPrompt(latest bool) string {
+	for i := range p.data.Messages {
+		if latest {
+			i = len(p.data.Messages) - 1 - i
+		}
+		m := p.data.Messages[i]
+		if m.Role != ai.RoleUser || len(m.ToolResults()) != 0 {
+			continue
+		}
+		e := p.event(p.data.MessageSeq[m.ID])
+		if e == nil || e.Type != EventMessageAppend {
+			continue
+		}
+		if e.Source != nil {
+			if source := p.event(e.Source.Seq); e.Source.Session != "" || source != nil && source.Type == EventInferenceStart {
+				continue
+			}
+		}
+		text := strings.TrimSpace(m.Text())
+		for _, b := range slices.Backward(reminder.Blocks(text)) {
+			prefix, ok := strings.CutSuffix(text, b.Text)
+			if !ok || prefix != "" && !strings.HasSuffix(prefix, "\n\n") {
+				break
+			}
+			text = strings.TrimSpace(prefix)
+		}
+		if text != "" {
+			return truncateRunes(strings.Join(strings.Fields(text), " "), lastPromptRunes)
+		}
+	}
+	return ""
 }
 
 func truncateRunes(s string, n int) string {

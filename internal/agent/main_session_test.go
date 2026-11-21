@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/session"
@@ -173,37 +172,26 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 	}
 }
 
-func TestMainSessionPagingPrecedesLiveRecallAndKeepsOwner(t *testing.T) {
+func TestMainSessionPagingKeepsOwner(t *testing.T) {
 	mainSession := mainSessionFixture(t)
-	memoryPath := filepath.Join(t.TempDir(), "memory.md")
-	if err := os.WriteFile(memoryPath, []byte("remember-this-fact"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	pick := &Recall{ready: make(chan struct{}), memories: []system.Memory{{Path: memoryPath}}}
-	close(pick.ready)
-	var current atomic.Pointer[Recall]
 	if err := mainSession.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	params := BuildParams{ResultFilter: WithRecall(
-		ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter, current.Load,
-	)}
 	owner := mainSession.Session.ID()
+	params := BuildParams{ResultFilter: ResultPager{Store: mainSession.Store, SessionID: owner}.Filter}
 	mainSession.Session = mainSessionFixture(t).Session
-	current.Store(pick)
 	out, err := params.ResultFilter(context.Background(), sdkagent.PostToolContext{
-		Call: ai.ToolCall{ID: "call-recall"}, Result: sdkagent.TextResult(strings.Repeat("x", 100_001)),
+		Call: ai.ToolCall{ID: "call-paged"}, Result: sdkagent.TextResult(strings.Repeat("x", 100_001)),
 	})
 	if err != nil || out == nil {
 		t.Fatalf("filter: %v, %v", out, err)
 	}
-	text := out.Content.Text()
-	if !strings.Contains(text, "blobs/tool-result/"+owner+"/call-recall") || !strings.Contains(text, "remember-this-fact") {
-		t.Fatalf("lost owner or recall: %s", text[10_000:])
+	if !strings.Contains(out.Content.Text(), "blobs/tool-result/"+owner+"/call-paged") {
+		t.Fatal("paged result lost its original owner")
 	}
 	out, err = params.ResultFilter(context.Background(), sdkagent.PostToolContext{Result: sdkagent.TextResult("small")})
 	if err != nil || out != nil {
-		t.Fatal("recall repeated or small result rewritten")
+		t.Fatal("small result rewritten")
 	}
 }
 

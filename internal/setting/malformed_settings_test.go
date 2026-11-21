@@ -26,8 +26,8 @@ func TestSavePathsRefuseToClobberMalformedSettings(t *testing.T) {
 			d.Model = "new-model"
 			return NewLoaderWithOptions(filepath.Join(home, ".san"), "", true).SaveToUser(d)
 		},
-		"UpdateSelfLearnAt": func(t *testing.T, home string) error {
-			return UpdateSelfLearnAt(SelfLearnSettings{}, ScopeUser)
+		"UpdateAutoSkillAt": func(t *testing.T, home string) error {
+			return UpdateAutoSkillAt(AutoSkillSettings{}, ScopeUser)
 		},
 		"SavePersonaAt": func(t *testing.T, home string) error {
 			return SavePersonaAt("", "reviewer", ScopeUser)

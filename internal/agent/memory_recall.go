@@ -4,31 +4,72 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"slices"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/tool/fs"
 )
 
 // maxRecalled caps the memories attached to one message.
 const maxRecalled = 5
+const maxRecallCandidates = 60
 
-// recallDeadline bounds a pick that never answers; the turn never waits on it.
-const recallDeadline = time.Minute
+var (
+	recallFilename = regexp.MustCompile(`[\pL\pN_.-]+`)
+	recallWord     = regexp.MustCompile(`[\pL\pN]{3,}`)
+)
+
+// Rank both stores before cutting the selector's list. Exact filenames win
+// over lexical overlap; ties retain the store's deterministic listing order.
+func recallCandidates(ctx context.Context, stores system.MemoryStores, query string) []system.Memory {
+	candidates := stores.Memories(ctx, 0)
+	if ctx.Err() != nil || len(candidates) == 0 {
+		return nil
+	}
+	query = strings.ToLower(query)
+	filenames, words := map[string]bool{}, map[string]bool{}
+	for _, name := range recallFilename.FindAllString(query, -1) {
+		filenames[name] = true
+		filenames[strings.TrimRight(name, ".")] = true
+	}
+	for _, word := range recallWord.FindAllString(query, -1) {
+		words[word] = true
+	}
+	type rank struct {
+		exact   bool
+		overlap int
+	}
+	ranks := make(map[system.Memory]rank, len(candidates))
+	for _, m := range candidates {
+		name := strings.ToLower(filepath.Base(m.Path))
+		seen := map[string]bool{}
+		for _, word := range recallWord.FindAllString(strings.TrimSuffix(name, ".md")+" "+strings.ToLower(m.Description), -1) {
+			if words[word] {
+				seen[word] = true
+			}
+		}
+		ranks[m] = rank{exact: filenames[name], overlap: len(seen)}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := ranks[candidates[i]], ranks[candidates[j]]
+		if a.exact != b.exact {
+			return a.exact
+		}
+		return a.overlap > b.overlap
+	})
+	return candidates[:min(len(candidates), maxRecallCandidates)]
+}
 
 const recallSystemPrompt = `You select memories that will be useful to a coding agent as it handles a user's message. You get the list of memory files, each as <store>/<file> with its description, then the message. A user memory holds in every repository; a project memory holds in the repository the user is working in now.
 Return the files the agent needs to handle this message well, up to 5: a rule, fact or preference that bears on what the message asks it to do. Skip one that only shares a word with the message or describes the user in general; when none bears on it, return an empty list.
@@ -43,29 +84,12 @@ type Recaller struct {
 	Recording *session.Session
 }
 
-// Recall returns up to maxRecalled memories from stores relevant to query,
-// skipping those already surfaced. It returns nothing when there is nothing
-// to choose from or the advisory selector fails. Recording failures are returned.
-func (r Recaller) Recall(ctx context.Context, stores system.MemoryStores, query string, surfaced map[string]bool) ([]system.Memory, error) {
-	return r.recall(ctx, stores, query, surfaced, r.Recording.Completion(session.PurposeRecall))
-}
-
-func (r Recaller) recall(ctx context.Context, stores system.MemoryStores, query string, surfaced map[string]bool, recording *session.Completion) (memories []system.Memory, err error) {
-	defer func() {
-		if closeErr := recording.Close(); closeErr != nil {
-			err = errors.Join(err, &llm.RecordingError{Err: closeErr})
-		}
-		if err != nil {
-			memories = nil
-		}
-	}()
-	var candidates []system.Memory
-	for _, m := range stores.Memories() {
-		if !surfaced[m.Path] {
-			candidates = append(candidates, m)
-		}
+func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, query string, recording *session.Completion) ([]system.Memory, error) {
+	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || stores.Off() {
+		return nil, nil
 	}
-	if r.Provider == nil || len(candidates) == 0 || strings.TrimSpace(query) == "" {
+	candidates := recallCandidates(ctx, stores, query)
+	if len(candidates) == 0 {
 		return nil, nil
 	}
 	byID := map[string]system.Memory{}
@@ -76,13 +100,15 @@ func (r Recaller) recall(ctx context.Context, stores system.MemoryStores, query 
 		list.WriteString("- " + id + ": " + m.Description + "\n")
 	}
 	start := time.Now()
-	resp, err := llm.Complete(ctx, r.Provider, llm.CompletionOptions{
-		Model:          r.Model,
-		SystemPrompt:   recallSystemPrompt,
-		Messages:       []core.Message{core.UserMessage("Memory files:\n"+list.String()+"\nMessage:\n"+query, nil)},
+	resp, err := aside.Complete(ctx, r.Provider, llm.CompletionOptions{
+		Model:        r.Model,
+		SystemPrompt: recallSystemPrompt,
+		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.Content{
+			ai.TextBlock("Memory files:\n" + list.String() + "\nUser query:\n"),
+			ai.TextBlock(query),
+		}}},
 		ThinkingEffort: r.Effort,
-		Admission:      recording.Admission(),
-	})
+	}, recording)
 	if err != nil {
 		log.Logger().Debug("memory recall failed", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.Error(err))
 		var recordingErr *llm.RecordingError
@@ -94,11 +120,11 @@ func (r Recaller) recall(ctx context.Context, stores system.MemoryStores, query 
 	if ctx.Err() != nil {
 		return nil, nil
 	}
-	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", resp.Content.Text()))
+	text := resp.Content.Text()
+	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", text))
 	var reply struct {
 		Selected []string `json:"selected_memories"`
 	}
-	text := resp.Content.Text()
 	if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); i < 0 || j < i || json.Unmarshal([]byte(text[i:j+1]), &reply) != nil {
 		return nil, nil
 	}
@@ -123,155 +149,4 @@ func LowestEffort(p llm.Provider, store *llm.Store, model *llm.CurrentModelInfo)
 
 func memoryID(m system.Memory) string {
 	return m.Store + "/" + m.Path[strings.LastIndexAny(m.Path, `/\`)+1:]
-}
-
-// Recall is one message's pick, made beside its turn so the turn never waits:
-// it rides the next completed tool batch after it lands, and a turn that calls
-// no tool goes without it.
-type Recall struct {
-	mu        sync.Mutex
-	stopped   bool
-	err       error
-	recording *session.Completion
-	ready     chan struct{}
-	memories  []system.Memory
-	taken     atomic.Bool
-	attached  atomic.Pointer[[]string]
-	cancel    context.CancelFunc
-}
-
-// Start begins picking query's memories, nil when there is nothing to pick.
-func (r Recaller) Start(stores system.MemoryStores, query string, surfaced map[string]bool) *Recall {
-	if r.Provider == nil || strings.TrimSpace(query) == "" || len(stores.Memories()) == 0 {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), recallDeadline)
-	p := &Recall{ready: make(chan struct{}), cancel: cancel, recording: r.Recording.Completion(session.PurposeRecall)}
-	go func() {
-		defer close(p.ready)
-		defer cancel()
-		memories, err := r.recall(ctx, stores, query, surfaced, p.recording)
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		p.memories, p.err = memories, errors.Join(p.err, err)
-	}()
-	return p
-}
-
-// Take returns the pick's reminder once, "" while it is still running.
-func (p *Recall) Take() (string, error) {
-	if p == nil {
-		return "", nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.err != nil {
-		return "", p.err
-	}
-	if p.stopped {
-		return "", nil
-	}
-	select {
-	case <-p.ready:
-	default:
-		return "", nil
-	}
-	if p.taken.Swap(true) {
-		return "", nil
-	}
-	text, paths := recallReminder(p.memories)
-	p.attached.Store(&paths)
-	return text, nil
-}
-
-// Attached lists the memories the pick delivered, nil before it rode a result.
-func (p *Recall) Attached() []string {
-	if p == nil {
-		return nil
-	}
-	if paths := p.attached.Load(); paths != nil {
-		return *paths
-	}
-	return nil
-}
-
-// Stop abandons a pick its turn no longer needs.
-func (p *Recall) Stop() error {
-	if p == nil {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.stopped = true
-	p.cancel()
-	if err := p.recording.Close(); err != nil {
-		p.err = errors.Join(p.err, &llm.RecordingError{Err: err})
-	}
-	return p.err
-}
-
-// WithRecall attaches a ready pick to the last result of a tool batch, after
-// every parallel Read has recorded its view. The SDK serializes result filters.
-func WithRecall(next core.ResultFilter, current func() *Recall) core.ResultFilter {
-	var batchID string
-	var completed int
-	return func(ctx context.Context, c sdkagent.PostToolContext) (*sdkagent.Result, error) {
-		var out *sdkagent.Result
-		if next != nil {
-			r, err := next(ctx, c)
-			if err != nil {
-				return r, err
-			}
-			out = r
-		}
-		if n := len(c.Messages); n > 0 {
-			message := c.Messages[n-1]
-			if batchID != message.ID {
-				batchID, completed = message.ID, 0
-			}
-			completed++
-			if completed < len(message.ToolCalls()) {
-				return out, nil
-			}
-		}
-		text, err := current().Take()
-		if err != nil {
-			return out, err
-		}
-		if text == "" {
-			return out, nil
-		}
-		if out == nil {
-			r := c.Result
-			out = &r
-		}
-		out.Content = append(slices.Clone(out.Content), ai.TextBlock(text))
-		return out, nil
-	}
-}
-
-// recallReminder carries the recalled memories' contents, each dated by its
-// file's mtime and skipped when the model already has it in view. Each counts
-// as read, so the model can edit one without reading it again. It also
-// returns the paths it carried.
-func recallReminder(memories []system.Memory) (string, []string) {
-	var b strings.Builder
-	var paths []string
-	for _, m := range memories {
-		info, err := os.Stat(m.Path)
-		if err != nil || fs.Viewed(m.Path) {
-			continue
-		}
-		data, err := os.ReadFile(m.Path)
-		if err != nil {
-			continue
-		}
-		fs.RecordFileWritten(m.Path)
-		paths = append(paths, m.Path)
-		b.WriteString("Memory `" + m.Path + "` (" + m.Store + " store, saved " + info.ModTime().Format(time.DateOnly) + "):\n" + strings.TrimSpace(string(data)) + "\n\n")
-	}
-	if b.Len() == 0 {
-		return "", nil
-	}
-	return reminder.WrapWithSource("Memories relevant to this message:\n\n"+strings.TrimSpace(b.String()), reminder.ProviderMemoryRecall), paths
 }

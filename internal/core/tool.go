@@ -5,6 +5,9 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+// ReviewSkillToolName identifies the Auto Skill review trigger.
+const ReviewSkillToolName = "ReviewSkill"
+
 // Tool is one thing an agent can do, and it is the SDK's: what the model is
 // told, and what answers a call.
 //

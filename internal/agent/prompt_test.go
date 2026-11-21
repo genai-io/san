@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
@@ -42,11 +43,11 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 					t.Fatalf("pending = %q", pending)
 				}
 				// Blocked context deliberately leaks into the next delivered input.
-				next := r.PrepareInput("later input")
-				if !strings.Contains(next, "already pending") || (extra != "" && !strings.Contains(next, extra)) {
+				next := r.PrepareInput(core.UserMessage("later input", nil)).Text()
+				if !strings.Contains(next, "already pending") || (extra != "" && !strings.Contains(next, reminder.WrapWithSource(extra, reminder.SourceUserPromptSubmit))) {
 					t.Fatalf("later input = %q", next)
 				}
-				if again := r.PrepareInput("another"); again != "another" {
+				if again := r.PrepareInput(core.UserMessage("another", nil)).Text(); again != "another" {
 					t.Fatalf("context repeated: %q", again)
 				}
 			})

@@ -199,7 +199,7 @@ different prompt, a subset of tools, or a context not yet recorded. Provider,
 model and options never decide the kind; both kinds record them in `request`.
 The kind follows from the request, not from the purpose: the table below lists
 each purpose's usual kind, and a call whose digests do not match at commit is
-recorded as standalone. For example, a side call made before the runtime has
+recorded as standalone. For example, an [Aside](../reference/aside.md) made before the runtime has
 started builds its own system prompt, so it is standalone.
 
 Conversation calls are frequent and carry the whole conversation, so copying
@@ -209,8 +209,8 @@ belongs to the code that built them, so an exact copy is the only way to
 rebuild them after that code changes.
 
 A conversation call reads the conversation and commits its `inference.start`
-in one critical section, so no message can be appended in between. Side calls
-send the tools only so the prompt cache matches; the tools never run.
+in one critical section, so no message can be appended in between. Asides that
+reuse the main prefix send tool schemas for cache reuse; the tools never run.
 
 | Purpose | Usual kind | Messages appended | Result recorded as |
 | --- | --- | --- | --- |
@@ -528,7 +528,7 @@ package has been deleted; required summaries and native recovery adapters live i
   whole conversation (quadratic storage) and loses when and why a catalogue
   changed. Copies are kept only for standalone calls.
 - **Recording only main-loop calls** (today's behaviour). Usage and cost would miss
-  compaction, judge, hook and side calls, and their results would have no
+  compaction, judge calls, hook calls, and Asides, and their results would have no
   provenance.
 - **Archive and pin as events.** That would require the writer lock to organize
   a session open elsewhere; they are not conversation facts.

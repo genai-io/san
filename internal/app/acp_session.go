@@ -74,7 +74,7 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 	unfinished := history.Unfinished()
 	if len(unfinished.Inferences)+len(unfinished.NeverRan)+len(unfinished.Unknown) > 0 {
 		text := fmt.Sprintf("Interrupted session: unfinished model requests %v; tools that never ran %v; tools with unknown outcome %v. Interrupted work has not been retried.", unfinished.Inferences, unfinished.NeverRan, unfinished.Unknown)
-		if err = turn.SendUpdate(protocol.SessionNotification{Update: protocol.SessionUpdate{Value: protocol.SessionUpdateAgentMessageChunkVariant{SessionUpdate: "agent_message_chunk", Content: acpText(text)}}}); err != nil {
+		if err = turn.SendUpdate(protocol.SessionNotification{Update: acpMessageChunk(text)}); err != nil {
 			return response, err
 		}
 	}
@@ -123,7 +123,7 @@ func (h *acpHost) load(ctx context.Context, turn *acp.Turn, req protocol.LoadSes
 			if row.Role == core.ChatUser {
 				update.Value = protocol.SessionUpdateUserMessageChunkVariant{SessionUpdate: "user_message_chunk", Content: acpText(text[:n])}
 			} else {
-				update.Value = protocol.SessionUpdateAgentMessageChunkVariant{SessionUpdate: "agent_message_chunk", Content: acpText(text[:n])}
+				update = acpMessageChunk(text[:n])
 			}
 			if err = turn.SendUpdate(protocol.SessionNotification{Update: update}); err != nil {
 				return response, err

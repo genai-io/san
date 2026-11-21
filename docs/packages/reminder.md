@@ -19,8 +19,8 @@ cache — currently:
 
 - skills directory (re-emit when a skill is enabled / disabled / activated)
 - memory user / memory project (AGENTS.md; re-emit on memory file change)
-- memory auto (both auto-memory stores' `MEMORY.md` indexes, read at render time)
-- memory recall (the auto memories picked for one message; no provider, attached to a tool result by `agent.WithRecall`)
+- memory auto (short guide, enabled store paths, and `MEMORY.md` previews)
+- memory recall (selected notes attached to the current user message before main inference)
 - one-time notices (queued from hooks or commands)
 
 See [Context Management](../reference/context-management.md) for
@@ -44,7 +44,7 @@ func (s *Reminder) Unregister(id string)
 func (s *Reminder) Enqueue(body string)
 func (s *Reminder) RequeueSystemReminders()
 func (s *Reminder) Prepared() bool
-func (s *Reminder) PrepareInput(text string) string
+func (s *Reminder) PrepareInput(msg core.Message) core.Message
 func (s *Reminder) ResetConversation()
 func (s *Reminder) RestoreHistory(messages []core.Message)
 // ... and drain/peek accessors for the harness
@@ -78,9 +78,9 @@ func Wrap(body string) string
 
 - Construction: `app.newServices` creates the `*Reminder` with `reminder.New()`.
 - Per-message: `PrepareInput` prepares initial provider context once, sets
-  `prepared`, attaches pending reminders and drains the reminder queue.
+  `prepared`, appends each pending reminder as a text block, and drains the queue.
   `Prepared()` describes preparation, not successful delivery. The input
-  queue retains prepared text when delivery is rejected.
+  queue retains the prepared message when delivery is rejected.
 - Per-event: skill toggles / memory updates call `RequeueSystemReminders`
   to refresh provider-emitted reminders.
 - Reset after `/clear` or compaction drops pending entries and rearms preparation.

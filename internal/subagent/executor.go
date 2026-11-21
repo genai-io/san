@@ -383,7 +383,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		if req.MaxSteps > 0 {
 			cfg.maxSteps = req.MaxSteps
 		}
-		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
+		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, reminders: state.reminders, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
 		if err := e.admitContinuation(ctx, cancel, agentTask, prior.Attempt, run); err != nil {
 			return nil, err
@@ -713,7 +713,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		System:        sys,
 		Tools:         tools,
 		Gate:          gate,
-		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt, run.recording),
+		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt, run.recording, run.reminders...),
 		MaxSteps:      rc.maxSteps,
 		OutboxBuf:     -1,
 		OnEvent:       onEvent,
@@ -775,7 +775,7 @@ func fileReadToolGuidance(schemas []core.ToolSchema, mode PermissionMode) string
 // long subagent runs survive context-window pressure instead of dying on
 // prompt-too-long. The task is re-attached verbatim after the summary: it is
 // the one message a one-shot worker cannot afford to have paraphrased.
-func subagentCompactFunc(client *llm.Client, task string, owner *session.Session) func(context.Context, []core.Message) (core.Compaction, error) {
+func subagentCompactFunc(client *llm.Client, task string, owner *session.Session, reminders ...string) func(context.Context, []core.Message) (core.Compaction, error) {
 	return func(ctx context.Context, msgs []core.Message) (core.Compaction, error) {
 		scope := owner.Completion(session.PurposeCompaction)
 		result := scope.Compaction("")
@@ -789,6 +789,7 @@ func subagentCompactFunc(client *llm.Client, task string, owner *session.Session
 			return result, fmt.Errorf("compaction produced empty summary")
 		}
 		result.Summary = withOriginalTask(summary, task)
+		result.Reminders = reminders
 		return result, nil
 	}
 }
@@ -801,29 +802,21 @@ func withOriginalTask(summary, task string) string {
 	return summary + "\n\nYour original task, verbatim:\n\n" + task
 }
 
-func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
-	ag.Append(core.UserMessage(e.taskPrompt(rc, req), nil))
-	return nil
-}
-
-// taskPrompt is the run's first user message: the prompt with its
-// harness-managed <system-reminder> blocks, matching the main agent's pattern.
-func (e *Executor) taskPrompt(rc *runConfig, req tool.AgentExecRequest) string {
-	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode, rc.config.AllowTools)
-	return reminder.AttachToContent(req.Prompt, reminders)
+func (r *preparedRun) taskMessage() core.Message {
+	msg := core.UserMessage(r.originalPrompt, nil)
+	msg.Content = reminder.AppendBlocks(msg.Content, r.reminders...)
+	return msg
 }
 
 // collectSubagentReminders returns the <system-reminder> blocks for the
 // subagent's first user message. Subagents get the skills directory (so they
 // can invoke capabilities) and — when they can modify the workspace — the
-// project's instruction memory, so their edits follow project conventions.
-// User memory stays with the main loop: a subagent is a one-shot worker
-// bounded by its own charter.
+// project's instructions so their edits follow project conventions.
 func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode, allow ToolList) []string {
 	var reminders []string
 	reminders = append(reminders, wrapNonEmpty(skills)...)
 	if canEditWorkspace(mode, allow, e.interactions != nil) {
-		reminders = append(reminders, wrapNonEmpty(reminder.WrapMemory("project", e.projectInstructions))...)
+		reminders = append(reminders, wrapNonEmpty(e.projectInstructions)...)
 	}
 	return reminders
 }

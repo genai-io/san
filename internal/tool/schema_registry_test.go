@@ -66,12 +66,18 @@ func TestGroupControlIsNotAModelTool(t *testing.T) {
 	}
 }
 
-func TestManageableToolsIncludeConditionalEvolve(t *testing.T) {
-	if _, ok := findSchema(tool.GetToolSchemas(), tool.ToolEvolve); ok {
-		t.Fatal("Evolve must remain conditional in the model-facing default schemas")
+func TestManageableToolsIncludeConditionalReviewSkill(t *testing.T) {
+	if _, ok := tool.Get("Evolve"); ok {
+		t.Fatal("the old name must not resolve in the registry")
 	}
-	if _, ok := findSchema(tool.GetManageableToolSchemasWith(tool.SchemaOptions{}), tool.ToolEvolve); !ok {
-		t.Fatal("Evolve is missing from the /tools-manageable schema set")
+	if !tool.IsParentOnlyTool(tool.ToolReviewSkill) {
+		t.Fatal("ReviewSkill must be reserved for the main conversation")
+	}
+	if _, ok := findSchema(tool.GetToolSchemas(), tool.ToolReviewSkill); ok {
+		t.Fatal("ReviewSkill must remain conditional in the model-facing default schemas")
+	}
+	if _, ok := findSchema(tool.GetManageableToolSchemasWith(tool.SchemaOptions{}), tool.ToolReviewSkill); !ok {
+		t.Fatal("ReviewSkill is missing from the /tools-manageable schema set")
 	}
 }
 
@@ -118,12 +124,12 @@ func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
 		presented[s.Name] = true
 	}
 
-	// Tools deliberately kept out of builtinToolOrder. Evolve is injected
+	// Tools deliberately kept out of builtinToolOrder. ReviewSkill is injected
 	// per-turn with capability-tailored parameters (SchemaOptions.ExtraTools),
 	// never through the registry-sourced order. A new entry here must be a
 	// conscious decision, not a forgotten wiring step.
 	exempt := map[string]bool{
-		tool.ToolEvolve: true,
+		tool.ToolReviewSkill: true,
 	}
 
 	for _, name := range tool.List() {

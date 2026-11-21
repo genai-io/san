@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +36,18 @@ type stubServer struct {
 
 func serve(t *testing.T, events ...[2]string) *stubServer {
 	t.Helper()
+	return serveWithModels(t, "", events...)
+}
+
+func serveWithModels(t *testing.T, models string, events ...[2]string) *stubServer {
+	t.Helper()
 	e := &stubServer{}
 	e.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if models != "" && r.Method == http.MethodGet && r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, models)
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		e.headers = r.Header.Clone()
 		e.body = map[string]any{}
@@ -70,6 +81,60 @@ func claude(t *testing.T, e *stubServer) *vendorProvider {
 	}
 	return newVendorProvider("anthropic:api_key", vendor,
 		endpoint.Config{APIKey: "test-key", BaseURL: e.server.URL})
+}
+
+func TestBoundedCodexCompletionSkipsColdListing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/responses" {
+			t.Errorf("bounded Codex call used %s %s, want POST /responses", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"model\":\"gpt-6.2-sol\",\"status\":\"completed\",\"output\":[]}}\n\n")
+	}))
+	defer server.Close()
+	vendor, ok := catalog.Find(codexVendor)
+	if !ok {
+		t.Fatal("Codex vendor missing from the catalog")
+	}
+	provider := newVendorProvider("openai:subscription", vendor, endpoint.Config{APIKey: "test-key", BaseURL: server.URL})
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	admitted, finished := false, false
+	_, err := Complete(ctx, provider, CompletionOptions{
+		Model: "gpt-6.2-sol", Messages: []core.Message{core.UserMessage("recall", nil)},
+		Admission: func(context.Context, string, ai.Model, *ai.Request) (CompletionFinish, error) {
+			admitted = true
+			return func(context.Context, *ai.Response, error) error { finished = true; return nil }, nil
+		},
+	})
+	if err != nil || !admitted || !finished {
+		t.Fatalf("cold Codex completion: admitted=%t finished=%t err=%v", admitted, finished, err)
+	}
+	if provider.listed || len(provider.clients) != 0 {
+		t.Fatal("an unrefreshed template must not prevent later model discovery")
+	}
+}
+
+func TestCompleteCancelsColdModelListing(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Errorf("unexpected model request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		cancel()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	provider := claude(t, &stubServer{server: server})
+	_, err := Complete(ctx, provider, CompletionOptions{Model: "claude-sonnet-4", Messages: []core.Message{core.UserMessage("recall", nil)}})
+	if err != context.Canceled {
+		t.Fatalf("expected canceled model discovery, got %v", err)
+	}
 }
 
 // collect drains a turn the way the agent loop now does: over the SDK's own
@@ -636,6 +701,89 @@ func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := toModelInfo(tc.model); got != tc.want {
 				t.Errorf("toModelInfo() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUserReminderBlocksOnWire(t *testing.T) {
+	const models = `{"object":"list","data":[
+		{"id":"gpt-5","object":"model","supported_endpoints":["/chat/completions"]},
+		{"id":"gpt-6-luna","object":"model","supported_endpoints":["/responses"]}]}`
+	const original, first, second = "original user input", "\n\nfirst reminder", "\n\nsecond reminder"
+	const imageData = "aW1n"
+
+	for _, tc := range []struct {
+		name, model, field, textType, imageType string
+		events                                  [][2]string
+	}{
+		{"copilot-chat", "gpt-5", "messages", "text", "image_url", [][2]string{
+			{"chunk", `{"id":"m","model":"gpt-5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		}},
+		{"copilot-responses", "gpt-6-luna", "input", "input_text", "input_image", [][2]string{
+			{"response.completed", `{"type":"response.completed","response":{"id":"r","model":"gpt-6-luna","status":"completed","output":[]}}`},
+		}},
+		{"anthropic-messages", "claude-opus-5", "messages", "text", "image", [][2]string{
+			{"message_start", `{"type":"message_start","message":{"id":"m","model":"claude-opus-5","usage":{"input_tokens":4}}}`},
+			{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, shape := range []string{"text-only", "text-and-image"} {
+				t.Run(shape, func(t *testing.T) {
+					e := serveWithModels(t, models, tc.events...)
+					var p *vendorProvider
+					if tc.name == "anthropic-messages" {
+						p = claude(t, e)
+					} else {
+						vendor, ok := catalog.Find(copilotVendor)
+						if !ok {
+							t.Fatal("the catalog has no copilot vendor")
+						}
+						p = newVendorProvider("copilot:subscription", vendor, endpoint.Config{APIKey: "test-key", BaseURL: e.server.URL})
+					}
+
+					content := ai.Content{ai.TextBlock(original)}
+					want := [][2]string{{tc.textType, original}}
+					if shape == "text-and-image" {
+						content = append(content, ai.ImageBlock(ai.Image{MediaType: "image/png", Data: imageData}))
+						want = append(want, [2]string{tc.imageType, ""})
+					}
+					content = append(content, ai.TextBlock(first), ai.TextBlock(second))
+					want = append(want, [2]string{tc.textType, first}, [2]string{tc.textType, second})
+					if _, _, _, err := collect(t, p, CompletionOptions{
+						Model: tc.model, MaxTokens: 32,
+						Messages: []core.Message{{Role: ai.RoleUser, Content: content}},
+					}); err != nil {
+						t.Fatalf("stream: %v", err)
+					}
+
+					messages, ok := e.body[tc.field].([]any)
+					if !ok || len(messages) != 1 {
+						t.Fatalf("want one item in %s, got %#v", tc.field, e.body)
+					}
+					message, ok := messages[0].(map[string]any)
+					if !ok || message["role"] != "user" {
+						t.Fatalf("want a user message, got %#v", messages[0])
+					}
+					parts, ok := message["content"].([]any)
+					if !ok {
+						t.Fatalf("want content blocks, got %#v", message["content"])
+					}
+					var got [][2]string
+					for _, part := range parts {
+						block, ok := part.(map[string]any)
+						if !ok {
+							t.Fatalf("invalid content block: %#v", part)
+						}
+						kind, _ := block["type"].(string)
+						text, _ := block["text"].(string)
+						got = append(got, [2]string{kind, text})
+					}
+					if !slices.Equal(got, want) {
+						t.Errorf("content blocks (type, text) = %q, want %q", got, want)
+					}
+				})
 			}
 		})
 	}

@@ -188,18 +188,14 @@ func (s *Settings) HookUITimeout() string {
 	return s.data.HookUITimeout
 }
 
-// SelfLearn returns just the self-learning settings, by value. Unlike
-// Snapshot() it does not deep-clone the whole Data — SelfLearnSettings is a
-// value type (no shared maps/pointers), so a plain copy under the read lock is
-// safe. Used by the per-turn capability-drift check, which would otherwise
-// clone every permission map and hook to read this one field.
-func (s *Settings) SelfLearn() SelfLearnSettings {
+// AutoSkill returns the skill evolution settings by value, without cloning Data.
+func (s *Settings) AutoSkill() AutoSkillSettings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
-		return SelfLearnSettings{}
+		return AutoSkillSettings{}
 	}
-	return s.data.SelfLearn
+	return s.data.AutoSkill
 }
 
 func (s *Settings) Hooks() map[string][]Hook {

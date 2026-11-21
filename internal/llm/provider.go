@@ -179,7 +179,14 @@ type ModelInfo struct {
 // Complete sends one non-streaming call and returns the whole answer. The
 // collection it used to do by hand is ai.Client.Complete.
 func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (CompletionResponse, error) {
-	client, err := provider.Client(opts.Model, TurnHeaders(provider, opts.Messages))
+	headers := TurnHeaders(provider, opts.Messages)
+	var client *ai.Client
+	var err error
+	if vendor, ok := provider.(*vendorProvider); ok {
+		client, err = vendor.client(ctx, opts.Model, headers)
+	} else {
+		client, err = provider.Client(opts.Model, headers)
+	}
 	if err != nil {
 		return CompletionResponse{}, err
 	}

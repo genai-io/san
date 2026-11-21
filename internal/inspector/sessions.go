@@ -1,8 +1,10 @@
 package inspector
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +19,7 @@ import (
 const (
 	sessionPageSize    = 10
 	maxSessionPageSize = 50
-	// Generated titles are optional sidebar metadata, not a reason to replay large logs.
+	// Prompt previews are optional sidebar metadata, not a reason to replay large logs.
 	sessionTitleBudget = 512 << 10
 )
 
@@ -27,6 +29,8 @@ type sessionListItem struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 	Size       int64     `json:"size"`
 	AttrsError string    `json:"attrsError,omitempty"`
+	Subagent   bool      `json:"subagent,omitempty"`
+	Parent     string    `json:"parent,omitempty"`
 }
 
 type sessionPage struct {
@@ -44,6 +48,51 @@ func compareSessions(a, b sessionListItem) int {
 		return order
 	}
 	return strings.Compare(a.ID, b.ID)
+}
+
+func readSessionPage(ctx context.Context, root string, cursor sessionListItem, keep int) ([]sessionListItem, error) {
+	items := make([]sessionListItem, 0, keep+1)
+	dir, err := os.Open(root)
+	if os.IsNotExist(err) {
+		return items, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	for ctx.Err() == nil {
+		entries, err := dir.ReadDir(128)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			id := entry.Name()
+			if !entry.IsDir() || strings.HasPrefix(id, ".") || session.ValidateStorageID(id) != nil {
+				continue
+			}
+			info, err := os.Stat(filepath.Join(root, id, "events.jsonl"))
+			if err != nil {
+				continue
+			}
+			item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
+			if cursor.ID != "" && compareSessions(item, cursor) <= 0 {
+				continue
+			}
+			// Keep only the best page plus its lookahead in cursor order.
+			i, _ := slices.BinarySearchFunc(items, item, compareSessions)
+			if i < keep {
+				items = slices.Insert(items, i, item)
+				items = items[:min(len(items), keep)]
+			}
+		}
+		if err == io.EOF {
+			return items, nil
+		}
+	}
+	return nil, ctx.Err()
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -76,30 +125,15 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	root := filepath.Join(s.store.ProjectDir(), "sessions")
-	entries, err := os.ReadDir(root)
-	if err != nil && !os.IsNotExist(err) {
+	cursor := sessionListItem{ID: after.ID, UpdatedAt: after.UpdatedAt}
+	items, err := readSessionPage(ctx, root, cursor, limit+1)
+	if ctx.Err() != nil {
+		return
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	items := make([]sessionListItem, 0, len(entries))
-	for _, entry := range entries {
-		if ctx.Err() != nil {
-			return
-		}
-		id := entry.Name()
-		if !entry.IsDir() || strings.HasPrefix(id, ".") || session.ValidateStorageID(id) != nil {
-			continue
-		}
-		info, err := os.Stat(filepath.Join(root, id, "events.jsonl"))
-		if err != nil {
-			continue
-		}
-		item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
-		if after.ID == "" || compareSessions(item, sessionListItem{ID: after.ID, UpdatedAt: after.UpdatedAt}) > 0 {
-			items = append(items, item)
-		}
-	}
-	slices.SortFunc(items, compareSessions)
 	page := sessionPage{Items: items[:min(limit, len(items))]}
 	if len(items) > limit {
 		last := page.Items[limit-1]
@@ -111,20 +145,51 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		if ctx.Err() != nil {
 			return
 		}
-		item := &page.Items[i]
-		if attrs, err := s.store.Attrs(ctx, item.ID); err != nil {
-			item.AttrsError = err.Error()
-		} else {
-			item.Title = attrs.Title
-		}
-		if item.Title == "" && item.Size > 0 && item.Size <= budget {
-			budget -= item.Size
-			if projection, err := s.store.Read(ctx, item.ID); err == nil {
-				if title := projection.State().Title; title != nil {
-					item.Title = *title
-				}
-			}
-		}
+		s.describeSession(ctx, &page.Items[i], &budget)
 	}
 	writeJSON(w, page)
+}
+
+func (s *Server) describeSession(ctx context.Context, item *sessionListItem, budget *int64) {
+	if attrs, err := s.store.Attrs(ctx, item.ID); err != nil {
+		item.AttrsError = err.Error()
+	} else {
+		item.Title = strings.TrimSpace(attrs.Title)
+	}
+	if item.Size <= 0 || item.Size > *budget {
+		return
+	}
+	*budget -= item.Size
+	projection, err := s.store.Read(ctx, item.ID)
+	if err != nil {
+		return
+	}
+	identity := projection.Identity()
+	if identity.Parent != nil {
+		item.Parent = identity.Parent.Session
+	}
+	item.Subagent = item.Parent != "" || (identity.AgentID != "" && identity.AgentID != "main")
+	if item.Title == "" {
+		if item.Subagent {
+			item.Title = projection.FirstUserPrompt()
+		} else {
+			item.Title = projection.LastUserPrompt()
+		}
+	}
+}
+
+func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request, id string) {
+	if session.ValidateStorageID(id) != nil {
+		http.NotFound(w, r)
+		return
+	}
+	info, err := os.Stat(filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
+	budget := int64(sessionTitleBudget)
+	s.describeSession(r.Context(), &item, &budget)
+	writeJSON(w, item)
 }

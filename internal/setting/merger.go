@@ -35,7 +35,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.BashPreviewLines = coalescePtr(overlay.BashPreviewLines, base.BashPreviewLines)
 	result.AgentPreviewLines = coalescePtr(overlay.AgentPreviewLines, base.AgentPreviewLines)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
-	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
+	result.AutoSkill = mergeAutoSkill(base.AutoSkill, overlay.AutoSkill)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)
 	result.LastOperationMode = coalesce(overlay.LastOperationMode, base.LastOperationMode)
 
@@ -84,13 +84,11 @@ func ApplyPersonaOverlay(base, overlay *Data) *Data {
 	return mergeSettings(base, ov)
 }
 
-// mergeSelfLearn does a field-level merge of the L1 configuration: integers
-// coalesce (non-zero wins), bools OR (deny-anywhere or enable-anywhere
-// wins, matching the safety bias of layered config). Without this the
-// entire selfLearn block is dropped on every Load and every save.
-func mergeSelfLearn(base, overlay SelfLearnSettings) SelfLearnSettings {
-	return SelfLearnSettings{
-		Skills: SelfLearnSkills{
+// mergeAutoSkill keeps denies from either layer; the higher layer supplies
+// the strategy when non-empty. Key migration happens before layering.
+func mergeAutoSkill(base, overlay AutoSkillSettings) AutoSkillSettings {
+	return AutoSkillSettings{
+		Skills: AutoSkillPermissions{
 			DenyCreate: overlay.Skills.DenyCreate || base.Skills.DenyCreate,
 			DenyUpdate: overlay.Skills.DenyUpdate || base.Skills.DenyUpdate,
 			DenyDelete: overlay.Skills.DenyDelete || base.Skills.DenyDelete,

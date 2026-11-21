@@ -24,7 +24,7 @@ func getSessionPage(t *testing.T, srv *httptest.Server, query string) sessionPag
 func TestSessionPagesOrderAndTitleBudget(t *testing.T) {
 	store, first, srv := fixture(t)
 	ctx := t.Context()
-	appendPayload(t, first, session.SessionUpdatePayload{State: &session.StatePatch{Title: session.SetField("small session title")}})
+	appendPayload(t, first, session.MessageAppendPayload{Messages: []ai.Message{message("first", "small session prompt")}})
 	newest := time.Now()
 	for _, id := range []string{"a-large", "b-renamed", "c-tied"} {
 		w, err := store.Create(ctx, session.CreateOptions{ID: id})
@@ -55,12 +55,68 @@ func TestSessionPagesOrderAndTitleBudget(t *testing.T) {
 		t.Fatalf("unexpected first page: %+v", a)
 	}
 	b := getSessionPage(t, srv, "?limit=2&cursor="+url.QueryEscape(a.Next))
-	if len(b.Items) != 2 || b.Items[0].ID != "c-tied" || b.Items[1].ID != first.ID() || b.Items[1].Title != "small session title" || b.Next != "" {
+	if len(b.Items) != 2 || b.Items[0].ID != "c-tied" || b.Items[1].ID != first.ID() || b.Items[1].Title != "small session prompt" || b.Next != "" {
 		t.Fatalf("unexpected last page: %+v", b)
 	}
 	if !reflect.DeepEqual(before, diskSnapshot(t, store.ProjectDir())) {
 		t.Fatal("pagination modified session files")
 	}
+}
+
+func TestSessionPageUsesLatestUserPromptWhenUntitled(t *testing.T) {
+	store, s, srv := fixture(t)
+	appendPayload(t, s, session.MessageAppendPayload{Messages: []ai.Message{
+		message("first", "first input"),
+		message("last", "Latest user message\n\n<system-reminder source=\"memory-project\">\nprivate workspace rules\n</system-reminder>"),
+		message("notice", "<system-reminder>\nnotice alone\n</system-reminder>"),
+	}})
+	appendPayload(t, s, session.SessionUpdatePayload{State: &session.StatePatch{Title: session.SetField("Generated title")}})
+	if got := getSessionPage(t, srv, "").Items[0].Title; got != "Latest user message" {
+		t.Fatalf("unnamed session title = %q", got)
+	}
+	appendPayload(t, s, session.MessageAppendPayload{Messages: []ai.Message{message("later", "New input")}})
+	if got := getSessionPage(t, srv, "").Items[0].Title; got != "New input" {
+		t.Fatalf("updated session title = %q", got)
+	}
+	if err := store.SetAttrs(t.Context(), s.ID(), session.AttrsPatch{Title: session.SetField("Manual name")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := getSessionPage(t, srv, "").Items[0].Title; got != "Manual name" {
+		t.Fatalf("named session title = %q", got)
+	}
+}
+
+func TestSubagentSessionSummaryAndPage(t *testing.T) {
+	store, parent, srv := fixture(t)
+	child, err := store.Create(t.Context(), session.CreateOptions{
+		ID: "child", AgentID: "worker-address", Parent: &session.ParentLink{Session: parent.ID()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer child.Close()
+	getSummary := func() (item sessionListItem) {
+		getJSON(t, srv, "/api/sessions/child/summary", &item)
+		return item
+	}
+	if item := getSummary(); !item.Subagent || item.Parent != parent.ID() || item.Title != "" {
+		t.Fatalf("untitled child: %+v", item)
+	}
+	appendPayload(t, child, session.MessageAppendPayload{Messages: []ai.Message{
+		message("task", "Review tests"), message("follow-up", "Write a summary"),
+	}})
+	if item := getSummary(); item.Title != "Review tests" {
+		t.Fatalf("child summary: %+v", item)
+	}
+	for _, item := range getSessionPage(t, srv, "").Items {
+		if item.ID == child.ID() {
+			if !item.Subagent || item.Title != "Review tests" || item.Parent != parent.ID() {
+				t.Fatalf("child list item: %+v", item)
+			}
+			return
+		}
+	}
+	t.Fatal("child not listed")
 }
 
 func TestSessionPageRejectsInvalidBounds(t *testing.T) {

@@ -6,12 +6,13 @@ import (
 )
 
 // TestCloneCopiesEveryField guards against Clone() drift that would silently
-// revert a setting to its default at startup (it has dropped SelfLearn and
+// revert a setting to its default at startup (it has dropped AutoSkill and
 // bashPreviewLines before). The source sets every field of Data — a new field
 // left out of it fails the test — and the clone must equal it without sharing
 // any pointer, slice or map.
 func TestCloneCopiesEveryField(t *testing.T) {
 	yes, no, three := true, false, 3
+	skill := AutoSkillSettings{Skills: AutoSkillPermissions{DenyCreate: true}, Strategy: "custom"}
 	src := &Data{
 		Permissions:             PermissionSettings{DefaultMode: "plan", Allow: []string{"Read"}, Deny: []string{"Bash(rm:*)"}, Ask: []string{"Write"}},
 		Model:                   "claude-opus-4-7",
@@ -35,7 +36,7 @@ func TestCloneCopiesEveryField(t *testing.T) {
 		BashPreviewLines:        &three,
 		AgentPreviewLines:       &three,
 		Persona:                 "ml-researcher",
-		SelfLearn:               SelfLearnSettings{Skills: SelfLearnSkills{DenyCreate: true}, Strategy: "custom"},
+		AutoSkill:               skill,
 		AutoPilot:               AutoPilotSettings{Model: "openai/gpt"},
 		LastOperationMode:       "auto",
 	}
@@ -59,18 +60,18 @@ func TestCloneCopiesEveryField(t *testing.T) {
 	}
 }
 
-// TestMergeSettingsPreservesSelfLearn guards the merger gap that left the
+// TestMergeSettingsPreservesAutoSkill guards the merger gap that left the
 // entire L1 feature unreachable from settings.json: mergeSettings used to
-// drop the SelfLearn field on every load and every save merge.
-func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
+// drop the AutoSkill field on every load and every save merge.
+func TestMergeSettingsPreservesAutoSkill(t *testing.T) {
 	base := &Data{
-		SelfLearn: SelfLearnSettings{
-			Skills: SelfLearnSkills{DenyUpdate: true},
+		AutoSkill: AutoSkillSettings{
+			Skills: AutoSkillPermissions{DenyUpdate: true},
 		},
 	}
 	overlay := &Data{
-		SelfLearn: SelfLearnSettings{
-			Skills:   SelfLearnSkills{DenyCreate: true},
+		AutoSkill: AutoSkillSettings{
+			Skills:   AutoSkillPermissions{DenyCreate: true},
 			Strategy: "overlay strategy",
 		},
 	}
@@ -78,15 +79,15 @@ func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
 
 	// Skills field-merges: Deny* OR across levels (overlay's DenyCreate + base's
 	// DenyUpdate both survive); the shared Strategy coalesces from the overlay.
-	if !got.SelfLearn.Skills.DenyCreate || !got.SelfLearn.Skills.DenyUpdate || got.SelfLearn.Strategy != "overlay strategy" {
-		t.Errorf("Skills: got %+v, want merged overlay", got.SelfLearn.Skills)
+	if !got.AutoSkill.Skills.DenyCreate || !got.AutoSkill.Skills.DenyUpdate || got.AutoSkill.Strategy != "overlay strategy" {
+		t.Errorf("Skills: got %+v, want merged overlay", got.AutoSkill.Skills)
 	}
 
 	// Symmetric: a base-only field survives an overlay that doesn't mention it.
-	baseOnly := &Data{SelfLearn: SelfLearnSettings{Skills: SelfLearnSkills{DenyDelete: true}}}
+	baseOnly := &Data{AutoSkill: AutoSkillSettings{Skills: AutoSkillPermissions{DenyDelete: true}}}
 	emptyOverlay := &Data{}
 	got = mergeSettings(baseOnly, emptyOverlay)
-	if !got.SelfLearn.Skills.DenyDelete {
-		t.Errorf("base-only SelfLearn must survive empty overlay; got %+v", got.SelfLearn)
+	if !got.AutoSkill.Skills.DenyDelete {
+		t.Errorf("base-only AutoSkill must survive empty overlay; got %+v", got.AutoSkill)
 	}
 }

@@ -58,13 +58,15 @@ func (s *Reminder) RestoreHistory(messages []core.Message) {
 	}
 }
 
-// PrepareInput emits initial context once, then drains notices; rejected input must retain the returned text.
-func (s *Reminder) PrepareInput(text string) string {
+// PrepareInput emits initial context once, then drains notices into separate text blocks.
+// A rejected input must retain the returned message.
+func (s *Reminder) PrepareInput(msg core.Message) core.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.prepared {
 		s.requeueSystemRemindersLocked()
 		s.prepared = true
 	}
-	return AttachToContent(text, s.drainLocked())
+	msg.Content = AppendBlocks(msg.Content, s.drainLocked()...)
+	return msg
 }

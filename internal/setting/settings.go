@@ -118,9 +118,8 @@ type Data struct {
 	// settings.json is applied as the highest config overlay (see
 	// ApplyPersonaOverlay).
 	Persona string `json:"persona,omitempty"`
-	// SelfLearn toggles + tunes the self-learning loop (per-turn background
-	// review of skills). Off by default (opt-in).
-	SelfLearn SelfLearnSettings `json:"selfLearn,omitzero"`
+	// AutoSkill configures model-triggered skill evolution.
+	AutoSkill AutoSkillSettings `json:"autoSkill,omitzero" yaml:"autoSkill,omitempty"`
 	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
 	// toward (JSON key "autoPilot").
@@ -318,18 +317,18 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.Steers.TurnEnd == b.Steers.TurnEnd
 }
 
-// SelfLearnSettings configures skill self-learning, triggered by the model
-// through the Evolve tool. Memory is separate: see Data.AutoMemory.
-type SelfLearnSettings struct {
-	Skills SelfLearnSkills `json:"skills"`
+// AutoSkillSettings configures skill self-learning, triggered by the model
+// through the ReviewSkill tool. Memory is separate: see Data.AutoMemory.
+type AutoSkillSettings struct {
+	Skills AutoSkillPermissions `json:"skills" yaml:"skills"`
 
 	// Strategy, when non-empty, replaces the built-in learning strategy in the
 	// reviewer prompt (edited via the /evolve Strategy entry). Empty ⇒ built-in.
-	Strategy string `json:"strategy,omitempty"`
+	Strategy string `json:"strategy,omitempty" yaml:"strategy,omitempty"`
 }
 
-// SelfLearnSkills controls skill-evolving. Triggering is model-decided (the
-// Evolve tool); these fields only bound what a triggered review may do. The
+// AutoSkillPermissions controls skill-evolving. Triggering is model-decided (the
+// ReviewSkill tool); these fields only bound what a triggered review may do. The
 // review is scoped by skill use: a turn that used a skill weighs UPDATE /
 // DELETE of that skill, a skill-free turn weighs CREATE.
 //
@@ -339,7 +338,7 @@ type SelfLearnSettings struct {
 // default" — and an omitted field gets the permissive default. (The JSON
 // codecs below still read/write an explicit `enabled` marker for
 // compatibility with the pre-permission schema.)
-type SelfLearnSkills struct {
+type AutoSkillPermissions struct {
 	// DenyCreate / DenyUpdate / DenyDelete gate the corresponding action on
 	// agent-created skills. Zero ⇒ allowed; set to true to disable that action.
 	// They bound what a model-triggered review may do to the skill set.
@@ -348,14 +347,14 @@ type SelfLearnSkills struct {
 	DenyDelete bool `json:"denyDelete,omitempty"`
 }
 
-// wireSkills is the JSON shape of SelfLearnSkills: the Deny* gates plus an
+// wireSkills is the JSON shape of AutoSkillPermissions: the Deny* gates plus an
 // explicit `enabled` marker retained for compatibility with the legacy
 // explicit-toggle schema (see the codec methods below).
 type wireSkills struct {
-	Enabled    bool `json:"enabled"`
-	DenyCreate bool `json:"denyCreate,omitempty"`
-	DenyUpdate bool `json:"denyUpdate,omitempty"`
-	DenyDelete bool `json:"denyDelete,omitempty"`
+	Enabled    bool `json:"enabled" yaml:"enabled"`
+	DenyCreate bool `json:"denyCreate,omitempty" yaml:"denyCreate,omitempty"`
+	DenyUpdate bool `json:"denyUpdate,omitempty" yaml:"denyUpdate,omitempty"`
+	DenyDelete bool `json:"denyDelete,omitempty" yaml:"denyDelete,omitempty"`
 }
 
 // MarshalJSON always writes the `enabled` marker. Before skill-evolving became
@@ -363,13 +362,17 @@ type wireSkills struct {
 // commonly persisted as an empty skills object; the explicit marker lets
 // UnmarshalJSON distinguish new permissive configurations from those legacy
 // opt-outs.
-func (s SelfLearnSkills) MarshalJSON() ([]byte, error) {
-	return json.Marshal(wireSkills{
+func (s AutoSkillPermissions) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.wire())
+}
+
+func (s AutoSkillPermissions) wire() wireSkills {
+	return wireSkills{
 		Enabled:    s.Active(),
 		DenyCreate: s.DenyCreate,
 		DenyUpdate: s.DenyUpdate,
 		DenyDelete: s.DenyDelete,
-	})
+	}
 }
 
 // UnmarshalJSON migrates the legacy explicit-toggle schema: a missing or false
@@ -377,12 +380,17 @@ func (s SelfLearnSkills) MarshalJSON() ([]byte, error) {
 // autonomous actions are denied. Files emitted by MarshalJSON always carry
 // enabled:true when any action is allowed, so the permission gates round-trip
 // exactly.
-func (s *SelfLearnSkills) UnmarshalJSON(data []byte) error {
+func (s *AutoSkillPermissions) UnmarshalJSON(data []byte) error {
 	var wire wireSkills
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
-	*s = SelfLearnSkills{
+	s.fromWire(wire)
+	return nil
+}
+
+func (s *AutoSkillPermissions) fromWire(wire wireSkills) {
+	*s = AutoSkillPermissions{
 		DenyCreate: wire.DenyCreate,
 		DenyUpdate: wire.DenyUpdate,
 		DenyDelete: wire.DenyDelete,
@@ -392,19 +400,18 @@ func (s *SelfLearnSkills) UnmarshalJSON(data []byte) error {
 		s.DenyUpdate = true
 		s.DenyDelete = true
 	}
-	return nil
 }
 
 // AllowCreate / AllowUpdate / AllowDelete report whether the named action
 // is permitted under the current configuration. These are the read paths
 // the runtime takes — settings.json stores Deny*.
-func (s SelfLearnSkills) AllowCreate() bool { return !s.DenyCreate }
-func (s SelfLearnSkills) AllowUpdate() bool { return !s.DenyUpdate }
-func (s SelfLearnSkills) AllowDelete() bool { return !s.DenyDelete }
+func (s AutoSkillPermissions) AllowCreate() bool { return !s.DenyCreate }
+func (s AutoSkillPermissions) AllowUpdate() bool { return !s.DenyUpdate }
+func (s AutoSkillPermissions) AllowDelete() bool { return !s.DenyDelete }
 
 // Active reports whether skill-evolving is on — i.e. at least one action is
 // allowed. This replaces the old explicit Enabled toggle (implicit enable).
-func (s SelfLearnSkills) Active() bool {
+func (s AutoSkillPermissions) Active() bool {
 	return s.AllowCreate() || s.AllowUpdate() || s.AllowDelete()
 }
 
@@ -417,7 +424,7 @@ func (s SelfLearnSkills) Active() bool {
 // refine its own skills but never auto-delete them" is a legitimate
 // conservative config. Delete is already restricted to agent-created skills,
 // so opting out of it removes no safety.
-func (s SelfLearnSettings) Validate() error {
+func (s AutoSkillSettings) Validate() error {
 	if s.Skills.AllowCreate() && !s.Skills.AllowUpdate() {
 		return fmt.Errorf(
 			"\"Create new skills\" needs \"Update a skill\" — otherwise created skills could never be refined",
@@ -520,6 +527,7 @@ type HookCmd struct {
 	Once           bool              `json:"once,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	AllowedEnvVars []string          `json:"allowedEnvVars,omitempty"`
+	PluginRoot     string            `json:"-"` // Set by the plugin registry, not settings JSON.
 }
 
 // SessionPermissions tracks runtime permission state for the current session.

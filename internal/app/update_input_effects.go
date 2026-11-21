@@ -23,6 +23,7 @@ type turnFinalizedMsg struct {
 func (m *model) handleStreamCancel() tea.Cmd {
 	m.pendingStopHook = nil
 	m.pendingMessages.Hold(nil)
+	m.cancelMemoryInput()
 	m.queueContinuation = nil
 	if m.pendingCompaction != nil {
 		if err := m.cancelManualCompaction(); err != nil {

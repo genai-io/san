@@ -3,7 +3,9 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   currentSession: null, selectedRecordID: null, detailRequest: 0, promptRequest: 0,
   records: [], seenIDs: new Set(), bySequence: new Map(), rows: new Map(), eventSource: null,
-  calls: new Map(), results: new Map(), selectedState: null, contextAbort: null, pendingSequence: null,
+  calls: new Map(), results: new Map(), inferences: new Map(), outputPanel: null,
+  selectedState: null, contextAbort: null, pendingSequence: null,
+  sessionSummary: null, streamIdentity: null,
   filters: {message:true, inference:true, tool:true, system:true, state:true, hook:true, permission:true},
 };
 const timeline = $('#timeline'), detail = $('#detail-body');
@@ -13,7 +15,7 @@ const eventViews = new Map([
   ['message.append', {label:'Message', kind:'message'}],
   ['context.compact', {label:'Context · Compaction', kind:'message'}],
   ['inference.start', {label:'Model · Request', kind:'inference'}],
-  ['inference.finish', {label:'Model · Outcome', kind:'inference'}],
+  ['inference.finish', {label:'Model · Response', kind:'inference'}],
   ['permission.decide', {label:'Permission', kind:'permission'}],
   ['tool.finish', {label:'Tool · Execution', kind:'tool'}],
   ['instructions.update', {label:'Instructions', kind:'system'}],
@@ -51,15 +53,34 @@ function renderInline(text) {
     } catch (_) { return escapeHTML(part); }
   }).join('');
 }
-const sessionPages = {cursors:[''], index:0, next:'', loading:false, titles:new Map()};
+const sessionPages = {cursors:[''], index:0, next:'', loading:false, items:new Map()};
 
-function sessionLabel(id, title) {
-  return title || (id.length > 12 ? 'Session ' + id.slice(0, 8) : id);
+function sessionLabel(item) {
+  const title = item?.title?.trim();
+  return item?.subagent ? (title ? 'Subagent · ' + title : 'Subagent') : (title || 'Untitled session');
 }
 function displaySession(id) {
+  const item = {...(state.sessionSummary || sessionPages.items.get(id)), ...state.streamIdentity};
   const meta = $('#session-meta');
-  meta.textContent = sessionLabel(id, sessionPages.titles.get(id));
-  meta.title = id;
+  const label = sessionLabel(item);
+  meta.textContent = label;
+  meta.title = label + ' · ' + id;
+  const parent = $('#session-parent');
+  parent.hidden = !item.parent;
+  if (item.parent) {
+    parent.href = '?session=' + encodeURIComponent(item.parent);
+    parent.title = item.parent;
+  }
+}
+async function loadSessionSummary(id, current) {
+  try {
+    const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/summary');
+    if (!response.ok) return;
+    const summary = await response.json();
+    if (!current()) return;
+    state.sessionSummary = summary;
+    displaySession(id);
+  } catch (_) { /* The timeline can still supply identity. */ }
 }
 
 function sessionPageControls() {
@@ -77,17 +98,18 @@ async function loadSessions(index = 0, cursor = '') {
     const response = await fetch('/api/sessions' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
     if (!response.ok) throw new Error(response.statusText);
     const page = await response.json();
-    sessionPages.titles = new Map(page.items.map(item => [item.id, item.title]));
-    if (sessionPages.titles.has(state.currentSession)) displaySession(state.currentSession);
+    sessionPages.items = new Map(page.items.map(item => [item.id, item]));
+    if (sessionPages.items.has(state.currentSession)) displaySession(state.currentSession);
     const nodes = page.items.map(item => {
       const node = textElement('li', '');
       node.dataset.session = item.id;
       node.classList.toggle('active', item.id === state.currentSession);
       const button = textElement('button', '', 'session-button');
       button.type = 'button';
-      button.title = item.title ? item.title + ' · ' + item.id : item.id;
+      const label = sessionLabel(item);
+      button.title = label + ' · ' + item.id;
       button.addEventListener('click', () => openSession(item.id));
-      button.appendChild(textElement('span', sessionLabel(item.id, item.title), 'session-label'));
+      button.appendChild(textElement('span', label, 'session-label'));
       const date = new Date(item.updatedAt);
       if (!Number.isNaN(date.getTime())) {
         const time = textElement('time', date.toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}), 'id');
@@ -124,6 +146,7 @@ $('#sessions-refresh').addEventListener('click', () => loadSessions());
 function openSession(id, sequence = null) {
   if (state.eventSource) state.eventSource.close();
   state.currentSession = id; state.selectedRecordID = null;
+  state.sessionSummary = state.streamIdentity = null;
   for (const row of $('#session-list').children) row.classList.toggle('active', row.dataset.session === id);
   state.detailRequest++; state.promptRequest++;
   cancelContextLoad();
@@ -131,7 +154,7 @@ function openSession(id, sequence = null) {
   $('#show-history').disabled = false;
   $('#show-history').setAttribute('aria-pressed', 'false');
   state.records = []; state.seenIDs.clear(); state.bySequence.clear(); state.rows.clear();
-  state.calls.clear(); state.results.clear();
+  state.calls.clear(); state.results.clear(); state.inferences.clear();
   timeline.replaceChildren();
   updateTimelineCount();
   detail.replaceChildren(textElement('p', 'Select a step to inspect its details.', 'detail-empty'));
@@ -142,6 +165,7 @@ function openSession(id, sequence = null) {
   const source = new EventSource('/api/sessions/' + encodeURIComponent(id) + '/stream');
   state.eventSource = source;
   const current = () => state.currentSession === id && state.eventSource === source;
+  loadSessionSummary(id, current);
   source.onmessage = event => {
     if (!current()) return;
     try { ingestBatch(JSON.parse(event.data), event.data); setStatus('live'); }
@@ -182,16 +206,60 @@ function ingestBatch(envelope, exactJSON) {
     for (let ei = 0; ei < events.length; ei++) {
       const raw = events[ei];
       const rec = raw && typeof raw === 'object' ? raw : {raw};
+      if (rec.seq === 1 && rec.type === 'session.create' && rec.v === 1 && state.currentSession) {
+        const parent = rec.payload?.parent?.session;
+        const agent = rec.payload?.agent_id;
+        if (parent || (agent && agent !== 'main')) {
+          state.streamIdentity = {subagent:true, parent};
+          displaySession(state.currentSession);
+        }
+      }
       if (Number.isSafeInteger(rec.seq) && rec.seq > 0 && !state.bySequence.has(rec.seq)) {
         state.bySequence.set(rec.seq, state.records.length);
       }
       state.records.push({ ...rec, _key: key + ':' + ri + ':' + ei, _batchJSON: batchJSON });
       indexToolMessages(rec);
+      indexInference(rec);
     }
   }
   for (let i = start; i < state.records.length; i++) appendTimelineRow(state.records[i], i);
   updateTimelineCount();
+  updateModelOutput();
   if (state.bySequence.has(state.pendingSequence)) selectEvent(state.currentSession, state.pendingSequence);
+}
+function inferenceStart(rec) {
+  if (rec.type === 'inference.start') return rec;
+  if (!rec.source || rec.source.session) return null;
+  const start = state.records[state.bySequence.get(rec.source.seq)];
+  return start?.type === 'inference.start' && supported(start) ? start : null;
+}
+function indexInference(rec) {
+  if (!supported(rec) || !['inference.finish', 'message.append', 'context.compact', 'annotation.add'].includes(rec.type)) return;
+  const start = inferenceStart(rec);
+  if (!start) return;
+  let pair = state.inferences.get(start.seq);
+  if (!pair) state.inferences.set(start.seq, pair = {messages: [], annotations: []});
+  if (rec.type === 'inference.finish') pair.finish = rec;
+  else if (rec.type === 'annotation.add' && typeof rec.payload?.text === 'string' && rec.payload.text.trim()) pair.annotations.push(rec);
+  else if (rec.type === 'context.compact' && rec.payload?.summary) pair.messages.push(rec);
+  else if (Array.isArray(rec.payload?.messages) && rec.payload.messages.length) pair.messages.push(rec);
+}
+const asides = new Map([
+  ['recall', {name:'Auto Memory', operation:'Recall'}],
+  ['memory-maintain', {name:'Auto Memory', operation:'Maintain'}],
+  ['auto-skill', {name:'Auto Skill', operation:'Review'}],
+  ['btw', {name:'By the Way'}], ['recap', {name:'Recap'}], ['suggest', {name:'Suggestion'}],
+  ['flow', {name:'Flow Draft'}], ['autopilot', {name:'AutoPilot'}],
+]);
+const inferenceLabels = new Map([
+  ['judge', 'Judge Side'], ['group', 'Group Side'], ['compaction', 'Compaction'], ['hook', 'Hook'],
+]);
+function inferenceLabel(rec, label) {
+  const purpose = inferenceStart(rec)?.payload?.purpose;
+  if (typeof purpose !== 'string' || purpose === 'turn') return label;
+  const aside = asides.get(purpose);
+  if (aside) return `${rec.type === 'inference.start' ? 'Model Request' : 'Model Response'} · Aside — ${aside.name}`;
+  return label + ' · ' + (inferenceLabels.get(purpose) ?? purpose);
 }
 function indexToolMessages(rec) {
   if (rec.type !== 'message.append' || rec.v !== 1 || !Array.isArray(rec.payload?.messages)) return;
@@ -278,9 +346,11 @@ function timelineOverview(rec, label) {
     }
     case 'message.append': return messageOverview(p);
     case 'context.compact': return {preview:p.through ? 'Through #' + p.through : ''};
-    case 'inference.start': return {preview:join(p.purpose, p.request?.model,
+    case 'inference.start': return {label:inferenceLabel(rec, label), preview:join(p.request?.model,
       p.input?.standalone ? 'standalone' : p.input?.conversation ? 'conversation' : '')};
-    case 'inference.finish': return {preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal};
+    case 'inference.finish': return {label:inferenceLabel(rec, label),
+      preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal,
+      status: outcome === 'success' && asides.has(inferenceStart(rec)?.payload?.purpose) ? 'Model completed' : terminal.status};
     case 'permission.decide': return {label:join(label, toolName), preview:join(p.by && 'By ' + p.by, p.scope, p.reason), ...terminal};
     case 'tool.finish': return {preview:join(toolName, duration, p.details?.Path, p.reason), ...terminal};
     case 'hook.finish': return {label:join(label, hookTriggers.get(p.trigger) ?? p.trigger), preview:join(duration, p.matcher, p.reason) ||
@@ -365,12 +435,16 @@ function cancelContextLoad() {
   state.contextAbort?.abort();
   state.contextAbort = null;
   state.selectedState = null;
+  state.outputPanel = null;
 }
-async function readState(id, seq, signal) {
-  const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/state/' + seq, {signal});
+async function readSessionJSON(id, view, seq, signal) {
+  const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/' + view + '/' + seq, {signal});
   const body = await response.text();
   if (!response.ok) throw new Error(body.trim());
-  return JSON.parse(body);
+  return body;
+}
+async function readState(id, seq, signal) {
+  return JSON.parse(await readSessionJSON(id, 'state', seq, signal));
 }
 async function loadSnapshot(body, load, render) {
   body.replaceChildren(textElement('p', 'Loading…', 'detail-note'));
@@ -421,10 +495,18 @@ async function showDetail(index) {
   const load = controller ? () => snapshot ??= readState(id, rec.seq, controller.signal) : null;
   state.selectedState = load;
   const request = load && rec.type === 'inference.start' ? document.createElement('div') : null;
-  const context = load ? [request
-    ? detailGroup('Model input', 'Request for this model call.', request)
-    : contextPanel(load)] : [];
-  detail.replaceChildren(eventType, title, ...context, eventPanel(rec, id, meta), rawBatch(rec));
+  const response = supported(rec) && rec.type === 'inference.finish' ? rec : null;
+  const output = request || response ? document.createElement('div') : null;
+  const panels = [];
+  if (request) panels.push(detailGroup('Model input', 'Formatted view of the request. Expand Raw SDK request to see the original message and block boundaries.',
+    request, rawRequest(() => readSessionJSON(id, 'request', rec.seq, controller.signal))));
+  if (output) {
+    panels.push(detailGroup('Model output', '', output));
+    state.outputPanel = {node: output, start: inferenceStart(rec), finish: response, rendered: null};
+    updateModelOutput();
+  }
+  if (load && !request) panels.push(contextPanel(load, !response));
+  detail.replaceChildren(eventType, title, ...panels, eventPanel(rec, id, meta), rawBatch(rec));
   detail.scrollTop = 0;
   if ($('main').classList.contains('show-prompt')) refreshPromptPanel(rec);
   if (request) await loadSnapshot(request, load, result => result.request

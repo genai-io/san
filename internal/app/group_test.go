@@ -144,11 +144,11 @@ func TestAHoldingMembersMessagesRideOnTheNextInput(t *testing.T) {
 	}
 
 	m := &model{}
-	if got := m.attachWaitingMessages("is the migration done?"); got != "is the migration done?" {
+	if got := m.attachWaitingMessages(core.UserMessage("is the migration done?", nil)).Text(); got != "is the migration done?" {
 		t.Errorf("attached without the person typing: %q", got)
 	}
 	m.grp.userTyped = true
-	got := m.attachWaitingMessages("is the migration done?")
+	got := m.attachWaitingMessages(core.UserMessage("is the migration done?", nil)).Text()
 	for _, want := range []string{"is the migration done?\n\n<group-message>", "From: @api", "To: @migrate", "Unattended-Turns: 0", "run 0043 next"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("attached input lacks %q:\n%s", want, got)

@@ -3,15 +3,12 @@
 package app
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"context"
 	"fmt"
 	"maps"
 	"os"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -117,9 +114,9 @@ func (m *model) promptParams() agent.BuildParams {
 		DisabledTools: m.disabledTools(),
 		MCPTools:      mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
 
-		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
+		// Inject the ReviewSkill trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
-		ExtraTools: m.selfLearnExtraTools(),
+		ExtraTools: m.autoSkillExtraTools(),
 
 		AutoMemory:  m.autoMemory(),
 		Skills:      m.services.Skill,
@@ -188,9 +185,6 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		return bashPromptResponder{model: m, bridge: bridge, recording: promptOwner, sessionID: promptSessionID}
 	}
 
-	if m.memoryRecall == nil {
-		m.memoryRecall = &memoryRecall{surfaced: map[string]bool{}}
-	}
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle
 	// Bind extension audits here, where the application owns their lifecycle.
@@ -225,10 +219,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
-	params.ResultFilter = agent.WithRecall(
-		agent.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter,
-		m.memoryRecall.current.Load,
-	)
+	params.ResultFilter = agent.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
 	return params, nil
 }
 
@@ -384,13 +375,13 @@ func (m *model) disabledToolsSignature() string {
 // ensureAgentRuntime starts the agent with its retained native conversation.
 func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	if m.services.Agent.Active() {
-		// The toolset is fixed at agent-build time. If the enabled Evolve
+		// The toolset is fixed at agent-build time. If the enabled ReviewSkill
 		// capabilities or the disabled-tool set drifted since the build (a
-		// /evolve save, a /tool toggle, an external settings edit), stop the
+		// /memory save, a /tool toggle, an external settings edit), stop the
 		// stale session and fall through to rebuild with the current toolset —
 		// the one choke point every turn passes through, so all drift sources
 		// are covered uniformly.
-		if !m.agentReloadPending && m.selfLearnCapabilities() == m.agentEvolveCaps &&
+		if !m.agentReloadPending && m.autoSkillCapabilities() == m.agentReviewCaps &&
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
 			m.autoMemory() == m.agentAutoMemory {
 			return nil, nil
@@ -428,22 +419,13 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	m.agentSession = m.services.Session
 	m.agentReloadPending = false
 	// Record what the toolset was built with, for the drift check above.
-	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	if m.services.Reminder.Prepared() && params.AutoMemory != m.agentAutoMemory {
-		// The index reminder was prepared once, naming the old stores.
-		m.services.Reminder.RequeueSystemReminders()
-		if params.AutoMemory.Off() {
-			m.services.Reminder.Enqueue("Auto memory is now off: stop reading and saving memory files.")
-		}
-	}
 	m.agentAutoMemory = params.AutoMemory
 	conv.MemoryStores = params.AutoMemory
 
-	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
-	// the live Agent + System for its fork. Builds nothing if every skill action is
-	// denied (§3.1 zero-overhead guarantee).
-	m.wireSelfLearn(params)
+	// Bind Auto Skill to the running session.
+	m.wireAutoSkill(params)
 
 	cmds := []tea.Cmd{
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
@@ -471,6 +453,7 @@ func (m *model) sendToAgent(p pendingMessage) tea.Cmd {
 }
 
 func (m *model) discardPendingMessages() {
+	m.cancelMemoryInput()
 	if err := m.pendingMessages.Discard(); err != nil {
 		log.Logger().Error("discard pending input recording", zap.Error(err))
 		m.conv.AddNotice("Pending input could not be recorded: " + err.Error())
@@ -478,6 +461,10 @@ func (m *model) discardPendingMessages() {
 }
 
 func (m *model) sendPendingMessages() tea.Cmd {
+	return m.sendPendingMessagesSince(time.Time{})
+}
+
+func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 	if m.flowMainBlocksQueue() {
 		return nil
 	}
@@ -491,61 +478,34 @@ func (m *model) sendPendingMessages() tea.Cmd {
 		outbox := m.services.Agent.Outbox()
 		return func() tea.Msg { return pendingInputReadyMsg{outbox: outbox} }
 	}
-	if !m.conv.Stream.Active && m.pendingMessages.Len() > 0 {
-		m.turnOpenedBy = m.pendingMessages.First().ID
-	}
-	if m.pendingPluginRoot != "" {
-		m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
-		m.pendingPluginRoot = ""
-	}
-	if err := m.pendingMessages.Deliver(m.services.Agent.SendInput, m.attachPendingReminders, m.startMemoryRecall); err != nil {
-		return func() tea.Msg { return agentSendFailedMsg{err: err} }
-	}
-	if !m.conv.Stream.Active {
-		m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: time.Now()}
-		return m.conv.Spinner.Tick
-	}
-	return nil
-}
-
-// memoryRecall is the pick running beside the current turn, read by the
-// agent goroutine's result filter.
-type memoryRecall struct {
-	current  atomic.Pointer[agent.Recall]
-	surfaced map[string]bool // attached in this conversation, never twice
-}
-
-// startMemoryRecall starts picking the memories a message sent to the agent
-// needs, replacing a pick for an earlier one. The message does not wait.
-func (m *model) startMemoryRecall(query string) error {
-	if m.memoryRecall == nil || strings.TrimSpace(query) == "" || conv.IsAgentEnvelope(query) || m.agentAutoMemory.Off() {
+	if m.memoryInput != nil {
 		return nil
 	}
-	if err := m.memoryRecall.current.Load().Stop(); err != nil {
-		return err
+	var cmds []tea.Cmd
+	for m.pendingMessages.Len() > 0 {
+		head := m.pendingMessages.First()
+		if m.needsMemoryInput(head) {
+			return tea.Batch(append(cmds, m.prepareMemoryInput(head))...)
+		}
+		if !m.conv.Stream.Active {
+			m.turnOpenedBy = head.ID
+		}
+		if m.pendingPluginRoot != "" {
+			m.services.Agent.SetPluginRoot(m.pendingPluginRoot)
+			m.pendingPluginRoot = ""
+		}
+		if err := m.pendingMessages.DeliverFirst(m.services.Agent.SendInput, m.attachPendingReminders); err != nil {
+			return tea.Batch(append(cmds, func() tea.Msg { return agentSendFailedMsg{err: err} })...)
+		}
+		if !m.conv.Stream.Active {
+			if startedAt.IsZero() {
+				startedAt = time.Now()
+			}
+			m.conv.Stream = conv.StreamState{Active: true, Waiting: true, StartedAt: startedAt}
+			cmds = append(cmds, m.conv.Spinner.Tick)
+		}
 	}
-	if !m.services.Reminder.Prepared() || m.memoryRecall.surfaced == nil {
-		m.memoryRecall.surfaced = map[string]bool{}
-	}
-	provider, info := m.resolveJudge("")
-	r := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info), Recording: m.services.Session}
-	m.memoryRecall.current.Store(r.Start(m.agentAutoMemory, query, maps.Clone(m.memoryRecall.surfaced)))
-	return nil
-}
-
-// endMemoryRecall drops the turn's pick and returns what it attached, which
-// later picks in this conversation skip.
-func (m *model) endMemoryRecall() ([]string, error) {
-	if m.memoryRecall == nil {
-		return nil, nil
-	}
-	pick := m.memoryRecall.current.Swap(nil)
-	err := pick.Stop()
-	recalled := pick.Attached()
-	for _, path := range recalled {
-		m.memoryRecall.surfaced[path] = true
-	}
-	return recalled, err
+	return tea.Batch(cmds...)
 }
 
 // attachPendingReminders drains the reminder queue and appends any pending
@@ -554,18 +514,7 @@ func (m *model) endMemoryRecall() ([]string, error) {
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(msg core.Message) core.Message {
 	// Reminders (the roster among them) precede held member messages.
-	text := m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg.Text()))
-	if text == msg.Text() {
-		return msg
-	}
-	content := ai.TextContent(text)
-	for _, block := range msg.Content {
-		if block.Type != ai.BlockText {
-			content = append(content, block)
-		}
-	}
-	msg.Content = content
-	return msg
+	return m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg))
 }
 
 // wireReminderProviders registers the harness providers attached once per
@@ -581,23 +530,18 @@ func (m *model) wireReminderProviders() {
 		return m.services.Skill.PromptSection()
 	})
 	m.services.Reminder.Register(reminder.ProviderMemoryUser, func() string {
-		return reminder.WrapMemory("user", m.env.CachedUserInstructions)
+		return m.env.CachedUserInstructions
 	})
 	m.services.Reminder.Register(reminder.ProviderMemoryProject, func() string {
-		return reminder.WrapMemory("project", m.env.CachedProjectInstructions)
+		return m.env.CachedProjectInstructions
 	})
 	m.services.Reminder.Register(reminder.ProviderGroup, group.Roster)
-	// Agent-written auto memory, read at render time so a PostCompact or cwd
-	// change picks up the latest index. Kept as its own scope so agent-written
-	// entries never mix with the user-authored memory above.
-	m.services.Reminder.Register(reminder.ProviderMemoryAuto, func() string {
-		return agent.AutoMemoryReminder(m.autoMemory())
-	})
 }
 
 const agentStopTimeout = 2 * time.Second
 
 func (m *model) StopAgentRuntime() error {
+	m.cancelMemoryInput()
 	m.cancelAutopilot()
 	if err := m.cancelManualCompaction(); err != nil {
 		return err
@@ -609,13 +553,13 @@ func (m *model) StopAgentRuntime() error {
 		log.Logger().Warn("agent runtime shutdown incomplete", zap.Error(err))
 		return fmt.Errorf("stop agent runtime: %w", err)
 	}
-	m.teardownSelfLearn()
-	_, err := m.endMemoryRecall()
-	return err
+	m.teardownAutoSkill()
+	return nil
 }
 
 // ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() error {
+	m.cancelMemoryInput()
 	m.cancelAutopilot()
 	if err := m.cancelManualCompaction(); err != nil {
 		return err
@@ -635,12 +579,9 @@ func (m *model) ResetAgentRuntime() error {
 	m.services.Reminder.ResetConversation()
 	// Compaction must not restore the old conversation's files.
 	m.env.FileCache.Clear()
-	// Stop feeding the L1 judge AND cancel the session-scoped context
-	// so an in-flight fork unblocks immediately instead of holding tokens /
-	// HTTP for up to forkDeadline.
-	m.teardownSelfLearn()
-	_, err := m.endMemoryRecall()
-	return err
+	// Cancel any review owned by the discarded conversation.
+	m.teardownAutoSkill()
+	return nil
 }
 
 // ============================================================

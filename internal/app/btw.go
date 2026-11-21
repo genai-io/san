@@ -1,5 +1,4 @@
-// /btw: a side question answered from the conversation as it stands, as a
-// side request (see side.go).
+// /btw answers a side question in an Aside without interrupting the main turn.
 package app
 
 import (
@@ -23,9 +22,7 @@ const btwInstructions = `<system-reminder>This is a side question from the user.
 - Do not frame it as an interruption or mention what you were previously doing.
 - You cannot use tools here, and nothing written as a tool call runs. If answering needs reading files, running commands or searching, say it can't be checked from a side question and suggest asking in the main conversation.
 - If you don't know, say so; never promise to look it up.
-</system-reminder>
-
-`
+</system-reminder>`
 
 // btwAsk is one /btw in flight, drawn live until its answer lands. It keeps
 // the session it was asked in: an answer that outlives a /clear or /resume
@@ -44,7 +41,7 @@ type btwAnswerMsg struct {
 
 // sideQuestion starts answering question off the UI goroutine.
 func (m *model) sideQuestion(question string) tea.Cmd {
-	req := m.newSideRequest("btw", btwInstructions+question)
+	req := m.newAsideRequest(session.PurposeBtw, true, btwInstructions, question)
 	ask := btwAsk{question: strings.Join(strings.Fields(question), " "), sessionID: m.sessionID()}
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd
@@ -55,7 +52,7 @@ func (m *model) sideQuestion(question string) tea.Cmd {
 	return tea.Batch(tick, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
 		defer cancel()
-		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req), owner: req.owner, recording: req.recording}
+		return btwAnswerMsg{ask: ask, answer: answerBtw(ctx, req), owner: req.owner, recording: req.snapshot.Recording()}
 	})
 }
 
@@ -64,11 +61,11 @@ func (m *model) onBtwAnswer(msg btwAnswerMsg) tea.Cmd {
 		m.btw = slices.Delete(m.btw, i, i+1)
 	}
 	if msg.ask.sessionID != m.sessionID() || msg.owner != m.services.Session {
-		closeSide(msg.recording)
+		closeAside(msg.recording)
 		return nil
 	}
 	notice := conv.SideNotice(msg.ask.question, msg.answer)
-	if !finishSide(msg.recording, notice) {
+	if !finishAside(msg.recording, notice) {
 		return nil
 	}
 	m.conv.AddNotice(notice)
@@ -91,7 +88,7 @@ func (m *model) btwLive() string {
 	return strings.TrimSuffix(strings.Join(rows, "\n"), "\n")
 }
 
-func askSide(ctx context.Context, req sideRequest) string {
+func answerBtw(ctx context.Context, req asideRequest) string {
 	resp, err := req.complete(ctx)
 	if err != nil {
 		return "Error: " + err.Error()

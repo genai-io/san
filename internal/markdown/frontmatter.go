@@ -15,18 +15,31 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error) {
 		return "", "", err
 	}
 	src := strings.ReplaceAll(string(data), "\r\n", "\n")
-	first, rest, _ := strings.Cut(src, "\n")
-	if strings.TrimSpace(first) != "---" {
-		return "", strings.TrimSpace(src), nil
+	frontmatter, body, err = splitFrontmatter(src, func(line string, _ bool) bool {
+		return strings.TrimSpace(line) == "---"
+	})
+	return frontmatter, strings.TrimSpace(body), err
+}
+
+// SplitFrontmatter separates a leading YAML fence from the body without
+// rewriting either. Both delimiters must be complete LF or CRLF lines.
+func SplitFrontmatter(src string) (frontmatter, body string, err error) {
+	return splitFrontmatter(src, func(line string, newline bool) bool {
+		return newline && strings.TrimSuffix(line, "\r") == "---"
+	})
+}
+
+func splitFrontmatter(src string, delimiter func(string, bool) bool) (frontmatter, body string, err error) {
+	first, rest, newline := strings.Cut(src, "\n")
+	if !delimiter(first, newline) {
+		return "", src, nil
 	}
-	var fm strings.Builder
-	for rest != "" {
-		line, next, _ := strings.Cut(rest, "\n")
-		if strings.TrimSpace(line) == "---" {
-			return fm.String(), strings.TrimSpace(next), nil
+	for remaining := rest; remaining != ""; {
+		line, next, newline := strings.Cut(remaining, "\n")
+		if delimiter(line, newline) {
+			return rest[:len(rest)-len(remaining)], next, nil
 		}
-		fm.WriteString(line + "\n")
-		rest = next
+		remaining = next
 	}
 	return "", "", fmt.Errorf("unclosed frontmatter: missing closing '---' delimiter")
 }

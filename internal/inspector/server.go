@@ -73,6 +73,8 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case len(parts) == 2 && parts[1] == "summary":
+		s.handleSessionSummary(w, r, id)
 	case len(parts) == 2 && parts[1] == "records":
 		batches, err := s.readBatches(r.Context(), id)
 		if os.IsNotExist(err) {
@@ -92,6 +94,23 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, result)
 	case len(parts) == 2 && parts[1] == "stream":
 		s.handleStream(w, r, id)
+	case len(parts) == 3 && parts[1] == "request":
+		seq, err := strconv.ParseUint(parts[2], 10, 64)
+		if err != nil || seq == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		request, err := s.store.InferenceRequest(r.Context(), id, seq)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(request)
 	case len(parts) == 3 && parts[1] == "state":
 		seq, err := strconv.ParseUint(parts[2], 10, 64)
 		if err != nil {

@@ -324,6 +324,47 @@ exit 2
 	}
 }
 
+func TestReviewSkillMatcherBlocks(t *testing.T) {
+	for _, matcher := range []string{"ReviewSkill", "^ReviewSkil[l]$", "Skill|ReviewSkill", "*"} {
+		t.Run(matcher, func(t *testing.T) {
+			dir := t.TempDir()
+			script := filepath.Join(dir, "block.sh")
+			if err := os.WriteFile(script, []byte(`#!/bin/sh
+cat >> payload.json
+printf '\n' >> payload.json
+echo "Review blocked by policy" >&2
+exit 2
+`), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			settings := setting.NewData()
+			settings.Hooks["PreToolUse"] = []setting.Hook{
+				{Matcher: matcher, Hooks: []setting.HookCmd{{Type: "command", Command: "./block.sh"}}},
+			}
+			engine := NewEngine(settings, "test-session", dir, "")
+			inputForMatch := HookInput{ToolName: "ReviewSkill"}
+			if got := len(engine.getMatchingHooks(PreToolUse, &inputForMatch)); got != 1 {
+				t.Fatalf("selected %d hooks, want 1", got)
+			}
+			outcome := engine.Execute(t.Context(), PreToolUse, HookInput{ToolName: "ReviewSkill"})
+			if !outcome.ShouldBlock || outcome.ShouldContinue || outcome.BlockReason != "Review blocked by policy" {
+				t.Fatalf("expected blocking hook, got %+v", outcome)
+			}
+			payload, err := os.ReadFile(filepath.Join(dir, "payload.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var input HookInput
+			if err := json.Unmarshal(payload, &input); err != nil {
+				t.Fatalf("expected exactly one hook payload: %v (%q)", err, payload)
+			}
+			if input.ToolName != "ReviewSkill" {
+				t.Fatalf("hook tool name = %q, want ReviewSkill", input.ToolName)
+			}
+		})
+	}
+}
+
 func TestEngineJSONBlockingOutput(t *testing.T) {
 	// Create a script that outputs JSON with continue=false
 	tmpDir := t.TempDir()

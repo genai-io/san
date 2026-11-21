@@ -304,8 +304,12 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 		}
 		p.data.UnfinishedInferences[e.Seq] = true
 	case *InferenceFinishPayload:
-		if _, err := p.closeInference(e); err != nil {
+		start, err := p.closeInference(e)
+		if err != nil {
 			return err
+		}
+		if v.Output != nil && (start.Purpose == PurposeTurn || v.Outcome != OutcomeSuccess || len(v.Output.Text) > maxInferenceOutput) {
+			return invalidEvent("invalid model output")
 		}
 		return validateTerminal(v.Outcome, v.Error, v.Reason, v.DurationMS)
 	case *PermissionDecidePayload:
@@ -395,7 +399,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 
 func (p *Projection) validateInferenceStart(v InferenceStartPayload) error {
 	switch v.Purpose {
-	case PurposeTurn, PurposeFlow, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeJudge, PurposeHook, PurposeAutopilot, PurposeGroup, PurposeRecall:
+	case PurposeTurn, PurposeFlow, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeJudge, PurposeHook, PurposeAutopilot, PurposeGroup, PurposeRecall, PurposeMemoryMaintain, PurposeAutoSkill:
 	default:
 		return invalidEvent("unknown inference purpose %q", v.Purpose)
 	}

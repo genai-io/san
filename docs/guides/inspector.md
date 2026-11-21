@@ -32,9 +32,10 @@ unless `--no-open` is set. Press `Ctrl-C` to stop.
 The sidebar lists live sessions of the canonical project, ten per page. Use
 **Previous** and **Next** to browse, or **Refresh** to see newly created sessions.
 Git worktrees share one project; unrelated clones and non-Git directories do not.
-Renamed titles take precedence over generated titles. If a title would require
-replaying a large log, the sidebar shows a shortened session ID; hover over the
-row to see the full ID. Unsupported sessions remain available for diagnosis.
+The sidebar uses the latest user message unless the session was explicitly
+renamed. It does not use generated titles. If no title is available within the
+replay budget, the row shows **Untitled session**. Hover to see the session ID.
+Unsupported sessions remain available for diagnosis.
 
 The timeline exposes thirteen event families: session creation/update, native
 messages, context compaction, inference start/finish, permission decisions, tool
@@ -52,11 +53,11 @@ show the ordered native blocks. Permission and tool steps link to the requested 
 finishes show any recorded file diff, shell output or agent result separately
 from what was returned to the model. Source links jump to the referenced event.
 
-The details pane opens with **Model input** for a model call or **Context** for
-other steps. Context shows session state after the selected step, not a recorded
-model request. **Event** and **Raw batch** are collapsed until opened. The latter
-is the only raw JSON view and may include several events. System reminders are
-shown separately inside messages. Transport failures report checked batches and
+The details pane shows **Model input** on a request and **Model output** on its
+response (also visible from the request). Other steps open with **Context**, the
+session state after the selected step, not a recorded model request. **Event**
+and **Raw batch** are collapsed until opened. **Raw batch** shows stored events,
+not the model request. The formatted message view groups reminders for readability. Transport failures report checked batches and
 bounded unvalidated text.
 
 ## Reconstruct the model request
@@ -65,7 +66,9 @@ At `inference.start`, the inspector asks the session backend for the request tha
 was admitted at that exact historical prefix. A conversation request reconstructs
 instructions, tool schemas and repaired active native messages; a standalone
 request loads its immutable, verified blob. Current settings and later catalogue
-changes do not substitute for the historical input.
+changes do not substitute for the historical input. In **Model input**, expand
+**Raw SDK request** to inspect the exact message and content-block boundaries
+before the provider driver encodes them. This is not a captured HTTP body.
 
 For other events, historical context includes changes made by the selected step.
 The separate **Session history** view shows all committed messages through the
@@ -76,9 +79,18 @@ silently skipped.
 
 ## Outcomes and interrupted work
 
-`inference.finish` links its start and carries outcome, usage, duration and any
-structured error. Each retry has a distinct start/finish; an unfinished start is
-an interrupted call, not a fabricated failure or response.
+Request and response rows link to each other. An [Aside](../reference/aside.md)
+is labeled **Model Request · Aside — Auto Memory** and
+**Model Response · Aside — Auto Memory**, or **Model Request · Aside — Auto Skill**
+and **Model Response · Aside — Auto Skill**. For Auto Memory, the Event details
+distinguish **Recall** from **Maintain**.
+
+For an Aside, **Raw model output** shows what the model returned, and
+**Accepted result** shows recorded results with links to their source-linked
+annotations or messages. A completed model call does not mean San applied its
+output. If no accepted result was recorded, Inspector says so; older records
+may have an accepted reply annotation but no raw output.
+Each retry has its own start and finish; a missing finish is not a response.
 
 A `permission.decide` explains the actual authority and, where shown, the human
 question snapshot. `tool.finish` records an execution outcome, raw display details
@@ -111,7 +123,8 @@ by earlier versions remain on disk untouched and are not discovered.
 | `GET` | `/api/sessions` | Page of live sessions (`items` plus optional `next` cursor) |
 | `GET` | `/api/sessions/{id}/records` | JSON with committed SDK batches, tails and any diagnostics |
 | `GET` | `/api/sessions/{id}/stream` | SSE of committed batches |
-| `GET` | `/api/sessions/{id}/state/{seq}` | Validated native context or historical inference request |
+| `GET` | `/api/sessions/{id}/state/{seq}` | Validated native context and, for an inference start, its request |
+| `GET` | `/api/sessions/{id}/request/{seq}` | Historical request as admitted to the SDK, before provider encoding |
 
 Listing, state reconstruction and streaming do not modify logs, attrs, locks or
 cache files. Server shutdown drains requests; each stream stops with its request.

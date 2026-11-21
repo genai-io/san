@@ -17,7 +17,7 @@
 //
 //   - AGENT OUTPUT — independent activity and result preview, 0–20 lines.
 //
-// All are personal preferences, so — unlike Self-Learning — they have no
+// All are personal preferences, so they have no
 // project scope; selecting a row persists to the user settings file.
 package input
 

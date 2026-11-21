@@ -97,6 +97,14 @@ function contentBlock(block) {
   }
 }
 
+const reminderTitles = new Map([
+  ['memory-user', 'User instructions'], ['memory-project', 'Project instructions'],
+  ['memory-auto', 'Auto Memory index'], ['memory-recall', 'Auto Memory recall'],
+  ['skills-directory', 'Skills directory'], ['group', 'Session group'],
+  ['hook-session-start', 'Session start hook'], ['hook-user-prompt-submit', 'User prompt hook'],
+  ['restored-files', 'Files restored after compaction'],
+]);
+
 function contentNodes(content, role) {
   if (!Array.isArray(content) || !content.length) return [textElement('p', 'No content.', 'detail-note')];
   return content.flatMap(block => {
@@ -106,7 +114,7 @@ function contentNodes(content, role) {
     if (!reminders.length) return [contentBlock(block)];
     reminders.reverse();
     return [...(text ? [textElement('pre', text, 'message-text')] : []),
-      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(source || 'Reminder',
+      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(reminderTitles.get(source) || source || 'Source not recorded',
         textElement('pre', body, 'message-text'))))];
   });
 }
@@ -205,12 +213,13 @@ function eventDetails(rec, id) {
       return [section('Compaction', fields([['Compacted through', eventReference({seq: p.through}, id)]]),
         ...messageViews(p.summary ? [p.summary] : [], true))];
     case 'inference.start':
-      return [section('Model call', fields([['Purpose', p.purpose], ['Turn', p.turn_id], ['Provider', p.request?.provider],
+      return [section('Model call', fields([['Purpose', p.purpose], ['Operation', asides.get(p.purpose)?.operation], ['Turn', p.turn_id], ['Provider', p.request?.provider],
         ['Model', p.request?.model], ['Input', p.input?.standalone ? 'Standalone' : p.input?.conversation ? 'Conversation' : undefined],
         ['Standalone blob', p.input?.standalone], ['Instructions digest', p.instructions_digest], ['Toolset digest', p.toolset_digest]]),
         ...(p.request?.generation_options ? [disclosure('Generation options', () => [namedFields(p.request.generation_options)])] : []))];
     case 'inference.finish':
-      return [section('Inference outcome', fields([...outcomeFields(p), ['Stop reason', p.stop_reason]])),
+      return [section('Inference outcome', fields([['Operation', asides.get(inferenceStart(rec)?.payload?.purpose)?.operation],
+        ...outcomeFields(p), ['Stop reason', p.stop_reason]])),
         ...(p.usage ? [section('Token usage', namedFields(p.usage))] : [])];
     case 'permission.decide':
       return [section('Permission decision', fields([['Tool', toolName], ['Call ID', p.call_id], ['Decision', p.decision], ['Authority', p.by],
@@ -263,13 +272,61 @@ function requestNodes(request, messageLabel = 'Input messages') {
     section(messageLabel + ' · ' + messages.length, ...messageViews(messages))];
 }
 
+function rawRequest(load) {
+  return disclosure('Raw SDK request', () => {
+    const body = document.createElement('div');
+    loadSnapshot(body, load, json => [textElement('pre', json)]);
+    return [textElement('p', 'As admitted to the SDK, before provider-specific encoding.', 'detail-note'), body];
+  });
+}
+
+function updateModelOutput() {
+  const panel = state.outputPanel;
+  if (!panel) return;
+  const pair = state.inferences.get(panel.start?.seq);
+  const finish = panel.finish ?? pair?.finish;
+  const isAside = asides.has(panel.start?.payload?.purpose);
+  const count = (pair?.messages.length ?? 0) + (pair?.annotations.length ?? 0);
+  if (finish === panel.rendered && count === panel.resultCount) return;
+  panel.rendered = finish;
+  panel.resultCount = count;
+  const id = state.currentSession;
+  const link = !finish ? null : panel.finish ? fields([['Request', eventReference(finish.source, id)]])
+    : fields([['Response', eventReference({seq: finish.seq}, id)]]);
+  const output = finish?.payload?.output;
+  const recordedMessages = rec => rec.type === 'context.compact' ? [rec.payload.summary] : rec.payload.messages;
+  const resultView = rec => section(rec.type === 'annotation.add' ? 'Annotation' : 'Recorded messages',
+    fields([['Event', eventReference({seq: rec.seq}, id)]]),
+    ...(rec.type === 'annotation.add' ? [textElement('pre', rec.payload.text, 'message-text')] : messageViews(recordedMessages(rec), true)));
+  let nodes;
+  if (!finish) {
+    nodes = [textElement('p', 'No response recorded yet.', 'detail-note')];
+  } else if (output && typeof output.text === 'string') {
+    nodes = [output.text ? textElement('pre', output.text, 'message-text') : textElement('p', 'No text returned.', 'detail-note')];
+    if (output.truncated) nodes.push(textElement('p', 'Recorded output was truncated.', 'detail-note'));
+  } else if (!isAside && pair?.messages.length) {
+    nodes = messageViews(pair.messages.flatMap(recordedMessages), true);
+  } else if (!isAside && pair?.annotations.length) {
+    nodes = pair.annotations.map(resultView);
+  } else {
+    const label = finish.payload?.outcome === 'success' ? 'No model output was recorded.' : 'No completed output.';
+    nodes = [textElement('p', label, 'detail-note')];
+  }
+  if (isAside) {
+    const results = [...(pair?.messages ?? []), ...(pair?.annotations ?? [])].sort((a, b) => a.seq - b.seq);
+    nodes = [section('Raw model output', ...nodes), section('Accepted result', ...(results.length ? results.map(resultView)
+      : [textElement('p', 'No accepted result recorded.', 'detail-note')]))];
+  }
+  panel.node.replaceChildren(...(link ? [link] : []), ...nodes);
+}
+
 function detailPanel(title, build, open = false) {
   const panel = disclosure(title, build, open);
   panel.className = 'detail-group detail-panel';
   return panel;
 }
 
-function contextPanel(load) {
+function contextPanel(load, open = true) {
   return detailPanel('Context', () => {
     const body = document.createElement('div');
     loadSnapshot(body, load, snapshot => [
@@ -277,7 +334,7 @@ function contextPanel(load) {
       ...requestNodes(snapshot.context, 'Messages'),
     ]);
     return [body];
-  }, true);
+  }, open);
 }
 
 function eventPanel(rec, id, meta) {

@@ -24,7 +24,7 @@ func TestInputQueueCancellationAdmission(t *testing.T) {
 				t.Fatal("continuation crossed consumer cleanup fence")
 			}
 			// Delivery itself enforces admission, even if an adapter forgets its preflight.
-			if err := q.Deliver(nil, nil, nil); err != nil {
+			if err := q.DeliverFirst(nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if q.Finalize(nil) || q.Finalize(&core.TurnFinalization{}) {
@@ -37,24 +37,24 @@ func TestInputQueueCancellationAdmission(t *testing.T) {
 				if q.CanDeliver(false) || !q.CanDeliver(true) || !q.Held() {
 					t.Fatal("cleanup granted automatic continuation")
 				}
-				if err := q.Deliver(nil, nil, nil); err != nil {
+				if err := q.DeliverFirst(nil, nil); err != nil {
 					t.Fatal(err)
 				}
 				q.Enqueue(user)
 			}
 			var order []string
-			if err := q.Deliver(func(msg PendingInput) error {
+			if err := drainInput(&q, func(msg PendingInput) error {
 				order = append(order, "send:"+msg.Text())
 				return nil
 			}, func(msg core.Message) core.Message {
 				order = append(order, "prepare:"+msg.Text())
 				return msg
-			}, func(text string) error { order = append(order, "recall:"+text); return nil }); err != nil {
+			}); err != nil {
 				t.Fatal(err)
 			}
-			want := []string{"prepare:background", "send:background", "recall:continue", "prepare:continue", "send:continue"}
+			want := []string{"prepare:background", "send:background", "prepare:continue", "send:continue"}
 			if !reflect.DeepEqual(order, want) || q.Len() != 0 || q.Held() {
-				t.Fatalf("continuation lost FIFO or recall policy: %v", order)
+				t.Fatalf("continuation lost FIFO order: %v", order)
 			}
 		})
 	}
@@ -70,7 +70,7 @@ func TestInputQueueRepeatedStopRevokesContinuation(t *testing.T) {
 		t.Fatal("old completion released a newer cancellation")
 	}
 	q.Finalize(second)
-	if err := q.Deliver(nil, nil, nil); err != nil || q.Len() != 1 {
+	if err := q.DeliverFirst(nil, nil); err != nil || q.Len() != 1 {
 		t.Fatal("second stop failed to retain continuation")
 	}
 }

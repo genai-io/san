@@ -92,6 +92,13 @@ func (p *vendorProvider) TurnHeaders(msgs []core.Message) map[string]string {
 // is shared — so keying the cache by the headers too costs an entry per
 // distinct header set rather than a new connection pool.
 func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.Client, error) {
+	return p.client(context.Background(), modelID, headers)
+}
+
+func (p *vendorProvider) client(ctx context.Context, modelID string, headers map[string]string) (*ai.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	key := clientKey(modelID, headers)
 	p.mu.Lock()
 	client, ok := p.clients[key]
@@ -100,9 +107,17 @@ func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.
 		return client, nil
 	}
 
-	// The listing can move a model off the vendor's protocol — Copilot serves
-	// its newest GPT models over Responses only — so read it before building.
-	_ = p.refresh(context.Background())
+	// Copilot and other endpoints can override routing in their live listing.
+	// Codex uses Responses for all models; a bounded utility call can use the
+	// existing catalog without holding up the turn to refresh it.
+	_, bounded := ctx.Deadline()
+	skipRefresh := bounded && p.vendor.ID == codexVendor
+	if !skipRefresh {
+		_ = p.refresh(ctx)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -121,7 +136,9 @@ func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.
 	if err != nil {
 		return nil, err
 	}
-	p.clients[key] = client
+	if !skipRefresh || p.listed {
+		p.clients[key] = client
+	}
 	return client, nil
 }
 

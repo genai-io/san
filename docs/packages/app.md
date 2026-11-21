@@ -165,7 +165,7 @@ and TaskOutput/TaskStop, subject to disabled tools and native permission rules.
   flows are unsupported. Never enter secrets in ordinary forms.
 
 Non-text prompts, session listing/resume-without-replay, WebFetch/WebSearch,
-planning tracker, Workflow, Cron and Evolve are not offered. ACP is not a
+planning tracker, Workflow, Cron and ReviewSkill are not offered. ACP is not a
 replacement for the TUI.
 
 Optional endpoints use the SDK version pinned in `go.mod`.

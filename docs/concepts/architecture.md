@@ -91,7 +91,7 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | --- | --- |
 | `cmd` | `cmd/*` |
 | `app` | `internal/app` and subpackages |
-| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, inspector, search, worktree, setting, reminder, selflearn, image) |
+| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, inspector, search, worktree, setting, reminder, aside, automemory, autoskill, image) |
 | `core` | `internal/core` |
 | `infrastructure` | `internal/{log,secret,filecache,markdown,proc,confdir}` |
 

@@ -6,7 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
+
+	"github.com/genai-io/san/internal/core"
 )
 
 // AgentTask represents a background agent task
@@ -185,7 +186,7 @@ func (t *AgentTask) SetResult(result string) {
 	t.result = result
 	t.resultDisplayed = false
 	t.attemptOutput.Reset()
-	t.attemptOutput.WriteString(utf8Head(result, maxOutputBufferSize))
+	t.attemptOutput.WriteString(core.UTF8Prefix(result, maxOutputBufferSize))
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 	t.recordOutput(outputFile, outputRecord{Event: "task.output", Content: result})
@@ -211,17 +212,6 @@ func (t *AgentTask) AppendOutput(data []byte) {
 	})
 }
 
-// utf8Head returns at most n bytes of s without splitting a rune.
-func utf8Head(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
-}
-
 // Activity is a compact display snapshot, not a replacement for the task log.
 const (
 	maxActivityEntries    = 12
@@ -237,7 +227,7 @@ func (t *AgentTask) AppendProgress(msg string) {
 		// Tool descriptions are already bounded by the executor.
 		t.progress = msg
 		// Clone even short substrings so history cannot retain a large input.
-		entry := strings.Clone(utf8Head(msg, maxActivityEntryBytes))
+		entry := strings.Clone(core.UTF8Prefix(msg, maxActivityEntryBytes))
 		if len(t.activity) == maxActivityEntries {
 			copy(t.activity, t.activity[1:])
 			t.activity[len(t.activity)-1] = entry

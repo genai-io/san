@@ -5,15 +5,15 @@ package core
 // control fine-grained order within a slot (e.g. user memory before
 // project memory).
 //
-// Order rationale: stable content lives at low slots so the prompt-cache
-// prefix survives changes in volatile sections (Environment, Notice).
+// Keep stable instructions before the volatile environment. Cache breakpoints
+// depend on the provider's wire format.
 type Slot uint8
 
 const (
 	SlotIdentity    Slot = iota // who you are (replaceable per persona / subagent charter)
 	SlotBehavior                // how you communicate and work (style + engineering)
 	SlotRules                   // safety contract + tool / task / git protocols
-	SlotEnvironment             // cwd, git, date — VOLATILE, only changes at day rollover
+	SlotEnvironment             // cwd, date, platform, shell
 )
 
 // Source labels where a section originated, for debugging and provenance.

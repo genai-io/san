@@ -4,6 +4,7 @@ package plugin
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -56,10 +57,11 @@ func (r *Registry) Hooks() map[string][]setting.Hook {
 		}
 		for event, matchers := range p.Components.Hooks.Hooks {
 			for _, matcher := range matchers {
-				hook := setting.Hook{
-					Matcher: matcher.Matcher,
-					Hooks:   matcher.Hooks,
+				commands := slices.Clone(matcher.Hooks)
+				for i := range commands {
+					commands[i].PluginRoot = p.Path
 				}
+				hook := setting.Hook{Matcher: matcher.Matcher, Hooks: commands}
 				result[event] = append(result[event], hook)
 			}
 		}

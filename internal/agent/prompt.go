@@ -20,7 +20,7 @@ func CheckPrompt(ctx context.Context, prompt string, hooks *hook.Engine, reminde
 	// Context remains pending even on a block, and may reach a later input.
 	// Admission must not drain reminders or prepare conversation context.
 	if outcome.AdditionalContext != "" {
-		reminders.Enqueue(outcome.AdditionalContext)
+		reminders.EnqueueWithSource(outcome.AdditionalContext, reminder.SourceUserPromptSubmit)
 	}
 	return outcome.ShouldBlock, outcome.BlockReason
 }

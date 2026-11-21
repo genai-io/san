@@ -1,12 +1,60 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestMemoryNotes(t *testing.T) {
+	stores := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
+	write := func(dir, name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("---\ndescription: "+name+"\n---\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(stores.User, AutoMemoryIndexName)
+	if err := os.Mkdir(filepath.Join(stores.User, "folder.md"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if stores.HasNotes() {
+		t.Fatal("index and directory are not notes")
+	}
+	write(stores.User, "z.md")
+	write(stores.User, "b.md")
+	write(stores.Project, "a.md")
+	if !stores.HasNotes() {
+		t.Fatal("regular notes were not found")
+	}
+	notes := stores.Memories(t.Context(), 2)
+	if len(notes) != 2 || notes[0].Description != "b.md" || notes[1].Description != "z.md" {
+		t.Fatalf("want first two user notes in filename order, got %+v", notes)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if notes := stores.Memories(ctx, 0); len(notes) != 0 {
+		t.Fatalf("canceled inventory scan returned %+v", notes)
+	}
+}
+
+func TestFormatInstructions(t *testing.T) {
+	user, project := FormatInstructions([]MemoryFile{
+		{Path: "user/AGENTS.md", Content: "User text", Level: "global"},
+		{Path: "repo/AGENTS.md", Content: "Project text", Level: "project"},
+		{Path: "repo/AGENTS.local.md", Content: "Local text", Level: "local"},
+		{Path: "repo/empty.md", Content: "  ", Level: "project"},
+	})
+	if want := "Contents of \"user/AGENTS.md\" (user instructions):\n\nUser text"; user != want {
+		t.Errorf("user instructions = %q, want %q", user, want)
+	}
+	if want := "Contents of \"repo/AGENTS.md\" (project instructions):\n\nProject text\n\nContents of \"repo/AGENTS.local.md\" (local project instructions):\n\nLocal text"; project != want {
+		t.Errorf("project instructions = %q, want %q", project, want)
+	}
+}
 
 func TestResolveImports(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "san-test")

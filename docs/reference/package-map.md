@@ -35,8 +35,10 @@ Agent, persistence, and orchestration:
 | --- | --- | --- |
 | `internal/interaction` | `feature` | Request lifecycle and human-permission preparation, scopes and audit-before-reply; no execution, transport or presentation. |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
+| `internal/aside` | `feature` | Focused model calls outside the main conversation, with request snapshots and session-owned recording. |
+| `internal/automemory` | `feature` | Scoped memory maintenance, change validation, and note storage. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
-| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
+| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `reviewskill`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
 | `internal/session` | `feature` | Canonical project/session identity, typed events and native messages, request/state/display projections, assets, resume, fork and retention. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
@@ -45,7 +47,7 @@ Agent, persistence, and orchestration:
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | `internal/group` | `feature` | Groups of sessions on one machine: member files, per-member inboxes, online status from pid and process start time. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |
-| `internal/selflearn` | `feature` | Background self-learning reviewer and restricted skill-update surface. |
+| `internal/autoskill` | `feature` | Auto Skill review, proposal validation, and agent-owned skill changes. |
 
 Extension surfaces:
 

@@ -127,11 +127,13 @@ func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Re
 	refreshMemory()
 	reminders.ResetConversation()
 	if len(info.Reminders) != 0 {
-		reminders.RestoreHistory([]core.Message{core.UserMessage(strings.Join(info.Reminders, "\n\n"), nil)})
+		msg := core.UserMessage("", nil)
+		msg.Content = reminder.AppendBlocks(msg.Content, info.Reminders...)
+		reminders.RestoreHistory([]core.Message{msg})
 	}
 	if trigger == "manual" && files != nil {
 		if restored, _ := files.RestoreRecent(); len(restored) > 0 {
-			reminders.Enqueue(filecache.FormatRestoredFiles(restored))
+			reminders.EnqueueWithSource(filecache.FormatRestoredFiles(restored), reminder.SourceRestoredFiles)
 			return len(restored)
 		}
 	}

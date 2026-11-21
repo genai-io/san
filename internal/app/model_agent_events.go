@@ -79,10 +79,10 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	if tr.ToolName == tool.ToolSkill {
 		m.skillUsedThisTurn = true
 	}
-	// The Evolve tool is the model-decided self-learning trigger: its call
+	// The ReviewSkill tool is the model-decided self-learning trigger: its call
 	// this turn queues a review at turn end.
-	if tr.ToolName == tool.ToolEvolve && !tr.IsError {
-		m.evolveRequestedThisTurn = true
+	if tr.ToolName == tool.ToolReviewSkill && !tr.IsError {
+		m.skillReviewRequested = true
 	}
 
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
@@ -135,20 +135,15 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// from is behind us — give a later failure its full recovery budget again.
 	m.autopilotRecoveries = 0
 	m.services.Agent.SetPluginRoot("")
-	// Forward to L1 self-learning with whether this turn used a skill and
-	// whether the model called Evolve (the model-decided trigger). No-op when
-	// disabled; the reviewer gates on StopEndTurn internally so cancelled /
-	// interrupted turns are skipped. Clear both flags for the next turn either
-	// way.
-	if s := m.services.SelfLearn.session; s != nil {
-		s.reviewer.Observe(result, m.skillUsedThisTurn, m.evolveRequestedThisTurn)
+	// Review only settled turns that requested Auto Skill.
+	if s := m.services.AutoSkill.session; s != nil {
+		s.reviewer.Observe(result, m.skillUsedThisTurn, m.skillReviewRequested)
 	}
 	m.skillUsedThisTurn = false
-	m.evolveRequestedThisTurn = false
+	m.skillReviewRequested = false
 	// Reads and recalls are already shown at their tool steps. Only memory
 	// changes get a turn-end summary, and a read-only turn adds no empty notice.
-	recalled, recallErr := m.endMemoryRecall()
-	entries := m.conv.TurnMemory(m.turnOpenedBy, recalled)
+	entries := m.conv.TurnMemory(m.turnOpenedBy, nil)
 	m.turnOpenedBy = ""
 	if line := memoryLine(entries, m.env.Width); line != "" {
 		// Here, not via notifyMain: the line belongs above anything this turn
@@ -157,14 +152,6 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
-	if recallErr != nil {
-		finalizationErr = recallErr
-		m.pauseMission()
-		m.conv.AddNotice("Memory recall could not be recorded: " + recallErr.Error())
-		commitCmds = append(commitCmds, m.CommitMessages()...)
-		return tea.Batch(append(commitCmds, m.ListenForAgentEvents())...)
-	}
-
 	if m.flowMainCapturing() || m.flowMainRequest != nil {
 		commitCmds = append(commitCmds, m.confirmFlowMainInput())
 		finalizationErr = m.appendTurnState()

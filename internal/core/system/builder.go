@@ -32,7 +32,6 @@ type buildConfig struct {
 	env      *Environment   // volatile footer; nil when not supplied
 	persona  Persona        // per-part overrides; empty fields use the default
 	subagent *SubagentBrief // non-nil for a subagent charter
-	memory   MemoryStores   // auto-memory stores; zero when auto memory is off
 }
 
 // Build constructs a System for the given Scope and applies the options.
@@ -68,16 +67,8 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	// lives in tool schemas, so the rules part does not vary by scope or tool
 	// availability.
 	sys.Use(rulesSection(cfg.persona.Rules), caller)
-	autoMemory := scope == core.ScopeMain && !cfg.memory.Off()
-	if autoMemory {
-		sys.Use(memoryRulesSection(), caller)
-	}
-
 	if cfg.env != nil {
 		sys.Use(EnvironmentSection(*cfg.env), caller)
-	}
-	if autoMemory {
-		sys.Use(memoryStoresSection(cfg.memory), caller)
 	}
 
 	return sys

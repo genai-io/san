@@ -14,7 +14,7 @@ func TestAsyncHookContinuationKeepsContextInDeliveredTurn(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.env.LLMProvider = provider
 	m.services.Setting = setting.New(setting.NewData())
-	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.agentAutoMemory = m.autoMemory()
 	cmd := m.injectAsyncHookContinuation(trigger.AsyncHookRewake{

@@ -1,29 +1,14 @@
 package reminder
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
-
-func TestWrapMemoryPreamble(t *testing.T) {
-	user := WrapMemory("user", "Always use tabs.")
-	if !strings.Contains(user, "user's saved memory") {
-		t.Errorf("WrapMemory(user) missing user preamble: %q", user)
-	}
-	if !strings.HasSuffix(user, "<memory scope=\"user\">\nAlways use tabs.\n</memory>") {
-		t.Errorf("WrapMemory(user) should end with the <memory> envelope: %q", user)
-	}
-
-	project := WrapMemory("project", "Run make lint.")
-	if !strings.Contains(project, "saved project memory") {
-		t.Errorf("WrapMemory(project) missing project preamble: %q", project)
-	}
-
-	if got := WrapMemory("user", "   "); got != "" {
-		t.Errorf("WrapMemory with blank body = %q, want \"\"", got)
-	}
-}
 
 func TestWrapEmpty(t *testing.T) {
 	if got := Wrap(""); got != "" {
@@ -131,28 +116,20 @@ func TestReminderUnregister(t *testing.T) {
 	}
 }
 
-func TestAttachToContentNoReminders(t *testing.T) {
-	got := AttachToContent("hello", nil)
-	if got != "hello" {
-		t.Errorf("nil reminders should leave content unchanged, got %q", got)
+func TestAppendBlocksPreservesInputAndOrder(t *testing.T) {
+	image := ai.ImageBlock(ai.Image{FileName: "example.png"})
+	content := ai.Content{ai.TextBlock("hello"), image}
+	if got := AppendBlocks(content, ""); !reflect.DeepEqual(got, content) {
+		t.Fatalf("empty additions changed content: %+v", got)
 	}
-}
-
-func TestAttachToContentMultiple(t *testing.T) {
-	reminders := []string{
-		Wrap("alpha"),
-		Wrap("beta"),
+	alpha, beta := Wrap("alpha"), Wrap("beta")
+	got := AppendBlocks(content, alpha, "", beta)
+	want := ai.Content{ai.TextBlock("hello"), image, ai.TextBlock("\n\n" + alpha), ai.TextBlock("\n\n" + beta)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected blocks: %+v", got)
 	}
-	got := AttachToContent("hello", reminders)
-
-	if !strings.HasPrefix(got, "hello") {
-		t.Errorf("user content should come first, got: %s", got)
-	}
-	if strings.Index(got, "alpha") > strings.Index(got, "beta") {
-		t.Errorf("reminders should preserve order: %s", got)
-	}
-	if !strings.Contains(got, "<system-reminder>") {
-		t.Errorf("expected system-reminder tags in output: %s", got)
+	if got.Text() != "hello\n\n"+alpha+"\n\n"+beta {
+		t.Fatalf("text-only fallback lost boundaries: %q", got.Text())
 	}
 }
 
@@ -175,7 +152,7 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 	s.RequeueSystemReminders()
 
 	// User submits "hello"; sendToAgent drains and attaches.
-	firstUserMsg := AttachToContent("hello", s.Drain())
+	firstUserMsg := AppendBlocks(ai.TextContent("hello"), s.Drain()...).Text()
 	if !strings.Contains(firstUserMsg, "hello") {
 		t.Error("first user message should preserve the user's typed content")
 	}
@@ -190,14 +167,14 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 	}
 
 	// User submits "hello again"; queue empty after drain — no reminders.
-	secondUserMsg := AttachToContent("hello again", s.Drain())
+	secondUserMsg := AppendBlocks(ai.TextContent("hello again"), s.Drain()...).Text()
 	if secondUserMsg != "hello again" {
 		t.Errorf("second message should have no reminders attached, got %q", secondUserMsg)
 	}
 
 	// PostCompact: history was replaced, so rearm and render on first input.
 	s.ResetConversation()
-	postCompactMsg := s.PrepareInput("after compact")
+	postCompactMsg := s.PrepareInput(core.UserMessage("after compact", nil)).Text()
 	if !strings.Contains(postCompactMsg, skillsBody) {
 		t.Error("post-compact message should re-attach skills reminder")
 	}
@@ -326,9 +303,7 @@ func TestReminderConcurrentAccess(t *testing.T) {
 	}
 }
 
-// Blocks is the inverse of AttachToContent: whatever the harness attached to a
-// user turn has to be recoverable from that turn's content, with the emitting
-// provider intact, so /context can attribute those bytes to the right source.
+// Blocks recovers reminders from flattened text so /context can attribute them.
 func TestBlocksRecoversAttachedReminders(t *testing.T) {
 	s := New()
 	s.Register(ProviderSkillsDirectory, func() string { return "skills body" })
@@ -336,7 +311,7 @@ func TestBlocksRecoversAttachedReminders(t *testing.T) {
 	s.RequeueSystemReminders()
 	s.Enqueue("a one-time notice")
 
-	content := AttachToContent("what the user typed", s.Drain())
+	content := AppendBlocks(ai.TextContent("what the user typed"), s.Drain()...).Text()
 
 	blocks := Blocks(content)
 	if len(blocks) != 3 {

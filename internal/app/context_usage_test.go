@@ -17,8 +17,8 @@ import (
 // conversation and hide where the window actually went.
 func TestAddContextUsageAttributesRemindersOnce(t *testing.T) {
 	skills := reminder.WrapWithSource("skills directory body", reminder.ProviderSkillsDirectory)
-	memory := reminder.WrapWithSource(reminder.WrapMemory("project", "project memory body"), reminder.ProviderMemoryProject)
-	turn := reminder.AttachToContent("what the user typed", []string{skills, memory})
+	memory := reminder.WrapWithSource("project instructions body", reminder.ProviderMemoryProject)
+	turn := reminder.AppendBlocks(ai.TextContent("what the user typed"), skills, memory).Text()
 
 	var usage conv.ContextUsage
 	addContextUsage(&usage, turn)
@@ -40,7 +40,7 @@ func TestAddContextUsageAttributesRemindersOnce(t *testing.T) {
 // A one-time notice belongs to the turn that carried it, not to a category of
 // its own — there is nothing the user can configure to make it smaller.
 func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
-	turn := reminder.AttachToContent("what the user typed", []string{reminder.Wrap("a cancel notice")})
+	turn := reminder.AppendBlocks(ai.TextContent("what the user typed"), reminder.Wrap("a cancel notice")).Text()
 
 	var usage conv.ContextUsage
 	addContextUsage(&usage, turn)

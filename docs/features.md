@@ -34,22 +34,15 @@
 
 ## Memory and learning
 
-- [Auto memory](concepts/auto-memory.md) — Carries durable knowledge between sessions without putting every note in the prompt. The main agent saves Markdown notes in user and project stores; a background recall selects relevant notes from their descriptions and attaches them to a tool result if ready. The turn never waits for recall.
-
-  ```text
-  [User and project notes] --> [Background recall]
-                                      |
-                                      v (when ready)
-                               [Tool-result context]
-  ```
+- [Auto Memory](concepts/auto-memory.md) — Retrieves relevant notes before main inference, and handles explicit remember, update, and forget requests on an Aside. Only the selected notes enter the main conversation.
 
 - [Project instructions](reference/context-management.md#reminders-and-hot-reload) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
 
   `User files + project files + local overrides -> bounded reminders`
 
-- [Self-learning](packages/selflearn.md) — Turns lessons about how to work into reusable skills rather than memory notes. Off by default, it starts a background reviewer with skill-management tools only after an eligible `Evolve` request from a completed turn. It can update agent-owned skills but cannot edit user-authored ones.
+- [Auto Skill](packages/auto-skill.md) — Turns a reusable workflow into an agent-owned skill. When a skill action is allowed, a `ReviewSkill` request on a completed turn can start a separate review. It cannot edit user-authored skills.
 
-  `Completed turn + Evolve -> background reviewer -> agent-owned skills`
+  `Completed turn + ReviewSkill -> Aside review -> validated skill change`
 
 ## Agent and session collaboration
 
@@ -145,6 +138,8 @@
   ```
 
 ## Interaction and inspection
+
+- [Aside](reference/aside.md) — A focused model call outside the main conversation. See when Auto Memory, Auto Skill, By the Way, AutoPilot, Recap, Suggestion, and Flow Draft run and what they return.
 
 - [CLI](guides/getting-started.md) — Offers both interactive work and one-shot use from scripts. `san` opens the terminal UI, where turns can pause for input or approvals. `san -p` or piped input selects the headless path, which runs one request and writes the answer to stdout.
 

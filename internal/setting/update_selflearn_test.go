@@ -13,18 +13,18 @@ func userSettingsFile(home string) string {
 	return filepath.Join(home, ".san", "settings.json")
 }
 
-// TestUpdateSelfLearnAtPersistsDisable guards the regression where disabling
-// an arm via /config was silently dropped. UpdateSelfLearnAt used to route
+// TestUpdateAutoSkillAtPersistsDisable guards the regression where disabling
+// an arm via /config was silently dropped. UpdateAutoSkillAt used to route
 // through the OR-merge save path, so once an arm was enabled on disk it
 // could never be turned off (false || true = true). The off-toggle must now
 // persist.
-func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
+func TestUpdateAutoSkillAtPersistsDisable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	file := userSettingsFile(home)
 
-	read := func() SelfLearnSettings {
+	read := func() AutoSkillSettings {
 		t.Helper()
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -34,11 +34,11 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 		if err := json.Unmarshal(data, &d); err != nil {
 			t.Fatalf("unmarshal user settings: %v", err)
 		}
-		return d.SelfLearn
+		return d.AutoSkill
 	}
 
-	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Skills: SelfLearnSkills{}, // all actions allowed → skills active
+	if err := UpdateAutoSkillAt(AutoSkillSettings{
+		Skills: AutoSkillPermissions{}, // all actions allowed → skills active
 	}, ScopeUser); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
@@ -46,8 +46,8 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 		t.Fatalf("after enable, want skills on, got %+v", sl)
 	}
 
-	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Skills: SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}, // all denied → off
+	if err := UpdateAutoSkillAt(AutoSkillSettings{
+		Skills: AutoSkillPermissions{DenyCreate: true, DenyUpdate: true, DenyDelete: true}, // all denied → off
 	}, ScopeUser); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	}
 }
 
-func TestUpdateSelfLearnAtSyncsEvolveTool(t *testing.T) {
+func TestUpdateAutoSkillAtSyncsReviewSkillTool(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -67,29 +67,29 @@ func TestUpdateSelfLearnAtSyncsEvolveTool(t *testing.T) {
 	if err := os.WriteFile(file, []byte(`{"disabledTools":null}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	denied := SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
+	denied := AutoSkillPermissions{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
 	for _, tc := range []struct {
 		name     string
-		cfg      SelfLearnSettings
+		cfg      AutoSkillSettings
 		disabled bool
 	}{
-		{"off", SelfLearnSettings{Skills: denied}, true},
-		{"skills", SelfLearnSettings{}, false},
-		{"off again", SelfLearnSettings{Skills: denied}, true},
+		{"off", AutoSkillSettings{Skills: denied}, true},
+		{"skills", AutoSkillSettings{}, false},
+		{"off again", AutoSkillSettings{Skills: denied}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := UpdateSelfLearnAt(tc.cfg, ScopeUser); err != nil {
+			if err := UpdateAutoSkillAt(tc.cfg, ScopeUser); err != nil {
 				t.Fatal(err)
 			}
 			d, err := NewLoader().LoadFile(file)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if disabled, ok := d.DisabledTools["Evolve"]; !ok || disabled != tc.disabled {
-				t.Fatalf("Evolve disabled = %v (explicit: %v), want %v", disabled, ok, tc.disabled)
+			if disabled, ok := d.DisabledTools[reviewSkillTool]; !ok || disabled != tc.disabled {
+				t.Fatalf("ReviewSkill disabled = %v (explicit: %v), want %v", disabled, ok, tc.disabled)
 			}
-			if WithDefaultDisabledTools(d.DisabledTools)["Evolve"] != tc.disabled {
-				t.Fatal("saved toggle did not override the Evolve factory default")
+			if WithDefaultDisabledTools(d.DisabledTools)[reviewSkillTool] != tc.disabled {
+				t.Fatal("saved toggle did not override the ReviewSkill factory default")
 			}
 		})
 	}
@@ -129,9 +129,9 @@ func TestUpdateLastOperationMode(t *testing.T) {
 	}
 }
 
-// TestUpdateSelfLearnAtPreservesOtherSettings confirms replacing the
-// selfLearn block leaves unrelated settings in the same file intact.
-func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
+// TestUpdateAutoSkillAtPreservesOtherSettings confirms replacing the
+// autoSkill block leaves unrelated settings in the same file intact.
+func TestUpdateAutoSkillAtPreservesOtherSettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -140,11 +140,11 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark","disabledTools":{"Evolve":true,"Bash":true}}`), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark","disabledTools":{"ReviewSkill":true,"Bash":true}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := UpdateSelfLearnAt(SelfLearnSettings{Strategy: "custom"}, ScopeUser); err != nil {
+	if err := UpdateAutoSkillAt(AutoSkillSettings{Strategy: "custom"}, ScopeUser); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
@@ -159,10 +159,10 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 	if d.Model != "claude-x" || d.Theme != "dark" {
 		t.Fatalf("unrelated settings clobbered: model=%q theme=%q", d.Model, d.Theme)
 	}
-	if d.SelfLearn.Strategy != "custom" {
-		t.Fatalf("selfLearn not written: %+v", d.SelfLearn)
+	if d.AutoSkill.Strategy != "custom" {
+		t.Fatalf("selfLearn not written: %+v", d.AutoSkill)
 	}
-	if d.DisabledTools["Evolve"] || !d.DisabledTools["Bash"] {
-		t.Fatalf("Evolve should be enabled without changing other tools: %+v", d.DisabledTools)
+	if d.DisabledTools[reviewSkillTool] || !d.DisabledTools["Bash"] {
+		t.Fatalf("ReviewSkill should be enabled without changing other tools: %+v", d.DisabledTools)
 	}
 }

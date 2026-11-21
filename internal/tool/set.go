@@ -17,14 +17,16 @@ import (
 // to the worker item that already represents it), and TaskGet would hand it
 // back the main plan it has no business reading.
 // Cron is parent-only for the same reason again: scheduling creates state
-// that outlives the worker and belongs to the session owner.
+// that outlives the worker and belongs to the session owner. ReviewSkill
+// requests a review of the main conversation's completed turn.
 var parentOnlyTools = map[string]bool{
-	ToolAgent:      true,
-	ToolAgentStop:  true,
-	ToolTaskCreate: true,
-	ToolTaskUpdate: true,
-	ToolTaskGet:    true,
-	ToolCron:       true,
+	ToolReviewSkill: true,
+	ToolAgent:       true,
+	ToolAgentStop:   true,
+	ToolTaskCreate:  true,
+	ToolTaskUpdate:  true,
+	ToolTaskGet:     true,
+	ToolCron:        true,
 }
 
 // IsParentOnlyTool reports whether the tool is reserved for the main
@@ -46,7 +48,7 @@ type Set struct {
 	Allow        []string                 // agent allow list (nil = all tools, non-nil = only these)
 	Disallow     []string                 // agent deny list (excluded after allow filtering)
 	IsAgent      bool                     // true for subagent tool sets (excludes parent-only tools)
-	ExtraTools   []core.ToolSchema        // caller-built conditional tools (e.g. Evolve; main agent only)
+	ExtraTools   []core.ToolSchema        // caller-built conditional tools (e.g. ReviewSkill; main agent only)
 	disallowSet  map[string]bool          // eagerly-initialized normalized lookup cache for Disallow
 }
 

@@ -498,7 +498,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	defer stopRuntime(t, m.services.Agent)
 	m.env.LLMProvider = provider
 	m.services.Reminder = reminder.New()
-	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.agentAutoMemory = m.autoMemory()
 	m.welcomePending = true

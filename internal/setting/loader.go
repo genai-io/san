@@ -272,16 +272,9 @@ func defaultData() *Data {
 	return NewData()
 }
 
-// updateSettingsFile reads the settings file at the requested level (true =
-// user-wide, false = project-local), lets mutate replace a single block, and
-// writes it back — leaving every other setting in the file untouched. It
-// deliberately does NOT route through SaveToUser (which merges):
-// that merger ORs the boolean fields, so reusing it would OR the new config
-// with the file's own previous value and a true→false toggle (e.g. disabling an
-// arm from /config) could never be persisted. Replacing the block lets the
-// off-toggle stick. (Cross-level layering still ORs on Load by design —
-// disabling at a lower-priority level cannot override an enable at a
-// higher-priority one.)
+// updateSettingsFile mutates one settings file rather than merging with it.
+// This lets a scoped update clear existing deny flags; layered reads still
+// accumulate denies across files.
 func updateSettingsFile(scope Scope, mutate func(*Data)) error {
 	loader := NewLoader()
 	path := filepath.Join(loader.dir(scope), "settings.json")
@@ -305,20 +298,20 @@ func mutateSettingsPath(path string, mutate func(*Data)) error {
 	return nil
 }
 
-// UpdateSelfLearnAt persists the L1 self-learning config at the requested
-// settings level, syncing the Evolve tool toggle with the enabled capabilities.
+// UpdateAutoSkillAt persists the Auto Skill config at the requested
+// settings level, syncing the ReviewSkill tool toggle with the enabled actions.
 // Returns Validate's error verbatim if the new config is illegal (§3.1) so the
 // caller can surface it inline before touching disk.
-func UpdateSelfLearnAt(cfg SelfLearnSettings, scope Scope) error {
+func UpdateAutoSkillAt(cfg AutoSkillSettings, scope Scope) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
 	return updateSettingsFile(scope, func(d *Data) {
-		d.SelfLearn = cfg
+		d.AutoSkill = cfg
 		if d.DisabledTools == nil {
 			d.DisabledTools = make(map[string]bool)
 		}
-		d.DisabledTools["Evolve"] = !cfg.Skills.Active()
+		d.DisabledTools[reviewSkillTool] = !cfg.Skills.Active()
 	})
 }
 
@@ -426,8 +419,8 @@ var defaultDisabledTools = map[string]bool{
 	// Stopping a background agent is uncommon and destructive. It remains
 	// available through /tool when a user wants the model to manage workers.
 	"AgentStop": true,
-	// Self-learning is opt-in; saving /evolve capabilities enables its trigger.
-	"Evolve": true,
+	// Auto Skill is opt-in; saving its permissions enables the review trigger.
+	reviewSkillTool: true,
 }
 
 // IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
