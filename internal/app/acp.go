@@ -232,7 +232,6 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings}
 	s.permissions.AddWorkingDirectory(req.CWD)
 	if history != nil {
-		s.reminders.RestoreHistory(store.ChatRows(*history))
 		if saved := history.Config().Mode; saved != nil && *saved == "auto-accept" {
 			s.permissions.SetMode(setting.ModeAutoAccept)
 		}
@@ -278,9 +277,11 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		s.runtimeBuildParams.AskUser = s.input.ask
 		s.runtimeBuildParams.BashPromptResponder = s.input.responder
 	}
+	s.reminders.Register(reminder.ProviderMemoryAuto, func() string { return agent.AutoMemoryReminder(policy.AutoMemory) })
 	s.refreshMemory()
 	source := "startup"
 	if history != nil {
+		s.reminders.RestoreHistory(history.ActiveMessages())
 		source = "resume"
 	}
 	outcome := s.hooks.Execute(ctx, hook.SessionStart, hook.HookInput{Source: source, Model: modelID})

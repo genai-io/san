@@ -1,6 +1,9 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -11,6 +14,15 @@ import (
 func TestACPConcurrentSessions(t *testing.T) {
 	f := newACPFixture(t, aitest.Always(aitest.Says("done")), nil)
 	ids := []protocol.SessionID{f.session(t, t.TempDir()), f.session(t, t.TempDir())}
+	for _, id := range ids {
+		dir := f.host.sessions[id].runtimeBuildParams.AutoMemory.Project
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("- Index for "+string(id)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var workers sync.WaitGroup
 	for _, id := range ids {
 		workers.Go(func() {
@@ -30,8 +42,12 @@ func TestACPConcurrentSessions(t *testing.T) {
 			t.Fatalf("messages = %d, want 8", len(messages))
 		}
 		for i := 0; i < len(messages); i += 2 {
-			if messages[i].Text() != string(id) {
+			input, suffix, _ := strings.Cut(messages[i].Text(), "\n\n")
+			if input != string(id) {
 				t.Fatal("cross-session input")
+			}
+			if hasIndex := strings.Contains(suffix, "Index for "+string(id)); hasIndex != (i == 0) {
+				t.Fatal("auto memory index must be prepared once per session")
 			}
 		}
 	}

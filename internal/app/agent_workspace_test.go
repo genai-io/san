@@ -33,6 +33,11 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := m.services.Agent.Start(params, nil); err != nil {
+		t.Fatal(err)
+	}
+	sys := m.services.Agent.System()
+	stable, _, _ := strings.Cut(sys.Prompt(), "<environment>")
 	owner := m.services.Session
 	before := m.autopilot.Load().judge
 	check := func(cwd string, underGit bool) {
@@ -59,6 +64,21 @@ func TestBuildAgentParamsLiveReviewWorkspace(t *testing.T) {
 		if params.CWDFunc() != cwd {
 			t.Fatal("tools and judge disagree")
 		}
+		prefix, environment, found := strings.Cut(sys.Prompt(), "<environment>")
+		if !found || prefix != stable || !strings.Contains(environment, "cwd: "+cwd+"\n") {
+			t.Fatal("workspace switch must update only the environment section")
+		}
+		body, _, closed := strings.Cut(environment, "</environment>")
+		if !closed {
+			t.Fatal("environment section is not closed")
+		}
+		projection := owner.Snapshot()
+		for _, section := range projection.Instructions() {
+			if section.Name == "environment" && section.Content == "<environment>"+body+"</environment>" {
+				return
+			}
+		}
+		t.Fatal("workspace switch must record the effective environment")
 	}
 	check(gitCwd, true)
 	m.changeCwd(plainCwd)

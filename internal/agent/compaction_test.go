@@ -164,7 +164,7 @@ func TestPostCompactReseedsContext(t *testing.T) {
 				}
 				order = append(order, "hook")
 			}}
-			count := PostCompact(trigger, hooks, r, files, func() {
+			count := PostCompact(core.Compacted{Trigger: trigger}, hooks, r, files, func() {
 				order = append(order, "memory")
 				if !r.Prepared() {
 					t.Fatal("reset before memory refresh")

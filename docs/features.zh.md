@@ -2,7 +2,10 @@
 
 [English](features.md)
 
-**设计说明：** [Minimal overhead：San 把开销省在哪里？](concepts/minimal-overhead.zh.md) 介绍运行占用、精简系统提示词和多轮缓存复用。
+**设计说明**
+
+1. [Minimal Overhead：San 把开销省在哪里？](concepts/minimal-overhead.zh.md) —— 为什么要减少运行和上下文开销。
+2. [Context Management：上下文管理机制](reference/context-management.md) —— 怎么保持提示词稳定以复用缓存，同时让热加载及时生效。
 
 ```text
 +-----+
@@ -40,7 +43,7 @@
                      [随工具结果送入上下文]
   ```
 
-- [项目指令](concepts/harness-channels.md) —— 把仓库约定写进可随代码审阅的文件。San 先读用户级指令，再沿仓库根目录到工作目录读取 `AGENTS.md`，同时纳入规则和本地覆盖项。加载后的内容在总大小上限内作为提醒送入上下文。
+- [项目指令](reference/context-management.md#reminders-and-hot-reload) —— 把仓库约定写进可随代码审阅的文件。San 先读用户级指令，再沿仓库根目录到工作目录读取 `AGENTS.md`，同时纳入规则和本地覆盖项。加载后的内容在总大小上限内作为提醒送入上下文。
 
   `用户指令 + 项目指令 + 本地覆盖 -> 限定大小的提醒`
 

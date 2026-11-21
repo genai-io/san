@@ -21,14 +21,14 @@ func TestWithPersona_OverridesEachPart(t *testing.T) {
 	for _, want := range []string{
 		"You are a custom persona.",
 		"<behavior>\nSpeak in haiku.\n</behavior>",
-		"<rules>\nFollow the custom rulebook.\n</rules>",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing override %q\n---\n%s", want, p)
 		}
 	}
-	// Built-in defaults must be gone for the overridden parts.
-	for _, gone := range []string{"You are a coding agent", "Be concise and direct", "## Safety"} {
+	assertPersonaRules(t, p, "Follow the custom rulebook.")
+	// Identity and behavior defaults must be gone for the overridden parts.
+	for _, gone := range []string{"You are a coding agent", "Be concise and direct"} {
 		if strings.Contains(p, gone) {
 			t.Errorf("prompt still contains default %q after override", gone)
 		}
@@ -52,9 +52,7 @@ func TestWithPersona_EmptyFieldsKeepDefaults(t *testing.T) {
 	if !strings.Contains(p, "You are a coding agent") {
 		t.Error("identity should keep its default")
 	}
-	if !strings.Contains(p, "## Safety") {
-		t.Error("rules should keep their default")
-	}
+	assertPersonaRules(t, p, "")
 }
 
 func TestSwapPersona_HotSwapAndRevert(t *testing.T) {
@@ -72,20 +70,37 @@ func TestSwapPersona_HotSwapAndRevert(t *testing.T) {
 	})
 	swapped := sys.Prompt()
 
-	if !strings.Contains(swapped, "Persona identity.") || !strings.Contains(swapped, "Persona rules.") {
-		t.Error("swap did not apply the overrides")
+	if !strings.Contains(swapped, "Persona identity.") || strings.Contains(swapped, "You are a coding agent") {
+		t.Error("swap did not replace the default identity")
 	}
-	if strings.Contains(swapped, "You are a coding agent") || strings.Contains(swapped, "## Safety") {
-		t.Error("defaults should be replaced after the swap")
-	}
+	assertPersonaRules(t, swapped, "Persona rules.")
 	// Behavior was not overridden → still the default.
 	if !strings.Contains(swapped, "Be concise and direct") {
 		t.Error("un-overridden behavior should remain the default")
+	}
+
+	// A second persona replaces the previous persona rules, not the harness rules.
+	SwapPersona(sys, Persona{Rules: "  Replacement rules.\n"})
+	assertPersonaRules(t, sys.Prompt(), "Replacement rules.")
+	if strings.Contains(sys.Prompt(), "Persona rules.") {
+		t.Error("previous persona rules survived the swap")
 	}
 
 	// Revert: empty parts restore the exact built-in prompt.
 	SwapPersona(sys, Persona{})
 	if reverted := sys.Prompt(); reverted != def {
 		t.Errorf("revert should restore the default prompt byte-for-byte")
+	}
+}
+
+func assertPersonaRules(t *testing.T, prompt, personaRules string) {
+	t.Helper()
+	want := "<rules>\n" + cachedRules
+	if personaRules != "" {
+		want += "\n\n## Persona rules\n\n" + personaRules
+	}
+	want += "\n</rules>"
+	if strings.Count(prompt, "<rules>") != 1 || !strings.Contains(prompt, want) {
+		t.Errorf("want one rules section with intact harness rules followed by any persona rules:\n%s", prompt)
 	}
 }

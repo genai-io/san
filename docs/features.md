@@ -2,7 +2,10 @@
 
 [简体中文](features.zh.md)
 
-**Design note:** [Minimal overhead (Chinese)](concepts/minimal-overhead.zh.md) explains San’s runtime footprint, lean system prompt, and prompt cache reuse.
+**Design notes**
+
+1. [Minimal Overhead (Chinese)](concepts/minimal-overhead.zh.md) — Why San keeps runtime and model input lean.
+2. [Context Management](reference/context-management.md) — How San keeps prompts stable for caching while applying live updates.
 
 ```text
 +-----+
@@ -40,7 +43,7 @@
                                [Tool-result context]
   ```
 
-- [Project instructions](concepts/harness-channels.md) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
+- [Project instructions](reference/context-management.md#reminders-and-hot-reload) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
 
   `User files + project files + local overrides -> bounded reminders`
 

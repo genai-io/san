@@ -12,6 +12,7 @@ Look up a specific fact. For explanations see
 | [`dependency-rules`](dependency-rules.md) | Layer / import rules (enforced by `layercheck`). |
 | [`package-map`](package-map.md) | Package-to-layer assignment. |
 | [`token-limits`](token-limits.md) | Per-model token limits. |
+| [`context-management`](context-management.md) | Request layout, caching, hot reload, and compaction. |
 | [`cost-tracking`](cost-tracking.md) | How turn cost / tokens are tracked. |
 | [`loop`](loop.md) | The `/loop` scheduling command. |
 | [`file-naming`](file-naming.md) | Repo file-naming rules. |

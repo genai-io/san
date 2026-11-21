@@ -43,6 +43,7 @@ func TestNothingToSayAddsNothing(t *testing.T) {
 
 // A headless run sees the agent's memory index too, as the interactive one does.
 func TestAHeadlessRunCarriesTheMemoryIndex(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	mem := t.TempDir()
 	if err := os.WriteFile(filepath.Join(mem, "MEMORY.md"), []byte("- [Go](go.md) — prefers table tests"), 0o600); err != nil {
 		t.Fatal(err)
@@ -56,10 +57,22 @@ func TestAHeadlessRunCarriesTheMemoryIndex(t *testing.T) {
 		t.Errorf("a store's index is missing: %q", out)
 	}
 	empty := withInstructions(t.TempDir(), system.MemoryStores{User: t.TempDir()}, core.UserMessage("hi", nil)).Text()
-	if !strings.Contains(empty, "(no memories yet)") {
-		t.Errorf("an empty store should be named as empty: %q", empty)
+	if empty != "hi" {
+		t.Errorf("an empty store added context: %q", empty)
 	}
 	if !strings.Contains(out, "go.md") || !strings.Contains(out, "needs fixing") {
 		t.Errorf("dangling link not reported: %q", out)
+	}
+}
+
+func TestAutoMemoryReminderBoundsIndexPreview(t *testing.T) {
+	dir := t.TempDir()
+	index := "- first topic\n" + strings.Repeat("- "+strings.Repeat("索引", 40)+"\n", 20) + "- last topic"
+	if err := os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte(index), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := AutoMemoryReminder(system.MemoryStores{Project: dir})
+	if len(got) > 2500 || !strings.Contains(got, "first topic") || strings.Contains(got, "last topic") || !strings.Contains(got, "Read MEMORY.md") {
+		t.Fatalf("index preview has the wrong contents or size: %d bytes", len(got))
 	}
 }

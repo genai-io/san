@@ -13,16 +13,20 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -93,6 +97,86 @@ func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
 	next := m.attachPendingReminders(core.UserMessage("continue", nil))
 	if strings.Contains(next.Text(), "context belonging to the previous session") {
 		t.Fatal("resumed input contains context from the previous session")
+	}
+}
+
+func TestResumeInstructionNotice(t *testing.T) {
+	for _, tc := range []struct {
+		name                                              string
+		persona                                           system.Persona
+		legacy, environmentDrift, useContinue, wantNotice bool
+	}{
+		{name: "selection with changed persona", persona: system.Persona{Rules: "Previous persona rules."}, wantNotice: true},
+		{name: "continue with changed persona", persona: system.Persona{Identity: "Previous persona identity."}, useContinue: true, wantNotice: true},
+		{name: "unchanged"},
+		{name: "environment only", environmentDrift: true},
+		{name: "legacy without catalogue", legacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, store := resumedModel(t, nil)
+			t.Cleanup(group.Forget)
+			m.services.MCP = mcp.NewManagerForTest(nil)
+			m.conv.OnNotice = m.recordNotice
+			target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: m.env.CWD})
+			if !tc.legacy {
+				params := m.promptParams()
+				params.Persona = tc.persona
+				var instructions []session.NamedInstruction
+				for _, section := range params.System().Sections() {
+					text := section.Render()
+					if section.Slot == core.SlotEnvironment && tc.environmentDrift {
+						text = "A different recorded environment."
+					}
+					if text != "" {
+						instructions = append(instructions, session.NamedInstruction{Name: section.Name,
+							InstructionSection: session.InstructionSection{Content: text, Slot: int(section.Slot)}})
+					}
+				}
+				if err := session.NewRecorder(target, "").RecordCatalogues(t.Context(), instructions, nil, nil, "boot"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := target.Close(); err != nil {
+				t.Fatal(err)
+			}
+			resume := func() error { return m.loadSessionByID("other") }
+			if tc.useContinue {
+				resume = m.applyContinueOption
+			}
+			if err := resume(); err != nil {
+				t.Fatal(err)
+			}
+			if m.sessionID() != "other" {
+				t.Fatalf("resumed %q, want other", m.sessionID())
+			}
+			if tc.wantNotice {
+				if rows := m.conv.Messages; len(rows) != 1 || rows[0].Role != core.ChatNotice || !strings.Contains(rows[0].Content, "updated model instructions") {
+					t.Fatalf("expected one instruction notice, got %+v", rows)
+				}
+			} else if len(m.conv.Messages) != 0 {
+				t.Fatalf("unexpected notices: %+v", m.conv.Messages)
+			}
+			if rows := store.ChatRows(m.services.Session.Snapshot()); len(rows) != 0 || len(m.services.Agent.Messages()) != 0 {
+				t.Fatal("resume notice leaked into durable history or model context")
+			}
+			if tc.wantNotice && !tc.useContinue {
+				m.services.Skill = skill.NewRegistry()
+				m.services.Tool = tool.Default()
+				m.env.LLMProvider = &testutil.FakeProvider{}
+				if _, err := m.ensureAgentRuntime(); err != nil {
+					t.Fatal(err)
+				}
+				if len(m.conv.Messages) != 1 {
+					t.Fatalf("runtime rebuild added notices: %+v", m.conv.Messages)
+				}
+				if err := resume(); err != nil {
+					t.Fatal(err)
+				}
+				if len(m.conv.Messages) != 0 {
+					t.Fatalf("resume with current catalogue repeated the notice: %+v", m.conv.Messages)
+				}
+			}
+		})
 	}
 }
 

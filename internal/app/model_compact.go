@@ -193,7 +193,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	} else {
 		m.conv.Compact.Clear()
 	}
-	if restored := agent.PostCompact(trigger, m.services.Hook, m.services.Reminder, m.env.FileCache, func() {
+	if restored := agent.PostCompact(info, m.services.Hook, m.services.Reminder, m.env.FileCache, func() {
 		m.refreshMemoryContext(m.env.CWD, "post_compact")
 	}); restored > 0 {
 		m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", restored))

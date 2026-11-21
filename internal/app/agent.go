@@ -121,7 +121,9 @@ func (m *model) promptParams() agent.BuildParams {
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.selfLearnExtraTools(),
 
-		AutoMemory: m.autoMemory(),
+		AutoMemory:  m.autoMemory(),
+		Skills:      m.services.Skill,
+		GroupRoster: group.Roster,
 	}
 }
 
