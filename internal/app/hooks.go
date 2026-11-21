@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -114,22 +113,14 @@ func (m *model) switchProvider(p llm.Provider) {
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
 	files := system.LoadMemoryFiles(cwd)
-	var userParts, projectParts []string
 	for _, f := range files {
-		switch f.Level {
-		case "global":
-			userParts = append(userParts, f.Content)
-		case "project", "local":
-			projectParts = append(projectParts, f.Content)
-		}
 		m.services.Hook.ExecuteAsync(hook.InstructionsLoaded, hook.HookInput{
 			FilePath:   f.Path,
 			MemoryType: memoryTypeForLevel(f.Level),
 			LoadReason: loadReason,
 		})
 	}
-	m.env.CachedUserInstructions = joinSections(userParts)
-	m.env.CachedProjectInstructions = joinSections(projectParts)
+	m.env.CachedUserInstructions, m.env.CachedProjectInstructions = system.FormatInstructions(files)
 }
 
 // syncSettingsToHookEngine hands the engine the current settings with plugin
@@ -157,10 +148,6 @@ func memoryTypeForLevel(level string) string {
 	default:
 		return "Project"
 	}
-}
-
-func joinSections(parts []string) string {
-	return strings.Join(parts, "\n\n")
 }
 
 func buildRecordedHookCompleter(p llm.Provider, owner *session.Session) hook.RecordedLLMCompleter {

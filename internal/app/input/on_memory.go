@@ -165,12 +165,23 @@ func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string) m
 // autoMemorySource names what decides the effective auto-memory state, in
 // precedence order.
 func autoMemorySource() string {
+	if setting.AutoMemoryDisabledByEnv() {
+		return "SAN_DISABLE_AUTO_MEMORY"
+	}
+	project := setting.AutoMemoryAt(setting.ScopeProject)
+	if project != nil {
+		return memorySource(nil, project)
+	}
+	return memorySource(setting.AutoMemoryAt(setting.ScopeUser), nil)
+}
+
+func memorySource(user, project *bool) string {
 	switch {
 	case setting.AutoMemoryDisabledByEnv():
 		return "SAN_DISABLE_AUTO_MEMORY"
-	case setting.AutoMemoryAt(setting.ScopeProject) != nil:
+	case project != nil:
 		return "this project"
-	case setting.AutoMemoryAt(setting.ScopeUser) != nil:
+	case user != nil:
 		return "all projects"
 	default:
 		return "default"
@@ -551,7 +562,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 	args = strings.TrimSpace(args)
 	parts := strings.Fields(args)
 
-	if len(parts) == 0 {
+	if len(parts) == 0 || strings.EqualFold(parts[0], "browse") {
 		selector.EnterSelect(cwd, settings, width, height)
 		return "", "", nil
 	}
@@ -593,7 +604,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		}
 		return "", editPath, nil
 	default:
-		return "Usage: /memory [on|off] [project] | [list|show|edit] [global|project|local]", "", nil
+		return "Usage: /memory [browse] | [on|off] [project] | [list|show|edit] [global|project|local]", "", nil
 	}
 }
 

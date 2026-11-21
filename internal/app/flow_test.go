@@ -118,6 +118,9 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 			if len(events) != 3 || events[1].Payload.(*session.InferenceStartPayload).Purpose != session.PurposeFlow || events[2].Type != session.EventInferenceFinish {
 				t.Fatalf("wrong recording lifecycle: %+v", events)
 			}
+			if out := events[2].Payload.(*session.InferenceFinishPayload).Output; out == nil || out.Text != source {
+				t.Fatalf("missing draft response: %+v", out)
+			}
 			// nil FlowService would panic if the host attempted automatic save or run.
 		})
 	}

@@ -99,7 +99,10 @@ into the relevant feature package:
 | `env/.env` | `internal/setting` (merged into runtime env) |
 
 This means the consumer packages do not import `plugin`; they receive
-contributions as data.
+contributions as data. An installed plugin normally runs from
+`~/.san/plugins/cache/`. San sets `SAN_PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`
+to the declaring plugin's actual directory for each command hook, even when
+several plugins are enabled.
 
 ## Minimal Working Plugin
 

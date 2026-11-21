@@ -8,6 +8,15 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
+func drainInput(q *InputQueue, send func(PendingInput) error, prepare func(core.Message) core.Message) error {
+	for q.CanDeliver(false) && q.Len() > 0 {
+		if err := q.DeliverFirst(send, prepare); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 	for _, failAt := range []int{0, 1, 2} {
 		t.Run([]string{"first", "middle", "last"}[failAt], func(t *testing.T) {
@@ -22,17 +31,11 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 			original := append([]PendingInput(nil), q.items...)
 			rejected := errors.New("runtime unavailable")
 			var accepted []string
-			var recalled []string
 			var order []string
 			prepare := func(msg core.Message) core.Message {
 				order = append(order, "prepare:"+msg.ID)
 				msg.Content = append(msg.Content, core.UserMessage("reminder", nil).Content...)
 				return msg
-			}
-			recall := func(text string) error {
-				order = append(order, "recall:"+text)
-				recalled = append(recalled, text)
-				return nil
 			}
 			send := func(msg PendingInput) error {
 				order = append(order, "send:"+msg.ID)
@@ -42,7 +45,7 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 				accepted = append(accepted, msg.ID)
 				return nil
 			}
-			if err := q.Deliver(send, prepare, recall); !errors.Is(err, rejected) {
+			if err := drainInput(&q, send, prepare); !errors.Is(err, rejected) {
 				t.Fatalf("delivery error = %v", err)
 			}
 			if q.Len() != 3-failAt || q.items[0].ID != original[failAt].ID || len(q.items[0].Content) != 2 {
@@ -53,25 +56,21 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 					t.Fatal("delivery touched input after rejection")
 				}
 			}
-			var wantOrder, wantRecall []string
+			var wantOrder []string
 			for i := 0; i <= failAt; i++ {
-				if original[i].FromUser {
-					wantOrder = append(wantOrder, "recall:"+original[i].Text())
-					wantRecall = append(wantRecall, original[i].Text())
-				}
 				wantOrder = append(wantOrder, "prepare:"+original[i].ID, "send:"+original[i].ID)
 			}
-			if !reflect.DeepEqual(order, wantOrder) || !reflect.DeepEqual(recalled, wantRecall) {
-				t.Fatalf("order=%v recall=%v", order, recalled)
+			if !reflect.DeepEqual(order, wantOrder) {
+				t.Fatalf("order=%v, want %v", order, wantOrder)
 			}
 			retained := q.items[0].Message
-			if err := q.Deliver(func(msg PendingInput) error {
+			if err := drainInput(&q, func(msg PendingInput) error {
 				if len(accepted) == failAt && !reflect.DeepEqual(msg.Message, retained) {
 					t.Fatal("retry lost prepared native message")
 				}
 				accepted = append(accepted, msg.ID)
 				return nil
-			}, func(msg core.Message) core.Message { return msg }, recall); err != nil {
+			}, func(msg core.Message) core.Message { return msg }); err != nil {
 				t.Fatal(err)
 			}
 			if q.Len() != 0 || !reflect.DeepEqual(accepted, []string{original[0].ID, original[1].ID, original[2].ID}) {
@@ -81,22 +80,9 @@ func TestInputQueueDeliveryRetainsRejectedInput(t *testing.T) {
 	}
 }
 
-func TestRecallFailureRetainsUserInput(t *testing.T) {
-	var q InputQueue
-	q.Enqueue(PendingInput{Message: core.UserMessage("keep this input", nil), FromUser: true})
-	failure := errors.New("recall recording failed")
-	err := q.Deliver(func(PendingInput) error {
-		t.Fatal("input dispatched after recall failure")
-		return nil
-	}, nil, func(string) error { return failure })
-	if !errors.Is(err, failure) || q.Len() != 1 || q.First().Text() != "keep this input" {
-		t.Fatalf("recall failure lost user input: %v %+v", err, q)
-	}
-}
-
 func TestEmptyInputQueueDoesNotCallDelivery(t *testing.T) {
 	var q InputQueue
-	if err := q.Deliver(nil, nil, nil); err != nil {
+	if err := q.DeliverFirst(nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }

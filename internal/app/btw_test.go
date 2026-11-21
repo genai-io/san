@@ -1,42 +1,6 @@
 package app
 
-import (
-	"strings"
-	"testing"
-
-	"github.com/genai-io/sdk-go/pkg/ai"
-
-	"github.com/genai-io/san/internal/core"
-)
-
-func TestWithSideQuestion(t *testing.T) {
-	call := ai.ToolCallBlock(ai.ToolCall{ID: "c1", Name: "Bash"})
-	running := []core.Message{core.UserMessage("run tests", nil), {Role: ai.RoleAssistant, Content: ai.Content{call}}}
-
-	got := withSidePrompt(running, "why?")
-	if len(got) != 4 || len(running) != 2 {
-		t.Fatalf("want pending results and question appended to a copy, got %d messages (chain now %d)", len(got), len(running))
-	}
-	if r := got[2].Content[0].ToolResult; r == nil || r.ToolCallID != "c1" || len(got[2].Content) != 1 {
-		t.Fatalf("in-flight call must get a pending result of its own: %+v", got[2].Content)
-	}
-	// Text beside tool results is dropped by the OpenAI chat driver.
-	if got[3].Content.Has(ai.BlockToolResult) || !strings.HasSuffix(got[3].Content.Text(), "why?") {
-		t.Fatalf("question must be a message of its own: %+v", got[3].Content)
-	}
-
-	idle := []core.Message{core.UserMessage("hi", nil), core.AssistantMessage("hello", "", nil)}
-	if got := withSidePrompt(idle, "why?"); len(got) != 3 {
-		t.Fatalf("idle chain gets only the question, got %d messages", len(got))
-	}
-
-	// Left open, the request in flight reads as the side answer's to carry out.
-	replying := []core.Message{core.UserMessage("write an essay", nil)}
-	got = withSidePrompt(replying, "why?")
-	if len(got) != 3 || got[1].Role != ai.RoleAssistant || got[1].Content.Text() != sideReplying {
-		t.Fatalf("reply in flight must get a placeholder before the question: %+v", got)
-	}
-}
+import "testing"
 
 func TestBtwAnswerAfterSessionChangeIsDropped(t *testing.T) {
 	m := &model{services: services{sessionID: "new"}}

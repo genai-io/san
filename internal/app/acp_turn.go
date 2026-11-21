@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/tool"
@@ -47,7 +48,6 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if err != nil {
 		return response, err
 	}
-	s.runtime.SetPluginRoot(pluginRoot)
 	ctx = plugin.WithRoot(ctx, pluginRoot)
 	hookCtx, cancelHook := context.WithTimeout(ctx, 5*time.Second)
 	blocked, reason := agent.CheckPrompt(hookCtx, text.String(), s.hooks, s.reminders)
@@ -58,6 +58,26 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	if err := ctx.Err(); err != nil {
 		return response, err
 	}
+	params := s.runtimeBuildParams
+	history := s.runtime.Messages()
+	if !s.runtime.Active() {
+		projection := s.nativeSession.Session.Snapshot()
+		history = projection.ActiveMessages()
+	}
+	recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording}
+	prepared, err := recaller.Prepare(ctx, params.AutoMemory, core.UserMessage(text.String(), nil), history)
+	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
+	if ctx.Err() != nil && (err == nil || err == ctx.Err()) {
+		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
+	}
+	if err != nil {
+		return response, err
+	}
+	if prepared.Handled {
+		return protocol.PromptResponse{StopReason: protocol.StopReasonEndTurn}, turn.SendUpdate(protocol.SessionNotification{Update: acpMessageChunk(prepared.Notice)})
+	}
+
+	s.runtime.SetPluginRoot(pluginRoot)
 	s.runtimeBuildParams.MCPTools = mcp.AsCoreTools(s.mcp.ToolSchemas(), s.mcp)
 	if tools := s.runtime.Tools(); tools != nil {
 		reconcileMCPTools(tools, s.runtimeBuildParams.MCPTools, s.runtimeBuildParams.DisabledTools)
@@ -104,8 +124,15 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		s.toolResponses.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
-	msg := core.UserMessage(s.reminders.PrepareInput(prompt), nil)
-	if err := s.runtime.Send(msg); err != nil {
+	if ctx.Err() != nil {
+		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
+	}
+	if prompt != text.String() {
+		// Expand commands after selection, just like the other injected context.
+		prepared.Message.Content[0].Text = prompt
+	}
+	msg := s.reminders.PrepareInput(prepared.Message)
+	if err := s.runtime.SendInput(agent.PendingInput{Message: msg, Completion: prepared.Completion}); err != nil {
 		return response, err
 	}
 	cancelled := ctx.Done()
@@ -155,7 +182,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 						recordErr = errors.Join(recordErr, e.Result.Finalization.Wait(context.Background()))
 					}
 					if continuation != "" && recordErr == nil && ctx.Err() == nil {
-						if err := s.runtime.Send(core.UserMessage(s.reminders.PrepareInput(continuation), nil)); err != nil {
+						if err := s.runtime.Send(s.reminders.PrepareInput(core.UserMessage(continuation, nil))); err != nil {
 							return response, err
 						}
 						continue
@@ -240,11 +267,15 @@ func (s *acpSession) postTool(e sdkagent.ToolEnd) {
 	agent.PostTool(core.ToolResult{ToolCallID: e.ID, ToolName: e.Name, Content: e.Result.Content, IsError: e.Err != nil}, handoff, s.hooks, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 }
 
+func acpMessageChunk(text string) protocol.SessionUpdate {
+	return protocol.SessionUpdate{Value: protocol.SessionUpdateAgentMessageChunkVariant{SessionUpdate: "agent_message_chunk", Content: acpText(text)}}
+}
+
 func acpEvent(event core.Event) (protocol.SessionUpdate, bool) {
 	switch e := event.(type) {
 	case sdkagent.InferenceUpdate:
 		if text := e.Text(); text != "" {
-			return protocol.SessionUpdate{Value: protocol.SessionUpdateAgentMessageChunkVariant{SessionUpdate: "agent_message_chunk", Content: acpText(text)}}, true
+			return acpMessageChunk(text), true
 		}
 	case sdkagent.ToolStart:
 		input := json.RawMessage(e.Args)

@@ -15,6 +15,7 @@ type PendingInput struct {
 	Completion  *session.Completion // Records the model call that generated this input; finishes on delivery or discard.
 	Source      *session.EventRef   // Child event whose result is being delivered.
 	Destination *session.Session    // Original receiving owner; required with Source.
+	MemoryReady bool                // Preparation finished for this user input.
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
@@ -85,31 +86,35 @@ func (q *InputQueue) ResetAdmission() {
 	q.held = false
 }
 
-// Deliver sends FIFO; rejected recorded results are discarded, user input is retained.
-func (q *InputQueue) Deliver(send func(PendingInput) error, prepare func(core.Message) core.Message, recall func(string) error) error {
-	if !q.CanDeliver(false) {
+func (q *InputQueue) ReplaceFirst(input PendingInput) { q.items[0] = input }
+
+func (q *InputQueue) PopFirst() {
+	q.items[0] = PendingInput{}
+	q.items = q.items[1:]
+}
+
+// DeliverFirst attempts admission of the prepared head. Rejected recorded
+// results are discarded; other rejected input stays queued.
+func (q *InputQueue) DeliverFirst(send func(PendingInput) error, prepare func(core.Message) core.Message) error {
+	if !q.CanDeliver(false) || len(q.items) == 0 {
 		return nil
 	}
-	for len(q.items) > 0 {
-		next := &q.items[0]
-		var err error
-		if next.FromUser {
-			err = recall(next.Text())
-		}
-		if err == nil {
-			next.Message = prepare(next.Message)
-			err = send(*next)
-		}
-		if err != nil {
-			if next.Completion != nil || next.Source != nil || next.Destination != nil {
-				if closeErr := next.Completion.Close(); closeErr != nil {
-					err = errors.Join(err, &llm.RecordingError{Err: closeErr})
-				}
-				q.items = q.items[1:]
-			}
-			return err
-		}
-		q.items = q.items[1:]
+	next := &q.items[0]
+	next.Message = prepare(next.Message)
+	if err := send(*next); err != nil {
+		return q.rejectFirst(err)
 	}
+	q.PopFirst()
 	return nil
+}
+
+func (q *InputQueue) rejectFirst(err error) error {
+	next := q.items[0]
+	if next.Completion != nil || next.Source != nil || next.Destination != nil {
+		if closeErr := next.Completion.Close(); closeErr != nil {
+			err = errors.Join(err, &llm.RecordingError{Err: closeErr})
+		}
+		q.PopFirst()
+	}
+	return err
 }

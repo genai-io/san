@@ -60,7 +60,7 @@ func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: m.services.Session, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
-	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.agentAutoMemory = m.autoMemory()
 	return m, provider

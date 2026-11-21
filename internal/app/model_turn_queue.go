@@ -192,7 +192,11 @@ func (m *model) showNoticeLine(n mainNotice) core.Message {
 	} else if n.FromAgent && n.Display != "" {
 		m.conv.AddAgentNotice(n.Display)
 	} else if n.Display != "" {
-		m.conv.AddNotice(n.Display)
+		if n.recorded {
+			m.addRecordedNotice(n.Display)
+		} else {
+			m.conv.AddNotice(n.Display)
+		}
 	}
 	if n.FinishedTaskID != "" {
 		if m.taskCompletionsShown == nil {

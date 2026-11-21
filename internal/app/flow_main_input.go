@@ -132,7 +132,7 @@ func (m *model) acceptFlowMainInput(lease *flowMainLease, prepared []input.Queue
 // the opened owner projects the exact input ID, without a pending outbox copy.
 func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 	r := m.flowMainRequest
-	if r == nil || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil || m.pendingMessages.Held() {
+	if r == nil || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil || !m.pendingMessages.CanDeliver(false) || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
 	if r.input != nil {
@@ -166,20 +166,63 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 		m.pendingMessages.Hold(nil)
 		return nil, false
 	}
-	if err := m.startMemoryRecall(message.Text()); err != nil {
-		m.pendingMessages.Hold(nil)
-		return nil, false
+	p := pendingMessage{Message: message, FromUser: true}
+	if m.memoryInput != nil {
+		return nil, true
 	}
-	message = m.attachPendingReminders(message)
+	if m.needsMemoryInput(p) {
+		return m.startMemoryInput(r.msg.ctx, p, func(reply memoryInputMsg) tea.Cmd {
+			current, ok := m.userInput.Queue.At(0)
+			if m.flowMainRequest != r || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil {
+				discardPreparedMemory(reply.result)
+				return nil
+			}
+			if !ok || m.userInput.Queue.SelectIdx == 0 || !reflect.DeepEqual(current, head) {
+				discardPreparedMemory(reply.result)
+				next, _ := m.releaseQueuedMessage()
+				return next
+			}
+			if reply.input.stores != m.autoMemory() {
+				discardPreparedMemory(reply.result)
+				if reply.result.Handled {
+					next, _ := m.releaseQueuedMessage()
+					return next
+				}
+				cmd, _ := m.sendFlowMainStepInput(r, head, chat, p)
+				return cmd
+			}
+			if reply.result.Handled {
+				m.finishMemoryMaintenance(reply, false)
+				m.userInput.Queue.Dequeue()
+				next, _ := m.releaseQueuedMessage()
+				return tea.Batch(append(m.CommitMessages(), next)...)
+			}
+			if reply.err != nil {
+				closeMemoryInput(reply.result.Completion)
+				m.pendingMessages.Hold(nil)
+				return func() tea.Msg { return agentSendFailedMsg{err: reply.err} }
+			}
+			p.Message, p.Completion = reply.result.Message, reply.result.Completion
+			cmd, _ := m.sendFlowMainStepInput(r, head, chat, p)
+			return cmd
+		}), true
+	}
+	return m.sendFlowMainStepInput(r, head, chat, p)
+}
+
+func (m *model) sendFlowMainStepInput(r *flowMainRequest, head input.QueueItem, chat core.ChatMessage, p pendingMessage) (tea.Cmd, bool) {
+	p.Message = m.attachPendingReminders(p.Message)
 	if r != m.flowMainRequest || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil {
+		closeMemoryInput(p.Completion)
 		m.pendingMessages.Hold(nil)
 		return nil, false
 	}
-	if err := m.services.Agent.SendInput(pendingMessage{Message: message, FromUser: true}); err != nil {
+	if err := m.services.Agent.SendInput(p); err != nil {
+		closeMemoryInput(p.Completion)
 		m.pendingMessages.Hold(nil)
 		return nil, false
 	}
-	r.input = &flowMainInput{messageID: message.ID, commit: m.acceptFlowMainInput(r.msg.lease, []input.QueueItem{head}, chat.Content, &chat, false)}
+	r.input = &flowMainInput{messageID: p.ID, commit: m.acceptFlowMainInput(r.msg.lease, []input.QueueItem{head}, chat.Content, &chat, false)}
 	return m.confirmFlowMainInput(), true
 }
 

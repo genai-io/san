@@ -413,10 +413,9 @@ const (
 )
 
 // stripSystemReminders removes the trailing run of harness <system-reminder>
-// blocks from user message content. AttachToContent always appends reminders
-// after the user's own text, so we peel whole blocks off the end: while the
-// right-trimmed content ends with a closing tag, cut back to the last opening
-// tag.
+// blocks from flattened user message text. Reminders follow the user's own
+// text, so we peel whole blocks off the end: while the right-trimmed content
+// ends with a closing tag, cut back to the last opening tag.
 //
 // Anchoring on the last *opening* tag (not a regex over the merged text) is
 // what makes this robust. A closing tag "</system-reminder>" never contains

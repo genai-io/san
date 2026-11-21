@@ -8,46 +8,46 @@ import (
 	"testing"
 )
 
-// TestSelfLearnValidate exercises the two rejected boolean combinations and
+// TestAutoSkillValidate exercises the two rejected boolean combinations and
 // the maxKB invariant from notes/active/l1-background-review.md §3.1 / §4.2.
 // The all-zero "feature off" baseline and several legal combinations must
 // validate without error.
-func TestSelfLearnValidate(t *testing.T) {
+func TestAutoSkillValidate(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		cfg     SelfLearnSettings
+		cfg     AutoSkillSettings
 		wantErr string // empty = expect ok; otherwise substring of the error
 	}{
 		{
 			name:    "all zero (feature off)",
-			cfg:     SelfLearnSettings{},
+			cfg:     AutoSkillSettings{},
 			wantErr: "",
 		},
 		{
 			name: "freeze mode (deny create; update + delete default-allow)",
-			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{DenyCreate: true},
+			cfg: AutoSkillSettings{
+				Skills: AutoSkillPermissions{DenyCreate: true},
 			},
 			wantErr: "",
 		},
 		{
 			name: "patch-only mode (deny create + delete)",
-			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{DenyCreate: true, DenyDelete: true},
+			cfg: AutoSkillSettings{
+				Skills: AutoSkillPermissions{DenyCreate: true, DenyDelete: true},
 			},
 			wantErr: "",
 		},
 		{
 			name: "rejected: create allowed but update denied",
-			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{DenyUpdate: true},
+			cfg: AutoSkillSettings{
+				Skills: AutoSkillPermissions{DenyUpdate: true},
 			},
 			wantErr: `"Create new skills" needs "Update a skill"`,
 		},
 		{
 			name: "ok: create + update allowed but delete denied (no-auto-delete mode)",
-			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{DenyDelete: true},
+			cfg: AutoSkillSettings{
+				Skills: AutoSkillPermissions{DenyDelete: true},
 			},
 			wantErr: "",
 		},
@@ -66,28 +66,28 @@ func TestSelfLearnValidate(t *testing.T) {
 	}
 }
 
-// TestSelfLearnAllowAccessors confirms the Deny-encoded fields read out as
+// TestAutoSkillAllowAccessors confirms the Deny-encoded fields read out as
 // the expected Allow* boolean — zero ⇒ allow, true ⇒ deny — for every
 // permission. The contract every downstream consumer (skill.go,
 // prompts.go) depends on.
-func TestSelfLearnAllowAccessors(t *testing.T) {
-	zero := SelfLearnSkills{}
+func TestAutoSkillAllowAccessors(t *testing.T) {
+	zero := AutoSkillPermissions{}
 	if !zero.AllowCreate() || !zero.AllowUpdate() || !zero.AllowDelete() {
 		t.Fatal("zero-valued Deny fields must read as Allow=true")
 	}
-	denied := SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
+	denied := AutoSkillPermissions{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
 	if denied.AllowCreate() || denied.AllowUpdate() || denied.AllowDelete() {
 		t.Fatal("explicit Deny must read as Allow=false")
 	}
 }
 
-func TestSelfLearnSkillsMigratesLegacyDisabledJSON(t *testing.T) {
+func TestAutoSkillPermissionsMigratesLegacyDisabledJSON(t *testing.T) {
 	for _, raw := range []string{
 		`{}`,
 		`{"enabled":false}`,
 		`{"denyDelete":true}`,
 	} {
-		var got SelfLearnSkills
+		var got AutoSkillPermissions
 		if err := json.Unmarshal([]byte(raw), &got); err != nil {
 			t.Fatalf("unmarshal %s: %v", raw, err)
 		}
@@ -109,13 +109,13 @@ func TestLoaderPreservesLegacySkillOptOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SelfLearn.Skills.Active() {
-		t.Fatalf("legacy loader path re-enabled opted-out skills: %+v", got.SelfLearn.Skills)
+	if got.AutoSkill.Skills.Active() {
+		t.Fatalf("legacy loader path re-enabled opted-out skills: %+v", got.AutoSkill.Skills)
 	}
 }
 
-func TestSelfLearnSkillsJSONRoundTripMarksCurrentSchema(t *testing.T) {
-	want := SelfLearnSkills{DenyDelete: true}
+func TestAutoSkillPermissionsJSONRoundTripMarksCurrentSchema(t *testing.T) {
+	want := AutoSkillPermissions{DenyDelete: true}
 	data, err := json.Marshal(want)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestSelfLearnSkillsJSONRoundTripMarksCurrentSchema(t *testing.T) {
 		t.Fatalf("current schema marker missing from %s", data)
 	}
 
-	var got SelfLearnSkills
+	var got AutoSkillPermissions
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +133,12 @@ func TestSelfLearnSkillsJSONRoundTripMarksCurrentSchema(t *testing.T) {
 	}
 }
 
-func TestSelfLearnSkillsMigratesLegacyEnabledJSON(t *testing.T) {
-	var got SelfLearnSkills
+func TestAutoSkillPermissionsMigratesLegacyEnabledJSON(t *testing.T) {
+	var got AutoSkillPermissions
 	if err := json.Unmarshal([]byte(`{"enabled":true,"denyDelete":true}`), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := SelfLearnSkills{DenyDelete: true}
+	want := AutoSkillPermissions{DenyDelete: true}
 	if got != want {
 		t.Fatalf("legacy enabled config = %+v, want %+v", got, want)
 	}

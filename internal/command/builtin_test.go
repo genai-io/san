@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestReflectionAndMemoryCatalog(t *testing.T) {
+	catalog := (&Registry{}).BuiltinNames()
+	reflection, ok := catalog["reflection"]
+	if !ok || !strings.Contains(reflection.Description, "Auto Memory") || !strings.Contains(reflection.Description, "Auto Skill") {
+		t.Fatalf("/reflection should advertise both settings: %+v", reflection)
+	}
+	if memory, ok := catalog["memory"]; !ok || !strings.Contains(memory.Description, "memory stores") || strings.Contains(memory.Description, "Auto Skill") {
+		t.Fatalf("/memory should advertise the browser: %+v", memory)
+	}
+	if _, ok := catalog["evolve"]; ok {
+		t.Fatal("/evolve is still in the built-in command catalog")
+	}
+}
+
 func TestSimplifyShipsAsBuiltinPromptCommand(t *testing.T) {
 	reg := &Registry{cwd: t.TempDir()}
 

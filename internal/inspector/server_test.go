@@ -103,7 +103,7 @@ func TestServerNativeReadsDoNotModifyFilesOrClaimWriter(t *testing.T) {
 	appendPayload(t, writer, session.SessionUpdatePayload{State: &session.StatePatch{Title: session.SetField("saved title")}})
 	before := diskSnapshot(t, store.ProjectDir())
 	list := getSessionPage(t, srv, "").Items
-	if len(list) != 1 || list[0].ID != "session" || list[0].Title != "saved title" {
+	if len(list) != 1 || list[0].ID != "session" || list[0].Title != "hello" {
 		t.Fatalf("list: %+v", list)
 	}
 	var records rawRecords
@@ -153,7 +153,7 @@ func TestHTTPInferenceRequestsAndCompaction(t *testing.T) {
 	store, w, srv := fixture(t)
 	ctx := context.Background()
 	appendPayload(t, w, session.InstructionsUpdatePayload{Set: map[string]session.InstructionSection{"base": {Content: "original", Slot: 2}}, Cause: "boot"})
-	appendPayload(t, w, session.MessageAppendPayload{Messages: []ai.Message{message("old", "old")}})
+	appendPayload(t, w, session.MessageAppendPayload{Messages: []ai.Message{message("old", "old\n\n<system-reminder source=\"memory-project\">\nproject instructions\n</system-reminder>")}})
 	r, err := store.ContextRequest(ctx, w.ID(), 0)
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +171,9 @@ func TestHTTPInferenceRequestsAndCompaction(t *testing.T) {
 	if err = h.Finish(ctx, &ai.Response{}, nil, session.Event{Payload: session.ContextCompactPayload{Summary: message("summary", "summary")}}); err != nil {
 		t.Fatal(err)
 	}
-	standalone := &ai.Request{System: "independent", Messages: []ai.Message{message("private", "not conversation")}, MaxTokens: 27, ToolChoice: ai.ToolChoiceNamed("native")}
+	standalone := &ai.Request{System: "independent", Messages: []ai.Message{{
+		ID: "private", Role: ai.RoleUser, Content: ai.Content{ai.TextBlock("side context"), ai.TextBlock("side query")},
+	}}, MaxTokens: 27, ToolChoice: ai.ToolChoiceNamed("native")}
 	h2, err := w.StartInference(ctx, session.InferenceOptions{Purpose: session.PurposeJudge, Provider: "test", Model: ai.Model{ID: "judge"}, Request: standalone})
 	if err != nil {
 		t.Fatal(err)
@@ -199,6 +201,12 @@ func TestHTTPInferenceRequestsAndCompaction(t *testing.T) {
 		// The HTTP decoder above also needs UseNumber (getJSON supplies it).
 		if !reflect.DeepEqual(av, bv) {
 			t.Fatalf("historical request differs\ngot %s\nwant %s", a, b)
+		}
+		var raw ai.Request
+		getJSON(t, srv, fmt.Sprintf("/api/sessions/session/request/%d", test.seq), &raw)
+		decoded, err := json.Marshal(&raw)
+		if err != nil || string(decoded) != string(b) {
+			t.Fatalf("raw historical request differs\ngot %s\nwant %s\nerror: %v", decoded, b, err)
 		}
 	}
 	var latest nativeState

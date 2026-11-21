@@ -4,7 +4,7 @@ import "testing"
 
 func TestIsSafeTool(t *testing.T) {
 	safe := []string{"TaskCreate", "TaskGet", "TaskUpdate",
-		"AskUserQuestion", "LSP", "Evolve"}
+		"AskUserQuestion", "LSP", "ReviewSkill"}
 	for _, name := range safe {
 		if !IsSafeTool(name) {
 			t.Errorf("IsSafeTool(%q) = false, want true", name)

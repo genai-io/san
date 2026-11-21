@@ -33,6 +33,7 @@ type preparedRun struct {
 	hooksBound        bool
 	sourceAfter       uint64 // Accepted prefix before this execution; never cite an older answer.
 	originalPrompt    string
+	reminders         []string
 	toolStarted       bool
 	continuationInput *core.Message // exact preaccepted prompt, retained across async launch
 	initialInput      *core.Message
@@ -239,7 +240,8 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 		hooks:          e.hooks,
 		store:          e.store,
 		parent:         e.parent,
-		originalPrompt: e.taskPrompt(cfg, req),
+		originalPrompt: req.Prompt,
+		reminders:      e.collectSubagentReminders(e.skillsDirectoryFor(cfg.config), cfg.permMode, cfg.config.AllowTools),
 		req:            req,
 		cfg:            cfg,
 		cwd:            e.cwd,
@@ -318,8 +320,8 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		ag.Append(*run.initialInput)
 	} else if run.req.ResumeTaskID != "" {
 		ag.Append(*run.continuationInput)
-	} else if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
-		return nil, err
+	} else {
+		ag.Append(run.taskMessage())
 	}
 	if run.req.OnActivity != nil {
 		run.streamActivity("Thinking...")

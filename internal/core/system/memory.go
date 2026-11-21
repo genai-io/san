@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,21 +84,73 @@ type Memory struct {
 	Description string
 }
 
-// Memories lists every memory file in both stores, the indexes left out.
-func (s MemoryStores) Memories() []Memory {
+// HasNotes reports whether an enabled store contains a regular memory note.
+func (s MemoryStores) HasNotes() bool {
+	return hasNotes(s.User) || (s.Project != s.User && hasNotes(s.Project))
+}
+
+func hasNotes(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	for {
+		entries, err := f.ReadDir(32)
+		for _, entry := range entries {
+			if isMemoryNote(entry) {
+				return true
+			}
+		}
+		if err != nil {
+			return false
+		}
+	}
+}
+
+func isMemoryNote(entry os.DirEntry) bool {
+	name := entry.Name()
+	return entry.Type().IsRegular() && name != AutoMemoryIndexName && strings.HasSuffix(name, ".md")
+}
+
+// Memories lists readable notes, user store first and sorted by name within each store.
+// A zero limit lists all notes.
+func (s MemoryStores) Memories(limit int) []Memory {
 	var out []Memory
 	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 		if store.dir == "" || (store.name == "project" && store.dir == s.User) {
 			continue
 		}
-		files, _ := filepath.Glob(filepath.Join(store.dir, "*.md"))
-		for _, f := range files {
-			if filepath.Base(f) == AutoMemoryIndexName {
+		root, err := os.OpenRoot(store.dir)
+		if err != nil {
+			continue
+		}
+		entries, _ := os.ReadDir(store.dir)
+		for _, entry := range entries {
+			if limit > 0 && len(out) >= limit {
+				break
+			}
+			if !isMemoryNote(entry) {
 				continue
 			}
-			data, _ := os.ReadFile(f)
-			out = append(out, Memory{Path: f, Store: store.name, Description: FrontmatterField(string(data), "description")})
+			name := entry.Name()
+			f, err := root.Open(name)
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(io.LimitReader(f, 2048))
+			_ = f.Close()
+			if err == nil {
+				out = append(out, Memory{Path: filepath.Join(store.dir, name), Store: store.name, Description: FrontmatterField(string(data), "description")})
+			}
 		}
+		_ = root.Close()
 	}
 	return out
 }
@@ -229,6 +282,31 @@ type MemoryFile struct {
 	Size    int64
 	Content string
 	Level   string // "global", "project", or "local"
+}
+
+// FormatInstructions groups loaded files by scope and labels each source in load order.
+func FormatInstructions(files []MemoryFile) (user, project string) {
+	var userFiles, projectFiles []string
+	for _, file := range files {
+		body := strings.TrimSpace(file.Content)
+		if body == "" {
+			continue
+		}
+		scope := "project instructions"
+		switch file.Level {
+		case "global":
+			scope = "user instructions"
+		case "local":
+			scope = "local project instructions"
+		}
+		text := fmt.Sprintf("Contents of %q (%s):\n\n%s", file.Path, scope, body)
+		if file.Level == "global" {
+			userFiles = append(userFiles, text)
+		} else {
+			projectFiles = append(projectFiles, text)
+		}
+	}
+	return strings.Join(userFiles, "\n\n"), strings.Join(projectFiles, "\n\n")
 }
 
 // LoadMemoryFiles loads every instruction file that applies to cwd, in the

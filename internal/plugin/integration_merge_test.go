@@ -1,8 +1,13 @@
 package plugin
 
 import (
+	"context"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -33,5 +38,34 @@ func TestMergeHooksIntoSettingsUsesReceiver(t *testing.T) {
 	NewRegistry().MergeHooksIntoSettings(empty)
 	if empty.Hooks == nil || len(empty.Hooks) != 0 {
 		t.Fatalf("empty registry inherited hooks: %+v", empty.Hooks)
+	}
+}
+
+func TestPluginHooksUseTheirOwnRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses the POSIX command hook shell")
+	}
+	r := NewRegistry()
+	cwd := t.TempDir()
+	for _, name := range []string{"alpha", "beta"} {
+		r.plugins[name] = &Plugin{Path: filepath.Join(cwd, name), Enabled: true, Components: Components{Hooks: &HooksConfig{
+			Hooks: map[string][]HookMatcher{"SessionStart": {{Hooks: []setting.HookCmd{{
+				Type: "command", Command: `printf '%s|%s' "$SAN_PLUGIN_ROOT" "$CLAUDE_PLUGIN_ROOT"`,
+			}}}}},
+		}}}
+	}
+	settings := setting.NewData()
+	r.MergeHooksIntoSettings(settings)
+	e := hook.NewEngine(settings, "test", cwd, "")
+	t.Cleanup(e.Shutdown)
+	e.SetEnvProvider(func(ctx context.Context) []string {
+		return PluginEnv(WithRoot(WithRegistry(ctx, r), filepath.Join(cwd, "other plugin")))
+	})
+	got := e.Execute(t.Context(), hook.SessionStart, hook.HookInput{Source: "startup"})
+	for _, name := range []string{"alpha", "beta"} {
+		path := filepath.Join(cwd, name)
+		if got.Error != nil || !strings.Contains(got.AdditionalContext, path+"|"+path) {
+			t.Fatalf("hook did not receive its root: %+v", got)
+		}
 	}
 }

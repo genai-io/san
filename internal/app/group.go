@@ -15,6 +15,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/reminder"
 )
@@ -323,23 +324,23 @@ func (m *model) groupMessage(msg group.Message, unattended int) string {
 
 // attachWaitingMessages appends a holding member's waiting messages to the
 // person's input, then deletes them: they reach the conversation together.
-func (m *model) attachWaitingMessages(text string) string {
+func (m *model) attachWaitingMessages(input core.Message) core.Message {
 	if !m.grp.userTyped {
-		return text
+		return input
 	}
 	m.grp.userTyped = false
 	msgs := group.Inbox()
 	if len(msgs) == 0 {
-		return text
+		return input
 	}
-	var b strings.Builder
-	b.WriteString(text)
+	texts := make([]string, 0, len(msgs))
 	for _, msg := range msgs {
-		b.WriteString("\n\n" + m.groupMessage(msg, 0))
+		texts = append(texts, m.groupMessage(msg, 0))
 	}
 	group.Delivered(msgs)
 	m.grp.announced = nil
-	return b.String()
+	input.Content = reminder.AppendBlocks(input.Content, texts...)
+	return input
 }
 
 // deliverGroupReminder tells the model about a group change without ever

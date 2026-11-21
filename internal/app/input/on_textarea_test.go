@@ -129,7 +129,7 @@ func TestNewlineKeysInsertNewline(t *testing.T) {
 	}
 }
 
-// The /autopilot and /evolve editors share newChromelessTextarea but appear in
+// The /autopilot and /memory editors share newChromelessTextarea but appear in
 // overlays, where View reports no cursor position — so they must keep painting
 // their own.
 func TestOverlayEditorsKeepVirtualCursor(t *testing.T) {

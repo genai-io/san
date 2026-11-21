@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -125,7 +124,6 @@ func (p BuildParams) System() core.System {
 	return system.Build(core.ScopeMain,
 		system.WithPersona(p.Persona),
 		system.WithEnvironment(system.Environment{Cwd: p.CWD, Shell: proc.DefaultShellName()}),
-		system.WithAutoMemory(p.AutoMemory),
 	)
 }
 
@@ -268,9 +266,6 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		budget := client.ContextBudget()
 		result.Summary = core.WithRecentRequests(summary, msgs, budget)
 		result.Reminders = postCompactReminders(cwdFunc(), cache, budget)
-		if !p.AutoMemory.Off() {
-			result.Reminders = append(result.Reminders, reminder.WrapWithSource(AutoMemoryReminder(p.AutoMemory), reminder.ProviderMemoryAuto))
-		}
 		if p.Skills != nil {
 			result.Reminders = append(result.Reminders, reminder.WrapWithSource(p.Skills.PromptSection(), reminder.ProviderSkillsDirectory))
 		}
@@ -333,14 +328,28 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 // Permission is the caller's: a run with nobody at the keyboard cannot prompt,
 // so BuildParams.PermissionRules decides alone.
 func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText func(string)) (result *core.Result, err error) {
+	if err := p.prepareRecording(); err != nil {
+		return nil, err
+	}
 	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
-	recall := recaller.Start(p.AutoMemory, message.Text(), nil)
-	defer func() { err = errors.Join(err, recall.Stop()) }()
-	p.ResultFilter = WithRecall(p.ResultFilter, func() *Recall { return recall })
+	prepared, err := recaller.Prepare(ctx, p.AutoMemory, message, nil)
+	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if prepared.Handled {
+		if onText != nil {
+			onText(prepared.Notice)
+		}
+		return &core.Result{Content: prepared.Notice, StopReason: core.StopEndTurn}, nil
+	}
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the
 	// one thing a headless run must not do.
-	message = withInstructions(p.CWD, p.AutoMemory, message)
+	message = withInstructions(p.CWD, prepared.Message)
 
 	if onText != nil {
 		caller := p.OnEvent
@@ -363,6 +372,17 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if gate != nil {
 		defer gate.Close()
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if prepared.Completion != nil {
+		if message.ID == "" {
+			message.ID = core.NewMessageID()
+		}
+		if err := prepared.Completion.AcceptMessage(ctx, message); err != nil {
+			return nil, &llm.RecordingError{Err: err}
+		}
+	}
 	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }
@@ -371,63 +391,18 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 // headless run, as a reminder rather than a prompt section — the same shape
 // and the same scopes the interactive path uses, so what the model is told
 // does not depend on which one asked.
-func withInstructions(cwd string, memory system.MemoryStores, msg core.Message) core.Message {
-	reminders := instructionReminders(cwd)
-	if !memory.Off() {
-		reminders = append(reminders, reminder.WrapWithSource(AutoMemoryReminder(memory), reminder.ProviderMemoryAuto))
-	}
-	text := reminder.AttachToContent(msg.Text(), reminders)
-	if text == msg.Text() {
-		return msg
-	}
-	return core.UserMessage(text, nil)
+func withInstructions(cwd string, msg core.Message) core.Message {
+	msg.Content = reminder.AppendBlocks(msg.Content, instructionReminders(cwd)...)
+	return msg
 }
 
-// instructionReminders reads the AGENTS.md chain from disk as the user and
-// project memory reminders, wrapped as the interactive providers wrap them.
+// instructionReminders reads the same user and project instructions as the TUI.
 func instructionReminders(cwd string) []string {
-	var user, project []string
-	for _, f := range system.LoadMemoryFiles(cwd) {
-		if f.Level == "global" {
-			user = append(user, f.Content)
-		} else {
-			project = append(project, f.Content)
-		}
-	}
+	user, project := system.FormatInstructions(system.LoadMemoryFiles(cwd))
 	return []string{
-		reminder.WrapWithSource(reminder.WrapMemory("user", strings.Join(user, "\n\n")), reminder.ProviderMemoryUser),
-		reminder.WrapWithSource(reminder.WrapMemory("project", strings.Join(project, "\n\n")), reminder.ProviderMemoryProject),
+		reminder.WrapWithSource(user, reminder.ProviderMemoryUser),
+		reminder.WrapWithSource(project, reminder.ProviderMemoryProject),
 	}
-}
-
-// AutoMemoryReminder carries short index previews, not full memory notes.
-func AutoMemoryReminder(s system.MemoryStores) string {
-	const previewBytes = 2 * 1024
-	var body, problems []string
-	for _, store := range []struct{ name, dir string }{{"User store", s.User}, {"Project store", s.Project}} {
-		if store.dir == "" {
-			continue
-		}
-		index, issues := system.LoadAutoMemoryAt(store.dir)
-		if index != "" {
-			if len(index) > previewBytes {
-				end := max(0, strings.LastIndexByte(index[:previewBytes+1], '\n'))
-				index = strings.TrimSpace(index[:end] + "\nRead MEMORY.md in this store for more entries.")
-			} else if len(issues) == 0 {
-				fs.RecordFileWritten(filepath.Join(store.dir, system.AutoMemoryIndexName))
-			}
-			body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
-		}
-		for _, issue := range issues {
-			problems = append(problems, store.name+": "+issue)
-		}
-	}
-	problems = append(problems, s.Duplicates()...)
-	out := reminder.WrapMemory("auto", strings.Join(body, "\n\n"))
-	if len(problems) > 0 {
-		out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
-	}
-	return out
 }
 
 // postCompactReminders is what an automatic compaction re-attaches: the

@@ -82,11 +82,8 @@ func (s *acpSession) configureAgents() error {
 		agent.PostTool(result, effect, engine, agent.WorkspaceCallbacks{TouchFile: s.runtimeBuildParams.FileCache.Touch})
 		return nil
 	})
-	var instructions []string
-	for _, file := range system.LoadMemoryFiles(s.runtimeBuildParams.CWD) {
-		instructions = append(instructions, file.Content)
-	}
-	e.SetProjectInstructions(strings.Join(instructions, "\n\n"))
+	user, project := system.FormatInstructions(system.LoadMemoryFiles(s.runtimeBuildParams.CWD))
+	e.SetProjectInstructions(strings.TrimSpace(user + "\n\n" + project))
 	if err := e.SetSessions(s.nativeSession.Store, s.nativeSession.Session); err != nil {
 		return err
 	}

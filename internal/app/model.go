@@ -36,7 +36,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/tool/evolve"
+	"github.com/genai-io/san/internal/tool/reviewskill"
 )
 
 const defaultWidth = 80
@@ -58,8 +58,8 @@ type model struct {
 	userInput input.Model // Source 1: user keyboard input
 	// mainNotices is the TUI's notice-staging channel (Source 2) — NOT the main
 	// agent's inbox. Broker messages routed to "main" (subagent completions,
-	// interim messages) and self-learn notices land here; they show as a notice
-	// and then reach the main agent's real core.Agent inbox. See notify.go.
+	// interim messages) and display-only notices land here. Only notices with
+	// content are forwarded to the agent. See notify.go.
 	mainNotices chan mainNotice
 	// MCP notifications coalesce here; only the UI loop reads current services.
 	mcpToolsChanged chan struct{}
@@ -76,12 +76,11 @@ type model struct {
 	// drainedThisStep caps OnStepEnd to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep   bool
-	selfLearnStarts   chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
 	systemInput       trigger.Model        // Source 3: system events (cron/hooks/watcher)
 	conv              conv.Model           // Agent Outbox: conversation + output rendering
 	env               env                  // Shared app state: provider, session, permission, plan, config
 	services          services             // Domain service singletons, injected at construction
-	learnedStores     *learnedStoreContext // live cwd/settings source for /evolve inventories
+	learnedStores     *learnedStoreContext // live cwd/settings source for /memory inventories
 	subscriptionUsage subscriptionUsageState
 	gitBar            gitBarState // optional local repository snapshot and poll generation
 
@@ -160,16 +159,16 @@ type model struct {
 	// OnToolResult, read + cleared at OnTurnEnd.
 	skillUsedThisTurn bool
 
-	// evolveRequestedThisTurn records whether the current turn called the
-	// Evolve tool — the model-decided self-learning trigger. Set in
+	// skillReviewRequested records whether the current turn called the
+	// ReviewSkill tool — the model's Auto Skill review request.
 	// OnToolResult, read + cleared at OnTurnEnd.
-	evolveRequestedThisTurn bool
+	skillReviewRequested bool
 
-	// agentEvolveCaps records the self-learning capabilities the live agent's
+	// agentReviewCaps records the self-learning capabilities the live agent's
 	// toolset was built with. ensureAgentRuntime compares them against the
 	// current settings on every turn start and rebuilds on drift — covering
-	// /evolve saves and external settings edits with one mechanism.
-	agentEvolveCaps evolve.Capabilities
+	// /memory saves and external settings edits with one mechanism.
+	agentReviewCaps reviewskill.Capabilities
 
 	// agentAutoMemory is the autoMemory() the live agent's prompt was built
 	// with; ensureAgentRuntime rebuilds when auto memory is toggled or moved.
@@ -187,8 +186,7 @@ type model struct {
 	// that enter mid-turn belong to it.
 	turnOpenedBy string
 
-	// memoryRecall is shared with the agent goroutine, made with the agent.
-	memoryRecall *memoryRecall
+	memoryInput *memoryInput
 
 	// earlyNotices are notices shown before the transcript's writer exists
 	// (it starts with the first message); they are written once it does.
@@ -219,7 +217,6 @@ func (m *model) Init() tea.Cmd {
 		awaitMainNotice(m.mainNotices),
 		awaitFlowMain(m.flowMain),
 		awaitMCPToolsChanged(m.mcpToolsChanged),
-		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),
 		m.syncGitBar(),

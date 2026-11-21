@@ -149,7 +149,7 @@ func TestPostCompactReseedsContext(t *testing.T) {
 			r := reminder.New()
 			memory := "old memory"
 			r.Register("memory", func() string { return memory })
-			r.PrepareInput("first")
+			r.PrepareInput(core.UserMessage("first", nil))
 			r.Enqueue("obsolete notice")
 			files := filecache.New()
 			path := filepath.Join(t.TempDir(), "recent.go")
@@ -174,14 +174,14 @@ func TestPostCompactReseedsContext(t *testing.T) {
 			if !reflect.DeepEqual(order, []string{"hook", "memory"}) || r.Prepared() {
 				t.Fatalf("order=%v, prepared=%v", order, r.Prepared())
 			}
-			next := r.PrepareInput("next")
+			next := r.PrepareInput(core.UserMessage("next", nil)).Text()
 			if !strings.Contains(next, "fresh memory") || strings.Contains(next, "obsolete notice") {
 				t.Fatalf("next: %s", next)
 			}
 			if (count == 1) != (trigger == "manual") || strings.Contains(next, "recent contents") != (trigger == "manual") {
 				t.Fatalf("restored=%d, next=%s", count, next)
 			}
-			if again := r.PrepareInput("again"); again != "again" {
+			if again := r.PrepareInput(core.UserMessage("again", nil)).Text(); again != "again" {
 				t.Fatalf("repeated: %s", again)
 			}
 		})

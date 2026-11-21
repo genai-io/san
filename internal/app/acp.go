@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -277,7 +276,6 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		s.runtimeBuildParams.AskUser = s.input.ask
 		s.runtimeBuildParams.BashPromptResponder = s.input.responder
 	}
-	s.reminders.Register(reminder.ProviderMemoryAuto, func() string { return agent.AutoMemoryReminder(policy.AutoMemory) })
 	s.refreshMemory()
 	source := "startup"
 	if history != nil {
@@ -356,17 +354,9 @@ func (s *acpSession) closeRuntime() error {
 }
 
 func (s *acpSession) refreshMemory() {
-	var user, project []string
-	for _, file := range system.LoadMemoryFiles(s.runtimeBuildParams.CWD) {
-		if file.Level == "global" {
-			user = append(user, file.Content)
-		} else {
-			project = append(project, file.Content)
-		}
-	}
-	userText, projectText := strings.Join(user, "\n\n"), strings.Join(project, "\n\n")
-	s.reminders.Register(reminder.ProviderMemoryUser, func() string { return reminder.WrapMemory("user", userText) })
-	s.reminders.Register(reminder.ProviderMemoryProject, func() string { return reminder.WrapMemory("project", projectText) })
+	user, project := system.FormatInstructions(system.LoadMemoryFiles(s.runtimeBuildParams.CWD))
+	s.reminders.Register(reminder.ProviderMemoryUser, func() string { return user })
+	s.reminders.Register(reminder.ProviderMemoryProject, func() string { return project })
 }
 
 func (s *acpSession) recordState() error {

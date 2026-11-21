@@ -20,6 +20,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
@@ -333,11 +334,11 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			if err != nil {
 				return "", err
 			}
-			resp, err := llm.Complete(r.ctx, provider, llm.CompletionOptions{
+			resp, err := aside.Complete(r.ctx, provider, llm.CompletionOptions{
 				Model: modelID, SystemPrompt: missionRefinePrompt,
 				Messages:  []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
-				MaxTokens: 600, Admission: c.Admission(),
-			})
+				MaxTokens: 600,
+			}, c)
 			if err == nil {
 				err = r.ctx.Err()
 			}
@@ -999,13 +1000,12 @@ func autopilotSteerWait(ctx context.Context, attempt int, retryFloor time.Durati
 // autopilotComplete runs one single-user-message completion and returns the
 // trimmed reply — the shared shape of the copilot's steer inferences.
 func autopilotComplete(ctx context.Context, call autopilotInference) (string, error) {
-	resp, err := llm.Complete(ctx, call.provider, llm.CompletionOptions{
+	resp, err := aside.Complete(ctx, call.provider, llm.CompletionOptions{
 		Model:        call.model,
 		SystemPrompt: call.system,
 		Messages:     []core.Message{core.UserMessage(call.user, nil)},
 		MaxTokens:    call.maxTokens,
-		Admission:    call.recording.Admission(),
-	})
+	}, call.recording)
 	if err != nil {
 		return "", err
 	}

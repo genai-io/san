@@ -40,6 +40,9 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Stdin = bytes.NewReader(inputJSON)
 	cmd.Env = e.buildEnv(ctx, input)
+	if hookCmd.PluginRoot != "" {
+		cmd.Env = append(cmd.Env, setting.EnvPair("PLUGIN_ROOT", hookCmd.PluginRoot)...)
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

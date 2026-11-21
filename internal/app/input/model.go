@@ -64,7 +64,7 @@ type Model struct {
 	Plugin     PluginSelector
 	Tool       ToolSelector
 	Settings   PanelPopup        // /settings: appearance, permissions, general
-	Evolve     PanelPopup        // /evolve: self-learning skills + memory
+	Reflection PanelPopup        // /reflection: Auto Memory and Auto Skill
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
 	Transcript TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
 	Tasks      TaskViewer        // /tasks: inspect background work and review pending approvals
@@ -123,11 +123,8 @@ type SelectorDeps struct {
 	LoadDisabled    func(scope setting.Scope) map[string]bool
 	UpdateDisabled  func(name string, disabled *bool, scope setting.Scope) error
 	// HeldOn names the tools the session keeps on over the settings, and why.
-	HeldOn func() map[string]string
-	// Evolve bundles the /evolve popup's dependencies: the live workspace
-	// source, the learned skill/memory stores, and the recent-activity
-	// accessor. See EvolveDeps.
-	Evolve EvolveDeps
+	HeldOn     func() map[string]string
+	Reflection ReflectionDeps
 }
 
 func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
@@ -139,21 +136,21 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Suggestions: suggestions,
 		Queue:       NewQueue(),
 
-		Approval:  NewApproval(),
-		Secret:    NewSecretPrompt(),
-		Agent:     NewAgentSelector(deps.AgentRegistry),
-		Persona:   NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
-		Search:    NewSearchSelector(deps.Setting),
-		Skill:     SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
-		Session:   SessionState{Selector: NewSessionSelector()},
-		Memory:    MemoryState{Selector: NewMemorySelector()},
-		MCP:       MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
-		Plugin:    NewPluginSelector(deps.PluginRegistry),
-		Provider:  ProviderState{Selector: NewProviderSelector()},
-		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
-		Settings:  NewSettingsSelector(deps.Setting),
-		Autopilot: NewAutopilotSelector(),
-		Evolve:    NewEvolveSelector(deps.Evolve),
+		Approval:   NewApproval(),
+		Secret:     NewSecretPrompt(),
+		Agent:      NewAgentSelector(deps.AgentRegistry),
+		Persona:    NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
+		Search:     NewSearchSelector(deps.Setting),
+		Skill:      SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
+		Session:    SessionState{Selector: NewSessionSelector()},
+		Memory:     MemoryState{Selector: NewMemorySelector()},
+		MCP:        MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
+		Plugin:     NewPluginSelector(deps.PluginRegistry),
+		Provider:   ProviderState{Selector: NewProviderSelector()},
+		Tool:       NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
+		Settings:   NewSettingsSelector(deps.Setting),
+		Autopilot:  NewAutopilotSelector(),
+		Reflection: NewReflectionSelector(deps.Reflection),
 	}
 }
 
