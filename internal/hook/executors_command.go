@@ -68,7 +68,15 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 		outcome.Error = commandFailure(exitCode, &stderr)
 		return outcome
 	}
-	return e.parseOutput(strings.TrimSpace(stdout.String()), outcome)
+	output := strings.TrimSpace(stdout.String())
+	if output != "" && !strings.HasPrefix(output, "{") {
+		switch EventType(input.HookEventName) {
+		case SessionStart, UserPromptSubmit:
+			outcome.AdditionalContext = output
+			return outcome
+		}
+	}
+	return e.parseOutput(output, outcome)
 }
 
 // commandFailure describes a hook that exited non-zero, carrying the first

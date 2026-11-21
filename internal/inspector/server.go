@@ -9,10 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/genai-io/san/internal/inspector/ui"
 	"github.com/genai-io/san/internal/session"
@@ -57,52 +55,6 @@ func isLoopbackHost(hostport string) bool {
 		return true
 	}
 	return false
-}
-
-type sessionListItem struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	UpdatedAt  time.Time `json:"updatedAt"`
-	Size       int64     `json:"size"`
-	AttrsError string    `json:"attrsError,omitempty"`
-}
-
-func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	// Directory enumeration keeps unsupported sessions discoverable. Unlike List,
-	// this read never regenerates overview caches or changes files.
-	entries, err := os.ReadDir(filepath.Join(s.store.ProjectDir(), "sessions"))
-	if err != nil && !os.IsNotExist(err) {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	items := []sessionListItem{}
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		info, err := os.Stat(filepath.Join(s.store.ProjectDir(), "sessions", entry.Name(), "events.jsonl"))
-		if err != nil {
-			continue
-		}
-		item := sessionListItem{ID: entry.Name(), UpdatedAt: info.ModTime(), Size: info.Size()}
-		if attrs, e := s.store.Attrs(r.Context(), entry.Name()); e != nil {
-			item.AttrsError = e.Error()
-		} else {
-			item.Title = attrs.Title
-		}
-		// Replaying the event log costs the whole session; do it only when the
-		// attributes carry no title.
-		if item.Title == "" {
-			if p, e := s.store.Read(r.Context(), entry.Name()); e == nil {
-				if title := p.State().Title; title != nil {
-					item.Title = *title
-				}
-			}
-		}
-		items = append(items, item)
-	}
-	slices.SortStableFunc(items, func(a, b sessionListItem) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
-	writeJSON(w, items)
 }
 
 func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {

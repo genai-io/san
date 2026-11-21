@@ -14,7 +14,7 @@ type nativeState struct {
 	Identity session.SessionCreatePayload `json:"identity"`
 	Context  *ai.Request                  `json:"context"`
 	Request  *ai.Request                  `json:"request,omitempty"`
-	History  []ai.Message                 `json:"history"`
+	History  []ai.Message                 `json:"history,omitempty"`
 }
 
 func (s *Server) readState(ctx context.Context, id string, seq uint64) (nativeState, error) {
@@ -23,15 +23,18 @@ func (s *Server) readState(ctx context.Context, id string, seq uint64) (nativeSt
 		return nativeState{}, err
 	}
 	events := p.Events()
-	st := nativeState{Seq: seq, Identity: p.Identity(), History: p.Messages()}
-	if seq != 0 {
+	st := nativeState{Seq: seq, Identity: p.Identity()}
+	if seq == 0 {
+		st.Seq = uint64(len(events))
+		st.History = p.Messages()
+	} else {
 		if seq > uint64(len(events)) {
 			return nativeState{}, fmt.Errorf("event sequence out of range")
 		}
 		event := events[seq-1]
 		st.Event = &event
 	}
-	st.Context, err = s.store.ContextRequest(ctx, id, seq)
+	st.Context, err = s.store.ContextRequest(ctx, id, st.Seq)
 	if err != nil {
 		return nativeState{}, err
 	}

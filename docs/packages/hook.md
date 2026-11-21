@@ -118,11 +118,16 @@ methods don't earn an interface; TEMPLATE Rule 3.
 - Concurrency: all `Set*` methods are mutex-guarded reads/writes; hook
   execution reads under RLock.
 
-### Command hook stdin
+### Command hook I/O
 
 San supplies one JSON value on stdin and closes it, so scripts that read until
 EOF finish deterministically. Command hooks run without the TUI's controlling
 terminal.
+
+On exit 0, `SessionStart` and `UserPromptSubmit` command hooks can return plain
+stdout as additional context. Output beginning with `{` is parsed as structured
+JSON and invalid objects remain errors. Empty stdout is a no-op. Other hook
+events and executors retain their existing output rules.
 
 ## Which shell runs a command hook
 

@@ -29,22 +29,35 @@ unless `--no-open` is set. Press `Ctrl-C` to stop.
 
 ## Browse and inspect
 
-The sidebar lists live sessions of the canonical project. Git worktrees share
-one project; unrelated clones and non-Git directories do not. Renamed titles take
-precedence over generated titles. Unsupported sessions remain listed so their raw
-bytes can be diagnosed rather than disappearing silently.
+The sidebar lists live sessions of the canonical project, ten per page. Use
+**Previous** and **Next** to browse, or **Refresh** to see newly created sessions.
+Git worktrees share one project; unrelated clones and non-Git directories do not.
+Renamed titles take precedence over generated titles. If a title would require
+replaying a large log, the sidebar shows a shortened session ID; hover over the
+row to see the full ID. Unsupported sessions remain available for diagnosis.
 
 The timeline exposes thirteen event families: session creation/update, native
 messages, context compaction, inference start/finish, permission decisions, tool
 finishes, instruction/toolset/skill catalogues, hook finishes and annotations.
-Filters let you focus on related facts. Events have stable sequence positions
-within their session; sequence numbers are not JSONL line numbers, because one
+Use the filters under **Timeline** to focus on related events. Rows show a short
+name, a preview, and any recorded outcome. Unmapped types display their raw event
+names. Full hook commands and system reminders remain in the details. Sequence
+positions are stable within each session and are not JSONL line numbers: one
 committed line may contain multiple events.
 
-Select an event to inspect its raw typed payload and provenance. Raw committed
-SDK batches remain available unchanged. If transport validation fails, the server
-reports the checked prefix and explicitly unvalidated bounded diagnostic text;
-that text is never treated as projected history.
+Select a session on the left and a step in **Timeline** to see its recorded details
+on the right. Use **Expand** to give the details more room without changing the
+selected step; **Restore** or `Esc` returns to the original layout. Message steps
+show the ordered native blocks. Permission and tool steps link to the requested invocation; tool
+finishes show any recorded file diff, shell output or agent result separately
+from what was returned to the model. Source links jump to the referenced event.
+
+The details pane opens with **Model input** for a model call or **Context** for
+other steps. Context shows session state after the selected step, not a recorded
+model request. **Event** and **Raw batch** are collapsed until opened. The latter
+is the only raw JSON view and may include several events. System reminders are
+shown separately inside messages. Transport failures report checked batches and
+bounded unvalidated text.
 
 ## Reconstruct the model request
 
@@ -54,12 +67,12 @@ instructions, tool schemas and repaired active native messages; a standalone
 request loads its immutable, verified blob. Current settings and later catalogue
 changes do not substitute for the historical input.
 
-For other events, cumulative context is reconstructed at the selected sequence.
-Compaction changes active context, not full history: earlier turns remain
-inspectable. Native images, provider signatures, encrypted reasoning and content
-ordering are retained rather than being flattened into a replacement transcript.
-Unsupported event versions or invalid provenance fail validated replay instead
-of being silently skipped.
+For other events, historical context includes changes made by the selected step.
+The separate **Session history** view shows all committed messages through the
+indicated step, including turns before compaction. Native images, provider
+signatures, encrypted reasoning and content ordering are retained. Unsupported
+event versions or invalid provenance fail validated replay instead of being
+silently skipped.
 
 ## Outcomes and interrupted work
 
@@ -95,7 +108,7 @@ by earlier versions remain on disk untouched and are not discovered.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Embedded inspector SPA |
-| `GET` | `/api/sessions` | Live project sessions and diagnostic metadata |
+| `GET` | `/api/sessions` | Page of live sessions (`items` plus optional `next` cursor) |
 | `GET` | `/api/sessions/{id}/records` | JSON with committed SDK batches, tails and any diagnostics |
 | `GET` | `/api/sessions/{id}/stream` | SSE of committed batches |
 | `GET` | `/api/sessions/{id}/state/{seq}` | Validated native context or historical inference request |

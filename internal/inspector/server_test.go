@@ -102,8 +102,7 @@ func TestServerNativeReadsDoNotModifyFilesOrClaimWriter(t *testing.T) {
 	appendPayload(t, writer, session.MessageAppendPayload{Messages: []ai.Message{message("u", "hello")}})
 	appendPayload(t, writer, session.SessionUpdatePayload{State: &session.StatePatch{Title: session.SetField("saved title")}})
 	before := diskSnapshot(t, store.ProjectDir())
-	var list []sessionListItem
-	getJSON(t, srv, "/api/sessions", &list)
+	list := getSessionPage(t, srv, "").Items
 	if len(list) != 1 || list[0].ID != "session" || list[0].Title != "saved title" {
 		t.Fatalf("list: %+v", list)
 	}
@@ -112,9 +111,15 @@ func TestServerNativeReadsDoNotModifyFilesOrClaimWriter(t *testing.T) {
 	if len(records.Batches) != 3 || records.Error != "" {
 		t.Fatalf("records: %+v", records)
 	}
+	var created nativeState
+	getJSON(t, srv, "/api/sessions/session/state/1", &created)
+	if created.Seq != 1 || created.Event == nil || created.Event.Type != session.EventSessionCreate ||
+		len(created.Context.Messages) != 0 || len(created.History) != 0 {
+		t.Fatalf("creation snapshot includes later state: %+v", created)
+	}
 	var st nativeState
 	getJSON(t, srv, "/api/sessions/session/state/0", &st)
-	if len(st.Context.Messages) != 1 || st.Context.Messages[0].ID != "u" {
+	if st.Seq != 3 || st.Event != nil || len(st.History) != 1 || len(st.Context.Messages) != 1 || st.Context.Messages[0].ID != "u" {
 		t.Fatalf("state: %+v", st)
 	}
 	after := diskSnapshot(t, store.ProjectDir())
@@ -266,8 +271,7 @@ func TestUnsupportedAndCorruptRemainVisible(t *testing.T) {
 	if out.Error == "" || out.Unvalidated != "{broken}\n" {
 		t.Fatalf("missing corrupt diagnosis: %+v", out)
 	}
-	var list []sessionListItem
-	getJSON(t, srv, "/api/sessions", &list)
+	list := getSessionPage(t, srv, "").Items
 	if len(list) != 4 {
 		t.Fatalf("unreadable sessions hidden: %+v", list)
 	}

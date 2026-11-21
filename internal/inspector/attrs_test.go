@@ -17,8 +17,7 @@ func TestSidebarHonorsUserTitlesAndReportsDamagedAttrs(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := diskSnapshot(t, store.ProjectDir())
-	var items []sessionListItem
-	getJSON(t, srv, "/api/sessions", &items)
+	items := getSessionPage(t, srv, "").Items
 	if len(items) != 1 || items[0].Title != "chosen" || items[0].AttrsError != "" {
 		t.Fatalf("user title lost: %+v", items)
 	}
@@ -30,7 +29,7 @@ func TestSidebarHonorsUserTitlesAndReportsDamagedAttrs(t *testing.T) {
 		t.Fatal(err)
 	}
 	before = diskSnapshot(t, store.ProjectDir())
-	getJSON(t, srv, "/api/sessions", &items)
+	items = getSessionPage(t, srv, "").Items
 	if items[0].AttrsError == "" {
 		t.Fatal("damaged user intent silently treated as empty")
 	}
@@ -41,7 +40,7 @@ func TestSidebarHonorsUserTitlesAndReportsDamagedAttrs(t *testing.T) {
 	if err := store.SetAttrs(context.Background(), "new-with-title", session.AttrsPatch{Title: session.SetField("future title")}); err != nil {
 		t.Fatal(err)
 	}
-	getJSON(t, srv, "/api/sessions", &items)
+	items = getSessionPage(t, srv, "").Items
 	found := false
 	for _, item := range items {
 		if item.ID == "new-with-title" {

@@ -19,7 +19,7 @@
     <div class="brand-tag">conversation forensics ·&nbsp;<em>read the wire, not the chat</em></div>
     <div class="brand-spacer"></div>
     <span id="status" class="status idle"></span>
-    <button id="toggle-prompt" class="toggle">
+    <button id="toggle-prompt" class="toggle" aria-expanded="false" aria-controls="prompt">
       <span class="toggle-icon" aria-hidden="true">⌥</span>
       <span class="toggle-label">system prompt</span>
       <span class="toggle-caret">▸</span>
@@ -27,39 +27,54 @@
   </header>
 
   <main>
-    <aside id="sidebar">
-      <div class="aside-head">
-        <h2>Sessions</h2>
-        <span class="aside-meta">project log</span>
-      </div>
+    <aside id="sidebar" aria-labelledby="sessions-heading">
+      <header class="pane-header">
+        <h2 id="sessions-heading">Sessions</h2>
+        <button id="sessions-refresh" type="button" class="pane-action">Refresh</button>
+      </header>
       <ul id="session-list" class="session-list"></ul>
       <div class="aside-foot">
-        <span class="dot"></span>
-        polling · 2s
+        <span id="sessions-page" role="status"></span>
+        <div class="session-page-controls" role="group" aria-label="Session pages">
+          <button id="sessions-prev" type="button" class="pane-action" disabled>Previous</button>
+          <button id="sessions-next" type="button" class="pane-action" disabled>Next</button>
+        </div>
       </div>
     </aside>
 
-    <section id="viewer">
+    <section id="viewer" aria-labelledby="timeline-heading">
       <div id="timeline-header">
-        <div class="header-row">
-          <span id="session-meta">No session selected.</span>
-        </div>
-        <div class="header-row filters-row" role="toolbar" aria-label="event type filters">
-          <label class="chip"><input type="checkbox" id="filter-state" checked><span class="chip-dot" data-kind="state"></span>state</label>
-          <label class="chip"><input type="checkbox" id="filter-tools" checked><span class="chip-dot" data-kind="tool"></span>tool</label>
-          <label class="chip"><input type="checkbox" id="filter-system" checked><span class="chip-dot" data-kind="system"></span>system</label>
-          <label class="chip"><input type="checkbox" id="filter-inference" checked><span class="chip-dot" data-kind="inference"></span>inference</label>
-          <label class="chip"><input type="checkbox" id="filter-message" checked><span class="chip-dot" data-kind="message"></span>message</label>
-          <label class="chip"><input type="checkbox" id="filter-hook" checked><span class="chip-dot" data-kind="hook"></span>hook</label>
-          <label class="chip"><input type="checkbox" id="filter-permission" checked><span class="chip-dot" data-kind="permission"></span>permission</label>
+        <header class="pane-header">
+          <div class="pane-heading">
+            <h2 id="timeline-heading">Timeline</h2>
+            <div class="pane-meta"><span id="session-meta">No session selected</span><span id="timeline-count"></span></div>
+          </div>
+          <button id="show-history" class="pane-action icon-action" type="button" title="Session history" aria-label="Session history" aria-controls="detail-body" aria-pressed="false" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>
+          </button>
+        </header>
+        <div class="filter-options" role="group" aria-label="Event types">
+          <label class="chip"><input type="checkbox" id="filter-state" checked><span class="chip-dot" data-kind="state"></span>State</label>
+          <label class="chip"><input type="checkbox" id="filter-tools" checked><span class="chip-dot" data-kind="tool"></span>Tool</label>
+          <label class="chip"><input type="checkbox" id="filter-system" checked><span class="chip-dot" data-kind="system"></span>System</label>
+          <label class="chip"><input type="checkbox" id="filter-inference" checked><span class="chip-dot" data-kind="inference"></span>Inference</label>
+          <label class="chip"><input type="checkbox" id="filter-message" checked><span class="chip-dot" data-kind="message"></span>Message</label>
+          <label class="chip"><input type="checkbox" id="filter-hook" checked><span class="chip-dot" data-kind="hook"></span>Hook</label>
+          <label class="chip"><input type="checkbox" id="filter-permission" checked><span class="chip-dot" data-kind="permission"></span>Permission</label>
         </div>
       </div>
       <div id="timeline" class="timeline" aria-live="polite"></div>
     </section>
 
-    <section id="detail" class="detail">
-      <div class="detail-rail" aria-hidden="true"></div>
-      <div id="detail-body"><pre class="detail-empty">Select a record from the timeline.<br><em>The record's raw payload renders here. Inference rows additionally render the composed system prompt the model received and the active message chain.</em></pre></div>
+    <section id="detail" class="detail" aria-labelledby="details-heading">
+      <header class="pane-header">
+        <h2 id="details-heading">Details</h2>
+        <button id="detail-expand" class="pane-action icon-action" type="button" title="Expand details" aria-label="Expand details" aria-expanded="false" aria-controls="detail-body">
+          <svg class="icon-expand" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5m0 6v5h-5M4 15v5h5"/></svg>
+          <svg class="icon-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h5V4m6 0v5h5m0 6h-5v5m-6 0v-5H4"/></svg>
+        </button>
+      </header>
+      <div id="detail-body"><p class="detail-empty">Select a step to inspect its details.</p></div>
     </section>
 
     <div id="prompt-backdrop" class="prompt-backdrop"></div>
@@ -72,7 +87,7 @@
         </div>
         <span id="prompt-meta">— at selected record</span>
         <div class="prompt-actions">
-          <button id="prompt-expand" title="Toggle full width" aria-label="Toggle full width">⤢</button>
+          <button id="prompt-expand" title="Toggle full width" aria-label="Toggle full width" aria-pressed="false">⤢</button>
           <button id="prompt-close" title="Close" aria-label="Close">✕</button>
         </div>
       </div>
@@ -82,6 +97,7 @@
     </section>
   </main>
 
+  <script src="/detail.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
