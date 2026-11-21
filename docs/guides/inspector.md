@@ -29,29 +29,35 @@ unless `--no-open` is set. Press `Ctrl-C` to stop.
 
 ## Browse and inspect
 
-The sidebar lists live sessions of the canonical project. Git worktrees share
-one project; unrelated clones and non-Git directories do not. Renamed titles take
-precedence over generated titles. Unsupported sessions remain listed so their raw
-bytes can be diagnosed rather than disappearing silently.
+The sidebar lists live sessions of the canonical project, ten per page. Use
+**Previous** and **Next** to browse, or **Refresh** to see newly created sessions.
+Git worktrees share one project; unrelated clones and non-Git directories do not.
+Renamed titles take precedence over generated titles. If a title would require
+replaying a large log, the sidebar shows a shortened session ID; hover over the
+row to see the full ID. Unsupported sessions remain available for diagnosis.
 
 The timeline exposes thirteen event families: session creation/update, native
 messages, context compaction, inference start/finish, permission decisions, tool
 finishes, instruction/toolset/skill catalogues, hook finishes and annotations.
-Filters let you focus on related facts. Rows show a short event label, preview,
-and any recorded outcome. Full hook commands and attached system reminders are
-available in the details rather than mixed into the timeline. Sequence positions
-are stable within each session and are not JSONL line numbers: one committed line
-may contain multiple events.
+Use the filters under **Timeline** to focus on related events. Rows show a short
+name, a preview, and any recorded outcome. Unmapped types display their raw event
+names. Full hook commands and system reminders remain in the details. Sequence
+positions are stable within each session and are not JSONL line numbers: one
+committed line may contain multiple events.
 
-Select a timeline step to see its recorded details. Message steps show the ordered
-native blocks. Permission and tool steps link to the requested invocation; tool
+Select a session on the left and a step in **Timeline** to see its recorded details
+on the right. Use **Expand** to give the details more room without changing the
+selected step; **Restore** or `Esc` returns to the original layout. Message steps
+show the ordered native blocks. Permission and tool steps link to the requested invocation; tool
 finishes show any recorded file diff, shell output or agent result separately
 from what was returned to the model. Source links jump to the referenced event.
 
-Expand **Technical details** for the event payload, historical context and exact
-JSON. If transport validation fails, the server reports the checked prefix and
-explicitly unvalidated bounded diagnostic text; that text is never treated as
-projected history.
+The details pane opens with **Model input** for a model call or **Context** for
+other steps. Context shows session state after the selected step, not a recorded
+model request. **Event** and **Raw batch** are collapsed until opened. The latter
+is the only raw JSON view and may include several events. System reminders are
+shown separately inside messages. Transport failures report checked batches and
+bounded unvalidated text.
 
 ## Reconstruct the model request
 
@@ -102,7 +108,7 @@ by earlier versions remain on disk untouched and are not discovered.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/` | Embedded inspector SPA |
-| `GET` | `/api/sessions` | Live project sessions and diagnostic metadata |
+| `GET` | `/api/sessions` | Page of live sessions (`items` plus optional `next` cursor) |
 | `GET` | `/api/sessions/{id}/records` | JSON with committed SDK batches, tails and any diagnostics |
 | `GET` | `/api/sessions/{id}/stream` | SSE of committed batches |
 | `GET` | `/api/sessions/{id}/state/{seq}` | Validated native context or historical inference request |

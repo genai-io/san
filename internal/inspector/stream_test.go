@@ -7,12 +7,95 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/genai-io/san/internal/session"
 )
+
+func TestStreamMissingLogReturnsNotFound(t *testing.T) {
+	_, _, srv := fixture(t)
+	resp, err := srv.Client().Get(srv.URL + "/api/sessions/missing/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing log: got status %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestStreamStampSkipsUnchangedLog(t *testing.T) {
+	_, w, _ := fixture(t)
+	var stamp streamStamp
+	if !stamp.changed(w.Path()) {
+		t.Fatal("first poll must scan")
+	}
+	if _, err := os.ReadFile(w.Path()); err != nil {
+		t.Fatal(err)
+	}
+	if stamp.changed(w.Path()) {
+		t.Fatal("poll after reading unchanged log must skip the scan")
+	}
+	appendPayload(t, w, session.AnnotationAddPayload{Text: "new"})
+	if !stamp.changed(w.Path()) || stamp.changed(w.Path()) {
+		t.Fatal("append must trigger exactly one scan")
+	}
+}
+
+func TestStreamDetectsReplacementWithSameSizeAndMtime(t *testing.T) {
+	_, w, srv := fixture(t)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Set a coarse timestamp so it can be copied exactly across both files.
+	mtime := time.Unix(1700000000, 0)
+	if err := os.Chtimes(w.Path(), mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(w.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/sessions/session/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	reader := bufio.NewReader(resp.Body)
+	first, err := reader.ReadString('\n')
+	if err != nil || !strings.HasPrefix(first, "data: ") {
+		t.Fatalf("initial batch: %q, %v", first, err)
+	}
+
+	// The replacement has no checked prefix, but matches the old size/mtime.
+	path := filepath.Join(filepath.Dir(w.Path()), "replacement")
+	payload := strings.Repeat("x", int(info.Size())-1) + "\n"
+	if err := os.WriteFile(path, []byte(payload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path, w.Path()); err != nil {
+		t.Fatal(err)
+	}
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "\nevent: diagnostic\ndata: {\"error\":\"committed prefix replaced\"}\n\n"; string(rest) != want {
+		t.Fatalf("after replacement: got %q, want %q", rest, want)
+	}
+}
 
 func TestStreamWaitsForCompleteSDKEnvelope(t *testing.T) {
 	_, w, srv := fixture(t)

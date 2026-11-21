@@ -25,9 +25,11 @@ reader, cwd-hash partition lookup or fallback to `transcripts/`.
 
 ## Flow and API
 
-- `GET /api/sessions`: enumerate live session directories without regenerating
-  overview caches. Unsupported sessions remain discoverable for diagnosis.
-  Attrs titles override generated titles; attrs errors are reported separately.
+- `GET /api/sessions`: paginated live sessions, newest file modification first.
+  Returns `items` and an optional `next` cursor, with a default limit of 10 and
+  maximum of 50. Reads metadata from visible rows only, with a bounded replay
+  budget for generated titles. Attrs titles win; rows without a title show their
+  ID. Unsupported sessions remain discoverable. The browser refreshes on demand.
 - `GET /api/sessions/{id}/records`: JSON containing unchanged committed SDK batches
   and checked tails. A read failure returns the valid prefix, an error and bounded
   explicitly unvalidated diagnostic text; diagnostics are not projected events.
@@ -36,9 +38,10 @@ reader, cwd-hash partition lookup or fallback to `transcripts/`.
   returns the latest committed context and full message history, with `seq` set
   to the last included event. Historical step snapshots omit session-wide history.
   Event sequence is not a line number or byte offset. Invalid projections fail closed.
-- `GET /api/sessions/{id}/stream`: SSE of committed batches. Polling compares the
-  entire prior tail chain, emits only complete new batches and closes with a
-  diagnostic if the prefix is replaced or corrupt. Partial suffixes wait.
+- `GET /api/sessions/{id}/stream`: SSE of committed batches. Unchanged files are
+  skipped. On change the SDK validates the log again, and the stream compares
+  the prior tail chain before emitting new batches. Corruption or replacement
+  closes the stream with a diagnostic. Partial suffixes wait.
 - `GET /`: embedded SPA from `ui/assets/`.
 
 `session.Store.Read`, `ContextRequest`, `InferenceRequest` and `CommittedBatches`
@@ -51,9 +54,8 @@ text, never silently normalized into supported events.
 The UI renders event-specific details before requesting a validated snapshot.
 Tool details show recorded execution metadata separately from model-facing
 results. The details pane and system prompt drawer share the selected snapshot;
-expand the raw disclosures for exact batch and snapshot JSON. Filters select
-event families, and request generations and stream identity fence stale browser
-responses.
+**Raw batch** is the only raw JSON view in the UI. Filters select event families,
+and request generations and stream identity fence stale browser responses.
 
 ## Lifecycle and configuration
 

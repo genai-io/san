@@ -17,21 +17,26 @@ class Element {
   appendChild(child){this.children.push(child);}
   replaceChildren(...children){this.children=children;}
   scrollIntoView(){}
+  focus(){}
 }
-async function viewer(){
-  const elements=new Map(), requests=[];
+async function viewer(sessionPage=()=>({items:[]}), url='http://localhost/'){
+  const elements=new Map(), requests=[], sessionRequests=[], documentListeners={};
   const element=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
-  const context=vm.createContext({URL,Element,document:{querySelector:element,createElement:tag=>new Element(tag)},
+  const context=vm.createContext({URL,Element,AbortController,location:{href:url},document:{querySelector:element,createElement:tag=>new Element(tag),
+    addEventListener:(event,handler)=>{documentListeners[event]=handler;}},
     EventSource:class{constructor(){this.listeners={};}close(){this.closed=true;}addEventListener(event,handler){this.listeners[event]=handler;}},
-    setInterval(){},fetch:url=>{
-      if(url==='/api/sessions')return Promise.resolve({ok:true,json:async()=>[]});
-      return new Promise((resolve,reject)=>requests.push({url,reject,
+    fetch:(url,{signal}={})=>{
+      if(url==='/api/sessions'||url.startsWith('/api/sessions?')){
+        sessionRequests.push(url);
+        return Promise.resolve(sessionPage(url)).then(body=>({ok:true,json:async()=>body}));
+      }
+      return new Promise((resolve,reject)=>requests.push({url,signal,reject,
         resolve:body=>resolve({ok:true,json:async()=>body,text:async()=>JSON.stringify(body)}),
         resolveText:text=>resolve({ok:true,text:async()=>text})}));
     }});
   for (const script of ['detail.js','app.js']) vm.runInContext(readFileSync(join(__dirname,'assets',script),'utf8'),context);
   const app=vm.runInContext('({state,openSession,showDetail,refreshPromptPanel,renderInline,classify,passesFilter,ingestBatch,showDiagnostics})',context);
-  await new Promise(setImmediate);return {...app,element,requests};
+  await new Promise(setImmediate);return {...app,element,requests,sessionRequests,documentListeners};
 }
 const event=(seq,type,payload={},source)=>({seq,type,v:1,time:1000,payload,...(source?{source}:{})});
 const batch=(sequence,events)=>({tail:{sequence,hash:'hash'+sequence,count:sequence},batch:{id:'batch'+sequence,records:[{type:'app',name:'san.events',data:{version:1,events,validation:{}}}]}});
@@ -39,17 +44,111 @@ const snapshot=text=>({context:{System:text,Tools:[],Messages:[]},history:[]});
 const textBlock=text=>({type:'text',text});
 const message=(id,role,...content)=>({id,role,content});
 const descendants=node=>[node,...node.children.flatMap(descendants)];
-function expand(root,title){
+function group(root,title){
+  const node=root.children.find(el=>el.className==='detail-group' && el.children[0].textContent===title);
+  assert.ok(node,title);
+  return node;
+}
+function panel(root,title){
   const node=descendants(root).find(el=>el.tag==='details' && el.children[0].textContent.startsWith(title));
   assert.ok(node,title);
+  return node;
+}
+function expand(root,title){
+  const node=panel(root,title);
   node.open=true;node.listeners.toggle();return node;
 }
+
+test('session pages load only on navigation or refresh and prevent overlapping requests',async()=>{
+  let complete;
+  const v=await viewer(url=>url.includes('?') ? new Promise(resolve=>{complete=resolve;}) : {items:[{id:'recent'}],next:'cursor+1'});
+  const next=v.element('#sessions-next'), prev=v.element('#sessions-prev'), status=v.element('#sessions-page');
+  assert.equal(status.textContent,'Page 1');
+  assert.equal(prev.disabled,true);
+  next.listeners.click();next.listeners.click();v.element('#sessions-refresh').listeners.click();
+  assert.deepEqual(v.sessionRequests,['/api/sessions','/api/sessions?cursor=cursor%2B1']);
+  assert.equal(next.disabled,true);
+  complete({items:[{id:'older'}]});await new Promise(setImmediate);
+  assert.equal(v.element('#session-list').textContent,'older');
+  assert.equal(status.textContent,'Page 2');
+  assert.equal(next.disabled,true);
+  prev.listeners.click();await new Promise(setImmediate);
+  assert.equal(v.element('#session-list').textContent,'recent');
+  assert.equal(status.textContent,'Page 1');
+});
+
+test('session row keeps metadata inside the clickable button and supports a direct link',async()=>{
+  const v=await viewer(()=>({items:[{id:'fresh',title:'New session',updatedAt:'2026-11-21T00:25:32Z'}]}), 'http://localhost/?session=fresh');
+  assert.equal(v.state.currentSession,'fresh');
+  const row=v.element('#session-list').children[0];
+  assert.equal(row.classList.contains('active'),true);
+  const [button]=row.children;
+  assert.equal(row.children.length,1);
+  assert.equal(button.tag,'button');
+  assert.equal(button.children[0].textContent,'New session');
+  assert.equal(button.children[1].className,'id');
+  v.openSession('another');
+  button.listeners.click();
+  assert.equal(v.state.currentSession,'fresh');
+});
+
+test('expanding details preserves the selected step, payload, and timeline',async()=>{
+  const v=await viewer();v.openSession('native');
+  v.ingestBatch(batch(1,[event(1,'annotation.add',{text:'recorded detail'}),event(2,'message.append')]));
+  await v.showDetail(0);
+  const detail=v.element('#detail-body'), timeline=v.element('#timeline'), button=v.element('#detail-expand');
+  const raw=expand(detail,'Raw batch');
+  const rows=timeline.children, selection=v.state.selectedRecordID;
+  assert.equal(JSON.parse(raw.children.at(-1).textContent).batch.records[0].data.events[0].payload.text,'recorded detail');
+  button.listeners.click();
+  assert.equal(v.element('main').classList.contains('detail-wide'),true);
+  assert.equal(button.attributes['aria-expanded'],'true');
+  assert.equal(button.attributes['aria-label'],'Restore details width');
+  assert.equal(timeline.children,rows);
+  assert.equal(v.state.selectedRecordID,selection);
+  assert.equal(raw.open,true);
+  assert.equal(v.requests.length,1,'widening the pane does not reload context');
+  v.documentListeners.keydown({key:'Escape',preventDefault(){}});
+  assert.equal(v.element('main').classList.contains('detail-wide'),false);
+  assert.equal(button.attributes['aria-label'],'Expand details');
+});
+
+test('session settings, projected context, and stored JSON have separate scopes',async()=>{
+  const v=await viewer();v.openSession('native');
+  v.ingestBatch(batch(1,[event(1,'session.create',{config:{model:'fixture-model-v1'}})]));
+  await v.showDetail(0);
+  const detail=v.element('#detail-body');
+  assert.equal(panel(detail,'Event').open,false);
+  assert.equal(panel(detail,'Raw batch').open,false);
+  const recorded=expand(detail,'Event'), projected=panel(detail,'Context');
+  assert.equal(detail.children[2],projected);
+  assert.equal(projected.open,true);
+  assert.match(recorded.textContent,/Session settings.*fixture-model-v1/s);
+  assert.equal(v.requests.length,1);
+  v.requests[0].resolve(snapshot('projected prompt'));
+  await new Promise(setImmediate);
+  assert.match(projected.textContent,/not a model request/);
+  assert.doesNotMatch(projected.textContent,/fixture-model-v1/);
+  assert.match(expand(projected,'System prompt').textContent,/projected prompt/);
+  assert.doesNotMatch(recorded.textContent,/projected prompt/);
+});
+
+test('instruction text comes before the change trigger',async()=>{
+  const v=await viewer();v.openSession('native');
+  v.ingestBatch(batch(1,[event(1,'instructions.update',{set:{project:{slot:1,content:'Project rules'}},cause:'boot'})]));
+  await v.showDetail(0);
+  const detail=v.element('#detail-body');
+  assert.equal(detail.children[2].children[0].textContent,'Context');
+  assert.match(expand(detail,'Event').textContent,/Project rules.*Prompt order1.*Triggered byStartup/s);
+  assert.equal(v.requests.length,1);
+});
 
 test('late detail responses cannot overwrite another record or session',async()=>{
   for(const change of ['record','session'])for(const fail of [false,true]){
     const v=await viewer();v.openSession('first');v.ingestBatch(batch(1,[event(1,'inference.start'),event(2,'message.append')]));
     const pending=v.showDetail(0);
     if(change==='session')v.openSession('second');else v.showDetail(1);
+    assert.equal(v.requests[0].signal.aborted,true);
     const detail=v.element('#detail-body'),before=detail.textContent;
     if(fail)v.requests[0].reject(new Error('stale failure'));else v.requests[0].resolve(snapshot('obsolete'));
     await pending;
@@ -77,23 +176,47 @@ test('retired streams and diagnostics cannot change a new session',async()=>{
   v.requests[0].resolve({error:'old',unvalidatedText:'<script>bad</script>'});await pending;
   assert.equal(v.state.records.length,0);assert.equal(v.element('#detail-body').children,before);
 });
+test('event labels share a mapping and fall back to the raw type for unknown data',async()=>{
+  const v=await viewer();v.openSession('native');
+  v.ingestBatch(batch(1,[event(1,'session.create'),event(2,'inference.finish',{outcome:'success'}),
+    event(3,'future.event'),{...event(4,'session.update'),v:2}]));
+  const rows=v.element('#timeline').children;
+  assert.deepEqual(rows.map(row=>row.title),['session.create','inference.finish','future.event','session.update']);
+  assert.deepEqual(rows.map(row=>row.textContent),['#1Session · Start','#2Model · OutcomeSuccess',
+    '#3future.eventUnsupported (raw)','#4session.updateUnsupported (raw)']);
+  await v.showDetail(0);
+  assert.match(v.element('#detail-body').textContent,/#1 · session\.createSession · Start/);
+  await v.showDetail(3);
+  assert.match(v.element('#detail-body').textContent,/#4 · session\.updatesession\.update/);
+});
+
 test('native batches retain all 13 event families and sequence/source provenance',async()=>{
   const v=await viewer();v.openSession('native');
   const types=['session.create','session.update','message.append','context.compact','inference.start','inference.finish','permission.decide','tool.finish','instructions.update','toolset.update','skills.update','hook.finish','annotation.add'];
   const envelope=batch(1,types.map((type,i)=>event(i+1,type,{text:'native'},i===12?{session:'child',seq:7}:undefined)));
   v.ingestBatch(envelope);v.ingestBatch(envelope);
-  assert.equal(v.state.records.length,13);assert.equal(v.element('#timeline').children.length,13);
-  assert.match(v.element('#timeline').children[12].textContent,/#13Annotationnative← child#7/);
-  const headings=['Session identity','Session changes','Recorded messages','Compaction','Model call','Inference outcome','Permission decision','Tool execution','Catalogue changes','Catalogue changes','Catalogue changes','Hook execution','Annotation'];
+  const rows=v.element('#timeline').children;
+  assert.equal(v.state.records.length,13);assert.equal(rows.length,13);
+  assert.deepEqual(rows.slice(8,11).map(row=>row.textContent),['#9Instructions','#10Tools','#11Skills']);
+  assert.match(rows[12].textContent,/#13Annotationnative← child#7/);
+  const headings=['Session identity','Event','Recorded messages','Compaction','Model call','Inference outcome','Permission decision','Tool execution','Instruction changes','Tool changes','Skill changes','Hook execution','Annotation'];
   for(const [index,type] of types.entries()){
     assert.notEqual(v.classify(type),'unknown',type);
     const pending=v.showDetail(index);
-    assert.ok(v.element('#detail-body').textContent.includes(headings[index]),type);
+    assert.ok(expand(v.element('#detail-body'),'Event').textContent.includes(headings[index]),type);
     if(type==='inference.start') v.requests.at(-1).resolve(snapshot('native'));
     await pending;
   }
   v.state.filters.state=false;assert.equal(v.passesFilter(event(1,'session.update')),false);
 });
+test('a single skill change names the skill and its recorded state',async()=>{
+  const v=await viewer();v.openSession('native');
+  v.ingestBatch(batch(1,[event(1,'skills.update',{set:{review:'active'},cause:'user'})]));
+  assert.equal(v.element('#timeline').children[0].textContent,'#1Skillsreview · active');
+  await v.showDetail(0);
+  assert.match(expand(v.element('#detail-body'),'Event').textContent,/Does not rewrite the system prompt/);
+});
+
 test('acceptance and consumption remain distinct facts while native history stays deduplicated',async()=>{
   const v=await viewer();v.openSession('native');
   const queued=message('queued','user',textBlock('next prompt'));
@@ -105,21 +228,21 @@ test('acceptance and consumption remain distinct facts while native history stay
   assert.notEqual(v.state.records[0]._key,v.state.records[1]._key);
   const timeline=v.element('#timeline');
   assert.equal(timeline.children[0],first,'live batches do not replace earlier rows');
-  assert.equal(first.textContent,'#4Input queuednext prompt');
-  assert.equal(timeline.children[1].textContent,'#7User messagenext prompt← #4');
+  assert.equal(first.textContent,'#4Message · Queuednext prompt');
+  assert.equal(timeline.children[1].textContent,'#7Message · Usernext prompt← #4');
   const pending=v.showDetail(1), detail=v.element('#detail-body');
-  assert.match(detail.textContent,/next prompt/);
+  assert.match(expand(detail,'Event').textContent,/next prompt/);
   await pending;
-  assert.equal(v.requests.length,0,'recorded details do not fetch the latest session');
+  assert.match(v.requests[0].url,/\/state\/7$/);
   assert.doesNotMatch(detail.textContent,/history/i);
   const history=v.element('#show-history').listeners.click();
-  assert.match(v.requests[0].url,/\/state\/0$/);
-  v.requests[0].resolve({seq:7,context:{Messages:[queued]},history:[queued]});await history;
+  assert.match(v.requests[1].url,/\/state\/0$/);
+  v.requests[1].resolve({seq:7,context:{Messages:[queued]},history:[queued]});await history;
   assert.match(detail.textContent,/Session history.*Through step #7.*Messages · 1/s);
   assert.match(expand(detail,'User · queued').textContent,/next prompt/);
   await v.showDetail(1);
-  descendants(detail).find(el=>el.tag==='button' && el.textContent==='#4').listeners.click();
-  assert.match(detail.textContent,/Accepted input · queued for consumption/);
+  descendants(expand(detail,'Event')).find(el=>el.tag==='button' && el.textContent==='#4').listeners.click();
+  assert.match(expand(detail,'Event').textContent,/Accepted input · queued for consumption/);
   assert.equal(first.attributes['aria-current'],'true');
 });
 test('timeline separates hook status, message preview and source from raw payloads',async()=>{
@@ -134,7 +257,7 @@ test('timeline separates hook status, message preview and source from raw payloa
     userEvent(6,'x'.repeat(400))]));
   const timeline=v.element('#timeline'), [hook,user,system,literal,finish,long]=timeline.children;
   const byClass=(row,name)=>descendants(row).find(node=>node.className?.split(' ').includes(name));
-  assert.equal(byClass(hook,'step-label').textContent,'Hook · SessionStart');
+  assert.equal(byClass(hook,'step-label').textContent,'Hook · Session start');
   assert.equal(byClass(hook,'step-status').textContent,'Blocked');
   assert.match(byClass(hook,'step-status').className,/failed/);
   assert.equal(byClass(hook,'step-preview').textContent,'87 ms');
@@ -149,8 +272,15 @@ test('timeline separates hook status, message preview and source from raw payloa
   v.element('#filter-hook').listeners.change({target:{checked:false}});
   assert.equal(v.element('#timeline-count').textContent,'5 of 6 steps');
   const detail=v.element('#detail-body');
-  v.showDetail(0);assert.ok(detail.textContent.includes(command));
-  v.showDetail(1);assert.ok(detail.textContent.includes(reminder));
+  v.showDetail(0);assert.ok(expand(detail,'Event').textContent.includes(command));
+  await v.showDetail(1);
+  const details=expand(detail,'Event');
+  assert.doesNotMatch(details.textContent,/project context|notice/);
+  const reminders=expand(details,'System reminders · 2');
+  assert.match(reminders.textContent,/memory-project.*project context.*Reminder.*notice/s);
+  const raw=expand(detail,'Raw batch').children.at(-1);
+  const events=JSON.parse(raw.textContent).batch.records[0].data.events;
+  assert.ok(events.find(rec=>rec.seq===2).payload.messages[0].content[0].text.includes(reminder));
 });
 test('standalone inference renders the admitted system prompt, messages and tool schemas using SDK keys',async()=>{
   const v=await viewer();v.openSession('native');
@@ -165,7 +295,11 @@ test('standalone inference renders the admitted system prompt, messages and tool
   assert.doesNotMatch(prompt.textContent,/ambient context|empty system prompt/);
   assert.match(expand(prompt,'Read').textContent,/read a file.*"type": "object"/s);
   assert.match(expand(detail,'User · request').textContent,/admitted message/);
-  assert.match(expand(detail,'System prompt and tools').textContent,/admitted system/);
+  const input=group(detail,'Model input');
+  assert.match(expand(input,'System prompt').textContent,/admitted system/);
+  assert.match(expand(input,'User · request').textContent,/admitted message/);
+  assert.doesNotMatch(expand(detail,'Event').textContent,/admitted system|admitted message/);
+  assert.doesNotMatch(input.textContent,/View JSON/);
 });
 test('tool details join the invocation, rendered file diff and model-facing result',async()=>{
   const v=await viewer();v.openSession('native');
@@ -178,15 +312,16 @@ test('tool details join the invocation, rendered file diff and model-facing resu
     event(5,'tool.finish',{call_id:'call-id',outcome:'success',duration_ms:0,details:{Path:'file.txt',EditCount:1,AddedLines:1,RemovedLines:1,
       UnifiedDiff:'@@ -1 +1 @@\n-before\n+after\n'}},{seq:2})]));
   const done=v.showDetail(3), detail=v.element('#detail-body');
-  assert.match(v.element('#timeline').children[3].textContent,/Tool finished · EditSuccess/);
-  assert.ok(detail.textContent.includes(input));
-  assert.match(detail.textContent,/Duration0 ms.*File changes.*Model-facing result.*File updated/s);
-  const diff=descendants(detail).filter(el=>el.className?.startsWith('diff-'));
+  assert.match(v.element('#timeline').children[3].textContent,/Tool · ExecutionSuccessEdit/);
+  const details=expand(detail,'Event');
+  assert.ok(details.textContent.includes(input));
+  assert.match(details.textContent,/Duration0 ms.*File changes.*Model-facing result.*File updated/s);
+  const diff=descendants(details).filter(el=>el.className?.startsWith('diff-'));
   assert.deepEqual(diff.map(el=>[el.className,el.textContent.trim()]),[['diff-header','@@ -1 +1 @@'],['diff-remove','-before'],['diff-add','+after']]);
   await done;
-  assert.equal(v.requests.length,0,'tool execution renders without context reconstruction');
+  assert.equal(v.requests.length,1,'opening Event shares the selected context request');
   v.showDetail(1);
-  assert.match(detail.textContent,/Permission decision.*Authorityuser.*Allow, Deny.*Apply edit\?.*Requested invocation/s);
+  assert.match(expand(detail,'Event').textContent,/Permission decision.*Authorityuser.*Allow, Deny.*Apply edit\?.*Requested invocation/s);
 });
 test('Bash and Agent show recorded details without inventing output',async()=>{
   const v=await viewer();v.openSession('native');
@@ -194,9 +329,9 @@ test('Bash and Agent show recorded details without inventing output',async()=>{
     event(2,'tool.finish',{call_id:'agent',outcome:'success',child_session:'child',details:{Identity:{Name:'review'},Response:'review result'}}),
     event(3,'tool.finish',{call_id:'background',outcome:'success',details:{lineCount:0,taskId:'work'}})]));
   const detail=v.element('#detail-body');
-  v.showDetail(0);assert.match(detail.textContent,/Shell output.*exit 1.*Recorded tail \(truncated\).*last line/s);
-  v.showDetail(1);assert.match(detail.textContent,/Child sessionchild.*Agent result.*review result/s);
-  v.showDetail(2);assert.match(detail.textContent,/Background taskwork/);assert.doesNotMatch(detail.textContent,/Recorded output/);
+  v.showDetail(0);assert.match(expand(detail,'Event').textContent,/Shell output.*exit 1.*Recorded tail \(truncated\).*last line/s);
+  v.showDetail(1);assert.match(expand(detail,'Event').textContent,/Child sessionchild.*Agent result.*review result/s);
+  v.showDetail(2);assert.match(expand(detail,'Event').textContent,/Background taskwork/);assert.doesNotMatch(detail.textContent,/Recorded output/);
 });
 test('unknown and malformed events stay visible as inert raw text',async()=>{
   const v=await viewer();v.openSession('future');
@@ -206,7 +341,7 @@ test('unknown and malformed events stay visible as inert raw text',async()=>{
   await v.showDetail(0);
   assert.equal(v.requests.length,0);
   const detail=v.element('#detail-body');
-  assert.ok(detail.textContent.includes('<img src=x onerror=alert(1)>'));
+  assert.ok(expand(detail,'Raw batch').textContent.includes('<img src=x onerror=alert(1)>'));
   assert.ok(descendants(detail).every(node=>node.innerHTML===''));
 });
 test('diagnostic raw bytes are bounded server data rendered as text, not HTML',async()=>{
@@ -223,11 +358,9 @@ test('exact native wire JSON preserves numbers beyond JavaScript precision',asyn
   const exact='{"context":{"System":"native","SamplingParams":{"seed":9007199254740993}},"request":{"System":"native","SamplingParams":{"seed":9007199254740993}},"history":[]}';
   v.requests[0].resolveText(exact);await pending;
   const detail=v.element('#detail-body');
-  const technical=expand(detail,'Technical details');
-  assert.equal(expand(technical,'Committed batch JSON').children.at(-1).textContent,wire);
-  const raw=expand(technical,'Exact snapshot JSON');
-  await new Promise(setImmediate);
-  assert.equal(raw.children.at(-1).children.at(-1).textContent,exact);
+  assert.equal(expand(detail,'Raw batch').children.at(-1).textContent,wire);
+  const panels=descendants(detail).filter(n=>n.tag==='details' && /JSON|Raw batch/.test(n.children[0].textContent));
+  assert.deepEqual(panels.map(n=>n.children[0].textContent),['Raw batch']);
   assert.equal(v.requests.length,1);
 });
 test('Markdown links cannot execute transcript content',async()=>{

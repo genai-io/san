@@ -102,8 +102,7 @@ func TestServerNativeReadsDoNotModifyFilesOrClaimWriter(t *testing.T) {
 	appendPayload(t, writer, session.MessageAppendPayload{Messages: []ai.Message{message("u", "hello")}})
 	appendPayload(t, writer, session.SessionUpdatePayload{State: &session.StatePatch{Title: session.SetField("saved title")}})
 	before := diskSnapshot(t, store.ProjectDir())
-	var list []sessionListItem
-	getJSON(t, srv, "/api/sessions", &list)
+	list := getSessionPage(t, srv, "").Items
 	if len(list) != 1 || list[0].ID != "session" || list[0].Title != "saved title" {
 		t.Fatalf("list: %+v", list)
 	}
@@ -272,8 +271,7 @@ func TestUnsupportedAndCorruptRemainVisible(t *testing.T) {
 	if out.Error == "" || out.Unvalidated != "{broken}\n" {
 		t.Fatalf("missing corrupt diagnosis: %+v", out)
 	}
-	var list []sessionListItem
-	getJSON(t, srv, "/api/sessions", &list)
+	list := getSessionPage(t, srv, "").Items
 	if len(list) != 4 {
 		t.Fatalf("unreadable sessions hidden: %+v", list)
 	}

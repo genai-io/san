@@ -5,6 +5,15 @@ function section(title, ...nodes) {
   return el;
 }
 
+function detailGroup(title, note, ...nodes) {
+  const group = document.createElement('section');
+  group.className = 'detail-group';
+  group.appendChild(textElement('h3', title, 'detail-group-title'));
+  if (note) group.appendChild(textElement('p', note, 'detail-scope'));
+  for (const node of nodes) group.appendChild(node);
+  return group;
+}
+
 function disclosure(title, build, open = false) {
   const el = document.createElement('details');
   el.className = 'detail-disclosure';
@@ -88,8 +97,18 @@ function contentBlock(block) {
   }
 }
 
-function contentNodes(content) {
-  return Array.isArray(content) && content.length ? content.map(contentBlock) : [textElement('p', 'No content.', 'detail-note')];
+function contentNodes(content, role) {
+  if (!Array.isArray(content) || !content.length) return [textElement('p', 'No content.', 'detail-note')];
+  return content.flatMap(block => {
+    if (role !== 'user' || block?.type !== 'text' || typeof block.text !== 'string') return [contentBlock(block)];
+    const reminders = [];
+    const text = splitTrailingReminders(block.text, (source, body) => reminders.push({source, body}));
+    if (!reminders.length) return [contentBlock(block)];
+    reminders.reverse();
+    return [...(text ? [textElement('pre', text, 'message-text')] : []),
+      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(source || 'Reminder',
+        textElement('pre', body, 'message-text'))))];
+  });
 }
 
 function messageTitle(message) {
@@ -100,7 +119,7 @@ function messageTitle(message) {
 
 function messageViews(messages, open = false) {
   if (!Array.isArray(messages) || !messages.length) return [textElement('p', 'No messages.', 'detail-note')];
-  return messages.map(message => disclosure(messageTitle(message), () => contentNodes(message?.content), open));
+  return messages.map(message => disclosure(messageTitle(message), () => contentNodes(message?.content, message?.role), open));
 }
 
 function jumpButton(label, action) {
@@ -123,12 +142,14 @@ function outcomeFields(p) {
     ['Reason', p.reason], ['Error', p.error?.message], ['Retryable', p.error ? (p.error.retryable ? 'Yes' : 'No') : undefined]];
 }
 
-function catalogue(p, renderEntry) {
+function catalogue(title, note, p, renderEntry) {
   const set = Object.entries(p.set || {});
   const remove = Array.isArray(p.remove) ? p.remove : [];
-  return section('Catalogue changes', fields([['Cause', p.cause], ['Removed', remove.length ? remove.join(', ') : undefined]]),
+  const trigger = p.cause === 'boot' ? 'Startup' : p.cause === 'resume' ? 'Session resume' : p.cause;
+  return section(title, textElement('p', note, 'detail-note'),
     ...set.map(renderEntry),
-    ...(!set.length && !remove.length ? [textElement('p', 'No entries changed.', 'detail-note')] : []));
+    ...(!set.length && !remove.length ? [textElement('p', 'No entries changed.', 'detail-note')] : []),
+    fields([['Removed', remove.length ? remove.join(', ') : undefined], ['Triggered by', trigger]]));
 }
 
 function toolDetails(details) {
@@ -172,10 +193,12 @@ function eventDetails(rec, id) {
         ['Working directory', p.initial_cwd === p.workspace ? undefined : p.initial_cwd],
         ['Parent session', p.parent?.session ? jumpButton(p.parent.session, () => openSession(p.parent.session)) : undefined],
         ['Parent call', p.parent?.call_id], ['Forked at', eventReference(p.fork, id)]])),
-        ...(p.config ? [section('Initial configuration', ...configNodes(p.config))] : [])];
+        ...(p.config ? [section('Session settings', ...configNodes(p.config))] : [])];
     case 'session.update':
-      return [section('Session changes', ...[p.config && section('Configuration', ...configNodes(p.config)),
-        p.state && section('State', namedFields(p.state))].filter(Boolean))];
+      return [
+        ...(p.config ? [section('Session settings', ...configNodes(p.config))] : []),
+        ...(p.state ? [section('Session state', namedFields(p.state))] : []),
+      ];
     case 'message.append':
       return [section(p.accepted ? 'Accepted input · queued for consumption' : 'Recorded messages', ...messageViews(p.messages, true))];
     case 'context.compact':
@@ -202,13 +225,15 @@ function eventDetails(rec, id) {
         ...relatedTool(state.calls, id, p.call_id, 'Requested invocation'),
         ...relatedTool(state.results, id, p.call_id, 'Model-facing result')];
     case 'instructions.update':
-      return [catalogue(p, ([name, value]) => disclosure(name, () => [fields([['Slot', value?.slot]]), textElement('pre', value?.content || '(empty)')], true))];
+      return [catalogue('Instruction changes', 'Parts of the system prompt. See Model · Request for the assembled prompt.', p,
+        ([name, value]) => disclosure(name, () => [textElement('pre', value?.content || '(empty)'), fields([['Prompt order', value?.slot]])], true))];
     case 'toolset.update':
-      return [catalogue(p, ([name, value]) => schemaView(name, value))];
+      return [catalogue('Tool changes', 'Tool definitions, not calls.', p, ([name, value]) => schemaView(name, value))];
     case 'skills.update':
-      return [catalogue(p, ([name, value]) => fields([[name, value]]))];
+      return [catalogue('Skill changes', 'Does not rewrite the system prompt. Check input messages for skill content.', p, ([name, value]) => fields([[name, value]]))];
     case 'hook.finish':
-      return [section('Hook execution', fields([['Trigger', p.trigger], ['Matcher', p.matcher], ...outcomeFields(p)])),
+      return [section('Hook execution', fields([['Trigger', p.trigger], ['Matcher', p.matcher], ...outcomeFields(p)]),
+        textElement('p', 'This event records the hook outcome, not any text it may have added to context.', 'detail-note')),
         ...(p.hook ? [section('Hook source', textElement('pre', p.hook, 'message-text'))] : [])];
     case 'annotation.add':
       return [section('Annotation', fields([['By', p.by_agent ? 'Agent' : 'User'], ['After message', p.after_message]]),
@@ -230,25 +255,44 @@ function promptNodes(request) {
 
 function requestNodes(request, messageLabel = 'Input messages') {
   const messages = request.Messages ?? [];
-  return [disclosure('System prompt and tools', () => promptNodes(request)),
+  const tools = request.Tools ?? [];
+  return [disclosure('System prompt', () => [textElement('pre', request.System || '(empty system prompt)')]),
+    disclosure('Tool definitions · ' + tools.length, () => tools.length
+      ? tools.map(tool => schemaView(tool.name || 'Unnamed tool', tool))
+      : [textElement('p', 'No tools.', 'detail-note')]),
     section(messageLabel + ' · ' + messages.length, ...messageViews(messages))];
 }
 
-function snapshotDisclosure(title, load, render) {
-  return disclosure(title, () => {
+function detailPanel(title, build, open = false) {
+  const panel = disclosure(title, build, open);
+  panel.className = 'detail-group detail-panel';
+  return panel;
+}
+
+function contextPanel(load) {
+  return detailPanel('Context', () => {
     const body = document.createElement('div');
-    loadSnapshot(body, load, render);
+    loadSnapshot(body, load, snapshot => [
+      textElement('p', 'Session state after the selected step, not a model request.', 'detail-scope'),
+      ...requestNodes(snapshot.context, 'Messages'),
+    ]);
     return [body];
+  }, true);
+}
+
+function eventPanel(rec, id, meta) {
+  return detailPanel('Event', () => {
+    try {
+      return [...(supported(rec) ? eventDetails(rec, id) : []), meta];
+    } catch (_) {
+      return [textElement('p', 'Malformed payload. See Raw batch.', 'detail-note'), meta];
+    }
   });
 }
 
-function recordData(rec, load) {
-  const raw = disclosure('Event payload', () => [jsonBlock(rec._raw)], !supported(rec));
-  const batch = disclosure('Committed batch JSON', () => [rec._exactJSON ? textElement('pre', rec._exactJSON) : jsonBlock(rec._batch)]);
-  if (!supported(rec)) return [raw, batch];
-  return [disclosure('Technical details', () => [raw, batch, ...(load ? [
-    ...(rec.type === 'context.compact' ? [] : [snapshotDisclosure('Context after this step', load,
-      snapshot => requestNodes(snapshot.context, 'Context messages'))]),
-    snapshotDisclosure('Exact snapshot JSON', load, snapshot => [textElement('pre', snapshot._exactJSON)]),
-  ] : [])])];
+function rawBatch(rec) {
+  return detailPanel('Raw batch', () => [
+    textElement('p', 'Committed batch as streamed. It can contain multiple events.', 'detail-note'),
+    textElement('pre', rec._batchJSON),
+  ]);
 }

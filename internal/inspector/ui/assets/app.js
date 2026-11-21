@@ -3,23 +3,30 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   currentSession: null, selectedRecordID: null, detailRequest: 0, promptRequest: 0,
   records: [], seenIDs: new Set(), bySequence: new Map(), rows: new Map(), eventSource: null,
-  calls: new Map(), results: new Map(), selectedState: null, pendingSequence: null,
+  calls: new Map(), results: new Map(), selectedState: null, contextAbort: null, pendingSequence: null,
   filters: {message:true, inference:true, tool:true, system:true, state:true, hook:true, permission:true},
 };
 const timeline = $('#timeline'), detail = $('#detail-body');
-const families = new Set(['session.create','session.update','message.append','context.compact',
-  'inference.start','inference.finish','permission.decide','tool.finish','instructions.update',
-  'toolset.update','skills.update','hook.finish','annotation.add']);
-function classify(type) {
-  if (type === 'session.create' || type === 'session.update' || type === 'skills.update') return 'state';
-  if (type === 'message.append' || type === 'context.compact' || type === 'annotation.add') return 'message';
-  if (type === 'toolset.update' || type === 'tool.finish') return 'tool';
-  if (type === 'instructions.update') return 'system';
-  if (type === 'inference.start' || type === 'inference.finish') return 'inference';
-  if (type === 'hook.finish') return 'hook';
-  if (type === 'permission.decide') return 'permission';
-  return 'unknown';
-}
+const eventViews = new Map([
+  ['session.create', {label:'Session · Start', kind:'state'}],
+  ['session.update', {label:'Session · Update', kind:'state'}],
+  ['message.append', {label:'Message', kind:'message'}],
+  ['context.compact', {label:'Context · Compaction', kind:'message'}],
+  ['inference.start', {label:'Model · Request', kind:'inference'}],
+  ['inference.finish', {label:'Model · Outcome', kind:'inference'}],
+  ['permission.decide', {label:'Permission', kind:'permission'}],
+  ['tool.finish', {label:'Tool · Execution', kind:'tool'}],
+  ['instructions.update', {label:'Instructions', kind:'system'}],
+  ['toolset.update', {label:'Tools', kind:'tool'}],
+  ['skills.update', {label:'Skills', kind:'state'}],
+  ['hook.finish', {label:'Hook', kind:'hook'}],
+  ['annotation.add', {label:'Annotation', kind:'message'}],
+]);
+const hookTriggers = new Map([
+  ['SessionStart', 'Session start'], ['SessionEnd', 'Session end'], ['UserPromptSubmit', 'Prompt submit'],
+  ['PreToolUse', 'Before tool use'], ['PostToolUse', 'After tool use'], ['PostToolUseFailure', 'Tool failure'],
+]);
+function classify(type) { return eventViews.get(type)?.kind ?? 'unknown'; }
 function passesFilter(rec, summary = describeStep(rec)) {
   return state.filters[summary.accent || classify(rec.type)] !== false;
 }
@@ -44,23 +51,83 @@ function renderInline(text) {
     } catch (_) { return escapeHTML(part); }
   }).join('');
 }
-async function loadSessions() {
-  try {
-    const response = await fetch('/api/sessions');
-    if (!response.ok) throw new Error(response.statusText);
-    const list = await response.json();
-    const nodes = list.map(item => {
-      const node = textElement('li', (item.title || item.id) + (item.attrsError ? ' · attributes unreadable: ' + item.attrsError : ''));
-      node.addEventListener('click', () => openSession(item.id)); return node;
-    });
-    $('#session-list').replaceChildren(...nodes);
-  } catch (error) { setStatus('Sessions unavailable: ' + error.message); }
+const sessionPages = {cursors:[''], index:0, next:'', loading:false, titles:new Map()};
+
+function sessionLabel(id, title) {
+  return title || (id.length > 12 ? 'Session ' + id.slice(0, 8) : id);
 }
+function displaySession(id) {
+  const meta = $('#session-meta');
+  meta.textContent = sessionLabel(id, sessionPages.titles.get(id));
+  meta.title = id;
+}
+
+function sessionPageControls() {
+  $('#sessions-prev').disabled = sessionPages.loading || sessionPages.index === 0;
+  $('#sessions-next').disabled = sessionPages.loading || !sessionPages.next;
+  $('#sessions-refresh').disabled = sessionPages.loading;
+}
+async function loadSessions(index = 0, cursor = '') {
+  if (sessionPages.loading) return;
+  sessionPages.loading = true;
+  sessionPageControls();
+  const status = $('#sessions-page');
+  status.textContent = 'Loading…';
+  try {
+    const response = await fetch('/api/sessions' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
+    if (!response.ok) throw new Error(response.statusText);
+    const page = await response.json();
+    sessionPages.titles = new Map(page.items.map(item => [item.id, item.title]));
+    if (sessionPages.titles.has(state.currentSession)) displaySession(state.currentSession);
+    const nodes = page.items.map(item => {
+      const node = textElement('li', '');
+      node.dataset.session = item.id;
+      node.classList.toggle('active', item.id === state.currentSession);
+      const button = textElement('button', '', 'session-button');
+      button.type = 'button';
+      button.title = item.title ? item.title + ' · ' + item.id : item.id;
+      button.addEventListener('click', () => openSession(item.id));
+      button.appendChild(textElement('span', sessionLabel(item.id, item.title), 'session-label'));
+      const date = new Date(item.updatedAt);
+      if (!Number.isNaN(date.getTime())) {
+        const time = textElement('time', date.toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}), 'id');
+        time.dateTime = date.toISOString();
+        time.title = date.toLocaleString();
+        button.appendChild(time);
+      }
+      if (item.attrsError) button.appendChild(textElement('span', 'Attributes unreadable: ' + item.attrsError, 'id'));
+      node.appendChild(button);
+      return node;
+    });
+    const list = $('#session-list');
+    list.replaceChildren(...(nodes.length ? nodes : [textElement('li', 'No sessions on this page.', 'session-empty')]));
+    list.scrollTop = 0;
+    sessionPages.index = index;
+    sessionPages.cursors = [...sessionPages.cursors.slice(0, index), cursor];
+    sessionPages.next = page.next || '';
+    status.textContent = 'Page ' + (index + 1);
+  } catch (error) {
+    status.textContent = 'Sessions unavailable: ' + error.message;
+  } finally {
+    sessionPages.loading = false;
+    sessionPageControls();
+  }
+}
+$('#sessions-prev').addEventListener('click', () => {
+  const index = sessionPages.index - 1;
+  if (index >= 0) loadSessions(index, sessionPages.cursors[index]);
+});
+$('#sessions-next').addEventListener('click', () => {
+  if (sessionPages.next) loadSessions(sessionPages.index + 1, sessionPages.next);
+});
+$('#sessions-refresh').addEventListener('click', () => loadSessions());
 function openSession(id, sequence = null) {
   if (state.eventSource) state.eventSource.close();
   state.currentSession = id; state.selectedRecordID = null;
+  for (const row of $('#session-list').children) row.classList.toggle('active', row.dataset.session === id);
   state.detailRequest++; state.promptRequest++;
-  state.selectedState = null; state.pendingSequence = sequence;
+  cancelContextLoad();
+  state.pendingSequence = sequence;
   $('#show-history').disabled = false;
   $('#show-history').setAttribute('aria-pressed', 'false');
   state.records = []; state.seenIDs.clear(); state.bySequence.clear(); state.rows.clear();
@@ -70,7 +137,7 @@ function openSession(id, sequence = null) {
   detail.replaceChildren(textElement('p', 'Select a step to inspect its details.', 'detail-empty'));
   $('#prompt-body').replaceChildren(); $('#prompt-meta').textContent = '';
   if ($('main').classList.contains('show-prompt')) refreshPromptPanel();
-  $('#session-meta').textContent = id;
+  displaySession(id);
   setStatus('connecting');
   const source = new EventSource('/api/sessions/' + encodeURIComponent(id) + '/stream');
   state.eventSource = source;
@@ -105,6 +172,7 @@ function ingestBatch(envelope, exactJSON) {
   const key = envelope.tail.sequence + ':' + envelope.tail.hash;
   if (state.seenIDs.has(key)) return;
   const records = envelope.batch.records;
+  const batchJSON = exactJSON ?? JSON.stringify(envelope);
   state.seenIDs.add(key);
   const start = state.records.length;
   for (let ri = 0; ri < records.length; ri++) {
@@ -117,7 +185,7 @@ function ingestBatch(envelope, exactJSON) {
       if (Number.isSafeInteger(rec.seq) && rec.seq > 0 && !state.bySequence.has(rec.seq)) {
         state.bySequence.set(rec.seq, state.records.length);
       }
-      state.records.push({ ...rec, _raw: raw, _key: key + ':' + ri + ':' + ei, _batch: envelope.tail, _exactJSON: exactJSON });
+      state.records.push({ ...rec, _key: key + ':' + ri + ':' + ei, _batchJSON: batchJSON });
       indexToolMessages(rec);
     }
   }
@@ -143,7 +211,7 @@ function formatTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date.toLocaleString();
 }
-function withoutTrailingReminders(text) {
+function splitTrailingReminders(text, onReminder) {
   const trimmedEnd = text.trimEnd().length;
   let end = trimmedEnd;
   const close = '\n</system-reminder>';
@@ -151,8 +219,10 @@ function withoutTrailingReminders(text) {
     const start = text.lastIndexOf('<system-reminder', end - close.length);
     if (start < 0 || (start !== 0 && text.slice(start - 2, start) !== '\n\n')) break;
     const headerEnd = text.indexOf('\n', start);
-    if (headerEnd < 0 || !/^<system-reminder(?: source="[^"]*")?>$/.test(text.slice(start, headerEnd)) ||
-      text.indexOf(close, headerEnd) !== end - close.length) break;
+    if (headerEnd < 0) break;
+    const header = /^<system-reminder(?: source="([^"]*)")?>$/.exec(text.slice(start, headerEnd));
+    if (!header || text.indexOf(close, headerEnd) !== end - close.length) break;
+    if (onReminder) onReminder(header[1], text.slice(headerEnd + 1, end - close.length));
     end = text.slice(0, start).trimEnd().length;
   }
   return end === trimmedEnd ? text : text.slice(0, end);
@@ -163,8 +233,8 @@ function messageOverview(payload) {
   const only = type => blocks.length > 0 && blocks.every(block => block?.type === type);
   const toolResult = only('tool_result'), toolCall = only('tool_call');
   const role = messages.length === 1 ? messages[0]?.role : null;
-  const label = payload.accepted === true ? 'Input queued' : toolResult ? 'Tool result' : toolCall ? 'Tool call'
-    : role === 'user' ? 'User message' : role === 'assistant' ? 'Assistant message' : 'Messages recorded';
+  const label = payload.accepted === true ? 'Message · Queued' : toolResult ? 'Tool · Result' : toolCall ? 'Tool · Call'
+    : role === 'user' ? 'Message · User' : role === 'assistant' ? 'Message · Assistant' : undefined;
   const previews = [];
   let hasReminder = false;
   for (const message of messages) {
@@ -173,7 +243,7 @@ function messageOverview(payload) {
       if (previews.length >= 2) break;
       if (block?.type === 'text' && typeof block.text === 'string') {
         // Omit only complete, trailing harness reminders from the user preview.
-        const text = message.role === 'user' ? withoutTrailingReminders(block.text) : block.text;
+        const text = message.role === 'user' ? splitTrailingReminders(block.text) : block.text;
         hasReminder ||= text !== block.text;
         if (text.trim()) previews.push(text);
       } else if (block?.type === 'tool_call' && block.tool_call?.name) {
@@ -190,7 +260,7 @@ function messageOverview(payload) {
   return {label, preview: previews.length ? previews.join(' · ') : hasReminder ? 'System reminder' : messages.length > 1 ? messages.length + ' messages' : '',
     accent: toolCall || toolResult ? 'tool' : undefined, status: failed ? 'Error' : undefined, failed};
 }
-function timelineOverview(rec) {
+function timelineOverview(rec, label) {
   const p = rec.payload || {};
   const duration = Number.isFinite(p.duration_ms) ? p.duration_ms + ' ms' : '';
   const toolName = state.calls.get(p.call_id)?.block.tool_call?.name;
@@ -201,35 +271,41 @@ function timelineOverview(rec) {
   const terminal = {status: Object.hasOwn(status, outcome) ? status[outcome] : undefined,
     failed: ['failure', 'deny', 'blocked', 'error'].includes(outcome)};
   switch (rec.type) {
-    case 'session.create': return {label:'Session created', preview:join(p.config?.model, p.fork && 'Forked session', p.parent && 'Child session')};
+    case 'session.create': return {preview:join(p.config?.model, p.fork && 'Forked session', p.parent && 'Child session')};
     case 'session.update': {
       const changes = {...p.config, ...p.state};
-      return {label:'Session updated', preview:Object.keys(changes).map(key => key.replaceAll('_', ' ')).join(', ')};
+      return {preview:Object.keys(changes).map(key => key.replaceAll('_', ' ')).join(', ')};
     }
     case 'message.append': return messageOverview(p);
-    case 'context.compact': return {label:'Context compacted', preview:p.through ? 'Through #' + p.through : ''};
-    case 'inference.start': return {label:'Inference started', preview:join(p.purpose, p.request?.model,
+    case 'context.compact': return {preview:p.through ? 'Through #' + p.through : ''};
+    case 'inference.start': return {preview:join(p.purpose, p.request?.model,
       p.input?.standalone ? 'standalone' : p.input?.conversation ? 'conversation' : '')};
-    case 'inference.finish': return {label:'Inference finished', preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal};
-    case 'permission.decide': return {label:join('Permission', toolName), preview:join(p.by && 'By ' + p.by, p.scope, p.reason), ...terminal};
-    case 'tool.finish': return {label:join('Tool finished', toolName), preview:join(duration, p.details?.Path, p.reason), ...terminal};
-    case 'hook.finish': return {label:join('Hook', p.trigger), preview:join(duration, p.matcher, p.reason) ||
+    case 'inference.finish': return {preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal};
+    case 'permission.decide': return {label:join(label, toolName), preview:join(p.by && 'By ' + p.by, p.scope, p.reason), ...terminal};
+    case 'tool.finish': return {preview:join(toolName, duration, p.details?.Path, p.reason), ...terminal};
+    case 'hook.finish': return {label:join(label, hookTriggers.get(p.trigger) ?? p.trigger), preview:join(duration, p.matcher, p.reason) ||
       (typeof p.hook === 'string' && /^[\w./-]+$/.test(p.hook) ? p.hook : ''), ...terminal};
     case 'instructions.update':
     case 'toolset.update':
     case 'skills.update': {
-      const labels = {'instructions.update':'Instructions updated', 'toolset.update':'Tool catalogue updated', 'skills.update':'Skills updated'};
-      const set = Object.keys(p.set || {}).length, removed = Array.isArray(p.remove) ? p.remove.length : 0;
-      return {label:labels[rec.type], preview:join(p.cause, set && set + ' set', removed && removed + ' removed')};
+      const set = Object.entries(p.set || {}), removed = Array.isArray(p.remove) ? p.remove : [];
+      if (rec.type === 'skills.update' && set.length + removed.length === 1) {
+        return {preview:set.length ? join(...set[0]) : join(removed[0], 'removed')};
+      }
+      return {preview:join(set.length && set.length + ' updated', removed.length && removed.length + ' removed')};
     }
-    case 'annotation.add': return {label:'Annotation', preview:p.text};
-    default: return {label:display(rec.type || 'Unknown event')};
+    case 'annotation.add': return {preview:p.text};
+    default: return {};
   }
 }
 function describeStep(rec) {
   const type = display(rec.type || 'Unknown event');
   if (!supported(rec)) return {label:type, status:'Unsupported (raw)'};
-  try { return timelineOverview(rec); }
+  try {
+    const label = eventViews.get(rec.type).label;
+    const overview = timelineOverview(rec, label);
+    return {...overview, label:overview.label ?? label};
+  }
   catch (_) { return {label:type, status:'Malformed (raw)'}; }
 }
 function appendTimelineRow(rec, index) {
@@ -284,12 +360,17 @@ function selectEvent(id, seq) {
   const row = state.rows.get(state.selectedRecordID);
   row?.scrollIntoView({block: 'nearest'});
 }
-function supported(rec) { return families.has(rec.type) && rec.v === 1; }
-async function readState(id, seq) {
-  const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/state/' + seq);
-  const exactJSON = await response.text();
-  if (!response.ok) throw new Error(exactJSON.trim());
-  return { ...JSON.parse(exactJSON), _exactJSON: exactJSON };
+function supported(rec) { return eventViews.has(rec.type) && rec.v === 1; }
+function cancelContextLoad() {
+  state.contextAbort?.abort();
+  state.contextAbort = null;
+  state.selectedState = null;
+}
+async function readState(id, seq, signal) {
+  const response = await fetch('/api/sessions/' + encodeURIComponent(id) + '/state/' + seq, {signal});
+  const body = await response.text();
+  if (!response.ok) throw new Error(body.trim());
+  return JSON.parse(body);
 }
 async function loadSnapshot(body, load, render) {
   body.replaceChildren(textElement('p', 'Loading…', 'detail-note'));
@@ -304,7 +385,7 @@ async function showHistory() {
   if (!id) return;
   markRow(state.rows.get(state.selectedRecordID), false);
   state.selectedRecordID = null;
-  state.selectedState = null;
+  cancelContextLoad();
   state.detailRequest++;
   state.pendingSequence = null;
   $('#show-history').setAttribute('aria-pressed', 'true');
@@ -332,22 +413,23 @@ async function showDetail(index) {
   const eventType = textElement('p', '#' + display(rec.seq ?? '?') + ' · ' + display(rec.type || 'Unknown event'), 'detail-type');
   const title = textElement('h2', describeStep(rec).label, 'detail-title');
   const meta = fields([['Time', formatTime(rec.time)], ['Source', eventReference(rec.source, id)]]);
+  cancelContextLoad();
   const hasSequence = supported(rec) && Number.isSafeInteger(rec.seq) && rec.seq > 0;
+  const controller = hasSequence ? new AbortController() : null;
+  state.contextAbort = controller;
   let snapshot;
-  const load = hasSequence ? () => snapshot ??= readState(id, rec.seq) : null;
+  const load = controller ? () => snapshot ??= readState(id, rec.seq, controller.signal) : null;
   state.selectedState = load;
-  let overview = [];
-  try { if (supported(rec)) overview = eventDetails(rec, id); }
-  catch (_) { overview = [textElement('p', 'Malformed payload. See the raw record.', 'detail-note')]; }
   const request = load && rec.type === 'inference.start' ? document.createElement('div') : null;
-  const context = load && rec.type === 'context.compact' ? [snapshotDisclosure('Context after compaction', load,
-    result => requestNodes(result.context, 'Context messages'))] : [];
-  detail.replaceChildren(eventType, title, meta, ...overview, ...(request ? [request] : context), ...recordData(rec, load));
+  const context = load ? [request
+    ? detailGroup('Model input', 'Request for this model call.', request)
+    : contextPanel(load)] : [];
+  detail.replaceChildren(eventType, title, ...context, eventPanel(rec, id, meta), rawBatch(rec));
   detail.scrollTop = 0;
   if ($('main').classList.contains('show-prompt')) refreshPromptPanel(rec);
   if (request) await loadSnapshot(request, load, result => result.request
-    ? [section('Model request at this step', ...requestNodes(result.request))]
-    : [textElement('p', 'No admitted request at this step.', 'detail-note')]);
+    ? requestNodes(result.request)
+    : [textElement('p', 'No model request was recorded for this step.', 'detail-note')]);
 }
 async function refreshPromptPanel(rec, load = rec ? state.selectedState : () => readState(state.currentSession, 0)) {
   const id = state.currentSession, key = state.selectedRecordID;
@@ -374,6 +456,15 @@ function togglePrompt(show) {
   if (show && state.currentSession) refreshPromptPanel(state.records.find(r => r._key === state.selectedRecordID));
   if (!show) ++state.promptRequest;
 }
+function toggleDetailWidth(wide) {
+  $('main').classList.toggle('detail-wide', wide);
+  const button = $('#detail-expand');
+  const label = wide ? 'Restore details width' : 'Expand details';
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-expanded', String(wide));
+}
+$('#detail-expand').addEventListener('click', () => toggleDetailWidth(!$('main').classList.contains('detail-wide')));
 $('#show-history').addEventListener('click', showHistory);
 $('#toggle-prompt').addEventListener('click', () => togglePrompt(!$('main').classList.contains('show-prompt')));
 $('#prompt-close').addEventListener('click', () => togglePrompt(false));
@@ -383,8 +474,20 @@ $('#prompt-expand').addEventListener('click', () => {
   main.classList.toggle('prompt-wide', wide);
   $('#prompt-expand').setAttribute('aria-pressed', String(wide));
 });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.defaultPrevented) return;
+  if ($('main').classList.contains('show-prompt')) togglePrompt(false);
+  else if ($('main').classList.contains('detail-wide')) toggleDetailWidth(false);
+  else return;
+  event.preventDefault();
+});
 for (const [id, kind] of Object.entries({'filter-state':'state','filter-tools':'tool','filter-system':'system',
   'filter-inference':'inference','filter-message':'message','filter-hook':'hook','filter-permission':'permission'})) {
-  $('#' + id).addEventListener('change', event => { state.filters[kind] = event.target.checked; renderTimeline(); });
+  $('#' + id).addEventListener('change', event => {
+    state.filters[kind] = event.target.checked;
+    renderTimeline();
+  });
 }
-loadSessions(); setInterval(loadSessions, 2000);
+const initialSession = new URL(location.href).searchParams.get('session');
+if (initialSession) openSession(initialSession);
+loadSessions();
