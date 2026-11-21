@@ -1,4 +1,4 @@
-package sidecard
+package aside
 
 import (
 	"context"
@@ -66,14 +66,14 @@ func TestApplyChangeRecordsOnlyAcceptedResults(t *testing.T) {
 	}
 }
 
-func TestStandaloneSideCardRecording(t *testing.T) {
+func TestStandaloneAsideRecording(t *testing.T) {
 	ctx := t.Context()
 	store, err := session.OpenStore(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	owner, err := store.Create(ctx, session.CreateOptions{ID: "sidecard"})
+	owner, err := store.Create(ctx, session.CreateOptions{ID: "aside"})
 	if err != nil {
 		t.Fatal(err)
 	}

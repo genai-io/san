@@ -79,12 +79,13 @@ silently skipped.
 
 ## Outcomes and interrupted work
 
-Request and response rows link to each other. [Side Cards](../reference/side-card.md)
-share a label, such as **Model Request · Side Card - Auto Memory** and
-**Model Response · Side Card - Auto Memory**. The Event details distinguish
-**Recall** from **Maintain**.
+Request and response rows link to each other. An [Aside](../reference/aside.md)
+is labeled **Model Request · Aside — Auto Memory** and
+**Model Response · Aside — Auto Memory**, or **Model Request · Aside — Auto Skill**
+and **Model Response · Aside — Auto Skill**. For Auto Memory, the Event details
+distinguish **Recall** from **Maintain**.
 
-For a Side Card, **Raw model output** shows what the model returned, and
+For an Aside, **Raw model output** shows what the model returned, and
 **Accepted result** shows recorded results with links to their source-linked
 annotations or messages. A completed model call does not mean San applied its
 output. If no accepted result was recorded, Inspector says so; older records

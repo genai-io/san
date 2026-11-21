@@ -1,4 +1,4 @@
-package sidecard
+package aside
 
 import (
 	"context"

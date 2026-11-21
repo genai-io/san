@@ -34,7 +34,7 @@
 
 ## Memory and learning
 
-- [Auto Memory](concepts/auto-memory.md) — Retrieves relevant notes before main inference, and handles explicit remember, update, and forget requests on a separate Side Card. Only the selected notes enter the main conversation.
+- [Auto Memory](concepts/auto-memory.md) — Retrieves relevant notes before main inference, and handles explicit remember, update, and forget requests on an Aside. Only the selected notes enter the main conversation.
 
 - [Project instructions](reference/context-management.md#reminders-and-hot-reload) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
 
@@ -42,7 +42,7 @@
 
 - [Auto Skill](packages/auto-skill.md) — Turns a reusable workflow into an agent-owned skill. When a skill action is allowed, a `ReviewSkill` request on a completed turn can start a separate review. It cannot edit user-authored skills.
 
-  `Completed turn + ReviewSkill -> Side Card review -> validated skill change`
+  `Completed turn + ReviewSkill -> Aside review -> validated skill change`
 
 ## Agent and session collaboration
 
@@ -139,7 +139,7 @@
 
 ## Interaction and inspection
 
-- [Side Card](reference/side-card.md) — Runs focused model calls beside the conversation. See when Auto Memory, By the Way, AutoPilot, Recap, Suggestion, and Flow Draft run, what they send to the model, and what result comes back to the session.
+- [Aside](reference/aside.md) — A focused model call outside the main conversation. See when Auto Memory, Auto Skill, By the Way, AutoPilot, Recap, Suggestion, and Flow Draft run and what they return.
 
 - [CLI](guides/getting-started.md) — Offers both interactive work and one-shot use from scripts. `san` opens the terminal UI, where turns can pause for input or approvals. `san -p` or piped input selects the headless path, which runs one request and writes the answer to stdout.
 

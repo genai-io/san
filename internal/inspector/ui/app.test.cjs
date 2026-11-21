@@ -301,7 +301,7 @@ test('standalone inference renders the admitted system prompt, messages and tool
   assert.doesNotMatch(expand(detail,'Event').textContent,/admitted system|admitted message/);
   assert.doesNotMatch(input.textContent,/View JSON/);
 });
-test('Side Card - Auto Memory shows its paired response on live arrival and links both ways',async()=>{
+test('Aside — Auto Memory shows its paired response on live arrival and links both ways',async()=>{
   const v=await viewer();v.openSession('native');
   v.ingestBatch(batch(1,[event(1,'inference.start',{purpose:'recall',input:{standalone:'blob'}}),
     event(2,'inference.start',{purpose:'turn'})]));
@@ -313,8 +313,8 @@ test('Side Card - Auto Memory shows its paired response on live arrival and link
     event(4,'inference.finish',{outcome:'success'},{seq:2}),
     event(5,'inference.finish',{outcome:'success',output:{text}},{seq:1})]));
   const rows=v.element('#timeline').children;
-  assert.match(rows[0].textContent,/Model Request · Side Card - Auto Memory/);
-  assert.match(rows[4].textContent,/Model Response · Side Card - Auto Memory/);
+  assert.match(rows[0].textContent,/Model Request · Aside — Auto Memory/);
+  assert.match(rows[4].textContent,/Model Response · Aside — Auto Memory/);
   let output=group(detail,'Model output');
   assert.ok(output.textContent.includes(text));
   assert.match(output.textContent,/No accepted result recorded/);
@@ -332,7 +332,7 @@ test('Side Card - Auto Memory shows its paired response on live arrival and link
   output=group(detail,'Model output');
   assert.ok(output.textContent.includes(text));
   jump(output,'#1');
-  assert.match(detail.textContent,/Model Request · Side Card - Auto Memory/);
+  assert.match(detail.textContent,/Model Request · Aside — Auto Memory/);
   v.requests.at(-1).resolve({...snapshot('context'),request:{System:'selector'}});
   await v.showDetail(3);
   assert.match(group(detail,'Model output').textContent,/main answer/);
@@ -351,7 +351,7 @@ test('every model purpose labels its request and response consistently',async()=
   })));
   const rows=v.element('#timeline').children,detail=v.element('#detail-body');
   for(const [i,[purpose,label,side,operation]] of purposes.entries()){
-    const suffix=side?' · Side Card - '+label:label?' · '+label:'';
+    const suffix=side?' · Aside — '+label:label?' · '+label:'';
     assert.equal(rows[2*i].textContent,`#${2*i+1}${side?'Model Request':'Model · Request'}${suffix}`);
     assert.ok(rows[2*i+1].textContent.includes(`${side?'Model Response':'Model · Response'}${suffix}${side?'Model completed':'Success'}`));
     await v.showDetail(2*i+1);

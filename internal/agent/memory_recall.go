@@ -13,12 +13,12 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/sidecard"
 )
 
 // maxRecalled caps the memories attached to one message.
@@ -97,7 +97,7 @@ func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, q
 		list.WriteString("- " + id + ": " + m.Description + "\n")
 	}
 	start := time.Now()
-	resp, err := sidecard.Complete(ctx, r.Provider, llm.CompletionOptions{
+	resp, err := aside.Complete(ctx, r.Provider, llm.CompletionOptions{
 		Model:        r.Model,
 		SystemPrompt: recallSystemPrompt,
 		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.Content{

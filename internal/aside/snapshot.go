@@ -1,4 +1,4 @@
-package sidecard
+package aside
 
 import (
 	"context"
@@ -58,7 +58,7 @@ func NewSnapshot(opts SnapshotOptions, prompt string, extra ...string) Snapshot 
 func (s Snapshot) Recording() *session.Completion { return s.recording }
 
 // Complete retains the client defaults, provider message adaptation, and
-// transient retry policy of conversation-based side calls.
+// transient retry policy of conversation-based Asides.
 func (s Snapshot) Complete(ctx context.Context) (llm.CompletionResponse, error) {
 	return s.client.Complete(ctx, s.system, s.client.RequestMessages(s.messages), s.schemas, 0, s.recording.Admission())
 }

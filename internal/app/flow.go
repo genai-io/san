@@ -62,7 +62,7 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 			catalog += "\nAvailable Skill: " + sk.FullName()
 		}
 	}
-	req := m.newSideRequest(session.PurposeFlow, false, flow.AuthoringPrompt(catalog, msg.Goal))
+	req := m.newAsideRequest(session.PurposeFlow, false, flow.AuthoringPrompt(catalog, msg.Goal))
 	ctx, cancel := context.WithTimeout(context.Background(), flowDraftTimeout)
 	pending := &flowDraftRequest{owner: req.owner, generation: msg.Generation, cancel: cancel}
 	var tick tea.Cmd
@@ -96,14 +96,14 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 func (m *model) onFlowDrafted(msg flowDraftedMsg) tea.Cmd {
 	r := msg.request
 	if r == nil || m.flowDraft != r || r.owner != m.services.Session || !m.userInput.Flow.IsGenerating(r.generation) {
-		closeSide(msg.recording)
+		closeAside(msg.recording)
 		return nil
 	}
 	r.cancel()
 	m.flowDraft = nil
 	if msg.err != nil {
-		closeSide(msg.recording)
-	} else if !finishSide(msg.recording, "") {
+		closeAside(msg.recording)
+	} else if !finishAside(msg.recording, "") {
 		msg.err = fmt.Errorf("could not finish Flow draft recording")
 	}
 	// Validation and the unsaved Review editor belong to FlowView. Even malformed

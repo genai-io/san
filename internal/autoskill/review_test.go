@@ -53,7 +53,7 @@ func TestSideReviewOriginalSession(t *testing.T) {
 	}
 	call := driver.Last()
 	if len(call.Tools) != 0 || len(call.Messages) != 1 {
-		t.Fatalf("side card request carried tools or history: %+v", call)
+		t.Fatalf("Aside request carried tools or history: %+v", call)
 	}
 	text := call.Messages[0].Content.Text()
 	if strings.Contains(text, "unrelated private history") || !strings.Contains(text, "Prefer concrete examples") || !strings.Contains(text, "Write the tests") {
@@ -77,7 +77,7 @@ func TestSideReviewOriginalSession(t *testing.T) {
 		case *session.AnnotationAddPayload:
 			annotated = strings.Contains(p.Text, "go-table-tests")
 		case *session.MessageAppendPayload:
-			t.Fatal("side card appended conversational input")
+			t.Fatal("Aside appended conversational input")
 		}
 	}
 	if !started || !finished || !annotated {

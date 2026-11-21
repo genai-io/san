@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/sidecard"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -162,7 +162,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 	}
 }
 
-func TestSideRecordingBtwOwnership(t *testing.T) {
+func TestBtwAsideOwnership(t *testing.T) {
 	for _, mode := range []string{"current", "stale", "closed", "default"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -184,11 +184,11 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 			chain := []core.Message{core.UserMessage("work", nil)}
 			chain[0].ID = core.NewMessageID()
 			provider := &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says("because")), ai.Model{ID: "m"})}
-			request := sidecard.NewSnapshot(sidecard.SnapshotOptions{
+			request := aside.NewSnapshot(aside.SnapshotOptions{
 				Client: llm.NewClient(provider, "m", 100), Messages: chain, Owner: recording, Purpose: session.PurposeBtw,
 			}, "why?")
-			req := sideRequest{label: session.PurposeBtw, snapshot: request, owner: recording}
-			answer := askSide(ctx, req)
+			req := asideRequest{label: session.PurposeBtw, snapshot: request, owner: recording}
+			answer := answerBtw(ctx, req)
 			if answer != "because" {
 				t.Fatalf("answer = %q", answer)
 			}

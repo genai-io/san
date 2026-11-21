@@ -8,7 +8,7 @@ San keeps the start of each request unchanged when it can, so the provider can r
 - **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body; `MEMORY.md` points to topic notes. Empty indexes are omitted, and each nonempty index gets a short preview.
 - **Keep permissions live.** A schema tells the model what it can ask for, not what it may execute. Check permissions at execution time.
 
-[Side Cards](side-card.md#context-and-caching) follow these rules whether they reuse the main conversation's prefix or build their own request.
+[Asides](aside.md#context-and-caching) follow these rules whether they reuse the main conversation's prefix or build their own request.
 
 ## Request layout
 

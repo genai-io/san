@@ -11,10 +11,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/sidecard"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -92,7 +92,7 @@ func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, e
 	if err != nil {
 		return "", err
 	}
-	return sidecard.ApplyChange(ctx, r.Provider, llm.CompletionOptions{
+	return aside.ApplyChange(ctx, r.Provider, llm.CompletionOptions{
 		Model: r.Model, SystemPrompt: sideReviewPrompt, ThinkingEffort: r.Effort, MaxTokens: 4096,
 		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.TextContent(string(payload))}},
 	}, r.Recording.Completion(session.PurposeAutoSkill), func(_ context.Context, text string) (string, error) {

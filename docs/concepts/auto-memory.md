@@ -1,6 +1,6 @@
 # Auto Memory
 
-Auto Memory keeps durable facts, preferences, and decisions outside the main conversation. It is on by default and is separate from user-authored `AGENTS.md` files. The [Auto Memory Side Card](../reference/side-card.md) selects notes for the current question and handles explicit writes; it does not add store paths, indexes, or editing instructions to the main prompt.
+Auto Memory keeps durable facts, preferences, and decisions outside the main conversation. It is on by default and is separate from user-authored `AGENTS.md` files. The [Auto Memory Aside](../reference/aside.md) selects notes for the current question and handles explicit writes; it does not add store paths, indexes, or editing instructions to the main prompt.
 
 ## Stores
 
@@ -36,4 +36,4 @@ Open `/reflection` in the TUI and select **Auto Memory**. Press Enter on User or
 
 `autoMemoryDirectory` can be set to an absolute or `~/` path in user settings for the user store, or untracked local project settings for the project store. Committed project settings cannot move the store.
 
-In Inspector, **Model Request · Side Card - Auto Memory** shows the admitted request. Its paired response shows the model's output and, separately, the note that was applied or the change that was accepted. The Side Card's request and response are not part of the main model's history. [Auto Skill](../packages/auto-skill.md) maintains agent-owned skills and can be enabled independently.
+In Inspector, **Model Request · Aside — Auto Memory** shows the admitted request. **Model Response · Aside — Auto Memory** shows the model's output and, separately, the note that was applied or the change that was accepted. The Aside's request and response are not part of the main model's history. [Auto Skill](../packages/auto-skill.md) maintains agent-owned skills and can be enabled independently.

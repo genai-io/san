@@ -1,6 +1,6 @@
-// Package sidecard runs one-shot model calls beside the active conversation.
+// Package aside runs one-shot model calls beside the active conversation.
 // It never executes tools or applies results to the conversation.
-package sidecard
+package aside
 
 import (
 	"context"

@@ -213,7 +213,7 @@ function indexInference(rec) {
   else if (rec.type === 'context.compact' && rec.payload?.summary) pair.messages.push(rec);
   else if (Array.isArray(rec.payload?.messages) && rec.payload.messages.length) pair.messages.push(rec);
 }
-const sideCards = new Map([
+const asides = new Map([
   ['recall', {name:'Auto Memory', operation:'Recall'}],
   ['memory-maintain', {name:'Auto Memory', operation:'Maintain'}],
   ['auto-skill', {name:'Auto Skill', operation:'Review'}],
@@ -226,8 +226,8 @@ const inferenceLabels = new Map([
 function inferenceLabel(rec, label) {
   const purpose = inferenceStart(rec)?.payload?.purpose;
   if (typeof purpose !== 'string' || purpose === 'turn') return label;
-  const card = sideCards.get(purpose);
-  if (card) return `${rec.type === 'inference.start' ? 'Model Request' : 'Model Response'} · Side Card - ${card.name}`;
+  const aside = asides.get(purpose);
+  if (aside) return `${rec.type === 'inference.start' ? 'Model Request' : 'Model Response'} · Aside — ${aside.name}`;
   return label + ' · ' + (inferenceLabels.get(purpose) ?? purpose);
 }
 function indexToolMessages(rec) {
@@ -319,7 +319,7 @@ function timelineOverview(rec, label) {
       p.input?.standalone ? 'standalone' : p.input?.conversation ? 'conversation' : '')};
     case 'inference.finish': return {label:inferenceLabel(rec, label),
       preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal,
-      status: outcome === 'success' && sideCards.has(inferenceStart(rec)?.payload?.purpose) ? 'Model completed' : terminal.status};
+      status: outcome === 'success' && asides.has(inferenceStart(rec)?.payload?.purpose) ? 'Model completed' : terminal.status};
     case 'permission.decide': return {label:join(label, toolName), preview:join(p.by && 'By ' + p.by, p.scope, p.reason), ...terminal};
     case 'tool.finish': return {preview:join(toolName, duration, p.details?.Path, p.reason), ...terminal};
     case 'hook.finish': return {label:join(label, hookTriggers.get(p.trigger) ?? p.trigger), preview:join(duration, p.matcher, p.reason) ||

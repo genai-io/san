@@ -12,11 +12,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/sidecard"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -72,7 +72,7 @@ func (c *Change) Apply(ctx context.Context) (notice string, err error) {
 	if err = ctx.Err(); err == nil {
 		notice, err = apply(ctx)
 	}
-	return notice, sidecard.FinishChange(ctx, c.recording, notice, err)
+	return notice, aside.FinishChange(ctx, c.recording, notice, err)
 }
 
 // Run proposes and applies a change for callers that admit input synchronously.
@@ -128,10 +128,10 @@ func (m Maintainer) Propose(ctx context.Context, stores system.MemoryStores, req
 	recording := m.Recording.Completion(session.PurposeMemoryMaintain)
 	defer func() {
 		if change == nil {
-			err = sidecard.FinishChange(ctx, recording, "", err)
+			err = aside.FinishChange(ctx, recording, "", err)
 		}
 	}()
-	text, err := sidecard.CompleteProposal(ctx, m.Provider, llm.CompletionOptions{
+	text, err := aside.CompleteProposal(ctx, m.Provider, llm.CompletionOptions{
 		Model: m.Model, SystemPrompt: systemPrompt, MaxTokens: 4096, ThinkingEffort: m.Effort,
 		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.TextContent(instruction + "\n" + string(payload))}},
 	}, recording)

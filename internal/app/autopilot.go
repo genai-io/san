@@ -20,13 +20,13 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/sidecard"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -334,7 +334,7 @@ func (m *model) missionRefine(draft string) (func(context.Context) (string, erro
 			if err != nil {
 				return "", err
 			}
-			resp, err := sidecard.Complete(r.ctx, provider, llm.CompletionOptions{
+			resp, err := aside.Complete(r.ctx, provider, llm.CompletionOptions{
 				Model: modelID, SystemPrompt: missionRefinePrompt,
 				Messages:  []core.Message{core.UserMessage("Mission draft payload (JSON; rewrite only the draft value):\n"+string(payload), nil)},
 				MaxTokens: 600,
@@ -1000,7 +1000,7 @@ func autopilotSteerWait(ctx context.Context, attempt int, retryFloor time.Durati
 // autopilotComplete runs one single-user-message completion and returns the
 // trimmed reply — the shared shape of the copilot's steer inferences.
 func autopilotComplete(ctx context.Context, call autopilotInference) (string, error) {
-	resp, err := sidecard.Complete(ctx, call.provider, llm.CompletionOptions{
+	resp, err := aside.Complete(ctx, call.provider, llm.CompletionOptions{
 		Model:        call.model,
 		SystemPrompt: call.system,
 		Messages:     []core.Message{core.UserMessage(call.user, nil)},
