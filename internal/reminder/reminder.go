@@ -317,7 +317,7 @@ func WrapMemoryIndex(body string) string {
 }
 
 // AppendBlocks preserves the existing blocks and adds each nonempty text separately.
-// OpenAI Chat can flatten text-only input, so keep its blank-line boundaries.
+// Blank lines also separate reminders on endpoints that require flattened text.
 func AppendBlocks(content ai.Content, texts ...string) ai.Content {
 	cloned, hasText := false, false
 	for _, text := range texts {

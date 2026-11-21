@@ -11,7 +11,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/creack/pty v1.1.24
-	github.com/genai-io/sdk-go v0.9.3-0.20261118022523-f66df487c9ac
+	github.com/genai-io/sdk-go v0.9.3-0.20261121090133-070883cbe1b5
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -35,7 +35,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/kr/pty v1.1.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
-	github.com/openai/openai-go/v3 v3.96.0 // indirect
+	github.com/openai/openai-go/v3 v3.99.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
@@ -108,7 +108,7 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0

@@ -712,14 +712,6 @@ func TestUserReminderBlocksOnWire(t *testing.T) {
 					if !ok || message["role"] != "user" {
 						t.Fatalf("want a user message, got %#v", messages[0])
 					}
-					// The pinned SDK may still flatten text-only OpenAI requests; check the bytes in either form.
-					if text, ok := message["content"].(string); ok && tc.name != "anthropic-messages" && shape == "text-only" {
-						t.Logf("flattened content: %q", text)
-						if text != original+first+second {
-							t.Errorf("flattened content = %q, want %q", text, original+first+second)
-						}
-						return
-					}
 					parts, ok := message["content"].([]any)
 					if !ok {
 						t.Fatalf("want content blocks, got %#v", message["content"])
