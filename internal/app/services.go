@@ -2,9 +2,9 @@ package app
 
 import (
 	"context"
-	"sync/atomic"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/autoskill"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/flow"
@@ -14,7 +14,6 @@ import (
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/reminder"
-	"github.com/genai-io/san/internal/selflearn"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -48,52 +47,17 @@ type services struct {
 	Persona      *persona.Registry
 	Reminder     *reminder.Reminder
 
-	// SelfLearn groups the L1 self-learning state: the live per-session
-	// reviewer (nil when no arm is enabled — §3.1 zero-overhead guarantee)
-	// and the status-bar Indicator, which is allocated once at services
-	// construction and outlives any session's wire/teardown so the render
-	// path can always Snapshot() without a nil check.
-	SelfLearn SelfLearnServices
+	// AutoSkill owns the reviewer for the current conversation session.
+	AutoSkill AutoSkillServices
 }
 
-// SelfLearnServices holds the L1 self-learning state.
-type SelfLearnServices struct {
-	// session is the live per-session reviewer plus its teardown handles, or
-	// nil when no arm is enabled (§3.1 zero overhead: no goroutine, no
-	// counters, no extra model calls). Set and cleared as a unit by
-	// wireSelfLearn / teardownSelfLearn so the reviewer, its fork-cancel, and
-	// its liveness gate can never fall out of sync.
-	session *selfLearnSession
-
-	// Indicator drives the four-phase status-bar surface (§"User-visible
-	// surface"). Always non-nil; the snapshot reports an idle phase when
-	// L1 is off or no review has run yet.
-	Indicator *SelfLearnIndicator
-
-	// Recent is the rolling activity log behind the /evolve RECENT zones.
-	// Always non-nil; the per-session write observers append to it and it
-	// outlives any one session so the recap survives /clear.
-	Recent *RecentLearnLog
+type AutoSkillServices struct {
+	session *autoSkillSession
 }
 
-// selfLearnSession bundles the three handles that make up one live L1
-// self-learning run for the current conversation session. They are created
-// together by wireSelfLearn and dropped together by teardownSelfLearn, so
-// holding them behind a single pointer makes the "all present or none"
-// invariant structural instead of a prose promise.
-type selfLearnSession struct {
-	// reviewer is the background L1 trigger, fed by Observe at each turn end.
-	reviewer *selflearn.Reviewer
-
-	// cancel cancels the session-scoped context every in-flight fork inherits,
-	// so /clear or quit unblocks the fork immediately instead of waiting for
-	// its own forkDeadline.
-	cancel context.CancelFunc
-
-	// live is flipped to false on teardown so a write observer landing after
-	// teardown drops silently instead of mutating UI state for a dead session.
-	// The fork goroutine's observers capture this same pointer.
-	live *atomic.Bool
+type autoSkillSession struct {
+	reviewer *autoskill.Reviewer
+	cancel   context.CancelFunc
 }
 
 func newServices() services {
@@ -117,6 +81,5 @@ func newServices() services {
 		Agent:        agent.Default(),
 		Persona:      persona.Default(),
 		Reminder:     reminder.New(),
-		SelfLearn:    SelfLearnServices{Indicator: NewSelfLearnIndicator(), Recent: NewRecentLearnLog()},
 	}
 }

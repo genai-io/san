@@ -365,21 +365,15 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 		}
 	}
 
+	if m.memoryInput != nil {
+		parts = append(parts, "", m.conv.Spinner.View()+" Auto Memory…", "")
+	}
 	if live := m.btwLive(); live != "" {
 		parts = append(parts, "", live, "")
 	}
 
 	if live := m.recapLive(); live != "" {
 		parts = append(parts, "", strings.TrimSuffix(live, "\n"), "")
-	}
-
-	if live := m.renderSelfLearnLive(); live != "" {
-		// Surrounded by blank rows so the inline indicator reads as
-		// its own block — clearly separated from active content above
-		// (so it doesn't squish against an assistant turn) and the
-		// prompt below (the breathing room is what makes the row feel
-		// "live" rather than nailed to the input bar).
-		parts = append(parts, "", live, "")
 	}
 
 	if len(parts) == 0 {
@@ -407,22 +401,6 @@ func (m model) liveWelcome() string {
 		return ""
 	}
 	return m.welcomeBannerText()
-}
-
-// renderSelfLearnLive returns the L1 indicator as an inline live row
-// during reviewing / failed phases. The done phase is suppressed here —
-// the recap card is published into the conversation flow instead and
-// would otherwise duplicate the "✓ <summary>" line. Idle ⇒ "".
-func (m model) renderSelfLearnLive() string {
-	if m.services.SelfLearn.Indicator == nil {
-		return ""
-	}
-	snap := m.services.SelfLearn.Indicator.Snapshot()
-	switch snap.Phase {
-	case selflearnReviewing, selflearnFailed:
-		return selflearnLiveStyle.Render(snap.Render())
-	}
-	return ""
 }
 
 // Pointer receiver: Executing below is a *model method value, so a value

@@ -194,7 +194,7 @@ func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	m.userInput = input.New("", 80, nil, input.SelectorDeps{})
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.Hook = hook.NewEngine(nil, "", "", "")
-	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.agentAutoMemory = m.autoMemory()
 	queued := chartImage()

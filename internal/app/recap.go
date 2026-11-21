@@ -241,10 +241,10 @@ func (m *model) writeRecap() tea.Cmd {
 	if goal := m.recapGoal(); goal != "" {
 		facts += "\nThe overall goal is AutoPilot's mission: " + goal
 	}
-	req := m.newSideRequest(session.PurposeRecap, strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
+	req := m.newSideRequest(session.PurposeRecap, true, strings.ReplaceAll(recapInstructions, "%FACTS%", facts))
 	ctx, cancel := context.WithTimeout(context.Background(), recapTimeout)
-	m.recap.requestID, m.recap.cancel, m.recap.pending = core.NewMessageID(), cancel, req.recording
-	ready := recapReadyMsg{requestID: m.recap.requestID, sessionID: m.sessionID(), chainLen: len(req.chain), owner: req.owner, recording: req.recording}
+	m.recap.requestID, m.recap.cancel, m.recap.pending = core.NewMessageID(), cancel, req.snapshot.Recording()
+	ready := recapReadyMsg{requestID: m.recap.requestID, sessionID: m.sessionID(), chainLen: req.chainLen, owner: req.owner, recording: req.snapshot.Recording()}
 	return func() tea.Msg {
 		defer cancel()
 		resp, err := req.complete(ctx)

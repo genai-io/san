@@ -79,10 +79,16 @@ silently skipped.
 
 ## Outcomes and interrupted work
 
-Request and response rows link to each other and share a purpose label, such as
-**By the Way Side**, **Memory Side**, **Recap Side**, or **Suggestion Side**.
-The response shows native output or recorded side-call text. If an older side
-response has only a linked reply annotation, the Inspector shows that reply.
+Request and response rows link to each other. [Side Cards](../reference/side-card.md)
+share a label, such as **Model Request · Side Card - Auto Memory** and
+**Model Response · Side Card - Auto Memory**. The Event details distinguish
+**Recall** from **Maintain**.
+
+For a Side Card, **Raw model output** shows what the model returned, and
+**Accepted result** shows recorded results with links to their source-linked
+annotations or messages. A completed model call does not mean San applied its
+output. If no accepted result was recorded, Inspector says so; older records
+may have an accepted reply annotation but no raw output.
 Each retry has its own start and finish; a missing finish is not a response.
 
 A `permission.decide` explains the actual authority and, where shown, the human

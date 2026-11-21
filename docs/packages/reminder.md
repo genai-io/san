@@ -20,7 +20,7 @@ cache — currently:
 - skills directory (re-emit when a skill is enabled / disabled / activated)
 - memory user / memory project (AGENTS.md; re-emit on memory file change)
 - memory auto (short guide, enabled store paths, and `MEMORY.md` previews)
-- memory recall (the auto memories picked for one message; no provider, attached to a tool result by `agent.WithRecall`)
+- memory recall (selected notes attached to the current user message before main inference)
 - one-time notices (queued from hooks or commands)
 
 See [Context Management](../reference/context-management.md) for

@@ -101,7 +101,6 @@ type SlashCommandEnv struct {
 	OpenTasks               func() tea.Cmd
 	ResetCronQueue          func()
 	ForkSession             func() (originalSessionID string, err error)
-	RunSelfLearnDemo        func()
 	SetActivePersona        func(name string) error
 	RenameSession           func(name, role string) (string, error)
 	// GroupCommand runs /group: joining a group touches the session's
@@ -155,8 +154,6 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"name":           (*SlashCommandController).handleNameCommand,
 		"group":          (*SlashCommandController).handleGroupCommand,
 		"trust":          (*SlashCommandController).handleTrustCommand,
-		"evolve":         (*SlashCommandController).handleEvolveCommand,
-		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 		"btw":            (*SlashCommandController).handleBtwCommand,
 		"recap":          (*SlashCommandController).handleRecapCommand,
 	}
@@ -398,7 +395,7 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 }
 
 // handleSettingsCommand opens the /settings popup (Appearance, Permissions
-// and General). Self-learning lives in its own /evolve popup.
+// and General). Use /memory for Auto Memory and Auto Skill.
 func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
@@ -498,26 +495,6 @@ func (c *SlashCommandController) handleGroupCommand(_ context.Context, args stri
 	return out, cmd, nil
 }
 
-// handleEvolveCommand opens the /evolve popup — the self-learning
-// configuration surface with Skills and Memory tabs.
-func (c *SlashCommandController) handleEvolveCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	c.env.Input.Evolve.Enter(c.env.Width, c.env.Height)
-	return "", nil, nil
-}
-
-// handleSelflearnDemoCommand drives the L1 status-bar indicator through
-// its phases (reviewing → recording actions → done) without firing a
-// real review fork. Hidden from the slash-command catalog; meant for
-// developers checking the spinner / target / done-summary look in their
-// own terminal.
-func (c *SlashCommandController) handleSelflearnDemoCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if c.env.RunSelfLearnDemo == nil {
-		return "", nil, nil
-	}
-	c.env.RunSelfLearnDemo()
-	return "", nil, nil
-}
-
 func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	if err := c.env.Input.Search.Enter(c.env.LLM.Store(), c.env.Width, c.env.Height); err != nil {
 		return "", nil, err
@@ -540,6 +517,10 @@ func (c *SlashCommandController) handleInitCommand(_ context.Context, args strin
 }
 
 func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if strings.TrimSpace(args) == "" {
+		c.env.Input.MemorySkills.Enter(c.env.Width, c.env.Height)
+		return "", nil, nil
+	}
 	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Setting, c.env.Cwd, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err

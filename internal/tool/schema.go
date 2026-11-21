@@ -23,7 +23,7 @@ const (
 	ToolCron            = "Cron"
 	ToolAskUserQuestion = "AskUserQuestion"
 
-	ToolEvolve = "Evolve"
+	ToolReviewSkill = "ReviewSkill"
 )
 
 // IsShellTool reports whether name is a tool that runs shell commands: Bash
@@ -48,7 +48,7 @@ type SchemaOptions struct {
 
 	// ExtraTools are caller-supplied schemas appended to the registered set —
 	// the hook for conditionally-present tools whose schema the caller builds
-	// (e.g. the self-learning Evolve trigger, built by tool/evolve.Schema and
+	// (e.g. the Auto Skill review trigger, built by reviewskill.Schema and
 	// injected only by the main agent). They pass through the same
 	// disabled/allow filtering as every other tool.
 	ExtraTools []core.ToolSchema
@@ -60,7 +60,7 @@ type SchemaOptions struct {
 // contract lives with its implementation. Every name here must resolve to a
 // registered tool (guarded by TestBuiltinToolsAllRegistered); tools that are
 // intentionally never exposed (e.g. TaskOutput) or injected per-turn with
-// tailored parameters (e.g. Evolve) are simply left out of this list rather
+// tailored parameters (e.g. ReviewSkill) are simply left out of this list rather
 // than skipped at runtime. TestBuiltinOrderCoversEveryRegisteredTool guards
 // the reverse: a registered tool must not be missing from this order. Bash and
 // PowerShell share a slot; whichever the platform lacks is skipped.
@@ -83,12 +83,12 @@ func GetToolSchemas() []core.ToolSchema {
 // in /tools so users can enable or disable them. Their runtime gates still
 // decide whether they are otherwise active.
 var manageableExtraToolOrder = []string{
-	ToolEvolve,
+	ToolReviewSkill,
 }
 
 // GetManageableToolSchemasWith returns every tool the /tools panel can manage.
 // It starts with the normal built-in and MCP schemas, then adds conditional
-// registered tools such as Evolve without making them unconditional model tools.
+// registered tools such as ReviewSkill without making them unconditional model tools.
 func GetManageableToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 	tools := GetToolSchemasWith(opts)
 	present := make(map[string]bool, len(tools))

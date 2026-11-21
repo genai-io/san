@@ -16,7 +16,7 @@ import (
 )
 
 func TestRecordedInputRuntimeAcceptance(t *testing.T) {
-	for _, mode := range []string{"accepted", "inactive", "queued-inactive", "recall-error", "closed", "wrong-owner"} {
+	for _, mode := range []string{"accepted", "inactive", "queued-inactive", "closed", "wrong-owner"} {
 		t.Run(mode, func(t *testing.T) {
 			store, err := session.OpenStore(t.Context(), t.TempDir())
 			if err != nil {
@@ -57,18 +57,12 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 					OutputAdmission: recorder.OutputAdmission, OnEvent: p.OnEvent,
 				}), NewPermissionGate(nil), nil
 			}}
-			recall := func(string) error { return nil }
-			if mode == "queued-inactive" || mode == "recall-error" {
+			if mode == "queued-inactive" {
 				var queue InputQueue
 				queue.Enqueue(input)
-				wantErr := ErrRuntimeInactive
-				if mode == "recall-error" {
-					wantErr = errors.New("previous recall could not be recorded")
-					recall = func(string) error { return &llm.RecordingError{Err: wantErr} }
-				}
-				err := queue.Deliver(runtime.SendInput, func(m core.Message) core.Message { return m }, recall)
+				err := queue.DeliverFirst(runtime.SendInput, func(m core.Message) core.Message { return m })
 				snapshot := owner.Snapshot()
-				if !errors.Is(err, wantErr) || queue.Len() != 0 || len(snapshot.Unfinished().Inferences) != 0 || len(snapshot.Messages()) != 0 {
+				if !errors.Is(err, ErrRuntimeInactive) || queue.Len() != 0 || len(snapshot.Unfinished().Inferences) != 0 || len(snapshot.Messages()) != 0 {
 					t.Fatal("rejected autopilot instruction remained eligible for replay")
 				}
 				return
@@ -107,7 +101,7 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 			}
 			var queue InputQueue
 			queue.Enqueue(input)
-			err = queue.Deliver(runtime.SendInput, func(m core.Message) core.Message { return prepared }, recall)
+			err = queue.DeliverFirst(runtime.SendInput, func(m core.Message) core.Message { return prepared })
 			if mode == "closed" || mode == "wrong-owner" {
 				var recording *llm.RecordingError
 				if !errors.As(err, &recording) || queue.Len() != 0 || len(runtime.Messages()) != 0 || main.Calls() != 0 {

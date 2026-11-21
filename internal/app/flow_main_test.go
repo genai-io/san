@@ -146,7 +146,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 		if err := m.services.Agent.Start(agent.BuildParams{Provider: p, ModelID: "m", Recording: opened, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
 			t.Fatal(err)
 		}
-		m.agentEvolveCaps = m.selfLearnCapabilities()
+		m.agentReviewCaps = m.autoSkillCapabilities()
 		m.agentDisabledToolsSignature = m.disabledToolsSignature()
 		m.agentAutoMemory = m.autoMemory()
 	} else if m.services.Agent.Active() {

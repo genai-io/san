@@ -9,12 +9,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
-	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -54,12 +53,16 @@ func TestRecallRecording(t *testing.T) {
 				callErr = errors.New("provider partial failure")
 			}
 			driver := aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}, Err: callErr}))
-			got, err := (Recaller{Provider: compactRecordingProvider{driver}, Model: "model", Recording: owner}).Recall(t.Context(), stores, "can I merge?", nil)
+			msg := core.UserMessage("can I merge?", nil)
+			got, err := (Recaller{Provider: compactRecordingProvider{driver}, Model: "model", Recording: owner}).Prepare(t.Context(), stores, msg, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (len(got) == 1) != (mode == "selected") {
-				t.Fatalf("memories=%v", got)
+			if (got.Completion != nil) != (mode == "selected") || strings.Contains(got.Message.Text(), "no merges") != (mode == "selected") {
+				t.Fatalf("prepared input=%+v", got)
+			}
+			if err := got.Completion.Close(); err != nil {
+				t.Fatal(err)
 			}
 			p := owner.Snapshot()
 			if len(p.Messages()) != 0 || len(p.ActiveMessages()) != 0 || len(p.Unfinished().Inferences) != 0 {
@@ -125,90 +128,49 @@ func TestRecallClosedRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
-	pick := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Start(stores, "q", nil)
-	<-pick.ready
-	_, err := WithRecall(nil, func() *Recall { return pick })(t.Context(), sdkagent.PostToolContext{Result: sdkagent.Result{Content: ai.TextContent("ok")}})
+	msg := core.UserMessage("q", nil)
+	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), stores, msg, nil)
 	var recordingErr *llm.RecordingError
-	if !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) || driver.Calls() != 0 || len(pick.Attached()) != 0 {
-		t.Fatalf("err=%v calls=%d attached=%v", err, driver.Calls(), pick.Attached())
-	}
-	if err := pick.Stop(); !errors.Is(err, session.ErrClosed) {
-		t.Fatalf("Stop lost error: %v", err)
+	if !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) || driver.Calls() != 0 || got.Completion != nil || got.Message.Text() != msg.Text() {
+		t.Fatalf("err=%v calls=%d prepared=%+v", err, driver.Calls(), got)
 	}
 }
 
-func TestRecallFinishRecordingFailure(t *testing.T) {
+func TestRecallDiscardRecordingFailure(t *testing.T) {
 	owner, stores := recallFixture(t)
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
 		if err := owner.Close(); err != nil {
 			t.Error(err)
 		}
-		return aitest.Says(`{"selected_memories":["project/freeze.md"]}`)(ctx, request)
+		return aitest.Says(`{"selected_memories":[]}`)(ctx, request)
 	})
-	pick := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Start(stores, "q", nil)
-	<-pick.ready
-	text, err := pick.Take()
+	msg := core.UserMessage("q", nil)
+	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), stores, msg, nil)
 	var recordingErr *llm.RecordingError
-	if text != "" || !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) || len(pick.Attached()) != 0 {
-		t.Fatalf("failed finish delivered selection: text=%q err=%v", text, err)
-	}
-	if _, again := pick.Take(); !errors.Is(again, session.ErrClosed) {
-		t.Fatalf("lost retained error: %v", again)
+	if got.Message.Text() != msg.Text() || got.Completion != nil || !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) {
+		t.Fatalf("failed finish delivered selection: prepared=%+v err=%v", got, err)
 	}
 }
 
-func TestRecallStopRetainsOriginalOwner(t *testing.T) {
+func TestRecallCancellationRetainsOriginalOwner(t *testing.T) {
 	owner, stores := recallFixture(t)
-	store, err := session.OpenStore(t.Context(), t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	replacement, err := store.Create(t.Context(), session.CreateOptions{ID: "replacement"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer replacement.Close()
-	entered, release := make(chan struct{}), make(chan struct{})
+	replacement, _ := recallFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	r := Recaller{Recording: owner}
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
-		close(entered)
-		<-release
-		return aitest.Replies(ai.Response{Content: ai.TextContent(`{"selected_memories":["project/freeze.md"]}`), Usage: ai.Usage{Input: 17, Output: 4}})(context.WithoutCancel(ctx), request)
+		r.Recording = replacement
+		cancel()
+		return aitest.Says(`{"selected_memories":["project/freeze.md"]}`)(context.WithoutCancel(ctx), request)
 	})
-	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
-	pick := r.Start(stores, "q", nil)
-	r.Recording = replacement
-	<-entered
-	stopped := make(chan error, 1)
-	go func() { stopped <- pick.Stop() }()
-	select {
-	case err := <-stopped:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(time.Second):
-		close(release)
-		t.Fatal("Stop joined provider")
-	}
-	close(release)
-	<-pick.ready
-	if text, err := pick.Take(); text != "" || err != nil {
-		t.Fatalf("discarded pick=%q err=%v", text, err)
+	r.Provider = compactRecordingProvider{driver}
+	msg := core.UserMessage("q", nil)
+	got, err := r.Prepare(ctx, stores, msg, nil)
+	if !errors.Is(err, context.Canceled) || got.Completion != nil || got.Message.Text() != msg.Text() {
+		t.Fatalf("canceled selection delivered input: prepared=%+v err=%v", got, err)
 	}
 	originalProjection, replacementProjection := owner.Snapshot(), replacement.Snapshot()
-	if len(pick.Attached()) != 0 || len(replacementProjection.Events()) != 1 || len(originalProjection.Unfinished().Inferences) != 0 {
-		t.Fatal("late selection attached, retargeted, or lost finish")
-	}
-	count := 0
-	for _, event := range originalProjection.Events() {
-		if finish, ok := event.Payload.(*session.InferenceFinishPayload); ok {
-			count++
-			if finish.Usage.Input != 17 {
-				t.Fatal("lost late usage")
-			}
-		}
-	}
-	if count != 1 {
-		t.Fatalf("finishes=%d", count)
+	if len(originalProjection.Events()) != 3 || len(originalProjection.Unfinished().Inferences) != 0 || len(replacementProjection.Events()) != 1 {
+		t.Fatal("canceled selection lost its finish or was retargeted")
 	}
 }

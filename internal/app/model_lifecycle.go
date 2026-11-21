@@ -67,7 +67,6 @@ func newBaseModel() model {
 		mainNotices:      make(chan mainNotice, 64),
 		flowMain:         newFlowMainBridge(),
 		mcpToolsChanged:  make(chan struct{}, 1),
-		selfLearnStarts:  make(chan struct{}, 8),
 		systemInput:      trigger.New(),
 		env:              environment,
 		services:         svc,
@@ -87,10 +86,9 @@ func selectorDeps(svc services, learnedStores *learnedStoreContext) input.Select
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
-		Evolve: input.EvolveDeps{
+		MemorySkills: input.MemorySkillsDeps{
 			Workspace: learnedStores.Snapshot,
 			Learned:   newLearnedSkillStore(learnedStores.Snapshot),
-			Recent:    newRecentLearnAccessor(svc.SelfLearn.Recent),
 		},
 	}
 }
@@ -284,8 +282,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 	})
 }
 
-// notifyMain posts a notice (a broker-routed subagent message, or a self-learn
-// done/failed line) to the main loop's Source-2 channel and always reports it
+// notifyMain posts a broker-routed notice to the main loop and always reports it
 // delivered. The broker's delivery contract forbids blocking, but a subagent
 // completion is main's only signal that a background worker finished, so it
 // must not be dropped: on a full channel we hand the notice to a short-lived

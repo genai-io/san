@@ -20,7 +20,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 | [plugin](plugin.md) | Extension installation and loading |
 | [reminder](reminder.md) | Context reminders |
 | [search](search.md) | Web search backends |
-| [selflearn](selflearn.md) | Background skill review |
+| [autoskill](auto-skill.md) | Auto Skill review and validated changes |
 | [session](session.md) | Session persistence, resume, and fork |
 | [setting](setting.md) | Configuration and permission decisions |
 | [skill](skill.md) | Skill loading and visibility |

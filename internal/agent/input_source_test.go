@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -75,7 +74,7 @@ func TestChildInputCommitsPreparedSourceBeforeNativeAcceptance(t *testing.T) {
 	defer stopRuntime(t, &runtime)
 	var queue InputQueue
 	queue.Enqueue(input)
-	if err := queue.Deliver(runtime.SendInput, func(core.Message) core.Message { return prepared }, nil); err != nil {
+	if err := queue.DeliverFirst(runtime.SendInput, func(core.Message) core.Message { return prepared }); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -126,7 +125,7 @@ func TestChildInputCommitsPreparedSourceBeforeNativeAcceptance(t *testing.T) {
 }
 
 func TestChildInputRejectionRetiresWithoutReplay(t *testing.T) {
-	for _, mode := range []string{"inactive", "reopened-owner", "missing-source", "missing-destination", "unknown-source", "closed", "recall-error"} {
+	for _, mode := range []string{"inactive", "reopened-owner", "missing-source", "missing-destination", "unknown-source", "closed"} {
 		t.Run(mode, func(t *testing.T) {
 			owner, params, driver := resumeFixture(t)
 			store, _, source := childInputSource(t, owner, params.CWD)
@@ -162,14 +161,9 @@ func TestChildInputRejectionRetiresWithoutReplay(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			var recall func(string) error
-			if mode == "recall-error" {
-				input.FromUser = true
-				recall = func(string) error { return errors.New("recall unavailable") }
-			}
 			var queue InputQueue
 			queue.Enqueue(input)
-			if err := queue.Deliver(runtime.SendInput, func(m core.Message) core.Message { return m }, recall); err == nil {
+			if err := queue.DeliverFirst(runtime.SendInput, func(m core.Message) core.Message { return m }); err == nil {
 				t.Fatal("invalid child delivery accepted")
 			}
 			stopRuntime(t, &runtime)

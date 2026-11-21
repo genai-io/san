@@ -96,13 +96,13 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 	q.Enqueue(agent.PendingInput{Message: core.UserMessage("question", nil), FromUser: true})
 	prepare := s.PrepareInput
 	rejected := errors.New("rejected")
-	if err := q.Deliver(func(agent.PendingInput) error { return rejected }, prepare, func(string) error { return nil }); !errors.Is(err, rejected) {
-		t.Fatalf("Deliver = %v", err)
+	if err := q.DeliverFirst(func(agent.PendingInput) error { return rejected }, prepare); !errors.Is(err, rejected) {
+		t.Fatalf("DeliverFirst = %v", err)
 	}
 	s.Enqueue("later notice")
 	s.RequeueSystemReminders()
 	var got string
-	if err := q.Deliver(func(msg agent.PendingInput) error { got = msg.Text(); return nil }, prepare, func(string) error { return nil }); err != nil {
+	if err := q.DeliverFirst(func(msg agent.PendingInput) error { got = msg.Text(); return nil }, prepare); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"question", "provider body", "first notice", "later notice"} {

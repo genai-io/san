@@ -64,7 +64,6 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		SpinnerTickCmd:          m.SpinnerTickCmd,
 		ResetCronQueue:          m.ResetCronQueue,
 		ForkSession:             m.forkSession,
-		RunSelfLearnDemo:        m.runSelfLearnDemo,
 		SetActivePersona:        m.setActivePersona,
 		RenameSession:           m.renameSession,
 		GroupCommand:            m.groupCommand,

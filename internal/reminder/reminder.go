@@ -31,11 +31,9 @@ const (
 	ProviderSkillsDirectory = "skills-directory"
 	ProviderMemoryUser      = "memory-user"
 	ProviderMemoryProject   = "memory-project"
-	// ProviderMemoryAuto is the auto-memory indexes the main agent keeps,
-	// apart from the user-authored AGENTS.md so the two never mix.
+	// ProviderMemoryAuto identifies index reminders in older sessions.
 	ProviderMemoryAuto = "memory-auto"
-	// ProviderMemoryRecall tags the auto memories picked for one message. It
-	// has no provider: the pick rides a tool result (agent.WithRecall).
+	// ProviderMemoryRecall tags selected notes attached to a user message.
 	ProviderMemoryRecall = "memory-recall"
 	// ProviderGroup is the roster of the group this session joined.
 	ProviderGroup = "group"
@@ -317,7 +315,7 @@ func WrapMemoryIndex(body string) string {
 }
 
 // AppendBlocks preserves the existing blocks and adds each nonempty text separately.
-// Blank lines also separate reminders on endpoints that require flattened text.
+// OpenAI Chat can flatten text-only input, so keep its blank-line boundaries.
 func AppendBlocks(content ai.Content, texts ...string) ai.Content {
 	cloned, hasText := false, false
 	for _, text := range texts {

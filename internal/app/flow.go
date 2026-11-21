@@ -62,8 +62,7 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 			catalog += "\nAvailable Skill: " + sk.FullName()
 		}
 	}
-	req := m.newSideRequest(session.PurposeFlow, flow.AuthoringPrompt(catalog, msg.Goal))
-	req.schemas = nil // Drafting cannot advertise or execute tools.
+	req := m.newSideRequest(session.PurposeFlow, false, flow.AuthoringPrompt(catalog, msg.Goal))
 	ctx, cancel := context.WithTimeout(context.Background(), flowDraftTimeout)
 	pending := &flowDraftRequest{owner: req.owner, generation: msg.Generation, cancel: cancel}
 	var tick tea.Cmd
@@ -90,7 +89,7 @@ func (m *model) generateFlow(msg input.FlowDraftRequestMsg) tea.Cmd {
 		if err == nil {
 			err = ctx.Err()
 		}
-		return flowDraftedMsg{request: pending, recording: req.recording, source: source, err: err}
+		return flowDraftedMsg{request: pending, recording: req.snapshot.Recording(), source: source, err: err}
 	})
 }
 

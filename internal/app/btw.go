@@ -42,7 +42,7 @@ type btwAnswerMsg struct {
 
 // sideQuestion starts answering question off the UI goroutine.
 func (m *model) sideQuestion(question string) tea.Cmd {
-	req := m.newSideRequest(session.PurposeBtw, btwInstructions, question)
+	req := m.newSideRequest(session.PurposeBtw, true, btwInstructions, question)
 	ask := btwAsk{question: strings.Join(strings.Fields(question), " "), sessionID: m.sessionID()}
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd
@@ -53,7 +53,7 @@ func (m *model) sideQuestion(question string) tea.Cmd {
 	return tea.Batch(tick, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
 		defer cancel()
-		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req), owner: req.owner, recording: req.recording}
+		return btwAnswerMsg{ask: ask, answer: askSide(ctx, req), owner: req.owner, recording: req.snapshot.Recording()}
 	})
 }
 

@@ -301,7 +301,7 @@ test('standalone inference renders the admitted system prompt, messages and tool
   assert.doesNotMatch(expand(detail,'Event').textContent,/admitted system|admitted message/);
   assert.doesNotMatch(input.textContent,/View JSON/);
 });
-test('Memory Side shows its paired response on live arrival and links both ways',async()=>{
+test('Side Card - Auto Memory shows its paired response on live arrival and links both ways',async()=>{
   const v=await viewer();v.openSession('native');
   v.ingestBatch(batch(1,[event(1,'inference.start',{purpose:'recall',input:{standalone:'blob'}}),
     event(2,'inference.start',{purpose:'turn'})]));
@@ -313,17 +313,26 @@ test('Memory Side shows its paired response on live arrival and links both ways'
     event(4,'inference.finish',{outcome:'success'},{seq:2}),
     event(5,'inference.finish',{outcome:'success',output:{text}},{seq:1})]));
   const rows=v.element('#timeline').children;
-  assert.match(rows[0].textContent,/Model · Request · Memory Side/);
-  assert.match(rows[4].textContent,/Model · Response · Memory Side/);
+  assert.match(rows[0].textContent,/Model Request · Side Card - Auto Memory/);
+  assert.match(rows[4].textContent,/Model Response · Side Card - Auto Memory/);
   let output=group(detail,'Model output');
   assert.ok(output.textContent.includes(text));
+  assert.match(output.textContent,/No accepted result recorded/);
   assert.doesNotMatch(output.textContent,/main answer/);
+  const accepted='<img src=x onerror=alert(1)> attached';
+  v.ingestBatch(batch(3,[event(6,'annotation.add',{text:accepted},{seq:1}),
+    event(7,'annotation.add',{text:'foreign source'},{session:'other',seq:1}),
+    event(8,'message.append',{messages:[message('result','user',textBlock('linked reminder'))]},{seq:1})]));
+  assert.match(output.textContent,/Raw model output.*selected_memories.*Accepted result.*attached.*linked reminder/s);
+  assert.ok(output.textContent.includes(accepted));
+  assert.ok(!descendants(output).some(el=>el.tag==='img'));
+  assert.doesNotMatch(output.textContent,/foreign source|No accepted result recorded/);
   const jump=(root,label)=>descendants(root).find(el=>el.tag==='button' && el.textContent===label).listeners.click();
   jump(output,'#5');
   output=group(detail,'Model output');
   assert.ok(output.textContent.includes(text));
   jump(output,'#1');
-  assert.match(detail.textContent,/Model · Request · Memory Side/);
+  assert.match(detail.textContent,/Model Request · Side Card - Auto Memory/);
   v.requests.at(-1).resolve({...snapshot('context'),request:{System:'selector'}});
   await v.showDetail(3);
   assert.match(group(detail,'Model output').textContent,/main answer/);
@@ -331,20 +340,29 @@ test('Memory Side shows its paired response on live arrival and links both ways'
 
 test('every model purpose labels its request and response consistently',async()=>{
   const v=await viewer();v.openSession('native');
-  const purposes=[['turn',''],['btw','By the Way Side'],['recall','Memory Side'],['recap','Recap Side'],
-    ['suggest','Suggestion Side'],['judge','Judge Side'],['flow','Flow Draft Side'],['autopilot','Autopilot Side'],
+  const purposes=[['turn',''],['btw','By the Way',true],['recall','Auto Memory',true,'Recall'],
+    ['memory-maintain','Auto Memory',true,'Maintain'],['auto-skill','Auto Skill',true,'Review'],
+    ['recap','Recap',true],['suggest','Suggestion',true],
+    ['judge','Judge Side'],['flow','Flow Draft',true],['autopilot','AutoPilot',true],
     ['group','Group Side'],['compaction','Compaction'],['hook','Hook'],['new-purpose','new-purpose']];
   v.ingestBatch(batch(1,purposes.flatMap(([purpose],i)=>{
     const seq=2*i+1;
     return [event(seq,'inference.start',{purpose}),event(seq+1,'inference.finish',{outcome:'success',output:{text:purpose+' answer'}},{seq})];
   })));
   const rows=v.element('#timeline').children,detail=v.element('#detail-body');
-  for(const [i,[purpose,label]] of purposes.entries()){
-    const suffix=label?' · '+label:'';
-    assert.equal(rows[2*i].textContent,`#${2*i+1}Model · Request${suffix}`);
-    assert.match(rows[2*i+1].textContent,new RegExp(`Model · Response${suffix}Success`));
+  for(const [i,[purpose,label,side,operation]] of purposes.entries()){
+    const suffix=side?' · Side Card - '+label:label?' · '+label:'';
+    assert.equal(rows[2*i].textContent,`#${2*i+1}${side?'Model Request':'Model · Request'}${suffix}`);
+    assert.ok(rows[2*i+1].textContent.includes(`${side?'Model Response':'Model · Response'}${suffix}${side?'Model completed':'Success'}`));
     await v.showDetail(2*i+1);
     assert.ok(group(detail,'Model output').textContent.includes(purpose+' answer'),purpose);
+    if(operation) {
+      assert.ok(expand(detail,'Event').textContent.includes('Operation'+operation));
+      const pending=v.showDetail(2*i);
+      assert.ok(expand(detail,'Event').textContent.includes('Operation'+operation));
+      v.requests.at(-1).resolve({...snapshot('context'),request:{System:'memory'}});
+      await pending;
+    }
   }
 });
 
@@ -356,7 +374,7 @@ test('older By the Way records show the linked reply instead of borrowing anothe
     event(4,'inference.finish',{outcome:'success'},{seq:1})]));
   await v.showDetail(3);
   const output=group(v.element('#detail-body'),'Model output');
-  assert.match(output.textContent,/Recorded side reply.*recorded side answer/s);
+  assert.match(output.textContent,/Raw model output.*No model output was recorded.*Accepted result.*recorded side answer/s);
   assert.doesNotMatch(output.textContent,/unrelated note/);
   descendants(output).find(el=>el.tag==='button' && el.textContent==='#2').listeners.click();
   assert.match(v.element('#detail-body').textContent,/#2 · annotation.add/);

@@ -34,22 +34,15 @@
 
 ## 记忆与学习
 
-- [自动记忆](concepts/auto-memory.md) —— 让经验跨会话保留，又不用把所有笔记塞进提示词。主代理把 Markdown 笔记存到用户和项目目录，后台按笔记描述选出相关内容。若有工具结果返回时筛选已完成，就把笔记一并送入上下文；当前轮次不会等它。
-
-  ```text
-  [用户和项目笔记] --> [后台检索]
-                            |
-                            v (及时就绪)
-                     [随工具结果送入上下文]
-  ```
+- [Auto Memory（自动记忆）](concepts/auto-memory.md) —— 在主模型推理前检索相关笔记，并在独立的 Side Card 中处理明确的记住、更新和遗忘请求。只有选中的笔记进入主对话。
 
 - [项目指令](reference/context-management.md#reminders-and-hot-reload) —— 把仓库约定写进可随代码审阅的文件。San 先读用户级指令，再沿仓库根目录到工作目录读取 `AGENTS.md`，同时纳入规则和本地覆盖项。加载后的内容在总大小上限内作为提醒送入上下文。
 
   `用户指令 + 项目指令 + 本地覆盖 -> 限定大小的提醒`
 
-- [自学习](packages/selflearn.md) —— 把「如何做事」的经验沉淀成技能，而不只是写一条记忆。该功能默认关闭；启用后，仅在已完成的轮次中有符合条件的 `Evolve` 请求时才启动后台审查器。它只能管理代理自建的技能，不能修改用户编写的技能。
+- [Auto Skill（自动技能）](packages/auto-skill.md) —— 把可复用的做法沉淀成技能。Auto Memory 与技能操作权限都开启时，已完成轮次中的 `ReviewSkill` 请求可启动独立审查；审查不能修改用户编写的技能。
 
-  `已完成轮次 + Evolve -> 后台审查 -> 代理自建技能`
+  `已完成轮次 + ReviewSkill -> Side Card 审查 -> 校验后的技能变更`
 
 ## 代理与会话协作
 
@@ -145,6 +138,8 @@
   ```
 
 ## 交互与检查
+
+- [Side Card](reference/side-card.md) —— 在主对话旁运行独立的模型调用。查看 Auto Memory、By the Way、AutoPilot、Recap、Suggestion 和 Flow Draft 的触发时机、请求内容，以及哪些结果会回到主会话。
 
 - [命令行](guides/getting-started.md) —— 同时支持交互工作和脚本中的单次调用。`san` 打开终端界面，可在对话中等待用户输入或审批；`san -p` 或管道输入使用无界面模式，执行一次请求并把答案写到标准输出。
 

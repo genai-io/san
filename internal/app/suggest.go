@@ -48,14 +48,14 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 	} else if m.assistantReplies() < 2 {
 		return nil
 	}
-	req := m.newSideRequest(session.PurposeSuggest, prompt, details)
+	req := m.newSideRequest(session.PurposeSuggest, true, prompt, details)
 	return m.userInput.PromptSuggestion.Start(func(ctx context.Context) (string, error) {
 		resp, err := req.complete(ctx)
 		if err != nil {
-			closeSide(req.recording)
+			closeSide(req.snapshot.Recording())
 			return "", err
 		}
-		if finishErr := req.recording.Finish(context.WithoutCancel(ctx)); finishErr != nil {
+		if finishErr := req.snapshot.Recording().Finish(context.WithoutCancel(ctx)); finishErr != nil {
 			return "", finishErr
 		}
 		return resp.Content.Text(), nil

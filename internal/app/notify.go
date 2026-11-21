@@ -1,7 +1,6 @@
 // Main-loop notifications: the small events that wake the TUI's Update loop —
-// a finished background subagent, an interim message from a running one, a
-// self-learn review tick. They arrive on m.mainNotices; deliverNotice
-// (model_turn_queue.go) places them.
+// a finished background subagent, an interim message, or a display-only notice.
+// They arrive on m.mainNotices; deliverNotice (model_turn_queue.go) places them.
 //
 // A notice has two halves with different constraints. Its content goes to the
 // agent at once: with a turn running it enters at the next step boundary (the
@@ -28,13 +27,11 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// mainNotice is one message routed to the main conversation on Source 2 — a
-// subagent completion or an interim message. It carries data only, no control
-// flags: Display is the one-line notice shown to the user (may be empty);
-// Content, if non-empty, is submitted to the main agent as a fresh turn (empty
-// Content = display-only). Pure UI signals (e.g. the self-learn spinner start)
-// do not ride here — they have their own channels.
+// A mainNotice carries a display line and optional agent-facing content.
+// An empty Content makes it display-only.
 type mainNotice struct {
+	// cancelled invalidates a queued notice when its producer is torn down.
+	cancelled   <-chan struct{}
 	SessionID   string
 	Source      *session.EventRef
 	Destination *session.Session

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
@@ -58,6 +59,67 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 		t.Fatalf("print owner not closed: %v", err)
 	}
 	_ = owner.Close()
+}
+
+func TestPrintShowsStandaloneMaintenanceNotice(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	driver := aitest.New(aitest.Says(memoryMaintenanceProposal))
+	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: system.MemoryStores{Project: t.TempDir()}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager()}
+	var displayed strings.Builder
+	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(memoryMaintenancePrompt, nil), func(text string) { displayed.WriteString(text) })
+	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != memoryMaintenanceNotice {
+		t.Fatalf("result=%+v display=%q err=%v", result, displayed.String(), err)
+	}
+	requests := driver.Sent()
+	if len(requests) != 1 || len(requests[0].Tools) != 0 {
+		t.Fatalf("expected one tool-free maintenance request: %+v", requests)
+	}
+}
+
+func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwd, notes := t.TempDir(), t.TempDir()
+	for path, content := range map[string]string{
+		filepath.Join(cwd, "AGENTS.md"):  "PROJECT_INSTRUCTION",
+		filepath.Join(notes, "topic.md"): "---\nname: Topic\ndescription: Project preference\ntype: project\n---\nOnly use table tests.",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	driver := aitest.New(aitest.Says(`{"selected_memories":["project/topic.md"]}`), aitest.Says("print answer"))
+	params, err := buildPrintParams(cwd, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	params.AutoMemory = system.MemoryStores{Project: notes}
+	params.Provider, params.ModelID, params.MaxTokens = acpTestProvider{driver.Client()}, "test", 64
+	params.Tasks = task.NewManager()
+	for _, schema := range params.Schemas() {
+		params.DisabledTools[schema.Name] = true
+	}
+	var displayed strings.Builder
+	result, err := runRecordedPrint(t.Context(), params, core.UserMessage("What style?", nil), func(text string) { displayed.WriteString(text) })
+	if err != nil || result == nil || result.Content != "print answer" || displayed.String() != "print answer" {
+		t.Fatalf("result=%+v display=%q err=%v", result, displayed.String(), err)
+	}
+	requests := driver.Sent()
+	if len(requests) != 2 || len(requests[0].Tools) != 0 || len(requests[1].Tools) != 0 {
+		t.Fatalf("expected a tool-free selector followed by tool-free main inference: %+v", requests)
+	}
+	selector := requests[0].Messages[0].Content.Text()
+	if !strings.Contains(selector, "What style?") || strings.Contains(selector, "PROJECT_INSTRUCTION") {
+		t.Fatalf("wrong selector input: %q", selector)
+	}
+	main := requests[1].Messages[0].Content.Text()
+	for _, want := range []string{"What style?", "Only use table tests.", "PROJECT_INSTRUCTION"} {
+		if !strings.Contains(main, want) {
+			t.Fatalf("missing %q in main input: %q", want, main)
+		}
+	}
+	if strings.Contains(main, notes) || strings.Contains(main, "memory-auto") {
+		t.Fatalf("legacy store path or index injected: %q", main)
+	}
 }
 
 func TestPrintStorageFailurePreventsModelInvocation(t *testing.T) {

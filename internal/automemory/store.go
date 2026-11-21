@@ -1,0 +1,383 @@
+package automemory
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"hash/fnv"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+	"unicode/utf8"
+
+	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/core/system"
+)
+
+const (
+	maxNote  = 8 * 1024
+	maxIndex = 128 * 1024
+	maxNotes = 5
+)
+
+var errStale = errors.New("memory store changed while proposing maintenance; retry the request")
+
+// Serialize maintenance applies to the same canonical store without keeping
+// locks forever for previously visited projects. Unrelated buckets can proceed.
+var storeLocks [64]sync.Mutex
+
+func storePath(stores system.MemoryStores, scope string) (string, error) {
+	selected, other := stores.Project, stores.User
+	if scope == "user" {
+		selected, other = other, selected
+	}
+	if selected == "" {
+		return "", nil
+	}
+	path, err := canonicalPath(selected)
+	if err != nil {
+		return "", err
+	}
+	if other != "" {
+		alt, err := atomicfile.ResolvePath(other)
+		if err != nil {
+			return "", err
+		}
+		if overlaps(path, alt) || overlaps(alt, path) {
+			return "", errors.New("memory store scopes overlap")
+		}
+	}
+	return path, nil
+}
+
+func canonicalPath(path string) (string, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == path {
+		return "", errors.New("invalid memory store directory")
+	}
+	// Resolve configured parent aliases (for example the platform temp/home
+	// path), but never follow a symlink in place of the store itself.
+	parent, err := atomicfile.ResolvePath(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	path = filepath.Join(parent, filepath.Base(path))
+	if info, err := os.Lstat(path); err == nil && !info.IsDir() {
+		return "", errors.New("memory store is not a real directory")
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	return path, nil
+}
+
+func overlaps(parent, child string) bool {
+	// Some filesystems accept both spellings even on Unix.
+	rel, err := filepath.Rel(strings.ToLower(parent), strings.ToLower(child))
+	return err == nil && filepath.IsLocal(rel)
+}
+
+func openStore(path string) (*os.Root, fs.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		return nil, nil, errors.New("memory store is not a real directory")
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	actual, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, actual) {
+		_ = root.Close()
+		return nil, nil, errStale
+	}
+	return root, info, nil
+}
+
+type revision struct {
+	text string
+	info fs.FileInfo
+}
+
+func (r revision) same(other revision) bool {
+	if r.info == nil || other.info == nil {
+		return r.info == nil && other.info == nil
+	}
+	return os.SameFile(r.info, other.info) && r.info.Mode() == other.info.Mode() &&
+		r.info.ModTime() == other.info.ModTime() && r.text == other.text
+}
+
+func readRevision(root *os.Root, name string, limit int) (revision, error) {
+	info, err := root.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return revision{}, nil
+	}
+	if err != nil {
+		return revision{}, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return revision{}, fmt.Errorf("not a bounded regular memory file: %s", name)
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return revision{}, err
+	}
+	defer f.Close()
+	actual, err := f.Stat()
+	if err != nil || !os.SameFile(info, actual) {
+		return revision{}, errStale
+	}
+	data, err := io.ReadAll(io.LimitReader(f, int64(limit+1)))
+	if err != nil {
+		return revision{}, err
+	}
+	if len(data) > limit || !utf8.Valid(data) {
+		return revision{}, fmt.Errorf("not a bounded UTF-8 memory file: %s", name)
+	}
+	return revision{string(data), info}, nil
+}
+
+type noteRevision struct {
+	name string
+	rev  revision
+}
+
+type storeSnapshot struct {
+	dir   fs.FileInfo
+	index revision
+	notes []noteRevision
+}
+
+var (
+	word      = regexp.MustCompile(`[\pL\pN]{3,}`)
+	indexLink = regexp.MustCompile(`\]\(((?:\./)?[A-Za-z0-9_-]+\.md)\)`)
+)
+
+func snapshot(path string, req Request) (s storeSnapshot, err error) {
+	root, dir, err := openStore(path)
+	s.dir = dir
+	if err != nil || root == nil {
+		return s, err
+	}
+	defer func() { _ = root.Close() }()
+	s.index, err = readRevision(root, system.AutoMemoryIndexName, maxIndex)
+	if err != nil {
+		return s, err
+	}
+	if req.target != "" {
+		rev, err := readRevision(root, req.target, maxNote)
+		if rev.info != nil {
+			s.notes = append(s.notes, noteRevision{req.target, rev})
+		}
+		return s, err
+	}
+	// Use the existing index to shortlist bounded evidence. Never send the
+	// whole index, open links outside this store, or read the other scope.
+	terms := map[string]bool{}
+	for _, token := range word.FindAllString(strings.ToLower(req.evidence), -1) {
+		switch token {
+		case "the", "and", "for", "this", "that", "with", "from", "use", "are", "not":
+		default:
+			terms[token] = true
+		}
+	}
+	seen := map[string]bool{}
+	for line := range strings.SplitSeq(s.index.text, "\n") {
+		link := indexLink.FindStringSubmatch(line)
+		if link == nil {
+			continue
+		}
+		name := strings.TrimPrefix(link[1], "./")
+		if !validName(name) || seen[name] {
+			continue
+		}
+		for _, token := range word.FindAllString(strings.ToLower(line), -1) {
+			if terms[token] {
+				seen[name] = true
+				rev, err := readRevision(root, name, maxNote)
+				if err == nil && rev.info != nil {
+					s.notes = append(s.notes, noteRevision{name, rev})
+				}
+				break
+			}
+		}
+		if len(s.notes) == maxNotes {
+			break
+		}
+	}
+	return s, nil
+}
+
+func apply(ctx context.Context, path string, req Request, s storeSnapshot, p proposal) (string, error) {
+	h := fnv.New32a()
+	_, _ = io.WriteString(h, strings.ToLower(path))
+	lock := &storeLocks[h.Sum32()%uint32(len(storeLocks))]
+	lock.Lock()
+	defer lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	current, err := canonicalPath(path)
+	if err != nil || current != path {
+		return "", errStale
+	}
+	root, dir, err := openStore(path)
+	if err != nil {
+		return "", err
+	}
+	if root != nil {
+		defer func() { _ = root.Close() }()
+	}
+	if (s.dir == nil) != (dir == nil) || (dir != nil && !os.SameFile(s.dir, dir)) {
+		return "", errStale
+	}
+	if root != nil {
+		index, err := readRevision(root, system.AutoMemoryIndexName, maxIndex)
+		if err != nil || !index.same(s.index) {
+			return "", errStale
+		}
+		for _, note := range s.notes {
+			rev, err := readRevision(root, note.name, maxNote)
+			if err != nil || !rev.same(note.rev) {
+				return "", errStale
+			}
+		}
+	}
+	switch p.Action {
+	case "remember":
+		index, err := editIndex(s.index.text, p)
+		if err != nil {
+			return "", err
+		}
+		text := renderNote(p)
+		if len(text) > maxNote {
+			return "", errors.New("memory note would exceed size limit")
+		}
+		if root == nil {
+			root, err = createStore(path)
+			if err != nil {
+				return "", err
+			}
+			defer func() { _ = root.Close() }()
+		}
+		if err := writeNote(root, p.File, text, revision{}); err != nil {
+			return "", err
+		}
+		if err := writeNote(root, system.AutoMemoryIndexName, index, s.index); err != nil {
+			// Leave the complete note intact rather than risk deleting a note
+			// an external writer may already have seen and edited.
+			return "", fmt.Errorf("memory note created but index update failed: %w", err)
+		}
+		return fmt.Sprintf("Memory · saved %s to %s", p.File, req.scope), nil
+	case "update":
+		old := s.notes[0].rev
+		text, err := patchNote(old.text, p)
+		if err != nil || text == old.text {
+			return "", err
+		}
+		if len(text) > maxNote {
+			return "", errors.New("memory note would exceed size limit")
+		}
+		if err := writeNote(root, p.File, text, old); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Memory · updated %s in %s", p.File, req.scope), nil
+	case "forget":
+		index, err := editIndex(s.index.text, p)
+		if err != nil {
+			return "", err
+		}
+		if index != s.index.text {
+			if err := writeNote(root, system.AutoMemoryIndexName, index, s.index); err != nil {
+				return "", err
+			}
+		}
+		rev, err := readRevision(root, p.File, maxNote)
+		if err != nil || !rev.same(s.notes[0].rev) {
+			err = errStale
+		} else {
+			err = root.Remove(p.File)
+		}
+		if err != nil {
+			if index != s.index.text {
+				latest, rerr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
+				if rerr == nil && latest.text == index {
+					rerr = writeNote(root, system.AutoMemoryIndexName, s.index.text, latest)
+				}
+				err = errors.Join(err, rerr)
+			}
+			return "", err
+		}
+		return fmt.Sprintf("Memory · forgot %s from %s", p.File, req.scope), nil
+	}
+	return "", errors.New("unsupported memory operation")
+}
+
+func createStore(path string) (*os.Root, error) {
+	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+		root, _, err := openStore(parent)
+		if err != nil {
+			return nil, err
+		}
+		if root != nil {
+			defer func() { _ = root.Close() }()
+			rel, err := filepath.Rel(parent, path)
+			if err != nil {
+				return nil, err
+			}
+			if err := root.MkdirAll(filepath.Dir(rel), 0o700); err != nil {
+				return nil, err
+			}
+			// Unlike MkdirAll on the full path, this rejects a leaf that
+			// appeared since the snapshot instead of using it.
+			if err := root.Mkdir(rel, 0o700); err != nil {
+				return nil, err
+			}
+			return root.OpenRoot(rel)
+		}
+		if filepath.Dir(parent) == parent {
+			return nil, fs.ErrNotExist
+		}
+	}
+}
+
+// Use the same temp-and-rename strategy as atomicfile, but operate through the
+// pinned root so a path swap cannot redirect a write outside the store. New
+// files use an exclusive link instead of an overwriting rename.
+func writeNote(root *os.Root, name, text string, old revision) error {
+	tmp := ".maintain-" + rand.Text() + ".tmp"
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Remove(tmp) }()
+	_, err = io.WriteString(f, text)
+	if err == nil && old.info != nil && runtime.GOOS != "windows" {
+		err = f.Chmod(old.info.Mode().Perm())
+	}
+	if err = errors.Join(err, f.Close()); err != nil {
+		return err
+	}
+	if old.info == nil {
+		return root.Link(tmp, name)
+	}
+	limit := maxNote
+	if name == system.AutoMemoryIndexName {
+		limit = maxIndex
+	}
+	current, err := readRevision(root, name, limit)
+	if err != nil || !current.same(old) {
+		return errStale
+	}
+	return root.Rename(tmp, name)
+}

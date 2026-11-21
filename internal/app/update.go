@@ -83,7 +83,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Search,
 		&m.userInput.Settings,
 		&m.userInput.Autopilot,
-		&m.userInput.Evolve,
+		&m.userInput.MemorySkills,
 		&m.userInput.Transcript,
 		&m.userInput.Tasks, // Native child detail can sit above a Flow inspector.
 		&m.userInput.Flow,
@@ -403,19 +403,15 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
 		}
-		m.conv.AddNotice("Self-learning config saved (" + string(msg.Scope) + ")")
-		m.notifySelfLearnOverride(msg)
-		// Re-wire the L1 reviewer so the saved values take effect on the
-		// running session. If the save also changed the Evolve tool's
-		// capabilities, the toolset is reconciled when the next turn starts —
-		// ensureAgentRuntime rebuilds on capability drift (agentEvolveCaps),
-		// which covers external settings edits the same way.
+		m.conv.AddNotice("Memory & Skills settings saved (" + string(msg.Scope) + ")")
+		m.notifyAutoSkillOverride(msg)
+		// Rewire Auto Skill now; the next turn reconciles ReviewSkill availability.
 		if m.services.Agent.Active() {
 			params, err := m.buildAgentParams()
 			if err != nil {
-				log.Logger().Warn("could not configure self-learning", zap.Error(err))
+				log.Logger().Warn("could not configure Auto Skill", zap.Error(err))
 			} else {
-				m.wireSelfLearn(params)
+				m.wireAutoSkill(params)
 			}
 		}
 		return m, nil
@@ -610,6 +606,8 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return agentSendFailedMsg{err: err} }
 		}
 		return m, tea.Batch(start, m.sendPendingMessages())
+	case memoryInputMsg:
+		return m, m.onMemoryInput(msg)
 	case agentSendFailedMsg:
 		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
 		if m.conv.Stream.Waiting {
@@ -646,7 +644,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
 	case mainNoticeMsg:
-		return m, m.onMainNotice(msg.notice)
+		select {
+		case <-msg.notice.cancelled:
+			return m, awaitMainNotice(m.mainNotices)
+		default:
+			return m, m.onMainNotice(msg.notice)
+		}
 	case input.FlowDraftRequestMsg:
 		return m, m.generateFlow(msg)
 	case flowMainMsg:
@@ -666,10 +669,6 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case recapReadyMsg:
 		return m, m.onRecapReady(msg)
-	case selfLearnStartedMsg:
-		return m, m.onSelfLearnStarted()
-	case selflearnTickMsg:
-		return m, m.handleSelflearnTick()
 	}
 
 	if cmd, handled := m.routeToSubModel(msg); handled {
@@ -706,6 +705,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 // tick loop off it let the loop re-arm itself forever after the turn ended.
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
+		m.memoryInput != nil ||
 		m.conv.Compact.Active ||
 		m.flowDraft != nil ||
 		m.btwWaiting() ||

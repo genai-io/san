@@ -7,8 +7,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/judge"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/sidecard"
 )
 
 type bashPromptResponder struct {
@@ -27,8 +30,10 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 		return "", false
 	}
 	scope := r.recording.Completion(session.PurposeAutopilot)
-	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt, scope.Admission())
-	if recordErr := scope.Close(); recordErr != nil {
+	reply, err, recordErr := sidecard.Decide(ctx, scope, func(ctx context.Context, admission llm.CompletionAdmission) (judge.BashPromptReply, error) {
+		return rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt, admission)
+	})
+	if recordErr != nil {
 		log.Logger().Error("record Bash prompt decision", zap.Error(recordErr))
 		return "", false
 	}

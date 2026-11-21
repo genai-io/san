@@ -8,6 +8,8 @@ San keeps the start of each request unchanged when it can, so the provider can r
 - **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body; `MEMORY.md` points to topic notes. Empty indexes are omitted, and each nonempty index gets a short preview.
 - **Keep permissions live.** A schema tells the model what it can ask for, not what it may execute. Check permissions at execution time.
 
+[Side Cards](side-card.md#context-and-caching) follow these rules whether they reuse the main conversation's prefix or build their own request.
+
 ## Request layout
 
 | Request field | What goes in it |
@@ -22,7 +24,7 @@ A working directory change updates the environment without rewriting the agent i
 
 San preserves the user input and appends each reminder as a separate `content[]` text block in the same user message. User and project instructions label each file by path and scope. San reads user instructions, then the `AGENTS.md` chain from the repository root to the working directory, plus rules and `AGENTS.local.md`, under a shared size cap. Skills and auto memory are separate sources; full skill bodies and memory notes load when needed.
 
-The SDK's Anthropic, OpenAI Chat, and OpenAI Responses drivers preserve the block list by default. For endpoints that require a string, blank lines separate reminders when the SDK flattens a text-only message. Inspector's **Raw SDK request** shows the native block list before provider encoding.
+The SDK's Anthropic driver keeps the block list. Its OpenAI Chat and Responses drivers, also used by Copilot, may flatten text-only messages on the wire. Blank lines preserve the boundaries in that case. Inspector's **Raw SDK request** shows the native block list before provider encoding.
 
 On reload, unchanged reminder text isn't appended again. A new value supersedes the old one; a removal is explicit. Changes apply at the next inference boundary supported by the host, not to a request already in flight. The `<system-reminder>` tag formats the text; it does not confer authority.
 

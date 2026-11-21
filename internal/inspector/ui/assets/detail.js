@@ -209,12 +209,13 @@ function eventDetails(rec, id) {
       return [section('Compaction', fields([['Compacted through', eventReference({seq: p.through}, id)]]),
         ...messageViews(p.summary ? [p.summary] : [], true))];
     case 'inference.start':
-      return [section('Model call', fields([['Purpose', p.purpose], ['Turn', p.turn_id], ['Provider', p.request?.provider],
+      return [section('Model call', fields([['Purpose', p.purpose], ['Operation', sideCards.get(p.purpose)?.operation], ['Turn', p.turn_id], ['Provider', p.request?.provider],
         ['Model', p.request?.model], ['Input', p.input?.standalone ? 'Standalone' : p.input?.conversation ? 'Conversation' : undefined],
         ['Standalone blob', p.input?.standalone], ['Instructions digest', p.instructions_digest], ['Toolset digest', p.toolset_digest]]),
         ...(p.request?.generation_options ? [disclosure('Generation options', () => [namedFields(p.request.generation_options)])] : []))];
     case 'inference.finish':
-      return [section('Inference outcome', fields([...outcomeFields(p), ['Stop reason', p.stop_reason]])),
+      return [section('Inference outcome', fields([['Operation', sideCards.get(inferenceStart(rec)?.payload?.purpose)?.operation],
+        ...outcomeFields(p), ['Stop reason', p.stop_reason]])),
         ...(p.usage ? [section('Token usage', namedFields(p.usage))] : [])];
     case 'permission.decide':
       return [section('Permission decision', fields([['Tool', toolName], ['Call ID', p.call_id], ['Decision', p.decision], ['Authority', p.by],
@@ -280,30 +281,39 @@ function updateModelOutput() {
   if (!panel) return;
   const pair = state.inferences.get(panel.start?.seq);
   const finish = panel.finish ?? pair?.finish;
-  if (finish === panel.rendered) return;
+  const side = sideCards.has(panel.start?.payload?.purpose);
+  const count = (pair?.messages.length ?? 0) + (pair?.annotations.length ?? 0);
+  if (finish === panel.rendered && count === panel.resultCount) return;
   panel.rendered = finish;
-  if (!finish) {
-    panel.node.replaceChildren(textElement('p', 'No response recorded yet.', 'detail-note'));
-    return;
-  }
+  panel.resultCount = count;
   const id = state.currentSession;
-  const link = panel.finish ? fields([['Request', eventReference(finish.source, id)]])
+  const link = !finish ? null : panel.finish ? fields([['Request', eventReference(finish.source, id)]])
     : fields([['Response', eventReference({seq: finish.seq}, id)]]);
-  const output = finish.payload?.output;
+  const output = finish?.payload?.output;
+  const recordedMessages = rec => rec.type === 'context.compact' ? [rec.payload.summary] : rec.payload.messages;
+  const resultView = rec => section(rec.type === 'annotation.add' ? 'Annotation' : 'Recorded messages',
+    fields([['Event', eventReference({seq: rec.seq}, id)]]),
+    ...(rec.type === 'annotation.add' ? [textElement('pre', rec.payload.text, 'message-text')] : messageViews(recordedMessages(rec), true)));
   let nodes;
-  if (output && typeof output.text === 'string') {
+  if (!finish) {
+    nodes = [textElement('p', 'No response recorded yet.', 'detail-note')];
+  } else if (output && typeof output.text === 'string') {
     nodes = [output.text ? textElement('pre', output.text, 'message-text') : textElement('p', 'No text returned.', 'detail-note')];
     if (output.truncated) nodes.push(textElement('p', 'Recorded output was truncated.', 'detail-note'));
-  } else if (pair?.messages.length) {
-    nodes = messageViews(pair.messages, true);
-  } else if (pair?.annotations.length) {
-    nodes = pair.annotations.map(note => section('Recorded side reply',
-      fields([['Annotation', eventReference({seq: note.seq}, id)]]), textElement('pre', note.payload.text, 'message-text')));
+  } else if (!side && pair?.messages.length) {
+    nodes = messageViews(pair.messages.flatMap(recordedMessages), true);
+  } else if (!side && pair?.annotations.length) {
+    nodes = pair.annotations.map(resultView);
   } else {
     const label = finish.payload?.outcome === 'success' ? 'No model output was recorded.' : 'No completed output.';
     nodes = [textElement('p', label, 'detail-note')];
   }
-  panel.node.replaceChildren(link, ...nodes);
+  if (side) {
+    const results = [...(pair?.messages ?? []), ...(pair?.annotations ?? [])].sort((a, b) => a.seq - b.seq);
+    nodes = [section('Raw model output', ...nodes), section('Accepted result', ...(results.length ? results.map(resultView)
+      : [textElement('p', 'No accepted result recorded.', 'detail-note')]))];
+  }
+  panel.node.replaceChildren(...(link ? [link] : []), ...nodes);
 }
 
 function detailPanel(title, build, open = false) {

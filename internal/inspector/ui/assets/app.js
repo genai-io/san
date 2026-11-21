@@ -210,18 +210,25 @@ function indexInference(rec) {
   if (!pair) state.inferences.set(start.seq, pair = {messages: [], annotations: []});
   if (rec.type === 'inference.finish') pair.finish = rec;
   else if (rec.type === 'annotation.add' && typeof rec.payload?.text === 'string' && rec.payload.text.trim()) pair.annotations.push(rec);
-  else if (rec.type === 'context.compact' && rec.payload?.summary) pair.messages.push(rec.payload.summary);
-  else if (Array.isArray(rec.payload?.messages)) pair.messages.push(...rec.payload.messages);
+  else if (rec.type === 'context.compact' && rec.payload?.summary) pair.messages.push(rec);
+  else if (Array.isArray(rec.payload?.messages) && rec.payload.messages.length) pair.messages.push(rec);
 }
-const inferenceLabels = new Map([
-  ['btw', 'By the Way Side'], ['recall', 'Memory Side'], ['recap', 'Recap Side'], ['suggest', 'Suggestion Side'],
-  ['judge', 'Judge Side'], ['flow', 'Flow Draft Side'], ['autopilot', 'Autopilot Side'], ['group', 'Group Side'],
-  ['compaction', 'Compaction'], ['hook', 'Hook'],
+const sideCards = new Map([
+  ['recall', {name:'Auto Memory', operation:'Recall'}],
+  ['memory-maintain', {name:'Auto Memory', operation:'Maintain'}],
+  ['auto-skill', {name:'Auto Skill', operation:'Review'}],
+  ['btw', {name:'By the Way'}], ['recap', {name:'Recap'}], ['suggest', {name:'Suggestion'}],
+  ['flow', {name:'Flow Draft'}], ['autopilot', {name:'AutoPilot'}],
 ]);
-function inferenceLabel(rec) {
+const inferenceLabels = new Map([
+  ['judge', 'Judge Side'], ['group', 'Group Side'], ['compaction', 'Compaction'], ['hook', 'Hook'],
+]);
+function inferenceLabel(rec, label) {
   const purpose = inferenceStart(rec)?.payload?.purpose;
-  if (typeof purpose !== 'string' || purpose === 'turn') return undefined;
-  return inferenceLabels.get(purpose) ?? purpose;
+  if (typeof purpose !== 'string' || purpose === 'turn') return label;
+  const card = sideCards.get(purpose);
+  if (card) return `${rec.type === 'inference.start' ? 'Model Request' : 'Model Response'} · Side Card - ${card.name}`;
+  return label + ' · ' + (inferenceLabels.get(purpose) ?? purpose);
 }
 function indexToolMessages(rec) {
   if (rec.type !== 'message.append' || rec.v !== 1 || !Array.isArray(rec.payload?.messages)) return;
@@ -308,10 +315,11 @@ function timelineOverview(rec, label) {
     }
     case 'message.append': return messageOverview(p);
     case 'context.compact': return {preview:p.through ? 'Through #' + p.through : ''};
-    case 'inference.start': return {label:join(label, inferenceLabel(rec)), preview:join(p.request?.model,
+    case 'inference.start': return {label:inferenceLabel(rec, label), preview:join(p.request?.model,
       p.input?.standalone ? 'standalone' : p.input?.conversation ? 'conversation' : '')};
-    case 'inference.finish': return {label:join(label, inferenceLabel(rec)),
-      preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal};
+    case 'inference.finish': return {label:inferenceLabel(rec, label),
+      preview:join(p.stop_reason?.replaceAll('_', ' '), duration, p.reason), ...terminal,
+      status: outcome === 'success' && sideCards.has(inferenceStart(rec)?.payload?.purpose) ? 'Model completed' : terminal.status};
     case 'permission.decide': return {label:join(label, toolName), preview:join(p.by && 'By ' + p.by, p.scope, p.reason), ...terminal};
     case 'tool.finish': return {preview:join(toolName, duration, p.details?.Path, p.reason), ...terminal};
     case 'hook.finish': return {label:join(label, hookTriggers.get(p.trigger) ?? p.trigger), preview:join(duration, p.matcher, p.reason) ||

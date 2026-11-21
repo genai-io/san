@@ -1,14 +1,14 @@
 // Generic settings-popup shell. PanelPopup frames one or more sub-panels in a
-// centered rounded card with a title lockup ("✦ Self-Learning"), a tab strip
+// centered rounded card with a title lockup ("✦ Memory & Skills"), a tab strip
 // when multiple panels are registered, a faint hairline, and the active
 // panel's body + hint. Each sub-panel implements Panel and owns its body.
 //
 // Two popups are built on this shell today:
-//   - /config  → Appearance + Permissions panels (Provider planned).
-//   - /evolve  → the skill self-learning panel.
+//   - /settings → Appearance, Permissions, and General panels.
+//   - /memory   → the Memory & Skills panel.
 //
 // To add a panel to either, implement Panel and append it in the popup's
-// constructor (NewSettingsSelector / NewEvolveSelector).
+// constructor (NewSettingsSelector / NewMemorySkillsSelector).
 package input
 
 import (
@@ -62,7 +62,7 @@ type breadcrumbPanel interface {
 // one-liner in the popup's constructor.
 type PanelPopup struct {
 	glyph   string // title-lockup glyph, e.g. "✦"
-	title   string // wordmark, e.g. "Self-Learning"
+	title   string // wordmark, e.g. "Memory & Skills"
 	tagline string // muted tagline shown when not inside a sub-view
 
 	panels []Panel
@@ -232,7 +232,7 @@ func (c *PanelPopup) activePanel() Panel {
 	return c.panels[c.index]
 }
 
-// renderHeader renders the title lockup ("✦ Self-Learning" + tagline, or a
+// renderHeader renders the title lockup ("✦ Memory & Skills" + tagline, or a
 // "› panel › sub-view" breadcrumb when inside a sub-view), an "● unsaved" tag
 // pinned right, and the tab strip below when more than one panel is registered.
 func (c *PanelPopup) renderHeader(width int) string {

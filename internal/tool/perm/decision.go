@@ -75,9 +75,8 @@ var safeTools = func() map[string]bool {
 		"TaskGet":         true,
 		"TaskUpdate":      true,
 		"AskUserQuestion": true,
-		// Evolve only queues a background self-learning review — it writes
-		// nothing itself, so it auto-allows like the task/question tools.
-		"Evolve": true,
+		// ReviewSkill only requests an Auto Skill review; it does not edit skills.
+		"ReviewSkill": true,
 	}
 	for name := range readOnlyTools {
 		m[name] = true

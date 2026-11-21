@@ -8,6 +8,33 @@ import (
 	"testing"
 )
 
+func TestMemoryNotes(t *testing.T) {
+	stores := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
+	write := func(dir, name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("---\ndescription: "+name+"\n---\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(stores.User, AutoMemoryIndexName)
+	if err := os.Mkdir(filepath.Join(stores.User, "folder.md"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if stores.HasNotes() {
+		t.Fatal("index and directory are not notes")
+	}
+	write(stores.User, "z.md")
+	write(stores.User, "b.md")
+	write(stores.Project, "a.md")
+	if !stores.HasNotes() {
+		t.Fatal("regular notes were not found")
+	}
+	notes := stores.Memories(2)
+	if len(notes) != 2 || notes[0].Description != "b.md" || notes[1].Description != "z.md" {
+		t.Fatalf("want first two user notes in filename order, got %+v", notes)
+	}
+}
+
 func TestFormatInstructions(t *testing.T) {
 	user, project := FormatInstructions([]MemoryFile{
 		{Path: "user/AGENTS.md", Content: "User text", Level: "global"},

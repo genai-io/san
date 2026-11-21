@@ -276,7 +276,6 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		s.runtimeBuildParams.AskUser = s.input.ask
 		s.runtimeBuildParams.BashPromptResponder = s.input.responder
 	}
-	s.reminders.Register(reminder.ProviderMemoryAuto, func() string { return agent.AutoMemoryReminder(policy.AutoMemory) })
 	s.refreshMemory()
 	source := "startup"
 	if history != nil {

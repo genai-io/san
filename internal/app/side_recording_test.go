@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/sidecard"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -180,14 +181,13 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 			if mode != "default" {
 				recording = owner
 			}
-			messages := withSidePrompt([]core.Message{core.UserMessage("work", nil)}, "why?")
-			for i := range messages {
-				if messages[i].ID == "" {
-					messages[i].ID = core.NewMessageID()
-				}
-			}
+			chain := []core.Message{core.UserMessage("work", nil)}
+			chain[0].ID = core.NewMessageID()
 			provider := &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says("because")), ai.Model{ID: "m"})}
-			req := sideRequest{label: session.PurposeBtw, client: llm.NewClient(provider, "m", 100), messages: messages, owner: recording, recording: recording.Completion(session.PurposeBtw, messages[1:]...)}
+			request := sidecard.NewSnapshot(sidecard.SnapshotOptions{
+				Client: llm.NewClient(provider, "m", 100), Messages: chain, Owner: recording, Purpose: session.PurposeBtw,
+			}, "why?")
+			req := sideRequest{label: session.PurposeBtw, snapshot: request, owner: recording}
 			answer := askSide(ctx, req)
 			if answer != "because" {
 				t.Fatalf("answer = %q", answer)
@@ -205,7 +205,7 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 			if mode == "stale" {
 				m.services.Session = nil
 			}
-			m.onBtwAnswer(btwAnswerMsg{ask: btwAsk{question: "why?", sessionID: askSessionID}, answer: answer, owner: recording, recording: req.recording})
+			m.onBtwAnswer(btwAnswerMsg{ask: btwAsk{question: "why?", sessionID: askSessionID}, answer: answer, owner: recording, recording: request.Recording()})
 			accepted := mode == "current" || mode == "default"
 			if (len(m.conv.Messages) > before) != accepted {
 				t.Fatalf("accepted output = %v, want %v", m.conv.Messages, accepted)
@@ -233,7 +233,7 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if len(native.Messages) != len(messages) {
+					if len(native.Messages) != len(chain)+2 {
 						t.Fatalf("native request lost messages: %+v", native)
 					}
 				case session.EventInferenceFinish:
