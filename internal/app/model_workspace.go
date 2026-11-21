@@ -6,8 +6,10 @@ package app
 
 import (
 	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/persona"
+	"github.com/genai-io/san/internal/proc"
 )
 
 func (m *model) changeCwd(newCwd string) {
@@ -20,6 +22,11 @@ func (m *model) changeCwd(newCwd string) {
 	// Publish only after both facts are resolved. The running agent's tools
 	// and reviewer must see the new workspace without waiting for a rebuild.
 	m.refreshAutopilotSnapshot()
+	if m.services.Agent != nil {
+		if sys := m.services.Agent.System(); sys != nil {
+			sys.Use(system.EnvironmentSection(system.Environment{Cwd: newCwd, Shell: proc.DefaultShellName()}), "cwd_changed")
+		}
+	}
 	m.userInput.HandleCwdChange(newCwd)
 	m.env.ClearCachedInstructions()
 	m.refreshMemoryContext(newCwd, "cwd_changed")

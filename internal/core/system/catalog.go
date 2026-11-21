@@ -14,9 +14,8 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// Embedded prompt templates. One file per system-prompt part, mirroring the
-// four-part structure — a persona overrides a part by dropping in the same-
-// named file under its system/ directory:
+// Embedded prompt templates. A persona can replace identity and behavior
+// and add its own rules alongside the invariant harness rules:
 //
 //	prompts/identity.txt              — who you are (the "identity" part)
 //	prompts/behavior.txt              — how you work (the "behavior" part)
@@ -33,8 +32,7 @@ import (
 //
 // Identity is bare because Anthropic's standard preamble shape starts with
 // "You are X". The other parts live in a named XML envelope so the model can
-// address each as a structured unit, and so a persona can replace a whole
-// part by dropping in one file (system/<part>.md).
+// address each as a structured unit.
 //
 // Per-tool guidance (when to reach for a tool, how to call it) lives in each
 // tool's schema description, not here — the prompt carries only cross-tool
@@ -133,37 +131,39 @@ func behaviorSection(override string) core.Section {
 
 // Part: rules (slot 2)
 
-// rulesSection renders the safety contract and harness protocols. A non-empty
-// override (a persona's rules part) replaces the built-in default.
+// rulesSection always renders the harness rules, followed by optional persona rules.
 func rulesSection(override string) core.Section {
-	override = strings.TrimSpace(override)
+	body := cachedRules
 	source := core.Predefined
-	if override != "" {
+	if override = strings.TrimSpace(override); override != "" {
+		body += "\n\n## Persona rules\n\n" + override
 		source = core.FromFile
 	}
 	return core.Section{
 		Slot: core.SlotRules, Name: "rules", Source: source,
-		Render: func() string {
-			body := override
-			if body == "" {
-				body = cachedRules
-			}
-			return wrap("rules", nil, body)
-		},
+		Render: func() string { return wrap("rules", nil, body) },
 	}
 }
 
-// memorySection tells the main agent how to keep its auto memory. The prompt
-// says both stores exist, so they are created here.
-func memorySection(s MemoryStores) core.Section {
-	for _, dir := range []string{s.User, s.Project} {
-		if dir != "" {
-			_ = os.MkdirAll(dir, 0o755)
-		}
-	}
+func memoryRulesSection() core.Section {
 	return core.Section{
 		Slot: core.SlotRules, Name: "memory", Source: core.Predefined,
-		Render: func() string { return wrap("memory", nil, fmt.Sprintf(cachedMemory, s.User, s.Project)) },
+		Render: func() string { return wrap("memory", nil, cachedMemory) },
+	}
+}
+
+func memoryStoresSection(s MemoryStores) core.Section {
+	var lines []string
+	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
+		if store.dir != "" {
+			_ = os.MkdirAll(store.dir, 0o755)
+			lines = append(lines, fmt.Sprintf("%s: %s", store.name, store.dir))
+		}
+	}
+	body := strings.Join(lines, "\n")
+	return core.Section{
+		Slot: core.SlotEnvironment, Name: "memory-stores", Source: core.Dynamic,
+		Render: func() string { return wrap("memory-stores", nil, body) },
 	}
 }
 
@@ -175,16 +175,16 @@ func WithAutoMemory(s MemoryStores) Option {
 	return func(cfg *buildConfig) { cfg.memory = s }
 }
 
-// WithPersona overrides any of the identity / behavior / rules parts at build
-// time from a persona. Empty fields keep San's built-in default for that part.
+// WithPersona supplies persona parts at build time. Empty fields use the
+// built-in identity and behavior or omit persona rules. Harness rules remain.
 // Applied wholesale, so pass every part the persona provides.
 func WithPersona(p Persona) Option {
 	return func(cfg *buildConfig) { cfg.persona = p }
 }
 
-// SwapPersona replaces the identity / behavior / rules parts on an already-built
-// main-agent system — e.g. a mid-session persona switch. Empty fields revert
-// that part to the built-in default. Visible on the next sys.Prompt().
+// SwapPersona replaces the persona parts on an already-built main-agent system.
+// Empty fields clear the persona overrides, leaving the built-in defaults and
+// harness rules. Visible on the next sys.Prompt().
 func SwapPersona(sys core.System, p Persona) {
 	const caller = "command:persona"
 	sys.Use(identitySection(p.Identity), caller)
@@ -272,9 +272,8 @@ func modeDescription(mode string) string {
 
 // Part: environment (slot 3, volatile)
 
-// Environment is the small, frequently-changing footer: cwd, git branch,
-// platform, today's date. Placed last so the cache prefix above it survives
-// daily date rollovers and cwd switches.
+// Environment is the volatile prompt footer: cwd, git branch, platform, and date.
+// Keep it after the stable sections; cache boundaries depend on the driver.
 type Environment struct {
 	Cwd string
 	// Shell names what shell commands run under, e.g. "bash" or
@@ -282,8 +281,8 @@ type Environment struct {
 	Shell string
 }
 
-// WithEnvironment registers the environment section. Callers should refresh
-// it via sys.Refresh("environment") when cwd changes mid-session.
+// WithEnvironment registers the initial environment section. Replace it with
+// EnvironmentSection when the cwd changes.
 func WithEnvironment(env Environment) Option {
 	return func(cfg *buildConfig) {
 		e := env

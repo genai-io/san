@@ -327,7 +327,35 @@ func (m *model) loadSessionByID(id string) error {
 	}
 	m.env.ResetContextDisplay()
 	m.ReconfigureAgentTool()
+	if m.resumeInstructionsChanged(history) {
+		m.addResumeNotice("Resumed with updated model instructions.")
+	}
 	return nil
+}
+
+func (m *model) resumeInstructionsChanged(history session.Projection) bool {
+	saved := history.Instructions()
+	stable := make(map[string]session.InstructionSection, len(saved))
+	for _, section := range saved {
+		if section.Slot != int(core.SlotEnvironment) {
+			stable[section.Name] = section.InstructionSection
+		}
+	}
+	if len(stable) == 0 {
+		return false
+	}
+	for _, section := range m.promptParams().System().Sections() {
+		if section.Slot == core.SlotEnvironment {
+			continue
+		}
+		if text := section.Render(); text != "" {
+			if stable[section.Name] != (session.InstructionSection{Content: text, Slot: int(section.Slot)}) {
+				return true
+			}
+			delete(stable, section.Name)
+		}
+	}
+	return len(stable) != 0
 }
 
 func (m *model) resolveSessionModel(history session.Projection) (llm.Provider, *llm.CurrentModelInfo, error) {
@@ -380,8 +408,9 @@ func (m *model) restoreHistory(history session.Projection) error {
 	m.resetRecap()
 	m.conv.Messages = m.services.SessionStore.ChatRows(history)
 	m.earlyNotices = nil
-	m.services.Agent.SetMessages(history.ActiveMessages())
-	m.services.Reminder.RestoreHistory(m.conv.Messages)
+	active := history.ActiveMessages()
+	m.services.Agent.SetMessages(active)
+	m.services.Reminder.RestoreHistory(active)
 	m.conv.CommittedCount = 0
 	m.env.SessionName = attrs.Title
 	state, config := history.State(), history.Config()
@@ -426,21 +455,21 @@ func (m *model) restoreHistory(history session.Projection) error {
 	}
 	m.rejoinGroup(membershipJSON)
 	unfinished := history.Unfinished()
-	// Interrupted-operation status is reconstructed presentation, not a new
-	// annotation fact on every resume. Never send it into the native context.
-	statusNotice := func(text string) {
-		m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatNotice, Content: text})
-	}
 	if len(unfinished.Inferences) > 0 {
-		statusNotice(fmt.Sprintf("Resumed with %d unfinished model call(s); no response was committed and no call was retried.", len(unfinished.Inferences)))
+		m.addResumeNotice(fmt.Sprintf("Resumed with %d unfinished model call(s); no response was committed and no call was retried.", len(unfinished.Inferences)))
 	}
 	for _, call := range unfinished.NeverRan {
-		statusNotice("Tool call " + call + " did not pass its permission gate; it was not run.")
+		m.addResumeNotice("Tool call " + call + " did not pass its permission gate; it was not run.")
 	}
 	for _, call := range unfinished.Unknown {
-		statusNotice("Tool call " + call + " was allowed but has no committed completion; its outcome is unknown and it was not retried.")
+		m.addResumeNotice("Tool call " + call + " was allowed but has no committed completion; its outcome is unknown and it was not retried.")
 	}
 	return nil
+}
+
+// Resume status is presentation only, not a durable annotation or model input.
+func (m *model) addResumeNotice(text string) {
+	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatNotice, Content: text})
 }
 
 func (m *model) initTaskStorage(sessionID string) {

@@ -68,13 +68,16 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	// lives in tool schemas, so the rules part does not vary by scope or tool
 	// availability.
 	sys.Use(rulesSection(cfg.persona.Rules), caller)
-	if scope == core.ScopeMain && !cfg.memory.Off() {
-		sys.Use(memorySection(cfg.memory), caller)
+	autoMemory := scope == core.ScopeMain && !cfg.memory.Off()
+	if autoMemory {
+		sys.Use(memoryRulesSection(), caller)
 	}
 
-	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {
 		sys.Use(EnvironmentSection(*cfg.env), caller)
+	}
+	if autoMemory {
+		sys.Use(memoryStoresSection(cfg.memory), caller)
 	}
 
 	return sys

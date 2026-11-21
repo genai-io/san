@@ -17,7 +17,7 @@
 
 ## Customize and extend
 
-- [System prompts](concepts/harness-channels.md) — shape agent instructions and context.
+- [Context Management](reference/context-management.md) — system prompts, live context, and compaction.
 - [Personas](concepts/persona.md) — bundle prompts, skills, agents, and settings.
 - [Skills](guides/writing-a-skill.md) — write reusable task procedures.
 - [Subagents](guides/writing-a-subagent.md) — define specialized agents.

@@ -106,6 +106,8 @@ type BuildParams struct {
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
 	FileCache *filecache.Cache
+	// GroupRoster supplies the main session's current group reminder, if any.
+	GroupRoster func() string
 	// FileViews tracks read versions for Read-before-Edit/Write checks, not content.
 	// Hosts retain it across runtime rebuilds; nil uses the TUI's default views.
 	FileViews *fs.FileViews
@@ -263,12 +265,18 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		if summary == "" {
 			return result, fmt.Errorf("compaction produced empty summary")
 		}
-		// The loop resumes on this summary at once, before the reminders the
-		// next user turn would carry: bring the instructions and the files in
-		// hand along with it.
 		budget := client.ContextBudget()
-		summary = core.WithRecentRequests(summary, msgs, budget)
-		result.Summary = reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), cache, budget))
+		result.Summary = core.WithRecentRequests(summary, msgs, budget)
+		result.Reminders = postCompactReminders(cwdFunc(), cache, budget)
+		if !p.AutoMemory.Off() {
+			result.Reminders = append(result.Reminders, reminder.WrapWithSource(AutoMemoryReminder(p.AutoMemory), reminder.ProviderMemoryAuto))
+		}
+		if p.Skills != nil {
+			result.Reminders = append(result.Reminders, reminder.WrapWithSource(p.Skills.PromptSection(), reminder.ProviderSkillsDirectory))
+		}
+		if p.GroupRoster != nil {
+			result.Reminders = append(result.Reminders, reminder.WrapWithSource(p.GroupRoster(), reminder.ProviderGroup))
+		}
 		return result, nil
 	}
 
@@ -392,24 +400,26 @@ func instructionReminders(cwd string) []string {
 	}
 }
 
-// AutoMemoryReminder is both stores' indexes as one reminder, with any index
-// problems after it. Those come from the harness, so they sit outside the
-// memory block, whose framing tells the model not to act on its contents.
+// AutoMemoryReminder carries short index previews, not full memory notes.
 func AutoMemoryReminder(s system.MemoryStores) string {
+	const previewBytes = 2 * 1024
 	var body, problems []string
 	for _, store := range []struct{ name, dir string }{{"User store", s.User}, {"Project store", s.Project}} {
 		if store.dir == "" {
 			continue
 		}
-		index, p := system.LoadAutoMemoryAt(store.dir)
-		if index == "" {
-			index = "(no memories yet)" // said, so the model doesn't go read a missing index
-		} else {
-			fs.RecordFileWritten(filepath.Join(store.dir, system.AutoMemoryIndexName)) // shown, so editable unread
+		index, issues := system.LoadAutoMemoryAt(store.dir)
+		if index != "" {
+			if len(index) > previewBytes {
+				end := max(0, strings.LastIndexByte(index[:previewBytes+1], '\n'))
+				index = strings.TrimSpace(index[:end] + "\nRead MEMORY.md in this store for more entries.")
+			} else if len(issues) == 0 {
+				fs.RecordFileWritten(filepath.Join(store.dir, system.AutoMemoryIndexName))
+			}
+			body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
 		}
-		body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
-		for _, line := range p {
-			problems = append(problems, store.name+": "+line)
+		for _, issue := range issues {
+			problems = append(problems, store.name+": "+issue)
 		}
 	}
 	problems = append(problems, s.Duplicates()...)

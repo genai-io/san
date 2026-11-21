@@ -2,6 +2,7 @@ package reminder_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -40,26 +41,42 @@ func TestConversationContextLifecycle(t *testing.T) {
 }
 
 func TestRestoreConversationContext(t *testing.T) {
+	const skills, memory = reminder.ProviderSkillsDirectory, reminder.ProviderMemoryUser
+	current := reminder.WrapWithSource("fresh skills", skills)
+	stale := reminder.WrapWithSource("stale skills", skills)
+	user := func(text string) core.Message { return core.UserMessage(text, nil) }
 	for _, tc := range []struct {
 		name     string
-		messages []core.ChatMessage
-		want     bool
+		messages []core.Message
+		want     []string
 	}{
-		{"empty", nil, false},
-		{"notice", []core.ChatMessage{{Role: core.ChatUser, Content: reminder.Wrap("notice")}}, false},
-		{"assistant", []core.ChatMessage{{Role: core.ChatAssistant, Content: reminder.WrapWithSource("skills", reminder.ProviderSkillsDirectory)}}, false},
-		{"user", []core.ChatMessage{{Role: core.ChatUser, Content: reminder.WrapWithSource("skills", reminder.ProviderSkillsDirectory)}}, true},
+		{"empty", nil, []string{skills, memory}},
+		{"notice", []core.Message{user(reminder.Wrap("notice"))}, []string{skills, memory}},
+		{"assistant", []core.Message{core.AssistantMessage(current, "", nil)}, []string{skills, memory}},
+		{"unknown source", []core.Message{user(reminder.WrapWithSource("fresh skills", "unknown"))}, []string{skills, memory}},
+		{"latest version wins", []core.Message{user(stale), user(current)}, []string{memory}},
+		{"changed version rerenders", []core.Message{user(current), user(stale)}, []string{skills, memory}},
+		{"summary carries provider separately", []core.Message{user(reminder.AttachToContent("summary", []string{current}))}, []string{memory}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := reminder.New()
-			s.Register(reminder.ProviderSkillsDirectory, func() string { return "fresh skills" })
+			s.Register(skills, func() string { return "fresh skills" })
+			s.Register(memory, func() string { return "fresh memory" })
 			s.PrepareInput("previous conversation")
 			s.RestoreHistory(tc.messages)
-			if s.Prepared() != tc.want {
-				t.Fatalf("Prepared = %v", s.Prepared())
+			if s.Prepared() {
+				t.Fatal("restore did not rearm rendering")
 			}
-			if got := s.PrepareInput("next"); strings.Contains(got, "fresh skills") == tc.want {
-				t.Fatalf("restored input = %q", got)
+			got := s.PrepareInput("next")
+			var sources []string
+			for _, block := range reminder.Blocks(got) {
+				sources = append(sources, block.Source)
+				if block.Source == skills && block.Text != current {
+					t.Fatalf("skills were not freshly rendered: %q", block.Text)
+				}
+			}
+			if !slices.Equal(sources, tc.want) {
+				t.Fatalf("restored input = %q; want sources %v", got, tc.want)
 			}
 		})
 	}
@@ -81,6 +98,7 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 		t.Fatalf("Deliver = %v", err)
 	}
 	s.Enqueue("later notice")
+	s.RequeueSystemReminders()
 	var got string
 	if err := q.Deliver(func(msg agent.PendingInput) error { got = msg.Text(); return nil }, prepare, func(string) error { return nil }); err != nil {
 		t.Fatal(err)

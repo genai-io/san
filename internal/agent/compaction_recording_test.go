@@ -62,9 +62,17 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 				}
 				return aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}, Err: callErr})(ctx, r)
 			}
-			driver := aitest.New(first, aitest.Says("done"))
+			const roster = "current group roster"
+			follow := func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+				if mode == "accepted" && (len(req.Messages) != 1 || strings.Count(req.Messages[0].Text(), roster) != 1) {
+					t.Error("first request after compact must carry the current context once")
+				}
+				return aitest.Says("done")(ctx, req)
+			}
+			driver := aitest.New(first, follow)
 			boundaries := 0
 			ag, gate, err := buildAgentWithOutbox(BuildParams{Provider: compactRecordingProvider{driver}, ModelID: "model", MaxTokens: 64,
+				GroupRoster: func() string { return roster },
 				PermissionRules: func(string, map[string]any) PermDecisionResult {
 					return PermDecisionResult{Decision: perm.Reject, By: session.ByConfig}
 				},
@@ -73,8 +81,9 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 						boundaries++
 						p := owner.Snapshot()
 						active := p.ActiveMessages()
-						if len(active) != 1 || active[0].ID != info.SummaryMessageID || active[0].Text() != core.FormatCompactSummary(info.Summary) {
-							t.Error("published compaction before exact native commit")
+						if len(active) != 1 || active[0].ID != info.SummaryMessageID || len(active[0].Content) != 2 ||
+							active[0].Content[0].Text != core.FormatCompactSummary(info.Summary) || !strings.Contains(active[0].Content[1].Text, roster) {
+							t.Error("published compaction before committing the exact summary and its separate reminder")
 						}
 					}
 				}}, -1)

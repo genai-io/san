@@ -9,6 +9,18 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
+func TestBuildSeparatesMemoryRulesFromStorePaths(t *testing.T) {
+	user, project := t.TempDir(), t.TempDir()
+	prompt := Build(core.ScopeMain, WithAutoMemory(MemoryStores{User: user, Project: project})).Prompt()
+	rules, stores, found := strings.Cut(prompt, "<memory-stores>")
+	if !found || !strings.Contains(rules, "<memory>") || strings.Contains(rules, user) || strings.Contains(rules, project) {
+		t.Fatal("memory locations leaked into the stable rules")
+	}
+	if !strings.Contains(stores, "user: "+user) || !strings.Contains(stores, "project: "+project) {
+		t.Fatal("memory locations are missing from the dynamic section")
+	}
+}
+
 func TestBuildEnvironmentRendersFacts(t *testing.T) {
 	repo := t.TempDir()
 	gitDir := filepath.Join(repo, ".git")

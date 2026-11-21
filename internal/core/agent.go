@@ -336,6 +336,7 @@ type TurnEnded struct{ Result Result }
 // summary and its ID are the application's.
 type Compacted struct {
 	Summary       string
+	Reminders     []string
 	OriginalCount int
 	// SummaryMessageID names the summary that replaced the chain. The writer
 	// writes it as the transcript boundary, so replay truncates there instead

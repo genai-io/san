@@ -1,7 +1,7 @@
 # Auto memory
 
 Besides the user-authored AGENTS.md (see
-[harness channels](harness-channels.md#memory-agentsmd)), the main agent keeps
+[Context Management](../reference/context-management.md#reminders-and-hot-reload)), the main agent keeps
 its own memory: facts, preferences and decisions it should still know in the
 next conversation. It is on by default.
 
@@ -13,18 +13,15 @@ Memory lives in two stores:
 - a **project store** per repository at `~/.san/projects/<repo-root>/memory/`
   (subdirectories and linked worktrees share it).
 
-The prompt tells the model which store each memory belongs in; the project
-store wins on conflict. Both directories are created up front, and an empty
-store shows in the reminder as `(no memories yet)`, so the agent neither runs
-`mkdir` nor reads a missing index.
+Memory policy is part of the stable system rules; store paths are dynamic
+system context. Project facts take precedence in that project. Empty stores
+add no startup reminder.
 
 Each store holds:
 
-- `MEMORY.md`, an index with one line per memory. Each store's first 200
-  lines / 25 KB ride the `memory-auto` reminder, framed as context rather than
-  user instructions. Index problems (near or over the cap, unindexed topic
-  files, links to missing files, a memory in both stores) are appended so the
-  agent repairs them.
+- `MEMORY.md` is an index: one short link and reason per topic. The `memory-auto`
+  reminder previews up to 2 KiB of complete lines per store; the full index and
+  notes stay on disk. Index diagnostics are reported separately from the preview.
 - One file per memory, with `name` / `description` / `type` frontmatter,
   dated by its file's mtime. San never rewrites a file the agent wrote. The
   category lives in `type`, not the file name: two feedback memories are two
@@ -57,7 +54,7 @@ sequenceDiagram
     Sel--)App: up to 5 files
     App->>A: memory-recall rides the next completed tool batch after the pick
     App-->>U: ⟡ Memory · recalled: … (at that result)
-    Note over A: indexes and attached files count as read
+    Note over A: Full indexes and attached notes count as read
     opt asked to remember or forget
         A->>S: Reads still needed, in parallel
         App-->>U: ⟡ Memory · read: … (at each Read step)
@@ -275,7 +272,7 @@ go test ./internal/agent ./internal/core/system ./internal/app/conv ./internal/a
 
 ## See Also
 
-- [`concepts/harness-channels.md`](harness-channels.md) — reminders and the
+- [Context Management](../reference/context-management.md) — reminders and the
   AGENTS.md memory beside this one.
 - [`packages/reminder.md`](../packages/reminder.md) — the
   `memory-auto` and `memory-recall` sources.

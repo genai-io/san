@@ -35,6 +35,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.userInput.Autopilot.SetEngagedSource(m.autopilotEngaged)
 	m.userInput.Autopilot.SetModelSource(m.autopilotModelRefs)
 	m.userInput.Autopilot.SetEffortSource(m.autopilotModelEfforts)
+	m.wireReminderProviders()
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err
 	}
@@ -47,7 +48,6 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
-	m.wireReminderProviders()
 	conv.MemoryStores = m.autoMemory()
 	// After the run options: a -c / -r start has adopted its session's task
 	// directory by now, and this is a no-op for it. Before, every resume left

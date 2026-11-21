@@ -1,78 +1,23 @@
 # San Agent Guide
 
-This file is the short navigation map for agents and contributors. Keep durable
-knowledge in `docs/`; keep this file focused on where to look and what rules to
-follow before changing code.
+Keep this file to repository-wide rules and pointers. Inspect the checkout for
+its current structure; use the package map for ownership. Put local conventions
+in the nearest `AGENTS.md` and private notes in `AGENTS.local.md` (git-ignored).
 
-San follows the [AGENTS.md](https://agents.md) standard, so this file is both
-the navigation aid for whoever opens the repository and the project
-instructions loaded into the running agent's context at session start. Keep it
-short: pointers and rules only. Uncommitted personal notes belong in
-`AGENTS.local.md` (git-ignored); a subdirectory with its own conventions can
-carry its own `AGENTS.md`, and the file nearest the working directory wins.
+## Where to look
 
-## Start Here
+- [Docs and feature index](docs/index.md)
+- [Package ownership](docs/reference/package-map.md)
+- [Build, test, lint, and format](docs/operations/development.md)
 
-- Product overview: `README.md`
-- Documentation index: `docs/index.md`
-- Detailed architecture: `docs/concepts/architecture.md`
-- Package map and ownership: `docs/reference/package-map.md`
-- Dependency rules: `docs/reference/dependency-rules.md`
-- Feature notes: `docs/packages/index.md`
-- Development workflow: `docs/operations/development.md`
+## Before changing code
 
-## Repository Shape
-
-- `cmd/san`: CLI entrypoint and command wiring.
-- `internal/app`: Bubble Tea TUI shell, model composition, event routing.
-- `internal/core`: stable agent, message, tool, and system-prompt contracts.
-- `internal/agent`: agent construction and session-facing runtime setup.
-- `internal/llm`: model provider registry, clients, cost and logging helpers.
-- `internal/tool`: built-in tool registry, schemas, adapters, and executors.
-- `internal/session`: transcript persistence, projection, metadata, resume.
-- `internal/task`, `internal/subagent`, `internal/cron`: background work and orchestration.
-- `internal/command`, `internal/skill`, `internal/plugin`, `internal/mcp`, `internal/hook`: extension surfaces.
-- `internal/setting`, `internal/persona`: configuration and persona overlays.
-- `internal/log`, `internal/secret`, `internal/filecache`, `internal/markdown`, `internal/confdir`: infrastructure helpers.
-- `internal/selflearn`: background skill review loop (auto memory is the main agent's own).
-- `docs`: durable explanations, design decisions, operations, and references.
-
-## Rules
-
-Before editing internal packages, read:
-
-- `docs/reference/dependency-rules.md` — allowed import directions and the
-  rule for each layer.
-- `docs/design/principles.md` — coding principles for package structure,
-  interfaces, tests, and context handling.
-
-Update those files when the rules change. Do not duplicate them here.
-
-san is one application built on [sdk-go](https://github.com/genai-io/sdk-go),
-which holds the generic agent building blocks. Do not reimplement what sdk-go
-provides; when san grows a generic piece, move it to sdk-go and drop san's
-copy. san keeps its own policy and UI. See sdk-go's CONTRIBUTING.md, "What
-belongs here".
-
-## Writing Style
-
-- Keep docs concise and clear; prefer short bullets or diagrams over long prose.
-- Keep comments brief and focused on non-obvious intent or constraints; do not narrate code.
-- Document durable behavior, not task-local setup notes or implementation history.
-
-## Common Commands
-
-See `docs/operations/development.md` for build / test / lint / format
-and the sandbox-friendly `GOCACHE` workaround. Update that file when
-commands change. Do not duplicate them here.
-
-## Documentation Rules
-
-- Add or update docs in the same change as architecture or workflow changes.
-- Each feature document should list purpose, entrypoints, core packages, flow,
-  configuration, tests, and common pitfalls.
-- Proposals and architecture decision records live directly in `docs/design/`,
-  named `proposal-NNNN-topic.md` and `decision-NNNN-topic.md`.
-- File naming rules live in `docs/reference/file-naming.md`.
-- Active plans live in `notes/active/`; completed plans move to
-  `notes/completed/`.
+- Read the [dependency rules](docs/reference/dependency-rules.md) and
+  [design principles](docs/design/principles.md) before editing internal packages.
+- Keep San-specific policy and UI here; put reusable agent primitives in
+  [sdk-go](https://github.com/genai-io/sdk-go). Do not duplicate SDK behavior.
+- Update relevant docs alongside architecture or workflow changes. Keep docs and
+  comments concise; explain behavior and constraints, not directory listings or
+  implementation history. See [file naming](docs/reference/file-naming.md) and
+  [design records](docs/design/index.md).
+- Keep active plans in `notes/active/` and completed plans in `notes/completed/`.

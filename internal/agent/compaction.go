@@ -116,7 +116,8 @@ func RecordManualCompaction(opened *session.Session, result CompactResult) (core
 
 // PostCompact refreshes context in native order. refreshMemory updates the
 // caller's instruction cache; the return value is only a presentation count.
-func PostCompact(trigger string, hooks hook.Handler, reminders *reminder.Reminder, files *filecache.Cache, refreshMemory func()) int {
+func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Reminder, files *filecache.Cache, refreshMemory func()) int {
+	trigger := info.Trigger
 	if trigger == "" {
 		trigger = "auto"
 	}
@@ -125,6 +126,9 @@ func PostCompact(trigger string, hooks hook.Handler, reminders *reminder.Reminde
 	}
 	refreshMemory()
 	reminders.ResetConversation()
+	if len(info.Reminders) != 0 {
+		reminders.RestoreHistory([]core.Message{core.UserMessage(strings.Join(info.Reminders, "\n\n"), nil)})
+	}
 	if trigger == "manual" && files != nil {
 		if restored, _ := files.RestoreRecent(); len(restored) > 0 {
 			reminders.Enqueue(filecache.FormatRestoredFiles(restored))

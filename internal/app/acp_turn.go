@@ -199,7 +199,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 				}
 				return response, errors.Join(e.Err, transportErr, s.nativeSession.Session.Err())
 			case core.Compacted:
-				agent.PostCompact(e.Trigger, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
+				agent.PostCompact(e, s.hooks, s.reminders, s.runtimeBuildParams.FileCache, s.refreshMemory)
 			case sdkagent.ToolEnd:
 				s.postTool(e)
 			}

@@ -18,6 +18,7 @@ package reminder
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -61,6 +62,7 @@ type Reminder struct {
 	mu        sync.Mutex
 	providers []provider
 	pending   []pendingEntry
+	emitted   map[string]string // latest wrapped version per provider
 	prepared  bool
 }
 
@@ -100,7 +102,11 @@ func (s *Reminder) Unregister(id string) {
 	defer s.mu.Unlock()
 	for i, existing := range s.providers {
 		if existing.id == id {
-			s.providers = append(s.providers[:i], s.providers[i+1:]...)
+			s.providers = slices.Delete(s.providers, i, i+1)
+			s.pending = slices.DeleteFunc(s.pending, func(e pendingEntry) bool {
+				return e.providerID != "" && e.providerID == id
+			})
+			s.queueProviderLocked(id, "")
 			return
 		}
 	}
@@ -147,22 +153,9 @@ func (s *Reminder) discardPendingNoticesLocked() {
 	s.pending = kept
 }
 
-// RequeueSystemReminders re-renders the provider-sourced reminders only: it
-// renders every registered provider and queues the non-empty bodies. Despite
-// the name it does NOT touch one-time notices (Enqueue) — those are also
-// <system-reminder> blocks but are preserved here, since they describe a
-// past event rather than live session state.
-//
-// Idempotent across repeated calls: any prior pending entry from the same
-// provider is dropped before re-emitting, so first message → PostCompact →
-// /skills toggle in close succession produces a single emission per provider
-// rather than accumulating duplicates.
-//
-// Each provider's body is wrapped with the provider ID as the `source`
-// attribute on the system-reminder tag (e.g. `<system-reminder
-// source="skills-directory">…`) so trace/audit can attribute who injected
-// what without parsing the body itself. Models treat unknown attributes
-// transparently — the model-visible meaning is unchanged.
+// RequeueSystemReminders replaces pending provider versions with current
+// renders, skipping exact versions already attached. Notices keep their order.
+// A provider that stops rendering content emits a source-scoped removal once.
 func (s *Reminder) RequeueSystemReminders() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,11 +180,20 @@ func (s *Reminder) requeueSystemRemindersLocked() {
 	s.pending = kept
 
 	for _, p := range s.providers {
-		body := strings.TrimSpace(p.render())
-		if body == "" {
-			continue
-		}
-		s.pending = append(s.pending, pendingEntry{providerID: p.id, wrapped: WrapWithSource(body, p.id)})
+		s.queueProviderLocked(p.id, p.render())
+	}
+}
+
+const removalBody = "Earlier reminders from this source no longer apply."
+
+func (s *Reminder) queueProviderLocked(id, body string) {
+	wrapped := WrapWithSource(body, id)
+	last := s.emitted[id]
+	if wrapped == "" && last != "" {
+		wrapped = WrapWithSource(removalBody, id)
+	}
+	if wrapped != "" && wrapped != last {
+		s.pending = append(s.pending, pendingEntry{providerID: id, wrapped: wrapped})
 	}
 }
 
@@ -199,7 +201,19 @@ func (s *Reminder) requeueSystemRemindersLocked() {
 func (s *Reminder) Drain() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.drainLocked()
+}
+
+func (s *Reminder) drainLocked() []string {
 	out := s.wrappedLocked()
+	for _, e := range s.pending {
+		if e.providerID != "" {
+			if s.emitted == nil {
+				s.emitted = make(map[string]string)
+			}
+			s.emitted[e.providerID] = e.wrapped
+		}
+	}
 	s.pending = nil
 	return out
 }

@@ -195,9 +195,9 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 		t.Errorf("second message should have no reminders attached, got %q", secondUserMsg)
 	}
 
-	// PostCompact: harness re-enqueues providers so the LLM can recover.
-	s.RequeueSystemReminders()
-	postCompactMsg := AttachToContent("after compact", s.Drain())
+	// PostCompact: history was replaced, so rearm and render on first input.
+	s.ResetConversation()
+	postCompactMsg := s.PrepareInput("after compact")
 	if !strings.Contains(postCompactMsg, skillsBody) {
 		t.Error("post-compact message should re-attach skills reminder")
 	}
@@ -263,6 +263,47 @@ func TestReminderRequeueSystemRemindersIsIdempotent(t *testing.T) {
 	if skillsCount != 1 || memoryCount != 1 || hookCount != 1 {
 		t.Errorf("expected each reminder exactly once; got skills=%d memory=%d hook=%d",
 			skillsCount, memoryCount, hookCount)
+	}
+}
+
+func TestProviderVersionsAndRemoval(t *testing.T) {
+	s := New()
+	state := "v1"
+	s.Register("skills", func() string { return state })
+	s.RequeueSystemReminders()
+	s.Drain()
+
+	state = "v2"
+	s.RequeueSystemReminders()
+	state = "v1"
+	s.RequeueSystemReminders()
+	if got := s.Drain(); len(got) != 0 {
+		t.Fatalf("reverted pending version should not emit: %v", got)
+	}
+
+	state = " "
+	s.RequeueSystemReminders()
+	s.Enqueue("first notice")
+	s.Enqueue("second notice")
+	s.RequeueSystemReminders()
+	removed := WrapWithSource(removalBody, "skills")
+	if got := s.Drain(); len(got) != 3 || got[0] != Wrap("first notice") || got[1] != Wrap("second notice") || got[2] != removed {
+		t.Fatalf("expected notices in order followed by scoped removal, got %v", got)
+	}
+	s.RequeueSystemReminders()
+	if got := s.Drain(); len(got) != 0 {
+		t.Fatalf("removal should only emit once: %v", got)
+	}
+
+	state = "v1"
+	s.RequeueSystemReminders()
+	if got := s.Drain(); len(got) != 1 || got[0] != WrapWithSource(state, "skills") {
+		t.Fatalf("returning provider should emit again: %v", got)
+	}
+	s.Unregister("skills")
+	s.RequeueSystemReminders()
+	if got := s.Drain(); len(got) != 1 || got[0] != removed {
+		t.Fatalf("unregistered provider should emit a removal: %v", got)
 	}
 }
 

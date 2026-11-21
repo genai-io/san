@@ -24,9 +24,10 @@ import (
 // after successful Finish. Nil callbacks allow unrecorded use. Producers must
 // make Close idempotent and must not commit when Finish returns an error.
 type Compaction struct {
-	Summary string
-	Finish  func(context.Context, Message) error
-	Close   func() error
+	Summary   string
+	Reminders []string // live context, separate from the summary text
+	Finish    func(context.Context, Message) error
+	Close     func() error
 }
 
 func (c Compaction) close() error {
@@ -130,6 +131,11 @@ func (a *agent) acceptCompaction(ctx context.Context, c Compaction, originalCoun
 	err := ctx.Err()
 	if err == nil && strings.TrimSpace(c.Summary) != "" {
 		msg = UserMessage(FormatCompactSummary(c.Summary), nil)
+		for _, reminder := range c.Reminders {
+			if reminder != "" {
+				msg.Content = append(msg.Content, ai.TextBlock("\n\n"+reminder))
+			}
+		}
 		msg.ID = NewMessageID()
 		if c.Finish != nil {
 			if finishErr := c.Finish(ctx, msg); finishErr != nil {
@@ -166,6 +172,7 @@ func (a *agent) acceptCompaction(ctx context.Context, c Compaction, originalCoun
 	publish(sdkagent.MessageAdded{Message: msg})
 	publish(Compacted{
 		Summary:          c.Summary,
+		Reminders:        c.Reminders,
 		OriginalCount:    originalCount,
 		SummaryMessageID: msg.ID,
 		Trigger:          trigger,

@@ -23,13 +23,14 @@ cache — currently:
 - memory recall (the auto memories picked for one message; no provider, attached to a tool result by `agent.WithRecall`)
 - one-time notices (queued from hooks or commands)
 
-See [`concepts/harness-channels.md`](../concepts/harness-channels.md) for
+See [Context Management](../reference/context-management.md) for
 why reminders are a separate channel from the system prompt.
 
 ## Contract
 
 The harness holds a concrete `*Reminder`. Sources register an ID and render
-closure; returning an empty body skips emission.
+closure. An empty body emits nothing unless it removes previously delivered
+context.
 
 ```go
 package reminder
@@ -45,7 +46,7 @@ func (s *Reminder) RequeueSystemReminders()
 func (s *Reminder) Prepared() bool
 func (s *Reminder) PrepareInput(text string) string
 func (s *Reminder) ResetConversation()
-func (s *Reminder) RestoreHistory(messages []core.ChatMessage)
+func (s *Reminder) RestoreHistory(messages []core.Message)
 // ... and drain/peek accessors for the harness
 
 // Standard provider IDs:
@@ -82,19 +83,10 @@ func Wrap(body string) string
   queue retains prepared text when delivery is rejected.
 - Per-event: skill toggles / memory updates call `RequeueSystemReminders`
   to refresh provider-emitted reminders.
-- Once per conversation: `ResetConversation` clears `prepared` and
-  discards obsolete notices after `/clear` or compaction. `RestoreHistory`
-  recognizes sourced provider markers in restored user messages on resume.
-  `/clear` and `/resume` also discard notices belonging to the old conversation.
-- On compaction: reminder blocks are **skipped, not summarized**.
-  `core.BuildCompactionText` peels trailing `<system-reminder>…</system-reminder>`
-  blocks from user content before the summarizer runs, then the harness calls
-  `ResetConversation` so fresh provider
-  state reattaches to the next user turn. All providers (skills, memory-user,
-  memory-project, memory-auto) and one-time notices share this lifecycle. On PostCompact
-  the harness re-reads memory from disk before re-emitting, so an edited
-  memory file re-injects its latest content. See
-  [`concepts/compaction.md`](../concepts/compaction.md).
+- Reset after `/clear` or compaction drops pending entries and rearms preparation.
+  Resume and automatic compaction seed deduplication from native active context;
+  the next input renders current providers and sends only missing or changed
+  versions. See [Compaction and resume](../reference/context-management.md#compaction-and-resume).
 
 ## Tests
 
