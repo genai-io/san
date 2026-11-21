@@ -231,6 +231,31 @@ type MemoryFile struct {
 	Level   string // "global", "project", or "local"
 }
 
+// FormatInstructions groups loaded files by scope and labels each source in load order.
+func FormatInstructions(files []MemoryFile) (user, project string) {
+	var userFiles, projectFiles []string
+	for _, file := range files {
+		body := strings.TrimSpace(file.Content)
+		if body == "" {
+			continue
+		}
+		scope := "project instructions"
+		switch file.Level {
+		case "global":
+			scope = "user instructions"
+		case "local":
+			scope = "local project instructions"
+		}
+		text := fmt.Sprintf("Contents of %q (%s):\n\n%s", file.Path, scope, body)
+		if file.Level == "global" {
+			userFiles = append(userFiles, text)
+		} else {
+			projectFiles = append(projectFiles, text)
+		}
+	}
+	return strings.Join(userFiles, "\n\n"), strings.Join(projectFiles, "\n\n")
+}
+
 // LoadMemoryFiles loads every instruction file that applies to cwd, in the
 // order they are injected: user-level AGENTS.md, user rules, the project chain
 // from the repository root down to cwd, project rules, then the git-ignored

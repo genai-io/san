@@ -14,13 +14,14 @@ type continuationState struct {
 	parentOwner                    *session.Session
 	persistenceErr                 error
 	originalPrompt                 string
+	reminders                      []string
 	cfg                            *runConfig
 	req                            tool.AgentExecRequest
 	cwd, sessionID, parent, taskID string
 }
 
 func newContinuationState(run *preparedRun, parent, taskID string) *continuationState {
-	state := &continuationState{originalPrompt: run.originalPrompt, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: parent, taskID: taskID}
+	state := &continuationState{originalPrompt: run.originalPrompt, reminders: run.reminders, cfg: run.cfg, req: run.req, cwd: run.cwd, parent: parent, taskID: taskID}
 	state.req.OnIdentity = nil
 	state.req.OnActivity, state.req.OnQuestion = nil, nil
 	state.req.OnTextDelta, state.req.OnTextEnd = nil, nil

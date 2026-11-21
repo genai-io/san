@@ -17,7 +17,7 @@ import (
 const (
 	sessionPageSize    = 10
 	maxSessionPageSize = 50
-	// Generated titles are optional sidebar metadata, not a reason to replay large logs.
+	// Prompt previews are optional sidebar metadata, not a reason to replay large logs.
 	sessionTitleBudget = 512 << 10
 )
 
@@ -115,14 +115,12 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		if attrs, err := s.store.Attrs(ctx, item.ID); err != nil {
 			item.AttrsError = err.Error()
 		} else {
-			item.Title = attrs.Title
+			item.Title = strings.TrimSpace(attrs.Title)
 		}
 		if item.Title == "" && item.Size > 0 && item.Size <= budget {
 			budget -= item.Size
 			if projection, err := s.store.Read(ctx, item.ID); err == nil {
-				if title := projection.State().Title; title != nil {
-					item.Title = *title
-				}
+				item.Title = projection.LastUserPrompt()
 			}
 		}
 	}

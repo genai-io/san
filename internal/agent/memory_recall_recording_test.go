@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +90,14 @@ func TestRecallRecording(t *testing.T) {
 			if request.System != recallSystemPrompt || request.System != effective.System || !reflect.DeepEqual(request.Messages, effective.Messages) || !reflect.DeepEqual(request.Tools, effective.Tools) {
 				t.Fatalf("recorded request differs: %+v vs %+v", request, effective)
 			}
+			if len(request.Messages) != 1 || request.Messages[0].Role != ai.RoleUser {
+				t.Fatalf("unexpected selector messages: %+v", request.Messages)
+			}
+			if blocks := request.Messages[0].Content; len(blocks) != 2 ||
+				!strings.Contains(blocks[0].Text, "project/freeze.md: release freeze") ||
+				strings.Contains(blocks[0].Text, "can I merge?") || blocks[1].Text != "can I merge?" {
+				t.Fatalf("selector context and user query were not separated: %+v", blocks)
+			}
 			if finish == nil || finish.Usage.Input != 17 || finish.Usage.Output != 4 {
 				t.Fatalf("finish=%+v", finish)
 			}
@@ -98,6 +107,13 @@ func TestRecallRecording(t *testing.T) {
 			}
 			if finish.Outcome != want {
 				t.Fatalf("outcome=%s want=%s", finish.Outcome, want)
+			}
+			if callErr != nil {
+				if finish.Output != nil {
+					t.Fatalf("failed attempt recorded partial output: %+v", finish.Output)
+				}
+			} else if finish.Output == nil || finish.Output.Text != text || finish.Output.Truncated {
+				t.Fatalf("output=%+v, want %q", finish.Output, text)
 			}
 		})
 	}

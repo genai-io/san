@@ -9,19 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func TestBuildSeparatesMemoryRulesFromStorePaths(t *testing.T) {
-	user, project := t.TempDir(), t.TempDir()
-	prompt := Build(core.ScopeMain, WithAutoMemory(MemoryStores{User: user, Project: project})).Prompt()
-	rules, stores, found := strings.Cut(prompt, "<memory-stores>")
-	if !found || !strings.Contains(rules, "<memory>") || strings.Contains(rules, user) || strings.Contains(rules, project) {
-		t.Fatal("memory locations leaked into the stable rules")
-	}
-	if !strings.Contains(stores, "user: "+user) || !strings.Contains(stores, "project: "+project) {
-		t.Fatal("memory locations are missing from the dynamic section")
-	}
-}
-
-func TestBuildEnvironmentRendersFacts(t *testing.T) {
+func TestBuildEnvironmentOmitsGitBranch(t *testing.T) {
 	repo := t.TempDir()
 	gitDir := filepath.Join(repo, ".git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
@@ -31,56 +19,12 @@ func TestBuildEnvironmentRendersFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := renderEnvironment(Environment{Cwd: repo})
-	if !strings.Contains(body, "cwd: "+repo) {
-		t.Fatalf("renderEnvironment missing cwd: %q", body)
+	body := renderEnvironment(Environment{Cwd: repo, Shell: "bash"})
+	if !strings.Contains(body, "cwd: "+repo) || !strings.Contains(body, "shell: bash") {
+		t.Fatalf("environment lost execution facts: %q", body)
 	}
-	if !strings.Contains(body, "branch: main") {
-		t.Fatalf("renderEnvironment missing branch: %q", body)
-	}
-}
-
-func TestBuildEnvironmentOmitsBranchOutsideRepo(t *testing.T) {
-	body := renderEnvironment(Environment{Cwd: t.TempDir()})
 	if strings.Contains(body, "branch:") {
-		t.Fatalf("non-repo environment should omit the branch line: %q", body)
-	}
-}
-
-func TestGitBranch(t *testing.T) {
-	repo := t.TempDir()
-	gitDir := filepath.Join(repo, ".git")
-	if err := os.MkdirAll(gitDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Branch resolves from a subdirectory by walking up to the repo root.
-	sub := filepath.Join(repo, "a", "b")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if got := gitBranch(sub); got != "feature/x" {
-		t.Errorf("gitBranch = %q, want %q", got, "feature/x")
-	}
-
-	// Linked worktree: .git is a file pointing at the real git dir.
-	wt := t.TempDir()
-	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := gitBranch(wt); got != "feature/x" {
-		t.Errorf("worktree gitBranch = %q, want %q", got, "feature/x")
-	}
-
-	// Detached HEAD yields the short hash.
-	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("0123456789abcdef0123456789abcdef01234567\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := gitBranch(repo); got != "0123456 (detached)" {
-		t.Errorf("detached gitBranch = %q, want %q", got, "0123456 (detached)")
+		t.Fatalf("environment should not freeze the current branch: %q", body)
 	}
 }
 

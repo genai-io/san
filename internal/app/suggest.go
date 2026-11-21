@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
 )
 
 const suggestNextInput = `<system-reminder>Suggestion mode: predict what the user will type next in this session. You are a separate, one-off note: the main work is not interrupted, and you cannot use tools.
@@ -39,14 +40,15 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 		m.suggestOwed = true
 		return nil
 	}
-	prompt := suggestNextInput
+	prompt, details := suggestNextInput, ""
 	if mission := m.drivenMission(); mission != "" {
-		prompt = suggestTowardMission + "\n\n<steering_instructions>\n" + m.autopilotSteeringInstructions() +
+		prompt = suggestTowardMission
+		details = "<steering_instructions>\n" + m.autopilotSteeringInstructions() +
 			"\n</steering_instructions>\n\nMission:\n" + mission
 	} else if m.assistantReplies() < 2 {
 		return nil
 	}
-	req := m.newSideRequest("suggest", prompt)
+	req := m.newSideRequest(session.PurposeSuggest, prompt, details)
 	return m.userInput.PromptSuggestion.Start(func(ctx context.Context) (string, error) {
 		resp, err := req.complete(ctx)
 		if err != nil {

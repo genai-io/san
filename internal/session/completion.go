@@ -89,9 +89,7 @@ func (c *Completion) admit(ctx context.Context, provider string, model ai.Model,
 		defer close(done)
 		if response != nil {
 			copy := *response
-			// Only accounting and outcome are needed here; accepted content is
-			// supplied by the owner as its typed result event.
-			copy.Content = nil
+			copy.Content = ai.TextContent(response.Content.Text())
 			c.response = &copy
 			if callErr == nil {
 				callErr = response.Err

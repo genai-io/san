@@ -4,8 +4,6 @@ import (
 	"embed"
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -145,35 +143,10 @@ func rulesSection(override string) core.Section {
 	}
 }
 
-func memoryRulesSection() core.Section {
-	return core.Section{
-		Slot: core.SlotRules, Name: "memory", Source: core.Predefined,
-		Render: func() string { return wrap("memory", nil, cachedMemory) },
-	}
-}
-
-func memoryStoresSection(s MemoryStores) core.Section {
-	var lines []string
-	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
-		if store.dir != "" {
-			_ = os.MkdirAll(store.dir, 0o755)
-			lines = append(lines, fmt.Sprintf("%s: %s", store.name, store.dir))
-		}
-	}
-	body := strings.Join(lines, "\n")
-	return core.Section{
-		Slot: core.SlotEnvironment, Name: "memory-stores", Source: core.Dynamic,
-		Render: func() string { return wrap("memory-stores", nil, body) },
-	}
-}
+// AutoMemoryGuide returns the guidance for the optional auto-memory reminder.
+func AutoMemoryGuide() string { return cachedMemory }
 
 // Options
-
-// WithAutoMemory turns on the auto-memory instructions for the stores. The
-// zero value leaves them out (auto memory off).
-func WithAutoMemory(s MemoryStores) Option {
-	return func(cfg *buildConfig) { cfg.memory = s }
-}
 
 // WithPersona supplies persona parts at build time. Empty fields use the
 // built-in identity and behavior or omit persona rules. Harness rules remain.
@@ -272,7 +245,7 @@ func modeDescription(mode string) string {
 
 // Part: environment (slot 3, volatile)
 
-// Environment is the volatile prompt footer: cwd, git branch, platform, and date.
+// Environment is the volatile prompt footer: cwd, platform, shell, and date.
 // Keep it after the stable sections; cache boundaries depend on the driver.
 type Environment struct {
 	Cwd string
@@ -302,54 +275,9 @@ func EnvironmentSection(env Environment) core.Section {
 func renderEnvironment(env Environment) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "date: %s\ncwd: %s", time.Now().Format("2006-01-02"), env.Cwd)
-	if branch := gitBranch(env.Cwd); branch != "" {
-		fmt.Fprintf(&b, "\nbranch: %s", branch)
-	}
 	fmt.Fprintf(&b, "\nplatform: %s/%s", runtime.GOOS, runtime.GOARCH)
 	if env.Shell != "" {
 		fmt.Fprintf(&b, "\nshell: %s", env.Shell)
 	}
 	return wrap("environment", nil, b.String())
-}
-
-// gitBranch resolves the current branch name by reading .git/HEAD directly —
-// no subprocess. It walks up from cwd to find the repo root and follows the
-// "gitdir:" indirection a linked worktree's .git file carries. Returns "" when
-// nothing readable is found; a detached HEAD yields the short commit hash.
-func gitBranch(cwd string) string {
-	dir := cwd
-	for {
-		gitPath := filepath.Join(dir, ".git")
-		if info, err := os.Stat(gitPath); err == nil {
-			return branchFromGitPath(gitPath, info.IsDir())
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
-}
-
-func branchFromGitPath(gitPath string, isDir bool) string {
-	gitDir := gitPath
-	if !isDir {
-		data, err := os.ReadFile(gitPath)
-		if err != nil {
-			return ""
-		}
-		gitDir = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
-	}
-	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
-	if err != nil {
-		return ""
-	}
-	ref := strings.TrimSpace(string(head))
-	if branch, ok := strings.CutPrefix(ref, "ref: refs/heads/"); ok {
-		return branch
-	}
-	if len(ref) >= 7 {
-		return ref[:7] + " (detached)"
-	}
-	return ""
 }

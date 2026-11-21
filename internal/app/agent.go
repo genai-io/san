@@ -3,8 +3,6 @@
 package app
 
 import (
-	"github.com/genai-io/sdk-go/pkg/ai"
-
 	"context"
 	"fmt"
 	"maps"
@@ -554,18 +552,7 @@ func (m *model) endMemoryRecall() ([]string, error) {
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(msg core.Message) core.Message {
 	// Reminders (the roster among them) precede held member messages.
-	text := m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg.Text()))
-	if text == msg.Text() {
-		return msg
-	}
-	content := ai.TextContent(text)
-	for _, block := range msg.Content {
-		if block.Type != ai.BlockText {
-			content = append(content, block)
-		}
-	}
-	msg.Content = content
-	return msg
+	return m.attachWaitingMessages(m.services.Reminder.PrepareInput(msg))
 }
 
 // wireReminderProviders registers the harness providers attached once per
@@ -581,10 +568,10 @@ func (m *model) wireReminderProviders() {
 		return m.services.Skill.PromptSection()
 	})
 	m.services.Reminder.Register(reminder.ProviderMemoryUser, func() string {
-		return reminder.WrapMemory("user", m.env.CachedUserInstructions)
+		return m.env.CachedUserInstructions
 	})
 	m.services.Reminder.Register(reminder.ProviderMemoryProject, func() string {
-		return reminder.WrapMemory("project", m.env.CachedProjectInstructions)
+		return m.env.CachedProjectInstructions
 	})
 	m.services.Reminder.Register(reminder.ProviderGroup, group.Roster)
 	// Agent-written auto memory, read at render time so a PostCompact or cwd

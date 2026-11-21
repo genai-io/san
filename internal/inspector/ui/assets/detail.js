@@ -97,6 +97,10 @@ function contentBlock(block) {
   }
 }
 
+const reminderTitles = new Map([
+  ['memory-user', 'User instructions'], ['memory-project', 'Project instructions'], ['memory-auto', 'Auto memory'],
+]);
+
 function contentNodes(content, role) {
   if (!Array.isArray(content) || !content.length) return [textElement('p', 'No content.', 'detail-note')];
   return content.flatMap(block => {
@@ -106,7 +110,7 @@ function contentNodes(content, role) {
     if (!reminders.length) return [contentBlock(block)];
     reminders.reverse();
     return [...(text ? [textElement('pre', text, 'message-text')] : []),
-      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(source || 'Reminder',
+      disclosure('System reminders · ' + reminders.length, () => reminders.map(({source, body}) => section(reminderTitles.get(source) || source || 'Reminder',
         textElement('pre', body, 'message-text'))))];
   });
 }
@@ -263,13 +267,52 @@ function requestNodes(request, messageLabel = 'Input messages') {
     section(messageLabel + ' · ' + messages.length, ...messageViews(messages))];
 }
 
+function rawRequest(load) {
+  return disclosure('Raw SDK request', () => {
+    const body = document.createElement('div');
+    loadSnapshot(body, load, json => [textElement('pre', json)]);
+    return [textElement('p', 'As admitted to the SDK, before provider-specific encoding.', 'detail-note'), body];
+  });
+}
+
+function updateModelOutput() {
+  const panel = state.outputPanel;
+  if (!panel) return;
+  const pair = state.inferences.get(panel.start?.seq);
+  const finish = panel.finish ?? pair?.finish;
+  if (finish === panel.rendered) return;
+  panel.rendered = finish;
+  if (!finish) {
+    panel.node.replaceChildren(textElement('p', 'No response recorded yet.', 'detail-note'));
+    return;
+  }
+  const id = state.currentSession;
+  const link = panel.finish ? fields([['Request', eventReference(finish.source, id)]])
+    : fields([['Response', eventReference({seq: finish.seq}, id)]]);
+  const output = finish.payload?.output;
+  let nodes;
+  if (output && typeof output.text === 'string') {
+    nodes = [output.text ? textElement('pre', output.text, 'message-text') : textElement('p', 'No text returned.', 'detail-note')];
+    if (output.truncated) nodes.push(textElement('p', 'Recorded output was truncated.', 'detail-note'));
+  } else if (pair?.messages.length) {
+    nodes = messageViews(pair.messages, true);
+  } else if (pair?.annotations.length) {
+    nodes = pair.annotations.map(note => section('Recorded side reply',
+      fields([['Annotation', eventReference({seq: note.seq}, id)]]), textElement('pre', note.payload.text, 'message-text')));
+  } else {
+    const label = finish.payload?.outcome === 'success' ? 'No model output was recorded.' : 'No completed output.';
+    nodes = [textElement('p', label, 'detail-note')];
+  }
+  panel.node.replaceChildren(link, ...nodes);
+}
+
 function detailPanel(title, build, open = false) {
   const panel = disclosure(title, build, open);
   panel.className = 'detail-group detail-panel';
   return panel;
 }
 
-function contextPanel(load) {
+function contextPanel(load, open = true) {
   return detailPanel('Context', () => {
     const body = document.createElement('div');
     loadSnapshot(body, load, snapshot => [
@@ -277,7 +320,7 @@ function contextPanel(load) {
       ...requestNodes(snapshot.context, 'Messages'),
     ]);
     return [body];
-  }, true);
+  }, open);
 }
 
 function eventPanel(rec, id, meta) {

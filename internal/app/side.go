@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -44,7 +45,7 @@ type sideRequest struct {
 // newSideRequest captures the main agent's prefix with prompt to follow it.
 // The tools are sent though none may run: a request without them is a
 // different prefix, and the cache would miss.
-func (m *model) newSideRequest(label, prompt string) sideRequest {
+func (m *model) newSideRequest(label, prompt string, extra ...string) sideRequest {
 	r := sideRequest{label: label, client: m.buildLLMClient(), chain: m.services.Agent.Messages(), prompt: prompt}
 	if sys, tools := m.services.Agent.System(), m.services.Agent.Tools(); sys != nil && tools != nil {
 		r.system, r.schemas = sys.Prompt(), tools.Schemas()
@@ -53,7 +54,7 @@ func (m *model) newSideRequest(label, prompt string) sideRequest {
 		r.system, r.schemas = params.System().Prompt(), params.ToolSchemas()
 	}
 	r.owner = m.services.Session
-	r.messages = withSidePrompt(r.chain, prompt)
+	r.messages = withSidePrompt(r.chain, prompt, extra...)
 	for i := len(r.chain); i < len(r.messages); i++ {
 		if r.messages[i].ID == "" {
 			r.messages[i].ID = core.NewMessageID()
@@ -101,7 +102,7 @@ func finishSide(c *session.Completion, text string) bool {
 // sideReplying for a reply not yet written. The prompt is a message of its
 // own: sdk-go's OpenAI chat driver sends a message holding tool results as
 // tool messages only, dropping any text beside them.
-func withSidePrompt(chain []core.Message, prompt string) []core.Message {
+func withSidePrompt(chain []core.Message, prompt string, extra ...string) []core.Message {
 	msgs := slices.Clone(chain)
 	if n := len(msgs); n > 0 && msgs[n-1].Role == ai.RoleUser {
 		msgs = append(msgs, core.AssistantMessage(sideReplying, "", nil))
@@ -114,5 +115,7 @@ func withSidePrompt(chain []core.Message, prompt string) []core.Message {
 			msgs = append(msgs, ai.ToolResultsMessage(pending...))
 		}
 	}
-	return append(msgs, core.UserMessage(prompt, nil))
+	msg := core.UserMessage(prompt, nil)
+	msg.Content = reminder.AppendBlocks(msg.Content, extra...)
+	return append(msgs, msg)
 }

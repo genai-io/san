@@ -77,9 +77,12 @@ func (r Recaller) recall(ctx context.Context, stores system.MemoryStores, query 
 	}
 	start := time.Now()
 	resp, err := llm.Complete(ctx, r.Provider, llm.CompletionOptions{
-		Model:          r.Model,
-		SystemPrompt:   recallSystemPrompt,
-		Messages:       []core.Message{core.UserMessage("Memory files:\n"+list.String()+"\nMessage:\n"+query, nil)},
+		Model:        r.Model,
+		SystemPrompt: recallSystemPrompt,
+		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.Content{
+			ai.TextBlock("Memory files:\n" + list.String() + "\nUser query:\n"),
+			ai.TextBlock(query),
+		}}},
 		ThinkingEffort: r.Effort,
 		Admission:      recording.Admission(),
 	})

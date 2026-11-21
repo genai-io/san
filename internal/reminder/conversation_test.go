@@ -12,21 +12,25 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 )
 
+func prepareText(s *reminder.Reminder, text string) string {
+	return s.PrepareInput(core.UserMessage(text, nil)).Text()
+}
+
 func TestConversationContextLifecycle(t *testing.T) {
 	s := reminder.New()
 	body := "initial skills"
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return body })
 	s.Enqueue("hook context")
-	first := s.PrepareInput("first")
+	first := prepareText(s, "first")
 	if !s.Prepared() || !strings.Contains(first, body) || !strings.Contains(first, "hook context") {
 		t.Fatalf("first input = %q", first)
 	}
-	if got := s.PrepareInput("second"); got != "second" {
+	if got := prepareText(s, "second"); got != "second" {
 		t.Fatalf("second input = %q", got)
 	}
 	body = "updated skills"
 	s.RequeueSystemReminders()
-	if got := s.PrepareInput("reload"); !strings.Contains(got, body) {
+	if got := prepareText(s, "reload"); !strings.Contains(got, body) {
 		t.Fatalf("reloaded input = %q", got)
 	}
 	s.Enqueue("obsolete notice")
@@ -35,7 +39,7 @@ func TestConversationContextLifecycle(t *testing.T) {
 		t.Fatal("reset retained context state")
 	}
 	body = "post compact skills"
-	if got := s.PrepareInput("after compact"); !strings.Contains(got, body) || strings.Contains(got, "obsolete notice") {
+	if got := prepareText(s, "after compact"); !strings.Contains(got, body) || strings.Contains(got, "obsolete notice") {
 		t.Fatalf("reset input = %q", got)
 	}
 }
@@ -45,6 +49,8 @@ func TestRestoreConversationContext(t *testing.T) {
 	current := reminder.WrapWithSource("fresh skills", skills)
 	stale := reminder.WrapWithSource("stale skills", skills)
 	user := func(text string) core.Message { return core.UserMessage(text, nil) }
+	summary := user("summary")
+	summary.Content = reminder.AppendBlocks(summary.Content, current)
 	for _, tc := range []struct {
 		name     string
 		messages []core.Message
@@ -56,18 +62,18 @@ func TestRestoreConversationContext(t *testing.T) {
 		{"unknown source", []core.Message{user(reminder.WrapWithSource("fresh skills", "unknown"))}, []string{skills, memory}},
 		{"latest version wins", []core.Message{user(stale), user(current)}, []string{memory}},
 		{"changed version rerenders", []core.Message{user(current), user(stale)}, []string{skills, memory}},
-		{"summary carries provider separately", []core.Message{user(reminder.AttachToContent("summary", []string{current}))}, []string{memory}},
+		{"summary carries provider separately", []core.Message{summary}, []string{memory}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := reminder.New()
 			s.Register(skills, func() string { return "fresh skills" })
 			s.Register(memory, func() string { return "fresh memory" })
-			s.PrepareInput("previous conversation")
+			prepareText(s, "previous conversation")
 			s.RestoreHistory(tc.messages)
 			if s.Prepared() {
 				t.Fatal("restore did not rearm rendering")
 			}
-			got := s.PrepareInput("next")
+			got := prepareText(s, "next")
 			var sources []string
 			for _, block := range reminder.Blocks(got) {
 				sources = append(sources, block.Source)
@@ -88,11 +94,7 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 	s.Enqueue("first notice")
 	var q agent.InputQueue
 	q.Enqueue(agent.PendingInput{Message: core.UserMessage("question", nil), FromUser: true})
-	prepare := func(msg core.Message) core.Message {
-		prepared := core.UserMessage(s.PrepareInput(msg.Text()), nil)
-		prepared.ID = msg.ID
-		return prepared
-	}
+	prepare := s.PrepareInput
 	rejected := errors.New("rejected")
 	if err := q.Deliver(func(agent.PendingInput) error { return rejected }, prepare, func(string) error { return nil }); !errors.Is(err, rejected) {
 		t.Fatalf("Deliver = %v", err)
@@ -119,7 +121,7 @@ func TestConcurrentInputPreparesContextOnce(t *testing.T) {
 	results := make(chan string, 20)
 	var wg sync.WaitGroup
 	for range 20 {
-		wg.Go(func() { results <- s.PrepareInput("input") })
+		wg.Go(func() { results <- prepareText(s, "input") })
 	}
 	wg.Wait()
 	close(results)

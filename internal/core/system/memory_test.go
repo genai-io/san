@@ -8,6 +8,21 @@ import (
 	"testing"
 )
 
+func TestFormatInstructions(t *testing.T) {
+	user, project := FormatInstructions([]MemoryFile{
+		{Path: "user/AGENTS.md", Content: "User text", Level: "global"},
+		{Path: "repo/AGENTS.md", Content: "Project text", Level: "project"},
+		{Path: "repo/AGENTS.local.md", Content: "Local text", Level: "local"},
+		{Path: "repo/empty.md", Content: "  ", Level: "project"},
+	})
+	if want := "Contents of \"user/AGENTS.md\" (user instructions):\n\nUser text"; user != want {
+		t.Errorf("user instructions = %q, want %q", user, want)
+	}
+	if want := "Contents of \"repo/AGENTS.md\" (project instructions):\n\nProject text\n\nContents of \"repo/AGENTS.local.md\" (local project instructions):\n\nLocal text"; project != want {
+		t.Errorf("project instructions = %q, want %q", project, want)
+	}
+}
+
 func TestResolveImports(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "san-test")
 	if err != nil {

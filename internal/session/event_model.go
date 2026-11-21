@@ -207,13 +207,19 @@ type EventError struct {
 	Message   string `json:"message"`
 	Retryable bool   `json:"retryable,omitempty"`
 }
+type InferenceOutput struct {
+	Text      string `json:"text"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
 type InferenceFinishPayload struct {
-	Outcome    EventOutcome `json:"outcome"`
-	StopReason string       `json:"stop_reason,omitempty"`
-	Usage      *ai.Usage    `json:"usage,omitempty"`
-	DurationMS *int64       `json:"duration_ms,omitempty"`
-	Error      *EventError  `json:"error,omitempty"`
-	Reason     string       `json:"reason,omitempty"`
+	Outcome    EventOutcome     `json:"outcome"`
+	StopReason string           `json:"stop_reason,omitempty"`
+	Usage      *ai.Usage        `json:"usage,omitempty"`
+	DurationMS *int64           `json:"duration_ms,omitempty"`
+	Error      *EventError      `json:"error,omitempty"`
+	Reason     string           `json:"reason,omitempty"`
+	Output     *InferenceOutput `json:"output,omitempty"`
 }
 
 // Permission deciders. Grant is an earlier session-scoped approval and is never

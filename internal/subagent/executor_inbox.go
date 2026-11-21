@@ -154,7 +154,7 @@ func (e *Executor) prepareLaunchInbox(ctx context.Context, run *preparedRun) err
 	if err := e.openSession(ctx, run); err != nil {
 		return err
 	}
-	message := core.UserMessage(run.originalPrompt, nil)
+	message := run.taskMessage()
 	message.ID = core.NewMessageID()
 	if err := run.recording.AcceptInput(ctx, message, nil); err != nil {
 		if run.checkpoint != nil {

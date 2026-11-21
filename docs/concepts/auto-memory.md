@@ -10,12 +10,12 @@ next conversation. It is on by default.
 Memory lives in two stores:
 
 - the **user store** `~/.san/memory/`, for what holds in every repository;
-- a **project store** per repository at `~/.san/projects/<repo-root>/memory/`
-  (subdirectories and linked worktrees share it).
+- a **project store** per repository at `~/.san/projects/<encoded-main-repo-root>/memory/`.
+  Subdirectories and linked worktrees share it; `AGENTS.md` is still read from the active checkout.
 
-Memory policy is part of the stable system rules; store paths are dynamic
-system context. Project facts take precedence in that project. Empty stores
-add no startup reminder.
+When enabled, a `memory-auto` reminder carries a short guide and the two store
+paths, even before any notes exist. Neither the guide nor the paths are part of
+the system prompt.
 
 Each store holds:
 
@@ -92,7 +92,7 @@ The pick is one side query beside the turn, not a second conversation:
 | | Main agent | Pick |
 |---|---|---|
 | Runs as | the session: history, tools, many steps | one `llm.Complete` call in a goroutine |
-| Sees | the whole conversation and the indexes | each memory's `<store>/<file>` and `description`, and the message |
+| Sees | the whole conversation and the indexes | one text block of `<store>/<file>` and `description` candidates, then a separate block with the user query |
 | Returns | the answer | `{"selected_memories": [...]}`, up to 5 files |
 | Model | session model, its usual effort | session model, its lightest reasoning rung |
 
@@ -142,10 +142,8 @@ its placement without exposing or duplicating reminder bodies.
 ## Saving and forgetting
 
 The indexes and attached memories count as read, so the agent edits them
-without a Read first. The `memory` rules section tells it what to save and in
-which store, and to do memory work in at most two responses: the Reads it
-still needs, then every Write, Edit and `rm` together. Writes are not checked
-one by one, since a step's writes land together.
+without a Read first. The `memory-auto` reminder explains what to save and in which store. Where practical,
+batch the reads still needed, then batch the writes and edits.
 
 Writes to `*.md` inside either store need no approval in any mode, headless
 (`san -p`) and don't-ask included; deny rules still apply. Forgetting is a
@@ -198,10 +196,10 @@ repeated in this summary; a read-only turn gets no footer or empty notice.
 `/memory` toggles auto memory for all projects (`t`, or `/memory on|off`) or
 for this project (`p`, or `/memory on|off project`), writing `autoMemory` to
 the user or project settings; the project value wins, and
-`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next turn;
-moving a store or turning memory off mid-session re-sends the index reminder
-(or an "auto memory is now off" notice), since the one sent at session start
-names the old state.
+`SAN_DISABLE_AUTO_MEMORY=1` beats both. A toggle applies from the next TUI turn.
+When off, San injects no auto-memory guide, paths, or previews and starts no recall.
+An existing conversation gets a withdrawal rather than rewriting old messages.
+User and project `AGENTS.md` still apply.
 
 `autoMemoryDirectory` (absolute or `~/` path) moves the store of the file that
 sets it: `~/.san/settings.json` the user store, an untracked

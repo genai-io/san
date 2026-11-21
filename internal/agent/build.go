@@ -125,7 +125,6 @@ func (p BuildParams) System() core.System {
 	return system.Build(core.ScopeMain,
 		system.WithPersona(p.Persona),
 		system.WithEnvironment(system.Environment{Cwd: p.CWD, Shell: proc.DefaultShellName()}),
-		system.WithAutoMemory(p.AutoMemory),
 	)
 }
 
@@ -376,38 +375,31 @@ func withInstructions(cwd string, memory system.MemoryStores, msg core.Message) 
 	if !memory.Off() {
 		reminders = append(reminders, reminder.WrapWithSource(AutoMemoryReminder(memory), reminder.ProviderMemoryAuto))
 	}
-	text := reminder.AttachToContent(msg.Text(), reminders)
-	if text == msg.Text() {
-		return msg
-	}
-	return core.UserMessage(text, nil)
+	msg.Content = reminder.AppendBlocks(msg.Content, reminders...)
+	return msg
 }
 
-// instructionReminders reads the AGENTS.md chain from disk as the user and
-// project memory reminders, wrapped as the interactive providers wrap them.
+// instructionReminders reads the same user and project instructions as the TUI.
 func instructionReminders(cwd string) []string {
-	var user, project []string
-	for _, f := range system.LoadMemoryFiles(cwd) {
-		if f.Level == "global" {
-			user = append(user, f.Content)
-		} else {
-			project = append(project, f.Content)
-		}
-	}
+	user, project := system.FormatInstructions(system.LoadMemoryFiles(cwd))
 	return []string{
-		reminder.WrapWithSource(reminder.WrapMemory("user", strings.Join(user, "\n\n")), reminder.ProviderMemoryUser),
-		reminder.WrapWithSource(reminder.WrapMemory("project", strings.Join(project, "\n\n")), reminder.ProviderMemoryProject),
+		reminder.WrapWithSource(user, reminder.ProviderMemoryUser),
+		reminder.WrapWithSource(project, reminder.ProviderMemoryProject),
 	}
 }
 
-// AutoMemoryReminder carries short index previews, not full memory notes.
+// AutoMemoryReminder advertises the enabled stores and previews nonempty indexes.
 func AutoMemoryReminder(s system.MemoryStores) string {
+	if s.Off() {
+		return ""
+	}
 	const previewBytes = 2 * 1024
-	var body, problems []string
+	var stores, indexes, problems []string
 	for _, store := range []struct{ name, dir string }{{"User store", s.User}, {"Project store", s.Project}} {
 		if store.dir == "" {
 			continue
 		}
+		stores = append(stores, fmt.Sprintf("%s: `%s`", store.name, store.dir))
 		index, issues := system.LoadAutoMemoryAt(store.dir)
 		if index != "" {
 			if len(index) > previewBytes {
@@ -416,16 +408,18 @@ func AutoMemoryReminder(s system.MemoryStores) string {
 			} else if len(issues) == 0 {
 				fs.RecordFileWritten(filepath.Join(store.dir, system.AutoMemoryIndexName))
 			}
-			body = append(body, store.name+" (`"+store.dir+"`):\n"+index)
+			indexes = append(indexes, store.name+" MEMORY.md:\n"+index)
 		}
 		for _, issue := range issues {
 			problems = append(problems, store.name+": "+issue)
 		}
 	}
-	problems = append(problems, s.Duplicates()...)
-	out := reminder.WrapMemory("auto", strings.Join(body, "\n\n"))
-	if len(problems) > 0 {
-		out = strings.TrimSpace(out + "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- "))
+	out := system.AutoMemoryGuide() + "\n\n" + strings.Join(stores, "\n")
+	if index := reminder.WrapMemoryIndex(strings.Join(indexes, "\n\n")); index != "" {
+		out += "\n\n" + index
+	}
+	if problems = append(problems, s.Duplicates()...); len(problems) > 0 {
+		out += "\n\nYour memory index needs fixing:\n- " + strings.Join(problems, "\n- ")
 	}
 	return out
 }

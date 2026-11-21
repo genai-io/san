@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +36,18 @@ type stubServer struct {
 
 func serve(t *testing.T, events ...[2]string) *stubServer {
 	t.Helper()
+	return serveWithModels(t, "", events...)
+}
+
+func serveWithModels(t *testing.T, models string, events ...[2]string) *stubServer {
+	t.Helper()
 	e := &stubServer{}
 	e.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if models != "" && r.Method == http.MethodGet && r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, models)
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		e.headers = r.Header.Clone()
 		e.body = map[string]any{}
@@ -636,6 +647,97 @@ func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := toModelInfo(tc.model); got != tc.want {
 				t.Errorf("toModelInfo() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUserReminderBlocksOnWire(t *testing.T) {
+	const models = `{"object":"list","data":[
+		{"id":"gpt-5","object":"model","supported_endpoints":["/chat/completions"]},
+		{"id":"gpt-6-luna","object":"model","supported_endpoints":["/responses"]}]}`
+	const original, first, second = "original user input", "\n\nfirst reminder", "\n\nsecond reminder"
+	const imageData = "aW1n"
+
+	for _, tc := range []struct {
+		name, model, field, textType, imageType string
+		events                                  [][2]string
+	}{
+		{"copilot-chat", "gpt-5", "messages", "text", "image_url", [][2]string{
+			{"chunk", `{"id":"m","model":"gpt-5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		}},
+		{"copilot-responses", "gpt-6-luna", "input", "input_text", "input_image", [][2]string{
+			{"response.completed", `{"type":"response.completed","response":{"id":"r","model":"gpt-6-luna","status":"completed","output":[]}}`},
+		}},
+		{"anthropic-messages", "claude-opus-5", "messages", "text", "image", [][2]string{
+			{"message_start", `{"type":"message_start","message":{"id":"m","model":"claude-opus-5","usage":{"input_tokens":4}}}`},
+			{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, shape := range []string{"text-only", "text-and-image"} {
+				t.Run(shape, func(t *testing.T) {
+					e := serveWithModels(t, models, tc.events...)
+					var p *vendorProvider
+					if tc.name == "anthropic-messages" {
+						p = claude(t, e)
+					} else {
+						vendor, ok := catalog.Find(copilotVendor)
+						if !ok {
+							t.Fatal("the catalog has no copilot vendor")
+						}
+						p = newVendorProvider("copilot:subscription", vendor, endpoint.Config{APIKey: "test-key", BaseURL: e.server.URL})
+					}
+
+					content := ai.Content{ai.TextBlock(original)}
+					want := [][2]string{{tc.textType, original}}
+					if shape == "text-and-image" {
+						content = append(content, ai.ImageBlock(ai.Image{MediaType: "image/png", Data: imageData}))
+						want = append(want, [2]string{tc.imageType, ""})
+					}
+					content = append(content, ai.TextBlock(first), ai.TextBlock(second))
+					want = append(want, [2]string{tc.textType, first}, [2]string{tc.textType, second})
+					if _, _, _, err := collect(t, p, CompletionOptions{
+						Model: tc.model, MaxTokens: 32,
+						Messages: []core.Message{{Role: ai.RoleUser, Content: content}},
+					}); err != nil {
+						t.Fatalf("stream: %v", err)
+					}
+
+					messages, ok := e.body[tc.field].([]any)
+					if !ok || len(messages) != 1 {
+						t.Fatalf("want one item in %s, got %#v", tc.field, e.body)
+					}
+					message, ok := messages[0].(map[string]any)
+					if !ok || message["role"] != "user" {
+						t.Fatalf("want a user message, got %#v", messages[0])
+					}
+					// The pinned SDK may still flatten text-only OpenAI requests; check the bytes in either form.
+					if text, ok := message["content"].(string); ok && tc.name != "anthropic-messages" && shape == "text-only" {
+						t.Logf("flattened content: %q", text)
+						if text != original+first+second {
+							t.Errorf("flattened content = %q, want %q", text, original+first+second)
+						}
+						return
+					}
+					parts, ok := message["content"].([]any)
+					if !ok {
+						t.Fatalf("want content blocks, got %#v", message["content"])
+					}
+					var got [][2]string
+					for _, part := range parts {
+						block, ok := part.(map[string]any)
+						if !ok {
+							t.Fatalf("invalid content block: %#v", part)
+						}
+						kind, _ := block["type"].(string)
+						text, _ := block["text"].(string)
+						got = append(got, [2]string{kind, text})
+					}
+					if !slices.Equal(got, want) {
+						t.Errorf("content blocks (type, text) = %q, want %q", got, want)
+					}
+				})
 			}
 		})
 	}

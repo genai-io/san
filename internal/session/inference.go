@@ -164,6 +164,7 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 			finish.Reason = reason
 		}
 		batch := make([]Event, 0, len(results)+1)
+		hasNativeOutput := false
 		for _, result := range results {
 			if result.Source != nil && *result.Source != i.ref {
 				return nil, fmt.Errorf("conflicting inference result source")
@@ -172,8 +173,11 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 				return nil, fmt.Errorf("nil inference result")
 			}
 			kind := result.Payload.eventType()
-			if callErr != nil && (kind == EventMessageAppend || kind == EventContextCompact) {
-				return nil, fmt.Errorf("failed inference cannot publish conversation output")
+			if kind == EventMessageAppend || kind == EventContextCompact {
+				hasNativeOutput = true
+				if callErr != nil {
+					return nil, fmt.Errorf("failed inference cannot publish conversation output")
+				}
 			}
 			switch v := result.Payload.(type) {
 			case ContextCompactPayload:
@@ -197,18 +201,25 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 			result.Source = &ref
 			batch = append(batch, result)
 		}
+		if !hasNativeOutput && callErr == nil && response != nil && p.event(i.ref.Seq).Payload.(*InferenceStartPayload).Purpose != PurposeTurn {
+			text := strings.ToValidUTF8(response.Content.Text(), "�")
+			finish.Output = &InferenceOutput{Text: boundText(text, maxInferenceOutput), Truncated: len(text) > maxInferenceOutput}
+		}
 		ref := i.ref
 		batch = append(batch, Event{Source: &ref, Payload: finish})
 		return batch, nil
 	})
 }
 
-func boundedReason(s string) string {
-	s = strings.ToValidUTF8(s, "�")
-	if len(s) <= maxReason {
+const maxInferenceOutput = 16 << 10
+
+func boundedReason(s string) string { return boundText(strings.ToValidUTF8(s, "�"), maxReason) }
+
+func boundText(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	s = s[:maxReason]
+	s = s[:limit]
 	for !utf8.ValidString(s) {
 		s = s[:len(s)-1]
 	}

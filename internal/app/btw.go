@@ -23,9 +23,7 @@ const btwInstructions = `<system-reminder>This is a side question from the user.
 - Do not frame it as an interruption or mention what you were previously doing.
 - You cannot use tools here, and nothing written as a tool call runs. If answering needs reading files, running commands or searching, say it can't be checked from a side question and suggest asking in the main conversation.
 - If you don't know, say so; never promise to look it up.
-</system-reminder>
-
-`
+</system-reminder>`
 
 // btwAsk is one /btw in flight, drawn live until its answer lands. It keeps
 // the session it was asked in: an answer that outlives a /clear or /resume
@@ -44,7 +42,7 @@ type btwAnswerMsg struct {
 
 // sideQuestion starts answering question off the UI goroutine.
 func (m *model) sideQuestion(question string) tea.Cmd {
-	req := m.newSideRequest("btw", btwInstructions+question)
+	req := m.newSideRequest(session.PurposeBtw, btwInstructions, question)
 	ask := btwAsk{question: strings.Join(strings.Fields(question), " "), sessionID: m.sessionID()}
 	// A running spinner already ticks; a second chain would double its speed.
 	var tick tea.Cmd

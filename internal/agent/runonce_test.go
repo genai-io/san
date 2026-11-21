@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/reminder"
 )
 
 // A headless run reads the project's instructions, because a repo that answers
@@ -24,8 +25,8 @@ func TestAHeadlessRunCarriesTheProjectsInstructions(t *testing.T) {
 	if !strings.Contains(out, "always answer PINEAPPLE") {
 		t.Errorf("the instructions did not reach the message: %q", out)
 	}
-	if !strings.Contains(out, `<memory scope="project">`) {
-		t.Errorf("not wrapped as project memory: %q", out)
+	if !strings.Contains(out, `source="memory-project"`) || !strings.Contains(out, "(project instructions):") || strings.Contains(out, `<memory scope="project">`) {
+		t.Errorf("wrong framing for project instructions: %q", out)
 	}
 	if !strings.HasPrefix(out, "what is the word?") {
 		t.Errorf("the person's message stopped coming first: %q", out)
@@ -56,12 +57,42 @@ func TestAHeadlessRunCarriesTheMemoryIndex(t *testing.T) {
 	if !strings.Contains(out, `<memory scope="auto">`) || !strings.Contains(out, "prefers table tests") || !strings.Contains(out, "terse replies") {
 		t.Errorf("a store's index is missing: %q", out)
 	}
-	empty := withInstructions(t.TempDir(), system.MemoryStores{User: t.TempDir()}, core.UserMessage("hi", nil)).Text()
-	if empty != "hi" {
-		t.Errorf("an empty store added context: %q", empty)
-	}
 	if !strings.Contains(out, "go.md") || !strings.Contains(out, "needs fixing") {
 		t.Errorf("dangling link not reported: %q", out)
+	}
+}
+
+func TestAutoMemoryChangesOnlyTheReminder(t *testing.T) {
+	params := BuildParams{CWD: t.TempDir()}
+	base := params.System().Prompt()
+	updates := reminder.New()
+	updates.Register(reminder.ProviderMemoryAuto, func() string { return AutoMemoryReminder(params.AutoMemory) })
+
+	if got := updates.PrepareInput(core.UserMessage("off", nil)).Text(); got != "off" {
+		t.Fatalf("disabled auto memory added context: %q", got)
+	}
+	params.AutoMemory = system.MemoryStores{User: filepath.Join(t.TempDir(), "memory"), Project: t.TempDir()}
+	updates.RequeueSystemReminders()
+	got := updates.PrepareInput(core.UserMessage("on", nil)).Text()
+	if !strings.Contains(got, `source="memory-auto"`) || !strings.Contains(got, system.AutoMemoryGuide()) ||
+		!strings.Contains(got, params.AutoMemory.User) || !strings.Contains(got, params.AutoMemory.Project) {
+		t.Fatalf("missing guide or empty store locations: %q", got)
+	}
+	if strings.Contains(got, `<memory scope="auto">`) {
+		t.Fatalf("an empty index was injected: %q", got)
+	}
+	if got := params.System().Prompt(); got != base {
+		t.Fatal("enabled auto memory changed the system prompt")
+	}
+	updates.RequeueSystemReminders()
+	if got := updates.PrepareInput(core.UserMessage("unchanged", nil)).Text(); got != "unchanged" {
+		t.Fatalf("unchanged auto memory was injected again: %q", got)
+	}
+	params.AutoMemory = system.MemoryStores{}
+	updates.RequeueSystemReminders()
+	if got := updates.PrepareInput(core.UserMessage("off again", nil)).Text(); !strings.Contains(got, `source="memory-auto"`) ||
+		!strings.Contains(got, "no longer apply") || strings.Contains(got, system.AutoMemoryGuide()) {
+		t.Fatalf("disabling auto memory should send only a withdrawal: %q", got)
 	}
 }
 
@@ -72,7 +103,10 @@ func TestAutoMemoryReminderBoundsIndexPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := AutoMemoryReminder(system.MemoryStores{Project: dir})
-	if len(got) > 2500 || !strings.Contains(got, "first topic") || strings.Contains(got, "last topic") || !strings.Contains(got, "Read MEMORY.md") {
-		t.Fatalf("index preview has the wrong contents or size: %d bytes", len(got))
+	_, preview, ok := strings.Cut(got, "<memory scope=\"auto\">\nProject store MEMORY.md:\n")
+	preview, _, closed := strings.Cut(preview, "\n</memory>")
+	index, _, truncated := strings.Cut(preview, "\nRead MEMORY.md")
+	if !ok || !closed || !truncated || len(index) > 2*1024 || !strings.Contains(index, "first topic") || strings.Contains(index, "last topic") {
+		t.Fatalf("index preview has the wrong contents or size: %d bytes", len(index))
 	}
 }

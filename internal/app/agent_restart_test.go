@@ -201,7 +201,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 		pendingPluginRoot: "retained-plugin",
 	}
 	m.pendingMessages.Hold(nil)
-	m.services.Reminder.PrepareInput("first")
+	m.services.Reminder.PrepareInput(core.UserMessage("first", nil))
 	// Nil reset-only dependencies also catch premature UI/cache teardown.
 	if err := m.ResetAgentRuntime(); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ResetAgentRuntime = %v, want deadline exceeded", err)
@@ -221,8 +221,9 @@ func TestSystemRemindersOncePerConversation(t *testing.T) {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
 	}
 
-	if got := send("first"); !reminder.HasSystemReminder(got) {
-		t.Fatalf("first message = %q, want the skills reminder", got)
+	first := m.attachPendingReminders(core.UserMessage("first", nil))
+	if len(first.Content) != 2 || first.Content[0].Text != "first" || !reminder.HasSystemReminder(first.Content[1].Text) {
+		t.Fatalf("first message should have separate user and reminder blocks: %+v", first.Content)
 	}
 	if got := send("second"); got != "second" {
 		t.Fatalf("second message = %q, want no reminders", got)

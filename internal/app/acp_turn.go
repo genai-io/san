@@ -104,7 +104,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		s.toolResponses.Clear() // finalization has joined tool callbacks
 		err = errors.Join(err, s.recordState())
 	}()
-	msg := core.UserMessage(s.reminders.PrepareInput(prompt), nil)
+	msg := s.reminders.PrepareInput(core.UserMessage(prompt, nil))
 	if err := s.runtime.Send(msg); err != nil {
 		return response, err
 	}
@@ -155,7 +155,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 						recordErr = errors.Join(recordErr, e.Result.Finalization.Wait(context.Background()))
 					}
 					if continuation != "" && recordErr == nil && ctx.Err() == nil {
-						if err := s.runtime.Send(core.UserMessage(s.reminders.PrepareInput(continuation), nil)); err != nil {
+						if err := s.runtime.Send(s.reminders.PrepareInput(core.UserMessage(continuation, nil))); err != nil {
 							return response, err
 						}
 						continue

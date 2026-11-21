@@ -139,6 +139,9 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 					if payload.Usage.Input != 17 || payload.Usage.Output != 4 {
 						t.Fatalf("lost usage: %+v", payload)
 					}
+					if payload.Output == nil || payload.Output.Text != ready.text {
+						t.Fatalf("missing recap model output: %+v", payload.Output)
+					}
 				}
 			}
 			want := 0
@@ -184,7 +187,7 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 				}
 			}
 			provider := &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Says("because")), ai.Model{ID: "m"})}
-			req := sideRequest{label: "btw", client: llm.NewClient(provider, "m", 100), messages: messages, owner: recording, recording: recording.Completion("btw", messages[1:]...)}
+			req := sideRequest{label: session.PurposeBtw, client: llm.NewClient(provider, "m", 100), messages: messages, owner: recording, recording: recording.Completion(session.PurposeBtw, messages[1:]...)}
 			answer := askSide(ctx, req)
 			if answer != "because" {
 				t.Fatalf("answer = %q", answer)
@@ -209,12 +212,20 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 			}
 			snapshot := owner.Snapshot()
 			annotations, starts, finishes := 0, 0, 0
+			var startSeq uint64
 			for _, event := range snapshot.Events() {
 				switch event.Type {
 				case session.EventAnnotationAdd:
 					annotations++
+					if event.Source == nil || event.Source.Seq != startSeq {
+						t.Fatal("side reply does not reference its request")
+					}
 				case session.EventInferenceStart:
 					starts++
+					startSeq = event.Seq
+					if payload := event.Payload.(*session.InferenceStartPayload); payload.Purpose != session.PurposeBtw {
+						t.Fatalf("purpose = %q", payload.Purpose)
+					}
 					if mode == "closed" {
 						continue
 					}
@@ -227,6 +238,10 @@ func TestSideRecordingBtwOwnership(t *testing.T) {
 					}
 				case session.EventInferenceFinish:
 					finishes++
+					payload := event.Payload.(*session.InferenceFinishPayload)
+					if event.Source == nil || event.Source.Seq != startSeq || payload.Output == nil || payload.Output.Text != answer {
+						t.Fatalf("missing paired By the Way response: %+v", event)
+					}
 				}
 			}
 			if mode == "default" {
