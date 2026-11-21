@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/san/internal/tool/reviewskill"
 )
 
-// learnedStoreContext supplies the live workspace to the /memory panel. It is
+// learnedStoreContext supplies the live workspace to Reflection. It is
 // accessed only on the Update loop, including on workspace reload.
 type learnedStoreContext struct {
 	cwd      string
@@ -39,10 +39,7 @@ func (c *learnedStoreContext) Update(cwd string, settings *setting.Settings) {
 
 // resolveAutoSkillConfig gates both the reviewer and the ReviewSkill tool.
 func (m *model) resolveAutoSkillConfig() (autoskill.Config, error) {
-	if v := setting.Getenv("DISABLE_SELF_LEARN"); v == "1" || strings.EqualFold(v, "true") {
-		return autoskill.Config{}, nil
-	}
-	if m.services.Setting == nil || !m.services.Setting.AutoMemory() {
+	if m.services.Setting == nil || setting.AutoSkillDisabledByEnv() || !m.services.Setting.ReviewSkillEnabled() {
 		return autoskill.Config{}, nil
 	}
 	return autoskill.ResolveSettings(m.services.Setting.AutoSkill())
@@ -64,15 +61,19 @@ func (m *model) wireAutoSkill(params agent.BuildParams) {
 	owner, notices := m.services.Session, m.mainNotices
 	runtime, cwd := m.services.Agent, m.env.CWD
 	provider, modelID, effort := params.Provider, params.ModelID, params.ThinkingEffort
-	strategy := cfg.Strategy
+	settings, config := m.services.Setting, m.services.Setting.AutoSkill()
+	authorizeWrite := func() bool {
+		return reviewCtx.Err() == nil && runtime.Active() && !setting.AutoSkillDisabledByEnv() &&
+			settings.ReviewSkillEnabled() && settings.AutoSkill() == config
+	}
 	review := func(permissions autoskill.SkillPermissions, snapshot []core.Message) {
-		if reviewCtx.Err() != nil || !runtime.Active() {
+		if !authorizeWrite() {
 			return
 		}
 		// Restrict the reviewer to the actions allowed for this turn.
 		notice, err := (autoskill.SideReview{
 			Provider: provider, Model: modelID, Effort: effort,
-			Recording: owner, Skills: autoskill.NewSkillManager(cwd, permissions), Strategy: strategy,
+			Recording: owner, Skills: autoskill.NewSkillManager(cwd, permissions), Strategy: cfg.Strategy, AuthorizeWrite: authorizeWrite,
 		}).Run(reviewCtx, snapshot)
 		if reviewCtx.Err() != nil {
 			return
@@ -98,13 +99,13 @@ func queueAutoSkillNotice(ctx context.Context, notices chan<- mainNotice, owner 
 		return
 	}
 	select {
-	case notices <- mainNotice{Destination: owner, Display: notice, cancelled: ctx.Done()}:
+	case notices <- mainNotice{Destination: owner, Display: notice, recorded: true, cancelled: ctx.Done()}:
 	case <-ctx.Done():
 	}
 }
 
 // notifyAutoSkillOverride reports actions whose effective permissions differ
-// from the settings just saved in the /memory panel.
+// from the settings just saved in the Auto Skill tab.
 func (m *model) notifyAutoSkillOverride(msg input.ConfigSavedMsg) {
 	snap := m.services.Setting.Snapshot()
 	if snap == nil {

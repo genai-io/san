@@ -22,16 +22,17 @@ const sideReviewPrompt = `You are the Auto Skill reviewer. Propose at most one d
 {"action":"create","name":"class-level-name","level":"user|project","description":"one line","body":"Markdown skill instructions","note":"short change summary"}
 {"action":"patch","name":"used-skill","old_text":"exact unique excerpt of the skill body","new_text":"replacement excerpt","note":"short change summary"}
 {"action":"delete","name":"used-skill","note":"short reason the skill is obsolete"}
-Patch or delete only an editable skill used in this turn and listed in editable_used_skills. Never duplicate an existing skill.`
+Patch or delete only an editable skill used in this turn and listed in editable_used_skills. Listed bodies may be clipped. Never duplicate an existing skill.`
 
 // SideReview proposes one change without tools and applies it through SkillManager.
 // Recording belongs to the original conversation; the proposal is not conversation input.
 type SideReview struct {
-	Provider      llm.Provider
-	Model, Effort string
-	Recording     *session.Session
-	Skills        *SkillManager
-	Strategy      string
+	Provider       llm.Provider
+	Model, Effort  string
+	Recording      *session.Session
+	Skills         *SkillManager
+	Strategy       string
+	AuthorizeWrite func() bool // Recheck live authorization before writing.
 }
 
 type skillProposal struct {
@@ -67,8 +68,9 @@ func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, e
 				break
 			}
 			p, err := r.Skills.requireAgentOwned(name)
-			if err == nil && len(p.body) <= 8*1024 {
-				used[name] = p.body
+			if err == nil {
+				used[name] = clipReviewText(p.body, 8*1024)
+				// Mutation checks still use the complete revision, not the excerpt.
 				revisions[name] = p
 			}
 		}
@@ -97,6 +99,9 @@ func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, e
 		p, err := parseSkillProposal(text, perms, used)
 		if err != nil || p.Action == "none" {
 			return "", err
+		}
+		if r.AuthorizeWrite != nil && !r.AuthorizeWrite() {
+			return "", nil
 		}
 		switch p.Action {
 		case "create":

@@ -40,7 +40,7 @@
 
   `用户指令 + 项目指令 + 本地覆盖 -> 限定大小的提醒`
 
-- [Auto Skill（自动技能）](packages/auto-skill.md) —— 把可复用的做法沉淀成技能。Auto Memory 与技能操作权限都开启时，已完成轮次中的 `ReviewSkill` 请求可启动独立审查；审查不能修改用户编写的技能。
+- [Auto Skill（自动技能）](packages/auto-skill.md) —— 把可复用的做法沉淀成技能。Auto Skill 不依赖 Auto Memory；允许至少一项技能操作时，已完成轮次中的 `ReviewSkill` 请求可启动独立审查；审查不能修改用户编写的技能。
 
   `已完成轮次 + ReviewSkill -> Side Card 审查 -> 校验后的技能变更`
 

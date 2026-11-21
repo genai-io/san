@@ -2,7 +2,7 @@ package input
 
 import "github.com/genai-io/san/internal/setting"
 
-// SetSelectorDeps rebinds pickers without changing input, queues or the Memory & Skills panel.
+// SetSelectorDeps rebinds pickers without changing input, queues or the Reflection popup.
 // Replaced registries close stale pickers; unchanged plugin operations survive.
 func (m *Model) SetSelectorDeps(deps SelectorDeps) {
 	if m.Agent.registry != deps.AgentRegistry {

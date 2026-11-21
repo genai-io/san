@@ -1,5 +1,4 @@
-// Rendering for the /memory settings panel: the config zone, the learned
-// skill inventory, and the full scrollable preview.
+// Rendering for Auto Skill settings and learned skill previews.
 package input
 
 import (
@@ -19,7 +18,7 @@ var errPreviewUnavailable = errors.New("preview unavailable")
 // Render dispatches by mode: the base config form, or one of the drill-in
 // sub-views (Learning editor, learned-skills inventory, scrollable preview).
 // height is the content-row budget handed down by the popup shell.
-func (p *memorySkillsPanel) Render(width, height int) string {
+func (p *autoSkillPanel) Render(width, height int) string {
 	switch p.mode {
 	case modeStrategy:
 		return p.strategy.render(width, height)
@@ -28,18 +27,14 @@ func (p *memorySkillsPanel) Render(width, height int) string {
 	case modeList, modeConfirm:
 		return p.renderInventory(width, height)
 	default:
-		body := p.form.Render(width)
-		if p.memoryErr != nil {
-			body += selflearnErrorStyle.Width(width).Render("⚠ "+p.memoryErr.Error()) + "\n"
-		}
-		return body
+		return p.form.Render(width)
 	}
 }
 
 // renderInventory draws the learned list: agent-created skills under a SKILLS
 // sub-header, windowed and cursor-aware, or an empty-state line when there's nothing. The "learned"
 // header comes from the sub-view breadcrumb, so it isn't repeated here.
-func (p *memorySkillsPanel) renderInventory(width, budget int) string {
+func (p *autoSkillPanel) renderInventory(width, budget int) string {
 	var b strings.Builder
 
 	if len(p.items) == 0 {
@@ -87,7 +82,7 @@ func (p *memorySkillsPanel) renderInventory(width, budget int) string {
 	return b.String()
 }
 
-func (p *memorySkillsPanel) inventoryError() string {
+func (p *autoSkillPanel) inventoryError() string {
 	if p.actionErr == nil {
 		return ""
 	}
@@ -96,7 +91,7 @@ func (p *memorySkillsPanel) inventoryError() string {
 
 // renderItemRow formats one inventory row: cursor caret, name, the skill scope,
 // and a truncated description, with an inline action hint on the focused row.
-func (p *memorySkillsPanel) renderItemRow(i, width int) string {
+func (p *autoSkillPanel) renderItemRow(i, width int) string {
 	it := p.items[i]
 	// Reachable only from the modeList/modeConfirm render path.
 	focused := i == p.invCursor
@@ -131,7 +126,7 @@ func (p *memorySkillsPanel) renderItemRow(i, width int) string {
 
 // renderView draws the scrollable, read-only SKILL.md preview: a title, a
 // windowed slice of the file at viewOffset, and a line-position footer.
-func (p *memorySkillsPanel) renderView(width, height int) string {
+func (p *autoSkillPanel) renderView(width, height int) string {
 	var b strings.Builder
 	title := "SKILL.md · " + p.viewName
 	b.WriteString(skillViewTitleStyle.Render(kit.TruncateText(title, width)))

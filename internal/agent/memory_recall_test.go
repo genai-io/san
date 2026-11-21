@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,5 +33,30 @@ func TestRecallSelectNotes(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Path != freeze || got[1].Path != tabs {
 		t.Fatalf("selectNotes = %+v, want freeze.md and tabs.md", got)
+	}
+}
+
+func TestRecallRanksBothStoresBeforeCap(t *testing.T) {
+	stores := system.MemoryStores{User: t.TempDir(), Project: t.TempDir()}
+	for i := range 60 {
+		path := filepath.Join(stores.User, fmt.Sprintf("note-%02d.md", i))
+		if err := os.WriteFile(path, []byte("---\ndescription: cooking recipes\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(stores.Project, "freeze.md")
+	if err := os.WriteFile(path, []byte("Project policy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const query = "Check `project/freeze.md`, please."
+	candidates := recallCandidates(stores, query)
+	if len(candidates) != 60 || candidates[0].Path != path {
+		t.Fatalf("got %d candidates, want 60 with project/freeze.md first", len(candidates))
+	}
+	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
+	r := Recaller{Provider: compactRecordingProvider{driver}}
+	got, err := r.selectNotes(t.Context(), stores, query, nil)
+	if err != nil || len(got) != 1 || got[0].Path != path {
+		t.Fatalf("selectNotes = %+v, %v; want project/freeze.md", got, err)
 	}
 }

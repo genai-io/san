@@ -138,6 +138,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
 		"memory":         (*SlashCommandController).handleMemoryCommand,
+		"reflection":     (*SlashCommandController).handleReflectionCommand,
 		"mcp":            (*SlashCommandController).handleMCPCommand,
 		"plugin":         (*SlashCommandController).handlePluginCommand,
 		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
@@ -516,11 +517,15 @@ func (c *SlashCommandController) handleInitCommand(_ context.Context, args strin
 	return result, nil, err
 }
 
-func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	if strings.TrimSpace(args) == "" {
-		c.env.Input.MemorySkills.Enter(c.env.Width, c.env.Height)
-		return "", nil, nil
+func (c *SlashCommandController) handleReflectionCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if strings.TrimSpace(args) != "" {
+		return "Usage: /reflection", nil, nil
 	}
+	c.env.Input.Reflection.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Setting, c.env.Cwd, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err

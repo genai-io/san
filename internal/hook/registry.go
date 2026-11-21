@@ -37,7 +37,7 @@ func (e *Engine) getMatchingHooks(event EventType, input *HookInput, snapshots .
 
 	var matched []matchedHook
 	for _, source := range e.store.CollectHooks(event, settings) {
-		if !matchesEvent(source.Matcher, matchValue) {
+		if !matchesHookEvent(event, source.Matcher, matchValue) {
 			continue
 		}
 		for _, cmd := range source.Hooks {
@@ -58,7 +58,7 @@ func (e *Engine) getMatchingHooks(event EventType, input *HookInput, snapshots .
 		}
 	}
 	for _, source := range e.store.CollectFunctionHooks(event) {
-		if !matchesEvent(source.Matcher, matchValue) {
+		if !matchesHookEvent(event, source.Matcher, matchValue) {
 			continue
 		}
 		for _, fn := range source.Hooks {

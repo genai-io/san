@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +23,50 @@ import (
 
 // maxRecalled caps the memories attached to one message.
 const maxRecalled = 5
+const maxRecallCandidates = 60
+
+var (
+	recallFilename = regexp.MustCompile(`[\pL\pN_.-]+`)
+	recallWord     = regexp.MustCompile(`[\pL\pN]{3,}`)
+)
+
+// Rank both stores before cutting the selector's list. Exact filenames win
+// over lexical overlap; ties retain the store's deterministic listing order.
+func recallCandidates(stores system.MemoryStores, query string) []system.Memory {
+	candidates := stores.Memories(0)
+	query = strings.ToLower(query)
+	filenames, words := map[string]bool{}, map[string]bool{}
+	for _, name := range recallFilename.FindAllString(query, -1) {
+		filenames[name] = true
+		filenames[strings.TrimRight(name, ".")] = true
+	}
+	for _, word := range recallWord.FindAllString(query, -1) {
+		words[word] = true
+	}
+	type rank struct {
+		exact   bool
+		overlap int
+	}
+	ranks := make(map[system.Memory]rank, len(candidates))
+	for _, m := range candidates {
+		name := strings.ToLower(filepath.Base(m.Path))
+		seen := map[string]bool{}
+		for _, word := range recallWord.FindAllString(strings.TrimSuffix(name, ".md")+" "+strings.ToLower(m.Description), -1) {
+			if words[word] {
+				seen[word] = true
+			}
+		}
+		ranks[m] = rank{exact: filenames[name], overlap: len(seen)}
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := ranks[candidates[i]], ranks[candidates[j]]
+		if a.exact != b.exact {
+			return a.exact
+		}
+		return a.overlap > b.overlap
+	})
+	return candidates[:min(len(candidates), maxRecallCandidates)]
+}
 
 const recallSystemPrompt = `You select memories that will be useful to a coding agent as it handles a user's message. You get the list of memory files, each as <store>/<file> with its description, then the message. A user memory holds in every repository; a project memory holds in the repository the user is working in now.
 Return the files the agent needs to handle this message well, up to 5: a rule, fact or preference that bears on what the message asks it to do. Skip one that only shares a word with the message or describes the user in general; when none bears on it, return an empty list.
@@ -38,7 +85,7 @@ func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, q
 	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || stores.Off() {
 		return nil, nil
 	}
-	candidates := stores.Memories(60)
+	candidates := recallCandidates(stores, query)
 	if len(candidates) == 0 {
 		return nil, nil
 	}

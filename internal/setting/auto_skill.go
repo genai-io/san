@@ -54,6 +54,24 @@ func (d *Data) UnmarshalYAML(node *yaml.Node) error {
 
 const reviewSkillTool = "ReviewSkill"
 
+// AutoSkillDisabledByEnv reports whether the legacy hard-disable switch is set.
+func AutoSkillDisabledByEnv() bool {
+	v := Getenv("DISABLE_SELF_LEARN")
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
+// ReviewSkillEnabled reports whether the review trigger is enabled in settings.
+func (s *Settings) ReviewSkillEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data != nil {
+		if off, ok := s.data.DisabledTools[reviewSkillTool]; ok {
+			return !off
+		}
+	}
+	return !IsDefaultDisabledTool(reviewSkillTool)
+}
+
 func (d *Data) migrateReviewSkill() {
 	const oldName = "Evolve"
 	if disabled, ok := d.DisabledTools[oldName]; ok {

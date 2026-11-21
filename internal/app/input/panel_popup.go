@@ -1,14 +1,4 @@
-// Generic settings-popup shell. PanelPopup frames one or more sub-panels in a
-// centered rounded card with a title lockup ("✦ Memory & Skills"), a tab strip
-// when multiple panels are registered, a faint hairline, and the active
-// panel's body + hint. Each sub-panel implements Panel and owns its body.
-//
-// Two popups are built on this shell today:
-//   - /settings → Appearance, Permissions, and General panels.
-//   - /memory   → the Memory & Skills panel.
-//
-// To add a panel to either, implement Panel and append it in the popup's
-// constructor (NewSettingsSelector / NewMemorySkillsSelector).
+// PanelPopup frames one or more settings panels in a tabbed popup.
 package input
 
 import (
@@ -62,11 +52,12 @@ type breadcrumbPanel interface {
 // one-liner in the popup's constructor.
 type PanelPopup struct {
 	glyph   string // title-lockup glyph, e.g. "✦"
-	title   string // wordmark, e.g. "Memory & Skills"
+	title   string // wordmark, e.g. "Reflection"
 	tagline string // muted tagline shown when not inside a sub-view
 
-	panels []Panel
-	index  int
+	panels  []Panel
+	index   int
+	entered []bool // initialized during this opening; tab changes preserve drafts
 
 	active bool
 	width  int
@@ -90,7 +81,7 @@ func NewSettingsSelector(settings *setting.Settings) PanelPopup {
 func (c *PanelPopup) SetSettings(settings *setting.Settings) {
 	c.panels = NewSettingsSelector(settings).panels
 	if c.active {
-		c.activePanel().Enter()
+		c.Enter(c.width, c.height)
 	}
 }
 
@@ -103,8 +94,14 @@ func (c *PanelPopup) Enter(width, height int) {
 	if c.index >= len(c.panels) {
 		c.index = 0
 	}
-	if p := c.activePanel(); p != nil {
+	c.entered = make([]bool, len(c.panels))
+	c.enterPanel()
+}
+
+func (c *PanelPopup) enterPanel() {
+	if p := c.activePanel(); p != nil && !c.entered[c.index] {
 		p.Enter()
+		c.entered[c.index] = true
 	}
 }
 
@@ -112,7 +109,7 @@ func (c *PanelPopup) Enter(width, height int) {
 func (c *PanelPopup) IsActive() bool { return c.active }
 
 // HandleKeypress implements the popup interface. Esc dismisses the popup;
-// Tab / Shift+Tab cycle the tab strip (skills ↔ memory); everything else —
+// Tab / Shift+Tab cycle the tabs without resetting their working state; everything else —
 // including ←/→, which the panels use for the user/project scope control —
 // delegates to the active panel.
 func (c *PanelPopup) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
@@ -140,7 +137,7 @@ func (c *PanelPopup) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 					step = -1
 				}
 				c.index = (c.index + step + len(c.panels)) % len(c.panels)
-				c.panels[c.index].Enter()
+				c.enterPanel()
 				return nil
 			}
 		}
@@ -232,8 +229,7 @@ func (c *PanelPopup) activePanel() Panel {
 	return c.panels[c.index]
 }
 
-// renderHeader renders the title lockup ("✦ Memory & Skills" + tagline, or a
-// "› panel › sub-view" breadcrumb when inside a sub-view), an "● unsaved" tag
+// renderHeader renders the title lockup or breadcrumb, an "● unsaved" tag
 // pinned right, and the tab strip below when more than one panel is registered.
 func (c *PanelPopup) renderHeader(width int) string {
 	left := popupGlyphStyle.Render(c.glyph+" ") + popupTitleStyle.Render(c.title)

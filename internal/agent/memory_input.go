@@ -27,6 +27,7 @@ type PreparedMemory struct {
 	Completion *session.Completion
 	Handled    bool
 	Notice     string
+	Change     *automemory.Change // Explicit maintenance, not yet admitted.
 }
 
 // NeedsMemoryPreparation lets hosts bypass side work when there is nothing to prepare.
@@ -42,7 +43,30 @@ func maintenanceRequest(message core.Message) (automemory.Request, bool) {
 	return automemory.ParseRequest(message.Text())
 }
 
-func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (prepared PreparedMemory, err error) {
+// IsMemoryMaintenance reports whether the input requests an explicit store change.
+func IsMemoryMaintenance(message core.Message) bool {
+	_, ok := maintenanceRequest(message)
+	return ok
+}
+
+// Prepare admits explicit maintenance immediately for synchronous hosts.
+func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (PreparedMemory, error) {
+	if IsMemoryMaintenance(message) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+	prepared, err := r.PrepareForAdmission(ctx, stores, message, history)
+	if err == nil && prepared.Change != nil {
+		prepared.Notice, err = prepared.Change.Apply(ctx)
+		prepared.Change = nil
+	}
+	return prepared, err
+}
+
+// PrepareForAdmission does not write to memory. The host must apply or discard
+// any returned change when it resolves admission of the original input.
+func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (prepared PreparedMemory, err error) {
 	prepared.Message = message
 	if req, ok := maintenanceRequest(message); ok {
 		prepared.Handled = true
@@ -57,7 +81,7 @@ func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, messa
 		maintainer := automemory.Maintainer{Provider: r.Provider, Model: r.Model, Effort: r.Effort, Recording: r.Recording}
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		prepared.Notice, err = maintainer.Run(ctx, stores, req)
+		prepared.Change, err = maintainer.Propose(ctx, stores, req)
 		return prepared, err
 	}
 	if stores.Off() || r.Provider == nil || strings.TrimSpace(message.Text()) == "" {

@@ -86,7 +86,7 @@ func selectorDeps(svc services, learnedStores *learnedStoreContext) input.Select
 		MCPRegistry: svc.MCP, PluginRegistry: svc.Plugin, Setting: svc.Setting,
 		LoadDisabled: svc.Setting.DisabledToolsAt, UpdateDisabled: svc.Setting.UpdateDisabledToolAt,
 		HeldOn: toolsHeldOn,
-		MemorySkills: input.MemorySkillsDeps{
+		Reflection: input.ReflectionDeps{
 			Workspace: learnedStores.Snapshot,
 			Learned:   newLearnedSkillStore(learnedStores.Snapshot),
 		},

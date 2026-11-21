@@ -40,7 +40,7 @@
 
   `User files + project files + local overrides -> bounded reminders`
 
-- [Auto Skill](packages/auto-skill.md) — Turns a reusable workflow into an agent-owned skill. When Auto Memory and a skill action are enabled, an `ReviewSkill` request on a completed turn can start a separate review. It cannot edit user-authored skills.
+- [Auto Skill](packages/auto-skill.md) — Turns a reusable workflow into an agent-owned skill. When a skill action is allowed, a `ReviewSkill` request on a completed turn can start a separate review. It cannot edit user-authored skills.
 
   `Completed turn + ReviewSkill -> Side Card review -> validated skill change`
 

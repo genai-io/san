@@ -13,11 +13,8 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// ConfigSavedMsg is emitted on a successful Auto Skill Save so the app can
-// show a transient confirmation. SavedAutoSkill carries the snapshot that was
-// just written so the consumer can compare it against the post-Reload
-// effective state and detect cross-level overrides (settings merger ORs
-// Enabled across user+project).
+// ConfigSavedMsg reports the Auto Skill settings written to disk so the app
+// can reload them and report any overrides from another scope.
 type ConfigSavedMsg struct {
 	Scope          setting.Scope
 	SavedAutoSkill setting.AutoSkillSettings
@@ -28,7 +25,7 @@ type skillConfigForm struct {
 	// project reload is picked up. Nil (tests) seeds a zero snapshot.
 	workspace func() (string, *setting.Settings)
 
-	// rowsFn returns the panel-specific rows (skill rows or memory rows).
+	// rowsFn supplies the skill settings and inventory entry.
 	rowsFn func() []configRow
 
 	// snap is the working buffer; Save merges it back to disk.
@@ -72,7 +69,6 @@ func (f *skillConfigForm) HandleKey(msg tea.KeyMsg) (cmd tea.Cmd, done bool, act
 	case "down", "j":
 		f.cursor = findEditable(rows, f.cursor+1, +1, f.cursor)
 	case "left", "right":
-		// ←→ changes the Auto Skill save target, not the memory rows.
 		if f.scope == setting.ScopeUser {
 			f.scope = setting.ScopeProject
 		} else {

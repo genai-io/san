@@ -32,8 +32,8 @@ Maintenance sends no tools to the model. It proposes one change, and San validat
 
 ## Settings and inspection
 
-Open **Memory & Skills** with `/memory` in the TUI. Use `/memory browse` to open the instruction files and memory stores. `/memory on|off [project]` also updates `autoMemory` directly; an explicit project setting overrides the user default and `SAN_DISABLE_AUTO_MEMORY=1` overrides both. Turning Auto Memory off starts no new recalls or maintenance. User and project instructions still apply.
+Open `/reflection` in the TUI and select **Auto Memory**. Press Enter on User or Project to toggle that scope immediately. `/memory` (or `/memory browse`) opens the instruction files and memory stores. `/memory on|off [project]` also updates `autoMemory` directly; an explicit project setting overrides the user default and `SAN_DISABLE_AUTO_MEMORY=1` overrides both. Turning Auto Memory off starts no new recalls or maintenance. User and project instructions still apply.
 
 `autoMemoryDirectory` can be set to an absolute or `~/` path in user settings for the user store, or untracked local project settings for the project store. Committed project settings cannot move the store.
 
-In Inspector, **Model Request · Side Card - Auto Memory** shows the admitted request. Its paired response shows the model's output and, separately, the note that was applied or the change that was accepted. The Side Card's request and response are not part of the main model's history. Auto Skill also requires Auto Memory to be enabled, but maintains agent-owned skills rather than memory notes.
+In Inspector, **Model Request · Side Card - Auto Memory** shows the admitted request. Its paired response shows the model's output and, separately, the note that was applied or the change that was accepted. The Side Card's request and response are not part of the main model's history. [Auto Skill](../packages/auto-skill.md) maintains agent-owned skills and can be enabled independently.

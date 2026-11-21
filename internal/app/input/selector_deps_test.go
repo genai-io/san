@@ -59,7 +59,7 @@ func TestSetSelectorDepsPreservesInputAndSamePlugin(t *testing.T) {
 	m.Plugin.isLoading = true
 	m.Plugin.loadingMsg = "installing"
 	m.Plugin.activeTab = pluginTab(1)
-	memorySkills := m.MemorySkills.panels[0]
+	reflection := m.Reflection.panels[0]
 	m.SetSelectorDeps(deps)
 	if m.Textarea.Value() != "draft" || m.Queue.Len() != 1 || m.History.Stashed != "history draft" || m.Skill.PendingFullName != "pending" {
 		t.Fatal("reload destroyed input state")
@@ -70,8 +70,8 @@ func TestSetSelectorDepsPreservesInputAndSamePlugin(t *testing.T) {
 	if !m.Plugin.active || !m.Plugin.isLoading || m.Plugin.loadingMsg != "installing" || m.Plugin.activeTab != pluginTab(1) {
 		t.Fatal("same plugin registry lost operation state")
 	}
-	if m.MemorySkills.panels[0] != memorySkills {
-		t.Fatal("reload replaced the Memory & Skills panel")
+	if m.Reflection.panels[0] != reflection {
+		t.Fatal("reload replaced the Reflection popup")
 	}
 }
 

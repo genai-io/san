@@ -58,17 +58,17 @@ type Model struct {
 	Secret   SecretPromptModel
 
 	// Self-contained selectors.
-	Agent        AgentSelector
-	Persona      PersonaSelector
-	Search       SearchSelector
-	Plugin       PluginSelector
-	Tool         ToolSelector
-	Settings     PanelPopup        // /settings: appearance, permissions, general
-	MemorySkills PanelPopup        // /memory: Auto Memory and Auto Skill
-	Autopilot    AutopilotSelector // /autopilot: the session copilot
-	Transcript   TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
-	Tasks        TaskViewer        // /tasks: inspect background work and review pending approvals
-	Flow         FlowView          // /flow: management, review, and live runs
+	Agent      AgentSelector
+	Persona    PersonaSelector
+	Search     SearchSelector
+	Plugin     PluginSelector
+	Tool       ToolSelector
+	Settings   PanelPopup        // /settings: appearance, permissions, general
+	Reflection PanelPopup        // /reflection: Auto Memory and Auto Skill
+	Autopilot  AutopilotSelector // /autopilot: the session copilot
+	Transcript TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
+	Tasks      TaskViewer        // /tasks: inspect background work and review pending approvals
+	Flow       FlowView          // /flow: management, review, and live runs
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation
@@ -123,9 +123,8 @@ type SelectorDeps struct {
 	LoadDisabled    func(scope setting.Scope) map[string]bool
 	UpdateDisabled  func(name string, disabled *bool, scope setting.Scope) error
 	// HeldOn names the tools the session keeps on over the settings, and why.
-	HeldOn func() map[string]string
-	// MemorySkills supplies the live workspace, learned skills, and recent activity.
-	MemorySkills MemorySkillsDeps
+	HeldOn     func() map[string]string
+	Reflection ReflectionDeps
 }
 
 func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
@@ -137,21 +136,21 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Suggestions: suggestions,
 		Queue:       NewQueue(),
 
-		Approval:     NewApproval(),
-		Secret:       NewSecretPrompt(),
-		Agent:        NewAgentSelector(deps.AgentRegistry),
-		Persona:      NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
-		Search:       NewSearchSelector(deps.Setting),
-		Skill:        SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
-		Session:      SessionState{Selector: NewSessionSelector()},
-		Memory:       MemoryState{Selector: NewMemorySelector()},
-		MCP:          MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
-		Plugin:       NewPluginSelector(deps.PluginRegistry),
-		Provider:     ProviderState{Selector: NewProviderSelector()},
-		Tool:         NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
-		Settings:     NewSettingsSelector(deps.Setting),
-		Autopilot:    NewAutopilotSelector(),
-		MemorySkills: NewMemorySkillsSelector(deps.MemorySkills),
+		Approval:   NewApproval(),
+		Secret:     NewSecretPrompt(),
+		Agent:      NewAgentSelector(deps.AgentRegistry),
+		Persona:    NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
+		Search:     NewSearchSelector(deps.Setting),
+		Skill:      SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
+		Session:    SessionState{Selector: NewSessionSelector()},
+		Memory:     MemoryState{Selector: NewMemorySelector()},
+		MCP:        MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
+		Plugin:     NewPluginSelector(deps.PluginRegistry),
+		Provider:   ProviderState{Selector: NewProviderSelector()},
+		Tool:       NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
+		Settings:   NewSettingsSelector(deps.Setting),
+		Autopilot:  NewAutopilotSelector(),
+		Reflection: NewReflectionSelector(deps.Reflection),
 	}
 }
 

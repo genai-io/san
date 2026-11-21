@@ -1,5 +1,4 @@
-// The /memory settings panel configures Auto Memory and
-// Auto Skill and manages the skills the reviewer has learned.
+// The Auto Skill tab of /reflection edits review settings and learned skills.
 //
 // The panel is a small mode machine layered over the config form:
 //
@@ -28,22 +27,6 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// MemorySkillsDeps bundles everything the /memory panel needs. All fields are
-// optional; a zero value builds a usable (inert-inventory, zero-settings)
-// popup for tests.
-type MemorySkillsDeps struct {
-	// Workspace returns the live cwd + settings service. The form and the
-	// learned stores read through it so a project reload is picked up.
-	Workspace func() (string, *setting.Settings)
-	Learned   LearnedSkillStore
-}
-
-// NewMemorySkillsSelector builds the /memory settings popup.
-func NewMemorySkillsSelector(d MemorySkillsDeps) PanelPopup {
-	return newPanelPopup("✦", "Memory & Skills", "Auto Memory and Auto Skill",
-		newMemorySkillsPanel(d))
-}
-
 // LearnedSkillStore is the app-injected accessor bundle backing the inventory:
 // List the agent-created skills, Read one's full SKILL.md for preview, Delete
 // one from disk. Any func may be nil (e.g. in tests), in which case that
@@ -71,16 +54,10 @@ const (
 	modeStrategy
 )
 
-type memorySkillsPanel struct {
-	form  skillConfigForm
-	store LearnedSkillStore
-
+type autoSkillPanel struct {
+	form     skillConfigForm
+	store    LearnedSkillStore
 	strategy strategyEditor
-
-	memoryUser, memoryProject *bool
-	memoryOn, memoryAvailable bool
-	memorySource              string
-	memoryErr                 error
 
 	mode  skillMode
 	items []learnedItem // loaded at Enter / drill-in
@@ -97,23 +74,23 @@ type memorySkillsPanel struct {
 	viewOffset int
 }
 
-func newMemorySkillsPanel(d MemorySkillsDeps) *memorySkillsPanel {
-	p := &memorySkillsPanel{
-		store:    d.Learned,
+func newAutoSkillPanel(workspace func() (string, *setting.Settings), store LearnedSkillStore) *autoSkillPanel {
+	p := &autoSkillPanel{
+		store:    store,
 		strategy: newStrategyEditor(autoskill.DefaultStrategy()),
 	}
 	p.rows = p.configRows(0)
 	p.form = skillConfigForm{
-		workspace: d.Workspace,
+		workspace: workspace,
 		scope:     setting.ScopeUser,
 		rowsFn:    func() []configRow { return p.rows },
 	}
 	return p
 }
 
-func (p *memorySkillsPanel) Title() string { return "Memory & Skills" }
-func (p *memorySkillsPanel) Dirty() bool   { return p.form.Dirty() }
-func (p *memorySkillsPanel) HintLine() string {
+func (p *autoSkillPanel) Title() string { return "Auto Skill" }
+func (p *autoSkillPanel) Dirty() bool   { return p.form.Dirty() }
+func (p *autoSkillPanel) HintLine() string {
 	switch p.mode {
 	case modeStrategy:
 		return keycap("enter") + " save  " + keycap("esc") + " discard  " + keycap("alt+enter") + " newline"
@@ -131,10 +108,10 @@ func (p *memorySkillsPanel) HintLine() string {
 
 // Modal reports the sub-views that capture esc / Tab from the shell — every
 // mode except the base config form.
-func (p *memorySkillsPanel) Modal() bool { return p.mode != modeForm }
+func (p *autoSkillPanel) Modal() bool { return p.mode != modeForm }
 
 // Breadcrumb names the open sub-view for the header lockup.
-func (p *memorySkillsPanel) Breadcrumb() string {
+func (p *autoSkillPanel) Breadcrumb() string {
 	switch p.mode {
 	case modeStrategy:
 		return "strategy"
@@ -147,10 +124,8 @@ func (p *memorySkillsPanel) Breadcrumb() string {
 	}
 }
 
-func (p *memorySkillsPanel) Enter() {
+func (p *autoSkillPanel) Enter() {
 	p.form.Enter()
-	p.memoryErr = nil
-	p.loadMemory()
 	p.mode = modeForm
 	p.invCursor = 0
 	p.viewOffset = 0
@@ -160,7 +135,7 @@ func (p *memorySkillsPanel) Enter() {
 
 // reloadItems re-reads the on-disk agent-created skills and keeps the cursor
 // in range.
-func (p *memorySkillsPanel) reloadItems() {
+func (p *autoSkillPanel) reloadItems() {
 	p.items = nil
 	if p.store.List != nil {
 		for _, s := range p.store.List() {
@@ -176,7 +151,7 @@ func (p *memorySkillsPanel) reloadItems() {
 	p.rows = p.configRows(len(p.items))
 }
 
-func (p *memorySkillsPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+func (p *autoSkillPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch p.mode {
 	case modeStrategy:
 		return p.handleStrategyKey(msg), false
@@ -193,85 +168,43 @@ func (p *memorySkillsPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 // handleFormKey delegates to the config form, then opens whichever entry row
 // the user activated: the Strategy editor or the Learned inventory.
-func (p *memorySkillsPanel) handleFormKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+func (p *autoSkillPanel) handleFormKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	cmd, done, activated := p.form.HandleKey(msg)
 	switch activated {
 	case "strategy":
 		p.openStrategy()
 	case "learned":
 		p.openLearned()
-	case "memory-user":
-		p.toggleMemory(setting.ScopeUser)
-	case "memory-project":
-		p.toggleMemory(setting.ScopeProject)
 	}
 	return cmd, done
 }
 
-func (p *memorySkillsPanel) loadMemory() {
-	p.memoryAvailable = false
+func (p *autoSkillPanel) skillStatus(*setting.AutoSkillSettings) string {
 	if p.form.workspace == nil {
-		return
-	}
-	_, svc := p.form.workspace()
-	if svc == nil {
-		return
-	}
-	p.memoryAvailable = true
-	p.memoryUser = setting.AutoMemoryAt(setting.ScopeUser)
-	p.memoryProject = setting.AutoMemoryAt(setting.ScopeProject)
-	p.memoryOn = svc.AutoMemory()
-	p.memorySource = memorySource(p.memoryUser, p.memoryProject)
-}
-
-func (p *memorySkillsPanel) toggleMemory(scope setting.Scope) {
-	if !p.memoryAvailable {
-		return
-	}
-	cwd, svc := p.form.workspace()
-	if svc == nil {
-		return
-	}
-	// Flip this scope's value, or what it would inherit, independent of
-	// higher-precedence overrides such as the environment.
-	on := p.memoryUser == nil || *p.memoryUser
-	if scope == setting.ScopeProject && p.memoryProject != nil {
-		on = *p.memoryProject
-	}
-	p.memoryErr = setAutoMemory(svc, cwd, !on, scope)
-	p.loadMemory()
-}
-
-func (p *memorySkillsPanel) skillStatus(*setting.AutoSkillSettings) string {
-	if !p.memoryAvailable {
 		return "settings unavailable"
 	}
-	if !p.memoryOn {
-		return "off · requires Auto Memory"
-	}
 	_, svc := p.form.workspace()
-	if svc == nil || !svc.AutoSkill().Skills.Active() {
+	if svc == nil {
+		return "settings unavailable"
+	}
+	if setting.AutoSkillDisabledByEnv() {
+		return "off · SAN_DISABLE_SELF_LEARN"
+	}
+	cfg := svc.AutoSkill()
+	if cfg.Validate() != nil {
+		return "off · invalid skill settings"
+	}
+	if !cfg.Skills.Active() {
 		return "off · no skill permissions"
+	}
+	if !svc.ReviewSkillEnabled() {
+		return "off · ReviewSkill disabled"
 	}
 	return "on"
 }
 
-func (p *memorySkillsPanel) memoryStatus(*setting.AutoSkillSettings) string {
-	if !p.memoryAvailable {
-		return "settings unavailable"
-	}
-	return "effective: " + onOff(p.memoryOn) + " (" + p.memorySource + ")"
-}
-
-func memoryScopeStatus(value *bool) string {
-	if value == nil {
-		return "inherit"
-	}
-	return onOff(*value)
-}
-
 // openLearned drills into the learned-skills inventory sub-view.
-func (p *memorySkillsPanel) openLearned() {
+func (p *autoSkillPanel) openLearned() {
 	p.reloadItems()
 	p.invCursor = 0
 	p.actionErr = nil
@@ -280,7 +213,7 @@ func (p *memorySkillsPanel) openLearned() {
 
 // openStrategy seeds the Strategy editor from the working snapshot and
 // enters the modal sub-view.
-func (p *memorySkillsPanel) openStrategy() {
+func (p *autoSkillPanel) openStrategy() {
 	p.strategy.open(p.form.snap.Strategy)
 	p.mode = modeStrategy
 }
@@ -288,7 +221,7 @@ func (p *memorySkillsPanel) openStrategy() {
 // handleStrategyKey drives the Strategy editor: Enter saves the edit back to
 // the snapshot and returns; Alt/Shift+Enter inserts a newline; Esc discards
 // and returns; everything else feeds the textarea.
-func (p *memorySkillsPanel) handleStrategyKey(msg tea.KeyMsg) tea.Cmd {
+func (p *autoSkillPanel) handleStrategyKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		p.mode = modeForm // discard — leave the working config unchanged
@@ -306,13 +239,13 @@ func (p *memorySkillsPanel) handleStrategyKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // HandlePaste feeds bracketed paste into the Strategy editor.
-func (p *memorySkillsPanel) HandlePaste(content string) {
+func (p *autoSkillPanel) HandlePaste(content string) {
 	if p.mode == modeStrategy {
 		p.strategy.insert(content)
 	}
 }
 
-func (p *memorySkillsPanel) handleListKey(msg tea.KeyMsg) tea.Cmd {
+func (p *autoSkillPanel) handleListKey(msg tea.KeyMsg) tea.Cmd {
 	p.actionErr = nil
 	switch msg.String() {
 	case "esc":
@@ -335,7 +268,7 @@ func (p *memorySkillsPanel) handleListKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (p *memorySkillsPanel) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
+func (p *autoSkillPanel) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "y", "enter":
 		p.deleteSelected()
@@ -347,7 +280,7 @@ func (p *memorySkillsPanel) handleConfirmKey(msg tea.KeyMsg) tea.Cmd {
 
 // deleteSelected removes the focused skill from disk,
 // reloads the inventory, and returns to the list (or the form when it empties).
-func (p *memorySkillsPanel) deleteSelected() {
+func (p *autoSkillPanel) deleteSelected() {
 	if p.invCursor >= len(p.items) {
 		p.mode = modeList
 		return
@@ -368,7 +301,7 @@ func (p *memorySkillsPanel) deleteSelected() {
 	}
 }
 
-func (p *memorySkillsPanel) openView() {
+func (p *autoSkillPanel) openView() {
 	if len(p.items) == 0 {
 		return
 	}
@@ -391,7 +324,7 @@ func (p *memorySkillsPanel) openView() {
 	p.mode = modeView
 }
 
-func (p *memorySkillsPanel) handleViewKey(msg tea.KeyMsg) tea.Cmd {
+func (p *autoSkillPanel) handleViewKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc", "q", "backspace", "left":
 		p.mode = modeList
@@ -414,10 +347,10 @@ func (p *memorySkillsPanel) handleViewKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// configRows builds the /memory settings rows. Auto Skill has no separate
+// configRows builds the Auto Skill settings rows. At least one skill
 // enable toggle: at least one skill permission must be allowed.
 // learnedCount is shown on the Learned inventory entry.
-func (p *memorySkillsPanel) configRows(learnedCount int) []configRow {
+func (p *autoSkillPanel) configRows(learnedCount int) []configRow {
 	skillPerm := func(label string, get func(setting.AutoSkillPermissions) bool, flip func(*setting.AutoSkillPermissions)) configRow {
 		return configRow{
 			kind:       rowBool,
@@ -459,12 +392,5 @@ func (p *memorySkillsPanel) configRows(learnedCount int) []configRow {
 		},
 		{kind: rowSpacer},
 		{kind: rowSave, label: "Save"},
-		{kind: rowSpacer},
-		{kind: rowSubHeader, label: "Auto Memory", indent: 1, summary: p.memoryStatus},
-		{kind: rowEntry, entryID: "memory-user", label: "User", indent: 2,
-			summary: func(*setting.AutoSkillSettings) string { return memoryScopeStatus(p.memoryUser) }},
-		{kind: rowEntry, entryID: "memory-project", label: "Project", indent: 2,
-			summary: func(*setting.AutoSkillSettings) string { return memoryScopeStatus(p.memoryProject) }},
-		{kind: rowSubHeader, indent: 2, desc: "Enter saves immediately · /memory browse opens files & stores"},
 	}
 }

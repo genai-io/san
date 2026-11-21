@@ -164,6 +164,7 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 			finish.Reason = reason
 		}
 		batch := make([]Event, 0, len(results)+1)
+		purpose := p.event(i.ref.Seq).Payload.(*InferenceStartPayload).Purpose
 		hasNativeOutput := false
 		for _, result := range results {
 			if result.Source != nil && *result.Source != i.ref {
@@ -174,10 +175,20 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 			}
 			kind := result.Payload.eventType()
 			if kind == EventMessageAppend || kind == EventContextCompact {
-				hasNativeOutput = true
 				if callErr != nil {
 					return nil, fmt.Errorf("failed inference cannot publish conversation output")
 				}
+				nativeOutput := true
+				if purpose == PurposeRecall {
+					// Accepted Recall input is derived from the response, not a replacement for it.
+					switch v := result.Payload.(type) {
+					case MessageAppendPayload:
+						nativeOutput = !v.Accepted
+					case *MessageAppendPayload:
+						nativeOutput = !v.Accepted
+					}
+				}
+				hasNativeOutput = hasNativeOutput || nativeOutput
 			}
 			switch v := result.Payload.(type) {
 			case ContextCompactPayload:
@@ -201,7 +212,7 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 			result.Source = &ref
 			batch = append(batch, result)
 		}
-		if !hasNativeOutput && callErr == nil && response != nil && p.event(i.ref.Seq).Payload.(*InferenceStartPayload).Purpose != PurposeTurn {
+		if !hasNativeOutput && callErr == nil && response != nil && purpose != PurposeTurn {
 			text := strings.ToValidUTF8(response.Content.Text(), "�")
 			finish.Output = &InferenceOutput{Text: boundText(text, maxInferenceOutput), Truncated: len(text) > maxInferenceOutput}
 		}

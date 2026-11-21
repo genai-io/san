@@ -132,7 +132,7 @@ func (m *model) acceptFlowMainInput(lease *flowMainLease, prepared []input.Queue
 // the opened owner projects the exact input ID, without a pending outbox copy.
 func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 	r := m.flowMainRequest
-	if r == nil || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil || m.pendingMessages.Held() {
+	if r == nil || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil || !m.pendingMessages.CanDeliver(false) || m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
 	if r.input != nil {
@@ -174,27 +174,27 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 		return m.startMemoryInput(r.msg.ctx, p, func(reply memoryInputMsg) tea.Cmd {
 			current, ok := m.userInput.Queue.At(0)
 			if m.flowMainRequest != r || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil {
-				closeMemoryInput(reply.result.Completion)
+				discardPreparedMemory(reply.result)
 				return nil
 			}
-			if !ok || !reflect.DeepEqual(current, head) {
-				closeMemoryInput(reply.result.Completion)
-				next, _ := m.releaseFlowMainStepInput()
+			if !ok || m.userInput.Queue.SelectIdx == 0 || !reflect.DeepEqual(current, head) {
+				discardPreparedMemory(reply.result)
+				next, _ := m.releaseQueuedMessage()
 				return next
 			}
-			if !reply.result.Handled && reply.input.stores != m.autoMemory() {
-				closeMemoryInput(reply.result.Completion)
+			if reply.input.stores != m.autoMemory() {
+				discardPreparedMemory(reply.result)
+				if reply.result.Handled {
+					next, _ := m.releaseQueuedMessage()
+					return next
+				}
 				cmd, _ := m.sendFlowMainStepInput(r, head, chat, p)
 				return cmd
 			}
 			if reply.result.Handled {
-				if reply.err != nil {
-					m.conv.AddNotice("Auto Memory could not finish: " + reply.err.Error())
-				} else if reply.result.Notice != "" {
-					m.conv.AddNotice(reply.result.Notice)
-				}
+				m.finishMemoryMaintenance(reply, false)
 				m.userInput.Queue.Dequeue()
-				next, _ := m.releaseFlowMainStepInput()
+				next, _ := m.releaseQueuedMessage()
 				return tea.Batch(append(m.CommitMessages(), next)...)
 			}
 			if reply.err != nil {

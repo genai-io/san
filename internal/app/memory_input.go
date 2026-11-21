@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -20,7 +21,8 @@ type memoryInput struct {
 	owner  *session.Session
 	outbox <-chan core.Event
 	stores system.MemoryStores
-	id     string
+	head   pendingMessage
+	parent context.Context
 	cancel context.CancelFunc
 	accept func(memoryInputMsg) tea.Cmd
 }
@@ -45,17 +47,20 @@ func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
 
 func (m *model) startMemoryInput(parent context.Context, head pendingMessage, accept func(memoryInputMsg) tea.Cmd) tea.Cmd {
 	ctx, cancel := context.WithCancel(parent)
-	r := &memoryInput{owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.agentAutoMemory, id: head.ID, cancel: cancel, accept: accept}
+	r := &memoryInput{owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.agentAutoMemory, head: head, parent: parent, cancel: cancel, accept: accept}
+	if agent.IsMemoryMaintenance(head.Message) {
+		r.stores = m.autoMemory()
+	}
 	startSpinner := !m.needsSpinner()
 	m.memoryInput = r
 	provider, info := m.resolveJudge("")
 	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info), Recording: r.owner}
 	history := m.services.Agent.Messages()
 	prepare := func() tea.Msg {
-		result, err := selector.Prepare(ctx, r.stores, head.Message, history)
+		result, err := selector.PrepareForAdmission(ctx, r.stores, head.Message, history)
 		if ctx.Err() != nil {
-			closeMemoryInput(result.Completion)
-			result.Completion = nil
+			discardPreparedMemory(result)
+			result = agent.PreparedMemory{}
 		}
 		return memoryInputMsg{input: r, result: result, err: err}
 	}
@@ -71,6 +76,37 @@ func closeMemoryInput(c *session.Completion) {
 	}
 }
 
+func discardPreparedMemory(result agent.PreparedMemory) {
+	closeMemoryInput(result.Completion)
+	if err := result.Change.Discard(); err != nil {
+		log.Logger().Error("discard memory change", zap.Error(err))
+	}
+}
+
+// addRecordedNotice displays an annotation already persisted through its
+// completion's owner, without invoking the conversation's OnNotice hook.
+func (m *model) addRecordedNotice(notice string) {
+	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatNotice, Content: notice})
+}
+
+func (m *model) finishMemoryMaintenance(msg memoryInputMsg, showNoOp bool) {
+	notice, err := msg.result.Notice, msg.err
+	if msg.result.Change != nil {
+		notice, err = msg.result.Change.Apply(msg.input.parent)
+		if err == nil && notice != "" {
+			m.addRecordedNotice(notice)
+			return
+		}
+	}
+	if err != nil {
+		m.conv.AddNotice("Auto Memory could not finish: " + err.Error())
+	} else if notice != "" {
+		m.conv.AddNotice(notice)
+	} else if showNoOp {
+		m.conv.AddNotice("No memory changes.")
+	}
+}
+
 func (m *model) cancelMemoryInput() {
 	if r := m.memoryInput; r != nil {
 		m.memoryInput = nil
@@ -80,39 +116,35 @@ func (m *model) cancelMemoryInput() {
 
 func (m *model) onMemoryInput(msg memoryInputMsg) tea.Cmd {
 	r := msg.input
-	if r != m.memoryInput {
-		closeMemoryInput(msg.result.Completion)
+	if r == nil || r != m.memoryInput {
+		discardPreparedMemory(msg.result)
 		return nil
 	}
 	m.cancelMemoryInput()
-	if r.owner != m.services.Session || r.outbox != m.AgentOutbox() || !m.pendingMessages.CanDeliver(false) {
-		closeMemoryInput(msg.result.Completion)
+	if r.owner != m.services.Session || r.owner.Err() != nil || r.outbox != m.AgentOutbox() ||
+		r.parent.Err() != nil || !m.pendingMessages.CanDeliver(false) {
+		discardPreparedMemory(msg.result)
 		return nil
 	}
 	if r.accept != nil {
 		return r.accept(msg)
 	}
 	head := m.pendingMessages.First()
-	if head.ID != r.id || m.pendingMessages.Len() == 0 {
-		closeMemoryInput(msg.result.Completion)
-		return nil
+	if m.pendingMessages.Len() == 0 || !reflect.DeepEqual(head, r.head) {
+		discardPreparedMemory(msg.result)
+		return m.sendPendingMessages()
 	}
-	if r.stores != m.autoMemory() && !msg.result.Handled {
-		closeMemoryInput(msg.result.Completion)
-		m.agentReloadPending = true
+	if r.stores != m.autoMemory() {
+		discardPreparedMemory(msg.result)
+		if !msg.result.Handled {
+			m.agentReloadPending = true
+		}
 		return m.sendPendingMessages()
 	}
 	if msg.result.Handled {
+		m.finishMemoryMaintenance(msg, true)
 		m.pendingMessages.PopFirst()
 		m.pendingPluginRoot = ""
-		notice := msg.result.Notice
-		if msg.err != nil {
-			notice = "Auto Memory could not finish: " + msg.err.Error()
-		}
-		if notice == "" {
-			notice = "No memory changes."
-		}
-		m.conv.AddNotice(notice)
 		return tea.Batch(append(m.CommitMessages(), m.sendPendingMessages(), m.sendNextQueuedInputIfIdle())...)
 	}
 	if msg.err != nil {

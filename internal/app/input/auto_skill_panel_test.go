@@ -10,20 +10,15 @@ import (
 	"github.com/genai-io/san/internal/autoskill"
 )
 
-// newTestMemorySkills builds an isolated Memory & Skills popup.
-// settings=nil so Enter() seeds the snapshot to the zero "feature off"
-// baseline without touching disk.
-func newTestMemorySkills() (*PanelPopup, *memorySkillsPanel) {
-	c := NewMemorySkillsSelector(MemorySkillsDeps{})
-	c.Enter(120, 40)
-	return &c, c.ActivePanel().(*memorySkillsPanel)
+func newTestSkillPanel() (*PanelPopup, *autoSkillPanel) {
+	return newTestSkillPanelWith(LearnedSkillStore{})
 }
 
 // TestSkillPanelCursorSkipsHeaders guards against nil-toggle panics: the
 // cursor must never land on a section/sub-header / spacer row (toggle is nil →
 // Space would crash).
 func TestSkillPanelCursorSkipsHeaders(t *testing.T) {
-	c, p := newTestMemorySkills()
+	c, p := newTestSkillPanel()
 	rows := p.form.rowsFn()
 
 	if !rows[p.form.cursor].editable() {
@@ -46,10 +41,8 @@ func TestSkillPanelCursorSkipsHeaders(t *testing.T) {
 	}
 }
 
-// TestMemorySkillsSelectorActivatesAndDismisses confirms the popup flips on with
-// Enter() and off when Esc is delivered through HandleKeypress.
-func TestMemorySkillsSelectorActivatesAndDismisses(t *testing.T) {
-	c, _ := newTestMemorySkills()
+func TestReflectionOpensAndCloses(t *testing.T) {
+	c, _ := newTestSkillPanel()
 	if !c.IsActive() {
 		t.Fatal("Enter should activate the popup")
 	}
@@ -63,7 +56,7 @@ func TestMemorySkillsSelectorActivatesAndDismisses(t *testing.T) {
 // row is the Strategy entry, so step down onto the "Create new skills"
 // permission (a plain checkbox — triggering is model-decided, no cadence).
 func TestSkillPanelTogglesBool(t *testing.T) {
-	c, p := newTestMemorySkills()
+	c, p := newTestSkillPanel()
 	if !p.form.snap.Skills.AllowCreate() {
 		t.Fatal("baseline: create should be allowed (Deny* zero value)")
 	}
@@ -81,7 +74,7 @@ func TestSkillPanelTogglesBool(t *testing.T) {
 // TestSkillPanelRenderShowsValidationError confirms an invalid combination
 // (create allowed but update denied) surfaces the inline error.
 func TestSkillPanelRenderShowsValidationError(t *testing.T) {
-	c, p := newTestMemorySkills()
+	c, p := newTestSkillPanel()
 	p.form.snap.Skills.DenyUpdate = true
 	out := c.Render()
 	if !strings.Contains(out, `"Create new skills" needs "Update a skill"`) {
@@ -89,20 +82,34 @@ func TestSkillPanelRenderShowsValidationError(t *testing.T) {
 	}
 }
 
-// TestMemorySkillsSelectorRenderShowsSections checks both settings groups and the file browser hint.
-func TestMemorySkillsSelectorRenderShowsSections(t *testing.T) {
-	c, _ := newTestMemorySkills()
-	out := c.Render()
-	for _, want := range []string{"Memory & Skills", "AUTO SKILL", "AUTO MEMORY", "/memory browse"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("render missing %q:\n%s", want, out)
-		}
+func TestReflectionTabsPreserveDraftUntilClose(t *testing.T) {
+	c := NewReflectionSelector(ReflectionDeps{})
+	c.Enter(120, 40)
+	press := func(key rune) { c.HandleKeypress(tea.KeyPressMsg{Code: key}) }
+	if out := c.Render(); !strings.Contains(out, "Reflection") || !strings.Contains(out, "Browse files and stores with /memory") || strings.Contains(out, "Create new skills") {
+		t.Fatalf("expected only the Auto Memory body:\n%s", out)
+	}
+	press(tea.KeyTab)
+	if out := c.Render(); !strings.Contains(out, "Create new skills") || strings.Contains(out, "Browse files and stores") {
+		t.Fatalf("expected only the Auto Skill body:\n%s", out)
+	}
+	press(tea.KeyDown) // Strategy → Create
+	press(tea.KeySpace)
+	press(tea.KeyTab)
+	press(tea.KeyTab)
+	if !c.ActivePanel().Dirty() {
+		t.Fatal("switching tabs discarded the pending skill changes")
+	}
+	press(tea.KeyEscape)
+	c.Enter(120, 40)
+	if c.ActivePanel().Title() != "Auto Skill" || c.ActivePanel().Dirty() {
+		t.Fatal("reopening should remember the tab, not the discarded changes")
 	}
 }
 
 // TestSkillPanelScopeFlips toggles between user / project save targets with ←→.
 func TestSkillPanelScopeFlips(t *testing.T) {
-	c, p := newTestMemorySkills()
+	c, p := newTestSkillPanel()
 	if p.form.scope != "user" {
 		t.Fatalf("default scope: got %q, want user", p.form.scope)
 	}
@@ -121,9 +128,7 @@ func TestSkillPanelScopeFlips(t *testing.T) {
 // unchanged default collapses to "" while an edited override persists (into
 // the shared Strategy setting).
 func TestSkillPanelStrategyEditorFlow(t *testing.T) {
-	c := NewMemorySkillsSelector(MemorySkillsDeps{})
-	c.Enter(100, 40)
-	p := c.ActivePanel().(*memorySkillsPanel)
+	c, p := newTestSkillPanel()
 
 	// Strategy is the first editable row, so enter opens it.
 	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -193,15 +198,16 @@ func fakeLearnedStore(names ...string) LearnedSkillStore {
 	}
 }
 
-func newTestMemorySkillsWith(store LearnedSkillStore) (*PanelPopup, *memorySkillsPanel) {
-	c := NewMemorySkillsSelector(MemorySkillsDeps{Learned: store})
+func newTestSkillPanelWith(store LearnedSkillStore) (*PanelPopup, *autoSkillPanel) {
+	c := NewReflectionSelector(ReflectionDeps{Learned: store})
 	c.Enter(120, 40)
-	return &c, c.ActivePanel().(*memorySkillsPanel)
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
+	return &c, c.ActivePanel().(*autoSkillPanel)
 }
 
 // openLearnedView navigates from the config to the "Learned skills" entry and
 // opens the inventory drill-in (modeList).
-func openLearnedView(c *PanelPopup, p *memorySkillsPanel) {
+func openLearnedView(c *PanelPopup, p *autoSkillPanel) {
 	for range 20 {
 		if p.mode != modeForm {
 			return
@@ -217,7 +223,7 @@ func openLearnedView(c *PanelPopup, p *memorySkillsPanel) {
 // TestSkillPanelOpensInventory confirms the "Learned skills" entry drills into
 // the inventory list, ↑↓ navigate it, and esc returns to the config form.
 func TestSkillPanelOpensInventory(t *testing.T) {
-	c, p := newTestMemorySkillsWith(fakeLearnedStore("go-table-tests", "pr-triage"))
+	c, p := newTestSkillPanelWith(fakeLearnedStore("go-table-tests", "pr-triage"))
 	openLearnedView(c, p)
 	if p.mode != modeList || p.invCursor != 0 {
 		t.Fatalf("Learned skills entry should open the list at 0, got mode %d cursor %d", p.mode, p.invCursor)
@@ -241,7 +247,7 @@ func TestSkillPanelOpensInventory(t *testing.T) {
 // TestSkillPanelDeleteFlow drives d → confirm → y and checks the skill is
 // removed from disk (the store) and the inventory reloads.
 func TestSkillPanelDeleteFlow(t *testing.T) {
-	c, p := newTestMemorySkillsWith(fakeLearnedStore("go-table-tests", "pr-triage"))
+	c, p := newTestSkillPanelWith(fakeLearnedStore("go-table-tests", "pr-triage"))
 	openLearnedView(c, p)
 	c.HandleKeypress(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	if p.mode != modeConfirm {
@@ -262,7 +268,7 @@ func TestSkillPanelDeleteFlow(t *testing.T) {
 // TestSkillPanelViewScrollAndBack opens the preview, confirms it captures esc
 // (modal) to return to the list rather than dismissing the popup.
 func TestSkillPanelViewScrollAndBack(t *testing.T) {
-	c, p := newTestMemorySkillsWith(fakeLearnedStore("go-table-tests"))
+	c, p := newTestSkillPanelWith(fakeLearnedStore("go-table-tests"))
 	openLearnedView(c, p)
 	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) // open preview
 	if p.mode != modeView {

@@ -35,6 +35,7 @@ func TestAutoSkillNotice(t *testing.T) {
 				mainNotices: make(chan mainNotice, 1),
 				conv:        conv.NewModel(80),
 			}
+			m.conv.OnNotice = func(core.ChatMessage) { t.Error("already-recorded notice was saved again") }
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if tc.cancelBefore {

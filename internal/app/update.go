@@ -83,7 +83,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Search,
 		&m.userInput.Settings,
 		&m.userInput.Autopilot,
-		&m.userInput.MemorySkills,
+		&m.userInput.Reflection,
 		&m.userInput.Transcript,
 		&m.userInput.Tasks, // Native child detail can sit above a Flow inspector.
 		&m.userInput.Flow,
@@ -346,6 +346,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after tool toggle failed", zap.Error(err))
 		}
+		if !m.services.Setting.ReviewSkillEnabled() {
+			m.teardownAutoSkill()
+		}
 		return m, nil
 	case memberMsg:
 		return m, m.handleMemberMsg(msg)
@@ -397,13 +400,13 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearGoal()
 		return m, nil
 	case input.ConfigSavedMsg:
-		// Refresh the in-memory settings handle so re-opening /settings (and any
-		// in-session reader) sees the just-saved values rather than the stale
-		// pre-save snapshot. The panel already persisted to disk.
+		// Retire the old permission snapshot before installing the saved settings.
+		m.teardownAutoSkill()
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
+			return m, nil
 		}
-		m.conv.AddNotice("Memory & Skills settings saved (" + string(msg.Scope) + ")")
+		m.conv.AddNotice("Auto Skill settings saved (" + string(msg.Scope) + ")")
 		m.notifyAutoSkillOverride(msg)
 		// Rewire Auto Skill now; the next turn reconciles ReviewSkill availability.
 		if m.services.Agent.Active() {

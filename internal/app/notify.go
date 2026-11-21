@@ -32,6 +32,7 @@ import (
 type mainNotice struct {
 	// cancelled invalidates a queued notice when its producer is torn down.
 	cancelled   <-chan struct{}
+	recorded    bool // Display is already in the session log.
 	SessionID   string
 	Source      *session.EventRef
 	Destination *session.Session

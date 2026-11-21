@@ -116,11 +116,12 @@ func isMemoryNote(entry os.DirEntry) bool {
 	return entry.Type().IsRegular() && name != AutoMemoryIndexName && strings.HasSuffix(name, ".md")
 }
 
-// Memories lists up to limit readable notes, user store first and sorted by name within each store.
+// Memories lists readable notes, user store first and sorted by name within each store.
+// A zero limit lists all notes.
 func (s MemoryStores) Memories(limit int) []Memory {
 	var out []Memory
 	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
-		if len(out) >= limit {
+		if limit > 0 && len(out) >= limit {
 			break
 		}
 		if store.dir == "" || (store.name == "project" && store.dir == s.User) {
@@ -132,7 +133,7 @@ func (s MemoryStores) Memories(limit int) []Memory {
 		}
 		entries, _ := os.ReadDir(store.dir)
 		for _, entry := range entries {
-			if len(out) >= limit {
+			if limit > 0 && len(out) >= limit {
 				break
 			}
 			if !isMemoryNote(entry) {

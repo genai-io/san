@@ -48,27 +48,64 @@ type noteEvidence struct {
 	Text string `json:"text"`
 }
 
-// Run returns a display-only notice after an accepted write, or an empty notice
-// for a no-op. The request cannot select a path outside its configured store.
-func (m Maintainer) Run(ctx context.Context, stores system.MemoryStores, req Request) (string, error) {
-	if req.op == "" || stores.Off() {
+// Change holds a validated proposal and its open recording. Its owner must
+// apply or discard it after checking that the request is still current.
+type Change struct {
+	recording *session.Completion
+	apply     func(context.Context) (string, error)
+}
+
+func (c *Change) Discard() error {
+	if c == nil || c.apply == nil {
+		return nil
+	}
+	c.apply = nil
+	return c.recording.Close()
+}
+
+func (c *Change) Apply(ctx context.Context) (notice string, err error) {
+	if c == nil || c.apply == nil {
 		return "", nil
+	}
+	apply := c.apply
+	c.apply = nil
+	if err = ctx.Err(); err == nil {
+		notice, err = apply(ctx)
+	}
+	return notice, sidecard.FinishChange(ctx, c.recording, notice, err)
+}
+
+// Run proposes and applies a change for callers that admit input synchronously.
+func (m Maintainer) Run(ctx context.Context, stores system.MemoryStores, req Request) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	change, err := m.Propose(ctx, stores, req)
+	if err != nil {
+		return "", err
+	}
+	return change.Apply(ctx)
+}
+
+// Propose reads the store and calls the model, but does not write to the store.
+func (m Maintainer) Propose(ctx context.Context, stores system.MemoryStores, req Request) (change *Change, err error) {
+	if req.op == "" || stores.Off() {
+		return nil, nil
 	}
 	path, err := storePath(stores, req.scope)
 	if err != nil || path == "" {
-		return "", err
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return nil, err
 	}
 	s, err := snapshot(path, req)
 	if err != nil || (req.target != "" && len(s.notes) == 0) {
-		return "", err
+		return nil, err
 	}
 	if m.Provider == nil {
-		return "", errors.New("memory maintenance has no model provider")
+		return nil, errors.New("memory maintenance has no model provider")
 	}
 	instruction := map[string]string{
 		"remember": "Save the stated durable fact as a new note, if not already covered.",
@@ -86,18 +123,28 @@ func (m Maintainer) Run(ctx context.Context, stores system.MemoryStores, req Req
 	}
 	payload, err := json.Marshal(data)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return sidecard.ApplyChange(ctx, m.Provider, llm.CompletionOptions{
+	recording := m.Recording.Completion(session.PurposeMemoryMaintain)
+	defer func() {
+		if change == nil {
+			err = sidecard.FinishChange(ctx, recording, "", err)
+		}
+	}()
+	text, err := sidecard.CompleteProposal(ctx, m.Provider, llm.CompletionOptions{
 		Model: m.Model, SystemPrompt: systemPrompt, MaxTokens: 4096, ThinkingEffort: m.Effort,
 		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.TextContent(instruction + "\n" + string(payload))}},
-	}, m.Recording.Completion(session.PurposeMemoryMaintain), func(ctx context.Context, text string) (string, error) {
-		p, err := parseProposal(text, req)
-		if err != nil || p.Action == "none" {
-			return "", err
-		}
+	}, recording)
+	if err != nil {
+		return nil, err
+	}
+	p, err := parseProposal(text, req)
+	if err != nil || p.Action == "none" {
+		return nil, err
+	}
+	return &Change{recording: recording, apply: func(ctx context.Context) (string, error) {
 		return apply(ctx, path, req, s, p)
-	})
+	}}, nil
 }
 
 func parseProposal(text string, req Request) (proposal, error) {

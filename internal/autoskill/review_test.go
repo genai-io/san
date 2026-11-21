@@ -2,7 +2,10 @@ package autoskill
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"iter"
+	"os"
 	"strings"
 	"testing"
 
@@ -82,6 +85,73 @@ func TestSideReviewOriginalSession(t *testing.T) {
 	}
 	if err := owner.Err(); err != nil {
 		t.Fatalf("review closed caller-owned writer: %v", err)
+	}
+}
+
+func TestSideReviewDeletesOversizedUsedSkill(t *testing.T) {
+	const name = "oversized-skill"
+	// The multibyte rune straddles the prompt budget; the tail is never sent.
+	prefix := strings.Repeat("a", 8*1024-1)
+	for _, changed := range []bool{false, true} {
+		label := "unchanged"
+		if changed {
+			label = "tail changed during review"
+		}
+		t.Run(label, func(t *testing.T) {
+			mgr, cwd := newTestSkillManagerWithPerms(t, SkillPermissions{AllowDelete: true})
+			creator := NewSkillManager(cwd, SkillPermissions{AllowCreate: true})
+			if _, err := creator.Create(name, "Old test procedure", prefix+"é\nold tail", "project"); err != nil {
+				t.Fatal(err)
+			}
+			p, err := mgr.requireAgentOwned(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reply := aitest.Says(`{"action":"delete","name":"oversized-skill","note":"procedure is obsolete"}`)
+			driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+				if changed {
+					body := strings.Replace(p.body, "old tail", "new tail", 1)
+					if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, body)), 0o644); err != nil {
+						return aitest.Fails(err)(ctx, req)
+					}
+				}
+				return reply(ctx, req)
+			})
+			evidence := []core.Message{
+				core.UserMessage("Follow the current test procedure", nil),
+				core.AssistantMessage("", "", []core.ToolCall{{ID: "used", Name: "Skill", Input: `{"skill":"oversized-skill"}`}}),
+				core.ToolResultMessage(core.ToolResult{ToolCallID: "used", Content: ai.TextContent("loaded")}),
+			}
+			r := SideReview{Provider: reviewProvider{driver}, Recording: reviewRecording(t), Skills: mgr}
+			summary, err := r.Run(t.Context(), evidence)
+			if driver.Calls() != 1 {
+				t.Fatalf("review calls = %d, want 1 (err = %v)", driver.Calls(), err)
+			}
+			var payload struct {
+				Used map[string]string `json:"editable_used_skills"`
+			}
+			if err := json.Unmarshal([]byte(driver.Last().Messages[0].Content.Text()), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if got := payload.Used[name]; got != prefix {
+				t.Fatalf("review did not receive the expected clipped prefix (got %d bytes)", len(got))
+			}
+			if changed {
+				if err == nil || !strings.Contains(err.Error(), "changed during Auto Skill review") {
+					t.Fatalf("want stale revision rejection, got summary=%q err=%v", summary, err)
+				}
+				if content, err := os.ReadFile(p.path); err != nil || !strings.Contains(string(content), "new tail") {
+					t.Fatalf("edited skill was not preserved: %v", err)
+				}
+			} else {
+				if err != nil || !strings.Contains(summary, "delete "+name) {
+					t.Fatalf("want successful delete, got summary=%q err=%v", summary, err)
+				}
+				if _, err := os.Stat(p.path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("skill file should be gone, stat err=%v", err)
+				}
+			}
+		})
 	}
 }
 
