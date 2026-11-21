@@ -62,8 +62,9 @@ function sessionLabel(item) {
 function displaySession(id) {
   const item = {...(state.sessionSummary || sessionPages.items.get(id)), ...state.streamIdentity};
   const meta = $('#session-meta');
-  meta.textContent = sessionLabel(item);
-  meta.title = sessionLabel(item) + ' · ' + id;
+  const label = sessionLabel(item);
+  meta.textContent = label;
+  meta.title = label + ' · ' + id;
   const parent = $('#session-parent');
   parent.hidden = !item.parent;
   if (item.parent) {
@@ -105,9 +106,10 @@ async function loadSessions(index = 0, cursor = '') {
       node.classList.toggle('active', item.id === state.currentSession);
       const button = textElement('button', '', 'session-button');
       button.type = 'button';
-      button.title = sessionLabel(item) + ' · ' + item.id;
+      const label = sessionLabel(item);
+      button.title = label + ' · ' + item.id;
       button.addEventListener('click', () => openSession(item.id));
-      button.appendChild(textElement('span', sessionLabel(item), 'session-label'));
+      button.appendChild(textElement('span', label, 'session-label'));
       const date = new Date(item.updatedAt);
       if (!Number.isNaN(date.getTime())) {
         const time = textElement('time', date.toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}), 'id');

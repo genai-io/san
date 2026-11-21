@@ -10,7 +10,13 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-var memoryScopes = [...]setting.Scope{setting.ScopeUser, setting.ScopeProject}
+var memoryScopes = [...]struct {
+	scope setting.Scope
+	label string
+}{
+	{setting.ScopeUser, "User"},
+	{setting.ScopeProject, "Project"},
+}
 
 type autoMemoryPanel struct {
 	workspace func() (string, *setting.Settings)
@@ -41,8 +47,8 @@ func (p *autoMemoryPanel) load(svc *setting.Settings) {
 		p.status = "settings unavailable"
 		return
 	}
-	for i, scope := range memoryScopes {
-		p.values[i] = setting.AutoMemoryAt(scope)
+	for i, row := range memoryScopes {
+		p.values[i] = setting.AutoMemoryAt(row.scope)
 	}
 	p.status = "effective: " + onOff(svc.AutoMemory()) + " (" + memorySource(p.values[0], p.values[1]) + ")"
 }
@@ -73,7 +79,7 @@ func (p *autoMemoryPanel) toggle() {
 	if value == nil {
 		value = p.values[0]
 	}
-	p.err = setAutoMemory(svc, cwd, value != nil && !*value, memoryScopes[p.cursor])
+	p.err = setAutoMemory(svc, cwd, value != nil && !*value, memoryScopes[p.cursor].scope)
 	p.load(svc)
 }
 
@@ -82,7 +88,8 @@ func (p *autoMemoryPanel) Render(width, _ int) string {
 	focus := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
 	var b strings.Builder
 	b.WriteString(muted.Render(p.status) + "\n\n")
-	for i, label := range [...]string{"User", "Project"} {
+	for i, row := range memoryScopes {
+		label := row.label
 		cursor, status := "  ", "inherit"
 		if i == p.cursor {
 			cursor = focus.Render("▸ ")

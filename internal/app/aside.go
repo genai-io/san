@@ -14,7 +14,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-// aasideRequest couples a captured Aside with the UI's result owner.
+// asideRequest couples a captured Aside with the UI's result owner.
 type asideRequest struct {
 	label    string
 	snapshot aside.Snapshot
@@ -65,11 +65,7 @@ func closeCompletion(c *session.Completion, diagnostic string) {
 }
 
 func finishAside(c *session.Completion, text string) bool {
-	var events []session.Event
-	if text != "" {
-		events = append(events, session.Event{Payload: session.AnnotationAddPayload{Text: text}})
-	}
-	if err := c.Finish(context.Background(), events...); err != nil {
+	if err := aside.FinishChange(context.Background(), c, text, nil); err != nil {
 		log.Logger().Error("finish Aside recording", zap.Error(err))
 		return false
 	}

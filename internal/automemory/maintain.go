@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/aside"
@@ -33,14 +32,14 @@ type Maintainer struct {
 }
 
 type proposal struct {
-	Action      string `json:"action"`
-	File        string `json:"file"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Body        string `json:"body"`
-	Old         string `json:"old"`
-	Replacement string `json:"replacement"`
+	Action      memoryAction `json:"action"`
+	File        string       `json:"file"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Type        string       `json:"type"`
+	Body        string       `json:"body"`
+	Old         string       `json:"old"`
+	Replacement string       `json:"replacement"`
 }
 
 type noteEvidence struct {
@@ -107,10 +106,10 @@ func (m Maintainer) Propose(ctx context.Context, stores system.MemoryStores, req
 	if m.Provider == nil {
 		return nil, errors.New("memory maintenance has no model provider")
 	}
-	instruction := map[string]string{
-		"remember": "Save the stated durable fact as a new note, if not already covered.",
-		"update":   "Revise only the relevant excerpt in the exact requested note.",
-		"forget":   "Remove only the exact note explicitly named in this request.",
+	instruction := map[memoryAction]string{
+		actionRemember: "Save the stated durable fact as a new note, if not already covered.",
+		actionUpdate:   "Revise only the relevant excerpt in the exact requested note.",
+		actionForget:   "Remove only the exact note explicitly named in this request.",
 	}[req.op]
 	data := struct {
 		Scope    string         `json:"scope"`
@@ -139,7 +138,7 @@ func (m Maintainer) Propose(ctx context.Context, stores system.MemoryStores, req
 		return nil, err
 	}
 	p, err := parseProposal(text, req)
-	if err != nil || p.Action == "none" {
+	if err != nil || p.Action == actionNone {
 		return nil, err
 	}
 	return &Change{recording: recording, apply: func(ctx context.Context) (string, error) {
@@ -158,14 +157,14 @@ func parseProposal(text string, req Request) (proposal, error) {
 	}
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
-	if p.Action == "none" && p.File == "" && !metadata && !patch {
+	if p.Action == actionNone && p.File == "" && !metadata && !patch {
 		return p, nil
 	}
 	if p.Action != req.op || !validName(p.File) || (req.target != "" && p.File != req.target) {
 		return p, invalid
 	}
 	switch p.Action {
-	case "remember":
+	case actionRemember:
 		if patch || !shortLabel(p.Name, 80) || !shortLabel(p.Description, 180) || !noteText(p.Body) {
 			return p, invalid
 		}
@@ -174,11 +173,11 @@ func parseProposal(text string, req Request) (proposal, error) {
 		default:
 			return p, invalid
 		}
-	case "update":
+	case actionUpdate:
 		if metadata || !noteText(p.Old) || !noteText(p.Replacement) {
 			return p, invalid
 		}
-	case "forget":
+	case actionForget:
 		if metadata || patch {
 			return p, invalid
 		}
@@ -189,14 +188,11 @@ func parseProposal(text string, req Request) (proposal, error) {
 }
 
 func shortLabel(s string, maxBytes int) bool {
-	return s != "" && strings.TrimSpace(s) == s && len(s) <= maxBytes && !strings.ContainsAny(s, `[]\<>`) &&
-		strings.IndexFunc(s, unicode.IsControl) < 0
+	return aside.ValidLabel(s, maxBytes) && !strings.ContainsAny(s, `[]\<>`)
 }
 
 func noteText(s string) bool {
-	return strings.TrimSpace(s) != "" && len(s) <= maxNote && strings.IndexFunc(s, func(r rune) bool {
-		return unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r'
-	}) < 0
+	return strings.TrimSpace(s) != "" && aside.ValidMultiline(s, maxNote)
 }
 
 func renderNote(p proposal) string {

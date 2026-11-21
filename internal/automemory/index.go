@@ -45,7 +45,7 @@ func editIndex(text string, p proposal) (string, error) {
 		}
 		entry := indexEntry.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
 		if entry != nil && entry[1] == p.File {
-			if p.Action == "remember" {
+			if p.Action == actionRemember {
 				return "", errors.New("memory index already has an entry for this note")
 			}
 			continue
@@ -57,7 +57,7 @@ func editIndex(text string, p proposal) (string, error) {
 		}
 		out.WriteString(line)
 	}
-	if p.Action == "remember" {
+	if p.Action == actionRemember {
 		newline := "\n"
 		if strings.Contains(text, "\r\n") {
 			newline = "\r\n"

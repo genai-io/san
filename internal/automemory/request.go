@@ -7,10 +7,20 @@ import (
 
 const maxEvidence = 4096
 
+type memoryAction string
+
+const (
+	actionNone     memoryAction = "none"
+	actionRemember memoryAction = "remember"
+	actionUpdate   memoryAction = "update"
+	actionForget   memoryAction = "forget"
+)
+
 // Request is an explicit maintenance instruction, constructed by ParseRequest.
 // Its zero value does not authorize a write.
 type Request struct {
-	op, scope, target, evidence string
+	op                      memoryAction
+	scope, target, evidence string
 }
 
 var (
@@ -30,11 +40,11 @@ func ParseRequest(text string) (Request, bool) {
 		return Request{}, false
 	}
 	if parts := forgetRequest.FindStringSubmatch(text); parts != nil && validName(parts[2]) {
-		return Request{op: "forget", scope: strings.ToLower(parts[1]), target: parts[2]}, true
+		return Request{op: actionForget, scope: strings.ToLower(parts[1]), target: parts[2]}, true
 	}
 	if parts := updateRequest.FindStringSubmatch(text); parts != nil && validName(parts[2]) {
 		if evidence := strings.TrimSpace(text[len(parts[0]):]); evidence != "" {
-			return Request{op: "update", scope: strings.ToLower(parts[1]), target: parts[2], evidence: evidence}, true
+			return Request{op: actionUpdate, scope: strings.ToLower(parts[1]), target: parts[2], evidence: evidence}, true
 		}
 	}
 	if parts := rememberRequest.FindStringSubmatch(text); parts != nil {
@@ -43,7 +53,7 @@ func ParseRequest(text string) (Request, bool) {
 			if scope == "" {
 				scope = "project"
 			}
-			return Request{op: "remember", scope: scope, evidence: evidence}, true
+			return Request{op: actionRemember, scope: scope, evidence: evidence}, true
 		}
 	}
 	return Request{}, false

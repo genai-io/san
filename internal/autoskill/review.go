@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/aside"
@@ -130,7 +129,7 @@ func parseSkillProposal(text string, perms SkillPermissions, used map[string]str
 	if p == (skillProposal{Action: "none"}) {
 		return p, nil
 	}
-	if !skillNameRe.MatchString(p.Name) || !reviewLabel(p.Note, 80) {
+	if !skillNameRe.MatchString(p.Name) || !aside.ValidLabel(p.Note, 80) {
 		return p, invalid
 	}
 	_, isUsed := used[p.Name]
@@ -139,7 +138,7 @@ func parseSkillProposal(text string, perms SkillPermissions, used map[string]str
 	switch p.Action {
 	case "create":
 		if !perms.AllowCreate || patchFields || (p.Level != "user" && p.Level != "project") ||
-			!reviewLabel(p.Description, 180) || strings.TrimSpace(p.Body) == "" || !reviewBody(p.Body) {
+			!aside.ValidLabel(p.Description, 180) || strings.TrimSpace(p.Body) == "" || !reviewBody(p.Body) {
 			return p, invalid
 		}
 	case "patch":
@@ -156,14 +155,8 @@ func parseSkillProposal(text string, perms SkillPermissions, used map[string]str
 	return p, nil
 }
 
-func reviewLabel(s string, maxBytes int) bool {
-	return s != "" && strings.TrimSpace(s) == s && len(s) <= maxBytes && strings.IndexFunc(s, unicode.IsControl) < 0
-}
-
 func reviewBody(s string) bool {
-	return len(s) <= 8*1024 && strings.IndexFunc(s, func(r rune) bool {
-		return unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r'
-	}) < 0
+	return aside.ValidMultiline(s, 8*1024)
 }
 
 type reviewExcerpt struct {

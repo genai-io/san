@@ -26,9 +26,7 @@ func (d *Data) UnmarshalJSON(data []byte) error {
 		block = wire.Legacy
 	}
 	if block != nil {
-		if err := json.Unmarshal(block, &d.AutoSkill); err != nil {
-			return err
-		}
+		return json.Unmarshal(block, &d.AutoSkill)
 	}
 	return nil
 }
@@ -41,12 +39,11 @@ func (d *Data) UnmarshalYAML(node *yaml.Node) error {
 	if err := node.Decode(&fields); err != nil {
 		return err
 	}
-	if _, canonical := fields["autoSkill"]; !canonical {
-		if legacy, ok := fields["selfLearn"]; ok {
-			if err := legacy.Decode(&d.AutoSkill); err != nil {
-				return err
-			}
-		}
+	if _, canonical := fields["autoSkill"]; canonical {
+		return nil
+	}
+	if legacy, ok := fields["selfLearn"]; ok {
+		return legacy.Decode(&d.AutoSkill)
 	}
 	return nil
 }

@@ -254,7 +254,7 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 		}
 	}
 	switch p.Action {
-	case "remember":
+	case actionRemember:
 		index, err := editIndex(s.index.text, p)
 		if err != nil {
 			return "", err
@@ -279,7 +279,7 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 			return "", fmt.Errorf("memory note created but index update failed: %w", err)
 		}
 		return fmt.Sprintf("Memory · saved %s to %s", p.File, req.scope), nil
-	case "update":
+	case actionUpdate:
 		old := s.notes[0].rev
 		text, err := patchNote(old.text, p)
 		if err != nil || text == old.text {
@@ -292,7 +292,7 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 			return "", err
 		}
 		return fmt.Sprintf("Memory · updated %s in %s", p.File, req.scope), nil
-	case "forget":
+	case actionForget:
 		index, err := editIndex(s.index.text, p)
 		if err != nil {
 			return "", err
