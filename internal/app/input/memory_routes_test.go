@@ -80,7 +80,7 @@ func TestReflectionTogglesScopedMemory(t *testing.T) {
 	}
 	press(tea.KeyTab)
 	p := c.ActivePanel().(*autoSkillPanel)
-	if got := p.skillStatus(nil); got != "off · ReviewSkill disabled" {
+	if got := p.skillStatus(); got != "off · ReviewSkill disabled" {
 		t.Fatalf("default Auto Skill status = %q", got)
 	}
 	if err := setting.UpdateAutoSkillAt(setting.AutoSkillSettings{}, setting.ScopeUser); err != nil {
@@ -89,11 +89,11 @@ func TestReflectionTogglesScopedMemory(t *testing.T) {
 	if err := svc.Reload(cwd); err != nil {
 		t.Fatal(err)
 	}
-	if got := p.skillStatus(nil); got != "on" {
+	if got := p.skillStatus(); got != "on" {
 		t.Fatalf("Auto Skill can run with Auto Memory off; status = %q", got)
 	}
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "1")
-	if got := p.skillStatus(nil); got != "off · SAN_DISABLE_SELF_LEARN" {
+	if got := p.skillStatus(); got != "off · SAN_DISABLE_SELF_LEARN" {
 		t.Fatalf("hard-disabled Auto Skill status = %q", got)
 	}
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -69,7 +68,7 @@ func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, e
 			}
 			p, err := r.Skills.requireAgentOwned(name)
 			if err == nil {
-				used[name] = clipReviewText(p.body, 8*1024)
+				used[name] = core.UTF8Prefix(p.body, 8*1024)
 				// Mutation checks still use the complete revision, not the excerpt.
 				revisions[name] = p
 			}
@@ -88,7 +87,7 @@ func (r SideReview) Run(ctx context.Context, snapshot []core.Message) (string, e
 		Inventory string            `json:"inventory"`
 		Turn      []reviewExcerpt   `json:"turn"`
 		Used      map[string]string `json:"editable_used_skills,omitempty"`
-	}{perms, clipReviewText(strategy, 8*1024), clipReviewText(renderInventory(r.Skills), 8*1024), turn, used})
+	}{perms, core.UTF8Prefix(strategy, 8*1024), core.UTF8Prefix(renderInventory(r.Skills), 8*1024), turn, used})
 	if err != nil {
 		return "", err
 	}
@@ -125,9 +124,7 @@ func parseSkillProposal(text string, perms SkillPermissions, used map[string]str
 	if len(text) > 16*1024 || !utf8.ValidString(text) {
 		return p, invalid
 	}
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.DisallowUnknownFields()
-	if dec.Decode(&p) != nil || dec.Decode(new(any)) != io.EOF {
+	if core.DecodeStrictJSON(strings.NewReader(text), &p) != nil {
 		return p, invalid
 	}
 	if p == (skillProposal{Action: "none"}) {
@@ -169,16 +166,6 @@ func reviewBody(s string) bool {
 	}) < 0
 }
 
-func clipReviewText(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
-}
-
 type reviewExcerpt struct {
 	Role ai.Role `json:"role"`
 	Text string  `json:"text"`
@@ -200,7 +187,7 @@ func reviewEvidence(snapshot []core.Message) ([]reviewExcerpt, []string) {
 	if len(turn) == 0 {
 		return nil, nil
 	}
-	out := []reviewExcerpt{{ai.RoleUser, clipReviewText(turn[0].Content.Text(), 4*1024)}}
+	out := []reviewExcerpt{{ai.RoleUser, core.UTF8Prefix(turn[0].Content.Text(), 4*1024)}}
 	var names []string
 	var reason string
 	seen := make(map[string]bool)
@@ -231,12 +218,12 @@ func reviewEvidence(snapshot []core.Message) ([]reviewExcerpt, []string) {
 	for _, m := range turn[max(1, len(turn)-recent):] {
 		if m.Role == ai.RoleAssistant {
 			if text := m.Content.Text(); text != "" {
-				out = append(out, reviewExcerpt{ai.RoleAssistant, clipReviewText(text, 1536)})
+				out = append(out, reviewExcerpt{ai.RoleAssistant, core.UTF8Prefix(text, 1536)})
 			}
 		}
 	}
 	if reason != "" {
-		out = append(out, reviewExcerpt{ai.RoleAssistant, "ReviewSkill reason: " + clipReviewText(reason, 512)})
+		out = append(out, reviewExcerpt{ai.RoleAssistant, "ReviewSkill reason: " + core.UTF8Prefix(reason, 512)})
 	}
 	return out, names
 }

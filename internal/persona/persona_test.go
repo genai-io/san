@@ -135,7 +135,7 @@ func TestParseDir_ToleratesBrokenSettings(t *testing.T) {
 func TestParseDir_OverlayFields(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "overlay")
 	writeFile(t, filepath.Join(dir, "settings.json"),
-		`{"description":"o","disabledTools":{"WebSearch":true,"Evolve":true},"permissions":{"allow":["Bash(pytest:*)"]},"selfLearn":{"strategy":"review reusable workflows"}}`)
+		`{"description":"o","disabledTools":{"WebSearch":true,"ReviewSkill":true},"permissions":{"allow":["Bash(pytest:*)"]},"selfLearn":{"strategy":"review reusable workflows"}}`)
 	p, ok := parseDir(dir)
 	if !ok || p.Settings == nil {
 		t.Fatal("expected persona settings to load")

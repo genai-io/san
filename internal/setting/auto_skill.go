@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/genai-io/san/internal/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,7 +30,6 @@ func (d *Data) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	}
-	d.migrateReviewSkill()
 	return nil
 }
 
@@ -48,11 +48,10 @@ func (d *Data) UnmarshalYAML(node *yaml.Node) error {
 			}
 		}
 	}
-	d.migrateReviewSkill()
 	return nil
 }
 
-const reviewSkillTool = "ReviewSkill"
+const reviewSkillTool = core.ReviewSkillToolName
 
 // AutoSkillDisabledByEnv reports whether the legacy hard-disable switch is set.
 func AutoSkillDisabledByEnv() bool {
@@ -70,23 +69,6 @@ func (s *Settings) ReviewSkillEnabled() bool {
 		}
 	}
 	return !IsDefaultDisabledTool(reviewSkillTool)
-}
-
-func (d *Data) migrateReviewSkill() {
-	const oldName = "Evolve"
-	if disabled, ok := d.DisabledTools[oldName]; ok {
-		if _, canonical := d.DisabledTools[reviewSkillTool]; !canonical {
-			d.DisabledTools[reviewSkillTool] = disabled
-		}
-		delete(d.DisabledTools, oldName)
-	}
-	for _, rules := range [][]string{d.Permissions.Allow, d.Permissions.Deny, d.Permissions.Ask} {
-		for i, rule := range rules {
-			if rule == oldName || strings.HasPrefix(rule, oldName+"(") {
-				rules[i] = reviewSkillTool + rule[len(oldName):]
-			}
-		}
-	}
 }
 
 func (s AutoSkillPermissions) MarshalYAML() (any, error) {

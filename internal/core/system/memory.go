@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -117,11 +118,11 @@ func isMemoryNote(entry os.DirEntry) bool {
 }
 
 // Memories lists readable notes, user store first and sorted by name within each store.
-// A zero limit lists all notes.
-func (s MemoryStores) Memories(limit int) []Memory {
+// A zero limit lists all notes. A canceled context stops the scan.
+func (s MemoryStores) Memories(ctx context.Context, limit int) []Memory {
 	var out []Memory
 	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
-		if limit > 0 && len(out) >= limit {
+		if ctx.Err() != nil || limit > 0 && len(out) >= limit {
 			break
 		}
 		if store.dir == "" || (store.name == "project" && store.dir == s.User) {
@@ -133,7 +134,7 @@ func (s MemoryStores) Memories(limit int) []Memory {
 		}
 		entries, _ := os.ReadDir(store.dir)
 		for _, entry := range entries {
-			if limit > 0 && len(out) >= limit {
+			if ctx.Err() != nil || limit > 0 && len(out) >= limit {
 				break
 			}
 			if !isMemoryNote(entry) {

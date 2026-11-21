@@ -107,18 +107,15 @@ func queueAutoSkillNotice(ctx context.Context, notices chan<- mainNotice, owner 
 // notifyAutoSkillOverride reports actions whose effective permissions differ
 // from the settings just saved in the Auto Skill tab.
 func (m *model) notifyAutoSkillOverride(msg input.ConfigSavedMsg) {
-	snap := m.services.Setting.Snapshot()
-	if snap == nil {
-		return
-	}
+	live := m.services.Setting.AutoSkill().Skills
 	var actions []string
-	if msg.SavedAutoSkill.Skills.AllowCreate() != snap.AutoSkill.Skills.AllowCreate() {
+	if msg.SavedAutoSkill.Skills.AllowCreate() != live.AllowCreate() {
 		actions = append(actions, "Skill create")
 	}
-	if msg.SavedAutoSkill.Skills.AllowUpdate() != snap.AutoSkill.Skills.AllowUpdate() {
+	if msg.SavedAutoSkill.Skills.AllowUpdate() != live.AllowUpdate() {
 		actions = append(actions, "Skill update")
 	}
-	if msg.SavedAutoSkill.Skills.AllowDelete() != snap.AutoSkill.Skills.AllowDelete() {
+	if msg.SavedAutoSkill.Skills.AllowDelete() != live.AllowDelete() {
 		actions = append(actions, "Skill delete")
 	}
 	if len(actions) == 0 {

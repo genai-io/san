@@ -55,8 +55,12 @@ func (r asideRequest) complete(ctx context.Context) (llm.CompletionResponse, err
 
 // closeAside resolves discarded attempts against their original owner, even after a switch.
 func closeAside(c *session.Completion) {
+	closeCompletion(c, "close Aside recording")
+}
+
+func closeCompletion(c *session.Completion, diagnostic string) {
 	if err := c.Close(); err != nil {
-		log.Logger().Error("close Aside recording", zap.Error(err))
+		log.Logger().Error(diagnostic, zap.Error(err))
 	}
 }
 

@@ -182,27 +182,18 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 				next, _ := m.releaseQueuedMessage()
 				return next
 			}
-			if reply.input.stores != m.autoMemory() {
-				discardPreparedMemory(reply.result)
-				if reply.result.Handled {
-					next, _ := m.releaseQueuedMessage()
-					return next
-				}
-				cmd, _ := m.sendFlowMainStepInput(r, head, chat, p)
-				return cmd
-			}
-			if reply.result.Handled {
-				m.finishMemoryMaintenance(reply, false)
+			switch m.resolveMemoryAdmission(reply, &p, false) {
+			case memoryStaleMaintenance:
+				next, _ := m.releaseQueuedMessage()
+				return next
+			case memoryMaintained:
 				m.userInput.Queue.Dequeue()
 				next, _ := m.releaseQueuedMessage()
 				return tea.Batch(append(m.CommitMessages(), next)...)
-			}
-			if reply.err != nil {
-				closeMemoryInput(reply.result.Completion)
+			case memoryFailed:
 				m.pendingMessages.Hold(nil)
 				return func() tea.Msg { return agentSendFailedMsg{err: reply.err} }
 			}
-			p.Message, p.Completion = reply.result.Message, reply.result.Completion
 			cmd, _ := m.sendFlowMainStepInput(r, head, chat, p)
 			return cmd
 		}), true
@@ -212,12 +203,8 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 
 func (m *model) sendFlowMainStepInput(r *flowMainRequest, head input.QueueItem, chat core.ChatMessage, p pendingMessage) (tea.Cmd, bool) {
 	p.Message = m.attachPendingReminders(p.Message)
-	if r != m.flowMainRequest || !m.flowMainWriterActive() || r.msg.ctx.Err() != nil {
-		closeMemoryInput(p.Completion)
-		m.pendingMessages.Hold(nil)
-		return nil, false
-	}
-	if err := m.services.Agent.SendInput(p); err != nil {
+	canSend := r == m.flowMainRequest && m.flowMainWriterActive() && r.msg.ctx.Err() == nil
+	if !canSend || m.services.Agent.SendInput(p) != nil {
 		closeMemoryInput(p.Completion)
 		m.pendingMessages.Hold(nil)
 		return nil, false

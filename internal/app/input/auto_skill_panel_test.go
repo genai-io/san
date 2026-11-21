@@ -19,7 +19,7 @@ func newTestSkillPanel() (*PanelPopup, *autoSkillPanel) {
 // Space would crash).
 func TestSkillPanelCursorSkipsHeaders(t *testing.T) {
 	c, p := newTestSkillPanel()
-	rows := p.form.rowsFn()
+	rows := p.form.rows
 
 	if !rows[p.form.cursor].editable() {
 		t.Fatalf("initial cursor on non-editable row %d (%v)", p.form.cursor, rows[p.form.cursor].kind)
@@ -212,7 +212,7 @@ func openLearnedView(c *PanelPopup, p *autoSkillPanel) {
 		if p.mode != modeForm {
 			return
 		}
-		if p.form.rowsFn()[p.form.cursor].entryID == "learned" {
+		if p.form.rows[p.form.cursor].entryID == "learned" {
 			c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 			return
 		}

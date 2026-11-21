@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -359,16 +360,7 @@ func newEventPayload(t EventType) EventPayload {
 func knownEventType(t EventType) bool { return newEventPayload(t) != nil }
 
 func strictEventJSON(b []byte, v any) error {
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.DisallowUnknownFields()
-	d.UseNumber() // Native schema const/enum integers must not round through float64.
-	if err := d.Decode(v); err != nil {
-		return err
-	}
-	if err := d.Decode(new(any)); err != io.EOF {
-		return fmt.Errorf("trailing JSON")
-	}
-	return nil
+	return core.DecodeStrictJSON(bytes.NewReader(b), v)
 }
 
 // checkEventJSONKeys rejects ambiguous duplicate object members without rewriting

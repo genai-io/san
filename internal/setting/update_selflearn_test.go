@@ -56,7 +56,7 @@ func TestUpdateAutoSkillAtPersistsDisable(t *testing.T) {
 	}
 }
 
-func TestUpdateAutoSkillAtSyncsEvolveTool(t *testing.T) {
+func TestUpdateAutoSkillAtSyncsReviewSkillTool(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -86,10 +86,10 @@ func TestUpdateAutoSkillAtSyncsEvolveTool(t *testing.T) {
 				t.Fatal(err)
 			}
 			if disabled, ok := d.DisabledTools[reviewSkillTool]; !ok || disabled != tc.disabled {
-				t.Fatalf("Evolve disabled = %v (explicit: %v), want %v", disabled, ok, tc.disabled)
+				t.Fatalf("ReviewSkill disabled = %v (explicit: %v), want %v", disabled, ok, tc.disabled)
 			}
 			if WithDefaultDisabledTools(d.DisabledTools)[reviewSkillTool] != tc.disabled {
-				t.Fatal("saved toggle did not override the Evolve factory default")
+				t.Fatal("saved toggle did not override the ReviewSkill factory default")
 			}
 		})
 	}
@@ -140,7 +140,7 @@ func TestUpdateAutoSkillAtPreservesOtherSettings(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark","disabledTools":{"Evolve":true,"Bash":true}}`), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark","disabledTools":{"ReviewSkill":true,"Bash":true}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,6 +163,6 @@ func TestUpdateAutoSkillAtPreservesOtherSettings(t *testing.T) {
 		t.Fatalf("selfLearn not written: %+v", d.AutoSkill)
 	}
 	if d.DisabledTools[reviewSkillTool] || !d.DisabledTools["Bash"] {
-		t.Fatalf("Evolve should be enabled without changing other tools: %+v", d.DisabledTools)
+		t.Fatalf("ReviewSkill should be enabled without changing other tools: %+v", d.DisabledTools)
 	}
 }

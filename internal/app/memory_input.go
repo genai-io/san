@@ -71,9 +71,7 @@ func (m *model) startMemoryInput(parent context.Context, head pendingMessage, ac
 }
 
 func closeMemoryInput(c *session.Completion) {
-	if err := c.Close(); err != nil {
-		log.Logger().Error("close memory side", zap.Error(err))
-	}
+	closeCompletion(c, "close memory side")
 }
 
 func discardPreparedMemory(result agent.PreparedMemory) {
@@ -107,6 +105,38 @@ func (m *model) finishMemoryMaintenance(msg memoryInputMsg, showNoOp bool) {
 	}
 }
 
+type memoryAdmission uint8
+
+const (
+	memoryAdmit memoryAdmission = iota
+	memoryStaleRecall
+	memoryStaleMaintenance
+	memoryMaintained
+	memoryFailed
+)
+
+// resolveMemoryAdmission runs after the caller verifies it still owns the queue head.
+// The caller decides how to resume its queue after each outcome.
+func (m *model) resolveMemoryAdmission(msg memoryInputMsg, head *pendingMessage, showNoOp bool) memoryAdmission {
+	if msg.input.stores != m.autoMemory() {
+		discardPreparedMemory(msg.result)
+		if msg.result.Handled {
+			return memoryStaleMaintenance
+		}
+		return memoryStaleRecall
+	}
+	if msg.result.Handled {
+		m.finishMemoryMaintenance(msg, showNoOp)
+		return memoryMaintained
+	}
+	if msg.err != nil {
+		closeMemoryInput(msg.result.Completion)
+		return memoryFailed
+	}
+	head.Message, head.Completion, head.MemoryReady = msg.result.Message, msg.result.Completion, true
+	return memoryAdmit
+}
+
 func (m *model) cancelMemoryInput() {
 	if r := m.memoryInput; r != nil {
 		m.memoryInput = nil
@@ -134,24 +164,18 @@ func (m *model) onMemoryInput(msg memoryInputMsg) tea.Cmd {
 		discardPreparedMemory(msg.result)
 		return m.sendPendingMessages()
 	}
-	if r.stores != m.autoMemory() {
-		discardPreparedMemory(msg.result)
-		if !msg.result.Handled {
-			m.agentReloadPending = true
-		}
-		return m.sendPendingMessages()
-	}
-	if msg.result.Handled {
-		m.finishMemoryMaintenance(msg, true)
+	switch m.resolveMemoryAdmission(msg, &head, true) {
+	case memoryStaleRecall:
+		m.agentReloadPending = true
+	case memoryMaintained:
 		m.pendingMessages.PopFirst()
 		m.pendingPluginRoot = ""
 		return tea.Batch(append(m.CommitMessages(), m.sendPendingMessages(), m.sendNextQueuedInputIfIdle())...)
-	}
-	if msg.err != nil {
-		closeMemoryInput(msg.result.Completion)
+	case memoryFailed:
 		return func() tea.Msg { return agentSendFailedMsg{err: msg.err} }
+	case memoryAdmit:
+		m.pendingMessages.ReplaceFirst(head)
+		return m.sendPendingMessages()
 	}
-	head.Message, head.Completion, head.MemoryReady = msg.result.Message, msg.result.Completion, true
-	m.pendingMessages.ReplaceFirst(head)
 	return m.sendPendingMessages()
 }

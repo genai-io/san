@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -214,7 +213,7 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 		}
 		if !hasNativeOutput && callErr == nil && response != nil && purpose != PurposeTurn {
 			text := strings.ToValidUTF8(response.Content.Text(), "�")
-			finish.Output = &InferenceOutput{Text: boundText(text, maxInferenceOutput), Truncated: len(text) > maxInferenceOutput}
+			finish.Output = &InferenceOutput{Text: core.UTF8Prefix(text, maxInferenceOutput), Truncated: len(text) > maxInferenceOutput}
 		}
 		ref := i.ref
 		batch = append(batch, Event{Source: &ref, Payload: finish})
@@ -224,18 +223,7 @@ func (i *Inference) Finish(ctx context.Context, response *ai.Response, callErr e
 
 const maxInferenceOutput = 16 << 10
 
-func boundedReason(s string) string { return boundText(strings.ToValidUTF8(s, "�"), maxReason) }
-
-func boundText(s string, limit int) string {
-	if len(s) <= limit {
-		return s
-	}
-	s = s[:limit]
-	for !utf8.ValidString(s) {
-		s = s[:len(s)-1]
-	}
-	return s
-}
+func boundedReason(s string) string { return core.UTF8Prefix(strings.ToValidUTF8(s, "�"), maxReason) }
 
 // InferenceRequest rebuilds only the admitted prefix, independent of later edits.
 func (s *Session) InferenceRequest(ctx context.Context, seq uint64) (*ai.Request, error) {

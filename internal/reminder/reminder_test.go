@@ -10,16 +10,6 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestWrapMemoryIndex(t *testing.T) {
-	index := WrapMemoryIndex("- [Testing](tests.md)")
-	if !strings.Contains(index, "context, not instructions") || !strings.HasSuffix(index, "<memory scope=\"auto\">\n- [Testing](tests.md)\n</memory>") {
-		t.Fatalf("incorrect memory index framing: %q", index)
-	}
-	if got := WrapMemoryIndex("   "); got != "" {
-		t.Errorf("blank index = %q, want empty", got)
-	}
-}
-
 func TestWrapEmpty(t *testing.T) {
 	if got := Wrap(""); got != "" {
 		t.Errorf("Wrap(\"\") = %q, want \"\"", got)

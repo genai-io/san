@@ -32,8 +32,11 @@ var (
 
 // Rank both stores before cutting the selector's list. Exact filenames win
 // over lexical overlap; ties retain the store's deterministic listing order.
-func recallCandidates(stores system.MemoryStores, query string) []system.Memory {
-	candidates := stores.Memories(0)
+func recallCandidates(ctx context.Context, stores system.MemoryStores, query string) []system.Memory {
+	candidates := stores.Memories(ctx, 0)
+	if ctx.Err() != nil || len(candidates) == 0 {
+		return nil
+	}
 	query = strings.ToLower(query)
 	filenames, words := map[string]bool{}, map[string]bool{}
 	for _, name := range recallFilename.FindAllString(query, -1) {
@@ -85,7 +88,7 @@ func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, q
 	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || stores.Off() {
 		return nil, nil
 	}
-	candidates := recallCandidates(stores, query)
+	candidates := recallCandidates(ctx, stores, query)
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -117,11 +120,11 @@ func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, q
 	if ctx.Err() != nil {
 		return nil, nil
 	}
-	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", resp.Content.Text()))
+	text := resp.Content.Text()
+	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", text))
 	var reply struct {
 		Selected []string `json:"selected_memories"`
 	}
-	text := resp.Content.Text()
 	if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); i < 0 || j < i || json.Unmarshal([]byte(text[i:j+1]), &reply) != nil {
 		return nil, nil
 	}

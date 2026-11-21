@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -16,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/markdown"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -153,9 +153,7 @@ func parseProposal(text string, req Request) (proposal, error) {
 	if len(text) > 16*1024 || !utf8.ValidString(text) {
 		return p, invalid
 	}
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.DisallowUnknownFields()
-	if dec.Decode(&p) != nil || dec.Decode(new(any)) != io.EOF {
+	if core.DecodeStrictJSON(strings.NewReader(text), &p) != nil {
 		return p, invalid
 	}
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
@@ -208,19 +206,9 @@ func renderNote(p proposal) string {
 }
 
 func patchNote(text string, p proposal) (string, error) {
-	body := text
-	if strings.HasPrefix(text, "---\n") || strings.HasPrefix(text, "---\r\n") {
-		body = text[strings.IndexByte(text, '\n')+1:]
-		for {
-			line, rest, ok := strings.Cut(body, "\n")
-			if !ok {
-				return "", errors.New("unterminated memory frontmatter")
-			}
-			body = rest
-			if strings.TrimSuffix(line, "\r") == "---" {
-				break
-			}
-		}
+	_, body, err := markdown.SplitFrontmatter(text)
+	if err != nil {
+		return "", errors.New("unterminated memory frontmatter")
 	}
 	i := strings.Index(body, p.Old)
 	if i < 0 || strings.Contains(body[i+1:], p.Old) {

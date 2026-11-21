@@ -16,14 +16,25 @@ func TestPrepareMemoryRecordsOnlyAcceptedInput(t *testing.T) {
 	owner, stores := recallFixture(t)
 	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
 	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
-	msg := core.UserMessage("can I merge?", nil)
+	userInput := core.UserMessage("/merge", nil)
+	msg := core.UserMessage("Expanded merge instructions", nil)
 	msg.ID = "memory-input"
-	got, err := r.Prepare(t.Context(), stores, msg, nil)
+	got, err := r.PrepareWithSubmission(t.Context(), stores, userInput, msg, nil)
 	if err != nil || !got.Completion.OwnedBy(owner) {
 		t.Fatalf("prepare did not return the original owner's completion: %v", err)
 	}
 	if p := owner.Snapshot(); len(p.Messages()) != 0 || len(p.Unfinished().Inferences) != 1 {
 		t.Fatal("recall committed before input acceptance")
+	}
+	request, err := owner.InferenceRequest(t.Context(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := request.Messages[0].Text(); !strings.HasSuffix(text, userInput.Text()) || strings.Contains(text, msg.Text()) {
+		t.Fatalf("recall saw the expanded command: %q", text)
+	}
+	if !strings.HasPrefix(got.Message.Text(), msg.Text()) {
+		t.Fatalf("expanded command missing from prepared input: %q", got.Message.Text())
 	}
 	if err := got.Completion.AcceptMessage(t.Context(), got.Message); err != nil {
 		t.Fatal(err)

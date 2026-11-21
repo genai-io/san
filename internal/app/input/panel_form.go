@@ -25,8 +25,7 @@ type skillConfigForm struct {
 	// project reload is picked up. Nil (tests) seeds a zero snapshot.
 	workspace func() (string, *setting.Settings)
 
-	// rowsFn supplies the skill settings and inventory entry.
-	rowsFn func() []configRow
+	rows []configRow
 
 	// snap is the working buffer; Save merges it back to disk.
 	snap setting.AutoSkillSettings
@@ -48,7 +47,7 @@ func (f *skillConfigForm) Enter() {
 		}
 	}
 	f.baseline = f.snap
-	f.cursor = findEditable(f.rowsFn(), 0, +1, 0)
+	f.cursor = findEditable(f.rows, 0, +1, 0)
 }
 
 // Dirty reports whether the working snapshot diverges from the disk
@@ -59,7 +58,7 @@ func (f *skillConfigForm) Dirty() bool { return f.snap != f.baseline }
 // pressed enter on ("" otherwise) so the owning panel can open the matching
 // sub-view; done=true asks the shell to dismiss the popup (after Save).
 func (f *skillConfigForm) HandleKey(msg tea.KeyMsg) (cmd tea.Cmd, done bool, activated string) {
-	rows := f.rowsFn()
+	rows := f.rows
 	if f.cursor >= len(rows) {
 		f.cursor = findEditable(rows, 0, +1, 0)
 	}
@@ -125,7 +124,7 @@ func (f *skillConfigForm) HintLine() string {
 // strip above, so there is no section header or rail here — just the scope
 // control and a flat, calmly-spaced list of rows.
 func (f *skillConfigForm) Render(width int) string {
-	rows := f.rowsFn()
+	rows := f.rows
 	validationErr := f.snap.Validate()
 
 	var b strings.Builder
@@ -140,7 +139,7 @@ func (f *skillConfigForm) Render(width int) string {
 			indentPad := strings.Repeat(" ", contentCol(row.indent))
 			b.WriteString(indentPad + selflearnSubHeaderStyle.Render(strings.ToUpper(row.label)))
 			if row.summary != nil {
-				b.WriteString(selflearnMutedStyle.Render("  " + row.summary(&f.snap)))
+				b.WriteString(selflearnMutedStyle.Render("  " + row.summary()))
 			}
 			if row.desc != "" {
 				b.WriteString(selflearnMutedStyle.Render(row.desc))
@@ -256,7 +255,7 @@ func (f *skillConfigForm) renderEntryRow(i int, row configRow, width int) string
 	}
 	right := ""
 	if row.summary != nil {
-		right = selflearnEntrySummaryStyle.Render(row.summary(&f.snap))
+		right = selflearnEntrySummaryStyle.Render(row.summary())
 	}
 	if right == "" {
 		return left
@@ -301,7 +300,7 @@ type configRow struct {
 	// the muted description and the right-aligned value hint (e.g. "built-in").
 	entryID string
 	desc    string
-	summary func(*setting.AutoSkillSettings) string
+	summary func() string
 }
 
 // editable reports whether the row can hold the cursor.

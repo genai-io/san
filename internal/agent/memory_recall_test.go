@@ -49,7 +49,7 @@ func TestRecallRanksBothStoresBeforeCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	const query = "Check `project/freeze.md`, please."
-	candidates := recallCandidates(stores, query)
+	candidates := recallCandidates(t.Context(), stores, query)
 	if len(candidates) != 60 || candidates[0].Path != path {
 		t.Fatalf("got %d candidates, want 60 with project/freeze.md first", len(candidates))
 	}

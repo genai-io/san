@@ -324,8 +324,8 @@ exit 2
 	}
 }
 
-func TestLegacyReviewSkillMatcherBlocks(t *testing.T) {
-	for _, matcher := range []string{"Evolve", "^Evolv[e]$", "Evolve|ReviewSkill", "*"} {
+func TestReviewSkillMatcherBlocks(t *testing.T) {
+	for _, matcher := range []string{"ReviewSkill", "^ReviewSkil[l]$", "Skill|ReviewSkill", "*"} {
 		t.Run(matcher, func(t *testing.T) {
 			dir := t.TempDir()
 			script := filepath.Join(dir, "block.sh")

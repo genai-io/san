@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,12 +52,18 @@ func IsMemoryMaintenance(message core.Message) bool {
 
 // Prepare admits explicit maintenance immediately for synchronous hosts.
 func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (PreparedMemory, error) {
-	if IsMemoryMaintenance(message) {
+	return r.PrepareWithSubmission(ctx, stores, message, message, history)
+}
+
+// PrepareWithSubmission uses the user input for selection and maintenance,
+// but attaches recalled notes to the message that will actually be submitted.
+func (r Recaller) PrepareWithSubmission(ctx context.Context, stores system.MemoryStores, userInput, submission core.Message, history []core.Message) (PreparedMemory, error) {
+	if IsMemoryMaintenance(userInput) {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 	}
-	prepared, err := r.PrepareForAdmission(ctx, stores, message, history)
+	prepared, err := r.prepareForAdmission(ctx, stores, userInput, submission, history)
 	if err == nil && prepared.Change != nil {
 		prepared.Notice, err = prepared.Change.Apply(ctx)
 		prepared.Change = nil
@@ -65,10 +72,14 @@ func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, messa
 }
 
 // PrepareForAdmission does not write to memory. The host must apply or discard
-// any returned change when it resolves admission of the original input.
-func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (prepared PreparedMemory, err error) {
-	prepared.Message = message
-	if req, ok := maintenanceRequest(message); ok {
+// any returned change when it resolves admission of the userInput input.
+func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (PreparedMemory, error) {
+	return r.prepareForAdmission(ctx, stores, message, message, history)
+}
+
+func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryStores, userInput, submission core.Message, history []core.Message) (prepared PreparedMemory, err error) {
+	prepared.Message = submission
+	if req, ok := maintenanceRequest(userInput); ok {
 		prepared.Handled = true
 		if stores.Off() {
 			prepared.Notice = "Auto Memory is off."
@@ -84,7 +95,8 @@ func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryS
 		prepared.Change, err = maintainer.Propose(ctx, stores, req)
 		return prepared, err
 	}
-	if stores.Off() || r.Provider == nil || strings.TrimSpace(message.Text()) == "" {
+	query := userInput.Text()
+	if stores.Off() || r.Provider == nil || strings.TrimSpace(query) == "" {
 		return prepared, ctx.Err()
 	}
 	lookup, cancel := context.WithTimeout(ctx, preTurnRecallBudget)
@@ -97,7 +109,7 @@ func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryS
 			}
 		}
 	}()
-	notes, err := r.selectNotes(lookup, stores, message.Text(), scope)
+	notes, err := r.selectNotes(lookup, stores, query, scope)
 	if err != nil {
 		return prepared, err
 	}
@@ -107,28 +119,39 @@ func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryS
 	if lookup.Err() != nil || len(notes) == 0 {
 		return prepared, nil
 	}
-	existing := make(map[string]bool)
-	for _, msg := range history {
-		for _, block := range reminder.Blocks(msg.Text()) {
-			if block.Source == reminder.ProviderMemoryRecall {
-				existing[block.Text] = true
-			}
-		}
-	}
 	var blocks []string
 	for _, note := range notes {
-		if block := recalledNote(stores, note); block != "" && !existing[block] {
+		if block := recalledNote(stores, note); block != "" {
 			blocks = append(blocks, block)
 		}
 	}
+	blocks = newRecallBlocks(history, blocks)
 	if ctx.Err() != nil {
 		return prepared, ctx.Err()
 	}
 	if lookup.Err() == nil && len(blocks) > 0 {
-		prepared.Message.Content = reminder.AppendBlocks(message.Content, blocks...)
+		prepared.Message.Content = reminder.AppendBlocks(submission.Content, blocks...)
 		prepared.Completion = scope
 	}
 	return prepared, nil
+}
+
+func newRecallBlocks(history []core.Message, blocks []string) []string {
+	remaining := make(map[string]struct{}, len(blocks))
+	for _, block := range blocks {
+		remaining[block] = struct{}{}
+	}
+	for i := len(history) - 1; i >= 0 && len(remaining) > 0; i-- {
+		for _, block := range reminder.Blocks(history[i].Text()) {
+			if block.Source == reminder.ProviderMemoryRecall {
+				delete(remaining, block.Text)
+			}
+		}
+	}
+	return slices.DeleteFunc(blocks, func(block string) bool {
+		_, ok := remaining[block]
+		return !ok
+	})
 }
 
 func recalledNote(stores system.MemoryStores, note system.Memory) string {

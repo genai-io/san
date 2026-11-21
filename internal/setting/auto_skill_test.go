@@ -55,24 +55,10 @@ func TestAutoSkillWireCompatibility(t *testing.T) {
 	}
 }
 
-func TestReviewSkillMigratesSavedToolRules(t *testing.T) {
-	var got Data
-	raw := `{"disabledTools":{"Evolve":true,"ReviewSkill":false},"permissions":{"deny":["Evolve","Evolve(*)","OtherTool"]}}`
-	if err := json.Unmarshal([]byte(raw), &got); err != nil {
-		t.Fatal(err)
-	}
-	if disabled, found := got.DisabledTools[reviewSkillTool]; !found || disabled || len(got.DisabledTools) != 1 {
-		t.Fatalf("canonical explicit tool preference was lost: %v", got.DisabledTools)
-	}
-	if strings.Join(got.Permissions.Deny, ",") != "ReviewSkill,ReviewSkill(*),OtherTool" {
-		t.Fatalf("renamed tool escaped its existing deny rules: %v", got.Permissions.Deny)
-	}
-}
-
 func TestAutoSkillMixedLayersAndSaveMigration(t *testing.T) {
 	user, project := t.TempDir(), t.TempDir()
 	userPath := filepath.Join(user, "settings.json")
-	legacy := `{"selfLearn":{"strategy":"user","skills":{}},"disabledTools":{"Evolve":true}}`
+	legacy := `{"selfLearn":{"strategy":"user","skills":{}},"disabledTools":{"ReviewSkill":true}}`
 	for path, contents := range map[string]string{
 		userPath:                                legacy,
 		filepath.Join(project, "settings.json"): `{"autoSkill":{"strategy":"project","skills":{"enabled":true}}}`,

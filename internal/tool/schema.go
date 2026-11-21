@@ -23,7 +23,7 @@ const (
 	ToolCron            = "Cron"
 	ToolAskUserQuestion = "AskUserQuestion"
 
-	ToolReviewSkill = "ReviewSkill"
+	ToolReviewSkill = core.ReviewSkillToolName
 )
 
 // IsShellTool reports whether name is a tool that runs shell commands: Bash

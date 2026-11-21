@@ -39,20 +39,6 @@ func matchesEvent(matcher, matchValue string) bool {
 	}
 }
 
-// matchesHookEvent accepts Evolve as a matching-only alias for ReviewSkill.
-// A matcher that accepts both names still selects its hook group only once.
-func matchesHookEvent(event EventType, matcher, matchValue string) bool {
-	if matchesEvent(matcher, matchValue) {
-		return true
-	}
-	switch event {
-	case PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, PermissionDenied:
-		return matchValue == "ReviewSkill" && matchesEvent(matcher, "Evolve")
-	default:
-		return false
-	}
-}
-
 // getMatchValue extracts the value to match against based on event type.
 func getMatchValue(event EventType, input HookInput) string {
 	switch event {

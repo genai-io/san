@@ -59,12 +59,8 @@ type autoSkillPanel struct {
 	store    LearnedSkillStore
 	strategy strategyEditor
 
-	mode  skillMode
-	items []learnedItem // loaded at Enter / drill-in
-	// rows is the cached config-row list; rebuilt only when items changes
-	// (its one input), so per-keypress/per-frame rowsFn calls don't rebuild
-	// ~20 closures each time.
-	rows      []configRow
+	mode      skillMode
+	items     []learnedItem // loaded at Enter / drill-in
 	invCursor int
 	actionErr error // last delete/preview failure, surfaced inline; cleared on nav
 
@@ -79,11 +75,10 @@ func newAutoSkillPanel(workspace func() (string, *setting.Settings), store Learn
 		store:    store,
 		strategy: newStrategyEditor(autoskill.DefaultStrategy()),
 	}
-	p.rows = p.configRows(0)
 	p.form = skillConfigForm{
 		workspace: workspace,
 		scope:     setting.ScopeUser,
-		rowsFn:    func() []configRow { return p.rows },
+		rows:      p.configRows(),
 	}
 	return p
 }
@@ -147,8 +142,6 @@ func (p *autoSkillPanel) reloadItems() {
 	if p.invCursor >= len(p.items) {
 		p.invCursor = max(0, len(p.items)-1)
 	}
-	// items is the row list's only input, so this is the one rebuild point.
-	p.rows = p.configRows(len(p.items))
 }
 
 func (p *autoSkillPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
@@ -179,7 +172,7 @@ func (p *autoSkillPanel) handleFormKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return cmd, done
 }
 
-func (p *autoSkillPanel) skillStatus(*setting.AutoSkillSettings) string {
+func (p *autoSkillPanel) skillStatus() string {
 	if p.form.workspace == nil {
 		return "settings unavailable"
 	}
@@ -347,10 +340,8 @@ func (p *autoSkillPanel) handleViewKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// configRows builds the Auto Skill settings rows. At least one skill
-// enable toggle: at least one skill permission must be allowed.
-// learnedCount is shown on the Learned inventory entry.
-func (p *autoSkillPanel) configRows(learnedCount int) []configRow {
+// configRows builds the fixed layout; summaries read their current values.
+func (p *autoSkillPanel) configRows() []configRow {
 	skillPerm := func(label string, get func(setting.AutoSkillPermissions) bool, flip func(*setting.AutoSkillPermissions)) configRow {
 		return configRow{
 			kind:       rowBool,
@@ -368,7 +359,7 @@ func (p *autoSkillPanel) configRows(learnedCount int) []configRow {
 			label:   "Strategy",
 			desc:    "how to guide the learning",
 			indent:  1,
-			summary: func(s *setting.AutoSkillSettings) string { return strategySummary(s.Strategy) },
+			summary: func() string { return strategySummary(p.form.snap.Strategy) },
 		},
 		skillPerm("Create new skills", setting.AutoSkillPermissions.AllowCreate,
 			func(s *setting.AutoSkillPermissions) { s.DenyCreate = !s.DenyCreate }),
@@ -383,11 +374,11 @@ func (p *autoSkillPanel) configRows(learnedCount int) []configRow {
 			label:   "Learned",
 			desc:    "skills — browse & prune",
 			indent:  1,
-			summary: func(*setting.AutoSkillSettings) string {
-				if learnedCount == 0 {
+			summary: func() string {
+				if len(p.items) == 0 {
 					return "none yet"
 				}
-				return strconv.Itoa(learnedCount)
+				return strconv.Itoa(len(p.items))
 			},
 		},
 		{kind: rowSpacer},

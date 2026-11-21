@@ -1,8 +1,10 @@
 package inspector
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,6 +48,51 @@ func compareSessions(a, b sessionListItem) int {
 	return strings.Compare(a.ID, b.ID)
 }
 
+func readSessionPage(ctx context.Context, root string, cursor sessionListItem, keep int) ([]sessionListItem, error) {
+	items := make([]sessionListItem, 0, keep+1)
+	dir, err := os.Open(root)
+	if os.IsNotExist(err) {
+		return items, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	for ctx.Err() == nil {
+		entries, err := dir.ReadDir(128)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			id := entry.Name()
+			if !entry.IsDir() || strings.HasPrefix(id, ".") || session.ValidateStorageID(id) != nil {
+				continue
+			}
+			info, err := os.Stat(filepath.Join(root, id, "events.jsonl"))
+			if err != nil {
+				continue
+			}
+			item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
+			if cursor.ID != "" && compareSessions(item, cursor) <= 0 {
+				continue
+			}
+			// Keep only the best page plus its lookahead in cursor order.
+			i, _ := slices.BinarySearchFunc(items, item, compareSessions)
+			if i < keep {
+				items = slices.Insert(items, i, item)
+				items = items[:min(len(items), keep)]
+			}
+		}
+		if err == io.EOF {
+			return items, nil
+		}
+	}
+	return nil, ctx.Err()
+}
+
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -76,30 +123,15 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	root := filepath.Join(s.store.ProjectDir(), "sessions")
-	entries, err := os.ReadDir(root)
-	if err != nil && !os.IsNotExist(err) {
+	cursor := sessionListItem{ID: after.ID, UpdatedAt: after.UpdatedAt}
+	items, err := readSessionPage(ctx, root, cursor, limit+1)
+	if ctx.Err() != nil {
+		return
+	}
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	items := make([]sessionListItem, 0, len(entries))
-	for _, entry := range entries {
-		if ctx.Err() != nil {
-			return
-		}
-		id := entry.Name()
-		if !entry.IsDir() || strings.HasPrefix(id, ".") || session.ValidateStorageID(id) != nil {
-			continue
-		}
-		info, err := os.Stat(filepath.Join(root, id, "events.jsonl"))
-		if err != nil {
-			continue
-		}
-		item := sessionListItem{ID: id, UpdatedAt: info.ModTime(), Size: info.Size()}
-		if after.ID == "" || compareSessions(item, sessionListItem{ID: after.ID, UpdatedAt: after.UpdatedAt}) > 0 {
-			items = append(items, item)
-		}
-	}
-	slices.SortFunc(items, compareSessions)
 	page := sessionPage{Items: items[:min(limit, len(items))]}
 	if len(items) > limit {
 		last := page.Items[limit-1]

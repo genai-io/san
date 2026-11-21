@@ -65,7 +65,13 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		history = projection.ActiveMessages()
 	}
 	recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording}
-	prepared, err := recaller.Prepare(ctx, params.AutoMemory, core.UserMessage(text.String(), nil), history)
+	// Select against what the user typed, but attach to the expanded command.
+	userInput := core.UserMessage(text.String(), nil)
+	submission := userInput
+	if prompt != text.String() {
+		submission = core.UserMessage(prompt, nil)
+	}
+	prepared, err := recaller.PrepareWithSubmission(ctx, params.AutoMemory, userInput, submission, history)
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if ctx.Err() != nil && (err == nil || err == ctx.Err()) {
 		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
@@ -126,10 +132,6 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	}()
 	if ctx.Err() != nil {
 		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
-	}
-	if prompt != text.String() {
-		// Expand commands after selection, just like the other injected context.
-		prepared.Message.Content[0].Text = prompt
 	}
 	msg := s.reminders.PrepareInput(prepared.Message)
 	if err := s.runtime.SendInput(agent.PendingInput{Message: msg, Completion: prepared.Completion}); err != nil {

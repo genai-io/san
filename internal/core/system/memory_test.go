@@ -1,6 +1,7 @@
 package system
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,9 +30,14 @@ func TestMemoryNotes(t *testing.T) {
 	if !stores.HasNotes() {
 		t.Fatal("regular notes were not found")
 	}
-	notes := stores.Memories(2)
+	notes := stores.Memories(t.Context(), 2)
 	if len(notes) != 2 || notes[0].Description != "b.md" || notes[1].Description != "z.md" {
 		t.Fatalf("want first two user notes in filename order, got %+v", notes)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if notes := stores.Memories(ctx, 0); len(notes) != 0 {
+		t.Fatalf("canceled inventory scan returned %+v", notes)
 	}
 }
 
