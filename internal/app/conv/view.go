@@ -299,7 +299,7 @@ func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 			// The post-compaction summary is injected as a user message (the
 			// model reads it, and it persists/seeds resume), but it's shown as a
 			// system notice — not a "❭" user turn — so the transcript stays clean.
-			sb.WriteString(RenderSystemMessage(msg.DisplayContent))
+			sb.WriteString(systemMsgStyle.PaddingLeft(0).Render(msg.DisplayContent) + "\n")
 		case IsAgentEnvelope(msg.Content):
 			// A background-agent envelope (task completion / relayed message) is
 			// submitted to the model as a user turn and persisted as raw XML.

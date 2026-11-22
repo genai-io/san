@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -87,11 +89,12 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 		frame, _ := m.renderNormalView(strings.Repeat("─", width-1), "Tasks · background")
 		plain := ansi.Strip(frame)
 		lines := strings.Split(plain, "\n")
-		if strings.Count(plain, "Compacting context") != 1 || strings.Contains(plain, "On it") {
+		const status = "✦ On it · Compacting context"
+		if strings.Count(plain, status) != 1 || strings.Count(plain, "✦") != 1 {
 			t.Fatalf("compaction must own one status row:\n%s", plain)
 		}
 		for i, line := range lines {
-			if strings.Contains(line, "Compacting context") && (i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "─")) {
+			if strings.Contains(line, status) && (!strings.HasPrefix(line, status) || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "─")) {
 				t.Fatalf("compaction not directly above composer:\n%s", plain)
 			}
 		}
@@ -102,6 +105,29 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 		m.OnCompactEnd(sdkagent.CompactionEnd{})
 		if m.conv.Compact.Active || m.conv.Compact.AutoContinue || !m.conv.Compact.StartedAt.IsZero() {
 			t.Fatal("compaction left stale recovery status")
+		}
+	}
+}
+
+func TestCompactionCompletionIsTopLevel(t *testing.T) {
+	m := modelWithInferenceProgress(24)
+	m.services.Reminder = &reminder.Reminder{}
+	m.env.CWD = t.TempDir()
+	m.OnCompactStart(83)
+	m.OnCompacted(core.Compacted{Summary: "private summary body", OriginalCount: 83})
+
+	const notice = "≡ Conversation compacted — 83 messages summarized (scroll up for history)"
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Continued reply"})
+	for _, committed := range []bool{false, true} {
+		if committed {
+			m.CommitMessages()
+		}
+		frame := ansi.Strip(m.View().Content)
+		at, before := strings.Index(frame, "\n"+notice+"\n"), strings.Index(frame, "I will write the HTML now.")
+		after := strings.Index(frame, "Continued reply")
+		if before < 0 || at <= before || after <= at || strings.Count(frame, notice) != 1 ||
+			strings.Contains(frame, "Compacting context") || strings.Contains(frame, "private summary body") {
+			t.Fatalf("committed=%v: expected one top-level boundary between replies:\n%s", committed, frame)
 		}
 	}
 }

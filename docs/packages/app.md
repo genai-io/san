@@ -323,9 +323,10 @@ shows `Waiting for model`; actual retries show their attempt number. Tool-input
 progress tracks liveness internally without displaying byte counts or fake phases.
 `InferenceEnd` retires generation progress before pending tools run. Failed
 attempts stay in inference diagnostics rather than adding red conversation notices.
-Automatic compaction temporarily owns the same footer row, with elapsed time and
-`Compacting context · will continue automatically`; it clears when compaction ends.
-Manual compaction does not promise an automatic continuation. A stopped
+Compaction uses the same breathing footer row, with `✦ On it · Compacting context`
+and elapsed time. Automatic compaction also notes that the turn will continue.
+When compaction succeeds, the live status gives way to an unindented
+`Conversation compacted` notice in the main conversation. A stopped
 failed turn explicitly marks its output as incomplete. This status is display-only
 and never enters native history or the model conversation. Regression coverage
 includes `conv/inference_progress_test.go`, `model_inference_lifecycle_test.go`,

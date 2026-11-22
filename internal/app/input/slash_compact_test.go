@@ -37,8 +37,8 @@ func TestCompactUsesNativeRequestCount(t *testing.T) {
 			if cmd != nil || conversation.Compact.Active {
 				t.Fatal("compacted insufficient native history")
 			}
-		} else if cmd == nil || !conversation.Compact.Active || conversation.Compact.Count != count || conversation.Compact.SummaryFocus != "focus" {
-			t.Fatalf("compact ignored native history: %+v", conversation.Compact)
+		} else if cmd == nil || !conversation.Compact.Active || conversation.Compact.Count != count || conversation.Compact.SummaryFocus != "focus" || conversation.Compact.StartedAt.IsZero() {
+			t.Fatalf("compact did not initialize progress: %+v", conversation.Compact)
 		}
 		if conversation.Compact.Active {
 			if begun != 1 {
