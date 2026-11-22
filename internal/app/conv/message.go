@@ -575,18 +575,47 @@ func RenderRecap(mark, facts, body string, width int) string {
 	return out
 }
 
-// RenderSideAnswer renders a /btw exchange: a muted "◇ btw" mark leading the
-// question, set apart from the reply's ●, and the answer under the reply
-// gutter. The question is wrapped, not padded: a row filled out to the width
-// rewraps into an extra blank row once scrollback is narrowed.
+// RenderSideAnswer keeps the /btw answer visually separate from the main turn.
 func RenderSideAnswer(question, answer string, width int, md *MDRenderer) string {
-	mark := sideMarkStyle.Render("◇ btw ")
-	indent := strings.Repeat(" ", lipgloss.Width(mark))
-	lines := strings.Split(lipgloss.Wrap(question, max(width-len(indent), 10), ""), "\n")
-	for i, line := range lines {
-		lines[i] = bulletStyle.Render(line)
+	if md != nil {
+		answer = renderMarkdownContent(md, answer)
 	}
-	return mark + strings.Join(lines, "\n"+indent) + "\n" + RenderCommittedContentBlock(answer, false, md) + "\n"
+	return renderSideExchange(question, answer, width)
+}
+
+// RenderSidePending uses the same layout as the settled answer.
+func RenderSidePending(question, spinner string, width int) string {
+	return renderSideExchange(question, sideMarkStyle.Render(spinner+" Answering…"), width)
+}
+
+func renderSideExchange(question, body string, width int) string {
+	mark := sideMarkStyle.Render("○ btw · ")
+	rail := sideMarkStyle.Render("│")
+	headerWidth := lipgloss.Width(mark)
+	indent := rail + strings.Repeat(" ", headerWidth-1)
+	lines := strings.Split(xansi.Wrap(question, max(1, width-headerWidth-1), ""), "\n")
+	var out strings.Builder
+	for i, line := range lines {
+		if i == 0 {
+			out.WriteString(mark)
+		} else {
+			out.WriteString(indent)
+		}
+		out.WriteString(bulletStyle.Render(line))
+		out.WriteByte('\n')
+	}
+	// Keep the connector through paragraphs. Leave the last terminal column
+	// free so committed rows don't wrap when the terminal is narrowed.
+	body = xansi.Hardwrap(strings.TrimRight(body, "\n"), max(1, width-3), true)
+	for line := range strings.SplitSeq(body, "\n") {
+		out.WriteString(rail)
+		if strings.TrimSpace(xansi.Strip(line)) != "" {
+			out.WriteByte(' ')
+			out.WriteString(line)
+		}
+		out.WriteByte('\n')
+	}
+	return out.String()
 }
 
 // RenderAgentNotice renders an unstructured notice without guessing its outcome.

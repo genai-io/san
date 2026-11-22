@@ -1699,18 +1699,26 @@ func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
 }
 
 func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
-	out := RenderSideAnswer(strings.Repeat("问题", 20), "answer", 30, nil)
+	out := RenderSideAnswer(strings.Repeat("问题", 20), "answer\n\n"+strings.Repeat("回复", 18), 30, nil)
 	lines := strings.Split(strings.TrimSuffix(xansi.Strip(out), "\n"), "\n")
-	if len(lines) < 3 || !strings.HasPrefix(lines[0], "◇ btw 问题") || !strings.HasPrefix(lines[1], "      问题") {
+	if len(lines) < 6 || !strings.HasPrefix(lines[0], "○ btw · 问题") || !strings.HasPrefix(lines[1], "│       问题") {
 		t.Fatalf("question must wrap under its first row:\n%s", strings.Join(lines, "\n"))
 	}
-	for _, l := range lines {
-		if l != strings.TrimRight(l, " ") {
-			t.Fatalf("row padded with spaces rewraps when scrollback narrows: %q", l)
+	for i, l := range lines {
+		if l != strings.TrimRight(l, " ") || lipgloss.Width(l) >= 30 || (i > 0 && !strings.HasPrefix(l, "│")) {
+			t.Fatalf("misaligned or overflowing btw row: %q", l)
 		}
 	}
-	if lines[len(lines)-1] != "  answer" {
-		t.Fatalf("answer must sit under the reply gutter: %q", lines[len(lines)-1])
+	if !slices.Contains(lines, "│ answer") || !slices.Contains(lines, "│") {
+		t.Fatalf("answer and paragraph break must share the rail: %q", lines)
+	}
+}
+
+func TestRenderSidePendingSharesAnswerLayout(t *testing.T) {
+	pending := xansi.Strip(RenderSidePending("Quick question?", "~", 60))
+	answer := xansi.Strip(RenderSideAnswer("Quick question?", "A short answer.", 60, nil))
+	if pending != "○ btw · Quick question?\n│ ~ Answering…\n" || answer != "○ btw · Quick question?\n│ A short answer.\n" {
+		t.Fatalf("pending and settled layouts differ: %q vs %q", pending, answer)
 	}
 }
 
