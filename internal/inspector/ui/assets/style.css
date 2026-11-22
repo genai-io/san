@@ -798,6 +798,13 @@ aside {
 }
 .detail-disclosure > summary { cursor: pointer; color: var(--bone-2); font: 0.88rem/1.5 var(--font-sans); overflow-wrap: anywhere; }
 .detail-disclosure[open] > summary { margin-bottom: 0.5rem; color: var(--bone); }
+.json-view { color: var(--bone); font: 0.76rem/1.6 var(--font-mono); }
+.json-branch > summary { cursor: pointer; color: var(--bone-2); overflow-wrap: anywhere; }
+.json-branch > summary:hover, .json-branch[open] > summary { color: var(--bone); }
+.json-branch > summary:focus-visible { outline: 1px solid var(--amber); }
+.json-children { margin-inline-start: 0.4rem; padding-inline-start: 0.8rem; border-inline-start: 1px solid var(--rule); }
+.json-value { padding-inline-start: 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
+#detail-body .json-branch > pre { margin-inline-start: 1em; }
 #detail-body .message-text { background: var(--ink-2); padding: 0.55rem 0.65rem; }
 #detail-body img { display: block; max-width: 100%; max-height: 28rem; object-fit: contain; }
 #detail-body .tool-diff { background: var(--ink-2); padding: 0.55rem 0.65rem; overflow: auto; white-space: pre; }

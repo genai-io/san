@@ -16,51 +16,21 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-const memoryMaintenancePrompt = "remember: Prefer table tests."
-const memoryMaintenanceProposal = `{"action":"remember","file":"tests.md","name":"Tests","description":"Test style","type":"feedback","body":"Prefer table tests."}`
-const memoryMaintenanceNotice = "Memory · saved tests.md to project"
-
-func TestACPShowsMaintenanceNoticeWithoutMainInference(t *testing.T) {
-	driver := aitest.New(aitest.Says(memoryMaintenanceProposal))
-	f := newACPFixture(t, driver, nil)
-	id := f.session(t, t.TempDir())
-	response, err := f.prompt(id, memoryMaintenancePrompt)
-	if err != nil || response.StopReason != protocol.StopReasonEndTurn {
-		t.Fatalf("response=%+v err=%v", response, err)
-	}
-	requests := driver.Sent()
-	if len(requests) != 1 || len(requests[0].Tools) != 0 {
-		t.Fatalf("expected one tool-free maintenance request: %+v", requests)
-	}
-	if s := f.host.sessions[id]; s.runtime.Active() || len(s.runtime.Messages()) != 0 {
-		t.Fatal("maintenance started the main runtime")
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, notification := range f.updates {
-		if chunk, ok := notification.Update.Value.(protocol.SessionUpdateAgentMessageChunkVariant); ok {
-			if text, ok := chunk.Content.Value.(protocol.ContentBlockTextVariant); ok && text.Text == memoryMaintenanceNotice {
-				return
+func TestACPMemoryLanguageReachesMain(t *testing.T) {
+	for _, input := range []string{"remember: Prefer table tests.", "请忘记：优先使用表格测试。"} {
+		t.Run(input, func(t *testing.T) {
+			driver := aitest.New(aitest.Says("main response"))
+			f := newACPFixture(t, driver, nil)
+			id := f.session(t, t.TempDir())
+			response, err := f.prompt(id, input)
+			if err != nil || response.StopReason != protocol.StopReasonEndTurn {
+				t.Fatalf("response=%+v err=%v", response, err)
 			}
-		}
-	}
-	t.Fatalf("missing maintenance notice in %+v", f.updates)
-}
-
-func TestACPMemoryNoChangeSendsNoMessage(t *testing.T) {
-	driver := aitest.New(aitest.Says(`{"action":"none"}`))
-	f := newACPFixture(t, driver, nil)
-	id := f.session(t, t.TempDir())
-	response, err := f.prompt(id, memoryMaintenancePrompt)
-	if err != nil || response.StopReason != protocol.StopReasonEndTurn || driver.Calls() != 1 {
-		t.Fatalf("response=%+v err=%v calls=%d", response, err, driver.Calls())
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, notification := range f.updates {
-		if _, ok := notification.Update.Value.(protocol.SessionUpdateAgentMessageChunkVariant); ok {
-			t.Fatal("memory no-op should not emit an agent message")
-		}
+			messages := f.host.sessions[id].runtime.Messages()
+			if driver.Calls() != 1 || len(messages) != 2 || messages[0].Text() != input || messages[1].Text() != "main response" {
+				t.Fatalf("main calls=%d messages=%+v", driver.Calls(), messages)
+			}
+		})
 	}
 }
 
@@ -72,7 +42,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 			}
 		}
 		if strings.Contains(req.System, "You select memories") {
-			return aitest.Says(`{"selected_memories":["project/topic.md"]}`)(ctx, req)
+			return aitest.Says(`{"selected_memories":["topic.md"]}`)(ctx, req)
 		}
 		return aitest.Says("done")(ctx, req)
 	})
@@ -88,7 +58,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 		for _, schema := range params.Schemas() {
 			params.DisabledTools[schema.Name] = true
 		}
-		dir := params.AutoMemory.Stores.Project
+		dir := string(params.AutoMemory.Store)
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +92,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 			if hasRecall := strings.Contains(suffix, "Preference for "+string(id)); hasRecall != (i == 0) {
 				t.Fatalf("recall must appear once in active history: %q", messages[i].Text())
 			}
-			if strings.Contains(suffix, "memory-auto") || strings.Contains(suffix, s.runtimeBuildParams.AutoMemory.Stores.Project) {
+			if strings.Contains(suffix, "memory-auto") || strings.Contains(suffix, string(s.runtimeBuildParams.AutoMemory.Store)) {
 				t.Fatalf("legacy index or store path injected: %q", suffix)
 			}
 		}

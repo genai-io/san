@@ -204,7 +204,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
 	policy := agent.PermissionPolicy{
-		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory.Stores,
+		Settings: m.services.Setting, Session: m.env.SessionPermissions,
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
@@ -422,7 +422,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = params.AutoMemory
-	conv.MemoryStores = params.AutoMemory.Stores
+	m.conv.AutoMemoryStore = params.AutoMemory.Store
 
 	// Bind Auto Skill to the running session.
 	m.wireAutoSkill(params)
@@ -658,9 +658,9 @@ func (m *model) ReconfigureAgentTool() {
 		m.conv.AddNotice("Cannot configure agents: " + err.Error())
 		return
 	}
-	settings, bridge, memory := m.services.Setting, m.conv.AgentToUI, m.autoMemoryStores()
+	settings, bridge := m.services.Setting, m.conv.AgentToUI
 	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
-		return newWorkerResolver(settings, perms, memory, bridge, child, source)
+		return newWorkerResolver(settings, perms, bridge, child, source)
 	}, nil)
 	parentHooks := m.services.Hook
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {

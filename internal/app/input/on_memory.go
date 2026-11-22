@@ -43,8 +43,9 @@ type memoryItem struct {
 	Path   string // the file Enter opens
 	Exists bool
 	Level  string
-	Store  setting.Scope // which auto-memory store; "" for AGENTS.md rows
 }
+
+func (i memoryItem) isAuto() bool { return i.Level == "auto" }
 
 // MemorySelector holds the state for the memory kit.
 type MemorySelector struct {
@@ -57,7 +58,8 @@ type MemorySelector struct {
 	settings    *setting.Settings // backs the auto-memory toggle; nil hides it
 	err         error             // last toggle or directory change failure
 	dirInput    textinput.Model
-	editingDir  bool   // dirInput is moving the selected store
+	editingDir  bool // dirInput is moving the selected store
+	showDirHint bool
 	autoState   string // "on (user settings)": the AUTO MEMORY header, read once per load
 }
 
@@ -97,9 +99,10 @@ func (m *MemorySelector) loadItems() {
 		instructionItem("Project", "project", paths.Project, cwd),
 		instructionItem("Local", "local", []string{paths.Local}, cwd),
 	}
+	m.showDirHint = m.settings != nil && m.canChangeDirectory()
 	if m.settings != nil {
-		m.items = append(m.items, autoMemoryItems(cwd)...)
-		m.autoState = onOff(m.settings.AutoMemory()) + " (" + autoMemorySource() + ")"
+		m.items = append(m.items, autoMemoryItem(cwd))
+		m.autoState = onOff(m.settings.AutoMemory()) + " (" + autoMemorySource(cwd) + ")"
 	}
 }
 
@@ -108,16 +111,6 @@ func onOff(on bool) string {
 		return "on"
 	}
 	return "off"
-}
-
-// autoMemoryItems describes the user and project stores.
-func autoMemoryItems(cwd string) []memoryItem {
-	stores := setting.MemoryStoresFor(cwd)
-	home, _ := os.UserHomeDir()
-	return []memoryItem{
-		autoMemoryItem("User", setting.ScopeUser, stores.User, system.UserMemoryDir(home)),
-		autoMemoryItem("Project", setting.ScopeProject, stores.Project, system.AutoMemoryDir(cwd)),
-	}
 }
 
 // instructionItem describes one AGENTS.md level: the file nearest cwd when
@@ -142,9 +135,12 @@ func instructionItem(label, level string, searchPaths []string, cwd string) memo
 	return memoryItem{Label: label, Desc: desc, Value: value, Path: path, Exists: exists, Level: level}
 }
 
-// autoMemoryItem describes one agent-written store. Enter opens its MEMORY.md
-// index, d changes its directory and carries its memories along.
-func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string) memoryItem {
+// autoMemoryItem describes the repository's agent-written store.
+func autoMemoryItem(cwd string) memoryItem {
+	dir := string(setting.MemoryStoreFor(cwd))
+	if dir == "" {
+		return memoryItem{Label: "Store", Value: "unavailable", Level: "auto"}
+	}
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	entries, _ := filepath.Glob(filepath.Join(dir, "*.md"))
 	count := len(entries)
@@ -155,53 +151,44 @@ func autoMemoryItem(label string, store setting.Scope, dir, defaultDir string) m
 	if count == 1 {
 		value = "1 memory"
 	}
-	desc := kit.ShortenPath(dir)
-	if dir == defaultDir {
-		desc += " · default"
-	}
-	return memoryItem{Label: label, Desc: desc, Value: value, Path: index, Exists: true, Level: "auto", Store: store}
+	return memoryItem{Label: "Store", Desc: kit.ShortenPath(dir), Value: value, Path: index, Exists: true, Level: "auto"}
 }
 
 // autoMemorySource names what decides the effective auto-memory state, in
 // precedence order.
-func autoMemorySource() string {
-	if setting.AutoMemoryDisabledByEnv() {
-		return "SAN_DISABLE_AUTO_MEMORY"
-	}
-	project := setting.AutoMemoryAt(setting.ScopeProject)
-	if project != nil {
-		return memorySource(nil, project)
-	}
-	return memorySource(setting.AutoMemoryAt(setting.ScopeUser), nil)
-}
-
-func memorySource(user, project *bool) string {
+func autoMemorySource(cwd string) string {
 	switch {
 	case setting.AutoMemoryDisabledByEnv():
 		return "SAN_DISABLE_AUTO_MEMORY"
-	case project != nil:
+	case setting.AutoMemoryAt(cwd, setting.ScopeProject) != nil:
 		return "this project"
-	case user != nil:
+	case setting.AutoMemoryAt(cwd, setting.ScopeUser) != nil:
 		return "all projects"
 	default:
 		return "default"
 	}
 }
 
-// toggleAutoMemory flips the effective auto-memory state at scope and
-// reloads settings so it applies from the next turn.
-func (m *MemorySelector) toggleAutoMemory(scope setting.Scope) {
+func memorySettingsScope(cwd string) setting.Scope {
+	if setting.IsGitRepo(confdir.RepoRoot(cwd)) {
+		return setting.ScopeProject
+	}
+	return setting.ScopeUser
+}
+
+// toggleAutoMemory flips the effective setting for the next turn.
+func (m *MemorySelector) toggleAutoMemory() {
 	if m.settings == nil {
 		return
 	}
-	m.err = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), scope)
+	m.err = setAutoMemory(m.settings, m.cwd, !m.settings.AutoMemory(), memorySettingsScope(m.cwd))
 	m.loadItems()
 }
 
 // setAutoMemory saves the auto-memory switch at scope and reloads settings.
 // When a higher-precedence source still wins, the error names it.
 func setAutoMemory(settings *setting.Settings, cwd string, on bool, scope setting.Scope) error {
-	if err := setting.SaveAutoMemory(on, scope); err != nil {
+	if err := setting.SaveAutoMemory(cwd, on, scope); err != nil {
 		return err
 	}
 	if err := settings.Reload(cwd); err != nil {
@@ -212,7 +199,7 @@ func setAutoMemory(settings *setting.Settings, cwd string, on bool, scope settin
 		if !on {
 			state = "on"
 		}
-		return fmt.Errorf("saved, but %s keeps it %s", autoMemorySource(), state)
+		return fmt.Errorf("saved, but %s keeps it %s", autoMemorySource(cwd), state)
 	}
 	return nil
 }
@@ -248,9 +235,7 @@ func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "enter", "right", "l":
 		return m.selectMemoryItem()
 	case "t", " ":
-		m.toggleAutoMemory(setting.ScopeUser)
-	case "p":
-		m.toggleAutoMemory(setting.ScopeProject)
+		m.toggleAutoMemory()
 	case "d":
 		m.openDirInput()
 	case "esc", "left", "h":
@@ -271,7 +256,12 @@ func (m *MemorySelector) Resize(width, height int) { m.width, m.height = width, 
 // openDirInput starts changing the selected store's directory; an empty
 // value returns it to the default.
 func (m *MemorySelector) openDirInput() {
-	if m.selectedIdx >= len(m.items) || m.items[m.selectedIdx].Store == "" {
+	if m.selectedIdx >= len(m.items) || !m.items[m.selectedIdx].isAuto() {
+		return
+	}
+	m.showDirHint = m.canChangeDirectory()
+	if !m.showDirHint {
+		m.err = fmt.Errorf("changing the memory directory requires untracked settings.local.json in the main repository")
 		return
 	}
 	in := textinput.New()
@@ -283,21 +273,18 @@ func (m *MemorySelector) openDirInput() {
 	m.dirInput, m.editingDir, m.err = in, true, nil
 }
 
+func (m *MemorySelector) canChangeDirectory() bool {
+	main := confdir.MainRepoRoot(m.cwd)
+	return setting.UntrackedInRepo(filepath.Join(confdir.Dir(main), "settings.local.json"))
+}
+
 func (m *MemorySelector) handleDirInput(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "esc":
 		m.editingDir = false
 	case "enter":
-		item := m.items[m.selectedIdx]
-		m.err = setting.SaveMemoryDirectory(item.Store, m.cwd, strings.TrimSpace(m.dirInput.Value()))
-		if m.err == nil {
-			stores := setting.MemoryStoresFor(m.cwd)
-			to := stores.Project
-			if item.Store == setting.ScopeUser {
-				to = stores.User
-			}
-			m.err = setting.MoveMemories(filepath.Dir(item.Path), to)
-		}
+		// Repoint the repository store without moving files from an old location.
+		m.err = setting.SaveMemoryDirectory(m.cwd, strings.TrimSpace(m.dirInput.Value()))
 		m.editingDir = m.err != nil
 		m.loadItems()
 	default:
@@ -313,6 +300,9 @@ func (m *MemorySelector) selectMemoryItem() tea.Cmd {
 		return nil
 	}
 
+	if m.items[m.selectedIdx].Path == "" {
+		return nil
+	}
 	selected := m.items[m.selectedIdx]
 	m.active = false
 
@@ -345,7 +335,7 @@ func (m *MemorySelector) Render() string {
 	}
 	section("INSTRUCTIONS", "you write these · AGENTS.md")
 	for i, item := range m.items {
-		if item.Store != "" && m.items[i-1].Store == "" {
+		if item.isAuto() {
 			b.WriteString("\n")
 			section("AUTO MEMORY", "San writes these · "+m.autoState)
 		}
@@ -363,8 +353,10 @@ func (m *MemorySelector) Render() string {
 	case m.editingDir:
 		hint = kit.HintLine(keycap("enter")+" save", "empty for the default", keycap("esc")+" cancel")
 	case m.settings != nil:
-		hint = kit.HintLine(keycap("enter")+" open", keycap("d")+" change dir", keycap("t")+" on/off",
-			keycap("p")+" project", keycap("esc")+" close")
+		hint = kit.HintLine(keycap("enter")+" open", keycap("t")+" on/off", keycap("esc")+" close")
+		if m.selectedIdx < len(m.items) && m.items[m.selectedIdx].isAuto() && m.showDirHint {
+			hint = kit.HintLine(keycap("enter")+" open", keycap("d")+" change dir", keycap("t")+" on/off", keycap("esc")+" close")
+		}
 	}
 	header := apTitleGlyphStyle.Render("✦ ") + apTitleStyle.Render("Memory") + apDescStyle.Render("   what San remembers across sessions")
 	return panelFrame(m.width, m.height, w, header, strings.TrimRight(b.String(), "\n"), hint)
@@ -380,7 +372,7 @@ func (m *MemorySelector) renderRow(i int, item memoryItem, width int) string {
 	}
 	label := mark + apLabelStyle.Render(apPad(item.Label, apLabelWidth))
 	valueStyle := apLabelStyle
-	if !item.Exists || (item.Store != "" && !m.settings.AutoMemory()) {
+	if !item.Exists || (item.isAuto() && !m.settings.AutoMemory()) {
 		valueStyle = apSummaryStyle
 	}
 	right := valueStyle.Render(item.Value)
@@ -572,14 +564,14 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		if settings == nil {
 			return "", "", fmt.Errorf("settings unavailable")
 		}
-		scope, where := setting.ScopeUser, "for all projects"
-		if len(parts) > 1 && strings.EqualFold(parts[1], "project") {
-			scope, where = setting.ScopeProject, "for this project"
+		if len(parts) != 1 {
+			return "", "", fmt.Errorf("usage: /memory %s", subCmd)
 		}
+		scope := memorySettingsScope(cwd)
 		if err := setAutoMemory(settings, cwd, subCmd == "on", scope); err != nil {
 			return "", "", err
 		}
-		return "Auto memory " + subCmd + " " + where + " (from the next turn)", "", nil
+		return "Auto memory " + subCmd + " (from the next turn)", "", nil
 	}
 
 	scope := "project"
@@ -604,7 +596,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		}
 		return "", editPath, nil
 	default:
-		return "Usage: /memory [browse] | [on|off] [project] | [list|show|edit] [global|project|local]", "", nil
+		return "Usage: /memory [browse|update|on|off|list|show] | edit [global|project|local]", "", nil
 	}
 }
 
@@ -690,19 +682,17 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", padRight(displayPath, memoryMaxPath), sizeStr)))
 }
 
-// writeAutoMemorySection lists both auto-memory stores, a long directory
-// losing its head so the repository and count stay in view.
+// writeAutoMemorySection lists the store, keeping the end of its directory in view.
 func writeAutoMemorySection(sb *strings.Builder, cwd string, on bool) {
 	glyph := "○"
 	if on {
 		glyph = "●"
 	}
-	sb.WriteString(memoryFormatBoxLine(" " + glyph + " Auto memory (" + onOff(on) + ", " + autoMemorySource() + ")"))
-	for _, item := range autoMemoryItems(cwd) {
-		head, tail := "   "+apPad(item.Label, 9), " · "+item.Value
-		desc := kit.TruncateKeepEnd(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
-		sb.WriteString(memoryFormatBoxLine(head + desc + tail))
-	}
+	sb.WriteString(memoryFormatBoxLine(" " + glyph + " Auto memory (" + onOff(on) + ", " + autoMemorySource(cwd) + ")"))
+	item := autoMemoryItem(cwd)
+	head, tail := "   ", " · "+item.Value
+	desc := kit.TruncateKeepEnd(item.Desc, memoryBoxWidth-3-len(head)-len(tail))
+	sb.WriteString(memoryFormatBoxLine(head + desc + tail))
 	sb.WriteString(memoryFormatBoxLine(""))
 }
 

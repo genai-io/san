@@ -261,13 +261,13 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		parts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
 	}
 	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
-	var memory system.MemoryStores
+	var memory system.MemoryStore
 	if setting.New(settings).AutoMemory() {
-		memory = setting.MemoryStoresFor(cwd)
+		memory = setting.MemoryStoreFor(cwd)
 	}
-	policy := agentpkg.PermissionPolicy{Settings: settings, Session: headless, AutoMemory: memory}
+	policy := agentpkg.PermissionPolicy{Settings: settings, Session: headless}
 	return agentpkg.BuildParams{
-		AutoMemory:    agentpkg.AutoMemoryConfig{Stores: memory, Recall: settings.MemoryRecall()},
+		AutoMemory:    agentpkg.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall()},
 		ModelID:       settings.Model,
 		MaxTokens:     setting.DefaultMaxTokens,
 		CWD:           cwd,

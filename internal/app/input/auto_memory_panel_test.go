@@ -26,16 +26,14 @@ func TestAutoMemoryPanelRecallKeys(t *testing.T) {
 			p.HandleKey(tea.KeyPressMsg{Code: r, Text: string(r)})
 		}
 	}
-	press(tea.KeyDown) // User lookup
-	press(tea.KeyEnter)
-	if mode, _ := setting.MemoryRecallAt(cwd, setting.ScopeUser); mode != setting.MemoryRecallFast {
-		t.Fatalf("explicit Fast not saved: %q", mode)
+	press(tea.KeyEnter) // Fast → Wait
+	if out := p.Render(60, 20); svc.MemoryRecall().Mode != setting.MemoryRecallWait || !strings.Contains(out, "Wait") || strings.Contains(out, "5s") {
+		t.Fatalf("expected Wait without a timeout on the main page: %s", out)
 	}
-	press(tea.KeyEnter) // Wait
-	if svc.MemoryRecall().Mode != setting.MemoryRecallWait || !strings.Contains(p.Render(60, 20), "Wait · 5s") {
-		t.Fatalf("expected effective Wait with default timeout: %s", p.status)
+	press(tea.KeyRight) // Options, focused on Wait timeout.
+	if out := p.Render(60, 20); !strings.Contains(out, "Wait timeout") || !strings.Contains(out, "5s") {
+		t.Fatalf("expected timeout in Options: %s", out)
 	}
-	press(tea.KeyDown) // User wait timeout
 	press(tea.KeyEnter)
 	typeText("0s")
 	press(tea.KeyEnter)
@@ -43,24 +41,68 @@ func TestAutoMemoryPanelRecallKeys(t *testing.T) {
 		t.Fatal("invalid timeout should keep the editor open without saving")
 	}
 	press(tea.KeyEscape)
-	if p.Modal() || p.err != nil {
-		t.Fatal("Escape should cancel the edit and return to the rows")
+	if p.page != memoryOptionsPage || p.err != nil {
+		t.Fatal("Escape should cancel the edit and return to Options")
 	}
 	press(tea.KeyEnter)
 	typeText("750ms")
 	press(tea.KeyEnter)
-	if p.Modal() || p.err != nil || svc.MemoryRecall().Timeout != 750*time.Millisecond {
+	if p.page != memoryOptionsPage || p.err != nil || svc.MemoryRecall().Timeout != 750*time.Millisecond {
 		t.Fatalf("timeout edit not saved: config = %+v, error = %v", svc.MemoryRecall(), p.err)
 	}
-	press(tea.KeyDown) // Project enablement
-	press(tea.KeyDown) // Project lookup
+	press(tea.KeyEscape) // Options → main rows, with Recall still selected.
+	press(tea.KeyEnter)  // Wait → Off.
+	if mode, _ := setting.MemoryRecallAt(cwd, setting.ScopeUser); mode != setting.MemoryRecallOff || !svc.AutoMemory() {
+		t.Fatalf("Recall Off must be persisted without disabling the library: %q", mode)
+	}
+	press(tea.KeyEnter) // Off → Fast.
+	if svc.MemoryRecall().Mode != setting.MemoryRecallFast || svc.MemoryRecall().Timeout != 750*time.Millisecond {
+		t.Fatalf("switching modes should preserve the timeout: %+v", svc.MemoryRecall())
+	}
+}
+
+func TestAutoMemoryPanelUpdateKeys(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SAN_TRUST_WORKSPACE", "1")
+	svc := setting.New(nil)
+	popup := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	popup.Enter(100, 30)
+	p := popup.ActivePanel().(*autoMemoryPanel)
+	press := func(code rune) { popup.HandleKeypress(tea.KeyPressMsg{Code: code}) }
+	check := func(want bool) {
+		t.Helper()
+		if got := svc.MemoryUpdate(); got != want || p.err != nil || p.Dirty() {
+			t.Fatalf("Update = %v, want %v; error = %v, dirty = %v", got, want, p.err, p.Dirty())
+		}
+	}
+	check(false)
+	press(tea.KeyDown)
+	press(tea.KeyDown) // Update is the last row.
+	if p.cursor != memoryUpdate {
+		t.Fatalf("expected Update selected, got row %d", p.cursor)
+	}
 	press(tea.KeyEnter)
-	if svc.MemoryRecall().Mode != setting.MemoryRecallFast || !svc.AutoMemory() {
-		t.Fatalf("project Fast should override user Wait without changing enablement: %+v", svc.MemoryRecall())
+	check(true)
+	out := p.Render(60, 20)
+	for _, want := range []string{"Recall", "Update", "● On"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in panel: %s", want, out)
+		}
 	}
-	press(tea.KeyEnter) // Wait
-	press(tea.KeyEnter) // inherit
-	if mode, _ := setting.MemoryRecallAt(cwd, setting.ScopeProject); mode != "" || svc.MemoryRecall().Mode != setting.MemoryRecallWait {
-		t.Fatalf("expected inherited Wait, got scoped %q, effective %+v", mode, svc.MemoryRecall())
+	for _, absent := range []string{"Remember", "Forget", "Wait timeout", "Auto Memory"} {
+		if strings.Contains(out, absent) {
+			t.Fatalf("unexpected %q on main page: %s", absent, out)
+		}
 	}
+	press(tea.KeyRight)
+	press(tea.KeyEnter) // Pause via master switch without clearing Update.
+	if svc.AutoMemory() {
+		t.Fatal("master switch did not pause Auto Memory")
+	}
+	check(true)
+	press(tea.KeyEscape)
+	press(tea.KeyEnter)
+	check(false)
 }

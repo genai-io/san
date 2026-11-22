@@ -26,14 +26,9 @@ var builtinSubcommands = map[string][]Info{
 		{Name: "memory list", Description: "List memory files"},
 		{Name: "memory show", Description: "Show memory files"},
 		{Name: "memory edit", Description: "Edit a memory file"},
-		{Name: "memory on", Description: "Turn auto memory on for all projects"},
-		{Name: "memory off", Description: "Turn auto memory off for all projects"},
-	},
-	"memory on": {
-		{Name: "memory on project", Description: "Turn auto memory on for this project"},
-	},
-	"memory off": {
-		{Name: "memory off project", Description: "Turn auto memory off for this project"},
+		{Name: "memory update", Description: "Review the completed conversation and update repository memory"},
+		{Name: "memory on", Description: "Enable Auto Memory"},
+		{Name: "memory off", Description: "Disable Auto Memory"},
 	},
 	"memory edit": {
 		{Name: "memory edit global", Description: "Edit user memory"},

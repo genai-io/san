@@ -17,11 +17,35 @@ func TestMemoryRecallDefaults(t *testing.T) {
 	}
 }
 
+func TestMemoryRecallOffIndependentOfMasterAndUpdate(t *testing.T) {
+	trustHome(t)
+	cwd := t.TempDir()
+	if err := SaveAutoMemory(cwd, true, ScopeUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveMemoryUpdate(cwd, ScopeUser, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveMemoryRecallMode(cwd, ScopeUser, MemoryRecallOff); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveMemoryRecallMode(cwd, ScopeUser, "unknown"); err == nil {
+		t.Fatal("invalid mode accepted")
+	}
+	s := New(nil)
+	if err := s.Reload(cwd); err != nil {
+		t.Fatal(err)
+	}
+	if !s.AutoMemory() || !s.MemoryUpdate() || s.MemoryRecall().Mode != MemoryRecallOff {
+		t.Fatalf("master = %v, Update = %v, Recall = %+v", s.AutoMemory(), s.MemoryUpdate(), s.MemoryRecall())
+	}
+}
+
 func TestMemoryRecallScopes(t *testing.T) {
 	trustHome(t)
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	cwd := t.TempDir()
-	if err := SaveAutoMemory(false, ScopeUser); err != nil {
+	if err := SaveAutoMemory(cwd, false, ScopeUser); err != nil {
 		t.Fatal(err)
 	}
 	if err := SaveMemoryRecallMode(cwd, ScopeUser, MemoryRecallWait); err != nil {
@@ -44,6 +68,13 @@ func TestMemoryRecallScopes(t *testing.T) {
 		}
 	}
 	check(MemoryRecallWait, 2500*time.Millisecond)
+	if err := SaveMemoryRecallMode(cwd, ScopeProject, MemoryRecallOff); err != nil {
+		t.Fatal(err)
+	}
+	if mode, timeout := MemoryRecallAt(cwd, ScopeProject); mode != "off" || timeout != "" {
+		t.Fatalf("project override = (%q, %q), want (off, empty)", mode, timeout)
+	}
+	check(MemoryRecallOff, 2500*time.Millisecond)
 	if err := SaveMemoryRecallMode(cwd, ScopeProject, MemoryRecallFast); err != nil {
 		t.Fatal(err)
 	}

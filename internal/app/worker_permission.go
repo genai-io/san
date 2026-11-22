@@ -6,7 +6,6 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -17,7 +16,6 @@ import (
 type workerResolver struct {
 	settings *setting.Settings
 	grants   *setting.SessionPermissions
-	memory   system.MemoryStores
 	bridge   *conv.AgentToUI
 	child    *session.Session
 	cwd      string
@@ -25,12 +23,12 @@ type workerResolver struct {
 	source   tool.AgentInteractionSource
 }
 
-func newWorkerResolver(settings *setting.Settings, grants *setting.SessionPermissions, memory system.MemoryStores, bridge *conv.AgentToUI, child *session.Session, source tool.AgentInteractionSource) tool.Resolver {
+func newWorkerResolver(settings *setting.Settings, grants *setting.SessionPermissions, bridge *conv.AgentToUI, child *session.Session, source tool.AgentInteractionSource) tool.Resolver {
 	if source.Flow != nil {
 		flow := *source.Flow
 		source.Flow = &flow
 	}
-	p := &workerResolver{settings: settings, grants: grants, memory: memory, bridge: bridge, child: child, cwd: source.WorkingDirectory, mode: setting.ModeNormal, source: source}
+	p := &workerResolver{settings: settings, grants: grants, bridge: bridge, child: child, cwd: source.WorkingDirectory, mode: setting.ModeNormal, source: source}
 	if child != nil {
 		snapshot := child.Snapshot()
 		config := snapshot.Config()
@@ -54,7 +52,7 @@ func (p *workerResolver) Resolve(ctx context.Context, name string, input map[str
 	grants := p.grants.Snapshot()
 	// Grants remain live, but a later parent mode change cannot widen this child.
 	grants.Mode = p.mode
-	policy := agent.PermissionPolicy{Settings: p.settings, Session: grants, AutoMemory: p.memory}
+	policy := agent.PermissionPolicy{Settings: p.settings, Session: grants}
 	d := policy.Decide(name, input)
 	if d.Decision == perm.Reject || d.Decision == perm.Permit && !forced {
 		decision := "deny"

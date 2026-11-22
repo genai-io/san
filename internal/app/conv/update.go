@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
@@ -148,13 +149,18 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 
 func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	switch e := ev.(type) {
+	case agent.MemoryRecalled:
+		if len(e.NoteIDs) > 0 {
+			m.Append(core.ChatMessage{Role: core.ChatNotice, AutoMemoryRecallNotice: compactRecallNotice(e.AfterMessage, e.NoteIDs)})
+		}
+		return nil
 	case sdkagent.MessageAdded:
 		// PostTool filters run after ToolEnd. Only the native result added to
 		// the conversation carries an attached recall; show that use here,
 		// not at turn end, without replacing the raw output already drawn.
 		for _, result := range e.Message.ToolResults() {
-			if notice := recalledMemoryNotice(result.Text(), e.Message.ID); notice != "" {
-				m.AddNotice(notice)
+			if notice := recalledMemoryNotice(m.AutoMemoryStore, result.Text(), e.Message.ID); notice != nil {
+				m.Append(core.ChatMessage{Role: core.ChatNotice, AutoMemoryRecallNotice: notice})
 			}
 		}
 		return nil

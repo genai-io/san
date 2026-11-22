@@ -11,18 +11,17 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// autoMemoryStores returns the enabled Auto Memory directories.
-func (m *model) autoMemoryStores() system.MemoryStores {
+// autoMemoryStore returns the repository's Auto Memory store when enabled.
+func (m *model) autoMemoryStore() system.MemoryStore {
 	if !m.services.Setting.AutoMemory() {
-		return system.MemoryStores{}
+		return ""
 	}
-	return setting.MemoryStoresFor(m.env.CWD)
+	return setting.MemoryStoreFor(m.env.CWD)
 }
 
 // memoryLine is the turn's memory changes in one quiet line under the answer,
 // grouped by verb. Reads and recalls already appear at their tool steps and
-// must not be repeated here. A write names its store; an unchanged turn gets
-// no footer.
+// must not be repeated here. An unchanged turn gets no footer.
 func memoryLine(entries []conv.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
@@ -34,14 +33,7 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 		if _, ok := items[e.Verb]; !ok {
 			verbs = append(verbs, e.Verb)
 		}
-		title := memoryItemStyle.Render(e.Title)
-		switch e.Verb {
-		case "saved":
-			title += memoryLabelStyle.Render(" to " + e.Store)
-		case "updated":
-			title += memoryLabelStyle.Render(" in " + e.Store)
-		}
-		items[e.Verb] = append(items[e.Verb], title)
+		items[e.Verb] = append(items[e.Verb], memoryItemStyle.Render(e.Title))
 	}
 	if len(verbs) == 0 {
 		return ""
@@ -57,7 +49,7 @@ func memoryLine(entries []conv.MemoryEntry, width int) string {
 	return line
 }
 
-// The titles carry the line; the icon, verbs and stores recede behind them.
+// The titles carry the line; the icon and verbs recede behind them.
 var (
 	memoryLabelStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	memoryItemStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)

@@ -188,10 +188,11 @@ func (c *PanelPopup) Render() string {
 	w := c.innerWidth()
 
 	header := c.renderHeader(w)
+	hint := c.renderHint(p.HintLine())
 	headerLines := strings.Count(header, "\n") + 1
 	// Rows left for the body after the header, the hairline, the blank lines,
 	// the hint, and the card's border + padding + a screen margin.
-	bodyHeight := max(4, c.height-headerLines-12)
+	bodyHeight := max(4, c.height-headerLines-12-strings.Count(hint, "\n"))
 
 	rule := popupRuleStyle.Render(strings.Repeat("─", w))
 
@@ -204,7 +205,7 @@ func (c *PanelPopup) Render() string {
 	b.WriteString("\n\n")
 	b.WriteString(body)
 	b.WriteString("\n\n")
-	b.WriteString(c.renderHint(p.HintLine()))
+	b.WriteString(hint)
 
 	col := lipgloss.NewStyle().Width(w).Render(b.String())
 	card := popupCardStyle.Render(col)
@@ -290,15 +291,18 @@ func (c *PanelPopup) renderHint(panelHint string) string {
 	if panelIsModal(c.activePanel()) {
 		return kit.HintLine(panelHint)
 	}
-	parts := []string{}
-	if panelHint != "" {
-		parts = append(parts, panelHint)
-	}
-	parts = append(parts, "esc close")
+	shell := []string{"esc close"}
 	if len(c.panels) > 1 {
-		parts = append(parts, "tab panels")
+		shell = append(shell, "tab panels")
 	}
-	return kit.HintLine(parts...)
+	if panelHint == "" {
+		return kit.HintLine(shell...)
+	}
+	line := kit.HintLine(append([]string{panelHint}, shell...)...)
+	if lipgloss.Width(line) > c.innerWidth() {
+		return kit.HintLine(panelHint) + "\n" + kit.HintLine(shell...)
+	}
+	return line
 }
 
 var (

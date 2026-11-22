@@ -54,8 +54,8 @@ func TestAgentAdmissionBoundaries(t *testing.T) {
 						mark("prepare")
 						return []Message{UserMessage("prepared", nil)}
 					},
-					AppendContext: func(msgs []Message, _ bool) []Message {
-						return append(msgs, UserMessage("request only", nil))
+					AppendContext: func(msgs []Message, _ bool) ([]Message, func() Event) {
+						return append(msgs, UserMessage("request only", nil)), nil
 					},
 				},
 				Tools: NewTools(admissionTool{run: func(call ai.ToolCall) {

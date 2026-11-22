@@ -40,8 +40,10 @@ type agent struct {
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
 
-	// measured is the last reply's real prompt size; see promptTokens.
-	measured promptMeasure
+	// Request-context display is staged by preInfer and delivered at most once
+	// after the provider responds, before showing the first response fragment.
+	contextNotice func() Event
+	measured      promptMeasure
 
 	// wake tells an idle Run that Append queued something. Messages
 	// themselves wait in inner's queue, which lands them at the next step
@@ -397,7 +399,13 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 // the outcome.
 func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 	switch e := event.(type) {
+	case sdkagent.InferenceUpdate:
+		a.emitContextNotice(ctx)
 	case sdkagent.InferenceEnd:
+		if e.Err == nil {
+			a.emitContextNotice(ctx)
+		}
+		a.contextNotice = nil
 		if e.Err == nil && e.Response != nil {
 			out.Steps++
 			out.Usage.Add(e.Response.Usage)
@@ -414,6 +422,17 @@ func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 		}
 	}
 	a.emit(ctx, event)
+}
+
+func (a *agent) emitContextNotice(ctx context.Context) {
+	if notice := a.contextNotice; notice != nil {
+		a.contextNotice = nil
+		if ctx.Err() == nil {
+			if event := notice(); event != nil {
+				a.emit(ctx, event)
+			}
+		}
+	}
 }
 
 // hooks is where San gets between the SDK's loop and the model: which client
@@ -457,7 +476,7 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 	}
 	inf.Client = client
 	if inference.AppendContext != nil {
-		inf.Messages = inference.AppendContext(inf.Messages, inf.LastErr != nil)
+		inf.Messages, a.contextNotice = inference.AppendContext(inf.Messages, inf.LastErr != nil)
 	}
 	if inference.Options != nil {
 		inf.Options = append(inf.Options, inference.Options()...)

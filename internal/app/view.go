@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
@@ -245,13 +246,19 @@ func (m *model) renderFooter(separator string) (string, int) {
 		detail := ""
 		if time.Since(m.memoryInput.startedAt) >= 250*time.Millisecond {
 			detail = "Memory"
-			if m.memoryInput.maintenance {
-				detail = "Updating memory"
-			}
 		}
 		status = conv.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
 	default:
 		status = conv.RenderInferenceStatus(params)
+	}
+	if width := m.env.Width - 1; m.memoryReview != nil && m.memoryReview.manual && width > 0 {
+		maintenance := ghostTextStyle.Render(ansi.Truncate(kit.MemoryMark+" Reviewing…", width, "…"))
+		if status == "" {
+			status = maintenance
+		} else {
+			// Keep foreground activity next to the composer.
+			b.WriteString("\n" + maintenance)
+		}
 	}
 	if status != "" && m.footerHasBreathingRoom() {
 		b.WriteString("\n")
@@ -645,9 +652,10 @@ func (m model) messageRenderParams() conv.RenderContext {
 	m.conv.SetActiveAgentIdentities(activeAgentIDs)
 	return conv.RenderContext{
 		// Conversation state
-		Messages:       m.conv.Messages,
-		CommittedCount: m.conv.CommittedCount,
-		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
+		Messages:        m.conv.Messages,
+		AutoMemoryStore: m.conv.AutoMemoryStore,
+		CommittedCount:  m.conv.CommittedCount,
+		InlinedResults:  conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
 
 		// Streaming + tool execution
 		StreamActive:    m.conv.Stream.Active,

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -55,18 +54,26 @@ func TestPermissionPolicyRules(t *testing.T) {
 	}
 }
 
-func TestPermissionPolicyMemory(t *testing.T) {
+func TestPermissionPolicyMemoryWriteUsesNormalRules(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	data := setting.NewData()
-	dir := t.TempDir()
-	session := &setting.SessionPermissions{ShouldAvoidPrompts: true}
-	p := PermissionPolicy{Settings: data, Session: session, AutoMemory: system.MemoryStores{Project: dir}}
-	path := filepath.Join(dir, "a.md")
+	session := setting.NewSessionPermissions()
+	p := PermissionPolicy{Settings: data, Session: session}
+	store := setting.MemoryStoreFor(t.TempDir())
+	if store.Off() {
+		t.Fatal("expected an enabled Auto Memory store")
+	}
+	path := filepath.Join(string(store), "a.md")
 	args := map[string]any{"file_path": path}
-	if d := p.Decide("Write", args); d.Decision != perm.Permit || d.Reason != "auto memory" {
-		t.Fatalf("memory: %+v", d)
+	if d := p.Decide("Write", args); d.Decision != perm.Prompt {
+		t.Fatalf("ungranted memory write should prompt: %+v", d)
+	}
+	session.ShouldAvoidPrompts = true
+	if d := p.Decide("Write", args); d.Decision != perm.Reject {
+		t.Fatalf("ungranted headless memory write should be rejected: %+v", d)
 	}
 	data.Permissions.Deny = []string{"Write(**/a.md)"}
-	if d := p.Decide("Write", args); d.Decision != perm.Reject {
+	if d := p.Decide("Write", args); d.Decision != perm.Reject || d.By != "config" {
 		t.Fatalf("memory bypassed deny: %+v", d)
 	}
 }

@@ -810,7 +810,7 @@ func TestDockedModalStaysWithinTerminalHeight(t *testing.T) {
 func TestDockedModalDoesNotShowTheGatedCallAsRunning(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 
-	row, later := rowAcrossFrames(t, m, "Bash(df -h)")
+	row, later := rowAcrossFrames(t, m, "(df -h)")
 	if row != later {
 		t.Fatalf("tool row breathes while it waits on the approval modal: %q then %q", row, later)
 	}
@@ -866,7 +866,7 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 		t.Fatalf("awaiting call = %q, want no call named when the request carries no ID", got)
 	}
 
-	if row, later := rowAcrossFrames(t, m, "Bash("); row != later {
+	if row, later := rowAcrossFrames(t, m, "(df -h)"); row != later {
 		t.Fatalf("tool row breathes while the modal owns the screen: %q then %q", row, later)
 	}
 }

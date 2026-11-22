@@ -171,19 +171,19 @@ type ContextCompactPayload struct {
 // Purposes name why a model call was made; each has one usual input kind and
 // one event that holds its result.
 const (
-	PurposeTurn           = "turn"
-	PurposeFlow           = "flow"
-	PurposeBtw            = "btw"
-	PurposeRecap          = "recap"
-	PurposeSuggest        = "suggest"
-	PurposeCompaction     = "compaction"
-	PurposeJudge          = "judge"
-	PurposeHook           = "hook"
-	PurposeAutopilot      = "autopilot"
-	PurposeGroup          = "group"
-	PurposeRecall         = "recall"
-	PurposeMemoryMaintain = "memory-maintain"
-	PurposeAutoSkill      = "auto-skill"
+	PurposeTurn         = "turn"
+	PurposeFlow         = "flow"
+	PurposeBtw          = "btw"
+	PurposeRecap        = "recap"
+	PurposeSuggest      = "suggest"
+	PurposeCompaction   = "compaction"
+	PurposeJudge        = "judge"
+	PurposeHook         = "hook"
+	PurposeAutopilot    = "autopilot"
+	PurposeGroup        = "group"
+	PurposeRecall       = "recall"
+	PurposeMemoryUpdate = "memory-update"
+	PurposeAutoSkill    = "auto-skill"
 )
 
 // ConversationInput: the request is this session's own context, instructions and

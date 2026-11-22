@@ -111,7 +111,8 @@ type SlashCommandEnv struct {
 	// SideQuestion answers /btw without the main agent seeing it.
 	SideQuestion func(question string) tea.Cmd
 	// Recap answers /recap without the main agent seeing it.
-	Recap func() tea.Cmd
+	Recap        func() tea.Cmd
+	UpdateMemory func() (string, tea.Cmd)
 }
 
 type SlashCommandController struct {
@@ -396,7 +397,7 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 }
 
 // handleSettingsCommand opens the /settings popup (Appearance, Permissions
-// and General). Use /memory for Auto Memory and Auto Skill.
+// and General). Use /reflection for Auto Memory and Auto Skill.
 func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
@@ -526,6 +527,13 @@ func (c *SlashCommandController) handleReflectionCommand(_ context.Context, args
 }
 
 func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if strings.TrimSpace(args) == "update" {
+		if c.env.UpdateMemory == nil {
+			return "Auto Memory update is unavailable.", nil, nil
+		}
+		result, cmd := c.env.UpdateMemory()
+		return result, cmd, nil
+	}
 	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Setting, c.env.Cwd, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err

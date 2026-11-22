@@ -167,7 +167,7 @@ func withoutOutbox() buildOption {
 	return func(cfg *core.Config) { cfg.OutboxBuf = -1 }
 }
 
-func withRequestContext(appendContext func([]core.Message, bool) []core.Message) buildOption {
+func withRequestContext(appendContext func([]core.Message, bool) ([]core.Message, func() core.Event)) buildOption {
 	return func(cfg *core.Config) { cfg.Inference.AppendContext = appendContext }
 }
 
@@ -329,7 +329,8 @@ func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate
 	return ag, pg, nil
 }
 
-func (p BuildParams) memoryRecaller() Recaller {
+// MemoryRecaller uses the main model and the configured Wait budget.
+func (p BuildParams) MemoryRecaller() Recaller {
 	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
 	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
 		r.Timeout = p.AutoMemory.Recall.Timeout
@@ -341,10 +342,11 @@ func (p BuildParams) memoryRecaller() Recaller {
 }
 
 func (p BuildParams) newFastRecall(ctx context.Context) *fastRecall {
-	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait || p.AutoMemory.Stores.Off() || p.Provider == nil {
+	mode := p.AutoMemory.Recall.Mode
+	if mode == setting.MemoryRecallWait || mode == setting.MemoryRecallOff || p.AutoMemory.Store.Off() || p.Provider == nil {
 		return nil
 	}
-	return &fastRecall{ctx: ctx, stores: p.AutoMemory.Stores, recaller: p.memoryRecaller()}
+	return &fastRecall{ctx: ctx, store: p.AutoMemory.Store, recaller: p.MemoryRecaller()}
 }
 
 // RunOnce answers one message with no session around it: build the agent, hand
@@ -365,8 +367,8 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	defer cancelRecall()
 	recall := p.newFastRecall(recallCtx)
 	prepared := PreparedMemory{Message: message}
-	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait || IsMemoryMaintenance(message) {
-		prepared, err = p.memoryRecaller().Prepare(ctx, p.AutoMemory.Stores, message, nil)
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
+		prepared, err = p.MemoryRecaller().Prepare(ctx, p.AutoMemory.Store, message, nil)
 	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if err != nil {
@@ -374,12 +376,6 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if prepared.Handled {
-		if onText != nil {
-			onText(prepared.Notice)
-		}
-		return &core.Result{Content: prepared.Notice, StopReason: core.StopEndTurn}, nil
 	}
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the

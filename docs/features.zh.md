@@ -34,7 +34,7 @@
 
 ## 记忆与学习
 
-- [Auto Memory（自动记忆）](concepts/auto-memory.md) —— 在主模型推理前检索相关笔记，并在 Aside 中处理明确的记住、更新和遗忘请求。只有选中的笔记进入主对话。
+- [Auto Memory（自动记忆）](concepts/auto-memory.md) —— 每个仓库共用一个记忆库。Recall 召回相关笔记，独立的 Update Aside 审查已完成的对话轮次并可更新记忆库，不拦截主会话输入。
 
 - [项目指令](reference/context-management.md#reminders-and-hot-reload) —— 把仓库约定写进可随代码审阅的文件。San 先读用户级指令，再沿仓库根目录到工作目录读取 `AGENTS.md`，同时纳入规则和本地覆盖项。加载后的内容在总大小上限内作为提醒送入上下文。
 

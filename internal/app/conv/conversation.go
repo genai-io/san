@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -45,12 +46,13 @@ func (s *StreamState) EndInference() {
 }
 
 type ConversationModel struct {
-	Messages       []core.ChatMessage
-	CommittedCount int
-	Stream         StreamState
-	Compact        CompactState
-	Modal          ModalState
-	Tool           ToolExecState
+	Messages        []core.ChatMessage
+	CommittedCount  int
+	Stream          StreamState
+	Compact         CompactState
+	Modal           ModalState
+	Tool            ToolExecState
+	AutoMemoryStore system.MemoryStore
 
 	// OnNotice sees every notice appended, so the host can keep it in the
 	// transcript; a notice never reaches the model, only the person.

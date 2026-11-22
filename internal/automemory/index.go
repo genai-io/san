@@ -82,7 +82,7 @@ func editIndex(text string, p proposal) (string, error) {
 			out.WriteString(newline)
 		}
 		entryStart := out.Len()
-		fmt.Fprintf(&out, "- [%s](%s) — %s%s", p.Name, p.File, p.Description, newline)
+		fmt.Fprintf(&out, "- [%s](%s) — (%s) %s%s", p.Name, p.File, p.Type, p.Description, newline)
 		// Test the actual append: EOF alone can terminate a literal block
 		// that would otherwise swallow the new line.
 		if literalIndexLines(out.String())[entryStart] {

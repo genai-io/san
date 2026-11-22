@@ -8,13 +8,13 @@ import (
 )
 
 // The turn's memory changes use the same hollow-star marker as reads and
-// recalls, with writes naming their store.
+// recalls.
 func TestMemoryLine(t *testing.T) {
 	got := ansi.Strip(memoryLine([]conv.MemoryEntry{
-		{Verb: "used", Title: "Go dev", Store: "user"}, {Verb: "updated", Title: "Freeze", Store: "project"},
-		{Verb: "used", Title: "Tabs", Store: "user"}, {Verb: "saved", Title: "Pnpm", Store: "user"},
+		{Verb: "used", Title: "Go dev"}, {Verb: "updated", Title: "Freeze"},
+		{Verb: "used", Title: "Tabs"}, {Verb: "saved", Title: "Pnpm"},
 	}, 100))
-	if got != "⟡ updated Freeze in project · saved Pnpm to user" {
+	if got != "⟡ updated Freeze · saved Pnpm" {
 		t.Errorf("memoryLine = %q", got)
 	}
 	if got := ansi.Strip(memoryLine([]conv.MemoryEntry{{Verb: "recalled", Title: "Go dev"}}, 100)); got != "" {

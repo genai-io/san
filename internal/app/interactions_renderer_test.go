@@ -10,7 +10,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -100,7 +99,7 @@ func TestWorkerInteractionsThroughMainTUI(t *testing.T) {
 				}
 				settings, grants := m.services.Setting, m.env.SessionPermissions
 				executor.ConfigureOwner(m.services.Task, subagent.NewRegistry(), func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
-					return newWorkerResolver(settings, grants, system.MemoryStores{}, bridge, child, source)
+					return newWorkerResolver(settings, grants, bridge, child, source)
 				}, nil)
 				executor.SetParentPermissionMode(func() subagent.PermissionMode { return mode })
 				executor.SetInteractions(bridge)

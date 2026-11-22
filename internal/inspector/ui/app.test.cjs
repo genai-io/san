@@ -59,6 +59,43 @@ function expand(root,title){
   const node=panel(root,title);
   node.open=true;node.listeners.toggle();return node;
 }
+const originalJSON=root=>expand(root,'Original JSON').children.at(-1).textContent;
+
+test('model response metrics distinguish missing usage, explicit zero and reported cache hit',async()=>{
+  const v=await viewer();
+  v.state.currentSession='fixture';
+  const usages=[undefined,{input:0,output:0,cache_read:0},{input:12,output:3,cache_read:1200,cache_write:40,reasoning:2}];
+  v.ingestBatch(batch(1,usages.flatMap((usage,i)=>[
+    event(2*i+1,'inference.start',{purpose:'turn'}),
+    event(2*i+2,'inference.finish',{outcome:'success',usage},{seq:2*i+1}),
+  ])));
+  const root=v.element('#detail-body');
+  await v.showDetail(1);
+  assert.match(root.textContent,/Input tokensUnavailableOutput tokensUnavailableCache-read tokensUnavailableCache-write tokensUnavailable/);
+  await v.showDetail(3);
+  assert.match(root.textContent,/Input tokens0Output tokens0Cache-read tokens0Cache-write tokensNot reported/);
+  assert.doesNotMatch(root.textContent,/reported hit/);
+  await v.showDetail(5);
+  assert.ok(root.textContent.includes(`Cache-read tokens${(1200).toLocaleString()} · reported hitCache-write tokens40`));
+  assert.match(expand(root,'Raw usage').textContent,/"reasoning": 2/);
+});
+
+test('Update response compares SDK prefix separately from cache metrics',async()=>{
+  const v=await viewer();
+  v.state.currentSession='fixture';
+  v.ingestBatch(batch(1,[
+    event(1,'inference.start',{purpose:'memory-update'}),
+    event(2,'inference.finish',{outcome:'success',usage:{input:1,output:2}},{seq:1}),
+  ]));
+  await v.showDetail(1);
+  assert.deepEqual(v.requests.map(r=>r.url),['/api/sessions/fixture/request/1?view=update-prefix']);
+  v.requests[0].resolve({status:'match',source:7,count:4});
+  await new Promise(setImmediate);
+  const root=v.element('#detail-body');
+  assert.match(root.textContent,/Cache-read tokensNot reported/);
+  assert.match(root.textContent,/Update SDK prefix/);
+  assert.match(root.textContent,/Matches completed main request and its assistant outputMatching messages4Compared main request#7/);
+});
 
 test('session pages load only on navigation or refresh and prevent overlapping requests',async()=>{
   let complete;
@@ -115,7 +152,7 @@ test('expanding details preserves the selected step, payload, and timeline',asyn
   const detail=v.element('#detail-body'), timeline=v.element('#timeline'), button=v.element('#detail-expand');
   const raw=expand(detail,'Raw batch');
   const rows=timeline.children, selection=v.state.selectedRecordID;
-  assert.equal(JSON.parse(raw.children.at(-1).textContent).batch.records[0].data.events[0].payload.text,'recorded detail');
+  assert.equal(JSON.parse(originalJSON(raw)).batch.records[0].data.events[0].payload.text,'recorded detail');
   button.listeners.click();
   assert.equal(v.element('main').classList.contains('detail-wide'),true);
   assert.equal(button.attributes['aria-expanded'],'true');
@@ -296,8 +333,8 @@ test('timeline separates hook status, message preview and source from raw payloa
   assert.doesNotMatch(details.textContent,/project context|notice/);
   const reminders=expand(details,'System reminders · 4');
   assert.match(reminders.textContent,/User prompt hook.*hook context.*Skills directory.*visible skills.*Project instructions.*project context.*Source not recorded.*notice/s);
-  const raw=expand(detail,'Raw batch').children.at(-1);
-  const events=JSON.parse(raw.textContent).batch.records[0].data.events;
+  const raw=originalJSON(expand(detail,'Raw batch'));
+  const events=JSON.parse(raw).batch.records[0].data.events;
   assert.ok(events.find(rec=>rec.seq===2).payload.messages[0].content[0].text.includes(reminder));
 });
 test('standalone inference renders the admitted system prompt, messages and tool schemas using SDK keys',async()=>{
@@ -325,7 +362,13 @@ test('Aside — Auto Memory shows its paired response on live arrival and links 
     event(2,'inference.start',{purpose:'turn'})]));
   const pending=v.showDetail(0),detail=v.element('#detail-body');
   assert.match(group(detail,'Model output').textContent,/No response recorded yet/);
-  v.requests[0].resolve({...snapshot('context'),request:{System:'selector'}});await pending;
+  v.requests[0].resolve({...snapshot('context'),request:{System:'selector',Messages:[
+    message('index','user',textBlock('Memory files:\n- user/sign-off.md: Commit rule\n- project/freeze.md: Release freeze\n')),
+    message('context','user',textBlock('Already in main context:\n- user/sign-off.md\n')),
+    message('query','user',textBlock('Can I merge today?'))]}});await pending;
+  const input=group(detail,'Model input');
+  assert.match(input.textContent,/Candidates for new recall · 1.*project\/freeze\.md: Release freeze.*Already in main context · 1.*user\/sign-off\.md.*User question.*Can I merge today\?/s);
+  assert.doesNotMatch(input.textContent,/Commit rule/);
   const text='{"selected_memories":["project/freeze.md"]}';
   v.ingestBatch(batch(2,[event(3,'message.append',{messages:[message('answer','assistant',textBlock('main answer'))]},{seq:2}),
     event(4,'inference.finish',{outcome:'success'},{seq:2}),
@@ -334,7 +377,8 @@ test('Aside — Auto Memory shows its paired response on live arrival and links 
   assert.match(rows[0].textContent,/Model Request · Aside — Auto Memory/);
   assert.match(rows[4].textContent,/Model Response · Aside — Auto Memory/);
   let output=group(detail,'Model output');
-  assert.ok(output.textContent.includes(text));
+  assert.match(output.textContent,/Files selected by the model · 1.*project\/freeze\.md/s);
+  assert.equal(originalJSON(output),text);
   assert.match(output.textContent,/No accepted result recorded/);
   assert.doesNotMatch(output.textContent,/main answer/);
   const accepted='<img src=x onerror=alert(1)> attached';
@@ -348,10 +392,14 @@ test('Aside — Auto Memory shows its paired response on live arrival and links 
   const jump=(root,label)=>descendants(root).find(el=>el.tag==='button' && el.textContent===label).listeners.click();
   jump(output,'#5');
   output=group(detail,'Model output');
-  assert.ok(output.textContent.includes(text));
+  assert.equal(originalJSON(output),text);
   jump(output,'#1');
   assert.match(detail.textContent,/Model Request · Aside — Auto Memory/);
-  v.requests.at(-1).resolve({...snapshot('context'),request:{System:'selector'}});
+  v.requests.at(-1).resolve({...snapshot('context'),request:{System:'selector',Messages:[message('legacy','user',
+    textBlock('Already in main context:\n- user/legacy.md\n'),
+    textBlock('Memory files:\n- project/old.md: Old note\n\nUser query:\n'),textBlock('Recorded question'))]}});
+  await new Promise(setImmediate);
+  assert.match(group(detail,'Model input').textContent,/project\/old\.md: Old note.*user\/legacy\.md.*Recorded question/s);
   await v.showDetail(3);
   assert.match(group(detail,'Model output').textContent,/main answer/);
 });
@@ -359,7 +407,7 @@ test('Aside — Auto Memory shows its paired response on live arrival and links 
 test('every model purpose labels its request and response consistently',async()=>{
   const v=await viewer();v.openSession('native');
   const purposes=[['turn',''],['btw','By the Way',true],['recall','Auto Memory',true,'Recall'],
-    ['memory-maintain','Auto Memory',true,'Maintain'],['auto-skill','Auto Skill',true,'Review'],
+    ['memory-update','Auto Memory',true,'Update'],['auto-skill','Auto Skill',true,'Review'],
     ['recap','Recap',true],['suggest','Suggestion',true],
     ['judge','Judge Side'],['flow','Flow Draft',true],['autopilot','AutoPilot',true],
     ['group','Group Side'],['compaction','Compaction'],['hook','Hook'],['new-purpose','new-purpose']];
@@ -411,7 +459,7 @@ test('tool details join the invocation, rendered file diff and model-facing resu
   const done=v.showDetail(3), detail=v.element('#detail-body');
   assert.match(v.element('#timeline').children[3].textContent,/Tool · ExecutionSuccessEdit/);
   const details=expand(detail,'Event');
-  assert.ok(details.textContent.includes(input));
+  assert.equal(originalJSON(details),input);
   assert.match(details.textContent,/Duration0 ms.*File changes.*Model-facing result.*File updated/s);
   const diff=descendants(details).filter(el=>el.className?.startsWith('diff-'));
   assert.deepEqual(diff.map(el=>[el.className,el.textContent.trim()]),[['diff-header','@@ -1 +1 @@'],['diff-remove','-before'],['diff-add','+after']]);
@@ -438,7 +486,7 @@ test('unknown and malformed events stay visible as inert raw text',async()=>{
   await v.showDetail(0);
   assert.equal(v.requests.length,0);
   const detail=v.element('#detail-body');
-  assert.ok(expand(detail,'Raw batch').textContent.includes('<img src=x onerror=alert(1)>'));
+  assert.ok(originalJSON(expand(detail,'Raw batch')).includes('<img src=x onerror=alert(1)>'));
   assert.ok(descendants(detail).every(node=>node.innerHTML===''));
 });
 test('diagnostic raw bytes are bounded server data rendered as text, not HTML',async()=>{
@@ -455,13 +503,25 @@ test('raw event and SDK request preserve their distinct JSON and integer precisi
   const raw='{"System":"native","Messages":[{"role":"user","content":[{"type":"text","text":"original"},{"type":"text","text":"\\n\\n<system-reminder>\\nworkspace\\n</system-reminder>"}]}],"SamplingParams":{"seed":9007199254740993}}';
   v.requests[0].resolveText('{"context":{"System":"native"},"request":'+raw+'}');await pending;
   const detail=v.element('#detail-body');
-  assert.equal(expand(detail,'Raw batch').children.at(-1).textContent,wire);
+  assert.equal(originalJSON(expand(detail,'Raw batch')),wire);
   assert.equal(v.requests.length,1,'raw request is lazy');
   const request=expand(group(detail,'Model input'),'Raw SDK request');
   assert.match(v.requests[1].url,/\/exact\/request\/1$/);
   assert.equal(v.requests[1].signal,v.requests[0].signal);
   v.requests[1].resolveText(raw);await new Promise(setImmediate);
-  assert.equal(request.children.at(-1).children[0].textContent,raw);
+  const params=panel(request,'"SamplingParams":');
+  assert.equal(params.open,false);
+  assert.equal(params.children.length,1,'collapsed branches do not build their children');
+  expand(request,'"SamplingParams":');
+  assert.match(params.textContent,/"seed": 9007199254740993/);
+  params.open=false;params.listeners.toggle();
+  expand(request,'"SamplingParams":');
+  assert.equal(params.children.length,2,'reopening does not duplicate the branch');
+  const messages=expand(request,'"Messages":');
+  const first=expand(messages,'[0]:');
+  assert.match(first.textContent,/"role": "user"/);
+  assert.equal(panel(first,'"content":').open,false);
+  assert.equal(originalJSON(request),raw);
 });
 test('Markdown links cannot execute transcript content',async()=>{
   const v=await viewer();

@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
@@ -61,18 +62,61 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 	_ = owner.Close()
 }
 
-func TestPrintShowsStandaloneMaintenanceNotice(t *testing.T) {
+func TestPrintMemoryLanguageReachesMain(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	driver := aitest.New(aitest.Says(memoryMaintenanceProposal))
-	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Stores: system.MemoryStores{Project: t.TempDir()}}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager()}
+	const prompt = "remember: Prefer table tests."
+	const answer = "main response"
+	driver := aitest.New(aitest.Says(answer))
+	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager(), PermissionRules: (agent.PermissionPolicy{}).Decide}
 	var displayed strings.Builder
-	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(memoryMaintenancePrompt, nil), func(text string) { displayed.WriteString(text) })
-	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != memoryMaintenanceNotice {
-		t.Fatalf("result=%+v display=%q err=%v", result, displayed.String(), err)
+	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), func(text string) { displayed.WriteString(text) })
+	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != answer || driver.Calls() != 1 {
+		t.Fatalf("result=%+v display=%q calls=%d err=%v", result, displayed.String(), driver.Calls(), err)
+	}
+}
+
+func TestPrintUpdatesProjectInstructionsWithoutMemoryMaintenance(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwd, notes := t.TempDir(), t.TempDir()
+	instructions := filepath.Join(cwd, system.InstructionFile)
+	index := filepath.Join(notes, system.AutoMemoryIndexName)
+	const original = "Use make for builds.\n"
+	const updated = "Use ninja for builds.\n"
+	const indexText = "# Private memory index\n"
+	for path, content := range map[string]string{instructions: original, index: indexText} {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	driver := aitest.New(
+		aitest.Asks(ai.ToolCall{ID: "read", Name: "Read", Input: `{"file_path":"AGENTS.md"}`}),
+		aitest.Asks(ai.ToolCall{ID: "edit", Name: "Edit", Input: `{"file_path":"AGENTS.md","old_string":"Use make for builds.","new_string":"Use ninja for builds."}`}),
+		aitest.Says("Updated the repository instructions."),
+	)
+	params, err := buildPrintParams(cwd, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := agent.PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoAccept, ShouldAvoidPrompts: true}}
+	params.PermissionRules = policy.Decide
+	params.AutoMemory = agent.AutoMemoryConfig{Store: system.MemoryStore(notes)}
+	params.Provider, params.ModelID, params.Tasks = acpTestProvider{driver.Client()}, "test", task.NewManager()
+	const prompt = "请记住：以后用 ninja 构建，更新项目的 AGENTS.md。"
+	if result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), nil); err != nil || result == nil || result.StopReason != core.StopEndTurn {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	requests := driver.Sent()
-	if len(requests) != 1 || len(requests[0].Tools) != 0 {
-		t.Fatalf("expected one tool-free maintenance request: %+v", requests)
+	if len(requests) != 3 || len(requests[0].Tools) == 0 {
+		t.Fatalf("expected only the normal main tool loop, got %d requests", len(requests))
+	}
+	first := requests[0].Messages[0].Text()
+	if !strings.HasPrefix(first, prompt) || !strings.Contains(first, original) || strings.Contains(first, indexText) {
+		t.Fatalf("unexpected main input: %q", first)
+	}
+	for path, want := range map[string]string{instructions: updated, index: indexText} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatalf("%s = %q, %v; want %q (tool result: %+v)", path, got, err, want, requests[2].Messages[len(requests[2].Messages)-1].ToolResults())
+		}
 	}
 }
 
@@ -87,13 +131,13 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	driver := aitest.New(aitest.Says(`{"selected_memories":["project/topic.md"]}`), aitest.Says("print answer"))
+	driver := aitest.New(aitest.Says(`{"selected_memories":["topic.md"]}`), aitest.Says("print answer"))
 	params, err := buildPrintParams(cwd, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	params.AutoMemory = agent.AutoMemoryConfig{
-		Stores: system.MemoryStores{Project: notes},
+		Store:  system.MemoryStore(notes),
 		Recall: setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait},
 	}
 	params.Provider, params.ModelID, params.MaxTokens = acpTestProvider{driver.Client()}, "test", 64
@@ -110,9 +154,9 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 	if len(requests) != 2 || len(requests[0].Tools) != 0 || len(requests[1].Tools) != 0 {
 		t.Fatalf("expected a tool-free selector followed by tool-free main inference: %+v", requests)
 	}
-	selector := requests[0].Messages[0].Content.Text()
-	if !strings.Contains(selector, "What style?") || strings.Contains(selector, "PROJECT_INSTRUCTION") {
-		t.Fatalf("wrong selector input: %q", selector)
+	selector := requests[0].Messages
+	if len(selector) != 3 || !strings.Contains(selector[0].Text(), "topic.md") || selector[2].Text() != "What style?" {
+		t.Fatalf("wrong selector input: %+v", selector)
 	}
 	main := requests[1].Messages[0].Content.Text()
 	for _, want := range []string{"What style?", "Only use table tests.", "PROJECT_INSTRUCTION"} {

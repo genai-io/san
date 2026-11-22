@@ -18,7 +18,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func recallFixture(t *testing.T) (*session.Session, system.MemoryStores) {
+func recallFixture(t *testing.T) (*session.Session, system.MemoryStore) {
 	t.Helper()
 	store, err := session.OpenStore(t.Context(), t.TempDir())
 	if err != nil {
@@ -34,14 +34,14 @@ func recallFixture(t *testing.T) (*session.Session, system.MemoryStores) {
 	if err := os.WriteFile(filepath.Join(dir, "freeze.md"), []byte("---\ndescription: release freeze\n---\nno merges"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return owner, system.MemoryStores{Project: dir}
+	return owner, system.MemoryStore(dir)
 }
 
 func TestRecallRecording(t *testing.T) {
 	for _, mode := range []string{"selected", "parse", "empty", "partial-error"} {
 		t.Run(mode, func(t *testing.T) {
-			owner, stores := recallFixture(t)
-			text := `{"selected_memories":["project/freeze.md"]}`
+			owner, store := recallFixture(t)
+			text := `{"selected_memories":["freeze.md"]}`
 			if mode == "parse" {
 				text = "not JSON"
 			}
@@ -54,7 +54,7 @@ func TestRecallRecording(t *testing.T) {
 			}
 			driver := aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}, Err: callErr}))
 			msg := core.UserMessage("can I merge?", nil)
-			got, err := (Recaller{Provider: compactRecordingProvider{driver}, Model: "model", Recording: owner}).Prepare(t.Context(), stores, msg, nil)
+			got, err := (Recaller{Provider: compactRecordingProvider{driver}, Model: "model", Recording: owner}).Prepare(t.Context(), store, msg, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,13 +93,17 @@ func TestRecallRecording(t *testing.T) {
 			if request.System != recallSystemPrompt || request.System != effective.System || !reflect.DeepEqual(request.Messages, effective.Messages) || !reflect.DeepEqual(request.Tools, effective.Tools) {
 				t.Fatalf("recorded request differs: %+v vs %+v", request, effective)
 			}
-			if len(request.Messages) != 1 || request.Messages[0].Role != ai.RoleUser {
+			if len(request.Messages) != 3 {
 				t.Fatalf("unexpected selector messages: %+v", request.Messages)
 			}
-			if blocks := request.Messages[0].Content; len(blocks) != 2 ||
-				!strings.Contains(blocks[0].Text, "project/freeze.md: release freeze") ||
-				strings.Contains(blocks[0].Text, "can I merge?") || blocks[1].Text != "can I merge?" {
-				t.Fatalf("selector context and user query were not separated: %+v", blocks)
+			for _, message := range request.Messages {
+				if message.Role != ai.RoleUser || len(message.Content) != 1 {
+					t.Fatalf("expected one text block per user message: %+v", message)
+				}
+			}
+			if request.Messages[0].Text() != "Memory files:\n- freeze.md: release freeze\n" ||
+				request.Messages[1].Text() != "Already in main context:\nNone." || request.Messages[2].Text() != "can I merge?" {
+				t.Fatalf("selector index, active files, and question were not separated: %+v", request.Messages)
 			}
 			if finish == nil || finish.Usage.Input != 17 || finish.Usage.Output != 4 {
 				t.Fatalf("finish=%+v", finish)
@@ -123,13 +127,13 @@ func TestRecallRecording(t *testing.T) {
 }
 
 func TestRecallClosedRecording(t *testing.T) {
-	owner, stores := recallFixture(t)
+	owner, store := recallFixture(t)
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
+	driver := aitest.New(aitest.Says(`{"selected_memories":["freeze.md"]}`))
 	msg := core.UserMessage("q", nil)
-	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), stores, msg, nil)
+	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), store, msg, nil)
 	var recordingErr *llm.RecordingError
 	if !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) || driver.Calls() != 0 || got.Completion != nil || got.Message.Text() != msg.Text() {
 		t.Fatalf("err=%v calls=%d prepared=%+v", err, driver.Calls(), got)
@@ -137,7 +141,7 @@ func TestRecallClosedRecording(t *testing.T) {
 }
 
 func TestRecallDiscardRecordingFailure(t *testing.T) {
-	owner, stores := recallFixture(t)
+	owner, store := recallFixture(t)
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
 		if err := owner.Close(); err != nil {
 			t.Error(err)
@@ -145,7 +149,7 @@ func TestRecallDiscardRecordingFailure(t *testing.T) {
 		return aitest.Says(`{"selected_memories":[]}`)(ctx, request)
 	})
 	msg := core.UserMessage("q", nil)
-	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), stores, msg, nil)
+	got, err := (Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}).Prepare(t.Context(), store, msg, nil)
 	var recordingErr *llm.RecordingError
 	if got.Message.Text() != msg.Text() || got.Completion != nil || !errors.Is(err, session.ErrClosed) || !errors.As(err, &recordingErr) {
 		t.Fatalf("failed finish delivered selection: prepared=%+v err=%v", got, err)
@@ -153,7 +157,7 @@ func TestRecallDiscardRecordingFailure(t *testing.T) {
 }
 
 func TestRecallCancellationRetainsOriginalOwner(t *testing.T) {
-	owner, stores := recallFixture(t)
+	owner, store := recallFixture(t)
 	replacement, _ := recallFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -161,11 +165,11 @@ func TestRecallCancellationRetainsOriginalOwner(t *testing.T) {
 	driver := aitest.New(func(ctx context.Context, request *ai.Request) iter.Seq2[ai.Delta, error] {
 		r.Recording = replacement
 		cancel()
-		return aitest.Says(`{"selected_memories":["project/freeze.md"]}`)(context.WithoutCancel(ctx), request)
+		return aitest.Says(`{"selected_memories":["freeze.md"]}`)(context.WithoutCancel(ctx), request)
 	})
 	r.Provider = compactRecordingProvider{driver}
 	msg := core.UserMessage("q", nil)
-	got, err := r.Prepare(ctx, stores, msg, nil)
+	got, err := r.Prepare(ctx, store, msg, nil)
 	if !errors.Is(err, context.Canceled) || got.Completion != nil || got.Message.Text() != msg.Text() {
 		t.Fatalf("canceled selection delivered input: prepared=%+v err=%v", got, err)
 	}

@@ -6,12 +6,13 @@ import (
 	"time"
 )
 
-// MemoryRecallMode controls whether a turn waits for Auto Memory lookup.
+// MemoryRecallMode controls whether and when a turn looks up Auto Memory.
 type MemoryRecallMode string
 
 const (
 	MemoryRecallFast MemoryRecallMode = "fast" // Start the turn without waiting.
 	MemoryRecallWait MemoryRecallMode = "wait" // Wait for lookup up to the timeout.
+	MemoryRecallOff  MemoryRecallMode = "off"  // Do not look up memories.
 )
 
 // MemoryRecallConfig is the resolved lookup policy, independent of enablement.
@@ -24,8 +25,9 @@ type MemoryRecallConfig struct {
 func (d *Data) MemoryRecall() MemoryRecallConfig {
 	cfg := MemoryRecallConfig{Mode: MemoryRecallFast, Timeout: 5 * time.Second}
 	if d != nil {
-		if d.MemoryRecallLookup == MemoryRecallWait {
-			cfg.Mode = MemoryRecallWait
+		switch d.MemoryRecallLookup {
+		case MemoryRecallWait, MemoryRecallOff:
+			cfg.Mode = d.MemoryRecallLookup
 		}
 		if timeout, err := time.ParseDuration(d.MemoryRecallTimeout); err == nil && timeout > 0 {
 			cfg.Timeout = timeout
@@ -58,7 +60,7 @@ func MemoryRecallAt(cwd string, scope Scope) (MemoryRecallMode, string) {
 
 // SaveMemoryRecallMode sets the mode at scope; empty clears the override.
 func SaveMemoryRecallMode(cwd string, scope Scope, mode MemoryRecallMode) error {
-	if mode != "" && mode != MemoryRecallFast && mode != MemoryRecallWait {
+	if mode != "" && mode != MemoryRecallFast && mode != MemoryRecallWait && mode != MemoryRecallOff {
 		return fmt.Errorf("invalid recall mode: %q", mode)
 	}
 	return updateMemoryRecall(cwd, scope, func(d *Data) { d.MemoryRecallLookup = mode })

@@ -77,13 +77,15 @@ type Data struct {
 	// nil/absent means on. Read via Settings.AutoMemory();
 	// SAN_DISABLE_AUTO_MEMORY overrides it.
 	AutoMemory *bool `json:"autoMemory,omitempty"`
-	// AutoMemoryDirectory moves an auto-memory store. Kept here so saves of
-	// other settings round-trip it; never read from the merged value — which
-	// store it moves depends on the file it came from (see MemoryStoresFor).
+	// AutoMemoryDirectory overrides the repository's memory location only in the
+	// main checkout's untracked settings.local.json. Other files round-trip it
+	// but do not control storage (see MemoryStoreFor).
 	AutoMemoryDirectory string `json:"autoMemoryDirectory,omitempty"`
 	// Recall settings are independent of the AutoMemory enable switch.
 	MemoryRecallLookup  MemoryRecallMode `json:"memoryRecallMode,omitempty"`
 	MemoryRecallTimeout string           `json:"memoryRecallTimeout,omitempty"`
+	// MemoryUpdate opts in to automatic memory updates. Nil inherits; absent defaults off.
+	MemoryUpdate *bool `json:"memoryUpdate,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
 	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
 	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`
@@ -859,6 +861,7 @@ func (s *Data) Clone() *Data {
 	dst.AllowBypass = clonePtr(s.AllowBypass)
 	dst.AutoUpdate = clonePtr(s.AutoUpdate)
 	dst.AutoMemory = clonePtr(s.AutoMemory)
+	dst.MemoryUpdate = clonePtr(s.MemoryUpdate)
 	dst.ContextBar = clonePtr(s.ContextBar)
 	dst.GitBar = clonePtr(s.GitBar)
 	dst.BashPreviewLines = clonePtr(s.BashPreviewLines)

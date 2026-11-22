@@ -7,165 +7,222 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/setting"
 )
 
-var memoryScopes = [...]struct {
-	scope setting.Scope
-	label string
-}{
-	{setting.ScopeUser, "User"},
-	{setting.ScopeProject, "Project"},
-}
+const (
+	memoryRecall = iota
+	memoryUpdate
+	memoryActionCount
+)
 
 const (
 	memoryEnabled = iota
-	memoryLookup
-	memoryTimeout
-	memoryRowCount
+	memoryWaitTimeout
+	memoryOptionCount
+)
+
+type memoryPage uint8
+
+const (
+	memoryActionsPage memoryPage = iota
+	memoryOptionsPage
+	memoryTimeoutPage
 )
 
 type autoMemoryPanel struct {
 	workspace func() (string, *setting.Settings)
+	page      memoryPage
 	cursor    int
-	values    [len(memoryScopes)]*bool
-	modes     [len(memoryScopes)]setting.MemoryRecallMode
-	timeouts  [len(memoryScopes)]string
-	status    string
+	option    int
+	available bool
+	enabled   bool
+	blocked   bool
+	recall    setting.MemoryRecallConfig
+	update    bool
 	err       error
-	editing   bool
 	input     textinput.Model
 }
 
 func (p *autoMemoryPanel) Title() string { return "Auto Memory" }
 func (p *autoMemoryPanel) Dirty() bool   { return false }
-func (p *autoMemoryPanel) Modal() bool   { return p.editing }
-func (p *autoMemoryPanel) HintLine() string {
-	if p.editing {
-		return keycap("enter") + " save  " + keycap("esc") + " cancel"
+func (p *autoMemoryPanel) Modal() bool   { return p.page != memoryActionsPage }
+
+func (p *autoMemoryPanel) Breadcrumb() string {
+	switch p.page {
+	case memoryOptionsPage:
+		return "Options"
+	case memoryTimeoutPage:
+		return "Wait timeout"
+	default:
+		return ""
 	}
-	action := [...]string{"toggle", "cycle", "edit"}[p.cursor%memoryRowCount]
-	return keycap("↑↓") + " navigate  " + keycap("enter") + " " + action
+}
+
+func (p *autoMemoryPanel) HintLine() string {
+	switch p.page {
+	case memoryTimeoutPage:
+		return keycap("enter") + " save  " + keycap("esc") + " cancel"
+	case memoryOptionsPage:
+		action := "toggle"
+		if p.option == memoryWaitTimeout {
+			action = "edit"
+		}
+		return keycap("↑↓") + "  " + keycap("enter") + " " + action + "  " + keycap("esc") + " back"
+	default:
+		action := "toggle"
+		if p.cursor == memoryRecall {
+			action = "cycle"
+		}
+		return keycap("↑↓") + "  " + keycap("enter") + " " + action + "  " + keycap("→") + " options"
+	}
 }
 
 func (p *autoMemoryPanel) Enter() {
-	p.cursor, p.err, p.editing = 0, nil, false
-	p.status = "settings unavailable"
+	p.page, p.cursor, p.option, p.err = memoryActionsPage, 0, 0, nil
 	if p.workspace != nil {
-		cwd, svc := p.workspace()
-		p.load(cwd, svc)
+		_, svc := p.workspace()
+		p.load(svc)
 	}
 }
 
-func (p *autoMemoryPanel) load(cwd string, svc *setting.Settings) {
+func (p *autoMemoryPanel) load(svc *setting.Settings) {
+	p.available = svc != nil
 	if svc == nil {
-		p.values = [len(memoryScopes)]*bool{}
-		p.modes = [len(memoryScopes)]setting.MemoryRecallMode{}
-		p.timeouts = [len(memoryScopes)]string{}
-		p.status = "settings unavailable"
+		p.enabled, p.recall, p.update = false, setting.MemoryRecallConfig{}, false
 		return
 	}
-	for i, row := range memoryScopes {
-		p.values[i] = setting.AutoMemoryAt(row.scope)
-		p.modes[i], p.timeouts[i] = setting.MemoryRecallAt(cwd, row.scope)
-	}
-	cfg := svc.MemoryRecall()
-	lookup := recallModeLabel(cfg.Mode)
-	if cfg.Mode == setting.MemoryRecallWait {
-		lookup += " · " + cfg.Timeout.String()
-	}
-	p.status = "effective: " + onOff(svc.AutoMemory()) + " (" + memorySource(p.values[0], p.values[1]) + ") · " + lookup
+	p.enabled = svc.AutoMemory()
+	p.blocked = setting.AutoMemoryDisabledByEnv()
+	p.recall = svc.MemoryRecall()
+	p.update = svc.MemoryUpdate()
 }
 
 func (p *autoMemoryPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
-	if p.editing {
+	if p.page == memoryTimeoutPage {
 		return p.handleTimeoutKey(msg), false
 	}
-	switch msg.String() {
+	key := msg.String()
+	if p.page == memoryOptionsPage {
+		switch key {
+		case "esc", "left":
+			p.page, p.err = memoryActionsPage, nil
+		case "up", "k":
+			p.option = max(0, p.option-1)
+		case "down", "j":
+			p.option = min(memoryOptionCount-1, p.option+1)
+		case "enter":
+			return p.activateOption(), false
+		}
+		return nil, false
+	}
+	switch key {
 	case "up", "k":
 		p.cursor = max(0, p.cursor-1)
 	case "down", "j":
-		p.cursor = min(len(memoryScopes)*memoryRowCount-1, p.cursor+1)
+		p.cursor = min(memoryActionCount-1, p.cursor+1)
+	case "right":
+		p.page, p.option, p.err = memoryOptionsPage, memoryEnabled, nil
+		if p.cursor == memoryRecall && p.recall.Mode == setting.MemoryRecallWait {
+			p.option = memoryWaitTimeout
+		}
 	case "enter":
-		p.activate()
+		p.activateAction()
 	}
 	return nil, false
 }
 
-func (p *autoMemoryPanel) activate() {
+func (p *autoMemoryPanel) activateAction() {
 	if p.workspace == nil {
 		return
 	}
 	cwd, svc := p.workspace()
-	p.load(cwd, svc)
-	if svc == nil {
+	p.load(svc)
+	if !p.available {
 		return
 	}
-	i := p.cursor / memoryRowCount
-	scope := memoryScopes[i].scope
-	p.err = nil
-	switch p.cursor % memoryRowCount {
-	case memoryEnabled:
-		// Flip the scoped or inherited value, not the effective override.
-		value := p.values[i]
-		if value == nil {
-			value = p.values[0]
-		}
-		p.err = setAutoMemory(svc, cwd, value != nil && !*value, scope)
-	case memoryLookup:
-		var next setting.MemoryRecallMode
-		switch p.modes[i] {
+	scope := memorySettingsScope(cwd)
+	mode := p.recall.Mode
+	var enabled bool
+	if p.cursor == memoryRecall {
+		switch mode {
 		case setting.MemoryRecallFast:
-			next = setting.MemoryRecallWait
+			mode = setting.MemoryRecallWait
 		case setting.MemoryRecallWait:
-			// Return to inheritance.
+			mode = setting.MemoryRecallOff
 		default:
-			next = setting.MemoryRecallFast
+			mode = setting.MemoryRecallFast
 		}
-		p.err = setting.SaveMemoryRecallMode(cwd, scope, next)
-		if p.err == nil {
-			p.err = svc.Reload(cwd)
-			if p.err == nil && next != "" && svc.MemoryRecall().Mode != next {
-				p.err = fmt.Errorf("saved, but effective lookup is %s", recallModeLabel(svc.MemoryRecall().Mode))
-			}
-		}
-	case memoryTimeout:
-		p.input = textinput.New()
-		p.input.Placeholder = "Inherit (e.g. 5s to override)"
-		p.input.CharLimit = 64
-		p.input.SetValue(p.timeouts[i])
-		p.input.Focus()
-		p.editing = true
+		p.err = setting.SaveMemoryRecallMode(cwd, scope, mode)
+	} else {
+		enabled = !p.update
+		p.err = setting.SaveMemoryUpdate(cwd, scope, enabled)
+	}
+	if p.err == nil {
+		p.err = svc.Reload(cwd)
+	}
+	p.load(svc)
+	if p.err != nil {
 		return
 	}
-	p.load(cwd, svc)
+	if p.cursor == memoryRecall {
+		if p.recall.Mode != mode {
+			p.err = fmt.Errorf("saved, but Recall is still %s", recallModeLabel(p.recall.Mode))
+		}
+	} else if p.update != enabled {
+		p.err = fmt.Errorf("saved, but Update is still %s", onOff(p.update))
+	}
+}
+
+func (p *autoMemoryPanel) activateOption() tea.Cmd {
+	if p.workspace == nil {
+		return nil
+	}
+	cwd, svc := p.workspace()
+	p.load(svc)
+	if !p.available {
+		return nil
+	}
+	scope := memorySettingsScope(cwd)
+	p.err = nil
+	if p.option == memoryEnabled {
+		p.err = setAutoMemory(svc, cwd, !p.enabled, scope)
+		p.load(svc)
+		return nil
+	}
+	_, timeout := setting.MemoryRecallAt(cwd, scope)
+	p.input = textinput.New()
+	p.input.Placeholder = "e.g. 5s"
+	p.input.CharLimit = 64
+	p.input.SetValue(timeout)
+	p.page = memoryTimeoutPage
+	return p.input.Focus()
 }
 
 func (p *autoMemoryPanel) handleTimeoutKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
-		p.editing, p.err = false, nil
+		p.input.Blur()
+		p.page, p.err = memoryOptionsPage, nil
 	case "enter":
 		cwd, svc := p.workspace()
 		if svc == nil {
 			p.err = fmt.Errorf("settings unavailable")
 			return nil
 		}
-		scope := memoryScopes[p.cursor/memoryRowCount].scope
 		value := strings.TrimSpace(p.input.Value())
-		p.err = setting.SaveMemoryRecallTimeout(cwd, scope, value)
+		p.err = setting.SaveMemoryRecallTimeout(cwd, memorySettingsScope(cwd), value)
 		if p.err != nil {
 			return nil
 		}
-		p.editing = false
 		p.err = svc.Reload(cwd)
-		if duration, err := time.ParseDuration(value); p.err == nil && err == nil && svc.MemoryRecall().Timeout != duration {
-			p.err = fmt.Errorf("saved, but effective timeout is %s", svc.MemoryRecall().Timeout)
+		p.load(svc)
+		if duration, err := time.ParseDuration(value); p.err == nil && err == nil && p.recall.Timeout != duration {
+			p.err = fmt.Errorf("saved, but Wait still uses %s", p.recall.Timeout)
 		}
-		p.load(cwd, svc)
+		p.input.Blur()
+		p.page = memoryOptionsPage
 	default:
 		var cmd tea.Cmd
 		p.input, cmd = p.input.Update(msg)
@@ -176,50 +233,11 @@ func (p *autoMemoryPanel) handleTimeoutKey(msg tea.KeyMsg) tea.Cmd {
 
 func recallModeLabel(mode setting.MemoryRecallMode) string {
 	switch mode {
-	case setting.MemoryRecallFast:
-		return "Fast"
+	case setting.MemoryRecallOff:
+		return "Off"
 	case setting.MemoryRecallWait:
 		return "Wait"
-	case "":
-		return "inherit"
 	default:
-		return "invalid"
+		return "Fast"
 	}
-}
-
-func (p *autoMemoryPanel) Render(width, _ int) string {
-	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	focus := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
-	var b strings.Builder
-	b.WriteString(muted.Render(p.status) + "\n\n")
-	if p.editing {
-		b.WriteString(memoryScopes[p.cursor/memoryRowCount].label + " wait timeout\n" + p.input.View())
-	} else {
-		for i, scope := range memoryScopes {
-			enabled, timeout := "inherit", p.timeouts[i]
-			if p.values[i] != nil {
-				enabled = onOff(*p.values[i])
-			}
-			if timeout == "" {
-				timeout = "inherit"
-			}
-			for j, row := range [...]struct{ label, value string }{
-				{"enabled", enabled}, {"lookup", recallModeLabel(p.modes[i])}, {"wait timeout", timeout},
-			} {
-				label := scope.label + " " + row.label
-				cursor := "  "
-				if i*memoryRowCount+j == p.cursor {
-					cursor = focus.Render("▸ ")
-				}
-				gap := max(1, width-2-lipgloss.Width(label)-lipgloss.Width(row.value))
-				b.WriteString(cursor + label + strings.Repeat(" ", gap) + muted.Render(row.value) + "\n")
-			}
-		}
-		b.WriteString("\n" + muted.Render("Fast: start now · Wait: wait up to timeout"))
-		b.WriteString("\n" + muted.Render("Browse files and stores with /memory."))
-	}
-	if p.err != nil {
-		b.WriteString("\n" + lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Width(width).Render(p.err.Error()))
-	}
-	return b.String()
 }

@@ -13,7 +13,7 @@ func TestReflectionAndMemoryCatalog(t *testing.T) {
 	if !ok || !strings.Contains(reflection.Description, "Auto Memory") || !strings.Contains(reflection.Description, "Auto Skill") {
 		t.Fatalf("/reflection should advertise both settings: %+v", reflection)
 	}
-	if memory, ok := catalog["memory"]; !ok || !strings.Contains(memory.Description, "memory stores") || strings.Contains(memory.Description, "Auto Skill") {
+	if memory, ok := catalog["memory"]; !ok || !strings.Contains(memory.Description, "repository memory") || strings.Contains(memory.Description, "Auto Skill") {
 		t.Fatalf("/memory should advertise the browser: %+v", memory)
 	}
 	if _, ok := catalog["evolve"]; ok {

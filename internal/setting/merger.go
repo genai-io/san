@@ -34,6 +34,7 @@ func mergeSettings(base, overlay *Data) *Data {
 		result.MemoryRecallLookup = overlay.MemoryRecallLookup
 	}
 	result.MemoryRecallTimeout = coalesce(overlay.MemoryRecallTimeout, base.MemoryRecallTimeout)
+	result.MemoryUpdate = coalescePtr(overlay.MemoryUpdate, base.MemoryUpdate)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.GitBar = coalescePtr(overlay.GitBar, base.GitBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)

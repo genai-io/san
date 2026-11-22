@@ -2,6 +2,7 @@ package conv
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,10 +19,6 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// MemoryStores are the session's auto-memory stores, set by the app whenever
-// it resolves them; a call into one renders as memory, not as a file op.
-var MemoryStores system.MemoryStores
-
 // memoryOp is a Read, Write or Edit of an auto-memory file, or a plain `rm`
 // of some.
 type memoryOp struct {
@@ -31,9 +28,9 @@ type memoryOp struct {
 	removed []string // every file a Deleted op removes
 }
 
-func parseMemoryOp(toolName, input string) (memoryOp, bool) {
+func parseMemoryOp(store system.MemoryStore, toolName, input string) (memoryOp, bool) {
 	if toolName == tool.ToolBash {
-		return parseMemoryRemove(input)
+		return parseMemoryRemove(store, input)
 	}
 	if toolName != tool.ToolWrite && toolName != tool.ToolEdit && toolName != tool.ToolRead {
 		return memoryOp{}, false
@@ -41,7 +38,7 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 	var args struct {
 		FilePath string `json:"file_path"`
 	}
-	if json.Unmarshal([]byte(input), &args) != nil || !MemoryStores.Contains(args.FilePath) {
+	if json.Unmarshal([]byte(input), &args) != nil || !store.Contains(args.FilePath) {
 		return memoryOp{}, false
 	}
 	op := memoryOp{path: args.FilePath, index: filepath.Base(args.FilePath) == system.AutoMemoryIndexName}
@@ -57,13 +54,13 @@ func parseMemoryOp(toolName, input string) (memoryOp, bool) {
 }
 
 // parseMemoryRemove reads a plain `rm` of memory files as one Deleted op.
-func parseMemoryRemove(input string) (memoryOp, bool) {
+func parseMemoryRemove(store system.MemoryStore, input string) (memoryOp, bool) {
 	var args struct {
 		Command string `json:"command"`
 	}
 	_ = json.Unmarshal([]byte(input), &args)
 	files, ok := setting.RemovedFiles(args.Command)
-	if !ok || slices.ContainsFunc(files, func(f string) bool { return !MemoryStores.Contains(f) }) {
+	if !ok || slices.ContainsFunc(files, func(f string) bool { return !store.Contains(f) }) {
 		return memoryOp{}, false
 	}
 	return memoryOp{verb: "Deleted", path: files[0], removed: files}, true
@@ -78,7 +75,7 @@ func (p RenderContext) memoryStep(msg core.ChatMessage, idx int) bool {
 	}
 	results := p.InlinedResults.resultsFor(idx)
 	for _, tc := range msg.ToolCalls {
-		op, ok := parseMemoryOp(tc.Name, tc.Input)
+		op, ok := parseMemoryOp(p.AutoMemoryStore, tc.Name, tc.Input)
 		if !ok || results[tc.ID].IsError || (op.verb == "Read" && !op.index) {
 			return false
 		}
@@ -123,6 +120,15 @@ func renderMemoryNotice(marker, verb, title string, width int) string {
 	return renderGutteredLine(marker+" ", "  ", sideMarkStyle, "Memory · "+verb+": "+title, width)
 }
 
+func isMemoryMaintenanceNotice(content string) bool {
+	text, ok := strings.CutPrefix(content, "Memory · ")
+	return ok && (strings.HasPrefix(text, "saved ") || strings.HasPrefix(text, "updated ") || strings.HasPrefix(text, "forgot "))
+}
+
+func renderMemoryMaintenanceNotice(content string, width int) string {
+	return renderGutteredLine(kit.MemoryMark+" ", "  ", sideMarkStyle, content, width)
+}
+
 var recalledMemoryPath = regexp.MustCompile("(?m)^Memory `([^`\\r\\n]+)` \\((?:user|project) store(?:, [^)\\r\\n]*)?\\):\\r?$")
 
 // recalledMemoryPaths reads only the harness's recall blocks, never matching
@@ -147,50 +153,64 @@ func recalledMemoryPaths(content string) []string {
 
 const memoryRecallNoticePrefix = "/memory-recalled "
 
-type memoryRecallDisplay struct {
-	AfterMessageID string   `json:"afterMessageId"`
-	Titles         []string `json:"titles"`
+func compactRecallNotice(after string, ids []string) *core.AutoMemoryRecallNotice {
+	titles := make([]string, 0, len(ids))
+	for _, id := range ids {
+		name := strings.TrimSuffix(filepath.Base(id), ".md")
+		titles = append(titles, strings.Join(strings.Fields(xansi.Strip(name)), " "))
+	}
+	return &core.AutoMemoryRecallNotice{AfterMessageID: after, Titles: titles, Compact: true}
+}
+
+// EncodeRecallNotice keeps the existing annotation format for replay.
+func EncodeRecallNotice(notice *core.AutoMemoryRecallNotice) string {
+	data, _ := json.Marshal(notice)
+	return memoryRecallNoticePrefix + string(data)
 }
 
 // recalledMemoryNotice captures the titles when the filtered native result
 // reaches the model. ToolEnd precedes that filter, so the raw tool result the
 // UI already drew cannot carry this notice. Persisting a display-only notice
 // here keeps it before the next inference and in the same place after resume.
-func recalledMemoryNotice(content, afterMessageID string) string {
+func recalledMemoryNotice(store system.MemoryStore, content, afterMessageID string) *core.AutoMemoryRecallNotice {
 	var titles []string
 	for _, path := range recalledMemoryPaths(content) {
 		title := strings.TrimSuffix(filepath.Base(path), ".md")
 		// Never read a file outside the configured stores for a display title.
-		if MemoryStores.Contains(path) {
+		if store.Contains(path) {
 			title = memoryTitle(path)
 		}
 		titles = append(titles, title)
 	}
 	if len(titles) == 0 {
-		return ""
+		return nil
 	}
-	data, _ := json.Marshal(memoryRecallDisplay{AfterMessageID: afterMessageID, Titles: titles})
-	return memoryRecallNoticePrefix + string(data)
+	return &core.AutoMemoryRecallNotice{AfterMessageID: afterMessageID, Titles: titles}
 }
 
-// MemoryRecallNoticeAnchor pins a recall notice to the native result that
-// delivered it, even when the transcript writer has run ahead of the UI.
-func MemoryRecallNoticeAnchor(content string) string {
-	rest, ok := strings.CutPrefix(content, memoryRecallNoticePrefix)
-	if !ok {
-		return ""
-	}
-	var data memoryRecallDisplay
-	if json.Unmarshal([]byte(rest), &data) != nil {
-		return ""
-	}
-	return data.AfterMessageID
-}
-
-func renderMemoryRecallNotice(content string, width int) string {
-	var data memoryRecallDisplay
+func renderRecordedRecallNotice(content string, width int) string {
+	var data core.AutoMemoryRecallNotice
 	if json.Unmarshal([]byte(content), &data) != nil {
 		return ""
+	}
+	return renderMemoryRecallNotice(&data, width)
+}
+
+func renderMemoryRecallNotice(data *core.AutoMemoryRecallNotice, width int) string {
+	if data.Compact && len(data.Titles) > 0 {
+		if width <= 0 {
+			width = 80
+		}
+		label := "recalled 1 note"
+		if n := len(data.Titles); n > 1 {
+			label = fmt.Sprintf("recalled %d notes", n)
+		}
+		line := kit.MemoryMark + " Memory · " + label
+		titles := strings.Join(data.Titles, ", ")
+		if titles != "" && xansi.StringWidth(line+" — "+titles) <= width {
+			line += " — " + titles
+		}
+		return sideMarkStyle.Render(xansi.Truncate(line, width, "…")) + "\n"
 	}
 	var sb strings.Builder
 	for _, title := range data.Titles {
@@ -204,7 +224,6 @@ type MemoryEntry struct {
 	Verb  string // "recalled", "used", "saved", "updated" or "forgot"
 	Path  string
 	Title string // its index title, else its description, else its slug
-	Store string // "user" or "project"
 }
 
 var turnVerb = map[string]string{"Read": "used", "Saved": "saved", "Updated": "updated"}
@@ -251,9 +270,9 @@ func (m *ConversationModel) TurnMemory(openedBy string, recalled []string) []Mem
 	for _, path := range recalled {
 		note(filepath.Clean(path), "recalled")
 	}
-	for _, m := range msgs[start:] {
-		for _, tc := range m.ToolCalls {
-			op, ok := parseMemoryOp(tc.Name, tc.Input)
+	for _, msg := range msgs[start:] {
+		for _, tc := range msg.ToolCalls {
+			op, ok := parseMemoryOp(m.AutoMemoryStore, tc.Name, tc.Input)
 			if !ok || failed[tc.ID] {
 				continue
 			}
@@ -284,10 +303,6 @@ func (m *ConversationModel) TurnMemory(openedBy string, recalled []string) []Mem
 			if t, ok := dropped[e.Path]; ok {
 				e.Title = t
 			}
-		}
-		e.Store = "project"
-		if filepath.Dir(e.Path) == MemoryStores.User {
-			e.Store = "user"
 		}
 		kept = append(kept, e)
 	}

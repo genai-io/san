@@ -42,59 +42,29 @@ const (
 	autoMemoryByteCap = 25 * 1024
 )
 
-// MemoryStores are the agent-written memory stores a session keeps: User holds
-// what is true in every repository, Project what is true only in this one.
-// The zero value means auto memory is off.
-type MemoryStores struct {
-	User, Project string
+// MemoryStore is the directory of a repository's Auto Memory. The zero value
+// means Auto Memory is off.
+type MemoryStore string
+
+func (s MemoryStore) Off() bool { return s == "" }
+
+// Contains reports whether path is a Markdown file directly in the store.
+func (s MemoryStore) Contains(path string) bool {
+	return !s.Off() && strings.HasSuffix(path, ".md") && filepath.Dir(filepath.Clean(path)) == string(s)
 }
 
-// Off reports whether auto memory is off.
-func (s MemoryStores) Off() bool { return s == MemoryStores{} }
-
-// Contains reports whether path is a markdown file directly in one of the stores.
-func (s MemoryStores) Contains(path string) bool {
-	dir := filepath.Dir(filepath.Clean(path))
-	return strings.HasSuffix(path, ".md") && dir != "." && (dir == s.User || dir == s.Project)
-}
-
-// Duplicates lists memory files present in both stores: one fact belongs in
-// one store, so the agent is told to keep one.
-func (s MemoryStores) Duplicates() []string {
-	if s.User == "" || s.Project == "" || s.User == s.Project {
-		return nil
-	}
-	var dup []string
-	files, _ := filepath.Glob(filepath.Join(s.User, "*.md"))
-	for _, f := range files {
-		name := filepath.Base(f)
-		if name == AutoMemoryIndexName {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(s.Project, name)); err == nil {
-			dup = append(dup, name+" is in both the user and the project store; keep the one where it holds and delete the other")
-		}
-	}
-	return dup
-}
-
-// Memory is one memory file in a store, as the recall selector sees it.
+// Memory is one memory file as the Recall selector sees it.
 type Memory struct {
 	Path        string
-	Store       string // "user" or "project"
 	Description string
 }
 
-// HasNotes reports whether an enabled store contains a regular memory note.
-func (s MemoryStores) HasNotes() bool {
-	return hasNotes(s.User) || (s.Project != s.User && hasNotes(s.Project))
-}
-
-func hasNotes(dir string) bool {
-	if dir == "" {
+// HasNotes reports whether the store contains a regular memory note.
+func (s MemoryStore) HasNotes() bool {
+	if s.Off() {
 		return false
 	}
-	f, err := os.Open(dir)
+	f, err := os.Open(string(s))
 	if err != nil {
 		return false
 	}
@@ -117,41 +87,37 @@ func isMemoryNote(entry os.DirEntry) bool {
 	return entry.Type().IsRegular() && name != AutoMemoryIndexName && strings.HasSuffix(name, ".md")
 }
 
-// Memories lists readable notes, user store first and sorted by name within each store.
-// A zero limit lists all notes. A canceled context stops the scan.
-func (s MemoryStores) Memories(ctx context.Context, limit int) []Memory {
+// Memories lists readable notes in filename order. A zero limit lists all
+// notes. A canceled context stops the scan.
+func (s MemoryStore) Memories(ctx context.Context, limit int) []Memory {
+	if s.Off() || ctx.Err() != nil {
+		return nil
+	}
+	dir := string(s)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = root.Close() }()
+	entries, _ := os.ReadDir(dir)
 	var out []Memory
-	for _, store := range []struct{ name, dir string }{{"user", s.User}, {"project", s.Project}} {
+	for _, entry := range entries {
 		if ctx.Err() != nil || limit > 0 && len(out) >= limit {
 			break
 		}
-		if store.dir == "" || (store.name == "project" && store.dir == s.User) {
+		if !isMemoryNote(entry) {
 			continue
 		}
-		root, err := os.OpenRoot(store.dir)
+		name := entry.Name()
+		f, err := root.Open(name)
 		if err != nil {
 			continue
 		}
-		entries, _ := os.ReadDir(store.dir)
-		for _, entry := range entries {
-			if ctx.Err() != nil || limit > 0 && len(out) >= limit {
-				break
-			}
-			if !isMemoryNote(entry) {
-				continue
-			}
-			name := entry.Name()
-			f, err := root.Open(name)
-			if err != nil {
-				continue
-			}
-			data, err := io.ReadAll(io.LimitReader(f, 2048))
-			_ = f.Close()
-			if err == nil {
-				out = append(out, Memory{Path: filepath.Join(store.dir, name), Store: store.name, Description: FrontmatterField(string(data), "description")})
-			}
+		data, err := io.ReadAll(io.LimitReader(f, 2048))
+		_ = f.Close()
+		if err == nil {
+			out = append(out, Memory{Path: filepath.Join(dir, name), Description: FrontmatterField(string(data), "description")})
 		}
-		_ = root.Close()
 	}
 	return out
 }
@@ -171,20 +137,16 @@ func FrontmatterField(content, key string) string {
 	return ""
 }
 
-// UserMemoryDir is the default user store: ~/.san/memory/.
-func UserMemoryDir(homeDir string) string {
-	return filepath.Join(confdir.Dir(homeDir), "memory")
-}
-
-// AutoMemoryDir is the default project store for cwd's repository:
+// AutoMemoryDir is the default store for cwd's repository:
 // ~/.san/projects/<encoded-repo-root>/memory/. Subdirectories and linked
 // worktrees of one repository share it.
 func AutoMemoryDir(cwd string) string {
+	repo := confdir.MainRepoRoot(cwd)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(confdir.Dir(cwd), "memory")
+		return filepath.Join(confdir.Dir(repo), "memory")
 	}
-	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(confdir.MainRepoRoot(cwd)), "memory")
+	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(repo), "memory")
 }
 
 // encodeProjectPath replaces path separators with "-" so a path can stand

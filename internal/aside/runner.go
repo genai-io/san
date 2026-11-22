@@ -51,12 +51,17 @@ func CompleteProposal(ctx context.Context, provider llm.Provider, opts llm.Compl
 	return proposalText(ctx, resp, err)
 }
 
-// CompletePrefixedProposal retains tool descriptions for caching but forbids
-// tool use. The response must still be a complete tool-free proposal.
-func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion) (string, error) {
-	opts.ToolChoice = ai.ToolChoiceNone
-	opts.Admission = recording.Admission()
-	resp, err := llm.Complete(ctx, provider, opts)
+// CompletePrefixedProposal keeps the admitted system, tool schemas and
+// conversation prefix, but forbids tool use and expects a standalone proposal.
+func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, model string, request *ai.Request, recording *session.Completion) (string, error) {
+	proposal := *request
+	proposal.ToolChoice = ai.ToolChoiceNone
+	proposal.StopSequences = nil
+	proposal.Schema = nil
+	if proposal.MaxTokens == 0 || proposal.MaxTokens > 4096 {
+		proposal.MaxTokens = 4096
+	}
+	resp, err := llm.CompleteRequest(ctx, provider, model, &proposal, recording.Admission())
 	return proposalText(ctx, resp, err)
 }
 

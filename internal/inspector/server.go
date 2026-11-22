@@ -14,6 +14,7 @@ import (
 
 	"github.com/genai-io/san/internal/inspector/ui"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 type Server struct {
@@ -105,8 +106,20 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
+		if r.URL.Query().Get("view") == "update-prefix" {
+			ctx := r.Context()
+			projection, err := s.store.Read(ctx, id)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			writeJSON(w, compareMaintainPrefix(projection.Events(), id, seq, request, func(source uint64) (*ai.Request, error) {
+				return s.store.InferenceRequest(ctx, id, source)
+			}))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.SetEscapeHTML(false)

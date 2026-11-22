@@ -4,6 +4,7 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -580,19 +583,22 @@ func RenderSideAnswer(question, answer string, width int, md *MDRenderer) string
 	if md != nil {
 		answer = renderMarkdownContent(md, answer)
 	}
-	return renderSideExchange(question, answer, width)
+	return renderSideExchange("○", question, answer, width)
 }
 
-// RenderSidePending uses the same layout as the settled answer.
-func RenderSidePending(question, spinner string, width int) string {
-	return renderSideExchange(question, sideMarkStyle.Render(spinner+" Answering…"), width)
+// RenderSidePending animates the question marker without a separate status row.
+func RenderSidePending(question string, frame, width int) string {
+	circle := "○"
+	if frame%2 != 0 {
+		circle = "●"
+	}
+	return renderSideExchange(circle, question, "", width)
 }
 
-func renderSideExchange(question, body string, width int) string {
-	mark := sideMarkStyle.Render("○ btw · ")
-	rail := sideMarkStyle.Render("│")
+func renderSideExchange(circle, question, body string, width int) string {
+	mark := sideMarkStyle.Render(circle + " btw · ")
 	headerWidth := lipgloss.Width(mark)
-	indent := rail + strings.Repeat(" ", headerWidth-1)
+	indent := strings.Repeat(" ", headerWidth)
 	lines := strings.Split(xansi.Wrap(question, max(1, width-headerWidth-1), ""), "\n")
 	var out strings.Builder
 	for i, line := range lines {
@@ -604,16 +610,16 @@ func renderSideExchange(question, body string, width int) string {
 		out.WriteString(bulletStyle.Render(line))
 		out.WriteByte('\n')
 	}
-	// Keep the connector through paragraphs. Leave the last terminal column
-	// free so committed rows don't wrap when the terminal is narrowed.
-	body = xansi.Hardwrap(strings.TrimRight(body, "\n"), max(1, width-3), true)
-	for line := range strings.SplitSeq(body, "\n") {
-		out.WriteString(rail)
-		if strings.TrimSpace(xansi.Strip(line)) != "" {
-			out.WriteByte(' ')
-			out.WriteString(line)
+	// Leave the last terminal column free for scrollback resizing.
+	if body = strings.TrimRight(body, "\n"); body != "" {
+		body = xansi.Hardwrap(body, max(1, width-3), true)
+		for line := range strings.SplitSeq(body, "\n") {
+			if strings.TrimSpace(xansi.Strip(line)) != "" {
+				out.WriteString("  ")
+				out.WriteString(line)
+			}
+			out.WriteByte('\n')
 		}
-		out.WriteByte('\n')
 	}
 	return out.String()
 }
@@ -659,6 +665,7 @@ func renderDecision(v *core.JudgeDecision) string {
 
 // ToolCallsParams holds the parameters for rendering tool calls.
 type ToolCallsParams struct {
+	AutoMemoryStore   system.MemoryStore
 	ToolCalls         []core.ToolCall
 	ToolCallsExpanded bool
 	ResultMap         map[string]ToolResultData
@@ -775,7 +782,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 	for _, tc := range params.ToolCalls {
 		// Reads stay beside the call that used the memory. Other bookkeeping
 		// stays quiet until the turn's change summary.
-		if op, ok := parseMemoryOp(tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
+		if op, ok := parseMemoryOp(params.AutoMemoryStore, tc.Name, tc.Input); ok && !params.ToolCallsExpanded && !params.ResultMap[tc.ID].IsError {
 			if op.verb == "Read" && !op.index {
 				sb.WriteString(renderMemoryRead(tc, op, params))
 			}
@@ -935,7 +942,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-// shellCallTitle uses execution metadata, never the shell of the viewing process.
+// Prefer execution metadata. Only live queued calls can use the configured
+// interpreter; old records without metadata keep their original tool name.
 func shellCallTitle(tc core.ToolCall, params ToolCallsParams) string {
 	if details, ok := params.ResultMap[tc.ID].Details.(toolresult.BashDetails); ok && details.ShellLabel != "" {
 		return details.ShellLabel
@@ -943,6 +951,15 @@ func shellCallTitle(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; !done {
 		if label := params.ToolProgress[tc.ID].ShellLabel; label != "" {
 			return label
+		}
+		if tc.ID != "" && slices.ContainsFunc(params.PendingCalls, func(pending core.ToolCall) bool {
+			return pending.ID == tc.ID && pending.Name == tc.Name
+		}) {
+			for _, shell := range proc.Shells() {
+				if label := shell.Label(); shell.Kind.ToolName() == tc.Name && label != "" {
+					return label
+				}
+			}
 		}
 	}
 	return tc.Name

@@ -23,9 +23,6 @@ import (
 
 func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	mem := t.TempDir()
-	prev := conv.MemoryStores
-	conv.MemoryStores = system.MemoryStores{Project: mem}
-	t.Cleanup(func() { conv.MemoryStores = prev })
 	path := filepath.Join(mem, "release.md")
 	if err := os.WriteFile(path, []byte("---\ndescription: Release policy\n---\nPrivate release body"), 0600); err != nil {
 		t.Fatal(err)
@@ -49,6 +46,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := fixedComposerModel(80, 40)
+	m.conv.AutoMemoryStore = system.MemoryStore(mem)
 	m.services.Agent, m.services.Session, m.services.SessionStore = &agent.Runtime{}, rec, store
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
@@ -83,9 +81,6 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			mem := t.TempDir()
-			prev := conv.MemoryStores
-			conv.MemoryStores = system.MemoryStores{Project: mem}
-			t.Cleanup(func() { conv.MemoryStores = prev })
 			path := filepath.Join(mem, "sign-off.md")
 			if err := os.WriteFile(path, []byte("---\ndescription: Sign off PR commits\n---\nPrivate convention body"), 0600); err != nil {
 				t.Fatal(err)
@@ -95,6 +90,7 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := fixedComposerModel(80, 40)
+			m.conv.AutoMemoryStore = system.MemoryStore(mem)
 			attachTurnSession(t, m)
 			m.services.Agent = &agent.Runtime{}
 			m.services.Tool = tool.NewRegistry()

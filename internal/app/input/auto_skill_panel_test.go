@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/autoskill"
+	"github.com/genai-io/san/internal/setting"
 )
 
 func newTestSkillPanel() (*PanelPopup, *autoSkillPanel) {
@@ -83,14 +84,15 @@ func TestSkillPanelRenderShowsValidationError(t *testing.T) {
 }
 
 func TestReflectionTabsPreserveDraftUntilClose(t *testing.T) {
-	c := NewReflectionSelector(ReflectionDeps{})
+	cwd, svc := t.TempDir(), setting.New(nil)
+	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	c.Enter(120, 40)
 	press := func(key rune) { c.HandleKeypress(tea.KeyPressMsg{Code: key}) }
-	if out := c.Render(); !strings.Contains(out, "Reflection") || !strings.Contains(out, "Browse files and stores with /memory") || strings.Contains(out, "Create new skills") {
+	if out := c.Render(); !strings.Contains(out, "Reflection") || !strings.Contains(out, "Repository memory") || strings.Contains(out, "Create new skills") {
 		t.Fatalf("expected only the Auto Memory body:\n%s", out)
 	}
 	press(tea.KeyTab)
-	if out := c.Render(); !strings.Contains(out, "Create new skills") || strings.Contains(out, "Browse files and stores") {
+	if out := c.Render(); !strings.Contains(out, "Create new skills") || strings.Contains(out, "Repository memory") {
 		t.Fatalf("expected only the Auto Skill body:\n%s", out)
 	}
 	press(tea.KeyDown) // Strategy → Create

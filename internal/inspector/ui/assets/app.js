@@ -38,7 +38,6 @@ function textElement(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
-function jsonBlock(value) { return textElement('pre', JSON.stringify(value, null, 2)); }
 function setStatus(text) { $('#status').textContent = text; }
 function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Markdown is deliberately limited to inline links. Raw HTML never becomes DOM.
@@ -246,7 +245,7 @@ function indexInference(rec) {
 }
 const asides = new Map([
   ['recall', {name:'Auto Memory', operation:'Recall'}],
-  ['memory-maintain', {name:'Auto Memory', operation:'Maintain'}],
+  ['memory-update', {name:'Auto Memory', operation:'Update'}],
   ['auto-skill', {name:'Auto Skill', operation:'Review'}],
   ['btw', {name:'By the Way'}], ['recap', {name:'Recap'}], ['suggest', {name:'Suggestion'}],
   ['flow', {name:'Flow Draft'}], ['autopilot', {name:'AutoPilot'}],
@@ -510,7 +509,7 @@ async function showDetail(index) {
   detail.scrollTop = 0;
   if ($('main').classList.contains('show-prompt')) refreshPromptPanel(rec);
   if (request) await loadSnapshot(request, load, result => result.request
-    ? requestNodes(result.request)
+    ? [...(rec.payload?.purpose === 'recall' ? recallRequestNodes(result.request) : []), ...requestNodes(result.request)]
     : [textElement('p', 'No model request was recorded for this step.', 'detail-note')]);
 }
 async function refreshPromptPanel(rec, load = rec ? state.selectedState : () => readState(state.currentSession, 0)) {

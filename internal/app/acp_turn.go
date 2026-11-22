@@ -12,7 +12,6 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
@@ -72,9 +71,8 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		submission = core.UserMessage(prompt, nil)
 	}
 	prepared := agent.PreparedMemory{Message: submission}
-	if params.AutoMemory.Recall.Mode == setting.MemoryRecallWait || agent.IsMemoryMaintenance(userInput) {
-		recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording, Timeout: params.AutoMemory.Recall.Timeout}
-		prepared, err = recaller.PrepareWithSubmission(ctx, params.AutoMemory.Stores, userInput, submission, history)
+	if params.AutoMemory.Recall.Mode == setting.MemoryRecallWait && params.AutoMemory.Store.HasNotes() {
+		prepared, err = params.MemoryRecaller().PrepareWithSubmission(ctx, params.AutoMemory.Store, userInput, submission, history)
 	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if ctx.Err() != nil && (err == nil || err == ctx.Err()) {
@@ -82,13 +80,6 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	}
 	if err != nil {
 		return response, err
-	}
-	if prepared.Handled {
-		response := protocol.PromptResponse{StopReason: protocol.StopReasonEndTurn}
-		if prepared.Notice == "" {
-			return response, nil
-		}
-		return response, turn.SendUpdate(protocol.SessionNotification{Update: acpMessageChunk(prepared.Notice)})
 	}
 
 	s.runtime.SetPluginRoot(pluginRoot)

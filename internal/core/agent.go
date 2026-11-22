@@ -146,8 +146,9 @@ type InferenceConfig struct {
 	// unsupported image content. Nil leaves the conversation unchanged.
 	AdaptMessages func([]Message) []Message
 	// AppendContext adds request-only context after client resolution. Retries
-	// use the same context as the first attempt.
-	AppendContext func(messages []Message, retry bool) []Message
+	// use the same context as the first attempt. Its optional callback runs
+	// when the provider responds and may return a display event.
+	AppendContext func(messages []Message, retry bool) ([]Message, func() Event)
 	// Options returns live per-call settings, such as output cap and effort.
 	Options func() []ai.Option
 }

@@ -235,8 +235,9 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 			s.permissions.SetMode(setting.ModeAutoAccept)
 		}
 	}
+	var memory system.MemoryStore
 	if setting.New(settings).AutoMemory() {
-		s.permissions.autoMemory = setting.MemoryStoresFor(req.CWD)
+		memory = setting.MemoryStoreFor(req.CWD)
 	}
 	policy := s.permissions.ForDirectory(req.CWD)
 	s.runtimeBuildParams = agent.BuildParams{SessionID: opened.ID(), CWD: req.CWD, Provider: h.provider, ModelID: modelID,
@@ -249,7 +250,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
-		AutoMemory:   agent.AutoMemoryConfig{Stores: policy.AutoMemory, Recall: settings.MemoryRecall()},
+		AutoMemory:   agent.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall()},
 		FileCache:    filecache.New(),
 	}
 	if history != nil {

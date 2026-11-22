@@ -181,17 +181,6 @@ type ModelInfo struct {
 // Complete sends one non-streaming call and returns the whole answer. The
 // collection it used to do by hand is ai.Client.Complete.
 func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (CompletionResponse, error) {
-	headers := TurnHeaders(provider, opts.Messages)
-	var client *ai.Client
-	var err error
-	if vendor, ok := provider.(*vendorProvider); ok {
-		client, err = vendor.client(ctx, opts.Model, headers)
-	} else {
-		client, err = provider.Client(opts.Model, headers)
-	}
-	if err != nil {
-		return CompletionResponse{}, err
-	}
 	callOpts := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
 	if len(opts.Tools) > 0 {
 		callOpts = append(callOpts, ai.WithTools(opts.Tools...))
@@ -203,11 +192,32 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 		callOpts = append(callOpts, ai.WithCacheRetention(opts.CacheRetention))
 	}
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
-	if opts.Admission != nil {
+	return complete(ctx, provider, opts.Model, opts.Messages, opts.Admission, callOpts...)
+}
+
+// CompleteRequest makes an independent completion with a captured SDK request.
+// It does not continue the original inference or share its transport state.
+func CompleteRequest(ctx context.Context, provider Provider, model string, request *ai.Request, admission CompletionAdmission) (CompletionResponse, error) {
+	return complete(ctx, provider, model, request.Messages, admission, func(r *ai.Request) { *r = *request })
+}
+
+func complete(ctx context.Context, provider Provider, model string, messages []core.Message, admission CompletionAdmission, callOpts ...ai.Option) (CompletionResponse, error) {
+	headers := TurnHeaders(provider, messages)
+	var client *ai.Client
+	var err error
+	if vendor, ok := provider.(*vendorProvider); ok {
+		client, err = vendor.client(ctx, model, headers)
+	} else {
+		client, err = provider.Client(model, headers)
+	}
+	if err != nil {
+		return CompletionResponse{}, err
+	}
+	if admission != nil {
 		var finish CompletionFinish
-		resp, callErr := client.CompleteWithAdmission(ctx, opts.Messages, func(admitCtx context.Context, req *ai.Request) error {
+		resp, callErr := client.CompleteWithAdmission(ctx, messages, func(admitCtx context.Context, req *ai.Request) error {
 			var err error
-			finish, err = opts.Admission(admitCtx, provider.Name(), client.Model(), req)
+			finish, err = admission(admitCtx, provider.Name(), client.Model(), req)
 			if err == nil && finish == nil {
 				err = errors.New("llm: completion admission returned nil finish")
 			}
@@ -226,7 +236,7 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 		}
 		return CompletionResponse{}, callErr
 	}
-	resp, err := client.Complete(ctx, opts.Messages, callOpts...)
+	resp, err := client.Complete(ctx, messages, callOpts...)
 	if err != nil {
 		return CompletionResponse{}, err
 	}

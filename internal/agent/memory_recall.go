@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/genai-io/sdk-go/pkg/ai"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/aside"
@@ -21,59 +18,21 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-// maxRecalled caps the memories attached to one message.
+// maxRecalled caps the notes returned by one selection.
 const maxRecalled = 5
-const maxRecallCandidates = 60
 
-var (
-	recallFilename = regexp.MustCompile(`[\pL\pN_.-]+`)
-	recallWord     = regexp.MustCompile(`[\pL\pN]{3,}`)
-)
+const recallSystemPrompt = `You select memories for the final user's question. The first message lists repository memory filenames and descriptions; the second lists files already in the main context.
+Select up to 5 files that add a needed rule, fact, or preference. Do not select files already in context, mere word matches, or general user descriptions. Return an empty list if no new file is needed.
+Reply with JSON only: {"selected_memories": ["<filename>", ...]}`
 
-// Rank both stores before cutting the selector's list. Exact filenames win
-// over lexical overlap; ties retain the store's deterministic listing order.
-func recallCandidates(ctx context.Context, stores system.MemoryStores, query string) []system.Memory {
-	candidates := stores.Memories(ctx, 0)
-	if ctx.Err() != nil || len(candidates) == 0 {
-		return nil
+func recallIndex(notes []system.Memory) string {
+	var list strings.Builder
+	list.WriteString("Memory files:\n")
+	for _, note := range notes {
+		list.WriteString("- " + memoryID(note) + ": " + note.Description + "\n")
 	}
-	query = strings.ToLower(query)
-	filenames, words := map[string]bool{}, map[string]bool{}
-	for _, name := range recallFilename.FindAllString(query, -1) {
-		filenames[name] = true
-		filenames[strings.TrimRight(name, ".")] = true
-	}
-	for _, word := range recallWord.FindAllString(query, -1) {
-		words[word] = true
-	}
-	type rank struct {
-		exact   bool
-		overlap int
-	}
-	ranks := make(map[system.Memory]rank, len(candidates))
-	for _, m := range candidates {
-		name := strings.ToLower(filepath.Base(m.Path))
-		seen := map[string]bool{}
-		for _, word := range recallWord.FindAllString(strings.TrimSuffix(name, ".md")+" "+strings.ToLower(m.Description), -1) {
-			if words[word] {
-				seen[word] = true
-			}
-		}
-		ranks[m] = rank{exact: filenames[name], overlap: len(seen)}
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		a, b := ranks[candidates[i]], ranks[candidates[j]]
-		if a.exact != b.exact {
-			return a.exact
-		}
-		return a.overlap > b.overlap
-	})
-	return candidates[:min(len(candidates), maxRecallCandidates)]
+	return list.String()
 }
-
-const recallSystemPrompt = `You select memories that will be useful to a coding agent as it handles a user's message. You get the list of memory files, each as <store>/<file> with its description, then the message. A user memory holds in every repository; a project memory holds in the repository the user is working in now.
-Return the files the agent needs to handle this message well, up to 5: a rule, fact or preference that bears on what the message asks it to do. Skip one that only shares a word with the message or describes the user in general; when none bears on it, return an empty list.
-Reply with JSON only: {"selected_memories": ["<store>/<file>", ...]}`
 
 // Recaller picks the memories a message needs with a side query, so the main
 // model has them in hand instead of spending a step reading them.
@@ -85,33 +44,45 @@ type Recaller struct {
 	Timeout   time.Duration // Optional wait-mode budget; it does not cancel the main turn.
 }
 
-func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, query string, recording *session.Completion) ([]system.Memory, error) {
-	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || stores.Off() {
+func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, query string, recording *session.Completion, covered func(system.Memory) bool) ([]system.Memory, error) {
+	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || store.Off() {
 		return nil, nil
 	}
-	candidates := recallCandidates(ctx, stores, query)
-	if len(candidates) == 0 {
+	// Read the current index on each lookup; keep its serialized prefix stable
+	// across questions and changes to the already-covered set.
+	notes := store.Memories(ctx, 0)
+	byID := make(map[string]system.Memory, len(notes))
+	var coveredFiles strings.Builder
+	for _, note := range notes {
+		if ctx.Err() != nil {
+			return nil, nil
+		}
+		id := memoryID(note)
+		if covered != nil && covered(note) {
+			coveredFiles.WriteString("- " + id + "\n")
+		} else {
+			byID[id] = note
+		}
+	}
+	if len(byID) == 0 || ctx.Err() != nil {
 		return nil, nil
 	}
-	byID := map[string]system.Memory{}
-	var list strings.Builder
-	for _, m := range candidates {
-		id := memoryID(m)
-		byID[id] = m
-		list.WriteString("- " + id + ": " + m.Description + "\n")
+	if coveredFiles.Len() == 0 {
+		coveredFiles.WriteString("None.")
 	}
 	start := time.Now()
 	resp, err := aside.Complete(ctx, r.Provider, llm.CompletionOptions{
 		Model:        r.Model,
 		SystemPrompt: recallSystemPrompt,
-		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.Content{
-			ai.TextBlock("Memory files:\n" + list.String() + "\nUser query:\n"),
-			ai.TextBlock(query),
-		}}},
+		Messages: []core.Message{
+			core.UserMessage(recallIndex(notes), nil),
+			core.UserMessage("Already in main context:\n"+coveredFiles.String(), nil),
+			core.UserMessage(query, nil),
+		},
 		ThinkingEffort: r.Effort,
 	}, recording)
 	if err != nil {
-		log.Logger().Debug("memory recall failed", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.Error(err))
+		log.Logger().Debug("memory recall failed", zap.Int("candidates", len(byID)), zap.Duration("took", time.Since(start)), zap.Error(err))
 		var recordingErr *llm.RecordingError
 		if errors.As(err, &recordingErr) {
 			return nil, err
@@ -122,7 +93,7 @@ func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, q
 		return nil, nil
 	}
 	text := resp.Content.Text()
-	log.Logger().Debug("memory recall", zap.Int("candidates", len(candidates)), zap.Duration("took", time.Since(start)), zap.String("reply", text))
+	log.Logger().Debug("memory recall", zap.Int("candidates", len(byID)), zap.Duration("took", time.Since(start)), zap.String("reply", text))
 	var reply struct {
 		Selected []string `json:"selected_memories"`
 	}
@@ -149,5 +120,5 @@ func LowestEffort(p llm.Provider, store *llm.Store, model *llm.CurrentModelInfo)
 }
 
 func memoryID(m system.Memory) string {
-	return m.Store + "/" + m.Path[strings.LastIndexAny(m.Path, `/\`)+1:]
+	return filepath.Base(m.Path)
 }

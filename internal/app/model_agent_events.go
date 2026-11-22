@@ -177,6 +177,11 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		return tea.Batch(commitCmds...)
 	}
 
+	// Capture this completed turn before draining input into the next one.
+	if cmd := m.reviewTurnMemory(result); cmd != nil {
+		commitCmds = append(commitCmds, cmd)
+	}
+
 	// Normal completion never broadens the cancellation-only receipt contract.
 	_ = agent.EndTurn(agent.TurnCallbacks{
 		RecordState: m.appendTurnState,
