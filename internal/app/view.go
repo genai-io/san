@@ -133,11 +133,6 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 	// Render the footer first so the chat section can be capped to whatever
 	// height it leaves free.
 	footer, inputRow := m.renderFooter(separator)
-	if trackerView != "" && strings.HasPrefix(footer, "\n\n") {
-		// Keep task history adjacent to inference without a spare blank row.
-		footer = strings.TrimPrefix(footer, "\n")
-		inputRow--
-	}
 	queue := ""
 	if preview := m.renderQueuePreview(); preview != "" {
 		queue = "\n" + preview

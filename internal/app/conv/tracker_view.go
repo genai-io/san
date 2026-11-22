@@ -75,7 +75,7 @@ func RenderTrackerList(params TrackerListParams) string {
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	header := "  " + headerStyle.Render("Tasks")
+	header := headerStyle.Render("Tasks")
 	// Progress is the plan's: a background task finishing is not a step of it.
 	if plans > 0 {
 		header += " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans))
@@ -152,11 +152,11 @@ func RenderTrackerList(params TrackerListParams) string {
 	folded := strings.TrimSuffix(renderFoldedLine(hidden), "\n")
 	if history > 0 {
 		label := kit.Plural(history, "past task")
+		prefix := "  "
 		if len(items) == 0 {
 			label = "Tasks · " + label
-		}
-		prefix := "  "
-		if folded != "" && params.Width > lipgloss.Width(label)+5 {
+			prefix = ""
+		} else if folded != "" && params.Width > lipgloss.Width(label)+5 {
 			prefix = kit.TruncateText(folded, params.Width-lipgloss.Width(label)-3) + " · "
 		}
 		left := prefix + mutedStyle.Render(label)

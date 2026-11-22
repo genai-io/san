@@ -314,8 +314,10 @@ for the first inference event. This waiting state is display-only; the agent's
 queued, and cancellation or a failed send clears the spinner.
 During an inference, one breathing status row reads `✦ On it · 17s`, including
 while commentary, thinking, or partial tool arguments stream. It is footer
-content, ordered below Tasks/background indicators and queued messages, directly
-against the input's top separator without a blank row between them. Queued
+content, ordered below Tasks/background indicators and queued messages. The
+Tasks heading is flush left; task rows are indented under it. When height permits,
+a blank row separates Tasks from the live status, which stays directly against
+the input's top separator. Queued
 prompts have no heading; `+N more` counts only hidden messages, inline on short
 screens. Approval and
 question panels suppress the standalone row. Genuine silence after 30 seconds

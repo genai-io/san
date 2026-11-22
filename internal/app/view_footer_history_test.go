@@ -11,7 +11,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-func TestHistoryOnlyFooterSitsAgainstInference(t *testing.T) {
+func TestTaskHistoryIsSeparateFromInference(t *testing.T) {
 	m := modelWithInferenceProgress(24)
 	m.env.Width = 80
 	m.conv.ShowTasks = true
@@ -26,8 +26,8 @@ func TestHistoryOnlyFooterSitsAgainstInference(t *testing.T) {
 	rows := strings.Split(plain, "\n")
 	for i, row := range rows {
 		if strings.Contains(row, "Tasks · 1 past task") {
-			if i+2 >= len(rows) || !strings.Contains(rows[i+1], "On it") || !strings.HasPrefix(rows[i+2], "─") {
-				t.Fatalf("history should sit directly above inference and input:\n%s", plain)
+			if i+3 >= len(rows) || rows[i+1] != "" || !strings.Contains(rows[i+2], "On it") || !strings.HasPrefix(rows[i+3], "─") {
+				t.Fatalf("history should be separate from the inference and input group:\n%s", plain)
 			}
 			if len(rows) != 24 || view.Cursor == nil || view.Cursor.Position.Y != 21 {
 				t.Fatalf("composer moved: rows=%d cursor=%+v", len(rows), view.Cursor)
