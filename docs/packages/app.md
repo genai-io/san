@@ -314,8 +314,10 @@ for the first inference event. This waiting state is display-only; the agent's
 queued, and cancellation or a failed send clears the spinner.
 During an inference, one breathing status row reads `✦ On it · 17s`, including
 while commentary, thinking, or partial tool arguments stream. It is footer
-content, ordered below Tasks/background indicators and queued messages, directly
-against the input's top separator without a blank row between them. Queued
+content, ordered below Tasks/background indicators and queued messages. The
+Tasks heading is flush left; task rows are indented under it. When height permits,
+a blank row separates Tasks from the live status, which stays directly against
+the input's top separator. Queued
 prompts have no heading; `+N more` counts only hidden messages, inline on short
 screens. Approval and
 question panels suppress the standalone row. Genuine silence after 30 seconds
@@ -323,9 +325,10 @@ shows `Waiting for model`; actual retries show their attempt number. Tool-input
 progress tracks liveness internally without displaying byte counts or fake phases.
 `InferenceEnd` retires generation progress before pending tools run. Failed
 attempts stay in inference diagnostics rather than adding red conversation notices.
-Automatic compaction temporarily owns the same footer row, with elapsed time and
-`Compacting context · will continue automatically`; it clears when compaction ends.
-Manual compaction does not promise an automatic continuation. A stopped
+Compaction uses the same breathing footer row: `✦ Summarizing conversation · 12s`.
+For automatic compaction, `Response resumes automatically` appears if it fits.
+When compaction succeeds, the live status gives way to an unindented
+`Conversation compacted` notice in the main conversation. A stopped
 failed turn explicitly marks its output as incomplete. This status is display-only
 and never enters native history or the model conversation. Regression coverage
 includes `conv/inference_progress_test.go`, `model_inference_lifecycle_test.go`,

@@ -774,6 +774,7 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 		c.env.BeginCompact()
 	}
 	c.env.Conversation.Compact.Active = true
+	c.env.Conversation.Compact.StartedAt = time.Now()
 	c.env.Conversation.Compact.SummaryFocus = request.SummaryFocus
 	c.env.Conversation.Compact.Phase = conv.PhaseSummarizing
 	c.env.Conversation.Compact.Count = len(request.Messages)

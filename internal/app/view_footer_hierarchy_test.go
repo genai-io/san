@@ -89,7 +89,7 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 							tasksAt = i
 						}
 					}
-					if tasksAt < 1 || lines[tasksAt-1] != "" || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || !strings.Contains(lines[at-1], "active-worker") || strings.Index(plain, "editing") > strings.Index(plain, "Tasks") {
+					if tasksAt < 1 || lines[tasksAt-1] != "" || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || at < 2 || lines[at-1] != "" || !strings.Contains(lines[at-2], "active-worker") || strings.Index(plain, "editing") > strings.Index(plain, "Tasks") {
 						t.Fatalf("roomy groups lack hierarchy:\n%s", plain)
 					}
 				} else {

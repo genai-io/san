@@ -80,7 +80,7 @@ func TestTrackerHistoryHintAlignment(t *testing.T) {
 			t.Fatalf("width %d: history should fit one row: %q", width, row)
 		}
 		if width >= 32 {
-			if !strings.HasPrefix(row, "  Tasks · 1 past task") || !strings.HasSuffix(row, "/tasks") || ansi.StringWidth(row) != width-2 {
+			if !strings.HasPrefix(row, "Tasks · 1 past task") || !strings.HasSuffix(row, "/tasks") || ansi.StringWidth(row) != width-2 {
 				t.Fatalf("width %d: hint not right-aligned: %q", width, row)
 			}
 		} else if strings.Contains(row, "/") {

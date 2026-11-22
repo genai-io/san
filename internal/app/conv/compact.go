@@ -5,8 +5,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/genai-io/san/internal/agent"
@@ -20,7 +18,7 @@ type CompactResultMsg struct {
 	Context context.Context
 }
 
-const PhaseSummarizing = "Summarizing conversation history"
+const PhaseSummarizing = "Summarizing conversation"
 
 type CompactState struct {
 	Active            bool
@@ -61,21 +59,15 @@ func (c *CompactState) Complete(result string, isError bool) {
 }
 
 // RenderCompactStatus shows progress or failure; success has a boundary line.
-func RenderCompactStatus(width int, spinnerView string, state CompactState) string {
+func RenderCompactStatus(width, frame int, state CompactState) string {
 	switch {
 	case state.Active:
-		msg := "Compacting context…"
-		if state.AutoContinue {
-			msg = "Compacting context · will continue automatically"
+		row := renderModelWait(frame, max(1, width), state.StartedAt, time.Time{}, PhaseSummarizing)
+		const continuation = " · Response resumes automatically"
+		if state.AutoContinue && lipgloss.Width(row)+lipgloss.Width(continuation) <= width {
+			row += ThinkingStyle.Render(continuation)
 		}
-		if !state.StartedAt.IsZero() {
-			msg += " · " + formatElapsedTime(state.StartedAt)
-		}
-		row := lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.TextDim).
-			PaddingLeft(1).
-			Render(spinnerView + " " + msg)
-		return ansi.Truncate(row, max(1, width), "…")
+		return row
 	case state.LastResult != "" && state.LastError:
 		return lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Error).

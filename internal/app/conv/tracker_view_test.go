@@ -417,10 +417,10 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	}
 
 	plain := render()
-	if !strings.HasPrefix(plain, "  Tasks\n") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
-		t.Errorf("a worker should render under the shared Tasks heading without plan progress:\n%s", plain)
+	if !strings.HasPrefix(plain, "Tasks\n  ●  Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
+		t.Errorf("a worker should be indented under the top-level Tasks heading without plan progress:\n%s", plain)
 	}
-	if !strings.Contains(plain, "●  Save Jenkins script") || strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
+	if strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
 		t.Errorf("worker row should lead with the work description:\n%s", plain)
 	}
 

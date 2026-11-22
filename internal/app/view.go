@@ -133,11 +133,6 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 	// Render the footer first so the chat section can be capped to whatever
 	// height it leaves free.
 	footer, inputRow := m.renderFooter(separator)
-	if trackerView != "" && strings.HasPrefix(footer, "\n\n") {
-		// Keep task history adjacent to inference without a spare blank row.
-		footer = strings.TrimPrefix(footer, "\n")
-		inputRow--
-	}
 	queue := ""
 	if preview := m.renderQueuePreview(); preview != "" {
 		queue = "\n" + preview
@@ -245,7 +240,7 @@ func (m *model) renderFooter(separator string) (string, int) {
 	var status string
 	switch {
 	case m.conv.Compact.Active && !params.DockedModalActive:
-		status = conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact)
+		status = conv.RenderCompactStatus(m.env.Width, params.Frame, m.conv.Compact)
 	case m.memoryInput != nil:
 		detail := ""
 		if time.Since(m.memoryInput.startedAt) >= 250*time.Millisecond {
@@ -372,7 +367,7 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 	}
 
 	if !m.conv.Compact.Active {
-		if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact); compactView != "" {
+		if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.Frame(), m.conv.Compact); compactView != "" {
 			parts = append(parts, "", compactView, "")
 		}
 	}
