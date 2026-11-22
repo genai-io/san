@@ -38,13 +38,8 @@ type memoryInputMsg struct {
 	err    error
 }
 
-type autoMemoryConfig struct {
-	stores system.MemoryStores
-	recall setting.MemoryRecallConfig
-}
-
-func (m *model) currentAutoMemory() autoMemoryConfig {
-	return autoMemoryConfig{stores: m.autoMemoryStores(), recall: m.memoryRecallConfig()}
+func (m *model) currentAutoMemory() agent.AutoMemoryConfig {
+	return agent.AutoMemoryConfig{Stores: m.autoMemoryStores(), Recall: m.memoryRecallConfig()}
 }
 
 func (m *model) memoryRecallConfig() setting.MemoryRecallConfig {
@@ -59,7 +54,7 @@ func (m *model) needsMemoryInput(head pendingMessage) bool {
 		m.services.Session == nil || strings.TrimSpace(head.Text()) == "" || conv.IsAgentEnvelope(head.Text()) {
 		return false
 	}
-	return agent.IsMemoryMaintenance(head.Message) || (m.memoryRecallConfig().Mode == setting.MemoryRecallWait && m.autoMemory.stores.HasNotes())
+	return agent.IsMemoryMaintenance(head.Message) || (m.memoryRecallConfig().Mode == setting.MemoryRecallWait && m.autoMemory.Stores.HasNotes())
 }
 
 func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
@@ -69,7 +64,7 @@ func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
 func (m *model) startMemoryInput(parent context.Context, head pendingMessage, accept func(memoryInputMsg) tea.Cmd) tea.Cmd {
 	ctx, cancel := context.WithCancel(parent)
 	r := &memoryInput{
-		owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.autoMemory.stores,
+		owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.autoMemory.Stores,
 		head: head, parent: parent, cancel: cancel, accept: accept,
 		startedAt: time.Now(), maintenance: agent.IsMemoryMaintenance(head.Message),
 	}

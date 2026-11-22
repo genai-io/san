@@ -72,9 +72,9 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		submission = core.UserMessage(prompt, nil)
 	}
 	prepared := agent.PreparedMemory{Message: submission}
-	if params.MemoryRecall.Mode == setting.MemoryRecallWait || agent.IsMemoryMaintenance(userInput) {
-		recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording, Timeout: params.MemoryRecall.Timeout}
-		prepared, err = recaller.PrepareWithSubmission(ctx, params.AutoMemory, userInput, submission, history)
+	if params.AutoMemory.Recall.Mode == setting.MemoryRecallWait || agent.IsMemoryMaintenance(userInput) {
+		recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording, Timeout: params.AutoMemory.Recall.Timeout}
+		prepared, err = recaller.PrepareWithSubmission(ctx, params.AutoMemory.Stores, userInput, submission, history)
 	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if ctx.Err() != nil && (err == nil || err == ctx.Err()) {

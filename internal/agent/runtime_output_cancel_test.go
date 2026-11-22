@@ -23,7 +23,7 @@ func TestNativeCancelledOutputAdmissionFinalization(t *testing.T) {
 			writeErr := errors.New("native output durability failed")
 			runtime := Runtime{build: func(p BuildParams) (core.Agent, *PermissionGate, error) {
 				client := llm.NewClient(p.Provider, p.ModelID, 0)
-				return core.NewAgent(core.Config{Client: client.TurnClient, System: core.NewSystem(), Tools: core.NewTools(), OnEvent: p.OnEvent,
+				return core.NewAgent(core.Config{Inference: core.InferenceConfig{ResolveClient: client.TurnClient}, System: core.NewSystem(), Tools: core.NewTools(), OnEvent: p.OnEvent,
 					InferenceAdmission: p.recorder.InferenceAdmission, ToolAdmission: p.recorder.ToolAdmission,
 					OutputAdmission: func(ctx context.Context, output sdkagent.OutputAdmission) error {
 						close(entered)

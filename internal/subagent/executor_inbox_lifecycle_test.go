@@ -159,7 +159,7 @@ func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 		}
 		return aitest.Says("first")(ctx, req)
 	}, aitest.Says("second"))
-	ag := core.NewAgent(core.Config{Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }, System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1, MaxSteps: 2})
+	ag := core.NewAgent(core.Config{Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }}, System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1, MaxSteps: 2})
 	ag.Append(core.UserMessage("initial task", nil))
 	result, err := inbox.run(context.Background(), ag, 2, nil)
 	if err != nil || result.Content != "second" || result.Steps != 2 || ag.Pending() != 0 {

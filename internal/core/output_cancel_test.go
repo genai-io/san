@@ -16,7 +16,7 @@ func TestCancelledOutputPrecheckFinalizesThroughActualConsumer(t *testing.T) {
 	captured := make(chan *TurnFinalization, 1)
 	terminal := make(chan Result, 1)
 	var ag Agent
-	ag = NewAgent(Config{Client: testClient(aitest.New(aitest.Says("unpublished"))), System: NewSystem(), Tools: NewTools(), OutputAdmission: func(context.Context, sdkagent.OutputAdmission) error {
+	ag = NewAgent(Config{Inference: InferenceConfig{ResolveClient: testClient(aitest.New(aitest.Says("unpublished")))}, System: NewSystem(), Tools: NewTools(), OutputAdmission: func(context.Context, sdkagent.OutputAdmission) error {
 		t.Error("output admission ran after cancelled precheck")
 		return nil
 	}, OnEvent: func(event Event) {
@@ -69,7 +69,7 @@ func TestCancelledOutputAdmissionFinalizesThroughActualConsumer(t *testing.T) {
 		t.Run(map[bool]string{false: "cancellation-only", true: "joined-storage-failure"}[joinedFailure], func(t *testing.T) {
 			entered := make(chan struct{})
 			writeErr := errors.New("output storage failed")
-			ag := NewAgent(Config{Client: testClient(aitest.New(aitest.Says("unpublished"))), System: NewSystem(), Tools: NewTools(), OutputAdmission: func(ctx context.Context, _ sdkagent.OutputAdmission) error {
+			ag := NewAgent(Config{Inference: InferenceConfig{ResolveClient: testClient(aitest.New(aitest.Says("unpublished")))}, System: NewSystem(), Tools: NewTools(), OutputAdmission: func(ctx context.Context, _ sdkagent.OutputAdmission) error {
 				close(entered)
 				<-ctx.Done()
 				if joinedFailure {

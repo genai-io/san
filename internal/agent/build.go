@@ -57,11 +57,7 @@ type BuildParams struct {
 	Plugins       *plugin.Registry
 	PluginRoot    func() string // optional session-owned invocation scope
 
-	// AutoMemory is the auto-memory stores the main agent maintains; zero
-	// when auto memory is off.
-	AutoMemory   system.MemoryStores
-	MemoryRecall setting.MemoryRecallConfig
-	fastRecall   *fastRecall
+	AutoMemory AutoMemoryConfig
 
 	// ShellDirHelp overrides cwd guidance without changing execution behavior.
 	// Empty keeps the default for hosts that apply directory changes.
@@ -165,11 +161,7 @@ func (p BuildParams) addTools(tools *core.Tools) {
 	}
 }
 
-func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
-	return buildAgentWithOutbox(p, 0)
-}
-
-func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *PermissionGate, error) {
+func buildAgent(p BuildParams, outboxBuf int, recall *fastRecall) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -287,26 +279,30 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		return nil, nil, err
 	}
 	cfg := core.Config{
-		ID:              "main",
-		Client:          client.TurnClient,
-		PrepareMessages: client.RequestMessages,
-		CallOptions:     client.CallOptions,
-		ContextBudget:   client.ContextBudget,
-		System:          sys,
-		Tools:           tools,
+		ID: "main",
+		Inference: core.InferenceConfig{
+			ResolveClient: client.TurnClient,
+			AdaptMessages: client.RequestMessages,
+			Options:       client.CallOptions,
+		},
+		Compaction: core.CompactionConfig{
+			Budget:    client.ContextBudget,
+			Summarize: compactFunc,
+		},
+		System: sys,
+		Tools:  tools,
 		Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 			return permissionGate(core.WithToolCallID(toolContext(ctx), call.Call.ID), call)
 		},
 		ResultFilter: p.ResultFilter,
-		CompactFunc:  compactFunc,
 		OnEvent:      p.OnEvent,
 		OutboxBuf:    outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
 	}
-	if recall := p.fastRecall; recall != nil {
-		cfg.AppendRequestContext = recall.prepare
+	if recall != nil {
+		cfg.Inference.AppendContext = recall.prepare
 	}
 	if p.recorder != nil {
 		cfg.InferenceAdmission = p.recorder.InferenceAdmission
@@ -326,8 +322,8 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 
 func (p BuildParams) memoryRecaller() Recaller {
 	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
-	if p.MemoryRecall.Mode == setting.MemoryRecallWait {
-		r.Timeout = p.MemoryRecall.Timeout
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
+		r.Timeout = p.AutoMemory.Recall.Timeout
 		if r.Timeout <= 0 {
 			r.Timeout = 5 * time.Second
 		}
@@ -336,10 +332,10 @@ func (p BuildParams) memoryRecaller() Recaller {
 }
 
 func (p BuildParams) newFastRecall(ctx context.Context) *fastRecall {
-	if p.MemoryRecall.Mode == setting.MemoryRecallWait || p.AutoMemory.Off() || p.Provider == nil {
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait || p.AutoMemory.Stores.Off() || p.Provider == nil {
 		return nil
 	}
-	return &fastRecall{ctx: ctx, stores: p.AutoMemory, recaller: p.memoryRecaller()}
+	return &fastRecall{ctx: ctx, stores: p.AutoMemory.Stores, recaller: p.memoryRecaller()}
 }
 
 // RunOnce answers one message with no session around it: build the agent, hand
@@ -358,10 +354,10 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	messageText := message.Text()
 	recallCtx, cancelRecall := context.WithCancel(ctx)
 	defer cancelRecall()
-	p.fastRecall = p.newFastRecall(recallCtx)
+	recall := p.newFastRecall(recallCtx)
 	prepared := PreparedMemory{Message: message}
-	if p.MemoryRecall.Mode == setting.MemoryRecallWait || IsMemoryMaintenance(message) {
-		prepared, err = p.memoryRecaller().Prepare(ctx, p.AutoMemory, message, nil)
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait || IsMemoryMaintenance(message) {
+		prepared, err = p.memoryRecaller().Prepare(ctx, p.AutoMemory.Stores, message, nil)
 	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if err != nil {
@@ -395,7 +391,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 		}
 	}
 	// Direct execution uses callbacks and has no outbox consumer.
-	ag, gate, err := buildAgentWithOutbox(p, -1)
+	ag, gate, err := buildAgent(p, -1, recall)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +412,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if message.ID == "" {
 		message.ID = core.NewMessageID()
 	}
-	p.fastRecall.enqueue(message.ID, messageText)
+	recall.enqueue(message.ID, messageText)
 	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }

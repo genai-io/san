@@ -62,10 +62,10 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) core.Agent 
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
-		ID:     "test-agent",
-		Client: stubClient(fakeLLM),
-		System: core.NewSystem(),
-		Tools:  buildAllRegisteredTools(cwd),
+		ID:        "test-agent",
+		Inference: core.InferenceConfig{ResolveClient: stubClient(fakeLLM)},
+		System:    core.NewSystem(),
+		Tools:     buildAllRegisteredTools(cwd),
 
 		MaxSteps: 100,
 	})
@@ -95,12 +95,12 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
-		ID:       "test-agent",
-		Client:   stubClient(fakeLLM),
-		System:   core.NewSystem(),
-		Tools:    buildAllRegisteredTools(cwd),
-		Gate:     tool.Permission(permFn),
-		MaxSteps: 100,
+		ID:        "test-agent",
+		Inference: core.InferenceConfig{ResolveClient: stubClient(fakeLLM)},
+		System:    core.NewSystem(),
+		Tools:     buildAllRegisteredTools(cwd),
+		Gate:      tool.Permission(permFn),
+		MaxSteps:  100,
 	})
 }
 
@@ -110,10 +110,10 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
-		ID:     "test-agent",
-		Client: stubClient(fakeLLM),
-		System: core.NewSystem(),
-		Tools:  buildAllRegisteredTools(cwd),
+		ID:        "test-agent",
+		Inference: core.InferenceConfig{ResolveClient: stubClient(fakeLLM)},
+		System:    core.NewSystem(),
+		Tools:     buildAllRegisteredTools(cwd),
 
 		MaxSteps: maxSteps,
 	})

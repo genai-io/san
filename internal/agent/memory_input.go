@@ -17,7 +17,15 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
+
+// AutoMemoryConfig groups the stores and recall policy for the main agent.
+// Empty stores disable Auto Memory; a zero recall mode is Fast.
+type AutoMemoryConfig struct {
+	Stores system.MemoryStores
+	Recall setting.MemoryRecallConfig
+}
 
 // PreparedMemory holds recall open until the host accepts the enriched input.
 // Maintenance is handled entirely on the side and never submitted to main.

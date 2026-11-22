@@ -59,8 +59,8 @@ func TestForegroundAgentsRunInParallelAndJoinBeforeParentInference(t *testing.T)
 	}
 	model := aitest.New(aitest.Asks(calls...), aitest.Says("All reviews received"))
 	parent := core.NewAgent(core.Config{
-		Client: func([]core.Message) (*ai.Client, error) { return model.Client(), nil },
-		System: core.NewSystem(), Tools: core.NewTools(tool.AdaptTool(spawn, spawn.Schema(), func() string { return "." })),
+		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return model.Client(), nil }},
+		System:    core.NewSystem(), Tools: core.NewTools(tool.AdaptTool(spawn, spawn.Schema(), func() string { return "." })),
 		OutboxBuf: -1,
 		OnEvent: func(event core.Event) {
 			if _, ok := event.(sdkagent.ToolEnd); ok {

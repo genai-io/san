@@ -42,7 +42,7 @@ func TestNativeSendMessageAcceptedInputProvenance(t *testing.T) {
 		return aitest.Says("receiver first answer")(ctx, req)
 	}, aitest.Says("receiver processed report"))
 	recorder := session.NewRecorder(recipient, "aitest")
-	ag := core.NewAgent(core.Config{Client: func([]core.Message) (*ai.Client, error) { return receiverDriver.Client(), nil }, System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 2, OutboxBuf: -1, InferenceAdmission: recorder.InferenceAdmission, ToolAdmission: recorder.ToolAdmission, OutputAdmission: recorder.OutputAdmission, OnEvent: recorder.RecordEvent})
+	ag := core.NewAgent(core.Config{Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return receiverDriver.Client(), nil }}, System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 2, OutboxBuf: -1, InferenceAdmission: recorder.InferenceAdmission, ToolAdmission: recorder.ToolAdmission, OutputAdmission: recorder.OutputAdmission, OnEvent: recorder.RecordEvent})
 	ag.Append(core.UserMessage("recipient initial task", nil))
 	result, err := runWithInbox(ctx, ag, route, 2, recipient)
 	if err != nil {
@@ -127,7 +127,7 @@ func TestSourcedInboxRejectsInvalidOrClosedStorageWithoutSendAck(t *testing.T) {
 				}
 				return aitest.Says("done")(ctx, req)
 			})
-			ag := core.NewAgent(core.Config{Client: func([]core.Message) (*ai.Client, error) { return d.Client(), nil }, System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1})
+			ag := core.NewAgent(core.Config{Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return d.Client(), nil }}, System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1})
 			ag.Append(core.UserMessage("initial task", nil))
 			if _, err := runWithInbox(ctx, ag, route, 1, recipient); err != nil {
 				t.Fatal(err)

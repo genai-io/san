@@ -118,10 +118,9 @@ func (m *model) promptParams() agent.BuildParams {
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.autoSkillExtraTools(),
 
-		AutoMemory:   m.autoMemoryStores(),
-		MemoryRecall: m.memoryRecallConfig(),
-		Skills:       m.services.Skill,
-		GroupRoster:  group.Roster,
+		AutoMemory:  m.currentAutoMemory(),
+		Skills:      m.services.Skill,
+		GroupRoster: group.Roster,
 	}
 }
 
@@ -205,7 +204,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
 	policy := agent.PermissionPolicy{
-		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
+		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory.Stores,
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
@@ -422,8 +421,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.autoMemory = autoMemoryConfig{stores: params.AutoMemory, recall: params.MemoryRecall}
-	conv.MemoryStores = params.AutoMemory
+	m.autoMemory = params.AutoMemory
+	conv.MemoryStores = params.AutoMemory.Stores
 
 	// Bind Auto Skill to the running session.
 	m.wireAutoSkill(params)

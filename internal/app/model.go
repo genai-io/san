@@ -170,7 +170,7 @@ type model struct {
 	agentReviewCaps reviewskill.Capabilities
 
 	// autoMemory is the configuration captured by the live agent.
-	autoMemory autoMemoryConfig
+	autoMemory agent.AutoMemoryConfig
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no

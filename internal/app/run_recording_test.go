@@ -26,7 +26,7 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params.AutoMemory = system.MemoryStores{}
+	params.AutoMemory = agent.AutoMemoryConfig{}
 	params.Provider = acpTestProvider{aitest.New(aitest.Says("recorded print")).Client()}
 	params.ModelID = "test"
 	params.Tasks = task.NewManager()
@@ -64,7 +64,7 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 func TestPrintShowsStandaloneMaintenanceNotice(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	driver := aitest.New(aitest.Says(memoryMaintenanceProposal))
-	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: system.MemoryStores{Project: t.TempDir()}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager()}
+	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Stores: system.MemoryStores{Project: t.TempDir()}}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager()}
 	var displayed strings.Builder
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(memoryMaintenancePrompt, nil), func(text string) { displayed.WriteString(text) })
 	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != memoryMaintenanceNotice {
@@ -92,8 +92,10 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params.AutoMemory = system.MemoryStores{Project: notes}
-	params.MemoryRecall = setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait}
+	params.AutoMemory = agent.AutoMemoryConfig{
+		Stores: system.MemoryStores{Project: notes},
+		Recall: setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait},
+	}
 	params.Provider, params.ModelID, params.MaxTokens = acpTestProvider{driver.Client()}, "test", 64
 	params.Tasks = task.NewManager()
 	for _, schema := range params.Schemas() {

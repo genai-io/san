@@ -80,7 +80,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 	ids := []protocol.SessionID{f.session(t, t.TempDir()), f.session(t, t.TempDir())}
 	for _, id := range ids {
 		params := &f.host.sessions[id].runtimeBuildParams
-		params.MemoryRecall = setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait, Timeout: 5 * time.Second}
+		params.AutoMemory.Recall = setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait, Timeout: 5 * time.Second}
 		// configureAgents adds these even if they were absent from the initial catalog.
 		for _, name := range []string{"Agent", "TaskOutput", "TaskStop"} {
 			params.DisabledTools[name] = true
@@ -88,7 +88,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 		for _, schema := range params.Schemas() {
 			params.DisabledTools[schema.Name] = true
 		}
-		dir := params.AutoMemory.Project
+		dir := params.AutoMemory.Stores.Project
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 			if hasRecall := strings.Contains(suffix, "Preference for "+string(id)); hasRecall != (i == 0) {
 				t.Fatalf("recall must appear once in active history: %q", messages[i].Text())
 			}
-			if strings.Contains(suffix, "memory-auto") || strings.Contains(suffix, s.runtimeBuildParams.AutoMemory.Project) {
+			if strings.Contains(suffix, "memory-auto") || strings.Contains(suffix, s.runtimeBuildParams.AutoMemory.Stores.Project) {
 				t.Fatalf("legacy index or store path injected: %q", suffix)
 			}
 		}

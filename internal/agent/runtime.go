@@ -66,8 +66,7 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 			cancel()
 		}
 	}()
-	params.fastRecall = params.newFastRecall(ctx)
-	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recall: params.fastRecall}
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recall: params.newFastRecall(ctx)}
 	params.OnEvent = func(ev core.Event) {
 		switch e := ev.(type) {
 		case sdkagent.MessageAdded:
@@ -86,7 +85,9 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 
 	builder := s.build
 	if builder == nil {
-		builder = buildAgent
+		builder = func(p BuildParams) (core.Agent, *PermissionGate, error) {
+			return buildAgent(p, 0, run.recall)
+		}
 	}
 	ag, pg, err := builder(params)
 	if err != nil {

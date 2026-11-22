@@ -37,15 +37,26 @@ func TestAgentAdmissionBoundaries(t *testing.T) {
 			}
 			var ag Agent
 			var admitted, published []Message
+			resolve := testClient(aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+				mark("model dispatch")
+				return talks("answer")(ctx, req)
+			}))
 			cfg := Config{
 				System: NewSystem(), OutboxBuf: -1, MaxSteps: 1,
-				Client: testClient(aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-					mark("model dispatch")
-					return talks("answer")(ctx, req)
-				})),
-				PrepareMessages: func(msgs []Message) []Message {
-					mark("prepare")
-					return []Message{UserMessage("prepared", nil)}
+				Inference: InferenceConfig{
+					ResolveClient: func(msgs []Message) (*ai.Client, error) {
+						if len(msgs) != 1 || msgs[0].Text() != "prepared" {
+							t.Fatalf("resolver did not receive adapted messages without request-only context: %+v", msgs)
+						}
+						return resolve(msgs)
+					},
+					AdaptMessages: func(msgs []Message) []Message {
+						mark("prepare")
+						return []Message{UserMessage("prepared", nil)}
+					},
+					AppendContext: func(msgs []Message, _ bool) []Message {
+						return append(msgs, UserMessage("request only", nil))
+					},
 				},
 				Tools: NewTools(admissionTool{run: func(call ai.ToolCall) {
 					mark("tool dispatch")
@@ -71,7 +82,8 @@ func TestAgentAdmissionBoundaries(t *testing.T) {
 			}
 			if fail != "nil" {
 				cfg.InferenceAdmission = func(_ context.Context, c sdkagent.InferenceAdmission) error {
-					if c.Model.ID != "stub" || c.Attempt != 1 || len(c.Request.Messages) != 1 || c.Request.Messages[0].Content.Text() != "prepared" {
+					if c.Model.ID != "stub" || c.Attempt != 1 || len(c.Request.Messages) != 2 ||
+						c.Request.Messages[0].Text() != "prepared" || c.Request.Messages[1].Text() != "request only" {
 						t.Errorf("admission did not receive prepared request: %+v", c)
 					}
 					return admit("inference")

@@ -95,8 +95,8 @@ func TestInboxConsumesRetainedCompletionBeforeWorkerRun(t *testing.T) {
 	initial := core.UserMessage("initial worker context", nil)
 	driver := completionDriver(t, []string{"processed completion"}, []core.Message{initial, core.UserMessage(mail.Content, nil)})
 	a := core.NewAgent(core.Config{
-		Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil },
-		System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
+		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
+		System:    core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
 	})
 	a.Append(initial)
 	result, err := runWithInbox(context.Background(), a, route, 1, nil)
@@ -116,8 +116,8 @@ func TestInboxDeliversCompletionDuringSDKRun(t *testing.T) {
 		[]core.Message{initial, core.AssistantMessage("first", "", nil), core.UserMessage(mail.Content, nil)})
 	sent := false
 	a := core.NewAgent(core.Config{
-		Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil },
-		System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 2, OutboxBuf: -1,
+		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
+		System:    core.NewSystem(), Tools: core.NewTools(), MaxSteps: 2, OutboxBuf: -1,
 		OnEvent: func(event core.Event) {
 			if _, ok := event.(sdkagent.TurnEnd); ok && !sent {
 				sent = true
@@ -171,8 +171,8 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	newWorker := func(expected []core.Message) core.Agent {
 		driver := completionDriver(t, []string{"resumed"}, expected)
 		return core.NewAgent(core.Config{
-			Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil },
-			System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
+			Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
+			System:    core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
 		})
 	}
 	other := newWorker([]core.Message{core.UserMessage("other task", nil)})

@@ -87,7 +87,7 @@ func TestRuntimeInterruptAbortsModelHTTP(t *testing.T) {
 			runtime := &Runtime{build: func(p BuildParams) (core.Agent, *PermissionGate, error) {
 				return core.NewAgent(core.Config{
 					ID: "http-cancel", System: core.NewSystem(), Tools: core.NewTools(),
-					Client:                  func([]core.Message) (*ai.Client, error) { return client, nil },
+					Inference:               core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return client, nil }},
 					StreamFirstChunkTimeout: time.Minute, StreamIdleTimeout: time.Minute,
 					OnEvent: func(ev core.Event) {
 						p.OnEvent(ev)

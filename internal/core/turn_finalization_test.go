@@ -40,7 +40,7 @@ func TestTurnFinalizationExecutionDone(t *testing.T) {
 
 func TestCancelAcrossPublication(t *testing.T) {
 	for range 100 {
-		ag := NewAgent(Config{Client: testClient(aitest.Always(aitest.Hangs())), System: NewSystem(), Tools: NewTools(), OutboxBuf: -1}).(*agent)
+		ag := NewAgent(Config{Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Hangs()))}, System: NewSystem(), Tools: NewTools(), OutboxBuf: -1}).(*agent)
 		previousDone := make(chan struct{})
 		close(previousDone)
 		previous := newTurnFinalization(context.Background(), previousDone)
@@ -101,7 +101,7 @@ func TestTurnFinalizationRequiresExecutionAndHandling(t *testing.T) {
 
 func TestCancelFinalizationExactEvent(t *testing.T) {
 	llm := aitest.Always(aitest.Hangs())
-	ag := NewAgent(Config{ID: "test", Client: testClient(llm), System: NewSystem(), Tools: NewTools()})
+	ag := NewAgent(Config{ID: "test", Inference: InferenceConfig{ResolveClient: testClient(llm)}, System: NewSystem(), Tools: NewTools()})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	runDone := make(chan error, 1)
@@ -165,7 +165,7 @@ func TestCancelFinalizationWaitsForProducerWrite(t *testing.T) {
 	llm := aitest.Always(aitest.Hangs())
 	writing, release := make(chan struct{}), make(chan struct{})
 	writeErr := errors.New("native record write failed")
-	ag := NewAgent(Config{ID: "test", Client: testClient(llm), System: NewSystem(), Tools: NewTools(), OnEvent: func(ev Event) {
+	ag := NewAgent(Config{ID: "test", Inference: InferenceConfig{ResolveClient: testClient(llm)}, System: NewSystem(), Tools: NewTools(), OnEvent: func(ev Event) {
 		if end, ok := ev.(TurnEnded); ok {
 			close(writing)
 			<-release
@@ -208,7 +208,7 @@ func TestNaturalRunShutdownReleasesUnacknowledgedReceipt(t *testing.T) {
 	for _, closeInbox := range []bool{false, true} {
 		t.Run(map[bool]string{false: "stop", true: "closed-inbox"}[closeInbox], func(t *testing.T) {
 			llm := aitest.Always(aitest.Hangs())
-			ag := NewAgent(Config{Client: testClient(llm), System: NewSystem(), Tools: NewTools()}).(*agent)
+			ag := NewAgent(Config{Inference: InferenceConfig{ResolveClient: testClient(llm)}, System: NewSystem(), Tools: NewTools()}).(*agent)
 			done := make(chan error, 1)
 			go func() { done <- ag.Run(context.Background()) }()
 			ag.Append(UserMessage("work", nil))
@@ -236,7 +236,7 @@ func TestNaturalRunShutdownReleasesUnacknowledgedReceipt(t *testing.T) {
 
 func TestCancelAfterNaturalCompletionCapturesSameReceipt(t *testing.T) {
 	llm := aitest.Always(aitest.Says("done"))
-	ag := NewAgent(Config{Client: testClient(llm), System: NewSystem(), Tools: NewTools()})
+	ag := NewAgent(Config{Inference: InferenceConfig{ResolveClient: testClient(llm)}, System: NewSystem(), Tools: NewTools()})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

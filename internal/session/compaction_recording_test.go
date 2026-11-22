@@ -36,8 +36,8 @@ func TestCompactionRecordingNativeAcceptance(t *testing.T) {
 	var admitted *ai.Request
 	var startSeq uint64
 	a := recorderAgent(r, mainDriver, func(c *core.Config) {
-		c.ContextBudget = func() int { return 1 }
-		c.CompactFunc = func(ctx context.Context, history []core.Message) (core.Compaction, error) {
+		c.Compaction.Budget = func() int { return 1 }
+		c.Compaction.Summarize = func(ctx context.Context, history []core.Message) (core.Compaction, error) {
 			completion := s.Completion(PurposeCompaction)
 			admission := completion.Admission()
 			response, err := summarizer.Complete(ctx, "summarize independently", []core.Message{core.UserMessage(core.BuildCompactionText(history), nil)}, nil, 0,
@@ -160,8 +160,8 @@ func TestCompactionRecordingNativeQueuedInput(t *testing.T) {
 	})
 	summarizer := llm.NewClient(compactionRecordingProvider{ai.NewClientWithDriver(driver, ai.Model{ID: "summary"})}, "summary", 100)
 	a = recorderAgent(r, aitest.Always(aitest.Says("done")), func(c *core.Config) {
-		c.ContextBudget = func() int { return 1 }
-		c.CompactFunc = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
+		c.Compaction.Budget = func() int { return 1 }
+		c.Compaction.Summarize = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
 			completion := s.Completion(PurposeCompaction)
 			response, err := summarizer.Complete(ctx, "summarize", nil, nil, 0, completion.Admission())
 			return completion.Compaction(response.Content.Text()), err
@@ -217,8 +217,8 @@ func TestCompactionRecordingNativeDiscard(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			a := recorderAgent(r, main, func(c *core.Config) {
-				c.ContextBudget = func() int { return 1 }
-				c.CompactFunc = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
+				c.Compaction.Budget = func() int { return 1 }
+				c.Compaction.Summarize = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
 					completion := s.Completion(PurposeCompaction)
 					resp, err := summarizer.Complete(ctx, "summary", nil, nil, 0, completion.Admission())
 					if mode == "canceled" {
@@ -303,8 +303,8 @@ func TestCompactionRecordingStorageFences(t *testing.T) {
 			summarizer := llm.NewClient(compactionRecordingProvider{ai.NewClientWithDriver(driver, ai.Model{ID: "summary"})}, "summary", 100)
 			main := aitest.New(aitest.Says("must not dispatch"))
 			a := recorderAgent(r, main, func(c *core.Config) {
-				c.ContextBudget = func() int { return 1 }
-				c.CompactFunc = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
+				c.Compaction.Budget = func() int { return 1 }
+				c.Compaction.Summarize = func(ctx context.Context, _ []core.Message) (core.Compaction, error) {
 					completion := s.Completion(PurposeCompaction)
 					if stage == "admission" {
 						if err := s.Close(); err != nil {

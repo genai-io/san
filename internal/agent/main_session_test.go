@@ -293,7 +293,7 @@ func TestMainSessionCancelledJudgeCannotGrant(t *testing.T) {
 			return policy.Judge(ctx, name, args, reason, snapshot())
 		},
 	}
-	_, gate, err := buildAgent(params)
+	_, gate, err := buildAgent(params, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

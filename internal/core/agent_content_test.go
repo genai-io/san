@@ -40,11 +40,11 @@ func talks(text string) aitest.Turn {
 // message, and drain the outbox, which emit() blocks on once the buffer fills.
 func newContentAgent(d ai.Driver, maxSteps int) *agent {
 	ag := NewAgent(Config{
-		ID:       "test",
-		Client:   testClient(d),
-		System:   NewSystem(),
-		Tools:    NewTools(noopTool{}),
-		MaxSteps: maxSteps,
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(d)},
+		System:    NewSystem(),
+		Tools:     NewTools(noopTool{}),
+		MaxSteps:  maxSteps,
 	}).(*agent)
 	ag.Append(UserMessage("go", nil))
 	go func() {

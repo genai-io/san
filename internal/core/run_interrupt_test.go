@@ -19,7 +19,7 @@ func TestInterruptCompletionWaitsForToolButNotTurnEnded(t *testing.T) {
 	var ran, ranOnDead atomic.Int32
 	driver := aitest.New(aitest.Asks(ToolCall{ID: "work", Name: "work", Input: "{}"}), aitest.Hangs())
 	ag := NewAgent(Config{
-		ID: "test", Client: testClient(driver), System: NewSystem(),
+		ID: "test", Inference: InferenceConfig{ResolveClient: testClient(driver)}, System: NewSystem(),
 		Tools: NewTools(cancelOnRunTool{name: "work", ran: &ran, ranOnDead: &ranOnDead, onRun: func() {
 			close(entered)
 			<-release // simulate slow cleanup before the tool returns

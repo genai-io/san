@@ -53,13 +53,13 @@ const MinMessagesToCompact = 3
 // preStep shortens the conversation once the next prompt would leave the reply
 // no room in the window.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
-	if a.compactFunc == nil || len(c.Messages) < MinMessagesToCompact {
+	if a.compaction.Summarize == nil || len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
-	if a.contextBudget == nil {
+	if a.compaction.Budget == nil {
 		return nil, nil
 	}
-	budget := a.contextBudget()
+	budget := a.compaction.Budget()
 	if budget <= 0 || !NeedsCompaction(a.measured.prompt(c.Messages, c.Tokens), budget) {
 		return nil, nil
 	}
@@ -71,7 +71,7 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 // conversation is shortened and the step taken again. Two goes — a summary
 // that is still too long is a summarizer problem.
 func (a *agent) onInferError(ctx context.Context, c sdkagent.InferErrorContext) (*sdkagent.Recovery, error) {
-	if a.compactFunc == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
+	if a.compaction.Summarize == nil || !ai.IsContextExceeded(c.Err) || c.Attempt > 2 {
 		return nil, nil
 	}
 	if len(c.Messages) < MinMessagesToCompact {
@@ -98,7 +98,7 @@ func (a *agent) shorten(ctx context.Context, msgs []Message, trigger string) ([]
 	sdkagent.Compacting(ctx)
 	a.measured.reset()
 
-	c, err := a.compactFunc(ctx, msgs)
+	c, err := a.compaction.Summarize(ctx, msgs)
 	if err != nil {
 		closeErr := c.close()
 		var admission *ai.AdmissionError
