@@ -18,7 +18,7 @@ type CompactResultMsg struct {
 	Context context.Context
 }
 
-const PhaseSummarizing = "Summarizing conversation history"
+const PhaseSummarizing = "Summarizing conversation"
 
 type CompactState struct {
 	Active            bool
@@ -62,11 +62,12 @@ func (c *CompactState) Complete(result string, isError bool) {
 func RenderCompactStatus(width, frame int, state CompactState) string {
 	switch {
 	case state.Active:
-		label := "On it · Compacting context"
-		if state.AutoContinue {
-			label += " · will continue automatically"
+		row := renderModelWait(frame, max(1, width), state.StartedAt, time.Time{}, PhaseSummarizing)
+		const continuation = " · Response resumes automatically"
+		if state.AutoContinue && lipgloss.Width(row)+lipgloss.Width(continuation) <= width {
+			row += ThinkingStyle.Render(continuation)
 		}
-		return renderModelWait(frame, max(1, width), state.StartedAt, time.Time{}, label)
+		return row
 	case state.LastResult != "" && state.LastError:
 		return lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Error).

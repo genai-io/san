@@ -12,16 +12,12 @@ func TestCompactStatusIsQuietBoundedAndTransient(t *testing.T) {
 	state := CompactState{Active: true, AutoContinue: true, Count: 83, StartedAt: time.Now().Add(-42 * time.Second)}
 	rendered := RenderCompactStatus(100, 0, state)
 	row := ansi.Strip(rendered)
-	if !strings.HasPrefix(row, "✦ On it · Compacting context") || rendered == RenderCompactStatus(100, 3, state) {
-		t.Fatalf("compaction did not use the breathing On it row: %q", row)
+	const progress = "✦ Summarizing conversation · 42s"
+	if row != progress+" · Response resumes automatically" || rendered == RenderCompactStatus(100, 3, state) {
+		t.Fatalf("unexpected compaction status: %q", row)
 	}
-	for _, want := range []string{"will continue automatically", "42s"} {
-		if !strings.Contains(row, want) {
-			t.Fatalf("missing %q in %q", want, row)
-		}
-	}
-	if strings.Contains(row, "83") {
-		t.Fatalf("message count leaked into status: %q", row)
+	if row := ansi.Strip(RenderCompactStatus(32, 0, state)); row != progress {
+		t.Fatalf("narrow status should drop the continuation hint, not the timer: %q", row)
 	}
 	for _, width := range []int{1, 20, 40} {
 		if row := RenderCompactStatus(width, 0, state); ansi.StringWidth(row) > width || strings.Contains(row, "\n") {

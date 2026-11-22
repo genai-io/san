@@ -89,7 +89,7 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 		frame, _ := m.renderNormalView(strings.Repeat("─", width-1), "Tasks · background")
 		plain := ansi.Strip(frame)
 		lines := strings.Split(plain, "\n")
-		const status = "✦ On it · Compacting context"
+		const status = "✦ Summarizing conversation"
 		if strings.Count(plain, status) != 1 || strings.Count(plain, "✦") != 1 {
 			t.Fatalf("compaction must own one status row:\n%s", plain)
 		}
@@ -99,7 +99,7 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 			}
 		}
 		m.conv.Modal.Question.Show(&tool.QuestionRequest{Questions: []tool.Question{{Question: "Continue?"}}}, width)
-		if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "Compacting context") {
+		if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "Summarizing conversation") {
 			t.Fatalf("compaction competes with modal:\n%s", frame)
 		}
 		m.OnCompactEnd(sdkagent.CompactionEnd{})
@@ -126,7 +126,7 @@ func TestCompactionCompletionIsTopLevel(t *testing.T) {
 		at, before := strings.Index(frame, "\n"+notice+"\n"), strings.Index(frame, "I will write the HTML now.")
 		after := strings.Index(frame, "Continued reply")
 		if before < 0 || at <= before || after <= at || strings.Count(frame, notice) != 1 ||
-			strings.Contains(frame, "Compacting context") || strings.Contains(frame, "private summary body") {
+			strings.Contains(frame, "Summarizing conversation") || strings.Contains(frame, "private summary body") {
 			t.Fatalf("committed=%v: expected one top-level boundary between replies:\n%s", committed, frame)
 		}
 	}
