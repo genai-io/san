@@ -161,7 +161,17 @@ func (p BuildParams) addTools(tools *core.Tools) {
 	}
 }
 
-func buildAgent(p BuildParams, outboxBuf int, recall *fastRecall) (core.Agent, *PermissionGate, error) {
+type buildOption func(*core.Config)
+
+func withoutOutbox() buildOption {
+	return func(cfg *core.Config) { cfg.OutboxBuf = -1 }
+}
+
+func withRequestContext(appendContext func([]core.Message, bool) []core.Message) buildOption {
+	return func(cfg *core.Config) { cfg.Inference.AppendContext = appendContext }
+}
+
+func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -296,13 +306,12 @@ func buildAgent(p BuildParams, outboxBuf int, recall *fastRecall) (core.Agent, *
 		},
 		ResultFilter: p.ResultFilter,
 		OnEvent:      p.OnEvent,
-		OutboxBuf:    outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
 	}
-	if recall != nil {
-		cfg.Inference.AppendContext = recall.prepare
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 	if p.recorder != nil {
 		cfg.InferenceAdmission = p.recorder.InferenceAdmission
@@ -391,7 +400,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 		}
 	}
 	// Direct execution uses callbacks and has no outbox consumer.
-	ag, gate, err := buildAgent(p, -1, recall)
+	ag, gate, err := buildAgent(p, withoutOutbox(), withRequestContext(recall.requestContext()))
 	if err != nil {
 		return nil, err
 	}

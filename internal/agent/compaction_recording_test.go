@@ -86,7 +86,7 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 							t.Error("published compaction before committing the exact summary and its separate reminder")
 						}
 					}
-				}}, -1, nil)
+				}}, withoutOutbox())
 			if err != nil {
 				t.Fatal(err)
 			}

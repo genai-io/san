@@ -86,7 +86,7 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 	builder := s.build
 	if builder == nil {
 		builder = func(p BuildParams) (core.Agent, *PermissionGate, error) {
-			return buildAgent(p, 0, run.recall)
+			return buildAgent(p, withRequestContext(run.recall.requestContext()))
 		}
 	}
 	ag, pg, err := builder(params)

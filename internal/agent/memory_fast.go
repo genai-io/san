@@ -32,6 +32,13 @@ type recallJob struct {
 	cancel    context.CancelFunc
 }
 
+func (r *fastRecall) requestContext() func([]core.Message, bool) []core.Message {
+	if r == nil {
+		return nil
+	}
+	return r.prepare
+}
+
 func (r *fastRecall) enqueue(id, query string) {
 	if r == nil || strings.TrimSpace(query) == "" {
 		return
