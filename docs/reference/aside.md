@@ -27,12 +27,12 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 
 ## Auto Memory lifecycle
 
-Recall and maintenance are two Auto Memory operations. They share the enabled user and canonical project stores, but run separately with different triggers, task messages, and outputs. Neither advertises model tools.
+Recall and maintenance share the user and project stores but have different triggers and outputs. Neither can execute tools.
 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
-| **Recall** | Before the first main model request for an eligible user turn. Wait only within a short budget, so no-tool turns can also receive notes. | “Select notes relevant to this question.” Send the question and a bounded list of note IDs and descriptions. | San reads selected notes and appends them as a Reminder to the current user message. On timeout, proceed without them; don't deliver a late result to another turn. |
-| **Maintain · Remember / Update / Forget** | An explicit memory request. Automatic maintenance may also run after an eligible completed turn once write policy is defined; it does not block the next turn. | Use the operation-specific task: save the stated fact, revise an existing note, remove the requested note, or extract durable facts from a settled turn. Send only the relevant evidence and existing notes. | The model proposes edits or no change. San validates and applies changes, updates the local index, and shows a Notice only after a write succeeds. |
+| **Recall** | **Fast** starts in parallel with the main request. **Wait** gives recall up to the configured timeout before the first request. | “Select notes relevant to this question.” Send the question and a bounded list of note IDs and descriptions. | Selected notes reach an eligible main request as Reminders. A late result from the previous question is labeled as such. A failed selector does not prevent the turn. |
+| **Maintain · Remember / Update / Forget** | An explicit memory request. | Reuse the latest main request's prefix on the same provider and model when available. Append the operation, evidence, and relevant notes as a separate task; tool schemas may be retained for caching, but tool calls are disabled. Without a matching prefix, use a small standalone request. | The model proposes edits or no change. San validates and applies changes, updates the local index, and shows a Notice only after a write succeeds. |
 
 Keep each operation's system rules stable. Put the operation-specific instruction and its live data in the Aside's user message, not in the main conversation. Store paths, indexes, and maintenance guidance stay out of main context. A disabled store starts no new recall or maintenance work. `/reflection` opens separate Auto Memory and Auto Skill tabs; `/memory` opens the store and instruction-file browser.
 
@@ -46,7 +46,7 @@ Asides follow the same [Context Management principles](context-management.md#pri
 
 The host supplies the model client or provider and model ID, system prompt, and messages for each call. An Aside can borrow a main snapshot or use only its own task messages. There is no per-Aside settings editor for model or prompt overrides.
 
-Verify provider prompt caching using reported `cache_read` and `cache_write` usage. A prompt-cache hit, a cached local memory index, and reuse of a completed recap are separate behaviors.
+Verify provider prompt caching using reported `cache_read` and `cache_write` usage; reusing a request prefix does not guarantee a hit. A prompt-cache hit, a cached local memory index, and reuse of a completed recap are separate behaviors.
 
 ## Inspector
 

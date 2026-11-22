@@ -17,9 +17,10 @@ func TestMemoryPreparationSharesSubmissionWait(t *testing.T) {
 		maintenance bool
 		detail      string
 	}{
-		{"recall", 80, 3 * time.Second, false, "  (Retrieving memory)"},
+		{"recall", 80, 3 * time.Second, false, "  (Memory)"},
 		{"maintenance", 80, 3 * time.Second, true, "  (Updating memory)"},
-		{"narrow", 32, 3 * time.Second, false, ""},
+		{"narrow recall", 32, 3 * time.Second, false, "  (Memory)"},
+		{"narrow maintenance", 26, 3 * time.Second, true, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			const height = 12
@@ -43,7 +44,7 @@ func TestMemoryPreparationSharesSubmissionWait(t *testing.T) {
 				t.Fatalf("narrow status should omit the detail: %q", status)
 			}
 			m.memoryInput.startedAt = time.Now()
-			if out := ansi.Strip(m.View().Content); strings.Contains(out, "memory)") || !strings.Contains(out, "✦ On it") {
+			if out := ansi.Strip(m.View().Content); strings.Contains(out, "(Memory)") || strings.Contains(out, "(Updating memory)") || !strings.Contains(out, "✦ On it") {
 				t.Fatalf("fast recall should not flash the detail:\n%s", out)
 			}
 		})

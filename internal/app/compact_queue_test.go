@@ -62,7 +62,7 @@ func compactQueueModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	}
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = m.autoMemory()
+	m.autoMemory = m.currentAutoMemory()
 	return m, provider
 }
 

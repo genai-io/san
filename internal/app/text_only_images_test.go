@@ -196,7 +196,7 @@ func TestCanceledStreamDrainPreservesQueuedAndDraftImages(t *testing.T) {
 	m.services.Hook = hook.NewEngine(nil, "", "", "")
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = m.autoMemory()
+	m.autoMemory = m.currentAutoMemory()
 	queued := chartImage()
 	queued.Path = "/tmp/queued.png"
 	queued.FileName = "queued.png"

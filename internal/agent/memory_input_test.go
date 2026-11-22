@@ -1,35 +1,36 @@
 package agent
 
 import (
+	"context"
+	"iter"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestRecallAdmissionTimeoutPreservesUserInput(t *testing.T) {
+func TestRecallUsesTurnContextWithoutAddingDeadline(t *testing.T) {
 	owner, stores := recallFixture(t)
-	project := filepath.Dir(filepath.Dir(filepath.Dir(owner.Path())))
-	unlock, err := atomicfile.TryLock(filepath.Join(project, ".locks", owner.ID()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer unlock()
-	timer := time.AfterFunc(preTurnRecallBudget+150*time.Millisecond, unlock)
-	defer timer.Stop()
-	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
+	driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		if _, ok := ctx.Deadline(); ok {
+			t.Error("recall added a deadline to the turn context")
+		}
+		return aitest.Says(`{"selected_memories":["project/freeze.md"]}`)(ctx, req)
+	})
 	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
 	msg := core.UserMessage("Can I merge?", nil)
 	got, err := r.PrepareForAdmission(t.Context(), stores, msg, nil)
-	if err != nil || got.Handled || got.Completion != nil || got.Message.Text() != msg.Text() {
-		t.Fatalf("recall admission timeout blocked original input: %+v, %v", got, err)
+	if err != nil || got.Handled || got.Completion == nil || !strings.Contains(got.Message.Text(), "no merges") {
+		t.Fatalf("recall did not enrich the original input: %+v, %v", got, err)
+	}
+	if err := got.Completion.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

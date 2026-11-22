@@ -11,9 +11,8 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// autoMemory is the auto-memory stores the main agent maintains, zero when
-// auto memory is off (setting, or SAN_DISABLE_AUTO_MEMORY).
-func (m *model) autoMemory() system.MemoryStores {
+// autoMemoryStores returns the enabled Auto Memory directories.
+func (m *model) autoMemoryStores() system.MemoryStores {
 	if !m.services.Setting.AutoMemory() {
 		return system.MemoryStores{}
 	}

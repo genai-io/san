@@ -27,6 +27,8 @@ func TestCloneCopiesEveryField(t *testing.T) {
 		AutoUpdate:              &no,
 		AutoMemory:              &no,
 		AutoMemoryDirectory:     "~/notes",
+		MemoryRecallLookup:      MemoryRecallWait,
+		MemoryRecallTimeout:     "3s",
 		StreamFirstChunkTimeout: "5m",
 		StreamIdleTimeout:       "2m",
 		HookUITimeout:           "30s",

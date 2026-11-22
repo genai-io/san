@@ -21,7 +21,16 @@
     }
   },
   "openai": {"default_effort": "medium", "default_input": ["text", "image"]},
-  "openai-codex": {"default_effort": "medium", "default_input": ["text", "image"]},
+  "openai-codex": {
+    "default_effort": "medium",
+    "default_input": ["text", "image"],
+    "models": {
+      "gpt-6.2-sol": {
+        "limit": {"context": 500000},
+        "reasoning_options": [{"type": "effort", "values": ["low", "medium", "high", "xhigh", "max"]}]
+      }
+    }
+  },
   "copilot": {"default_input": ["text", "image"]},
   "google": {"default_input": ["text", "image"]},
   "google-vertex": {"default_input": ["text", "image"]},

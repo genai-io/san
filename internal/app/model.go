@@ -33,7 +33,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/reviewskill"
@@ -170,9 +169,8 @@ type model struct {
 	// /memory saves and external settings edits with one mechanism.
 	agentReviewCaps reviewskill.Capabilities
 
-	// agentAutoMemory is the autoMemory() the live agent's prompt was built
-	// with; ensureAgentRuntime rebuilds when auto memory is toggled or moved.
-	agentAutoMemory system.MemoryStores
+	// autoMemory is the configuration captured by the live agent.
+	autoMemory autoMemoryConfig
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no

@@ -112,6 +112,8 @@ type CompletionOptions struct {
 	Tools          []ToolSchema
 	SystemPrompt   string
 	ThinkingEffort string
+	ToolChoice     ai.ToolChoice
+	CacheRetention ai.CacheRetention
 	Admission      CompletionAdmission
 }
 
@@ -193,6 +195,12 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 	callOpts := []ai.Option{ai.WithSystem(opts.SystemPrompt)}
 	if len(opts.Tools) > 0 {
 		callOpts = append(callOpts, ai.WithTools(opts.Tools...))
+	}
+	if opts.ToolChoice != (ai.ToolChoice{}) {
+		callOpts = append(callOpts, ai.WithToolChoice(opts.ToolChoice))
+	}
+	if opts.CacheRetention != "" {
+		callOpts = append(callOpts, ai.WithCacheRetention(opts.CacheRetention))
 	}
 	callOpts = append(callOpts, callOptions(opts.MaxTokens, opts.ThinkingEffort, opts.Temperature)...)
 	if opts.Admission != nil {

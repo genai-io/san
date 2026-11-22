@@ -8,7 +8,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -78,6 +80,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 	ids := []protocol.SessionID{f.session(t, t.TempDir()), f.session(t, t.TempDir())}
 	for _, id := range ids {
 		params := &f.host.sessions[id].runtimeBuildParams
+		params.MemoryRecall = setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait, Timeout: 5 * time.Second}
 		// configureAgents adds these even if they were absent from the initial catalog.
 		for _, name := range []string{"Agent", "TaskOutput", "TaskStop"} {
 			params.DisabledTools[name] = true

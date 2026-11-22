@@ -11,9 +11,12 @@ Each store contains `MEMORY.md`, an index with a short link and description per 
 
 ## Recall
 
-In the TUI, ACP, and `san -p`, San runs a short, tool-free recall before sending an eligible user input to the main model. The selector sees the question and candidate note IDs and descriptions. San reads the selected notes and appends them as separate Reminder blocks to the same user message. A turn can receive memory even if the main model calls no tools.
+In the TUI, ACP, and `san -p`, the tool-free selector sees the question and candidate note IDs and descriptions. Selected notes enter the main model's request as Reminder blocks, not as Aside messages in the conversation.
 
-If there are no notes, nothing is sent to the selector. If recall times out, the main turn continues without it; no late result is attached to a different turn. An unchanged note already in the active context is not repeated. A changed note can be recalled again. Existing transcripts are not rewritten when memory is disabled or updated.
+- **Fast** (default): Start the main request without waiting. A ready recall can reach a later request for the same turn, or the next user turn in the same session. San checks the selected notes again before each new request, so updated text replaces old text and forgotten notes are skipped. A reminder marks results from the previous question and tells the model to ignore them unless relevant. No earlier request or reply is changed.
+- **Wait**: Give recall up to the configured timeout (default `5s`) before the first main request. If recall times out or the selector fails, proceed without it.
+
+An unchanged note already in the active context is not repeated. Pending Fast results are not restored on resume. Set the mode and timeout in `/reflection` → Auto Memory, or use `memoryRecallMode` (`fast` or `wait`) and `memoryRecallTimeout` (e.g. `"5s"`) in settings.
 
 ## Remember, update, and forget
 
@@ -26,9 +29,9 @@ update project memory package-manager.md: Use pnpm 11 or newer.
 forget project memory package-manager.md
 ```
 
-`remember:` defaults to project memory. `update` and `forget` require the store (`project` or `user`) and exact note filename. Ordinary conversational uses of “remember” or “forget” are not write authorization.
+`remember:` defaults to project memory. `update` and `forget` require the store (`project` or `user`) and exact note filename. Ordinary conversational uses of “remember” or “forget” are not write authorization. `forget` removes the stored note and its index entry. It does not erase older replies, Inspector records, or copies already admitted into the active conversation by Wait.
 
-Maintenance sends no tools to the model. It proposes one change, and San validates the operation, store, note, and revision before applying it. A successful write returns a display-only Notice. A no-op or failure does not claim a write succeeded. San preserves the existing Markdown format, ignores example links in literal blocks, and refuses to append an index entry inside an unclosed block. Routine recall does not write anything.
+Maintenance reuses the last main request's prefix when it is available on the same provider and model. It appends the explicit maintenance task and cannot execute tools. With no matching prefix, it makes a small standalone request. It proposes one change, and San validates the operation, store, note, and revision before applying it. A successful write returns a display-only Notice. A no-op or failure does not claim a write succeeded. San preserves the existing Markdown format, ignores example links in literal blocks, and refuses to append an index entry inside an unclosed block. Routine recall does not write anything.
 
 ## Settings and inspection
 

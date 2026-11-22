@@ -13,8 +13,10 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // memoryInput is a preparation for the current queue head, not a main turn.
@@ -36,12 +38,28 @@ type memoryInputMsg struct {
 	err    error
 }
 
+type autoMemoryConfig struct {
+	stores system.MemoryStores
+	recall setting.MemoryRecallConfig
+}
+
+func (m *model) currentAutoMemory() autoMemoryConfig {
+	return autoMemoryConfig{stores: m.autoMemoryStores(), recall: m.memoryRecallConfig()}
+}
+
+func (m *model) memoryRecallConfig() setting.MemoryRecallConfig {
+	if m.services.Setting == nil {
+		return setting.MemoryRecallConfig{}
+	}
+	return m.services.Setting.MemoryRecall()
+}
+
 func (m *model) needsMemoryInput(head pendingMessage) bool {
 	if !head.FromUser || head.MemoryReady || head.Completion != nil || head.Source != nil || head.Destination != nil ||
 		m.services.Session == nil || strings.TrimSpace(head.Text()) == "" || conv.IsAgentEnvelope(head.Text()) {
 		return false
 	}
-	return agent.NeedsMemoryPreparation(m.agentAutoMemory, head.Message)
+	return agent.IsMemoryMaintenance(head.Message) || (m.memoryRecallConfig().Mode == setting.MemoryRecallWait && m.autoMemory.stores.HasNotes())
 }
 
 func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
@@ -51,17 +69,27 @@ func (m *model) prepareMemoryInput(head pendingMessage) tea.Cmd {
 func (m *model) startMemoryInput(parent context.Context, head pendingMessage, accept func(memoryInputMsg) tea.Cmd) tea.Cmd {
 	ctx, cancel := context.WithCancel(parent)
 	r := &memoryInput{
-		owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.agentAutoMemory,
+		owner: m.services.Session, outbox: m.AgentOutbox(), stores: m.autoMemory.stores,
 		head: head, parent: parent, cancel: cancel, accept: accept,
 		startedAt: time.Now(), maintenance: agent.IsMemoryMaintenance(head.Message),
 	}
 	if r.maintenance {
-		r.stores = m.autoMemory()
+		r.stores = m.autoMemoryStores()
 	}
 	startSpinner := !m.needsSpinner()
 	m.memoryInput = r
-	provider, info := m.resolveJudge("")
-	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: agent.LowestEffort(provider, m.services.LLM.Store(), info), Recording: r.owner}
+	var provider llm.Provider
+	var info *llm.CurrentModelInfo
+	var effort string
+	if r.maintenance && m.env.LLMProvider != nil {
+		provider = m.env.LLMProvider
+		info = &llm.CurrentModelInfo{ModelID: m.env.GetModelID()}
+		effort = m.env.EffectiveThinkingEffort()
+	} else {
+		provider, info = m.resolveJudge("")
+		effort = agent.LowestEffort(provider, m.services.LLM.Store(), info)
+	}
+	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner, Timeout: m.memoryRecallConfig().Timeout}
 	history := m.services.Agent.Messages()
 	prepare := func() tea.Msg {
 		result, err := selector.PrepareForAdmission(ctx, r.stores, head.Message, history)
@@ -125,7 +153,7 @@ const (
 // resolveMemoryAdmission runs after the caller verifies it still owns the queue head.
 // The caller decides how to resume its queue after each outcome.
 func (m *model) resolveMemoryAdmission(msg memoryInputMsg, head *pendingMessage, showNoOp bool) memoryAdmission {
-	if msg.input.stores != m.autoMemory() {
+	if msg.input.stores != m.autoMemoryStores() {
 		discardPreparedMemory(msg.result)
 		if msg.result.Handled {
 			return memoryStaleMaintenance

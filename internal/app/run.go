@@ -268,6 +268,7 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 	policy := agentpkg.PermissionPolicy{Settings: settings, Session: headless, AutoMemory: memory}
 	return agentpkg.BuildParams{
 		AutoMemory:    memory,
+		MemoryRecall:  settings.MemoryRecall(),
 		ModelID:       settings.Model,
 		MaxTokens:     setting.DefaultMaxTokens,
 		CWD:           cwd,

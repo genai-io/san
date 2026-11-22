@@ -202,6 +202,7 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 }
 
 func (m *model) sendFlowMainStepInput(r *flowMainRequest, head input.QueueItem, chat core.ChatMessage, p pendingMessage) (tea.Cmd, bool) {
+	p.RecallQuery = p.Message.Text()
 	p.Message = m.attachPendingReminders(p.Message)
 	canSend := r == m.flowMainRequest && m.flowMainWriterActive() && r.msg.ctx.Err() == nil
 	if !canSend || m.services.Agent.SendInput(p) != nil {

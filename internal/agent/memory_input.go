@@ -19,8 +19,6 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-const preTurnRecallBudget = 1500 * time.Millisecond
-
 // PreparedMemory holds recall open until the host accepts the enriched input.
 // Maintenance is handled entirely on the side and never submitted to main.
 type PreparedMemory struct {
@@ -99,16 +97,18 @@ func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryS
 	if stores.Off() || r.Provider == nil || strings.TrimSpace(query) == "" {
 		return prepared, ctx.Err()
 	}
-	lookup, cancel := context.WithTimeout(ctx, preTurnRecallBudget)
-	defer cancel()
+	lookup := ctx
+	if r.Timeout > 0 {
+		var cancel context.CancelFunc
+		lookup, cancel = context.WithTimeout(ctx, r.Timeout)
+		defer cancel()
+	}
 	scope := r.Recording.Completion(session.PurposeRecall)
 	defer func() {
 		if prepared.Completion == nil {
 			if closeErr := scope.Close(); closeErr != nil {
-				// The optional recall budget may expire before the recording lock is acquired.
-				// Only this timeout can fall back; other recording errors still surface.
 				if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(closeErr, context.DeadlineExceeded) {
-					return
+					return // The optional wait expired before recall could be recorded.
 				}
 				err = errors.Join(err, &llm.RecordingError{Err: closeErr})
 			}
@@ -116,6 +116,9 @@ func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryS
 	}()
 	notes, err := r.selectNotes(lookup, stores, query, scope)
 	if err != nil {
+		if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(err, context.DeadlineExceeded) {
+			return prepared, nil
+		}
 		return prepared, err
 	}
 	if ctx.Err() != nil {
@@ -134,7 +137,7 @@ func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryS
 	if ctx.Err() != nil {
 		return prepared, ctx.Err()
 	}
-	if lookup.Err() == nil && len(blocks) > 0 {
+	if len(blocks) > 0 {
 		prepared.Message.Content = reminder.AppendBlocks(submission.Content, blocks...)
 		prepared.Completion = scope
 	}

@@ -130,10 +130,18 @@ func (m Maintainer) Propose(ctx context.Context, stores system.MemoryStores, req
 			err = aside.FinishChange(ctx, recording, "", err)
 		}
 	}()
-	text, err := aside.CompleteProposal(ctx, m.Provider, llm.CompletionOptions{
-		Model: m.Model, SystemPrompt: systemPrompt, MaxTokens: 4096, ThinkingEffort: m.Effort,
-		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.TextContent(instruction + "\n" + string(payload))}},
-	}, recording)
+	task := instruction + "\n" + string(payload)
+	opts := llm.CompletionOptions{Model: m.Model, SystemPrompt: systemPrompt, MaxTokens: 4096, ThinkingEffort: m.Effort,
+		Messages: []core.Message{{Role: ai.RoleUser, Content: ai.TextContent(task)}}}
+	complete := aside.CompleteProposal
+	// Prefix reuse is optional; a new session or a different route keeps the
+	// smaller standalone request. Only the explicit task is write evidence.
+	if prefix, _ := m.Recording.LastMainRequest(ctx, m.Provider.Name(), m.Model); prefix != nil {
+		opts.SystemPrompt, opts.Tools, opts.CacheRetention = prefix.System, prefix.Tools, prefix.CacheRetention
+		opts.Messages = append(prefix.Messages, core.UserMessage(systemPrompt+"\nUse only the Evidence and Notes in this final task message as evidence for the change, not earlier conversation.\n\n"+task, nil))
+		complete = aside.CompletePrefixedProposal
+	}
+	text, err := complete(ctx, m.Provider, opts, recording)
 	if err != nil {
 		return nil, err
 	}

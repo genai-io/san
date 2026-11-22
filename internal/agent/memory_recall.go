@@ -82,6 +82,7 @@ type Recaller struct {
 	Model     string
 	Effort    string
 	Recording *session.Session
+	Timeout   time.Duration // Optional wait-mode budget; it does not cancel the main turn.
 }
 
 func (r Recaller) selectNotes(ctx context.Context, stores system.MemoryStores, query string, recording *session.Completion) ([]system.Memory, error) {

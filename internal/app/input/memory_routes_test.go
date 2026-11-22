@@ -98,13 +98,17 @@ func TestReflectionTogglesScopedMemory(t *testing.T) {
 	}
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")
 	press(tea.KeyTab)
-	press(tea.KeyDown) // Project, which currently inherits user off
+	for range memoryRowCount {
+		press(tea.KeyDown)
+	} // Project enablement, which currently inherits user off
 	press(tea.KeyEnter)
 	user, project := setting.AutoMemoryAt(setting.ScopeUser), setting.AutoMemoryAt(setting.ScopeProject)
 	if user == nil || *user || project == nil || !*project || !svc.AutoMemory() {
 		t.Fatalf("project toggle should override user off (user=%v project=%v effective=%v)", user, project, svc.AutoMemory())
 	}
-	press(tea.KeyUp)
+	for range memoryRowCount {
+		press(tea.KeyUp)
+	}
 	press(tea.KeyEnter)
 	user = setting.AutoMemoryAt(setting.ScopeUser)
 	if user == nil || !*user || !svc.AutoMemory() {

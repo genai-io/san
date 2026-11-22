@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/acp"
@@ -64,14 +65,17 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		projection := s.nativeSession.Session.Snapshot()
 		history = projection.ActiveMessages()
 	}
-	recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording}
 	// Select against what the user typed, but attach to the expanded command.
 	userInput := core.UserMessage(text.String(), nil)
 	submission := userInput
 	if prompt != text.String() {
 		submission = core.UserMessage(prompt, nil)
 	}
-	prepared, err := recaller.PrepareWithSubmission(ctx, params.AutoMemory, userInput, submission, history)
+	prepared := agent.PreparedMemory{Message: submission}
+	if params.MemoryRecall.Mode == setting.MemoryRecallWait || agent.IsMemoryMaintenance(userInput) {
+		recaller := agent.Recaller{Provider: params.Provider, Model: params.ModelID, Effort: agent.LowestEffort(params.Provider, nil, &llm.CurrentModelInfo{ModelID: params.ModelID}), Recording: params.Recording, Timeout: params.MemoryRecall.Timeout}
+		prepared, err = recaller.PrepareWithSubmission(ctx, params.AutoMemory, userInput, submission, history)
+	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if ctx.Err() != nil && (err == nil || err == ctx.Err()) {
 		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
@@ -138,7 +142,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 		return protocol.PromptResponse{StopReason: protocol.StopReasonCancelled}, nil
 	}
 	msg := s.reminders.PrepareInput(prepared.Message)
-	if err := s.runtime.SendInput(agent.PendingInput{Message: msg, Completion: prepared.Completion}); err != nil {
+	if err := s.runtime.SendInput(agent.PendingInput{Message: msg, Completion: prepared.Completion, FromUser: true, RecallQuery: userInput.Text()}); err != nil {
 		return response, err
 	}
 	cancelled := ctx.Done()

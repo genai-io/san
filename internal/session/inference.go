@@ -225,6 +225,27 @@ const maxInferenceOutput = 16 << 10
 
 func boundedReason(s string) string { return core.UTF8Prefix(strings.ToValidUTF8(s, "�"), maxReason) }
 
+// LastMainRequest returns the latest admitted main request if it used the same
+// provider and model. Never send a session prefix to a different route.
+func (s *Session) LastMainRequest(ctx context.Context, provider, model string) (*ai.Request, error) {
+	if s == nil {
+		return nil, nil
+	}
+	p := s.Snapshot()
+	for i := len(p.data.Events) - 1; i >= 0; i-- {
+		e := p.data.Events[i]
+		start, ok := e.Payload.(*InferenceStartPayload)
+		if !ok || start.Purpose != PurposeTurn {
+			continue
+		}
+		if start.Request.Provider == nil || *start.Request.Provider != provider || start.Request.Model == nil || *start.Request.Model != model {
+			return nil, nil
+		}
+		return s.InferenceRequest(ctx, e.Seq)
+	}
+	return nil, nil
+}
+
 // InferenceRequest rebuilds only the admitted prefix, independent of later edits.
 func (s *Session) InferenceRequest(ctx context.Context, seq uint64) (*ai.Request, error) {
 	s.mu.Lock()

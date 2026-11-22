@@ -148,6 +148,9 @@ type Config struct {
 	// PrepareMessages adapts one inference's input without changing the native
 	// conversation. Nil sends the chain unchanged.
 	PrepareMessages func([]Message) []Message
+	// AppendRequestContext adds request-only context after client selection.
+	// A retry should use the same context as its first attempt.
+	AppendRequestContext func(messages []Message, retry bool) []Message
 	// CallOptions are per-call settings — the output cap, the reasoning rung —
 	// asked for fresh each inference, so a change mid-session lands on the next
 	// call. Nil leaves the model's defaults.
@@ -243,20 +246,21 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:              cfg.ID,
-		system:          cfg.System,
-		tools:           cfg.Tools,
-		compactFunc:     cfg.CompactFunc,
-		gate:            cfg.Gate,
-		resultFilter:    cfg.ResultFilter,
-		client:          cfg.Client,
-		prepareMessages: cfg.PrepareMessages,
-		callOptions:     cfg.CallOptions,
-		contextBudget:   cfg.ContextBudget,
-		inbox:           make(chan Inbound, cfg.InboxBuf),
-		wake:            make(chan struct{}, 1),
-		outbox:          outbox,
-		onEvent:         cfg.OnEvent,
+		id:                   cfg.ID,
+		system:               cfg.System,
+		tools:                cfg.Tools,
+		compactFunc:          cfg.CompactFunc,
+		gate:                 cfg.Gate,
+		resultFilter:         cfg.ResultFilter,
+		client:               cfg.Client,
+		prepareMessages:      cfg.PrepareMessages,
+		appendRequestContext: cfg.AppendRequestContext,
+		callOptions:          cfg.CallOptions,
+		contextBudget:        cfg.ContextBudget,
+		inbox:                make(chan Inbound, cfg.InboxBuf),
+		wake:                 make(chan struct{}, 1),
+		outbox:               outbox,
+		onEvent:              cfg.OnEvent,
 	}
 
 	// The SDK agent needs a client and San has none yet: which one answers a

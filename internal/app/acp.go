@@ -249,7 +249,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
-		AutoMemory:   policy.AutoMemory, FileCache: filecache.New(),
+		AutoMemory:   policy.AutoMemory, MemoryRecall: settings.MemoryRecall(), FileCache: filecache.New(),
 	}
 	if history != nil {
 		if generation := history.Config().GenerationOptions; generation != nil {

@@ -131,7 +131,7 @@ func memoryAdmissionModel(t *testing.T) (*model, string) {
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
 	m, _ := compactQueueModel(t)
 	m.conv.OnNotice = m.recordNotice
-	return m, filepath.Join(m.autoMemory().User, "build.md")
+	return m, filepath.Join(m.autoMemoryStores().User, "build.md")
 }
 
 func blockMemoryProposal(m *model) (<-chan struct{}, chan struct{}) {

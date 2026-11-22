@@ -48,6 +48,19 @@ func FinishChange(ctx context.Context, recording *session.Completion, notice str
 // open for the caller to finish or discard.
 func CompleteProposal(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion) (string, error) {
 	resp, err := Complete(ctx, provider, opts, recording)
+	return proposalText(ctx, resp, err)
+}
+
+// CompletePrefixedProposal retains tool descriptions for caching but forbids
+// tool use. The response must still be a complete tool-free proposal.
+func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion) (string, error) {
+	opts.ToolChoice = ai.ToolChoiceNone
+	opts.Admission = recording.Admission()
+	resp, err := llm.Complete(ctx, provider, opts)
+	return proposalText(ctx, resp, err)
+}
+
+func proposalText(ctx context.Context, resp llm.CompletionResponse, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}

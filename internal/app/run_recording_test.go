@@ -93,6 +93,7 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	params.AutoMemory = system.MemoryStores{Project: notes}
+	params.MemoryRecall = setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait}
 	params.Provider, params.ModelID, params.MaxTokens = acpTestProvider{driver.Client()}, "test", 64
 	params.Tasks = task.NewManager()
 	for _, schema := range params.Schemas() {

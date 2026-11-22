@@ -29,6 +29,11 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.AutoUpdate = coalescePtr(overlay.AutoUpdate, base.AutoUpdate)
 	result.AutoMemory = coalescePtr(overlay.AutoMemory, base.AutoMemory)
 	result.AutoMemoryDirectory = coalesce(overlay.AutoMemoryDirectory, base.AutoMemoryDirectory)
+	result.MemoryRecallLookup = base.MemoryRecallLookup
+	if overlay.MemoryRecallLookup != "" {
+		result.MemoryRecallLookup = overlay.MemoryRecallLookup
+	}
+	result.MemoryRecallTimeout = coalesce(overlay.MemoryRecallTimeout, base.MemoryRecallTimeout)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.GitBar = coalescePtr(overlay.GitBar, base.GitBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)

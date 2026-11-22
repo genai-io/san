@@ -244,7 +244,7 @@ func (m *model) renderFooter(separator string) (string, int) {
 	case m.memoryInput != nil:
 		detail := ""
 		if time.Since(m.memoryInput.startedAt) >= 250*time.Millisecond {
-			detail = "Retrieving memory"
+			detail = "Memory"
 			if m.memoryInput.maintenance {
 				detail = "Updating memory"
 			}

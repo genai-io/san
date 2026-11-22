@@ -500,7 +500,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	m.services.Reminder = reminder.New()
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = m.autoMemory()
+	m.autoMemory = m.currentAutoMemory()
 	m.welcomePending = true
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"}).ToMessage()
 	if cmd := m.SubmitToAgent(msg); cmd == nil {

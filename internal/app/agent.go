@@ -118,9 +118,10 @@ func (m *model) promptParams() agent.BuildParams {
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.autoSkillExtraTools(),
 
-		AutoMemory:  m.autoMemory(),
-		Skills:      m.services.Skill,
-		GroupRoster: group.Roster,
+		AutoMemory:   m.autoMemoryStores(),
+		MemoryRecall: m.memoryRecallConfig(),
+		Skills:       m.services.Skill,
+		GroupRoster:  group.Roster,
 	}
 }
 
@@ -383,7 +384,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		// are covered uniformly.
 		if !m.agentReloadPending && m.autoSkillCapabilities() == m.agentReviewCaps &&
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
-			m.autoMemory() == m.agentAutoMemory {
+			m.currentAutoMemory() == m.autoMemory {
 			return nil, nil
 		}
 		if err := m.StopAgentRuntime(); err != nil {
@@ -421,7 +422,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = params.AutoMemory
+	m.autoMemory = autoMemoryConfig{stores: params.AutoMemory, recall: params.MemoryRecall}
 	conv.MemoryStores = params.AutoMemory
 
 	// Bind Auto Skill to the running session.
@@ -658,7 +659,7 @@ func (m *model) ReconfigureAgentTool() {
 		m.conv.AddNotice("Cannot configure agents: " + err.Error())
 		return
 	}
-	settings, bridge, memory := m.services.Setting, m.conv.AgentToUI, m.autoMemory()
+	settings, bridge, memory := m.services.Setting, m.conv.AgentToUI, m.autoMemoryStores()
 	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
 		return newWorkerResolver(settings, perms, memory, bridge, child, source)
 	}, nil)

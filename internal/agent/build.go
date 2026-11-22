@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -58,7 +59,9 @@ type BuildParams struct {
 
 	// AutoMemory is the auto-memory stores the main agent maintains; zero
 	// when auto memory is off.
-	AutoMemory system.MemoryStores
+	AutoMemory   system.MemoryStores
+	MemoryRecall setting.MemoryRecallConfig
+	fastRecall   *fastRecall
 
 	// ShellDirHelp overrides cwd guidance without changing execution behavior.
 	// Empty keeps the default for hosts that apply directory changes.
@@ -302,6 +305,9 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
 	}
+	if recall := p.fastRecall; recall != nil {
+		cfg.AppendRequestContext = recall.prepare
+	}
 	if p.recorder != nil {
 		cfg.InferenceAdmission = p.recorder.InferenceAdmission
 		cfg.ToolAdmission = p.recorder.ToolAdmission
@@ -318,6 +324,24 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	return ag, pg, nil
 }
 
+func (p BuildParams) memoryRecaller() Recaller {
+	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
+	if p.MemoryRecall.Mode == setting.MemoryRecallWait {
+		r.Timeout = p.MemoryRecall.Timeout
+		if r.Timeout <= 0 {
+			r.Timeout = 5 * time.Second
+		}
+	}
+	return r
+}
+
+func (p BuildParams) newFastRecall(ctx context.Context) *fastRecall {
+	if p.MemoryRecall.Mode == setting.MemoryRecallWait || p.AutoMemory.Off() || p.Provider == nil {
+		return nil
+	}
+	return &fastRecall{ctx: ctx, stores: p.AutoMemory, recaller: p.memoryRecaller()}
+}
+
 // RunOnce answers one message with no session around it: build the agent, hand
 // it the message, run one exchange, and report what the model said.
 //
@@ -331,8 +355,14 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if err := p.prepareRecording(); err != nil {
 		return nil, err
 	}
-	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
-	prepared, err := recaller.Prepare(ctx, p.AutoMemory, message, nil)
+	messageText := message.Text()
+	recallCtx, cancelRecall := context.WithCancel(ctx)
+	defer cancelRecall()
+	p.fastRecall = p.newFastRecall(recallCtx)
+	prepared := PreparedMemory{Message: message}
+	if p.MemoryRecall.Mode == setting.MemoryRecallWait || IsMemoryMaintenance(message) {
+		prepared, err = p.memoryRecaller().Prepare(ctx, p.AutoMemory, message, nil)
+	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if err != nil {
 		return nil, err
@@ -383,6 +413,10 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 			return nil, &llm.RecordingError{Err: err}
 		}
 	}
+	if message.ID == "" {
+		message.ID = core.NewMessageID()
+	}
+	p.fastRecall.enqueue(message.ID, messageText)
 	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }

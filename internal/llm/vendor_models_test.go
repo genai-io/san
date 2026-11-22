@@ -12,6 +12,29 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 )
 
+func TestCodexSolFallbackEffort(t *testing.T) {
+	data := embeddedLineups("data/models.dev.json")
+	data.overlay(embeddedLineups("data/san.json"))
+	models := vendorModels{vendor: vendorFor(t, codexVendor), lineup: data[codexVendor]}
+
+	const sol = "gpt-6.2-sol"
+	want := []ai.Effort{ai.EffortLow, ai.EffortMedium, ai.EffortHigh, ai.EffortXHigh, ai.EffortMax}
+	for name, model := range map[string]ai.Model{
+		"before discovery":                   models.model(sol),
+		"listing without reasoning metadata": models.resolve(ai.Model{ID: sol}),
+	} {
+		if got := model.Efforts(); !slices.Equal(got, want) {
+			t.Errorf("%s: efforts = %v, want %v", name, got, want)
+		}
+		if level, ok := model.ResolveLevel(ai.EffortLow); !ok || level.Value != "low" {
+			t.Errorf("%s: lowest wire effort = %+v, want low", name, level)
+		}
+	}
+	if got := models.model("unlisted-codex-model").Efforts(); !slices.Contains(got, ai.EffortOff) {
+		t.Errorf("Sol override removed off from another model: %v", got)
+	}
+}
+
 func TestCodexCatalogKeepsLiveCapabilities(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +62,7 @@ func TestCodexCatalogKeepsLiveCapabilities(t *testing.T) {
 	vendor.Compat = compat
 	p := newVendorProvider("openai:subscription", vendor, endpoint.Config{
 		BaseURL:    server.URL,
+		Models:     []ai.Model{}, // Isolate the live catalog fixture from the bundled lineup.
 		HTTPClient: server.Client(),
 		Headers:    map[string]string{"Authorization": "Bearer test-token"},
 	})

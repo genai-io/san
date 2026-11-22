@@ -26,19 +26,20 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id              string
-	system          System
-	tools           *Tools
-	compactFunc     func(ctx context.Context, msgs []Message) (Compaction, error)
-	gate            Gate
-	resultFilter    ResultFilter
-	client          func(msgs []Message) (*ai.Client, error)
-	prepareMessages func([]Message) []Message
-	callOptions     func() []ai.Option
-	contextBudget   func() int
-	inbox           chan Inbound
-	outbox          chan Event
-	onEvent         func(Event)
+	id                   string
+	system               System
+	tools                *Tools
+	compactFunc          func(ctx context.Context, msgs []Message) (Compaction, error)
+	gate                 Gate
+	resultFilter         ResultFilter
+	client               func(msgs []Message) (*ai.Client, error)
+	prepareMessages      func([]Message) []Message
+	appendRequestContext func([]Message, bool) []Message
+	callOptions          func() []ai.Option
+	contextBudget        func() int
+	inbox                chan Inbound
+	outbox               chan Event
+	onEvent              func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
@@ -459,6 +460,9 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 			return fmt.Errorf("reaching the model: %w", err)
 		}
 		inf.Client = client
+	}
+	if a.appendRequestContext != nil {
+		inf.Messages = a.appendRequestContext(inf.Messages, inf.LastErr != nil)
 	}
 	if a.callOptions != nil {
 		inf.Options = append(inf.Options, a.callOptions()...)
