@@ -14,10 +14,10 @@ function detailGroup(title, note, ...nodes) {
   return group;
 }
 
-function disclosure(title, build, open = false) {
+function disclosure(label, build, open = false) {
   const el = document.createElement('details');
   el.className = 'detail-disclosure';
-  el.appendChild(textElement('summary', title));
+  el.appendChild(label instanceof Element ? label : textElement('summary', label));
   const populate = () => {
     if (!el.open || el.children.length > 1) return;
     for (const node of build()) el.appendChild(node);
@@ -60,31 +60,41 @@ function jsonTokens(text) {
   return root;
 }
 
-function jsonBranch(node, prefix = '', open = false) {
-  const {token, children} = node;
+function jsonRow(tag, key, index, value) {
+  const row = textElement(tag, '', 'json-row');
+  if (key !== undefined) row.appendChild(textElement('span', key + ': ', 'json-key'));
+  else if (index !== undefined) row.appendChild(textElement('span', '[' + index + ']: ', 'json-index'));
+  row.appendChild(textElement('span', value));
+  return row;
+}
+
+function jsonBranch(node, {index, open = false} = {}) {
+  const {token, key, children} = node;
   if (!children || !children.length) {
     const value = children ? token + (token === '{' ? '}' : ']') : token;
-    if (value.length <= 160) return textElement('div', prefix + value, 'json-value');
-    const long = disclosure(prefix + value.slice(0, 72) + '…', () => [textElement('pre', value)]);
+    if (value.length <= 160) return jsonRow('div', key, index, value);
+    const summary = jsonRow('summary', key, index, value.slice(0, 72) + '…');
+    const long = disclosure(summary, () => [textElement('pre', value)]);
     long.className = 'json-branch';
     return long;
   }
   const label = token === '{' ? '{…}' : '[…]';
   const unit = token === '{' ? 'field' : 'item';
-  const branch = disclosure(prefix + label + ' · ' + children.length + ' ' + unit + (children.length === 1 ? '' : 's'), () => {
+  const summary = jsonRow('summary', key, index, label + ' ');
+  summary.appendChild(textElement('span', children.length + ' ' + unit + (children.length === 1 ? '' : 's'), 'json-count'));
+  const branch = disclosure(summary, () => {
     const body = document.createElement('div');
     body.className = 'json-children';
     const more = textElement('button', '', 'detail-link');
     more.type = 'button';
     const page = document.createElement('div');
-    let index = 0;
+    let next = 0;
     const appendPage = () => {
-      for (const end = Math.min(index + 100, children.length); index < end; index++) {
-        const child = children[index];
-        page.appendChild(jsonBranch(child, (child.key ?? '[' + index + ']') + ': '));
+      for (const end = Math.min(next + 100, children.length); next < end; next++) {
+        page.appendChild(jsonBranch(children[next], {index: next}));
       }
-      more.hidden = index === children.length;
-      more.textContent = more.hidden ? '' : 'Show next ' + Math.min(100, children.length - index);
+      more.hidden = next === children.length;
+      more.textContent = more.hidden ? '' : 'Show next ' + Math.min(100, children.length - next);
     };
     more.addEventListener('click', appendPage);
     appendPage();
@@ -101,9 +111,13 @@ function jsonView(text, { original = false, rawPanel = false, textClass } = {}) 
   if (!root && !rawPanel) return textElement('pre', text, textClass);
   const view = document.createElement('div');
   view.className = 'json-view';
-  if (root) view.appendChild(jsonBranch(root, '', true));
+  if (root) view.appendChild(jsonBranch(root, {open: true}));
   else view.appendChild(textElement('p', 'Tree unavailable for oversized or invalid JSON.', 'detail-note'));
-  if (original) view.appendChild(disclosure('Original JSON', () => [textElement('pre', text)]));
+  if (original) {
+    const source = disclosure('Original JSON', () => [textElement('pre', text)]);
+    source.className = 'json-original';
+    view.appendChild(source);
+  }
   return view;
 }
 

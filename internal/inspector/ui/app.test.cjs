@@ -36,7 +36,7 @@ async function viewer(sessionPage=()=>({items:[]}), url='http://localhost/', ses
         resolveText:text=>resolve({ok:true,text:async()=>text})}));
     }});
   for (const script of ['detail.js','app.js']) vm.runInContext(readFileSync(join(__dirname,'assets',script),'utf8'),context);
-  const app=vm.runInContext('({state,openSession,showDetail,refreshPromptPanel,renderInline,classify,passesFilter,ingestBatch,showDiagnostics})',context);
+  const app=vm.runInContext('({state,openSession,showDetail,refreshPromptPanel,renderInline,classify,passesFilter,ingestBatch,showDiagnostics,jsonView})',context);
   await new Promise(setImmediate);return {...app,element,requests,sessionRequests,documentListeners};
 }
 const event=(seq,type,payload={},source)=>({seq,type,v:1,time:1000,payload,...(source?{source}:{})});
@@ -523,6 +523,47 @@ test('raw event and SDK request preserve their distinct JSON and integer precisi
   assert.equal(panel(first,'"content":').open,false);
   assert.equal(originalJSON(request),raw);
 });
+test('JSON tree separates branch counts, key and index labels, and exact long values',async()=>{
+  const v=await viewer();
+  const value='"<script> '+ 'x'.repeat(180) + '\\n"';
+  const raw=`{ "entries": [{"escaped\\u0020key":${value}}], "empty":[], "empty":{} }`;
+  const view=v.jsonView(raw,{original:true});
+  const root=panel(view,'{…}');
+  assert.equal(root.open,true);
+  assert.equal(root.children[0].textContent,'{…} 3 fields');
+  assert.deepEqual(descendants(root).filter(el=>el.className==='json-row'&&el.tag==='div').map(el=>el.textContent),
+    ['"empty": []','"empty": {}']);
+  const entries=panel(root,'"entries":');
+  assert.equal(entries.children[0].textContent,'"entries": […] 1 item');
+  assert.equal(entries.children.length,1);
+  const first=expand(expand(root,'"entries":'),'[0]:');
+  assert.equal(first.children[0].textContent,'[0]: {…} 1 field');
+  const long=expand(first,'"escaped\\u0020key":');
+  assert.ok(long.children[0].textContent.endsWith('…'));
+  assert.equal(long.children[1].textContent,value);
+  assert.equal(panel(view,'Original JSON').open,false);
+  assert.equal(originalJSON(view),raw);
+  assert.ok(descendants(view).every(el=>el.innerHTML===''));
+});
+
+test('JSON branch pagination retains array indices across pages and toggles',async()=>{
+  const v=await viewer();
+  const view=v.jsonView(JSON.stringify({entries:Array(101).fill(null)}));
+  const entries=expand(view,'"entries":');
+  const [page,more]=entries.children[1].children;
+  assert.equal(page.children.length,100);
+  assert.equal(page.children.at(-1).textContent,'[99]: null');
+  assert.equal(more.textContent,'Show next 1');
+  more.listeners.click();
+  assert.equal(page.children.length,101);
+  assert.equal(page.children.at(-1).textContent,'[100]: null');
+  assert.equal(more.hidden,true);
+  entries.open=false;entries.listeners.toggle();
+  expand(view,'"entries":');
+  assert.equal(entries.children.length,2);
+  assert.equal(page.children.length,101);
+});
+
 test('Markdown links cannot execute transcript content',async()=>{
   const v=await viewer();
   for(const url of ['javascript:alert%281%29','JaVaScRiPt:alert%281%29','data:text/html,hello','vbscript:msgbox','//evil.test','javascript&#58;alert','\u0000javascript:alert'])assert.ok(!v.renderInline(`[link](${url})`).includes('<a '),url);
