@@ -18,6 +18,7 @@ import (
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -26,6 +27,7 @@ import (
 )
 
 type preparedRun struct {
+	tracker           *todo.Store
 	hookFactory       func(*session.Session, llm.Provider, string) (hook.Handler, func(llm.Provider, string), func())
 	rebindHooks       func(llm.Provider, string)
 	stopHooks         func()
@@ -222,7 +224,7 @@ func (r *preparedRun) toolCallLabel(name, rawArgs string) string {
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil || args == nil {
 		return name
 	}
-	return formatToolActivityLimit(name, args, r.req.ActivityMaxChars)
+	return formatToolActivityLimit(r.tracker, name, args, r.req.ActivityMaxChars)
 }
 
 func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*preparedRun, error) {
@@ -236,6 +238,7 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &preparedRun{
+		tracker:        e.tracker,
 		hookFactory:    e.childHooks,
 		hooks:          e.hooks,
 		store:          e.store,
@@ -284,7 +287,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (ou
 		run.streamActivity(fmt.Sprintf("Model: %s", run.cfg.modelID))
 		run.streamActivity(fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps))
 		onToolExec = func(name string, params map[string]any) {
-			msg := formatToolActivityLimit(name, params, run.req.ActivityMaxChars)
+			msg := formatToolActivityLimit(run.tracker, name, params, run.req.ActivityMaxChars)
 			if run.req.OnToolStart != nil {
 				// The structured ToolStart row is already live. Keep the
 				// inspection trail without streaming a second call row.

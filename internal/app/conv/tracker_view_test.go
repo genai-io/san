@@ -17,33 +17,32 @@ import (
 var taskIDRe = regexp.MustCompile(`#\d+`)
 
 func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
-	todo.Initialize()
-	t.Cleanup(func() { todo.Default().Reset() })
+	tracker := todo.NewStore()
 
-	inProgress := todo.Default().Create("Fix auth module", "", "", map[string]any{
+	inProgress := tracker.Create("Fix auth module", "", "", map[string]any{
 		"background_task_id":       "bg-1",
 		"background_status_detail": "running",
 	})
-	_ = todo.Default().Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
+	_ = tracker.Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
 
-	failed := todo.Default().Create("Fix payment module", "", "", map[string]any{
+	failed := tracker.Create("Fix payment module", "", "", map[string]any{
 		"background_task_id":       "bg-2",
 		"background_status_detail": "failed",
 	})
-	_ = todo.Default().Update(failed.ID, todo.WithStatus(todo.StatusCompleted))
+	_ = tracker.Update(failed.ID, todo.WithStatus(todo.StatusCompleted))
 
-	completed := todo.Default().Create("Ship feature", "", "", nil)
-	_ = todo.Default().Update(completed.ID, todo.WithStatus(todo.StatusCompleted))
+	completed := tracker.Create("Ship feature", "", "", nil)
+	_ = tracker.Update(completed.ID, todo.WithStatus(todo.StatusCompleted))
 
-	pending := todo.Default().Create("Write tests", "", "", nil)
-	_ = todo.Default().Update(pending.ID, todo.WithStatus(todo.StatusPending))
+	pending := tracker.Create("Write tests", "", "", nil)
+	_ = tracker.Update(pending.ID, todo.WithStatus(todo.StatusPending))
 
 	view := RenderTrackerList(TrackerListParams{
 		CompletionShown: func(string) bool { return false },
-		Items:           todo.Default().List(),
+		Items:           tracker.List(),
 		StreamActive:    true,
 		Width:           120,
-		Blockers:        todo.Default().OpenBlockers,
+		Blockers:        tracker.OpenBlockers,
 		Executing:       func(*todo.Item) bool { return true },
 	})
 	plain := stripANSI(view)
@@ -82,22 +81,21 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 }
 
 func TestRenderTrackerListOrdersByID(t *testing.T) {
-	todo.Initialize()
-	t.Cleanup(func() { todo.Default().Reset() })
+	tracker := todo.NewStore()
 
 	// Create tasks with mixed statuses — an in-progress task after a pending one.
-	pending1 := todo.Default().Create("Pending A", "", "", nil)
-	_ = todo.Default().Update(pending1.ID, todo.WithStatus(todo.StatusPending))
+	pending1 := tracker.Create("Pending A", "", "", nil)
+	_ = tracker.Update(pending1.ID, todo.WithStatus(todo.StatusPending))
 
-	inProgress := todo.Default().Create("Active B", "", "", nil)
-	_ = todo.Default().Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
+	inProgress := tracker.Create("Active B", "", "", nil)
+	_ = tracker.Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
 
-	pending2 := todo.Default().Create("Pending C", "", "", nil)
-	_ = todo.Default().Update(pending2.ID, todo.WithStatus(todo.StatusPending))
+	pending2 := tracker.Create("Pending C", "", "", nil)
+	_ = tracker.Update(pending2.ID, todo.WithStatus(todo.StatusPending))
 
 	view := RenderTrackerList(TrackerListParams{
 		CompletionShown: func(string) bool { return false },
-		Items:           todo.Default().List(),
+		Items:           tracker.List(),
 		StreamActive:    true,
 		Width:           120,
 		Executing:       func(*todo.Item) bool { return true },
@@ -400,17 +398,16 @@ func TestPhaseOf(t *testing.T) {
 
 // Background rows describe the work directly and stay out of plan progress.
 func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
-	todo.Initialize()
-	t.Cleanup(func() { todo.Default().Reset() })
+	tracker := todo.NewStore()
 
-	worker := todo.Default().Create("Save Jenkins script", "", "", map[string]any{
+	worker := tracker.Create("Save Jenkins script", "", "", map[string]any{
 		"background_task_id":   "bg-1",
 		"background_task_type": "bash",
 	})
-	_ = todo.Default().Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
+	_ = tracker.Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
 	render := func() string {
 		return stripANSI(RenderTrackerList(TrackerListParams{
-			Items:     todo.Default().List(),
+			Items:     tracker.List(),
 			Width:     120,
 			Executing: func(*todo.Item) bool { return true },
 		}))
@@ -424,8 +421,8 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 		t.Errorf("worker row should lead with the work description:\n%s", plain)
 	}
 
-	plan := todo.Default().Create("Write tests", "", "", nil)
-	_ = todo.Default().Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
+	plan := tracker.Create("Write tests", "", "", nil)
+	_ = tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
 	if plain := render(); !strings.Contains(plain, "Tasks (100%)") || strings.Count(plain, "Tasks") != 1 {
 		t.Errorf("progress should count plan items only:\n%s", plain)
 	}

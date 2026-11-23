@@ -85,7 +85,7 @@ var toolActivityParams = map[string]string{
 	"TaskGet":    "taskId",
 }
 
-func formatToolActivityLimit(toolName string, params map[string]any, maxChars int) string {
+func formatToolActivityLimit(tracker *todo.Store, toolName string, params map[string]any, maxChars int) string {
 	if toolName == "Agent" {
 		if label := formatAgentActivity(params); label != "" {
 			return label
@@ -94,7 +94,7 @@ func formatToolActivityLimit(toolName string, params map[string]any, maxChars in
 	}
 
 	// Task tools: show "TaskXxx(#id subject)" by looking up subject from store
-	if label := formatTaskToolActivity(toolName, params); label != "" {
+	if label := formatTaskToolActivity(tracker, toolName, params); label != "" {
 		return label
 	}
 
@@ -119,7 +119,7 @@ func formatToolActivityLimit(toolName string, params map[string]any, maxChars in
 }
 
 // formatTaskToolActivity formats task tool calls with "#id subject" display.
-func formatTaskToolActivity(toolName string, params map[string]any) string {
+func formatTaskToolActivity(tracker *todo.Store, toolName string, params map[string]any) string {
 	switch toolName {
 	case "TaskCreate":
 		subject, _ := params["subject"].(string)
@@ -137,8 +137,10 @@ func formatTaskToolActivity(toolName string, params map[string]any) string {
 			return ""
 		}
 		subject := ""
-		if t, ok := todo.Default().Get(taskID); ok {
-			subject = t.Subject
+		if tracker != nil {
+			if t, ok := tracker.Get(taskID); ok {
+				subject = t.Subject
+			}
 		}
 		if subject != "" {
 			if len(subject) > 40 {

@@ -41,7 +41,7 @@ Agent, persistence, and orchestration:
 | `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `reviewskill`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
 | `internal/session` | `feature` | Canonical project/session identity, typed events and native messages, request/state/display projections, assets, resume, fork and retention. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
-| `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
+| `internal/todo` | `feature` | Agent to-do list state, background worker items, and the session-owned tracker bound to tool contexts. |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |
 | `internal/flow` | `feature` | Collaboration blueprints, validation, dependency scheduling, bounded loops/fan-out and checkpoint recovery. Nodes use the existing subagent executor; task detail stays native. |
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |

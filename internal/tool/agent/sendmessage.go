@@ -48,7 +48,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), strings.TrimSpace(subject+"\n\n"+message)),
+		Description: fmt.Sprintf("Message %s: %s", recipientLabel(task.FromContext(ctx), to), strings.TrimSpace(subject+"\n\n"+message)),
 	}, nil
 }
 
@@ -62,6 +62,7 @@ func (t *SendMessageTool) Execute(ctx context.Context, params map[string]any, cw
 
 func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) toolresult.ToolResult {
 	start := time.Now()
+	tasks := task.FromContext(ctx)
 
 	message := tool.GetString(params, "message")
 	if message == "" {
@@ -75,7 +76,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	// A member of this session's group lives in another process: its inbox is
 	// a directory, not a broker route.
-	if _, ok := groupMember(to); ok {
+	if _, ok := groupMember(tasks, to); ok {
 		if tool.AgentIDFromContext(ctx) != "" {
 			return toolresult.NewErrorResult(t.Name(), "only the main conversation can message group members; report to it instead")
 		}
@@ -107,7 +108,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	// task messageable. Idle sessions must pass the continuation gate.
 	var observedWorker *task.AgentTask
 	var observedAttempt int
-	if bgTask, found := task.Default().Get(to); found {
+	if bgTask, found := tasks.Get(to); found {
 		info := bgTask.GetStatus()
 		if sessionID := task.SessionIDFromContext(ctx); sessionID != "" && info.ParentSessionID != "" && sessionID != info.ParentSessionID {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %q belongs to a different parent session; use a running agent task ID from this session", to))
@@ -125,7 +126,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		}
 	}
 
-	display := brokerSubject(from, subject)
+	display := brokerSubject(tasks, from, subject)
 	sourceSession, sourceSeq := tool.MessageSourceFromContext(ctx)
 	sendErr := broker.SendErr(broker.Message{
 		SourceSession: sourceSession,
@@ -141,7 +142,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 			return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
 		}
 		if errors.Is(sendErr, broker.ErrNoRecipient) && observedWorker != nil {
-			current, found := task.Default().Get(to)
+			current, found := tasks.Get(to)
 			info := observedWorker.GetStatus()
 			if found && current == observedWorker && info.Attempt == observedAttempt &&
 				(info.Status == task.StatusCompleted || info.Status == task.StatusFailed) &&
@@ -149,27 +150,27 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 				return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
 			}
 		}
-		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to, sendErr))
+		return toolresult.NewErrorResult(t.Name(), undeliverableReason(tasks, to, sendErr))
 	}
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("Message accepted and queued for %s; the recipient reads queued messages at its next step or turn boundary. This is not an acknowledgment or completion. Continue with your task.", recipientLabel(to)),
+		Output:  fmt.Sprintf("Message accepted and queued for %s; the recipient reads queued messages at its next step or turn boundary. This is not an acknowledgment or completion. Continue with your task.", recipientLabel(tasks, to)),
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: "→ " + recipientLabel(to),
+			Subtitle: "→ " + recipientLabel(tasks, to),
 			Duration: time.Since(start),
 		},
 	}
 }
 
 // brokerSubject is the line the receiving side shows for a message.
-func brokerSubject(from, subject string) string {
+func brokerSubject(tasks *task.Manager, from, subject string) string {
 	if subject == "" {
-		return "Message from " + senderLabel(from)
+		return "Message from " + senderLabel(tasks, from)
 	}
-	return fmt.Sprintf("From %s: %s", senderLabel(from), subject)
+	return fmt.Sprintf("From %s: %s", senderLabel(tasks, from), subject)
 }
 
 // sentTo says when a member will read the message, so the sender knows
@@ -193,33 +194,33 @@ func groupQueueStatus(m group.Member) string {
 }
 
 // recipientLabel renders a target id for tool output.
-func recipientLabel(id string) string {
+func recipientLabel(tasks *task.Manager, id string) string {
 	if id == broker.Main {
 		return "the main conversation"
 	}
-	if g, ok := groupMember(id); ok {
+	if g, ok := groupMember(tasks, id); ok {
 		return "@" + id + " in group " + g
 	}
-	return senderLabel(id)
+	return senderLabel(tasks, id)
 }
 
 // groupMember reports whether to names a member of this session's group
 // rather than "main" or a task, and which group.
-func groupMember(to string) (string, bool) {
+func groupMember(tasks *task.Manager, to string) (string, bool) {
 	g, _ := group.Current()
 	if g == "" || to == broker.Main {
 		return "", false
 	}
-	_, isTask := task.Default().Get(to)
+	_, isTask := tasks.Get(to)
 	return g, !isTask
 }
 
 // senderLabel names an agent id for a human-facing notice.
-func senderLabel(id string) string {
+func senderLabel(tasks *task.Manager, id string) string {
 	if id == broker.Main {
 		return "the main conversation"
 	}
-	if bgTask, found := task.Default().Get(id); found {
+	if bgTask, found := tasks.Get(id); found {
 		if info := bgTask.GetStatus(); info.AgentName != "" {
 			return fmt.Sprintf("%s (task %s)", info.AgentName, id)
 		}
@@ -229,11 +230,11 @@ func senderLabel(id string) string {
 
 // undeliverableReason reports the recipient's stated rejection and observed
 // task lifecycle, never an assumed transport cause or blind retry advice.
-func undeliverableReason(to string, sendErr error) string {
+func undeliverableReason(tasks *task.Manager, to string, sendErr error) string {
 	if to == broker.Main {
 		return "the main conversation is not currently reachable"
 	}
-	bgTask, found := task.Default().Get(to)
+	bgTask, found := tasks.Get(to)
 	if !found {
 		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
@@ -294,7 +295,7 @@ func (t *SendMessageTool) handoffClosingWorker(ctx context.Context, worker *task
 	if err := worker.WaitForAttemptCompletionContext(waitCtx, attempt); err != nil {
 		return fail(fmt.Sprintf("worker %q is closing; this message was not queued and no continuation was started: %v", info.ID, err))
 	}
-	current, found := task.Default().Get(info.ID)
+	current, found := task.FromContext(ctx).Get(info.ID)
 	info = worker.GetStatus()
 	if !found || current != worker || info.Attempt != attempt || info.ParentSessionID != owner {
 		return fail("selected agent execution changed during closing; this message was not queued and no continuation was started")

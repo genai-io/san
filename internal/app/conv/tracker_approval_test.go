@@ -34,12 +34,11 @@ func TestTrackerTerminalRowsRetireTransientActivity(t *testing.T) {
 }
 
 func TestTrackerExplicitApprovalAndMixedPlan(t *testing.T) {
-	todo.Initialize()
-	t.Cleanup(func() { todo.Default().Reset() })
-	worker := todo.Default().Create("Worker", "", "", map[string]any{"background_task_id": "bg", "background_status_detail": "running"})
-	_ = todo.Default().Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
-	todo.Default().Create("Plan intent", "", "", nil)
-	p := TrackerListParams{Items: todo.Default().List(), Width: 120, StreamActive: true, AwaitingApproval: map[string]bool{"bg": true}, WorkerStatus: func(string) task.TaskInfo { return task.TaskInfo{Status: task.StatusRunning} }}
+	tracker := todo.NewStore()
+	worker := tracker.Create("Worker", "", "", map[string]any{"background_task_id": "bg", "background_status_detail": "running"})
+	_ = tracker.Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
+	tracker.Create("Plan intent", "", "", nil)
+	p := TrackerListParams{Items: tracker.List(), Width: 120, StreamActive: true, AwaitingApproval: map[string]bool{"bg": true}, WorkerStatus: func(string) task.TaskInfo { return task.TaskInfo{Status: task.StatusRunning} }}
 	a := RenderTrackerList(p)
 	p.Frame = 20
 	time.Sleep(time.Millisecond)

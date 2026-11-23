@@ -16,17 +16,16 @@ func metadataStr(metadata map[string]any, key string) string {
 }
 
 func TestTrackWorkerCreatesEntry(t *testing.T) {
-	Initialize()
-	t.Cleanup(func() { Default().Reset() })
+	store := NewStore()
 
-	TrackWorker(Default(), task.TaskInfo{
+	TrackWorker(store, task.TaskInfo{
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
 		Description: "Directory structure audit",
 	})
 
-	items := Default().List()
+	items := store.List()
 	if len(items) != 1 {
 		t.Fatalf("expected 1 tracker item, got %d", len(items))
 	}
@@ -42,16 +41,15 @@ func TestTrackWorkerCreatesEntry(t *testing.T) {
 // to the command itself. CompleteWorker already fired for bash items before
 // they were tracked at all; now that both halves run, they need a readable row.
 func TestTrackWorkerNamesBashWorker(t *testing.T) {
-	Initialize()
-	t.Cleanup(func() { Default().Reset() })
+	store := NewStore()
 
-	TrackWorker(Default(), task.TaskInfo{
+	TrackWorker(store, task.TaskInfo{
 		ID:      "bg-2",
 		Type:    task.TaskTypeBash,
 		Command: "go test ./...",
 	})
 
-	items := Default().List()
+	items := store.List()
 	if len(items) != 1 {
 		t.Fatalf("expected 1 tracker item, got %d", len(items))
 	}
@@ -64,34 +62,32 @@ func TestTrackWorkerNamesBashWorker(t *testing.T) {
 }
 
 func TestTrackWorkerIgnoresTaskWithoutID(t *testing.T) {
-	Initialize()
-	t.Cleanup(func() { Default().Reset() })
+	store := NewStore()
 
-	TrackWorker(Default(), task.TaskInfo{Description: "no worker behind this"})
+	TrackWorker(store, task.TaskInfo{Description: "no worker behind this"})
 
-	if items := Default().List(); len(items) != 0 {
+	if items := store.List(); len(items) != 0 {
 		t.Fatalf("expected no tracker item, got %d", len(items))
 	}
 }
 
 func TestCompleteWorkerUpdatesStatus(t *testing.T) {
-	Initialize()
-	t.Cleanup(func() { Default().Reset() })
+	store := NewStore()
 
-	TrackWorker(Default(), task.TaskInfo{
+	TrackWorker(store, task.TaskInfo{
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
 		Description: "Directory audit",
 	})
 
-	CompleteWorker(Default(), task.TaskInfo{
+	CompleteWorker(store, task.TaskInfo{
 		ID:     "bg-1",
 		Type:   task.TaskTypeAgent,
 		Status: task.StatusCompleted,
 	})
 
-	items := Default().List()
+	items := store.List()
 	if len(items) != 1 {
 		t.Fatalf("expected 1 tracker item, got %d", len(items))
 	}
@@ -104,24 +100,23 @@ func TestCompleteWorkerUpdatesStatus(t *testing.T) {
 }
 
 func TestCompleteWorkerTracksFailure(t *testing.T) {
-	Initialize()
-	t.Cleanup(func() { Default().Reset() })
+	store := NewStore()
 
-	TrackWorker(Default(), task.TaskInfo{
+	TrackWorker(store, task.TaskInfo{
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "fix-auth",
 		Description: "Fix auth module",
 	})
 
-	CompleteWorker(Default(), task.TaskInfo{
+	CompleteWorker(store, task.TaskInfo{
 		ID:     "bg-1",
 		Type:   task.TaskTypeAgent,
 		Status: task.StatusFailed,
 		Error:  "compilation error",
 	})
 
-	items := Default().List()
+	items := store.List()
 	if got := BackgroundError(items[0]); got != "compilation error" {
 		t.Fatalf("terminal reason = %q, want compilation error", got)
 	}

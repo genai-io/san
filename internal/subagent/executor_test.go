@@ -1037,7 +1037,7 @@ func TestInheritedPermissionModeRoundTripsSessionModes(t *testing.T) {
 
 // formatToolActivity creates an activity line for a tool call in ToolName(args) format.
 func formatToolActivity(toolName string, params map[string]any) string {
-	return formatToolActivityLimit(toolName, params, 60)
+	return formatToolActivityLimit(nil, toolName, params, 60)
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline

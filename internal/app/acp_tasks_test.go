@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -212,5 +214,38 @@ func TestACPBackgroundCancelAndDisconnect(t *testing.T) {
 				t.Fatal("task survived cancellation")
 			}
 		})
+	}
+}
+
+// Each ACP session owns its tracker, so tracker tools are offered without
+// sharing items across sessions in one process.
+func TestACPTrackerIsSessionOwned(t *testing.T) {
+	driver := aitest.New(
+		aitest.Asks(ai.ToolCall{ID: "plan", Name: "TaskCreate", Input: `{"subject":"Write tests","description":"cover tracker"}`}),
+		aitest.Says("planned"),
+	)
+	f := newACPFixture(t, driver, nil)
+	cwd := t.TempDir()
+	enable := []byte(`{"disabledTools":{"TaskCreate":false,"TaskGet":false,"TaskUpdate":false}}`)
+	if err := os.MkdirAll(filepath.Join(cwd, ".san"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".san", "settings.json"), enable, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, second := f.session(t, cwd), f.session(t, cwd)
+	for _, name := range []string{"TaskCreate", "TaskGet", "TaskUpdate"} {
+		if f.host.sessions[first].runtimeBuildParams.DisabledTools[name] {
+			t.Fatalf("enabled %s is not offered over ACP", name)
+		}
+	}
+	if _, err := f.prompt(first, "plan it"); err != nil {
+		t.Fatal(err)
+	}
+	if items := f.host.sessions[first].tracker.List(); len(items) != 1 || items[0].Subject != "Write tests" {
+		t.Fatalf("first session tracker = %+v", items)
+	}
+	if items := f.host.sessions[second].tracker.List(); len(items) != 0 {
+		t.Fatalf("tracker items leaked across sessions: %+v", items)
 	}
 }

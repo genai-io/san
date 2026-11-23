@@ -16,6 +16,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/task"
 )
 
 // Item represents a tracked item
@@ -54,14 +55,29 @@ type Store struct {
 	nextID     int
 	storageDir string    // empty = in-memory only
 	lastDirMod time.Time // last known dir mtime, for change detection in ReloadFromDisk
+	tasks      *task.Manager
 }
 
-// NewStore creates a new in-memory Store
+// NewStore creates a new in-memory Store with no background workers.
 func NewStore() *Store {
+	return NewStoreWithTasks(nil)
+}
+
+// NewStoreWithTasks creates a Store whose worker items are checked against tasks.
+func NewStoreWithTasks(tasks *task.Manager) *Store {
 	return &Store{
 		items:  make(map[string]*Item),
 		nextID: 1,
+		tasks:  tasks,
 	}
+}
+
+// workerRunning reports whether the background task behind item is executing
+// in this store's task pool. An item naming no task, or one the pool has
+// forgotten, cannot be running.
+func (s *Store) workerRunning(item *Item) bool {
+	id := BackgroundTaskID(item)
+	return id != "" && s.tasks != nil && s.tasks.IsRunning(id)
 }
 
 // SetStorageDir sets the directory for disk persistence and loads existing items.
@@ -116,7 +132,7 @@ func (s *Store) SetStorageDir(dir string) error {
 // cross-process writes, where in_progress is expected and genuine.
 func (s *Store) demoteOrphanedItems() {
 	for _, item := range s.items {
-		if item.Status != StatusInProgress || WorkerRunning(item) {
+		if item.Status != StatusInProgress || s.workerRunning(item) {
 			continue
 		}
 		if BackgroundTaskID(item) != "" {

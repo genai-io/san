@@ -166,6 +166,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params.MaxTokens = m.sessionMaxOutput()
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
 	params.FileCache = m.env.FileCache
+	params.Tracker = m.services.Tracker
 	params.CWDFunc = func() string { return m.autopilot.Load().cwd }
 
 	bridge := m.conv.AgentToUI
@@ -662,6 +663,7 @@ func (m *model) ReconfigureAgentTool() {
 	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
 		return newWorkerResolver(settings, perms, bridge, child, source)
 	}, nil)
+	executor.SetTracker(m.services.Tracker)
 	parentHooks := m.services.Hook
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		projection := owner.Snapshot()

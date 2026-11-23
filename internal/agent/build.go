@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -53,6 +54,7 @@ type BuildParams struct {
 	MCPTools      []core.Tool
 	NativeTools   []core.Tool     // host-owned tools, subject to the same permission gate
 	Tasks         *task.Manager   // nil retains the native default
+	Tracker       *todo.Store     // nil leaves the task-tracker tools unavailable
 	Skills        *skill.Registry // nil retains the native default
 	Plugins       *plugin.Registry
 	PluginRoot    func() string // optional session-owned invocation scope
@@ -215,6 +217,9 @@ func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate
 		}
 		if p.Skills != nil {
 			ctx = skill.WithRegistry(ctx, p.Skills)
+		}
+		if p.Tracker != nil {
+			ctx = todo.WithStore(ctx, p.Tracker)
 		}
 		if p.FileViews != nil {
 			return fs.WithFileViews(ctx, p.FileViews)

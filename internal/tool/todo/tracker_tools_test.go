@@ -8,19 +8,24 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-func useTestTrackerStore(t *testing.T) *todo.Store {
+func useTestTrackerStore(t *testing.T) (*todo.Store, context.Context) {
 	t.Helper()
 	store := todo.NewStore()
 	if err := store.SetStorageDir(t.TempDir()); err != nil {
 		t.Fatalf("SetStorageDir(): %v", err)
 	}
-	todo.SetDefault(store)
-	t.Cleanup(func() { todo.SetDefault(store) })
-	return store
+	return store, todo.WithStore(t.Context(), store)
+}
+
+func TestTrackerToolsRequireBoundStore(t *testing.T) {
+	result := (&TrackerCreateTool{}).Execute(t.Context(), map[string]any{"subject": "s", "description": "d"}, "")
+	if result.Success || !strings.Contains(result.Error, "not available") {
+		t.Fatalf("unbound tracker accepted a task: %+v", result)
+	}
 }
 
 func TestTrackerGetTool_ShowsOwnerAndOpenBlockers(t *testing.T) {
-	store := useTestTrackerStore(t)
+	store, ctx := useTestTrackerStore(t)
 
 	blocker := store.Create("Blocker", "finish first", "blocking", nil)
 	blocked := store.Create("Blocked", "waits on blocker", "waiting", nil)
@@ -28,7 +33,7 @@ func TestTrackerGetTool_ShowsOwnerAndOpenBlockers(t *testing.T) {
 		t.Fatalf("Update(blocked): %v", err)
 	}
 
-	result := (&TrackerGetTool{}).Execute(context.Background(), map[string]any{
+	result := (&TrackerGetTool{}).Execute(ctx, map[string]any{
 		"taskId": blocked.ID,
 	}, "")
 
@@ -44,7 +49,7 @@ func TestTrackerGetTool_ShowsOwnerAndOpenBlockers(t *testing.T) {
 }
 
 func TestTrackerGetTool_WithoutTaskIDListsAll(t *testing.T) {
-	store := useTestTrackerStore(t)
+	store, ctx := useTestTrackerStore(t)
 
 	done := store.Create("First", "already done", "doing first", nil)
 	if err := store.Update(done.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
@@ -55,7 +60,7 @@ func TestTrackerGetTool_WithoutTaskIDListsAll(t *testing.T) {
 		t.Fatalf("Update(pending): %v", err)
 	}
 
-	result := (&TrackerGetTool{}).Execute(context.Background(), map[string]any{}, "")
+	result := (&TrackerGetTool{}).Execute(ctx, map[string]any{}, "")
 
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
@@ -78,12 +83,12 @@ func TestTrackerGetTool_WithoutTaskIDListsAll(t *testing.T) {
 }
 
 func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
-	store := useTestTrackerStore(t)
+	store, ctx := useTestTrackerStore(t)
 
 	blocker := store.Create("Blocker", "must finish first", "blocking", nil)
 	task := store.Create("Implement", "write tests", "writing", nil)
 
-	result := (&TrackerUpdateTool{}).Execute(context.Background(), map[string]any{
+	result := (&TrackerUpdateTool{}).Execute(ctx, map[string]any{
 		"taskId":       task.ID,
 		"status":       todo.StatusInProgress,
 		"owner":        "Plan",
