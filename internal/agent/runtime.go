@@ -283,7 +283,7 @@ func (s *Runtime) SendInput(input PendingInput) error {
 		if query == "" {
 			query = input.Message.Text()
 		}
-		run.recall.enqueue(msg.ID, query)
+		run.recall.queueQuery(msg.ID, query)
 	}
 	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)

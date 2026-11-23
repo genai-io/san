@@ -23,7 +23,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/recap` | Recap where this session stands: the goal, now, and the next step |
 | `/init` | Create AGENTS.md and config files |
 | `/memory` | View or edit instruction files and the repository's Auto Memory; `t` toggles Auto Memory and `d` repoints its directory without moving notes |
-| `/memory update` | Run a one-off background Auto Memory review of the latest eligible completed turn; does not edit project instructions |
+| `/memory update` | Run a one-off Auto Memory Update using the latest eligible completed turn; does not edit project instructions |
 | `/reflection` | Configure Auto Memory (Recall, Update, and Options) and Auto Skill in separate tabs; press Tab to switch |
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |

@@ -25,7 +25,7 @@ const (
 	actionForget   memoryAction = "forget"
 )
 
-// noteTypes defines the classification contract for both validation and Review.
+// noteTypes defines the classification contract for both validation and Propose.
 // These labels never change where a note is stored.
 var noteTypes = map[string]string{
 	"user":      "Who the user is or what they generally prefer: role, expertise, or standing personal preference. A correction or an approach they confirmed in this repository is feedback instead.",
@@ -34,8 +34,8 @@ var noteTypes = map[string]string{
 	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
 }
 
-// Maintainer runs a tool-free proposal call and applies an accepted change locally.
-type Maintainer struct {
+// Updater proposes a memory change with a tool-free model call.
+type Updater struct {
 	Provider  llm.Provider
 	Model     string
 	Recording *session.Session

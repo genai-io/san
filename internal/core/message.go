@@ -156,7 +156,7 @@ type ChatMessage struct {
 	// agent (a subagent completion or an interim report) rather than a plain
 	// system notice, so the renderer styles it distinctly. Display-only.
 	AgentNotice            bool
-	AutoMemoryMaintained   bool
+	AutoMemoryUpdated      bool
 	AutoMemoryRecallNotice *AutoMemoryRecallNotice
 
 	// Streaming-commit progress. While an assistant message streams, completed

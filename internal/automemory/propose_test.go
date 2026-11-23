@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func reviewPrefix(text string) *ai.Request {
+func completedPrefix(text string) *ai.Request {
 	return &ai.Request{Messages: []ai.Message{ai.UserMessage(text), core.AssistantMessage("Understood.", "", nil)}}
 }
 
@@ -30,7 +30,7 @@ func requestJSON(t *testing.T, value any) string {
 	return string(data)
 }
 
-func TestReviewContext(t *testing.T) {
+func TestProposeContext(t *testing.T) {
 	dir := t.TempDir()
 	store := system.MemoryStore(dir)
 	index := "- [Deploy](deploy.md) — release process\n\n```markdown\n- [Example](example.md)\n```\n"
@@ -58,8 +58,8 @@ func TestReviewContext(t *testing.T) {
 	prefixBytes := requestJSON(t, prefix.Messages)
 	toolsBytes := requestJSON(t, prefix.Tools)
 	driver := aitest.New(aitest.Says(`{"action":"none"}`))
-	m := Maintainer{Provider: fakeProvider{driver}, Model: "maintain-model"}
-	change, err := m.Review(t.Context(), store, prefix, Actions{Add: true, Forget: true})
+	m := Updater{Provider: fakeProvider{driver}, Model: "update-model"}
+	change, err := m.Propose(t.Context(), store, prefix, Actions{Add: true, Forget: true})
 	if change != nil || err != nil {
 		t.Fatalf("change=%v err=%v", change, err)
 	}
@@ -70,7 +70,7 @@ func TestReviewContext(t *testing.T) {
 		t.Fatalf("unexpected proposal call: %+v", call)
 	}
 	suffix := call.Messages[len(history)]
-	payload, ok := strings.CutPrefix(suffix.Content.Text(), reviewPrompt+"\n\n")
+	payload, ok := strings.CutPrefix(suffix.Content.Text(), proposalPrompt+"\n\n")
 	if suffix.Role != ai.RoleUser || !ok || len(suffix.Content) != 1 {
 		t.Fatalf("unexpected proposal suffix: %+v", suffix)
 	}
@@ -93,19 +93,19 @@ func TestReviewContext(t *testing.T) {
 }
 
 const (
-	reviewAdd    = `{"action":"remember","file":"build.md","name":"Build","description":"Build command","type":"project","body":"Use make."}`
-	reviewUpdate = `{"action":"update","file":"build.md","old":"Use make.","replacement":"Use go build."}`
-	reviewForget = `{"action":"forget","file":"build.md"}`
+	addProposal    = `{"action":"remember","file":"build.md","name":"Build","description":"Build command","type":"project","body":"Use make."}`
+	updateProposal = `{"action":"update","file":"build.md","old":"Use make.","replacement":"Use go build."}`
+	forgetProposal = `{"action":"forget","file":"build.md"}`
 )
 
-func TestReviewLifecycle(t *testing.T) {
+func TestProposeLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	store := system.MemoryStore(dir)
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	projectNote := filepath.Join(dir, "build.md")
 	put(t, index, "- [Deploy](deploy.md)\n")
 	put(t, filepath.Join(dir, "deploy.md"), "Keep this note.")
-	m := Maintainer{Provider: fakeProvider{aitest.New(aitest.Says(reviewAdd), aitest.Says(reviewUpdate), aitest.Says(reviewForget))}}
+	m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(addProposal), aitest.Says(updateProposal), aitest.Says(forgetProposal))}}
 	for i, tc := range []struct {
 		user    string
 		actions Actions
@@ -115,7 +115,7 @@ func TestReviewLifecycle(t *testing.T) {
 		{"Please remove the stored build note; it no longer applies.", Actions{Forget: true}},
 	} {
 		before := get(t, index)
-		change, err := m.Review(t.Context(), store, reviewPrefix(tc.user), tc.actions)
+		change, err := m.Propose(t.Context(), store, completedPrefix(tc.user), tc.actions)
 		if err != nil || change == nil || get(t, index) != before {
 			t.Fatalf("step %d: change=%v err=%v", i, change, err)
 		}
@@ -142,7 +142,7 @@ func TestReviewLifecycle(t *testing.T) {
 	}
 }
 
-func TestReviewNoteTypesAreMetadata(t *testing.T) {
+func TestProposeNoteTypesAreMetadata(t *testing.T) {
 	dir := t.TempDir()
 	store := system.MemoryStore(dir)
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
@@ -150,12 +150,12 @@ func TestReviewNoteTypesAreMetadata(t *testing.T) {
 	const link = "- [Build](build.md) — build command\n"
 	put(t, index, link)
 	put(t, build, "---\nname: Build\ntype: feedback\n---\nUse make.")
-	m := Maintainer{Provider: fakeProvider{aitest.New(
-		aitest.Says(reviewUpdate),
+	m := Updater{Provider: fakeProvider{aitest.New(
+		aitest.Says(updateProposal),
 		aitest.Says(`{"action":"remember","file":"style.md","name":"Style","description":"Writing preference","type":"user","body":"Keep examples concise."}`),
 	)}}
 	for _, actions := range []Actions{{Update: true}, {Add: true}} {
-		change, err := m.Review(t.Context(), store, reviewPrefix("For this project I prefer concise examples and go build."), actions)
+		change, err := m.Propose(t.Context(), store, completedPrefix("For this project I prefer concise examples and go build."), actions)
 		if err != nil || change == nil {
 			t.Fatalf("change=%v err=%v", change, err)
 		}
@@ -174,19 +174,19 @@ func TestReviewNoteTypesAreMetadata(t *testing.T) {
 	}
 }
 
-func TestReviewRejectsDisabledAndUncataloguedOperations(t *testing.T) {
+func TestProposeRejectsDisabledAndUncataloguedOperations(t *testing.T) {
 	for _, tc := range []struct {
 		name, response string
 		actions        Actions
 		catalogued     bool
 	}{
-		{"disabled add", reviewAdd, Actions{Update: true}, false},
-		{"legacy scope field", strings.Replace(reviewAdd, `"file":`, `"scope":"project","file":`, 1), Actions{Add: true}, false},
-		{"unknown note type", strings.Replace(reviewAdd, `"type":"project"`, `"type":"unknown"`, 1), Actions{Add: true}, false},
-		{"disabled update", reviewUpdate, Actions{Forget: true}, true},
-		{"disabled forget", reviewForget, Actions{Add: true}, true},
-		{"uncatalogued update", reviewUpdate, Actions{Update: true}, false},
-		{"uncatalogued forget", reviewForget, Actions{Forget: true}, false},
+		{"disabled add", addProposal, Actions{Update: true}, false},
+		{"legacy scope field", strings.Replace(addProposal, `"file":`, `"scope":"project","file":`, 1), Actions{Add: true}, false},
+		{"unknown note type", strings.Replace(addProposal, `"type":"project"`, `"type":"unknown"`, 1), Actions{Add: true}, false},
+		{"disabled update", updateProposal, Actions{Forget: true}, true},
+		{"disabled forget", forgetProposal, Actions{Add: true}, true},
+		{"uncatalogued update", updateProposal, Actions{Update: true}, false},
+		{"uncatalogued forget", forgetProposal, Actions{Forget: true}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -196,8 +196,8 @@ func TestReviewRejectsDisabledAndUncataloguedOperations(t *testing.T) {
 			if tc.catalogued {
 				put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n")
 			}
-			m := Maintainer{Provider: fakeProvider{aitest.New(aitest.Says(tc.response))}}
-			change, err := m.Review(t.Context(), store, reviewPrefix("Discuss the build command."), tc.actions)
+			m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(tc.response))}}
+			change, err := m.Propose(t.Context(), store, completedPrefix("Discuss the build command."), tc.actions)
 			if change != nil || !errors.Is(err, errInvalidProposal) || get(t, note) != "Use make." {
 				t.Fatalf("change=%v err=%v", change, err)
 			}
@@ -205,7 +205,7 @@ func TestReviewRejectsDisabledAndUncataloguedOperations(t *testing.T) {
 	}
 }
 
-func TestReviewRefusesInstructionFileEvenIfIndexed(t *testing.T) {
+func TestProposeRefusesInstructionFileEvenIfIndexed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, system.InstructionFile)
 	const instructions = "Use make."
@@ -213,19 +213,19 @@ func TestReviewRefusesInstructionFileEvenIfIndexed(t *testing.T) {
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	const link = "- [Instructions](AGENTS.md)\n"
 	put(t, index, link)
-	for _, response := range []string{reviewAdd, reviewUpdate, reviewForget} {
+	for _, response := range []string{addProposal, updateProposal, forgetProposal} {
 		driver := aitest.New(aitest.Says(strings.Replace(response, "build.md", system.InstructionFile, 1)))
-		m := Maintainer{Provider: fakeProvider{driver}}
-		change, err := m.Review(t.Context(), system.MemoryStore(dir), reviewPrefix("Update the project instructions."), Actions{Add: true, Update: true, Forget: true})
+		m := Updater{Provider: fakeProvider{driver}}
+		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Update the project instructions."), Actions{Add: true, Update: true, Forget: true})
 		if change != nil || !errors.Is(err, errInvalidProposal) || get(t, path) != instructions || get(t, index) != link {
 			t.Fatalf("instruction file must not be an Auto Memory target: change=%v, err=%v", change, err)
 		}
 	}
 }
 
-func TestReviewSkipsWithoutOptInStorePrefixOrUserEvidence(t *testing.T) {
+func TestProposeSkipsWithoutOptInStorePrefixOrUserEvidence(t *testing.T) {
 	project := system.MemoryStore(t.TempDir())
-	user := reviewPrefix("Use go build.")
+	user := completedPrefix("Use go build.")
 	for _, tc := range []struct {
 		store   system.MemoryStore
 		prefix  *ai.Request
@@ -234,33 +234,33 @@ func TestReviewSkipsWithoutOptInStorePrefixOrUserEvidence(t *testing.T) {
 		{project, user, Actions{}},
 		{"", user, Actions{Add: true}},
 		{project, nil, Actions{Add: true}},
-		{project, reviewPrefix("<system-reminder>Not user evidence.</system-reminder>"), Actions{Add: true}},
+		{project, completedPrefix("<system-reminder>Not user evidence.</system-reminder>"), Actions{Add: true}},
 		{project, &ai.Request{Messages: []ai.Message{core.AssistantMessage("Assistant-only claim.", "", nil)}}, Actions{Add: true}},
 	} {
-		if change, err := (Maintainer{}).Review(t.Context(), tc.store, tc.prefix, tc.actions); change != nil || err != nil {
+		if change, err := (Updater{}).Propose(t.Context(), tc.store, tc.prefix, tc.actions); change != nil || err != nil {
 			t.Fatalf("change=%v err=%v", change, err)
 		}
 	}
 }
 
-func TestReviewPreservesCancellation(t *testing.T) {
+func TestProposePreservesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	change, err := (Maintainer{}).Review(ctx, system.MemoryStore(t.TempDir()), reviewPrefix("Use go build."), Actions{Add: true})
+	change, err := (Updater{}).Propose(ctx, system.MemoryStore(t.TempDir()), completedPrefix("Use go build."), Actions{Add: true})
 	if change != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("change=%v err=%v", change, err)
 	}
 }
 
-func TestReviewRejectsStaleSnapshot(t *testing.T) {
+func TestProposeRejectsStaleSnapshot(t *testing.T) {
 	for _, edited := range []string{"build.md", "other.md", system.AutoMemoryIndexName} {
 		t.Run(edited, func(t *testing.T) {
 			dir := t.TempDir()
 			put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Other](other.md)\n- [Build](build.md)\n")
 			put(t, filepath.Join(dir, "other.md"), "Other evidence.")
 			put(t, filepath.Join(dir, "build.md"), "Use make.")
-			m := Maintainer{Provider: fakeProvider{aitest.New(aitest.Says(reviewUpdate))}}
-			change, err := m.Review(t.Context(), system.MemoryStore(dir), reviewPrefix("Use go build instead."), Actions{Update: true})
+			m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(updateProposal))}}
+			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build instead."), Actions{Update: true})
 			if change == nil || err != nil {
 				t.Fatalf("change=%v err=%v", change, err)
 			}

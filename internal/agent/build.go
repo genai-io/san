@@ -341,14 +341,6 @@ func (p BuildParams) MemoryRecaller() Recaller {
 	return r
 }
 
-func (p BuildParams) newFastRecall(ctx context.Context) *fastRecall {
-	mode := p.AutoMemory.Recall.Mode
-	if mode == setting.MemoryRecallWait || mode == setting.MemoryRecallOff || p.AutoMemory.Store.Off() || p.Provider == nil {
-		return nil
-	}
-	return &fastRecall{ctx: ctx, store: p.AutoMemory.Store, recaller: p.MemoryRecaller()}
-}
-
 // RunOnce answers one message with no session around it: build the agent, hand
 // it the message, run one exchange, and report what the model said.
 //
@@ -417,7 +409,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if message.ID == "" {
 		message.ID = core.NewMessageID()
 	}
-	recall.enqueue(message.ID, messageText)
+	recall.queueQuery(message.ID, messageText)
 	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }

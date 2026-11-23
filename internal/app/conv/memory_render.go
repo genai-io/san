@@ -120,12 +120,12 @@ func renderMemoryNotice(marker, verb, title string, width int) string {
 	return renderGutteredLine(marker+" ", "  ", sideMarkStyle, "Memory · "+verb+": "+title, width)
 }
 
-func isMemoryMaintenanceNotice(content string) bool {
+func isMemoryUpdateNotice(content string) bool {
 	text, ok := strings.CutPrefix(content, "Memory · ")
 	return ok && (strings.HasPrefix(text, "saved ") || strings.HasPrefix(text, "updated ") || strings.HasPrefix(text, "forgot "))
 }
 
-func renderMemoryMaintenanceNotice(content string, width int) string {
+func renderMemoryUpdateNotice(content string, width int) string {
 	return renderGutteredLine(kit.MemoryMark+" ", "  ", sideMarkStyle, content, width)
 }
 

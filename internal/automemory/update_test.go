@@ -39,13 +39,13 @@ func get(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestReviewRefusesLiteralEOFWithoutWrites(t *testing.T) {
+func TestProposeRefusesLiteralEOFWithoutWrites(t *testing.T) {
 	for _, index := range []string{"# Memory\r\n\r\n```markdown", "~~~\nexample\n", "<!--\nexample\n", "<div>\nexample\n"} {
 		dir := t.TempDir()
 		path := filepath.Join(dir, system.AutoMemoryIndexName)
 		put(t, path, index)
-		m := Maintainer{Provider: fakeProvider{aitest.New(aitest.Says(reviewAdd))}}
-		change, err := m.Review(t.Context(), system.MemoryStore(dir), reviewPrefix("We use make for all builds in this repository."), Actions{Add: true})
+		m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(addProposal))}}
+		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("We use make for all builds in this repository."), Actions{Add: true})
 		if err != nil || change == nil {
 			t.Fatalf("change=%v err=%v", change, err)
 		}
@@ -59,7 +59,7 @@ func TestReviewRefusesLiteralEOFWithoutWrites(t *testing.T) {
 	}
 }
 
-func TestReviewRejectsSymlinkNoteAndToolProposal(t *testing.T) {
+func TestProposeRejectsSymlinkNoteAndToolProposal(t *testing.T) {
 	dir := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "outside.md")
 	put(t, outside, "outside")
@@ -67,12 +67,12 @@ func TestReviewRejectsSymlinkNoteAndToolProposal(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n")
-	for _, turn := range []aitest.Turn{aitest.Says(reviewForget), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
+	for _, turn := range []aitest.Turn{aitest.Says(forgetProposal), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
 		driver := aitest.New(turn)
-		m := Maintainer{Provider: fakeProvider{driver}}
-		prefix := reviewPrefix("Please forget the stored build note.")
+		m := Updater{Provider: fakeProvider{driver}}
+		prefix := completedPrefix("Please forget the stored build note.")
 		prefix.Tools = []ai.Schema{{Name: "Remove", Definition: map[string]any{"type": "object"}}}
-		change, err := m.Review(t.Context(), system.MemoryStore(dir), prefix, Actions{Forget: true})
+		change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix, Actions{Forget: true})
 		if change != nil || err == nil || get(t, outside) != "outside" {
 			t.Fatalf("untrusted target: change=%v err=%v", change, err)
 		}

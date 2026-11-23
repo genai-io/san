@@ -25,9 +25,9 @@ const (
 	maxIndex = 128 * 1024
 )
 
-var errStale = errors.New("memory store changed while proposing maintenance; retry the request")
+var errStale = errors.New("memory store changed before the update could be applied; retry the request")
 
-// Serialize maintenance applies to the same canonical store without keeping
+// Serialize updates to the same canonical store without keeping
 // locks forever for previously visited projects. Unrelated buckets can proceed.
 var storeLocks [64]sync.Mutex
 
@@ -345,7 +345,7 @@ func createStore(path string) (*os.Root, error) {
 // pinned root so a path swap cannot redirect a write outside the store. New
 // files use an exclusive link instead of an overwriting rename.
 func writeNote(root *os.Root, name, text string, old revision) error {
-	tmp := ".maintain-" + rand.Text() + ".tmp"
+	tmp := ".memory-update-" + rand.Text() + ".tmp"
 	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err

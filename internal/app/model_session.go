@@ -131,7 +131,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 	if changed {
 		m.retireFlowMain()
 		m.resetRecap()
-		m.cancelMemoryReview()
+		m.cancelMemoryUpdate()
 		m.cancelAutopilot()
 		m.cancelGroupControl()
 		if err := m.cancelManualCompaction(); err != nil {

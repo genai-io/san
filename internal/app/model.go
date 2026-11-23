@@ -67,8 +67,8 @@ type model struct {
 	taskCompletionsShown map[string]bool
 	// btw holds the /btw questions still waiting on their answer.
 	btw []btwAsk
-	// memoryReview owns one in-flight contextual Maintain Aside.
-	memoryReview *memoryReview
+	// memoryUpdate owns one in-flight Memory Update.
+	memoryUpdate *memoryUpdate
 	// recap follows the terminal's focus for the recap shown on coming back.
 	recap          recapState
 	unfocusedSince time.Time // when the terminal lost focus; zero while it has it

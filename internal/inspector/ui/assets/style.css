@@ -798,13 +798,77 @@ aside {
 }
 .detail-disclosure > summary { cursor: pointer; color: var(--bone-2); font: 0.88rem/1.5 var(--font-sans); overflow-wrap: anywhere; }
 .detail-disclosure[open] > summary { margin-bottom: 0.5rem; color: var(--bone); }
-.json-view { color: var(--bone); font: 0.76rem/1.6 var(--font-mono); }
-.json-branch > summary { cursor: pointer; color: var(--bone-2); overflow-wrap: anywhere; }
-.json-branch > summary:hover, .json-branch[open] > summary { color: var(--bone); }
-.json-branch > summary:focus-visible { outline: 1px solid var(--amber); }
-.json-children { margin-inline-start: 0.4rem; padding-inline-start: 0.8rem; border-inline-start: 1px solid var(--rule); }
-.json-value { padding-inline-start: 1em; white-space: pre-wrap; overflow-wrap: anywhere; }
-#detail-body .json-branch > pre { margin-inline-start: 1em; }
+.json-view {
+  --json-gutter: 1.35rem;
+  min-width: 0;
+  padding: 0.35rem;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--ink-2);
+  color: var(--bone);
+  font: 0.76rem/1.6 var(--font-mono);
+}
+.json-row, .json-original > summary {
+  padding: 0.16rem 0.4rem 0.16rem var(--json-gutter);
+  border-radius: 3px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.json-branch > summary, .json-original > summary {
+  display: block;
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+  color: var(--bone-2);
+}
+.json-branch > summary::-webkit-details-marker, .json-original > summary::-webkit-details-marker { display: none; }
+.json-branch > summary::before, .json-original > summary::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 0.58rem;
+  inset-inline-start: 0.48rem;
+  width: 0.32rem;
+  height: 0.32rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+}
+.json-branch[open] > summary::before, .json-original[open] > summary::before {
+  color: var(--amber);
+  transform: rotate(45deg);
+}
+.json-branch > summary:hover, .json-original > summary:hover { background: var(--ink-3); }
+.json-branch > summary:focus-visible, .json-original > summary:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: -1px;
+}
+.json-key { color: var(--brass); }
+.json-index { color: var(--bone-3); }
+.json-count {
+  margin-inline-start: 0.25em;
+  padding: 0.08em 0.45em;
+  border-radius: 3px;
+  background: var(--ink-4);
+  color: var(--bone-2);
+  font-size: 0.9em;
+}
+.json-children {
+  margin-inline-start: 0.65rem;
+  padding-inline-start: 0.4rem;
+  border-inline-start: 1px solid var(--rule);
+}
+.json-children > .detail-link { margin: 0.15rem 0 0.2rem var(--json-gutter); }
+.json-original {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--rule);
+}
+.json-original > summary { font-family: var(--font-sans); }
+.json-view > .detail-note { margin: 0.25rem 0.4rem; }
+#detail-body .json-view pre {
+  margin: 0.2rem 0.4rem 0.35rem var(--json-gutter);
+  overflow-wrap: anywhere;
+}
 #detail-body .message-text { background: var(--ink-2); padding: 0.55rem 0.65rem; }
 #detail-body img { display: block; max-width: 100%; max-height: 28rem; object-fit: contain; }
 #detail-body .tool-diff { background: var(--ink-2); padding: 0.55rem 0.65rem; overflow: auto; white-space: pre; }

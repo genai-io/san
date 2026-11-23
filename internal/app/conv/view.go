@@ -336,8 +336,8 @@ func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 			sb.WriteString(renderMemoryRecallNotice(msg.AutoMemoryRecallNotice, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, memoryRecallNoticePrefix); ok {
 			sb.WriteString(renderRecordedRecallNotice(rest, p.Width))
-		} else if msg.AutoMemoryMaintained || isMemoryMaintenanceNotice(msg.Content) {
-			sb.WriteString(renderMemoryMaintenanceNotice(msg.Content, p.Width))
+		} else if msg.AutoMemoryUpdated || isMemoryUpdateNotice(msg.Content) {
+			sb.WriteString(renderMemoryUpdateNotice(msg.Content, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, recapNoticePrefix); ok {
 			facts, body, _ := strings.Cut(rest, "\n\n")
 			sb.WriteString(RenderRecap(sideMarkStyle.Render(kit.RecapMark), facts, body, p.Width))

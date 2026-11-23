@@ -39,7 +39,7 @@ func TestFastRecallIsNonBlockingAndLabelsPreviousQuestion(t *testing.T) {
 	defer r.cancel()
 	first := core.UserMessage("提交 git 有什么要求？", nil)
 	first.ID = "first"
-	r.enqueue(first.ID, first.Text())
+	r.queueQuery(first.ID, first.Text())
 	original := []core.Message{first}
 	initial := make(chan []core.Message, 1)
 	go func() { initial <- prepareFastMessages(r, original, false) }()
@@ -63,7 +63,7 @@ func TestFastRecallIsNonBlockingAndLabelsPreviousQuestion(t *testing.T) {
 	}
 	second := core.UserMessage("那签名呢？", nil)
 	second.ID = "second"
-	r.enqueue(second.ID, second.Text())
+	r.queueQuery(second.ID, second.Text())
 	history := []core.Message{first, second}
 	got := prepareFastMessages(r, history, false)
 	if len(got) != 3 || !reflect.DeepEqual(got[:2], history) || got[2].Role != ai.RoleUser || got[2].ID != "" {
@@ -118,7 +118,7 @@ func waitForFastRecall(t *testing.T, r *fastRecall) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		r.mu.Lock()
-		ready := r.current != nil && len(r.current.notes) > 0
+		ready := r.latestLookup.hasMatches()
 		r.mu.Unlock()
 		if ready {
 			return
@@ -144,7 +144,7 @@ func TestFastRecallRefreshesReadyResultAfterExternalEditAndForget(t *testing.T) 
 	first := core.UserMessage("Can I merge?", nil)
 	first.ID = "first"
 	history := []core.Message{first}
-	r.enqueue(first.ID, first.Text())
+	r.queueQuery(first.ID, first.Text())
 	prepareFastMessages(r, history, false)
 	waitForFastRecall(t, r)
 	staged := prepareFastMessages(r, history, false)
@@ -174,7 +174,7 @@ func TestFastRecallRefreshesReadyResultAfterExternalEditAndForget(t *testing.T) 
 	}
 	second := core.UserMessage("What about signing?", nil)
 	second.ID = "second"
-	r.enqueue(second.ID, second.Text())
+	r.queueQuery(second.ID, second.Text())
 	history = append(history, second)
 	if got := prepareFastMessages(r, history, false); len(got) != 2 || got[0].Text() != first.Text() || got[1].Text() != second.Text() {
 		t.Fatalf("later request retained a forgotten note or changed history: %+v", got)
@@ -194,7 +194,7 @@ func TestFastRecallPreservesToolSuffixAndDropsCompactedContext(t *testing.T) {
 	result := core.ToolResultMessage(core.ToolResult{ToolCallID: "call", ToolName: "Read", Content: ai.TextContent("done")})
 	call.ID, result.ID = "assistant", "result"
 	history := []core.Message{user, call, result}
-	r.enqueue(user.ID, "Can I merge?")
+	r.queueQuery(user.ID, "Can I merge?")
 	prepareFastMessages(r, history[:1], false)
 	waitForFastRecall(t, r)
 	if got := prepareFastMessages(r, history[:2], false); !reflect.DeepEqual(got, history[:2]) {
@@ -213,12 +213,12 @@ func TestFastRecallPreservesToolSuffixAndDropsCompactedContext(t *testing.T) {
 	if !reflect.DeepEqual(prepared, history[1:]) {
 		t.Fatalf("recall changed a tool suffix without a user anchor: %+v", prepared)
 	}
-	if notice == nil || notice() != nil || len(r.shown) != 0 {
+	if notice == nil || notice() != nil || len(r.lastUsedNotes) != 0 {
 		t.Fatal("a response without recall should clear the previously shown notes")
 	}
 	fresh := core.UserMessage("Can I merge now?", nil)
 	fresh.ID = "after-compaction"
-	r.enqueue(fresh.ID, fresh.Text())
+	r.queueQuery(fresh.ID, fresh.Text())
 	if got := prepareFastMessages(r, []core.Message{fresh}, false); !reflect.DeepEqual(got[0], fresh) {
 		t.Fatalf("compacted memory was still attached: %+v", got)
 	}
@@ -236,11 +236,11 @@ func TestFastRecallUsesBoundedUserWindow(t *testing.T) {
 	first := core.UserMessage("Can I merge?", nil)
 	first.ID = "first"
 	history := []core.Message{first}
-	r.enqueue(first.ID, first.Text())
+	r.queueQuery(first.ID, first.Text())
 	prepareFastMessages(r, history, false)
 	waitForFastRecall(t, r)
 	prepareFastMessages(r, history, false)
-	for i := 1; i < maxRecallMessages; i++ {
+	for i := 1; i < recallUserWindow; i++ {
 		call := core.AssistantMessage("", "", []core.ToolCall{{ID: fmt.Sprintf("call-%d", i), Name: "Read", Input: `{}`}})
 		call.ID = fmt.Sprintf("assistant-%d", i)
 		tool := core.ToolResultMessage(core.ToolResult{ToolCallID: fmt.Sprintf("call-%d", i)})

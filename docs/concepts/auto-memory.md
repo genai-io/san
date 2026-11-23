@@ -1,6 +1,6 @@
 # Auto Memory
 
-Auto Memory keeps durable facts, preferences, and decisions outside the main conversation. It is on by default. The [Auto Memory Aside](../reference/aside.md) recalls relevant notes and independently maintains the repository's library. The main model receives only recalled previews, not the directory or its index.
+Auto Memory keeps durable facts, preferences, and decisions outside the main conversation. It is on by default. The [Auto Memory Aside](../reference/aside.md) has two operations: Recall finds relevant notes, and Update adds, edits, or forgets a note. The main model receives only recalled previews, not the directory or its index.
 
 Project instructions are separate. Natural-language requests, in any language, go to the main agent. When you ask it to persist or change a standing project instruction, it can edit the applicable `AGENTS.md` or `AGENTS.local.md` using ordinary file tools and permissions. A reminder for the current task need not be written anywhere. `san.md` is not automatically loaded by name; see [which files are loaded](../reference/context-management.md#reminders-and-hot-reload).
 
