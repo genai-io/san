@@ -75,9 +75,9 @@ func TestProposeContext(t *testing.T) {
 		t.Fatalf("unexpected proposal call: %+v", call)
 	}
 	suffix := call.Messages[len(history)]
-	if suffix.Role != ai.RoleUser || len(suffix.Content) != 2 || !reflect.DeepEqual(suffix.Content[1], ai.TextBlock(index)) ||
-		!strings.HasPrefix(suffix.Content[0].Text, updatePrompt) ||
-		strings.Contains(suffix.Content[0].Text, "## Note types for new notes") ||
+	if suffix.Role != ai.RoleUser || len(suffix.Content) != 3 || !reflect.DeepEqual(suffix.Content[2], ai.TextBlock(index)) ||
+		!strings.HasPrefix(suffix.Content[0].Text, updatePrompt) || !strings.HasPrefix(suffix.Content[1].Text, "# Project memory layout") ||
+		strings.Contains(suffix.Text(), "# Note format example") ||
 		strings.Contains(suffix.Content[0].Text, "release process") || strings.Contains(suffix.Text(), "Deploy only from release branches.") {
 		t.Fatalf("want separate instructions and unchanged index without note bodies: %+v", suffix)
 	}
@@ -448,8 +448,8 @@ func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 		t.Fatalf("incomplete index allowed add: change=%v err=%v", change, err)
 	}
 	blocks := driver.Last().Messages[2].Content
-	if len(blocks) != 3 || blocks[1].Text != visible || !strings.Contains(blocks[0].Text, "search the omitted index") ||
-		!strings.Contains(blocks[2].Text, "…") {
+	if len(blocks) != 5 || blocks[3].Text != visible || !strings.Contains(blocks[0].Text, "search the omitted index") ||
+		!strings.Contains(blocks[4].Text, "…") {
 		t.Fatalf("wrong context for incomplete index: %+v", blocks)
 	}
 }
@@ -481,13 +481,13 @@ func TestUpdateReadsBeyondPreview(t *testing.T) {
 			}
 			calls := driver.Sent()
 			blocks := calls[0].Messages[2].Content
-			if len(blocks) != 3 || blocks[1].Text != tc.prefix || !strings.Contains(blocks[2].Text, tc.read) || !strings.Contains(blocks[2].Text, "…") {
+			if len(blocks) != 5 || blocks[3].Text != tc.prefix || !strings.Contains(blocks[4].Text, tc.read) || !strings.Contains(blocks[4].Text, "…") {
 				t.Fatal("initial Update preview did not preserve the raw prefix and separate the hint")
 			}
 			if !strings.Contains(calls[1].Messages[4].Text(), tail) {
 				t.Fatal("Update lookup did not return the omitted entry")
 			}
-			t.Logf("Update Aside · %s cutoff · appended user message\n%s\n%s\n[raw preview body omitted from terminal sample]%s", tc.name, strings.SplitN(blocks[0].Text, "\n", 2)[0], strings.SplitN(blocks[1].Text, "\n", 2)[0], blocks[2].Text)
+			t.Logf("Update Aside · %s cutoff · appended user message\n%s\n%s\n[raw preview body omitted from terminal sample]%s", tc.name, strings.SplitN(blocks[0].Text, "\n", 2)[0], strings.SplitN(blocks[1].Text, "\n", 2)[0], blocks[4].Text)
 		})
 	}
 }
