@@ -422,7 +422,7 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	}
 
 	plain := render()
-	if !strings.HasPrefix(plain, "Tasks\n  ●  Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
+	if !strings.HasPrefix(plain, "≣ Tasks · 1 running\n  ●  Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
 		t.Errorf("a worker should be indented under the top-level Tasks heading without plan progress:\n%s", plain)
 	}
 	if strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
@@ -431,8 +431,50 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 
 	plan := tracker.Create("Write tests", "", "", nil)
 	_ = tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
-	if plain := render(); !strings.Contains(plain, "Tasks (100%)") || strings.Count(plain, "Tasks") != 1 {
+	if plain := render(); !strings.Contains(plain, "≣ Tasks (100%) · 1 running\n") || strings.Count(plain, "Tasks") != 1 {
 		t.Errorf("progress should count plan items only:\n%s", plain)
+	}
+}
+
+func TestTrackerHeadingCountsLiveWork(t *testing.T) {
+	worker := func(id, status string) *todo.Item {
+		return &todo.Item{Subject: id, Status: status, Metadata: map[string]any{"background_task_id": id}}
+	}
+	items := []*todo.Item{
+		worker("active", todo.StatusInProgress),
+		worker("approval", todo.StatusInProgress),
+		worker("stalled", todo.StatusInProgress),
+		worker("pending", todo.StatusPending),
+	}
+	params := TrackerListParams{
+		Items:            items,
+		AwaitingApproval: map[string]bool{"approval": true},
+		Executing:        func(item *todo.Item) bool { return item.Subject != "stalled" },
+	}
+	const heading = "≣ Tasks · 1 running"
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{80, heading},
+		{lipgloss.Width(heading), heading},
+		{lipgloss.Width(heading) - 1, "≣ Tasks"},
+		{6, "Tasks"},
+	} {
+		params.Width = tc.width
+		rows, _ := RenderTrackerList(params)
+		if got, _, _ := strings.Cut(stripANSI(rows), "\n"); got != tc.want {
+			t.Errorf("width %d: heading = %q, want %q", tc.width, got, tc.want)
+		}
+	}
+
+	params.Width = 80
+	for i := range maxVisibleItems {
+		params.Items = append(params.Items, worker("extra-"+strconv.Itoa(i), todo.StatusInProgress))
+	}
+	rows, _ := RenderTrackerList(params)
+	if head, _, _ := strings.Cut(stripANSI(rows), "\n"); head != "≣ Tasks" || !strings.Contains(rows, "more in progress") {
+		t.Fatalf("folded tasks should not produce a partial running count:\n%s", rows)
 	}
 }
 

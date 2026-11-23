@@ -75,17 +75,11 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	header := headerStyle.Render("Tasks")
-	// Progress is the plan's: a background task finishing is not a step of it.
-	if plans > 0 {
-		header += " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans))
-	}
-	sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
-
 	visible, hidden := visibleTrackerItems(items)
 	idWidth := itemIDWidth(visible)
 
-	// Query executor liveness only for visible rows; counts use recorded status.
+	// Query executor liveness only for visible rows.
+	running := 0
 	lastPlan := false
 	for i, t := range visible {
 		isPlan := todo.BackgroundTaskID(t) == ""
@@ -104,6 +98,9 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 		}
 		if waiting {
 			phase = itemApproval
+		}
+		if phase == itemRunning {
+			running++
 		}
 		progress := ""
 		if phase == itemAborted {
@@ -148,7 +145,26 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 	if folded := renderFoldedLine(hidden); folded != "" {
 		sb.WriteString(kit.TruncateText(strings.TrimSuffix(folded, "\n"), max(1, params.Width)) + "\n")
 	}
-	return sb.String(), history
+	width := max(1, params.Width)
+	header := headerStyle.Render("Tasks")
+	if lipgloss.Width("≣ Tasks") <= width {
+		header = mutedStyle.Render("≣") + " " + header
+	}
+	// Progress is the plan's: a background task finishing is not a step of it.
+	if plans > 0 {
+		progress := fmt.Sprintf(" (%d%%)", plansDone*100/plans)
+		if lipgloss.Width(header+progress) <= width {
+			header += mutedStyle.Render(progress)
+		}
+	}
+	// Folded in-progress rows have not been checked for liveness.
+	if running > 0 && hidden[itemStalled] == 0 {
+		summary := fmt.Sprintf(" · %d running", running)
+		if lipgloss.Width(header+summary) <= width {
+			header += mutedStyle.Render(summary)
+		}
+	}
+	return kit.TruncateText(header, width) + "\n" + sb.String(), history
 }
 
 func summarizeTrackerHistory(failed, stopped, interrupted int) string {

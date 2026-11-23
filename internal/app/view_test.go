@@ -440,7 +440,7 @@ func TestPendingMessagesAboveTasks(t *testing.T) {
 			if tt.height >= 24 && tt.tasks > 0 && !strings.Contains(aboveInput, "Current task") {
 				t.Fatalf("frame lost the task list:\n%s", plain)
 			}
-			if tt.height >= 24 && tt.tasks > 0 && tt.tasks < 25 && tt.queued > 0 && !strings.Contains(aboveInput, "\n\nTasks") {
+			if tt.height >= 24 && tt.tasks > 0 && tt.tasks < 25 && tt.queued > 0 && !strings.Contains(aboveInput, "\n\n≣ Tasks") {
 				t.Fatalf("pending messages and Tasks need a blank row between them:\n%s", plain)
 			}
 			if tt.queued > 0 && (tt.editing || visiblePending == tt.queued) {
