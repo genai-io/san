@@ -45,6 +45,39 @@ func TestUpdateIndexAmbiguityBeyondPreview(t *testing.T) {
 	}
 }
 
+func TestValidateIndexEditRejectsUnsupportedNoteLinks(t *testing.T) {
+	prefix := "- [Topic](topic.md)\n\n" + strings.Repeat("# Heading\n", 200) + "\n"
+	for name, suffix := range map[string]string{
+		"full reference":      "- [Other note][ref]\n\n[ref]: ./other.md\n",
+		"collapsed reference": "- [ref][]\n\n[ref]: OTHER.md\n",
+		"shortcut reference":  "See [ref].\n\n[ref]: <other.md> \"title\"\n",
+		"titled inline":       "- [Other](other.md \"title\")\n",
+		"continuation":        "- [First](first.md)\n  More about [ref].\n\n[ref]: other.md\n",
+		"malformed":           "- [ ](other.md)\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			withLink := prefix + suffix
+			_, problem := newIndex(withLink, setting.MemoryPreviewLimits{}).updateNoteIDs()
+			if !strings.Contains(problem, "links a note outside") {
+				t.Fatalf("expected unsupported-link problem, got %q", problem)
+			}
+			for _, edit := range [][2]string{{prefix, withLink}, {withLink, prefix}} {
+				if err := validateIndexEdit(edit[0], edit[1]); err == nil || err.Error() != problem {
+					t.Errorf("validateIndexEdit error = %v, want %q", err, problem)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateIndexEditAllowsLiteralReferenceExamples(t *testing.T) {
+	const before = "Mention an unrelated README.md here.\n\n- [Topic](./topic.md) — Details\n"
+	const examples = "\n```md\n- [Example][ref]\n```\n\n<!--\n- [Example][ref]\n-->\n\n[ref]: example.md\n"
+	if err := validateIndexEdit(before, before+examples); err != nil {
+		t.Fatalf("literal reference examples rejected: %v", err)
+	}
+}
+
 func TestUpdateIndexDemandReads(t *testing.T) {
 	ctx := t.Context()
 	path, err := canonicalPath(t.TempDir())

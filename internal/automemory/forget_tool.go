@@ -10,6 +10,34 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
+// requestedForget recognizes an explicit filename in the latest native user
+// input. Request-only inserts have no message ID and grant no authorization.
+func requestedForget(messages []ai.Message) string {
+	for _, message := range slices.Backward(messages) {
+		if message.Role != ai.RoleUser || message.ID == "" || len(message.ToolResults()) != 0 {
+			continue
+		}
+		if len(message.Content) == 0 || message.Content[0].Type != ai.BlockText {
+			return ""
+		}
+		text := strings.TrimSpace(message.Content[0].Text)
+		if strings.ContainsAny(text, "\r\n") {
+			return ""
+		}
+		for _, block := range message.Content[1:] {
+			if block.Type != ai.BlockText || !strings.HasPrefix(strings.TrimSpace(block.Text), "<system-reminder") {
+				return ""
+			}
+		}
+		words := strings.Fields(text)
+		if len(words) == 2 && (strings.EqualFold(words[0], "forget") || words[0] == "忘掉") && validName(words[1]) {
+			return words[1]
+		}
+		return ""
+	}
+	return ""
+}
+
 // Authorize one literal removal of an observed note, never a general shell
 // command. The registered shell executes the equivalent command on its copy.
 func forgetProposalFor(call ai.ToolCall, dir string, notes []noteRevision, shells []string) (proposal, error) {

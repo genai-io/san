@@ -264,6 +264,19 @@ func (s storeSnapshot) note(name string) revision {
 	return revision{}
 }
 
+func (s storeSnapshot) notesMatch(root *os.Root, committed map[string]bool) bool {
+	for _, note := range s.notes {
+		if committed[note.name] {
+			continue
+		}
+		rev, err := readRevision(root, note.name, maxNote)
+		if err != nil || !rev.same(note.rev) {
+			return false
+		}
+	}
+	return true
+}
+
 func apply(ctx context.Context, path string, s storeSnapshot, proposals ...proposal) (string, error) {
 	h := fnv.New32a()
 	_, _ = io.WriteString(h, strings.ToLower(path))
@@ -292,11 +305,8 @@ func apply(ctx context.Context, path string, s storeSnapshot, proposals ...propo
 		if err != nil || !index.same(s.index) {
 			return "", errStale
 		}
-		for _, note := range s.notes {
-			rev, err := readRevision(root, note.name, maxNote)
-			if err != nil || !rev.same(note.rev) {
-				return "", errStale
-			}
+		if !s.notesMatch(root, nil) {
+			return "", errStale
 		}
 	}
 	plan, err := planChanges(root, s, proposals)
@@ -316,24 +326,35 @@ func apply(ctx context.Context, path string, s storeSnapshot, proposals ...propo
 
 	// Commit each step independently; a later failure does not undo prior steps.
 	index := s.index
+	committed := make(map[string]bool)
 	var completed []string
 	for _, step := range plan {
+		var partial string
 		err := ctx.Err()
 		if err == nil {
 			live, readErr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
-			if readErr != nil || !live.same(index) {
+			// Recheck unchanged evidence before each commit. This cannot fence
+			// an external writer between the check and the write.
+			if readErr != nil || !live.same(index) || !s.notesMatch(root, committed) {
 				err = errStale
 			} else {
-				err = step.commit(root, &index)
+				partial, err = step.commit(root, &index)
 			}
 		}
 		if err != nil {
 			if len(completed) != 0 {
 				err = fmt.Errorf("memory batch partially applied (%s); stopped at %s: %w", strings.Join(completed, ", "), step.File, err)
 			}
+			if partial != "" {
+				completed = append(completed, partial)
+			}
+			if len(completed) != 0 {
+				return "Memory · " + strings.Join(completed, ", ") + " (update incomplete)", err
+			}
 			return "", err
 		}
 		completed = append(completed, step.verb+" "+step.File)
+		committed[step.File] = true
 	}
 	return "Memory · " + strings.Join(completed, ", "), nil
 }
@@ -456,26 +477,27 @@ func validateIndexEdit(old, next string) error {
 	return nil
 }
 
-func (p plannedChange) commit(root *os.Root, index *revision) error {
+// commit returns a description only if a failed step may have left a change.
+func (p plannedChange) commit(root *os.Root, index *revision) (string, error) {
 	if p.File == system.AutoMemoryIndexName {
 		next, err := writeRevision(root, system.AutoMemoryIndexName, p.index, *index)
 		if err == nil {
 			*index = next
 		}
-		return err
+		return "", err
 	}
 	if p.Action == actionRemember {
 		if err := writeNote(root, p.File, p.Text, revision{}); err != nil {
-			return err
+			return "", err
 		}
 		next, err := writeRevision(root, system.AutoMemoryIndexName, p.index, *index)
 		if err != nil {
 			// Leave the complete note intact rather than risk deleting a note
 			// an external writer may already have seen and edited.
-			return fmt.Errorf("memory note created but index update failed (%s): %w", p.File, err)
+			return "saved " + p.File + " without indexing it", fmt.Errorf("memory note created but index update failed (%s): %w", p.File, err)
 		}
 		*index = next
-		return nil
+		return "", nil
 	}
 	return withIndexUpdate(root, index, p.index, func() error {
 		if p.Action == actionUpdate {
@@ -489,23 +511,23 @@ func (p plannedChange) commit(root *os.Root, index *revision) error {
 	})
 }
 
-func withIndexUpdate(root *os.Root, current *revision, next string, change func() error) error {
+func withIndexUpdate(root *os.Root, current *revision, next string, change func() error) (string, error) {
 	if next == current.text {
-		return change()
+		return "", change()
 	}
 	written, err := writeRevision(root, system.AutoMemoryIndexName, next, *current)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := change(); err != nil {
 		// Do not restore over changes made by another writer.
 		if rollbackErr := writeNote(root, system.AutoMemoryIndexName, current.text, written); rollbackErr != nil {
-			return errors.Join(err, fmt.Errorf("memory index updated but could not be restored: %w", rollbackErr))
+			return "could not restore " + system.AutoMemoryIndexName, errors.Join(err, fmt.Errorf("memory index updated but could not be restored: %w", rollbackErr))
 		}
-		return err
+		return "", err
 	}
 	*current = written
-	return nil
+	return "", nil
 }
 
 func createStore(path string) (*os.Root, error) {

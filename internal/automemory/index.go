@@ -61,7 +61,41 @@ func (i *Index) updateNoteIDs() (map[string]bool, string) {
 			delete(candidates, file)
 		}
 	}
+	if problem == "" {
+		problem = unsupportedIndexLink(i.text)
+	}
 	return candidates, problem
+}
+
+// The raw scan also catches malformed entries that Markdown does not parse as
+// links. Inspect resolved links separately for forms such as reference links.
+func unsupportedIndexLink(text string) string {
+	var problem string
+	_ = ast.Walk(goldmark.DefaultParser().Parse(mdtext.NewReader([]byte(text))), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		link, ok := n.(*ast.Link)
+		if !entering || !ok || !validName(strings.ToLower(strings.TrimPrefix(string(link.Destination), "./"))) {
+			return ast.WalkContinue, nil
+		}
+		block := n.Parent()
+		for block.Type() == ast.TypeInline {
+			block = block.Parent()
+		}
+		start := 0
+		if block.Lines().Len() > 0 {
+			start = strings.LastIndexByte(text[:block.Lines().At(0).Start], '\n') + 1
+		}
+		// A supported entry starts its block with the raw one-line link.
+		line, _, _ := strings.Cut(text[start:], "\n")
+		if n == block.FirstChild() {
+			match := indexEntry.FindStringSubmatch(strings.TrimSuffix(line, "\r"))
+			if match != nil && match[2] == string(link.Destination) && strings.TrimSpace(match[1]) != "" {
+				return ast.WalkContinue, nil
+			}
+		}
+		problem = fmt.Sprintf("MEMORY.md line %d links a note outside the `- [Name](file.md) description` form", strings.Count(text[:start], "\n")+1)
+		return ast.WalkStop, nil
+	})
+	return problem
 }
 
 func linksNote(line string) bool {

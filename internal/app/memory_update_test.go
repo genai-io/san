@@ -180,6 +180,52 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	}
 }
 
+func TestMemoryUpdateDisplaysPartialFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		manual bool
+	}{
+		{name: "automatic"},
+		{name: "manual", manual: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _, messages, _ := memoryUpdateFixture(t)
+			m.conv.OnNotice = m.recordNotice
+			ctx, cancel := context.WithCancel(t.Context())
+			update := &memoryUpdate{owner: m.services.Session, manual: tc.manual, ctx: ctx, cancel: cancel}
+			m.memoryUpdate = update
+			start := len(m.conv.Messages)
+			const notice = "Memory · saved fixture-build.md without indexing it (update incomplete)"
+			m.finishMemoryUpdate(memoryUpdateFinished{update: update, notice: notice, err: errors.New("index write failed")})
+
+			added := m.conv.Messages[start:]
+			want := 1
+			if tc.manual {
+				want++
+			}
+			if len(added) != want || added[0].Role != core.ChatNotice || added[0].Content != notice || !added[0].AutoMemoryUpdated {
+				t.Fatalf("missing committed-change notice: %+v", added)
+			}
+			if tc.manual && added[1].Content != "Auto Memory could not finish: index write failed" {
+				t.Fatalf("missing manual error notice: %+v", added)
+			}
+			snapshot := m.services.Session.Snapshot()
+			if len(snapshot.Messages()) != len(messages) {
+				t.Fatal("partial failure leaked notices into model history")
+			}
+			count := 0
+			for _, row := range m.services.SessionStore.ChatRows(snapshot) {
+				if row.Role == core.ChatNotice && row.Content == notice {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("want one replayed partial-commit annotation, got %d", count)
+			}
+		})
+	}
+}
+
 func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 	m, driver, messages, path := memoryUpdateFixture(t)
 	result := core.Result{StopReason: core.StopEndTurn, Steps: 1, Messages: messages}

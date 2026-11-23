@@ -14,14 +14,17 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 func completedPrefix(text string) *ai.Request {
+	user := ai.UserMessage(text)
+	user.ID = core.NewMessageID()
 	return &ai.Request{
-		Messages: []ai.Message{ai.UserMessage(text), core.AssistantMessage("Understood.", "", nil)},
+		Messages: []ai.Message{user, core.AssistantMessage("Understood.", "", nil)},
 		Tools:    []ai.Schema{{Name: tool.ToolRead}, {Name: tool.ToolWrite}, {Name: tool.ToolEdit}, {Name: tool.ToolBash}},
 	}
 }
@@ -167,7 +170,7 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 		results := reply.ToolResults()
 		if len(results) != 1 || results[0].ToolCallID != want.call.ID || len(results[0].Content) != 2 ||
 			!strings.Contains(results[0].Content[0].Text, fmt.Sprintf("Read rounds remaining: %d.", maxReadRounds-i-1)) ||
-			!reflect.DeepEqual(results[0].Content[1], ai.TextBlock(want.file+"\n\n"+fmt.Sprintf("%6d\t%s\n", 1, want.body))) {
+			!reflect.DeepEqual(results[0].Content[1], ai.TextBlock(want.file+"\n\n"+want.body)) {
 			t.Fatalf("round %d sent wrong read blocks: %+v", i+2, reply.Content)
 		}
 	}
@@ -176,6 +179,23 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 	}
 	if _, err := change.Apply(t.Context()); err != nil || get(t, filepath.Join(dir, "build.md")) != "Use go build." {
 		t.Fatalf("change not applied: %v", err)
+	}
+}
+
+func TestUpdateReadReturnsCompleteBoundedEvidence(t *testing.T) {
+	dir := t.TempDir()
+	const entry = "- [Build](build.md)\n"
+	body := strings.Repeat("\n", 2001) + strings.Repeat("x", 2001) + "\r\nend"
+	put(t, filepath.Join(dir, system.AutoMemoryIndexName), entry+"Omitted index text.\n")
+	put(t, filepath.Join(dir, "build.md"), body)
+	driver := aitest.New(aitest.Asks(readNote(system.AutoMemoryIndexName), readBuild), aitest.Says(noMemoryChanges))
+	m := Updater{Provider: fakeProvider{driver}, IndexLimits: setting.MemoryPreviewLimits{Lines: 1}}
+	if change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("What should we remember?")); err != nil || change != nil {
+		t.Fatalf("change=%v err=%v", change, err)
+	}
+	results := driver.Last().Messages[4].ToolResults()
+	if len(results) != 2 || results[0].Content[1].Text != "MEMORY.md\n\n"+entry || results[1].Content[1].Text != "build.md\n\n"+body {
+		t.Fatal("Read must return only the supplied index and the complete bounded note")
 	}
 }
 
@@ -190,7 +210,7 @@ func TestProposeLifecycle(t *testing.T) {
 	for i, user := range []string{
 		"This project builds with make.",
 		"We now use go build, not make.",
-		"Please remove the stored build note; it no longer applies.",
+		"Forget build.md",
 	} {
 		before := get(t, index)
 		change, err := m.Propose(t.Context(), store, completedPrefix(user))

@@ -120,15 +120,19 @@ func (m *model) finishMemoryUpdate(msg memoryUpdateFinished) tea.Cmd {
 		return nil
 	}
 	m.cancelMemoryUpdate()
-	switch {
-	case msg.err != nil:
+	if msg.err != nil {
 		log.Logger().Warn("memory update failed", zap.Error(msg.err))
+		if msg.notice != "" {
+			// Failed attempts do not record a source-linked notice. Keep the
+			// committed changes visible as a display-only annotation instead.
+			m.conv.Append(core.ChatMessage{Role: core.ChatNotice, Content: msg.notice, AutoMemoryUpdated: true})
+		}
 		if msg.update.manual {
 			m.conv.AddNotice("Auto Memory could not finish: " + msg.err.Error())
 		}
-	case msg.notice != "":
+	} else if msg.notice != "" {
 		m.addRecordedNotice(core.ChatMessage{Content: msg.notice, AutoMemoryUpdated: true})
-	case msg.update.manual:
+	} else if msg.update.manual {
 		m.conv.AddNotice("No memory changes.")
 	}
 	return tea.Batch(m.CommitMessages()...)

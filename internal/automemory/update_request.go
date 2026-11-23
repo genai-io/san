@@ -38,12 +38,12 @@ Start review summaries with the decision, then give the rationale.
 Example index entry:
 - [Review summaries](review-summary.md) — (feedback) Format preference for review summaries`
 
-func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.Message {
+func updateMessage(dir string, index *Index, canAdd bool, tools updateTools, forget string) ai.Message {
 	preview, more := index.Preview()
 	var instructions strings.Builder
 	instructions.WriteString(updatePrompt)
 	if tools.read {
-		fmt.Fprintf(&instructions, "\n- Read likely matches first (two files per round, %d rounds, no rereads).", maxReadRounds)
+		fmt.Fprintf(&instructions, "\n- Read likely matches first (two files per round, %d rounds, no rereads). Use file_path only.", maxReadRounds)
 	}
 	if tools.write || tools.edit {
 		fmt.Fprintf(&instructions, "\n- Up to %d Write/Edit calls per reply, separate from reads.", maxChangeCalls)
@@ -51,13 +51,13 @@ func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.
 	if tools.edit {
 		instructions.WriteString("\n- Edit: keep note types. In MEMORY.md, preserve links and omit replace_all.")
 	}
-	if tools.read {
+	if tools.read && forget != "" {
 		for _, shell := range tools.shells {
-			command := "rm 'note.md'"
+			command := "rm '" + forget + "'"
 			if shell == tool.ToolPowerShell {
-				command = "Remove-Item -LiteralPath 'note.md'"
+				command = "Remove-Item -LiteralPath '" + forget + "'"
 			}
-			fmt.Fprintf(&instructions, "\n- Only when explicitly asked to forget, use %s with `%s` to remove one previously read note. Send that call alone.", shell, command)
+			fmt.Fprintf(&instructions, "\n- To forget %s, read it first, then send %s with `%s` by itself.", forget, shell, command)
 		}
 	}
 	if !canAdd {
@@ -201,7 +201,11 @@ func (m Updater) Propose(ctx context.Context, store system.MemoryStore, prefix *
 	request.Messages = make([]ai.Message, len(prefix.Messages), len(prefix.Messages)+1+2*(maxReadRounds+maxIndexLookups))
 	copy(request.Messages, prefix.Messages)
 	tools := availableUpdateTools(prefix)
-	request.Messages = append(request.Messages, updateMessage(path, memoryIndex, problem == "", tools))
+	forget := requestedForget(prefix.Messages)
+	if forget == "" {
+		tools.shells = nil
+	}
+	request.Messages = append(request.Messages, updateMessage(path, memoryIndex, problem == "", tools, forget))
 	files := &updateFiles{}
 	defer files.close()
 	searched := false
@@ -261,6 +265,8 @@ func (m Updater) Propose(ctx context.Context, store system.MemoryStore, prefix *
 			for i := range proposals {
 				change := &proposals[i]
 				switch {
+				case change.Action == actionForget && change.File != forget:
+					return nil, errInvalidProposal
 				case change.File == system.AutoMemoryIndexName:
 					if change.Action != actionUpdate || state.index.info == nil {
 						return nil, errInvalidProposal

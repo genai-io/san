@@ -210,8 +210,15 @@ func (f *updateFiles) read(ctx context.Context, note noteData) (string, error) {
 	if err := os.WriteFile(filepath.Join(f.dir, note.File), []byte(note.Text), 0o600); err != nil {
 		return "", err
 	}
-	result, err := f.run(ctx, tool.ToolRead, map[string]any{"file_path": note.File})
-	return result.FormatForLLM(), err
+	if strings.ContainsRune(note.Text, 0) {
+		return "", fmt.Errorf("memory read requires text: %w", errInvalidProposal)
+	}
+	if _, err := f.run(ctx, tool.ToolRead, map[string]any{"file_path": note.File}); err != nil {
+		return "", err
+	}
+	// The shared tool records the staged file for Edit. The snapshot is already
+	// bounded; return its exact bytes instead of a line-limited terminal view.
+	return note.Text, nil
 }
 
 func (f *updateFiles) change(ctx context.Context, p *proposal) error {
