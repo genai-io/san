@@ -67,7 +67,7 @@ func TestProposeRejectsSymlinkNoteAndToolProposal(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n")
-	for _, turn := range []aitest.Turn{aitest.Says(forgetProposal), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
+	for _, turn := range []aitest.Turn{aitest.Says(readBuild), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
 		driver := aitest.New(turn)
 		m := Updater{Provider: fakeProvider{driver}}
 		prefix := completedPrefix("Please forget the stored build note.")

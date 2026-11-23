@@ -14,9 +14,9 @@ type prefixComparison struct {
 	Count  int    `json:"count,omitempty"`
 }
 
-// Compare admitted requests, not the current context or the storage representation
-// (a standalone can be either a prefixed request or a legacy unprefixed one).
-func compareMaintainPrefix(events []session.Event, id string, seq uint64, maintain *ai.Request, load func(uint64) (*ai.Request, error)) prefixComparison {
+// Compare an admitted Update request with the admitted main request and its
+// recorded native assistant output, excluding the Update-only suffix.
+func compareUpdatePrefix(events []session.Event, id string, seq uint64, update *ai.Request, load func(uint64) (*ai.Request, error)) prefixComparison {
 	unavailable := prefixComparison{Status: "unavailable"}
 	if seq == 0 || seq > uint64(len(events)) {
 		return unavailable
@@ -53,10 +53,8 @@ func compareMaintainPrefix(events []session.Event, id string, seq uint64, mainta
 	if len(completed) > 0 {
 		status = "route-mismatch"
 	}
-	// Maintain appends one review message. Compare everything before it to
-	// the main request plus its recorded assistant output. A later main start
-	// (or finish after Maintain admission) cannot hide the completed candidate.
-	n := len(maintain.Messages) - 1
+	// A later main start (or finish after Update admission) cannot hide the
+	// completed candidate.
 	failed := false
 	for i := len(completed) - 1; i >= 0; i-- {
 		source := completed[i]
@@ -66,7 +64,8 @@ func compareMaintainPrefix(events []session.Event, id string, seq uint64, mainta
 		}
 		status = "mismatch"
 		output := outputs[source]
-		if n <= 0 || maintain.Messages[n].Role != ai.RoleUser || len(output) > n || !sameMessages(maintain.Messages[n-len(output):n], output) {
+		messages := update.Messages
+		if len(messages) <= len(output) || messages[len(messages)-1].Role != ai.RoleUser {
 			continue
 		}
 		main, err := load(source)
@@ -74,8 +73,13 @@ func compareMaintainPrefix(events []session.Event, id string, seq uint64, mainta
 			failed = true
 			continue
 		}
-		if maintain.System == main.System && ((len(maintain.Tools) == 0 && len(main.Tools) == 0) || sameNativeJSON(maintain.Tools, main.Tools)) &&
-			sameMessages(maintain.Messages[:n-len(output)], main.Messages) {
+		mainLen := len(main.Messages)
+		n := mainLen + len(output)
+		if n == 0 || n >= len(messages) || !validUpdateSuffix(messages[n:]) {
+			continue
+		}
+		if update.System == main.System && ((len(update.Tools) == 0 && len(main.Tools) == 0) || sameNativeJSON(update.Tools, main.Tools)) &&
+			sameMessages(messages[:mainLen], main.Messages) && sameMessages(messages[mainLen:n], output) {
 			return prefixComparison{Status: "match", Source: source, Count: n}
 		}
 	}
@@ -83,6 +87,24 @@ func compareMaintainPrefix(events []session.Event, id string, seq uint64, mainta
 		return unavailable
 	}
 	return prefixComparison{Status: status}
+}
+
+// The task is followed by zero or more assistant JSON reads and user replies.
+// Only validate roles here; the Inspector does not interpret Update payloads.
+func validUpdateSuffix(messages []ai.Message) bool {
+	if len(messages)%2 == 0 {
+		return false
+	}
+	for i, message := range messages {
+		want := ai.RoleUser
+		if i%2 != 0 {
+			want = ai.RoleAssistant
+		}
+		if message.Role != want {
+			return false
+		}
+	}
+	return true
 }
 
 func sameMessages(a, b []ai.Message) bool {
