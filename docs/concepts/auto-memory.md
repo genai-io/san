@@ -70,7 +70,9 @@ Messages:
       Already in main context:
       None.
   - role: user
-    content: What label do we use for archived demo recordings in weekly team summaries?
+    content: |
+      User input:
+      What label do we use for archived demo recordings in weekly team summaries?
 ```
 
 The Recall model returns `{"selected_memories":["archived-demo-recordings-label.md"]}`. San attaches the selected note preview to the main request; the main model can then answer `indigo swan 2826`.

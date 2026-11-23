@@ -59,7 +59,7 @@ func TestRecallKeepsLargeIndexStable(t *testing.T) {
 	}
 	calls := driver.Sent()
 	if len(calls) != 2 || len(calls[0].Messages) != 3 || len(calls[1].Messages) != 3 ||
-		!reflect.DeepEqual(calls[0].Messages[:2], calls[1].Messages[:2]) || calls[1].Messages[2].Text() != followUp {
+		!reflect.DeepEqual(calls[0].Messages[:2], calls[1].Messages[:2]) || calls[1].Messages[2].Text() != "User input:\n"+followUp {
 		t.Fatal("changing only the question should keep both prior messages unchanged")
 	}
 	index := calls[0].Messages[0].Text()

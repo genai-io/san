@@ -83,7 +83,7 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 		Messages: []core.Message{
 			previewMessage,
 			core.UserMessage("Already in main context:\n"+coveredFiles, nil),
-			core.UserMessage(query, nil),
+			core.UserMessage("User input:\n"+query, nil),
 		},
 		ThinkingEffort: r.Effort,
 	}
