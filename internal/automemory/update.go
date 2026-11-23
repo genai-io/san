@@ -14,16 +14,19 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/markdown"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type memoryAction string
 
 const (
-	actionNone     memoryAction = "none"
-	actionRead     memoryAction = "read"
-	actionRemember memoryAction = "remember"
-	actionUpdate   memoryAction = "update"
-	actionForget   memoryAction = "forget"
+	actionNone      memoryAction = "none"
+	actionRead      memoryAction = "read"
+	actionSearch    memoryAction = "search_index"
+	actionIndexRead memoryAction = "read_index"
+	actionRemember  memoryAction = "remember"
+	actionUpdate    memoryAction = "update"
+	actionForget    memoryAction = "forget"
 )
 
 // noteTypes defines the classification contract for both validation and Propose.
@@ -37,14 +40,17 @@ var noteTypes = map[string]string{
 
 // Updater proposes a memory change through bounded, tool-free model calls.
 type Updater struct {
-	Provider  llm.Provider
-	Model     string
-	Recording *session.Session
+	Provider    llm.Provider
+	Model       string
+	Recording   *session.Session
+	IndexLimits setting.MemoryPreviewLimits
 }
 
 type proposal struct {
 	Action      memoryAction `json:"action"`
 	Files       []string     `json:"files"`
+	Query       string       `json:"query"`
+	Line        int          `json:"line"`
 	File        string       `json:"file"`
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
@@ -100,6 +106,15 @@ func validateProposal(p proposal) error {
 	invalid := errInvalidProposal
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
+	if p.Action == actionSearch || p.Action == actionIndexRead {
+		if p.File != "" || p.Files != nil || metadata || patch {
+			return invalid
+		}
+		return nil
+	}
+	if p.Query != "" || p.Line != 0 {
+		return invalid
+	}
 	if p.Action == actionRead {
 		if p.File != "" || metadata || patch {
 			return invalid

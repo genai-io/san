@@ -1,18 +1,10 @@
 package automemory
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
-	"maps"
-	"os"
-	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
-
-	"github.com/genai-io/san/internal/core/system"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -28,26 +20,11 @@ var (
 	noteLink  = regexp.MustCompile(`\]\((?:\./)?([A-Za-z0-9_-]+\.[mM][dD])\)`)
 )
 
-const maxUpdateIndex = 32 * 1024
-
-// updateIndex returns the index text shown to Update and, when new notes must
-// be disabled, the reason.
-func (s storeSnapshot) updateIndex() (text, problem string) {
-	text = s.index.text[:s.updateIndexEnd()]
-	if len(text) != len(s.index.text) {
-		return text, fmt.Sprintf("MEMORY.md is over %d KiB", maxUpdateIndex/1024)
-	}
-	_, problem = s.updateNoteIDs(len(text))
-	return text, problem
-}
+func (s storeSnapshot) memoryIndex() Index { return Index{text: s.index.text, limits: s.indexLimits} }
 
 func (s storeSnapshot) updateIndexEnd() int {
-	if len(s.index.text) <= maxUpdateIndex {
-		return len(s.index.text)
-	}
-	// The stored index is UTF-8; cutting after a newline preserves both
-	// complete lines and complete characters.
-	return strings.LastIndexByte(s.index.text[:maxUpdateIndex], '\n') + 1
+	preview, _ := s.memoryIndex().Preview()
+	return len(preview)
 }
 
 // Scan the full index for ambiguity: even an omitted line can invalidate an
@@ -192,56 +169,4 @@ func editIndex(text string, p proposal) (string, error) {
 		return "", errors.New("memory index would exceed size limit")
 	}
 	return out.String(), nil
-}
-
-// Notes lists the notes MEMORY.md links outside literal blocks, in filename
-// order, for Recall. An unlinked file is not recalled, because Update can
-// neither read nor forget it.
-func Notes(ctx context.Context, store system.MemoryStore) []system.Memory {
-	if store.Off() || ctx.Err() != nil {
-		return nil
-	}
-	root, err := os.OpenRoot(string(store))
-	if err != nil {
-		return nil
-	}
-	defer func() { _ = root.Close() }()
-	index, err := readRevision(root, system.AutoMemoryIndexName, maxIndex)
-	if err != nil {
-		return nil
-	}
-	linked := map[string]bool{}
-	literal := literalIndexLines(index.text)
-	offset := 0
-	for line := range strings.SplitAfterSeq(index.text, "\n") {
-		isLiteral := literal[offset]
-		offset += len(line)
-		if isLiteral {
-			continue
-		}
-		for _, link := range noteLink.FindAllStringSubmatch(line, -1) {
-			if validName(link[1]) {
-				linked[link[1]] = true
-			}
-		}
-	}
-	var out []system.Memory
-	for _, name := range slices.Sorted(maps.Keys(linked)) {
-		if ctx.Err() != nil {
-			return out
-		}
-		if info, err := root.Lstat(name); err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		f, err := root.Open(name)
-		if err != nil {
-			continue
-		}
-		data, err := io.ReadAll(io.LimitReader(f, 2048))
-		_ = f.Close()
-		if err == nil {
-			out = append(out, system.Memory{Path: filepath.Join(string(store), name), Description: system.FrontmatterField(string(data), "description")})
-		}
-	}
-	return out
 }

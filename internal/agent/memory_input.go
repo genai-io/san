@@ -22,8 +22,9 @@ import (
 // AutoMemoryConfig groups the store and recall policy for the main agent.
 // An empty store disables Auto Memory; a zero recall mode is Fast.
 type AutoMemoryConfig struct {
-	Store  system.MemoryStore
-	Recall setting.MemoryRecallConfig
+	Store       system.MemoryStore
+	Recall      setting.MemoryRecallConfig
+	IndexLimits setting.MemoryPreviewLimits
 }
 
 // PreparedMemory holds recall open until the host accepts the enriched input.
@@ -57,7 +58,11 @@ func (r Recaller) PrepareWithSubmission(ctx context.Context, store system.Memory
 		lookup, cancel = context.WithTimeout(ctx, r.Timeout)
 		defer cancel()
 	}
-	scope := r.Recording.Completion(session.PurposeRecall)
+	existing := recallBlocks(history)
+	addRecallBlocks(existing, submission)
+	notes, scope, err := r.selectNotes(lookup, store, query, func(note system.Memory) bool {
+		return existing.covers(store, note)
+	})
 	defer func() {
 		if prepared.Completion == nil {
 			if closeErr := scope.Close(); closeErr != nil {
@@ -68,11 +73,6 @@ func (r Recaller) PrepareWithSubmission(ctx context.Context, store system.Memory
 			}
 		}
 	}()
-	existing := recallBlocks(history)
-	addRecallBlocks(existing, submission)
-	notes, err := r.selectNotes(lookup, store, query, scope, func(note system.Memory) bool {
-		return existing.covers(store, note)
-	})
 	if err != nil {
 		if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(err, context.DeadlineExceeded) {
 			return prepared, nil

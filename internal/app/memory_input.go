@@ -35,7 +35,10 @@ type memoryInputMsg struct {
 }
 
 func (m *model) currentAutoMemory() agent.AutoMemoryConfig {
-	return agent.AutoMemoryConfig{Store: m.autoMemoryStore(), Recall: m.memoryRecallConfig()}
+	if svc := m.services.Setting; svc != nil {
+		return agent.AutoMemoryConfig{Store: m.autoMemoryStore(), Recall: svc.MemoryRecall(), IndexLimits: svc.MemoryPreview()}
+	}
+	return agent.AutoMemoryConfig{}
 }
 
 func (m *model) memoryRecallConfig() setting.MemoryRecallConfig {
@@ -68,7 +71,7 @@ func (m *model) startMemoryInput(parent context.Context, head pendingMessage, ac
 	m.memoryInput = r
 	provider, info := m.resolveJudge("")
 	effort := agent.LowestEffort(provider, m.services.LLM.Store(), info)
-	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner, Timeout: m.memoryRecallConfig().Timeout}
+	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner, Timeout: m.memoryRecallConfig().Timeout, IndexLimits: m.currentAutoMemory().IndexLimits}
 	history := m.services.Agent.Messages()
 	prepare := func() tea.Msg {
 		result, err := selector.PrepareForAdmission(ctx, r.store, head.Message, history)

@@ -63,7 +63,7 @@ func SaveMemoryRecallMode(cwd string, scope Scope, mode MemoryRecallMode) error 
 	if mode != "" && mode != MemoryRecallFast && mode != MemoryRecallWait && mode != MemoryRecallOff {
 		return fmt.Errorf("invalid recall mode: %q", mode)
 	}
-	return updateMemoryRecall(cwd, scope, func(d *Data) { d.MemoryRecallLookup = mode })
+	return updateMemorySettings(cwd, scope, func(d *Data) { d.MemoryRecallLookup = mode })
 }
 
 // SaveMemoryRecallTimeout sets a positive duration (e.g. "5s") at scope;
@@ -74,10 +74,10 @@ func SaveMemoryRecallTimeout(cwd string, scope Scope, timeout string) error {
 			return fmt.Errorf("enter a positive duration (e.g. 5s)")
 		}
 	}
-	return updateMemoryRecall(cwd, scope, func(d *Data) { d.MemoryRecallTimeout = timeout })
+	return updateMemorySettings(cwd, scope, func(d *Data) { d.MemoryRecallTimeout = timeout })
 }
 
-func updateMemoryRecall(cwd string, scope Scope, mutate func(*Data)) error {
+func updateMemorySettings(cwd string, scope Scope, mutate func(*Data)) error {
 	if scope != ScopeUser && scope != ScopeProject {
 		return fmt.Errorf("invalid settings scope: %q", scope)
 	}

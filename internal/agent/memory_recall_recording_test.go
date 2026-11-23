@@ -122,7 +122,7 @@ func TestRecallRecording(t *testing.T) {
 					t.Fatalf("expected one text block per user message: %+v", message)
 				}
 			}
-			if request.Messages[0].Text() != "Memory files:\n- freeze.md: release freeze\n" ||
+			if request.Messages[0].Text() != "- [freeze.md](freeze.md)\n" ||
 				request.Messages[1].Text() != "Already in main context:\nNone." || request.Messages[2].Text() != "can I merge?" {
 				t.Fatalf("selector index, active files, and question were not separated: %+v", request.Messages)
 			}

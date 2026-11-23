@@ -84,6 +84,8 @@ type Data struct {
 	// Recall settings are independent of the AutoMemory enable switch.
 	MemoryRecallLookup  MemoryRecallMode `json:"memoryRecallMode,omitempty"`
 	MemoryRecallTimeout string           `json:"memoryRecallTimeout,omitempty"`
+	MemoryPreviewLines  int              `json:"memoryPreviewLines,omitempty"`
+	MemoryPreviewKB     int              `json:"memoryPreviewKB,omitempty"`
 	// MemoryUpdate opts in to automatic memory updates. Nil inherits; absent defaults off.
 	MemoryUpdate *bool `json:"memoryUpdate,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-

@@ -262,7 +262,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
 		ResultFilter: agent.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
-		AutoMemory:   agent.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall()},
+		AutoMemory:   agent.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		FileCache:    filecache.New(),
 	}
 	if history != nil {

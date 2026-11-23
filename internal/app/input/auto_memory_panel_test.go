@@ -61,6 +61,39 @@ func TestAutoMemoryPanelRecallKeys(t *testing.T) {
 	}
 }
 
+func TestAutoMemoryPanelPreviewSettings(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SAN_TRUST_WORKSPACE", "1")
+	svc := setting.New(nil)
+	p := &autoMemoryPanel{workspace: func() (string, *setting.Settings) { return cwd, svc }}
+	p.Enter()
+	press := func(code rune) { p.HandleKey(tea.KeyPressMsg{Code: code}) }
+	press(tea.KeyRight)
+	if out := p.Render(75, 20); !strings.Contains(out, "Preview lines") || !strings.Contains(out, "200") || !strings.Contains(out, "25 KB") {
+		t.Fatalf("default preview settings are not visible: %s", out)
+	}
+	press(tea.KeyDown) // Wait timeout
+	press(tea.KeyDown) // Preview lines
+	press(tea.KeyEnter)
+	p.input.SetValue("80")
+	press(tea.KeyEnter)
+	press(tea.KeyDown) // Preview size
+	press(tea.KeyEnter)
+	p.input.SetValue("12")
+	press(tea.KeyEnter)
+	if got, want := svc.MemoryPreview(), (setting.MemoryPreviewLimits{Lines: 80, KB: 12}); got != want || p.err != nil {
+		t.Fatalf("preview settings = %+v, want %+v; error = %v", got, want, p.err)
+	}
+	press(tea.KeyEnter)
+	p.input.SetValue("")
+	press(tea.KeyEnter)
+	if got := svc.MemoryPreview(); got.Lines != 80 || got.KB != 25 || p.err != nil {
+		t.Fatalf("clearing one override changed another: %+v, %v", got, p.err)
+	}
+}
+
 func TestAutoMemoryPanelUpdateKeys(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)

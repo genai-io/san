@@ -19,6 +19,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 )
 
 const (
@@ -123,11 +124,13 @@ type noteRevision struct {
 }
 
 type storeSnapshot struct {
-	dir        fs.FileInfo
-	index      revision
-	notes      []noteRevision
-	noteBytes  int
-	readRounds int
+	dir         fs.FileInfo
+	index       revision
+	indexLimits setting.MemoryPreviewLimits
+	notes       []noteRevision
+	noteBytes   int
+	readRounds  int
+	searched    map[string]bool
 }
 
 const (
@@ -176,7 +179,8 @@ func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []stri
 	}
 	visible, _ := s.updateNoteIDs(s.updateIndexEnd())
 	for i, file := range files {
-		if !visible[file] || s.note(file).info != nil || slices.Contains(files[:i], file) {
+		shown, valid := visible[file]
+		if !valid || (!shown && !s.searched[file]) || s.note(file).info != nil || slices.Contains(files[:i], file) {
 			return nil, fmt.Errorf("memory read must request distinct, unread index IDs: %w", errInvalidProposal)
 		}
 	}

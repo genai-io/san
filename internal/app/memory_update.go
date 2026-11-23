@@ -78,7 +78,7 @@ func (m *model) startMemoryUpdate(manual bool) tea.Cmd {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	r := &memoryUpdate{owner: owner, store: store, manual: manual, ctx: ctx, cancel: cancel}
 	m.memoryUpdate = r
-	updater := automemory.Updater{Provider: provider, Model: model, Recording: owner}
+	updater := automemory.Updater{Provider: provider, Model: model, Recording: owner, IndexLimits: m.services.Setting.MemoryPreview()}
 	return func() tea.Msg {
 		req, err := prefix.Request(ctx, owner)
 		if err != nil {

@@ -2,7 +2,6 @@ package automemory
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,16 +14,17 @@ import (
 func TestUpdateIndexRawMarkdown(t *testing.T) {
 	index := "# Prose\r\n\r\nMention an unrelated README.md here.\r\n\r\n- [Topic](./topic.md) — Details\r\n\r\n```md\r\n- [Fake](topic.md)\r\n- [Literal](literal.md)\r\n```\r\n<!--\r\n- [Hidden](comment.md)\r\n-->"
 	s := storeSnapshot{index: revision{text: index}}
-	if got, problem := s.updateIndex(); problem != "" || got != index {
-		t.Fatalf("update index = %q, problem = %q", got, problem)
+	preview, _ := s.memoryIndex().Preview()
+	if _, problem := s.updateNoteIDs(len(preview)); problem != "" || preview != index {
+		t.Fatalf("update index = %q, problem = %q", preview, problem)
 	}
 	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
 	if !reflect.DeepEqual(ids, map[string]bool{"topic.md": true}) {
 		t.Fatalf("note IDs = %v", ids)
 	}
 	s.index.text += "\nNonstandard [alias](TOPIC.md).\n"
-	if got, problem := s.updateIndex(); problem == "" || got != s.index.text {
-		t.Fatalf("ambiguous update index = %q, problem = %q", got, problem)
+	if _, problem := s.updateNoteIDs(s.updateIndexEnd()); problem == "" {
+		t.Fatal("ambiguous index was not detected")
 	}
 	ids, _ = s.updateNoteIDs(s.updateIndexEnd())
 	if ids["topic.md"] {
@@ -32,33 +32,15 @@ func TestUpdateIndexRawMarkdown(t *testing.T) {
 	}
 }
 
-func TestUpdateIndexByteLimit(t *testing.T) {
-	var text strings.Builder
-	for i := range 40 {
-		fmt.Fprintf(&text, "- [%s](topic-%d.md) — %s\n", strings.Repeat("T", 90), i, strings.Repeat("&", 70))
+func TestUpdateIndexAmbiguityBeyondPreview(t *testing.T) {
+	prefix := "- [Topic](topic.md)\n" + strings.Repeat("# Heading\n", 199)
+	s := storeSnapshot{index: revision{text: prefix + "- [Hidden](hidden.md)\n- [Alias](TOPIC.md)\n"}}
+	if got, more := s.memoryIndex().Preview(); !more || got != prefix {
+		t.Fatal("preview did not stop after 200 complete lines")
 	}
-	text.WriteString(strings.Repeat("x", maxUpdateIndex-text.Len()-1))
-	text.WriteByte('\n')
-	prefix := text.String()
-	s := storeSnapshot{index: revision{text: prefix}}
-	if got, problem := s.updateIndex(); problem != "" || got != prefix {
-		t.Fatalf("at limit: length = %d, problem = %q", len(got), problem)
-	}
-	s.index.text += "- [Hidden](hidden.md)\n- [Alias](TOPIC-0.md)\n"
-	if got, problem := s.updateIndex(); problem == "" || got != prefix {
-		t.Fatalf("over limit: length = %d, problem = %q", len(got), problem)
-	}
-	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
-	if ids["hidden.md"] || ids["topic-0.md"] || !ids["topic-39.md"] {
-		t.Fatalf("note IDs = %v", ids)
-	}
-	s.index.text = prefix[:len(prefix)-2] + "\n界"
-	if got, problem := s.updateIndex(); problem == "" || got != prefix[:len(prefix)-2]+"\n" {
-		t.Fatalf("limit inside multibyte character: length = %d, problem = %q", len(got), problem)
-	}
-	s.index.text = strings.Repeat("界", maxUpdateIndex)
-	if got, problem := s.updateIndex(); problem == "" || got != "" {
-		t.Fatalf("no complete line: length = %d, problem = %q", len(got), problem)
+	ids, problem := s.updateNoteIDs(s.updateIndexEnd())
+	if ids["hidden.md"] || ids["topic.md"] || problem == "" {
+		t.Fatalf("note IDs = %v, problem = %q", ids, problem)
 	}
 }
 
@@ -75,7 +57,7 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 		}
 	}
 	index := "- [One](one.md)\n- [Two](two.md)\n- [Three](three.md)\n- [Four](four.md)\n- [Five](five.md)\n- [Device](CON.md)\n```\n- [Literal](literal.md)\n```\n"
-	index += "\n" + strings.Repeat("x", maxUpdateIndex) + "\n- [Omitted](omitted.md)\n"
+	index += "\n" + strings.Repeat("x", 25_000) + "\n- [Omitted](omitted.md)\n"
 	write(system.AutoMemoryIndexName, index)
 	for _, name := range []string{"one.md", "two.md", "three.md", "four.md", "five.md", "hidden.md", "omitted.md", "literal.md"} {
 		write(name, name)
