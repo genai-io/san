@@ -596,7 +596,7 @@ func HandleMemoryCommand(selector *MemorySelector, settings *setting.Settings, c
 		}
 		return "", editPath, nil
 	default:
-		return "Usage: /memory [browse|update|on|off|list|show] | edit [global|project|local]", "", nil
+		return "Usage: /memory [browse|on|off|list|show] | edit [global|project|local]", "", nil
 	}
 }
 

@@ -44,6 +44,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.AgentPreviewLines = coalescePtr(overlay.AgentPreviewLines, base.AgentPreviewLines)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.AutoSkill = mergeAutoSkill(base.AutoSkill, overlay.AutoSkill)
+	result.Recap = mergeRecap(base.Recap, overlay.Recap)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)
 	result.LastOperationMode = coalesce(overlay.LastOperationMode, base.LastOperationMode)
 

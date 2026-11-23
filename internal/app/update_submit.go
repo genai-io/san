@@ -157,7 +157,7 @@ func (m *model) dispatchSubmissionScoped(raw string, completion *session.Complet
 	msg = m.conv.Append(msg)
 	m.userInput.Reset()
 	message, _ := msg.ToMessage()
-	p := pendingMessage{Message: message, FromUser: true, Completion: completion}
+	p := pendingMessage{Message: message, FromUser: true, Synthetic: autopilotNote != "", Completion: completion}
 	completion = nil
 	return m.submit(p)
 }

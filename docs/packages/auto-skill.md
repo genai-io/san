@@ -9,7 +9,7 @@ Auto Skill turns a useful workflow from a completed turn into an agent-owned ski
 
 ## Settings
 
-Open `/reflection` and use Tab to switch to **Auto Skill**. Auto Skill is independent of Auto Memory. It requires at least one allowed skill action and an enabled `ReviewSkill` tool. Use `ReviewSkill` in tool rules and hook matchers. The panel edits the strategy and permissions (create, update, delete) and lets you browse learned skills. Choose a save scope and select **Save** to apply changes. Settings are saved under `autoSkill`; existing `selfLearn` settings are read for compatibility.
+Open `/reflect` and use Tab to switch to **Auto Skill**. Auto Skill is independent of Auto Memory. It requires at least one allowed skill action and an enabled `ReviewSkill` tool. Use `ReviewSkill` in tool rules and hook matchers. The panel edits the strategy and permissions (create, update, delete) and lets you browse learned skills. Choose a save scope and select **Save** to apply changes. Settings are saved under `autoSkill`; existing `selfLearn` settings are read for compatibility.
 
 ## Review
 

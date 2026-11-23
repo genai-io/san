@@ -319,8 +319,6 @@ func (p *AutopilotSelector) rows() []apRow {
 		{kind: apRowSection, label: "Always"},
 		{kind: apRowToggle, label: "Suggest", desc: "your next input · Tab to accept", on: s.Steers.SuggestOn(),
 			act: func(p *AutopilotSelector) { flip(&p.snap.Steers.Suggest, p.snap.Steers.SuggestOn()) }},
-		{kind: apRowToggle, label: "Recap", desc: recapDesc(s), on: s.RecapAfter() > 0,
-			act: toggleRecap, adjust: stepRecap},
 		{kind: apRowSpacer},
 		drivingHeader,
 		{kind: apRowEntry, label: "Mission", desc: "the goal it works toward", value: p.missionValue(), idle: !p.driving,
@@ -396,41 +394,6 @@ func stepLadder(ladder []int, cur, step int, rank func(int) int) (int, bool) {
 		}
 	}
 	return 0, false
-}
-
-// recapLadder is what ←/→ steps the Recap threshold through, in minutes; -1 is off.
-var recapLadder = []int{-1, 3, 5, 10, 30}
-
-// recapMinutes is the Recap threshold as a recapLadder value.
-func recapMinutes(s setting.AutoPilotSettings) int {
-	if after := s.RecapAfter(); after > 0 {
-		return int(after.Minutes())
-	}
-	return -1
-}
-
-// stepRecap moves the Recap threshold one rung along recapLadder. A hand-set
-// value off the ladder steps to its nearest neighbor.
-func stepRecap(p *AutopilotSelector, step int) {
-	if v, ok := stepLadder(recapLadder, recapMinutes(p.snap), step, func(v int) int { return v }); ok {
-		p.snap.RecapAfterMinutes = v
-	}
-}
-
-// toggleRecap turns recaps off, or back on at the default threshold.
-func toggleRecap(p *AutopilotSelector) {
-	if p.snap.RecapAfter() > 0 {
-		p.snap.RecapAfterMinutes = -1
-	} else {
-		p.snap.RecapAfterMinutes = 0
-	}
-}
-
-func recapDesc(s setting.AutoPilotSettings) string {
-	if m := recapMinutes(s); m > 0 {
-		return "when you're back · after " + strconv.Itoa(m) + "m away"
-	}
-	return "when you're back · only on /recap"
 }
 
 func continueLimit(s setting.AutoPilotSettings) string {

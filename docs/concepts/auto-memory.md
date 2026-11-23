@@ -21,9 +21,9 @@ Use absolute dates for time-sensitive facts so a note still makes sense next ses
 
 ## Index preview
 
-Recall and Update start with up to **200 complete lines or 25 KB** (25,000 bytes) of `MEMORY.md`, whichever comes first. If truncated, a separate `…` hint shows where to continue reading (`read_index`) or how to search (`search_index`). Each Aside gets two lookups, up to 8 KiB of index text per result.
+By default, Recall and Update start with up to **200 complete lines or 25 KB** (25,000 bytes) of `MEMORY.md`, whichever comes first. If truncated, a separate `…` hint shows where to continue reading (`read_index`) or how to search (`search_index`). Each Aside gets two lookups, up to 8 KiB of index text per result.
 
-Set **Preview lines** and **Preview size** under `/reflection` → **Auto Memory** → **Options** (`memoryPreviewLines` and `memoryPreviewKB`). Clear a value to inherit. These settings only affect the first Aside request: they do not change the file or the separate 128 KiB index limit. The index and lookups stay out of the main conversation.
+Set **Preview lines** (1–2,000) and **Preview size** (1–128 KB) under `/reflect` → **Auto Memory** → **Options** (`memoryPreviewLines` and `memoryPreviewKB`). Clear a value to inherit. These settings only affect the first Aside request: they do not change the file or the separate 128 KiB index limit. The index and lookups stay out of the main conversation.
 
 ## Recall
 
@@ -33,25 +33,25 @@ Recall uses the index preview and current question to find linked notes that are
 - **Wait**: Give recall up to the configured timeout (default `5s`) before the first main request. If recall times out or the selector fails, proceed without it.
 - **Off**: Skip recall without disabling Auto Memory or automatic Update.
 
-Once compaction removes a note from active context, it can be selected again. In `/reflection` → **Auto Memory**, press Enter on **Recall** to cycle Fast → Wait → Off. In Wait mode, the row shows the effective timeout; press Right to focus **Wait timeout** in Options, then Enter to edit it. Settings keys are `memoryRecallMode` (`fast`, `wait`, or `off`) and `memoryRecallTimeout` (e.g. `"5s"`).
+Once compaction removes a note from active context, it can be selected again. In `/reflect` → **Auto Memory**, press Enter on **Recall** to cycle Fast → Wait → Off. In Wait mode, the row shows the effective timeout; press Right to focus **Wait timeout** in Options, then Enter to edit it. Settings keys are `memoryRecallMode` (`fast`, `wait`, or `off`) and `memoryRecallTimeout` (e.g. `"5s"`).
 
 ## Update
 
-In the TUI, `/memory update` runs a one-off review of the latest eligible completed main turn, even when automatic Update is off. Auto Memory must be enabled.
+In the TUI, `/reflect memory` runs a one-off review of the latest completed main turn. Wait for the current reply to finish; the completed turn must match the current provider and model. The Auto Memory store must be enabled, but automatic Update can be off.
 
 The review reuses the completed main request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final assistant message. It extends a separate request in the same session:
 
-1. **Check the index.** If the preview is truncated, search omitted entries before adding a note. Malformed links or duplicate note filenames disable additions; if nothing changes, manual runs report why and automatic runs log it. New labels cannot mention another note filename.
+1. **Check the index.** If the preview is truncated, search omitted entries before adding a note. Malformed links or duplicate note filenames disable additions; if nothing changes, `/reflect memory` reports why and automatic runs log it. New labels cannot mention another note filename.
 2. **Read on demand.** Update can request two indexed notes per round, for up to two rounds (8 KiB per note, 16 KiB total).
 3. **Propose one change or none.** Update can add, revise, or forget a note. It must read a note before revising or forgetting it. When the user clearly asks to forget a note, Update uses the existing `Bash` (`rm`, also under zsh) or `PowerShell` (`Remove-Item -LiteralPath`) call if available. San validates the single filename and removes both the note and its link without running a shell. If neither tool is available, Update uses the JSON `forget` action. The tool catalog stays unchanged.
 
-To review automatically after an eligible completed turn, enable **Update** under `/reflection` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
+To review automatically after an eligible completed turn, enable **Update** under `/reflect` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 
 Update runs in the background without blocking the main agent. It doesn't edit project instruction files, and its working messages and results aren't sent to the main model. San shows a display-only notice after a successful write. A manual review that finds nothing to change reports `No memory changes.` A no-op automatic review is quiet. San preserves the index format, ignores example links in literal blocks, and refuses to append inside an unclosed block. Forget removes a note from its store; it does not erase old replies or Inspector records. Recall itself never writes.
 
 ## Settings and inspection
 
-Open `/reflection` → **Auto Memory** for **Recall** and **Update**. Right opens **Options**, where the master switch pauses both without resetting their settings. `/memory` (or `/memory browse`) opens the instruction files and repository memory. `/memory on` and `/memory off` also control the master switch, and `SAN_DISABLE_AUTO_MEMORY=1` overrides it. Turning it off starts no new recalls or updates. User and project instruction files still apply.
+Open `/reflect` → **Auto Memory** for **Recall** and **Update**. Right opens **Options**, where the master switch pauses both without resetting their settings. `/memory` (or `/memory browse`) opens the instruction files and repository memory. `/memory on` and `/memory off` also control the master switch, and `SAN_DISABLE_AUTO_MEMORY=1` overrides it. Turning it off starts no new recalls or updates. User and project instruction files still apply.
 
 Set `autoMemoryDirectory` to an absolute or `~/` path in the main checkout's untracked `.san/settings.local.json` to use a different directory for the whole repository. Settings checked into Git, settings in linked worktrees, and the former user-store setting cannot redirect it.
 

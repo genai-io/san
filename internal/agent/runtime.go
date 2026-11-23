@@ -28,6 +28,7 @@ type run struct {
 	stopped   bool
 	onEvent   func(core.Event)
 	recording *session.Session
+	recorder  *session.Recorder
 	recall    *fastRecall
 }
 
@@ -66,7 +67,7 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 			cancel()
 		}
 	}()
-	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recall: params.newFastRecall(ctx)}
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recorder: params.recorder, recall: params.newFastRecall(ctx)}
 	params.OnEvent = func(ev core.Event) {
 		switch e := ev.(type) {
 		case sdkagent.MessageAdded:
@@ -284,6 +285,9 @@ func (s *Runtime) SendInput(input PendingInput) error {
 			query = input.Message.Text()
 		}
 		run.recall.queueQuery(msg.ID, query)
+	}
+	if run.recorder != nil && input.FromUser && !input.Synthetic && input.Source == nil {
+		run.recorder.NoteUserInput(msg.ID)
 	}
 	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)

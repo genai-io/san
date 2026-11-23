@@ -19,7 +19,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/genai-io/san/internal/confdir"
 )
@@ -127,6 +126,8 @@ type Data struct {
 	Persona string `json:"persona,omitempty"`
 	// AutoSkill configures model-triggered skill evolution.
 	AutoSkill AutoSkillSettings `json:"autoSkill,omitzero" yaml:"autoSkill,omitempty"`
+	// Recap configures when automatic session summaries are shown.
+	Recap RecapSettings `json:"recap,omitzero"`
 	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
 	// toward (JSON key "autoPilot").
@@ -171,9 +172,8 @@ type AutoPilotSettings struct {
 	// a finished turn before yielding to the human. 0 = the default cap,
 	// negative = no cap (see AutoPilotUnlimitedContinuations).
 	MaxContinuations int `json:"maxContinuations,omitempty"`
-	// RecapAfterMinutes is how long the terminal must be out of focus for
-	// coming back to show a recap, in or out of AutoPilot mode: 0 =
-	// RecapDefaultAfterMinutes, negative = off (/recap still works).
+	// RecapAfterMinutes is the legacy settings key for recap.afterMinutes.
+	// Retained for settings, presets and session state written by older versions.
 	RecapAfterMinutes int `json:"recapAfterMinutes,omitempty"`
 }
 
@@ -256,21 +256,6 @@ func (a *AutoPilotSettings) EngageDriving() {
 	a.MaxContinuations = AutoPilotUnlimitedContinuations
 }
 
-// RecapDefaultAfterMinutes is the away time that earns a recap when
-// recapAfterMinutes is unset.
-const RecapDefaultAfterMinutes = 5
-
-// RecapAfter is how long away earns a recap on coming back; 0 means off.
-func (a AutoPilotSettings) RecapAfter() time.Duration {
-	switch {
-	case a.RecapAfterMinutes < 0:
-		return 0
-	case a.RecapAfterMinutes == 0:
-		return RecapDefaultAfterMinutes * time.Minute
-	}
-	return time.Duration(a.RecapAfterMinutes) * time.Minute
-}
-
 // ResolvedMaxContinuations returns the configured continuation cap, or the
 // default when unset. Meaningless when ContinuationsUnlimited — check that
 // first; it returns the default so a caller that forgets still gets a sane
@@ -316,7 +301,7 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.SystemPromptFile == b.SystemPromptFile &&
 		a.Mission == b.Mission &&
 		a.MaxContinuations == b.MaxContinuations &&
-		a.RecapAfter() == b.RecapAfter() &&
+		resolvedRecapMinutes(a.RecapAfterMinutes) == resolvedRecapMinutes(b.RecapAfterMinutes) &&
 		a.Steers.SuggestOn() == b.Steers.SuggestOn() &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&

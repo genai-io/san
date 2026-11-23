@@ -231,14 +231,14 @@ the first frame survives normalization.
 
 ### Return recaps
 
-`recap.go` prepares a recap after the terminal loses focus and shows it on
-return only after the configured away time. Automatic recaps require at least
-three conversation turns and, after a recap, two new turns. The last recap is
-identified by its persisted `/recap` notice in the conversation, not a
-process-local counter. If nothing new is due at blur, no preparation timer or
-model request starts; turn end still checks for new work finished while away.
-Returning again or resuming a finished session does not repeat the same work.
-`/recap` remains available on demand. Tests live in `internal/app/recap_test.go`.
+`recap.go` uses [Recap settings in `/reflect`](../reference/aside.md#recap) to
+schedule preparation while the terminal is unfocused. Showing an automatic
+recap requires both the away time and the configured number of completed user
+turns (defaults: five minutes and three turns). The same turn threshold applies
+before and after the first recap. The session records the turn count and the last
+displayed recap, so resuming does not recap the same work. If no recap is due at
+blur, no timer starts; turn end still checks for new work completed while away.
+`/recap` bypasses the automatic thresholds. See `internal/app/recap_test.go`.
 
 ## Internals
 

@@ -414,6 +414,9 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if message.ID == "" {
 		message.ID = core.NewMessageID()
 	}
+	if p.recorder != nil {
+		p.recorder.NoteUserInput(message.ID)
+	}
 	recall.queueQuery(message.ID, messageText)
 	ag.Append(message)
 	return ag.ThinkAct(ctx)

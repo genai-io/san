@@ -97,8 +97,9 @@ func TestReflectionTabsPreserveDraftUntilClose(t *testing.T) {
 	}
 	press(tea.KeyDown) // Strategy → Create
 	press(tea.KeySpace)
-	press(tea.KeyTab)
-	press(tea.KeyTab)
+	press(tea.KeyTab) // Auto Skill → Recap
+	press(tea.KeyTab) // Recap → Auto Memory
+	press(tea.KeyTab) // Auto Memory → Auto Skill
 	if !c.ActivePanel().Dirty() {
 		t.Fatal("switching tabs discarded the pending skill changes")
 	}

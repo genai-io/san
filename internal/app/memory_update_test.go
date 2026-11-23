@@ -79,10 +79,10 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		}
 		proposed = propose().(memoryUpdateProposed)
 	} else {
-		if text, cmd, _ := m.executeCommand(t.Context(), "/memory maintain"); cmd != nil || m.memoryUpdate != nil || !strings.Contains(text, "update") {
-			t.Fatalf("removed command must not start an update: %q", text)
+		if text, cmd, _ := m.executeCommand(t.Context(), "/memory update"); cmd != nil || m.memoryUpdate != nil || !strings.HasPrefix(text, "Usage: /memory") || strings.Contains(text, "update") {
+			t.Fatalf("removed command must not start or advertise an update: %q", text)
 		}
-		text, propose, handled := m.executeCommand(t.Context(), "/memory update")
+		text, propose, handled := m.executeCommand(t.Context(), "/reflect memory")
 		if !handled || text != "" || propose == nil || m.memoryUpdate == nil || !m.memoryUpdate.manual {
 			t.Fatalf("command did not schedule a manual update: %q, %v", text, handled)
 		}

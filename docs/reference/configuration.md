@@ -56,6 +56,12 @@ it. Project instructions load from `~/.san/AGENTS.md`, repository-to-working-dir
 | `mcp.local.json` | Personal MCP definitions, git-ignored | Project |
 | `plugins-local/` | Local plugins, git-ignored | Project |
 
+## Reflection settings
+
+Use `/reflect` to configure [Auto Memory](../concepts/auto-memory.md#settings-and-inspection),
+[Auto Skill](../packages/auto-skill.md#settings), and [Recap](aside.md#recap).
+Recap settings are under `recap` in `settings.json`.
+
 ## Overview
 
 Configuration files remain authoritative. Shared session project identity is separate

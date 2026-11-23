@@ -32,11 +32,13 @@ func TestMemorySlashRoutes(t *testing.T) {
 		Input: m, Cwd: cwd, Setting: svc, Width: 120, Height: 40,
 		StartExternalEditor: func(path string) tea.Cmd { edited = path; return nil },
 	})
-	result, _, handled := c.Execute(context.Background(), "/reflection")
-	if !handled || result != "" || !m.Reflection.IsActive() || m.Memory.Selector.IsActive() {
-		t.Fatalf("/reflection did not open the settings popup: %q", result)
+	for _, name := range []string{"/reflect", "/reflection"} {
+		result, _, handled := c.Execute(context.Background(), name)
+		if !handled || result != "" || !m.Reflection.IsActive() || m.Memory.Selector.IsActive() {
+			t.Fatalf("%s did not open the settings popup: %q", name, result)
+		}
+		m.Reflection.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	}
-	m.Reflection.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if _, _, handled := c.executeBuiltinCommand(context.Background(), "evolve", ""); handled || m.Reflection.IsActive() {
 		t.Fatal("/evolve still dispatches as a built-in")
 	}
@@ -151,7 +153,7 @@ func TestReflectionTogglesRepositoryMemory(t *testing.T) {
 		t.Fatalf("hard-disabled Auto Skill status = %q", got)
 	}
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")
-	press(tea.KeyTab)
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}) // Auto Skill → Auto Memory
 	press(tea.KeyRight)
 	press(tea.KeyEnter)
 	press(tea.KeyEscape)
@@ -175,7 +177,7 @@ func TestReflectionTogglesRepositoryMemory(t *testing.T) {
 	}
 
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "1")
-	press(tea.KeyTab)
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}) // Auto Skill → Auto Memory
 	c.Enter(120, 40)
 	if out := c.Render(); !strings.Contains(out, "Paused · SAN_DISABLE_AUTO_MEMORY") {
 		t.Fatalf("expected the memory override in the Auto Memory tab: %s", out)

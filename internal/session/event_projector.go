@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -44,6 +45,27 @@ type toolCall struct {
 type Projection struct {
 	data         projectionData
 	messageIndex map[string]int
+}
+
+// UserTurnsSinceNotice counts settled user submissions after the
+// most recent matching annotation, or from the start if none was displayed.
+func (p *Projection) UserTurnsSinceNotice(prefix string) int {
+	if p.data.State.UserTurns == nil {
+		return 0
+	}
+	total := *p.data.State.UserTurns
+	found := false
+	for i := len(p.data.Events) - 1; i >= 0; i-- {
+		switch payload := p.data.Events[i].Payload.(type) {
+		case *AnnotationAddPayload:
+			found = found || !payload.ByAgent && strings.HasPrefix(payload.Text, prefix)
+		case *SessionUpdatePayload:
+			if found && payload.State != nil && payload.State.UserTurns.Value != nil {
+				return total - *payload.State.UserTurns.Value
+			}
+		}
+	}
+	return total
 }
 
 func (p *Projection) SessionID() string              { return p.data.SessionID }
@@ -277,4 +299,5 @@ func applyStatePatch(s *EventState, p StatePatch) {
 	patchValue(&s.AutopilotProgress, p.AutopilotProgress)
 	patchValue(&s.ExecutionCWD, p.ExecutionCWD)
 	patchValue(&s.GroupHint, p.GroupHint)
+	patchValue(&s.UserTurns, p.UserTurns)
 }

@@ -39,7 +39,10 @@ func TestAutopilotMenuGroups(t *testing.T) {
 	p.Enter(120, 40)
 
 	rendered := p.Render()
-	for _, want := range []string{"ALWAYS", "Recap", "WHILE IT DRIVES", "shift+tab to drive", "(system prompt)", "Continue", "Load preset…"} {
+	if strings.Contains(rendered, "Recap") {
+		t.Error("Recap settings belong in /reflect, not Autopilot")
+	}
+	for _, want := range []string{"ALWAYS", "WHILE IT DRIVES", "shift+tab to drive", "(system prompt)", "Continue", "Load preset…"} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("menu is missing %q", want)
 		}

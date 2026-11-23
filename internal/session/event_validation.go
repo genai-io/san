@@ -519,7 +519,8 @@ func validateEventState(s EventState) error {
 	if s.GroupHint != nil && (s.GroupHint.GroupID == "" || s.GroupHint.MemberID == "") {
 		return invalidEvent("incomplete group hint")
 	}
-	if s.AutopilotProgress != nil && s.AutopilotProgress.CompletedTurns < 0 {
+	if s.AutopilotProgress != nil && s.AutopilotProgress.CompletedTurns < 0 ||
+		s.UserTurns != nil && *s.UserTurns < 0 {
 		return invalidEvent("negative completed turns")
 	}
 	if s.Todos != nil {
