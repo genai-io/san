@@ -135,6 +135,46 @@ Example instructions.
 	}
 }
 
+func TestProjectSkillSearchPrecedence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, tc := range []struct {
+		name    string
+		sources []string
+		want    string
+		scope   SkillScope
+	}{
+		{"shared only", []string{".agents"}, ".agents", ScopeAgentsProject},
+		{"shared over Claude", []string{".claude", ".agents"}, ".agents", ScopeAgentsProject},
+		{"San over shared and Claude", []string{".claude", ".agents", ".san"}, ".san", ScopeProject},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			for _, source := range tc.sources {
+				dir := filepath.Join(cwd, source, "skills", "team", "review")
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: review\ndescription: Review code\n---\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			skills, err := newLoader(cwd).loadAll()
+			if err != nil {
+				t.Fatal(err)
+			}
+			sk, ok := skills["review"]
+			if !ok {
+				t.Fatal("review skill not found")
+			}
+			wantPath := filepath.Join(cwd, tc.want, "skills", "team", "review", "SKILL.md")
+			if sk.FilePath != wantPath || sk.Scope != tc.scope {
+				t.Errorf("review loaded from %s (%s), want %s (%s)", sk.FilePath, sk.Scope, wantPath, tc.scope)
+			}
+		})
+	}
+}
+
 func TestLoadSkillWithNamespace(t *testing.T) {
 	// Create temporary directories for skills
 	tmpDir := t.TempDir()

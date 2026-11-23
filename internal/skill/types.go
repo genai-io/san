@@ -51,6 +51,9 @@ const (
 	// ScopeClaudeProject is .claude/skills/ (Claude project compatibility)
 	ScopeClaudeProject
 
+	// ScopeAgentsProject is .agents/skills/ (shared project skills)
+	ScopeAgentsProject
+
 	// ScopeProjectPlugin is .san/plugins/*/skills/ (Project plugins)
 	ScopeProjectPlugin
 
@@ -73,6 +76,8 @@ func (s SkillScope) String() string {
 		return "user"
 	case ScopeClaudeProject:
 		return "claude-project"
+	case ScopeAgentsProject:
+		return "agents-project"
 	case ScopeProjectPlugin:
 		return "project-plugin"
 	case ScopeProject:

@@ -11,12 +11,14 @@ and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 | Scope | Directory | When to use |
 |---|---|---|
-| Project | `<project>/.san/skills/<name>/SKILL.md` | Skill tied to this project (lives in the repo). |
+| Project | `<project>/.san/skills/<name>/SKILL.md` | San-specific skill tied to this project. |
+| Shared project | `<project>/.agents/skills/<name>/SKILL.md` | Project skill shared with other agents that scan `.agents/skills/`. |
 | User | `~/.san/skills/<name>/SKILL.md` | Personal skill shared across projects. |
 | Claude-compat | `<project>/.claude/skills/<name>/SKILL.md` or `~/.claude/skills/<name>/SKILL.md` | If you also use Claude Code. |
 
-Project scope wins over user; user wins over Claude-compat. The directory
-name is the skill name.
+For standalone project skills with the same full name, `.san/skills/` wins over
+`.agents/skills/`, which wins over `.claude/skills/`. All three are relative to
+San's current working directory and take precedence over user-level skills.
 
 ## Minimal Example
 
