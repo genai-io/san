@@ -72,7 +72,7 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 	rows := ChatRows(projection.Messages())
 	after := make(map[string][]core.ChatMessage)
 	details := make(map[string][]byte)
-	var memoryReviews map[uint64]bool
+	var memoryUpdates map[uint64]bool
 	last := ""
 	for _, event := range projection.data.Events {
 		switch p := event.Payload.(type) {
@@ -82,18 +82,18 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 			last = p.Summary.ID
 		case *InferenceStartPayload:
 			if p.Purpose == PurposeMemoryUpdate {
-				if memoryReviews == nil {
-					memoryReviews = make(map[uint64]bool)
+				if memoryUpdates == nil {
+					memoryUpdates = make(map[uint64]bool)
 				}
-				memoryReviews[event.Seq] = true
+				memoryUpdates[event.Seq] = true
 			}
 		case *AnnotationAddPayload:
 			anchor := p.AfterMessage
 			if anchor == "" {
 				anchor = last
 			}
-			maintained := event.Source != nil && (event.Source.Session == "" || event.Source.Session == projection.SessionID()) && memoryReviews[event.Source.Seq]
-			after[anchor] = append(after[anchor], core.ChatMessage{Role: core.ChatNotice, Content: p.Text, AgentNotice: p.ByAgent, AutoMemoryMaintained: maintained})
+			updated := event.Source != nil && (event.Source.Session == "" || event.Source.Session == projection.SessionID()) && memoryUpdates[event.Source.Seq]
+			after[anchor] = append(after[anchor], core.ChatMessage{Role: core.ChatNotice, Content: p.Text, AgentNotice: p.ByAgent, AutoMemoryUpdated: updated})
 		case *ToolFinishPayload:
 			details[p.CallID] = slices.Clone(p.Details)
 		}

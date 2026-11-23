@@ -75,7 +75,7 @@ func TestPrintMemoryLanguageReachesMain(t *testing.T) {
 	}
 }
 
-func TestPrintUpdatesProjectInstructionsWithoutMemoryMaintenance(t *testing.T) {
+func TestPrintUpdatesProjectInstructionsWithoutMemoryUpdate(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	cwd, notes := t.TempDir(), t.TempDir()
 	instructions := filepath.Join(cwd, system.InstructionFile)

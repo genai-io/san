@@ -178,7 +178,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 
 	// Capture this completed turn before draining input into the next one.
-	if cmd := m.reviewTurnMemory(result); cmd != nil {
+	if cmd := m.updateMemoryAfterTurn(result); cmd != nil {
 		commitCmds = append(commitCmds, cmd)
 	}
 

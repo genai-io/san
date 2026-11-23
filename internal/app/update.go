@@ -611,10 +611,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(start, m.sendPendingMessages())
 	case memoryInputMsg:
 		return m, m.onMemoryInput(msg)
-	case memoryReviewProposed:
-		return m, m.acceptMemoryReview(msg)
-	case memoryReviewFinished:
-		return m, m.finishMemoryReview(msg)
+	case memoryUpdateProposed:
+		return m, m.applyMemoryUpdate(msg)
+	case memoryUpdateFinished:
+		return m, m.finishMemoryUpdate(msg)
 	case agentSendFailedMsg:
 		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
 		if m.conv.Stream.Waiting {

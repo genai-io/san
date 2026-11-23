@@ -11,7 +11,7 @@ import (
 	mdtext "github.com/yuin/goldmark/text"
 )
 
-// Only a standalone bullet for this single note is owned by the maintainer.
+// Only a standalone bullet for this single note is owned by the updater.
 // Refuse ambiguous entries rather than removing prose or another note's link.
 var indexEntry = regexp.MustCompile(`^[-*+] \[[^\[\]]+\]\((?:\./)?([A-Za-z0-9_-]+\.md)\)(?:[ \t]+[^\[\]<>]*)?$`)
 
@@ -67,7 +67,7 @@ func editIndex(text string, p proposal) (string, error) {
 			continue
 		}
 		// A case-only spelling might be a separate note or a filesystem
-		// alias. Like nonstandard links, leave it for manual maintenance.
+		// alias. Like nonstandard links, leave it for manual editing.
 		if mention.MatchString(line) {
 			return "", errors.New("ambiguous memory index entry for this note")
 		}

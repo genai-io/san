@@ -159,7 +159,7 @@ func TestFastRecallNoticeFitsOnOneMutedLine(t *testing.T) {
 	}
 }
 
-func TestMemoryMaintenanceNoticesUseMemoryMark(t *testing.T) {
+func TestMemoryUpdateNoticesUseMemoryMark(t *testing.T) {
 	for _, text := range []string{
 		"Memory · saved example-environment.md to project",
 		"Memory · updated example-environment.md in project",
@@ -172,11 +172,11 @@ func TestMemoryMaintenanceNoticesUseMemoryMark(t *testing.T) {
 	}
 }
 
-func TestAutoMemoryMaintenanceNoticeDoesNotDependOnCopy(t *testing.T) {
+func TestAutoMemoryUpdateNoticeDoesNotDependOnCopy(t *testing.T) {
 	const text = "Saved an Auto Memory note"
-	p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text, AutoMemoryMaintained: true}}}
+	p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text, AutoMemoryUpdated: true}}}
 	if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "⟡ "+text) {
-		t.Fatalf("maintenance notice lost its styling: %q", got)
+		t.Fatalf("memory update notice lost its styling: %q", got)
 	}
 }
 

@@ -251,13 +251,13 @@ func (m *model) renderFooter(separator string) (string, int) {
 	default:
 		status = conv.RenderInferenceStatus(params)
 	}
-	if width := m.env.Width - 1; m.memoryReview != nil && m.memoryReview.manual && width > 0 {
-		maintenance := ghostTextStyle.Render(ansi.Truncate(kit.MemoryMark+" Reviewing…", width, "…"))
+	if width := m.env.Width - 1; m.memoryUpdate != nil && m.memoryUpdate.manual && width > 0 {
+		updateStatus := ghostTextStyle.Render(ansi.Truncate(kit.MemoryMark+" Updating memory…", width, "…"))
 		if status == "" {
-			status = maintenance
+			status = updateStatus
 		} else {
 			// Keep foreground activity next to the composer.
-			b.WriteString("\n" + maintenance)
+			b.WriteString("\n" + updateStatus)
 		}
 	}
 	if status != "" && m.footerHasBreathingRoom() {

@@ -24,7 +24,7 @@ func bindSessionHooks(engine *hook.Engine, provider llm.Provider, owner *session
 // still commit their outcomes to the original writer.
 func (m *model) closeSessionRecording() error {
 	m.retireFlowMain()
-	m.cancelMemoryReview()
+	m.cancelMemoryUpdate()
 	if m.services.Hook != nil {
 		m.services.Hook.Shutdown()
 	}
