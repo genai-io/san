@@ -33,7 +33,7 @@ Once compaction removes a note from active context, it can be selected again. In
 
 In the TUI, `/memory update` runs a one-off review of the latest eligible completed main turn, even when automatic Update is off. Auto Memory must be enabled.
 
-The review reuses the completed request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final native assistant message. The first Update message adds short instructions and a compact index of filenames, titles, and descriptions. It contains no note bodies or freeform `MEMORY.md` prose. If needed, the model can ask for up to two indexed notes per round. San sends only those notes, with at most two read rounds and a shared size budget. Native tools are disabled throughout.
+The review reuses the completed request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final native assistant message. The first Update message has two text blocks: the task instructions and the original `MEMORY.md`, bounded to 8 KiB. San does not load any linked note bodies up front. The model can ask for up to two indexed notes per round; San returns each requested file in its own block, with at most two read rounds and a shared size budget. Native tools are disabled throughout.
 
 The model proposes at most one action: add a note and index link, revise an indexed note without moving it or changing its type, forget a note and its link, or make no change. Edit and forget require a prior read of the target in this Update; an incomplete index disables additions. San checks the index and supplied note revisions before writing. Forget requires clear user intent to remove a specific note.
 

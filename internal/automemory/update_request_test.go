@@ -70,26 +70,15 @@ func TestProposeContext(t *testing.T) {
 		t.Fatalf("unexpected proposal call: %+v", call)
 	}
 	suffix := call.Messages[len(history)]
-	payload, ok := strings.CutPrefix(suffix.Content.Text(), proposalPrompt+"\n\n")
-	if suffix.Role != ai.RoleUser || !ok || len(suffix.Content) != 1 {
-		t.Fatalf("unexpected proposal suffix: %+v", suffix)
+	if suffix.Role != ai.RoleUser || len(suffix.Content) != 2 || !reflect.DeepEqual(suffix.Content[1], ai.TextBlock(index)) ||
+		!strings.HasPrefix(suffix.Content[0].Text, updatePrompt) ||
+		!strings.Contains(suffix.Content[0].Text, "Enabled writes: remember, forget\n") ||
+		!strings.Contains(suffix.Content[0].Text, "## Note types for new notes") ||
+		strings.Contains(suffix.Content[0].Text, "release process") || strings.Contains(suffix.Text(), "Deploy only from release branches.") {
+		t.Fatalf("want separate instructions and unchanged index without note bodies: %+v", suffix)
 	}
 	if driver.Calls() != 1 {
 		t.Fatalf("no change should finish after one call, got %d", driver.Calls())
-	}
-	var got struct {
-		Enabled       []memoryAction
-		Index         []map[string]string
-		IndexComplete bool              `json:"index_complete"`
-		Types         map[string]string `json:"note_types"`
-	}
-	if err := core.DecodeStrictJSON(strings.NewReader(payload), &got); err != nil {
-		t.Fatal(err)
-	}
-	wantIndex := []map[string]string{{"file": "deploy.md", "title": "Deploy", "description": "release process"}}
-	if !reflect.DeepEqual(got.Types, noteTypes) || !reflect.DeepEqual(got.Enabled, []memoryAction{actionRemember, actionForget}) ||
-		!got.IndexComplete || !reflect.DeepEqual(got.Index, wantIndex) {
-		t.Fatalf("unexpected initial payload: %+v", got)
 	}
 	if requestJSON(t, prefix) != before || !reflect.DeepEqual(prefix.Messages[:cap(prefix.Messages)][len(history)], ai.Message{}) {
 		t.Fatal("review mutated native prefix or its spare message capacity")
@@ -130,7 +119,7 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 			t.Fatalf("round %d did not extend the prior request", i+1)
 		}
 		for _, message := range call.Messages[2:] {
-			if text := message.Text(); strings.Contains(text, "Never include this body.") || strings.Contains(text, "Freeform index prose.") {
+			if text := message.Text(); strings.Contains(text, "Never include this body.") || (i < 2 && strings.Contains(text, "Only the second read should see this.")) {
 				t.Fatalf("round %d sent unrelated data: %s", i+1, text)
 			}
 		}
@@ -140,17 +129,12 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 	}{{readBuild, "build.md", "Use make."}, {readOther, "other.md", "Only the second read should see this."}} {
 		messages := calls[i+1].Messages
 		command, reply := messages[len(messages)-2], messages[len(messages)-1]
-		payload, ok := strings.CutPrefix(reply.Text(), noteDataLabel)
-		if !ok || reply.Role != ai.RoleUser || command.Role != ai.RoleAssistant || command.Text() != want.command {
+		if reply.Role != ai.RoleUser || command.Role != ai.RoleAssistant || command.Text() != want.command {
 			t.Fatalf("round %d malformed read exchange: %+v, %+v", i+2, command, reply)
 		}
-		var data struct {
-			Notes          []noteEvidence
-			ReadsRemaining int `json:"reads_remaining"`
-		}
-		if err := core.DecodeStrictJSON(strings.NewReader(payload), &data); err != nil || data.ReadsRemaining != 1-i ||
-			!reflect.DeepEqual(data.Notes, []noteEvidence{{want.file, want.body}}) {
-			t.Fatalf("round %d sent wrong read data: %+v (%v)", i+2, data, err)
+		if len(reply.Content) != 2 || !strings.Contains(reply.Content[0].Text, "Read rounds remaining: "+[]string{"1.", "0."}[i]) ||
+			!reflect.DeepEqual(reply.Content[1], ai.TextBlock(want.file+"\n\n"+want.body)) {
+			t.Fatalf("round %d sent wrong read blocks: %+v", i+2, reply.Content)
 		}
 	}
 	if note := get(t, filepath.Join(dir, "build.md")); note != "Use make." {
@@ -322,17 +306,18 @@ func TestProposePreservesCancellation(t *testing.T) {
 
 func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 	dir := t.TempDir()
-	put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n- ["+strings.Repeat("z", maxCatalogTitle+1)+"](other.md)\n")
+	const visible = "- [Build](build.md)\n"
+	put(t, filepath.Join(dir, system.AutoMemoryIndexName), visible+strings.Repeat("z", 9*1024)+"\n- [Other](other.md)\n")
 	driver := aitest.New(aitest.Says(addProposal))
 	m := Updater{Provider: fakeProvider{driver}}
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use make."), Actions{Add: true, Update: true})
 	if change != nil || !errors.Is(err, errInvalidProposal) {
 		t.Fatalf("incomplete index allowed add: change=%v err=%v", change, err)
 	}
-	request := driver.Last().Messages[2].Text()
-	if !strings.Contains(request, `"index_complete":false`) || !strings.Contains(request, `"enabled":["update"]`) ||
-		strings.Contains(request, "other.md") {
-		t.Fatalf("wrong context for incomplete index: %s", request)
+	blocks := driver.Last().Messages[2].Content
+	if len(blocks) != 2 || blocks[1].Text != visible || !strings.Contains(blocks[0].Text, "The index is incomplete; do not add a note.") ||
+		!strings.Contains(blocks[0].Text, "Enabled writes: update\n") || strings.Contains(blocks[0].Text, "## Note types") {
+		t.Fatalf("wrong context for incomplete index: %+v", blocks)
 	}
 }
 

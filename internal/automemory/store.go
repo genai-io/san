@@ -3,7 +3,6 @@ package automemory
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -123,16 +122,16 @@ type noteRevision struct {
 }
 
 type storeSnapshot struct {
-	dir      fs.FileInfo
-	index    revision
-	notes    []noteRevision
-	noteJSON int // Cumulative size of the note arrays sent to the model.
+	dir        fs.FileInfo
+	index      revision
+	notes      []noteRevision
+	noteBytes  int
+	readRounds int
 }
 
 const (
 	maxNotesPerRead = 2
-	maxNotesRead    = maxReadRounds * maxNotesPerRead
-	maxNoteJSON     = 16 * 1024
+	maxNoteText     = 16 * 1024
 )
 
 var noteName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}\.md$`)
@@ -167,24 +166,20 @@ func snapshotStore(ctx context.Context, path string) (s storeSnapshot, err error
 	return s, ctx.Err()
 }
 
-func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []string) ([]noteEvidence, error) {
+func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []string) ([]noteData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(files) == 0 || len(files) > maxNotesPerRead || len(s.notes)+len(files) > maxNotesRead {
-		return nil, fmt.Errorf("memory read exceeds note count limits: %w", errInvalidProposal)
+	if len(files) == 0 || len(files) > maxNotesPerRead || s.readRounds >= maxReadRounds {
+		return nil, fmt.Errorf("memory read exceeds note count or round limits: %w", errInvalidProposal)
 	}
-	entries, _ := s.catalog()
-	visible := make(map[string]bool, len(entries))
-	for _, entry := range entries {
-		visible[entry.File] = true
-	}
+	visible, _ := s.updateNoteIDs(s.updateIndexEnd())
 	if len(files) == 2 && files[0] == files[1] {
-		return nil, fmt.Errorf("memory read repeated a catalog ID: %w", errInvalidProposal)
+		return nil, fmt.Errorf("memory read repeated a note ID: %w", errInvalidProposal)
 	}
 	for _, file := range files {
 		if !visible[file] || s.note(file).info != nil {
-			return nil, fmt.Errorf("memory read must request unread catalog IDs: %w", errInvalidProposal)
+			return nil, fmt.Errorf("memory read must request unread index IDs: %w", errInvalidProposal)
 		}
 	}
 	current, err := canonicalPath(path)
@@ -213,8 +208,8 @@ func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []stri
 		return nil, err
 	}
 	var revisions []noteRevision
-	var evidence []noteEvidence
-	jsonSize := s.noteJSON + 2 // Brackets around this batch's note array.
+	var evidence []noteData
+	noteBytes := s.noteBytes
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -226,20 +221,12 @@ func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []stri
 		if rev.info == nil {
 			return nil, errStale
 		}
-		note := noteEvidence{File: file, Text: rev.text}
-		encoded, err := json.Marshal(note)
-		if err != nil {
-			return nil, err
-		}
-		jsonSize += len(encoded)
-		if len(evidence) > 0 {
-			jsonSize++ // Array separator.
-		}
-		if jsonSize > maxNoteJSON {
-			return nil, errors.New("memory note evidence exceeds JSON size limit")
+		noteBytes += len(rev.text)
+		if noteBytes > maxNoteText {
+			return nil, errors.New("memory note evidence exceeds text size limit")
 		}
 		revisions = append(revisions, noteRevision{file, rev})
-		evidence = append(evidence, note)
+		evidence = append(evidence, noteData{File: file, Text: rev.text})
 	}
 	if err := checkIndex(); err != nil {
 		return nil, err
@@ -252,7 +239,8 @@ func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []stri
 		return nil, err
 	}
 	s.notes = append(s.notes, revisions...)
-	s.noteJSON = jsonSize
+	s.noteBytes = noteBytes
+	s.readRounds++
 	return evidence, nil
 }
 
