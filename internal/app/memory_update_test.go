@@ -96,12 +96,12 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		t.Fatalf("want an index request and one continuation, got %d calls", len(calls))
 	}
 	request := calls[0]
-	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceNone || len(request.Tools) != 1 || len(request.Messages) != 3 {
+	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceAuto || len(request.Tools) != 1 || len(request.Messages) != 3 {
 		t.Fatalf("Memory Update did not retain the main prefix: %+v", request)
 	}
 	blocks := request.Messages[2].Content
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
-		len(blocks) != 2 || blocks[1].Text != indexText || !strings.Contains(blocks[0].Text, "Enabled writes: remember, update, forget") ||
+		len(blocks) != 2 || blocks[1].Text != indexText || !strings.Contains(blocks[0].Text, "## Note types for new notes") ||
 		strings.Contains(blocks[0].Text, "Build with go build.") {
 		t.Fatalf("wrong initial Memory Update context: %+v", request.Messages)
 	}
@@ -171,8 +171,8 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 		t.Fatal("enabled completed turn did not start a memory update")
 	}
 	proposed := cmd().(memoryUpdateProposed)
-	if proposed.err != nil || proposed.change == nil || !strings.Contains(driver.Last().Messages[2].Content[0].Text, "Enabled writes: remember, update, forget") {
-		t.Fatalf("Update did not review all three operations: %v", proposed.err)
+	if proposed.err != nil || proposed.change == nil || !strings.Contains(driver.Last().Messages[2].Content[0].Text, "## Note types for new notes") {
+		t.Fatalf("Update did not offer additions: %v", proposed.err)
 	}
 	m.services.Setting = setting.New(setting.NewData())
 	if cmd := m.applyMemoryUpdate(proposed); cmd != nil {

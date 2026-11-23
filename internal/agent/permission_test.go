@@ -352,3 +352,14 @@ func TestPermissionGateCloseUnblocksEmptyRecv(t *testing.T) {
 	gate.Close()
 	waitPermissionSignal(t, done)
 }
+
+// prompt sends a permission request to the resolver (TUI) and blocks until
+// it responds, ctx is cancelled, or the gate closes.
+//
+// The tool call ID is taken from the context the agent stamps before Execute
+// (core.WithToolCallID), the only place that knows which call this check runs
+// for — the permission func signature carries the tool name, not the call.
+func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (bool, string) {
+	r := pg.promptResolution(ctx, req)
+	return r.Decision == "allow", r.Reason
+}

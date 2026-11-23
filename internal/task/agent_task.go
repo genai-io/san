@@ -296,15 +296,6 @@ func (t *AgentTask) Complete(err error) {
 	t.CompleteAttempt(0, err)
 }
 
-// markKilled marks the task as killed (internal use).
-func (t *AgentTask) markKilled() { t.finalize(StatusKilled, "") }
-
-// finalize is AgentTask's single terminal transition; see BashTask.finalize for
-// the invariant it enforces and why.
-func (t *AgentTask) finalize(status TaskStatus, errText string) {
-	t.finalizeAttempt(0, status, errText)
-}
-
 func (t *AgentTask) finalizeAttempt(generation int, status TaskStatus, errText string) {
 	t.mu.Lock()
 	if t.Status != StatusRunning || (generation != 0 && generation != t.attempt) {

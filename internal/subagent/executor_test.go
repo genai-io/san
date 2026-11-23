@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 	_ "github.com/genai-io/san/internal/tool/register" // registers built-in schemas used by tool.Set.Tools
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -963,16 +964,6 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	}
 }
 
-// stubSystem is a minimal core.System for tests.
-type stubSystem struct{}
-
-func (s *stubSystem) Prompt() string                        { return "" }
-func (s *stubSystem) Use(_ core.Section, _ string)          {}
-func (s *stubSystem) Drop(_, _ string)                      {}
-func (s *stubSystem) Refresh(_, _ string)                   {}
-func (s *stubSystem) Sections() []core.Section              { return nil }
-func (s *stubSystem) SetObserver(_ func(core.SystemChange)) {}
-
 // TestBuildUnfinishedAgentResultPreservesFailedRun checks that an inference
 // failure retains partial output and its underlying error for task inspection.
 // Native transcript durability is covered by the session-backed execution tests.
@@ -1042,4 +1033,36 @@ func TestInheritedPermissionModeRoundTripsSessionModes(t *testing.T) {
 			t.Errorf("session %v: subagent runs as %v, want %v", session, got, want)
 		}
 	}
+}
+
+// formatToolActivity creates an activity line for a tool call in ToolName(args) format.
+func formatToolActivity(toolName string, params map[string]any) string {
+	return formatToolActivityLimit(toolName, params, 60)
+}
+
+// subagentPermissionFunc returns the subagent permission gate. The pipeline
+// matches docs/concepts/permission-model.md: deny_tools, circuit breaker,
+// confirmation tiers, allow_tools, mode default. Ordinary Prompt decisions use
+// the configured UI responder, or fail closed when none is available. bypassPermissions skips the
+// confirmation tiers — only the root/home-removal circuit breaker holds in
+// every mode.
+//
+// One communication carve-out sits between deny and allow_tools: for a
+// mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
+// every mode, so even a read-only or default worker can report to main or
+// answer a peer — it only moves text between agents and never touches the
+// workspace. deny_tools still blocks it, and an explicit allow_tools list is
+// honored as written (leave SendMessage out to silence a worker). Spawning is
+// not gated here: the Agent tool is parent-only, so workers never see it — the
+// agent model is flat.
+func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
+	return subagentPermissionFuncWithPrompt(mode, allowRules, denyRules, nil)
+}
+
+func ToolNames(names ...string) ToolList {
+	tools := make(ToolList, 0, len(names))
+	for _, name := range names {
+		tools = append(tools, ToolRule{Name: name})
+	}
+	return tools
 }

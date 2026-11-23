@@ -13,6 +13,7 @@ GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -n
 GOIMPORTS_VERSION := v0.43.0
 GOLANGCI_VERSION := v2.14.0
 GOVULNCHECK_VERSION := v1.7.0
+DEADCODE_VERSION := v0.52.0
 
 # Dev tools are installed from the network, and CI runners hit transient
 # proxy.golang.org / sum.golang.org errors ("INTERNAL_ERROR; received from
@@ -20,7 +21,7 @@ GOVULNCHECK_VERSION := v1.7.0
 # command up to 5 times with linear backoff: RETRY go install foo@v1.
 RETRY := sh -c 'n=1; while ! "$$@"; do [ $$n -ge 5 ] && exit 1; echo "retry $$n/5: $$*" >&2; sleep $$((n*5)); n=$$((n+1)); done' --
 
-.PHONY: build build-all install clean release release-push test cover format format-check lint lint-go install-format-tools install-lint-tools check-format-tools check-lint-tools
+.PHONY: build build-all install clean release release-push test cover format format-check lint lint-go lint-dead install-format-tools install-lint-tools check-format-tools check-lint-tools
 
 build:
 	@mkdir -p $(BINDIR)
@@ -42,12 +43,14 @@ install-format-tools:
 
 install-lint-tools:
 	@$(RETRY) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@$(RETRY) go install golang.org/x/tools/cmd/deadcode@$(DEADCODE_VERSION)
 
 check-format-tools:
 	@command -v goimports >/dev/null || $(RETRY) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 check-lint-tools:
 	@command -v golangci-lint >/dev/null || $(RETRY) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@command -v deadcode >/dev/null || $(RETRY) go install golang.org/x/tools/cmd/deadcode@$(DEADCODE_VERSION)
 
 format: check-format-tools
 	@gofmt -w $(GOFILES)
@@ -71,6 +74,7 @@ lint:
 	go vet ./...
 	@$(MAKE) format-check
 	@$(MAKE) lint-go
+	@$(MAKE) lint-dead
 	@$(MAKE) lint-layers
 
 # lint-go runs the linters configured in .golangci.yml. They report defects, not
@@ -78,6 +82,16 @@ lint:
 # adding one.
 lint-go: check-lint-tools
 	golangci-lint run --timeout 5m ./...
+
+# lint-dead fails on functions unreachable from any binary or test. Helpers
+# only tests use belong in _test.go files.
+lint-dead: check-lint-tools
+	@out="$$(deadcode -test ./...)"; \
+	if [ -n "$$out" ]; then \
+		echo "Unreachable code; delete it or move test-only helpers into _test.go files:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi
 
 lint-layers:
 	@go run ./tools/layercheck

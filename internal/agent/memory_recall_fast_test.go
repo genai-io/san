@@ -32,9 +32,7 @@ func TestFastRecallIsNonBlockingAndLabelsPreviousQuestion(t *testing.T) {
 		},
 		aitest.Says(`{"selected_memories":["freeze.md","sign.md"]}`),
 	)
-	if err := os.WriteFile(filepath.Join(string(store), "sign.md"), []byte("sign commits"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeRecallNote(t, string(store), "sign.md", "sign commits")
 	r := &fastRecall{ctx: t.Context(), store: store, recaller: Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}}
 	defer r.cancel()
 	first := core.UserMessage("提交 git 有什么要求？", nil)

@@ -37,16 +37,6 @@ func OpenStore(ctx context.Context, startDir string) (*Store, error) {
 	return store.initPathLock()
 }
 
-// openStoreIn opens a store rooted at dir with dir itself as the workspace. It
-// skips project resolution, for tests and tools that already own the directory.
-func openStoreIn(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create session dir: %w", err)
-	}
-	store := &Store{cwd: dir, projectID: deriveProjectID("directory", dir), projectDir: dir, workspace: dir}
-	return store.initPathLock()
-}
-
 // Initialize the project's stable lock once so readers never add files to a store.
 func (s *Store) initPathLock() (*Store, error) {
 	if err := (library{root: s.projectDir}).withPathLock(func() error { return nil }); err != nil {

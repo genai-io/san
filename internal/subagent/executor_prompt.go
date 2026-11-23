@@ -85,11 +85,6 @@ var toolActivityParams = map[string]string{
 	"TaskGet":    "taskId",
 }
 
-// formatToolActivity creates an activity line for a tool call in ToolName(args) format.
-func formatToolActivity(toolName string, params map[string]any) string {
-	return formatToolActivityLimit(toolName, params, 60)
-}
-
 func formatToolActivityLimit(toolName string, params map[string]any, maxChars int) string {
 	if toolName == "Agent" {
 		if label := formatAgentActivity(params); label != "" {

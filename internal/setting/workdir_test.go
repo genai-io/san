@@ -139,3 +139,9 @@ func TestWithinDirectoryRejectsSymlinkOut(t *testing.T) {
 		t.Fatal("empty dir must reject")
 	}
 }
+
+// WithinDirectory reports whether filePath lies inside dir, by both its
+// literal and its symlink-resolved form.
+func WithinDirectory(filePath, dir string) bool {
+	return dir != "" && isInWorkingDirectory(filePath, []string{dir})
+}

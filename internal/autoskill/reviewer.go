@@ -30,14 +30,10 @@ type Reviewer struct {
 	inFlight bool
 }
 
-// New builds a Reviewer from cfg's arm config. review is invoked on its own
-// goroutine when the model requests a review (via the ReviewSkill tool). Disabled
-// arms never fire.
-func New(cfg Config, review ReviewFunc) *Reviewer {
-	return NewSessionReviewer(context.Background(), cfg, review)
-}
-
-// NewSessionReviewer gives pending settlement waits the session lifetime.
+// NewSessionReviewer builds a Reviewer from cfg's arm config. review is invoked
+// on its own goroutine when the model requests a review (via the ReviewSkill
+// tool); disabled arms never fire. ctx bounds pending settlement waits to the
+// session lifetime.
 func NewSessionReviewer(ctx context.Context, cfg Config, review ReviewFunc) *Reviewer {
 	return &Reviewer{
 		ctx:        ctx,

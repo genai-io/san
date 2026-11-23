@@ -124,8 +124,9 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	cwd, notes := t.TempDir(), t.TempDir()
 	for path, content := range map[string]string{
-		filepath.Join(cwd, "AGENTS.md"):  "PROJECT_INSTRUCTION",
-		filepath.Join(notes, "topic.md"): "---\nname: Topic\ndescription: Project preference\ntype: project\n---\nOnly use table tests.",
+		filepath.Join(cwd, "AGENTS.md"):   "PROJECT_INSTRUCTION",
+		filepath.Join(notes, "topic.md"):  "---\nname: Topic\ndescription: Project preference\ntype: project\n---\nOnly use table tests.",
+		filepath.Join(notes, "MEMORY.md"): "- [Topic](topic.md)\n",
 	} {
 		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 			t.Fatal(err)

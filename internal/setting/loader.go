@@ -50,16 +50,6 @@ func NewLoader() *Loader {
 	return NewLoaderForCwd(".")
 }
 
-// NewLoaderWithOptions creates a loader with custom options.
-func NewLoaderWithOptions(userDir, projectDir string, claudeCompat bool) *Loader {
-	return &Loader{
-		userDir:      userDir,
-		projectDir:   projectDir,
-		cwd:          filepath.Dir(projectDir),
-		claudeCompat: claudeCompat,
-	}
-}
-
 // NewLoaderForCwd creates a loader rooted at the provided working directory.
 func NewLoaderForCwd(cwd string) *Loader {
 	homeDir, err := os.UserHomeDir()

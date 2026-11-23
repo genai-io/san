@@ -213,13 +213,6 @@ func (c overviewCache) store(id string, st stamp, s Overview) error {
 	return atomicfile.Write(c.path(id), data, 0o600)
 }
 
-func (c overviewCache) remove(id string) error {
-	if err := os.Remove(c.path(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
 // overview returns the overview of a live session, cached while its events file
 // is unchanged. A failed cache write never fails the read: the cache is an
 // optimisation, not a record.

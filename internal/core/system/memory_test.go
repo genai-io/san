@@ -1,8 +1,6 @@
 package system
 
 import (
-	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,15 +28,6 @@ func TestMemoryNotes(t *testing.T) {
 	write("a.md")
 	if !store.HasNotes() {
 		t.Fatal("regular notes were not found")
-	}
-	notes := store.Memories(t.Context(), 2)
-	if len(notes) != 2 || notes[0].Description != "a.md" || notes[1].Description != "b.md" {
-		t.Fatalf("want first two notes in filename order, got %+v", notes)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if notes := store.Memories(ctx, 0); len(notes) != 0 {
-		t.Fatalf("canceled inventory scan returned %+v", notes)
 	}
 }
 
@@ -532,48 +521,6 @@ func TestAutoMemoryDirSharedAcrossWorktrees(t *testing.T) {
 		if got := AutoMemoryDir(cwd); got != want {
 			t.Errorf("AutoMemoryDir(%s) = %q, want the main checkout's %q", cwd, got, want)
 		}
-	}
-}
-
-func TestLoadAutoMemoryAtCapsAndReportsIndexProblems(t *testing.T) {
-	dir := t.TempDir()
-	var lines []string
-	for i := range autoMemoryLineCap + 5 {
-		lines = append(lines, fmt.Sprintf("- [m%d](m%d.md) — hook", i, i))
-	}
-	writeFile(t, filepath.Join(dir, AutoMemoryIndexName), strings.Join(lines, "\n"))
-	writeFile(t, filepath.Join(dir, "m0.md"), "kept")
-	writeFile(t, filepath.Join(dir, "orphan.md"), "never indexed")
-
-	index, problems := LoadAutoMemoryAt(dir)
-	if strings.Contains(index, fmt.Sprintf("[m%d]", autoMemoryLineCap)) {
-		t.Error("lines past the cap must not be injected")
-	}
-	all := strings.Join(problems, "\n")
-	for _, want := range []string{"load limit", "orphan.md", "m1.md", "more"} {
-		if !strings.Contains(all, want) {
-			t.Errorf("missing %q in problems:\n%s", want, all)
-		}
-	}
-	if strings.Contains(all, "drop the line): m0.md") {
-		t.Error("an existing linked file must not be reported missing")
-	}
-}
-
-func TestLoadAutoMemoryAtEmpty(t *testing.T) {
-	if index, problems := LoadAutoMemoryAt(t.TempDir()); index != "" || len(problems) > 0 {
-		t.Error("empty store should load nothing")
-	}
-}
-
-func TestLoadAutoMemoryAtWarnsNearLimit(t *testing.T) {
-	dir := t.TempDir()
-	index := strings.Repeat("- line\n", 190)
-	if err := os.WriteFile(filepath.Join(dir, AutoMemoryIndexName), []byte(index), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, problems := LoadAutoMemoryAt(dir); len(problems) != 1 || !strings.Contains(problems[0], "near its load limit") {
-		t.Errorf("problems = %q", problems)
 	}
 }
 

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 	"os"
 	"path/filepath"
@@ -31,10 +32,30 @@ func recallFixture(t *testing.T) (*session.Session, system.MemoryStore) {
 	}
 	t.Cleanup(func() { owner.Close() })
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "freeze.md"), []byte("---\ndescription: release freeze\n---\nno merges"), 0600); err != nil {
+	writeRecallNote(t, dir, "freeze.md", "---\ndescription: release freeze\n---\nno merges")
+	return owner, system.MemoryStore(dir)
+}
+
+// writeRecallNote writes a note and links it from MEMORY.md, as Recall lists
+// only linked notes.
+func writeRecallNote(t *testing.T, dir, name, text string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return owner, system.MemoryStore(dir)
+	indexPath := filepath.Join(dir, system.AutoMemoryIndexName)
+	index, err := os.ReadFile(indexPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if link := "(" + name + ")"; !strings.Contains(string(index), link) {
+		index = fmt.Appendf(index, "- [%s]%s\n", name, link)
+		if err := os.WriteFile(indexPath, index, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return path
 }
 
 func TestRecallRecording(t *testing.T) {

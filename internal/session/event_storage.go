@@ -363,24 +363,6 @@ func (s *eventSession) commitEventBatch(ctx context.Context, p *preparedEventBat
 	}
 	return receipt, nil
 }
-func (s *eventSession) eventSnapshot() (*Projection, error) {
-	if s == nil {
-		return nil, ErrClosed
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return nil, ErrClosed
-	}
-	if s.err != nil {
-		return nil, s.err
-	}
-	if s.state == nil {
-		return nil, errNotEvents
-	}
-	// Projection is immutable and its public accessors detach their results.
-	return s.state.projection, nil
-}
 
 // rejectLocalEvidence refuses evidence that claims a foreign source inside this
 // session: its own events are resolved from the committed prefix, never evidence.

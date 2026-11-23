@@ -308,3 +308,9 @@ func TestContextLabelCountsAgainstTheWindow(t *testing.T) {
 		t.Fatalf("status = %q, want the window as the denominator", visible)
 	}
 }
+
+// RenderOperationModeIndicator returns the mode status indicator for auto-accept, autopilot, or YOLO mode.
+func RenderOperationModeIndicator(mode setting.OperationMode, judgeApprovals, judgeEscalations int, autopilotThinking bool) string {
+	label, hint := modeIndicator(mode, judgeApprovals, judgeEscalations, autopilotThinking)
+	return label + hint
+}

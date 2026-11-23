@@ -421,21 +421,6 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 // boundary, tool schemas included. There is no remembered figure to get
 // wrong and nothing here left to assert.
 
-func newAgentForPromptSizing(t *testing.T) *agent {
-	t.Helper()
-	ag := NewAgent(Config{
-		ID:        "test",
-		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Hangs()))},
-		System:    NewSystem(),
-		Tools:     NewTools(),
-	})
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-	return ag.(*agent)
-}
-
 // Nothing to clear any more: the size is measured fresh at each boundary,
 // so a just-shortened conversation cannot still read as full.
 
@@ -498,11 +483,6 @@ func (s stubTool) Run(context.Context, ai.ToolCall) (sdkagent.Result, error) {
 
 // ai.IsContextExceeded is the SDK's, and the table of provider phrasings
 // with it.
-
-type stubContextExceeded struct{}
-
-func (stubContextExceeded) Error() string    { return "prompt too long" }
-func (stubContextExceeded) ContextExceeded() {}
 
 // cancelOnRunTool counts its executions and how many ran on an already-dead
 // ctx — a tool that works before consulting ctx, which nothing forbids.

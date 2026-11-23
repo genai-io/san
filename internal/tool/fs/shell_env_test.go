@@ -86,3 +86,8 @@ func TestShellEnvSnapshotAndConcurrentOwners(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// WithShellEnv supplies session-owned extra environment instead of the global provider.
+func WithShellEnv(ctx context.Context, env []string) context.Context {
+	return context.WithValue(ctx, shellEnvKey{}, append([]string{}, env...))
+}

@@ -22,13 +22,6 @@ func IsAgentEnvelope(content string) bool {
 	return agentEnvelopeKindOf(strings.TrimSpace(content)) != ""
 }
 
-// agentEnvelopeSummary reduces an envelope to its one-line notice: the task's
-// "<description> <status>", "Message from <sender>" for a relayed note, or a
-// generic label when the identifying attributes are absent.
-func agentEnvelopeSummary(content string, width int) string {
-	return parseAgentEnvelope(content).summary(width)
-}
-
 func (e agentEnvelope) summary(width int) string {
 	if width <= 0 {
 		width = 80

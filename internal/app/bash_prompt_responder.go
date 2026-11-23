@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -30,10 +31,11 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 		return "", false
 	}
 	scope := r.recording.Completion(session.PurposeAutopilot)
-	reply, err, recordErr := aside.Decide(ctx, scope, func(ctx context.Context, admission llm.CompletionAdmission) (judge.BashPromptReply, error) {
+	reply, err := aside.Decide(ctx, scope, func(ctx context.Context, admission llm.CompletionAdmission) (judge.BashPromptReply, error) {
 		return rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt, admission)
 	})
-	if recordErr != nil {
+	var recordErr *llm.RecordingError
+	if errors.As(err, &recordErr) {
 		log.Logger().Error("record Bash prompt decision", zap.Error(recordErr))
 		return "", false
 	}

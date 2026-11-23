@@ -350,12 +350,6 @@ func compactStatusHint(percent float64) string {
 	}
 }
 
-// RenderOperationModeIndicator returns the mode status indicator for auto-accept, autopilot, or YOLO mode.
-func RenderOperationModeIndicator(mode setting.OperationMode, judgeApprovals, judgeEscalations int, autopilotThinking bool) string {
-	label, hint := modeIndicator(mode, judgeApprovals, judgeEscalations, autopilotThinking)
-	return label + hint
-}
-
 // modeIndicator returns the mode label and, apart, its shift+tab hint, which
 // the status line shows only for a moment.
 func modeIndicator(mode setting.OperationMode, judgeApprovals, judgeEscalations int, autopilotThinking bool) (label, hint string) {

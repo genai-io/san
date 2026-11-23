@@ -121,3 +121,10 @@ func TestGroupBatchSummaryKeepsMetadataForLongSubjects(t *testing.T) {
 		}
 	}
 }
+
+// agentEnvelopeSummary reduces an envelope to its one-line notice: the task's
+// "<description> <status>", "Message from <sender>" for a relayed note, or a
+// generic label when the identifying attributes are absent.
+func agentEnvelopeSummary(content string, width int) string {
+	return parseAgentEnvelope(content).summary(width)
+}
