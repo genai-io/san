@@ -10,7 +10,7 @@
 ## Features
 
 - [Feature overview](features.md) — capabilities grouped by module, with links to details.
-- [Auto memory](concepts/auto-memory.md) — persistent memory and recall.
+- [Auto memory](concepts/auto-memory.md) — repository notes, Recall, and Update.
 - [Multi-agent collaboration](features.md#agent-and-session-collaboration) — subagents, messaging, session groups, and Flow blueprints.
 - [Autopilot](guides/autopilot.md) — goal-driven execution.
 - [Inspector](guides/inspector.md) — inspect and replay runs.

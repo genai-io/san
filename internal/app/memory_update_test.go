@@ -61,7 +61,8 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		t.Fatal(err)
 	}
 	index := filepath.Join(filepath.Dir(path), system.AutoMemoryIndexName)
-	if err := os.WriteFile(index, []byte("- [Build](fixture-build.md) — Project build command\n"), 0600); err != nil {
+	const indexText = "- [Build](fixture-build.md) — Project build command\n"
+	if err := os.WriteFile(index, []byte(indexText), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("Build with go build.\n"), 0600); err != nil {
@@ -98,9 +99,10 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceNone || len(request.Tools) != 1 || len(request.Messages) != 3 {
 		t.Fatalf("Memory Update did not retain the main prefix: %+v", request)
 	}
+	blocks := request.Messages[2].Content
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
-		!strings.Contains(request.Messages[2].Text(), `"enabled":["remember","update","forget"]`) ||
-		strings.Contains(request.Messages[2].Text(), "Build with go build.") {
+		len(blocks) != 2 || blocks[1].Text != indexText || !strings.Contains(blocks[0].Text, "Enabled writes: remember, update, forget") ||
+		strings.Contains(blocks[0].Text, "Build with go build.") {
 		t.Fatalf("wrong initial Memory Update context: %+v", request.Messages)
 	}
 	followup := calls[1]
@@ -169,7 +171,7 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 		t.Fatal("enabled completed turn did not start a memory update")
 	}
 	proposed := cmd().(memoryUpdateProposed)
-	if proposed.err != nil || proposed.change == nil || !strings.Contains(driver.Last().Messages[2].Text(), `"enabled":["remember","update","forget"]`) {
+	if proposed.err != nil || proposed.change == nil || !strings.Contains(driver.Last().Messages[2].Content[0].Text, "Enabled writes: remember, update, forget") {
 		t.Fatalf("Update did not review all three operations: %v", proposed.err)
 	}
 	m.services.Setting = setting.New(setting.NewData())

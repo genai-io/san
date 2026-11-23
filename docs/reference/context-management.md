@@ -5,7 +5,7 @@ San keeps the start of each request unchanged when it can, so the provider can r
 ## Principles
 
 - **Keep the prefix predictable.** The same inputs should produce the same text and order. Don't reorder tools or rewrite old messages on a no-op reload.
-- **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body; an Auto Memory index points to topic notes, but isn't injected into main context.
+- **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body. [Auto Memory Update](../concepts/auto-memory.md#update) sends `MEMORY.md` only to its Aside and loads note bodies on demand, not into the main conversation.
 - **Keep permissions live.** A schema tells the model what it can ask for, not what it may execute. Check permissions at execution time.
 
 [Asides](aside.md#context-and-caching) follow these rules whether they reuse the main conversation's prefix or build their own request.

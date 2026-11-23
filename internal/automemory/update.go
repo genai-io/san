@@ -54,9 +54,9 @@ type proposal struct {
 	Replacement string       `json:"replacement"`
 }
 
-type noteEvidence struct {
-	File string `json:"file"`
-	Text string `json:"text"`
+type noteData struct {
+	File string
+	Text string
 }
 
 // Change holds a validated proposal and its open recording. Its owner must

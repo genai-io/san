@@ -81,8 +81,9 @@ func Wrap(body string) string
   `prepared`, appends each pending reminder as a text block, and drains the queue.
   `Prepared()` describes preparation, not successful delivery. The input
   queue retains the prepared message when delivery is rejected.
-- Per-event: skill toggles / memory updates call `RequeueSystemReminders`
-  to refresh provider-emitted reminders.
+- Per-event: skill toggles and plugin, persona, or project-context reloads call
+  `RequeueSystemReminders`. Auto Memory Update doesn't requeue reminders; its
+  successful write produces a display-only notice.
 - Reset after `/clear` or compaction drops pending entries and rearms preparation.
   Resume and automatic compaction seed deduplication from native active context;
   the next input renders current providers and sends only missing or changed
