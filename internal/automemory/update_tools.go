@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/markdown"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -17,7 +18,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-const maxNoteEdits = 4
+const maxChangeCalls = 4
 
 type updateTools struct {
 	read, write, edit bool
@@ -43,6 +44,39 @@ func availableUpdateTools(req *ai.Request) (tools updateTools) {
 	return tools
 }
 
+func (t updateTools) proposals(calls []ai.ToolCall, dir string, notes []noteRevision) ([]proposal, error) {
+	if calls[0].Name == tool.ToolRead || tool.IsShellTool(calls[0].Name) {
+		p, err := t.proposal(calls, dir, notes)
+		return []proposal{p}, err
+	}
+	if len(calls) > maxChangeCalls {
+		return nil, errInvalidProposal
+	}
+	var changes []proposal
+	positions := make(map[string]int, len(calls))
+	for _, call := range calls {
+		if call.Name != tool.ToolWrite && call.Name != tool.ToolEdit {
+			return nil, errInvalidProposal
+		}
+		p, err := t.proposal([]ai.ToolCall{call}, dir, notes)
+		if err != nil {
+			return nil, err
+		}
+		key := strings.ToLower(p.File)
+		if i, ok := positions[key]; ok {
+			prior := &changes[i]
+			if prior.File != p.File || prior.Action != actionUpdate || p.Action != actionUpdate {
+				return nil, errInvalidProposal
+			}
+			prior.Params = append(prior.Params, p.Params...)
+			continue
+		}
+		positions[key] = len(changes)
+		changes = append(changes, p)
+	}
+	return changes, nil
+}
+
 func (t updateTools) proposal(calls []ai.ToolCall, dir string, notes []noteRevision) (proposal, error) {
 	var p proposal
 	name := calls[0].Name
@@ -56,7 +90,7 @@ func (t updateTools) proposal(calls []ai.ToolCall, dir string, notes []noteRevis
 	case name == tool.ToolWrite && t.write:
 		p.Action, maxCalls, fields = actionRemember, 1, []string{"content"}
 	case name == tool.ToolEdit && t.edit:
-		p.Action, maxCalls, fields = actionUpdate, maxNoteEdits, []string{"old_string", "new_string", "replace_all"}
+		p.Action, maxCalls, fields = actionUpdate, 1, []string{"old_string", "new_string", "replace_all"}
 	default:
 		return proposal{}, errInvalidProposal
 	}
@@ -75,7 +109,9 @@ func (t updateTools) proposal(calls []ai.ToolCall, dir string, notes []noteRevis
 			}
 			file = filepath.Base(file)
 		}
-		if !validName(file) || (p.File != "" && p.File != file) {
+		indexEdit := p.Action == actionUpdate && file == system.AutoMemoryIndexName
+		indexRead := p.Action == actionRead && file == system.AutoMemoryIndexName
+		if (!indexRead && !indexEdit && !validName(file)) || (p.File != "" && p.File != file) {
 			return proposal{}, errInvalidProposal
 		}
 		for field := range args {
@@ -100,7 +136,7 @@ func (t updateTools) proposal(calls []ai.ToolCall, dir string, notes []noteRevis
 			p.File, p.Params = file, append(p.Params, args)
 		case actionUpdate:
 			if all, present := args["replace_all"]; present {
-				if _, ok := all.(bool); !ok {
+				if enabled, ok := all.(bool); !ok || (indexEdit && enabled) {
 					return proposal{}, errInvalidProposal
 				}
 			}
@@ -196,9 +232,13 @@ func (f *updateFiles) change(ctx context.Context, p *proposal) error {
 	if p.Action == actionRemember {
 		name = tool.ToolWrite
 	}
+	limit := maxNote
+	if p.File == system.AutoMemoryIndexName {
+		limit = maxIndex
+	}
 	for _, args := range p.Params {
 		if name == tool.ToolEdit {
-			if err := checkEditSize(path, args); err != nil {
+			if err := checkEditSize(path, args, limit); err != nil {
 				return err
 			}
 		}
@@ -209,7 +249,7 @@ func (f *updateFiles) change(ctx context.Context, p *proposal) error {
 		if err != nil {
 			return err
 		}
-		if info.Size() > maxNote {
+		if info.Size() > int64(limit) {
 			return fmt.Errorf("memory note would exceed size limit: %w", errInvalidProposal)
 		}
 	}
@@ -218,7 +258,7 @@ func (f *updateFiles) change(ctx context.Context, p *proposal) error {
 		return err
 	}
 	p.Text = string(data)
-	if !noteText(p.Text) {
+	if !core.ValidMultiline(p.Text, limit) || (limit == maxNote && strings.TrimSpace(p.Text) == "") {
 		return errInvalidProposal
 	}
 	if p.Action == actionRemember {
@@ -236,9 +276,9 @@ func (f *updateFiles) change(ctx context.Context, p *proposal) error {
 }
 
 // Bound expansion before the shared Edit tool builds the replacement and diff.
-func checkEditSize(path string, args map[string]any) error {
+func checkEditSize(path string, args map[string]any, limit int) error {
 	replacement, _ := args["new_string"].(string)
-	if len(replacement) > maxNote {
+	if len(replacement) > limit {
 		return fmt.Errorf("memory note would exceed size limit: %w", errInvalidProposal)
 	}
 	all, _ := args["replace_all"].(bool)
@@ -252,7 +292,7 @@ func checkEditSize(path string, args map[string]any) error {
 	}
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	old = strings.ReplaceAll(old, "\r\n", "\n")
-	if max(1, strings.Count(text, old))*len(replacement) > 2*maxNote {
+	if max(1, strings.Count(text, old))*len(replacement) > 2*limit {
 		return fmt.Errorf("memory note would exceed size limit: %w", errInvalidProposal)
 	}
 	return nil

@@ -297,6 +297,51 @@ func TestUpdateKeepsNoteAndIndexInSync(t *testing.T) {
 	}
 }
 
+func TestUpdateBatchAndDirectIndex(t *testing.T) {
+	const original = "- [Build](build.md) — Build command.\n"
+	for _, tc := range []struct {
+		name, replacement string
+		wantError         bool
+	}{
+		{"rephrase", "- [Build method](build.md) — How to compile.\n", false},
+		{"remove link", "# No notes\n", true},
+		{"add untracked link", original + "- [Unknown](unknown.md)\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			index := filepath.Join(dir, system.AutoMemoryIndexName)
+			note := filepath.Join(dir, "build.md")
+			put(t, index, original)
+			put(t, note, "Use make.")
+			indexEdit := ai.ToolCall{ID: "index", Name: tool.ToolEdit, Input: requestJSON(t, map[string]string{
+				"file_path": system.AutoMemoryIndexName, "old_string": original, "new_string": tc.replacement,
+			})}
+			add := ai.ToolCall{ID: "add", Name: tool.ToolWrite, Input: requestJSON(t, map[string]string{
+				"file_path": "demo.md", "content": "---\nname: Demo environment\ndescription: Demo conventions\ntype: project\n---\nCall it Violet.\n",
+			})}
+			driver := aitest.New(aitest.Asks(readNote(system.AutoMemoryIndexName), readBuild), aitest.Asks(add, indexEdit, updateProposal))
+			m := Updater{Provider: fakeProvider{driver}}
+			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build; call the demo Violet; clarify the index."))
+			if err != nil || change == nil || get(t, index) != original || get(t, note) != "Use make." {
+				t.Fatalf("expected a staged batch: change=%v err=%v", change, err)
+			}
+			notice, err := change.Apply(t.Context())
+			added := filepath.Join(dir, "demo.md")
+			if tc.wantError {
+				if _, statErr := os.Stat(added); err == nil || !errors.Is(statErr, fs.ErrNotExist) || get(t, index) != original || get(t, note) != "Use make." {
+					t.Fatalf("bad index edit changed live notes: %v, %v", err, statErr)
+				}
+				return
+			}
+			if err != nil || notice != "Memory · updated MEMORY.md, saved demo.md, updated build.md" ||
+				!strings.HasPrefix(get(t, index), tc.replacement) || !strings.Contains(get(t, index), "(demo.md)") ||
+				!strings.Contains(get(t, added), "Violet") || get(t, note) != "Use go build." {
+				t.Fatalf("unexpected batch: notice=%q err=%v", notice, err)
+			}
+		})
+	}
+}
+
 func TestProposeRejectsInvalidAndUncataloguedOperations(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

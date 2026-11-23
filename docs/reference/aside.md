@@ -32,7 +32,7 @@ Recall and Update share a repository store. Recall has no tools. Update keeps th
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
 | **Recall** | **Fast** runs alongside the main request; **Wait** waits up to the configured timeout. | Index preview, already-covered notes, and the question. | Selected note previews reach the main model as Reminders. A failed lookup doesn't block the turn. |
-| **Update** | `/reflect memory` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | At most one validated add, edit, or removal. A successful write produces a notice. |
+| **Update** | `/reflect memory` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | A validated batch of adds or edits, including index edits that preserve note links, or one removal. A successful write produces a notice. |
 
 Both Asides can read or search omitted index entries on demand. Update can also read note bodies without changing the main request prefix. See [Auto Memory](../concepts/auto-memory.md#index-preview) for limits.
 
