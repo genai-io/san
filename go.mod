@@ -6,10 +6,10 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/glamour/v2 v2.0.1
-	charm.land/lipgloss/v2 v2.1.0
+	charm.land/lipgloss/v2 v2.1.1
 	github.com/ActiveState/vt10x v1.3.1
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
-	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/creack/pty v1.1.24
 	github.com/genai-io/sdk-go v0.9.3-0.20261121090133-070883cbe1b5
 	github.com/hexops/gotextdiff v1.0.3
