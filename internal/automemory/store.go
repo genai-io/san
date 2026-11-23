@@ -329,14 +329,21 @@ func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (strin
 		if old.info == nil {
 			return "", errInvalidProposal
 		}
-		text, err := patchNote(old.text, p)
+		text, meta, err := patchNote(old.text, p.Edits)
 		if err != nil || text == old.text {
 			return "", err
 		}
-		if len(text) > maxNote {
-			return "", errors.New("memory note would exceed size limit")
+		index := s.index.text
+		if meta != nil {
+			p.Name, p.Description, p.Type = meta.Name, meta.Description, meta.Type
+			index, err = editIndex(index, p)
+			if err != nil {
+				return "", err
+			}
 		}
-		if err := writeNote(root, p.File, text, old); err != nil {
+		if err := withIndexUpdate(root, s.index, index, func() error {
+			return writeNote(root, p.File, text, old)
+		}); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Memory · updated %s", p.File), nil
@@ -349,30 +356,36 @@ func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (strin
 		if err != nil {
 			return "", err
 		}
-		if index != s.index.text {
-			if err := writeNote(root, system.AutoMemoryIndexName, index, s.index); err != nil {
-				return "", err
+		if err := withIndexUpdate(root, s.index, index, func() error {
+			rev, err := readRevision(root, p.File, maxNote)
+			if err != nil || !rev.same(old) {
+				return errStale
 			}
-		}
-		rev, err := readRevision(root, p.File, maxNote)
-		if err != nil || !rev.same(old) {
-			err = errStale
-		} else {
-			err = root.Remove(p.File)
-		}
-		if err != nil {
-			if index != s.index.text {
-				latest, rerr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
-				if rerr == nil && latest.text == index {
-					rerr = writeNote(root, system.AutoMemoryIndexName, s.index.text, latest)
-				}
-				err = errors.Join(err, rerr)
-			}
+			return root.Remove(p.File)
+		}); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Memory · forgot %s", p.File), nil
 	}
 	return "", errors.New("unsupported memory operation")
+}
+
+func withIndexUpdate(root *os.Root, current revision, next string, change func() error) error {
+	if next == current.text {
+		return change()
+	}
+	if err := writeNote(root, system.AutoMemoryIndexName, next, current); err != nil {
+		return err
+	}
+	if err := change(); err != nil {
+		// Do not restore over changes made by another writer.
+		latest, rollbackErr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
+		if rollbackErr == nil && latest.text == next {
+			rollbackErr = writeNote(root, system.AutoMemoryIndexName, current.text, latest)
+		}
+		return errors.Join(err, rollbackErr)
+	}
+	return nil
 }
 
 func createStore(path string) (*os.Root, error) {

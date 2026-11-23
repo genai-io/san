@@ -57,10 +57,10 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	index := "- [One](one.md)\n- [Two](two.md)\n- [Three](three.md)\n- [Four](four.md)\n- [Five](five.md)\n- [Device](CON.md)\n```\n- [Literal](literal.md)\n```\n"
+	index := "- [One](one.md)\n- [Two](two.md)\n- [Three](three.md)\n- [Four](four.md)\n- [Five](five.md)\n- [Six](six.md)\n- [Device](CON.md)\n```\n- [Literal](literal.md)\n```\n"
 	index += "\n" + strings.Repeat("x", 25_000) + "\n- [Omitted](omitted.md)\n"
 	write(system.AutoMemoryIndexName, index)
-	for _, name := range []string{"one.md", "two.md", "three.md", "four.md", "five.md", "hidden.md", "omitted.md", "literal.md"} {
+	for _, name := range []string{"one.md", "two.md", "three.md", "four.md", "five.md", "six.md", "hidden.md", "omitted.md", "literal.md"} {
 		write(name, name)
 	}
 	s, err := snapshotStore(ctx, path)
@@ -73,7 +73,7 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 			t.Fatalf("read %v = %#v, err = %v", ids, got, err)
 		}
 	}
-	for _, ids := range [][]string{{"one.md", "two.md"}, {"three.md"}} {
+	for _, ids := range [][]string{{"one.md", "two.md"}, {"three.md"}, {"four.md"}, {"five.md"}} {
 		want := make([]noteData, 0, len(ids))
 		for _, id := range ids {
 			want = append(want, noteData{File: id, Text: id})
@@ -89,8 +89,8 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 			t.Fatal("accepted a repeated file")
 		}
 	}
-	if _, err := s.readNotes(ctx, path, []string{"four.md"}, visible); err == nil {
-		t.Fatal("accepted a third read round")
+	if _, err := s.readNotes(ctx, path, []string{"six.md"}, visible); err == nil {
+		t.Fatal("accepted another read after exhausting the round budget")
 	}
 
 	s, err = snapshotStore(ctx, path)

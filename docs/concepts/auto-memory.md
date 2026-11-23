@@ -39,11 +39,11 @@ Once compaction removes a note from active context, it can be selected again. In
 
 In the TUI, `/reflect memory` runs a one-off review of the latest completed main turn. Wait for the current reply to finish; the completed turn must match the current provider and model. The Auto Memory store must be enabled, but automatic Update can be off.
 
-The review reuses the completed main request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final assistant message. It extends a separate request in the same session:
+The review reuses the completed main request's system prompt, ordered tools, and native messages through the final assistant reply. When `Read` is available, it appends one deletion tool to the separate review request; the main agent does not get that tool.
 
 1. **Check the index.** If the preview is truncated, search omitted entries before adding a note. Malformed links or duplicate note filenames disable additions; if nothing changes, `/reflect memory` reports why and automatic runs log it. New labels cannot mention another note filename.
-2. **Read on demand.** Update can request two indexed notes per round, for up to two rounds (8 KiB per note, 16 KiB total).
-3. **Propose one change or none.** Update can add, revise, or forget a note. It must read a note before revising or forgetting it. When the user clearly asks to forget a note, Update uses the existing `Bash` (`rm`, also under zsh) or `PowerShell` (`Remove-Item -LiteralPath`) call if available. San validates the single filename and removes both the note and its link without running a shell. If neither tool is available, Update uses the JSON `forget` action. The tool catalog stays unchanged.
+2. **Read on demand.** Use the existing `Read` tool with indexed note filenames: up to two distinct notes per round and four rounds (8 KiB per note, 16 KiB total).
+3. **Propose one change or none.** Use `Write` to add a note with `name`, `description`, and `type` frontmatter. Keep the filename and summary focused on the topic, and put values that may change in the body. Use `Edit` to revise a previously read note; one review can apply several exact replacements to the same note. San updates the matching `MEMORY.md` entry when the name or description changes. When the user clearly asks to forget a note, `ForgetMemory` accepts only one indexed filename already read in the current project's review and removes its index entry. This runs no shell and needs no extra approval.
 
 To review automatically after an eligible completed turn, enable **Update** under `/reflect` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,12 +14,16 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 func completedPrefix(text string) *ai.Request {
-	return &ai.Request{Messages: []ai.Message{ai.UserMessage(text), core.AssistantMessage("Understood.", "", nil)}}
+	return &ai.Request{
+		Messages: []ai.Message{ai.UserMessage(text), core.AssistantMessage("Understood.", "", nil)},
+		Tools:    []ai.Schema{{Name: tool.ToolRead}, {Name: tool.ToolWrite}, {Name: tool.ToolEdit}, {Name: tool.ToolBash}},
+	}
 }
 
 func requestJSON(t *testing.T, value any) string {
@@ -57,7 +62,7 @@ func TestProposeContext(t *testing.T) {
 	before := requestJSON(t, prefix)
 	prefixBytes := requestJSON(t, prefix.Messages)
 	toolsBytes := requestJSON(t, prefix.Tools)
-	driver := aitest.New(aitest.Says(`{"action":"none"}`))
+	driver := aitest.New(aitest.Says(noMemoryChanges))
 	m := Updater{Provider: fakeProvider{driver}, Model: "update-model"}
 	change, err := m.Propose(t.Context(), store, prefix)
 	if change != nil || err != nil {
@@ -72,7 +77,7 @@ func TestProposeContext(t *testing.T) {
 	suffix := call.Messages[len(history)]
 	if suffix.Role != ai.RoleUser || len(suffix.Content) != 2 || !reflect.DeepEqual(suffix.Content[1], ai.TextBlock(index)) ||
 		!strings.HasPrefix(suffix.Content[0].Text, updatePrompt) ||
-		!strings.Contains(suffix.Content[0].Text, "## Note types for new notes") ||
+		strings.Contains(suffix.Content[0].Text, "## Note types for new notes") ||
 		strings.Contains(suffix.Content[0].Text, "release process") || strings.Contains(suffix.Text(), "Deploy only from release branches.") {
 		t.Fatalf("want separate instructions and unchanged index without note bodies: %+v", suffix)
 	}
@@ -84,12 +89,16 @@ func TestProposeContext(t *testing.T) {
 	}
 }
 
-const (
-	addProposal    = `{"action":"remember","file":"build.md","name":"Build","description":"Build command","type":"project","body":"Use make."}`
-	readBuild      = `{"action":"read","files":["build.md"]}`
-	updateProposal = `{"action":"update","file":"build.md","old":"Use make.","replacement":"Use go build."}`
-	forgetProposal = `{"action":"forget","file":"build.md"}`
+var (
+	addProposal    = ai.ToolCall{ID: "add", Name: tool.ToolWrite, Input: `{"file_path":"build.md","content":"---\nname: Build\ndescription: Build command\ntype: project\n---\nUse make."}`}
+	readBuild      = readNote("build.md")
+	updateProposal = ai.ToolCall{ID: "edit", Name: tool.ToolEdit, Input: `{"file_path":"build.md","old_string":"Use make.","new_string":"Use go build."}`}
+	forgetProposal = ai.ToolCall{ID: "forget", Name: toolForgetMemory, Input: `{"file":"build.md"}`}
 )
+
+func readNote(file string) ai.ToolCall {
+	return ai.ToolCall{ID: file, Name: tool.ToolRead, Input: `{"file_path":"` + file + `"}`}
+}
 
 func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 	dir := t.TempDir()
@@ -97,8 +106,8 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 	put(t, filepath.Join(dir, "build.md"), "Use make.")
 	put(t, filepath.Join(dir, "other.md"), "Only the second read should see this.")
 	put(t, filepath.Join(dir, "release.md"), "Never include this body.")
-	const readOther = `{"action":"read","files":["other.md"]}`
-	driver := aitest.New(aitest.Says(readBuild), aitest.Says(readOther), aitest.Says(updateProposal))
+	readOther := readNote("other.md")
+	driver := aitest.New(aitest.Asks(readBuild), aitest.Asks(readOther), aitest.Asks(updateProposal))
 	m := Updater{Provider: fakeProvider{driver}}
 	prefix := completedPrefix("Use go build, not make, for all work in this repo.")
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix)
@@ -124,15 +133,18 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 		}
 	}
 	for i, want := range []struct {
-		command, file, body string
+		call       ai.ToolCall
+		file, body string
 	}{{readBuild, "build.md", "Use make."}, {readOther, "other.md", "Only the second read should see this."}} {
 		messages := calls[i+1].Messages
 		command, reply := messages[len(messages)-2], messages[len(messages)-1]
-		if reply.Role != ai.RoleUser || command.Role != ai.RoleAssistant || command.Text() != want.command {
+		if reply.Role != ai.RoleUser || command.Role != ai.RoleAssistant || !reflect.DeepEqual(command.Content.ToolCalls(), []ai.ToolCall{want.call}) {
 			t.Fatalf("round %d malformed read exchange: %+v, %+v", i+2, command, reply)
 		}
-		if len(reply.Content) != 2 || !strings.Contains(reply.Content[0].Text, "Read rounds remaining: "+[]string{"1.", "0."}[i]) ||
-			!reflect.DeepEqual(reply.Content[1], ai.TextBlock(want.file+"\n\n"+want.body)) {
+		results := reply.ToolResults()
+		if len(results) != 1 || results[0].ToolCallID != want.call.ID || len(results[0].Content) != 2 ||
+			!strings.Contains(results[0].Content[0].Text, fmt.Sprintf("Read rounds remaining: %d.", maxReadRounds-i-1)) ||
+			!reflect.DeepEqual(results[0].Content[1], ai.TextBlock(want.file+"\n\n"+want.body)) {
 			t.Fatalf("round %d sent wrong read blocks: %+v", i+2, reply.Content)
 		}
 	}
@@ -151,7 +163,7 @@ func TestProposeLifecycle(t *testing.T) {
 	projectNote := filepath.Join(dir, "build.md")
 	put(t, index, "- [Deploy](deploy.md)\n")
 	put(t, filepath.Join(dir, "deploy.md"), "Keep this note.")
-	m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(addProposal), aitest.Says(readBuild), aitest.Says(updateProposal), aitest.Says(readBuild), aitest.Says(forgetProposal))}}
+	m := Updater{Provider: fakeProvider{aitest.New(aitest.Asks(addProposal), aitest.Asks(readBuild), aitest.Asks(updateProposal), aitest.Asks(readBuild), aitest.Asks(forgetProposal))}}
 	for i, user := range []string{
 		"This project builds with make.",
 		"We now use go build, not make.",
@@ -194,9 +206,9 @@ func TestProposeNoteTypesAreMetadata(t *testing.T) {
 	put(t, index, link)
 	put(t, build, "---\nname: Build\ntype: feedback\n---\nUse make.")
 	m := Updater{Provider: fakeProvider{aitest.New(
-		aitest.Says(readBuild),
-		aitest.Says(updateProposal),
-		aitest.Says(`{"action":"remember","file":"style.md","name":"Style","description":"Writing preference","type":"user","body":"Keep examples concise."}`),
+		aitest.Asks(readBuild),
+		aitest.Asks(updateProposal),
+		aitest.Asks(ai.ToolCall{ID: "style", Name: tool.ToolWrite, Input: `{"file_path":"style.md","content":"---\nname: Style\ndescription: Writing preference\ntype: user\n---\nKeep examples concise."}`}),
 	)}}
 	for range 2 {
 		change, err := m.Propose(t.Context(), store, completedPrefix("For this project I prefer concise examples and go build."))
@@ -218,20 +230,82 @@ func TestProposeNoteTypesAreMetadata(t *testing.T) {
 	}
 }
 
+func TestUpdateKeepsNoteAndIndexInSync(t *testing.T) {
+	const old = "---\nname: Release nickname\ndescription: The release nickname is amber.\ntype: project\n---\n\nUse amber in release summaries.\n"
+	const index = "- [Release nickname](build.md) — (project) The release nickname is amber.\n- [Other](other.md) — unrelated.\n"
+	for _, tc := range []struct {
+		name                       string
+		edits                      []map[string]any
+		invalidBatch, invalidPatch bool
+	}{
+		{name: "exact batch", edits: []map[string]any{
+			{"old_string": "The release nickname is amber.", "new_string": "The release nickname is violet."},
+			{"old_string": "Use amber in release summaries.", "new_string": "Use violet in release summaries."},
+		}},
+		{name: "replace all", edits: []map[string]any{{"old_string": "amber", "new_string": "violet", "replace_all": true}}},
+		{name: "invalid second edit", invalidPatch: true, edits: []map[string]any{
+			{"old_string": "Use amber", "new_string": "Use violet"},
+			{"old_string": "text that does not exist", "new_string": "another value"},
+		}},
+		{name: "type change", invalidPatch: true, edits: []map[string]any{{"old_string": "type: project", "new_string": "type: reference"}}},
+		{name: "second file", invalidBatch: true, edits: []map[string]any{
+			{"old_string": "Use amber", "new_string": "Use violet"},
+			{"file_path": "other.md", "old_string": "Other", "new_string": "Changed"},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			notePath, indexPath := filepath.Join(dir, "build.md"), filepath.Join(dir, system.AutoMemoryIndexName)
+			put(t, notePath, old)
+			put(t, indexPath, index)
+			var edits []ai.ToolCall
+			for i, args := range tc.edits {
+				if args["file_path"] == nil {
+					args["file_path"] = "build.md"
+				}
+				edits = append(edits, ai.ToolCall{ID: fmt.Sprintf("edit-%d", i), Name: tool.ToolEdit, Input: requestJSON(t, args)})
+			}
+			m := Updater{Provider: fakeProvider{aitest.New(aitest.Asks(readBuild), aitest.Asks(edits...))}}
+			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Call the release violet instead of amber."))
+			if tc.invalidBatch {
+				if change != nil || !errors.Is(err, errInvalidProposal) {
+					t.Fatalf("unexpected multiple-file result: change=%v err=%v", change, err)
+				}
+				return
+			}
+			if err != nil || change == nil || get(t, notePath) != old || get(t, indexPath) != index {
+				t.Fatalf("expected an unapplied proposal, got change=%v err=%v", change, err)
+			}
+			_, err = change.Apply(t.Context())
+			if tc.invalidPatch {
+				if err == nil || get(t, notePath) != old || get(t, indexPath) != index {
+					t.Fatalf("invalid edit partially applied: %v", err)
+				}
+				return
+			}
+			if err != nil || get(t, notePath) != strings.ReplaceAll(old, "amber", "violet") ||
+				get(t, indexPath) != strings.ReplaceAll(index, "amber", "violet") {
+				t.Fatalf("note and index diverged: %v", err)
+			}
+		})
+	}
+}
+
 func TestProposeRejectsInvalidAndUncataloguedOperations(t *testing.T) {
 	for _, tc := range []struct {
-		name, response string
-		catalogued     bool
+		name       string
+		call       ai.ToolCall
+		catalogued bool
 	}{
-		{"legacy scope field", strings.Replace(addProposal, `"file":`, `"scope":"project","file":`, 1), false},
-		{"unknown note type", strings.Replace(addProposal, `"type":"project"`, `"type":"unknown"`, 1), false},
-		{"note filename in description", strings.Replace(addProposal, `"Build command"`, `"Replaces deploy.md"`, 1), false},
+		{"unexpected Write argument", ai.ToolCall{Name: tool.ToolWrite, Input: strings.Replace(addProposal.Input, `"file_path":`, `"scope":"project","file_path":`, 1)}, false},
+		{"unknown note type", ai.ToolCall{Name: tool.ToolWrite, Input: strings.Replace(addProposal.Input, `type: project`, `type: unknown`, 1)}, false},
+		{"note filename in description", ai.ToolCall{Name: tool.ToolWrite, Input: strings.Replace(addProposal.Input, `Build command`, `Replaces deploy.md`, 1)}, false},
 		{"uncatalogued update", updateProposal, false},
 		{"uncatalogued forget", forgetProposal, false},
 		{"unread update", updateProposal, true},
 		{"unread forget", forgetProposal, true},
-		{"read mixed with a write", `{"action":"read","files":["build.md"],"old":"Use make."}`, true},
-		{"read without targets", `{"action":"read","files":[]}`, true},
+		{"read with offset", ai.ToolCall{ID: "read", Name: tool.ToolRead, Input: `{"file_path":"build.md","offset":1}`}, true},
+		{"read without targets", ai.ToolCall{ID: "read", Name: tool.ToolRead, Input: `{}`}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -241,12 +315,28 @@ func TestProposeRejectsInvalidAndUncataloguedOperations(t *testing.T) {
 			if tc.catalogued {
 				put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n")
 			}
-			m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(tc.response))}}
+			m := Updater{Provider: fakeProvider{aitest.New(aitest.Asks(tc.call))}}
 			change, err := m.Propose(t.Context(), store, completedPrefix("Discuss the build command."))
 			if change != nil || !errors.Is(err, errInvalidProposal) || get(t, note) != "Use make." {
 				t.Fatalf("change=%v err=%v", change, err)
 			}
 		})
+	}
+}
+
+func TestProposeDoesNotFallBackToJSONForMissingTool(t *testing.T) {
+	prefix := completedPrefix("Use make for builds.")
+	prefix.Tools = nil
+	for _, turn := range []aitest.Turn{
+		aitest.Asks(addProposal),
+		aitest.Says(`{"action":"remember","file":"build.md","name":"Build","description":"Build command","type":"project","body":"Use make."}`),
+	} {
+		driver := aitest.New(turn)
+		m := Updater{Provider: fakeProvider{driver}}
+		change, err := m.Propose(t.Context(), system.MemoryStore(t.TempDir()), prefix)
+		if change != nil || !errors.Is(err, errInvalidProposal) || strings.Contains(driver.Last().Messages[2].Text(), "use Write") {
+			t.Fatalf("expected an unavailable tool to stay unavailable: change=%v err=%v", change, err)
+		}
 	}
 }
 
@@ -258,8 +348,9 @@ func TestProposeRefusesInstructionFileEvenIfIndexed(t *testing.T) {
 	index := filepath.Join(dir, system.AutoMemoryIndexName)
 	const link = "- [Instructions](AGENTS.md)\n"
 	put(t, index, link)
-	for _, response := range []string{addProposal, updateProposal, forgetProposal} {
-		driver := aitest.New(aitest.Says(strings.Replace(response, "build.md", system.InstructionFile, 1)))
+	for _, call := range []ai.ToolCall{addProposal, updateProposal, forgetProposal} {
+		call.Input = strings.Replace(call.Input, "build.md", system.InstructionFile, 1)
+		driver := aitest.New(aitest.Asks(call))
 		m := Updater{Provider: fakeProvider{driver}}
 		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Update the project instructions."))
 		if change != nil || !errors.Is(err, errInvalidProposal) || get(t, path) != instructions || get(t, index) != link {
@@ -299,7 +390,7 @@ func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 	dir := t.TempDir()
 	const visible = "- [Build](build.md)\n"
 	put(t, filepath.Join(dir, system.AutoMemoryIndexName), visible+strings.Repeat("z", 25_000)+"\n- [Other](other.md)\n")
-	driver := aitest.New(aitest.Says(addProposal))
+	driver := aitest.New(aitest.Asks(addProposal))
 	m := Updater{Provider: fakeProvider{driver}}
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use make."))
 	if change != nil || !errors.Is(err, errInvalidProposal) {
@@ -325,7 +416,7 @@ func TestUpdateReadsBeyondPreview(t *testing.T) {
 			path := filepath.Join(dir, system.AutoMemoryIndexName)
 			put(t, path, tc.prefix+tail)
 			put(t, filepath.Join(dir, "build.md"), "Use make.")
-			driver := aitest.New(aitest.Says(tc.read), aitest.Says(readBuild), aitest.Says(updateProposal))
+			driver := aitest.New(aitest.Says(tc.read), aitest.Asks(readBuild), aitest.Asks(updateProposal))
 			m := Updater{Provider: fakeProvider{driver}}
 			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build instead."))
 			if err != nil || change == nil {
@@ -357,7 +448,7 @@ func TestProposeReportsWhyAddsAreDisabled(t *testing.T) {
 	} {
 		dir := t.TempDir()
 		put(t, filepath.Join(dir, system.AutoMemoryIndexName), tc.index)
-		m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(`{"action":"none"}`))}}
+		m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(noMemoryChanges))}}
 		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use make."))
 		if change != nil || err == nil || !strings.Contains(err.Error(), tc.problem) {
 			t.Fatalf("index %.40q: change=%v err=%v; want %q", tc.index, change, err, tc.problem)
@@ -367,28 +458,31 @@ func TestProposeReportsWhyAddsAreDisabled(t *testing.T) {
 
 func TestProposeStopsOnReadLimit(t *testing.T) {
 	dir := t.TempDir()
-	put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n- [Other](other.md)\n- [Release](release.md)\n")
-	put(t, filepath.Join(dir, "build.md"), "Use make.")
-	put(t, filepath.Join(dir, "other.md"), "Other topic.")
-	put(t, filepath.Join(dir, "release.md"), "Release topic.")
-	driver := aitest.New(aitest.Says(readBuild), aitest.Says(`{"action":"read","files":["other.md"]}`),
-		aitest.Says(`{"action":"read","files":["release.md"]}`), aitest.Says(updateProposal))
+	var index strings.Builder
+	var turns []aitest.Turn
+	for i := 0; i <= maxReadRounds; i++ {
+		file := fmt.Sprintf("topic%d.md", i)
+		fmt.Fprintf(&index, "- [Topic](%s)\n", file)
+		put(t, filepath.Join(dir, file), "Original text.")
+		turns = append(turns, aitest.Asks(readNote(file)))
+	}
+	put(t, filepath.Join(dir, system.AutoMemoryIndexName), index.String())
+	driver := aitest.New(turns...)
 	m := Updater{Provider: fakeProvider{driver}}
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build instead."))
-	if change != nil || err == nil || driver.Calls() != 3 || get(t, filepath.Join(dir, "build.md")) != "Use make." {
+	if change != nil || err == nil || driver.Calls() != maxReadRounds+1 {
 		t.Fatalf("read limit did not stop the update: calls=%d change=%v err=%v", driver.Calls(), change, err)
 	}
 }
 
 func TestProposeRejectsStaleSnapshot(t *testing.T) {
-	const readBoth = `{"action":"read","files":["build.md","other.md"]}`
 	for _, edited := range []string{"build.md", "other.md", system.AutoMemoryIndexName} {
 		t.Run(edited, func(t *testing.T) {
 			dir := t.TempDir()
 			put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Other](other.md)\n- [Build](build.md)\n")
 			put(t, filepath.Join(dir, "other.md"), "Other evidence.")
 			put(t, filepath.Join(dir, "build.md"), "Use make.")
-			m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(readBoth), aitest.Says(updateProposal))}}
+			m := Updater{Provider: fakeProvider{aitest.New(aitest.Asks(readBuild, readNote("other.md")), aitest.Asks(updateProposal))}}
 			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build instead."))
 			if change == nil || err != nil {
 				t.Fatalf("change=%v err=%v", change, err)

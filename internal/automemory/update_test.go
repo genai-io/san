@@ -44,7 +44,7 @@ func TestProposeRefusesLiteralEOFWithoutWrites(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, system.AutoMemoryIndexName)
 		put(t, path, index)
-		m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(addProposal))}}
+		m := Updater{Provider: fakeProvider{aitest.New(aitest.Asks(addProposal))}}
 		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("We use make for all builds in this repository."))
 		if err != nil || change == nil {
 			t.Fatalf("change=%v err=%v", change, err)
@@ -67,11 +67,11 @@ func TestProposeRejectsSymlinkNoteAndToolProposal(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	put(t, filepath.Join(dir, system.AutoMemoryIndexName), "- [Build](build.md)\n")
-	for _, turn := range []aitest.Turn{aitest.Says(readBuild), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
+	for _, turn := range []aitest.Turn{aitest.Asks(readBuild), aitest.Asks(ai.ToolCall{ID: "1", Name: "Remove", Input: `{}`})} {
 		driver := aitest.New(turn)
 		m := Updater{Provider: fakeProvider{driver}}
 		prefix := completedPrefix("Please forget the stored build note.")
-		prefix.Tools = []ai.Schema{{Name: "Remove", Definition: map[string]any{"type": "object"}}}
+		prefix.Tools = append(prefix.Tools, ai.Schema{Name: "Remove", Definition: map[string]any{"type": "object"}})
 		change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix)
 		if change != nil || err == nil || get(t, outside) != "outside" {
 			t.Fatalf("untrusted target: change=%v err=%v", change, err)
