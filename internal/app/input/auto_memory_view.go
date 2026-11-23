@@ -1,6 +1,7 @@
 package input
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -20,14 +21,18 @@ func (p *autoMemoryPanel) Render(width, height int) string {
 	if !p.available {
 		return muted.Render(kit.TruncateText("Settings unavailable", width))
 	}
-	if p.page == memoryTimeoutPage {
+	if p.page == memoryEditPage {
 		in := p.input
 		in.SetWidth(max(1, width-2))
 		lines := []string{in.View()}
 		if p.err != nil && len(lines) < height {
 			lines = append(lines, memoryPanelError(p.err, width))
 		} else if height >= 3 {
-			lines = append(lines, "", muted.Render(kit.TruncateText("Only used in Wait mode. Leave blank to inherit.", width)))
+			detail := "First Recall and Update request only. Leave blank to inherit."
+			if p.option == memoryWaitTimeout {
+				detail = "Only used in Wait mode. Leave blank to inherit."
+			}
+			lines = append(lines, "", muted.Render(kit.TruncateText(detail, width)))
 		}
 		return strings.Join(lines, "\n")
 	}
@@ -44,6 +49,8 @@ func (p *autoMemoryPanel) Render(width, height int) string {
 		rows = []memoryPanelRow{
 			{"Auto Memory", "Pause Recall and Update without resetting them", memoryState(p.enabled), p.enabled},
 			{"Wait timeout", "Maximum wait before starting the main turn", p.recall.Timeout.String(), false},
+			{"Preview lines", "First Aside request · line count", fmt.Sprint(p.preview.Lines), false},
+			{"Preview size", "First Aside request · whichever limit comes first", fmt.Sprintf("%d KB", p.preview.KB), false},
 		}
 	} else {
 		rows = []memoryPanelRow{

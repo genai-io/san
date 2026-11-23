@@ -298,7 +298,7 @@ func TestProposePreservesCancellation(t *testing.T) {
 func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 	dir := t.TempDir()
 	const visible = "- [Build](build.md)\n"
-	put(t, filepath.Join(dir, system.AutoMemoryIndexName), visible+strings.Repeat("z", maxUpdateIndex)+"\n- [Other](other.md)\n")
+	put(t, filepath.Join(dir, system.AutoMemoryIndexName), visible+strings.Repeat("z", 25_000)+"\n- [Other](other.md)\n")
 	driver := aitest.New(aitest.Says(addProposal))
 	m := Updater{Provider: fakeProvider{driver}}
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use make."))
@@ -306,9 +306,47 @@ func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 		t.Fatalf("incomplete index allowed add: change=%v err=%v", change, err)
 	}
 	blocks := driver.Last().Messages[2].Content
-	if len(blocks) != 2 || blocks[1].Text != visible || !strings.Contains(blocks[0].Text, "The index is incomplete; do not add a note.") ||
-		strings.Contains(blocks[0].Text, "## Note types") {
+	if len(blocks) != 3 || blocks[1].Text != visible || !strings.Contains(blocks[0].Text, "search the omitted index") ||
+		!strings.Contains(blocks[2].Text, "…") {
 		t.Fatalf("wrong context for incomplete index: %+v", blocks)
+	}
+}
+
+func TestUpdateReadsBeyondPreview(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix, read string
+	}{
+		{"lines", "# Memory\n" + strings.Repeat("\n", 199), `{"action":"read_index","line":201}`},
+		{"bytes", "# Memory\n" + strings.Repeat("x", 24_990) + "\n", `{"action":"read_index","line":3}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			const tail = "- [Build](build.md) — build command\n"
+			path := filepath.Join(dir, system.AutoMemoryIndexName)
+			put(t, path, tc.prefix+tail)
+			put(t, filepath.Join(dir, "build.md"), "Use make.")
+			driver := aitest.New(aitest.Says(tc.read), aitest.Says(readBuild), aitest.Says(updateProposal))
+			m := Updater{Provider: fakeProvider{driver}}
+			change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("Use go build instead."))
+			if err != nil || change == nil {
+				t.Fatalf("cannot update tail note: %v", err)
+			}
+			if _, err := change.Apply(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if get(t, path) != tc.prefix+tail || get(t, filepath.Join(dir, "build.md")) != "Use go build." {
+				t.Fatal("Update did not preserve the index and edit the requested note")
+			}
+			calls := driver.Sent()
+			blocks := calls[0].Messages[2].Content
+			if len(blocks) != 3 || blocks[1].Text != tc.prefix || !strings.Contains(blocks[2].Text, tc.read) || !strings.Contains(blocks[2].Text, "…") {
+				t.Fatal("initial Update preview did not preserve the raw prefix and separate the hint")
+			}
+			if !strings.Contains(calls[1].Messages[4].Text(), tail) {
+				t.Fatal("Update lookup did not return the omitted entry")
+			}
+			t.Logf("Update Aside · %s cutoff · appended user message\n%s\n%s\n[raw preview body omitted from terminal sample]%s", tc.name, strings.SplitN(blocks[0].Text, "\n", 2)[0], strings.SplitN(blocks[1].Text, "\n", 2)[0], blocks[2].Text)
+		})
 	}
 }
 
@@ -316,7 +354,6 @@ func TestProposeReportsWhyAddsAreDisabled(t *testing.T) {
 	for _, tc := range []struct{ index, problem string }{
 		{"- [Build](build.md): use make\n", "line 1 links a note outside"},
 		{"- [Build](build.md) — see deploy.md\n- [Deploy](deploy.md)\n", "deploy.md is mentioned more than once"},
-		{strings.Repeat("- [Topic](topic.md)\n", 1) + strings.Repeat("z", maxUpdateIndex) + "\n", "over 32 KiB"},
 	} {
 		dir := t.TempDir()
 		put(t, filepath.Join(dir, system.AutoMemoryIndexName), tc.index)

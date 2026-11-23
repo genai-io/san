@@ -336,7 +336,7 @@ func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate
 
 // MemoryRecaller uses the main model and the configured Wait budget.
 func (p BuildParams) MemoryRecaller() Recaller {
-	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
+	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording, IndexLimits: p.AutoMemory.IndexLimits}
 	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
 		r.Timeout = p.AutoMemory.Recall.Timeout
 		if r.Timeout <= 0 {

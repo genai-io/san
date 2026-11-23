@@ -8,7 +8,6 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -321,8 +320,7 @@ func insertRecallMessages(messages []core.Message, inserts map[string][]core.Mes
 
 func (r *fastRecall) runLookup(lookup *recallLookup, covered func(system.Memory) bool) {
 	defer lookup.cancel()
-	scope := r.recaller.Recording.Completion(session.PurposeRecall)
-	matches, err := r.recaller.selectNotes(lookup.ctx, r.store, lookup.query, scope, covered)
+	matches, scope, err := r.recaller.selectNotes(lookup.ctx, r.store, lookup.query, covered)
 	if closeErr := scope.Close(); err != nil || closeErr != nil || lookup.ctx.Err() != nil {
 		return
 	}

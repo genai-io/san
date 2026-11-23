@@ -2,7 +2,6 @@ package automemory
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,55 +9,39 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestUpdateIndexRawMarkdown(t *testing.T) {
 	index := "# Prose\r\n\r\nMention an unrelated README.md here.\r\n\r\n- [Topic](./topic.md) — Details\r\n\r\n```md\r\n- [Fake](topic.md)\r\n- [Literal](literal.md)\r\n```\r\n<!--\r\n- [Hidden](comment.md)\r\n-->"
-	s := storeSnapshot{index: revision{text: index}}
-	if got, problem := s.updateIndex(); problem != "" || got != index {
-		t.Fatalf("update index = %q, problem = %q", got, problem)
+	limits := setting.MemoryPreviewLimits{}
+	snapshot := newIndex(index, limits)
+	preview, _ := snapshot.Preview()
+	ids, problem := snapshot.updateNoteIDs()
+	if problem != "" || preview != index {
+		t.Fatalf("update index = %q, problem = %q", preview, problem)
 	}
-	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
 	if !reflect.DeepEqual(ids, map[string]bool{"topic.md": true}) {
 		t.Fatalf("note IDs = %v", ids)
 	}
-	s.index.text += "\nNonstandard [alias](TOPIC.md).\n"
-	if got, problem := s.updateIndex(); problem == "" || got != s.index.text {
-		t.Fatalf("ambiguous update index = %q, problem = %q", got, problem)
+	ids, problem = newIndex(index+"\nNonstandard [alias](TOPIC.md).\n", limits).updateNoteIDs()
+	if problem == "" {
+		t.Fatal("ambiguous index was not detected")
 	}
-	ids, _ = s.updateNoteIDs(s.updateIndexEnd())
-	if ids["topic.md"] {
+	if _, valid := ids["topic.md"]; valid {
 		t.Fatal("ambiguous ID was allowed")
 	}
 }
 
-func TestUpdateIndexByteLimit(t *testing.T) {
-	var text strings.Builder
-	for i := range 40 {
-		fmt.Fprintf(&text, "- [%s](topic-%d.md) — %s\n", strings.Repeat("T", 90), i, strings.Repeat("&", 70))
+func TestUpdateIndexAmbiguityBeyondPreview(t *testing.T) {
+	prefix := "- [Topic](topic.md)\n" + strings.Repeat("# Heading\n", 199)
+	index := newIndex(prefix+"- [Hidden](hidden.md)\n- [Alias](TOPIC.md)\n", setting.MemoryPreviewLimits{})
+	if got, more := index.Preview(); !more || got != prefix {
+		t.Fatal("preview did not stop after 200 complete lines")
 	}
-	text.WriteString(strings.Repeat("x", maxUpdateIndex-text.Len()-1))
-	text.WriteByte('\n')
-	prefix := text.String()
-	s := storeSnapshot{index: revision{text: prefix}}
-	if got, problem := s.updateIndex(); problem != "" || got != prefix {
-		t.Fatalf("at limit: length = %d, problem = %q", len(got), problem)
-	}
-	s.index.text += "- [Hidden](hidden.md)\n- [Alias](TOPIC-0.md)\n"
-	if got, problem := s.updateIndex(); problem == "" || got != prefix {
-		t.Fatalf("over limit: length = %d, problem = %q", len(got), problem)
-	}
-	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
-	if ids["hidden.md"] || ids["topic-0.md"] || !ids["topic-39.md"] {
-		t.Fatalf("note IDs = %v", ids)
-	}
-	s.index.text = prefix[:len(prefix)-2] + "\n界"
-	if got, problem := s.updateIndex(); problem == "" || got != prefix[:len(prefix)-2]+"\n" {
-		t.Fatalf("limit inside multibyte character: length = %d, problem = %q", len(got), problem)
-	}
-	s.index.text = strings.Repeat("界", maxUpdateIndex)
-	if got, problem := s.updateIndex(); problem == "" || got != "" {
-		t.Fatalf("no complete line: length = %d, problem = %q", len(got), problem)
+	ids, problem := index.updateNoteIDs()
+	if !reflect.DeepEqual(ids, map[string]bool{"hidden.md": false}) || problem == "" {
+		t.Fatalf("note IDs = %v, problem = %q", ids, problem)
 	}
 }
 
@@ -75,7 +58,7 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 		}
 	}
 	index := "- [One](one.md)\n- [Two](two.md)\n- [Three](three.md)\n- [Four](four.md)\n- [Five](five.md)\n- [Device](CON.md)\n```\n- [Literal](literal.md)\n```\n"
-	index += "\n" + strings.Repeat("x", maxUpdateIndex) + "\n- [Omitted](omitted.md)\n"
+	index += "\n" + strings.Repeat("x", 25_000) + "\n- [Omitted](omitted.md)\n"
 	write(system.AutoMemoryIndexName, index)
 	for _, name := range []string{"one.md", "two.md", "three.md", "four.md", "five.md", "hidden.md", "omitted.md", "literal.md"} {
 		write(name, name)
@@ -84,8 +67,9 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 	if err != nil || len(s.notes) != 0 || s.index.text != index {
 		t.Fatalf("snapshot = %#v, err = %v", s, err)
 	}
+	visible, _ := newIndex(s.index.text, setting.MemoryPreviewLimits{}).updateNoteIDs()
 	for _, ids := range [][]string{{"hidden.md"}, {"omitted.md"}, {"literal.md"}, {"CON.md"}, {"MEMORY.md"}, {"ONE.md"}, {"./one.md"}, {"one.md", "one.md"}, {"one.md", "two.md", "three.md"}} {
-		if got, err := s.readNotes(ctx, path, ids); err == nil || len(got) != 0 {
+		if got, err := s.readNotes(ctx, path, ids, visible); err == nil || len(got) != 0 {
 			t.Fatalf("read %v = %#v, err = %v", ids, got, err)
 		}
 	}
@@ -94,18 +78,18 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 		for _, id := range ids {
 			want = append(want, noteData{File: id, Text: id})
 		}
-		got, err := s.readNotes(ctx, path, ids)
+		got, err := s.readNotes(ctx, path, ids, visible)
 		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("read %v = %#v, err = %v", ids, got, err)
 		}
 		if rev := s.note(ids[0]); rev.info == nil || rev.text != ids[0] {
 			t.Fatalf("revision = %#v", rev)
 		}
-		if _, err := s.readNotes(ctx, path, ids[:1]); err == nil {
+		if _, err := s.readNotes(ctx, path, ids[:1], visible); err == nil {
 			t.Fatal("accepted a repeated file")
 		}
 	}
-	if _, err := s.readNotes(ctx, path, []string{"four.md"}); err == nil {
+	if _, err := s.readNotes(ctx, path, []string{"four.md"}, visible); err == nil {
 		t.Fatal("accepted a third read round")
 	}
 
@@ -115,15 +99,15 @@ func TestUpdateIndexDemandReads(t *testing.T) {
 	}
 	write("one.md", strings.Repeat("&", maxNote))
 	write("two.md", strings.Repeat("b", maxNote))
-	if _, err := s.readNotes(ctx, path, []string{"one.md", "two.md"}); err != nil {
+	if _, err := s.readNotes(ctx, path, []string{"one.md", "two.md"}, visible); err != nil {
 		t.Fatal(err)
 	}
 	write("three.md", strings.Repeat("c", 512))
-	if got, err := s.readNotes(ctx, path, []string{"three.md"}); err == nil || len(got) != 0 || len(s.notes) != 2 {
+	if got, err := s.readNotes(ctx, path, []string{"three.md"}, visible); err == nil || len(got) != 0 || len(s.notes) != 2 {
 		t.Fatalf("second batch exceeded the remaining budget: got %d notes, err = %v", len(got), err)
 	}
 	write(system.AutoMemoryIndexName, index+"\n# Changed\n")
-	if got, err := s.readNotes(ctx, path, []string{"four.md"}); !errors.Is(err, errStale) || len(got) != 0 {
+	if got, err := s.readNotes(ctx, path, []string{"four.md"}, visible); !errors.Is(err, errStale) || len(got) != 0 {
 		t.Fatalf("stale read = %#v, err = %v", got, err)
 	}
 }

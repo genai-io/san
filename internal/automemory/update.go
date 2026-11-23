@@ -14,16 +14,15 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/markdown"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
 
-type memoryAction string
-
 const (
-	actionNone     memoryAction = "none"
-	actionRead     memoryAction = "read"
-	actionRemember memoryAction = "remember"
-	actionUpdate   memoryAction = "update"
-	actionForget   memoryAction = "forget"
+	actionNone     Action = "none"
+	actionRead     Action = "read"
+	actionRemember Action = "remember"
+	actionUpdate   Action = "update"
+	actionForget   Action = "forget"
 )
 
 // noteTypes defines the classification contract for both validation and Propose.
@@ -35,23 +34,26 @@ var noteTypes = map[string]string{
 	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
 }
 
-// Updater proposes a memory change through bounded, tool-free model calls.
+// Updater proposes a bounded memory change without running shell commands.
 type Updater struct {
-	Provider  llm.Provider
-	Model     string
-	Recording *session.Session
+	Provider    llm.Provider
+	Model       string
+	Recording   *session.Session
+	IndexLimits setting.MemoryPreviewLimits
 }
 
 type proposal struct {
-	Action      memoryAction `json:"action"`
-	Files       []string     `json:"files"`
-	File        string       `json:"file"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Type        string       `json:"type"`
-	Body        string       `json:"body"`
-	Old         string       `json:"old"`
-	Replacement string       `json:"replacement"`
+	Action      Action   `json:"action"`
+	Files       []string `json:"files"`
+	Query       string   `json:"query"`
+	Line        int      `json:"line"`
+	File        string   `json:"file"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Type        string   `json:"type"`
+	Body        string   `json:"body"`
+	Old         string   `json:"old"`
+	Replacement string   `json:"replacement"`
 }
 
 type noteData struct {
@@ -100,6 +102,15 @@ func validateProposal(p proposal) error {
 	invalid := errInvalidProposal
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
+	if p.Action.IsIndexLookup() {
+		if p.File != "" || p.Files != nil || metadata || patch {
+			return invalid
+		}
+		return nil
+	}
+	if p.Query != "" || p.Line != 0 {
+		return invalid
+	}
 	if p.Action == actionRead {
 		if p.File != "" || metadata || patch {
 			return invalid

@@ -2,6 +2,7 @@ package input
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 const (
 	memoryEnabled = iota
 	memoryWaitTimeout
+	memoryPreviewLines
+	memoryPreviewSize
 	memoryOptionCount
 )
 
@@ -28,7 +31,7 @@ type memoryPage uint8
 const (
 	memoryActionsPage memoryPage = iota
 	memoryOptionsPage
-	memoryTimeoutPage
+	memoryEditPage
 )
 
 type autoMemoryPanel struct {
@@ -40,6 +43,7 @@ type autoMemoryPanel struct {
 	enabled   bool
 	blocked   bool
 	recall    setting.MemoryRecallConfig
+	preview   setting.MemoryPreviewLimits
 	update    bool
 	err       error
 	input     textinput.Model
@@ -53,8 +57,15 @@ func (p *autoMemoryPanel) Breadcrumb() string {
 	switch p.page {
 	case memoryOptionsPage:
 		return "Options"
-	case memoryTimeoutPage:
-		return "Wait timeout"
+	case memoryEditPage:
+		switch p.option {
+		case memoryPreviewLines:
+			return "Preview lines"
+		case memoryPreviewSize:
+			return "Preview size"
+		default:
+			return "Wait timeout"
+		}
 	default:
 		return ""
 	}
@@ -62,11 +73,11 @@ func (p *autoMemoryPanel) Breadcrumb() string {
 
 func (p *autoMemoryPanel) HintLine() string {
 	switch p.page {
-	case memoryTimeoutPage:
+	case memoryEditPage:
 		return keycap("enter") + " save  " + keycap("esc") + " cancel"
 	case memoryOptionsPage:
 		action := "toggle"
-		if p.option == memoryWaitTimeout {
+		if p.option != memoryEnabled {
 			action = "edit"
 		}
 		return keycap("↑↓") + "  " + keycap("enter") + " " + action + "  " + keycap("esc") + " back"
@@ -96,12 +107,13 @@ func (p *autoMemoryPanel) load(svc *setting.Settings) {
 	p.enabled = svc.AutoMemory()
 	p.blocked = setting.AutoMemoryDisabledByEnv()
 	p.recall = svc.MemoryRecall()
+	p.preview = svc.MemoryPreview()
 	p.update = svc.MemoryUpdate()
 }
 
 func (p *autoMemoryPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
-	if p.page == memoryTimeoutPage {
-		return p.handleTimeoutKey(msg), false
+	if p.page == memoryEditPage {
+		return p.handleEditKey(msg), false
 	}
 	key := msg.String()
 	if p.page == memoryOptionsPage {
@@ -191,16 +203,23 @@ func (p *autoMemoryPanel) activateOption() tea.Cmd {
 		p.load(svc)
 		return nil
 	}
-	_, timeout := setting.MemoryRecallAt(cwd, scope)
 	p.input = textinput.New()
-	p.input.Placeholder = "e.g. 5s"
 	p.input.CharLimit = 64
-	p.input.SetValue(timeout)
-	p.page = memoryTimeoutPage
+	switch p.option {
+	case memoryPreviewLines:
+		p.input.SetValue(strconv.Itoa(p.preview.Lines))
+	case memoryPreviewSize:
+		p.input.SetValue(strconv.Itoa(p.preview.KB))
+	default:
+		_, timeout := setting.MemoryRecallAt(cwd, scope)
+		p.input.Placeholder = "e.g. 5s"
+		p.input.SetValue(timeout)
+	}
+	p.page = memoryEditPage
 	return p.input.Focus()
 }
 
-func (p *autoMemoryPanel) handleTimeoutKey(msg tea.KeyMsg) tea.Cmd {
+func (p *autoMemoryPanel) handleEditKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		p.input.Blur()
@@ -212,14 +231,45 @@ func (p *autoMemoryPanel) handleTimeoutKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		value := strings.TrimSpace(p.input.Value())
-		p.err = setting.SaveMemoryRecallTimeout(cwd, memorySettingsScope(cwd), value)
+		scope := memorySettingsScope(cwd)
+		var number int
+		if p.option == memoryWaitTimeout {
+			p.err = setting.SaveMemoryRecallTimeout(cwd, scope, value)
+		} else {
+			if value != "" {
+				n, err := strconv.Atoi(value)
+				if err != nil || n <= 0 {
+					p.err = fmt.Errorf("enter a positive whole number or leave blank to inherit")
+					return nil
+				}
+				number = n
+			}
+			if p.option == memoryPreviewLines {
+				p.err = setting.SaveMemoryPreviewLines(cwd, scope, number)
+			} else {
+				p.err = setting.SaveMemoryPreviewKB(cwd, scope, number)
+			}
+		}
 		if p.err != nil {
 			return nil
 		}
 		p.err = svc.Reload(cwd)
 		p.load(svc)
-		if duration, err := time.ParseDuration(value); p.err == nil && err == nil && p.recall.Timeout != duration {
-			p.err = fmt.Errorf("saved, but Wait still uses %s", p.recall.Timeout)
+		if p.err == nil {
+			switch p.option {
+			case memoryWaitTimeout:
+				if duration, err := time.ParseDuration(value); err == nil && p.recall.Timeout != duration {
+					p.err = fmt.Errorf("saved, but Wait still uses %s", p.recall.Timeout)
+				}
+			case memoryPreviewLines:
+				if number != 0 && p.preview.Lines != number {
+					p.err = fmt.Errorf("saved, but the preview still uses %d lines", p.preview.Lines)
+				}
+			case memoryPreviewSize:
+				if number != 0 && p.preview.KB != number {
+					p.err = fmt.Errorf("saved, but the preview still uses %d KB", p.preview.KB)
+				}
+			}
 		}
 		p.input.Blur()
 		p.page = memoryOptionsPage

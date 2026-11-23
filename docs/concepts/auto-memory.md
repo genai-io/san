@@ -19,9 +19,15 @@ Each repository has one Auto Memory directory at `~/.san/projects/<encoded-main-
 
 Use absolute dates for time-sensitive facts so a note still makes sense next session.
 
+## Index preview
+
+Recall and Update start with up to **200 complete lines or 25 KB** (25,000 bytes) of `MEMORY.md`, whichever comes first. If truncated, a separate `…` hint shows where to continue reading (`read_index`) or how to search (`search_index`). Each Aside gets two lookups, up to 8 KiB of index text per result.
+
+Set **Preview lines** and **Preview size** under `/reflection` → **Auto Memory** → **Options** (`memoryPreviewLines` and `memoryPreviewKB`). Clear a value to inherit. These settings only affect the first Aside request: they do not change the file or the separate 128 KiB index limit. The index and lookups stay out of the main conversation.
+
 ## Recall
 
-Each tool-free Recall request has three user messages: the file index (IDs and descriptions of notes linked from `MEMORY.md`; an unlinked file is not recalled), the IDs already in active main context, and the current question. The index is not ranked or truncated by the question, so it remains a reusable prefix while the note metadata is unchanged. The selector does not replay past Aside messages or select already-covered files again. The main model receives at most 2 KiB read from each selected file as a Reminder.
+Recall uses the index preview and current question to find linked notes that aren't already in context. The main model receives up to 2 KiB per selected note.
 
 - **Fast** (default): Start the main request without waiting. A ready result is appended as a separate user message at the tail of the next eligible main request, after any tool results. It keeps that position on later requests so new recall does not edit the prefix. Results from an earlier question are labeled for use only when relevant. Fast retains at most ten note references within the latest 20 active user messages, excluding tool results. It rereads files on fresh requests and skips forgotten notes. The request-only context does not change native history or past requests and is not restored on resume.
 - **Wait**: Give recall up to the configured timeout (default `5s`) before the first main request. If recall times out or the selector fails, proceed without it.
@@ -35,9 +41,9 @@ In the TUI, `/memory update` runs a one-off review of the latest eligible comple
 
 The review reuses the completed main request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final assistant message. It extends a separate request in the same session:
 
-1. **Start with the index.** One Update user message contains two text blocks: task instructions and the original `MEMORY.md` as read-only data. San sends no linked note bodies up front. An index over 32 KiB is cut at a complete line. An incomplete index (over the limit, a note link outside the `- [Name](file.md) description` form, or a note filename mentioned twice) disables additions; a review that then ends without a change reports the reason (shown for `/memory update`, logged for automatic runs). New entries cannot mention another note filename.
-2. **Read on demand.** The model can ask for up to two indexed notes per round, at most twice. San returns each requested note in its own block, up to 8 KiB per file and 16 KiB total for bodies. No native tools can execute: the request keeps the main `tool_choice` so cached messages stay valid, and a reply with tool calls is rejected.
-3. **Propose one change or none.** The model can add a note and index link, revise a note in place without changing its type, forget a note and its link, or stop without a change. It must first read a note it proposes to edit or forget, and forgetting requires clear user intent. San checks the index and supplied note revisions before writing.
+1. **Check the index.** If the preview is truncated, search omitted entries before adding a note. Malformed links or duplicate note filenames disable additions; if nothing changes, manual runs report why and automatic runs log it. New labels cannot mention another note filename.
+2. **Read on demand.** Update can request two indexed notes per round, for up to two rounds (8 KiB per note, 16 KiB total).
+3. **Propose one change or none.** Update can add, revise, or forget a note. It must read a note before revising or forgetting it. When the user clearly asks to forget a note, Update uses the existing `Bash` (`rm`, also under zsh) or `PowerShell` (`Remove-Item -LiteralPath`) call if available. San validates the single filename and removes both the note and its link without running a shell. If neither tool is available, Update uses the JSON `forget` action. The tool catalog stays unchanged.
 
 To review automatically after an eligible completed turn, enable **Update** under `/reflection` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 
