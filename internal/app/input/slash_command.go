@@ -139,7 +139,8 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
 		"memory":         (*SlashCommandController).handleMemoryCommand,
-		"reflection":     (*SlashCommandController).handleReflectionCommand,
+		"reflect":        (*SlashCommandController).handleReflectCommand,
+		"reflection":     (*SlashCommandController).handleReflectionCommand, // Legacy panel shortcut.
 		"mcp":            (*SlashCommandController).handleMCPCommand,
 		"plugin":         (*SlashCommandController).handlePluginCommand,
 		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
@@ -397,7 +398,7 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 }
 
 // handleSettingsCommand opens the /settings popup (Appearance, Permissions
-// and General). Use /reflection for Auto Memory and Auto Skill.
+// and General). Use /reflect for Auto Memory, Auto Skill, and Recap.
 func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
@@ -526,14 +527,22 @@ func (c *SlashCommandController) handleReflectionCommand(_ context.Context, args
 	return "", nil, nil
 }
 
-func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	if strings.TrimSpace(args) == "update" {
+func (c *SlashCommandController) handleReflectCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	switch strings.TrimSpace(args) {
+	case "":
+		return c.handleReflectionCommand(ctx, "")
+	case "memory":
 		if c.env.UpdateMemory == nil {
 			return "Auto Memory update is unavailable.", nil, nil
 		}
 		result, cmd := c.env.UpdateMemory()
 		return result, cmd, nil
+	default:
+		return "Usage: /reflect [memory]", nil, nil
 	}
+}
+
+func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Setting, c.env.Cwd, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err

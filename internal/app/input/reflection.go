@@ -9,8 +9,9 @@ type ReflectionDeps struct {
 }
 
 func NewReflectionSelector(deps ReflectionDeps) PanelPopup {
-	return newPanelPopup("✦", "Reflection", "memory and skill settings",
+	return newPanelPopup("✦", "Reflection", "memory, skills & recap",
 		&autoMemoryPanel{workspace: deps.Workspace},
 		newAutoSkillPanel(deps.Workspace, deps.Learned),
+		&recapPanel{workspace: deps.Workspace},
 	)
 }

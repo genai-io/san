@@ -31,13 +31,6 @@ const recapTimeout = 2 * time.Minute
 // on return.
 const recapCacheWindow = 4 * time.Minute
 
-// An unasked recap waits for a session of recapMinTurns turns, and for
-// recapNewTurns more since the last one: a recap over the same ground is noise.
-const (
-	recapMinTurns = 3
-	recapNewTurns = 2
-)
-
 const recapInstructions = `<system-reminder>The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown, in the conversation's language. Lead with the overall goal and current task and where it stands, then the one next action, noting when it's theirs. Skip root-cause narrative, fix internals, secondary to-dos, and em-dash tangents.%FACTS%
 </system-reminder>`
 
@@ -65,14 +58,15 @@ type recapReadyMsg struct {
 
 // onBlur starts the clock on an absence. Only a conversation with new ground
 // schedules a warm-cache recap; a turn finished while away can still prepare
-// one through prepareRecapAtTurnEnd.
+// one.
 func (m *model) onBlur() tea.Cmd {
 	m.unfocusedSince = time.Now()
-	if !m.shouldAutoRecap() {
+	cfg := m.services.Setting.Recap()
+	if !m.shouldAutoRecap(cfg) {
 		return nil
 	}
 	since := m.unfocusedSince
-	return tea.Tick(min(m.env.AutoPilot.RecapAfter(), recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
+	return tea.Tick(min(cfg.AwayTime(), recapCacheWindow), func(time.Time) tea.Msg { return recapPrepareMsg{since} })
 }
 
 // onFocus ends an absence: the input hint skipped meanwhile is fetched, and
@@ -87,8 +81,9 @@ func (m *model) onFocus() tea.Cmd {
 // enough and the session is idle. Returning mid-turn skips this automatic
 // recap; it must not interrupt tool calls or appear unexpectedly later.
 func (m *model) recapOnReturn(since time.Time) tea.Cmd {
-	if since.IsZero() || time.Since(since) < m.env.AutoPilot.RecapAfter() ||
-		m.conv.Stream.Active || !m.shouldAutoRecap() {
+	cfg := m.services.Setting.Recap()
+	if since.IsZero() || time.Since(since) < cfg.AwayTime() ||
+		m.conv.Stream.Active || !m.shouldAutoRecap(cfg) {
 		return nil
 	}
 	return m.deliverRecap()
@@ -128,27 +123,15 @@ func (m *model) deliverRecap() tea.Cmd {
 	return tea.Batch(tick, m.writeRecap())
 }
 
-// prepareRecap writes the recap ahead while the user is away and the
-// conversation is quiet, so it reads the cache before it expires and is ready
-// on return. A session at work keeps its cache warm, so it is left to be
-// written on return. Called when the cache window comes up and when the
-// session goes idle after it.
+// prepareRecap runs when the cache window comes up or a turn goes idle.
+// Write ahead to use the warm cache, but don't show the result early.
 func (m *model) prepareRecap() tea.Cmd {
-	if m.unfocusedSince.IsZero() || m.recap.busy || !m.shouldAutoRecap() || !m.sessionQuiet() || m.recapReady() {
+	cfg := m.services.Setting.Recap()
+	if m.unfocusedSince.IsZero() || time.Since(m.unfocusedSince) < min(cfg.AwayTime(), recapCacheWindow) ||
+		m.recap.busy || !m.shouldAutoRecap(cfg) || !m.sessionQuiet() || m.recapReady() {
 		return nil
 	}
 	return m.writeRecap()
-}
-
-// prepareRecapAtTurnEnd rewrites the recap when the session goes idle while
-// the user is away, once the cache window has come up: the chain just moved,
-// and the cache is as warm as it gets.
-func (m *model) prepareRecapAtTurnEnd() tea.Cmd {
-	after := m.env.AutoPilot.RecapAfter()
-	if m.unfocusedSince.IsZero() || after == 0 || time.Since(m.unfocusedSince) < min(after, recapCacheWindow) {
-		return nil
-	}
-	return m.prepareRecap()
 }
 
 // recapReady reports a recap written ahead that the conversation has not
@@ -184,33 +167,13 @@ func (m *model) canRecap() bool {
 // new ground to cover and the user is not already typing. New ground is read
 // from the recorded recap notice rather than process-local state, so a resumed
 // session does not recap the same completed work again.
-func (m *model) shouldAutoRecap() bool {
-	if m.env.AutoPilot.RecapAfter() == 0 || !m.canRecap() || m.hasDraft() || m.turns() < recapMinTurns {
+func (m *model) shouldAutoRecap(cfg setting.RecapSettings) bool {
+	owner := m.services.Session
+	if cfg.AfterMinutes < 0 || owner == nil || !m.canRecap() || m.hasDraft() {
 		return false
 	}
-	since := 0
-	for i := len(m.conv.Messages) - 1; i >= 0; i-- {
-		msg := m.conv.Messages[i]
-		if msg.Role == core.ChatNotice && strings.HasPrefix(msg.Content, "/recap ") {
-			return since >= recapNewTurns
-		}
-		if msg.Role == core.ChatUser && msg.ToolResult == nil {
-			since++
-		}
-	}
-	return true
-}
-
-// turns counts the turns begun in the conversation: typed prompts and
-// AutoPilot's continuations alike, not tool results.
-func (m *model) turns() int {
-	n := 0
-	for _, msg := range m.conv.Messages {
-		if msg.Role == core.ChatUser && msg.ToolResult == nil {
-			n++
-		}
-	}
-	return n
+	history := owner.Snapshot()
+	return history.UserTurnsSinceNotice("/recap ") >= cfg.Turns
 }
 
 // hasDraft reports a draft in the composer: the user is already back in the
@@ -280,7 +243,9 @@ func (m *model) onRecapReady(msg recapReadyMsg) tea.Cmd {
 	}
 	m.clearRecapCache()
 	m.recap.ready = msg
-	if !m.unfocusedSince.IsZero() && m.recapReady() && m.sessionQuiet() && !m.hasDraft() {
+	cfg := m.services.Setting.Recap()
+	if !m.unfocusedSince.IsZero() && time.Since(m.unfocusedSince) >= cfg.AwayTime() &&
+		m.recapReady() && m.sessionQuiet() && m.shouldAutoRecap(cfg) {
 		return m.showRecap(msg)
 	}
 	return nil

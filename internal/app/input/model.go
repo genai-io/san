@@ -64,7 +64,7 @@ type Model struct {
 	Plugin     PluginSelector
 	Tool       ToolSelector
 	Settings   PanelPopup        // /settings: appearance, permissions, general
-	Reflection PanelPopup        // /reflection: Auto Memory and Auto Skill
+	Reflection PanelPopup        // /reflect: Auto Memory, Auto Skill, and Recap
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
 	Transcript TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
 	Tasks      TaskViewer        // /tasks: inspect background work and review pending approvals

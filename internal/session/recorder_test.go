@@ -121,6 +121,66 @@ func TestRecorderSuccessfulTurns(t *testing.T) {
 	}
 }
 
+func TestRecorderUserTurns(t *testing.T) {
+	store := cleanStore(t)
+	s := createTyped(t, store, CreateOptions{})
+	r := NewRecorder(s, "test")
+	ran := 0
+	d := aitest.New(
+		aitest.Asks(ai.ToolCall{ID: "work-1", Name: "work", Input: "{}"}), aitest.Says("done"),
+		aitest.Says("automatic follow-up"),
+		aitest.Says("done again"),
+	)
+	a := recorderAgent(r, d, func(c *core.Config) {
+		c.Tools = core.NewTools(recorderTool{ran: &ran})
+		c.Gate = func(ctx context.Context, p sdkagent.PreToolContext) (sdkagent.Decision, error) {
+			err := r.Decide(ctx, PermissionDecidePayload{CallID: p.Call.ID, Decision: "allow", By: ByUser, Scope: "once", Reason: "test"})
+			return sdkagent.Decision{}, err
+		}
+	})
+	turn := func(text string, user bool) {
+		t.Helper()
+		message := core.UserMessage(text, nil)
+		message.ID = core.NewMessageID()
+		if user {
+			r.NoteUserInput(message.ID)
+		}
+		a.Append(message)
+		result, err := a.ThinkAct(t.Context())
+		if err != nil || result == nil || result.StopReason != core.StopEndTurn {
+			t.Fatalf("turn %q: result=%+v err=%v", text, result, err)
+		}
+	}
+	const prefix = "/recap "
+	turn("an input with a tool", true)
+	turn("generated follow-up", false)
+	if got := recorderSnapshot(s).UserTurnsSinceNotice(prefix); got != 1 || ran != 1 {
+		t.Fatalf("want one user turn and one tool execution, got turns=%d tools=%d", got, ran)
+	}
+	if err := s.Append(t.Context(), Event{Payload: AnnotationAddPayload{Text: prefix + "status"}}); err != nil {
+		t.Fatal(err)
+	}
+	// An input announced before a cancelled run exits must not count.
+	r.RecordEvent(sdkagent.TurnStart{})
+	message := core.UserMessage("interrupted", nil)
+	message.ID = core.NewMessageID()
+	r.NoteUserInput(message.ID)
+	r.RecordEvent(sdkagent.MessageAdded{Message: message})
+	r.RecordEvent(sdkagent.TurnEnd{StopReason: sdkagent.StopCanceled})
+	a.SetMessages(recorderSnapshot(s).ActiveMessages())
+	turn("another submission", true)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.Read(t.Context(), s.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := replayed.UserTurnsSinceNotice(prefix); got != 1 {
+		t.Fatalf("replayed session counted %d turns since last recap, want 1", got)
+	}
+}
+
 func TestRecorderToolOutcomes(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string

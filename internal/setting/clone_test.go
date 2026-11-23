@@ -43,6 +43,7 @@ func TestCloneCopiesEveryField(t *testing.T) {
 		Persona:                 "ml-researcher",
 		AutoSkill:               skill,
 		AutoPilot:               AutoPilotSettings{Model: "openai/gpt"},
+		Recap:                   RecapSettings{AfterMinutes: 9, Turns: 7},
 		LastOperationMode:       "auto",
 	}
 	v := reflect.ValueOf(*src)

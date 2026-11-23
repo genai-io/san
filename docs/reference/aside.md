@@ -21,7 +21,7 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 | **By the Way** | Explicit `/btw <question>`. | The active main conversation's tool schemas, including enabled MCP tools, for prefix reuse. The Aside cannot execute them. | Main system prompt and active history, then a separate user message with the side instruction and question. | A text answer shown as a Notice, not sent to the main model. |
 | **AutoPilot** | An enabled decision point, such as turn end, an eligible approval review, or a user-question steer. | None. A tool under review is input data, not an available tool. | A decision-specific prompt and one task message with bounded evidence, such as the mission, recent progress, or eligible choices. | A structured decision. The runtime may accept it only under existing permissions and continuation limits. |
 | **Auto Skill** | At least one skill action is allowed, and a clean turn ends after a `ReviewSkill` request. | None. | A review prompt, configured strategy, and a bounded excerpt of the settled turn and relevant skills. | San validates at most one change to an agent-owned skill. The change is recorded separately from the main model's history. |
-| **Recap** | After an eligible absence, either prepared while away or requested when the user returns. | Main tool schemas for reuse; none executed. | Main system prompt and history, then a short recap instruction and relevant status facts. | A brief status and next action shown in the UI. A prepared recap is reused only while it still describes the current conversation. |
+| **Recap** | Explicit `/recap`, or an eligible absence. San can prepare a recap while the terminal is unfocused. | Main tool schemas for reuse; none executed. | Main system prompt and history, then a short recap instruction and relevant status facts. | A brief status and next action shown in the UI. A prepared recap is reused only while it still describes the current conversation. |
 | **Suggestion** | When suggestions are enabled and a completed turn leaves enough context; deferred while the terminal is unfocused. | Main tool schemas for reuse; none executed. | Main system prompt and history, then an instruction to suggest the next input; includes the active mission when applicable. | An editable input hint, never submitted automatically. |
 | **Flow Draft** | Explicit `/flow <goal>`. | None. | Main system prompt and history, then the drafting instructions, available agents and skills, and the user's goal. | An unsaved draft in Review. Saving and running are separate user actions. |
 
@@ -32,11 +32,26 @@ Recall and Update share a repository store. Recall has no tools. Update retains 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
 | **Recall** | **Fast** runs alongside the main request; **Wait** waits up to the configured timeout. | Index preview, already-covered notes, and the question. | Selected note previews reach the main model as Reminders. A failed lookup doesn't block the turn. |
-| **Update** | `/memory update` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | At most one validated add, edit, or removal. A successful write produces a notice. |
+| **Update** | `/reflect memory` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | At most one validated add, edit, or removal. A successful write produces a notice. |
 
 Both Asides can read or search omitted index entries on demand. Update can also read note bodies without changing the main request prefix. See [Auto Memory](../concepts/auto-memory.md#index-preview) for limits.
 
-Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work. `/reflection` opens separate Auto Memory and Auto Skill tabs; `/memory` opens the store and instruction-file browser.
+Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work. Configure these in `/reflect` under Auto Memory; `/memory` opens the store and instruction-file browser.
+
+## Recap
+
+Open `/reflect` and press `Tab` to switch to **Recap**. Select a row with `↑`/`↓` and press `Enter` to edit or save:
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| Time away (minutes) | 5 | Minimum time the terminal is unfocused. `-1` turns off automatic recaps. |
+| Turns between recaps | 3 | Minimum completed user turns since the last displayed recap (including after resume), or since the start of the session before the first recap. |
+
+Each prompt you submit counts as one turn when the main agent finishes normally. Tool calls, automatic continuations, and failed or canceled turns do not count. Older sessions without recorded turn counts start counting with the next completed user turn.
+
+Meeting the turn threshold doesn't cause a recap while you stay focused. Returning during a running turn skips the automatic recap. Preparing one early can reuse the warm prompt cache, but a result isn't shown before the away threshold. Automatic recaps need terminal focus events (in tmux, `set -g focus-events on`); `/recap` works without those events or any automatic threshold.
+
+The tab saves `recap.afterMinutes` and `recap.turns` in project settings for Git repositories and user settings otherwise. If `recap.afterMinutes` is unset, the old `autoPilot.recapAfterMinutes` settings key is still honored.
 
 ## Context and caching
 

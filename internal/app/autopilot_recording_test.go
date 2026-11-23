@@ -319,8 +319,7 @@ func TestAutopilotMissionRefineCancellationDelivery(t *testing.T) {
 			})
 			p.SetMissionRefiner(m.missionRefine)
 			p.Enter(120, 40)
-			// Suggest -> Recap -> Mission, then open the editor.
-			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+			// Suggest -> Mission, then open the editor.
 			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
 			p.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 			cmd := p.HandleKeypress(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})

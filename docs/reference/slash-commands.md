@@ -23,8 +23,8 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/recap` | Recap where this session stands: the goal, now, and the next step |
 | `/init` | Create AGENTS.md and config files |
 | `/memory` | View or edit instruction files and the repository's Auto Memory; `t` toggles Auto Memory and `d` repoints its directory without moving notes |
-| `/memory update` | Run a one-off [Auto Memory Update](../concepts/auto-memory.md#update) after an eligible completed turn, even when automatic Update is off; does not edit project instructions |
-| `/reflection` | Configure Auto Memory (Recall, Update, and [index preview options](../concepts/auto-memory.md#index-preview)) and Auto Skill; press Tab to switch tabs |
+| `/reflect` | Configure Auto Memory (Recall, Update, and [index preview options](../concepts/auto-memory.md#index-preview)), Auto Skill, and [Recap](aside.md#recap); press Tab to switch tabs |
+| `/reflect memory` | Run a one-off [Auto Memory Update](../concepts/auto-memory.md#update) after an eligible completed turn, even when automatic Update is off; does not edit project instructions |
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |
 | `/reload-plugins` | Reload plugins and refresh plugin-backed components |
@@ -34,9 +34,11 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/flow` | Describe a goal to generate a blueprint for Review; `run <name>` launches a saved blueprint. Inspect, retry and stop through explicit subcommands. |
 | `/search` | Select search engine for web search |
 
+`/reflect memory` replaces `/memory update`; the old command is no longer accepted.
+
 ## UI Interactions
 
-- Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/flow `, `/plugin `, `/mcp `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/flow show ` and `/flow run ` offer saved blueprint names; after `/flow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
+- Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/flow `, `/plugin `, `/mcp `, `/reflect `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/flow show ` and `/flow run ` offer saved blueprint names; after `/flow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/history`, or **Ctrl+O when idle**, opens the session transcript in the

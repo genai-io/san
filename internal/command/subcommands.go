@@ -22,11 +22,13 @@ var builtinSubcommands = map[string][]Info{
 		{Name: "loop list", Description: "List scheduled jobs"},
 		{Name: "loop delete", Description: "Cancel a scheduled job"},
 	},
+	"reflect": {
+		{Name: "reflect memory", Description: "Review the latest completed turn and update repository memory"},
+	},
 	"memory": {
 		{Name: "memory list", Description: "List memory files"},
 		{Name: "memory show", Description: "Show memory files"},
 		{Name: "memory edit", Description: "Edit a memory file"},
-		{Name: "memory update", Description: "Review the completed conversation and update repository memory"},
 		{Name: "memory on", Description: "Enable Auto Memory"},
 		{Name: "memory off", Description: "Disable Auto Memory"},
 	},

@@ -1,4 +1,4 @@
-// The Auto Skill tab of /reflection edits review settings and learned skills.
+// The Auto Skill tab of /reflect edits review settings and learned skills.
 //
 // The panel is a small mode machine layered over the config form:
 //

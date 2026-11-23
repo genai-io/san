@@ -11,7 +11,8 @@ import (
 // PendingInput owns native input until delivery or discard.
 type PendingInput struct {
 	core.Message
-	FromUser    bool
+	FromUser    bool                // Use the user input admission and Recall path.
+	Synthetic   bool                // Scheduled or generated input routed through that path, not submitted by the user.
 	Completion  *session.Completion // Records the model call that generated this input; finishes on delivery or discard.
 	Source      *session.EventRef   // Child event whose result is being delivered.
 	Destination *session.Session    // Original receiving owner; required with Source.

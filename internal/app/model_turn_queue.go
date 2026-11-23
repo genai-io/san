@@ -46,7 +46,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	if cmd := m.prepareRecapAtTurnEnd(); cmd != nil {
+	if cmd := m.prepareRecap(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	if msg.Result.StopReason != "" && msg.Result.StopReason != core.StopEndTurn {
@@ -276,12 +276,11 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 }
 
 // injectCronPrompt fires a scheduled cron prompt as if the user had just
-// typed it. The notice + user message show what triggered; SubmitToAgent
-// handles provider/agent state.
+// typed it, but it does not count as a submitted user turn for Recap.
 func (m *model) injectCronPrompt(prompt string) tea.Cmd {
 	m.conv.AddNotice("Scheduled task fired")
 	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt}).ToMessage()
-	return m.SubmitToAgent(msg)
+	return m.submit(pendingMessage{Message: msg, FromUser: true, Synthetic: true})
 }
 
 // injectAsyncHookContinuation surfaces an async hook's follow-up: the hook

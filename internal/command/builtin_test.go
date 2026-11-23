@@ -8,10 +8,20 @@ import (
 )
 
 func TestReflectionAndMemoryCatalog(t *testing.T) {
-	catalog := (&Registry{}).BuiltinNames()
-	reflection, ok := catalog["reflection"]
-	if !ok || !strings.Contains(reflection.Description, "Auto Memory") || !strings.Contains(reflection.Description, "Auto Skill") {
-		t.Fatalf("/reflection should advertise both settings: %+v", reflection)
+	reg := &Registry{}
+	catalog := reg.BuiltinNames()
+	reflect, ok := catalog["reflect"]
+	if !ok || !strings.Contains(reflect.Description, "Auto Memory") || !strings.Contains(reflect.Description, "Auto Skill") {
+		t.Fatalf("/reflect should advertise both settings: %+v", reflect)
+	}
+	if _, ok := catalog["reflection"]; ok {
+		t.Fatal("/reflection is a hidden panel alias")
+	}
+	if matches := reg.Matching("reflect "); len(matches) != 1 || matches[0].Name != "reflect memory" {
+		t.Fatalf("/reflect should suggest the memory action: %+v", matches)
+	}
+	if matches := reg.Matching("memory u"); len(matches) != 0 {
+		t.Fatalf("/memory should no longer suggest update: %+v", matches)
 	}
 	if memory, ok := catalog["memory"]; !ok || !strings.Contains(memory.Description, "repository memory") || strings.Contains(memory.Description, "Auto Skill") {
 		t.Fatalf("/memory should advertise the browser: %+v", memory)

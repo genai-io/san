@@ -8,7 +8,6 @@
 ```
 ALWAYS
 ▸ [✓] Suggest   your next input · Tab to accept
-  [✓] Recap     when you're back · after 5m away
 
 WHILE IT DRIVES · shift+tab to drive
       Mission   the goal it works toward          not set · Enter to write
@@ -22,23 +21,33 @@ WHILE IT DRIVES · shift+tab to drive
       Load preset…  3 saved
 ```
 
-`enter` 或 `space` 编辑或切换,`←`/`→` 调整 Recap 的等待时间和 Continue 的上限,
+`enter` 或 `space` 编辑或切换，`←`/`→` 调整 Continue 的上限，
 `esc` 保存并关闭。保存不会启动任务。
 
-Always 一节在任何模式下都生效:
+**Suggest** 在任何模式下都生效：每轮结束后在输入框里用灰字建议下一条输入。
+Autopilot 驾驶 mission 时，改为提议朝 mission 推进的下一步。
 
-- **Suggest** —— 每轮结束后在输入框里用灰字建议下一条输入。Autopilot 驾驶
-  mission 时,改为提议朝 mission 推进的下一步。
-- **Recap** —— 离开超过设定时间、终端重新获得焦点时,给出一条会话进展:San 自己
-  掌握的事实(什么在等你、计划进度、mission、后台任务),加上目标、
-  当前在做什么、下一步。若回来时这一轮仍在运行,这次自动 Recap 会直接跳过,
-  不会在这一轮结束后补发。`/recap` 随时可看。需要终端上报焦点(tmux 里:
-  `set -g focus-events on`)。生成中只显示轻微呼吸的 `※`,不显示 `writing…`
-  或 Recap 标签;完成后保留同一个静止的 `※`,旁边显示淡色斜体摘要,
-  可选的状态信息仍放在下方。
+### Recap
 
-两者和 `/btw` 一样是旁路请求:复用会话的 prompt、工具和对话,走 provider 的
-prompt cache,agent 看不到它们。Recap 在你离开期间、缓存过期之前就写好。
+Recap 也适用于任何模式。在 `/reflect` 中按 `Tab` 切换到 **Recap**，用
+`↑`/`↓` 选择设置，按 `Enter` 编辑或保存：
+
+| 设置 | 默认值 | 含义 |
+|---|---:|---|
+| Time away (minutes) | 5 | 终端失去焦点的最短时间（分钟）。`-1` 关闭自动回顾。 |
+| Turns between recaps | 3 | 自上次显示回顾以来至少完成的用户轮数（恢复会话后也适用）；首次回顾前从会话开始算起。 |
+
+用户每提交一条提示，主代理正常结束后计为一轮。工具调用、自动续跑、失败或取消的轮次都不计入。未记录轮数的旧会话从下一轮正常完成的用户输入开始计数。
+自动回顾不会在达到离开时间阈值前显示；如果回来时仍有一轮在运行，就跳过这次回顾，不会在结束后补发。
+自动回顾需要终端上报焦点（tmux 中用 `set -g focus-events on`）；`/recap` 不受这些条件限制。
+
+回顾可能在离开期间提前生成，以复用尚未过期的提示缓存。
+生成中显示轻微呼吸的 `※`，完成后显示静止的 `※` 和淡色斜体摘要。
+
+设置保存为 `recap.afterMinutes` 和 `recap.turns`：Git 仓库使用项目设置，否则使用用户设置。
+未设置 `recap.afterMinutes` 时，仍沿用旧的 `autoPilot.recapAfterMinutes`。
+
+### While it drives
 
 While it drives 一节只在 Autopilot 模式下生效,模式外整节变暗:
 
@@ -85,7 +94,6 @@ While it drives 一节只在 Autopilot 模式下生效,模式外整节变暗:
     "thinkingEffort": "low",               // 留空 = 模型默认
     "systemPromptFile": "~/prompts/pilot.md",
     "maxContinuations": 20,                // -1 = 不限
-    "recapAfterMinutes": 5,                // -1 = 只在 /recap 时
     "steers": {
       "suggest": true,     // Suggest
       "permission": true,  // Approve

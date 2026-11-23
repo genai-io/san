@@ -123,6 +123,8 @@ type EventState struct {
 	AutopilotProgress *AutopilotProgress `json:"autopilot_progress,omitempty"`
 	ExecutionCWD      *string            `json:"execution_cwd,omitempty"`
 	GroupHint         *GroupHint         `json:"group_hint,omitempty"`
+	// UserTurns counts submitted user messages that reached a normal turn end.
+	UserTurns *int `json:"user_turns,omitempty"`
 }
 type StatePatch struct {
 	Title             PatchField[string]            `json:"title,omitzero"`
@@ -130,6 +132,7 @@ type StatePatch struct {
 	AutopilotProgress PatchField[AutopilotProgress] `json:"autopilot_progress,omitzero"`
 	ExecutionCWD      PatchField[string]            `json:"execution_cwd,omitzero"`
 	GroupHint         PatchField[GroupHint]         `json:"group_hint,omitzero"`
+	UserTurns         PatchField[int]               `json:"user_turns,omitzero"`
 }
 
 // ParentLink says which session, and optionally which tool call, started this one.

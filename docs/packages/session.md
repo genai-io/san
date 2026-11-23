@@ -132,6 +132,11 @@ message conversion. Image source notes injected for the model stay persisted but
 are filtered from display; image/text order stays intact. Display never rewrites
 the persisted native messages.
 
+`state.user_turns` counts submitted user prompts that reached a normal turn
+end. Recap uses the count at the most recent displayed recap annotation as
+its baseline, so resuming does not count the same turns twice. Older sessions
+without this field start counting with the next completed user turn.
+
 `PersistToolResult` writes the complete output beneath the selected session;
 ResultPager's marker remains `blobs/tool-result/<sid>/<call-id>`. Forked native
 messages retain that marker, but hydration reads only the selected session's own

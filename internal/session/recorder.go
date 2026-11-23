@@ -23,15 +23,18 @@ import (
 // not durability fences. The final permission owner must call Decide before
 // authorizing, after all policy and hook decisions have resolved.
 type Recorder struct {
-	mu       sync.Mutex
-	session  *Session
-	provider string
-	err      error
-	turnID   string
-	current  *Inference
-	response *ai.Response
-	admitted map[string]time.Time
-	ended    map[string]recordedTool
+	mu            sync.Mutex
+	session       *Session
+	provider      string
+	err           error
+	turnID        string
+	current       *Inference
+	response      *ai.Response
+	admitted      map[string]time.Time
+	ended         map[string]recordedTool
+	queuedUsers   map[string]bool // user submissions not yet published as MessageAdded
+	turnUsers     int             // published submissions in this turn
+	admittedUsers int             // submissions heard by an admitted inference in this turn
 }
 
 type recordedTool struct {
@@ -42,6 +45,16 @@ type recordedTool struct {
 
 func NewRecorder(s *Session, provider string) *Recorder {
 	return &Recorder{session: s, provider: provider, admitted: map[string]time.Time{}, ended: map[string]recordedTool{}}
+}
+
+// NoteUserInput distinguishes a person's submitted prompt from other native user-role messages.
+func (r *Recorder) NoteUserInput(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.queuedUsers == nil {
+		r.queuedUsers = make(map[string]bool)
+	}
+	r.queuedUsers[id] = true
 }
 
 func (r *Recorder) Err() error {
@@ -102,6 +115,7 @@ func (r *Recorder) InferenceAdmission(ctx context.Context, c sdkagent.InferenceA
 		return r.remember(err)
 	}
 	r.current, r.response = inference, nil
+	r.admittedUsers = r.turnUsers
 	return nil
 }
 
@@ -234,8 +248,15 @@ func (r *Recorder) RecordEvent(event core.Event) {
 	switch e := event.(type) {
 	case sdkagent.TurnStart:
 		r.turnID = NewSessionID()
+		r.turnUsers, r.admittedUsers = 0, 0
 	case sdkagent.MessageAdded:
 		err = r.message(e.Message)
+		if r.queuedUsers[e.Message.ID] {
+			delete(r.queuedUsers, e.Message.ID)
+			if err == nil {
+				r.turnUsers++
+			}
+		}
 	case sdkagent.MessagesReplaced:
 		p := r.session.Snapshot()
 		if !sameJSON(p.ActiveMessages(), e.Messages) && !sameJSON(p.consumedMessages(), e.Messages) {
@@ -265,7 +286,11 @@ func (r *Recorder) RecordEvent(event core.Event) {
 				r.current, r.response = nil, nil
 			}
 		}
-		err = errors.Join(err, r.flushTools())
+		completed := 0
+		if e.StopReason == sdkagent.StopEndTurn && e.Err == nil && err == nil && r.err == nil {
+			completed = r.admittedUsers
+		}
+		err = errors.Join(err, r.flushTurn(completed))
 	case core.SystemChange:
 		err = r.systemChange(e)
 	case core.ToolsChange:
@@ -289,9 +314,9 @@ func (r *Recorder) message(message ai.Message) error {
 	})
 }
 
-// flushTools preserves executed outcomes when a post-tool hook or cancellation
-// prevents canonical tool-result output. It never invents conversation messages.
-func (r *Recorder) flushTools() error {
+// flushTurn records completed user work and any executed tools whose output
+// was interrupted. It never invents conversation messages.
+func (r *Recorder) flushTurn(completed int) error {
 	err := r.session.write(context.Background(), func(p *Projection) ([]Event, error) {
 		ids := make([]string, 0, len(r.ended))
 		for id, end := range r.ended {
@@ -310,6 +335,13 @@ func (r *Recorder) flushTools() error {
 				end := r.ended[id]
 				batch = append(batch, Event{Time: end.time, Source: &EventRef{Seq: call.Seq}, Payload: end.finish})
 			}
+		}
+		if completed > 0 {
+			total := completed
+			if prior := p.data.State.UserTurns; prior != nil {
+				total += *prior
+			}
+			batch = append(batch, Event{Payload: SessionUpdatePayload{State: &StatePatch{UserTurns: SetField(total)}}})
 		}
 		return batch, nil
 	})

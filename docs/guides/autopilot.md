@@ -9,7 +9,6 @@ something needs you. Configure it with `/autopilot`, engage it with `shift+tab`
 ```
 ALWAYS
 ▸ [✓] Suggest   your next input · Tab to accept
-  [✓] Recap     when you're back · after 5m away
 
 WHILE IT DRIVES · shift+tab to drive
       Mission   the goal it works toward          not set · Enter to write
@@ -23,26 +22,15 @@ WHILE IT DRIVES · shift+tab to drive
       Load preset…  3 saved
 ```
 
-`enter` or `space` edits or toggles a row, `←`/`→` step Recap's wait and
-Continue's limit, `esc` saves and closes. Saving never starts a run.
+`Enter` or `Space` edits or toggles a row, `←`/`→` adjusts Continue's limit,
+and `Esc` saves and closes. Saving never starts a run.
 
-Always works in every mode:
+**Suggest** works in every mode. It offers ghost-text next input after each
+turn, or proposes the next step when Autopilot drives a mission.
 
-- **Suggest** — ghost-text next input after each turn. While Autopilot drives a
-  mission, it proposes the next step toward it.
-- **Recap** — when the terminal regains focus after the wait, one note on where
-  the session stands: San's own facts (what waits on you, plan progress,
-  mission, background work) and the goal, now, and next step. `/recap`
-  shows one any time. If a turn is still running when you return, that
-  automatic recap is skipped (not shown after the turn ends). Needs a terminal
-  that reports focus (in tmux: `set -g focus-events on`). While generating,
-  only `※` gently breathes, with no `writing…` or Recap label. When ready,
-  the same `※` stays static beside the dim, italic summary; optional facts
-  remain below it.
-
-Both are side requests, like `/btw`: they reuse the session's prompt, tools and
-conversation, so the provider's prompt cache serves them, and the agent never
-sees them. Recap is written while you are away, before the cache expires.
+[Recap](../reference/aside.md#recap) also works in every mode. Configure it in
+`/reflect`; by default it requires 5 minutes away and 3 completed user turns
+since the last recap (or since session start before the first).
 
 While it drives — these act only in Autopilot mode, and are drawn dim outside it:
 
@@ -92,7 +80,6 @@ Sets the mission running, turns Answer and Continue on with no limit, and starts
     "thinkingEffort": "low",               // empty = model default
     "systemPromptFile": "~/prompts/pilot.md",
     "maxContinuations": 20,                // -1 = no limit
-    "recapAfterMinutes": 5,                // -1 = only on /recap
     "steers": {
       "suggest": true,     // Suggest
       "permission": true,  // Approve
