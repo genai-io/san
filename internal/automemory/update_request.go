@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -71,7 +72,7 @@ func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.
 	if canAdd && tools.write {
 		content = append(content, ai.TextBlock(noteExample))
 	}
-	content = append(content, ai.TextBlock(preview))
+	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md preview\nPath: %s\n\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
 	if more {
 		content = append(content, index.Hint())
 	}

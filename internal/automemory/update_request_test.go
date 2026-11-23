@@ -35,6 +35,15 @@ func requestJSON(t *testing.T, value any) string {
 	return string(data)
 }
 
+func wantIndexPreview(t *testing.T, dir, text string) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "# MEMORY.md preview\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\n" + text
+}
+
 func TestProposeContext(t *testing.T) {
 	dir := t.TempDir()
 	store := system.MemoryStore(dir)
@@ -75,7 +84,7 @@ func TestProposeContext(t *testing.T) {
 		t.Fatalf("unexpected proposal call: %+v", call)
 	}
 	suffix := call.Messages[len(history)]
-	if suffix.Role != ai.RoleUser || len(suffix.Content) != 3 || !reflect.DeepEqual(suffix.Content[2], ai.TextBlock(index)) ||
+	if suffix.Role != ai.RoleUser || len(suffix.Content) != 3 || suffix.Content[2].Text != wantIndexPreview(t, dir, index) ||
 		!strings.HasPrefix(suffix.Content[0].Text, updatePrompt) || !strings.HasPrefix(suffix.Content[1].Text, "# Project memory layout") ||
 		strings.Contains(suffix.Text(), "# Note format example") ||
 		strings.Contains(suffix.Content[0].Text, "release process") || strings.Contains(suffix.Text(), "Deploy only from release branches.") {
@@ -453,7 +462,7 @@ func TestProposeDisablesAddForIncompleteIndex(t *testing.T) {
 		t.Fatalf("incomplete index allowed add: change=%v err=%v", change, err)
 	}
 	blocks := driver.Last().Messages[2].Content
-	if len(blocks) != 5 || blocks[3].Text != visible || !strings.Contains(blocks[0].Text, "search the omitted index") ||
+	if len(blocks) != 5 || blocks[3].Text != wantIndexPreview(t, dir, visible) || !strings.Contains(blocks[0].Text, "search the omitted index") ||
 		!strings.Contains(blocks[4].Text, "…") {
 		t.Fatalf("wrong context for incomplete index: %+v", blocks)
 	}
@@ -486,7 +495,7 @@ func TestUpdateReadsBeyondPreview(t *testing.T) {
 			}
 			calls := driver.Sent()
 			blocks := calls[0].Messages[2].Content
-			if len(blocks) != 5 || blocks[3].Text != tc.prefix || !strings.Contains(blocks[4].Text, tc.read) || !strings.Contains(blocks[4].Text, "…") {
+			if len(blocks) != 5 || blocks[3].Text != wantIndexPreview(t, dir, tc.prefix) || !strings.Contains(blocks[4].Text, tc.read) || !strings.Contains(blocks[4].Text, "…") {
 				t.Fatal("initial Update preview did not preserve the raw prefix and separate the hint")
 			}
 			if !strings.Contains(calls[1].Messages[4].Text(), tail) {
