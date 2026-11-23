@@ -3,6 +3,32 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.25.5] - 2026-11-23
+
+### Added
+- Default to YOLO permission mode ([@yanmxa](https://github.com/yanmxa) in [#817](https://github.com/genai-io/san/pull/817))
+- Discover shared project skills ([@yanmxa](https://github.com/yanmxa) in [#814](https://github.com/genai-io/san/pull/814))
+- Configure recaps and move manual memory updates ([@yanmxa](https://github.com/yanmxa) in [#813](https://github.com/genai-io/san/pull/813))
+- Preview the index inside Recall and Update ([@yanmxa](https://github.com/yanmxa) in [#811](https://github.com/genai-io/san/pull/811))
+- Add fast and wait recall modes ([@yanmxa](https://github.com/yanmxa) in [#803](https://github.com/genai-io/san/pull/803))
+- Add Auto Memory and Auto Skill Side Cards ([@yanmxa](https://github.com/yanmxa) in [#802](https://github.com/genai-io/san/pull/802))
+### Changed
+- Move the ACP host out of the TUI package ([@yanmxa](https://github.com/yanmxa) in [#810](https://github.com/genai-io/san/pull/810))
+- Bump the go-minor-and-patch group with 2 updates ([@dependabot[bot]](https://github.com/dependabot[bot]) in [#812](https://github.com/genai-io/san/pull/812))
+- Make the task tracker session-owned ([@yanmxa](https://github.com/yanmxa) in [#809](https://github.com/genai-io/san/pull/809))
+- Separate update instructions and index ([@yanmxa](https://github.com/yanmxa) in [#807](https://github.com/genai-io/san/pull/807))
+- Clarify recall and update naming and polish Inspector JSON ([@yanmxa](https://github.com/yanmxa) in [#805](https://github.com/genai-io/san/pull/805))
+- Add separate English and Chinese feature overviews ([@yanmxa](https://github.com/yanmxa) in [#798](https://github.com/genai-io/san/pull/798))
+### Fixed
+- Compact task history beside live status ([@yanmxa](https://github.com/yanmxa) in [#816](https://github.com/genai-io/san/pull/816))
+- Make updates easier to recall ([@yanmxa](https://github.com/yanmxa) in [#815](https://github.com/genai-io/san/pull/815))
+- Make the task tracker heading easier to scan ([@yanmxa](https://github.com/yanmxa) in [#818](https://github.com/genai-io/san/pull/818))
+- Surface blocked additions, keep prompt cache, and drop dead code ([@yanmxa](https://github.com/yanmxa) in [#808](https://github.com/genai-io/san/pull/808))
+- Read update notes on demand ([@yanmxa](https://github.com/yanmxa) in [#806](https://github.com/genai-io/san/pull/806))
+- Clarify compaction and task status layout ([@yanmxa](https://github.com/yanmxa) in [#804](https://github.com/genai-io/san/pull/804))
+- Restore Inspector details and support plaintext hook context ([@yanmxa](https://github.com/yanmxa) in [#800](https://github.com/genai-io/san/pull/800))
+- Keep startup lean and restore reminders without duplicates ([@yanmxa](https://github.com/yanmxa) in [#801](https://github.com/genai-io/san/pull/801))
+- Review native zsh commands ([@yanmxa](https://github.com/yanmxa) in [#799](https://github.com/genai-io/san/pull/799))
 ## [v1.25.4] - 2026-11-18
 
 ### Fixed
