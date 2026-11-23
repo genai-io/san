@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
@@ -90,18 +91,18 @@ func initExtensions(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
-	source := pluginSource{plugin.Default()}
-	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.skillPaths})
+	source := host.PluginSource{Registry: plugin.Default()}
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
-		PluginCommandPaths: source.commandPaths,
+		PluginCommandPaths: source.CommandPaths,
 	})
-	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.agentPaths}); err != nil {
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.AgentPaths}); err != nil {
 		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
 	}
-	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.mcpServers}); err != nil {
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.MCPServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 }
@@ -128,23 +129,23 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.services.Setting = setting.Default()
 	m.learnedStores.Update(cwd, m.services.Setting)
 
-	source := pluginSource{plugin.Default()}
-	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.skillPaths})
+	source := host.PluginSource{Registry: plugin.Default()}
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	m.services.Skill = skill.Default()
 
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
-		PluginCommandPaths: source.commandPaths,
+		PluginCommandPaths: source.CommandPaths,
 	})
 	m.services.Command = command.Default()
 
-	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.agentPaths}); err != nil {
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.AgentPaths}); err != nil {
 		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
 	}
 	m.services.Subagent = subagent.Default()
 
-	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.mcpServers}); err != nil {
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.MCPServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 	m.services.MCP = mcp.DefaultManager()

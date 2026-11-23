@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/proc"
 )
 
 func TestShellFallbackWarning(t *testing.T) {
 	if os.Getenv("SAN_TEST_SHELL_WARNING") == "1" {
-		warnShellFallback()
+		host.WarnShellFallback()
 		fmt.Print(proc.DefaultShellName())
 		return
 	}

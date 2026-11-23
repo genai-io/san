@@ -20,7 +20,7 @@ func reloadQueueModel(t *testing.T) *model {
 	m.services.Plugin, m.services.Persona = e.services.Plugin, e.services.Persona
 	m.services.Tool = tool.Default()
 	m.learnedStores, m.userInput = e.learnedStores, e.userInput
-	m.env.LLMProvider = acpTestProvider{aitest.Always(aitest.Says("done")).Client()}
+	m.env.LLMProvider = staticTestProvider{aitest.Always(aitest.Says("done")).Client()}
 	if _, err := m.ensureAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 func TestExtensionReloadCurrentTurnInjection(t *testing.T) {
 	m := reloadQueueModel(t)
 	// Inject while a real turn is still running.
-	m.env.LLMProvider = acpTestProvider{aitest.Always(aitest.Hangs()).Client()}
+	m.env.LLMProvider = staticTestProvider{aitest.Always(aitest.Hangs()).Client()}
 	if err := m.StopAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}

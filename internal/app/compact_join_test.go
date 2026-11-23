@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -27,7 +28,7 @@ func TestManualCompactionCancellationJoinsPreCompactModelHook(t *testing.T) {
 	settings := setting.NewData()
 	settings.Hooks["PreCompact"] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: "prompt", Prompt: "verify"}}}}
 	engine := hook.NewEngine(settings, owner.ID(), m.env.CWD, owner.Path())
-	bindSessionHooks(engine, m.env.LLMProvider, owner, "m")
+	host.BindSessionHooks(engine, m.env.LLMProvider, owner, "m")
 	m.services.Hook = engine
 	t.Cleanup(engine.Shutdown)
 	req := m.BuildCompactRequest("", "manual")

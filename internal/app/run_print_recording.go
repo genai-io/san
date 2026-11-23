@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
@@ -43,7 +44,7 @@ func runRecordedPrint(ctx context.Context, params agent.BuildParams, message cor
 	engine, _ := params.HookEngine.(*hook.Engine)
 	if engine != nil {
 		engine.SetSession(owner.ID(), owner.Path())
-		bindSessionHooks(engine, params.Provider, owner, params.ModelID)
+		host.BindSessionHooks(engine, params.Provider, owner, params.ModelID)
 	}
 	defer func() {
 		if params.Tasks != nil {

@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/llm"
@@ -164,7 +164,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 		m.bindMainBroker(opened)
 	}
 	group.BindSession(opened.ID)
-	bindSessionHooks(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
+	host.BindSessionHooks(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
 	if changed && m.services.Hook != nil {
 		m.configureAsyncHookCallback()
 		m.wireTaskLifecycle(m.services.Hook)
@@ -235,33 +235,6 @@ func (m *model) buildSessionRecord() *session.SessionUpdatePayload {
 	return update
 }
 
-// validateResumeDirectory rejects implicit execution-directory changes; it
-// neither grants trust nor changes the current process working directory.
-func validateResumeDirectory(saved, requested string) error {
-	if saved == "" {
-		return nil
-	}
-	canonical := func(path string) (string, error) {
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			return "", err
-		}
-		return filepath.EvalSymlinks(absolute)
-	}
-	persisted, err := canonical(saved)
-	if err != nil {
-		return fmt.Errorf("cannot validate saved session directory %q: %w; restore that directory before resuming", saved, err)
-	}
-	current, err := canonical(requested)
-	if err != nil {
-		return fmt.Errorf("cannot validate requested session directory %q: %w", requested, err)
-	}
-	if persisted != current {
-		return fmt.Errorf("session directory mismatch: saved directory %q differs from requested directory %q; reopen San in the saved directory to resume (implicit directory switching is not supported)", saved, requested)
-	}
-	return nil
-}
-
 func (m *model) loadSessionByID(id string) error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
@@ -281,7 +254,7 @@ func (m *model) loadSessionByID(id string) error {
 	if cwd := history.State().ExecutionCWD; cwd != nil {
 		saved = *cwd
 	}
-	if err := validateResumeDirectory(saved, m.env.CWD); err != nil {
+	if err := host.ValidateResumeDirectory(saved, m.env.CWD); err != nil {
 		return err
 	}
 	// Validate presentation metadata before changing the selected owner too.
@@ -297,7 +270,7 @@ func (m *model) loadSessionByID(id string) error {
 		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
 		oldHooks.Shutdown()
 		m.services.Hook = next
-		bindSessionHooks(next, m.env.LLMProvider, opened, m.env.GetModelID())
+		host.BindSessionHooks(next, m.env.LLMProvider, opened, m.env.GetModelID())
 		m.configureAsyncHookCallback()
 		m.wireTaskLifecycle(next)
 		history = opened.Snapshot()
@@ -320,7 +293,7 @@ func (m *model) loadSessionByID(id string) error {
 		if cwd := history.State().ExecutionCWD; cwd != nil {
 			saved = *cwd
 		}
-		if err := validateResumeDirectory(saved, m.env.CWD); err != nil {
+		if err := host.ValidateResumeDirectory(saved, m.env.CWD); err != nil {
 			return errors.Join(err, opened.Close())
 		}
 		if _, _, err := m.resolveSessionModel(history); err != nil {
@@ -414,7 +387,7 @@ func (m *model) restoreHistory(history session.Projection) error {
 		m.services.LLM.SetProvider(provider)
 		m.services.LLM.SetCurrentModel(info)
 	}
-	bindSessionHooks(m.services.Hook, provider, m.services.Session, info.ModelID)
+	host.BindSessionHooks(m.services.Hook, provider, m.services.Session, info.ModelID)
 	m.resetRecap()
 	m.conv.Messages = m.services.SessionStore.ChatRows(history)
 	m.earlyNotices = nil
@@ -494,7 +467,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	}
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
-		dir := sessionTaskDir(homeDir, taskListID)
+		dir := host.SessionTaskDir(homeDir, taskListID)
 		m.setTrackerStorageDir(dir)
 		m.setTaskOutputDir(dir)
 		return
@@ -502,14 +475,9 @@ func (m *model) initTaskStorage(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	dir := sessionTaskDir(homeDir, sessionID)
+	dir := host.SessionTaskDir(homeDir, sessionID)
 	m.setTrackerStorageDir(dir)
 	m.setTaskOutputDir(dir)
-}
-
-// sessionTaskDir holds a session's tracker items and task outputs.
-func sessionTaskDir(homeDir, id string) string {
-	return filepath.Join(confdir.Dir(homeDir), "tasks", id)
 }
 
 func (m *model) setTrackerStorageDir(dir string) {

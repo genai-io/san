@@ -20,6 +20,8 @@ the assignment changes.
 | `internal/app/input` | `app` | Text input, selectors, approvals, user-input flow. |
 | `internal/app/trigger` | `app` | System triggers such as cron and async hook polling. |
 | `internal/app/kit` | `app` | TUI support helpers shared by app subpackages. |
+| `internal/app/acp` | `app` | ACP stdio host: native sessions, turns, permissions, extensions and workers, without the TUI. |
+| `internal/app/host` | `app` | Wiring shared by hosts: plugin paths, MCP tool sync, resume checks, session hooks, provider resolution. |
 
 ## Core Contracts
 

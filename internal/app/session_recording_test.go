@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 )
@@ -14,7 +15,7 @@ func TestSessionShutdownDrainsHookBeforeClosingWriter(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	owner := m.services.Session
 	engine := m.services.Hook
-	bindSessionHooks(engine, nil, owner, "")
+	host.BindSessionHooks(engine, nil, owner, "")
 	started := make(chan struct{})
 	engine.AddRuntimeFunctionHook(hook.PostToolUse, "", hook.FunctionHook{Callback: func(ctx context.Context, _ hook.HookInput) (hook.HookOutput, error) {
 		close(started)
