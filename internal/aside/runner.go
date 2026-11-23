@@ -50,9 +50,9 @@ func FinishChange(ctx context.Context, recording *session.Completion, notice str
 	return err
 }
 
-// CompletePrefixedProposal keeps the admitted system, tool schemas and
-// conversation prefix and expects a standalone proposal; tool calls are rejected.
-func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, model string, request *ai.Request, recording *session.Completion) (string, error) {
+// CompletePrefixed keeps the admitted system, tool schemas and conversation
+// prefix. The caller decides which response shapes it accepts; no tool executes here.
+func CompletePrefixed(ctx context.Context, provider llm.Provider, model string, request *ai.Request, recording *session.Completion) (llm.CompletionResponse, error) {
 	proposal := *request
 	// Changing tool_choice invalidates a provider's cached messages, so keep the
 	// main request's auto choice and only override one that forces a tool.
@@ -64,8 +64,7 @@ func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, model 
 	if proposal.MaxTokens == 0 || proposal.MaxTokens > 4096 {
 		proposal.MaxTokens = 4096
 	}
-	resp, err := llm.CompleteRequest(ctx, provider, model, &proposal, recording.Admission())
-	return proposalText(ctx, resp, err)
+	return llm.CompleteRequest(ctx, provider, model, &proposal, recording.Admission())
 }
 
 func proposalText(ctx context.Context, resp llm.CompletionResponse, err error) (string, error) {

@@ -42,8 +42,8 @@ In the TUI, `/memory update` runs a one-off review of the latest eligible comple
 The review reuses the completed main request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final assistant message. It extends a separate request in the same session:
 
 1. **Check the index.** If the preview is truncated, search omitted entries before adding a note. Malformed links or duplicate note filenames disable additions; if nothing changes, manual runs report why and automatic runs log it. New labels cannot mention another note filename.
-2. **Read on demand.** The model can ask for up to two indexed notes per round, at most twice. San returns each requested note in its own block, up to 8 KiB per file and 16 KiB total for bodies. No native tools can execute: the request keeps the main `tool_choice` so cached messages stay valid, and a reply with tool calls is rejected.
-3. **Propose one change or none.** The model can add a note and index link, revise a note in place without changing its type, forget a note and its link, or stop without a change. It must first read a note it proposes to edit or forget, and forgetting requires clear user intent. San checks the index and supplied note revisions before writing.
+2. **Read on demand.** Update can request two indexed notes per round, for up to two rounds (8 KiB per note, 16 KiB total).
+3. **Propose one change or none.** Update can add, revise, or forget a note. It must read a note before revising or forgetting it. When the user clearly asks to forget a note, Update uses the existing `Bash` (`rm`, also under zsh) or `PowerShell` (`Remove-Item -LiteralPath`) call if available. San validates the single filename and removes both the note and its link without running a shell. If neither tool is available, Update uses the JSON `forget` action. The tool catalog stays unchanged.
 
 To review automatically after an eligible completed turn, enable **Update** under `/reflection` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 

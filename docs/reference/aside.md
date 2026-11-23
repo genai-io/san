@@ -27,7 +27,7 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 
 ## Auto Memory lifecycle
 
-Recall and Update use the same repository store but have different triggers and outputs. Neither can execute tools.
+Recall and Update share a repository store. Recall has no tools. Update retains the main tool catalog for cache reuse, but only accepts a supported shell deletion call as a memory change proposal; it never runs the shell.
 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|

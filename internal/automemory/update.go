@@ -34,7 +34,7 @@ var noteTypes = map[string]string{
 	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
 }
 
-// Updater proposes a memory change through bounded, tool-free model calls.
+// Updater proposes a bounded memory change without running shell commands.
 type Updater struct {
 	Provider    llm.Provider
 	Model       string
