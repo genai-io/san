@@ -135,6 +135,9 @@ func ProjectSettingsFindings(cwd string) []string {
 		}
 		add("set environment", slices.Collect(maps.Keys(d.Env)))
 		add("enable plugins", slices.Collect(maps.Keys(d.EnabledPlugins)))
+		if d.MemoryUpdate != nil && *d.MemoryUpdate {
+			out = append(out, "automatically update memory  ("+file+")")
+		}
 	}
 	return out
 }

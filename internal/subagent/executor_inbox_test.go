@@ -100,8 +100,8 @@ func TestInboxHandlesActualSDKTurnEndDelivery(t *testing.T) {
 		driver := aitest.New(aitest.Says("first"), aitest.Says("second"))
 		sent := false
 		a := core.NewAgent(core.Config{
-			Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil },
-			System: core.NewSystem(), Tools: core.NewTools(), MaxSteps: budget, OutboxBuf: -1,
+			Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
+			System:    core.NewSystem(), Tools: core.NewTools(), MaxSteps: budget, OutboxBuf: -1,
 			OnEvent: func(event core.Event) {
 				if _, ok := event.(sdkagent.TurnEnd); ok && !sent {
 					sent = true

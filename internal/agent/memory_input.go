@@ -7,115 +7,76 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/automemory"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-const preTurnRecallBudget = 1500 * time.Millisecond
+// AutoMemoryConfig groups the store and recall policy for the main agent.
+// An empty store disables Auto Memory; a zero recall mode is Fast.
+type AutoMemoryConfig struct {
+	Store  system.MemoryStore
+	Recall setting.MemoryRecallConfig
+}
 
 // PreparedMemory holds recall open until the host accepts the enriched input.
-// Maintenance is handled entirely on the side and never submitted to main.
 type PreparedMemory struct {
 	Message    core.Message
 	Completion *session.Completion
-	Handled    bool
-	Notice     string
-	Change     *automemory.Change // Explicit maintenance, not yet admitted.
 }
 
-// NeedsMemoryPreparation lets hosts bypass side work when there is nothing to prepare.
-func NeedsMemoryPreparation(stores system.MemoryStores, message core.Message) bool {
-	_, explicit := maintenanceRequest(message)
-	return explicit || stores.HasNotes()
+// Prepare recalls notes for the message to be submitted.
+func (r Recaller) Prepare(ctx context.Context, store system.MemoryStore, message core.Message, history []core.Message) (PreparedMemory, error) {
+	return r.PrepareWithSubmission(ctx, store, message, message, history)
 }
 
-func maintenanceRequest(message core.Message) (automemory.Request, bool) {
-	if message.Content.HasImages() {
-		return automemory.Request{}, false
-	}
-	return automemory.ParseRequest(message.Text())
+// PrepareForAdmission prepares recall without admitting the message. The host
+// must pass the completion to main on admission or close it on discard.
+func (r Recaller) PrepareForAdmission(ctx context.Context, store system.MemoryStore, message core.Message, history []core.Message) (PreparedMemory, error) {
+	return r.Prepare(ctx, store, message, history)
 }
 
-// IsMemoryMaintenance reports whether the input requests an explicit store change.
-func IsMemoryMaintenance(message core.Message) bool {
-	_, ok := maintenanceRequest(message)
-	return ok
-}
-
-// Prepare admits explicit maintenance immediately for synchronous hosts.
-func (r Recaller) Prepare(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (PreparedMemory, error) {
-	return r.PrepareWithSubmission(ctx, stores, message, message, history)
-}
-
-// PrepareWithSubmission uses the user input for selection and maintenance,
-// but attaches recalled notes to the message that will actually be submitted.
-func (r Recaller) PrepareWithSubmission(ctx context.Context, stores system.MemoryStores, userInput, submission core.Message, history []core.Message) (PreparedMemory, error) {
-	if IsMemoryMaintenance(userInput) {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-	}
-	prepared, err := r.prepareForAdmission(ctx, stores, userInput, submission, history)
-	if err == nil && prepared.Change != nil {
-		prepared.Notice, err = prepared.Change.Apply(ctx)
-		prepared.Change = nil
-	}
-	return prepared, err
-}
-
-// PrepareForAdmission does not write to memory. The host must apply or discard
-// any returned change when it resolves admission of the userInput input.
-func (r Recaller) PrepareForAdmission(ctx context.Context, stores system.MemoryStores, message core.Message, history []core.Message) (PreparedMemory, error) {
-	return r.prepareForAdmission(ctx, stores, message, message, history)
-}
-
-func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryStores, userInput, submission core.Message, history []core.Message) (prepared PreparedMemory, err error) {
+// PrepareWithSubmission selects notes using the user input and attaches them
+// to the message that will actually be submitted.
+func (r Recaller) PrepareWithSubmission(ctx context.Context, store system.MemoryStore, userInput, submission core.Message, history []core.Message) (prepared PreparedMemory, err error) {
 	prepared.Message = submission
-	if req, ok := maintenanceRequest(userInput); ok {
-		prepared.Handled = true
-		if stores.Off() {
-			prepared.Notice = "Auto Memory is off."
-			return prepared, nil
-		}
-		if r.Provider == nil {
-			prepared.Notice = "Connect a model to update Auto Memory."
-			return prepared, nil
-		}
-		maintainer := automemory.Maintainer{Provider: r.Provider, Model: r.Model, Effort: r.Effort, Recording: r.Recording}
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		prepared.Change, err = maintainer.Propose(ctx, stores, req)
-		return prepared, err
-	}
 	query := userInput.Text()
-	if stores.Off() || r.Provider == nil || strings.TrimSpace(query) == "" {
+	if store.Off() || r.Provider == nil || strings.TrimSpace(query) == "" {
 		return prepared, ctx.Err()
 	}
-	lookup, cancel := context.WithTimeout(ctx, preTurnRecallBudget)
-	defer cancel()
+	lookup := ctx
+	if r.Timeout > 0 {
+		var cancel context.CancelFunc
+		lookup, cancel = context.WithTimeout(ctx, r.Timeout)
+		defer cancel()
+	}
 	scope := r.Recording.Completion(session.PurposeRecall)
 	defer func() {
 		if prepared.Completion == nil {
 			if closeErr := scope.Close(); closeErr != nil {
-				// The optional recall budget may expire before the recording lock is acquired.
-				// Only this timeout can fall back; other recording errors still surface.
 				if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(closeErr, context.DeadlineExceeded) {
-					return
+					return // The optional wait expired before recall could be recorded.
 				}
 				err = errors.Join(err, &llm.RecordingError{Err: closeErr})
 			}
 		}
 	}()
-	notes, err := r.selectNotes(lookup, stores, query, scope)
+	existing := recallBlocks(history)
+	addRecallBlocks(existing, submission)
+	notes, err := r.selectNotes(lookup, store, query, scope, func(note system.Memory) bool {
+		return existing.covers(store, note)
+	})
 	if err != nil {
+		if ctx.Err() == nil && lookup.Err() == context.DeadlineExceeded && errors.Is(err, context.DeadlineExceeded) {
+			return prepared, nil
+		}
 		return prepared, err
 	}
 	if ctx.Err() != nil {
@@ -126,41 +87,73 @@ func (r Recaller) prepareForAdmission(ctx context.Context, stores system.MemoryS
 	}
 	var blocks []string
 	for _, note := range notes {
-		if block := recalledNote(stores, note); block != "" {
+		if block := recallBlock(recalledNote(store, note)); block != "" && !existing[memoryID(note)][block] {
 			blocks = append(blocks, block)
 		}
 	}
-	blocks = newRecallBlocks(history, blocks)
 	if ctx.Err() != nil {
 		return prepared, ctx.Err()
 	}
-	if lookup.Err() == nil && len(blocks) > 0 {
+	if len(blocks) > 0 {
 		prepared.Message.Content = reminder.AppendBlocks(submission.Content, blocks...)
 		prepared.Completion = scope
 	}
 	return prepared, nil
 }
 
-func newRecallBlocks(history []core.Message, blocks []string) []string {
-	remaining := make(map[string]struct{}, len(blocks))
-	for _, block := range blocks {
-		remaining[block] = struct{}{}
-	}
-	for i := len(history) - 1; i >= 0 && len(remaining) > 0; i-- {
-		for _, block := range reminder.Blocks(history[i].Text()) {
-			if block.Source == reminder.ProviderMemoryRecall {
-				delete(remaining, block.Text)
-			}
-		}
-	}
-	return slices.DeleteFunc(blocks, func(block string) bool {
-		_, ok := remaining[block]
-		return !ok
-	})
+const recallNotePrefix = "Relevant memory "
+
+type activeRecallBlocks map[string]map[string]bool
+
+func (r activeRecallBlocks) covers(store system.MemoryStore, note system.Memory) bool {
+	blocks := r[memoryID(note)]
+	return len(blocks) > 0 && blocks[recallBlock(recalledNote(store, note))]
 }
 
-func recalledNote(stores system.MemoryStores, note system.Memory) string {
-	if !stores.Contains(note.Path) {
+func recallBlocks(messages []core.Message) activeRecallBlocks {
+	out := make(activeRecallBlocks)
+	for _, message := range messages {
+		addRecallBlocks(out, message)
+	}
+	return out
+}
+
+// Only Wait writes note blocks into native messages. Compare the full block
+// against a fresh read so an edited note remains eligible for selection.
+func addRecallBlocks(out activeRecallBlocks, message core.Message) {
+	if message.Role != ai.RoleUser || message.Content.Has(ai.BlockToolResult) {
+		return
+	}
+	for _, content := range message.Content {
+		if content.Type != ai.BlockText {
+			continue
+		}
+		for _, block := range reminder.Blocks(content.Text) {
+			if block.Source != reminder.ProviderMemoryRecall {
+				continue
+			}
+			_, body, _ := strings.Cut(block.Text, "\n")
+			header, _, _ := strings.Cut(body, "\n")
+			key, ok := strings.CutPrefix(header, recallNotePrefix)
+			end := strings.LastIndex(key, " (saved ")
+			if !ok || end < 0 {
+				continue
+			}
+			id := key[:end]
+			if out[id] == nil {
+				out[id] = make(map[string]bool)
+			}
+			out[id][block.Text] = true
+		}
+	}
+}
+
+func recallBlock(body string) string {
+	return reminder.WrapWithSource(body, reminder.ProviderMemoryRecall)
+}
+
+func recalledNote(store system.MemoryStore, note system.Memory) string {
+	if !store.Contains(note.Path) {
 		return ""
 	}
 	root, err := os.OpenRoot(filepath.Dir(note.Path))
@@ -187,5 +180,5 @@ func recalledNote(stores system.MemoryStores, note system.Memory) string {
 	if len(data) > maxBytes {
 		body += "\n[Note preview truncated.]"
 	}
-	return reminder.WrapWithSource(fmt.Sprintf("Relevant memory %s (saved %s):\n%s", memoryID(note), info.ModTime().Format(time.DateOnly), body), reminder.ProviderMemoryRecall)
+	return fmt.Sprintf("%s%s (saved %s):\n%s", recallNotePrefix, memoryID(note), info.ModTime().Format(time.DateOnly), body)
 }

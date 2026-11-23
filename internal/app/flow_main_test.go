@@ -148,7 +148,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 		}
 		m.agentReviewCaps = m.autoSkillCapabilities()
 		m.agentDisabledToolsSignature = m.disabledToolsSignature()
-		m.agentAutoMemory = m.autoMemory()
+		m.autoMemory = m.currentAutoMemory()
 	} else if m.services.Agent.Active() {
 		t.Fatal("fresh fixture already has active runtime")
 	}

@@ -43,7 +43,7 @@ func builtinCommands() []Info {
 		{Name: "btw", Description: "Ask a side question, even mid-turn, without adding it to the conversation"},
 		{Name: "recap", Description: "Recap where this session stands: the goal, now, and the next step"},
 		{Name: "init", Description: "Initialize instruction files (AGENTS.md, local, rules)"},
-		{Name: "memory", Description: "Browse instruction files and memory stores (browse/list/show/edit/on/off)"},
+		{Name: "memory", Description: "Browse instruction files and repository memory (browse/list/show/edit/on/off/update)"},
 		{Name: "reflection", Description: "Configure Auto Memory and Auto Skill"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
 		{Name: "plugin", Description: "Manage plugins (list/install/marketplace/enable/disable/info)"},

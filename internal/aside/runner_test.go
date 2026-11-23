@@ -30,7 +30,7 @@ func TestApplyChangeRecordsOnlyAcceptedResults(t *testing.T) {
 			p := testProvider{client: aitest.New(aitest.Says("proposal")).Client()}
 			got, err := ApplyChange(ctx, p, llm.CompletionOptions{
 				Model: "m", Messages: []core.Message{core.UserMessage("task", nil)},
-			}, owner.Completion(session.PurposeMemoryMaintain), func(_ context.Context, text string) (string, error) {
+			}, owner.Completion(session.PurposeMemoryUpdate), func(_ context.Context, text string) (string, error) {
 				if text != "proposal" {
 					t.Fatalf("unexpected proposal: %q", text)
 				}

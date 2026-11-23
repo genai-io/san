@@ -126,7 +126,7 @@ func TestManagedAgentApprovalAndHeightBudget(t *testing.T) {
 	p.Messages = []core.ChatMessage{{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{shell}}}
 	p.PendingCalls = []core.ToolCall{shell}
 	p.ToolStartedAt = map[string]time.Time{shell.ID: time.Now()}
-	if got, _ := RenderActiveWorkers(p, 4); ActiveWorkerRows(p) != 4 || !strings.Contains(got, "Bash") {
+	if got, _ := RenderActiveWorkers(p, 4); ActiveWorkerRows(p) != 4 || !strings.Contains(ansi.Strip(got), "(pwd)") {
 		t.Fatalf("managed workers hid an ordinary pending sibling: %q", got)
 	}
 	p.ManagedAgents[0].AwaitingApproval = true

@@ -82,7 +82,7 @@ func (m *model) btwLive() string {
 	var rows []string
 	for _, a := range m.btw {
 		if a.sessionID == m.sessionID() {
-			rows = append(rows, conv.RenderSideAnswer(a.question, m.conv.Spinner.View()+" answering…", m.env.Width, nil))
+			rows = append(rows, conv.RenderSidePending(a.question, m.conv.Spinner.Frame(), m.env.Width))
 		}
 	}
 	return strings.TrimSuffix(strings.Join(rows, "\n"), "\n")

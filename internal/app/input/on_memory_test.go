@@ -14,14 +14,14 @@ func TestSetAutoMemoryScopes(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
 	proj := t.TempDir()
-	t.Chdir(proj)
+	t.Chdir(t.TempDir())
 	s := setting.New(setting.NewData())
 
 	if err := setAutoMemory(s, proj, false, setting.ScopeProject); err != nil {
 		t.Fatalf("project off: %v", err)
 	}
-	if s.AutoMemory() || autoMemorySource() != "this project" {
-		t.Fatalf("want off from this project, got %v from %s", s.AutoMemory(), autoMemorySource())
+	if s.AutoMemory() || autoMemorySource(proj) != "this project" {
+		t.Fatalf("want off from this project, got %v from %s", s.AutoMemory(), autoMemorySource(proj))
 	}
 
 	// The project setting outranks the user one, and the error says so.

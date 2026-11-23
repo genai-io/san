@@ -83,6 +83,7 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEntry {
 	params := conv.RenderContext{
 		Width: m.env.Width, MDRenderer: conv.NewMDRenderer(m.env.Width),
+		AutoMemoryStore: m.conv.AutoMemoryStore,
 		ThinkingDisplay: m.env.ThinkingDisplay, BashPreviewLines: m.env.BashPreviewLines,
 		AgentPreviewLines: m.env.AgentPreviewLines,
 		AgentIdentities:   m.conv.AgentDisplayHistorySnapshot(messages),
@@ -126,7 +127,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 		msg.ToolCalls = nil
 		msg.ContentCommittedLen, msg.ThinkingCommittedLen = 0, 0
 		msg.BulletEmitted, msg.ThinkingEmitted = false, false
-		if msg.Content != "" || msg.Thinking != "" || len(msg.Images) > 0 {
+		if msg.Content != "" || msg.AutoMemoryRecallNotice != nil || msg.Thinking != "" || len(msg.Images) > 0 {
 			agentMessage := msg.Role == core.ChatUser && conv.IsAgentEnvelope(msg.Content)
 			label := ""
 			if agentMessage {
@@ -150,7 +151,8 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 					resultMap[call.ID] = data
 				}
 				return conv.RenderToolCalls(conv.ToolCallsParams{
-					ToolCalls: []core.ToolCall{call}, ResultMap: resultMap,
+					AutoMemoryStore: params.AutoMemoryStore,
+					ToolCalls:       []core.ToolCall{call}, ResultMap: resultMap,
 					Width: width, MDRenderer: renderer(width),
 					AgentPreviewLines: params.AgentPreviewLines,
 					AgentIdentities:   params.AgentIdentities,

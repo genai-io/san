@@ -33,7 +33,7 @@ func (t recorderTool) Run(context.Context, ai.ToolCall) (sdkagent.Result, error)
 
 func recorderAgent(r *Recorder, d ai.Driver, mutate func(*core.Config)) core.Agent {
 	client := ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub", ContextWindow: 200000})
-	c := core.Config{ID: "main", Client: func([]core.Message) (*ai.Client, error) { return client, nil }, System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1, InferenceAdmission: r.InferenceAdmission, ToolAdmission: r.ToolAdmission, OutputAdmission: r.OutputAdmission, OnEvent: r.RecordEvent}
+	c := core.Config{ID: "main", Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return client, nil }}, System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1, InferenceAdmission: r.InferenceAdmission, ToolAdmission: r.ToolAdmission, OutputAdmission: r.OutputAdmission, OnEvent: r.RecordEvent}
 	if mutate != nil {
 		mutate(&c)
 	}

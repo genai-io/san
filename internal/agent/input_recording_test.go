@@ -52,7 +52,7 @@ func TestRecordedInputRuntimeAcceptance(t *testing.T) {
 			runtime := &Runtime{build: func(p BuildParams) (core.Agent, *PermissionGate, error) {
 				return core.NewAgent(core.Config{
 					System: core.NewSystem(), Tools: core.NewTools(), OutboxBuf: -1,
-					Client:             func([]core.Message) (*ai.Client, error) { return main.Client(), nil },
+					Inference:          core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return main.Client(), nil }},
 					InferenceAdmission: recorder.InferenceAdmission, ToolAdmission: recorder.ToolAdmission,
 					OutputAdmission: recorder.OutputAdmission, OnEvent: p.OnEvent,
 				}), NewPermissionGate(nil), nil

@@ -136,29 +136,37 @@ func Gates(gates ...Gate) Gate {
 	}
 }
 
-// Config builds an agent. Client, System and Tools are required; NewAgent
-// panics without them. Permission goes in Gate — see
-// docs/concepts/permission-model.md.
+// InferenceConfig controls how each model request is prepared. None of its
+// hooks change the native conversation.
+type InferenceConfig struct {
+	// ResolveClient is required. It sees the adapted conversation, not any
+	// request-only context, so routing headers reflect the actual turn.
+	ResolveClient func([]Message) (*ai.Client, error)
+	// AdaptMessages projects the conversation for the provider, e.g. removing
+	// unsupported image content. Nil leaves the conversation unchanged.
+	AdaptMessages func([]Message) []Message
+	// AppendContext adds request-only context after client resolution. Retries
+	// use the same context as the first attempt. Its optional callback runs
+	// when the provider responds and may return a display event.
+	AppendContext func(messages []Message, retry bool) ([]Message, func() Event)
+	// Options returns live per-call settings, such as output cap and effort.
+	Options func() []ai.Option
+}
+
+// CompactionConfig controls when and how the conversation is shortened.
+type CompactionConfig struct {
+	Budget    func() int // prompt token limit; nil or zero disables preflight compaction
+	Summarize func(context.Context, []Message) (Compaction, error)
+}
+
+// Config builds an agent. Inference.ResolveClient, System and Tools are required.
+// Permission goes in Gate; see docs/concepts/permission-model.md.
 type Config struct {
-	ID string
-	// Client is the model for one turn. A function of the conversation because
-	// an endpoint's headers can depend on what the turn sends — see
-	// llm.TurnHeaders.
-	Client func(msgs []Message) (*ai.Client, error)
-	// PrepareMessages adapts one inference's input without changing the native
-	// conversation. Nil sends the chain unchanged.
-	PrepareMessages func([]Message) []Message
-	// CallOptions are per-call settings — the output cap, the reasoning rung —
-	// asked for fresh each inference, so a change mid-session lands on the next
-	// call. Nil leaves the model's defaults.
-	CallOptions func() []ai.Option
-	// ContextBudget is the prompt size at which auto-compaction fires: the
-	// window less the reply's room. Nil or zero turns it off. Not read off the
-	// client: the window is the model's unless a setting overrides it, and the
-	// setting is the application's.
-	ContextBudget func() int
-	System        System // required: system prompt layers
-	Tools         *Tools // required
+	ID         string
+	Inference  InferenceConfig
+	Compaction CompactionConfig
+	System     System
+	Tools      *Tools
 	// Gate is asked before each tool runs and may refuse the call or rewrite
 	// what the model sent. Nil lets everything through.
 	Gate Gate
@@ -176,14 +184,13 @@ type Config struct {
 	// end notifications may already be visible. Inputs and replay are not covered.
 	// Nil admission callbacks preserve the SDK's default path and costs.
 	OutputAdmission         func(context.Context, sdkagent.OutputAdmission) error
-	CompactFunc             func(ctx context.Context, msgs []Message) (Compaction, error) // optional: summarize messages for compaction
-	MaxSteps                int                                                           // max LLM inference steps per turn, 0 = unlimited
-	MaxContinuations        int                                                           // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
-	MaxTurnRetries          int                                                           // max retries per inference step on transient stream errors, 0 = use default (2)
-	StreamFirstChunkTimeout time.Duration                                                 // abort if no first chunk arrives within this long, 0 = use default (5m)
-	StreamIdleTimeout       time.Duration                                                 // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
-	InboxBuf                int                                                           // inbox channel buffer size, default 16
-	OutboxBuf               int                                                           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
+	MaxSteps                int           // max LLM inference steps per turn, 0 = unlimited
+	MaxContinuations        int           // how many times a model cut off by the output cap is asked to carry on, 0 = use default (3)
+	MaxTurnRetries          int           // max retries per inference step on transient stream errors, 0 = use default (2)
+	StreamFirstChunkTimeout time.Duration // abort if no first chunk arrives within this long, 0 = use default (5m)
+	StreamIdleTimeout       time.Duration // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
+	InboxBuf                int           // inbox channel buffer size, default 16
+	OutboxBuf               int           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
 	// OnEvent observes lifecycle events synchronously, even when OutboxBuf is -1.
 	OnEvent func(Event)
 }
@@ -205,12 +212,12 @@ const (
 
 // NewAgent creates an agent from config.
 //
-// Panics if LLM, System, or Tools is nil — these are required capabilities.
+// Panics without a client resolver, system prompt, or tool registry.
 // Inbox is owned by the caller (caller closes when done sending).
 // Outbox is owned by the agent (closed when Run returns).
 func NewAgent(cfg Config) Agent {
-	if cfg.Client == nil {
-		panic("core.NewAgent: Client is required")
+	if cfg.Inference.ResolveClient == nil {
+		panic("core.NewAgent: Inference.ResolveClient is required")
 	}
 	if cfg.System == nil {
 		panic("core.NewAgent: System is required")
@@ -243,20 +250,17 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:              cfg.ID,
-		system:          cfg.System,
-		tools:           cfg.Tools,
-		compactFunc:     cfg.CompactFunc,
-		gate:            cfg.Gate,
-		resultFilter:    cfg.ResultFilter,
-		client:          cfg.Client,
-		prepareMessages: cfg.PrepareMessages,
-		callOptions:     cfg.CallOptions,
-		contextBudget:   cfg.ContextBudget,
-		inbox:           make(chan Inbound, cfg.InboxBuf),
-		wake:            make(chan struct{}, 1),
-		outbox:          outbox,
-		onEvent:         cfg.OnEvent,
+		id:           cfg.ID,
+		system:       cfg.System,
+		tools:        cfg.Tools,
+		inference:    cfg.Inference,
+		compaction:   cfg.Compaction,
+		gate:         cfg.Gate,
+		resultFilter: cfg.ResultFilter,
+		inbox:        make(chan Inbound, cfg.InboxBuf),
+		wake:         make(chan struct{}, 1),
+		outbox:       outbox,
+		onEvent:      cfg.OnEvent,
 	}
 
 	// The SDK agent needs a client and San has none yet: which one answers a

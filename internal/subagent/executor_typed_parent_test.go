@@ -50,7 +50,7 @@ func TestTypedParentRecorderAcceptsChildLink(t *testing.T) {
 	recorder := session.NewRecorder(parent, "aitest")
 	tools := core.NewTools()
 	tools.Add(typedChildTool{e}, "test")
-	ag := core.NewAgent(core.Config{Client: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }, System: core.NewSystem(), Tools: tools, OutboxBuf: -1, InferenceAdmission: recorder.InferenceAdmission, ToolAdmission: recorder.ToolAdmission, OutputAdmission: recorder.OutputAdmission, OnEvent: recorder.RecordEvent, Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
+	ag := core.NewAgent(core.Config{Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }}, System: core.NewSystem(), Tools: tools, OutboxBuf: -1, InferenceAdmission: recorder.InferenceAdmission, ToolAdmission: recorder.ToolAdmission, OutputAdmission: recorder.OutputAdmission, OnEvent: recorder.RecordEvent, Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 		return sdkagent.Decision{}, recorder.RecordPermission(ctx, perm.Resolution{CallID: call.Call.ID, Decision: "allow", By: "config"})
 	}})
 	ag.Append(core.UserMessage("delegate", nil))

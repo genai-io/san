@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -20,7 +19,6 @@ import (
 
 // PermissionSettings is the live rule source shared by interactive and print runs.
 type PermissionSettings interface {
-	DenyRule(string, map[string]any) string
 	HasPermissionToUseTool(string, map[string]any, *setting.SessionPermissions) setting.PermissionDecision
 	CanApproveByHook(string, map[string]any, *setting.SessionPermissions) bool
 }
@@ -28,21 +26,15 @@ type PermissionSettings interface {
 // PermissionPolicy binds execution authorization to one session. Callers serialize
 // decisions with human grant changes and retire the policy with its runtime.
 type PermissionPolicy struct {
-	Settings   PermissionSettings
-	Session    *setting.SessionPermissions
-	AutoMemory system.MemoryStores
+	Settings PermissionSettings
+	Session  *setting.SessionPermissions
 }
 
 func (p PermissionPolicy) Decide(name string, args map[string]any) PermDecisionResult {
 	if p.Settings == nil || p.Session == nil {
 		return PermDecisionResult{Decision: perm.Reject, Reason: "permission policy unavailable"}
 	}
-	var d setting.PermissionDecision
-	if permitAutoMemoryWrite(p.AutoMemory, name, args, p.Settings.DenyRule) {
-		d = setting.PermissionDecision{Behavior: perm.Permit, By: "config", Reason: "auto memory"}
-	} else {
-		d = p.Settings.HasPermissionToUseTool(name, args, p.Session)
-	}
+	d := p.Settings.HasPermissionToUseTool(name, args, p.Session)
 	if d.Behavior == perm.Permit || d.Behavior == perm.Reject {
 		return PermDecisionResult{Decision: d.Behavior, By: d.By, Scope: d.Scope, Reason: d.Reason}
 	}

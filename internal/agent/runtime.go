@@ -28,6 +28,7 @@ type run struct {
 	stopped   bool
 	onEvent   func(core.Event)
 	recording *session.Session
+	recall    *fastRecall
 }
 
 type Runtime struct {
@@ -58,7 +59,14 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 	if err := params.checkMessages(messages); err != nil {
 		return err
 	}
-	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording}
+	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), params.SessionID))
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+		}
+	}()
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent, recording: params.Recording, recall: params.newFastRecall(ctx)}
 	params.OnEvent = func(ev core.Event) {
 		switch e := ev.(type) {
 		case sdkagent.MessageAdded:
@@ -77,7 +85,9 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 
 	builder := s.build
 	if builder == nil {
-		builder = buildAgent
+		builder = func(p BuildParams) (core.Agent, *PermissionGate, error) {
+			return buildAgent(p, withRequestContext(run.recall.requestContext()))
+		}
 	}
 	ag, pg, err := builder(params)
 	if err != nil {
@@ -102,7 +112,7 @@ func (s *Runtime) start(params BuildParams, messages []core.Message) error {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), params.SessionID))
+	started = true
 	run.agent, run.cancel = ag, cancel
 	s.run = run
 	s.outbox = ag.Outbox()
@@ -268,6 +278,13 @@ func (s *Runtime) SendInput(input PendingInput) error {
 			return &llm.RecordingError{Err: err}
 		}
 	}
+	if input.FromUser && input.Source == nil && input.Completion == nil && run.recall != nil {
+		query := input.RecallQuery
+		if query == "" {
+			query = input.Message.Text()
+		}
+		run.recall.enqueue(msg.ID, query)
+	}
 	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)
 	return nil
@@ -301,6 +318,7 @@ func (s *Runtime) Cancel() *core.TurnFinalization {
 	if s.run == nil {
 		return nil
 	}
+	s.run.recall.cancel()
 	return s.run.agent.Cancel()
 }
 

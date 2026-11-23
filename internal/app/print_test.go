@@ -58,3 +58,20 @@ func TestPrintUsesEffectiveToolAndPermissionSettings(t *testing.T) {
 		t.Fatal("unknown persona accepted")
 	}
 }
+
+func TestPrintMemoryWritesAreNotPrivileged(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	params, err := buildPrintParams(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := params.AutoMemory.Store
+	if store.Off() {
+		t.Fatal("expected an enabled Auto Memory store")
+	}
+	for _, name := range []string{"Write", "Edit"} {
+		if got := params.PermissionRules(name, map[string]any{"file_path": filepath.Join(string(store), "note.md")}); got.Decision != perm.Reject || !strings.HasPrefix(got.Reason, "headless:") {
+			t.Errorf("%s in %s should follow headless policy: %+v", name, store, got)
+		}
+	}
+}

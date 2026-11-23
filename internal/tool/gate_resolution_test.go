@@ -75,8 +75,8 @@ func TestRecorderFailureStopsRealSDKDispatch(t *testing.T) {
 	var records atomic.Int32
 	ag := core.NewAgent(core.Config{
 		System: core.NewSystem(), OutboxBuf: -1, MaxSteps: 3,
-		Client: func([]core.Message) (*ai.Client, error) { return client, nil },
-		Tools:  core.NewTools(recordingDispatchTool{runs: &runs}),
+		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return client, nil }},
+		Tools:     core.NewTools(recordingDispatchTool{runs: &runs}),
 		Gate: HookedPermission(nil, checker, func(_ context.Context, r perm.Resolution) error {
 			records.Add(1)
 			if r.CallID != "call-1" {
@@ -111,8 +111,8 @@ func TestHookRecordingFailureStopsRealSDKDispatch(t *testing.T) {
 	checker := &resolvedChecker{result: perm.Resolution{Decision: "allow", By: "config"}}
 	ag := core.NewAgent(core.Config{
 		System: core.NewSystem(), OutboxBuf: -1, MaxSteps: 3,
-		Client: func([]core.Message) (*ai.Client, error) { return client, nil },
-		Tools:  core.NewTools(recordingDispatchTool{runs: &runs}), Gate: HookedPermission(engine, checker),
+		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return client, nil }},
+		Tools:     core.NewTools(recordingDispatchTool{runs: &runs}), Gate: HookedPermission(engine, checker),
 	})
 	ag.Append(core.UserMessage("go", nil))
 	_, err := ag.ThinkAct(t.Context())

@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -56,9 +57,7 @@ type BuildParams struct {
 	Plugins       *plugin.Registry
 	PluginRoot    func() string // optional session-owned invocation scope
 
-	// AutoMemory is the auto-memory stores the main agent maintains; zero
-	// when auto memory is off.
-	AutoMemory system.MemoryStores
+	AutoMemory AutoMemoryConfig
 
 	// ShellDirHelp overrides cwd guidance without changing execution behavior.
 	// Empty keeps the default for hosts that apply directory changes.
@@ -162,11 +161,17 @@ func (p BuildParams) addTools(tools *core.Tools) {
 	}
 }
 
-func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
-	return buildAgentWithOutbox(p, 0)
+type buildOption func(*core.Config)
+
+func withoutOutbox() buildOption {
+	return func(cfg *core.Config) { cfg.OutboxBuf = -1 }
 }
 
-func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *PermissionGate, error) {
+func withRequestContext(appendContext func([]core.Message, bool) ([]core.Message, func() core.Event)) buildOption {
+	return func(cfg *core.Config) { cfg.Inference.AppendContext = appendContext }
+}
+
+func buildAgent(p BuildParams, opts ...buildOption) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -284,23 +289,29 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 		return nil, nil, err
 	}
 	cfg := core.Config{
-		ID:              "main",
-		Client:          client.TurnClient,
-		PrepareMessages: client.RequestMessages,
-		CallOptions:     client.CallOptions,
-		ContextBudget:   client.ContextBudget,
-		System:          sys,
-		Tools:           tools,
+		ID: "main",
+		Inference: core.InferenceConfig{
+			ResolveClient: client.TurnClient,
+			AdaptMessages: client.RequestMessages,
+			Options:       client.CallOptions,
+		},
+		Compaction: core.CompactionConfig{
+			Budget:    client.ContextBudget,
+			Summarize: compactFunc,
+		},
+		System: sys,
+		Tools:  tools,
 		Gate: func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 			return permissionGate(core.WithToolCallID(toolContext(ctx), call.Call.ID), call)
 		},
 		ResultFilter: p.ResultFilter,
-		CompactFunc:  compactFunc,
 		OnEvent:      p.OnEvent,
-		OutboxBuf:    outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 	if p.recorder != nil {
 		cfg.InferenceAdmission = p.recorder.InferenceAdmission
@@ -318,6 +329,26 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	return ag, pg, nil
 }
 
+// MemoryRecaller uses the main model and the configured Wait budget.
+func (p BuildParams) MemoryRecaller() Recaller {
+	r := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
+		r.Timeout = p.AutoMemory.Recall.Timeout
+		if r.Timeout <= 0 {
+			r.Timeout = 5 * time.Second
+		}
+	}
+	return r
+}
+
+func (p BuildParams) newFastRecall(ctx context.Context) *fastRecall {
+	mode := p.AutoMemory.Recall.Mode
+	if mode == setting.MemoryRecallWait || mode == setting.MemoryRecallOff || p.AutoMemory.Store.Off() || p.Provider == nil {
+		return nil
+	}
+	return &fastRecall{ctx: ctx, store: p.AutoMemory.Store, recaller: p.MemoryRecaller()}
+}
+
 // RunOnce answers one message with no session around it: build the agent, hand
 // it the message, run one exchange, and report what the model said.
 //
@@ -331,20 +362,20 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if err := p.prepareRecording(); err != nil {
 		return nil, err
 	}
-	recaller := Recaller{Provider: p.Provider, Model: p.ModelID, Effort: LowestEffort(p.Provider, nil, &llm.CurrentModelInfo{ModelID: p.ModelID}), Recording: p.Recording}
-	prepared, err := recaller.Prepare(ctx, p.AutoMemory, message, nil)
+	messageText := message.Text()
+	recallCtx, cancelRecall := context.WithCancel(ctx)
+	defer cancelRecall()
+	recall := p.newFastRecall(recallCtx)
+	prepared := PreparedMemory{Message: message}
+	if p.AutoMemory.Recall.Mode == setting.MemoryRecallWait {
+		prepared, err = p.MemoryRecaller().Prepare(ctx, p.AutoMemory.Store, message, nil)
+	}
 	defer func() { err = errors.Join(err, prepared.Completion.Close()) }()
 	if err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if prepared.Handled {
-		if onText != nil {
-			onText(prepared.Notice)
-		}
-		return &core.Result{Content: prepared.Notice, StopReason: core.StopEndTurn}, nil
 	}
 	// The project's own instructions, the way the interactive path reads them.
 	// A run without them answers differently in the same repo, which is the
@@ -365,7 +396,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 		}
 	}
 	// Direct execution uses callbacks and has no outbox consumer.
-	ag, gate, err := buildAgentWithOutbox(p, -1)
+	ag, gate, err := buildAgent(p, withoutOutbox(), withRequestContext(recall.requestContext()))
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +414,10 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 			return nil, &llm.RecordingError{Err: err}
 		}
 	}
+	if message.ID == "" {
+		message.ID = core.NewMessageID()
+	}
+	recall.enqueue(message.ID, messageText)
 	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }

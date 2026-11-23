@@ -55,7 +55,7 @@ func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Durat
 	t.Helper()
 	ag := NewAgent(Config{
 		ID:                      "test",
-		Client:                  testClient(d),
+		Inference:               InferenceConfig{ResolveClient: testClient(d)},
 		System:                  NewSystem(),
 		Tools:                   NewTools(),
 		MaxTurnRetries:          maxRetries,
@@ -180,13 +180,15 @@ func TestThinkActCompactsOnProviderContextOverflow(t *testing.T) {
 	}, 1)
 	compacted := 0
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
-		CompactFunc: func(context.Context, []Message) (Compaction, error) {
-			compacted++
-			return Compaction{Summary: "the story so far"}, nil
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		System:    NewSystem(),
+		Tools:     NewTools(),
+		Compaction: CompactionConfig{
+			Summarize: func(context.Context, []Message) (Compaction, error) {
+				compacted++
+				return Compaction{Summary: "the story so far"}, nil
+			},
 		},
 	}).(*agent)
 	go func() {

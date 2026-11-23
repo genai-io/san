@@ -83,7 +83,7 @@ func (m *model) openCurrentSession() (*session.Session, error) {
 	notices := m.earlyNotices
 	m.earlyNotices = nil
 	for i, n := range notices {
-		if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice, AfterMessage: conv.MemoryRecallNoticeAnchor(n.Content)}}); err != nil {
+		if err := opened.Append(context.Background(), session.Event{Payload: noticeAnnotation(n)}); err != nil {
 			m.earlyNotices = append(m.earlyNotices, notices[i:]...)
 			return opened, err
 		}
@@ -99,9 +99,18 @@ func (m *model) appendSessionState() error {
 	return session.NewRecorder(opened, "").RecordState(context.Background(), *m.buildSessionRecord())
 }
 
+func noticeAnnotation(n core.ChatMessage) session.AnnotationAddPayload {
+	p := session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice}
+	if n.AutoMemoryRecallNotice != nil {
+		p.Text = conv.EncodeRecallNotice(n.AutoMemoryRecallNotice)
+		p.AfterMessage = n.AutoMemoryRecallNotice.AfterMessageID
+	}
+	return p
+}
+
 func (m *model) recordNotice(n core.ChatMessage) {
 	if opened := m.services.Session; opened != nil {
-		if err := opened.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice, AfterMessage: conv.MemoryRecallNoticeAnchor(n.Content)}}); err != nil {
+		if err := opened.Append(context.Background(), session.Event{Payload: noticeAnnotation(n)}); err != nil {
 			log.Logger().Warn("session annotation append failed", zap.Error(err))
 		}
 		return
@@ -122,6 +131,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 	if changed {
 		m.retireFlowMain()
 		m.resetRecap()
+		m.cancelMemoryReview()
 		m.cancelAutopilot()
 		m.cancelGroupControl()
 		if err := m.cancelManualCompaction(); err != nil {

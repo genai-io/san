@@ -193,7 +193,7 @@ func (m *model) showNoticeLine(n mainNotice) core.Message {
 		m.conv.AddAgentNotice(n.Display)
 	} else if n.Display != "" {
 		if n.recorded {
-			m.addRecordedNotice(n.Display)
+			m.addRecordedNotice(core.ChatMessage{Content: n.Display})
 		} else {
 			m.conv.AddNotice(n.Display)
 		}

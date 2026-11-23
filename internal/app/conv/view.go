@@ -9,6 +9,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -18,8 +19,9 @@ import (
 // → RenderMessageAt → renderAssistantWithTools.
 type RenderContext struct {
 	// ── Conversation state ──────────────────────────────────────
-	Messages       []core.ChatMessage
-	CommittedCount int
+	Messages        []core.ChatMessage
+	CommittedCount  int
+	AutoMemoryStore system.MemoryStore
 	// InlinedResults precomputes which ToolResult messages will be
 	// drawn inline with their owning assistant (not as standalone
 	// messages). Built once in one pass over Messages; lets every
@@ -330,8 +332,12 @@ func renderMessageBody(p RenderContext, idx int, isStreaming bool) string {
 			} else {
 				sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
 			}
+		} else if msg.AutoMemoryRecallNotice != nil {
+			sb.WriteString(renderMemoryRecallNotice(msg.AutoMemoryRecallNotice, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, memoryRecallNoticePrefix); ok {
-			sb.WriteString(renderMemoryRecallNotice(rest, p.Width))
+			sb.WriteString(renderRecordedRecallNotice(rest, p.Width))
+		} else if msg.AutoMemoryMaintained || isMemoryMaintenanceNotice(msg.Content) {
+			sb.WriteString(renderMemoryMaintenanceNotice(msg.Content, p.Width))
 		} else if rest, ok := strings.CutPrefix(msg.Content, recapNoticePrefix); ok {
 			facts, body, _ := strings.Cut(rest, "\n\n")
 			sb.WriteString(RenderRecap(sideMarkStyle.Render(kit.RecapMark), facts, body, p.Width))
@@ -392,6 +398,7 @@ func renderMessageTools(p RenderContext, msg core.ChatMessage, idx int) string {
 	}
 
 	sb.WriteString(RenderToolCalls(ToolCallsParams{
+		AutoMemoryStore:    p.AutoMemoryStore,
 		ToolCalls:          msg.ToolCalls,
 		ToolCallsExpanded:  msg.ToolCallsExpanded,
 		ResultMap:          resultMap,
@@ -538,7 +545,8 @@ func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
 			expanded = false
 		}
 		rendered := RenderToolCalls(ToolCallsParams{
-			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
+			AutoMemoryStore: p.AutoMemoryStore,
+			ToolCalls:       []core.ToolCall{call}, ToolCallsExpanded: expanded,
 			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
 			AgentPreviewLines: p.AgentPreviewLines,
 			CurrentIdx:        p.CurrentIdx, ToolStartedAt: p.ToolStartedAt, ToolProgress: p.ToolProgress,

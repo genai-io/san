@@ -9,8 +9,10 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -18,7 +20,7 @@ import (
 
 func memoryReadFixture(t *testing.T) (string, core.ToolCall) {
 	t.Helper()
-	mem := useMemoryStore(t)
+	mem := t.TempDir()
 	path := filepath.Join(mem, "sign-off.md")
 	if err := os.WriteFile(path, []byte("---\ndescription: Sign off every PR commit\n---\nPrivate memory body"), 0600); err != nil {
 		t.Fatal(err)
@@ -35,7 +37,8 @@ func TestMemoryReadNoticeStaysWithItsToolStep(t *testing.T) {
 	before := core.ToolCall{ID: "before", Name: "Bash", Input: `{"command":"before"}`}
 	after := core.ToolCall{ID: "after", Name: "Bash", Input: `{"command":"after"}`}
 	params := ToolCallsParams{
-		ToolCalls: []core.ToolCall{before, read, after}, Width: 80,
+		AutoMemoryStore: system.MemoryStore(filepath.Dir(path)),
+		ToolCalls:       []core.ToolCall{before, read, after}, Width: 80,
 		ResultMap: map[string]ToolResultData{
 			before.ID: {ToolName: "Bash", Content: "before output"},
 			read.ID:   {ToolName: "Read", Content: "Private memory body"},
@@ -72,14 +75,14 @@ func TestMemoryReadNoticeStaysWithItsToolStep(t *testing.T) {
 }
 
 func TestMemoryReadOnlyStepAppearsBeforeTheAnswer(t *testing.T) {
-	_, read := memoryReadFixture(t)
+	path, read := memoryReadFixture(t)
 	msgs := []core.ChatMessage{
 		{Role: core.ChatUser, Content: "submit the PR"},
 		{Role: core.ChatAssistant, Thinking: "Checking the commit convention", ToolCalls: []core.ToolCall{read}},
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: read.ID, ToolName: "Read", Content: ai.TextContent("Private memory body")}},
 		{Role: core.ChatAssistant, Content: "The PR is ready."},
 	}
-	p := RenderContext{Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
+	p := RenderContext{AutoMemoryStore: system.MemoryStore(filepath.Dir(path)), Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
 	out := stripANSI(RenderMessageRange(p, 0, len(msgs), false))
 	thinking, notice, answer := strings.Index(out, "Checking the commit convention"), strings.Index(out, "⟡ Memory · read: Sign off PR commits"), strings.Index(out, "The PR is ready.")
 	if thinking < 0 || notice <= thinking || answer <= notice || strings.Count(out, "Sign off PR commits") != 1 {
@@ -88,8 +91,8 @@ func TestMemoryReadOnlyStepAppearsBeforeTheAnswer(t *testing.T) {
 }
 
 func TestMemoryReadMarkerBreathesOnlyWhileReading(t *testing.T) {
-	_, read := memoryReadFixture(t)
-	p := ToolCallsParams{ToolCalls: []core.ToolCall{read}, PendingCalls: []core.ToolCall{read}, Width: 80}
+	path, read := memoryReadFixture(t)
+	p := ToolCallsParams{AutoMemoryStore: system.MemoryStore(filepath.Dir(path)), ToolCalls: []core.ToolCall{read}, PendingCalls: []core.ToolCall{read}, Width: 80}
 	render := func(frame int) string {
 		p.Frame, p.SpinnerView = frame, kit.LiveDot(frame)
 		return RenderToolCalls(p)
@@ -116,6 +119,7 @@ func TestRecalledMemoryAppearsBesideTheReceivingToolResult(t *testing.T) {
 			call.Input = string(input)
 		}
 		m := NewModel(80)
+		m.AutoMemoryStore = system.MemoryStore(filepath.Dir(path))
 		m.Messages = []core.ChatMessage{
 			{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}},
 			{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: call.ID, ToolName: "Read", Content: ai.TextContent("source body")}},
@@ -126,7 +130,7 @@ func TestRecalledMemoryAppearsBesideTheReceivingToolResult(t *testing.T) {
 			ToolCallID: call.ID, ToolName: "Read", Content: ai.TextContent(attached),
 		})})
 		m.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Answer after recall"})
-		p := RenderContext{Width: 80, Messages: m.Messages, InlinedResults: PrecomputeInlinedResults(m.Messages, 0)}
+		p := RenderContext{AutoMemoryStore: m.AutoMemoryStore, Width: 80, Messages: m.Messages, InlinedResults: PrecomputeInlinedResults(m.Messages, 0)}
 		out := stripANSI(RenderMessageRange(p, 0, len(m.Messages), false))
 		notice := strings.Index(out, "⟡ Memory · recalled: Sign off PR commits")
 		if notice < 0 || notice >= strings.Index(out, "Answer after recall") || strings.Count(out, "Sign off PR commits") != 1 {
@@ -138,11 +142,49 @@ func TestRecalledMemoryAppearsBesideTheReceivingToolResult(t *testing.T) {
 	}
 }
 
+func TestFastRecallNoticeFitsOnOneMutedLine(t *testing.T) {
+	m := NewModel(80)
+	applyAgentEvent(nil, &m, agent.MemoryRecalled{AfterMessage: "user", NoteIDs: []string{"user/sign-off.md", "project/freeze.md"}})
+	if len(m.Messages) != 1 || m.Messages[0].Role != core.ChatNotice || m.Messages[0].AutoMemoryRecallNotice == nil || m.Messages[0].AutoMemoryRecallNotice.AfterMessageID != "user" {
+		t.Fatalf("recall did not produce one anchored display-only notice: %+v", m.Messages)
+	}
+	data := m.Messages[0].AutoMemoryRecallNotice
+	for width, want := range map[int]string{
+		28: "⟡ Memory · recalled 2 notes\n",
+		80: "⟡ Memory · recalled 2 notes — sign-off, freeze\n",
+	} {
+		if got := stripANSI(renderMemoryRecallNotice(data, width)); got != want || lipgloss.Width(got) > width {
+			t.Fatalf("width %d: rendered %q, want %q", width, got, want)
+		}
+	}
+}
+
+func TestMemoryMaintenanceNoticesUseMemoryMark(t *testing.T) {
+	for _, text := range []string{
+		"Memory · saved example-environment.md to project",
+		"Memory · updated example-environment.md in project",
+		"Memory · forgot example-environment.md from project",
+	} {
+		p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text}}}
+		if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "⟡ "+text) || strings.Contains(got, "✦") {
+			t.Fatalf("expected a memory-styled result for %q, got %q", text, got)
+		}
+	}
+}
+
+func TestAutoMemoryMaintenanceNoticeDoesNotDependOnCopy(t *testing.T) {
+	const text = "Saved an Auto Memory note"
+	p := RenderContext{Width: 80, Messages: []core.ChatMessage{{Role: core.ChatNotice, Content: text, AutoMemoryMaintained: true}}}
+	if got := stripANSI(RenderMessageRange(p, 0, 1, false)); !strings.Contains(got, "⟡ "+text) {
+		t.Fatalf("maintenance notice lost its styling: %q", got)
+	}
+}
+
 func TestMemoryRecallNoticeRetainsItsTitleAfterResume(t *testing.T) {
 	path, _ := memoryReadFixture(t)
 	attached := "source body\n\n" + reminder.WrapWithSource("Memories relevant to this message:\n\nMemory `"+path+"` (project store):\nPrivate recalled body", reminder.ProviderMemoryRecall)
-	notice := recalledMemoryNotice(attached, "result")
-	if notice == "" {
+	notice := recalledMemoryNotice(system.MemoryStore(filepath.Dir(path)), attached, "result")
+	if notice == nil {
 		t.Fatal("a delivered recall must produce a persistable notice")
 	}
 	if err := os.Remove(path); err != nil {
@@ -158,7 +200,7 @@ func TestMemoryRecallNoticeRetainsItsTitleAfterResume(t *testing.T) {
 	msgs := []core.ChatMessage{
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}},
 		{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: call.ID, ToolName: "Read", Content: ai.TextContent(attached)}},
-		{Role: core.ChatNotice, Content: notice},
+		{Role: core.ChatNotice, Content: EncodeRecallNotice(notice)},
 		{Role: core.ChatAssistant, Content: "Answer after recall"},
 	}
 	p := RenderContext{Width: 28, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
@@ -182,8 +224,8 @@ func TestMemoryRecallNoticeIgnoresOrdinaryToolOutput(t *testing.T) {
 		reminder.WrapWithSource(heading, reminder.ProviderMemoryAuto),
 		"<system-reminder source=\"memory-recall\">\n" + heading,
 	} {
-		if got := recalledMemoryNotice(content, "result"); got != "" {
-			t.Fatalf("ordinary or malformed content must not claim a memory recall: %q", got)
+		if got := recalledMemoryNotice(system.MemoryStore(filepath.Dir(path)), content, "result"); got != nil {
+			t.Fatalf("ordinary or malformed content must not claim a memory recall: %+v", got)
 		}
 	}
 }
@@ -194,7 +236,8 @@ func TestMemoryNoticeWrapsWithoutExceedingTerminalWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := stripANSI(RenderToolCalls(ToolCallsParams{
-		ToolCalls: []core.ToolCall{read}, Width: 24,
+		AutoMemoryStore: system.MemoryStore(filepath.Dir(path)),
+		ToolCalls:       []core.ToolCall{read}, Width: 24,
 		ResultMap: map[string]ToolResultData{read.ID: {ToolName: "Read"}},
 	}))
 	if strings.Count(out, "记") != 12 {

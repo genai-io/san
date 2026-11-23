@@ -9,7 +9,6 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -50,7 +49,7 @@ func TestWorkerResolverPreservesModeSourceAndOnceOnlyApproval(t *testing.T) {
 	expectedOrigin := origin
 	expectedSource.Flow = &expectedOrigin
 	expectedSource.ToolCallID = "worker-call"
-	resolver := newWorkerResolver(settings, grants, system.MemoryStores{}, bridge, child, inputSource)
+	resolver := newWorkerResolver(settings, grants, bridge, child, inputSource)
 	origin.Name = "changed after capture"
 	grants.SetMode(setting.ModeBypassPermissions)
 	ctx := core.WithToolCallID(t.Context(), "worker-call")
@@ -95,7 +94,7 @@ func TestWorkerResolverPreservesPolicyAuthorityAndLiveGrants(t *testing.T) {
 	data.Permissions.Deny = []string{"Write(*)"}
 	settings := setting.New(data)
 	grants := setting.NewSessionPermissions()
-	resolver := newWorkerResolver(settings, grants, system.MemoryStores{}, nil, child, tool.AgentInteractionSource{AgentID: "worker-address", TaskID: "executor-task", WorkingDirectory: "/worker", PermissionMode: "normal"})
+	resolver := newWorkerResolver(settings, grants, nil, child, tool.AgentInteractionSource{AgentID: "worker-address", TaskID: "executor-task", WorkingDirectory: "/worker", PermissionMode: "normal"})
 	grants.AllowPattern("Bash(go test ./...)")
 	for _, tc := range []struct {
 		name  string

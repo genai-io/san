@@ -23,7 +23,6 @@ import (
 const (
 	maxNote  = 8 * 1024
 	maxIndex = 128 * 1024
-	maxNotes = 5
 )
 
 var errStale = errors.New("memory store changed while proposing maintenance; retry the request")
@@ -31,30 +30,6 @@ var errStale = errors.New("memory store changed while proposing maintenance; ret
 // Serialize maintenance applies to the same canonical store without keeping
 // locks forever for previously visited projects. Unrelated buckets can proceed.
 var storeLocks [64]sync.Mutex
-
-func storePath(stores system.MemoryStores, scope string) (string, error) {
-	selected, other := stores.Project, stores.User
-	if scope == "user" {
-		selected, other = other, selected
-	}
-	if selected == "" {
-		return "", nil
-	}
-	path, err := canonicalPath(selected)
-	if err != nil {
-		return "", err
-	}
-	if other != "" {
-		alt, err := atomicfile.ResolvePath(other)
-		if err != nil {
-			return "", err
-		}
-		if overlaps(path, alt) || overlaps(alt, path) {
-			return "", errors.New("memory store scopes overlap")
-		}
-	}
-	return path, nil
-}
 
 func canonicalPath(path string) (string, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) == path {
@@ -73,12 +48,6 @@ func canonicalPath(path string) (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-func overlaps(parent, child string) bool {
-	// Some filesystems accept both spellings even on Unix.
-	rel, err := filepath.Rel(strings.ToLower(parent), strings.ToLower(child))
-	return err == nil && filepath.IsLocal(rel)
 }
 
 func openStore(path string) (*os.Root, fs.FileInfo, error) {
@@ -159,11 +128,24 @@ type storeSnapshot struct {
 }
 
 var (
-	word      = regexp.MustCompile(`[\pL\pN]{3,}`)
 	indexLink = regexp.MustCompile(`\]\(((?:\./)?[A-Za-z0-9_-]+\.md)\)`)
+	noteName  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}\.md$`)
 )
 
-func snapshot(path string, req Request) (s storeSnapshot, err error) {
+func validName(name string) bool {
+	if !noteName.MatchString(name) || strings.EqualFold(name, system.AutoMemoryIndexName) || strings.EqualFold(name, system.InstructionFile) {
+		return false
+	}
+	// Reject reserved DOS device names on all platforms so notes can travel.
+	base := strings.ToUpper(strings.TrimSuffix(name, ".md"))
+	switch base {
+	case "CON", "PRN", "AUX", "NUL":
+		return false
+	}
+	return !(len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '0' && base[3] <= '9')
+}
+
+func snapshotStore(ctx context.Context, path string) (s storeSnapshot, err error) {
 	root, dir, err := openStore(path)
 	s.dir = dir
 	if err != nil || root == nil {
@@ -174,24 +156,10 @@ func snapshot(path string, req Request) (s storeSnapshot, err error) {
 	if err != nil {
 		return s, err
 	}
-	if req.target != "" {
-		rev, err := readRevision(root, req.target, maxNote)
-		if rev.info != nil {
-			s.notes = append(s.notes, noteRevision{req.target, rev})
-		}
-		return s, err
-	}
-	// Use the existing index to shortlist bounded evidence. Never send the
-	// whole index, open links outside this store, or read the other scope.
-	terms := map[string]bool{}
-	for _, token := range word.FindAllString(strings.ToLower(req.evidence), -1) {
-		switch token {
-		case "the", "and", "for", "this", "that", "with", "from", "use", "are", "not":
-		default:
-			terms[token] = true
-		}
-	}
+	// Start from the real index; only load bounded, linked note bodies.
 	seen := map[string]bool{}
+	const limit = 16
+	remaining := 48 * 1024
 	literal := literalIndexLines(s.index.text)
 	offset := 0
 	for line := range strings.SplitAfterSeq(s.index.text, "\n") {
@@ -208,24 +176,32 @@ func snapshot(path string, req Request) (s storeSnapshot, err error) {
 		if !validName(name) || seen[name] {
 			continue
 		}
-		for _, token := range word.FindAllString(strings.ToLower(line), -1) {
-			if terms[token] {
-				seen[name] = true
-				rev, err := readRevision(root, name, maxNote)
-				if err == nil && rev.info != nil {
-					s.notes = append(s.notes, noteRevision{name, rev})
-				}
-				break
-			}
+		if err := ctx.Err(); err != nil {
+			return s, err
 		}
-		if len(s.notes) == maxNotes {
+		seen[name] = true
+		rev, err := readRevision(root, name, maxNote)
+		if err == nil && rev.info != nil && len(rev.text) <= remaining {
+			s.notes = append(s.notes, noteRevision{name, rev})
+			remaining -= len(rev.text)
+		}
+		if len(s.notes) == limit || len(seen) == 32 {
 			break
 		}
 	}
 	return s, nil
 }
 
-func apply(ctx context.Context, path string, req Request, s storeSnapshot, p proposal) (string, error) {
+func (s storeSnapshot) note(name string) revision {
+	for _, note := range s.notes {
+		if note.name == name {
+			return note.rev
+		}
+	}
+	return revision{}
+}
+
+func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (string, error) {
 	h := fnv.New32a()
 	_, _ = io.WriteString(h, strings.ToLower(path))
 	lock := &storeLocks[h.Sum32()%uint32(len(storeLocks))]
@@ -285,9 +261,12 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 			// an external writer may already have seen and edited.
 			return "", fmt.Errorf("memory note created but index update failed: %w", err)
 		}
-		return fmt.Sprintf("Memory · saved %s to %s", p.File, req.scope), nil
+		return fmt.Sprintf("Memory · saved %s", p.File), nil
 	case actionUpdate:
-		old := s.notes[0].rev
+		old := s.note(p.File)
+		if old.info == nil {
+			return "", errInvalidProposal
+		}
 		text, err := patchNote(old.text, p)
 		if err != nil || text == old.text {
 			return "", err
@@ -298,8 +277,12 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 		if err := writeNote(root, p.File, text, old); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Memory · updated %s in %s", p.File, req.scope), nil
+		return fmt.Sprintf("Memory · updated %s", p.File), nil
 	case actionForget:
+		old := s.note(p.File)
+		if old.info == nil {
+			return "", errInvalidProposal
+		}
 		index, err := editIndex(s.index.text, p)
 		if err != nil {
 			return "", err
@@ -310,7 +293,7 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 			}
 		}
 		rev, err := readRevision(root, p.File, maxNote)
-		if err != nil || !rev.same(s.notes[0].rev) {
+		if err != nil || !rev.same(old) {
 			err = errStale
 		} else {
 			err = root.Remove(p.File)
@@ -325,7 +308,7 @@ func apply(ctx context.Context, path string, req Request, s storeSnapshot, p pro
 			}
 			return "", err
 		}
-		return fmt.Sprintf("Memory · forgot %s from %s", p.File, req.scope), nil
+		return fmt.Sprintf("Memory · forgot %s", p.File), nil
 	}
 	return "", errors.New("unsupported memory operation")
 }

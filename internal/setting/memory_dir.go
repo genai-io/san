@@ -11,27 +11,20 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 )
 
-// MemoryStoresFor is cwd's auto-memory stores. autoMemoryDirectory moves the
-// store of the file that sets it: ~/.san/settings.json the user store, an
-// untracked settings.local.json the project store. A committed project file
-// never counts: memory writes need no approval, so a cloned repository must
-// not choose where they land.
-func MemoryStoresFor(cwd string) system.MemoryStores {
+// MemoryStoreFor resolves the repository's one Auto Memory directory.
+// Only the main checkout's untracked settings.local.json can redirect it.
+// Neither a cloned settings file nor the former user-store setting counts.
+func MemoryStoreFor(cwd string) system.MemoryStore {
 	home, _ := os.UserHomeDir()
-	s := system.MemoryStores{User: system.UserMemoryDir(home), Project: system.AutoMemoryDir(cwd)}
-	if d := expandMemoryDir(readMemoryDir(filepath.Join(confdir.Dir(home), "settings.json")), home); d != "" {
-		s.User = d
+	path := memoryDirectorySettings(cwd)
+	if dir := expandMemoryDir(readMemoryDir(path), home); dir != "" && UntrackedInRepo(path) {
+		return system.MemoryStore(dir)
 	}
-	// Runs on every tool call, so git is asked only about a file that sets it.
-	paths := &Loader{projectDir: confdir.Dir(cwd), cwd: cwd}
-	for _, src := range paths.projectSettingsFiles() { // later files win
-		if src.local {
-			if d := expandMemoryDir(readMemoryDir(src.path), home); d != "" && UntrackedInRepo(src.path) {
-				s.Project = d
-			}
-		}
-	}
-	return s
+	return system.MemoryStore(system.AutoMemoryDir(cwd))
+}
+
+func memoryDirectorySettings(cwd string) string {
+	return filepath.Join(confdir.Dir(confdir.MainRepoRoot(cwd)), "settings.local.json")
 }
 
 func readMemoryDir(path string) string {
@@ -56,21 +49,16 @@ func expandMemoryDir(dir, home string) string {
 	return dir
 }
 
-// SaveMemoryDirectory sets autoMemoryDirectory for scope's store, clearing it
-// when dir is "": ScopeUser writes ~/.san/settings.json, ScopeProject cwd's
-// settings.local.json (the main checkout's in a worktree), which must stay
-// untracked for the value to count.
-func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
+// SaveMemoryDirectory sets or clears a repository-wide location override in
+// the main checkout's untracked settings.local.json.
+func SaveMemoryDirectory(cwd, dir string) error {
 	home, _ := os.UserHomeDir()
 	if dir != "" && expandMemoryDir(dir, home) == "" {
 		return fmt.Errorf("%q must be an absolute path or start with ~/", dir)
 	}
-	path := filepath.Join(confdir.Dir(home), "settings.json")
-	if scope == ScopeProject {
-		path = filepath.Join(confdir.LocalDir(cwd), "settings.local.json")
-		if !UntrackedInRepo(path) {
-			return fmt.Errorf("settings.local.json is tracked by git or outside a repository, so it cannot move this project's memory")
-		}
+	path := memoryDirectorySettings(cwd)
+	if !UntrackedInRepo(path) {
+		return fmt.Errorf("settings.local.json is tracked by git or outside a repository, so it cannot move this repository's memory")
 	}
 	return atomicfile.WithWriteLock(path, func() error {
 		doc := map[string]any{}
@@ -87,40 +75,4 @@ func SaveMemoryDirectory(scope Scope, cwd, dir string) error {
 		}
 		return atomicfile.WriteJSON(path, doc, 0o644)
 	})
-}
-
-// MoveMemories carries a store's memory files from one directory to another
-// when its directory changes. A destination that already holds memories is
-// an existing store and is left as it is.
-func MoveMemories(from, to string) error {
-	if from == to {
-		return nil
-	}
-	if have, _ := filepath.Glob(filepath.Join(to, "*.md")); len(have) > 0 {
-		return nil
-	}
-	files, _ := filepath.Glob(filepath.Join(from, "*.md"))
-	if len(files) == 0 {
-		return nil
-	}
-	if err := os.MkdirAll(to, 0o755); err != nil {
-		return err
-	}
-	for _, f := range files {
-		dst := filepath.Join(to, filepath.Base(f))
-		if os.Rename(f, dst) == nil {
-			continue
-		}
-		data, err := os.ReadFile(f) // another volume: rename can't cross it
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return err
-		}
-		if err := os.Remove(f); err != nil {
-			return err
-		}
-	}
-	return nil
 }

@@ -26,25 +26,24 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id              string
-	system          System
-	tools           *Tools
-	compactFunc     func(ctx context.Context, msgs []Message) (Compaction, error)
-	gate            Gate
-	resultFilter    ResultFilter
-	client          func(msgs []Message) (*ai.Client, error)
-	prepareMessages func([]Message) []Message
-	callOptions     func() []ai.Option
-	contextBudget   func() int
-	inbox           chan Inbound
-	outbox          chan Event
-	onEvent         func(Event)
+	id           string
+	system       System
+	tools        *Tools
+	inference    InferenceConfig
+	compaction   CompactionConfig
+	gate         Gate
+	resultFilter ResultFilter
+	inbox        chan Inbound
+	outbox       chan Event
+	onEvent      func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
 
-	// measured is the last reply's real prompt size; see promptTokens.
-	measured promptMeasure
+	// Request-context display is staged by preInfer and delivered at most once
+	// after the provider responds, before showing the first response fragment.
+	contextNotice func() Event
+	measured      promptMeasure
 
 	// wake tells an idle Run that Append queued something. Messages
 	// themselves wait in inner's queue, which lands them at the next step
@@ -400,7 +399,13 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 // the outcome.
 func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 	switch e := event.(type) {
+	case sdkagent.InferenceUpdate:
+		a.emitContextNotice(ctx)
 	case sdkagent.InferenceEnd:
+		if e.Err == nil {
+			a.emitContextNotice(ctx)
+		}
+		a.contextNotice = nil
 		if e.Err == nil && e.Response != nil {
 			out.Steps++
 			out.Usage.Add(e.Response.Usage)
@@ -417,6 +422,17 @@ func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 		}
 	}
 	a.emit(ctx, event)
+}
+
+func (a *agent) emitContextNotice(ctx context.Context) {
+	if notice := a.contextNotice; notice != nil {
+		a.contextNotice = nil
+		if ctx.Err() == nil {
+			if event := notice(); event != nil {
+				a.emit(ctx, event)
+			}
+		}
+	}
 }
 
 // hooks is where San gets between the SDK's loop and the model: which client
@@ -450,18 +466,20 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 	// A cwd or other system-section change between tools must reach the next
 	// inference in this exchange, not only the next ThinkAct call.
 	inf.System = a.system.Prompt()
-	if a.prepareMessages != nil {
-		inf.Messages = a.prepareMessages(inf.Messages)
+	inference := a.inference
+	if inference.AdaptMessages != nil {
+		inf.Messages = inference.AdaptMessages(inf.Messages)
 	}
-	if a.client != nil {
-		client, err := a.client(inf.Messages)
-		if err != nil {
-			return fmt.Errorf("reaching the model: %w", err)
-		}
-		inf.Client = client
+	client, err := inference.ResolveClient(inf.Messages)
+	if err != nil {
+		return fmt.Errorf("reaching the model: %w", err)
 	}
-	if a.callOptions != nil {
-		inf.Options = append(inf.Options, a.callOptions()...)
+	inf.Client = client
+	if inference.AppendContext != nil {
+		inf.Messages, a.contextNotice = inference.AppendContext(inf.Messages, inf.LastErr != nil)
+	}
+	if inference.Options != nil {
+		inf.Options = append(inf.Options, inference.Options()...)
 	}
 	a.measured.sending(len(inf.Messages))
 	return nil

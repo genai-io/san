@@ -71,7 +71,7 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 			}
 			driver := aitest.New(first, follow)
 			boundaries := 0
-			ag, gate, err := buildAgentWithOutbox(BuildParams{Provider: compactRecordingProvider{driver}, ModelID: "model", MaxTokens: 64,
+			ag, gate, err := buildAgent(BuildParams{Provider: compactRecordingProvider{driver}, ModelID: "model", MaxTokens: 64,
 				GroupRoster: func() string { return roster },
 				PermissionRules: func(string, map[string]any) PermDecisionResult {
 					return PermDecisionResult{Decision: perm.Reject, By: session.ByConfig}
@@ -86,7 +86,7 @@ func TestBuiltAgentRecordsAutomaticCompaction(t *testing.T) {
 							t.Error("published compaction before committing the exact summary and its separate reminder")
 						}
 					}
-				}}, -1)
+				}}, withoutOutbox())
 			if err != nil {
 				t.Fatal(err)
 			}

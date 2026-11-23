@@ -28,6 +28,87 @@ function disclosure(title, build, open = false) {
   return el;
 }
 
+// Index the original tokens rather than re-serializing a parsed object: JSON
+// numbers, escaped strings, and even duplicate keys stay as recorded.
+function jsonTokens(text) {
+  if (typeof text !== 'string' || text.length > 2_000_000) return;
+  try { JSON.parse(text); } catch (_) { return; }
+  const lexemes = /"(?:[^"\\]+|\\[\s\S])*"|[{}\[\],:]|[^\s{}\[\],:"]+/g;
+  const stack = [];
+  let root, count = 0;
+  for (const [token] of text.matchAll(lexemes)) {
+    if (token === '}' || token === ']') { stack.pop(); continue; }
+    if (token === ',' || token === ':') continue;
+    const parent = stack.at(-1);
+    if (parent?.token === '{' && parent.nextKey === undefined) {
+      parent.nextKey = token;
+      continue;
+    }
+    if (++count > 20_000) return;
+    const node = {token, key: parent?.nextKey};
+    if (parent) {
+      parent.children.push(node);
+      parent.nextKey = undefined;
+    } else {
+      root = node;
+    }
+    if (token === '{' || token === '[') {
+      node.children = [];
+      stack.push(node);
+    }
+  }
+  return root;
+}
+
+function jsonBranch(node, prefix = '', open = false) {
+  const {token, children} = node;
+  if (!children || !children.length) {
+    const value = children ? token + (token === '{' ? '}' : ']') : token;
+    if (value.length <= 160) return textElement('div', prefix + value, 'json-value');
+    const long = disclosure(prefix + value.slice(0, 72) + '…', () => [textElement('pre', value)]);
+    long.className = 'json-branch';
+    return long;
+  }
+  const label = token === '{' ? '{…}' : '[…]';
+  const unit = token === '{' ? 'field' : 'item';
+  const branch = disclosure(prefix + label + ' · ' + children.length + ' ' + unit + (children.length === 1 ? '' : 's'), () => {
+    const body = document.createElement('div');
+    body.className = 'json-children';
+    const more = textElement('button', '', 'detail-link');
+    more.type = 'button';
+    const page = document.createElement('div');
+    let index = 0;
+    const appendPage = () => {
+      for (const end = Math.min(index + 100, children.length); index < end; index++) {
+        const child = children[index];
+        page.appendChild(jsonBranch(child, (child.key ?? '[' + index + ']') + ': '));
+      }
+      more.hidden = index === children.length;
+      more.textContent = more.hidden ? '' : 'Show next ' + Math.min(100, children.length - index);
+    };
+    more.addEventListener('click', appendPage);
+    appendPage();
+    body.appendChild(page);
+    body.appendChild(more);
+    return [body];
+  }, open);
+  branch.className = 'json-branch';
+  return branch;
+}
+
+function jsonView(text, { original = false, rawPanel = false, textClass } = {}) {
+  const root = jsonTokens(text);
+  if (!root && !rawPanel) return textElement('pre', text, textClass);
+  const view = document.createElement('div');
+  view.className = 'json-view';
+  if (root) view.appendChild(jsonBranch(root, '', true));
+  else view.appendChild(textElement('p', 'Tree unavailable for oversized or invalid JSON.', 'detail-note'));
+  if (original) view.appendChild(disclosure('Original JSON', () => [textElement('pre', text)]));
+  return view;
+}
+
+function jsonBlock(value) { return jsonView(JSON.stringify(value, null, 2)); }
+
 function fields(entries) {
   const el = document.createElement('dl');
   el.className = 'detail-fields';
@@ -63,7 +144,7 @@ function contentBlock(block) {
     case 'tool_call': {
       const call = block.tool_call || {};
       return section('Tool call · ' + (call.name || 'Unknown tool'), fields([['Call ID', call.id]]),
-        textElement('pre', call.input ?? '(no arguments)'),
+        jsonView(call.input ?? '(no arguments)', {original: true}),
         ...(call.signature ? [disclosure('Provider signature', () => [textElement('pre', call.signature)])] : []));
     }
     case 'tool_result': {
@@ -219,8 +300,7 @@ function eventDetails(rec, id) {
         ...(p.request?.generation_options ? [disclosure('Generation options', () => [namedFields(p.request.generation_options)])] : []))];
     case 'inference.finish':
       return [section('Inference outcome', fields([['Operation', asides.get(inferenceStart(rec)?.payload?.purpose)?.operation],
-        ...outcomeFields(p), ['Stop reason', p.stop_reason]])),
-        ...(p.usage ? [section('Token usage', namedFields(p.usage))] : [])];
+        ...outcomeFields(p), ['Stop reason', p.stop_reason]]))];
     case 'permission.decide':
       return [section('Permission decision', fields([['Tool', toolName], ['Call ID', p.call_id], ['Decision', p.decision], ['Authority', p.by],
         ['Scope', p.scope], ['Reason', p.reason]])),
@@ -275,9 +355,101 @@ function requestNodes(request, messageLabel = 'Input messages') {
 function rawRequest(load) {
   return disclosure('Raw SDK request', () => {
     const body = document.createElement('div');
-    loadSnapshot(body, load, json => [textElement('pre', json)]);
+    loadSnapshot(body, load, json => [jsonView(json, {original: true, rawPanel: true})]);
     return [textElement('p', 'As admitted to the SDK, before provider-specific encoding.', 'detail-note'), body];
   });
+}
+
+function recallFileList(title, files) {
+  if (!files.length) return section(title + ' · 0', textElement('p', 'None.', 'detail-note'));
+  const list = document.createElement('ul');
+  for (const file of files) list.appendChild(textElement('li', file));
+  return section(title + ' · ' + files.length, list);
+}
+
+function recallRequestNodes(request) {
+  const messages = request.Messages;
+  if (!Array.isArray(messages) || ![1, 2, 3].includes(messages.length) || !messages.every(message =>
+    message?.role === 'user' && Array.isArray(message.content) && message.content.every(b => b?.type === 'text' && typeof b.text === 'string'))) return [];
+  const header = 'Memory files:\n', queryHeader = 'User query:\n', activeHeader = 'Already in main context:\n';
+  const shortlistHeader = 'Candidates for new recall:\n';
+  const text = message => message.content.map(b => b.text);
+  let candidates, known, question;
+  if (messages.length === 3) {
+    if (!messages.every(message => message.content.length === 1)) return [];
+    const [index, context, query] = messages.map(message => message.content[0].text);
+    if (!index.startsWith(header) || !context.startsWith(activeHeader)) return [];
+    candidates = index.slice(header.length);
+    known = context.slice(activeHeader.length);
+    question = query;
+  } else if (messages.length === 2) {
+    const [index] = text(messages[0]);
+    const suffix = text(messages[1]);
+    if (messages[0].content.length !== 1 || !index.startsWith(header) || suffix.at(-2) !== queryHeader) return [];
+    candidates = index.slice(header.length);
+    question = suffix.at(-1);
+    for (const block of suffix.slice(0, -2)) {
+      if (block.startsWith(shortlistHeader)) candidates = block.slice(shortlistHeader.length);
+      else if (block.startsWith(activeHeader)) known = block.slice(activeHeader.length);
+      else return [];
+    }
+  } else {
+    const blocks = text(messages[0]);
+    const [index, query] = blocks.slice(-2);
+    const footer = '\n' + queryHeader;
+    if (![2, 3].includes(blocks.length) || !index.startsWith(header) || !index.endsWith(footer) ||
+        (blocks.length === 3 && !blocks[0].startsWith(activeHeader))) return [];
+    candidates = index.slice(header.length, -footer.length);
+    question = query;
+    if (blocks.length === 3) known = blocks[0].slice(activeHeader.length);
+  }
+  const items = value => value.split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2));
+  const active = known ? items(known) : [];
+  return [recallFileList('Candidates for new recall', items(candidates).filter(line => !active.some(id => line.startsWith(id + ': ')))),
+    ...(known ? [recallFileList('Already in main context', active)] : []),
+    section('User question', textElement('pre', question, 'message-text'))];
+}
+
+function recallSelection(output) {
+  if (output?.truncated || typeof output?.text !== 'string') return null;
+  const start = output.text.indexOf('{'), end = output.text.lastIndexOf('}');
+  if (start < 0 || end < start) return null;
+  try {
+    const files = JSON.parse(output.text.slice(start, end + 1))?.selected_memories;
+    if (Array.isArray(files) && files.every(file => typeof file === 'string')) {
+      return recallFileList('Files selected by the model', [...new Set(files)]);
+    }
+  } catch (_) { /* Keep malformed selector output visible in the raw view. */ }
+  return null;
+}
+
+function responseMetrics(usage) {
+  const tokens = key => Number.isFinite(usage?.[key]) ? usage[key].toLocaleString() : usage == null ? 'Unavailable' : 'Not reported';
+  const read = tokens('cache_read');
+  return section('Token usage', fields([
+    ['Input tokens', tokens('input')], ['Output tokens', tokens('output')],
+    ['Cache-read tokens', usage?.cache_read > 0 ? `${read} · reported hit` : read],
+    ['Cache-write tokens', tokens('cache_write')],
+  ]), ...(usage == null ? [] : [disclosure('Raw usage', () => [jsonBlock(usage)])]));
+}
+
+function maintainPrefixPanel(start, id) {
+  const body = document.createElement('div');
+  const signal = state.contextAbort?.signal;
+  loadSnapshot(body, async () => JSON.parse(await readSessionJSON(id, 'request', start.seq + '?view=update-prefix', signal)), result => {
+    if (result.status === 'match') return [fields([
+      ['SDK prefix', 'Matches completed main request and its assistant output'],
+      ['Matching messages', result.count], ['Compared main request', eventReference({seq: result.source}, id)],
+    ])];
+    const summary = {
+      'mismatch': 'Does not match a completed main request and its assistant output on this route',
+      'route-mismatch': 'No completed main request on this provider and model',
+      'no-completed-turn': 'No completed main request before Update admission',
+    }[result.status] ?? 'Comparison unavailable';
+    return [fields([['SDK prefix', summary]])];
+  });
+  return section('Update SDK prefix', body,
+    textElement('p', 'Compares system prompt, tool definitions and message prefix before provider encoding. A match does not guarantee a provider cache hit.', 'detail-note'));
 }
 
 function updateModelOutput() {
@@ -302,7 +474,7 @@ function updateModelOutput() {
   if (!finish) {
     nodes = [textElement('p', 'No response recorded yet.', 'detail-note')];
   } else if (output && typeof output.text === 'string') {
-    nodes = [output.text ? textElement('pre', output.text, 'message-text') : textElement('p', 'No text returned.', 'detail-note')];
+    nodes = [output.text ? jsonView(output.text, {original: true, textClass: 'message-text'}) : textElement('p', 'No text returned.', 'detail-note')];
     if (output.truncated) nodes.push(textElement('p', 'Recorded output was truncated.', 'detail-note'));
   } else if (!isAside && pair?.messages.length) {
     nodes = messageViews(pair.messages.flatMap(recordedMessages), true);
@@ -313,9 +485,17 @@ function updateModelOutput() {
     nodes = [textElement('p', label, 'detail-note')];
   }
   if (isAside) {
+    const selection = panel.start?.payload?.purpose === 'recall' ? recallSelection(output) : null;
     const results = [...(pair?.messages ?? []), ...(pair?.annotations ?? [])].sort((a, b) => a.seq - b.seq);
-    nodes = [section('Raw model output', ...nodes), section('Accepted result', ...(results.length ? results.map(resultView)
+    nodes = [...(selection ? [selection] : []), section('Raw model output', ...nodes), section('Accepted result', ...(results.length ? results.map(resultView)
       : [textElement('p', 'No accepted result recorded.', 'detail-note')]))];
+  }
+  if (finish) {
+    nodes.unshift(responseMetrics(finish.payload?.usage));
+    if (panel.start?.payload?.purpose === 'memory-update') {
+      panel.prefix ??= maintainPrefixPanel(panel.start, id);
+      nodes.splice(1, 0, panel.prefix);
+    }
   }
   panel.node.replaceChildren(...(link ? [link] : []), ...nodes);
 }
@@ -350,6 +530,6 @@ function eventPanel(rec, id, meta) {
 function rawBatch(rec) {
   return detailPanel('Raw batch', () => [
     textElement('p', 'Committed batch as streamed. It can contain multiple events.', 'detail-note'),
-    textElement('pre', rec._batchJSON),
+    jsonView(rec._batchJSON, {original: true, rawPanel: true}),
   ]);
 }

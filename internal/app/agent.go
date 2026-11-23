@@ -118,7 +118,7 @@ func (m *model) promptParams() agent.BuildParams {
 		// so the model can queue its own self-learning reviews.
 		ExtraTools: m.autoSkillExtraTools(),
 
-		AutoMemory:  m.autoMemory(),
+		AutoMemory:  m.currentAutoMemory(),
 		Skills:      m.services.Skill,
 		GroupRoster: group.Roster,
 	}
@@ -204,7 +204,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 		skills.SetStateChangeObserver(recorder.RecordSkillStateChange)
 	}
 	policy := agent.PermissionPolicy{
-		Settings: m.services.Setting, Session: m.env.SessionPermissions, AutoMemory: params.AutoMemory,
+		Settings: m.services.Setting, Session: m.env.SessionPermissions,
 	}
 	params.PermissionRules = policy.Decide
 	params.CanApproveByHook = policy.CanApproveByHook
@@ -383,7 +383,7 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 		// are covered uniformly.
 		if !m.agentReloadPending && m.autoSkillCapabilities() == m.agentReviewCaps &&
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature &&
-			m.autoMemory() == m.agentAutoMemory {
+			m.currentAutoMemory() == m.autoMemory {
 			return nil, nil
 		}
 		if err := m.StopAgentRuntime(); err != nil {
@@ -421,8 +421,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	// Record what the toolset was built with, for the drift check above.
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
-	m.agentAutoMemory = params.AutoMemory
-	conv.MemoryStores = params.AutoMemory
+	m.autoMemory = params.AutoMemory
+	m.conv.AutoMemoryStore = params.AutoMemory.Store
 
 	// Bind Auto Skill to the running session.
 	m.wireAutoSkill(params)
@@ -658,9 +658,9 @@ func (m *model) ReconfigureAgentTool() {
 		m.conv.AddNotice("Cannot configure agents: " + err.Error())
 		return
 	}
-	settings, bridge, memory := m.services.Setting, m.conv.AgentToUI, m.autoMemory()
+	settings, bridge := m.services.Setting, m.conv.AgentToUI
 	executor.ConfigureOwner(m.services.Task, m.services.Subagent, func(child *session.Session, _ bool, source tool.AgentInteractionSource) tool.Resolver {
-		return newWorkerResolver(settings, perms, memory, bridge, child, source)
+		return newWorkerResolver(settings, perms, bridge, child, source)
 	}, nil)
 	parentHooks := m.services.Hook
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {

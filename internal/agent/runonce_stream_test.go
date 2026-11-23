@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"iter"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type runOnceProvider struct{ driver *aitest.Driver }
@@ -22,6 +24,34 @@ func (p runOnceProvider) Client(string, map[string]string) (*ai.Client, error) {
 func (runOnceProvider) Name() string { return "fake:api_key" }
 func (runOnceProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
 	return []llm.ModelInfo{{ID: "fake", ContextWindow: 200_000}}, nil
+}
+
+func TestRunOnceSendsMemoryPhrasingToMain(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, mode := range []setting.MemoryRecallMode{setting.MemoryRecallFast, setting.MemoryRecallWait} {
+		for _, input := range []string{
+			"remember: use tabs",
+			"update project memory style.md: use spaces",
+			"forget project memory style.md",
+		} {
+			t.Run(string(mode)+"/"+input, func(t *testing.T) {
+				provider := runOnceProvider{aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+					if got := req.Messages[len(req.Messages)-1].Text(); !strings.Contains(got, input) {
+						t.Errorf("main input = %q; want it to contain %q", got, input)
+					}
+					return aitest.Says("main response")(ctx, req)
+				})}
+				params := BuildParams{
+					Provider: provider, ModelID: "fake", MaxTokens: 1024, CWD: t.TempDir(),
+					AutoMemory: AutoMemoryConfig{Recall: setting.MemoryRecallConfig{Mode: mode}},
+				}
+				result, err := RunOnce(t.Context(), params, core.UserMessage(input, nil), nil)
+				if err != nil || result == nil || result.Content != "main response" {
+					t.Fatalf("RunOnce = %+v, %v; want main response", result, err)
+				}
+			})
+		}
+	}
 }
 
 func TestRunOnceStreamsPastDefaultOutboxCapacity(t *testing.T) {

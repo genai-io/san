@@ -5,7 +5,7 @@ San keeps the start of each request unchanged when it can, so the provider can r
 ## Principles
 
 - **Keep the prefix predictable.** The same inputs should produce the same text and order. Don't reorder tools or rewrite old messages on a no-op reload.
-- **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body; `MEMORY.md` points to topic notes. Empty indexes are omitted, and each nonempty index gets a short preview.
+- **Send details when needed.** `AGENTS.md` should contain rules and pointers, not a directory listing. A skill description points to its body; an Auto Memory index points to topic notes, but isn't injected into main context.
 - **Keep permissions live.** A schema tells the model what it can ask for, not what it may execute. Check permissions at execution time.
 
 [Asides](aside.md#context-and-caching) follow these rules whether they reuse the main conversation's prefix or build their own request.
@@ -16,7 +16,7 @@ San keeps the start of each request unchanged when it can, so the provider can r
 |---|---|
 | `tools` | Schemas for the tools San advertises, including enabled MCP tools. |
 | `system` | **Agent instructions** first: identity, behavior, and San's rules. Then the **execution environment**: working directory, date, platform, and shell. A Persona can add guidance but cannot remove San's base rules. |
-| `messages` | User input, assistant replies, tool results, and reminders such as project instructions, skill descriptions, or enabled auto-memory stores. |
+| `messages` | User input, assistant replies, tool results, and reminders such as project instructions, skill descriptions, or recalled note previews. |
 
 A working directory change updates the environment without rewriting the agent instructions. Check the live Git branch and working tree on demand rather than freezing them in the prompt. The environment doesn't yet have a separate cache entry: sdk-go serializes the Anthropic system prompt as one block. Anthropic caches prefixes in `tools → system → messages` order. Changing a tool schema can invalidate the rest of the prefix; changing the environment can invalidate the system block. A cache breakpoint after the agent instructions needs SDK support. Use `cache_read` to verify reuse.
 

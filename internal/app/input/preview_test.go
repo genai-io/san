@@ -7,17 +7,26 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 // TestRenderPreview prints both Reflection tabs without ANSI codes.
 func TestRenderPreview(t *testing.T) {
-	c := NewReflectionSelector(ReflectionDeps{})
-	c.Enter(80, 40)
+	cwd, svc := t.TempDir(), setting.New(nil)
+	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
+	c.Enter(50, 25)
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	for _, want := range []string{"Browse files and stores", "Create new skills"} {
+	for _, want := range [][]string{{"Recall", "Update", "options", "esc close · tab panels"}, {"Create new skills"}} {
 		clean := ansi.ReplaceAllString(c.Render(), "")
-		if !strings.Contains(clean, "AUTO SKILL") || !strings.Contains(clean, "AUTO MEMORY") || !strings.Contains(clean, want) {
-			t.Fatalf("missing Reflection tabs or %q:\n%s", want, clean)
+		for _, label := range append([]string{"AUTO SKILL", "AUTO MEMORY"}, want...) {
+			if !strings.Contains(clean, label) {
+				t.Fatalf("missing %q:\n%s", label, clean)
+			}
+		}
+		if lipgloss.Width(clean) > 50 {
+			t.Fatalf("Reflection exceeds 50 columns:\n%s", clean)
 		}
 		if testing.Verbose() {
 			fmt.Println("\n" + clean + "\n")

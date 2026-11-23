@@ -3,6 +3,7 @@ package input
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,14 +45,18 @@ func TestMemorySlashRoutes(t *testing.T) {
 		if !handled || result != "" || !m.Memory.Selector.IsActive() || m.Reflection.IsActive() {
 			t.Fatalf("%s did not open the file browser: %q", command, result)
 		}
+		items := m.Memory.Selector.items
+		if len(items) != 4 || !items[3].isAuto() || items[3].Label != "Store" {
+			t.Fatalf("want three instruction rows and one Auto Memory store: %+v", items)
+		}
 		m.Memory.Selector.Cancel()
 	}
 	for _, tc := range []struct{ command, want string }{
 		{"/memory list", "AGENTS.md"},
 		{"/memory show", "Project instructions"},
 		{"/memory edit", ""},
-		{"/memory off project", "Auto memory off"},
-		{"/memory on project", "Auto memory on"},
+		{"/memory off", "Auto memory off"},
+		{"/memory on", "Auto memory on"},
 	} {
 		result, _, handled := c.Execute(context.Background(), tc.command)
 		if !handled || strings.HasPrefix(result, "Error:") || !strings.Contains(result, tc.want) || m.Reflection.IsActive() {
@@ -59,24 +64,73 @@ func TestMemorySlashRoutes(t *testing.T) {
 		}
 	}
 	if filepath.Base(edited) != "AGENTS.md" || !svc.AutoMemory() {
-		t.Fatalf("legacy routes failed: edit=%q memory=%v", edited, svc.AutoMemory())
+		t.Fatalf("instruction edit or Auto Memory toggle failed: edit=%q memory=%v", edited, svc.AutoMemory())
+	}
+	if user, project := setting.AutoMemoryAt(cwd, setting.ScopeUser), setting.AutoMemoryAt(cwd, setting.ScopeProject); user == nil || !*user || project != nil {
+		t.Fatal("outside a repository /memory on should save only the user default")
+	}
+	if result, _, _ := c.Execute(context.Background(), "/memory off project"); !strings.Contains(result, "usage: /memory off") || !svc.AutoMemory() {
+		t.Fatalf("obsolete scope argument should not change the setting: %q", result)
 	}
 }
 
-func TestReflectionTogglesScopedMemory(t *testing.T) {
+func TestMemoryBrowserChangesOnlyRepositoryDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwd := t.TempDir()
+	m := NewMemorySelector()
+	m.EnterSelect(cwd, setting.New(nil), 100, 30)
+	m.selectedIdx = len(m.items) - 1
+	if strings.Contains(m.Render(), "change dir") {
+		t.Fatal("directory hint should be unavailable outside a repository")
+	}
+	m.openDirInput()
+	if m.editingDir || m.err == nil {
+		t.Fatal("directory editing should be unavailable outside a repository")
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = cwd
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	m.loadItems()
+	if !strings.Contains(m.Render(), "change dir") {
+		t.Fatal("directory hint should refresh when the repository is loaded")
+	}
+	m.openDirInput()
+	if !m.editingDir || m.err != nil {
+		t.Fatalf("directory editor did not open: %v", m.err)
+	}
+	to := filepath.Join(t.TempDir(), "notes")
+	m.dirInput.SetValue(to)
+	m.handleDirInput(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.editingDir || m.err != nil || m.items[m.selectedIdx].Path != filepath.Join(to, "MEMORY.md") {
+		t.Fatalf("directory change not reflected in the browser: item=%+v, err=%v", m.items[m.selectedIdx], m.err)
+	}
+}
+
+func TestReflectionTogglesRepositoryMemory(t *testing.T) {
 	t.Setenv("SAN_TRUST_WORKSPACE", "1")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")
 	cwd := t.TempDir()
 	t.Chdir(cwd)
+	if out, err := exec.Command("git", "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if err := setting.SaveAutoMemory(cwd, true, setting.ScopeUser); err != nil {
+		t.Fatal(err)
+	}
 	svc := setting.New(setting.NewData())
 	c := NewReflectionSelector(ReflectionDeps{Workspace: func() (string, *setting.Settings) { return cwd, svc }})
 	c.Enter(120, 40)
 	press := func(key rune) { c.HandleKeypress(tea.KeyPressMsg{Code: key}) }
-	press(tea.KeyEnter) // User, which defaults to on
-	if svc.AutoMemory() || c.ActivePanel().Dirty() {
-		t.Fatal("turning Auto Memory off should save immediately")
+	press(tea.KeyRight) // Options.
+	press(tea.KeyEnter) // Pause the library without changing Recall mode.
+	press(tea.KeyEscape)
+	user, project := setting.AutoMemoryAt(cwd, setting.ScopeUser), setting.AutoMemoryAt(cwd, setting.ScopeProject)
+	if user == nil || !*user || project == nil || *project || svc.AutoMemory() || c.ActivePanel().Dirty() {
+		t.Fatal("turning Auto Memory off should save a repository override immediately and leave the user default on")
 	}
 	press(tea.KeyTab)
 	p := c.ActivePanel().(*autoSkillPanel)
@@ -98,17 +152,12 @@ func TestReflectionTogglesScopedMemory(t *testing.T) {
 	}
 	t.Setenv("SAN_DISABLE_SELF_LEARN", "")
 	press(tea.KeyTab)
-	press(tea.KeyDown) // Project, which currently inherits user off
+	press(tea.KeyRight)
 	press(tea.KeyEnter)
-	user, project := setting.AutoMemoryAt(setting.ScopeUser), setting.AutoMemoryAt(setting.ScopeProject)
-	if user == nil || *user || project == nil || !*project || !svc.AutoMemory() {
-		t.Fatalf("project toggle should override user off (user=%v project=%v effective=%v)", user, project, svc.AutoMemory())
-	}
-	press(tea.KeyUp)
-	press(tea.KeyEnter)
-	user = setting.AutoMemoryAt(setting.ScopeUser)
-	if user == nil || !*user || !svc.AutoMemory() {
-		t.Fatal("user toggle should flip the user value, not the effective project value")
+	press(tea.KeyEscape)
+	project = setting.AutoMemoryAt(cwd, setting.ScopeProject)
+	if project == nil || !*project || !svc.AutoMemory() {
+		t.Fatal("the same toggle should turn the repository override back on")
 	}
 
 	if err := setting.UpdateAutoSkillAt(setting.AutoSkillSettings{
@@ -128,7 +177,7 @@ func TestReflectionTogglesScopedMemory(t *testing.T) {
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "1")
 	press(tea.KeyTab)
 	c.Enter(120, 40)
-	if out := c.Render(); !strings.Contains(out, "effective: off (SAN_DISABLE_AUTO_MEMORY)") {
+	if out := c.Render(); !strings.Contains(out, "Paused · SAN_DISABLE_AUTO_MEMORY") {
 		t.Fatalf("expected the memory override in the Auto Memory tab: %s", out)
 	}
 	press(tea.KeyTab)

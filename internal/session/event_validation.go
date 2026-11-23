@@ -399,7 +399,7 @@ func (p *Projection) apply(e Event, validation EventValidationContext) error {
 
 func (p *Projection) validateInferenceStart(v InferenceStartPayload) error {
 	switch v.Purpose {
-	case PurposeTurn, PurposeFlow, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeJudge, PurposeHook, PurposeAutopilot, PurposeGroup, PurposeRecall, PurposeMemoryMaintain, PurposeAutoSkill:
+	case PurposeTurn, PurposeFlow, PurposeBtw, PurposeRecap, PurposeSuggest, PurposeCompaction, PurposeJudge, PurposeHook, PurposeAutopilot, PurposeGroup, PurposeRecall, PurposeMemoryUpdate, PurposeAutoSkill:
 	default:
 		return invalidEvent("unknown inference purpose %q", v.Purpose)
 	}

@@ -95,6 +95,13 @@ type JudgeDecision struct {
 	Reason   string
 }
 
+// AutoMemoryRecallNotice is display-only context for a delivered Auto Memory recall.
+type AutoMemoryRecallNotice struct {
+	AfterMessageID string   `json:"afterMessageId"`
+	Titles         []string `json:"titles"`
+	Compact        bool     `json:"compact,omitempty"`
+}
+
 // ChatMessage is the TUI view-model for one conversation entry: the same
 // content as Message plus transient display state (the expand/collapse
 // toggles). The app layer renders ChatMessages and converts them back to
@@ -148,7 +155,9 @@ type ChatMessage struct {
 	// AgentNotice marks a RoleNotice that carries a message from a background
 	// agent (a subagent completion or an interim report) rather than a plain
 	// system notice, so the renderer styles it distinctly. Display-only.
-	AgentNotice bool
+	AgentNotice            bool
+	AutoMemoryMaintained   bool
+	AutoMemoryRecallNotice *AutoMemoryRecallNotice
 
 	// Streaming-commit progress. While an assistant message streams, completed
 	// markdown blocks are flushed to native scrollback (tea.Println) as they

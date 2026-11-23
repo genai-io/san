@@ -510,7 +510,7 @@ func TestRenderToolCallsShowsRunningStateForPendingBash(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "⋯ Bash(find /Users/myan -name test)\n") {
+	if !strings.Contains(rendered, "⋯ "+shellCallTitle(params.ToolCalls[0], params)+"(find /Users/myan -name test)\n") {
 		t.Fatalf("RenderToolCalls() = %q, want spinner on the Bash preview", rendered)
 	}
 	if strings.Contains(rendered, "running...") {
@@ -531,7 +531,7 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "⋯ Bash(npm test) · 12s\n") {
+	if !strings.Contains(rendered, "⋯ "+shellCallTitle(call, params)+"(npm test) · 12s\n") {
 		t.Fatalf("RenderToolCalls() = %q, want spinner and timer on the Bash preview", rendered)
 	}
 	if !strings.Contains(rendered, "· 12s") {
@@ -1608,13 +1608,14 @@ func TestRenderToolCallsSeparatesAwaitingCallFromRunningSibling(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "● Bash(rm -rf build) · waiting for approval") {
+	gatedLabel := shellCallTitle(gated, params) + "(rm -rf build)"
+	if !strings.Contains(rendered, "● "+gatedLabel+" · waiting for approval") {
 		t.Fatalf("RenderToolCalls() = %q, want the gated row to report waiting instead of running", rendered)
 	}
-	if strings.Contains(rendered, "Bash(rm -rf build) · 9s") {
+	if strings.Contains(rendered, gatedLabel+" · 9s") {
 		t.Fatalf("RenderToolCalls() = %q, gated row is timing the user's deliberation", rendered)
 	}
-	if !strings.Contains(rendered, "⋯ Bash(npm test) · 9s") {
+	if !strings.Contains(rendered, "⋯ "+shellCallTitle(running, params)+"(npm test) · 9s") {
 		t.Fatalf("RenderToolCalls() = %q, want the sibling that was allowed to run to keep spinning and ticking", rendered)
 	}
 }
@@ -1699,18 +1700,29 @@ func TestRenderAssistantMessageTimesTheWait(t *testing.T) {
 }
 
 func TestRenderSideAnswerWrapsWithoutPadding(t *testing.T) {
-	out := RenderSideAnswer(strings.Repeat("问题", 20), "answer", 30, nil)
+	out := RenderSideAnswer(strings.Repeat("问题", 20), "answer\n\n"+strings.Repeat("回复", 18), 30, nil)
 	lines := strings.Split(strings.TrimSuffix(xansi.Strip(out), "\n"), "\n")
-	if len(lines) < 3 || !strings.HasPrefix(lines[0], "◇ btw 问题") || !strings.HasPrefix(lines[1], "      问题") {
+	if len(lines) < 6 || !strings.HasPrefix(lines[0], "○ btw · 问题") || !strings.HasPrefix(lines[1], "        问题") {
 		t.Fatalf("question must wrap under its first row:\n%s", strings.Join(lines, "\n"))
 	}
 	for _, l := range lines {
-		if l != strings.TrimRight(l, " ") {
-			t.Fatalf("row padded with spaces rewraps when scrollback narrows: %q", l)
+		if l != strings.TrimRight(l, " ") || lipgloss.Width(l) >= 30 || strings.HasPrefix(l, "│") {
+			t.Fatalf("misaligned or overflowing btw row: %q", l)
 		}
 	}
-	if lines[len(lines)-1] != "  answer" {
-		t.Fatalf("answer must sit under the reply gutter: %q", lines[len(lines)-1])
+	if !slices.Contains(lines, "  answer") || !slices.Contains(lines, "") {
+		t.Fatalf("answer should be indented with a clean paragraph break: %q", lines)
+	}
+}
+
+func TestRenderSidePendingAnimatesOnlyTheQuestionMarker(t *testing.T) {
+	for frame, mark := range []string{"○", "●", "○"} {
+		if got := xansi.Strip(RenderSidePending("Quick question?", frame, 60)); got != mark+" btw · Quick question?\n" {
+			t.Fatalf("frame %d: got %q", frame, got)
+		}
+	}
+	if got := xansi.Strip(RenderSideAnswer("Quick question?", "A short answer.", 60, nil)); got != "○ btw · Quick question?\n  A short answer.\n" {
+		t.Fatalf("settled answer layout: %q", got)
 	}
 }
 

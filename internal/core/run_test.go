@@ -21,10 +21,10 @@ func TestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	var captured atomic.Pointer[Compacted]
 	llm := aitest.Always(aitest.Hangs())
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		System:    NewSystem(),
+		Tools:     NewTools(),
 		OnEvent: func(e Event) {
 			if c, ok := e.(Compacted); ok {
 				captured.Store(&c)
@@ -92,10 +92,10 @@ func TestCancelReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	release := make(chan struct{}, 4)
 	llm := aitest.Always(released(release))
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		System:    NewSystem(),
+		Tools:     NewTools(),
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -164,10 +164,10 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 	release := make(chan struct{}, 4)
 	llm := aitest.Always(released(release))
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		System:    NewSystem(),
+		Tools:     NewTools(),
 	}).(*agent)
 	go func() {
 		for range ag.Outbox() {
@@ -206,10 +206,10 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	llm := aitest.Always(released(release))
 	release <- struct{}{}
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(llm),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		System:    NewSystem(),
+		Tools:     NewTools(),
 	})
 	go func() {
 		for range ag.Outbox() {
@@ -250,7 +250,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 func TestInterruptHoldsMessagesQueuedDuringTheTurn(t *testing.T) {
 	release := make(chan struct{}, 4)
 	llm := aitest.Always(released(release))
-	ag := NewAgent(Config{ID: "test", Client: testClient(llm), System: NewSystem(), Tools: NewTools()})
+	ag := NewAgent(Config{ID: "test", Inference: InferenceConfig{ResolveClient: testClient(llm)}, System: NewSystem(), Tools: NewTools()})
 	go func() {
 		for range ag.Outbox() {
 		}
@@ -284,12 +284,14 @@ func TestInterruptHoldsMessagesQueuedDuringTheTurn(t *testing.T) {
 func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(aitest.Always(aitest.Hangs())),
-		System: NewSystem(),
-		Tools:  NewTools(),
-		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
-			return Compaction{Summary: "the summary"}, nil
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Hangs()))},
+		System:    NewSystem(),
+		Tools:     NewTools(),
+		Compaction: CompactionConfig{
+			Summarize: func(_ context.Context, _ []Message) (Compaction, error) {
+				return Compaction{Summary: "the summary"}, nil
+			},
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})
@@ -354,16 +356,18 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
-		ID:       "test",
-		Client:   testClient(aitest.Always(talks("done"))),
-		System:   NewSystem(),
-		Tools:    NewTools(),
-		MaxSteps: 1,
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(talks("done")))},
+		System:    NewSystem(),
+		Tools:     NewTools(),
+		MaxSteps:  1,
 		// One token of room, so the first boundary is already over budget and
 		// the hook fires on the exchange below.
-		ContextBudget: func() int { return 1 },
-		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
-			return Compaction{Summary: "the summary"}, nil
+		Compaction: CompactionConfig{
+			Budget: func() int { return 1 },
+			Summarize: func(_ context.Context, _ []Message) (Compaction, error) {
+				return Compaction{Summary: "the summary"}, nil
+			},
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})
@@ -420,10 +424,10 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 func newAgentForPromptSizing(t *testing.T) *agent {
 	t.Helper()
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: testClient(aitest.Always(aitest.Hangs())),
-		System: NewSystem(),
-		Tools:  NewTools(),
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Hangs()))},
+		System:    NewSystem(),
+		Tools:     NewTools(),
 	})
 	go func() {
 		for range ag.Outbox() {
@@ -459,7 +463,7 @@ func TestOnlyTheToolsThatMayTouchAnythingAreMarkedSequential(t *testing.T) {
 		namedTool("Edit"), namedTool("Bash"), namedTool("Write"),
 	}
 	ag := NewAgent(Config{
-		ID: "test", Client: testClient(aitest.Always(aitest.Hangs())),
+		ID: "test", Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Hangs()))},
 		System: NewSystem(), Tools: NewTools(tools...),
 	}).(*agent)
 
@@ -532,11 +536,13 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	defer cancel()
 
 	ag := NewAgent(Config{
-		ID: "test", Client: testClient(aitest.Always(aitest.Asks(
+		ID: "test",
+		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(aitest.Asks(
 			ToolCall{ID: "c1", Name: "first", Input: "{}"},
 			ToolCall{ID: "c2", Name: "second", Input: "{}"},
 			ToolCall{ID: "c3", Name: "third", Input: "{}"},
-		))), System: NewSystem(),
+		)))},
+		System: NewSystem(),
 		Tools: NewTools(
 			cancelOnRunTool{name: "first", ran: &ran, ranOnDead: &ranOnDead, onRun: cancel},
 			cancelOnRunTool{name: "second", ran: &ran, ranOnDead: &ranOnDead},
@@ -568,7 +574,7 @@ func TestAppendMidTurnReachesTheNextStep(t *testing.T) {
 	driver := aitest.New(aitest.Asks(ToolCall{ID: "c1", Name: "work", Input: "{}"}), aitest.Says("done"))
 	var ag Agent
 	ag = NewAgent(Config{
-		ID: "test", Client: testClient(driver), System: NewSystem(),
+		ID: "test", Inference: InferenceConfig{ResolveClient: testClient(driver)}, System: NewSystem(),
 		Tools: NewTools(cancelOnRunTool{name: "work", ran: &ran, ranOnDead: &ranOnDead, onRun: func() {
 			ag.Append(UserMessage("<task-notification>finished</task-notification>", nil))
 		}}),
@@ -601,11 +607,13 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 	driver := aitest.Always(aitest.Says("ok"))
 	effort := ai.EffortLow
 	ag := NewAgent(Config{
-		ID:          "test",
-		Client:      testClient(driver),
-		CallOptions: func() []ai.Option { return []ai.Option{ai.WithMaxTokens(1234), ai.WithEffort(effort)} },
-		System:      NewSystem(),
-		Tools:       NewTools(),
+		ID: "test",
+		Inference: InferenceConfig{
+			ResolveClient: testClient(driver),
+			Options:       func() []ai.Option { return []ai.Option{ai.WithMaxTokens(1234), ai.WithEffort(effort)} },
+		},
+		System: NewSystem(),
+		Tools:  NewTools(),
 	}).(*agent)
 	go func() {
 		for range ag.Outbox() {
@@ -645,9 +653,11 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 	var asked [][]Message
 	ag := NewAgent(Config{
 		ID: "test",
-		Client: func(msgs []Message) (*ai.Client, error) {
-			asked = append(asked, msgs)
-			return client, nil
+		Inference: InferenceConfig{
+			ResolveClient: func(msgs []Message) (*ai.Client, error) {
+				asked = append(asked, msgs)
+				return client, nil
+			},
 		},
 		System: NewSystem(),
 		Tools:  NewTools(),
@@ -673,8 +683,10 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 // build's: it is reported like any other inference failure.
 func TestStreamInferReportsAnUnconfiguredModel(t *testing.T) {
 	ag := NewAgent(Config{
-		ID:     "test",
-		Client: func([]Message) (*ai.Client, error) { return nil, errors.New("no provider") },
+		ID: "test",
+		Inference: InferenceConfig{
+			ResolveClient: func([]Message) (*ai.Client, error) { return nil, errors.New("no provider") },
+		},
 		System: NewSystem(),
 		Tools:  NewTools(),
 	}).(*agent)
@@ -726,14 +738,16 @@ func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
 func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
-		ID:            "test",
-		Client:        testClient(aitest.Always(talks("done"))),
-		System:        NewSystem(),
-		Tools:         NewTools(),
-		MaxSteps:      1,
-		ContextBudget: func() int { return 1 },
-		CompactFunc: func(_ context.Context, _ []Message) (Compaction, error) {
-			return Compaction{}, errors.New("the summarizer is down")
+		ID:        "test",
+		Inference: InferenceConfig{ResolveClient: testClient(aitest.Always(talks("done")))},
+		System:    NewSystem(),
+		Tools:     NewTools(),
+		MaxSteps:  1,
+		Compaction: CompactionConfig{
+			Budget: func() int { return 1 },
+			Summarize: func(_ context.Context, _ []Message) (Compaction, error) {
+				return Compaction{}, errors.New("the summarizer is down")
+			},
 		},
 		OnEvent: func(e Event) { captured = append(captured, e) },
 	})

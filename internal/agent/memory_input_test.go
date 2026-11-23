@@ -1,46 +1,47 @@
 package agent
 
 import (
+	"context"
+	"iter"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestRecallAdmissionTimeoutPreservesUserInput(t *testing.T) {
-	owner, stores := recallFixture(t)
-	project := filepath.Dir(filepath.Dir(filepath.Dir(owner.Path())))
-	unlock, err := atomicfile.TryLock(filepath.Join(project, ".locks", owner.ID()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer unlock()
-	timer := time.AfterFunc(preTurnRecallBudget+150*time.Millisecond, unlock)
-	defer timer.Stop()
-	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
+func TestRecallUsesTurnContextWithoutAddingDeadline(t *testing.T) {
+	owner, store := recallFixture(t)
+	driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		if _, ok := ctx.Deadline(); ok {
+			t.Error("recall added a deadline to the turn context")
+		}
+		return aitest.Says(`{"selected_memories":["freeze.md"]}`)(ctx, req)
+	})
 	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
 	msg := core.UserMessage("Can I merge?", nil)
-	got, err := r.PrepareForAdmission(t.Context(), stores, msg, nil)
-	if err != nil || got.Handled || got.Completion != nil || got.Message.Text() != msg.Text() {
-		t.Fatalf("recall admission timeout blocked original input: %+v, %v", got, err)
+	got, err := r.PrepareForAdmission(t.Context(), store, msg, nil)
+	if err != nil || got.Completion == nil || !strings.Contains(got.Message.Text(), "no merges") {
+		t.Fatalf("recall did not enrich the original input: %+v, %v", got, err)
+	}
+	if err := got.Completion.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestPrepareMemoryRecordsOnlyAcceptedInput(t *testing.T) {
-	owner, stores := recallFixture(t)
-	driver := aitest.New(aitest.Says(`{"selected_memories":["project/freeze.md"]}`))
+	owner, store := recallFixture(t)
+	driver := aitest.New(aitest.Says(`{"selected_memories":["freeze.md"]}`))
 	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
 	userInput := core.UserMessage("/merge", nil)
 	msg := core.UserMessage("Expanded merge instructions", nil)
 	msg.ID = "memory-input"
-	got, err := r.PrepareWithSubmission(t.Context(), stores, userInput, msg, nil)
+	got, err := r.PrepareWithSubmission(t.Context(), store, userInput, msg, nil)
 	if err != nil || !got.Completion.OwnedBy(owner) {
 		t.Fatalf("prepare did not return the original owner's completion: %v", err)
 	}
@@ -51,7 +52,10 @@ func TestPrepareMemoryRecordsOnlyAcceptedInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text := request.Messages[0].Text(); !strings.HasSuffix(text, userInput.Text()) || strings.Contains(text, msg.Text()) {
+	if len(request.Messages) != 3 {
+		t.Fatalf("expected index, context, and query messages: %+v", request.Messages)
+	}
+	if text := request.Messages[2].Text(); text != userInput.Text() {
 		t.Fatalf("recall saw the expanded command: %q", text)
 	}
 	if !strings.HasPrefix(got.Message.Text(), msg.Text()) {
@@ -75,14 +79,14 @@ func TestPrepareMemoryRecordsOnlyAcceptedInput(t *testing.T) {
 }
 
 func TestPrepareMemoryDedupesUnchangedNotesInHistory(t *testing.T) {
-	owner, stores := recallFixture(t)
-	const selection = `{"selected_memories":["project/freeze.md"]}`
+	owner, store := recallFixture(t)
+	const selection = `{"selected_memories":["freeze.md"]}`
 	driver := aitest.New(aitest.Says(selection), aitest.Says(selection), aitest.Says(selection))
 	r := Recaller{Provider: compactRecordingProvider{driver}, Recording: owner}
 	msg := core.UserMessage("can I merge?", nil)
 	prepare := func(history []core.Message) PreparedMemory {
 		t.Helper()
-		got, err := r.Prepare(t.Context(), stores, msg, history)
+		got, err := r.Prepare(t.Context(), store, msg, history)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +104,7 @@ func TestPrepareMemoryDedupesUnchangedNotesInHistory(t *testing.T) {
 	if got := prepare(history); got.Completion != nil || got.Message.Text() != msg.Text() {
 		t.Fatalf("repeated unchanged memory: %q", got.Message.Text())
 	}
-	if err := os.WriteFile(filepath.Join(stores.Project, "freeze.md"), []byte("merges are open again"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(string(store), "freeze.md"), []byte("merges are open again"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if got := prepare(history); got.Completion == nil || !strings.Contains(got.Message.Text(), "merges are open again") {

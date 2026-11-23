@@ -88,7 +88,7 @@ func TestJudgeRecordingDispatch(t *testing.T) {
 			rec := session.NewRecorder(owner, "fake")
 			main := aitest.New(aitest.Asks(ai.ToolCall{ID: "call-judge", Name: "Bash", Input: `{"command":"go test ./..."}`}), aitest.Says("done"))
 			var runs atomic.Int32
-			ag := core.NewAgent(core.Config{System: core.NewSystem(), Tools: core.NewTools(judgeRecordingTool{&runs}), Client: func([]core.Message) (*ai.Client, error) { return main.Client(), nil }, Gate: tool.HookedPermission(nil, gate, rec.RecordPermission), InferenceAdmission: rec.InferenceAdmission, ToolAdmission: rec.ToolAdmission, OutputAdmission: rec.OutputAdmission, OnEvent: rec.RecordEvent, OutboxBuf: -1, MaxSteps: 3})
+			ag := core.NewAgent(core.Config{System: core.NewSystem(), Tools: core.NewTools(judgeRecordingTool{&runs}), Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return main.Client(), nil }}, Gate: tool.HookedPermission(nil, gate, rec.RecordPermission), InferenceAdmission: rec.InferenceAdmission, ToolAdmission: rec.ToolAdmission, OutputAdmission: rec.OutputAdmission, OnEvent: rec.RecordEvent, OutboxBuf: -1, MaxSteps: 3})
 			ag.Append(core.UserMessage("verify", nil))
 			done := make(chan error, 1)
 			go func() { _, err := ag.ThinkAct(ctx); done <- err }()

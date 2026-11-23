@@ -707,16 +707,20 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	agentConfig := core.Config{
-		Client:        llmClient.TurnClient,
-		CallOptions:   llmClient.CallOptions,
-		ContextBudget: llmClient.ContextBudget,
-		System:        sys,
-		Tools:         tools,
-		Gate:          gate,
-		CompactFunc:   subagentCompactFunc(llmClient, run.originalPrompt, run.recording, run.reminders...),
-		MaxSteps:      rc.maxSteps,
-		OutboxBuf:     -1,
-		OnEvent:       onEvent,
+		Inference: core.InferenceConfig{
+			ResolveClient: llmClient.TurnClient,
+			Options:       llmClient.CallOptions,
+		},
+		Compaction: core.CompactionConfig{
+			Budget:    llmClient.ContextBudget,
+			Summarize: subagentCompactFunc(llmClient, run.originalPrompt, run.recording, run.reminders...),
+		},
+		System:    sys,
+		Tools:     tools,
+		Gate:      gate,
+		MaxSteps:  rc.maxSteps,
+		OutboxBuf: -1,
+		OnEvent:   onEvent,
 	}
 	if recorder != nil {
 		var instructions []session.NamedInstruction

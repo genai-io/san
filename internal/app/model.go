@@ -33,7 +33,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/reviewskill"
@@ -68,6 +67,8 @@ type model struct {
 	taskCompletionsShown map[string]bool
 	// btw holds the /btw questions still waiting on their answer.
 	btw []btwAsk
+	// memoryReview owns one in-flight contextual Maintain Aside.
+	memoryReview *memoryReview
 	// recap follows the terminal's focus for the recap shown on coming back.
 	recap          recapState
 	unfocusedSince time.Time // when the terminal lost focus; zero while it has it
@@ -170,9 +171,8 @@ type model struct {
 	// /memory saves and external settings edits with one mechanism.
 	agentReviewCaps reviewskill.Capabilities
 
-	// agentAutoMemory is the autoMemory() the live agent's prompt was built
-	// with; ensureAgentRuntime rebuilds when auto memory is toggled or moved.
-	agentAutoMemory system.MemoryStores
+	// autoMemory is the configuration captured by the live agent.
+	autoMemory agent.AutoMemoryConfig
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
 	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no

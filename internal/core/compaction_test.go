@@ -15,8 +15,8 @@ func compactionTestAgent(t *testing.T, cfg Config) *agent {
 	t.Helper()
 	cfg.System = NewSystem()
 	cfg.Tools = NewTools()
-	if cfg.Client == nil {
-		cfg.Client = testClient(aitest.Always(talks("done")))
+	if cfg.Inference.ResolveClient == nil {
+		cfg.Inference.ResolveClient = testClient(aitest.Always(talks("done")))
 	}
 	a := NewAgent(cfg).(*agent)
 	// Tests observe synchronously through OnEvent, avoiding outbox backpressure.
@@ -90,7 +90,13 @@ func TestCompactionCancellationInsideFinishKeepsAcceptedBoundary(t *testing.T) {
 				cancel()
 				return nil
 			}, Close: func() error { closed++; return nil }}
-			a := compactionTestAgent(t, Config{Client: testClient(llm), ContextBudget: func() int { return 1 }, CompactFunc: func(context.Context, []Message) (Compaction, error) { return result, nil }})
+			a := compactionTestAgent(t, Config{
+				Inference: InferenceConfig{ResolveClient: testClient(llm)},
+				Compaction: CompactionConfig{
+					Budget:    func() int { return 1 },
+					Summarize: func(context.Context, []Message) (Compaction, error) { return result, nil },
+				},
+			})
 			// Keep a buffered outbox to verify transport publication, not only OnEvent.
 			a.outbox = make(chan Event, 32)
 			if manual {
@@ -161,23 +167,28 @@ func TestCompactionPersistenceFailurePreventsDispatch(t *testing.T) {
 			failure := errors.New("persist failed")
 			llm := aitest.Always(talks("unexpected"))
 			closed, published := 0, 0
-			a := compactionTestAgent(t, Config{Client: testClient(llm), ContextBudget: func() int { return 1 },
-				CompactFunc: func(context.Context, []Message) (Compaction, error) {
-					c := Compaction{Summary: "summary", Close: func() error {
-						closed++
-						if stage == "close" {
-							return failure
+			a := compactionTestAgent(t, Config{
+				Inference: InferenceConfig{ResolveClient: testClient(llm)},
+				Compaction: CompactionConfig{
+					Budget: func() int { return 1 },
+					Summarize: func(context.Context, []Message) (Compaction, error) {
+						c := Compaction{Summary: "summary", Close: func() error {
+							closed++
+							if stage == "close" {
+								return failure
+							}
+							return nil
+						}}
+						if stage == "finish" {
+							c.Finish = func(context.Context, Message) error { return failure }
 						}
-						return nil
-					}}
-					if stage == "finish" {
-						c.Finish = func(context.Context, Message) error { return failure }
-					}
-					if stage == "admission" {
-						return c, &ai.AdmissionError{Err: failure}
-					}
-					return c, nil
-				}, OnEvent: func(e Event) {
+						if stage == "admission" {
+							return c, &ai.AdmissionError{Err: failure}
+						}
+						return c, nil
+					},
+				},
+				OnEvent: func(e Event) {
 					switch e.(type) {
 					case sdkagent.MessageAdded, Compacted:
 						published++
@@ -198,15 +209,20 @@ func TestCompactionPersistenceFailurePreventsDispatch(t *testing.T) {
 func TestCompactionCancellationDiscardsResult(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	closed, finished, published := 0, 0, 0
-	a := compactionTestAgent(t, Config{CompactFunc: func(context.Context, []Message) (Compaction, error) {
-		cancel()
-		return Compaction{Summary: "discard", Finish: func(context.Context, Message) error { finished++; return nil }, Close: func() error { closed++; return nil }}, nil
-	}, OnEvent: func(e Event) {
-		switch e.(type) {
-		case sdkagent.MessageAdded, Compacted:
-			published++
-		}
-	}})
+	a := compactionTestAgent(t, Config{
+		Compaction: CompactionConfig{
+			Summarize: func(context.Context, []Message) (Compaction, error) {
+				cancel()
+				return Compaction{Summary: "discard", Finish: func(context.Context, Message) error { finished++; return nil }, Close: func() error { closed++; return nil }}, nil
+			},
+		},
+		OnEvent: func(e Event) {
+			switch e.(type) {
+			case sdkagent.MessageAdded, Compacted:
+				published++
+			}
+		},
+	})
 	msgs, err := a.shorten(ctx, a.Messages(), "auto")
 	if !errors.Is(err, context.Canceled) || msgs != nil || closed != 1 || finished != 0 || published != 0 {
 		t.Fatalf("msgs=%v err=%v closed=%d finished=%d published=%d", msgs, err, closed, finished, published)
@@ -241,9 +257,16 @@ func TestShutdownClosesQueuedCompactionsAndReportsError(t *testing.T) {
 func TestCompactionProviderErrorClosesAndFailsOpen(t *testing.T) {
 	closed := 0
 	llm := aitest.Always(talks("done"))
-	a := compactionTestAgent(t, Config{MaxSteps: 1, Client: testClient(llm), ContextBudget: func() int { return 1 }, CompactFunc: func(context.Context, []Message) (Compaction, error) {
-		return Compaction{Close: func() error { closed++; return nil }}, errors.New("provider failed")
-	}})
+	a := compactionTestAgent(t, Config{
+		MaxSteps:  1,
+		Inference: InferenceConfig{ResolveClient: testClient(llm)},
+		Compaction: CompactionConfig{
+			Budget: func() int { return 1 },
+			Summarize: func(context.Context, []Message) (Compaction, error) {
+				return Compaction{Close: func() error { closed++; return nil }}, errors.New("provider failed")
+			},
+		},
+	})
 	if _, err := a.ThinkAct(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -274,9 +297,13 @@ func TestManualCompactionFailureStopsMailboxWithoutMutation(t *testing.T) {
 
 func TestCompactionRecoveryPropagatesPersistenceError(t *testing.T) {
 	failure := errors.New("finish failed")
-	a := compactionTestAgent(t, Config{CompactFunc: func(context.Context, []Message) (Compaction, error) {
-		return Compaction{Summary: "summary", Finish: func(context.Context, Message) error { return failure }}, nil
-	}})
+	a := compactionTestAgent(t, Config{
+		Compaction: CompactionConfig{
+			Summarize: func(context.Context, []Message) (Compaction, error) {
+				return Compaction{Summary: "summary", Finish: func(context.Context, Message) error { return failure }}, nil
+			},
+		},
+	})
 	recovery, err := a.onInferError(context.Background(), sdkagent.InferErrorContext{Messages: a.Messages(), Err: &ai.Error{Kind: ai.KindContextExceeded}})
 	if recovery != nil || !errors.Is(err, failure) {
 		t.Fatalf("recovery=%v err=%v", recovery, err)

@@ -17,17 +17,8 @@ import (
 	"github.com/genai-io/san/internal/reminder"
 )
 
-// useMemoryStore makes a temp dir the session's project store for one test.
-func useMemoryStore(t *testing.T) string {
-	mem := t.TempDir()
-	prev := MemoryStores
-	MemoryStores = system.MemoryStores{Project: mem}
-	t.Cleanup(func() { MemoryStores = prev })
-	return mem
-}
-
 func TestParseMemoryOp(t *testing.T) {
-	mem := useMemoryStore(t)
+	mem := t.TempDir()
 	input := func(path string) string {
 		b, _ := json.Marshal(map[string]string{"file_path": path})
 		return string(b)
@@ -43,13 +34,13 @@ func TestParseMemoryOp(t *testing.T) {
 		{"Bash", `{"command":"rm -f ` + filepath.Join(mem, "a.md") + " " + filepath.Join(mem, "b.md") + `"}`, "Deleted", false},
 	}
 	for _, c := range cases {
-		op, ok := parseMemoryOp(c.tool, c.input)
+		op, ok := parseMemoryOp(system.MemoryStore(mem), c.tool, c.input)
 		if !ok || op.verb != c.verb || op.index != c.index {
 			t.Errorf("%s %s = %+v, %v", c.tool, c.input, op, ok)
 		}
 	}
 	for _, path := range []string{filepath.Join(filepath.Dir(mem), "notes.md"), filepath.Join(mem, "run.sh"), filepath.Join(mem, "sub", "x.md")} {
-		if _, ok := parseMemoryOp("Write", input(path)); ok {
+		if _, ok := parseMemoryOp(system.MemoryStore(mem), "Write", input(path)); ok {
 			t.Errorf("%s should not count as memory", path)
 		}
 	}
@@ -60,7 +51,7 @@ func TestParseMemoryOp(t *testing.T) {
 // used, saved or updated (a write outranks a read), and forgotten when a memory
 // it touched is gone by the turn's end. Read-only entries get no footer.
 func TestTurnMemory(t *testing.T) {
-	mem := useMemoryStore(t)
+	mem := t.TempDir()
 	index := filepath.Join(mem, "MEMORY.md")
 	call := func(id, name, path string, extra map[string]string) core.ToolCall {
 		args := map[string]string{"file_path": path}
@@ -87,15 +78,17 @@ func TestTurnMemory(t *testing.T) {
 
 	reads := []core.ToolCall{call("r1", "Read", terse, nil), call("r2", "Read", index, nil)}
 	out := xansi.Strip(RenderToolCalls(ToolCallsParams{
-		ToolCalls: reads,
-		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
+		AutoMemoryStore: system.MemoryStore(mem),
+		ToolCalls:       reads,
+		ResultMap:       map[string]ToolResultData{"r1": {ToolName: "Read"}, "r2": {ToolName: "Read"}},
 	}))
 	if !strings.Contains(out, "⟡ Memory · read: terse answers") || strings.Contains(out, "MEMORY.md") {
 		t.Errorf("memory reads should show at their step while index reads stay quiet, got %q", out)
 	}
 	out = xansi.Strip(RenderToolCalls(ToolCallsParams{
-		ToolCalls: reads[:1],
-		ResultMap: map[string]ToolResultData{"r1": {ToolName: "Read", IsError: true, Content: "boom"}},
+		AutoMemoryStore: system.MemoryStore(mem),
+		ToolCalls:       reads[:1],
+		ResultMap:       map[string]ToolResultData{"r1": {ToolName: "Read", IsError: true, Content: "boom"}},
 	}))
 	if !strings.Contains(out, "Read") {
 		t.Errorf("a failed memory call should show as itself: %q", out)
@@ -103,7 +96,7 @@ func TestTurnMemory(t *testing.T) {
 
 	recall := write("recall.md", "---\nname: recall\ndescription: attached memory\n---\n")
 	attached := "file body\n\n" + reminder.WrapWithSource("Memories relevant to this message:\n\nMemory `"+recall+"` (project store):\nbody", reminder.ProviderMemoryRecall)
-	conv := ConversationModel{Messages: []core.ChatMessage{
+	conv := ConversationModel{AutoMemoryStore: system.MemoryStore(mem), Messages: []core.ChatMessage{
 		{Role: core.ChatUser, Content: "earlier turn"},
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call("x", "Read", freeze, nil)}},
 		{Role: core.ChatUser, Content: "remember"},
@@ -133,7 +126,7 @@ func TestTurnMemory(t *testing.T) {
 // A step that only keeps memory draws its thinking but not its calls, live and
 // settled; one that also answers, or whose memory call failed, draws as usual.
 func TestMemoryStepHidesCalls(t *testing.T) {
-	mem := useMemoryStore(t)
+	mem := t.TempDir()
 	read := core.ToolCall{ID: "r1", Name: "Read", Input: `{"file_path":"` + filepath.Join(mem, "MEMORY.md") + `"}`}
 	render := func(step core.ChatMessage, failed bool) string {
 		msgs := []core.ChatMessage{
@@ -141,7 +134,7 @@ func TestMemoryStepHidesCalls(t *testing.T) {
 			step,
 			{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "r1", ToolName: "Read", IsError: failed}},
 		}
-		p := RenderContext{Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
+		p := RenderContext{AutoMemoryStore: system.MemoryStore(mem), Width: 80, Messages: msgs, InlinedResults: PrecomputeInlinedResults(msgs, 0)}
 		return xansi.Strip(RenderMessageAt(p, 1, false))
 	}
 	quiet := core.ChatMessage{Role: core.ChatAssistant, Thinking: "Checking existing memories", ToolCalls: []core.ToolCall{read}}
@@ -152,7 +145,7 @@ func TestMemoryStepHidesCalls(t *testing.T) {
 		t.Errorf("memory-only step without thinking drew %q", got)
 	}
 	live := []core.ChatMessage{{Role: core.ChatUser, Content: "remember tabs"}, {Role: core.ChatAssistant, ToolCalls: []core.ToolCall{read}}}
-	p := RenderContext{Width: 80, Interactive: true, StreamActive: true, SpinnerView: "*", Messages: live, InlinedResults: PrecomputeInlinedResults(live, 0)}
+	p := RenderContext{AutoMemoryStore: system.MemoryStore(mem), Width: 80, Interactive: true, StreamActive: true, SpinnerView: "*", Messages: live, InlinedResults: PrecomputeInlinedResults(live, 0)}
 	if got := strings.TrimSpace(xansi.Strip(RenderMessageAt(p, 1, false))); got != "✦ On it" {
 		t.Errorf("live memory step = %q, want its waiting row", got)
 	}
@@ -172,9 +165,9 @@ func TestMemoryStepHidesCalls(t *testing.T) {
 
 // A message that enters mid-turn does not cut the turn short.
 func TestTurnMemoryAcrossMidTurnMessage(t *testing.T) {
-	mem := useMemoryStore(t)
+	mem := t.TempDir()
 	gone := filepath.Join(mem, "freeze.md")
-	conv := ConversationModel{Messages: []core.ChatMessage{
+	conv := ConversationModel{AutoMemoryStore: system.MemoryStore(mem), Messages: []core.ChatMessage{
 		{ID: "u1", Role: core.ChatUser, Content: "forget the freeze"},
 		{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "d1", Name: "Bash", Input: `{"command":"rm ` + gone + `"}`}}},
 		{ID: "u2", Role: core.ChatUser, Content: "and say ok"},

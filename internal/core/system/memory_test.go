@@ -10,33 +10,34 @@ import (
 )
 
 func TestMemoryNotes(t *testing.T) {
-	stores := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
-	write := func(dir, name string) {
+	dir := t.TempDir()
+	store := MemoryStore(dir)
+	write := func(name string) {
 		t.Helper()
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("---\ndescription: "+name+"\n---\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write(stores.User, AutoMemoryIndexName)
-	if err := os.Mkdir(filepath.Join(stores.User, "folder.md"), 0700); err != nil {
+	write(AutoMemoryIndexName)
+	if err := os.Mkdir(filepath.Join(dir, "folder.md"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if stores.HasNotes() {
+	if store.HasNotes() {
 		t.Fatal("index and directory are not notes")
 	}
-	write(stores.User, "z.md")
-	write(stores.User, "b.md")
-	write(stores.Project, "a.md")
-	if !stores.HasNotes() {
+	write("z.md")
+	write("b.md")
+	write("a.md")
+	if !store.HasNotes() {
 		t.Fatal("regular notes were not found")
 	}
-	notes := stores.Memories(t.Context(), 2)
-	if len(notes) != 2 || notes[0].Description != "b.md" || notes[1].Description != "z.md" {
-		t.Fatalf("want first two user notes in filename order, got %+v", notes)
+	notes := store.Memories(t.Context(), 2)
+	if len(notes) != 2 || notes[0].Description != "a.md" || notes[1].Description != "b.md" {
+		t.Fatalf("want first two notes in filename order, got %+v", notes)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if notes := stores.Memories(ctx, 0); len(notes) != 0 {
+	if notes := store.Memories(ctx, 0); len(notes) != 0 {
 		t.Fatalf("canceled inventory scan returned %+v", notes)
 	}
 }
@@ -576,33 +577,16 @@ func TestLoadAutoMemoryAtWarnsNearLimit(t *testing.T) {
 	}
 }
 
-// A memory filed in both stores is reported so the agent keeps one.
-func TestMemoryStoresDuplicates(t *testing.T) {
-	s := MemoryStores{User: t.TempDir(), Project: t.TempDir()}
-	for _, p := range []string{
-		filepath.Join(s.User, "terse.md"), filepath.Join(s.Project, "terse.md"),
-		filepath.Join(s.User, "MEMORY.md"), filepath.Join(s.Project, "MEMORY.md"),
-		filepath.Join(s.User, "only-user.md"),
-	} {
-		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := s.Duplicates(); len(got) != 1 || !strings.HasPrefix(got[0], "terse.md ") {
-		t.Errorf("Duplicates() = %v", got)
-	}
-}
-
-func TestMemoryStoresContains(t *testing.T) {
-	s := MemoryStores{User: "/u", Project: "/p"}
+func TestMemoryStoreContains(t *testing.T) {
+	s := MemoryStore("/p")
 	for path, want := range map[string]bool{
-		"/u/a.md": true, "/p/MEMORY.md": true, "/p/sub/a.md": false, "/p/a.txt": false, "a.md": false,
+		"/p/a.md": true, "/p/MEMORY.md": true, "/p/sub/a.md": false, "/p/a.txt": false, "/u/a.md": false, "a.md": false,
 	} {
 		if got := s.Contains(path); got != want {
 			t.Errorf("Contains(%q) = %v, want %v", path, got, want)
 		}
 	}
-	if (MemoryStores{}).Contains("a.md") {
+	if MemoryStore("").Contains("a.md") {
 		t.Error("memory off contains nothing")
 	}
 }

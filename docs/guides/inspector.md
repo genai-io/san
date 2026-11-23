@@ -57,8 +57,10 @@ The details pane shows **Model input** on a request and **Model output** on its
 response (also visible from the request). Other steps open with **Context**, the
 session state after the selected step, not a recorded model request. **Event**
 and **Raw batch** are collapsed until opened. **Raw batch** shows stored events,
-not the model request. The formatted message view groups reminders for readability. Transport failures report checked batches and
-bounded unvalidated text.
+not the model request. In JSON views, expand objects and arrays one level at a
+time. **Original JSON** preserves the exact text for copying or checking the
+record. The formatted message view groups reminders for readability. Transport
+failures report checked batches and bounded unvalidated text.
 
 ## Reconstruct the model request
 
@@ -83,7 +85,20 @@ Request and response rows link to each other. An [Aside](../reference/aside.md)
 is labeled **Model Request · Aside — Auto Memory** and
 **Model Response · Aside — Auto Memory**, or **Model Request · Aside — Auto Skill**
 and **Model Response · Aside — Auto Skill**. For Auto Memory, the Event details
-distinguish **Recall** from **Maintain**.
+distinguish **Recall** from **Update**.
+
+**Update SDK prefix** compares the admitted request, excluding its one review
+suffix, against a completed main request on the same provider and model plus
+its recorded final assistant output. It checks the system prompt, ordered tool
+definitions, and native messages before provider encoding, ignoring local
+message IDs. A match links to the compared request and counts matching messages,
+including the assistant output. It is not evidence of a provider cache hit.
+
+In **Model output**, cache-read and cache-write tokens come from the response's
+reported usage. A positive cache-read count is a reported hit; zero is an
+explicit zero. **Not reported** means the usage record lacks that count;
+**Unavailable** means there is no usage record. Cache writes are not cache hits.
+Expand **Raw usage** to inspect the recorded values.
 
 For an Aside, **Raw model output** shows what the model returned, and
 **Accepted result** shows recorded results with links to their source-linked

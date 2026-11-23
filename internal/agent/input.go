@@ -16,6 +16,7 @@ type PendingInput struct {
 	Source      *session.EventRef   // Child event whose result is being delivered.
 	Destination *session.Session    // Original receiving owner; required with Source.
 	MemoryReady bool                // Preparation finished for this user input.
+	RecallQuery string              // Original user text when submission was expanded by a host.
 }
 
 // InputQueue owns unsent input and cancellation admission. The caller serializes access.
@@ -100,6 +101,9 @@ func (q *InputQueue) DeliverFirst(send func(PendingInput) error, prepare func(co
 		return nil
 	}
 	next := &q.items[0]
+	if next.FromUser && next.RecallQuery == "" {
+		next.RecallQuery = next.Message.Text()
+	}
 	next.Message = prepare(next.Message)
 	if err := send(*next); err != nil {
 		return q.rejectFirst(err)
