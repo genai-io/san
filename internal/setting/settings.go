@@ -11,6 +11,7 @@
 package setting
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -480,13 +481,12 @@ func (s *Data) ThinkingDisplayMode() string {
 	}
 }
 
-// StartupMode is the operation mode a new session starts in: the mode the user
-// last left, falling back to the configured default permission mode.
+// StartupMode prefers the last-used mode, then the configured default, then YOLO.
 func (s *Data) StartupMode() string {
 	if s == nil {
 		return ""
 	}
-	return coalesce(s.LastOperationMode, s.Permissions.DefaultMode)
+	return cmp.Or(s.LastOperationMode, s.Permissions.DefaultMode, ModeBypassPermissions.PersistenceName())
 }
 
 // PermissionSettings defines permission rules for tool execution.
