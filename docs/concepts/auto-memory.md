@@ -141,6 +141,7 @@ Messages:
           # MEMORY.md
           Path: /example/project-memory/MEMORY.md
 
+          Index contents:
           - [Archived demo recordings: indigo swan 2826](archived-demo-recordings-label.md) — (project) In weekly team summaries, label archived demo recordings indigo swan 2826.
 ```
 

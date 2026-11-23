@@ -72,7 +72,7 @@ func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.
 	if canAdd && tools.write {
 		content = append(content, ai.TextBlock(noteExample))
 	}
-	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md\nPath: %s\n\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
+	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md\nPath: %s\n\nIndex contents:\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
 	if more {
 		content = append(content, index.Hint())
 	}
