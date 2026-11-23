@@ -41,7 +41,7 @@ func wantIndexPreview(t *testing.T, dir, text string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "# MEMORY.md preview\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\n" + text
+	return "# MEMORY.md\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\n" + text
 }
 
 func TestProposeContext(t *testing.T) {

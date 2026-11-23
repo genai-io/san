@@ -115,7 +115,7 @@ Messages:
           /example/project-memory/
             MEMORY.md  — topic index: follow its links to find relevant notes
             <topic>.md — one note per topic; YAML frontmatter: name, description, type
-          Use only paths in this directory. The separate index preview lists titles, links, short descriptions, and types when present.
+          Use only paths in this directory. Use the supplied index entries to find relevant notes.
 
           ## Note types
           Types describe content, not directories.
@@ -138,7 +138,7 @@ Messages:
           - [Review summaries](review-summary.md) — (feedback) Format preference for review summaries
       - type: text
         text: |
-          # MEMORY.md preview
+          # MEMORY.md
           Path: /example/project-memory/MEMORY.md
 
           - [Archived demo recordings: indigo swan 2826](archived-demo-recordings-label.md) — (project) In weekly team summaries, label archived demo recordings indigo swan 2826.

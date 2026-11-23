@@ -72,7 +72,7 @@ func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.
 	if canAdd && tools.write {
 		content = append(content, ai.TextBlock(noteExample))
 	}
-	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md preview\nPath: %s\n\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
+	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md\nPath: %s\n\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
 	if more {
 		content = append(content, index.Hint())
 	}
@@ -85,7 +85,7 @@ func memoryLayout(dir string) string {
 %s/
   MEMORY.md  — topic index: follow its links to find relevant notes
   <topic>.md — one note per topic; YAML frontmatter: name, description, type
-Use only paths in this directory. The separate index preview lists titles, links, short descriptions, and types when present.
+Use only paths in this directory. Use the supplied index entries to find relevant notes.
 
 ## Note types
 Types describe content, not directories.`, dir)
