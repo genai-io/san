@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -28,7 +29,7 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 		t.Fatal(err)
 	}
 	params.AutoMemory = agent.AutoMemoryConfig{}
-	params.Provider = acpTestProvider{aitest.New(aitest.Says("recorded print")).Client()}
+	params.Provider = staticTestProvider{aitest.New(aitest.Says("recorded print")).Client()}
 	params.ModelID = "test"
 	params.Tasks = task.NewManager()
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage("print question", nil), nil)
@@ -67,7 +68,7 @@ func TestPrintMemoryLanguageReachesMain(t *testing.T) {
 	const prompt = "remember: Prefer table tests."
 	const answer = "main response"
 	driver := aitest.New(aitest.Says(answer))
-	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager(), PermissionRules: (agent.PermissionPolicy{}).Decide}
+	params := agent.BuildParams{CWD: t.TempDir(), AutoMemory: agent.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewManager(), PermissionRules: (agent.PermissionPolicy{}).Decide}
 	var displayed strings.Builder
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), func(text string) { displayed.WriteString(text) })
 	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != answer || driver.Calls() != 1 {
@@ -100,7 +101,7 @@ func TestPrintUpdatesProjectInstructionsWithoutMemoryUpdate(t *testing.T) {
 	policy := agent.PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoAccept, ShouldAvoidPrompts: true}}
 	params.PermissionRules = policy.Decide
 	params.AutoMemory = agent.AutoMemoryConfig{Store: system.MemoryStore(notes)}
-	params.Provider, params.ModelID, params.Tasks = acpTestProvider{driver.Client()}, "test", task.NewManager()
+	params.Provider, params.ModelID, params.Tasks = staticTestProvider{driver.Client()}, "test", task.NewManager()
 	const prompt = "请记住：以后用 ninja 构建，更新项目的 AGENTS.md。"
 	if result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), nil); err != nil || result == nil || result.StopReason != core.StopEndTurn {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -141,7 +142,7 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 		Store:  system.MemoryStore(notes),
 		Recall: setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait},
 	}
-	params.Provider, params.ModelID, params.MaxTokens = acpTestProvider{driver.Client()}, "test", 64
+	params.Provider, params.ModelID, params.MaxTokens = staticTestProvider{driver.Client()}, "test", 64
 	params.Tasks = task.NewManager()
 	for _, schema := range params.Schemas() {
 		params.DisabledTools[schema.Name] = true
@@ -180,7 +181,7 @@ func TestPrintStorageFailurePreventsModelInvocation(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	driver := aitest.New(aitest.Says("must not run"))
-	_, err := runRecordedPrint(t.Context(), agent.BuildParams{CWD: cwd, Provider: acpTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, PermissionRules: func(string, map[string]any) agent.PermDecisionResult {
+	_, err := runRecordedPrint(t.Context(), agent.BuildParams{CWD: cwd, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, PermissionRules: func(string, map[string]any) agent.PermDecisionResult {
 		return agent.PermDecisionResult{Decision: perm.Reject, By: "config"}
 	}}, core.UserMessage("fail closed", nil), nil)
 	if err == nil || driver.Calls() != 0 {
@@ -202,7 +203,7 @@ func TestHeadlessAgentRecordsTopLevelNativeSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	executor, err := newHeadlessExecutor(acpTestProvider{aitest.New(aitest.Says("headless result")).Client()}, cwd, "test", setting.NewData(), store, registry, pool)
+	executor, err := newHeadlessExecutor(staticTestProvider{aitest.New(aitest.Says("headless result")).Client()}, cwd, "test", setting.NewData(), store, registry, pool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestHeadlessAgentClosedStorePreventsModelInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	driver := aitest.New(aitest.Says("must not run"))
-	executor, err := newHeadlessExecutor(acpTestProvider{driver.Client()}, cwd, "test", setting.NewData(), store, registry, task.NewManager())
+	executor, err := newHeadlessExecutor(staticTestProvider{driver.Client()}, cwd, "test", setting.NewData(), store, registry, task.NewManager())
 	if err == nil {
 		_, err = executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "fail closed"})
 	}
@@ -272,4 +273,14 @@ func assertRecordedOneShot(t *testing.T, projection session.Projection) {
 	if len(unfinished.Inferences) != 0 {
 		t.Fatalf("completed run left unfinished inference: %+v", unfinished)
 	}
+}
+
+type staticTestProvider struct{ client *ai.Client }
+
+func (p staticTestProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return p.client, nil
+}
+func (staticTestProvider) Name() string { return "static-test" }
+func (staticTestProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
+	return []llm.ModelInfo{{ID: "test", ContextWindow: 200000}}, nil
 }

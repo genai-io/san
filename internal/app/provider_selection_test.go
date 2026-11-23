@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -128,12 +129,12 @@ func TestResolveProviderUsesProjectModel(t *testing.T) {
 	if err := store.SetCurrentModel("project", "scope-project", llm.AuthSubscription); err != nil {
 		t.Fatal(err)
 	}
-	provider, model, err := resolveProvider(context.Background())
+	provider, model, err := host.ResolveProvider(context.Background())
 	if err != nil || provider != projectProvider || model != "project" {
 		t.Fatalf("project resolution = %v, %q, %v", provider, model, err)
 	}
 	t.Chdir(t.TempDir())
-	provider, model, err = resolveProvider(context.Background())
+	provider, model, err = host.ResolveProvider(context.Background())
 	if err != nil || provider != userProvider || model != "default" {
 		t.Fatalf("other project resolution = %v, %q, %v", provider, model, err)
 	}

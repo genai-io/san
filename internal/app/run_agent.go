@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -52,8 +53,8 @@ func newHeadlessExecutor(provider llm.Provider, cwd, model string, settings *set
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		projection := owner.Snapshot()
 		engine := hook.NewEngine(settings, owner.ID(), projection.Identity().InitialCWD, owner.Path())
-		bindSessionHooks(engine, provider, owner, model)
-		return engine, func(provider llm.Provider, model string) { bindSessionHooks(engine, provider, owner, model) }, engine.Shutdown
+		host.BindSessionHooks(engine, provider, owner, model)
+		return engine, func(provider llm.Provider, model string) { host.BindSessionHooks(engine, provider, owner, model) }, engine.Shutdown
 	})
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)
@@ -84,7 +85,7 @@ func RunAgent(opts AgentRunOptions) (runErr error) {
 	if opts.Prompt == "" {
 		return fmt.Errorf("--prompt is required")
 	}
-	warnShellFallback()
+	host.WarnShellFallback()
 
 	// Graceful shutdown: SIGINT/SIGTERM cancels the run's context.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -110,7 +111,7 @@ func RunAgent(opts AgentRunOptions) (runErr error) {
 		return err
 	}
 	defer func() { runErr = errors.Join(runErr, store.Close()) }()
-	provider, modelID, err := resolveProvider(ctx)
+	provider, modelID, err := host.ResolveProvider(ctx)
 	if err != nil {
 		return err
 	}

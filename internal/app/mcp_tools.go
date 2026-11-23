@@ -3,7 +3,7 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/mcp"
 )
 
@@ -42,22 +42,5 @@ func (m *model) syncMCPTools() {
 	if tools == nil {
 		return
 	}
-	reconcileMCPTools(tools, mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP), m.services.Setting.DisabledTools())
-}
-
-func reconcileMCPTools(tools *core.Tools, catalog []core.Tool, disabled map[string]bool) {
-	live := make(map[string]bool)
-	for _, t := range catalog {
-		name := t.Schema().Name
-		if disabled[name] {
-			continue
-		}
-		live[name] = true
-		tools.Add(t, "mcp:"+name)
-	}
-	for _, schema := range tools.Schemas() {
-		if mcp.IsMCPTool(schema.Name) && !live[schema.Name] {
-			tools.Remove(schema.Name, "mcp:"+schema.Name)
-		}
-	}
+	host.ReconcileMCPTools(tools, mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP), m.services.Setting.DisabledTools())
 }

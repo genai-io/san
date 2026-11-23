@@ -5,14 +5,12 @@ package app
 
 import (
 	"context"
-	"errors"
 	"time"
-
-	"github.com/genai-io/sdk-go/pkg/ai"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -108,7 +106,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
 	m.services.LLM.SetProvider(p)
-	bindSessionHooks(m.services.Hook, p, m.services.Session, m.env.GetModelID())
+	host.BindSessionHooks(m.services.Hook, p, m.services.Session, m.env.GetModelID())
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
@@ -147,23 +145,5 @@ func memoryTypeForLevel(level string) string {
 		return "Local"
 	default:
 		return "Project"
-	}
-}
-
-func buildRecordedHookCompleter(p llm.Provider, owner *session.Session) hook.RecordedLLMCompleter {
-	if p == nil {
-		return nil
-	}
-	return func(ctx context.Context, systemPrompt, userMessage, model string) (hook.LLMCompletion, error) {
-		scope := owner.Completion(session.PurposeHook)
-		c := llm.NewClient(p, model, 0)
-		resp, err := c.Complete(ctx, systemPrompt, []core.Message{core.UserMessage(userMessage, nil)}, nil, 4096, scope.Admission())
-		result := hook.LLMCompletion{Text: resp.Content.Text(), Finish: scope.FinishHook}
-		var admission *ai.AdmissionError
-		var recording *llm.RecordingError
-		if errors.As(err, &admission) || errors.As(err, &recording) {
-			err = &hook.RecordingError{Err: err}
-		}
-		return result, err
 	}
 }

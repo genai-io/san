@@ -136,7 +136,7 @@ rules. The TUI toolset is unchanged.
 `Manager.Run` tracks shell execution through reaping and output drain. Stop new
 launches, then `Cancel` and `Join` before closing resources; `IsRunning` and
 `WaitForCompletion` do not prove cleanup. Subagent runners need separate lifecycle
-tracking. Protocol tests: `internal/app/acp_tasks_test.go`.
+tracking. Protocol tests: `internal/app/acp/acp_tasks_test.go`.
 
 ## Continuation and failure handling
 

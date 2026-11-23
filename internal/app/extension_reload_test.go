@@ -184,7 +184,7 @@ func TestExtensionReloadRebuildsTheNextRuntime(t *testing.T) {
 	m.services.Tool = tool.Default()
 	m.learnedStores = extensions.learnedStores
 	m.userInput = extensions.userInput
-	m.env.LLMProvider = acpTestProvider{aitest.Always(aitest.Says("unused")).Client()}
+	m.env.LLMProvider = staticTestProvider{aitest.Always(aitest.Says("unused")).Client()}
 	if _, err := m.ensureAgentRuntime(); err != nil {
 		t.Fatal(err)
 	}

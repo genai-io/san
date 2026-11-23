@@ -70,7 +70,10 @@ tool execution and the next inference receive the decision/answer.
 
 ### ACP stdio host
 
-`san acp` enters `RunACP` without constructing a Bubble Tea model. Stdout is
+`san acp` enters `acp.Run` (`internal/app/acp`), a separate package that never
+imports the TUI root or Bubble Tea. Wiring both hosts need (plugin paths, MCP
+tool reconciliation, resume-directory checks, session hooks, provider
+resolution) lives in `internal/app/host`. Stdout is
 reserved for SDK ACP frames; diagnostics use stderr. The SDK owns initialization,
 request admission, session cancellation, transport limits and response barriers.
 `acp.go` composes independent native sessions, settings policies, hooks, reminders
@@ -172,7 +175,7 @@ replacement for the TUI.
 
 Optional endpoints use the SDK version pinned in `go.mod`.
 
-Run `go test -race ./internal/app -run '^TestACP'` for protocol, permission,
+Run `go test -race ./internal/app/acp` for protocol, permission,
 load/configuration, extension, input and background-lifecycle coverage. Tests use
 scripted providers and local MCP/subprocess fixtures, not editor or live-vendor
 acceptance.
@@ -281,6 +284,8 @@ Sub-model packages:
 | [`broker`](broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
 | `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
+| `app/acp/` | ACP stdio | The ACP host: sessions, turns, permissions, extensions, workers; no TUI imports. |
+| `app/host/` | shared | Host wiring shared by the TUI, print/headless modes and ACP. |
 
 The normal view fills the terminal height and anchors the composer and status
 line to the bottom. Matching neutral rules frame the input area. Short

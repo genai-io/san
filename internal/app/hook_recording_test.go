@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -89,7 +90,7 @@ func TestHookRecordingNativeCompletion(t *testing.T) {
 				settings := setting.NewData()
 				settings.Hooks["PreToolUse"] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: kind, Prompt: "verify"}}}}
 				engine := hook.NewEngine(settings, "hook-test", t.TempDir(), "")
-				engine.SetRecordedLLMCompleter(buildRecordedHookCompleter(provider, owner), "m")
+				engine.SetRecordedLLMCompleter(host.RecordedHookCompleter(provider, owner), "m")
 				engine.Execute(ctx, hook.PreToolUse, hook.HookInput{})
 				starts, finishes, hooks := 0, 0, 0
 				snapshot := owner.Snapshot()

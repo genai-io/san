@@ -12,15 +12,14 @@ import (
 	"charm.land/lipgloss/v2"
 
 	agentpkg "github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/host"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/persona"
-	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
@@ -28,7 +27,7 @@ import (
 
 // Run routes to either print mode or interactive TUI.
 func Run(opts setting.RunOptions) (runErr error) {
-	warnShellFallback()
+	host.WarnShellFallback()
 	var m *model
 	// Services belong to the application, not an individual agent turn. Keep
 	// teardown here so print-mode success and errors clean up too, while the
@@ -110,12 +109,6 @@ func Run(opts setting.RunOptions) (runErr error) {
 		printExitMessage(fm)
 	}
 	return nil
-}
-
-func warnShellFallback() {
-	if shell, err := proc.DefaultShell(); err == nil && shell.FallbackReason != "" {
-		fmt.Fprintln(os.Stderr, "san: "+shell.FallbackReason)
-	}
 }
 
 func initModel(opts setting.RunOptions) (*model, error) {
@@ -205,7 +198,7 @@ func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason stri
 func runPrint(userMessage, personaName string) error {
 	ctx := context.Background()
 
-	llmProvider, modelID, err := resolveProvider(ctx)
+	llmProvider, modelID, err := host.ResolveProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -277,39 +270,6 @@ func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 	}, nil
-}
-
-// resolveProvider connects to the best available provider for a one-shot,
-// non-interactive run (print mode, headless agent) and returns it with a
-// concrete model id. It shares llm.ResolveProvider's resolution order with the
-// interactive startup path; when resolution falls back to a connection without
-// a saved current model, it fills that provider's default model id.
-func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, "", err
-	}
-	store, err := llm.NewStoreForCwd(cwd)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to load store: %w", err)
-	}
-	resolved, ok := llm.ResolveProvider(ctx, store)
-	if !ok {
-		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /models to connect")
-	}
-	modelID := resolved.ModelID
-	if modelID == "" {
-		// Provider.Name() carries the "name:auth" form; DefaultModel keys on the
-		// bare provider name.
-		name, _, _ := strings.Cut(resolved.Provider.Name(), ":")
-		modelID = setting.DefaultModel(name, string(resolved.AuthMethod))
-	}
-	if modelID == "" {
-		// Providers without a built-in default model (e.g. a custom provider)
-		// need an explicit selection.
-		return nil, "", fmt.Errorf("no model selected for %s. Run 'san' and use /models to select one", resolved.Provider.Name())
-	}
-	return resolved.Provider, modelID, nil
 }
 
 // validatePersona ensures the named persona exists on disk, early in startup,
