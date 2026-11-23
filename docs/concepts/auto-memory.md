@@ -33,13 +33,15 @@ Once compaction removes a note from active context, it can be selected again. In
 
 In the TUI, `/memory update` runs a one-off review of the latest eligible completed main turn, even when automatic Update is off. Auto Memory must be enabled.
 
-The review reuses the completed request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final native assistant message. The first Update message has two text blocks: the task instructions and the original `MEMORY.md`, bounded to 8 KiB. San does not load any linked note bodies up front. The model can ask for up to two indexed notes per round; San returns each requested file in its own block, with at most two read rounds and a shared size budget. Native tools are disabled throughout.
+The review reuses the completed main request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final assistant message. It extends a separate request in the same session:
 
-The model proposes at most one action: add a note and index link, revise an indexed note without moving it or changing its type, forget a note and its link, or make no change. Edit and forget require a prior read of the target in this Update; an incomplete index disables additions. San checks the index and supplied note revisions before writing. Forget requires clear user intent to remove a specific note.
+1. **Start with the index.** One Update user message contains two text blocks: task instructions and the original `MEMORY.md` as read-only data. San sends no linked note bodies up front. An index over 8 KiB is cut at a complete line; an incomplete index disables additions.
+2. **Read on demand.** The model can ask for up to two indexed notes per round, at most twice. San returns each requested note in its own block, up to 8 KiB per file and 16 KiB total for bodies. No native tools can execute.
+3. **Propose one change or none.** The model can add a note and index link, revise a note in place without changing its type, forget a note and its link, or stop without a change. It must first read a note it proposes to edit or forget, and forgetting requires clear user intent. San checks the index and supplied note revisions before writing.
 
 To review automatically after an eligible completed turn, enable **Update** under `/reflection` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 
-Update runs in the background without blocking the main agent. It doesn't edit project instruction files, and its working messages and results aren't sent to the main model. San shows a display-only notice after a successful write, preserves the existing index format, ignores example links in literal blocks, and refuses to append inside an unclosed block. Forget removes a note from its store; it does not erase old replies or Inspector records. Recall itself never writes.
+Update runs in the background without blocking the main agent. It doesn't edit project instruction files, and its working messages and results aren't sent to the main model. San shows a display-only notice after a successful write. A manual review that finds nothing to change reports `No memory changes.` A no-op automatic review is quiet. San preserves the index format, ignores example links in literal blocks, and refuses to append inside an unclosed block. Forget removes a note from its store; it does not erase old replies or Inspector records. Recall itself never writes.
 
 ## Settings and inspection
 

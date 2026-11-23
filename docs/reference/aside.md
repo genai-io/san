@@ -1,6 +1,6 @@
 # Aside
 
-An Aside is a focused model call outside the main conversation. It can use a read-only snapshot of the main context or build its own request. Its working messages do not enter main history. Only the accepted result is returned: a display-only Notice, model-facing context, an editable draft, or a decision for the runtime to validate.
+An Aside is a focused task outside the main conversation, usually a single model call. It can use a read-only snapshot of the main context or build its own request. Its working messages do not enter main history. Only the accepted result is returned: a display-only Notice, model-facing context, an editable draft, or a decision for the runtime to validate.
 
 The diagram shows the main delivery paths. Inspector records the requests and responses separately from their accepted results.
 
@@ -32,7 +32,9 @@ Recall and Update use the same repository store but have different triggers and 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
 | **Recall** | **Fast** starts in parallel with the main request. **Wait** gives recall up to the configured timeout before the first request. | Send the current file index, already-covered IDs, and question. The index contains descriptions, not note bodies. | Selected notes reach an eligible main request as Reminders. A late result from the previous question is labeled as such. A failed selector does not prevent the turn. |
-| **Update** | `/memory update`, or an eligible completed turn when automatic Update is on. | Reuse the exact main request and final assistant output. Send instructions and bounded `MEMORY.md` in separate text blocks. An optional structured read asks San for only the named notes. No copied tools can execute. | San validates and applies at most one proposed add, revision, or removal to the repository store. A successful write produces a display-only Notice. |
+| **Update** | `/memory update`, or an eligible completed turn when automatic Update is on. | Reuse the exact main request and final assistant output. Append one user message with separate instruction and original `MEMORY.md` text blocks. Continue only if the model asks to read specific indexed notes. | San validates and applies at most one proposed add, revision, or removal. A successful write produces a display-only Notice. |
+
+Update continuations keep the same main prefix and append each read request and reply to the Update-only suffix. San returns only the requested note bodies, each in its own text block. See [Update](../concepts/auto-memory.md#update) for read and write limits.
 
 Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work. `/reflection` opens separate Auto Memory and Auto Skill tabs; `/memory` opens the store and instruction-file browser.
 

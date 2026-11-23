@@ -87,12 +87,21 @@ is labeled **Model Request · Aside — Auto Memory** and
 and **Model Response · Aside — Auto Skill**. For Auto Memory, the Event details
 distinguish **Recall** from **Update**.
 
-**Update SDK prefix** compares the admitted request, excluding its one review
-suffix, against a completed main request on the same provider and model plus
-its recorded final assistant output. It checks the system prompt, ordered tool
-definitions, and native messages before provider encoding, ignoring local
-message IDs. A match links to the compared request and counts matching messages,
-including the assistant output. It is not evidence of a provider cache hit.
+For Update, expand **Raw SDK request** and find the first Update `user` message
+at the end of the main prefix. Its two `content` blocks contain instructions and
+bounded, original `MEMORY.md`. The first call has no linked note bodies. If a
+response asks to read notes, the following Update request includes the model's
+read request and San's reply, with each requested file in its own text block.
+Look for a source-linked **Accepted result** on the final response to confirm a
+write, not just a proposed change.
+
+**Update SDK prefix** compares the admitted request, excluding the task message
+and any read exchanges, against a completed main request on the same provider
+and model plus its recorded final assistant output. It checks the system prompt,
+ordered tool definitions, and native messages before provider encoding, ignoring
+local message IDs. A match links to the compared request and counts matching
+messages, including the assistant output. It is not evidence of a provider cache
+hit.
 
 In **Model output**, cache-read and cache-write tokens come from the response's
 reported usage. A positive cache-read count is a reported hit; zero is an
