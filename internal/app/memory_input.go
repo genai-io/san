@@ -71,7 +71,11 @@ func (m *model) startMemoryInput(parent context.Context, head pendingMessage, ac
 	m.memoryInput = r
 	provider, info := m.resolveJudge("")
 	effort := agent.LowestEffort(provider, m.services.LLM.Store(), info)
-	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner, Timeout: m.memoryRecallConfig().Timeout, IndexLimits: m.currentAutoMemory().IndexLimits}
+	selector := agent.Recaller{Provider: provider, Model: info.ModelID, Effort: effort, Recording: r.owner}
+	if svc := m.services.Setting; svc != nil {
+		selector.Timeout = svc.MemoryRecall().Timeout
+		selector.IndexLimits = svc.MemoryPreview()
+	}
 	history := m.services.Agent.Messages()
 	prepare := func() tea.Msg {
 		result, err := selector.PrepareForAdmission(ctx, r.store, head.Message, history)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,7 +19,6 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // maxRecalled caps the notes returned by one selection.
@@ -49,15 +47,15 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 	preview, more := index.Preview()
 	byID := map[string]system.Memory{}
 	seen := map[string]bool{}
-	var coveredFiles strings.Builder
-	addFiles := func(files []string) {
+	addFiles := func(files []string) string {
+		var coveredFiles strings.Builder
 		for _, id := range files {
 			if seen[id] || ctx.Err() != nil {
 				continue
 			}
 			seen[id] = true
-			note := system.Memory{Path: filepath.Join(string(store), id)}
-			if info, err := os.Lstat(note.Path); err != nil || !info.Mode().IsRegular() {
+			note, ok := automemory.RecallNote(store, id)
+			if !ok {
 				continue
 			}
 			if covered != nil && covered(note) {
@@ -66,13 +64,14 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 				byID[id] = note
 			}
 		}
+		return coveredFiles.String()
 	}
-	addFiles(index.PreviewFiles())
+	coveredFiles := addFiles(index.PreviewFiles())
 	if (len(byID) == 0 && !more) || ctx.Err() != nil {
 		return nil, nil, nil
 	}
-	if coveredFiles.Len() == 0 {
-		coveredFiles.WriteString("None.")
+	if coveredFiles == "" {
+		coveredFiles = "None."
 	}
 	previewMessage := core.UserMessage(preview, nil)
 	if more {
@@ -83,15 +82,15 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 		SystemPrompt: recallSystemPrompt,
 		Messages: []core.Message{
 			previewMessage,
-			core.UserMessage("Already in main context:\n"+coveredFiles.String(), nil),
+			core.UserMessage("Already in main context:\n"+coveredFiles, nil),
 			core.UserMessage(query, nil),
 		},
 		ThinkingEffort: r.Effort,
 	}
 	start := time.Now()
-	for lookups := 0; ctx.Err() == nil; lookups++ {
+	for ctx.Err() == nil {
 		scope := r.Recording.Completion(session.PurposeRecall)
-		resp, err := aside.Complete(ctx, r.Provider, opts, scope)
+		text, err := aside.CompleteProposal(ctx, r.Provider, opts, scope)
 		if err != nil {
 			log.Logger().Debug("memory recall failed", zap.Int("candidates", len(byID)), zap.Duration("took", time.Since(start)), zap.Error(err))
 			var recordingErr *llm.RecordingError
@@ -100,33 +99,25 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 			}
 			return nil, scope, nil
 		}
-		if ctx.Err() != nil || resp.Err != nil || resp.StopReason != ai.StopEndTurn || len(resp.Content.ToolCalls()) != 0 {
-			return nil, scope, nil
-		}
-		text := resp.Content.Text()
 		var reply struct {
+			automemory.IndexRequest
 			Selected []string `json:"selected_memories"`
-			Action   string   `json:"action"`
-			Query    string   `json:"query"`
-			Line     int      `json:"line"`
 		}
 		if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); len(text) > 16*1024 || i < 0 || j < i || json.Unmarshal([]byte(text[i:j+1]), &reply) != nil {
 			return nil, scope, nil
 		}
-		if (reply.Action == "search_index" || reply.Action == "read_index") && more && lookups < automemory.MaxIndexLookups && reply.Selected == nil {
-			result, files, err := index.Lookup(reply.Action, reply.Query, reply.Line)
+		if reply.Action.IsIndexLookup() && reply.Selected == nil {
+			result, files, err := index.Lookup(reply.IndexRequest)
 			if err != nil {
 				return nil, scope, nil
 			}
-			prior := coveredFiles.Len()
-			addFiles(files)
-			if newCovered := coveredFiles.String()[prior:]; newCovered != "" {
+			if newCovered := addFiles(files); newCovered != "" {
 				result += "\nAlready in main context (do not select):\n" + newCovered
 			}
 			if err := scope.Close(); err != nil {
 				return nil, nil, &llm.RecordingError{Err: err}
 			}
-			opts.Messages = append(opts.Messages, core.AssistantMessage(text, "", nil), automemory.IndexResult(result, automemory.MaxIndexLookups-lookups-1))
+			opts.Messages = append(opts.Messages, core.AssistantMessage(text, "", nil), index.Result(result))
 			continue
 		}
 		if reply.Action != "" || reply.Query != "" || reply.Line != 0 {

@@ -30,7 +30,7 @@ Do not call tools; tool calls are rejected.
 - Revise: {"action":"update","file":"indexed-topic.md","old":"unique exact excerpt from the body","replacement":"revised excerpt"}
 - Forget: {"action":"forget","file":"indexed-topic.md"}`
 
-func updateMessage(index Index, canAdd bool) ai.Message {
+func updateMessage(index *Index, canAdd bool) ai.Message {
 	preview, more := index.Preview()
 	var instructions strings.Builder
 	instructions.WriteString(updatePrompt)
@@ -87,15 +87,13 @@ func (m Updater) Propose(ctx context.Context, store system.MemoryStore, prefix *
 	if err != nil {
 		return nil, err
 	}
-	state.indexLimits = m.IndexLimits
-	memoryIndex := state.memoryIndex()
-	index, more := memoryIndex.Preview()
-	_, problem := state.updateNoteIDs(len(index))
+	memoryIndex := newIndex(state.index.text, m.IndexLimits)
+	_, more := memoryIndex.Preview()
+	visible, problem := memoryIndex.updateNoteIDs()
 	request := *prefix
-	request.Messages = make([]ai.Message, len(prefix.Messages), len(prefix.Messages)+1+2*(maxReadRounds+MaxIndexLookups))
+	request.Messages = make([]ai.Message, len(prefix.Messages), len(prefix.Messages)+1+2*(maxReadRounds+maxIndexLookups))
 	copy(request.Messages, prefix.Messages)
 	request.Messages = append(request.Messages, updateMessage(memoryIndex, problem == ""))
-	lookups := 0
 	searched := false
 
 	var recording *session.Completion
@@ -121,31 +119,26 @@ func (m Updater) Propose(ctx context.Context, store system.MemoryStore, prefix *
 			return nil, err
 		}
 		var followUp ai.Message
-		switch p.Action {
-		case actionSearch, actionIndexRead:
-			if !more || lookups >= MaxIndexLookups {
-				return nil, fmt.Errorf("memory index lookup is unavailable or exhausted: %w", errInvalidProposal)
-			}
-			result, files, err := memoryIndex.Lookup(string(p.Action), p.Query, p.Line)
+		switch {
+		case p.Action.IsIndexLookup():
+			result, files, err := memoryIndex.Lookup(IndexRequest{Action: p.Action, Query: p.Query, Line: p.Line})
 			if err != nil {
 				return nil, err
 			}
-			if state.searched == nil {
-				state.searched = make(map[string]bool)
-			}
 			for _, file := range files {
-				state.searched[file] = true
+				if _, valid := visible[file]; valid {
+					visible[file] = true
+				}
 			}
-			lookups++
 			searched = searched || p.Action == actionSearch
-			followUp = IndexResult(result, MaxIndexLookups-lookups)
-		case actionNone:
+			followUp = memoryIndex.Result(result)
+		case p.Action == actionNone:
 			if problem != "" {
 				return nil, errors.New("new memory notes are disabled until MEMORY.md is fixed: " + problem)
 			}
 			return nil, nil
-		case actionRead:
-			notes, err := state.readNotes(ctx, path, p.Files)
+		case p.Action == actionRead:
+			notes, err := state.readNotes(ctx, path, p.Files, visible)
 			if err != nil {
 				return nil, err
 			}

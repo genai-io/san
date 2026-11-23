@@ -49,14 +49,18 @@ func TestIndexLookupsDoNotChangeIndex(t *testing.T) {
 	if got, more := index.Preview(); got != prefix || !more || !strings.Contains(index.Hint().Text, `"line":2`) {
 		t.Fatal("preview did not use the configured line limit")
 	}
-	for _, action := range []struct {
-		name, query string
-		line        int
-	}{{"search_index", "RELEASE secret", 0}, {"read_index", "", 2}} {
-		got, ids, err := index.Lookup(action.name, action.query, action.line)
+	for n, req := range []IndexRequest{{Action: actionSearch, Query: "RELEASE secret"}, {Action: actionIndexRead, Line: 2}} {
+		got, ids, err := index.Lookup(req)
 		if err != nil || !strings.Contains(got, tail) || len(ids) != 1 || ids[0] != "tail.md" {
-			t.Fatalf("%s: %q, %v, %v", action.name, got, ids, err)
+			t.Fatalf("%s: %q, %v, %v", req.Action, got, ids, err)
 		}
+		want := []string{"Lookups remaining: 1.", "Lookups remaining: 0."}[n]
+		if header := index.Result(got).Content[0].Text; !strings.Contains(header, want) {
+			t.Fatalf("lookup header = %q; want %q", header, want)
+		}
+	}
+	if _, _, err := index.Lookup(IndexRequest{Action: actionIndexRead, Line: 2}); err == nil {
+		t.Fatal("accepted a third lookup")
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != text {
 		t.Fatalf("lookup changed the index: %v", err)

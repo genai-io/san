@@ -20,13 +20,18 @@ func Complete(ctx context.Context, provider llm.Provider, opts llm.CompletionOpt
 	return llm.Complete(ctx, provider, opts)
 }
 
+// CompleteProposal runs a tool-free call and extracts a complete proposal.
+func CompleteProposal(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion) (string, error) {
+	resp, err := Complete(ctx, provider, opts, recording)
+	return proposalText(ctx, resp, err)
+}
+
 // ApplyChange calls the model without tools and hands a complete proposal to
 // the caller for validation and application. Only a committed change produces
 // a source-linked notice; a no-op or rejection still records the raw response.
 func ApplyChange(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion, apply func(context.Context, string) (string, error)) (notice string, err error) {
 	defer func() { err = FinishChange(ctx, recording, notice, err) }()
-	resp, err := Complete(ctx, provider, opts, recording)
-	text, err := proposalText(ctx, resp, err)
+	text, err := CompleteProposal(ctx, provider, opts, recording)
 	if err != nil {
 		return "", err
 	}

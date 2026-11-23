@@ -20,24 +20,17 @@ var (
 	noteLink  = regexp.MustCompile(`\]\((?:\./)?([A-Za-z0-9_-]+\.[mM][dD])\)`)
 )
 
-func (s storeSnapshot) memoryIndex() Index { return Index{text: s.index.text, limits: s.indexLimits} }
-
-func (s storeSnapshot) updateIndexEnd() int {
-	preview, _ := s.memoryIndex().Preview()
-	return len(preview)
-}
-
 // Scan the full index for ambiguity: even an omitted line can invalidate an
 // earlier ID. Literal blocks are visible as text but do not grant read access.
-func (s storeSnapshot) updateNoteIDs(visibleEnd int) (map[string]bool, string) {
+// The map distinguishes absent IDs from valid ones not yet shown.
+func (i *Index) updateNoteIDs() (map[string]bool, string) {
 	var problem string
 	candidates := map[string]bool{}
 	mentions := map[string]int{}
-	literal := literalIndexLines(s.index.text)
 	offset := 0
 	lineNo := 0
-	for line := range strings.SplitAfterSeq(s.index.text, "\n") {
-		isLiteral := literal[offset]
+	for line := range strings.SplitAfterSeq(i.text, "\n") {
+		isLiteral := i.literal[offset]
 		offset += len(line)
 		lineNo++
 		if isLiteral {
@@ -45,7 +38,7 @@ func (s storeSnapshot) updateNoteIDs(visibleEnd int) (map[string]bool, string) {
 		}
 		match := indexEntry.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
 		if match != nil && validName(match[2]) && strings.TrimSpace(match[1]) != "" {
-			candidates[match[2]] = offset <= visibleEnd
+			candidates[match[2]] = offset <= len(i.preview)
 		} else if problem == "" && linksNote(line) {
 			problem = fmt.Sprintf("MEMORY.md line %d links a note outside the `- [Name](file.md) description` form", lineNo)
 		}

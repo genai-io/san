@@ -17,16 +17,12 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-type memoryAction string
-
 const (
-	actionNone      memoryAction = "none"
-	actionRead      memoryAction = "read"
-	actionSearch    memoryAction = "search_index"
-	actionIndexRead memoryAction = "read_index"
-	actionRemember  memoryAction = "remember"
-	actionUpdate    memoryAction = "update"
-	actionForget    memoryAction = "forget"
+	actionNone     Action = "none"
+	actionRead     Action = "read"
+	actionRemember Action = "remember"
+	actionUpdate   Action = "update"
+	actionForget   Action = "forget"
 )
 
 // noteTypes defines the classification contract for both validation and Propose.
@@ -47,17 +43,17 @@ type Updater struct {
 }
 
 type proposal struct {
-	Action      memoryAction `json:"action"`
-	Files       []string     `json:"files"`
-	Query       string       `json:"query"`
-	Line        int          `json:"line"`
-	File        string       `json:"file"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Type        string       `json:"type"`
-	Body        string       `json:"body"`
-	Old         string       `json:"old"`
-	Replacement string       `json:"replacement"`
+	Action      Action   `json:"action"`
+	Files       []string `json:"files"`
+	Query       string   `json:"query"`
+	Line        int      `json:"line"`
+	File        string   `json:"file"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Type        string   `json:"type"`
+	Body        string   `json:"body"`
+	Old         string   `json:"old"`
+	Replacement string   `json:"replacement"`
 }
 
 type noteData struct {
@@ -106,7 +102,7 @@ func validateProposal(p proposal) error {
 	invalid := errInvalidProposal
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
-	if p.Action == actionSearch || p.Action == actionIndexRead {
+	if p.Action.IsIndexLookup() {
 		if p.File != "" || p.Files != nil || metadata || patch {
 			return invalid
 		}

@@ -19,8 +19,20 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/setting"
 )
+
+// RecallNote resolves a linked note without reading its body.
+func RecallNote(store system.MemoryStore, id string) (system.Memory, bool) {
+	if store.Off() || !validName(id) {
+		return system.Memory{}, false
+	}
+	path := filepath.Join(string(store), id)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return system.Memory{}, false
+	}
+	return system.Memory{Path: path}, true
+}
 
 const (
 	maxNote  = 8 * 1024
@@ -124,13 +136,11 @@ type noteRevision struct {
 }
 
 type storeSnapshot struct {
-	dir         fs.FileInfo
-	index       revision
-	indexLimits setting.MemoryPreviewLimits
-	notes       []noteRevision
-	noteBytes   int
-	readRounds  int
-	searched    map[string]bool
+	dir        fs.FileInfo
+	index      revision
+	notes      []noteRevision
+	noteBytes  int
+	readRounds int
 }
 
 const (
@@ -170,17 +180,15 @@ func snapshotStore(ctx context.Context, path string) (s storeSnapshot, err error
 	return s, ctx.Err()
 }
 
-func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []string) ([]noteData, error) {
+func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []string, visible map[string]bool) ([]noteData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if len(files) == 0 || len(files) > maxNotesPerRead || s.readRounds >= maxReadRounds {
 		return nil, fmt.Errorf("memory read exceeds note count or round limits: %w", errInvalidProposal)
 	}
-	visible, _ := s.updateNoteIDs(s.updateIndexEnd())
 	for i, file := range files {
-		shown, valid := visible[file]
-		if !valid || (!shown && !s.searched[file]) || s.note(file).info != nil || slices.Contains(files[:i], file) {
+		if !visible[file] || s.note(file).info != nil || slices.Contains(files[:i], file) {
 			return nil, fmt.Errorf("memory read must request distinct, unread index IDs: %w", errInvalidProposal)
 		}
 	}
