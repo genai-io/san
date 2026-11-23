@@ -138,11 +138,12 @@ Messages:
           - [Review summaries](review-summary.md) — (feedback) Format preference for review summaries
       - type: text
         text: |
-          # MEMORY.md
+          # Memory index contents (MEMORY.md)
           Path: /example/project-memory/MEMORY.md
 
-          Index contents:
+          ~~~
           - [Archived demo recordings: indigo swan 2826](archived-demo-recordings-label.md) — (project) In weekly team summaries, label archived demo recordings indigo swan 2826.
+          ~~~
 ```
 
 The first response calls `Read` for `MEMORY.md` and `archived-demo-recordings-label.md`. San appends that assistant tool-call message and a user message with the two `Read` results. The system prompt and tool list stay unchanged. The next response proposes two writes (shown in readable tool-call form):

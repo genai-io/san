@@ -41,7 +41,16 @@ func wantIndexPreview(t *testing.T, dir, text string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "# MEMORY.md\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\nIndex contents:\n" + text
+	return "# Memory index contents (MEMORY.md)\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\n~~~\n" + text + "~~~"
+}
+
+func TestUpdateIndexBlockPreservesInnerFence(t *testing.T) {
+	dir := t.TempDir()
+	const index = "~~~markdown\n- [Example](example.md)\n~~~"
+	want := "# Memory index contents (MEMORY.md)\nPath: " + filepath.Join(dir, system.AutoMemoryIndexName) + "\n\n~~~~\n" + index + "\n~~~~"
+	if got := indexBlock(dir, index).Text; got != want {
+		t.Fatalf("index block = %q, want %q", got, want)
+	}
 }
 
 func TestProposeContext(t *testing.T) {

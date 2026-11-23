@@ -72,11 +72,31 @@ func updateMessage(dir string, index *Index, canAdd bool, tools updateTools) ai.
 	if canAdd && tools.write {
 		content = append(content, ai.TextBlock(noteExample))
 	}
-	content = append(content, ai.TextBlock(fmt.Sprintf("# MEMORY.md\nPath: %s\n\nIndex contents:\n%s", filepath.Join(dir, system.AutoMemoryIndexName), preview)))
+	content = append(content, indexBlock(dir, preview))
 	if more {
 		content = append(content, index.Hint())
 	}
 	return ai.Message{Role: ai.RoleUser, Content: content}
+}
+
+func indexBlock(dir, text string) ai.Block {
+	// Use a fence longer than any tilde run in the raw Markdown.
+	length, run := 3, 0
+	for _, ch := range text {
+		if ch != '~' {
+			run = 0
+			continue
+		}
+		run++
+		length = max(length, run+1)
+	}
+	fence := strings.Repeat("~", length)
+	separator := ""
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		separator = "\n"
+	}
+	return ai.TextBlock(fmt.Sprintf("# Memory index contents (MEMORY.md)\nPath: %s\n\n%s\n%s%s%s",
+		filepath.Join(dir, system.AutoMemoryIndexName), fence, text, separator, fence))
 }
 
 func memoryLayout(dir string) string {

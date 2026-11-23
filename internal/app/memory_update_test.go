@@ -112,7 +112,7 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	indexPreview := "# MEMORY.md\nPath: " + indexPath + "\n\nIndex contents:\n" + indexText
+	indexPreview := "# Memory index contents (MEMORY.md)\nPath: " + indexPath + "\n\n~~~\n" + indexText + "~~~"
 	blocks := request.Messages[2].Content
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
 		len(blocks) != 4 || blocks[3].Text != indexPreview || !strings.HasPrefix(blocks[1].Text, "# Project memory layout") ||
