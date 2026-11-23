@@ -401,9 +401,11 @@ pending call's display snapshot without restarting its timer, adding transcript
 content, or accepting late reports for completed/foreign calls. Agent activity
 continues using the separate bounded bridge.
 
-The task tracker above the input uses one shared `Tasks` heading and shows at
-most eight task rows and one overflow summary. The heading appears only while
-the tracker is visible, and shows progress only when plan items are present.
+The task tracker above the input shows at most eight task rows and one overflow
+summary. Its `≣ Tasks` heading keeps plan progress and adds a muted running
+count when it fits and no in-progress rows are folded. Stalled rows and workers
+awaiting approval are not counted as running. Narrow terminals drop the optional
+count and then the icon before clipping the title.
 Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
