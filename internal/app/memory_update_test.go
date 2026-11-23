@@ -111,8 +111,9 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	blocks := request.Messages[2].Content
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
 		len(blocks) != 4 || blocks[3].Text != indexText || !strings.HasPrefix(blocks[1].Text, "# Project memory layout") ||
+		!strings.Contains(blocks[1].Text, "## Note types") ||
 		!strings.Contains(blocks[2].Text, "# Note format example (not evidence; do not save it)") ||
-		!strings.Contains(blocks[2].Text, "## Note types for new notes") || strings.Contains(blocks[0].Text, "Build with go build.") {
+		strings.Contains(blocks[2].Text, "## Note types") || strings.Contains(blocks[0].Text, "Build with go build.") {
 		t.Fatalf("wrong initial Memory Update context: %+v", request.Messages)
 	}
 	followup := calls[1]
@@ -192,7 +193,7 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 		t.Fatalf("Update did not offer additions: %v", proposed.err)
 	}
 	blocks := driver.Last().Messages[2].Content
-	if len(blocks) != 4 || !strings.Contains(blocks[2].Text, "## Note types for new notes") {
+	if len(blocks) != 4 || !strings.Contains(blocks[2].Text, "# Note format example") {
 		t.Fatal("Update did not include the note format")
 	}
 	m.services.Setting = setting.New(setting.NewData())

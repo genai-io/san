@@ -100,16 +100,23 @@ Messages:
           Send Read calls separately, then use up to 4 Write or Edit calls in one reply across notes.
           - Read indexed notes or the index preview: up to two distinct files per round, 4 rounds, no rereads.
           - Edit only notes read in this review. Correct stale metadata and body; keep the filename and type.
-          - The preview counts as reading MEMORY.md. Edit it only to organize existing entries. Don't add or remove links or use replace_all. San maintains links after note changes.
+          - The preview counts as reading MEMORY.md. Edit it only to organize existing entries. Don't add or remove note links or use replace_all.
           - Only when explicitly asked to forget, use Bash with `rm 'note.md'` to remove one previously read note. Send that call alone.
-          - Write each new topic as a note. Use stable labels and put values that may change in the body.
+          - Write each new topic as a note. Use stable labels and absolute dates when known; put values that may change in the body.
       - type: text
         text: |
           # Project memory layout
           /example/project-memory/
-            MEMORY.md  — index: one link and short description per topic
-            <topic>.md — one Markdown note per topic, with YAML frontmatter
-          Use only paths in this directory. The actual index preview is a separate content block.
+            MEMORY.md  — topic index: follow its links to find relevant notes
+            <topic>.md — one note per topic; YAML frontmatter: name, description, type
+          Use only paths in this directory. The separate index preview lists titles, links, short descriptions, and types when present.
+
+          ## Note types
+          Types describe content, not directories.
+          - user: The user's role, expertise, or standing personal preferences.
+          - feedback: User corrections or confirmed ways to work on this project; include when and why they apply.
+          - project: Durable project decisions, constraints, or milestones not recoverable from the repository.
+          - reference: Where to find an external source of truth and what it is for.
       - type: text
         text: |
           # Note format example (not evidence; do not save it)
@@ -123,13 +130,6 @@ Messages:
 
           Example index entry:
           - [Review summaries](review-summary.md) — (feedback) Format preference for review summaries
-
-          ## Note types for new notes
-          Include name, description, and type in the YAML frontmatter. Use absolute dates when known.
-          - user: Who the user is or what they generally prefer: role, expertise, or standing personal preference. A correction or an approach they confirmed in this repository is feedback instead.
-          - feedback: How the agent should work next time in this repository: a user correction or an approach they explicitly confirmed. Include why and when to apply it if known.
-          - project: What matters about ongoing work in this repository: meaningful milestones, deadlines, decisions, or constraints not recoverable from code, docs, or git. Include why and when it applies if known. Skip transient task status.
-          - reference: Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.
       - type: text
         text: |
           - [Archived demo recordings: indigo swan 2826](archived-demo-recordings-label.md) — (project) In weekly team summaries, label archived demo recordings indigo swan 2826.

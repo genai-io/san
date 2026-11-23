@@ -81,6 +81,11 @@ func TestProposeContext(t *testing.T) {
 		strings.Contains(suffix.Content[0].Text, "release process") || strings.Contains(suffix.Text(), "Deploy only from release branches.") {
 		t.Fatalf("want separate instructions and unchanged index without note bodies: %+v", suffix)
 	}
+	for _, kind := range []string{"user", "feedback", "project", "reference"} {
+		if !strings.Contains(suffix.Content[1].Text, "\n- "+kind+": ") {
+			t.Errorf("memory layout does not explain %q notes", kind)
+		}
+	}
 	if driver.Calls() != 1 {
 		t.Fatalf("no change should finish after one call, got %d", driver.Calls())
 	}

@@ -26,10 +26,10 @@ const (
 // noteTypes defines the classification contract for both validation and Propose.
 // These labels never change where a note is stored.
 var noteTypes = map[string]string{
-	"user":      "Who the user is or what they generally prefer: role, expertise, or standing personal preference. A correction or an approach they confirmed in this repository is feedback instead.",
-	"feedback":  "How the agent should work next time in this repository: a user correction or an approach they explicitly confirmed. Include why and when to apply it if known.",
-	"project":   "What matters about ongoing work in this repository: meaningful milestones, deadlines, decisions, or constraints not recoverable from code, docs, or git. Include why and when it applies if known. Skip transient task status.",
-	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
+	"user":      "The user's role, expertise, or standing personal preferences.",
+	"feedback":  "User corrections or confirmed ways to work on this project; include when and why they apply.",
+	"project":   "Durable project decisions, constraints, or milestones not recoverable from the repository.",
+	"reference": "Where to find an external source of truth and what it is for.",
 }
 
 // Updater proposes a bounded change to the current project's memory.
