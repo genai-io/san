@@ -19,9 +19,11 @@ cache — currently:
 
 - skills directory (re-emit when a skill is enabled / disabled / activated)
 - memory user / memory project (AGENTS.md; re-emit on memory file change)
-- memory auto (short guide, enabled store paths, and `MEMORY.md` previews)
-- memory recall (selected notes attached to the current user message before main inference)
+- memory recall (selected note previews attached to eligible main requests)
 - one-time notices (queued from hooks or commands)
+
+`memory-auto` remains a source ID for older sessions. Current `MEMORY.md`
+previews stay in the [Auto Memory Asides](../concepts/auto-memory.md#index-preview).
 
 See [Context Management](../reference/context-management.md) for
 why reminders are a separate channel from the system prompt.

@@ -34,7 +34,7 @@
 
 ## Memory and learning
 
-- [Auto Memory](concepts/auto-memory.md) — Recall selects relevant notes from one library per repository. A separate Update Aside reviews completed turns, starting with the index and reading notes only when needed.
+- [Auto Memory](concepts/auto-memory.md) — Recall finds relevant notes and Update reviews completed turns. Both start with a short `MEMORY.md` preview and can look up more without sending the index to the main conversation.
 
 - [Project instructions](reference/context-management.md#reminders-and-hot-reload) — Keeps repository conventions in files so they can be reviewed alongside code. San reads user instructions, then the `AGENTS.md` chain from repo root to working directory, plus rules and local overrides. It sends them as reminders under a shared size limit.
 

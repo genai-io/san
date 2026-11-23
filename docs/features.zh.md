@@ -34,7 +34,7 @@
 
 ## 记忆与学习
 
-- [Auto Memory（自动记忆）](concepts/auto-memory.md) —— 每个仓库共用一个记忆库。Recall 召回相关笔记；独立的 Update Aside 审查已完成的对话轮次，先看索引，按需读取笔记，不拦截主会话输入。
+- [Auto Memory（自动记忆）](concepts/auto-memory.md) —— Recall 召回相关笔记，Update 审查已完成的对话轮次。两者先看 `MEMORY.md` 的简短预览，再按需查找；索引不进入主对话。
 
 - [项目指令](reference/context-management.md#reminders-and-hot-reload) —— 把仓库约定写进可随代码审阅的文件。San 先读用户级指令，再沿仓库根目录到工作目录读取 `AGENTS.md`，同时纳入规则和本地覆盖项。加载后的内容在总大小上限内作为提醒送入上下文。
 

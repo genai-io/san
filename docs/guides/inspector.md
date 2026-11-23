@@ -87,13 +87,11 @@ is labeled **Model Request · Aside — Auto Memory** and
 and **Model Response · Aside — Auto Skill**. For Auto Memory, the Event details
 distinguish **Recall** from **Update**.
 
-For Update, expand **Raw SDK request** and find the first Update `user` message
-at the end of the main prefix. Its two `content` blocks contain instructions and
-bounded, original `MEMORY.md`. The first call has no linked note bodies. If a
-response asks to read notes, the following Update request includes the model's
-read request and San's reply, with each requested file in its own text block.
-Look for a source-linked **Accepted result** on the final response to confirm a
-write, not just a proposed change.
+In **Raw SDK request**, Recall starts with the index preview. Update appends
+its instructions and preview after the main prefix. A truncated preview has a
+separate `…` hint block. Follow-up requests show the model's index read or
+search and San's reply. Update can also request note bodies, one block per
+file. Only a source-linked **Accepted result** confirms a write.
 
 **Update SDK prefix** compares the admitted request, excluding the task message
 and any read exchanges, against a completed main request on the same provider

@@ -17,7 +17,7 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 
 | Aside | Trigger | Tools in the request | System prompt and messages | Result |
 |---|---|---|---|---|
-| **Auto Memory · Recall** | A user message with enabled memory and candidates not already in active main context. | None. San reads the repository store locally. | A selection-only system prompt and three user messages: file index, already-covered IDs, and the current question. | The model returns up to five new note IDs. San attaches bounded previews to an eligible user message in the main request. |
+| **Auto Memory · Recall** | A user message with enabled Recall and new candidates or a truncated index. | None. San reads the repository store locally. | The first request contains the index preview, already-covered IDs, and the question. | Up to five selected note IDs. San attaches note previews to an eligible main request. |
 | **By the Way** | Explicit `/btw <question>`. | The active main conversation's tool schemas, including enabled MCP tools, for prefix reuse. The Aside cannot execute them. | Main system prompt and active history, then a separate user message with the side instruction and question. | A text answer shown as a Notice, not sent to the main model. |
 | **AutoPilot** | An enabled decision point, such as turn end, an eligible approval review, or a user-question steer. | None. A tool under review is input data, not an available tool. | A decision-specific prompt and one task message with bounded evidence, such as the mission, recent progress, or eligible choices. | A structured decision. The runtime may accept it only under existing permissions and continuation limits. |
 | **Auto Skill** | At least one skill action is allowed, and a clean turn ends after a `ReviewSkill` request. | None. | A review prompt, configured strategy, and a bounded excerpt of the settled turn and relevant skills. | San validates at most one change to an agent-owned skill. The change is recorded separately from the main model's history. |
@@ -31,10 +31,10 @@ Recall and Update use the same repository store but have different triggers and 
 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
-| **Recall** | **Fast** starts in parallel with the main request. **Wait** gives recall up to the configured timeout before the first request. | Send the `MEMORY.md` preview, already-covered IDs, and question. Read or search omitted entries on request. | Selected notes reach an eligible main request as Reminders. A late result from the previous question is labeled as such. A failed selector does not prevent the turn. |
-| **Update** | `/memory update`, or an eligible completed turn when automatic Update is on. | Reuse the exact main request and final assistant output. Append one user message with separate instructions and `MEMORY.md` preview blocks. Continue on requests to look up omitted entries or read specific indexed notes. | San validates and applies at most one proposed add, revision, or removal. A successful write produces a display-only Notice. |
+| **Recall** | **Fast** runs alongside the main request; **Wait** waits up to the configured timeout. | Index preview, already-covered notes, and the question. | Selected note previews reach the main model as Reminders. A failed lookup doesn't block the turn. |
+| **Update** | `/memory update` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | At most one validated add, edit, or removal. A successful write produces a notice. |
 
-Update continuations keep the same main prefix and append each request and reply to the Update-only suffix. See [Auto Memory](../concepts/auto-memory.md#index-preview) for preview, lookup, and note limits.
+Both Asides can read or search omitted index entries on demand. Update can also read note bodies without changing the main request prefix. See [Auto Memory](../concepts/auto-memory.md#index-preview) for limits.
 
 Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work. `/reflection` opens separate Auto Memory and Auto Skill tabs; `/memory` opens the store and instruction-file browser.
 
@@ -43,7 +43,7 @@ Natural-language input is never routed to Update based on its wording. The main 
 Asides follow the same [Context Management principles](context-management.md#principles) as the main conversation: keep the prefix predictable, send details only when needed, and check permissions at use time.
 
 - **Stable prefix, changing suffix.** By the Way, Recap, and Suggestion reuse the main model, tool schema order, system prompt, and unchanged history where possible. Auto Memory Update reuses the completed main request and its final assistant output. Recall and AutoPilot use their own stable system instructions instead. Append the question, candidates, mission, or evidence as task data rather than interpolating it into the system prompt.
-- **Fresh state over cache hits.** Capture the request from a read-only snapshot. A reload, changed tool list, or updated memory index takes effect at the next eligible request; never rewrite an in-flight or historical request. Recall sends the original index preview in file order, without note bodies.
+- **Fresh state over cache hits.** Use a read-only snapshot. Changes take effect on the next eligible request; never rewrite an in-flight or historical request.
 - **Apply only the accepted result.** Keep Aside working messages out of main history. Apply a relevant Reminder at the next supported model boundary, or display a Notice without feeding it back to the model. A schema is not permission, and an Aside decision does not replace live runtime checks.
 
 The host supplies the model client or provider and model ID, system prompt, and messages for each call. An Aside can borrow a main snapshot or use only its own task messages. There is no per-Aside settings editor for model or prompt overrides.
