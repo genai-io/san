@@ -162,7 +162,7 @@ func summarizeTrackerHistory(failed, stopped, interrupted int) string {
 	if interrupted > 0 {
 		parts = append(parts, fmt.Sprintf("%d interrupted", interrupted))
 	}
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, " · ")
 }
 
 // visibleTrackerItems keeps the newest items in each priority group, then draws

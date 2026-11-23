@@ -45,13 +45,13 @@ func TestUpdateNoticeAndTaskHistoryShareAvailableWidth(t *testing.T) {
 		width int
 		tail  string
 	}{
-		{100, "v1.25.1 installed · Restart to update   /tasks · 2 failed, 2 stopped"},
-		{65, "Restart to update   /tasks · 2 failed, 2 stopped"},
+		{100, "v1.25.1 installed · Restart to update   /tasks · 2 failed · 2 stopped"},
+		{66, "Restart to update   /tasks · 2 failed · 2 stopped"},
 		{46, "Restart to update   /tasks"},
 		{34, "Restart to update"},
 	} {
 		m := model{env: env{Width: tc.width}, updateInstalled: "1.25.1"}
-		row := ansi.Strip(m.renderFooterStatus(status, "2 failed, 2 stopped"))
+		row := ansi.Strip(m.renderFooterStatus(status, "2 failed · 2 stopped"))
 		rest, ok := strings.CutPrefix(row, status)
 		if !ok || strings.TrimSpace(rest) != tc.tail || ansi.StringWidth(row) != tc.width-1 {
 			t.Fatalf("width %d: status=%q, want %q after foreground activity", tc.width, row, tc.tail)

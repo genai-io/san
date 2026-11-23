@@ -17,7 +17,7 @@ func TestTaskHistorySharesInferenceRow(t *testing.T) {
 	m.conv.Stream.StartedAt = time.Now().Add(-17 * time.Second)
 	before, _ := m.frameBottom()
 	addPastTasks(m, task.StatusFailed, task.StatusFailed, task.StatusStopped, task.StatusKilled, task.StatusCompleted)
-	const hint = "/tasks · 2 failed, 2 stopped"
+	const hint = "/tasks · 2 failed · 2 stopped"
 	view := m.View()
 	plain := ansi.Strip(view.Content)
 	rows := strings.Split(plain, "\n")
@@ -58,13 +58,13 @@ func TestTaskHistoryAdaptsToWidth(t *testing.T) {
 		width int
 		hint  string
 	}{
-		{45, "/tasks · 2 failed, 2 stopped"},
-		{44, "/tasks"},
+		{46, "/tasks · 2 failed · 2 stopped"},
+		{45, "/tasks"},
 		{24, "/tasks"},
 		{21, ""},
 	} {
 		m := model{env: env{Width: tc.width}}
-		row := ansi.Strip(m.renderFooterStatus(status, "2 failed, 2 stopped"))
+		row := ansi.Strip(m.renderFooterStatus(status, "2 failed · 2 stopped"))
 		suffix, ok := strings.CutPrefix(row, status)
 		if !ok || strings.TrimSpace(suffix) != tc.hint || (suffix != "" && ansi.StringWidth(row) != tc.width-1) {
 			t.Fatalf("width %d: got %q, want status with %q", tc.width, row, tc.hint)
@@ -111,7 +111,7 @@ func TestFooterIntegratedHistoryQueueAndInferenceOrder(t *testing.T) {
 				}
 				wantHint := "/tasks"
 				if width == 100 {
-					wantHint += " · 1 failed, 1 stopped, 1 interrupted"
+					wantHint += " · 1 failed · 1 stopped · 1 interrupted"
 				}
 				if !strings.HasSuffix(lines[at], wantHint) || strings.Count(plain, "/tasks") != 1 {
 					t.Fatalf("history must appear once, on the inference row:\n%s", plain)

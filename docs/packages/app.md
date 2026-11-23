@@ -414,7 +414,7 @@ Inference output uses a stable message ID; each retry gets a new one.
 Completion notices and output records remain available. Resumed completed
 records whose workers are absent have no live notice to wait for. Announced
 failed, stopped, killed, and interrupted workers become a right-aligned hint
-on the composer status row, such as `/tasks · 2 failed, 2 stopped`. Killed
+on the composer status row, such as `/tasks · 2 failed · 2 stopped`. Killed
 workers count as stopped; interruptions have their own label. Narrow terminals
 keep just `/tasks` if it fits without displacing foreground activity. Docked
 prompts omit the hint, and successful completions need no summary. Until the

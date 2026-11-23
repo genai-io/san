@@ -80,7 +80,7 @@ func TestTrackerHistoryCountsOnlyAbnormalEndings(t *testing.T) {
 		info.Status = status
 		todo.CompleteWorker(store, info)
 	}
-	if rows, history := RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32}); rows != "" || history != "2 stopped, 1 interrupted" {
+	if rows, history := RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32}); rows != "" || history != "2 stopped · 1 interrupted" {
 		t.Fatalf("stops and interruptions should be distinct from failures: history=%q rows=%q", history, rows)
 	}
 	success := todo.NewStore()

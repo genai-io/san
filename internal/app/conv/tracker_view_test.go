@@ -250,7 +250,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			count:       11,
 			status:      todo.StatusCompleted,
 			overrides:   map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
-			wantHistory: "1 failed, 2 stopped, 1 interrupted",
+			wantHistory: "1 failed · 2 stopped · 1 interrupted",
 		},
 		{
 			name:        "many failed agents",
