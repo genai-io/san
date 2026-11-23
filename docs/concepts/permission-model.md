@@ -36,11 +36,15 @@ normal / accept-edits / autopilot, and `cycleModesWithBypass` adds YOLO
 mode. `ModeDontAsk` and `ModeReadOnly` are entered programmatically
 (headless runs, the subagent explore mode), not by cycling.
 
-Which of the two cycles applies is the `allowBypass` user setting, toggled
-from `/settings › permissions`. It is opt-out: unset means YOLO mode is in
-the cycle. Locking it removes that step, downgrades a `bypassPermissions`
-defaultMode to normal at startup, and drops a session already running in
-YOLO mode back to normal.
+The TUI starts in the last-used mode if one was saved, otherwise in
+`permissions.defaultMode` if set, otherwise in YOLO. To start in normal mode,
+switch to it with Shift+Tab (San remembers the choice), or set
+`permissions.defaultMode` to `normal` if no last-used mode has been saved.
+
+`allowBypass` is opt-out and can be toggled from `/settings › permissions`.
+Locking it removes YOLO from the mode cycle and falls back to normal whenever
+the startup mode would be YOLO. It also drops a session already running in
+YOLO back to normal.
 
 That gate covers the foreground cycle only. `allowBypass` is read in two
 places — `OperationMode.NextWithBypass` and `env.ApplyDefaultPermissionMode`
