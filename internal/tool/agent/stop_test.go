@@ -109,3 +109,22 @@ func TestAgentStopRejectsBashTask(t *testing.T) {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }
+
+// A host-owned pool (ACP, headless) must be the one AgentStop acts on.
+func TestAgentStopUsesSessionTaskPool(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pool := task.NewManager()
+	worker := pool.CreateAgentTask("task-stop-pool", "Explore Worker", "Long task", ctx, cancel)
+	go func() {
+		<-ctx.Done()
+		worker.Complete(ctx.Err())
+	}()
+	if _, found := task.Default().Get("task-stop-pool"); found {
+		t.Fatal("session task leaked into the default pool")
+	}
+	result := NewAgentStopTool().Execute(task.WithManager(context.Background(), pool), map[string]any{"task_id": "task-stop-pool"}, ".")
+	if !result.Success || worker.IsRunning() {
+		t.Fatalf("stop ignored the session pool: %+v", result)
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/reminder"
@@ -23,9 +24,11 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/fs"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
+	"go.uber.org/zap"
 )
 
 // acpWriteTimeout is a per-active-frame budget, not a prompt deadline. A local
@@ -109,6 +112,7 @@ type acpSession struct {
 	lastSentCommands   []command.Info // Last command list sent to the client; unchanged lists are not resent.
 	agents             *subagent.Registry
 	models             []llm.ModelInfo
+	tracker            *todo.Store
 }
 
 func (h *acpHost) create(ctx context.Context, req protocol.NewSessionRequest) (acp.CreateSessionResult, error) {
@@ -219,6 +223,12 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	s.nativeSession = agent.MainSession{Session: opened, Store: store}
 	tasks := task.NewManager()
+	s.tracker = todo.NewStoreWithTasks(tasks)
+	if home, err := os.UserHomeDir(); err == nil {
+		if err := s.tracker.SetStorageDir(sessionTaskDir(home, opened.ID())); err != nil {
+			log.Logger().Warn("task tracker storage unavailable", zap.Error(err))
+		}
+	}
 	s.reminders.Register(reminder.ProviderSkillsDirectory, skills.PromptSection)
 	if err := s.nativeSession.Validate(); err != nil {
 		_ = servers.Close()
@@ -245,7 +255,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		MCPTools:  mcp.AsCoreTools(servers.ToolSchemas(), servers),
 		FileViews: fs.NewFileViews(), ShellDirHelp: acpShellDirHelp,
 		ToolResponse: func(callID string, response any) { s.toolResponses.Store(callID, response) },
-		Tasks:        tasks, NativeTools: tasks.Tools(),
+		Tasks:        tasks, NativeTools: tasks.Tools(), Tracker: s.tracker,
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
@@ -269,7 +279,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 			if !h.forms {
 				s.runtimeBuildParams.DisabledTools[schema.Name] = true
 			}
-		case "Read", "Write", "Edit", "Bash", "PowerShell", "Glob", "Grep", "Skill", "Agent":
+		case "Read", "Write", "Edit", "Bash", "PowerShell", "Glob", "Grep", "Skill", "Agent", "TaskCreate", "TaskGet", "TaskUpdate":
 		default:
 			s.runtimeBuildParams.DisabledTools[schema.Name] = true
 		}

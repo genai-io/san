@@ -32,6 +32,7 @@ func (r acpWorkerResolver) Resolve(ctx context.Context, name string, input map[s
 func (s *acpSession) configureAgents() error {
 	e := subagent.NewExecutor(s.runtimeBuildParams.Provider, s.runtimeBuildParams.CWD, s.runtimeBuildParams.ModelID, s.hooks)
 	e.SetMessaging(false)
+	e.SetTracker(s.tracker)
 	e.ConfigureOwner(s.runtimeBuildParams.Tasks, s.agents, func(child *session.Session, background bool, source tool.AgentInteractionSource) tool.Resolver {
 		cwd := source.WorkingDirectory
 		policy := s.permissions.ForDirectory(cwd)

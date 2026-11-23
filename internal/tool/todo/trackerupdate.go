@@ -18,6 +18,10 @@ func (t *TrackerUpdateTool) Description() string { return "Update task status or
 func (t *TrackerUpdateTool) Icon() string        { return "📋" }
 
 func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+	store := todo.FromContext(ctx)
+	if store == nil {
+		return toolresult.NewErrorResult(t.Name(), errNoTracker)
+	}
 	taskID := tool.GetString(params, "taskId")
 	if taskID == "" {
 		return toolresult.NewErrorResult(t.Name(), "taskId is required")
@@ -25,7 +29,7 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 
 	// Handle deletion separately
 	if status := tool.GetString(params, "status"); status == todo.StatusDeleted {
-		if err := todo.Default().Delete(taskID); err != nil {
+		if err := store.Delete(taskID); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
 		return toolresult.ToolResult{
@@ -48,7 +52,7 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 		return toolresult.NewErrorResult(t.Name(), "no updates specified")
 	}
 
-	if err := todo.Default().Update(taskID, opts...); err != nil {
+	if err := store.Update(taskID, opts...); err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 

@@ -494,7 +494,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	}
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
-		dir := filepath.Join(confdir.Dir(homeDir), "tasks", taskListID)
+		dir := sessionTaskDir(homeDir, taskListID)
 		m.setTrackerStorageDir(dir)
 		m.setTaskOutputDir(dir)
 		return
@@ -502,9 +502,14 @@ func (m *model) initTaskStorage(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	dir := filepath.Join(confdir.Dir(homeDir), "tasks", sessionID)
+	dir := sessionTaskDir(homeDir, sessionID)
 	m.setTrackerStorageDir(dir)
 	m.setTaskOutputDir(dir)
+}
+
+// sessionTaskDir holds a session's tracker items and task outputs.
+func sessionTaskDir(homeDir, id string) string {
+	return filepath.Join(confdir.Dir(homeDir), "tasks", id)
 }
 
 func (m *model) setTrackerStorageDir(dir string) {

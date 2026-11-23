@@ -83,7 +83,11 @@ func ResetDefaultTracker()         // test-only
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the
-  session layer adapts them into transcript-owned persistence views.
+  session layer adapts them into transcript-owned persistence views. Hosts own
+  one `todo.Store` per session (`NewStoreWithTasks` checks worker items against
+  that session's pool) and bind it through `BuildParams.Tracker` and
+  `Executor.SetTracker`; tools read it with `todo.FromContext`. There is no
+  package-level tracker. Agent tools resolve tasks with `task.FromContext`.
 
 ## Lifecycle
 

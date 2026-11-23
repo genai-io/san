@@ -27,13 +27,10 @@ import (
 // announces that from inside RegisterTask — before the caller has a goroutine
 // that could complete it — so the ordering holds by construction.
 func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
-	todo.Initialize()
-	t.Cleanup(func() {
-		todo.Default().Reset()
-		task.SetLifecycleHandler(nil)
-	})
+	t.Cleanup(func() { task.SetLifecycleHandler(nil) })
 
-	m := &model{services: services{Tracker: todo.Default()}}
+	tracker := todo.NewStore()
+	m := &model{services: services{Tracker: tracker}}
 	m.wireTaskLifecycle(nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,7 +39,7 @@ func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
 	worker := task.Default().CreateAgentTask("bg-1", "Explore", "Audit deps", ctx, cancel)
 	worker.Complete(nil)
 
-	items := todo.Default().List()
+	items := tracker.List()
 	if len(items) != 1 {
 		t.Fatalf("expected 1 tracker item, got %d", len(items))
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -46,6 +47,7 @@ func newHeadlessExecutor(provider llm.Provider, cwd, model string, settings *set
 		policy := agent.PermissionPolicy{Settings: setting.ScopedPermissions{Data: settings, CWD: cwd}, Session: permissions}
 		return headlessPermissionResolver{policy: policy}
 	}, nil)
+	executor.SetTracker(todo.NewStoreWithTasks(tasks))
 	executor.SetDisabledTools(setting.WithDefaultDisabledTools(settings.DisabledTools))
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		projection := owner.Snapshot()

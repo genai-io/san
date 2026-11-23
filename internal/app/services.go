@@ -74,7 +74,7 @@ func newServices() services {
 		Command:      command.Default(),
 		Task:         tasks,
 		Flow:         flow.NewService(tasks),
-		Tracker:      todo.Default(),
+		Tracker:      todo.NewStoreWithTasks(tasks),
 		Cron:         cron.Default(),
 		MCP:          mcp.DefaultManager(),
 		Plugin:       plugin.Default(),

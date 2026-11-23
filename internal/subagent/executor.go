@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -60,6 +61,7 @@ type Executor struct {
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 	tasks                      *task.Manager
+	tracker                    *todo.Store // nil leaves the task-tracker tools unavailable
 	messaging                  bool
 	permissionResolver         func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
 	toolContext                func(context.Context, string) context.Context
@@ -90,6 +92,11 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
 	}
+}
+
+// SetTracker shares the owner's task tracker with workers before launching runs.
+func (e *Executor) SetTracker(tracker *todo.Store) {
+	e.tracker = tracker
 }
 
 // ConfigureOwner binds a host's worker resources before launching any runs.
@@ -383,7 +390,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		if req.MaxSteps > 0 {
 			cfg.maxSteps = req.MaxSteps
 		}
-		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, parent: e.parent, originalPrompt: state.originalPrompt, reminders: state.reminders, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
+		run = &preparedRun{hookFactory: e.childHooks, hooks: e.hooks, store: e.store, tracker: e.tracker, parent: e.parent, originalPrompt: state.originalPrompt, reminders: state.reminders, priorFailure: string(prior.Status) + " " + prior.Error, req: next, cfg: &cfg, cwd: state.cwd, checkpoint: state, startedAt: time.Now(), hookID: "a" + generateShortID()}
 		run.req.TaskID = agentTask.GetID()
 		if err := e.admitContinuation(ctx, cancel, agentTask, prior.Attempt, run); err != nil {
 			return nil, err
@@ -652,6 +659,9 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}),
 		tool.WithToolContext(func(ctx context.Context) context.Context {
 			ctx = task.WithManager(task.WithSessionID(ctx, run.parentID()), e.taskPool())
+			if e.tracker != nil {
+				ctx = todo.WithStore(ctx, e.tracker)
+			}
 			if e.toolContext != nil {
 				ctx = e.toolContext(ctx, rc.config.SourceFile)
 			}

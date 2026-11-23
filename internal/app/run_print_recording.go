@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
 )
 
 // runRecordedPrint owns persistence until the one-shot runtime, tasks and hooks
@@ -35,6 +36,9 @@ func runRecordedPrint(ctx context.Context, params agent.BuildParams, message cor
 	params.ResultFilter = agent.ResultPager{Store: store, SessionID: owner.ID()}.Filter
 	if params.Tasks == nil {
 		params.Tasks = task.Default()
+	}
+	if params.Tracker == nil {
+		params.Tracker = todo.NewStoreWithTasks(params.Tasks)
 	}
 	engine, _ := params.HookEngine.(*hook.Engine)
 	if engine != nil {

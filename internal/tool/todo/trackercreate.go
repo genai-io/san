@@ -11,6 +11,8 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
+const errNoTracker = "the task tracker is not available in this session"
+
 // TrackerCreateTool creates a new tracked task
 type TrackerCreateTool struct{}
 
@@ -19,6 +21,10 @@ func (t *TrackerCreateTool) Description() string { return "Create a task to trac
 func (t *TrackerCreateTool) Icon() string        { return "📋" }
 
 func (t *TrackerCreateTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+	store := todo.FromContext(ctx)
+	if store == nil {
+		return toolresult.NewErrorResult(t.Name(), errNoTracker)
+	}
 	subject := tool.GetString(params, "subject")
 	if subject == "" {
 		return toolresult.NewErrorResult(t.Name(), "subject is required")
@@ -32,12 +38,12 @@ func (t *TrackerCreateTool) Execute(ctx context.Context, params map[string]any, 
 	activeForm := tool.GetString(params, "activeForm")
 	metadata, _ := params["metadata"].(map[string]any)
 
-	task := todo.Default().Create(subject, description, activeForm, metadata)
+	task := store.Create(subject, description, activeForm, metadata)
 
 	// Set dependencies if provided
 	note := ""
 	if ids := parseStringSlice(params["addBlockedBy"]); len(ids) > 0 {
-		if err := todo.Default().Update(task.ID, todo.WithAddBlockedBy(ids)); err != nil {
+		if err := store.Update(task.ID, todo.WithAddBlockedBy(ids)); err != nil {
 			note = fmt.Sprintf(" (blockers not set: %v)", err)
 		}
 	}

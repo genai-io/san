@@ -64,7 +64,8 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	running := task.Default().CreateAgentTask("live-worker", "Explore", "Audit deps", ctx, cancel)
+	pool := task.NewManager()
+	running := pool.CreateAgentTask("live-worker", "Explore", "Audit deps", ctx, cancel)
 	t.Cleanup(func() { running.Complete(nil) })
 
 	writer := NewStore()
@@ -76,7 +77,7 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 
-	adopter := NewStore()
+	adopter := NewStoreWithTasks(pool)
 	if err := adopter.SetStorageDir(dir); err != nil {
 		t.Fatalf("SetStorageDir (adopt): %v", err)
 	}

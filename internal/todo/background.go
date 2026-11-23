@@ -50,15 +50,6 @@ func BackgroundError(item *Item) string {
 	return metadataString(item, metaError)
 }
 
-// WorkerRunning reports whether the background task behind this item is
-// executing right now. False for items that name no background task, and for
-// those the manager has no record of — a task it never knew or has forgotten
-// cannot be running.
-func WorkerRunning(item *Item) bool {
-	id := BackgroundTaskID(item)
-	return id != "" && task.Default().IsRunning(id)
-}
-
 // EndedAbnormally reports whether a worker item reached its terminal state by
 // any route other than finishing its work. The stored detail is written as
 // string(task.TaskStatus) by CompleteWorker, so it is matched against those

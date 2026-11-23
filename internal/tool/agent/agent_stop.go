@@ -33,7 +33,7 @@ func (t *AgentStopTool) PreparePermission(ctx context.Context, params map[string
 	if err != nil {
 		return nil, err
 	}
-	if worker, exists := task.Default().Get(taskID); exists {
+	if worker, exists := task.FromContext(ctx).Get(taskID); exists {
 		info := worker.GetStatus()
 		if owner := task.SessionIDFromContext(ctx); owner != "" && info.ParentSessionID != "" && owner != info.ParentSessionID {
 			return nil, fmt.Errorf("agent task belongs to a different parent session")
@@ -62,7 +62,7 @@ func (t *AgentStopTool) execute(ctx context.Context, params map[string]any) tool
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
-	bgTask, found := task.Default().Get(taskID)
+	bgTask, found := task.FromContext(ctx).Get(taskID)
 	if !found {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent task not found: %s", taskID))
 	}
@@ -78,7 +78,7 @@ func (t *AgentStopTool) execute(ctx context.Context, params map[string]any) tool
 	if !pinned {
 		attempt = bgTask.GetStatus().Attempt
 	}
-	err = task.Default().KillAttempt(taskID, attempt)
+	err = task.FromContext(ctx).KillAttempt(taskID, attempt)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to stop agent task: %v", err))
 	}
