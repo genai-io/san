@@ -106,7 +106,8 @@ func TestBackgroundWorkerProgressIsLiveAndDisplayOnly(t *testing.T) {
 	todo.TrackWorker(m.services.Tracker, worker.GetStatus())
 	worker.AppendProgress("Read(LIVE_ACTIVITY_MARKER.go)")
 	worker.AppendProgress("Usage: input=10 output=2")
-	view := ansi.Strip(m.renderTrackerList())
+	rows, _ := m.renderTrackerList()
+	view := ansi.Strip(rows)
 	if !strings.Contains(view, "LIVE_ACTIVITY_MARKER") || strings.Contains(view, "stalled") {
 		t.Fatalf("background progress hidden or falsely stalled: %s", view)
 	}

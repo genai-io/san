@@ -413,14 +413,13 @@ tools, which remain below them.
 Inference output uses a stable message ID; each retry gets a new one.
 Completion notices and output records remain available. Resumed completed
 records whose workers are absent have no live notice to wait for. Announced
-failed, stopped, killed, and interrupted workers share one muted, non-actionable
-`History · N · /tasks` entry below current task identities. Stops are not labelled
-as failures, and detailed status categories belong in the expandable task viewer,
-not a combined status-word list beside the input. History shares the overflow
-summary row rather than consuming any of the eight identity slots. History alone
-needs no extra `Tasks` heading. Success-only history leaves no summary. Until
-announcement, terminal rows retain their status and final reason. Folding never
-changes task records or notices.
+failed, stopped, killed, and interrupted workers become a right-aligned hint
+on the composer status row, such as `/tasks · 2 failed, 2 stopped`. Killed
+workers count as stopped; interruptions have their own label. Narrow terminals
+keep just `/tasks` if it fits without displacing foreground activity. Docked
+prompts omit the hint, and successful completions need no summary. Until the
+notice appears, terminal rows retain their status and final reason. All results
+remain in the task viewer's History (`h`).
 Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
 when the main agent becomes idle. In-progress items take priority, followed by
 failed or interrupted items, pending items, and completed plan items. Within

@@ -301,7 +301,8 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			t.Fatalf("missing graph: %s", graph)
 		}
 		m.workerMu.Lock()
-		view := ansi.Strip(m.renderTrackerList())
+		rows, _ := m.renderTrackerList()
+		view := ansi.Strip(rows)
 		m.workerMu.Unlock()
 		if !strings.Contains(view, "Native children") {
 			t.Fatalf("scheduler graph missing from task area: %s", view)

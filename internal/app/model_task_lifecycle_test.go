@@ -68,7 +68,7 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 
 			assertRetained := func() {
 				t.Helper()
-				if view := m.renderTrackerList(); !strings.Contains(view, "Backend: research") || !strings.Contains(view, "[completed]") {
+				if view, _ := m.renderTrackerList(); !strings.Contains(view, "Backend: research") || !strings.Contains(view, "[completed]") {
 					t.Fatalf("worker disappeared before its notice was visible:\n%s", view)
 				}
 			}
@@ -91,7 +91,7 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 				m.OnStepEnd()
 			}
 			assertNoticeShown(t, m)
-			if view := m.renderTrackerList(); view != "" {
+			if view, _ := m.renderTrackerList(); view != "" {
 				t.Fatalf("worker remained after its completion notice was shown:\n%s", view)
 			}
 			if items := m.services.Tracker.List(); len(items) != 1 || items[0].Status != todo.StatusCompleted {
@@ -118,7 +118,7 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	if items := m.services.Tracker.List(); len(items) != 1 {
 		t.Fatal("turn end discarded a worker before its completion notice arrived")
 	}
-	if view := m.renderTrackerList(); !strings.Contains(view, "Backend: research") {
+	if view, _ := m.renderTrackerList(); !strings.Contains(view, "Backend: research") {
 		t.Fatalf("turn end hid the worker before its completion notice arrived:\n%s", view)
 	}
 	msg, ok := taskCompletionMessage(worker.GetStatus())
@@ -139,7 +139,7 @@ func TestResumedCompletedWorkerDoesNotWaitForLiveNotice(t *testing.T) {
 	if err := m.services.Tracker.Update(worker.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)
 	}
-	if view := m.renderTrackerList(); view != "" {
+	if view, _ := m.renderTrackerList(); view != "" {
 		t.Fatalf("resumed completion waited for a notice that cannot arrive:\n%s", view)
 	}
 }

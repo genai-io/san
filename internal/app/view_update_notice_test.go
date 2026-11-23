@@ -12,9 +12,9 @@ func TestUpdateNoticeSharesInferenceRow(t *testing.T) {
 		m := modelWithInferenceProgress(24)
 		m.env.Width = width
 		separator := strings.Repeat("─", width-1)
-		before, beforeInput := m.renderFooter(separator)
+		before, beforeInput := m.renderFooter(separator, "")
 		m.updateInstalled = "1.25.1"
-		footer, inputRow := m.renderFooter(separator)
+		footer, inputRow := m.renderFooter(separator, "")
 		lines := strings.Split(ansi.Strip(footer), "\n")
 		status := lines[inputRow-2]
 		if !strings.Contains(status, "On it") || lines[inputRow-1] != separator {
@@ -32,9 +32,29 @@ func TestUpdateNoticeSharesInferenceRow(t *testing.T) {
 		if strings.Contains(strings.Join(lines[inputRow:], "\n"), "Restart to update") {
 			t.Fatal("update notice remains below composer")
 		}
-		frame, cursor := m.renderNormalView(separator, "")
+		frame, cursor := m.renderNormalView(separator, "", "")
 		if strings.Count(frame, "\n")+1 != 24 || cursor == nil || cursor.Position.Y != 21 {
 			t.Fatalf("composer displaced: cursor=%+v\n%s", cursor, frame)
+		}
+	}
+}
+
+func TestUpdateNoticeAndTaskHistoryShareAvailableWidth(t *testing.T) {
+	const status = "✦ On it · 17s"
+	for _, tc := range []struct {
+		width int
+		tail  string
+	}{
+		{100, "v1.25.1 installed · Restart to update   /tasks · 2 failed, 2 stopped"},
+		{65, "Restart to update   /tasks · 2 failed, 2 stopped"},
+		{46, "Restart to update   /tasks"},
+		{34, "Restart to update"},
+	} {
+		m := model{env: env{Width: tc.width}, updateInstalled: "1.25.1"}
+		row := ansi.Strip(m.renderFooterStatus(status, "2 failed, 2 stopped"))
+		rest, ok := strings.CutPrefix(row, status)
+		if !ok || strings.TrimSpace(rest) != tc.tail || ansi.StringWidth(row) != tc.width-1 {
+			t.Fatalf("width %d: status=%q, want %q after foreground activity", tc.width, row, tc.tail)
 		}
 	}
 }
@@ -42,23 +62,23 @@ func TestUpdateNoticeSharesInferenceRow(t *testing.T) {
 func TestUpdateNoticePriority(t *testing.T) {
 	var m model
 	m.env.Width = 80
-	if got := m.withUpdateNotice("On it"); got != "On it" {
+	if got := m.renderFooterStatus("On it", ""); got != "On it" {
 		t.Fatalf("status changed without an update: %q", got)
 	}
 	m.updateInstalled = "1.25.1"
-	if got := ansi.Strip(m.withUpdateNotice("")); !strings.HasSuffix(got, "v1.25.1 installed · Restart to update") || ansi.StringWidth(got) != 79 {
+	if got := ansi.Strip(m.renderFooterStatus("", "")); !strings.HasSuffix(got, "v1.25.1 installed · Restart to update") || ansi.StringWidth(got) != 79 {
 		t.Fatalf("idle notice not right-aligned: %q", got)
 	}
 	m.env.Width = 26
-	if got := ansi.Strip(m.withUpdateNotice("On it")); !strings.Contains(got, "Restart to update") || strings.Contains(got, "installed") {
+	if got := ansi.Strip(m.renderFooterStatus("On it", "")); !strings.Contains(got, "Restart to update") || strings.Contains(got, "installed") {
 		t.Fatalf("notice did not compact: %q", got)
 	}
 	m.env.Width = 24
-	if got := m.withUpdateNotice("On it"); got != "On it" {
+	if got := m.renderFooterStatus("On it", ""); got != "On it" {
 		t.Fatalf("update displaced task status: %q", got)
 	}
 	m.env.Width = 10
-	if m.withUpdateNotice("") != "" {
+	if m.renderFooterStatus("", "") != "" {
 		t.Fatal("notice overflows narrow terminal")
 	}
 }

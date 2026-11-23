@@ -56,7 +56,8 @@ func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
 	m := fixedComposerModel(80, 40)
 	m.services.Task, m.services.Tracker = mgr, tracker
 	m.conv.ShowTasks = true
-	view := ansi.Strip(m.renderTrackerList())
+	rows, _ := m.renderTrackerList()
+	view := ansi.Strip(rows)
 	if !strings.Contains(view, "Audit") || !strings.Contains(view, "Read(main.go) failed: file missing") || strings.Contains(view, "diagnostics") {
 		t.Fatalf("worker-local progress missing or unbounded: %q", view)
 	}
@@ -197,7 +198,7 @@ func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	todo.TrackWorker(tracker, wf.GetStatus())
 	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: conv.NewModel(100)}
 	m.conv.ShowTasks = true
-	view := m.renderTrackerList()
+	view, _ := m.renderTrackerList()
 	if strings.Contains(view, "Background") || !strings.Contains(view, "Flow demo · 0/1 finished") {
 		t.Fatalf("duplicate tracker row:\n%s", view)
 	}
@@ -652,7 +653,7 @@ func TestShortConversationGrowsFromTopWhileActivityStaysDocked(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	for _, content := range []string{"FIRST-ROW", "FIRST-ROW\n\nsecond paragraph"} {
 		m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: content}}
-		frame, cursor := m.renderNormalView("separator", "TRACKER-LIVE")
+		frame, cursor := m.renderNormalView("separator", "TRACKER-LIVE", "")
 		plain := ansi.Strip(frame)
 		first := strings.Index(plain, "FIRST-ROW")
 		if first < 0 || strings.Count(plain[:first], "\n") != 1 {

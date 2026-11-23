@@ -38,7 +38,7 @@ func TestMemoryUpdateStatusFitsNarrowFooter(t *testing.T) {
 	const width = 16
 	m := fixedComposerModel(width, 12)
 	m.memoryUpdate = &memoryUpdate{manual: true}
-	footer, inputRow := m.renderFooter(strings.Repeat("─", width-1))
+	footer, inputRow := m.renderFooter(strings.Repeat("─", width-1), "")
 	row := strings.Split(ansi.Strip(footer), "\n")[inputRow-2]
 	if !strings.HasPrefix(row, "⟡ Updating") || ansi.StringWidth(row) >= width {
 		t.Fatalf("memory update status missing or too wide: %q", row)

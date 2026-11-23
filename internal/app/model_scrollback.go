@@ -512,14 +512,16 @@ func (m *model) insertChunkAboveOneRow(id uint64) tea.Cmd {
 // composer, or the docked modal in its place — with the render params that
 // layout implies.
 func (m *model) frameBottom() (string, conv.RenderContext) {
-	footer, _ := m.renderFooter("")
-	bottom := footer
+	trackerView, history := m.renderTrackerList()
+	var bottom string
 	params := m.messageRenderParams()
 	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
 		bottom = "\n\n" + ov.Render()
 		params.DockedModalActive = true
+	} else {
+		bottom, _ = m.renderFooter("", history)
 	}
-	return m.renderChatIndicators(m.renderTrackerList(), bottom) + bottom, params
+	return m.renderChatIndicators(trackerView, bottom) + bottom, params
 }
 
 // Split at cell boundaries without turning soft wraps into stored newlines.
