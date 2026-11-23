@@ -33,9 +33,9 @@ Once compaction removes a note from active context, it can be selected again. In
 
 In the TUI, `/memory update` runs a one-off review of the latest eligible completed main turn, even when automatic Update is off. Auto Memory must be enabled.
 
-The review reuses the completed request's exact SDK `System`, ordered `Tools`, and native `Messages`, then its final native assistant message. San appends one user message containing the review instructions, the repository's `MEMORY.md`, and bounded note bodies linked from that index. The copied tool definitions and historical calls are context only: the Aside cannot execute tools.
+The review reuses the completed request's exact SDK `System`, ordered `Tools`, and native `Messages`, followed by its final native assistant message. The first Update message adds short instructions and a compact index of filenames, titles, and descriptions. It contains no note bodies or freeform `MEMORY.md` prose. If needed, the model can ask for up to two indexed notes per round. San sends only those notes, with at most two read rounds and a shared size budget. Native tools are disabled throughout.
 
-The model proposes at most one action: add a note and index link, revise an indexed note without moving it or changing its type, forget a note and its link, or make no change. San validates the target and file revision before writing to the repository store. Forget requires clear user intent to remove a specific note.
+The model proposes at most one action: add a note and index link, revise an indexed note without moving it or changing its type, forget a note and its link, or make no change. Edit and forget require a prior read of the target in this Update; an incomplete index disables additions. San checks the index and supplied note revisions before writing. Forget requires clear user intent to remove a specific note.
 
 To review automatically after an eligible completed turn, enable **Update** under `/reflection` → **Auto Memory**. It is off by default (`memoryUpdate: false`). Both manual and automatic runs appear as **Aside — Auto Memory → Update** in Inspector.
 

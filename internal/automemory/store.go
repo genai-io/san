@@ -3,6 +3,7 @@ package automemory
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -122,15 +123,19 @@ type noteRevision struct {
 }
 
 type storeSnapshot struct {
-	dir   fs.FileInfo
-	index revision
-	notes []noteRevision
+	dir      fs.FileInfo
+	index    revision
+	notes    []noteRevision
+	noteJSON int // Cumulative size of the note arrays sent to the model.
 }
 
-var (
-	indexLink = regexp.MustCompile(`\]\(((?:\./)?[A-Za-z0-9_-]+\.md)\)`)
-	noteName  = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}\.md$`)
+const (
+	maxNotesPerRead = 2
+	maxNotesRead    = maxReadRounds * maxNotesPerRead
+	maxNoteJSON     = 16 * 1024
 )
+
+var noteName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}\.md$`)
 
 func validName(name string) bool {
 	if !noteName.MatchString(name) || strings.EqualFold(name, system.AutoMemoryIndexName) || strings.EqualFold(name, system.InstructionFile) {
@@ -146,6 +151,9 @@ func validName(name string) bool {
 }
 
 func snapshotStore(ctx context.Context, path string) (s storeSnapshot, err error) {
+	if err := ctx.Err(); err != nil {
+		return s, err
+	}
 	root, dir, err := openStore(path)
 	s.dir = dir
 	if err != nil || root == nil {
@@ -156,40 +164,96 @@ func snapshotStore(ctx context.Context, path string) (s storeSnapshot, err error
 	if err != nil {
 		return s, err
 	}
-	// Start from the real index; only load bounded, linked note bodies.
-	seen := map[string]bool{}
-	const limit = 16
-	remaining := 48 * 1024
-	literal := literalIndexLines(s.index.text)
-	offset := 0
-	for line := range strings.SplitAfterSeq(s.index.text, "\n") {
-		isLiteral := literal[offset]
-		offset += len(line)
-		if isLiteral {
-			continue
-		}
-		link := indexLink.FindStringSubmatch(line)
-		if link == nil {
-			continue
-		}
-		name := strings.TrimPrefix(link[1], "./")
-		if !validName(name) || seen[name] {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return s, err
-		}
-		seen[name] = true
-		rev, err := readRevision(root, name, maxNote)
-		if err == nil && rev.info != nil && len(rev.text) <= remaining {
-			s.notes = append(s.notes, noteRevision{name, rev})
-			remaining -= len(rev.text)
-		}
-		if len(s.notes) == limit || len(seen) == 32 {
-			break
+	return s, ctx.Err()
+}
+
+func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []string) ([]noteEvidence, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(files) == 0 || len(files) > maxNotesPerRead || len(s.notes)+len(files) > maxNotesRead {
+		return nil, fmt.Errorf("memory read exceeds note count limits: %w", errInvalidProposal)
+	}
+	entries, _ := s.catalog()
+	visible := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		visible[entry.File] = true
+	}
+	if len(files) == 2 && files[0] == files[1] {
+		return nil, fmt.Errorf("memory read repeated a catalog ID: %w", errInvalidProposal)
+	}
+	for _, file := range files {
+		if !visible[file] || s.note(file).info != nil {
+			return nil, fmt.Errorf("memory read must request unread catalog IDs: %w", errInvalidProposal)
 		}
 	}
-	return s, nil
+	current, err := canonicalPath(path)
+	if err != nil || current != path {
+		return nil, errStale
+	}
+	root, dir, err := openStore(path)
+	if err != nil {
+		return nil, err
+	}
+	if root == nil {
+		return nil, errStale
+	}
+	defer func() { _ = root.Close() }()
+	if s.dir == nil || !os.SameFile(s.dir, dir) {
+		return nil, errStale
+	}
+	checkIndex := func() error {
+		index, err := readRevision(root, system.AutoMemoryIndexName, maxIndex)
+		if err != nil || !s.index.same(index) {
+			return errStale
+		}
+		return nil
+	}
+	if err := checkIndex(); err != nil {
+		return nil, err
+	}
+	var revisions []noteRevision
+	var evidence []noteEvidence
+	jsonSize := s.noteJSON + 2 // Brackets around this batch's note array.
+	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		rev, err := readRevision(root, file, maxNote)
+		if err != nil {
+			return nil, err
+		}
+		if rev.info == nil {
+			return nil, errStale
+		}
+		note := noteEvidence{File: file, Text: rev.text}
+		encoded, err := json.Marshal(note)
+		if err != nil {
+			return nil, err
+		}
+		jsonSize += len(encoded)
+		if len(evidence) > 0 {
+			jsonSize++ // Array separator.
+		}
+		if jsonSize > maxNoteJSON {
+			return nil, errors.New("memory note evidence exceeds JSON size limit")
+		}
+		revisions = append(revisions, noteRevision{file, rev})
+		evidence = append(evidence, note)
+	}
+	if err := checkIndex(); err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || !os.SameFile(s.dir, info) {
+		return nil, errStale
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.notes = append(s.notes, revisions...)
+	s.noteJSON = jsonSize
+	return evidence, nil
 }
 
 func (s storeSnapshot) note(name string) revision {

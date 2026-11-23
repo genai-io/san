@@ -20,6 +20,7 @@ type memoryAction string
 
 const (
 	actionNone     memoryAction = "none"
+	actionRead     memoryAction = "read"
 	actionRemember memoryAction = "remember"
 	actionUpdate   memoryAction = "update"
 	actionForget   memoryAction = "forget"
@@ -34,7 +35,7 @@ var noteTypes = map[string]string{
 	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
 }
 
-// Updater proposes a memory change with a tool-free model call.
+// Updater proposes a memory change through bounded, tool-free model calls.
 type Updater struct {
 	Provider  llm.Provider
 	Model     string
@@ -43,6 +44,7 @@ type Updater struct {
 
 type proposal struct {
 	Action      memoryAction `json:"action"`
+	Files       []string     `json:"files"`
 	File        string       `json:"file"`
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
@@ -98,6 +100,15 @@ func validateProposal(p proposal) error {
 	invalid := errInvalidProposal
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
+	if p.Action == actionRead {
+		if p.File != "" || metadata || patch || len(p.Files) < 1 || len(p.Files) > maxNotesPerRead {
+			return invalid
+		}
+		return nil
+	}
+	if p.Files != nil {
+		return invalid
+	}
 	if p.Action == actionNone && p.File == "" && !metadata && !patch {
 		return nil
 	}

@@ -114,7 +114,7 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
-			writeJSON(w, compareMaintainPrefix(projection.Events(), id, seq, request, func(source uint64) (*ai.Request, error) {
+			writeJSON(w, compareUpdatePrefix(projection.Events(), id, seq, request, func(source uint64) (*ai.Request, error) {
 				return s.store.InferenceRequest(ctx, id, source)
 			}))
 			return

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -18,13 +19,16 @@ import (
 
 const memoryUpdateProposal = `{"action":"remember","file":"fixture-build.md","name":"Build convention","description":"Project build command","type":"project","body":"Use make for project builds."}`
 
-func memoryUpdateFixture(t *testing.T) (*model, *aitest.Driver, []core.Message, string) {
+func memoryUpdateFixture(t *testing.T, turns ...aitest.Turn) (*model, *aitest.Driver, []core.Message, string) {
 	t.Helper()
 	t.Setenv("SAN_DISABLE_AUTO_MEMORY", "")
 	messages := []core.Message{core.UserMessage("This project uses make for builds.", nil), core.AssistantMessage("Understood: make builds the project.", "", nil)}
 	messages[0].ID, messages[1].ID = core.NewMessageID(), core.NewMessageID()
 	m, _ := resumedModel(t, messages[:1])
-	driver := aitest.New(aitest.Says(memoryUpdateProposal))
+	if len(turns) == 0 {
+		turns = []aitest.Turn{aitest.Says(memoryUpdateProposal)}
+	}
+	driver := aitest.New(turns...)
 	m.env.LLMProvider = &finalizationProvider{client: driver.Client()}
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "test"}
 	owner := m.services.Session
@@ -43,36 +47,76 @@ func memoryUpdateFixture(t *testing.T) (*model, *aitest.Driver, []core.Message, 
 	return m, driver, messages, filepath.Join(string(m.autoMemoryStore()), "fixture-build.md")
 }
 
-func TestManualMemoryUpdateWritesThroughAside(t *testing.T) {
-	m, driver, _, path := memoryUpdateFixture(t)
-	if text, cmd, _ := m.executeCommand(t.Context(), "/memory maintain"); cmd != nil || m.memoryUpdate != nil || !strings.Contains(text, "update") {
-		t.Fatalf("removed command must not start an update: %q", text)
+func TestMemoryUpdateWritesThroughAside(t *testing.T) {
+	t.Run("manual", func(t *testing.T) { testMemoryUpdateWrite(t, false) })
+	t.Run("automatic", func(t *testing.T) { testMemoryUpdateWrite(t, true) })
+}
+
+func testMemoryUpdateWrite(t *testing.T, automatic bool) {
+	t.Helper()
+	const read = `{"action":"read","files":["fixture-build.md"]}`
+	const update = `{"action":"update","file":"fixture-build.md","old":"Build with go build.","replacement":"Use make for project builds."}`
+	m, driver, messages, path := memoryUpdateFixture(t, aitest.Says(read), aitest.Says(update))
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
 	}
-	text, propose, handled := m.executeCommand(t.Context(), "/memory update")
-	if !handled || text != "" || propose == nil {
-		t.Fatalf("command was not dispatched: %q, %v", text, handled)
+	index := filepath.Join(filepath.Dir(path), system.AutoMemoryIndexName)
+	if err := os.WriteFile(index, []byte("- [Build](fixture-build.md) — Project build command\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	proposed := propose().(memoryUpdateProposed)
+	if err := os.WriteFile(path, []byte("Build with go build.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var proposed memoryUpdateProposed
+	if automatic {
+		data := setting.NewData()
+		data.MemoryUpdate = new(true)
+		m.services.Setting = setting.New(data)
+		propose := m.updateMemoryAfterTurn(core.Result{StopReason: core.StopEndTurn, Steps: 1, Messages: messages})
+		if propose == nil || m.memoryUpdate == nil || m.memoryUpdate.manual {
+			t.Fatal("completed turn did not schedule an automatic update")
+		}
+		proposed = propose().(memoryUpdateProposed)
+	} else {
+		if text, cmd, _ := m.executeCommand(t.Context(), "/memory maintain"); cmd != nil || m.memoryUpdate != nil || !strings.Contains(text, "update") {
+			t.Fatalf("removed command must not start an update: %q", text)
+		}
+		text, propose, handled := m.executeCommand(t.Context(), "/memory update")
+		if !handled || text != "" || propose == nil || m.memoryUpdate == nil || !m.memoryUpdate.manual {
+			t.Fatalf("command did not schedule a manual update: %q, %v", text, handled)
+		}
+		proposed = propose().(memoryUpdateProposed)
+	}
 	if proposed.err != nil || proposed.change == nil {
 		t.Fatalf("proposal failed: %v", proposed.err)
 	}
-	request := driver.Last()
+	calls := driver.Sent()
+	if len(calls) != 2 {
+		t.Fatalf("want an index request and one continuation, got %d calls", len(calls))
+	}
+	request := calls[0]
 	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceNone || len(request.Tools) != 1 || len(request.Messages) != 3 {
 		t.Fatalf("Memory Update did not retain the main prefix: %+v", request)
 	}
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
-		!strings.Contains(request.Messages[2].Text(), `"enabled":["remember","update","forget"]`) {
-		t.Fatalf("main dialogue was changed or Memory Update instructions were not appended: %+v", request.Messages)
+		!strings.Contains(request.Messages[2].Text(), `"enabled":["remember","update","forget"]`) ||
+		strings.Contains(request.Messages[2].Text(), "Build with go build.") {
+		t.Fatalf("wrong initial Memory Update context: %+v", request.Messages)
+	}
+	followup := calls[1]
+	if len(followup.Messages) != 5 || followup.Messages[3].Text() != read ||
+		!strings.Contains(followup.Messages[4].Text(), "Build with go build.") {
+		t.Fatalf("requested note missing from follow-up: %+v", followup.Messages)
 	}
 	write := m.applyMemoryUpdate(proposed)
 	if write == nil {
 		t.Fatal("accepted proposal did not return an apply command")
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("proposal wrote before its apply command: %v", err)
+	if contents, err := os.ReadFile(path); err != nil || string(contents) != "Build with go build.\n" {
+		t.Fatalf("proposal wrote before its apply command: %q, %v", contents, err)
 	}
 	done := write().(memoryUpdateFinished)
-	if done.err != nil || !strings.Contains(done.notice, "saved fixture-build.md") {
+	if done.err != nil || !strings.Contains(done.notice, "updated fixture-build.md") {
 		t.Fatalf("Aside write failed: %+v", done)
 	}
 	m.finishMemoryUpdate(done)
@@ -83,18 +127,31 @@ func TestManualMemoryUpdateWritesThroughAside(t *testing.T) {
 	live := m.conv.Messages[len(m.conv.Messages)-1]
 	rows := m.services.SessionStore.ChatRows(snapshot)
 	replayed := rows[len(rows)-1]
-	if len(snapshot.Messages()) != 2 || !strings.Contains(live.Content, "saved fixture-build.md") ||
+	if len(snapshot.Messages()) != 2 || !strings.Contains(live.Content, "updated fixture-build.md") ||
 		!live.AutoMemoryUpdated || !replayed.AutoMemoryUpdated || replayed.Content != live.Content {
 		t.Fatal("memory update should add only a display notice, not a main message")
 	}
-	var recorded bool
+	var starts []uint64
+	var outputs []string
+	var noticeSource uint64
 	for _, event := range snapshot.Events() {
-		if start, ok := event.Payload.(*session.InferenceStartPayload); ok && start.Purpose == session.PurposeMemoryUpdate {
-			recorded = true
+		switch p := event.Payload.(type) {
+		case *session.InferenceStartPayload:
+			if p.Purpose == session.PurposeMemoryUpdate {
+				starts = append(starts, event.Seq)
+			}
+		case *session.InferenceFinishPayload:
+			if event.Source != nil && len(starts) > 0 && event.Source.Seq == starts[len(starts)-1] && p.Output != nil {
+				outputs = append(outputs, p.Output.Text)
+			}
+		case *session.AnnotationAddPayload:
+			if p.Text == done.notice && event.Source != nil {
+				noticeSource = event.Source.Seq
+			}
 		}
 	}
-	if !recorded {
-		t.Fatal("missing Memory Update Aside recording")
+	if len(starts) != 2 || len(outputs) != 2 || outputs[0] != read || outputs[1] != update || noticeSource != starts[1] {
+		t.Fatalf("read and proposal should be recorded separately, with only the final call linked to the write: %v, %v, %d", starts, outputs, noticeSource)
 	}
 }
 
