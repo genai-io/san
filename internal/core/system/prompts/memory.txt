@@ -1,3 +1,0 @@
-Save durable preferences, decisions, and pointers not already in code or docs. Use the user store for cross-project facts; project facts take precedence locally. Read only relevant notes and check that old facts still apply.
-
-Use one Markdown file per topic with YAML name, description, and type (user, feedback, project, or reference). Update rather than duplicate notes. Keep one short link and reason per topic in MEMORY.md.

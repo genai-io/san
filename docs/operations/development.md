@@ -39,17 +39,18 @@ make install-format-tools
 
 ## Linting
 
-`make lint` runs four checks, and CI runs the same target:
+`make lint` runs five checks, and CI runs the same target:
 
 | check | what it catches |
 | --- | --- |
 | `go vet` | the standard suspicious-construct set |
 | `make format-check` | files `gofmt` / `goimports` would rewrite |
 | `make lint-go` | the linters configured in `.golangci.yml` |
+| `make lint-dead` | functions no binary or test reaches (`deadcode -test`); move test-only helpers into `_test.go` files |
 | `make lint-layers` | production or test imports that violate the layer order, plus packages missing from the map |
 
-`make lint-go` installs `golangci-lint` on first use; `make install-lint-tools`
-does it ahead of time. The configured linters report defects rather than style,
+`make lint-go` and `make lint-dead` install `golangci-lint` and `deadcode` on
+first use; `make install-lint-tools` does it ahead of time. The configured linters report defects rather than style,
 so the tree is kept at zero findings — see the comment at the top of
 `.golangci.yml` for the rule on adding one.
 

@@ -88,6 +88,16 @@ func TestSideReviewOriginalSession(t *testing.T) {
 	}
 }
 
+func TestSideReviewRequiresUserEvidence(t *testing.T) {
+	mgr, _ := newTestSkillManagerWithPerms(t, SkillPermissions{AllowCreate: true})
+	driver := aitest.New(aitest.Says(`{"action":"none"}`))
+	r := SideReview{Provider: reviewProvider{driver}, Model: "test", Recording: reviewRecording(t), Skills: mgr}
+	evidence := []core.Message{core.UserMessage("<system-reminder>scheduled task</system-reminder>", nil), {Role: ai.RoleAssistant, Content: ai.TextContent("Assistant-only claim.")}}
+	if notice, err := r.Run(t.Context(), evidence); notice != "" || err != nil || driver.Calls() != 0 {
+		t.Fatalf("reminder-only turn reviewed: notice=%q err=%v calls=%d", notice, err, driver.Calls())
+	}
+}
+
 func TestSideReviewDeletesOversizedUsedSkill(t *testing.T) {
 	const name = "oversized-skill"
 	// The multibyte rune straddles the prompt budget; the tail is never sent.

@@ -94,14 +94,6 @@ func (r ToolRule) Rule() string {
 // calls whose arguments match the pattern.
 type ToolList []ToolRule
 
-func ToolNames(names ...string) ToolList {
-	tools := make(ToolList, 0, len(names))
-	for _, name := range names {
-		tools = append(tools, ToolRule{Name: name})
-	}
-	return tools
-}
-
 func (t ToolList) Names() []string {
 	if t == nil {
 		return nil

@@ -101,7 +101,7 @@ func validateProposal(p proposal) error {
 	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
 	patch := p.Old != "" || p.Replacement != ""
 	if p.Action == actionRead {
-		if p.File != "" || metadata || patch || len(p.Files) < 1 || len(p.Files) > maxNotesPerRead {
+		if p.File != "" || metadata || patch {
 			return invalid
 		}
 		return nil
@@ -138,11 +138,11 @@ func validateProposal(p proposal) error {
 }
 
 func shortLabel(s string, maxBytes int) bool {
-	return aside.ValidLabel(s, maxBytes) && !strings.ContainsAny(s, `[]\<>`)
+	return core.ValidLabel(s, maxBytes) && !strings.ContainsAny(s, `[]\<>`) && !mentionsNote(s)
 }
 
 func noteText(s string) bool {
-	return strings.TrimSpace(s) != "" && aside.ValidMultiline(s, maxNote)
+	return strings.TrimSpace(s) != "" && core.ValidMultiline(s, maxNote)
 }
 
 func renderNote(p proposal) string {

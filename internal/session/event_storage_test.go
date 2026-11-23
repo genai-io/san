@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -345,4 +346,33 @@ func TestEventCreateFailureLeavesNothingDiscoverable(t *testing.T) {
 	if len(entries) != 1 || entries[0].Name() != "session" {
 		t.Fatalf("failed create left directories: %v", entries)
 	}
+}
+
+// openStoreIn opens a store rooted at dir with dir itself as the workspace. It
+// skips project resolution, for tests and tools that already own the directory.
+func openStoreIn(dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create session dir: %w", err)
+	}
+	store := &Store{cwd: dir, projectID: deriveProjectID("directory", dir), projectDir: dir, workspace: dir}
+	return store.initPathLock()
+}
+
+func (s *eventSession) eventSnapshot() (*Projection, error) {
+	if s == nil {
+		return nil, ErrClosed
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.state == nil {
+		return nil, errNotEvents
+	}
+	// Projection is immutable and its public accessors detach their results.
+	return s.state.projection, nil
 }

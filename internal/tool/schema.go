@@ -72,12 +72,6 @@ var builtinToolOrder = []string{
 	ToolCron,
 }
 
-// GetToolSchemas returns core.ToolSchema definitions for all registered tools
-// with no dynamic MCP tools or agent catalog. Use GetToolSchemasWith for dynamic schemas.
-func GetToolSchemas() []core.ToolSchema {
-	return GetToolSchemasWith(SchemaOptions{})
-}
-
 // manageableExtraToolOrder is the canonical order for conditional registered
 // tools that stay out of the model's default schema set but must remain visible
 // in /tools so users can enable or disable them. Their runtime gates still

@@ -84,7 +84,7 @@ func (m *model) startMemoryUpdate(manual bool) tea.Cmd {
 		if err != nil {
 			return memoryUpdateProposed{update: r, err: err}
 		}
-		change, err := updater.Propose(ctx, store, req, automemory.Actions{Add: true, Update: true, Forget: true})
+		change, err := updater.Propose(ctx, store, req)
 		if ctx.Err() != nil && change != nil {
 			err = change.Discard()
 			change = nil

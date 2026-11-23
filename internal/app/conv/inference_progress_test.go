@@ -2,6 +2,7 @@ package conv
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -149,4 +150,9 @@ func TestFailedTurnNoticeMarksPartialOutputIncomplete(t *testing.T) {
 	if view := inferenceView(&m, 80); !strings.Contains(view, "output is incomplete") {
 		t.Fatal("failure notice did not survive ordinary transcript rendering")
 	}
+}
+
+// FailedInferenceNotice closes one failed attempt, which may still be retried.
+func FailedInferenceNotice(attempt int, err error) string {
+	return fmt.Sprintf("%s%d%s %v", failedInferenceNoticePrefix, attempt, failedInferenceNoticeMarker, err)
 }

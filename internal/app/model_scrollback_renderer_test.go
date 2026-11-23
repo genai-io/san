@@ -276,10 +276,6 @@ func (m *nativeHistoryModel) View() tea.View {
 	}, "\n"))
 }
 
-func (m *nativeHistoryModel) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
-	return m.flush.queueScrollbackPrint(content, frameRows)
-}
-
 func (m *nativeHistoryModel) finishScrollbackPrint(id uint64) tea.Cmd {
 	return m.flush.finishScrollbackPrint(id)
 }

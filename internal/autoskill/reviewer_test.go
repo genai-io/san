@@ -1,6 +1,7 @@
 package autoskill
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ type fireRec struct {
 // skill permissions into a buffered channel.
 func newTestReviewer(cfg Config) (*Reviewer, chan fireRec) {
 	fired := make(chan fireRec, 8)
-	r := New(cfg, func(p SkillPermissions, _ []core.Message) { fired <- fireRec{p} })
+	r := NewSessionReviewer(context.Background(), cfg, func(p SkillPermissions, _ []core.Message) { fired <- fireRec{p} })
 	return r, fired
 }
 
@@ -144,7 +145,7 @@ func TestSingleFlightDropsConcurrent(t *testing.T) {
 	fired := make(chan fireRec, 4)
 	release := make(chan struct{})
 	started := make(chan struct{}, 4)
-	r := New(Config{Skills: AllowAllSkillActions()}, func(p SkillPermissions, _ []core.Message) {
+	r := NewSessionReviewer(t.Context(), Config{Skills: AllowAllSkillActions()}, func(p SkillPermissions, _ []core.Message) {
 		started <- struct{}{}
 		<-release // block until released → keeps the review in-flight
 		fired <- fireRec{p}

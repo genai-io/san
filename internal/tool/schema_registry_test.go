@@ -25,7 +25,7 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 }
 
 func TestToolGuidanceRespectsUserChoices(t *testing.T) {
-	schemas := tool.GetToolSchemas()
+	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{})
 	for name, phrases := range map[string][]string{
 		tool.ToolAskUserQuestion: {"skip settled choices", "accepted known issues", "new evidence materially changes risk or scope"},
 		tool.ToolSkill:           {"unless the user explicitly opts out"},
@@ -47,7 +47,7 @@ func TestFlowIsNotAModelTool(t *testing.T) {
 	if _, ok := tool.Get("Flow"); ok {
 		t.Fatal("Flow must not register a model tool")
 	}
-	for _, schemas := range [][]core.ToolSchema{tool.GetToolSchemas(), tool.GetManageableToolSchemasWith(tool.SchemaOptions{})} {
+	for _, schemas := range [][]core.ToolSchema{tool.GetToolSchemasWith(tool.SchemaOptions{}), tool.GetManageableToolSchemasWith(tool.SchemaOptions{})} {
 		if _, ok := findSchema(schemas, "Flow"); ok {
 			t.Fatal("Flow must not appear in model or manageable tool schemas")
 		}
@@ -73,7 +73,7 @@ func TestManageableToolsIncludeConditionalReviewSkill(t *testing.T) {
 	if !tool.IsParentOnlyTool(tool.ToolReviewSkill) {
 		t.Fatal("ReviewSkill must be reserved for the main conversation")
 	}
-	if _, ok := findSchema(tool.GetToolSchemas(), tool.ToolReviewSkill); ok {
+	if _, ok := findSchema(tool.GetToolSchemasWith(tool.SchemaOptions{}), tool.ToolReviewSkill); ok {
 		t.Fatal("ReviewSkill must remain conditional in the model-facing default schemas")
 	}
 	if _, ok := findSchema(tool.GetManageableToolSchemasWith(tool.SchemaOptions{}), tool.ToolReviewSkill); !ok {
@@ -86,7 +86,7 @@ func TestManageableToolsIncludeConditionalReviewSkill(t *testing.T) {
 // registered tool that describes itself, so a tool can't silently vanish from
 // the model's view because its schema and implementation drifted apart.
 func TestBuiltinToolsAllRegistered(t *testing.T) {
-	schemas := tool.GetToolSchemas()
+	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{})
 	for _, name := range []string{
 		tool.ToolRead, tool.ToolWebFetch, tool.ToolWebSearch,
 		tool.ToolEdit, tool.ToolWrite, tool.ToolAskUserQuestion,
@@ -120,7 +120,7 @@ func TestBuiltinToolsAllRegistered(t *testing.T) {
 // the model — the exact schema/implementation drift this refactor removes.
 func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
 	presented := make(map[string]bool)
-	for _, s := range tool.GetToolSchemas() {
+	for _, s := range tool.GetToolSchemasWith(tool.SchemaOptions{}) {
 		presented[s.Name] = true
 	}
 
@@ -150,7 +150,7 @@ func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
 }
 
 func TestAgentSchemaHasOneWorkerInterface(t *testing.T) {
-	agent, ok := findSchema(tool.GetToolSchemas(), tool.ToolAgent)
+	agent, ok := findSchema(tool.GetToolSchemasWith(tool.SchemaOptions{}), tool.ToolAgent)
 	if !ok {
 		t.Fatal("Agent schema not found")
 	}
@@ -169,7 +169,7 @@ func TestAgentSchemaHasOneWorkerInterface(t *testing.T) {
 }
 
 func TestBuiltInToolSchemasAreOpenAICompatibleObjects(t *testing.T) {
-	for _, schema := range tool.GetToolSchemas() {
+	for _, schema := range tool.GetToolSchemasWith(tool.SchemaOptions{}) {
 		params, ok := schema.Definition.(map[string]any)
 		if !ok {
 			t.Fatalf("%s parameters must be a JSON schema object map", schema.Name)
@@ -186,7 +186,7 @@ func TestBuiltInToolSchemasAreOpenAICompatibleObjects(t *testing.T) {
 }
 
 func TestAskUserQuestionSchemaRejectsEmptyQuestionsShape(t *testing.T) {
-	schema, ok := findSchema(tool.GetToolSchemas(), tool.ToolAskUserQuestion)
+	schema, ok := findSchema(tool.GetToolSchemasWith(tool.SchemaOptions{}), tool.ToolAskUserQuestion)
 	if !ok {
 		t.Fatal("AskUserQuestion schema not found")
 	}
@@ -227,7 +227,7 @@ func TestShellToolFollowsSANShell(t *testing.T) {
 	default:
 		t.Skip("SAN_SHELL is not set to a shell kind")
 	}
-	schemas := tool.GetToolSchemas()
+	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{})
 	if _, ok := findSchema(schemas, want); !ok {
 		t.Errorf("SAN_SHELL=%s, but the model was not given %s", os.Getenv("SAN_SHELL"), want)
 	}

@@ -1,9 +1,7 @@
 package system
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,11 +33,6 @@ const (
 	// AutoMemoryIndexName is the index file of the agent-written auto-memory
 	// store: one line per memory, each pointing at a topic file beside it.
 	AutoMemoryIndexName = "MEMORY.md"
-
-	// autoMemoryLineCap and autoMemoryByteCap bound how much of the index is
-	// injected. Topic files ride the recall reminder.
-	autoMemoryLineCap = 200
-	autoMemoryByteCap = 25 * 1024
 )
 
 // MemoryStore is the directory of a repository's Auto Memory. The zero value
@@ -87,41 +80,6 @@ func isMemoryNote(entry os.DirEntry) bool {
 	return entry.Type().IsRegular() && name != AutoMemoryIndexName && strings.HasSuffix(name, ".md")
 }
 
-// Memories lists readable notes in filename order. A zero limit lists all
-// notes. A canceled context stops the scan.
-func (s MemoryStore) Memories(ctx context.Context, limit int) []Memory {
-	if s.Off() || ctx.Err() != nil {
-		return nil
-	}
-	dir := string(s)
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return nil
-	}
-	defer func() { _ = root.Close() }()
-	entries, _ := os.ReadDir(dir)
-	var out []Memory
-	for _, entry := range entries {
-		if ctx.Err() != nil || limit > 0 && len(out) >= limit {
-			break
-		}
-		if !isMemoryNote(entry) {
-			continue
-		}
-		name := entry.Name()
-		f, err := root.Open(name)
-		if err != nil {
-			continue
-		}
-		data, err := io.ReadAll(io.LimitReader(f, 2048))
-		_ = f.Close()
-		if err == nil {
-			out = append(out, Memory{Path: filepath.Join(dir, name), Description: FrontmatterField(string(data), "description")})
-		}
-	}
-	return out
-}
-
 // FrontmatterField returns key's value from content's leading frontmatter.
 func FrontmatterField(content, key string) string {
 	fm, ok := strings.CutPrefix(content, "---\n")
@@ -158,72 +116,6 @@ func encodeProjectPath(path string) string {
 		path = strings.ReplaceAll(path, "\\", "-")
 	}
 	return strings.ReplaceAll(path, "/", "-")
-}
-
-// LoadAutoMemoryAt reads the auto-memory index from dir, capped at
-// autoMemoryLineCap lines and autoMemoryByteCap bytes, and lists index
-// problems (over the cap, topic files missing from the index, index links to
-// missing files) for the agent to repair. Both are empty when there is nothing.
-func LoadAutoMemoryAt(dir string) (index string, problems []string) {
-	data, _ := os.ReadFile(filepath.Join(dir, AutoMemoryIndexName))
-	full := strings.TrimSpace(string(data))
-
-	index = full
-	if lines := strings.Split(index, "\n"); len(lines) > autoMemoryLineCap {
-		index = strings.Join(lines[:autoMemoryLineCap], "\n")
-	}
-	index = truncateOnLineBoundary(index, autoMemoryByteCap)
-	lines := strings.Count(full, "\n") + 1
-	switch {
-	case len(index) < len(full):
-		problems = append(problems, fmt.Sprintf("MEMORY.md is over the %d-line / %d KB load limit and was cut; condense it to one short line per memory.", autoMemoryLineCap, autoMemoryByteCap/1024))
-	case lines*10 > autoMemoryLineCap*9 || len(full)*10 > autoMemoryByteCap*9:
-		problems = append(problems, fmt.Sprintf("MEMORY.md is near its load limit (%d/%d lines, %d/%d KB); keep one short line per memory and merge or drop stale ones.",
-			lines, autoMemoryLineCap, len(full)/1024, autoMemoryByteCap/1024))
-	}
-	return index, append(problems, autoMemoryIndexProblems(dir, full)...)
-}
-
-var markdownLinkTarget = regexp.MustCompile(`\]\(([^)\s]+\.md)\)`)
-
-// autoMemoryIndexProblems reports topic files the index never mentions (the
-// agent cannot find them) and index links whose file is gone.
-func autoMemoryIndexProblems(dir, index string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var orphans, dangling []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || name == AutoMemoryIndexName || !strings.HasSuffix(name, ".md") {
-			continue
-		}
-		if !strings.Contains(index, name) {
-			orphans = append(orphans, name)
-		}
-	}
-	for _, m := range markdownLinkTarget.FindAllStringSubmatch(index, -1) {
-		if _, err := os.Stat(filepath.Join(dir, m[1])); err != nil {
-			dangling = append(dangling, m[1])
-		}
-	}
-	var problems []string
-	if len(orphans) > 0 {
-		problems = append(problems, "not listed in MEMORY.md (add a line or delete): "+listNames(orphans))
-	}
-	if len(dangling) > 0 {
-		problems = append(problems, "MEMORY.md links to missing files (drop the line): "+listNames(dangling))
-	}
-	return problems
-}
-
-// listNames joins names, eliding past the first ten.
-func listNames(names []string) string {
-	if len(names) <= 10 {
-		return strings.Join(names, ", ")
-	}
-	return strings.Join(names[:10], ", ") + fmt.Sprintf(" and %d more", len(names)-10)
 }
 
 // truncateOnLineBoundary trims s to at most max bytes, cutting at the last

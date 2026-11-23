@@ -45,7 +45,7 @@ func TestProposeRefusesLiteralEOFWithoutWrites(t *testing.T) {
 		path := filepath.Join(dir, system.AutoMemoryIndexName)
 		put(t, path, index)
 		m := Updater{Provider: fakeProvider{aitest.New(aitest.Says(addProposal))}}
-		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("We use make for all builds in this repository."), Actions{Add: true})
+		change, err := m.Propose(t.Context(), system.MemoryStore(dir), completedPrefix("We use make for all builds in this repository."))
 		if err != nil || change == nil {
 			t.Fatalf("change=%v err=%v", change, err)
 		}
@@ -72,12 +72,13 @@ func TestProposeRejectsSymlinkNoteAndToolProposal(t *testing.T) {
 		m := Updater{Provider: fakeProvider{driver}}
 		prefix := completedPrefix("Please forget the stored build note.")
 		prefix.Tools = []ai.Schema{{Name: "Remove", Definition: map[string]any{"type": "object"}}}
-		change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix, Actions{Forget: true})
+		change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix)
 		if change != nil || err == nil || get(t, outside) != "outside" {
 			t.Fatalf("untrusted target: change=%v err=%v", change, err)
 		}
-		if driver.Calls() != 1 || driver.Last().ToolChoice != ai.ToolChoiceNone {
-			t.Fatalf("expected one tool-disabled proposal call, got %d calls", driver.Calls())
+		// Auto is kept so the main request's cached messages stay valid.
+		if driver.Calls() != 1 || driver.Last().ToolChoice != ai.ToolChoiceAuto {
+			t.Fatalf("expected one cache-preserving proposal call, got %d calls", driver.Calls())
 		}
 	}
 }

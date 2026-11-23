@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -174,12 +175,9 @@ func (s *storeSnapshot) readNotes(ctx context.Context, path string, files []stri
 		return nil, fmt.Errorf("memory read exceeds note count or round limits: %w", errInvalidProposal)
 	}
 	visible, _ := s.updateNoteIDs(s.updateIndexEnd())
-	if len(files) == 2 && files[0] == files[1] {
-		return nil, fmt.Errorf("memory read repeated a note ID: %w", errInvalidProposal)
-	}
-	for _, file := range files {
-		if !visible[file] || s.note(file).info != nil {
-			return nil, fmt.Errorf("memory read must request unread index IDs: %w", errInvalidProposal)
+	for i, file := range files {
+		if !visible[file] || s.note(file).info != nil || slices.Contains(files[:i], file) {
+			return nil, fmt.Errorf("memory read must request distinct, unread index IDs: %w", errInvalidProposal)
 		}
 	}
 	current, err := canonicalPath(path)

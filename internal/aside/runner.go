@@ -25,7 +25,8 @@ func Complete(ctx context.Context, provider llm.Provider, opts llm.CompletionOpt
 // a source-linked notice; a no-op or rejection still records the raw response.
 func ApplyChange(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion, apply func(context.Context, string) (string, error)) (notice string, err error) {
 	defer func() { err = FinishChange(ctx, recording, notice, err) }()
-	text, err := CompleteProposal(ctx, provider, opts, recording)
+	resp, err := Complete(ctx, provider, opts, recording)
+	text, err := proposalText(ctx, resp, err)
 	if err != nil {
 		return "", err
 	}
@@ -44,18 +45,15 @@ func FinishChange(ctx context.Context, recording *session.Completion, notice str
 	return err
 }
 
-// CompleteProposal validates the model response envelope, leaving the recording
-// open for the caller to finish or discard.
-func CompleteProposal(ctx context.Context, provider llm.Provider, opts llm.CompletionOptions, recording *session.Completion) (string, error) {
-	resp, err := Complete(ctx, provider, opts, recording)
-	return proposalText(ctx, resp, err)
-}
-
 // CompletePrefixedProposal keeps the admitted system, tool schemas and
-// conversation prefix, but forbids tool use and expects a standalone proposal.
+// conversation prefix and expects a standalone proposal; tool calls are rejected.
 func CompletePrefixedProposal(ctx context.Context, provider llm.Provider, model string, request *ai.Request, recording *session.Completion) (string, error) {
 	proposal := *request
-	proposal.ToolChoice = ai.ToolChoiceNone
+	// Changing tool_choice invalidates a provider's cached messages, so keep the
+	// main request's auto choice and only override one that forces a tool.
+	if proposal.ToolChoice != ai.ToolChoiceAuto {
+		proposal.ToolChoice = ai.ToolChoiceNone
+	}
 	proposal.StopSequences = nil
 	proposal.Schema = nil
 	if proposal.MaxTokens == 0 || proposal.MaxTokens > 4096 {
@@ -83,8 +81,11 @@ func proposalText(ctx context.Context, resp llm.CompletionResponse, err error) (
 
 // Decide runs a decision adapter that accepts admission and needs no deferred
 // result event. It records the attempt even when the adapter rejects the reply.
-// The separate recording error lets callers fail closed on audit failure.
-func Decide[T any](ctx context.Context, recording *session.Completion, run func(context.Context, llm.CompletionAdmission) (T, error)) (result T, err, recordErr error) {
-	result, err = run(ctx, recording.Admission())
-	return result, err, recording.Close()
+// A recording failure is joined as *llm.RecordingError so callers fail closed.
+func Decide[T any](ctx context.Context, recording *session.Completion, run func(context.Context, llm.CompletionAdmission) (T, error)) (T, error) {
+	result, err := run(ctx, recording.Admission())
+	if closeErr := recording.Close(); closeErr != nil {
+		err = errors.Join(err, &llm.RecordingError{Err: closeErr})
+	}
+	return result, err
 }

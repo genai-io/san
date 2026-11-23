@@ -47,7 +47,6 @@ var (
 	cachedBehavior = loadEmbed("prompts/behavior.txt")
 	cachedRules    = loadEmbed("prompts/rules.txt")
 	cachedCompact  = loadEmbed("prompts/compact.txt")
-	cachedMemory   = loadEmbed("prompts/memory.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -142,9 +141,6 @@ func rulesSection(override string) core.Section {
 		Render: func() string { return wrap("rules", nil, body) },
 	}
 }
-
-// AutoMemoryGuide returns the guidance for the optional auto-memory reminder.
-func AutoMemoryGuide() string { return cachedMemory }
 
 // Options
 

@@ -522,11 +522,6 @@ func FailedTurnNotice(err error) string {
 	return failedTurnNoticePrefix + err.Error()
 }
 
-// FailedInferenceNotice closes one failed attempt, which may still be retried.
-func FailedInferenceNotice(attempt int, err error) string {
-	return fmt.Sprintf("%s%d%s %v", failedInferenceNoticePrefix, attempt, failedInferenceNoticeMarker, err)
-}
-
 func isFailureNotice(content string) bool {
 	return strings.HasPrefix(content, failedTurnNoticePrefix) ||
 		strings.HasPrefix(content, failedInferenceNoticePrefix) && strings.Contains(content, failedInferenceNoticeMarker)

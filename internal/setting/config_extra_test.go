@@ -331,3 +331,13 @@ func TestAutoMemory(t *testing.T) {
 		t.Fatal("SAN_DISABLE_AUTO_MEMORY=1 must override the default")
 	}
 }
+
+// NewLoaderWithOptions creates a loader with custom options.
+func NewLoaderWithOptions(userDir, projectDir string, claudeCompat bool) *Loader {
+	return &Loader{
+		userDir:      userDir,
+		projectDir:   projectDir,
+		cwd:          filepath.Dir(projectDir),
+		claudeCompat: claudeCompat,
+	}
+}

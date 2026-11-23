@@ -13,7 +13,7 @@ Open `/reflection` and use Tab to switch to **Auto Skill**. Auto Skill is indepe
 
 ## Review
 
-1. The main agent can call `ReviewSkill` to flag a turn worth reviewing. A review starts only after a clean turn end; cancelled and incomplete turns do not trigger it. Only one review runs at a time.
+1. The main agent can call `ReviewSkill` to flag a turn worth reviewing. A review starts only after a clean turn end whose latest user message has user-authored text (not only a system reminder); cancelled and incomplete turns do not trigger it. Only one review runs at a time.
 2. The Aside sends its own stable system prompt, the configured strategy, a bounded excerpt of the completed turn, and relevant skill information. It sends no executable tools. A turn without skill use can propose a new skill; one that used a skill can propose an update or retirement within the configured permissions.
 3. `SkillManager` validates and applies at most one proposal. Changes to existing skills require agent-owned provenance and a matching revision. User-authored skills are not editable through Auto Skill.
 4. A saved change appears in the session as a display-only notice and in the learned inventory. Inspector pairs **Model Request · Aside — Auto Skill** with **Model Response · Aside — Auto Skill** and shows what was accepted. The review messages do not enter main history.

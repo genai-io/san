@@ -23,10 +23,9 @@ type fakeSession struct {
 	closeDelay time.Duration
 	resources  []sdkmcp.Resource
 
-	mu         sync.Mutex
-	closed     bool
-	closeCalls int
-	closedCh   chan struct{}
+	mu       sync.Mutex
+	closed   bool
+	closedCh chan struct{}
 }
 
 func newFakeSession() *fakeSession { return &fakeSession{closedCh: make(chan struct{})} }
@@ -59,7 +58,6 @@ func (s *fakeSession) Close() error {
 			close(s.closedCh)
 		}
 	}
-	s.closeCalls++
 	return nil
 }
 
@@ -71,12 +69,6 @@ func (s *fakeSession) isClosed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.closed
-}
-
-func (s *fakeSession) closeCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.closeCalls
 }
 
 // dialing is the seam: a client that reaches this session instead of a server.

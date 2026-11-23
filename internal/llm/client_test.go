@@ -40,14 +40,6 @@ func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) 
 	return m.driver.Client(), nil
 }
 
-// lastSystem is the system prompt that reached the endpoint.
-func (m *mockLLMProvider) lastSystem() string {
-	if m.driver == nil || m.driver.Last() == nil {
-		return ""
-	}
-	return m.driver.Last().System
-}
-
 func (m *mockLLMProvider) ListModels(_ context.Context) ([]ModelInfo, error) {
 	m.listCalls++
 	return m.models, m.listErr
@@ -321,20 +313,6 @@ func TestModelLimitsResolveBothFromOneListing(t *testing.T) {
 }
 
 // --- streaming failure paths ---
-
-type streamErrorProvider struct {
-	err error
-}
-
-func (p streamErrorProvider) Stream(context.Context, CompletionOptions) <-chan StreamChunk {
-	ch := make(chan StreamChunk, 1)
-	ch <- StreamChunk{Type: ChunkTypeError, Error: p.err}
-	close(ch)
-	return ch
-}
-
-func (streamErrorProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
-func (streamErrorProvider) Name() string                                    { return "stream-error" }
 
 type retryThenSuccessProvider struct {
 	driver *aitest.Driver

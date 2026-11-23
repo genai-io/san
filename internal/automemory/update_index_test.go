@@ -15,16 +15,16 @@ import (
 func TestUpdateIndexRawMarkdown(t *testing.T) {
 	index := "# Prose\r\n\r\nMention an unrelated README.md here.\r\n\r\n- [Topic](./topic.md) — Details\r\n\r\n```md\r\n- [Fake](topic.md)\r\n- [Literal](literal.md)\r\n```\r\n<!--\r\n- [Hidden](comment.md)\r\n-->"
 	s := storeSnapshot{index: revision{text: index}}
-	if got, complete := s.updateIndex(); !complete || got != index {
-		t.Fatalf("update index = %q, complete = %v", got, complete)
+	if got, problem := s.updateIndex(); problem != "" || got != index {
+		t.Fatalf("update index = %q, problem = %q", got, problem)
 	}
 	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
 	if !reflect.DeepEqual(ids, map[string]bool{"topic.md": true}) {
 		t.Fatalf("note IDs = %v", ids)
 	}
 	s.index.text += "\nNonstandard [alias](TOPIC.md).\n"
-	if got, complete := s.updateIndex(); complete || got != s.index.text {
-		t.Fatalf("ambiguous update index = %q, complete = %v", got, complete)
+	if got, problem := s.updateIndex(); problem == "" || got != s.index.text {
+		t.Fatalf("ambiguous update index = %q, problem = %q", got, problem)
 	}
 	ids, _ = s.updateNoteIDs(s.updateIndexEnd())
 	if ids["topic.md"] {
@@ -41,24 +41,24 @@ func TestUpdateIndexByteLimit(t *testing.T) {
 	text.WriteByte('\n')
 	prefix := text.String()
 	s := storeSnapshot{index: revision{text: prefix}}
-	if got, complete := s.updateIndex(); !complete || got != prefix {
-		t.Fatalf("at limit: length = %d, complete = %v", len(got), complete)
+	if got, problem := s.updateIndex(); problem != "" || got != prefix {
+		t.Fatalf("at limit: length = %d, problem = %q", len(got), problem)
 	}
 	s.index.text += "- [Hidden](hidden.md)\n- [Alias](TOPIC-0.md)\n"
-	if got, complete := s.updateIndex(); complete || got != prefix {
-		t.Fatalf("over limit: length = %d, complete = %v", len(got), complete)
+	if got, problem := s.updateIndex(); problem == "" || got != prefix {
+		t.Fatalf("over limit: length = %d, problem = %q", len(got), problem)
 	}
 	ids, _ := s.updateNoteIDs(s.updateIndexEnd())
 	if ids["hidden.md"] || ids["topic-0.md"] || !ids["topic-39.md"] {
 		t.Fatalf("note IDs = %v", ids)
 	}
 	s.index.text = prefix[:len(prefix)-2] + "\n界"
-	if got, complete := s.updateIndex(); complete || got != prefix[:len(prefix)-2]+"\n" {
-		t.Fatalf("limit inside multibyte character: length = %d, complete = %v", len(got), complete)
+	if got, problem := s.updateIndex(); problem == "" || got != prefix[:len(prefix)-2]+"\n" {
+		t.Fatalf("limit inside multibyte character: length = %d, problem = %q", len(got), problem)
 	}
 	s.index.text = strings.Repeat("界", maxUpdateIndex)
-	if got, complete := s.updateIndex(); complete || got != "" {
-		t.Fatalf("no complete line: length = %d, complete = %v", len(got), complete)
+	if got, problem := s.updateIndex(); problem == "" || got != "" {
+		t.Fatalf("no complete line: length = %d, problem = %q", len(got), problem)
 	}
 }
 

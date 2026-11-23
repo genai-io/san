@@ -65,6 +65,9 @@ func TestACPConcurrentSessions(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "topic.md"), []byte("---\nname: Topic\ndescription: Session preference\ntype: project\n---\nPreference for "+string(id)), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("- [Topic](topic.md)\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var workers sync.WaitGroup
 	for _, id := range ids {

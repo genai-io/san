@@ -16,7 +16,7 @@ func TestReviewCopiesOnlyLatestExchange(t *testing.T) {
 		<-release
 		done <- snapshot
 	}
-	r := New(Config{Skills: AllowAllSkillActions()}, review)
+	r := NewSessionReviewer(t.Context(), Config{Skills: AllowAllSkillActions()}, review)
 
 	original := []core.Message{core.UserMessage("previous", nil), core.UserMessage("latest", nil)}
 	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original}, false, true)
@@ -50,7 +50,7 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 		}
 		<-hold // block until the test releases — keeps inFlight=true
 	}
-	r := New(Config{Skills: SkillPermissions{AllowCreate: true}}, review)
+	r := NewSessionReviewer(t.Context(), Config{Skills: SkillPermissions{AllowCreate: true}}, review)
 
 	const goroutines, perG = 8, 20
 	var wg sync.WaitGroup

@@ -977,25 +977,6 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 	return ""
 }
 
-// subagentPermissionFunc returns the subagent permission gate. The pipeline
-// matches docs/concepts/permission-model.md: deny_tools, circuit breaker,
-// confirmation tiers, allow_tools, mode default. Ordinary Prompt decisions use
-// the configured UI responder, or fail closed when none is available. bypassPermissions skips the
-// confirmation tiers — only the root/home-removal circuit breaker holds in
-// every mode.
-//
-// One communication carve-out sits between deny and allow_tools: for a
-// mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
-// every mode, so even a read-only or default worker can report to main or
-// answer a peer — it only moves text between agents and never touches the
-// workspace. deny_tools still blocks it, and an explicit allow_tools list is
-// honored as written (leave SendMessage out to silence a worker). Spawning is
-// not gated here: the Agent tool is parent-only, so workers never see it — the
-// agent model is flat.
-func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
-	return subagentPermissionFuncWithPrompt(mode, allowRules, denyRules, nil)
-}
-
 func subagentPermissionFuncWithPrompt(mode PermissionMode, allowRules, denyRules ToolList, prompt perm.PermissionFunc) perm.PermissionFunc {
 	mode = NormalizePermissionMode(string(mode))
 	opMode := operationMode(mode)

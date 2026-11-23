@@ -119,9 +119,3 @@ func IsGitRepo(dir string) bool {
 	_, err := os.Stat(dir + "/.git")
 	return err == nil
 }
-
-// WithinDirectory reports whether filePath lies inside dir, by both its
-// literal and its symlink-resolved form.
-func WithinDirectory(filePath, dir string) bool {
-	return dir != "" && isInWorkingDirectory(filePath, []string{dir})
-}

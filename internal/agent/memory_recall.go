@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/aside"
+	"github.com/genai-io/san/internal/automemory"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
@@ -21,9 +23,9 @@ import (
 // maxRecalled caps the notes returned by one selection.
 const maxRecalled = 5
 
-const recallSystemPrompt = `You select memories for the final user's question. The first message lists repository memory filenames and descriptions; the second lists files already in the main context.
-Select up to 5 files that add a needed rule, fact, or preference. Do not select files already in context, mere word matches, or general user descriptions. Return an empty list if no new file is needed.
-Reply with JSON only: {"selected_memories": ["<filename>", ...]}`
+var recallSystemPrompt = fmt.Sprintf(`You select memories for the final user's question. The first message lists repository memory filenames and descriptions; the second lists files already in the main context.
+Select up to %d files that add a needed rule, fact, or preference. Do not select files already in context, mere word matches, or general user descriptions. Return an empty list if no new file is needed.
+Reply with JSON only: {"selected_memories": ["<filename>", ...]}`, maxRecalled)
 
 func recallIndex(notes []system.Memory) string {
 	var list strings.Builder
@@ -50,7 +52,7 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 	}
 	// Read the current index on each lookup; keep its serialized prefix stable
 	// across questions and changes to the already-covered set.
-	notes := store.Memories(ctx, 0)
+	notes := automemory.Notes(ctx, store)
 	byID := make(map[string]system.Memory, len(notes))
 	var coveredFiles strings.Builder
 	for _, note := range notes {

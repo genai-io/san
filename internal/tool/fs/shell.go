@@ -560,11 +560,6 @@ func SetEnvProvider(fn func(context.Context) []string) {
 
 type shellEnvKey struct{}
 
-// WithShellEnv supplies session-owned extra environment instead of the global provider.
-func WithShellEnv(ctx context.Context, env []string) context.Context {
-	return context.WithValue(ctx, shellEnvKey{}, append([]string{}, env...))
-}
-
 // WithShellEnvProvider supplies session-owned environment evaluated only for shell execution.
 // An empty result does not fall back to the global provider.
 func WithShellEnvProvider(ctx context.Context, fn func(context.Context) []string) context.Context {

@@ -51,3 +51,10 @@ func TestFileViewsOwners(t *testing.T) {
 		t.Fatal("scoped observations leaked to native default")
 	}
 }
+
+// Viewed reports whether the model's view of filePath is current, so showing
+// it the file again would repeat what it has.
+func Viewed(filePath string) bool {
+	view, err := viewOf(filePath)
+	return err == nil && view == viewCurrent
+}
