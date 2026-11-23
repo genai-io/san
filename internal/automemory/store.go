@@ -19,6 +19,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // RecallNote resolves a linked note without reading its body.
@@ -263,7 +264,20 @@ func (s storeSnapshot) note(name string) revision {
 	return revision{}
 }
 
-func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (string, error) {
+func (s storeSnapshot) notesMatch(root *os.Root, committed map[string]bool) bool {
+	for _, note := range s.notes {
+		if committed[note.name] {
+			continue
+		}
+		rev, err := readRevision(root, note.name, maxNote)
+		if err != nil || !rev.same(note.rev) {
+			return false
+		}
+	}
+	return true
+}
+
+func apply(ctx context.Context, path string, s storeSnapshot, proposals ...proposal) (string, error) {
 	h := fnv.New32a()
 	_, _ = io.WriteString(h, strings.ToLower(path))
 	lock := &storeLocks[h.Sum32()%uint32(len(storeLocks))]
@@ -291,88 +305,229 @@ func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (strin
 		if err != nil || !index.same(s.index) {
 			return "", errStale
 		}
-		for _, note := range s.notes {
-			rev, err := readRevision(root, note.name, maxNote)
-			if err != nil || !rev.same(note.rev) {
-				return "", errStale
-			}
+		if !s.notesMatch(root, nil) {
+			return "", errStale
 		}
 	}
-	switch p.Action {
-	case actionRemember:
-		index, err := editIndex(s.index.text, p)
+	plan, err := planChanges(root, s, proposals)
+	if err != nil || len(plan) == 0 {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if root == nil {
+		root, err = createStore(path)
 		if err != nil {
 			return "", err
 		}
-		text := renderNote(p)
-		if len(text) > maxNote {
-			return "", errors.New("memory note would exceed size limit")
-		}
-		if root == nil {
-			root, err = createStore(path)
-			if err != nil {
-				return "", err
+		defer func() { _ = root.Close() }()
+	}
+
+	// Commit each step independently; a later failure does not undo prior steps.
+	index := s.index
+	committed := make(map[string]bool)
+	var completed []string
+	for _, step := range plan {
+		var partial string
+		err := ctx.Err()
+		if err == nil {
+			live, readErr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
+			// Recheck unchanged evidence before each commit. This cannot fence
+			// an external writer between the check and the write.
+			if readErr != nil || !live.same(index) || !s.notesMatch(root, committed) {
+				err = errStale
+			} else {
+				partial, err = step.commit(root, &index)
 			}
-			defer func() { _ = root.Close() }()
 		}
-		if err := writeNote(root, p.File, text, revision{}); err != nil {
+		if err != nil {
+			if len(completed) != 0 {
+				err = fmt.Errorf("memory batch partially applied (%s); stopped at %s: %w", strings.Join(completed, ", "), step.File, err)
+			}
+			if partial != "" {
+				completed = append(completed, partial)
+			}
+			if len(completed) != 0 {
+				return "Memory · " + strings.Join(completed, ", ") + " (update incomplete)", err
+			}
 			return "", err
 		}
-		if err := writeNote(root, system.AutoMemoryIndexName, index, s.index); err != nil {
+		completed = append(completed, step.verb+" "+step.File)
+		committed[step.File] = true
+	}
+	return "Memory · " + strings.Join(completed, ", "), nil
+}
+
+type plannedChange struct {
+	proposal
+	old   revision
+	index string
+	verb  string
+}
+
+func planChanges(root *os.Root, s storeSnapshot, proposals []proposal) ([]plannedChange, error) {
+	if len(proposals) == 0 {
+		return nil, errInvalidProposal
+	}
+	seen := make(map[string]bool, len(proposals))
+	index := s.index.text
+	var plan []plannedChange
+	// Apply direct index edits before any automatic index maintenance, even
+	// when the index edit appeared later in the proposal batch.
+	for _, p := range proposals {
+		if p.File != system.AutoMemoryIndexName {
+			continue
+		}
+		key := strings.ToLower(p.File)
+		if seen[key] || p.Action != actionUpdate || s.index.info == nil {
+			return nil, errInvalidProposal
+		}
+		seen[key] = true
+		if err := validateIndexEdit(index, p.Text); err != nil {
+			return nil, err
+		}
+		if p.Text != index {
+			index = p.Text
+			plan = append(plan, plannedChange{proposal: p, index: index, verb: "updated"})
+		}
+	}
+	for _, p := range proposals {
+		if p.File == system.AutoMemoryIndexName {
+			continue
+		}
+		key := strings.ToLower(p.File)
+		if !validName(p.File) || seen[key] {
+			return nil, errInvalidProposal
+		}
+		seen[key] = true
+		old := s.note(p.File)
+		if p.Action != actionForget && (len(p.Text) > maxNote || !utf8.ValidString(p.Text)) {
+			return nil, errors.New("not a bounded UTF-8 memory note")
+		}
+		var verb string
+		updateIndex := true
+		switch p.Action {
+		case actionRemember:
+			if root != nil {
+				if _, err := root.Lstat(p.File); err == nil {
+					return nil, fmt.Errorf("memory note %s: %w", p.File, fs.ErrExist)
+				} else if !errors.Is(err, fs.ErrNotExist) {
+					return nil, err
+				}
+			}
+			verb = "saved"
+		case actionUpdate:
+			if old.info == nil {
+				return nil, errInvalidProposal
+			}
+			meta, err := revisedMetadata(old.text, p.Text)
+			if err != nil {
+				return nil, err
+			}
+			if p.Text == old.text {
+				continue
+			}
+			updateIndex = meta != nil
+			if meta != nil {
+				p.Name, p.Description, p.Type = meta.Name, meta.Description, meta.Type
+			}
+			verb = "updated"
+		case actionForget:
+			if len(proposals) != 1 || old.info == nil {
+				return nil, errInvalidProposal
+			}
+			verb = "forgot"
+		default:
+			return nil, errInvalidProposal
+		}
+		if updateIndex {
+			var err error
+			index, err = editIndex(index, p)
+			if err != nil {
+				return nil, err
+			}
+		}
+		plan = append(plan, plannedChange{p, old, index, verb})
+	}
+	return plan, nil
+}
+
+func validateIndexEdit(old, next string) error {
+	if len(next) > maxIndex || !utf8.ValidString(next) {
+		return errors.New("not a bounded UTF-8 memory index")
+	}
+	limits := setting.MemoryPreviewLimits{}
+	before, problem := newIndex(old, limits).updateNoteIDs()
+	if problem != "" {
+		return errors.New(problem)
+	}
+	after, problem := newIndex(next, limits).updateNoteIDs()
+	if problem != "" {
+		return errors.New(problem)
+	}
+	if len(before) != len(after) {
+		return errors.New("memory index edit must preserve note IDs")
+	}
+	for id := range before {
+		if _, ok := after[id]; !ok {
+			return errors.New("memory index edit must preserve note IDs")
+		}
+	}
+	return nil
+}
+
+// commit returns a description only if a failed step may have left a change.
+func (p plannedChange) commit(root *os.Root, index *revision) (string, error) {
+	if p.File == system.AutoMemoryIndexName {
+		next, err := writeRevision(root, system.AutoMemoryIndexName, p.index, *index)
+		if err == nil {
+			*index = next
+		}
+		return "", err
+	}
+	if p.Action == actionRemember {
+		if err := writeNote(root, p.File, p.Text, revision{}); err != nil {
+			return "", err
+		}
+		next, err := writeRevision(root, system.AutoMemoryIndexName, p.index, *index)
+		if err != nil {
 			// Leave the complete note intact rather than risk deleting a note
 			// an external writer may already have seen and edited.
-			return "", fmt.Errorf("memory note created but index update failed: %w", err)
+			return "saved " + p.File + " without indexing it", fmt.Errorf("memory note created but index update failed (%s): %w", p.File, err)
 		}
-		return fmt.Sprintf("Memory · saved %s", p.File), nil
-	case actionUpdate:
-		old := s.note(p.File)
-		if old.info == nil {
-			return "", errInvalidProposal
-		}
-		text, err := patchNote(old.text, p)
-		if err != nil || text == old.text {
-			return "", err
-		}
-		if len(text) > maxNote {
-			return "", errors.New("memory note would exceed size limit")
-		}
-		if err := writeNote(root, p.File, text, old); err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Memory · updated %s", p.File), nil
-	case actionForget:
-		old := s.note(p.File)
-		if old.info == nil {
-			return "", errInvalidProposal
-		}
-		index, err := editIndex(s.index.text, p)
-		if err != nil {
-			return "", err
-		}
-		if index != s.index.text {
-			if err := writeNote(root, system.AutoMemoryIndexName, index, s.index); err != nil {
-				return "", err
-			}
+		*index = next
+		return "", nil
+	}
+	return withIndexUpdate(root, index, p.index, func() error {
+		if p.Action == actionUpdate {
+			return writeNote(root, p.File, p.Text, p.old)
 		}
 		rev, err := readRevision(root, p.File, maxNote)
-		if err != nil || !rev.same(old) {
-			err = errStale
-		} else {
-			err = root.Remove(p.File)
+		if err != nil || !rev.same(p.old) {
+			return errStale
 		}
-		if err != nil {
-			if index != s.index.text {
-				latest, rerr := readRevision(root, system.AutoMemoryIndexName, maxIndex)
-				if rerr == nil && latest.text == index {
-					rerr = writeNote(root, system.AutoMemoryIndexName, s.index.text, latest)
-				}
-				err = errors.Join(err, rerr)
-			}
-			return "", err
-		}
-		return fmt.Sprintf("Memory · forgot %s", p.File), nil
+		return root.Remove(p.File)
+	})
+}
+
+func withIndexUpdate(root *os.Root, current *revision, next string, change func() error) (string, error) {
+	if next == current.text {
+		return "", change()
 	}
-	return "", errors.New("unsupported memory operation")
+	written, err := writeRevision(root, system.AutoMemoryIndexName, next, *current)
+	if err != nil {
+		return "", err
+	}
+	if err := change(); err != nil {
+		// Do not restore over changes made by another writer.
+		if rollbackErr := writeNote(root, system.AutoMemoryIndexName, current.text, written); rollbackErr != nil {
+			return "could not restore " + system.AutoMemoryIndexName, errors.Join(err, fmt.Errorf("memory index updated but could not be restored: %w", rollbackErr))
+		}
+		return "", err
+	}
+	*current = written
+	return "", nil
 }
 
 func createStore(path string) (*os.Root, error) {
@@ -407,10 +562,15 @@ func createStore(path string) (*os.Root, error) {
 // pinned root so a path swap cannot redirect a write outside the store. New
 // files use an exclusive link instead of an overwriting rename.
 func writeNote(root *os.Root, name, text string, old revision) error {
+	_, err := writeRevision(root, name, text, old)
+	return err
+}
+
+func writeRevision(root *os.Root, name, text string, old revision) (revision, error) {
 	tmp := ".memory-update-" + rand.Text() + ".tmp"
 	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return err
+		return revision{}, err
 	}
 	defer func() { _ = root.Remove(tmp) }()
 	_, err = io.WriteString(f, text)
@@ -418,18 +578,31 @@ func writeNote(root *os.Root, name, text string, old revision) error {
 		err = f.Chmod(old.info.Mode().Perm())
 	}
 	if err = errors.Join(err, f.Close()); err != nil {
-		return err
+		return revision{}, err
+	}
+	// Capture the installed revision without adopting an external replacement.
+	var info fs.FileInfo
+	if name == system.AutoMemoryIndexName {
+		info, err = root.Lstat(tmp)
+		if err != nil {
+			return revision{}, err
+		}
 	}
 	if old.info == nil {
-		return root.Link(tmp, name)
+		err = root.Link(tmp, name)
+	} else {
+		limit := maxNote
+		if name == system.AutoMemoryIndexName {
+			limit = maxIndex
+		}
+		current, readErr := readRevision(root, name, limit)
+		if readErr != nil || !current.same(old) {
+			return revision{}, errStale
+		}
+		err = root.Rename(tmp, name)
 	}
-	limit := maxNote
-	if name == system.AutoMemoryIndexName {
-		limit = maxIndex
+	if err != nil {
+		return revision{}, err
 	}
-	current, err := readRevision(root, name, limit)
-	if err != nil || !current.same(old) {
-		return errStale
-	}
-	return root.Rename(tmp, name)
+	return revision{text, info}, nil
 }

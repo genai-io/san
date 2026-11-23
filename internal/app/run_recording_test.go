@@ -157,7 +157,7 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 		t.Fatalf("expected a tool-free selector followed by tool-free main inference: %+v", requests)
 	}
 	selector := requests[0].Messages
-	if len(selector) != 3 || !strings.Contains(selector[0].Text(), "topic.md") || selector[2].Text() != "What style?" {
+	if len(selector) != 3 || !strings.Contains(selector[0].Text(), "topic.md") || selector[2].Text() != "User input:\nWhat style?" {
 		t.Fatalf("wrong selector input: %+v", selector)
 	}
 	main := requests[1].Messages[0].Content.Text()

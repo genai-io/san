@@ -6,7 +6,7 @@ The diagram shows the main delivery paths. Inspector records the requests and re
 
 ```text
 Trigger                      Aside                 Result
-User asks a question      -> Auto Memory / Recall   -> Reminder in an eligible main request
+User asks a question      -> Auto Memory / Recall  -> Note previews in an eligible main request
 Completed turn or command -> Auto Memory / Update  -> Validated store change, then display-only Notice
 User asks /btw            -> By the Way             -> Display-only Notice
 Eligible turn ends        -> AutoPilot              -> Proposed next step; runtime decides
@@ -27,16 +27,16 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 
 ## Auto Memory lifecycle
 
-Recall and Update share a repository store. Recall has no tools. Update retains the main tool catalog for cache reuse, but only accepts a supported shell deletion call as a memory change proposal; it never runs the shell.
+Recall and Update share a repository store. Recall has no tools. Update keeps the main tool schemas and order unchanged; that list is not permission to execute every tool. Update reuses native file tools on private copies. Its `Read` accepts only `file_path` and presents the bounded snapshot as raw text (8 KiB per note, 16 KiB total), not the ordinary numbered preview. Only a latest main input of `Forget build.md` (case-insensitive English verb) or `忘掉 build.md`, with the desired filename substituted, authorizes a standalone shell proposal for one previously read, indexed note without another prompt.
 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
-| **Recall** | **Fast** runs alongside the main request; **Wait** waits up to the configured timeout. | Index preview, already-covered notes, and the question. | Selected note previews reach the main model as Reminders. A failed lookup doesn't block the turn. |
-| **Update** | `/reflect memory` or an eligible turn when automatic Update is on. | The completed main request and final reply, followed by update instructions and the index preview. | At most one validated add, edit, or removal. A successful write produces a notice. |
+| **Recall** | **Fast** runs alongside the main request; **Wait** waits up to the configured timeout. | Three user messages: raw index preview (plus a separate hint block if truncated), `Already in main context:`, then `User input:`. | Up to five selected previews. Fast adds request-only context at the next eligible request boundary; Wait attaches Reminders to the submitted user message. Failure does not block the turn. |
+| **Update** | `/reflect memory` or an eligible turn when automatic Update is on. | The admitted main request and its final assistant reply, followed by one user message: task, layout, optional note example, fenced index preview, and optional truncation hint. | A validated batch of adds or edits, including index edits that preserve note links, or one removal. Results are display-only; earlier commits may survive an incomplete batch. |
 
-Both Asides can read or search omitted index entries on demand. Update can also read note bodies without changing the main request prefix. See [Auto Memory](../concepts/auto-memory.md#index-preview) for limits.
+Both Asides can read or search omitted index entries on demand. Each lookup appends an assistant JSON reply and a user message with separate status and index data blocks. An Update `Read` round instead appends the assistant tool-call response and a user message with matching tool results. Neither changes the admitted main prefix. See [Auto Memory](../concepts/auto-memory.md#example-aside-requests) for request examples and limits.
 
-Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work. Configure these in `/reflect` under Auto Memory; `/memory` opens the store and instruction-file browser.
+Natural-language input is never routed to Update based on its wording. The main agent handles project instructions through ordinary files and permissions. Update runs outside the main turn and does not manage those files. Its working messages, store paths, indexes, and status stay out of the main context. A disabled store starts no new Recall or Update work; settings changes do not rewrite requests already scheduled. Update rechecks the session and store, and automatic runs also recheck the Update switch, before scheduling a write. At commit time, freshness checks are best-effort against external writers; earlier commits are not rolled back if a later step fails. Configure these in `/reflect` under Auto Memory; `/memory` opens the store and instruction-file browser.
 
 ## Recap
 
@@ -57,7 +57,7 @@ The tab saves `recap.afterMinutes` and `recap.turns` in project settings for Git
 
 Asides follow the same [Context Management principles](context-management.md#principles) as the main conversation: keep the prefix predictable, send details only when needed, and check permissions at use time.
 
-- **Stable prefix, changing suffix.** By the Way, Recap, and Suggestion reuse the main model, tool schema order, system prompt, and unchanged history where possible. Auto Memory Update reuses the completed main request and its final assistant output. Recall and AutoPilot use their own stable system instructions instead. Append the question, candidates, mission, or evidence as task data rather than interpolating it into the system prompt.
+- **Stable prefix, changing suffix.** By the Way, Recap, and Suggestion reuse the main model, tool schema order, system prompt, and unchanged history where possible. Auto Memory Update reuses the completed main request, including its unchanged tool schemas, and appends the final assistant reply and the review task. Recall and AutoPilot use their own stable system instructions instead. Append the question, candidates, mission, or evidence as task data rather than interpolating it into the system prompt.
 - **Fresh state over cache hits.** Use a read-only snapshot. Changes take effect on the next eligible request; never rewrite an in-flight or historical request.
 - **Apply only the accepted result.** Keep Aside working messages out of main history. Apply a relevant Reminder at the next supported model boundary, or display a Notice without feeding it back to the model. A schema is not permission, and an Aside decision does not replace live runtime checks.
 

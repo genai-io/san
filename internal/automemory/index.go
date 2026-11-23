@@ -13,7 +13,7 @@ import (
 
 // Only a standalone bullet for this single note is owned by the updater.
 // Refuse ambiguous entries rather than removing prose or another note's link.
-var indexEntry = regexp.MustCompile(`^[-*+] \[([^\[\]]+)\]\((?:\./)?([A-Za-z0-9_-]+\.md)\)(?:[ \t]+([^\[\]<>]*))?$`)
+var indexEntry = regexp.MustCompile(`^[-*+] \[([^\[\]]+)\]\(((?:\./)?([A-Za-z0-9_-]+\.md))\)(?:[ \t]+[^\[\]<>]*)?$`)
 
 var (
 	indexWord = regexp.MustCompile(`[A-Za-z0-9_.-]+`)
@@ -37,8 +37,8 @@ func (i *Index) updateNoteIDs() (map[string]bool, string) {
 			continue
 		}
 		match := indexEntry.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
-		if match != nil && validName(match[2]) && strings.TrimSpace(match[1]) != "" {
-			candidates[match[2]] = offset <= len(i.preview)
+		if match != nil && validName(match[3]) && strings.TrimSpace(match[1]) != "" {
+			candidates[match[3]] = offset <= len(i.preview)
 		} else if problem == "" && linksNote(line) {
 			problem = fmt.Sprintf("MEMORY.md line %d links a note outside the `- [Name](file.md) description` form", lineNo)
 		}
@@ -61,7 +61,41 @@ func (i *Index) updateNoteIDs() (map[string]bool, string) {
 			delete(candidates, file)
 		}
 	}
+	if problem == "" {
+		problem = unsupportedIndexLink(i.text)
+	}
 	return candidates, problem
+}
+
+// The raw scan also catches malformed entries that Markdown does not parse as
+// links. Inspect resolved links separately for forms such as reference links.
+func unsupportedIndexLink(text string) string {
+	var problem string
+	_ = ast.Walk(goldmark.DefaultParser().Parse(mdtext.NewReader([]byte(text))), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		link, ok := n.(*ast.Link)
+		if !entering || !ok || !validName(strings.ToLower(strings.TrimPrefix(string(link.Destination), "./"))) {
+			return ast.WalkContinue, nil
+		}
+		block := n.Parent()
+		for block.Type() == ast.TypeInline {
+			block = block.Parent()
+		}
+		start := 0
+		if block.Lines().Len() > 0 {
+			start = strings.LastIndexByte(text[:block.Lines().At(0).Start], '\n') + 1
+		}
+		// A supported entry starts its block with the raw one-line link.
+		line, _, _ := strings.Cut(text[start:], "\n")
+		if n == block.FirstChild() {
+			match := indexEntry.FindStringSubmatch(strings.TrimSuffix(line, "\r"))
+			if match != nil && match[2] == string(link.Destination) && strings.TrimSpace(match[1]) != "" {
+				return ast.WalkContinue, nil
+			}
+		}
+		problem = fmt.Sprintf("MEMORY.md line %d links a note outside the `- [Name](file.md) description` form", strings.Count(text[:start], "\n")+1)
+		return ast.WalkStop, nil
+	})
+	return problem
 }
 
 func linksNote(line string) bool {
@@ -120,6 +154,7 @@ func editIndex(text string, p proposal) (string, error) {
 	mention := regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])` + regexp.QuoteMeta(p.File) + `([^a-z0-9_.-]|$)`)
 	literal := literalIndexLines(text)
 	var out strings.Builder
+	updated := false
 	offset := 0
 	for line := range strings.SplitAfterSeq(text, "\n") {
 		isLiteral := literal[offset]
@@ -128,10 +163,18 @@ func editIndex(text string, p proposal) (string, error) {
 			out.WriteString(line)
 			continue
 		}
-		entry := indexEntry.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
-		if entry != nil && entry[2] == p.File {
-			if p.Action == actionRemember {
+		body := strings.TrimRight(line, "\r\n")
+		entry := indexEntry.FindStringSubmatch(body)
+		if entry != nil && entry[3] == p.File {
+			switch p.Action {
+			case actionRemember:
 				return "", errors.New("memory index already has an entry for this note")
+			case actionUpdate:
+				if updated || strings.TrimSpace(entry[1]) == "" {
+					return "", errors.New("ambiguous memory index entry for this note")
+				}
+				fmt.Fprintf(&out, "%c [%s](%s) — (%s) %s%s", line[0], p.Name, entry[2], p.Type, p.Description, line[len(body):])
+				updated = true
 			}
 			continue
 		}
@@ -141,6 +184,9 @@ func editIndex(text string, p proposal) (string, error) {
 			return "", errors.New("ambiguous memory index entry for this note")
 		}
 		out.WriteString(line)
+	}
+	if p.Action == actionUpdate && !updated {
+		return "", errors.New("memory index has no entry for this note")
 	}
 	if p.Action == actionRemember {
 		newline := "\n"

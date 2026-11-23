@@ -1,64 +1,88 @@
 package automemory
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// forgetTools offers only shell schemas already present in the main prefix.
-// Bash is also the schema name when the configured interpreter is zsh.
-func forgetTools(req *ai.Request) []string {
-	if req.ToolChoice != ai.ToolChoiceAuto {
-		return nil
-	}
-	var names []string
-	for _, schema := range req.Tools {
-		if tool.IsShellTool(schema.Name) {
-			names = append(names, schema.Name)
+// requestedForget recognizes an explicit filename in the latest native user
+// input. Request-only inserts have no message ID and grant no authorization.
+func requestedForget(messages []ai.Message) string {
+	for _, message := range slices.Backward(messages) {
+		if message.Role != ai.RoleUser || message.ID == "" || len(message.ToolResults()) != 0 {
+			continue
 		}
+		if len(message.Content) == 0 || message.Content[0].Type != ai.BlockText {
+			return ""
+		}
+		text := strings.TrimSpace(message.Content[0].Text)
+		if strings.ContainsAny(text, "\r\n") {
+			return ""
+		}
+		for _, block := range message.Content[1:] {
+			if block.Type != ai.BlockText || !strings.HasPrefix(strings.TrimSpace(block.Text), "<system-reminder") {
+				return ""
+			}
+		}
+		words := strings.Fields(text)
+		if len(words) == 2 && (strings.EqualFold(words[0], "forget") || words[0] == "忘掉") && validName(words[1]) {
+			return words[1]
+		}
+		return ""
 	}
-	return names
+	return ""
 }
 
-// shellForget interprets one literal delete as a proposal. It never executes a
-// shell or accepts a path; apply resolves the note against the pinned store.
-func shellForget(call ai.ToolCall, allowed []string) (proposal, error) {
+// Authorize one literal removal of an observed note, never a general shell
+// command. The registered shell executes the equivalent command on its copy.
+func forgetProposalFor(call ai.ToolCall, dir string, notes []noteRevision, shells []string) (proposal, error) {
 	var args struct {
-		Command       string `json:"command"`
-		Description   string `json:"description"`
-		ExecutionMode string `json:"execution_mode"`
-		Timeout       int    `json:"timeout_ms"`
+		Command     string `json:"command"`
+		Description string `json:"description"`
+		Mode        string `json:"execution_mode"`
+		Timeout     int    `json:"timeout_ms"`
 	}
-	if !slices.Contains(allowed, call.Name) || len(call.Input) > 4096 ||
-		core.DecodeStrictJSON(strings.NewReader(call.Input), &args) != nil ||
-		(args.ExecutionMode != "" && args.ExecutionMode != "foreground") {
+	if !slices.Contains(shells, call.Name) || !decodeUpdateInput(call.Input, &args) ||
+		(args.Mode != "" && args.Mode != "foreground") {
 		return proposal{}, errInvalidProposal
 	}
-	var file string
-	switch call.Name {
-	case tool.ToolBash:
+	var target string
+	if call.Name == tool.ToolBash {
 		files, ok := setting.RemovedFiles(args.Command)
 		if !ok || len(files) != 1 {
 			return proposal{}, errInvalidProposal
 		}
-		file = files[0]
-	case tool.ToolPowerShell:
-		command, ok := strings.CutPrefix(strings.TrimSpace(args.Command), "Remove-Item -LiteralPath ")
-		if !ok {
-			return proposal{}, errInvalidProposal
-		}
-		file = strings.TrimSpace(command)
-		if len(file) >= 2 && (file[0] == '\'' || file[0] == '"') && file[0] == file[len(file)-1] {
-			file = file[1 : len(file)-1]
+		target = files[0]
+	}
+	for _, note := range notes {
+		absolute := filepath.Join(dir, note.name)
+		if call.Name == tool.ToolBash && (target == note.name || target == absolute) ||
+			call.Name == tool.ToolPowerShell && powerShellRemoval(args.Command, note.name, absolute) {
+			return proposal{Action: actionForget, File: note.name, Shell: call.Name}, nil
 		}
 	}
-	if !validName(file) {
-		return proposal{}, errInvalidProposal
+	return proposal{}, errInvalidProposal
+}
+
+func powerShellRemoval(command, filename, absolute string) bool {
+	const prefix = "Remove-Item -LiteralPath "
+	command = strings.TrimSpace(command)
+	if len(command) <= len(prefix) || !strings.EqualFold(command[:len(prefix)], prefix) {
+		return false
 	}
-	return proposal{Action: actionForget, File: file}, nil
+	target := strings.TrimSpace(command[len(prefix):])
+	return target == filename || target == "'"+filename+"'" || target == `"`+filename+`"` ||
+		target == "'"+strings.ReplaceAll(absolute, "'", "''")+"'"
+}
+
+func forgetCommand(shell, file string) string {
+	if shell == tool.ToolPowerShell {
+		return "Microsoft.PowerShell.Management\\Remove-Item -LiteralPath '" + file + "' -ErrorAction Stop"
+	}
+	return "command rm -- '" + file + "'"
 }

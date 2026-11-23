@@ -41,7 +41,7 @@ func TestACPConcurrentSessions(t *testing.T) {
 				t.Errorf("unexpected tool in no-tools turn: %s", schema.Name)
 			}
 		}
-		if strings.Contains(req.System, "You select memories") {
+		if strings.Contains(req.System, `"selected_memories"`) {
 			return aitest.Says(`{"selected_memories":["topic.md"]}`)(ctx, req)
 		}
 		return aitest.Says("done")(ctx, req)

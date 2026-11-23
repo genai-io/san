@@ -123,7 +123,7 @@ func TestRecallRecording(t *testing.T) {
 				}
 			}
 			if request.Messages[0].Text() != "- [freeze.md](freeze.md)\n" ||
-				request.Messages[1].Text() != "Already in main context:\nNone." || request.Messages[2].Text() != "can I merge?" {
+				request.Messages[1].Text() != "Already in main context:\nNone." || request.Messages[2].Text() != "User input:\ncan I merge?" {
 				t.Fatalf("selector index, active files, and question were not separated: %+v", request.Messages)
 			}
 			if finish == nil || finish.Usage.Input != 17 || finish.Usage.Output != 4 {

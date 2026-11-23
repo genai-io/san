@@ -88,7 +88,7 @@ func TestFastRecallIsNonBlockingAndLabelsPreviousQuestion(t *testing.T) {
 	if !strings.Contains(index, "freeze.md") || !strings.Contains(index, "sign.md") ||
 		calls[0].Messages[1].Text() != "Already in main context:\nNone." ||
 		calls[1].Messages[1].Text() != "Already in main context:\n- freeze.md\n" ||
-		calls[1].Messages[2].Text() != second.Text() {
+		calls[1].Messages[2].Text() != "User input:\n"+second.Text() {
 		t.Fatalf("follow-up selector did not separate the index, active files, and question: %+v", calls[1].Messages)
 	}
 	if history[1].Text() != second.Text() || original[0].Text() != first.Text() {

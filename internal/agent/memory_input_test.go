@@ -55,8 +55,8 @@ func TestPrepareMemoryRecordsOnlyAcceptedInput(t *testing.T) {
 	if len(request.Messages) != 3 {
 		t.Fatalf("expected index, context, and query messages: %+v", request.Messages)
 	}
-	if text := request.Messages[2].Text(); text != userInput.Text() {
-		t.Fatalf("recall saw the expanded command: %q", text)
+	if text := request.Messages[2].Text(); text != "User input:\n"+userInput.Text() {
+		t.Fatalf("expected the labeled original input, not the expanded command: %q", text)
 	}
 	if !strings.HasPrefix(got.Message.Text(), msg.Text()) {
 		t.Fatalf("expanded command missing from prepared input: %q", got.Message.Text())

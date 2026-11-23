@@ -13,11 +13,12 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/fs"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-const memoryUpdateProposal = `{"action":"remember","file":"fixture-build.md","name":"Build convention","description":"Project build command","type":"project","body":"Use make for project builds."}`
+const memoryUpdateWriteInput = `{"file_path":"fixture-build.md","content":"---\nname: Build convention\ndescription: Project build command\ntype: project\n---\n\nUse make for project builds.\n"}`
 
 func memoryUpdateFixture(t *testing.T, turns ...aitest.Turn) (*model, *aitest.Driver, []core.Message, string) {
 	t.Helper()
@@ -26,7 +27,7 @@ func memoryUpdateFixture(t *testing.T, turns ...aitest.Turn) (*model, *aitest.Dr
 	messages[0].ID, messages[1].ID = core.NewMessageID(), core.NewMessageID()
 	m, _ := resumedModel(t, messages[:1])
 	if len(turns) == 0 {
-		turns = []aitest.Turn{aitest.Says(memoryUpdateProposal)}
+		turns = []aitest.Turn{aitest.Asks(ai.ToolCall{ID: "write", Name: "Write", Input: memoryUpdateWriteInput})}
 	}
 	driver := aitest.New(turns...)
 	m.env.LLMProvider = &finalizationProvider{client: driver.Client()}
@@ -34,7 +35,10 @@ func memoryUpdateFixture(t *testing.T, turns ...aitest.Turn) (*model, *aitest.Dr
 	owner := m.services.Session
 	h, err := owner.StartInference(t.Context(), session.InferenceOptions{
 		Purpose: session.PurposeTurn, TurnID: "test-turn", Provider: m.env.LLMProvider.Name(), Model: ai.Model{ID: "test"},
-		Request: &ai.Request{System: "main rules", Messages: messages[:1], Tools: []ai.Schema{{Name: "Read", Definition: map[string]any{"type": "object"}}}},
+		Request: &ai.Request{
+			System: "main rules", Messages: messages[:1], ToolChoice: ai.ToolChoiceAuto,
+			Tools: []ai.Schema{(&fs.ReadTool{}).Schema(), (&fs.EditTool{}).Schema(), (&fs.WriteTool{}).Schema()},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,9 +58,9 @@ func TestMemoryUpdateWritesThroughAside(t *testing.T) {
 
 func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 	t.Helper()
-	const read = `{"action":"read","files":["fixture-build.md"]}`
-	const update = `{"action":"update","file":"fixture-build.md","old":"Build with go build.","replacement":"Use make for project builds."}`
-	m, driver, messages, path := memoryUpdateFixture(t, aitest.Says(read), aitest.Says(update))
+	read := ai.ToolCall{ID: "read", Name: "Read", Input: `{"file_path":"fixture-build.md"}`}
+	edit := ai.ToolCall{ID: "edit", Name: "Edit", Input: `{"file_path":"fixture-build.md","old_string":"Build with go build.","new_string":"Use make for project builds."}`}
+	m, driver, messages, path := memoryUpdateFixture(t, aitest.Asks(read), aitest.Asks(edit))
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -96,19 +100,38 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		t.Fatalf("want an index request and one continuation, got %d calls", len(calls))
 	}
 	request := calls[0]
-	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceAuto || len(request.Tools) != 1 || len(request.Messages) != 3 {
+	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceAuto || len(request.Tools) != 3 || len(request.Messages) != 3 {
 		t.Fatalf("Memory Update did not retain the main prefix: %+v", request)
 	}
+	for i, name := range []string{"Read", "Edit", "Write"} {
+		if request.Tools[i].Name != name {
+			t.Fatalf("Memory Update tools = %+v, want Read, Edit, Write", request.Tools)
+		}
+	}
+	indexPath, err := filepath.EvalSymlinks(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexPreview := "# Memory index contents (MEMORY.md)\nPath: " + indexPath + "\n\n~~~\n" + indexText + "~~~"
 	blocks := request.Messages[2].Content
 	if request.Messages[0].Text() != "This project uses make for builds." || request.Messages[1].Text() != "Understood: make builds the project." ||
-		len(blocks) != 2 || blocks[1].Text != indexText || !strings.Contains(blocks[0].Text, "## Note types for new notes") ||
-		strings.Contains(blocks[0].Text, "Build with go build.") {
+		len(blocks) != 4 || blocks[3].Text != indexPreview || !strings.HasPrefix(blocks[1].Text, "# Project memory layout") ||
+		!strings.Contains(blocks[1].Text, "## Note types") ||
+		!strings.Contains(blocks[2].Text, "# Note format example (not evidence; do not save it)") ||
+		strings.Contains(blocks[2].Text, "## Note types") || strings.Contains(blocks[0].Text, "Build with go build.") {
 		t.Fatalf("wrong initial Memory Update context: %+v", request.Messages)
 	}
 	followup := calls[1]
-	if len(followup.Messages) != 5 || followup.Messages[3].Text() != read ||
-		!strings.Contains(followup.Messages[4].Text(), "Build with go build.") {
-		t.Fatalf("requested note missing from follow-up: %+v", followup.Messages)
+	if len(followup.Messages) != 5 {
+		t.Fatalf("want five follow-up messages, got %d", len(followup.Messages))
+	}
+	assistant, user := followup.Messages[3], followup.Messages[4]
+	readCalls, readResults := assistant.ToolCalls(), user.ToolResults()
+	if assistant.Role != ai.RoleAssistant || len(readCalls) != 1 || readCalls[0].ID != read.ID ||
+		readCalls[0].Name != read.Name || readCalls[0].Input != read.Input ||
+		user.Role != ai.RoleUser || len(readResults) != 1 || readResults[0].ToolCallID != read.ID ||
+		readResults[0].IsError || !strings.Contains(readResults[0].Content.Text(), "Build with go build.") {
+		t.Fatalf("expected Read call and matching note result in follow-up: %+v", followup.Messages[3:])
 	}
 	write := m.applyMemoryUpdate(proposed)
 	if write == nil {
@@ -134,7 +157,7 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		t.Fatal("memory update should add only a display notice, not a main message")
 	}
 	var starts []uint64
-	var outputs []string
+	var stops []string
 	var noticeSource uint64
 	for _, event := range snapshot.Events() {
 		switch p := event.Payload.(type) {
@@ -143,8 +166,8 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 				starts = append(starts, event.Seq)
 			}
 		case *session.InferenceFinishPayload:
-			if event.Source != nil && len(starts) > 0 && event.Source.Seq == starts[len(starts)-1] && p.Output != nil {
-				outputs = append(outputs, p.Output.Text)
+			if event.Source != nil && len(starts) > 0 && event.Source.Seq == starts[len(starts)-1] {
+				stops = append(stops, p.StopReason)
 			}
 		case *session.AnnotationAddPayload:
 			if p.Text == done.notice && event.Source != nil {
@@ -152,8 +175,54 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 			}
 		}
 	}
-	if len(starts) != 2 || len(outputs) != 2 || outputs[0] != read || outputs[1] != update || noticeSource != starts[1] {
-		t.Fatalf("read and proposal should be recorded separately, with only the final call linked to the write: %v, %v, %d", starts, outputs, noticeSource)
+	if len(starts) != 2 || len(stops) != 2 || stops[0] != string(ai.StopToolUse) || stops[1] != string(ai.StopToolUse) || noticeSource != starts[1] {
+		t.Fatalf("Read and Edit should be recorded separately, with only Edit linked to the write: starts=%v, stops=%v, notice source=%d", starts, stops, noticeSource)
+	}
+}
+
+func TestMemoryUpdateDisplaysPartialFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		manual bool
+	}{
+		{name: "automatic"},
+		{name: "manual", manual: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _, messages, _ := memoryUpdateFixture(t)
+			m.conv.OnNotice = m.recordNotice
+			ctx, cancel := context.WithCancel(t.Context())
+			update := &memoryUpdate{owner: m.services.Session, manual: tc.manual, ctx: ctx, cancel: cancel}
+			m.memoryUpdate = update
+			start := len(m.conv.Messages)
+			const notice = "Memory · saved fixture-build.md without indexing it (update incomplete)"
+			m.finishMemoryUpdate(memoryUpdateFinished{update: update, notice: notice, err: errors.New("index write failed")})
+
+			added := m.conv.Messages[start:]
+			want := 1
+			if tc.manual {
+				want++
+			}
+			if len(added) != want || added[0].Role != core.ChatNotice || added[0].Content != notice || !added[0].AutoMemoryUpdated {
+				t.Fatalf("missing committed-change notice: %+v", added)
+			}
+			if tc.manual && added[1].Content != "Auto Memory could not finish: index write failed" {
+				t.Fatalf("missing manual error notice: %+v", added)
+			}
+			snapshot := m.services.Session.Snapshot()
+			if len(snapshot.Messages()) != len(messages) {
+				t.Fatal("partial failure leaked notices into model history")
+			}
+			count := 0
+			for _, row := range m.services.SessionStore.ChatRows(snapshot) {
+				if row.Role == core.ChatNotice && row.Content == notice {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Fatalf("want one replayed partial-commit annotation, got %d", count)
+			}
+		})
 	}
 }
 
@@ -171,8 +240,12 @@ func TestAutomaticMemoryUpdateRespectsLivePolicy(t *testing.T) {
 		t.Fatal("enabled completed turn did not start a memory update")
 	}
 	proposed := cmd().(memoryUpdateProposed)
-	if proposed.err != nil || proposed.change == nil || !strings.Contains(driver.Last().Messages[2].Content[0].Text, "## Note types for new notes") {
+	if proposed.err != nil || proposed.change == nil {
 		t.Fatalf("Update did not offer additions: %v", proposed.err)
+	}
+	blocks := driver.Last().Messages[2].Content
+	if len(blocks) != 4 || !strings.Contains(blocks[2].Text, "# Note format example") {
+		t.Fatal("Update did not include the note format")
 	}
 	m.services.Setting = setting.New(setting.NewData())
 	if cmd := m.applyMemoryUpdate(proposed); cmd != nil {

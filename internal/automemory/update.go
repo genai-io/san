@@ -3,11 +3,8 @@ package automemory
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
@@ -15,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/markdown"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -28,13 +26,13 @@ const (
 // noteTypes defines the classification contract for both validation and Propose.
 // These labels never change where a note is stored.
 var noteTypes = map[string]string{
-	"user":      "Who the user is or what they generally prefer: role, expertise, or standing personal preference. A correction or an approach they confirmed in this repository is feedback instead.",
-	"feedback":  "How the agent should work next time in this repository: a user correction or an approach they explicitly confirmed. Include why and when to apply it if known.",
-	"project":   "What matters about ongoing work in this repository: meaningful milestones, deadlines, decisions, or constraints not recoverable from code, docs, or git. Include why and when it applies if known. Skip transient task status.",
-	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
+	"user":      "The user's role, expertise, or standing personal preferences.",
+	"feedback":  "User corrections or confirmed ways to work on this project; include when and why they apply.",
+	"project":   "Durable project decisions, constraints, or milestones not recoverable from the repository.",
+	"reference": "Where to find an external source of truth and what it is for.",
 }
 
-// Updater proposes a bounded memory change without running shell commands.
+// Updater proposes a bounded change to the current project's memory.
 type Updater struct {
 	Provider    llm.Provider
 	Model       string
@@ -43,17 +41,17 @@ type Updater struct {
 }
 
 type proposal struct {
-	Action      Action   `json:"action"`
-	Files       []string `json:"files"`
-	Query       string   `json:"query"`
-	Line        int      `json:"line"`
-	File        string   `json:"file"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Type        string   `json:"type"`
-	Body        string   `json:"body"`
-	Old         string   `json:"old"`
-	Replacement string   `json:"replacement"`
+	Action      Action
+	Files       []string
+	Query       string
+	Line        int
+	File        string
+	Name        string
+	Description string
+	Type        string
+	Text        string
+	Params      []map[string]any
+	Shell       string
 }
 
 type noteData struct {
@@ -90,64 +88,6 @@ func (c *Change) Apply(ctx context.Context) (notice string, err error) {
 
 var errInvalidProposal = errors.New("invalid memory proposal")
 
-func decodeProposal(text string) (proposal, error) {
-	var p proposal
-	if len(text) > 16*1024 || !utf8.ValidString(text) || core.DecodeStrictJSON(strings.NewReader(text), &p) != nil {
-		return p, errInvalidProposal
-	}
-	return p, nil
-}
-
-func validateProposal(p proposal) error {
-	invalid := errInvalidProposal
-	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
-	patch := p.Old != "" || p.Replacement != ""
-	if p.Action.IsIndexLookup() {
-		if p.File != "" || p.Files != nil || metadata || patch {
-			return invalid
-		}
-		return nil
-	}
-	if p.Query != "" || p.Line != 0 {
-		return invalid
-	}
-	if p.Action == actionRead {
-		if p.File != "" || metadata || patch {
-			return invalid
-		}
-		return nil
-	}
-	if p.Files != nil {
-		return invalid
-	}
-	if p.Action == actionNone && p.File == "" && !metadata && !patch {
-		return nil
-	}
-	if !validName(p.File) {
-		return invalid
-	}
-	switch p.Action {
-	case actionRemember:
-		if patch || !shortLabel(p.Name, 80) || !shortLabel(p.Description, 180) || !noteText(p.Body) {
-			return invalid
-		}
-		if _, ok := noteTypes[p.Type]; !ok {
-			return invalid
-		}
-	case actionUpdate:
-		if metadata || !noteText(p.Old) || !noteText(p.Replacement) {
-			return invalid
-		}
-	case actionForget:
-		if metadata || patch {
-			return invalid
-		}
-	default:
-		return invalid
-	}
-	return nil
-}
-
 func shortLabel(s string, maxBytes int) bool {
 	return core.ValidLabel(s, maxBytes) && !strings.ContainsAny(s, `[]\<>`) && !mentionsNote(s)
 }
@@ -156,20 +96,45 @@ func noteText(s string) bool {
 	return strings.TrimSpace(s) != "" && core.ValidMultiline(s, maxNote)
 }
 
-func renderNote(p proposal) string {
-	// JSON strings are valid YAML scalars, including quotes and punctuation.
-	quote := func(s string) string { data, _ := json.Marshal(s); return string(data) }
-	return fmt.Sprintf("---\nname: %s\ndescription: %s\ntype: %s\n---\n\n%s\n", quote(p.Name), quote(p.Description), p.Type, strings.TrimSpace(p.Body))
+type noteMetadata struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Type        string `yaml:"type"`
 }
 
-func patchNote(text string, p proposal) (string, error) {
-	_, body, err := markdown.SplitFrontmatter(text)
+func parseNoteMetadata(frontmatter string) (noteMetadata, error) {
+	var meta noteMetadata
+	d := yaml.NewDecoder(strings.NewReader(frontmatter))
+	d.KnownFields(true)
+	err := d.Decode(&meta)
+	return meta, err
+}
+
+func validNoteMetadata(meta noteMetadata) bool {
+	_, known := noteTypes[meta.Type]
+	return known && shortLabel(meta.Name, 80) && shortLabel(meta.Description, 180)
+}
+
+// revisedMetadata leaves unchanged frontmatter alone, including on legacy notes.
+func revisedMetadata(original, text string) (*noteMetadata, error) {
+	frontmatter, _, err := markdown.SplitFrontmatter(original)
 	if err != nil {
-		return "", errors.New("unterminated memory frontmatter")
+		return nil, err
 	}
-	i := strings.Index(body, p.Old)
-	if i < 0 || strings.Contains(body[i+1:], p.Old) {
-		return "", errors.New("memory update must match one unique excerpt in the note body")
+	updated, body, err := markdown.SplitFrontmatter(text)
+	if err != nil || !noteText(body) {
+		return nil, errors.New("memory edit must leave valid frontmatter and a nonempty body")
 	}
-	return text[:len(text)-len(body)] + body[:i] + p.Replacement + body[i+len(p.Old):], nil
+	if frontmatter == updated {
+		return nil, nil
+	}
+	before, oldErr := parseNoteMetadata(frontmatter)
+	after, newErr := parseNoteMetadata(updated)
+	if oldErr != nil || newErr != nil || before.Type != after.Type || !validNoteMetadata(after) {
+		return nil, errors.New("memory edit must preserve the note type and leave a valid name and description")
+	}
+	if before == after {
+		return nil, nil
+	}
+	return &after, nil
 }
