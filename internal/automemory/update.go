@@ -3,9 +3,7 @@ package automemory
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/genai-io/san/internal/aside"
@@ -34,7 +32,7 @@ var noteTypes = map[string]string{
 	"reference": "Where to find a source of truth not already discoverable in the repository, such as an external dashboard or tracker. Save the pointer and its purpose, not a copy of its contents.",
 }
 
-// Updater proposes a bounded memory change without running shell commands.
+// Updater proposes a bounded change to the current project's memory.
 type Updater struct {
 	Provider    llm.Provider
 	Model       string
@@ -43,22 +41,17 @@ type Updater struct {
 }
 
 type proposal struct {
-	Action      Action   `json:"action"`
-	Files       []string `json:"files"`
-	Query       string   `json:"query"`
-	Line        int      `json:"line"`
-	File        string   `json:"file"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Type        string   `json:"type"`
-	Body        string   `json:"body"`
-	Edits       []noteEdit
-}
-
-type noteEdit struct {
-	Old string `json:"old_string"`
-	New string `json:"new_string"`
-	All bool   `json:"replace_all"`
+	Action      Action
+	Files       []string
+	Query       string
+	Line        int
+	File        string
+	Name        string
+	Description string
+	Type        string
+	Text        string
+	Params      []map[string]any
+	Shell       string
 }
 
 type noteData struct {
@@ -95,73 +88,12 @@ func (c *Change) Apply(ctx context.Context) (notice string, err error) {
 
 var errInvalidProposal = errors.New("invalid memory proposal")
 
-func validateProposal(p proposal) error {
-	invalid := errInvalidProposal
-	metadata := p.Name != "" || p.Description != "" || p.Type != "" || p.Body != ""
-	patch := len(p.Edits) != 0
-	if p.Action.IsIndexLookup() {
-		if p.File != "" || p.Files != nil || metadata || patch {
-			return invalid
-		}
-		return nil
-	}
-	if p.Query != "" || p.Line != 0 {
-		return invalid
-	}
-	if p.Action == actionRead {
-		if p.File != "" || metadata || patch {
-			return invalid
-		}
-		return nil
-	}
-	if p.Files != nil {
-		return invalid
-	}
-	if p.Action == actionNone && p.File == "" && !metadata && !patch {
-		return nil
-	}
-	if !validName(p.File) {
-		return invalid
-	}
-	switch p.Action {
-	case actionRemember:
-		if patch || !shortLabel(p.Name, 80) || !shortLabel(p.Description, 180) || !noteText(p.Body) {
-			return invalid
-		}
-		if _, ok := noteTypes[p.Type]; !ok {
-			return invalid
-		}
-	case actionUpdate:
-		if metadata || !patch {
-			return invalid
-		}
-		for _, edit := range p.Edits {
-			if !noteText(edit.Old) || !noteText(edit.New) || edit.Old == edit.New {
-				return invalid
-			}
-		}
-	case actionForget:
-		if metadata || patch {
-			return invalid
-		}
-	default:
-		return invalid
-	}
-	return nil
-}
-
 func shortLabel(s string, maxBytes int) bool {
 	return core.ValidLabel(s, maxBytes) && !strings.ContainsAny(s, `[]\<>`) && !mentionsNote(s)
 }
 
 func noteText(s string) bool {
 	return strings.TrimSpace(s) != "" && core.ValidMultiline(s, maxNote)
-}
-
-func renderNote(p proposal) string {
-	// JSON strings are valid YAML scalars, including quotes and punctuation.
-	quote := func(s string) string { data, _ := json.Marshal(s); return string(data) }
-	return fmt.Sprintf("---\nname: %s\ndescription: %s\ntype: %s\n---\n\n%s\n", quote(p.Name), quote(p.Description), p.Type, strings.TrimSpace(p.Body))
 }
 
 type noteMetadata struct {
@@ -178,45 +110,31 @@ func parseNoteMetadata(frontmatter string) (noteMetadata, error) {
 	return meta, err
 }
 
-// patchNote validates the entire edit batch before the caller writes either
-// file. Unchanged frontmatter is left alone, including on legacy notes.
-func patchNote(text string, edits []noteEdit) (string, *noteMetadata, error) {
-	frontmatter, _, err := markdown.SplitFrontmatter(text)
+func validNoteMetadata(meta noteMetadata) bool {
+	_, known := noteTypes[meta.Type]
+	return known && shortLabel(meta.Name, 80) && shortLabel(meta.Description, 180)
+}
+
+// revisedMetadata leaves unchanged frontmatter alone, including on legacy notes.
+func revisedMetadata(original, text string) (*noteMetadata, error) {
+	frontmatter, _, err := markdown.SplitFrontmatter(original)
 	if err != nil {
-		return "", nil, fmt.Errorf("read memory frontmatter: %w", err)
-	}
-	for _, edit := range edits {
-		i := strings.Index(text, edit.Old)
-		if i < 0 {
-			return "", nil, errors.New("memory edit text was not found in the note")
-		}
-		count := 1
-		if edit.All {
-			count = strings.Count(text, edit.Old)
-		} else if strings.Contains(text[i+1:], edit.Old) {
-			return "", nil, errors.New("memory edit must match a unique excerpt or use replace_all")
-		}
-		if len(text)+count*(len(edit.New)-len(edit.Old)) > maxNote {
-			return "", nil, errors.New("memory note would exceed size limit")
-		}
-		text = strings.Replace(text, edit.Old, edit.New, count)
+		return nil, err
 	}
 	updated, body, err := markdown.SplitFrontmatter(text)
 	if err != nil || !noteText(body) {
-		return "", nil, errors.New("memory edit must leave valid frontmatter and a nonempty body")
+		return nil, errors.New("memory edit must leave valid frontmatter and a nonempty body")
 	}
 	if frontmatter == updated {
-		return text, nil, nil
+		return nil, nil
 	}
 	before, oldErr := parseNoteMetadata(frontmatter)
 	after, newErr := parseNoteMetadata(updated)
-	_, knownType := noteTypes[after.Type]
-	if oldErr != nil || newErr != nil || !knownType || before.Type != after.Type ||
-		!shortLabel(after.Name, 80) || !shortLabel(after.Description, 180) {
-		return "", nil, errors.New("memory edit must preserve the note type and leave a valid name and description")
+	if oldErr != nil || newErr != nil || before.Type != after.Type || !validNoteMetadata(after) {
+		return nil, errors.New("memory edit must preserve the note type and leave a valid name and description")
 	}
 	if before == after {
-		return text, nil, nil
+		return nil, nil
 	}
-	return text, &after, nil
+	return &after, nil
 }

@@ -100,12 +100,12 @@ func testMemoryUpdateWrite(t *testing.T, automatic bool) {
 		t.Fatalf("want an index request and one continuation, got %d calls", len(calls))
 	}
 	request := calls[0]
-	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceAuto || len(request.Tools) != 4 || len(request.Messages) != 3 {
-		t.Fatalf("Memory Update did not retain the main prefix and add its scoped tool: %+v", request)
+	if request.System != "main rules" || request.ToolChoice != ai.ToolChoiceAuto || len(request.Tools) != 3 || len(request.Messages) != 3 {
+		t.Fatalf("Memory Update did not retain the main prefix: %+v", request)
 	}
-	for i, name := range []string{"Read", "Edit", "Write", "ForgetMemory"} {
+	for i, name := range []string{"Read", "Edit", "Write"} {
 		if request.Tools[i].Name != name {
-			t.Fatalf("Memory Update tools = %+v, want Read, Edit, Write, ForgetMemory", request.Tools)
+			t.Fatalf("Memory Update tools = %+v, want Read, Edit, Write", request.Tools)
 		}
 	}
 	blocks := request.Messages[2].Content

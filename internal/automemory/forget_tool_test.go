@@ -16,6 +16,24 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
+func bashForgetCall(t *testing.T, command string) ai.ToolCall {
+	t.Helper()
+	return ai.ToolCall{ID: "delete-note", Name: tool.ToolBash, Input: requestJSON(t, map[string]string{"command": command})}
+}
+
+func assertForgetRounds(t *testing.T, driver *aitest.Driver, wantRounds int, tools []ai.Schema, choice ai.ToolChoice) {
+	t.Helper()
+	sent := driver.Sent()
+	if len(sent) != wantRounds {
+		t.Fatalf("got %d model rounds, want %d", len(sent), wantRounds)
+	}
+	for i, req := range sent {
+		if !reflect.DeepEqual(req.Tools, tools) || req.ToolChoice != choice {
+			t.Fatalf("round %d changed tools or choice: tools=%+v choice=%v", i+1, req.Tools, req.ToolChoice)
+		}
+	}
+}
+
 func TestUpdateForgetMemory(t *testing.T) {
 	dir := t.TempDir()
 	index, note := filepath.Join(dir, system.AutoMemoryIndexName), filepath.Join(dir, "build.md")
@@ -25,11 +43,10 @@ func TestUpdateForgetMemory(t *testing.T) {
 	put(t, index, originalIndex)
 	put(t, note, "Use make.")
 	put(t, keepNote, "Keep this note.")
-	call := ai.ToolCall{ID: "forget", Name: "ForgetMemory", Input: `{"file":"build.md"}`}
-	driver := aitest.New(aitest.Asks(readBuild), aitest.Asks(call))
+	driver := aitest.New(aitest.Asks(readBuild), aitest.Asks(bashForgetCall(t, "rm build.md")))
 	prefix := completedPrefix("Please forget the stored build note.")
 	prefix.ToolChoice = ai.ToolChoiceAuto
-	// Give the prefix spare capacity to catch appending to its backing array.
+	// Give the prefix spare capacity to detect appending to its backing array.
 	tools := make([]ai.Schema, len(prefix.Tools)+1)
 	copy(tools, prefix.Tools)
 	prefix.Tools = tools[:len(tools)-1]
@@ -46,103 +63,100 @@ func TestUpdateForgetMemory(t *testing.T) {
 	t.Cleanup(func() { _ = owner.Close() })
 	m := Updater{Provider: fakeProvider{driver}, Recording: owner}
 	change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix)
-	if err != nil || change == nil || get(t, note) != "Use make." || get(t, index) != originalIndex {
+	if err != nil || change == nil {
 		t.Fatalf("expected a deferred change, got %v, %v", change, err)
 	}
 	t.Cleanup(func() { _ = change.Discard() })
+	if get(t, note) != "Use make." || get(t, index) != originalIndex || get(t, keepNote) != "Keep this note." {
+		t.Fatal("changed live memory before Apply")
+	}
 	if !reflect.DeepEqual(tools, originalTools) || !reflect.DeepEqual(prefix.Tools, originalTools[:len(tools)-1]) || prefix.ToolChoice != ai.ToolChoiceAuto {
 		t.Fatal("modified the main request's tools or choice")
 	}
-	if driver.Calls() != 2 {
-		t.Fatalf("got %d model calls, want read and forget", driver.Calls())
-	}
-	for _, req := range driver.Sent() {
-		if len(req.Tools) != len(tools) || !reflect.DeepEqual(req.Tools[:len(tools)-1], originalTools[:len(tools)-1]) ||
-			req.Tools[len(tools)-1].Name != call.Name || req.ToolChoice != ai.ToolChoiceAuto {
-			t.Fatalf("expected scoped ForgetMemory after existing tools with Auto choice: %+v", req)
-		}
-	}
+	assertForgetRounds(t, driver, 2, originalTools[:len(tools)-1], ai.ToolChoiceAuto)
 	if notice, err := change.Apply(t.Context()); err != nil || notice != "Memory · forgot build.md" {
 		t.Fatalf("apply = %q, %v", notice, err)
 	}
 	if _, err := os.Stat(note); !errors.Is(err, fs.ErrNotExist) || get(t, index) != keep || get(t, keepNote) != "Keep this note." {
 		t.Fatalf("expected only the build note and its link removed; build note stat: %v", err)
 	}
-	var recordedCall, recordedNotice bool
+	var finishSource, noticeSource *session.EventRef
+	var stopReason string
 	snapshot := owner.Snapshot()
 	for _, e := range snapshot.Events() {
 		switch p := e.Payload.(type) {
 		case *session.InferenceFinishPayload:
-			recordedCall = recordedCall || p.StopReason == string(ai.StopToolUse)
+			finishSource, stopReason = e.Source, p.StopReason
 		case *session.AnnotationAddPayload:
-			recordedNotice = recordedNotice || (p.Text == "Memory · forgot build.md" && e.Source != nil)
+			if p.Text == "Memory · forgot build.md" {
+				noticeSource = e.Source
+			}
 		}
 	}
-	if !recordedCall || !recordedNotice {
-		t.Fatal("missing raw response or source-linked deletion notice")
-	}
-}
-
-func TestUpdateForgetMemoryNotOfferedWithoutRead(t *testing.T) {
-	prefix := completedPrefix("Please forget the stored build note.")
-	prefix.Tools = []ai.Schema{{Name: tool.ToolBash}, {Name: tool.ToolEdit}}
-	prefix.ToolChoice = ai.ToolChoiceAuto
-	driver := aitest.New(aitest.Says(noMemoryChanges))
-	m := Updater{Provider: fakeProvider{driver}}
-	change, err := m.Propose(t.Context(), system.MemoryStore(t.TempDir()), prefix)
-	if err != nil || change != nil {
-		t.Fatalf("expected no change, got %v, %v", change, err)
-	}
-	if req := driver.Last(); req == nil || !reflect.DeepEqual(req.Tools, prefix.Tools) {
-		t.Fatalf("expected no added tool without Read: %+v", req)
+	if stopReason != string(ai.StopToolUse) || finishSource == nil || noticeSource == nil || *finishSource != *noticeSource {
+		t.Fatalf("expected notice linked to the deletion tool-use response: stop=%q finish=%+v notice=%+v", stopReason, finishSource, noticeSource)
 	}
 }
 
 func TestForgetMemoryRejectsInvalidProposals(t *testing.T) {
-	const valid = `{"file":"build.md"}`
 	for _, tc := range []struct {
-		name, toolName, input string
-		skipRead, multiple    bool
+		name, command    string
+		skipRead, noRead bool
+		powerShell       bool
 	}{
-		{name: "unread", input: valid, skipRead: true},
-		{name: "out of store", input: `{"file":"../build.md"}`},
-		{name: "directory component", input: `{"file":"./build.md"}`},
-		{name: "absolute path", input: `{"file":"/tmp/build.md"}`},
-		{name: "index", input: `{"file":"MEMORY.md"}`},
-		{name: "unknown argument", input: `{"file":"build.md","command":"rm build.md"}`},
-		{name: "missing argument", input: `{}`},
-		{name: "non-string argument", input: `{"file":["build.md"]}`},
-		{name: "trailing JSON", input: valid + `{}`},
-		{name: "bash listed in prefix", toolName: tool.ToolBash, input: `{"command":"rm build.md"}`},
-		{name: "powershell listed in prefix", toolName: tool.ToolPowerShell, input: `{"command":"Remove-Item -LiteralPath build.md"}`},
-		{name: "multiple writes", input: valid, multiple: true},
+		{name: "no native Read", command: "rm build.md", skipRead: true, noRead: true},
+		{name: "unread", command: "rm build.md", skipRead: true},
+		{name: "different unread note", command: "rm keep.md"},
+		{name: "out of store", command: "rm ../build.md"},
+		{name: "absolute path", command: "rm /tmp/build.md"},
+		{name: "index", command: "rm " + system.AutoMemoryIndexName},
+		{name: "instructions", command: "rm " + system.InstructionFile},
+		{name: "reserved device", command: "rm CON.md"},
+		{name: "missing filename", command: "rm"},
+		{name: "multiple operands", command: "rm build.md keep.md"},
+		{name: "glob", command: "rm *.md"},
+		{name: "recursive delete", command: "rm -r build.md"},
+		{name: "inline command", command: "rm build.md; rm keep.md"},
+		{name: "trailing command", command: "rm build.md\nrm keep.md"},
+		{name: "substitution", command: "rm $(echo build.md)"},
+		{name: "redirection", command: "rm build.md > keep.md"},
+		{name: "PowerShell out of store", command: "Remove-Item -LiteralPath ../build.md", powerShell: true},
+		{name: "PowerShell chained commands", command: "Remove-Item -LiteralPath build.md; Remove-Item -LiteralPath keep.md", powerShell: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			index, note := filepath.Join(dir, system.AutoMemoryIndexName), filepath.Join(dir, "build.md")
-			const link = "- [Build](build.md)\n"
+			keepNote := filepath.Join(dir, "keep.md")
+			const link = "- [Build](build.md)\n- [Keep](keep.md)\n"
 			put(t, index, link)
 			put(t, note, "Use make.")
-			name := tc.toolName
-			if name == "" {
-				name = toolForgetMemory
+			put(t, keepNote, "Keep this note.")
+			prefix := completedPrefix("Please forget the stored build note.")
+			prefix.ToolChoice = ai.ToolChoiceAuto
+			prefix.Tools = slices.Clone(prefix.Tools)
+			if tc.noRead {
+				prefix.Tools = slices.DeleteFunc(prefix.Tools, func(schema ai.Schema) bool { return schema.Name == tool.ToolRead })
 			}
-			calls := []ai.ToolCall{{ID: "forget", Name: name, Input: tc.input}}
-			if tc.multiple {
-				calls = append(calls, ai.ToolCall{ID: "second", Name: toolForgetMemory, Input: valid})
+			call := bashForgetCall(t, tc.command)
+			if tc.powerShell {
+				call.Name = tool.ToolPowerShell
+				if !slices.ContainsFunc(prefix.Tools, func(schema ai.Schema) bool { return schema.Name == call.Name }) {
+					prefix.Tools = append(prefix.Tools, ai.Schema{Name: call.Name})
+				}
 			}
+			originalTools := slices.Clone(prefix.Tools)
 			var turns []aitest.Turn
 			if !tc.skipRead {
 				turns = append(turns, aitest.Asks(readBuild))
 			}
-			turns = append(turns, aitest.Asks(calls...))
-			prefix := completedPrefix("Please forget the stored build note.")
-			prefix.Tools = []ai.Schema{{Name: tool.ToolRead}, {Name: tool.ToolBash}, {Name: tool.ToolPowerShell}}
-			m := Updater{Provider: fakeProvider{aitest.New(turns...)}}
+			turns = append(turns, aitest.Asks(call))
+			driver := aitest.New(turns...)
+			m := Updater{Provider: fakeProvider{driver}}
 			change, err := m.Propose(t.Context(), system.MemoryStore(dir), prefix)
-			if change != nil || !errors.Is(err, errInvalidProposal) || get(t, note) != "Use make." || get(t, index) != link {
+			if change != nil || !errors.Is(err, errInvalidProposal) || get(t, note) != "Use make." || get(t, index) != link || get(t, keepNote) != "Keep this note." {
 				t.Fatalf("expected rejection without writes, got %v, %v", change, err)
 			}
+			assertForgetRounds(t, driver, len(turns), originalTools, ai.ToolChoiceAuto)
 		})
 	}
 }

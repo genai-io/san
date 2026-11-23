@@ -27,7 +27,7 @@ Asides stay in the same session for Inspector. Only accepted model-facing result
 
 ## Auto Memory lifecycle
 
-Recall and Update share a repository store. Recall has no tools. Update reuses the main file-tool schemas and appends `ForgetMemory` to its own request when `Read` is available. It handles these calls within the current project's memory store, without executing the general-purpose tools or opening a permission prompt.
+Recall and Update share a repository store. Recall has no tools. Update keeps the main tool list unchanged and runs existing file tools on private copies. Only a literal removal of one previously read project memory note may use the configured shell without an extra permission prompt.
 
 | Operation | Trigger | Task message | Accepted result |
 |---|---|---|---|
@@ -57,7 +57,7 @@ The tab saves `recap.afterMinutes` and `recap.turns` in project settings for Git
 
 Asides follow the same [Context Management principles](context-management.md#principles) as the main conversation: keep the prefix predictable, send details only when needed, and check permissions at use time.
 
-- **Stable prefix, changing suffix.** By the Way, Recap, and Suggestion reuse the main model, tool schema order, system prompt, and unchanged history where possible. Auto Memory Update reuses the completed main messages and final assistant output, but adding `ForgetMemory` changes the tool catalog for its own request. Recall and AutoPilot use their own stable system instructions instead. Append the question, candidates, mission, or evidence as task data rather than interpolating it into the system prompt.
+- **Stable prefix, changing suffix.** By the Way, Recap, and Suggestion reuse the main model, tool schema order, system prompt, and unchanged history where possible. Auto Memory Update reuses the completed main request, including its unchanged tool schemas, and appends the final assistant reply and the review task. Recall and AutoPilot use their own stable system instructions instead. Append the question, candidates, mission, or evidence as task data rather than interpolating it into the system prompt.
 - **Fresh state over cache hits.** Use a read-only snapshot. Changes take effect on the next eligible request; never rewrite an in-flight or historical request.
 - **Apply only the accepted result.** Keep Aside working messages out of main history. Apply a relevant Reminder at the next supported model boundary, or display a Notice without feeding it back to the model. A schema is not permission, and an Aside decision does not replace live runtime checks.
 

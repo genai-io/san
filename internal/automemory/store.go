@@ -304,7 +304,7 @@ func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (strin
 		if err != nil {
 			return "", err
 		}
-		text := renderNote(p)
+		text := p.Text
 		if len(text) > maxNote {
 			return "", errors.New("memory note would exceed size limit")
 		}
@@ -329,7 +329,8 @@ func apply(ctx context.Context, path string, s storeSnapshot, p proposal) (strin
 		if old.info == nil {
 			return "", errInvalidProposal
 		}
-		text, meta, err := patchNote(old.text, p.Edits)
+		text := p.Text
+		meta, err := revisedMetadata(old.text, text)
 		if err != nil || text == old.text {
 			return "", err
 		}

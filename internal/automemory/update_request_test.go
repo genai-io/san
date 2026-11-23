@@ -93,7 +93,7 @@ var (
 	addProposal    = ai.ToolCall{ID: "add", Name: tool.ToolWrite, Input: `{"file_path":"build.md","content":"---\nname: Build\ndescription: Build command\ntype: project\n---\nUse make."}`}
 	readBuild      = readNote("build.md")
 	updateProposal = ai.ToolCall{ID: "edit", Name: tool.ToolEdit, Input: `{"file_path":"build.md","old_string":"Use make.","new_string":"Use go build."}`}
-	forgetProposal = ai.ToolCall{ID: "forget", Name: toolForgetMemory, Input: `{"file":"build.md"}`}
+	forgetProposal = ai.ToolCall{ID: "forget", Name: tool.ToolBash, Input: `{"command":"rm build.md"}`}
 )
 
 func readNote(file string) ai.ToolCall {
@@ -144,7 +144,7 @@ func TestProposeReadsOnlyRequestedNotes(t *testing.T) {
 		results := reply.ToolResults()
 		if len(results) != 1 || results[0].ToolCallID != want.call.ID || len(results[0].Content) != 2 ||
 			!strings.Contains(results[0].Content[0].Text, fmt.Sprintf("Read rounds remaining: %d.", maxReadRounds-i-1)) ||
-			!reflect.DeepEqual(results[0].Content[1], ai.TextBlock(want.file+"\n\n"+want.body)) {
+			!reflect.DeepEqual(results[0].Content[1], ai.TextBlock(want.file+"\n\n"+fmt.Sprintf("%6d\t%s\n", 1, want.body))) {
 			t.Fatalf("round %d sent wrong read blocks: %+v", i+2, reply.Content)
 		}
 	}
@@ -270,6 +270,12 @@ func TestUpdateKeepsNoteAndIndexInSync(t *testing.T) {
 			if tc.invalidBatch {
 				if change != nil || !errors.Is(err, errInvalidProposal) {
 					t.Fatalf("unexpected multiple-file result: change=%v err=%v", change, err)
+				}
+				return
+			}
+			if tc.invalidPatch && change == nil {
+				if err == nil || get(t, notePath) != old || get(t, indexPath) != index {
+					t.Fatalf("invalid staged edit changed live memory: %v", err)
 				}
 				return
 			}
