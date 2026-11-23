@@ -153,19 +153,21 @@ func TestFlowMainInputAcceptedQueueMutation(t *testing.T) {
 func TestFlowMainStepAdmissionExactlyOnce(t *testing.T) {
 	m := flowMainStepModel(t)
 	lease := m.flowMainRequest.msg.lease
-	m.userInput.Queue.Enqueue("safe-step accepted once", nil)
+	const amendment = "safe-step accepted once"
+	m.userInput.Queue.Enqueue(amendment, nil)
 	if _, released := m.releaseQueuedMessage(); !released {
 		t.Fatal("native safe-step not enqueued")
 	}
 	if m.pendingMessages.Len() != 0 {
 		t.Fatal("safe-step duplicated into pending outbox")
 	}
-	if m.flowMainRequest.input == nil {
-		t.Fatal("missing native admission receipt")
+	// The owner may project the input before the initial send returns.
+	if m.userInput.Queue.Len() > 0 && m.flowMainRequest.input == nil {
+		t.Fatal("queued safe-step is missing its native admission receipt")
 	}
-	id := m.flowMainRequest.input.messageID
-	// Repeated boundaries cannot send a second input while projection is pending.
-	m.releaseQueuedMessage()
+	if _, released := m.releaseQueuedMessage(); released {
+		t.Fatal("repeated boundary released the same input")
+	}
 	deadline := time.After(3 * time.Second)
 	for m.userInput.Queue.Len() > 0 {
 		select {
@@ -176,17 +178,31 @@ func TestFlowMainStepAdmissionExactlyOnce(t *testing.T) {
 			t.Fatal("safe-step input never admitted")
 		}
 	}
-	if strings.Count(lease.Instructions(), "safe-step accepted once") != 1 {
+	if m.flowMainRequest.input != nil {
+		t.Fatal("confirmed safe-step left a pending receipt")
+	}
+	if strings.Count(lease.Instructions(), amendment) != 1 {
 		t.Fatalf("critic instructions = %q", lease.Instructions())
 	}
 	count := 0
+	var id string
 	for _, message := range m.services.Agent.Messages() {
-		if message.ID == id {
+		if strings.Contains(message.Text(), amendment) {
+			count++
+			id = message.ID
+		}
+	}
+	if count != 1 || id == "" {
+		t.Fatalf("native message admitted %d times (ID %q)", count, id)
+	}
+	count = 0
+	for _, message := range m.conv.Messages {
+		if message.ID == id && message.Content == amendment {
 			count++
 		}
 	}
 	if count != 1 {
-		t.Fatalf("native message admitted %d times", count)
+		t.Fatalf("admitted message displayed %d times", count)
 	}
 	if m.pendingMessages.Len() != 0 {
 		t.Fatal("native safe-step left pending duplicate")
