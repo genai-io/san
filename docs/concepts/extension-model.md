@@ -54,7 +54,7 @@ scopes count as project skill and command paths.
 
 ## Discovery Order
 
-Each primitive resolves the same precedence chain:
+The general precedence chain is:
 
 ```
 project (.san/<surface>/)
@@ -68,7 +68,10 @@ user plugins (~/.san/plugins/*/...)
 Claude-compat (~/.claude/<surface>/, .claude/<surface>/)
 ```
 
-Higher-priority entries shadow lower ones by **name** (or by `name:path`
+Skills also discover shared project skills in `.agents/skills/`, below project
+plugins and above `.claude/skills/`. See the [full skill search order](../packages/skill.md#purpose).
+
+Higher-priority entries shadow lower ones by **name** (or by `namespace:name`
 for skills with namespaces). The `IsEnabled` / state flags are persisted
 per scope so the user can disable a plugin-contributed skill without
 removing the plugin.

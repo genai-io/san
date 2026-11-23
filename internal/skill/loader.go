@@ -66,10 +66,16 @@ func (l *loader) getSearchPaths() []searchPath {
 		scope: ScopeClaudeProject,
 	})
 
-	// 5. Project-scope plugin skills
+	// 5. .agents/skills/ (Shared project skills)
+	paths = append(paths, searchPath{
+		path:  filepath.Join(l.cwd, ".agents", "skills"),
+		scope: ScopeAgentsProject,
+	})
+
+	// 6. Project-scope plugin skills
 	paths = append(paths, projectPlugins...)
 
-	// 6. .san/skills/ (Project level - highest priority)
+	// 7. .san/skills/ (Project level - highest priority)
 	paths = append(paths, searchPath{
 		path:  filepath.Join(confdir.Dir(l.cwd), "skills"),
 		scope: ScopeProject,
