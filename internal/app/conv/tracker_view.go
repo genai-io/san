@@ -42,34 +42,34 @@ type TrackerListParams struct {
 	WorkerStatus     func(taskID string) task.TaskInfo
 }
 
-// RenderTrackerList renders the tracker panel above the input area.
-// Terminal workers leave after their notice is shown; abnormal history is summarized.
-// Finished plans stay until idle.
-func RenderTrackerList(params TrackerListParams) string {
+// RenderTrackerList returns the current task rows and a plain-text summary of
+// announced background task failures, stops, and interruptions.
+func RenderTrackerList(params TrackerListParams) (rows, history string) {
 	if len(params.Items) == 0 {
-		return ""
+		return "", ""
 	}
 
 	items := make([]*todo.Item, 0, len(params.Items))
-	history := 0
+	var failed, stopped, interrupted int
 	for _, t := range params.Items {
 		id := todo.BackgroundTaskID(t)
 		if id != "" && t.Status == todo.StatusCompleted && (params.CompletionShown == nil || params.CompletionShown(id)) {
-			if phaseOf(t, false) == itemAborted {
-				history++
+			switch todo.BackgroundStatusDetail(t) {
+			case string(task.StatusFailed):
+				failed++
+			case string(task.StatusStopped), string(task.StatusKilled):
+				stopped++
+			case todo.StatusDetailInterrupted:
+				interrupted++
 			}
 			continue
 		}
 		items = append(items, t)
 	}
+	history = summarizeTrackerHistory(failed, stopped, interrupted)
 	plansDone, plans := PlanProgress(params.Items)
-
-	// Completed plans may rest when idle, but history must not hide unfinished plans.
-	if !params.StreamActive && plansDone == len(items) {
-		items = nil
-	}
-	if len(items) == 0 && history == 0 {
-		return ""
+	if len(items) == 0 || (!params.StreamActive && plansDone == len(items)) {
+		return "", history
 	}
 
 	var sb strings.Builder
@@ -80,9 +80,7 @@ func RenderTrackerList(params TrackerListParams) string {
 	if plans > 0 {
 		header += " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans))
 	}
-	if len(items) > 0 {
-		sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
-	}
+	sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
 
 	visible, hidden := visibleTrackerItems(items)
 	idWidth := itemIDWidth(visible)
@@ -147,31 +145,24 @@ func RenderTrackerList(params TrackerListParams) string {
 		sb.WriteString(kit.TruncateText(strings.TrimSuffix(line, "\n")+suffix, max(1, params.Width)) + "\n")
 	}
 
-	// Current identities lead; past work is a single quiet secondary entry.
-	// Share the overflow row rather than spending any of the eight task slots.
-	folded := strings.TrimSuffix(renderFoldedLine(hidden), "\n")
-	if history > 0 {
-		label := kit.Plural(history, "past task")
-		prefix := "  "
-		if len(items) == 0 {
-			label = "Tasks · " + label
-			prefix = ""
-		} else if folded != "" && params.Width > lipgloss.Width(label)+5 {
-			prefix = kit.TruncateText(folded, params.Width-lipgloss.Width(label)-3) + " · "
-		}
-		left := prefix + mutedStyle.Render(label)
-		const hint = "/tasks"
-		gap := params.Width - lipgloss.Width(left) - len(hint) - 2
-		if gap >= 2 {
-			folded = left + strings.Repeat(" ", gap) + mutedStyle.Render(hint)
-		} else {
-			folded = left
-		}
+	if folded := renderFoldedLine(hidden); folded != "" {
+		sb.WriteString(kit.TruncateText(strings.TrimSuffix(folded, "\n"), max(1, params.Width)) + "\n")
 	}
-	if folded != "" {
-		sb.WriteString(kit.TruncateText(folded, max(1, params.Width)) + "\n")
+	return sb.String(), history
+}
+
+func summarizeTrackerHistory(failed, stopped, interrupted int) string {
+	var parts []string
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", failed))
 	}
-	return sb.String()
+	if stopped > 0 {
+		parts = append(parts, fmt.Sprintf("%d stopped", stopped))
+	}
+	if interrupted > 0 {
+		parts = append(parts, fmt.Sprintf("%d interrupted", interrupted))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // visibleTrackerItems keeps the newest items in each priority group, then draws

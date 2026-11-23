@@ -29,7 +29,7 @@ func TestInferencePlacementImmediatelyAboveComposer(t *testing.T) {
 						tracker = "Tasks · background"
 						m.userInput.Queue.Enqueue("queued-message", nil)
 					}
-					frame, cursor := m.renderNormalView(strings.Repeat("─", width-1), tracker)
+					frame, cursor := m.renderNormalView(strings.Repeat("─", width-1), tracker, "")
 					plain := ansi.Strip(frame)
 					lines := strings.Split(plain, "\n")
 					status := -1
@@ -86,7 +86,7 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 		m.env.Width = width
 		m.OnCompactStart(83)
 		m.userInput.Queue.Enqueue("queued-message", nil)
-		frame, _ := m.renderNormalView(strings.Repeat("─", width-1), "Tasks · background")
+		frame, _ := m.renderNormalView(strings.Repeat("─", width-1), "Tasks · background", "")
 		plain := ansi.Strip(frame)
 		lines := strings.Split(plain, "\n")
 		const status = "✦ Summarizing conversation"

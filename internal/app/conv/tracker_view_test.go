@@ -37,7 +37,7 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 	pending := tracker.Create("Write tests", "", "", nil)
 	_ = tracker.Update(pending.ID, todo.WithStatus(todo.StatusPending))
 
-	view := RenderTrackerList(TrackerListParams{
+	view, _ := RenderTrackerList(TrackerListParams{
 		CompletionShown: func(string) bool { return false },
 		Items:           tracker.List(),
 		StreamActive:    true,
@@ -93,7 +93,7 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 	pending2 := tracker.Create("Pending C", "", "", nil)
 	_ = tracker.Update(pending2.ID, todo.WithStatus(todo.StatusPending))
 
-	view := RenderTrackerList(TrackerListParams{
+	view, _ := RenderTrackerList(TrackerListParams{
 		CompletionShown: func(string) bool { return false },
 		Items:           tracker.List(),
 		StreamActive:    true,
@@ -126,7 +126,7 @@ func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	}
 }
 
-// Only successful completions can hide the panel; stalled or aborted work stays.
+// Announced workers and finished idle plans do not consume live tracker rows.
 func TestRenderTrackerListVisibility(t *testing.T) {
 	stalled := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 	done := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusCompleted}
@@ -149,15 +149,15 @@ func TestRenderTrackerListVisibility(t *testing.T) {
 		{"stalled item keeps the list up", []*todo.Item{stalled}, false, true},
 		{"worker complete and idle", []*todo.Item{worker("completed")}, false, false},
 		{"worker complete while streaming", []*todo.Item{worker("completed")}, true, false},
-		{"failed worker stays when idle", []*todo.Item{worker("failed")}, false, true},
-		{"killed worker stays when idle", []*todo.Item{worker("killed")}, false, true},
-		{"stopped worker stays when idle", []*todo.Item{worker("stopped")}, false, true},
-		{"interrupted worker stays when idle", []*todo.Item{worker(todo.StatusDetailInterrupted)}, false, true},
+		{"announced failed worker has no live row", []*todo.Item{worker("failed")}, false, false},
+		{"announced killed worker has no live row", []*todo.Item{worker("killed")}, false, false},
+		{"announced stopped worker has no live row", []*todo.Item{worker("stopped")}, false, false},
+		{"announced interrupted worker has no live row", []*todo.Item{worker(todo.StatusDetailInterrupted)}, false, false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			view := RenderTrackerList(TrackerListParams{
+			view, _ := RenderTrackerList(TrackerListParams{
 				Items:        tc.tasks,
 				StreamActive: tc.streamActive,
 				Width:        120,
@@ -186,12 +186,13 @@ func TestRenderTrackerListFoldsLeadingFinished(t *testing.T) {
 	tasks[len(tasks)-2].Status = todo.StatusPending    // #10
 	tasks[len(tasks)-1].Status = todo.StatusPending    // #11
 
-	plain := stripANSI(RenderTrackerList(TrackerListParams{
+	rows, _ := RenderTrackerList(TrackerListParams{
 		Items:        tasks,
 		StreamActive: true,
 		Width:        120,
 		Executing:    func(*todo.Item) bool { return true },
-	}))
+	})
+	plain := stripANSI(rows)
 
 	ids := taskIDRe.FindAllString(plain, -1)
 	want := []string{"#4", "#5", "#6", "#7", "#8", "#9", "#10", "#11"}
@@ -211,6 +212,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 		overrides     map[int]string
 		wantIDs       []string
 		wantSummaries []string
+		wantHistory   string
 	}{
 		{
 			name:    "at the limit",
@@ -244,17 +246,17 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			wantSummaries: []string{"3 more pending"},
 		},
 		{
-			name:          "abnormal endings stay after completions leave",
-			count:         11,
-			status:        todo.StatusCompleted,
-			overrides:     map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
-			wantSummaries: []string{"4 past tasks", "/tasks"},
+			name:        "abnormal endings stay after completions leave",
+			count:       11,
+			status:      todo.StatusCompleted,
+			overrides:   map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
+			wantHistory: "1 failed · 2 stopped · 1 interrupted",
 		},
 		{
-			name:          "many failed agents",
-			count:         11,
-			status:        "failed",
-			wantSummaries: []string{"11 past tasks", "/tasks"},
+			name:        "many failed agents",
+			count:       11,
+			status:      "failed",
+			wantHistory: "11 failed",
 		},
 		{
 			name:          "hidden failures stay in the summary",
@@ -262,7 +264,8 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			status:        todo.StatusInProgress,
 			overrides:     map[int]string{11: "failed"},
 			wantIDs:       []string{"3", "4", "5", "6", "7", "8", "9", "10"},
-			wantSummaries: []string{"2 more in progress", "1 past task", "/tasks"},
+			wantSummaries: []string{"2 more in progress"},
+			wantHistory:   "1 failed",
 		},
 	}
 	rowRE := regexp.MustCompile(`\bTask (\d+)\b`)
@@ -287,13 +290,17 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 				items = append(items, &todo.Item{ID: id, Subject: "Task " + id, Status: status, Metadata: metadata})
 			}
 			checks := 0
-			plain := stripANSI(RenderTrackerList(TrackerListParams{
+			rows, history := RenderTrackerList(TrackerListParams{
 				Items: items, StreamActive: true, Width: 120,
 				Executing: func(*todo.Item) bool {
 					checks++
 					return true
 				},
-			}))
+			})
+			if history != tc.wantHistory {
+				t.Fatalf("history = %q, want %q", history, tc.wantHistory)
+			}
+			plain := stripANSI(rows)
 			var ids []string
 			for _, match := range rowRE.FindAllStringSubmatch(plain, -1) {
 				ids = append(ids, match[1])
@@ -406,11 +413,12 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	})
 	_ = tracker.Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
 	render := func() string {
-		return stripANSI(RenderTrackerList(TrackerListParams{
+		rows, _ := RenderTrackerList(TrackerListParams{
 			Items:     tracker.List(),
 			Width:     120,
 			Executing: func(*todo.Item) bool { return true },
-		}))
+		})
+		return stripANSI(rows)
 	}
 
 	plain := render()
@@ -434,7 +442,8 @@ func TestRenderTrackerListHeadingFitsNarrowTerminal(t *testing.T) {
 	plan := &todo.Item{ID: "1", Subject: "Write tests", Status: todo.StatusCompleted}
 	for _, items := range [][]*todo.Item{{worker}, {worker, plan}} {
 		for _, width := range []int{1, 4, 7, 12, 80} {
-			plain := stripANSI(RenderTrackerList(TrackerListParams{Items: items, StreamActive: true, Width: width}))
+			rows, _ := RenderTrackerList(TrackerListParams{Items: items, StreamActive: true, Width: width})
+			plain := stripANSI(rows)
 			for line := range strings.SplitSeq(strings.TrimSuffix(plain, "\n"), "\n") {
 				if lipgloss.Width(line) > width {
 					t.Fatalf("tracker exceeded %d columns:\n%s", width, plain)
@@ -452,8 +461,9 @@ func TestRenderTrackerListRetiresCompletedWorkerWithoutDeletingIt(t *testing.T) 
 	}
 	store.Create("Compress video", "", "", map[string]any{"background_task_id": "bg-active"})
 	for _, streaming := range []bool{false, true} {
-		plain := stripANSI(RenderTrackerList(TrackerListParams{Items: store.List(), StreamActive: streaming, Width: 80}))
-		if strings.Contains(plain, "Upload finished") || strings.Contains(plain, "completed") || !strings.Contains(plain, "Compress video") {
+		rows, history := RenderTrackerList(TrackerListParams{Items: store.List(), StreamActive: streaming, Width: 80})
+		plain := stripANSI(rows)
+		if history != "" || strings.Contains(plain, "Upload finished") || strings.Contains(plain, "completed") || !strings.Contains(plain, "Compress video") {
 			t.Fatalf("successful worker should leave without a history summary:\n%s", plain)
 		}
 	}

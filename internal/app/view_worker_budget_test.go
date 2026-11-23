@@ -32,7 +32,8 @@ func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 		m := fixedComposerModel(80, 24)
 		m.services.Task, m.services.Tracker = mgr, tracker
 		m.conv.ShowTasks = true
-		view := ansi.Strip(m.renderTrackerList())
+		rows, _ := m.renderTrackerList()
+		view := ansi.Strip(rows)
 		if strings.Contains(view, "DUPLICATE_") || !strings.Contains(view, "Internal Flow Read Only Review") {
 			t.Fatalf("mixed=%v duplicate rows or missing graph:\n%s", mixed, view)
 		}

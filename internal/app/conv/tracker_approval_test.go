@@ -22,7 +22,8 @@ func TestTrackerTerminalRowsRetireTransientActivity(t *testing.T) {
 				info.Error = "provider unavailable"
 			}
 			todo.CompleteWorker(store, info)
-			view := stripANSI(RenderTrackerList(TrackerListParams{Items: store.List(), Width: 100, CompletionShown: func(string) bool { return false }, WorkerStatus: func(string) task.TaskInfo { return info }}))
+			rows, _ := RenderTrackerList(TrackerListParams{Items: store.List(), Width: 100, CompletionShown: func(string) bool { return false }, WorkerStatus: func(string) task.TaskInfo { return info }})
+			view := stripANSI(rows)
 			if strings.Contains(view, "Thinking...") || strings.Contains(view, "stopped before completion") {
 				t.Fatalf("terminal row retained transient activity: %q", view)
 			}
@@ -39,10 +40,10 @@ func TestTrackerExplicitApprovalAndMixedPlan(t *testing.T) {
 	_ = tracker.Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
 	tracker.Create("Plan intent", "", "", nil)
 	p := TrackerListParams{Items: tracker.List(), Width: 120, StreamActive: true, AwaitingApproval: map[string]bool{"bg": true}, WorkerStatus: func(string) task.TaskInfo { return task.TaskInfo{Status: task.StatusRunning} }}
-	a := RenderTrackerList(p)
+	a, _ := RenderTrackerList(p)
 	p.Frame = 20
 	time.Sleep(time.Millisecond)
-	b := RenderTrackerList(p)
+	b, _ := RenderTrackerList(p)
 	if a != b || !strings.Contains(stripANSI(a), "awaiting approval") {
 		t.Fatal("approval should stay still")
 	}
@@ -50,12 +51,12 @@ func TestTrackerExplicitApprovalAndMixedPlan(t *testing.T) {
 		t.Fatal("worker approval hid or confused the existing plan")
 	}
 	p.AwaitingApproval = nil
-	if !strings.Contains(RenderTrackerList(p), "stalled") {
+	if rows, _ := RenderTrackerList(p); !strings.Contains(rows, "stalled") {
 		t.Fatal("stale worker should remain stalled")
 	}
 	p.AwaitingApproval = map[string]bool{"bg": true}
 	p.WorkerStatus = func(string) task.TaskInfo { return task.TaskInfo{Status: task.StatusStopped} }
-	if strings.Contains(RenderTrackerList(p), "awaiting approval") {
+	if rows, _ := RenderTrackerList(p); strings.Contains(rows, "awaiting approval") {
 		t.Fatal("terminal worker cannot await approval")
 	}
 }

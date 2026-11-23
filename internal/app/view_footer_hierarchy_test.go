@@ -19,7 +19,7 @@ func TestFooterHierarchySinglePendingOmitsGroupLabel(t *testing.T) {
 					m.userInput.Queue.Enqueue("next", nil)
 					m.userInput.Queue.SelectIdx = selected
 					separator := strings.Repeat("─", width-1)
-					frame, cursor := m.renderNormalView(separator, "Tasks\n  ● active-worker")
+					frame, cursor := m.renderNormalView(separator, "Tasks\n  ● active-worker", "")
 					plain := ansi.Strip(frame)
 					lines := strings.Split(plain, "\n")
 					if len(lines) != height || cursor == nil || cursor.Position.Y != height-3 {
@@ -59,7 +59,7 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 					m.userInput.Queue.Enqueue(content, nil)
 				}
 				m.userInput.Queue.SelectIdx = 2
-				frame, cursor := m.renderNormalView(strings.Repeat("─", width-1), "Tasks\n  ● active-worker")
+				frame, cursor := m.renderNormalView(strings.Repeat("─", width-1), "Tasks\n  ● active-worker", "")
 				plain := ansi.Strip(frame)
 				lines := strings.Split(plain, "\n")
 				if len(lines) != height || cursor == nil || cursor.Position.Y != height-3 {

@@ -52,7 +52,7 @@ func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
 	// Shrinking height hands only the oldest physical rows to native history.
 	m.queueScrollbackPrint(strings.Repeat("older row\n", 12)+"LATEST-REPLY", 0)
 	resizeTerminal(m, 40, 10, tea.ResizeScrollbackMsg{})
-	footer, _ := m.renderFooter("")
+	footer, _ := m.renderFooter("", "")
 	if len(m.flush.visible) > 10-rowCount(footer) || len(m.flush.pendingPrints) == 0 {
 		t.Fatal("resize did not bound the retained rows and print overflow")
 	}

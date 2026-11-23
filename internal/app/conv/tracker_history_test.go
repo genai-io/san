@@ -18,20 +18,20 @@ func TestTrackerHistoryWaitsForFailureNotice(t *testing.T) {
 	todo.CompleteWorker(store, info)
 	shown := false
 	params := TrackerListParams{Items: store.List(), Width: 100, CompletionShown: func(string) bool { return shown }}
-	before := ansi.Strip(RenderTrackerList(params))
-	if !strings.Contains(before, "[failed]") || !strings.Contains(before, info.Error) || strings.Contains(before, "History") {
-		t.Fatalf("new failure lost its evidence before announcement:\n%s", before)
+	before, history := RenderTrackerList(params)
+	before = ansi.Strip(before)
+	if history != "" || !strings.Contains(before, "[failed]") || !strings.Contains(before, info.Error) {
+		t.Fatalf("new failure lost its evidence before announcement: history=%q\n%s", history, before)
 	}
 	shown = true
-	after := ansi.Strip(RenderTrackerList(params))
-	if strings.Join(strings.Fields(after), " ") != "Tasks · 1 past task /tasks" || strings.Count(after, "\n") != 1 {
-		t.Fatalf("announced failure did not become one quiet row: %q", after)
+	if after, history := RenderTrackerList(params); after != "" || history != "1 failed" {
+		t.Fatalf("announced failure should leave the tracker and join history: history=%q rows=%q", history, after)
 	}
 	if item := store.List()[0]; todo.BackgroundStatusDetail(item) != "failed" || todo.BackgroundError(item) != info.Error {
 		t.Fatal("history folding mutated the stored failure")
 	}
 	params.CompletionShown = nil
-	if RenderTrackerList(params) != RenderTrackerList(TrackerListParams{Items: params.Items, Width: 100, CompletionShown: func(string) bool { return true }}) {
+	if rows, history := RenderTrackerList(params); rows != "" || history != "1 failed" {
 		t.Fatal("nil announcement callback did not mean already announced")
 	}
 }
@@ -51,13 +51,17 @@ func TestTrackerHistoryIsSecondaryToCurrentWork(t *testing.T) {
 				_ = store.Update(item.ID, todo.WithStatus(todo.StatusInProgress))
 			}
 		}
-		plain := ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: width, Executing: func(*todo.Item) bool { return true }}))
-		for _, want := range []string{"Current review", "Pending plan", "30 past tasks", "/tasks"} {
+		rows, history := RenderTrackerList(TrackerListParams{Items: store.List(), Width: width, Executing: func(*todo.Item) bool { return true }})
+		if history != "30 failed" {
+			t.Fatalf("width %d: got history %q, want 30 failed", width, history)
+		}
+		plain := ansi.Strip(rows)
+		for _, want := range []string{"Current review", "Pending plan"} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("width %d lost %q:\n%s", width, want, plain)
 			}
 		}
-		if strings.Index(plain, "30 past tasks") < strings.Index(plain, "Pending plan") || strings.Contains(plain, "Past work") || strings.Contains(plain, "failed/stopped") {
+		if strings.Count(plain, "\n") != 3 || strings.Contains(plain, "Past work") || strings.Contains(plain, "failed/stopped") {
 			t.Fatalf("history displaced or cluttered current work:\n%s", plain)
 		}
 		for _, row := range strings.Split(plain, "\n") {
@@ -68,28 +72,7 @@ func TestTrackerHistoryIsSecondaryToCurrentWork(t *testing.T) {
 	}
 }
 
-func TestTrackerHistoryHintAlignment(t *testing.T) {
-	store := todo.NewStore()
-	info := task.TaskInfo{ID: "old", Description: "Old work", Status: task.StatusRunning}
-	todo.TrackWorker(store, info)
-	info.Status = task.StatusStopped
-	todo.CompleteWorker(store, info)
-	for _, width := range []int{1, 16, 24, 32, 80} {
-		row := strings.TrimSuffix(ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: width})), "\n")
-		if ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
-			t.Fatalf("width %d: history should fit one row: %q", width, row)
-		}
-		if width >= 32 {
-			if !strings.HasPrefix(row, "Tasks · 1 past task") || !strings.HasSuffix(row, "/tasks") || ansi.StringWidth(row) != width-2 {
-				t.Fatalf("width %d: hint not right-aligned: %q", width, row)
-			}
-		} else if strings.Contains(row, "/") {
-			t.Fatalf("width %d: clipped command hint: %q", width, row)
-		}
-	}
-}
-
-func TestTrackerHistoryDoesNotCallStopsFailures(t *testing.T) {
+func TestTrackerHistoryCountsOnlyAbnormalEndings(t *testing.T) {
 	store := todo.NewStore()
 	for _, status := range []task.TaskStatus{task.StatusStopped, task.StatusKilled, "interrupted"} {
 		info := task.TaskInfo{ID: string(status), Description: "Old review", Status: task.StatusRunning}
@@ -97,15 +80,15 @@ func TestTrackerHistoryDoesNotCallStopsFailures(t *testing.T) {
 		info.Status = status
 		todo.CompleteWorker(store, info)
 	}
-	if plain := ansi.Strip(RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32})); strings.Join(strings.Fields(plain), " ") != "Tasks · 3 past tasks /tasks" {
-		t.Fatalf("stopped/interrupted history was noisy or labelled failure: %q", plain)
+	if rows, history := RenderTrackerList(TrackerListParams{Items: store.List(), Width: 32}); rows != "" || history != "2 stopped · 1 interrupted" {
+		t.Fatalf("stops and interruptions should be distinct from failures: history=%q rows=%q", history, rows)
 	}
 	success := todo.NewStore()
 	info := task.TaskInfo{ID: "done", Description: "Succeeded", Status: task.StatusRunning}
 	todo.TrackWorker(success, info)
 	info.Status = task.StatusCompleted
 	todo.CompleteWorker(success, info)
-	if got := RenderTrackerList(TrackerListParams{Items: success.List(), Width: 32}); got != "" {
-		t.Fatalf("successful history added permanent footer clutter: %q", got)
+	if rows, history := RenderTrackerList(TrackerListParams{Items: success.List(), Width: 32}); rows != "" || history != "" {
+		t.Fatalf("successful history added permanent footer clutter: history=%q rows=%q", history, rows)
 	}
 }

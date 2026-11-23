@@ -78,12 +78,12 @@ func (m *model) viewString() (string, *tea.Cursor) {
 	// column. The other half of that miscount — the rows a narrowing terminal
 	// rewraps — is corrected in the Bubble Tea replacement pinned in go.mod.
 	separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
-	trackerView := m.renderTrackerList()
+	trackerView, history := m.renderTrackerList()
 
 	if hasOverlay { // docked modal (Question / Approval)
 		return m.renderDockedModalView(ov, separator, trackerView), nil
 	}
-	return m.renderNormalView(separator, trackerView)
+	return m.renderNormalView(separator, trackerView, history)
 }
 
 // renderDockedModalView composes a docked modal with the live chat tail still
@@ -130,10 +130,10 @@ func isDockedModal(ov overlayPanel) bool {
 // Recent settled rows and the active tail share the space above the composer.
 // Older settled rows enter native scrollback through model_scrollback.go.
 // Padding the unused space keeps the composer at the bottom as content changes.
-func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cursor) {
+func (m *model) renderNormalView(separator, trackerView, history string) (string, *tea.Cursor) {
 	// Render the footer first so the chat section can be capped to whatever
 	// height it leaves free.
-	footer, inputRow := m.renderFooter(separator)
+	footer, inputRow := m.renderFooter(separator, history)
 	queue := ""
 	if preview := m.renderQueuePreview(); preview != "" {
 		queue = "\n" + preview
@@ -229,14 +229,14 @@ func headLines(s string, maxLines int) string {
 }
 
 // renderFooter returns the footer and the input row for cursor placement.
-func (m *model) renderFooter(separator string) (string, int) {
+func (m *model) renderFooter(separator, history string) (string, int) {
 	var b strings.Builder
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		// Candidates grow upward so opening them does not move the composer.
 		b.WriteString("\n")
 		b.WriteString(suggestions)
 	}
-	// Task status owns the row; update information uses only the space left.
+	// Live foreground activity anchors the left side of the status row.
 	params := m.messageRenderParams()
 	var status string
 	switch {
@@ -263,7 +263,7 @@ func (m *model) renderFooter(separator string) (string, int) {
 	if status != "" && m.footerHasBreathingRoom() {
 		b.WriteString("\n")
 	}
-	if status = m.withUpdateNotice(status); status != "" {
+	if status = m.renderFooterStatus(status, history); status != "" {
 		b.WriteString("\n")
 		b.WriteString(status)
 	}
@@ -287,26 +287,60 @@ func (m *model) renderFooter(separator string) (string, int) {
 	return b.String(), inputRow
 }
 
-func (m model) withUpdateNotice(status string) string {
-	if m.updateInstalled == "" {
+// Foreground status keeps its space; right-side hints never wrap or add a row
+// to an existing status. Prefer actions over counts or version metadata.
+func (m *model) renderFooterStatus(status, history string) string {
+	if history == "" && m.updateInstalled == "" {
 		return status
 	}
-	width := max(0, m.env.Width-1)
-	available := width
+	const gap = "   "
+	width := m.env.Width - 1
+	statusWidth := lipgloss.Width(status)
+	available := width - statusWidth
 	if status != "" {
-		available -= lipgloss.Width(status) + 3
+		available -= len(gap)
 	}
-	label := "Restart to update"
-	version := "v" + m.updateInstalled + " installed · "
-	if lipgloss.Width(label+version) > available {
-		version = ""
+
+	const restart = "Restart to update"
+	showUpdate := m.updateInstalled != "" && len(restart) <= available
+	if showUpdate {
+		available -= len(restart)
 	}
-	if lipgloss.Width(label) > available {
+
+	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	var hint string
+	if history != "" {
+		const command = "/tasks"
+		historyBudget := available
+		if showUpdate {
+			historyBudget -= len(gap)
+		}
+		if len(command) <= historyBudget {
+			hint = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Render(command)
+			label := " · " + history
+			if len(command)+lipgloss.Width(label) <= historyBudget {
+				hint += muted.Render(label)
+			}
+			available = historyBudget - lipgloss.Width(hint)
+		}
+	}
+
+	right := hint
+	if showUpdate {
+		version := "v" + m.updateInstalled + " installed · "
+		notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render(restart)
+		if lipgloss.Width(version) <= available {
+			notice = muted.Render(version) + notice
+		}
+		right = notice
+		if hint != "" {
+			right += gap + hint
+		}
+	}
+	if right == "" {
 		return status
 	}
-	notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(version) +
-		lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render(label)
-	return status + strings.Repeat(" ", width-lipgloss.Width(status)-lipgloss.Width(notice)) + notice
+	return status + strings.Repeat(" ", width-statusWidth-lipgloss.Width(right)) + right
 }
 
 func (m model) renderInputView() string {
@@ -417,9 +451,9 @@ func (m model) liveWelcome() string {
 // Pointer receiver: Executing below is a *model method value, so a value
 // receiver would take the address of the copy and force the whole model onto
 // the heap on every frame.
-func (m *model) renderTrackerList() string {
+func (m *model) renderTrackerList() (rows, history string) {
 	if !m.conv.ShowTasks {
-		return ""
+		return "", ""
 	}
 	items := m.services.Tracker.List()
 	var running []task.BackgroundTask
@@ -449,7 +483,7 @@ func (m *model) renderTrackerList() string {
 			items = filtered
 		}
 	}
-	view := conv.RenderTrackerList(conv.TrackerListParams{
+	view, history := conv.RenderTrackerList(conv.TrackerListParams{
 		Items:            items,
 		StreamActive:     m.conv.Stream.Active,
 		Width:            m.env.Width,
@@ -468,7 +502,7 @@ func (m *model) renderTrackerList() string {
 			return task.TaskInfo{}
 		},
 	})
-	return appendLiveFlowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
+	return appendLiveFlowViews(view, running, m.conv.Spinner.Frame(), m.env.Width), history
 }
 
 func appendLiveFlowViews(view string, running []task.BackgroundTask, frame, width int) string {

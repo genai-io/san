@@ -283,16 +283,16 @@ func TestTaskRootTrackerUsesOnlyLivePermissionAssociation(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.interactions.active = interactionQuestion(m, context.Background(), worker.GetID())
-	if strings.Contains(ansi.Strip(m.renderTrackerList()), "awaiting approval") {
+	if rows, _ := m.renderTrackerList(); strings.Contains(ansi.Strip(rows), "awaiting approval") {
 		t.Fatal("question marked tracker as awaiting approval")
 	}
 	permissionCtx, expire := context.WithCancel(context.Background())
 	m.interactions.queue = []*conv.InteractionRequest{interactionApproval(m, permissionCtx, worker.GetID())}
-	if !strings.Contains(ansi.Strip(m.renderTrackerList()), "awaiting approval") {
+	if rows, _ := m.renderTrackerList(); !strings.Contains(ansi.Strip(rows), "awaiting approval") {
 		t.Fatal("queued valid permission not reflected in tracker")
 	}
 	expire()
-	if strings.Contains(ansi.Strip(m.renderTrackerList()), "awaiting approval") {
+	if rows, _ := m.renderTrackerList(); strings.Contains(ansi.Strip(rows), "awaiting approval") {
 		t.Fatal("expired permission remained in tracker")
 	}
 }
