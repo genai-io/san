@@ -136,6 +136,17 @@ func TestResumeInstructionNotice(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			wantMessages := 0
+			if tc.useContinue {
+				if err := testutil.AppendMessages(target, []core.Message{ai.UserMessage("Previous prompt")}); err != nil {
+					t.Fatal(err)
+				}
+				wantMessages = 1
+				blank := mustCreateSession(t, store, session.CreateOptions{ID: "newer-empty", CreatedAt: time.Now().Add(time.Second)})
+				if err := blank.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if err := target.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -150,13 +161,13 @@ func TestResumeInstructionNotice(t *testing.T) {
 				t.Fatalf("resumed %q, want other", m.sessionID())
 			}
 			if tc.wantNotice {
-				if rows := m.conv.Messages; len(rows) != 1 || rows[0].Role != core.ChatNotice || !strings.Contains(rows[0].Content, "updated model instructions") {
+				if rows := m.conv.Messages; len(rows) != wantMessages+1 || rows[wantMessages].Role != core.ChatNotice || !strings.Contains(rows[wantMessages].Content, "updated model instructions") {
 					t.Fatalf("expected one instruction notice, got %+v", rows)
 				}
-			} else if len(m.conv.Messages) != 0 {
+			} else if len(m.conv.Messages) != wantMessages {
 				t.Fatalf("unexpected notices: %+v", m.conv.Messages)
 			}
-			if rows := store.ChatRows(m.services.Session.Snapshot()); len(rows) != 0 || len(m.services.Agent.Messages()) != 0 {
+			if rows := store.ChatRows(m.services.Session.Snapshot()); len(rows) != wantMessages || len(m.services.Agent.Messages()) != wantMessages {
 				t.Fatal("resume notice leaked into durable history or model context")
 			}
 			if tc.wantNotice && !tc.useContinue {
