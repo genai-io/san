@@ -16,6 +16,8 @@ dual write or automatic conversion of older session files.
 - `OpenStore(ctx, startDir)` resolves the project. `Store.Create`, `Open` and
   `Fork` return a `Session` with an exclusive writer lease. Close every opened
   session before closing its store; closing a handle does not end the conversation.
+- The TUI opens new sessions as drafts; closing an unused draft leaves no
+  transcript. `/resume` and `--continue` skip saved sessions without messages.
 - `Store.Read(ctx, id)` returns an immutable `Projection` without acquiring a
   writer. `Get`, `List`, `Events`, `Attrs`, `ContextRequest`, `InferenceRequest`
   and `CommittedBatches` support inspection. Overview caches are disposable;

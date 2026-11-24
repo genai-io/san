@@ -41,14 +41,15 @@ const (
 // ListQuery selects sessions of this project. The zero value lists live,
 // unarchived sessions active in the last 30 days, newest first.
 type ListQuery struct {
-	Workspace  string // exact workspace; empty = every workspace of the project
-	Parent     string // only children of this session
-	Archived   ArchiveFilter
-	All        bool // include sessions older than the recent window
-	Visibility Visibility
-	Limit      int
-	Cursor     string
-	Now        time.Time // zero = time.Now(); injectable for tests
+	Workspace    string // exact workspace; empty = every workspace of the project
+	Parent       string // only children of this session
+	Archived     ArchiveFilter
+	All          bool // include sessions older than the recent window
+	WithMessages bool // omit known-empty sessions; unreadable sessions still report errors
+	Visibility   Visibility
+	Limit        int
+	Cursor       string
+	Now          time.Time // zero = time.Now(); injectable for tests
 }
 
 // ListItem is one row. Err is set instead of dropping a session whose events
@@ -208,6 +209,9 @@ func (s *Store) collect(ctx context.Context, root string, trashed func(id string
 }
 
 func (s *Store) listed(it ListItem, q ListQuery, now time.Time) bool {
+	if q.WithMessages && it.Messages == 0 && it.Workspace != "" {
+		return false // the overview was readable and confirms no messages
+	}
 	if it.Err != nil {
 		return q.Workspace == "" && q.Parent == "" // damaged: cannot be matched, so show unfiltered
 	}

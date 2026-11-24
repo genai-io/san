@@ -155,8 +155,13 @@ func (m *model) fireStartupHooks() {
 }
 
 func printExitMessage(m *model) {
-	sessionID := m.sessionID()
-	command := resumeCommandForSession(sessionID, m.sessionTranscriptPath())
+	command := ""
+	if owner := m.services.Session; owner != nil {
+		history := owner.Snapshot()
+		if history.HasMessages() {
+			command = resumeCommandForSession(owner.ID(), owner.Path())
+		}
+	}
 	if command != "" {
 		dim := kit.DimStyle()
 		fmt.Println()

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func selectorStore(t *testing.T) *session.Store {
@@ -22,6 +23,13 @@ func selectorStore(t *testing.T) *session.Store {
 	return store
 }
 
+func appendSelectorInput(t *testing.T, opened *session.Session) {
+	t.Helper()
+	if err := opened.AcceptInput(t.Context(), ai.Message{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("Hello")}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionSelectorLoadsOffLoopAndKeepsTypedFilter(t *testing.T) {
 	store := selectorStore(t)
 	opened, err := store.Create(t.Context(), session.CreateOptions{ID: "first"})
@@ -29,6 +37,7 @@ func TestSessionSelectorLoadsOffLoopAndKeepsTypedFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = opened.Close() })
+	appendSelectorInput(t, opened)
 	state := SessionState{Selector: NewSessionSelector()}
 	cmd, err := state.Selector.EnterSelect(80, 24, store, "/workspace")
 	if err != nil || cmd == nil {
@@ -115,9 +124,9 @@ func TestSessionSelectorShowsListErrors(t *testing.T) {
 	}
 }
 
-func TestSessionSelectorListsAllPagesAndOnlyRoots(t *testing.T) {
+func TestSessionSelectorListsAllPagesAndOnlyNonemptyRoots(t *testing.T) {
 	store := selectorStore(t)
-	for i := range 202 {
+	for i := range 203 {
 		opts := session.CreateOptions{ID: fmt.Sprintf("session-%03d", i)}
 		if i == 201 {
 			opts.Parent = &session.ParentLink{Session: "session-000"}
@@ -125,6 +134,9 @@ func TestSessionSelectorListsAllPagesAndOnlyRoots(t *testing.T) {
 		opened, err := store.Create(t.Context(), opts)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if i != 202 {
+			appendSelectorInput(t, opened)
 		}
 		if err := opened.Close(); err != nil {
 			t.Fatal(err)

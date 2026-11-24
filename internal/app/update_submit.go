@@ -214,10 +214,12 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 	}
 	for i, img := range images {
 		path := img.Path
-		if path == "" && m.ensureSessionStore() == nil {
+		if path == "" {
 			// Persist clipboard bytes instead of pointing the model at a temp
 			// path that will vanish when this process exits.
-			path, _ = image.EnsureFilePath(img, m.services.SessionStore.ImagesDir(m.sessionID()))
+			if owner, err := m.openCurrentSession(); err == nil && owner.Save(context.Background()) == nil {
+				path, _ = image.EnsureFilePath(img, m.services.SessionStore.ImagesDir(owner.ID()))
+			}
 		}
 		if path == "" {
 			// Never claim a filename is a readable path when writing failed.

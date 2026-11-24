@@ -79,7 +79,7 @@ func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, c
 	return func() tea.Msg {
 		defer cancel()
 		var sessions []session.ListItem
-		query := session.ListQuery{All: true, Limit: 200}
+		query := session.ListQuery{All: true, WithMessages: true, Limit: 200}
 		for {
 			page, err := store.List(ctx, query)
 			if err != nil {

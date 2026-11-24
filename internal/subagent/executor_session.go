@@ -89,6 +89,9 @@ func (e *Executor) openSession(ctx context.Context, run *preparedRun) error {
 	}
 	var parent *session.ParentLink
 	if parentID != "" {
+		if err := run.parent.Save(ctx); err != nil {
+			return err
+		}
 		parent = &session.ParentLink{Session: parentID, CallID: run.req.ParentToolCallID}
 	}
 	provider, model, mode := run.cfg.provider.Name(), run.cfg.modelID, string(run.cfg.permMode)

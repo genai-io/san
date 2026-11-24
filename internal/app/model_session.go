@@ -73,7 +73,7 @@ func (m *model) openCurrentSession() (*session.Session, error) {
 		config.Mode = patch.Mode.Value
 		config.AutopilotPolicy = patch.AutopilotPolicy.Value
 	}
-	opened, err := m.services.SessionStore.Create(context.Background(), session.CreateOptions{ID: m.services.sessionID, AgentID: "main", InitialCWD: m.env.CWD, Config: &config})
+	opened, err := m.services.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: m.services.sessionID, AgentID: "main", InitialCWD: m.env.CWD, Config: &config})
 	if err != nil {
 		return nil, err
 	}
@@ -507,6 +507,9 @@ func (m *model) forkSession() (string, error) {
 	if err := m.appendSessionState(); err != nil {
 		return "", err
 	}
+	if err := m.services.Session.Save(context.Background()); err != nil {
+		return "", err
+	}
 	originalID := m.sessionID()
 	opened, err := m.services.SessionStore.Fork(context.Background(), originalID, session.ForkOptions{})
 	if err != nil {
@@ -531,6 +534,9 @@ func (m *model) renameSession(name, role string) (string, error) {
 		return "", err
 	}
 	if name != "" {
+		if err := opened.Save(context.Background()); err != nil {
+			return "", err
+		}
 		if err := m.services.SessionStore.SetAttrs(context.Background(), opened.ID(), session.AttrsPatch{Title: session.SetField(name)}); err != nil {
 			return "", err
 		}
@@ -551,7 +557,7 @@ func (m *model) clearSession() error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
-	opened, err := m.services.SessionStore.Create(context.Background(), session.CreateOptions{ID: session.NewSessionID(), AgentID: "main", InitialCWD: m.env.CWD})
+	opened, err := m.services.SessionStore.NewDraft(context.Background(), session.CreateOptions{ID: session.NewSessionID(), AgentID: "main", InitialCWD: m.env.CWD})
 	if err != nil {
 		return err
 	}
