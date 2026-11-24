@@ -86,8 +86,8 @@ func (s *SessionSelector) EnterSelect(width, height int, store *session.Store, c
 				return sessionsListedMsg{generation: generation, err: err}
 			}
 			for _, item := range page.Items {
-				// Worker sessions are not resumable as the main conversation.
-				if item.Parent == "" {
+				// Resume only opens main conversations, not standalone utility or worker records.
+				if item.Parent == "" && (item.AgentID == "main" || item.Err != nil) {
 					sessions = append(sessions, item)
 				}
 			}
