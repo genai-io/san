@@ -15,12 +15,13 @@ import (
 // ErrClosed means the store or writer handle has been closed.
 var ErrClosed = errors.New("session is closed")
 
-// Session owns one typed writer until Close. Its snapshots contain committed
-// facts only; it never runs an agent or restores permission grants.
+// Session owns one typed writer until Close. It never runs an agent or restores
+// permission grants.
 type Session struct {
 	mu     sync.Mutex // serializes preparation and commit, including source reads
 	store  *Store
 	writer *eventSession
+	draft  bool // guarded by mu
 }
 
 func (s *Session) ID() string   { return s.writer.ID() }
@@ -32,8 +33,9 @@ func (s *Session) OwnedBy(store *Store) bool {
 	return s != nil && s.store == store
 }
 
-// Snapshot returns the last committed prefix, including after Close or a write
-// failure. Projection is immutable and its accessors detach their results.
+// Snapshot returns the last committed prefix (or the in-memory draft),
+// including after Close or a write failure. Projection is immutable and its
+// accessors detach their results.
 func (s *Session) Snapshot() Projection {
 	s.writer.mu.Lock()
 	defer s.writer.mu.Unlock()
@@ -123,6 +125,9 @@ func (s *Session) appendLocked(ctx context.Context, events []Event) error {
 	if err != nil {
 		return err
 	}
+	if s.draft {
+		return s.appendDraft(ctx, events, prepared)
+	}
 	_, err = s.writer.commitEventBatch(ctx, prepared)
 	return err
 }
@@ -140,6 +145,9 @@ func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (st
 	}
 	var digest string
 	err := (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
+		if err := s.saveLocked(ctx); err != nil {
+			return err
+		}
 		var err error
 		digest, err = s.requests().PutRequest(request)
 		return err

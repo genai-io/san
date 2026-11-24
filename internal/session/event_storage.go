@@ -92,40 +92,7 @@ func decodeEventBatchPayload(data []byte) (eventBatchPayload, error) {
 }
 
 func (s *Store) createSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, error) {
-	// Detach and validate before acquiring a writer (which may create an empty file).
-	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
-	if err != nil {
-		return nil, err
-	}
-	payload, err := decodeEventBatchPayload(raw)
-	if err != nil {
-		return nil, err
-	}
-	create = payload.Events[0]
-	identity, ok := create.Payload.(*SessionCreatePayload)
-	if !ok || create.Type != EventSessionCreate {
-		return nil, fmt.Errorf("initial event must be session.create")
-	}
-	if identity.ProjectID != s.projectID {
-		return nil, fmt.Errorf("event project identity mismatch")
-	}
-	if identity.Workspace == "" {
-		identity.Workspace = s.workspace
-	}
-	if s.project != nil {
-		workspace, err := validateProjectWorkspace(ctx, *s.project, identity.Workspace)
-		if err != nil {
-			return nil, err
-		}
-		identity.Workspace = workspace
-	} else if identity.Workspace != s.workspace {
-		return nil, fmt.Errorf("event workspace identity mismatch")
-	}
-	if err := ValidateStorageID(sessionID); err != nil {
-		return nil, err
-	}
-	opened := &eventSession{id: sessionID, path: s.eventsPath(sessionID), state: newEventState()}
-	prepared, err := opened.prepareEventBatch(batchID, []Event{create}, payload.Validation)
+	opened, prepared, err := s.prepareSession(ctx, batchID, sessionID, create, validation)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +100,47 @@ func (s *Store) createSession(ctx context.Context, batchID, sessionID string, cr
 		_, err := opened.commitEventBatch(ctx, prepared)
 		return err
 	})
+}
+
+func (s *Store) prepareSession(ctx context.Context, batchID, sessionID string, create Event, validation EventValidationContext) (*eventSession, *preparedEventBatch, error) {
+	// Detach and validate before acquiring a writer (which may create an empty file).
+	raw, err := json.Marshal(eventBatchPayload{1, []Event{create}, validation})
+	if err != nil {
+		return nil, nil, err
+	}
+	payload, err := decodeEventBatchPayload(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	create = payload.Events[0]
+	identity, ok := create.Payload.(*SessionCreatePayload)
+	if !ok || create.Type != EventSessionCreate {
+		return nil, nil, fmt.Errorf("initial event must be session.create")
+	}
+	if identity.ProjectID != s.projectID {
+		return nil, nil, fmt.Errorf("event project identity mismatch")
+	}
+	if identity.Workspace == "" {
+		identity.Workspace = s.workspace
+	}
+	if s.project != nil {
+		workspace, err := validateProjectWorkspace(ctx, *s.project, identity.Workspace)
+		if err != nil {
+			return nil, nil, err
+		}
+		identity.Workspace = workspace
+	} else if identity.Workspace != s.workspace {
+		return nil, nil, fmt.Errorf("event workspace identity mismatch")
+	}
+	if err := ValidateStorageID(sessionID); err != nil {
+		return nil, nil, err
+	}
+	opened := &eventSession{id: sessionID, path: s.eventsPath(sessionID), state: newEventState()}
+	prepared, err := opened.prepareEventBatch(batchID, []Event{create}, payload.Validation)
+	if err != nil {
+		return nil, nil, err
+	}
+	return opened, prepared, nil
 }
 
 // publishSession stages the complete session before handing off its writer at the final path.

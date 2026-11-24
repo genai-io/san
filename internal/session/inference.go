@@ -71,6 +71,9 @@ func (s *Session) StartInference(ctx context.Context, opts InferenceOptions) (*I
 			start.Input.Conversation = &ConversationInput{Append: opts.Append}
 			start.InstructionsDigest, start.ToolsetDigest = p.CatalogueDigests()
 		} else {
+			if err := s.saveLocked(ctx); err != nil {
+				return nil, err
+			}
 			digest, err := s.requests().PutRequest(StandaloneRequest{System: r.System, Messages: r.Messages, Tools: r.Tools})
 			if err != nil {
 				return nil, err

@@ -173,7 +173,7 @@ func (m *model) applyContinueOption() error {
 	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
-	query := session.ListQuery{All: true, Limit: 200}
+	query := session.ListQuery{All: true, WithMessages: true, Limit: 200}
 	for {
 		page, err := m.services.SessionStore.List(context.Background(), query)
 		if err != nil {

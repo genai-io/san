@@ -70,6 +70,7 @@ func (p *Projection) UserTurnsSinceNotice(prefix string) int {
 
 func (p *Projection) SessionID() string              { return p.data.SessionID }
 func (p *Projection) Events() []Event                { return eventCopy(p.data.Events) }
+func (p *Projection) HasMessages() bool              { return len(p.data.Messages) > 0 }
 func (p *Projection) Messages() []ai.Message         { return eventCopy(p.data.Messages) }
 func (p *Projection) Identity() SessionCreatePayload { return eventCopy(p.data.Identity) }
 func (p *Projection) Config() EventConfig            { return eventCopy(p.data.Config) }

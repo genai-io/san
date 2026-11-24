@@ -15,6 +15,7 @@ func TestResumeCommandListsInjectedStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = opened.Close() })
+	appendSelectorInput(t, opened)
 	m := &Model{Session: SessionState{Selector: NewSessionSelector()}}
 	c := NewSlashCommandController(SlashCommandEnv{
 		Input: m, SessionStore: store, Width: 80, Height: 24,

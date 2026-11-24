@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -20,7 +22,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestClearStartsAFreshDurableSession(t *testing.T) {
+func TestClearStartsAFreshDraft(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("SAN_TASK_LIST_ID", "")
 	cwd := t.TempDir()
@@ -50,6 +52,9 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	}
 	if filepath.Base(m.services.Tracker.StorageDir()) != id {
 		t.Fatal("task storage kept old identity")
+	}
+	if _, err := os.Stat(m.services.Session.Path()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("/clear saved an empty transcript: %v", err)
 	}
 	// Delayed events from the retired runtime must not write into either log.
 	if err := testutil.AppendMessages(old, []ai.Message{{ID: "late", Role: ai.RoleUser, Content: ai.TextContent("late")}}); err == nil {

@@ -82,6 +82,16 @@ type CreateOptions struct {
 
 // Create commits the identity before returning its writer handle.
 func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error) {
+	return s.create(ctx, opts, false)
+}
+
+// NewDraft opens a fresh session without a transcript on disk. State and
+// annotations stay in memory until an activity is recorded or Save is called.
+func (s *Store) NewDraft(ctx context.Context, opts CreateOptions) (*Session, error) {
+	return s.create(ctx, opts, true)
+}
+
+func (s *Store) create(ctx context.Context, opts CreateOptions, draft bool) (*Session, error) {
 	if opts.ID == "" {
 		opts.ID = NewSessionID()
 	}
@@ -118,6 +128,14 @@ func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error
 	create := Event{Seq: 1, Type: EventSessionCreate, SchemaVersion: 1, Time: opts.CreatedAt.UnixMilli(),
 		Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: opts.Workspace,
 			InitialCWD: opts.InitialCWD, AgentID: opts.AgentID, Config: opts.Config, Parent: opts.Parent}}
+	if draft {
+		writer, prepared, err := s.prepareSession(ctx, "create", opts.ID, create, validation)
+		if err != nil {
+			return nil, err
+		}
+		writer.state.projection, writer.state.validation = prepared.projection, prepared.validation
+		return &Session{store: s, writer: writer, draft: true}, nil
+	}
 	var writer *eventSession
 	err := (library{root: s.projectDir}).withLock(ctx, opts.ID, func() error {
 		var err error
