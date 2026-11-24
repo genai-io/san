@@ -15,8 +15,18 @@ import (
 
 // ChatRows converts native messages for display, never for persistence.
 func ChatRows(messages []core.Message) []core.ChatMessage {
-	var rows []core.ChatMessage
+	return chatRows(messages, false)
+}
+
+func chatRows(messages []core.Message, detach bool) []core.ChatMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	rows := make([]core.ChatMessage, 0, len(messages))
 	for _, msg := range messages {
+		if detach {
+			msg.Content = msg.Content.Clone()
+		}
 		for _, row := range core.ChatRowsOf(msg) {
 			if row.Role == core.ChatUser && row.ToolResult == nil {
 				var display strings.Builder
@@ -69,7 +79,9 @@ func imageSourceNote(text string, imageCount int) bool {
 // ChatRows renders full persisted history, including compacted messages and
 // display-only facts. It does not acquire a writer or change the projection.
 func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
-	rows := ChatRows(projection.Messages())
+	// Detach mutable content without serializing immutable text and image data.
+	rows := chatRows(projection.data.Messages, true)
+	annotationCount := 0
 	after := make(map[string][]core.ChatMessage)
 	details := make(map[string][]byte)
 	var memoryUpdates map[uint64]bool
@@ -88,6 +100,7 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 				memoryUpdates[event.Seq] = true
 			}
 		case *AnnotationAddPayload:
+			annotationCount++
 			anchor := p.AfterMessage
 			if anchor == "" {
 				anchor = last
@@ -132,7 +145,10 @@ func (s *Store) ChatRows(projection Projection) []core.ChatMessage {
 			}
 		}
 	}
-	out := make([]core.ChatMessage, 0, len(rows))
+	if annotationCount == 0 && rows != nil {
+		return rows
+	}
+	out := make([]core.ChatMessage, 0, len(rows)+annotationCount)
 	out = append(out, after[""]...)
 	for i, row := range rows {
 		out = append(out, row)

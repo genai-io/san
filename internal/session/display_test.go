@@ -7,12 +7,40 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func BenchmarkNativeDisplayChatRows(b *testing.B) {
+	var p Projection
+	image := ai.Image{MediaType: "image/png", Data: strings.Repeat("aGVsbG8=", 8<<10)}
+	body := strings.Repeat("tool output line\n", 256)
+	for i := range 500 {
+		id := strconv.Itoa(i)
+		user := ai.UserMessage("question " + id)
+		if i%25 == 0 {
+			user = ai.UserMessage("question "+id, image)
+		}
+		user.ID = "user-" + id
+		answer := eventText("answer-"+id, ai.RoleAssistant, "answer")
+		result := core.ToolResultMessage(ai.ToolResult{ToolCallID: id, Content: ai.TextContent(body)})
+		result.ID = "result-" + id
+		p.data.Messages = append(p.data.Messages, user, answer, result)
+		if i%25 == 0 {
+			p.data.Events = append(p.data.Events, Event{Payload: &AnnotationAddPayload{AfterMessage: result.ID, Text: "note"}})
+		}
+	}
+	store := &Store{}
+	b.ReportAllocs()
+	for b.Loop() {
+		store.ChatRows(p)
+	}
+}
 
 func TestNativeDisplayImagesSignaturesAndAnnotations(t *testing.T) {
 	messages := []ai.Message{
@@ -105,6 +133,32 @@ func TestNativeDisplayDetachesToolDetails(t *testing.T) {
 	rows[0].ToolResult.Content[0].Text = "changed"
 	if !reflect.DeepEqual(before, p.data) {
 		t.Fatal("display rows share mutable values with the projection")
+	}
+}
+
+func TestNativeDisplayDetachesParallelResultsAndSignatures(t *testing.T) {
+	call := ai.ToolCall{ID: "first", Name: "tool", Signature: []byte("signature")}
+	assistant := ai.Message{ID: "assistant", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(call)}}
+	results := ai.ToolResultsMessage(
+		ai.ToolResult{ToolCallID: "first", Content: ai.Content{ai.ImageBlock(ai.Image{Data: "aW1hZ2U="})}},
+		ai.ToolResult{ToolCallID: "second", Content: ai.TextContent("second result")},
+	)
+	results.ID = "results"
+	p := Projection{data: projectionData{
+		Messages: []ai.Message{assistant, results},
+		Events:   []Event{{Payload: &AnnotationAddPayload{AfterMessage: results.ID, Text: "after both"}}},
+	}}
+	before := p.Messages()
+	rows := (&Store{}).ChatRows(p)
+	want := append(ChatRows(p.Messages()), core.ChatMessage{Role: core.ChatNotice, Content: "after both"})
+	if len(rows) != 4 || !reflect.DeepEqual(rows, want) {
+		t.Fatalf("parallel result and annotation rows = %+v", rows)
+	}
+	rows[0].ToolCalls[0].Signature[0] = 'X'
+	rows[1].ToolResult.Content[0].Image.Data = "changed"
+	rows[2].ToolResult.Content[0].Text = "changed"
+	if !reflect.DeepEqual(before, p.data.Messages) {
+		t.Fatal("display rows share mutable content with the projection")
 	}
 }
 
