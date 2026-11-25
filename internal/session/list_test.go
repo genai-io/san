@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -156,6 +157,16 @@ func TestListParentTrashAndDamage(t *testing.T) {
 	}
 	if broken == nil || broken.Err == nil {
 		t.Fatalf("damaged session vanished or reads clean: %+v", page.Items)
+	}
+	empty := createTyped(t, store, CreateOptions{ID: "empty", CreatedAt: listNow})
+	if err := empty.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.sessionDir("empty"), attrsFile), []byte("not JSON"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := listIDs(t, store, ListQuery{WithMessages: true}); !equalIDs(got, []string{"parent", "child", "broken"}) {
+		t.Fatalf("list with messages: %v", got)
 	}
 }
 

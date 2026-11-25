@@ -163,6 +163,14 @@ func (s *Store) toolResultsDir(id string) string {
 	return filepath.Join(s.sessionDir(id), "blobs", "tool-result")
 }
 
+// ImagesDir publishes the current session if needed and returns its image directory.
+func (s *Session) ImagesDir(ctx context.Context) (string, error) {
+	if err := s.Save(ctx); err != nil {
+		return "", err
+	}
+	return s.store.ImagesDir(s.ID()), nil
+}
+
 // ImagesDir holds pasted image files alongside the session's other assets.
 // Invalid identifiers return no path.
 func (s *Store) ImagesDir(id string) string {

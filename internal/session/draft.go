@@ -44,29 +44,25 @@ func (s *Session) Save(ctx context.Context) error {
 		return nil
 	}
 	return (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
-		return s.saveLocked(ctx)
+		return s.flushDraft(ctx)
 	})
 }
 
-func (s *Session) saveLocked(ctx context.Context) error {
-	if !s.draft {
-		return nil
-	}
-	p := s.Snapshot()
-	return s.publishDraft(ctx, &p, s.writer.state.validation)
+// flushDraft publishes the draft as it stands. The caller holds s.mu and the
+// session's library lock.
+func (s *Session) flushDraft(ctx context.Context) error {
+	return s.publishDraft(ctx, s.writer.state.projection, s.writer.state.validation)
 }
 
 func (s *Session) publishDraft(ctx context.Context, p *Projection, validation EventValidationContext) error {
-	// Publish the buffered prefix and its first durable event in one batch.
+	// Write the entire draft as the initial batch.
 	opened := &eventSession{id: s.ID(), path: s.Path(), state: newEventState()}
 	prepared, err := opened.prepareEventBatch("create", p.data.Events, validation)
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.publishSession(ctx, opened, func(_ string) error {
-		_, err := opened.commitEventBatch(ctx, prepared)
-		return err
-	}); err != nil {
+	opened, err = s.store.publishBatch(ctx, prepared)
+	if err != nil {
 		return err
 	}
 	s.writer.mu.Lock()
