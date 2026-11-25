@@ -93,6 +93,18 @@ func formatToolActivityLimit(tracker *todo.Store, toolName string, params map[st
 		return toolName
 	}
 
+	if toolName == tool.ToolSendMessage {
+		to := strings.Join(strings.Fields(tool.GetString(params, "to")), " ")
+		if to == "" {
+			return toolName
+		}
+		label := "To " + to
+		if subject := strings.Join(strings.Fields(tool.GetString(params, "subject")), " "); subject != "" {
+			label += ": " + subject
+		}
+		return truncateToolActivity(label, maxChars)
+	}
+
 	// Task tools: show "TaskXxx(#id subject)" by looking up subject from store
 	if label := formatTaskToolActivity(tracker, toolName, params); label != "" {
 		return label
@@ -108,14 +120,17 @@ func formatToolActivityLimit(tracker *todo.Store, toolName string, params map[st
 		return fmt.Sprintf("%s()", toolName)
 	}
 
+	return fmt.Sprintf("%s(%s)", toolName, truncateToolActivity(value, maxChars))
+}
+
+func truncateToolActivity(value string, maxChars int) string {
 	if maxChars <= 0 {
 		maxChars = 60
 	}
 	if text := []rune(value); len(text) > maxChars {
-		value = string(text[:maxChars-1]) + "…"
+		return string(text[:maxChars-1]) + "…"
 	}
-
-	return fmt.Sprintf("%s(%s)", toolName, value)
+	return value
 }
 
 // formatTaskToolActivity formats task tool calls with "#id subject" display.

@@ -830,7 +830,18 @@ func RenderToolCalls(params ToolCallsParams) string {
 				label = kit.TruncateText(label, max(1, rowWidth-kit.ToolIconWidth))
 			}
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
+				result := params.ResultMap[tc.ID]
+				// Only fold a plain broker receipt. Keep expanded results, errors,
+				// judge decisions, group delivery notes, and continuation details.
+				queued := hasResult && !params.ToolCallsExpanded && !result.Expanded && !result.IsError && result.Decision == nil &&
+					strings.HasPrefix(result.Content, toolresult.SendMessageQueuedPrefix)
+				if queued {
+					body += " · Queued"
+				}
 				sb.WriteString(renderAgentMessageLine("●", "To", to, body, params.Width, params.AgentIdentities, params.AgentColors, params.MemberColors) + "\n")
+				if queued {
+					continue
+				}
 			} else if hasResult {
 				sb.WriteString(appendRowDetail(renderAgentHeading(label, rowWidth, "●", color)+"\n", detail))
 			} else {
