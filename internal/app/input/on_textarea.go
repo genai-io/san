@@ -564,8 +564,8 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		if selected != "" {
 			if m.Suggestions.SuggestionType() == suggest.TypeFile {
 				currentValue := m.Textarea.Value()
-				if atIdx := strings.LastIndex(currentValue, "@"); atIdx >= 0 {
-					newValue := currentValue[:atIdx] + "@" + selected
+				if atIdx := suggest.FileQueryStart(currentValue); atIdx >= 0 {
+					newValue := currentValue[:atIdx+1] + selected
 					m.Textarea.SetValue(newValue)
 					m.Textarea.CursorEnd()
 				}

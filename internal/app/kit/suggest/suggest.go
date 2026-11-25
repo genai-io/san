@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 
@@ -91,26 +93,36 @@ func (s *State) Reset() {
 	s.atQuery = ""
 }
 
-func (s *State) UpdateSuggestions(input string) {
-	// A trailing space is meaningful to a command: "/group " asks for its
-	// arguments, "/group" for commands named like it.
-	command := strings.TrimLeft(input, " \t\n")
-	input = strings.TrimSpace(input)
+// FileQueryStart returns the byte offset of the @ that starts the final input
+// token, or -1. An embedded @ (as in plugin@marketplace) is not a file trigger.
+func FileQueryStart(input string) int {
+	start := 0
+	if space := strings.LastIndexFunc(input, unicode.IsSpace); space >= 0 {
+		_, size := utf8.DecodeRuneInString(input[space:])
+		start = space + size
+	}
+	if start < len(input) && input[start] == '@' {
+		return start
+	}
+	return -1
+}
 
-	if atIdx := strings.LastIndex(input, "@"); atIdx >= 0 {
+func (s *State) UpdateSuggestions(input string) {
+	if atIdx := FileQueryStart(input); atIdx >= 0 {
 		query := input[atIdx+1:]
-		if atIdx == len(input)-1 || !strings.ContainsAny(query, " \t\n") {
-			if s.atQuery != query {
-				s.selectedIdx = 0
-				s.viewStart = 0
-			}
-			s.atQuery = query
-			s.updatefileSuggestions(query)
-			return
+		if s.atQuery != query {
+			s.selectedIdx = 0
+			s.viewStart = 0
 		}
+		s.atQuery = query
+		s.updatefileSuggestions(query)
+		return
 	}
 
-	if strings.HasPrefix(input, "/") {
+	// A trailing space is meaningful to a command: "/group " asks for its
+	// arguments, "/group" for commands named like it.
+	command := strings.TrimLeftFunc(input, unicode.IsSpace)
+	if strings.HasPrefix(command, "/") {
 		s.suggestionType = typeCommand
 		s.suggestions = s.cmdMatcher(command)
 		s.fileSuggestions = nil

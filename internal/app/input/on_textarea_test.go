@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,6 +31,65 @@ func TestSuggestionCompletesInputKeyWithoutAddingSpace(t *testing.T) {
 	}
 	if got := m.Textarea.Value(); got != "/flow run demo topic=" {
 		t.Fatalf("completed input = %q", got)
+	}
+}
+
+func TestTextareaFileSuggestionsRequireLeadingAt(t *testing.T) {
+	const behavior = ".san/personas/software-engineer/system/behavior.md"
+	cwd := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(cwd, behavior)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{behavior, "notes@v2.md"} {
+		if err := os.WriteFile(filepath.Join(cwd, path), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tt := range []struct {
+		value string
+		file  string
+		want  string
+	}{
+		{value: "/plugin install cc-skills-golang@"},
+		{value: "/plugin install cc-skills-golang@samber"},
+		{value: "user@samber"},
+		{value: "check @samber "},
+		{value: "@", file: "notes@v2.md", want: "@notes@v2.md"},
+		{value: "check @samber", file: behavior, want: "check @" + behavior},
+		{value: "看看　@samber", file: behavior, want: "看看　@" + behavior},
+		{value: "check @notes@v2", file: "notes@v2.md", want: "check @notes@v2.md"},
+	} {
+		t.Run(tt.value, func(t *testing.T) {
+			m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+			m.Suggestions.SetCwd(cwd)
+			prefix := []rune(tt.value)
+			last := prefix[len(prefix)-1]
+			m.Textarea.SetValue(string(prefix[:len(prefix)-1]))
+			m.Textarea.CursorEnd()
+			m.HandleTextareaUpdate(tea.KeyPressMsg{Code: last, Text: string(last)})
+			if got := m.Textarea.Value(); got != tt.value {
+				t.Fatalf("typed value = %q, want %q", got, tt.value)
+			}
+			if tt.file == "" {
+				if m.Suggestions.IsVisible() {
+					t.Fatalf("unexpected suggestion %q", m.Suggestions.Selected())
+				}
+				if _, handled := m.HandleSuggestionKey(tea.KeyPressMsg{Code: tea.KeyEnter}); handled {
+					t.Fatal("suggestion intercepted Enter")
+				}
+				return
+			}
+			if got := m.Suggestions.Selected(); !m.Suggestions.IsVisible() || got != tt.file {
+				t.Fatalf("visible = %v, selected = %q, want %q", m.Suggestions.IsVisible(), got, tt.file)
+			}
+			if _, handled := m.HandleSuggestionKey(tea.KeyPressMsg{Code: tea.KeyTab}); !handled {
+				t.Fatal("Tab did not accept the file suggestion")
+			}
+			if got := m.Textarea.Value(); got != tt.want {
+				t.Fatalf("completed input = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
