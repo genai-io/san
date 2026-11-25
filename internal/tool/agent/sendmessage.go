@@ -155,7 +155,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("Message accepted and queued for %s; the recipient reads queued messages at its next step or turn boundary. This is not an acknowledgment or completion. Continue with your task.", recipientLabel(tasks, to)),
+		Output:  toolresult.SendMessageQueuedPrefix + recipientLabel(tasks, to) + "; the recipient reads queued messages at its next step or turn boundary. This is not an acknowledgment or completion. Continue with your task.",
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),

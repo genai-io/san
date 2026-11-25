@@ -1175,11 +1175,11 @@ func agentDescription(name, desc string) string {
 	return desc
 }
 
-// sendMessageLabel names a SendMessage call by its recipient and opening words.
+// sendMessageParts extracts the recipient and a single-line subject for the call row.
 func sendMessageParts(input string) (to, subject string) {
 	var p struct{ To, Subject string }
 	_ = json.Unmarshal([]byte(input), &p)
-	return strings.TrimPrefix(p.To, "@"), p.Subject
+	return strings.TrimPrefix(strings.TrimSpace(p.To), "@"), strings.Join(strings.Fields(p.Subject), " ")
 }
 
 // memberPalette tells group members apart: "To @api" and "From @api" share
@@ -1220,16 +1220,17 @@ func renderIdentityMessageLine(icon, dir, name, body string, width int, tone kit
 	if i := strings.LastIndex(body, " · "); i >= 0 {
 		body, note = body[:i], toolResultStyle.Render(body[i:])
 	}
-	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render(name)
-	if body == "" { // no subject: who it is to or from says it all
-		return kit.TruncateText(head+note, max(1, width))
+	leading := color.Render(icon+" ") + toolCallStyle.Render(dir+" ")
+	head := leading + color.Bold(true).Render(name)
+	headWidth := width - lipgloss.Width(note)
+	room := headWidth - lipgloss.Width(head) - 3 // colon, space, and one column of slack
+	if body == "" || room < 8 {
+		if note != "" && headWidth >= lipgloss.Width(leading)+2 {
+			return kit.TruncateText(head, headWidth) + note
+		}
+		return kit.TruncateText(head+note, width)
 	}
-	head += toolCallStyle.Render(":")
-	room := width - lipgloss.Width(head) - lipgloss.Width(note) - 2
-	if room < 8 {
-		return kit.TruncateText(head+note, max(1, width))
-	}
-	return head + bodyStyle.Render(" "+kit.TruncateText(body, room)) + note
+	return head + toolCallStyle.Render(":") + bodyStyle.Render(" "+kit.TruncateText(body, room)) + note
 }
 
 func conciseAgentDescription(desc string) string {

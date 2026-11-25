@@ -73,6 +73,9 @@ type AgentDetails struct {
 	TaskID       string // set only for a background launch
 }
 
+// SendMessageQueuedPrefix identifies an ordinary broker receipt in live and saved results.
+const SendMessageQueuedPrefix = "Message accepted and queued for "
+
 // ToolResult represents the result of a tool execution
 type ToolResult struct {
 	Success      bool             // Whether the tool succeeded
