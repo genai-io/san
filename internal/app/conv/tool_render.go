@@ -656,9 +656,9 @@ func renderAskUserCall(input, icon string, width int) string {
 	}
 	var sb strings.Builder
 	for i, question := range questions {
-		prefix := icon + " "
-		if i > 0 {
-			prefix = "  "
+		prefix := "  "
+		if i == 0 {
+			prefix = questionCallStyle.Render(icon + " ")
 		}
 		if len(questions) > 1 {
 			question = fmt.Sprintf("Q%d: %s", i+1, question)
@@ -914,8 +914,12 @@ func renderAgentLocalBody(body string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
+	return renderAgentLocalLines(strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n"))
+}
+
+func renderAgentLocalLines(lines []string) string {
 	var sb strings.Builder
-	for _, line := range strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n") {
+	for _, line := range lines {
 		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
 	}
 	return sb.String()
@@ -961,15 +965,12 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
-	var sb strings.Builder
+	prefix := ""
 	if omitted := len(lines) - previewLines; omitted > 0 {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n")
+		prefix = toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n"
 		lines = lines[omitted:]
 	}
-	for _, line := range lines {
-		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
-	}
-	return sb.String()
+	return prefix + renderAgentLocalLines(lines)
 }
 
 func splitByProcessCount(body string, processCount int) (process, response string) {
@@ -1008,11 +1009,12 @@ func formatAgentDefinition(agent agentInput, width int) string {
 
 	if agent.Prompt != "" {
 		sb.WriteString(agentLabelStyle.Render("  ⎿  Prompt:") + "\n")
-		if width <= 0 {
-			width = 80
+		prompt := agent.Prompt
+		if width > 0 {
+			wrapWidth := max(1, width-lipgloss.Width(agentContentIndent)-toolResultExpandedStyle.GetHorizontalFrameSize())
+			prompt = WrapProse(prompt, wrapWidth)
 		}
-		wrapWidth := max(1, width-lipgloss.Width(agentContentIndent)-toolResultExpandedStyle.GetHorizontalFrameSize())
-		for line := range strings.SplitSeq(WrapProse(agent.Prompt, wrapWidth), "\n") {
+		for line := range strings.SplitSeq(prompt, "\n") {
 			sb.WriteString(toolResultExpandedStyle.Render(agentContentIndent+line) + "\n")
 		}
 	}

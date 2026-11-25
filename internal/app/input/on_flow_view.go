@@ -285,10 +285,15 @@ func (v *FlowView) renderInputSummary() string {
 	}
 	for _, key := range v.keys {
 		lines = append(lines, "", kit.SelectorSelectedLabelStyle().Render(flowInputLabel(key)))
-		value := ansi.Wrap(v.inputs[key], max(1, v.width-6), " ")
-		lines = append(lines, "  "+strings.ReplaceAll(value, "\n", "\n  "))
+		lines = append(lines, wrapFlowProse(v.inputs[key], v.width-4))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func wrapFlowProse(text string, width int) string {
+	const indent = "  "
+	wrapped := conv.WrapProse(text, max(1, width-len(indent)))
+	return indent + strings.ReplaceAll(wrapped, "\n", "\n"+indent)
 }
 
 func (v *FlowView) renderHub() string {
@@ -446,8 +451,8 @@ func (v *FlowView) renderReview() string {
 	} else if len(node.Downstream()) == 0 {
 		lines = append(lines, "          Final flow result")
 	}
-	lines = append(lines, "", "Instructions", "  "+strings.ReplaceAll(node.Prompt, "\n", "\n  "))
-	return ansi.Wrap(strings.Join(lines, "\n"), max(1, v.width-4), " ")
+	lines = append(lines, "", "Instructions")
+	return ansi.Wrap(strings.Join(lines, "\n"), width, " ") + "\n" + wrapFlowProse(node.Prompt, width)
 }
 
 func (v *FlowView) referenceUsers(ref string) []string {

@@ -32,6 +32,23 @@ func TestFlowReviewExecutorSelection(t *testing.T) {
 	}
 }
 
+func TestFlowReviewWrapsInstructions(t *testing.T) {
+	const width = 20
+	const prompt = "中文SanRenderer，继续\nUse {{input}}."
+	source := "```mermaid\nflowchart LR\n summary\n```\n\n## summary\n\n" + prompt + "\n"
+	var v FlowView
+	v.OpenDraft(flowUIFixture(), "summary", source, source, width, 40)
+	_, instructions, ok := strings.Cut(ansi.Strip(v.renderReview()), "\nInstructions\n")
+	if want := "  中文\n  SanRenderer，\n  继续\n  Use {{input}}."; !ok || instructions != want {
+		t.Fatalf("instructions = %q, want %q", instructions, want)
+	}
+	for line := range strings.SplitSeq(instructions, "\n") {
+		if ansi.StringWidth(line) > width-4 {
+			t.Errorf("instruction row exceeds viewport width: %q", line)
+		}
+	}
+}
+
 func TestFlowGeneratedDraftNeedsManualSaveAndRun(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView

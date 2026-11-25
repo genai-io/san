@@ -85,11 +85,7 @@ func renderAgentActivityPreview(activity []string, width, previewLines int) stri
 	if len(lines) > previewLines {
 		lines = lines[len(lines)-previewLines:]
 	}
-	var sb strings.Builder
-	for _, line := range lines {
-		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
-	}
-	return sb.String()
+	return renderAgentLocalLines(lines)
 }
 
 func renderAgentActivityCompact(activity []string, width int) string {

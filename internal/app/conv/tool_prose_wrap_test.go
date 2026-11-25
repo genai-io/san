@@ -53,3 +53,23 @@ func TestConversationToolProseWrapLongPromptToken(t *testing.T) {
 		t.Errorf("wrapped token = %q, want %q", got.String(), token)
 	}
 }
+
+func TestAskUserCallStylesMarker(t *testing.T) {
+	const icon = "●"
+	out := renderAskUserCall(`{"question":"Choose one"}`, icon, 40)
+	if !strings.HasPrefix(out, questionCallStyle.Render(icon+" ")) {
+		t.Fatalf("marker lost the question style: %q", out)
+	}
+}
+
+func TestAgentPromptWithUnspecifiedWidthDoesNotWrap(t *testing.T) {
+	long := strings.Repeat("instructions ", 10) + "中文SanRenderer"
+	agent := agentInput{Valid: true, Prompt: long + "\nSecond line"}
+	for _, width := range []int{0, -1} {
+		out := xansi.Strip(formatAgentDefinition(agent, width))
+		lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+		if len(lines) != 3 || strings.TrimSpace(lines[1]) != long || strings.TrimSpace(lines[2]) != "Second line" {
+			t.Errorf("width %d should preserve original prompt lines: %q", width, out)
+		}
+	}
+}
