@@ -154,7 +154,7 @@ func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (st
 
 func (s *Session) putRequestLocked(ctx context.Context, request StandaloneRequest) (string, error) {
 	if s.draft {
-		if err := s.saveDraftLocked(ctx); err != nil {
+		if err := s.flushDraft(ctx); err != nil {
 			return "", err
 		}
 	}
