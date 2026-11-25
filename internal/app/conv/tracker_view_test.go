@@ -71,7 +71,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 
 	// The breathing is driven by the shared Frame tick, not the wall clock, so
 	// it is deterministic: the dot stays on every frame and changes tone.
-	faint, peak := renderItem(task, itemRunning, 80, 2, nil, 0, nil), renderItem(task, itemRunning, 80, 2, nil, 3, nil)
+	faint, peak := renderItem(task, itemRunning, 80, 2, nil, 0, nil, ""), renderItem(task, itemRunning, 80, 2, nil, 3, nil, "")
 	if !strings.Contains(stripANSI(faint), "●") || !strings.Contains(stripANSI(peak), "●") {
 		t.Fatalf("in-progress task should keep the live dot on every frame, got %q / %q", faint, peak)
 	}
@@ -115,9 +115,9 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0, nil))
+	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0, nil, ""))
 	for blink := range 8 {
-		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink, nil)); frame != first {
+		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink, nil, "")); frame != first {
 			t.Fatalf("stalled task animated across frames:\n%q\n%q", first, frame)
 		}
 	}
@@ -336,8 +336,8 @@ func TestRenderItemTintsAgentOwnedRows(t *testing.T) {
 	item := &todo.Item{ID: "1", Subject: "Audit deps", Status: todo.StatusInProgress, Owner: "explorer"}
 	colors := map[string]string{"explorer": "yellow"}
 
-	plain := renderItem(item, itemRunning, 80, 2, nil, 0, nil)
-	tinted := renderItem(item, itemRunning, 80, 2, nil, 0, colors)
+	plain := renderItem(item, itemRunning, 80, 2, nil, 0, nil, "")
+	tinted := renderItem(item, itemRunning, 80, 2, nil, 0, colors, "")
 
 	if stripANSI(plain) != stripANSI(tinted) {
 		t.Fatalf("agent tint changed the row text, not just its color:\n  %q\n  %q", stripANSI(plain), stripANSI(tinted))
@@ -422,8 +422,8 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	}
 
 	plain := render()
-	if !strings.HasPrefix(plain, "≣ Tasks · 1 running\n  ●  Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
-		t.Errorf("a worker should be indented under the top-level Tasks heading without plan progress:\n%s", plain)
+	if !strings.HasPrefix(plain, "≣ Tasks · 1 running\n● Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
+		t.Errorf("a worker should align with the Tasks heading without plan progress:\n%s", plain)
 	}
 	if strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
 		t.Errorf("worker row should lead with the work description:\n%s", plain)
@@ -431,8 +431,8 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 
 	plan := tracker.Create("Write tests", "", "", nil)
 	_ = tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
-	if plain := render(); !strings.Contains(plain, "≣ Tasks (100%) · 1 running\n") || strings.Count(plain, "Tasks") != 1 {
-		t.Errorf("progress should count plan items only:\n%s", plain)
+	if plain := render(); !strings.Contains(plain, "≣ Tasks (100%) · 1 running\nBackground workers\n● Save Jenkins script") || !strings.Contains(plain, "\nPlan\n● #") {
+		t.Errorf("progress should count plan items only; both groups should share the left edge:\n%s", plain)
 	}
 }
 
@@ -530,7 +530,7 @@ func TestRenderTrackerRowReservesSpaceForStatus(t *testing.T) {
 			{itemAborted, "[failed]"},
 		} {
 			for _, width := range []int{1, 12, 40, 80} {
-				plain := stripANSI(renderItem(item, tc.phase, width, 0, nil, 0, nil))
+				plain := stripANSI(renderItem(item, tc.phase, width, 0, nil, 0, nil, ""))
 				if lipgloss.Width(plain) > width || strings.Count(plain, "\n") != 1 {
 					t.Fatalf("row exceeded %d columns:\n%s", width, plain)
 				}
