@@ -65,6 +65,49 @@ func (m *model) pendingApprovalCount() int {
 	return count
 }
 
+func (m *model) openFlowTask(msg input.FlowOpenTaskMsg) tea.Cmd {
+	if !m.userInput.Flow.AcceptTaskOpen(msg) {
+		return nil
+	}
+	if msg.Execution.MessageID != "" && msg.Execution.TaskID == "" {
+		if msg.Execution.SessionID != m.sessionID() {
+			m.userInput.Flow.TaskUnavailable()
+			return nil
+		}
+		return m.openHistoryAt(msg.Execution.MessageID)
+	}
+	var recorded *input.TaskViewItem
+	live := false
+	if m.services.Task != nil {
+		if worker, exists := m.services.Task.Get(msg.Execution.TaskID); exists {
+			info := worker.GetStatus()
+			if info.AgentSessionID != msg.Execution.SessionID || (info.ParentSessionID != "" && info.ParentSessionID != m.sessionID()) {
+				m.userInput.Flow.TaskUnavailable()
+				return nil
+			}
+			live = true
+		}
+	}
+	items := m.taskSnapshots()
+	if !live {
+		if snapshot, ok := m.userInput.Flow.RecordedTask(msg); ok {
+			recorded = &snapshot
+			// Replace incomplete tracker rows with this exact checkpoint.
+			items = []input.TaskViewItem{snapshot}
+		} else {
+			m.userInput.Flow.TaskUnavailable()
+			return nil
+		}
+	}
+	if m.userInput.Tasks.ShowTask(items, msg.Execution.TaskID, msg.Execution.SessionID, m.env.Width, m.env.Height) {
+		m.tasks = taskViewerState{sessionID: m.sessionID(), recorded: recorded}
+		m.tasks.actionID = m.userInput.Tasks.ViewID()
+		return m.taskViewerTick()
+	}
+	m.userInput.Flow.TaskUnavailable()
+	return nil
+}
+
 func (m *model) taskSnapshots() []input.TaskViewItem {
 	var workers []task.BackgroundTask
 	if m.services.Task != nil {

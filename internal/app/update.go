@@ -239,46 +239,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.FlowStartedMsg:
 		return m, m.SpinnerTickCmd()
 	case input.FlowOpenTaskMsg:
-		if !m.userInput.Flow.AcceptTaskOpen(msg) {
-			return m, nil
-		}
-		if msg.Execution.MessageID != "" && msg.Execution.TaskID == "" {
-			if msg.Execution.SessionID != m.sessionID() {
-				m.userInput.Flow.TaskUnavailable()
-				return m, nil
-			}
-			return m, m.openHistoryAt(msg.Execution.MessageID)
-		}
-		var recorded *input.TaskViewItem
-		live := false
-		if m.services.Task != nil {
-			if worker, exists := m.services.Task.Get(msg.Execution.TaskID); exists {
-				info := worker.GetStatus()
-				if info.AgentSessionID != msg.Execution.SessionID || (info.ParentSessionID != "" && info.ParentSessionID != m.sessionID()) {
-					m.userInput.Flow.TaskUnavailable()
-					return m, nil
-				}
-				live = true
-			}
-		}
-		items := m.taskSnapshots()
-		if !live {
-			if snapshot, ok := m.userInput.Flow.RecordedTask(msg); ok {
-				recorded = &snapshot
-				// Replace incomplete tracker rows with this exact checkpoint.
-				items = []input.TaskViewItem{snapshot}
-			} else {
-				m.userInput.Flow.TaskUnavailable()
-				return m, nil
-			}
-		}
-		if m.userInput.Tasks.ShowTask(items, msg.Execution.TaskID, msg.Execution.SessionID, m.env.Width, m.env.Height) {
-			m.tasks = taskViewerState{sessionID: m.sessionID(), recorded: recorded}
-			m.tasks.actionID = m.userInput.Tasks.ViewID()
-			return m, m.taskViewerTick()
-		}
-		m.userInput.Flow.TaskUnavailable()
-		return m, nil
+		return m, m.openFlowTask(msg)
 	case input.TaskStopMsg:
 		return m, m.stopViewedTask(msg)
 	case input.TaskContinueMsg:
