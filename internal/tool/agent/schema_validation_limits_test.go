@@ -18,7 +18,7 @@ func TestAgentSchemaKeepsValidationAndDenialGuidance(t *testing.T) {
 		}
 	}
 	properties := agentToolParameters["properties"].(map[string]any)
-	if len(properties) != 5 {
+	if len(properties) != 6 || properties["tools"] == nil {
 		t.Fatalf("Agent parameters = %v, want creation fields only", properties)
 	}
 	if _, exists := properties["resume_task_id"]; exists {

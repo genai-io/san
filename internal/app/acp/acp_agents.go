@@ -90,6 +90,7 @@ func (s *acpSession) configureAgents() error {
 		return err
 	}
 	e.SetDisabledTools(s.runtimeBuildParams.DisabledTools)
+	e.SetParentTools(s.runtime.ParentToolSource(s.nativeSession.Session, nil))
 	e.SetMCPDependencies(s.mcp)
 	e.SetSkillsDirectory(s.runtimeBuildParams.Skills.PromptSection())
 	e.SetSkillResolver(s.runtimeBuildParams.Skills.SkillInvocationPrompt)

@@ -11,6 +11,8 @@ through the existing subagent executor by default; explicit main steps reuse the
 current main conversation. Flow owns neither another Agent runtime nor a separate
 permission or conversation lifecycle.
 
+Worker metadata accepts `tools: [Read]` as an additional ceiling; omit it to inherit the worker policy, or use `tools: []` for no tools. `executor: main` rejects this key. Preflight binds each worker's resolved configuration. Durable runs retain policy fingerprints, not private agent configurations. If the effective policy changes, or an older run lacks a worker fingerprint, resume requires a fresh reviewed launch.
+
 ## Purpose
 
 `Service` is the direct slash-command boundary: named scheduling, preflight, definitions and run recovery. It receives the native task manager and

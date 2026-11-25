@@ -167,6 +167,7 @@ func (t ToolList) HasPattern(name string) bool {
 //   - sequence map:   [{name: Bash, pattern: "git diff*"}]
 //   - mapping:        {Read: true, Bash: "git diff*"}
 func (t *ToolList) UnmarshalYAML(value *yaml.Node) error {
+	*t = ToolList{} // An explicitly empty list must not inherit all tools.
 	switch value.Kind {
 	case yaml.ScalarNode:
 		for p := range strings.SplitSeq(value.Value, ",") {

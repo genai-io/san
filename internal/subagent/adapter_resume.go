@@ -27,6 +27,11 @@ func (a *ExecutorAdapter) ContinuationConfig(taskID string) (tool.AgentConfigInf
 		return tool.AgentConfigInfo{}, fmt.Errorf("the original agent definition is now disabled")
 	}
 	info := ToAgentConfigInfo(state.cfg.config)
+	schemas := a.workerSchemas(state.cfg.config, state.cfg.permMode, state.cfg.ceiling)
+	info.Tools = make([]string, 0, len(schemas))
+	for _, schema := range schemas {
+		info.Tools = append(info.Tools, schema.Name)
+	}
 	info.Model = state.cfg.modelID
 	info.PermissionMode = string(state.cfg.permMode)
 	return info, nil

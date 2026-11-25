@@ -29,12 +29,15 @@ type Blueprint struct {
 	Edges       []Edge
 	Loops       []Loop
 
-	byID   map[string]*Node
-	loopOf map[string]*Loop // body node id → its loop, filled by checkLoops
+	workerPolicies map[string]string
+	workerConfigs  map[string]any
+	byID           map[string]*Node
+	loopOf         map[string]*Loop // body node id → its loop, filled by checkLoops
 }
 
 // Node is one section of the definition: one subagent turn.
 type Node struct {
+	Tools    []string // nil inherits; an explicit empty list permits no tools.
 	Executor string
 	ID       string
 	// Base is the id as written in the graph. It differs from ID only for a
@@ -94,7 +97,7 @@ const maxRounds = 10
 
 // configKeys are the keys accepted under a node heading. Anything else that
 // looks like `key: value` on the first lines is a typo, not prompt text.
-var configKeys = []string{"executor", "agent", "mode", "model", "continue_on_error", "for_each", "max_workers"}
+var configKeys = []string{"executor", "agent", "mode", "model", "tools", "continue_on_error", "for_each", "max_workers"}
 
 var (
 	idRe       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
@@ -335,6 +338,18 @@ func (n *Node) fill(lines []string) error {
 			hostileMainConfig = true
 		}
 		switch key {
+		case "tools":
+			var doc yaml.Node
+			if n.Tools != nil || yaml.Unmarshal([]byte(value), &doc) != nil || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.SequenceNode {
+				return fmt.Errorf("node %s: tools requires one inline list, e.g. [Read] or []", n.ID)
+			}
+			n.Tools = []string{}
+			for _, item := range doc.Content[0].Content {
+				if item.Kind != yaml.ScalarNode || item.ShortTag() != "!!str" || strings.TrimSpace(item.Value) == "" {
+					return fmt.Errorf("node %s: tools entries must be nonempty names", n.ID)
+				}
+				n.Tools = append(n.Tools, item.Value)
+			}
 		case "executor":
 			if value != "main" && value != "subagent" {
 				return fmt.Errorf("node %s: executor must be main or subagent", n.ID)
@@ -372,6 +387,9 @@ func (n *Node) fill(lines []string) error {
 	}
 	n.Prompt = strings.TrimSpace(strings.Join(lines[i:], "\n"))
 	if n.Executor == "main" {
+		if n.Tools != nil {
+			return fmt.Errorf("node %s: main executor inherits native config; tools is not allowed", n.ID)
+		}
 		if hostileMainConfig {
 			return fmt.Errorf("node %s: main executor disallows for_each and continue_on_error", n.ID)
 		}

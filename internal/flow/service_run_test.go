@@ -42,7 +42,7 @@ func TestResumeRetainsSavedFilenameName(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	definition := "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n"
-	if err := wt.runStore().Put(RunRecord{ID: "named", Name: "filename-name", Definition: definition}); err != nil {
+	if err := wt.runStore().Put(RunRecord{ID: "named", WorkerPolicies: map[string]string{"a": "cfg:"}, Name: "filename-name", Definition: definition}); err != nil {
 		t.Fatal(err)
 	}
 	taskID, err := wt.ResumeRun("named", "", 120)
@@ -176,7 +176,14 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"sec": "S", "report": "R"}}
 	wt.SetExecutor(exec)
-	r := RunRecord{ID: "retry", Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}, Attempt: 1}, "sec": {Outcome: Outcome{Status: StatusFailed, Error: "oops"}, Attempt: 1}, "perf": {Outcome: Outcome{Status: StatusSucceeded, Output: "P"}, Attempt: 1}}}
+	b, parseErr := Parse(definition)
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	if err := wt.preflight(b); err != nil {
+		t.Fatal(err)
+	}
+	r := RunRecord{ID: "retry", WorkerPolicies: b.workerPolicies, Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}, Attempt: 1}, "sec": {Outcome: Outcome{Status: StatusFailed, Error: "oops"}, Attempt: 1}, "perf": {Outcome: Outcome{Status: StatusSucceeded, Output: "P"}, Attempt: 1}}}
 	if err := wt.runStore().Put(r); err != nil {
 		t.Fatal(err)
 	}

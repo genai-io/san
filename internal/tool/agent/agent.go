@@ -59,6 +59,11 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, err
 	}
 
+	selectedTools, err := parseAgentTools(params)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if executor is configured
 	if t.executor == nil {
 		return nil, fmt.Errorf("agent executor not configured")
@@ -93,6 +98,18 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		}
 	}
 
+	// Production executors bind the effective catalogue before displaying it.
+	// The launch still validates and can lose tools, never gain them.
+	if pin, ok := t.executor.(interface {
+		PinAgentTools(tool.AgentExecRequest) ([]string, any, error)
+	}); ok && resume.TaskID == "" {
+		config.Tools, params["_resolvedAgentConfig"], err = pin.PinAgentTools(tool.AgentExecRequest{Agent: agentName, Tools: selectedTools, ResolvedAgentConfig: params["_resolvedAgentConfig"]})
+		if err != nil {
+			return nil, err
+		}
+	} else if selectedTools != nil && resume.TaskID == "" {
+		config.Tools = selectedTools
+	}
 	// Determine effective model for permission display.
 	effectiveModel := config.Model
 	if effectiveModel == "inherit" {
@@ -173,6 +190,11 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
+	selectedTools, err := parseAgentTools(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
+
 	var onActivity tool.ActivityFunc
 	if cb, ok := params["_onActivity"].(tool.ActivityFunc); ok {
 		onActivity = cb
@@ -192,6 +214,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	resolvedAgentConfig, _ := params["_resolvedAgentConfig"]
 	// New work receives a self-contained brief.
 	req := tool.AgentExecRequest{
+		Tools:               selectedTools,
 		ParentToolCallID:    core.ToolCallIDFromContext(ctx),
 		Agent:               agentName,
 		ResolvedAgentConfig: resolvedAgentConfig,

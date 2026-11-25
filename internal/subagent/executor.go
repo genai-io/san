@@ -41,6 +41,7 @@ type ProviderResolver interface {
 
 // Executor runs agent LLM loops
 type Executor struct {
+	parentTools                func() []string
 	interactions               tool.AgentInteractions
 	provider                   llm.Provider
 	registry                   *Registry
@@ -69,14 +70,14 @@ type Executor struct {
 }
 
 type runConfig struct {
-	disabledTools map[string]bool
-	config        *AgentConfig
-	provider      llm.Provider // provider this run talks to (parent's, or a routed vendor)
-	modelID       string
-	maxSteps      int
-	displayName   string
-	brief         system.SubagentBrief // identity/charter for this run; immutable
-	permMode      PermissionMode
+	ceiling     []string
+	config      *AgentConfig
+	provider    llm.Provider // provider this run talks to (parent's, or a routed vendor)
+	modelID     string
+	maxSteps    int
+	displayName string
+	brief       system.SubagentBrief // identity/charter for this run; immutable
+	permMode    PermissionMode
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
@@ -488,6 +489,9 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 }
 
 func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
+	if req.ResumeTaskID != "" && req.Tools != nil {
+		return fmt.Errorf("cannot replace a continuing worker's pinned tools")
+	}
 	if strings.TrimSpace(req.Prompt) == "" {
 		return fmt.Errorf("agent prompt cannot be empty")
 	}
@@ -548,22 +552,12 @@ func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentC
 }
 
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
-	config, ok := e.resolveRequestAgentConfig(req)
-	if !ok {
-		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
+	pin, err := e.PinWorkerPolicy(req)
+	if err != nil {
+		return nil, err
 	}
-
-	// Freeze mutable registry/approval-time configuration, including lazily
-	// loaded prompt content. Continuation must not observe later policy edits.
-	config = &AgentConfig{
-		Name: config.Name, Description: config.Description, Color: config.Color,
-		WhenToUse: config.WhenToUse, Model: config.Model, PermissionMode: config.PermissionMode,
-		AllowTools: slices.Clone(config.AllowTools), DenyTools: slices.Clone(config.DenyTools),
-		Skills: slices.Clone(config.Skills), SystemPrompt: config.GetSystemPrompt(),
-		MaxSteps: config.MaxSteps, Source: config.Source, McpServers: slices.Clone(config.McpServers),
-		displayOnly: config.displayOnly,
-	}
-	permMode := e.requestPermissionMode(config, req)
+	config := pin.Definition
+	permMode := pin.Mode
 	displayName := displayAgentName(config.Name)
 
 	maxSteps := config.MaxSteps
@@ -580,14 +574,14 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 	}
 
 	return &runConfig{
-		disabledTools: e.disabledToolsSnapshot(),
-		config:        config,
-		provider:      provider,
-		modelID:       modelID,
-		maxSteps:      maxSteps,
-		displayName:   displayName,
-		brief:         e.buildBrief(config, permMode),
-		permMode:      permMode,
+		ceiling:     pin.Tools,
+		config:      config,
+		provider:    provider,
+		modelID:     modelID,
+		maxSteps:    maxSteps,
+		displayName: displayName,
+		brief:       e.buildBrief(config, permMode),
+		permMode:    permMode,
 	}, nil
 }
 
@@ -606,8 +600,13 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	rc := run.cfg
 	cleanup := func() {}
 
-	if len(rc.config.McpServers) > 0 && e.mcpManager != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, rc.config.McpServers)
+	// Connecting a named server can itself start a subprocess. Do not activate
+	// servers for which the owner has delegated no tools.
+	servers := slices.DeleteFunc(slices.Clone(rc.config.McpServers), func(server string) bool {
+		return !slices.ContainsFunc(rc.ceiling, func(name string) bool { return strings.HasPrefix(name, "mcp__"+server+"__") })
+	})
+	if len(servers) > 0 && e.mcpManager != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, servers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -616,26 +615,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
-	// Tools — adapt legacy tool registry + MCP tools
-	var mcpGetter func() []core.ToolSchema
-	if e.mcpManager != nil {
-		mcpGetter = e.mcpManager.ToolSchemas
-	}
-	disabled := make(map[string]bool, len(rc.disabledTools))
-	for name, blocked := range rc.disabledTools {
-		if blocked {
-			disabled[name] = true
-		}
-	}
-	// Original prohibitions remain in force, and newer global disables may
-	// tighten a continuation. Re-enabling a tool never widens its old policy.
-	for name, blocked := range e.disabledToolsSnapshot() {
-		if blocked {
-			disabled[name] = true
-		}
-	}
-	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), disabled, mcpGetter)
-	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil || e.permissionResolver != nil)
+	schemas := e.workerSchemas(rc.config, rc.permMode, rc.ceiling)
 	brief := rc.brief
 	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
 	brief.ToolGuidance = fileReadToolGuidance(schemas, rc.permMode)
@@ -702,7 +682,9 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	}
 	recorder := session.NewRecorder(run.recording, rc.provider.Name())
 	run.recorder = recorder
-	permissionGate := tool.HookedPermission(run.hooks, childPermission{source: run.interactionSource, child: run.recording, config: rc.config, mode: rc.permMode, parent: e.permissionResolver, background: run.req.Background}, recorder.RecordPermission)
+	permissionGate := tool.HookedPermission(run.hooks, childPermission{available: func(name string) bool {
+		return slices.ContainsFunc(schemas, func(s core.ToolSchema) bool { return s.Name == name }) && within(e.parentCeiling(), name) && !e.disabledToolsSnapshot()[name]
+	}, source: run.interactionSource, child: run.recording, config: rc.config, mode: rc.permMode, parent: e.permissionResolver, background: run.req.Background}, recorder.RecordPermission)
 	gate := core.Gates(activity(onToolExec), func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
 		if e.toolContext != nil {
 			ctx = e.toolContext(ctx, rc.config.SourceFile)

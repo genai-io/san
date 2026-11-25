@@ -3,6 +3,7 @@ package flow
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -66,7 +67,19 @@ func (s *Service) SaveDefinition(name, definition, baseline string) error {
 func (s *Service) preflight(b *Blueprint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.executor == nil {
+	return s.bindWorkers(b, s.executor)
+}
+
+// PinFlowWorker binds the effective host policy and identifies it for recovery
+// without persisting private agent configuration in the run record.
+type workerPolicyHost interface {
+	PinFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
+}
+
+func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) error {
+	b.workerPolicies = make(map[string]string)
+	b.workerConfigs = make(map[string]any)
+	if executor == nil {
 		for _, n := range b.Nodes {
 			if n.Executor != "main" {
 				return errors.New("agent executor not configured")
@@ -81,13 +94,26 @@ func (s *Service) preflight(b *Blueprint) error {
 			continue
 		}
 		agent := n.Config["agent"]
-		info, _, ok := s.executor.ResolveAgentSelection(agent)
+		info, config, ok := executor.ResolveAgentSelection(agent)
 		if !ok {
 			return fmt.Errorf("node %s: agent %q is disabled", n.ID, agent)
 		}
 		if agent != "" && info.Source == "" {
 			return fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
 		}
+		host, ok := executor.(workerPolicyHost)
+		if !ok || config == nil {
+			return fmt.Errorf("node %s: executor cannot bind resolved worker policy", n.ID)
+		}
+		config, fingerprint, err := host.PinFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], Tools: slices.Clone(n.Tools), ResolvedAgentConfig: config})
+		if err != nil {
+			return fmt.Errorf("node %s: fingerprint worker policy: %w", n.ID, err)
+		}
+		if config == nil || fingerprint == "" {
+			return fmt.Errorf("node %s: missing worker policy fingerprint", n.ID)
+		}
+		b.workerConfigs[n.ID] = config
+		b.workerPolicies[n.ID] = fingerprint
 	}
 	return nil
 }
@@ -110,15 +136,15 @@ func (s *Service) named(name string) (*Blueprint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("flow %s is invalid:\n%w", name, err)
 	}
-	if err := s.preflight(b); err != nil {
-		return nil, err
-	}
 	return b, nil
 }
 
 func (s *Service) Preview(name string, width int) (string, error) {
 	b, err := s.named(name)
 	if err != nil {
+		return "", err
+	}
+	if err := s.preflight(b); err != nil {
 		return "", err
 	}
 	width = fitWidth(width)

@@ -360,6 +360,31 @@ func (s *Runtime) Tools() *core.Tools {
 	return s.run.agent.Tools()
 }
 
+// ParentToolSource binds worker launches to their owner's catalogue. A Flow can
+// start before the first main turn; in that case use the host's startup catalogue.
+// Never borrow a replacement session's running tools.
+func (s *Runtime) ParentToolSource(owner *session.Session, startup []core.ToolSchema) func() []string {
+	names := func(schemas []core.ToolSchema) []string {
+		out := make([]string, 0, len(schemas))
+		for _, schema := range schemas {
+			out = append(out, schema.Name)
+		}
+		return out
+	}
+	fallback := names(startup)
+	return func() []string {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		if s.run == nil {
+			return slices.Clone(fallback)
+		}
+		if s.run.recording != owner {
+			return []string{}
+		}
+		return names(s.run.agent.Tools().Schemas())
+	}
+}
+
 // SetPluginRoot scopes the next agent turn to a plugin. The slash command
 // flow calls this when the user invokes a /plugin-skill so subprocesses
 // spawned during the turn see PLUGIN_ROOT pointing at that plugin.

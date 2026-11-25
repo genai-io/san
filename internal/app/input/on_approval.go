@@ -488,17 +488,15 @@ func (p *approvalAgentPreview) render(width int) string {
 	}
 
 	sb.WriteString("   ")
-	sb.WriteString(labelStyle.Render("Mode: "))
+	sb.WriteString(labelStyle.Render("Permission mode: "))
 	modeLabel := approvalFormatPermissionMode(p.agentMeta.PermissionMode)
 	sb.WriteString(dimStyle.Render(modeLabel))
 	sb.WriteString("\n")
 
-	if len(p.agentMeta.Tools) > 0 {
-		sb.WriteString("   ")
-		sb.WriteString(labelStyle.Render("Tools: "))
-		sb.WriteString(dimStyle.Render(strings.Join(p.agentMeta.Tools, ", ")))
-		sb.WriteString("\n")
-	}
+	sb.WriteString("   ")
+	sb.WriteString(labelStyle.Render("Tool selection: "))
+	sb.WriteString(dimStyle.Render(formatAgentTools(p.agentMeta.Tools)))
+	sb.WriteString("\n")
 
 	sb.WriteString("\n")
 

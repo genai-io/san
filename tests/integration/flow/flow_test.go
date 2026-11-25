@@ -24,6 +24,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
+	_ "github.com/genai-io/san/internal/tool/fs" // register Read as a real host does
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
@@ -32,6 +33,7 @@ import (
 // reply to whichever node reached the model first.
 type scriptedProvider struct {
 	replies []reply
+	observe func(*ai.Request) // optional observer of the actual model-facing catalogue
 	// stop, when set, ends every turn for that reason instead of a clean
 	// end_turn. It must hold for every call, not only the first: San asks the
 	// model to continue a truncated turn, and a clean answer to that
@@ -49,6 +51,9 @@ func (p *scriptedProvider) Client(string, map[string]string) (*ai.Client, error)
 }
 
 func (p *scriptedProvider) answer(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+	if p.observe != nil {
+		p.observe(req)
+	}
 	var prompt string
 	for _, m := range req.Messages {
 		if m.Role == ai.RoleUser {
@@ -163,9 +168,9 @@ func TestFlow_SectioningThroughRealSubagents(t *testing.T) {
 func TestFlow_ForEachRunsOneSubagentPerPlanItem(t *testing.T) {
 	const definition = "---\nname: split\n---\n" +
 		"```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n" +
-		"## plan\nmode: explore\n\nSplit it, at most 4 tasks\n\n" +
-		"## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n" +
-		"## merge\nmode: explore\n\nMerge:\n{{review}}\n"
+		"## plan\nmode: explore\ntools: []\n\nSplit it, at most 4 tasks\n\n" +
+		"## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\ntools: [Read]\n\nReview {{item.prompt}}\n\n" +
+		"## merge\nmode: explore\ntools: []\n\nMerge:\n{{review}}\n"
 
 	provider := &scriptedProvider{replies: []reply{
 		{"Split it", `{"tasks":[{"name":"llm","prompt":"error handling"},{"name":"tool","prompt":"permissions"}]}`},
@@ -173,6 +178,20 @@ func TestFlow_ForEachRunsOneSubagentPerPlanItem(t *testing.T) {
 		{"Review permissions", "tool needs a guard"},
 		{"Merge:", "two findings"},
 	}}
+	provider.observe = func(req *ai.Request) {
+		var want, offered []string
+		for _, msg := range req.Messages {
+			if msg.Role == ai.RoleUser && strings.Contains(msg.Content.Text(), "Review ") {
+				want = []string{"Read"}
+			}
+		}
+		for _, schema := range req.Tools {
+			offered = append(offered, schema.Name)
+		}
+		if !slices.Equal(offered, want) {
+			t.Errorf("model-facing Flow tools = %v; want %v", offered, want)
+		}
+	}
 	info := run(t, provider, map[string]any{"definition": definition})
 
 	if info.Status != task.StatusCompleted {

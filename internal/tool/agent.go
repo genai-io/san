@@ -86,7 +86,8 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	SourceSession       string // trusted cross-session input origin; never model-facing
+	Tools               []string // Exact worker tool selection: nil inherits; empty selects none.
+	SourceSession       string   // trusted cross-session input origin; never model-facing
 	SourceSeq           uint64
 	OnIdentity          func(toolresult.AgentIdentity) // display-only; reported before work begins
 	ResumeTaskID        string                         // Continue the same task and native child session with Prompt only.

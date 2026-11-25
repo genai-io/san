@@ -82,7 +82,9 @@ func TestTypedToolContinuationRetainsNativeEvidence(t *testing.T) {
 	if err := e.SetSessions(store, parent); err != nil {
 		t.Fatal(err)
 	}
-	a, err := e.RunBackground(tool.AgentExecRequest{Prompt: "original task", ParentToolCallID: "launch", MaxSteps: 1, OnIdentity: func(id toolresult.AgentIdentity) {
+	liveTools := []string{"Read", "Skill"}
+	e.SetParentTools(func() []string { return liveTools })
+	a, err := e.RunBackground(tool.AgentExecRequest{Tools: []string{"Read"}, Prompt: "original task", ParentToolCallID: "launch", MaxSteps: 1, OnIdentity: func(id toolresult.AgentIdentity) {
 		if id.SessionID != "" {
 			childID = id.SessionID
 		}
@@ -107,6 +109,7 @@ func TestTypedToolContinuationRetainsNativeEvidence(t *testing.T) {
 	snapshot := child.Snapshot()
 	original := snapshot.ActiveMessages()
 	child.Close()
+	liveTools = []string{"Skill"} // neither the revoked Read nor the unselected Skill may return.
 	b, err := e.RunBackground(tool.AgentExecRequest{ResumeTaskID: a.GetID(), Prompt: "continue", ParentToolCallID: "later", MaxSteps: 2})
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +119,9 @@ func TestTypedToolContinuationRetainsNativeEvidence(t *testing.T) {
 	}
 	if status := b.GetStatus(); status.Error != "" {
 		t.Fatalf("continuation: %+v", status)
+	}
+	if got := d.Last().Tools; len(got) != 0 {
+		t.Fatalf("continuation catalogue = %+v", got)
 	}
 	sent := d.Last().Messages
 	if len(sent) <= len(original) {
