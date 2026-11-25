@@ -72,11 +72,15 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	// The breathing is driven by the shared Frame tick, not the wall clock, so
 	// it is deterministic: the dot stays on every frame and changes tone.
 	faint, peak := renderItem(task, itemRunning, 80, 2, nil, 0, nil, ""), renderItem(task, itemRunning, 80, 2, nil, 3, nil, "")
-	if !strings.Contains(stripANSI(faint), "●") || !strings.Contains(stripANSI(peak), "●") {
-		t.Fatalf("in-progress task should keep the live dot on every frame, got %q / %q", faint, peak)
+	if plain := stripANSI(faint); !strings.HasPrefix(plain, "● ") || plain != stripANSI(peak) || faint == peak {
+		t.Fatalf("executing task should keep its filled circle and breathe by color only: %q / %q", faint, peak)
 	}
-	if faint == peak {
-		t.Fatalf("in-progress task should breathe across frames, got %q on both", faint)
+	waiting := renderItem(task, itemWaiting, 80, 2, nil, 0, nil, "")
+	if !strings.HasPrefix(stripANSI(waiting), "○ ") || waiting != renderItem(task, itemWaiting, 80, 2, nil, 3, nil, "") {
+		t.Fatalf("pending task should have a steady hollow circle: %q", waiting)
+	}
+	if lipgloss.Width(waiting) != lipgloss.Width(faint) {
+		t.Fatalf("starting a task moved its description: %q / %q", waiting, faint)
 	}
 }
 
@@ -422,7 +426,7 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	}
 
 	plain := render()
-	if !strings.HasPrefix(plain, "≣ Tasks · 1 running\n● Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
+	if !strings.HasPrefix(plain, " ≣ Tasks\n ● Save Jenkins script") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
 		t.Errorf("a worker should align with the Tasks heading without plan progress:\n%s", plain)
 	}
 	if strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
@@ -431,12 +435,37 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 
 	plan := tracker.Create("Write tests", "", "", nil)
 	_ = tracker.Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
-	if plain := render(); !strings.Contains(plain, "≣ Tasks (100%) · 1 running\nBackground workers\n● Save Jenkins script") || !strings.Contains(plain, "\nPlan\n● #") {
+	if plain := render(); !strings.Contains(plain, " ≣ Tasks (100%)\n   Background workers\n ● Save Jenkins script") || !strings.Contains(plain, "\n   Plan\n ● #") {
 		t.Errorf("progress should count plan items only; both groups should share the left edge:\n%s", plain)
 	}
 }
 
-func TestTrackerHeadingCountsLiveWork(t *testing.T) {
+func TestRenderTrackerListAlignedColumns(t *testing.T) {
+	items := []*todo.Item{
+		{Subject: "Measure targeted Go coverage", Status: todo.StatusInProgress, Metadata: map[string]any{"background_task_id": "running"}},
+		{Subject: "Review the results", Status: todo.StatusPending, Metadata: map[string]any{"background_task_id": "pending"}},
+	}
+	for _, tc := range []struct {
+		width  int
+		margin string
+	}{
+		{31, ""}, {32, " "}, {80, " "},
+	} {
+		rows, _ := RenderTrackerList(TrackerListParams{
+			Items: items, Width: tc.width, Executing: func(*todo.Item) bool { return true },
+		})
+		plain := stripANSI(rows)
+		want := tc.margin + "≣ Tasks\n" + tc.margin + "● Measure targeted Go coverage\n" + tc.margin + "○ Review the results\n"
+		if plain != want {
+			t.Fatalf("width %d: task labels or margins did not align with the title:\n%s", tc.width, plain)
+		}
+		if tc.width == 80 {
+			t.Logf("\n%s", plain)
+		}
+	}
+}
+
+func TestTrackerHeadingOmitsRunningCount(t *testing.T) {
 	worker := func(id, status string) *todo.Item {
 		return &todo.Item{Subject: id, Status: status, Metadata: map[string]any{"background_task_id": id}}
 	}
@@ -451,15 +480,14 @@ func TestTrackerHeadingCountsLiveWork(t *testing.T) {
 		AwaitingApproval: map[string]bool{"approval": true},
 		Executing:        func(item *todo.Item) bool { return item.Subject != "stalled" },
 	}
-	const heading = "≣ Tasks · 1 running"
+	const heading = "≣ Tasks"
 	for _, tc := range []struct {
 		width int
 		want  string
 	}{
-		{80, heading},
+		{80, " " + heading},
 		{lipgloss.Width(heading), heading},
-		{lipgloss.Width(heading) - 1, "≣ Tasks"},
-		{6, "Tasks"},
+		{lipgloss.Width(heading) - 1, "Tasks"},
 	} {
 		params.Width = tc.width
 		rows, _ := RenderTrackerList(params)
@@ -473,8 +501,8 @@ func TestTrackerHeadingCountsLiveWork(t *testing.T) {
 		params.Items = append(params.Items, worker("extra-"+strconv.Itoa(i), todo.StatusInProgress))
 	}
 	rows, _ := RenderTrackerList(params)
-	if head, _, _ := strings.Cut(stripANSI(rows), "\n"); head != "≣ Tasks" || !strings.Contains(rows, "more in progress") {
-		t.Fatalf("folded tasks should not produce a partial running count:\n%s", rows)
+	if head, _, _ := strings.Cut(stripANSI(rows), "\n"); head != " ≣ Tasks" || !strings.Contains(stripANSI(rows), "\n … ") || !strings.Contains(rows, "more in progress") {
+		t.Fatalf("folded task counts should appear only in the overflow row:\n%s", rows)
 	}
 }
 
@@ -483,7 +511,7 @@ func TestRenderTrackerListHeadingFitsNarrowTerminal(t *testing.T) {
 		Metadata: map[string]any{"background_task_id": "bg-1"}}
 	plan := &todo.Item{ID: "1", Subject: "Write tests", Status: todo.StatusCompleted}
 	for _, items := range [][]*todo.Item{{worker}, {worker, plan}} {
-		for _, width := range []int{1, 4, 7, 12, 80} {
+		for _, width := range []int{1, 4, 7, 12, 31, 32, 80} {
 			rows, _ := RenderTrackerList(TrackerListParams{Items: items, StreamActive: true, Width: width})
 			plain := stripANSI(rows)
 			for line := range strings.SplitSeq(strings.TrimSuffix(plain, "\n"), "\n") {

@@ -108,7 +108,8 @@ func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView st
 	// the turn is parked on an answer — everything animated holds still.
 	params.DockedModalActive = true
 
-	bottom := m.renderChatIndicators(trackerView, modal) + modal
+	indicators := m.renderChatIndicators(trackerView, modal)
+	bottom := indicators + modal
 	return m.chatTailAbove(bottom, params) + bottom
 }
 
@@ -131,25 +132,42 @@ func isDockedModal(ov overlayPanel) bool {
 // Older settled rows enter native scrollback through model_scrollback.go.
 // Padding the unused space keeps the composer at the bottom as content changes.
 func (m *model) renderNormalView(separator, trackerView, history string) (string, *tea.Cursor) {
-	// Render the footer first so the chat section can be capped to whatever
-	// height it leaves free.
-	footer, inputRow := m.renderFooter(separator, history)
+	bottom, inputRow := m.renderNormalBottom(separator, trackerView, history)
+	chatSection := m.chatTailAbove(bottom, m.messageRenderParams())
+	if chatSection == "" && rowCount(bottom) > m.env.Height && strings.HasPrefix(bottom, "\n") {
+		bottom = strings.TrimPrefix(bottom, "\n")
+		inputRow--
+	}
+	return chatSection + bottom, m.inputCursor(strings.Count(chatSection, "\n") + inputRow)
+}
+
+func (m *model) renderNormalBottom(separator, trackerView, history string) (string, int) {
+	footer := m.renderFooter(separator)
 	queue := ""
 	if preview := m.renderQueuePreview(); preview != "" {
 		queue = "\n" + preview
 	}
-	// Reserve pending prompts before allocating the remaining rows to Tasks.
-	indicators := queue + m.renderChatIndicators(trackerView, queue+footer)
-	chatSection := m.chatTailAbove(indicators+footer, m.messageRenderParams())
-	if chatSection == "" && indicators == "" && strings.HasPrefix(footer, "\n") {
-		// With no chat row left, the footer starts the frame itself.
-		footer = strings.TrimPrefix(footer, "\n")
-		inputRow--
+	status := footer.status
+	if footer.routineWait {
+		status = "" // Only reserve a row for routine waiting after other indicators have been laid out.
 	}
-
-	// The footer's row offsets are relative to its own first line; the chat
-	// section above it shifts them all down.
-	return chatSection + indicators + footer, m.inputCursor(strings.Count(chatSection+indicators, "\n") + inputRow)
+	statusRow := m.renderFooterStatus(status, history)
+	footerBody := footer.before + footer.after
+	if statusRow != "" {
+		footerBody += "\n"
+	}
+	// Reserve pending prompts first, and keep them above Tasks.
+	indicators := m.renderChatIndicators(trackerView, queue+footerBody)
+	queueVisible := queue != "" && strings.Count(indicators+footerBody, "\n") < m.env.Height
+	if footer.routineWait && !queueVisible && strings.TrimSpace(indicators) == "" {
+		statusRow = m.renderFooterStatus(footer.status, history)
+		indicators = "" // A clipped blank spacer need not compete with the status.
+	}
+	above := queue + indicators + footer.before
+	if statusRow != "" {
+		above += statusRow + "\n"
+	}
+	return above + separator + footer.after, strings.Count(above, "\n") + 1
 }
 
 // chatTailAbove renders the live chat tail to fill the rows the bottom-anchored
@@ -228,15 +246,20 @@ func headLines(s string, maxLines int) string {
 	return strings.Join(lines[:min(len(lines), maxLines)], "\n")
 }
 
-// renderFooter returns the footer and the input row for cursor placement.
-func (m *model) renderFooter(separator, history string) (string, int) {
+type composerFooter struct {
+	before, after string // content before and after the top rule
+	status        string
+	routineWait   bool
+}
+
+func (m *model) renderFooter(separator string) composerFooter {
 	var b strings.Builder
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		// Candidates grow upward so opening them does not move the composer.
 		b.WriteString("\n")
 		b.WriteString(suggestions)
 	}
-	// Live foreground activity anchors the left side of the status row.
+	// Foreground activity is independent of the work shown in Tasks.
 	params := m.messageRenderParams()
 	var status string
 	switch {
@@ -251,26 +274,15 @@ func (m *model) renderFooter(separator, history string) (string, int) {
 	default:
 		status = conv.RenderInferenceStatus(params)
 	}
+	footer := composerFooter{status: status, routineWait: m.memoryInput == nil && !m.conv.Compact.Active && conv.RoutineInferenceWait(params)}
 	if width := m.env.Width - 1; m.memoryUpdate != nil && m.memoryUpdate.manual && width > 0 {
 		updateStatus := ghostTextStyle.Render(ansi.Truncate(kit.MemoryMark+" Updating memory…", width, "…"))
-		if status == "" {
-			status = updateStatus
-		} else {
-			// Keep foreground activity next to the composer.
-			b.WriteString("\n" + updateStatus)
-		}
-	}
-	if status != "" && m.footerHasBreathingRoom() {
-		b.WriteString("\n")
-	}
-	if status = m.renderFooterStatus(status, history); status != "" {
-		b.WriteString("\n")
-		b.WriteString(status)
+		b.WriteString("\n" + updateStatus)
 	}
 	b.WriteString("\n")
-	b.WriteString(separator)
+	footer.before = b.String()
+	b.Reset()
 	b.WriteString("\n")
-	inputRow := strings.Count(b.String(), "\n")
 	b.WriteString(m.renderInputView())
 	b.WriteString("\n")
 	b.WriteString(separator)
@@ -284,23 +296,32 @@ func (m *model) renderFooter(separator, history string) (string, int) {
 		b.WriteString("\n")
 		b.WriteString(gitBar)
 	}
-	return b.String(), inputRow
+	footer.after = b.String()
+	return footer
 }
 
-// Foreground status keeps its space; right-side hints never wrap or add a row
-// to an existing status. Prefer actions over counts or version metadata.
+const footerStatusGap = "   "
+
+// Foreground status shares a row with optional right-aligned hints, not the input rule.
 func (m *model) renderFooterStatus(status, history string) string {
-	if history == "" && m.updateInstalled == "" {
+	width := max(1, m.env.Width-1)
+	status = ansi.Truncate(status, width, "…")
+	available := width - lipgloss.Width(status)
+	hintBudget := available
+	if status != "" {
+		hintBudget -= len(footerStatusGap)
+	}
+	hint := m.renderFooterHint(hintBudget, history)
+	if hint == "" {
 		return status
 	}
-	const gap = "   "
-	width := m.env.Width - 1
-	statusWidth := lipgloss.Width(status)
-	available := width - statusWidth
-	if status != "" {
-		available -= len(gap)
-	}
+	return status + strings.Repeat(" ", available-lipgloss.Width(hint)) + hint
+}
 
+func (m *model) renderFooterHint(available int, history string) string {
+	if history == "" && m.updateInstalled == "" {
+		return ""
+	}
 	const restart = "Restart to update"
 	showUpdate := m.updateInstalled != "" && len(restart) <= available
 	if showUpdate {
@@ -313,7 +334,7 @@ func (m *model) renderFooterStatus(status, history string) string {
 		const command = "/tasks"
 		historyBudget := available
 		if showUpdate {
-			historyBudget -= len(gap)
+			historyBudget -= len(footerStatusGap)
 		}
 		if len(command) <= historyBudget {
 			hint = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Render(command)
@@ -334,13 +355,10 @@ func (m *model) renderFooterStatus(status, history string) string {
 		}
 		right = notice
 		if hint != "" {
-			right += gap + hint
+			right += footerStatusGap + hint
 		}
 	}
-	if right == "" {
-		return status
-	}
-	return status + strings.Repeat(" ", width-statusWidth-lipgloss.Width(right)) + right
+	return right
 }
 
 func (m model) renderInputView() string {
@@ -429,10 +447,8 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 	if available <= 0 {
 		return ""
 	}
-	// A clipped block must still start on its own row. Otherwise the last
-	// foreground identity and the first indicator are joined on one line.
-	indicators := "\n" + strings.Join(parts, "\n")
-	return "\n" + tailLines(strings.TrimPrefix(indicators, "\n"), available)
+	// A clipped block must still start on its own row.
+	return "\n" + tailLines(strings.Join(parts, "\n"), available)
 }
 
 // liveWelcome returns the startup splash for the live view while it is still
@@ -700,6 +716,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		// Submission waiting owns the same docked row before the SDK creates
 		// an inference message; this projection does not mutate stream state.
 		Inferring:           m.conv.Stream.Inferring || m.conv.Stream.Waiting,
+		WaitInFooter:        true,
 		InferenceAttempt:    m.conv.Stream.Attempt,
 		InferenceLastDataAt: m.conv.Stream.LastDataAt,
 		PendingCalls:        m.conv.Tool.PendingCalls,

@@ -352,7 +352,7 @@ func getQuestionTextStyle() lipgloss.Style {
 }
 
 func getQuestionSelectedStyle() lipgloss.Style {
-	// Neutral bright+bold; the teal FocusBar is the selection signal. Green
+	// Neutral bright+bold; the FocusBar is the selection signal. Green
 	// stays reserved for success/confirm semantics.
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextBright).Bold(true)
 }

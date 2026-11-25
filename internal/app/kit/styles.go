@@ -93,12 +93,11 @@ func DimStyle() lipgloss.Style {
 		Foreground(CurrentTheme.TextDim)
 }
 
-// TabActiveBg is the background of the active tab pill — the brand teal, so
-// "active tab" and the selected-row FocusBar share one accent.
+// TabActiveBg shares the brand accent with the selected-row FocusBar.
 var TabActiveBg = CurrentTheme.Focus
 
-// TabActiveFg is the active-tab text: dark ink on the bright dark-mode teal,
-// white on the deeper light-mode teal, so contrast holds either way.
+// TabActiveFg uses dark ink on the lighter dark-mode accent and white on the
+// deeper light-mode accent so contrast holds either way.
 var TabActiveFg = AdaptiveColor{Dark: "#0D1526", Light: "#FFFFFF"}
 
 // SearchBg is the background color for search/filter input boxes.

@@ -172,7 +172,7 @@ func TestNoticeWhileStreamingIsShownAndDelivered(t *testing.T) {
 func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
 	m, _ := noticeDeliveryModel(t)
 	m.env.Width = 80
-	m.conv.Stream.Active = true
+	m.conv.Stream.Active, m.conv.Stream.Inferring = true, true
 	owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant})
 	m.conv.Stream.MessageID = owner.ID
 	m.deliverNotice(taskNotice())

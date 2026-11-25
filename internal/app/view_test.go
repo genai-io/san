@@ -440,7 +440,7 @@ func TestPendingMessagesAboveTasks(t *testing.T) {
 			if tt.height >= 24 && tt.tasks > 0 && !strings.Contains(aboveInput, "Current task") {
 				t.Fatalf("frame lost the task list:\n%s", plain)
 			}
-			if tt.height >= 24 && tt.tasks > 0 && tt.tasks < 25 && tt.queued > 0 && !strings.Contains(aboveInput, "\n\n≣ Tasks") {
+			if tt.height >= 24 && tt.tasks > 0 && tt.tasks < 25 && tt.queued > 0 && !strings.Contains(aboveInput, "\n\n ≣ Tasks") {
 				t.Fatalf("pending messages and Tasks need a blank row between them:\n%s", plain)
 			}
 			if tt.queued > 0 && (tt.editing || visiblePending == tt.queued) {
@@ -472,20 +472,16 @@ func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
 	m.services.Tracker.Create("Current task", "", "", nil)
 	m.userInput.Queue.Enqueue("Pending sentinel", nil)
 	m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
-	frame, _ := m.viewString()
+	frame, cursor := m.viewString()
 	plain := ansi.Strip(frame)
 	pendingAt := strings.Index(plain, "Pending sentinel")
 	tasksAt := strings.Index(plain, "Tasks")
-	waitingAt := strings.Index(plain, "On it")
-	separatorAt := strings.Index(plain, strings.Repeat("─", 79))
-	if pendingAt < 0 || tasksAt <= pendingAt || waitingAt <= tasksAt || separatorAt <= waitingAt {
-		t.Fatalf("want pending, Tasks, On it, then separator:\n%s", plain)
+	if pendingAt < 0 || tasksAt <= pendingAt || strings.Contains(plain, "On it") {
+		t.Fatalf("want pending above Tasks and no routine wait:\n%s", plain)
 	}
 	lines := strings.Split(plain, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, "On it") && (i+1 >= len(lines) || lines[i+1] != strings.Repeat("─", 79)) {
-			t.Fatalf("waiting row is not directly above separator:\n%s", plain)
-		}
+	if cursor == nil || lines[cursor.Position.Y-1] != strings.Repeat("─", 79) {
+		t.Fatalf("expected an unchanged composer rule:\n%s", plain)
 	}
 }
 

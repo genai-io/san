@@ -72,14 +72,25 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 		return "", history
 	}
 
+	width := max(1, params.Width)
+	margin := ""
+	if width >= 32 {
+		margin = " " // Match the queued prompt gutter without changing task alignment.
+		width--
+	}
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	header := headerStyle.Render("Tasks")
+	groupIndent := ""
+	if lipgloss.Width("≣ Tasks") <= width {
+		header = mutedStyle.Render("≣") + " " + header
+		groupIndent = "  " // Group labels use the same text column as task rows.
+	}
 	visible, hidden := visibleTrackerItems(items)
 	idWidth := itemIDWidth(visible)
 
 	// Query executor liveness only for visible rows.
-	running := 0
 	lastPlan := false
 	for i, t := range visible {
 		id := todo.BackgroundTaskID(t)
@@ -89,7 +100,7 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 			if isPlan {
 				label = "Plan"
 			}
-			sb.WriteString(kit.TruncateText(headerStyle.Render(label), max(1, params.Width)) + "\n")
+			sb.WriteString(margin + groupIndent + kit.TruncateText(headerStyle.Render(label), width-len(groupIndent)) + "\n")
 		}
 		lastPlan = isPlan
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
@@ -100,9 +111,6 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 		}
 		if t.Status == todo.StatusInProgress && params.AwaitingApproval[id] && !isPlan && (!haveWorkerStatus || info.Status == task.StatusRunning) {
 			phase = itemApproval
-		}
-		if phase == itemRunning {
-			running++
 		}
 		progress := ""
 		if phase == itemAborted {
@@ -134,16 +142,12 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 				}
 			}
 		}
-		sb.WriteString(renderItem(t, phase, max(1, params.Width), idWidth, params.Blockers, params.Frame, params.AgentColors, strings.Join(strings.Fields(progress), " ")))
+		sb.WriteString(margin)
+		sb.WriteString(renderItem(t, phase, width, idWidth, params.Blockers, params.Frame, params.AgentColors, strings.Join(strings.Fields(progress), " ")))
 	}
 
 	if folded := renderFoldedLine(hidden); folded != "" {
-		sb.WriteString(kit.TruncateText(strings.TrimSuffix(folded, "\n"), max(1, params.Width)) + "\n")
-	}
-	width := max(1, params.Width)
-	header := headerStyle.Render("Tasks")
-	if lipgloss.Width("≣ Tasks") <= width {
-		header = mutedStyle.Render("≣") + " " + header
+		sb.WriteString(margin + kit.TruncateText(strings.TrimSuffix(folded, "\n"), width) + "\n")
 	}
 	// Progress is the plan's: a background task finishing is not a step of it.
 	if plans > 0 {
@@ -152,14 +156,7 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 			header += mutedStyle.Render(progress)
 		}
 	}
-	// Folded in-progress rows have not been checked for liveness.
-	if running > 0 && hidden[itemStalled] == 0 {
-		summary := fmt.Sprintf(" · %d running", running)
-		if lipgloss.Width(header+summary) <= width {
-			header += mutedStyle.Render(summary)
-		}
-	}
-	return kit.TruncateText(header, width) + "\n" + sb.String(), history
+	return margin + kit.TruncateText(header, width) + "\n" + sb.String(), history
 }
 
 func summarizeTrackerHistory(failed, stopped, interrupted int) string {
@@ -228,7 +225,7 @@ func renderFoldedLine(hidden [itemFinished + 1]int) string {
 		return ""
 	}
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	return mutedStyle.Render("…  "+strings.Join(parts, ", ")) + "\n"
+	return mutedStyle.Render("… "+strings.Join(parts, ", ")) + "\n"
 }
 
 // itemPhase is how an item reads to the user. It collapses the recorded status,
@@ -318,7 +315,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 
 	switch phase {
 	case itemApproval:
-		return renderItemLine(tint(mutedStyle).Render("●")+gutter, tint(lipgloss.NewStyle()).Render(activeText(t)), mutedStyle.Render(" · Awaiting approval"), width)
+		return renderItemLine(tint(mutedStyle).Render("○")+gutter, tint(lipgloss.NewStyle()).Render(activeText(t)), mutedStyle.Render(" · Awaiting approval"), width)
 	case itemAborted:
 		abortedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
 		if detail := todo.BackgroundStatusDetail(t); detail == "stopped" || detail == "killed" || detail == todo.StatusDetailInterrupted {
@@ -339,13 +336,13 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		// means the status outlived its executor within a live session — the
 		// model marked an item in_progress and moved on without closing it.
 		// Animating would claim work that isn't happening.
-		return row(mutedStyle.Render("◌"), activeText(t), mutedStyle.Render(" [stalled]"))
+		return row(mutedStyle.Render("○"), activeText(t), mutedStyle.Render(" [stalled]"))
 
 	case itemRunning:
 		// Breathe on the shared frame tick (a true ~360ms clock; see FrameClock)
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
-		prefix := kit.LiveDot(frame) + gutter
+		prefix := kit.LiveTaskDot(frame) + gutter
 		subject := tint(lipgloss.NewStyle()).Render(activeText(t))
 		detail := ""
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {

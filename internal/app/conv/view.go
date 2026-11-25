@@ -83,6 +83,8 @@ type RenderContext struct {
 	// that animates has to hold still: the turn is parked on the user's answer,
 	// not making progress.
 	DockedModalActive bool
+	// WaitInFooter leaves waiting feedback to the composer instead of the transcript.
+	WaitInFooter bool
 
 	// Interactive marks the live render pass (RenderActiveContent): the
 	// uncommitted tail the user can still act on. "(ctrl+o to expand)" hints
@@ -369,7 +371,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingDisplay:      p.ThinkingDisplay,
 		ThinkingDuration:     msg.ThinkingDuration,
 		WaitStartedAt:        p.StreamStartedAt,
-		SuppressWaitingRow:   p.Inferring,
+		SuppressWaitingRow:   p.Inferring || p.WaitInFooter,
 	}
 	waiting := params
 	waiting.Content = sliceFrom(waiting.Content, waiting.ContentCommittedLen)
@@ -664,6 +666,9 @@ func RenderActiveContent(p RenderContext) string {
 // the composer, even on a short terminal or during a scrollback handoff.
 func RenderActiveBody(p RenderContext) string {
 	p.Interactive = true
+	if p.WaitInFooter {
+		return strings.TrimRight(renderActiveMessageRange(p), "\n")
+	}
 	waiting := p.StreamWaiting
 	for i := p.CommittedCount; i < len(p.Messages); i++ {
 		msg := p.Messages[i]
@@ -707,6 +712,12 @@ func RenderInferenceStatus(p RenderContext) string {
 		label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
 	}
 	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label)
+}
+
+// RoutineInferenceWait reports whether the foreground label adds only liveness.
+func RoutineInferenceWait(p RenderContext) bool {
+	return p.StreamActive && p.Inferring && !p.DockedModalActive && p.InferenceAttempt <= 1 &&
+		!modelWaitQuiet(p.StreamStartedAt, p.InferenceLastDataAt)
 }
 
 // RenderPreparationStatus keeps input preparation in the same row as inference.

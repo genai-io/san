@@ -31,15 +31,12 @@ func TestFooterHierarchySinglePendingOmitsGroupLabel(t *testing.T) {
 					if selected < 0 && !strings.Contains(plain, "↑ edit") || selected >= 0 && strings.Contains(plain, "↑ edit") {
 						t.Fatalf("queue edit hint does not match selection:\n%s", plain)
 					}
-					if strings.Count(plain, "✦ On it") != 1 || strings.Index(plain, "next") > strings.Index(plain, "✦ On it") {
-						t.Fatalf("single pending prompt must precede inference:\n%s", plain)
+					if strings.Contains(plain, "✦ On it") || lines[cursor.Position.Y-1] != separator {
+						t.Fatalf("queued prompt should leave the composer rule plain:\n%s", plain)
 					}
-					for i, line := range lines {
+					for _, line := range lines {
 						if strings.Contains(line, "next") && ansi.StringWidth(line) >= width {
 							t.Fatalf("queue exceeds width: %q", line)
-						}
-						if strings.Contains(line, "✦ On it") && (i+1 >= len(lines) || lines[i+1] != separator) {
-							t.Fatalf("inference lost input adjacency:\n%s", plain)
 						}
 					}
 				})
@@ -65,21 +62,18 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 				if len(lines) != height || cursor == nil || cursor.Position.Y != height-3 {
 					t.Fatalf("composer displaced: rows=%d cursor=%+v\n%s", len(lines), cursor, plain)
 				}
-				if strings.Contains(plain, "Pending") || strings.Count(plain, "✦ On it") != 1 || !strings.Contains(plain, "editing") {
-					t.Fatalf("lost actionable queue or duplicated groups:\n%s", plain)
+				if strings.Contains(plain, "Pending") || strings.Contains(plain, "✦ On it") || !strings.Contains(plain, "editing") {
+					t.Fatalf("lost actionable queue or duplicated liveness:\n%s", plain)
 				}
-				at := -1
-				for i, line := range lines {
-					if strings.Contains(line, "✦ On it") {
-						at = i
-					}
+				at := cursor.Position.Y - 1
+				for _, line := range lines {
 					if strings.Contains(line, "more") || strings.Contains(line, "editing") {
 						if ansi.StringWidth(line) >= width {
 							t.Fatalf("queue exceeds width: %q", line)
 						}
 					}
 				}
-				if at < 1 || !strings.HasPrefix(lines[at+1], "─") || strings.Index(plain, "editing") > strings.Index(plain, "✦ On it") {
+				if lines[at] != strings.Repeat("─", width-1) {
 					t.Fatalf("incorrect dock order:\n%s", plain)
 				}
 				if height == 24 {
@@ -89,7 +83,7 @@ func TestFooterHierarchyPendingGroupAdaptsToHeight(t *testing.T) {
 							tasksAt = i
 						}
 					}
-					if tasksAt < 1 || lines[tasksAt-1] != "" || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || at < 2 || lines[at-1] != "" || !strings.Contains(lines[at-2], "active-worker") || strings.Index(plain, "editing") > strings.Index(plain, "Tasks") {
+					if tasksAt < 1 || lines[tasksAt-1] != "" || !strings.Contains(plain, "first-prompt") || !strings.Contains(plain, "second-prompt") || strings.Contains(plain, "more") || !strings.Contains(lines[at-1], "active-worker") || strings.Index(plain, "editing") > strings.Index(plain, "Tasks") {
 						t.Fatalf("roomy groups lack hierarchy:\n%s", plain)
 					}
 				} else {

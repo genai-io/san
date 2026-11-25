@@ -312,7 +312,7 @@ var (
 			BorderForeground(kit.CurrentTheme.Border).
 			Padding(1, 2)
 
-	// Title lockup: the teal glyph is the one accent touch; the wordmark is
+	// Title lockup: the glyph is the one accent touch; the wordmark is
 	// plain bold text and the tagline a muted italic.
 	popupGlyphStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 	popupTitleStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
@@ -327,7 +327,7 @@ var (
 	popupUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Bold(true)
 	popupUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
-	// Tab strip: the active tab is a filled teal pill (the one accent),
+	// Tab strip: the active tab is a filled pill in the focus color,
 	// uppercased and padded so the tabs read as the panel's primary nav; the
 	// rest are dim labels.
 	popupTabActiveStyle = lipgloss.NewStyle().

@@ -18,14 +18,6 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// Three-hue palette: teal for the brand mark (the shared Focus accent, so the
-// splash and the live UI's focus affordances are the same color), star blue
-// for the ✦ accent inside the logo, dim gray for everything else.
-var (
-	welcomeStar = kit.AdaptiveColor{Dark: "#7FD4FF", Light: "#0284C7"}
-	welcomeDim  = kit.AdaptiveColor{Dark: "#65707A", Light: "#9CA3AF"}
-)
-
 type welcomeInfo struct {
 	Model string
 	CWD   string
@@ -50,20 +42,19 @@ func welcomeUseColor() bool {
 }
 
 var (
-	brandWordStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
-	brandStarStyle = lipgloss.NewStyle().Foreground(welcomeStar)
+	brandBracketStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	brandWordStyle    = brandBracketStyle.Bold(true)
+	brandStarStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 )
 
-// brandMark renders the "< SAN ✦ />" wordmark — teal brackets/word (the shared
-// Focus accent) with the star-blue ✦. Used by the startup splash, the live
-// model-change line, and the cold-start loading line so the brand reads
-// identically across all three.
+// brandMark keeps the startup and loading mark neutral except for the star,
+// which shares the input prompt's accent.
 func brandMark() string {
-	return brandWordStyle.Render("< SAN") + " " + brandStarStyle.Render("✦") + " " + brandWordStyle.Render("/>")
+	return brandBracketStyle.Render("<") + " " + brandWordStyle.Render("SAN") + " " + brandStarStyle.Render("✦") + " " + brandBracketStyle.Render("/>")
 }
 
 func renderWelcome(info welcomeInfo) string {
-	dim := lipgloss.NewStyle().Foreground(welcomeDim)
+	dim := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
 	parts := []string{brandMark()}
 	if proj := projectName(info.CWD); proj != "" {

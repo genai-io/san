@@ -32,7 +32,7 @@ func TestMemoryPreparationSharesSubmissionWait(t *testing.T) {
 			}
 			status := lines[height-5]
 			prefix := "✦ On it"
-			if !strings.HasPrefix(status, prefix+" · ") || !strings.HasSuffix(status, tc.detail) || !strings.HasPrefix(lines[height-4], "─") ||
+			if !strings.HasPrefix(status, prefix+" · ") || !strings.HasSuffix(status, tc.detail) || lines[height-4] != strings.Repeat("─", tc.width-1) ||
 				strings.Count(plain, prefix) != 1 {
 				t.Fatalf("expected one wait row above the composer:\n%s", plain)
 			}
@@ -61,13 +61,8 @@ func TestSubmissionWaitUsesDockedInferenceSlot(t *testing.T) {
 				view := m.View()
 				plain := ansi.Strip(view.Content)
 				lines := strings.Split(plain, "\n")
-				if strings.Count(plain, "✦ On it") != 1 {
-					t.Fatalf("initial wait missing or duplicated:\n%s", plain)
-				}
-				for i, line := range lines {
-					if strings.Contains(line, "✦ On it") && (i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "─")) {
-						t.Fatalf("initial wait was not directly above input:\n%s", plain)
-					}
+				if strings.Contains(plain, "✦ On it") || !strings.Contains(plain, "next prompt") || lines[height-4] != strings.Repeat("─", width-1) {
+					t.Fatalf("queued prompt should replace the initial wait indicator:\n%s", plain)
 				}
 				if len(lines) != height || view.Cursor == nil || view.Cursor.Position.Y != height-3 || m.conv.Stream.Inferring || len(m.conv.Messages) != 0 {
 					t.Fatal("display-only submission wait moved input or invented inference state")

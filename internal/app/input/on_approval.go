@@ -247,7 +247,7 @@ func approvalQuestionStyle() lipgloss.Style {
 }
 
 func approvalSelectedStyle() lipgloss.Style {
-	// Neutral bright+bold for the focused option; the teal FocusBar carries the
+	// Neutral bright+bold for the focused option; the FocusBar carries the
 	// "selected" signal. Green is reserved for genuine success/confirm states.
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextBright).Bold(true)
 }
