@@ -663,10 +663,7 @@ func renderAskUserCall(input, icon string, width int) string {
 		if len(questions) > 1 {
 			question = fmt.Sprintf("Q%d: %s", i+1, question)
 		}
-		for line := range strings.SplitSeq(question, "\n") {
-			sb.WriteString(renderGutteredLine(prefix, "  ", questionCallStyle, line, width))
-			prefix = "  "
-		}
+		sb.WriteString(renderGutteredProse(prefix, "  ", questionCallStyle, question, width))
 	}
 	return sb.String()
 }
@@ -1011,40 +1008,16 @@ func formatAgentDefinition(agent agentInput, width int) string {
 
 	if agent.Prompt != "" {
 		sb.WriteString(agentLabelStyle.Render("  ⎿  Prompt:") + "\n")
-		wrapWidth := width - lipgloss.Width(agentContentIndent)
-		for line := range strings.SplitSeq(agent.Prompt, "\n") {
-			for _, wrapped := range wrapLine(line, wrapWidth) {
-				sb.WriteString(toolResultExpandedStyle.Render(agentContentIndent+wrapped) + "\n")
-			}
+		if width <= 0 {
+			width = 80
+		}
+		wrapWidth := max(1, width-lipgloss.Width(agentContentIndent)-toolResultExpandedStyle.GetHorizontalFrameSize())
+		for line := range strings.SplitSeq(WrapProse(agent.Prompt, wrapWidth), "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render(agentContentIndent+line) + "\n")
 		}
 	}
 
 	return sb.String()
-}
-
-func wrapLine(line string, width int) []string {
-	if width <= 0 || lipgloss.Width(line) <= width {
-		return []string{line}
-	}
-	words := strings.Fields(line)
-	if len(words) == 0 {
-		return []string{""}
-	}
-	var lines []string
-	current := words[0]
-	curWidth := lipgloss.Width(current)
-	for _, w := range words[1:] {
-		ww := lipgloss.Width(w)
-		if curWidth+1+ww > width {
-			lines = append(lines, current)
-			current = w
-			curWidth = ww
-		} else {
-			current += " " + w
-			curWidth += 1 + ww
-		}
-	}
-	return append(lines, current)
 }
 
 func buildDoneStats(toolUses, tokens int, duration, model string) string {
@@ -1497,7 +1470,12 @@ func renderAgentHeading(label string, width int, iconText string, color kit.Adap
 		text += toolResultStyle.Render(": " + desc)
 	}
 	if width > 0 {
-		text = xansi.Hardwrap(text, max(1, width-kit.ToolIconWidth), true)
+		room := max(1, width-kit.ToolIconWidth)
+		if hasDesc {
+			text = WrapProse(text, room)
+		} else {
+			text = xansi.Hardwrap(text, room, true)
+		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, text)
 }

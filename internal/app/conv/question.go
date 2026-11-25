@@ -435,8 +435,7 @@ func (p *QuestionPrompt) Render() string {
 	sb.WriteString(header)
 	sb.WriteString("\n")
 
-	question := ansi.Wrap(currentQ.Question, max(1, contentWidth-1), " ")
-	sb.WriteString(renderGutteredLine(" ", " ", getQuestionTextStyle(), question, contentWidth))
+	sb.WriteString(renderGutteredProse(" ", " ", getQuestionTextStyle(), currentQ.Question, contentWidth))
 	if !compact {
 		sb.WriteString("\n")
 	}
@@ -461,17 +460,17 @@ func (p *QuestionPrompt) Render() string {
 		}
 
 		optBody := fmt.Sprintf("%s %d. %s", prefix, i+1, opt.Label)
+		gutter := "   "
+		labelStyle := getQuestionUnselectedStyle()
 		if isHighlighted {
-			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(optBody))
-		} else {
-			sb.WriteString(getQuestionUnselectedStyle().Render("   " + optBody))
+			gutter = " " + kit.FocusBarStyle().Render(kit.FocusBar) + " "
+			labelStyle = getQuestionSelectedStyle()
 		}
-
+		body := labelStyle.Render(optBody)
 		if opt.Description != "" {
-			sb.WriteString(" - ")
-			sb.WriteString(getQuestionDescStyle().Render(opt.Description))
+			body += " - " + getQuestionDescStyle().Render(opt.Description)
 		}
-		sb.WriteString("\n")
+		sb.WriteString(renderGutteredProse(gutter, "   ", lipgloss.NewStyle(), body, contentWidth))
 	}
 
 	if customIdx == len(currentQ.Options) {

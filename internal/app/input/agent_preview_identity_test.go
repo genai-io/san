@@ -24,10 +24,13 @@ func TestAgentPreviewWrappedIdentityAndProse(t *testing.T) {
 				}
 				joined.WriteString(strings.TrimPrefix(line, "   "))
 			}
-			for _, want := range []string{meta.AgentName, meta.Description, meta.Tools[0], meta.Prompt} {
+			for _, want := range []string{meta.AgentName, meta.Description, meta.Tools[0]} {
 				if !strings.Contains(joined.String(), want) {
-					t.Fatalf("lost prose %q in %q", want, joined.String())
+					t.Fatalf("lost descriptor %q in %q", want, joined.String())
 				}
+			}
+			if !strings.Contains(strings.ReplaceAll(joined.String(), " ", ""), strings.ReplaceAll(meta.Prompt, " ", "")) {
+				t.Fatalf("lost prompt content in %q", rendered)
 			}
 			p := NewApproval()
 			p.Show(&perm.PermissionRequest{ToolName: "Agent", AgentMeta: meta}, width, 12)

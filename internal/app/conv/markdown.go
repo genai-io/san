@@ -326,7 +326,7 @@ func leadingSpaces(line string) int {
 // ASCII-only wrap can't break, and the only reason we render a block ourselves.
 func containsCJK(lines []string) bool {
 	for _, line := range lines {
-		if strings.ContainsFunc(line, isCJK) {
+		if strings.ContainsFunc(line, paragraphCJK) {
 			return true
 		}
 	}

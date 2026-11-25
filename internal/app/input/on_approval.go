@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -279,7 +280,7 @@ func (p *ApprovalModel) wrappedPreview(width int, compact bool) []string {
 			preview = "Save exact allow rules: " + strings.Join(p.request.AllowRules, ", ") + "\nProject-local .san/settings.local.json"
 		} else {
 			preview = "Allow future calls to " + p.request.ToolName + " for this session, beyond this command. This does not allow all tools. Safety checks and explicit ask rules still apply."
-			preview = ansi.Wrap(preview, width, " ")
+			preview = conv.WrapProse(preview, width)
 		}
 	} else if p.diffPreview != nil {
 		p.diffPreview.expanded = true
@@ -505,17 +506,8 @@ func (p *approvalAgentPreview) render(width int) string {
 	sb.WriteString(labelStyle.Render("Task:"))
 	sb.WriteString("\n")
 
-	// Keep the existing prose bound, but let the panel scroll through every
-	// wrapped line rather than truncating each source line independently.
-	prompt := kit.TruncateText(p.agentMeta.Prompt, 500)
-	for _, line := range strings.Split(prompt, "\n") {
-		sb.WriteString("   ")
-		sb.WriteString(dimStyle.Render(line))
-		sb.WriteString("\n")
-	}
-
-	// Wrap inside the indentation budget so the outer panel hardwrap never
-	// creates unindented continuation lines. ANSI widths include CJK cells.
+	// Wrap prose separately; identities and tool/model descriptors stay on the
+	// existing hard-wrap path.
 	indent := strings.Repeat(" ", min(3, max(0, width-2)))
 	budget := max(1, width-len(indent))
 	var lines []string
@@ -528,6 +520,13 @@ func (p *approvalAgentPreview) render(width int) string {
 				lines = append(lines, indent+wrapped)
 			}
 		}
+	}
+	prompt := conv.WrapProse(kit.TruncateText(p.agentMeta.Prompt, 500), budget)
+	for _, line := range strings.Split(prompt, "\n") {
+		if line != "" {
+			line = indent + dimStyle.Render(line)
+		}
+		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n") + "\n"
 }

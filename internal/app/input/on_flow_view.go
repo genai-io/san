@@ -202,7 +202,7 @@ func (v *FlowView) renderGeneration() (title, content, hint string) {
 	}
 	if remaining := budget - len(lines); remaining > 0 {
 		width := max(1, min(72, v.width-8))
-		goal := strings.Split(ansi.Wrap(v.goal, width, " "), "\n")
+		goal := strings.Split(conv.WrapProse(v.goal, width), "\n")
 		count := min(len(goal), min(5, remaining))
 		if count < len(goal) {
 			goal[count-1] = ansi.Truncate(goal[count-1], max(1, width-1), "") + "…"
@@ -390,12 +390,13 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 }
 
 func (v *FlowView) renderReview() string {
+	width := max(1, v.width-4)
 	if v.plan == nil {
-		return "Press e to fix the source before reviewing its inputs and outputs."
+		return conv.WrapProse("Press e to fix the source before reviewing its inputs and outputs.", width)
 	}
 	node, ok := v.plan.Node(v.nodeID())
 	if !ok {
-		return "Select a step to review its inputs and output."
+		return conv.WrapProse("Select a step to review its inputs and output.", width)
 	}
 	lines := []string{fmt.Sprintf("Step %d/%d · %s", v.selected+1, len(v.plan.Nodes), node.ID), ""}
 	executor := "subagent (default)"

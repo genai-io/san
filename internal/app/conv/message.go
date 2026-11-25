@@ -166,11 +166,20 @@ func RenderUserMessage(content, displayContent string, images []core.Attachment,
 		}
 		return ""
 	}
+	return renderGutteredProse(prompt, strings.Repeat(" ", lipgloss.Width(prompt)), userMsgStyle, displayContent, width)
+}
+
+func renderGutteredProse(prefix, continuation string, style lipgloss.Style, text string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
-	displayContent = xansi.Wrap(strings.ReplaceAll(displayContent, "\t", "    "), max(1, width-lipgloss.Width(prompt)), " ")
-	return renderGutteredLine(prompt, strings.Repeat(" ", lipgloss.Width(prompt)), userMsgStyle, displayContent, width)
+	room := max(1, width-max(lipgloss.Width(prefix), lipgloss.Width(continuation)))
+	var out strings.Builder
+	for line := range strings.SplitSeq(WrapProse(text, room), "\n") {
+		out.WriteString(prefix + style.Render(line) + "\n")
+		prefix = continuation
+	}
+	return out.String()
 }
 
 func styleInlineImageTokens(content string) string {
@@ -562,8 +571,8 @@ func RecapNotice(facts, body string) string {
 func RenderRecap(mark, facts, body string, width int) string {
 	out := mark + "\n"
 	if body != "" {
-		body = lipgloss.Wrap(body, max(width-lipgloss.Width(continuationGutter), 10), "")
-		out = lipgloss.JoinHorizontal(lipgloss.Top, mark+" ", sideMarkStyle.Italic(true).Render(body)) + "\n"
+		prefix := mark + " "
+		out = renderGutteredProse(prefix, strings.Repeat(" ", lipgloss.Width(prefix)), sideMarkStyle.Italic(true), body, width)
 	}
 	if facts != "" {
 		for line := range strings.SplitSeq(facts, "\n") {
@@ -592,20 +601,10 @@ func RenderSidePending(question string, frame, width int) string {
 
 func renderSideExchange(circle, question, body string, width int) string {
 	mark := sideMarkStyle.Render(circle + " btw · ")
-	headerWidth := lipgloss.Width(mark)
-	indent := strings.Repeat(" ", headerWidth)
-	lines := strings.Split(xansi.Wrap(question, max(1, width-headerWidth-1), ""), "\n")
+	indent := strings.Repeat(" ", lipgloss.Width(mark))
 	var out strings.Builder
-	for i, line := range lines {
-		if i == 0 {
-			out.WriteString(mark)
-		} else {
-			out.WriteString(indent)
-		}
-		out.WriteString(bulletStyle.Render(line))
-		out.WriteByte('\n')
-	}
 	// Leave the last terminal column free for scrollback resizing.
+	out.WriteString(renderGutteredProse(mark, indent, bulletStyle, question, max(1, width-1)))
 	if body = strings.TrimRight(body, "\n"); body != "" {
 		body = xansi.Hardwrap(body, max(1, width-3), true)
 		for line := range strings.SplitSeq(body, "\n") {
