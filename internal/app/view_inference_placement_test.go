@@ -59,6 +59,35 @@ func TestInferencePlacementImmediatelyAboveComposer(t *testing.T) {
 	}
 }
 
+func TestForegroundWaitStaysInFooterBetweenSteps(t *testing.T) {
+	m := fixedComposerModel(80, 12)
+	call := core.ToolCall{ID: "tool-1", Name: "Bash", Input: `{"command":"echo done"}`}
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}})
+	m.conv.Tool.Track([]core.ToolCall{call})
+	m.conv.Stream = conv.StreamState{Active: true, StartedAt: time.Now().Add(-5 * time.Second)}
+	if frame := ansi.Strip(m.View().Content); !strings.Contains(frame, "echo done") || strings.Contains(frame, "✦ On it") {
+		t.Fatalf("running tool should own its activity:\n%s", frame)
+	}
+	m.conv.Tool.MarkComplete(call.ID)
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: call.ID, ToolName: call.Name}})
+	m.conv.CommittedCount = len(m.conv.Messages)
+	for _, inferring := range []bool{false, true} {
+		m.conv.Stream.Inferring = inferring
+		view := m.View()
+		frame := ansi.Strip(view.Content)
+		rows := strings.Split(frame, "\n")
+		if view.Cursor == nil || view.Cursor.Position.Y != 9 || strings.Count(frame, "✦ On it") != 1 ||
+			!strings.HasPrefix(rows[7], "✦ On it · ") || rows[8] != strings.Repeat("─", 79) {
+			t.Fatalf("inferring=%v: waiting status lost its footer row:\n%s", inferring, frame)
+		}
+	}
+	m.conv.Stream.Inferring = false
+	m.userInput.Queue.Enqueue("queued follow-up", nil)
+	if frame := ansi.Strip(m.View().Content); !strings.Contains(frame, "queued follow-up") || strings.Contains(frame, "✦ On it") {
+		t.Fatalf("routine wait competed with the queue:\n%s", frame)
+	}
+}
+
 func TestTaskTrackerStaysPutAsForegroundWaitChanges(t *testing.T) {
 	for _, width := range []int{24, 80} {
 		for _, height := range []int{8, 24} {

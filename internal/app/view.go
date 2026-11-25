@@ -143,23 +143,28 @@ func (m *model) renderNormalView(separator, trackerView, history string) (string
 
 func (m *model) renderNormalBottom(separator, trackerView, history string) (string, int) {
 	footer := m.renderFooter(separator)
-	queue := ""
-	if preview := m.renderQueuePreview(); preview != "" {
-		queue = "\n" + preview
-	}
 	status := footer.status
 	if footer.routineWait {
 		status = "" // Only reserve a row for routine waiting after other indicators have been laid out.
 	}
-	statusRow := m.renderFooterStatus(status, history)
 	footerBody := footer.before + footer.after
-	if statusRow != "" {
-		footerBody += "\n"
+	// The first newline joins the block to the transcript and is not a screen row.
+	room := max(0, m.env.Height-strings.Count(footerBody, "\n"))
+	statusRow := ""
+	if room > 0 {
+		statusRow = m.renderFooterStatus(status, history)
+		if statusRow != "" {
+			room--
+			footerBody += "\n"
+		}
 	}
 	// Reserve pending prompts first, and keep them above Tasks.
+	queue := ""
+	if preview := m.renderQueuePreview(room); preview != "" {
+		queue = "\n" + preview
+	}
 	indicators := m.renderChatIndicators(trackerView, queue+footerBody)
-	queueVisible := queue != "" && strings.Count(indicators+footerBody, "\n") < m.env.Height
-	if footer.routineWait && !queueVisible && strings.TrimSpace(indicators) == "" {
+	if footer.routineWait && queue == "" && strings.TrimSpace(indicators) == "" && (room > 0 || statusRow != "") {
 		statusRow = m.renderFooterStatus(footer.status, history)
 		indicators = "" // A clipped blank spacer need not compete with the status.
 	}
@@ -262,6 +267,7 @@ func (m *model) renderFooter(separator string) composerFooter {
 	// Foreground activity is independent of the work shown in Tasks.
 	params := m.messageRenderParams()
 	var status string
+	var routineWait bool
 	switch {
 	case m.conv.Compact.Active && !params.DockedModalActive:
 		status = conv.RenderCompactStatus(m.env.Width, params.Frame, m.conv.Compact)
@@ -272,9 +278,9 @@ func (m *model) renderFooter(separator string) composerFooter {
 		}
 		status = conv.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
 	default:
-		status = conv.RenderInferenceStatus(params)
+		status, routineWait = conv.RenderForegroundWait(params)
 	}
-	footer := composerFooter{status: status, routineWait: m.memoryInput == nil && !m.conv.Compact.Active && conv.RoutineInferenceWait(params)}
+	footer := composerFooter{status: status, routineWait: routineWait}
 	if width := m.env.Width - 1; m.memoryUpdate != nil && m.memoryUpdate.manual && width > 0 {
 		updateStatus := ghostTextStyle.Render(ansi.Truncate(kit.MemoryMark+" Updating memory…", width, "…"))
 		b.WriteString("\n" + updateStatus)
@@ -646,9 +652,9 @@ func (m model) footerHasBreathingRoom() bool {
 	return m.env.Height-reserved >= 18 && !m.userInput.Suggestions.IsVisible()
 }
 
-func (m model) renderQueuePreview() string {
+func (m model) renderQueuePreview(maxRows int) string {
 	rawItems := m.userInput.Queue.Items()
-	if len(rawItems) == 0 {
+	if len(rawItems) == 0 || maxRows <= 0 {
 		return ""
 	}
 	previews := make([]conv.QueuePreviewItem, len(rawItems))
@@ -660,7 +666,10 @@ func (m model) renderQueuePreview() string {
 	}
 
 	if len(previews) == 1 || m.footerHasBreathingRoom() {
-		return strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
+		preview := strings.TrimSuffix(conv.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
+		if rowCount(preview) <= maxRows {
+			return preview
+		}
 	}
 	hint := fmt.Sprintf("  +%d more", len(previews)-1)
 	preview := strings.TrimSuffix(conv.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(hint), 1, false), "\n")
@@ -708,15 +717,12 @@ func (m model) messageRenderParams() conv.RenderContext {
 		InlinedResults:  conv.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
 
 		// Streaming + tool execution
-		StreamActive:    m.conv.Stream.Active,
-		StreamWaiting:   m.conv.Stream.Waiting,
-		StreamStartedAt: m.conv.Stream.StartedAt,
-		StreamMessageID: m.conv.Stream.MessageID,
-		BuildingTool:    m.conv.Stream.BuildingTool,
-		// Submission waiting owns the same docked row before the SDK creates
-		// an inference message; this projection does not mutate stream state.
-		Inferring:           m.conv.Stream.Inferring || m.conv.Stream.Waiting,
-		WaitInFooter:        true,
+		StreamActive:        m.conv.Stream.Active,
+		StreamWaiting:       m.conv.Stream.Waiting,
+		StreamStartedAt:     m.conv.Stream.StartedAt,
+		StreamMessageID:     m.conv.Stream.MessageID,
+		BuildingTool:        m.conv.Stream.BuildingTool,
+		Inferring:           m.conv.Stream.Inferring,
 		InferenceAttempt:    m.conv.Stream.Attempt,
 		InferenceLastDataAt: m.conv.Stream.LastDataAt,
 		PendingCalls:        m.conv.Tool.PendingCalls,

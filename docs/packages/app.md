@@ -319,8 +319,8 @@ Submitting an idle turn immediately shows the response spinner while waiting
 for the first inference event. This waiting state is display-only; the agent's
 `InferenceStart` creates the actual assistant message. Input during the wait is
 queued, and cancellation or a failed send clears the spinner.
-During inference, `✦ On it · 17s` can appear on its own row immediately above
-the composer's top divider, never in the live transcript. It is a fallback: visible
+During inference and between steps, `✦ On it · 17s` can appear on its own row
+above the composer's top divider, never in the live transcript. It is a fallback: visible
 queued prompts or task indicators make the generic label unnecessary. Genuine
 silence after 30 seconds shows `Waiting for model`; actual retries show their
 attempt number, even when other indicators are visible. Queued prompts stay

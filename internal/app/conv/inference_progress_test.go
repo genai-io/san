@@ -108,12 +108,12 @@ func TestInferenceStatusIsBoundedAndDefersToModal(t *testing.T) {
 		StreamStartedAt: time.Now().Add(-112 * time.Second)}
 	for _, width := range []int{1, 20, 32, 40, 80, 100} {
 		p.Width = width
-		if row := RenderInferenceStatus(p); ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
+		if row, _ := RenderForegroundWait(p); ansi.StringWidth(row) > width || strings.Contains(row, "\n") {
 			t.Fatalf("generation row exceeds width %d: %q", width, row)
 		}
 	}
 	p.Width, p.DockedModalActive = 80, true
-	if row := RenderInferenceStatus(p); row != "" {
+	if row, _ := RenderForegroundWait(p); row != "" {
 		t.Fatalf("a modal must own the user-facing wait without duplicate status: %q", row)
 	}
 }

@@ -70,7 +70,7 @@ var CurrentTheme = Theme{
 	AI:        AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},
 	Separator: AdaptiveColor{Dark: "#30445E", Light: "#CFD8E3"},
 
-	Focus: AdaptiveColor{Dark: "#91A9DE", Light: "#3D5485"},
+	Focus: AdaptiveColor{Dark: "#80A8F1", Light: "#305C9F"},
 
 	Text:         AdaptiveColor{Dark: "#D8E2F0", Light: "#1F2937"},
 	TextDim:      AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},
