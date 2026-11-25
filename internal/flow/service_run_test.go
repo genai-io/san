@@ -180,10 +180,11 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	if parseErr != nil {
 		t.Fatal(parseErr)
 	}
-	if err := wt.preflight(b); err != nil {
-		t.Fatal(err)
+	workers, bindErr := wt.bindWorkers(b, exec)
+	if bindErr != nil {
+		t.Fatal(bindErr)
 	}
-	r := RunRecord{ID: "retry", WorkerPolicies: b.workerPolicies, Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}, Attempt: 1}, "sec": {Outcome: Outcome{Status: StatusFailed, Error: "oops"}, Attempt: 1}, "perf": {Outcome: Outcome{Status: StatusSucceeded, Output: "P"}, Attempt: 1}}}
+	r := RunRecord{ID: "retry", WorkerPolicies: workers.policies, Definition: definition, Inputs: map[string]string{"base": "original"}, Status: RunFailed, Nodes: map[string]Checkpoint{"diff": {Outcome: Outcome{Status: StatusSucceeded, Output: "D"}, Attempt: 1}, "sec": {Outcome: Outcome{Status: StatusFailed, Error: "oops"}, Attempt: 1}, "perf": {Outcome: Outcome{Status: StatusSucceeded, Output: "P"}, Attempt: 1}}}
 	if err := wt.runStore().Put(r); err != nil {
 		t.Fatal(err)
 	}

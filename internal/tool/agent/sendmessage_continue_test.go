@@ -31,7 +31,7 @@ func TestSendMessageContinuationGate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			worker := endedContinuationTask(t, tc.status)
-			executor := &continuationExecutor{recordingExecutor: recordingExecutor{configOK: true}}
+			executor := &continuationExecutor{recordingExecutor: recordingExecutor{resumeConfig: tool.AgentConfigInfo{PermissionMode: worker.GetStatus().PermissionMode}}}
 			sender := NewSendMessageTool()
 			sender.SetExecutor(executor)
 			checks := 0

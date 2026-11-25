@@ -29,10 +29,8 @@ type Blueprint struct {
 	Edges       []Edge
 	Loops       []Loop
 
-	workerPolicies map[string]string
-	workerConfigs  map[string]any
-	byID           map[string]*Node
-	loopOf         map[string]*Loop // body node id → its loop, filled by checkLoops
+	byID   map[string]*Node
+	loopOf map[string]*Loop // body node id → its loop, filled by checkLoops
 }
 
 // Node is one section of the definition: one subagent turn.

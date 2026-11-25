@@ -39,36 +39,32 @@ func (e *Executor) workerSchemas(config *AgentConfig, mode PermissionMode, ceili
 	})
 }
 
-// WorkerPolicy pins a worker's effective authority before approval or scheduling.
-// Flow persists only a fingerprint; the definition stays in memory.
-type WorkerPolicy struct {
-	Mode        PermissionMode `json:"mode"`
-	Definition  *AgentConfig   `json:"definition"`
-	Tools       []string       `json:"tools"`
-	DisplayOnly bool           `json:"display_only,omitempty"`
+// workerPolicy stays in memory; Flow persists only its fingerprint.
+type workerPolicy struct {
+	mode       PermissionMode
+	definition *AgentConfig
+	tools      []string
 }
 
-// PinWorkerPolicy resolves and validates the request without launching a worker.
-func (e *Executor) PinWorkerPolicy(req tool.AgentExecRequest) (*WorkerPolicy, error) {
+func (e *Executor) pinWorkerPolicy(req tool.AgentExecRequest) (*workerPolicy, error) {
 	var original []string
 	var config *AgentConfig
-	var label bool
-	if pin, ok := req.ResolvedAgentConfig.(*WorkerPolicy); ok {
-		if pin == nil || pin.Definition == nil || pin.Tools == nil {
+	pin, pinned := req.ResolvedAgentConfig.(*workerPolicy)
+	if pinned {
+		if pin == nil || pin.definition == nil || pin.tools == nil {
 			return nil, fmt.Errorf("incomplete pinned worker policy")
 		}
-		config, original, label = pin.Definition, pin.Tools, pin.DisplayOnly
+		config, original = pin.definition, pin.tools
 	} else {
 		var ok bool
 		config, ok = e.resolveRequestAgentConfig(req)
 		if !ok {
 			return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 		}
-		label = config.displayOnly
+		config = config.pinnedDefinition()
 	}
-	config = &AgentConfig{Name: config.Name, Description: config.Description, Color: config.Color, WhenToUse: config.WhenToUse, Model: config.Model, PermissionMode: config.PermissionMode, AllowTools: slices.Clone(config.AllowTools), DenyTools: slices.Clone(config.DenyTools), Skills: slices.Clone(config.Skills), SystemPrompt: config.GetSystemPrompt(), MaxSteps: config.MaxSteps, Source: config.Source, McpServers: slices.Clone(config.McpServers), displayOnly: label}
 	mode := e.requestPermissionMode(config, req)
-	if pin, ok := req.ResolvedAgentConfig.(*WorkerPolicy); ok && pin.Mode != mode {
+	if pinned && pin.mode != mode {
 		return nil, fmt.Errorf("worker permission mode changed after policy was pinned")
 	}
 	schemas := e.workerSchemas(config, mode, original)
@@ -86,5 +82,16 @@ func (e *Executor) PinWorkerPolicy(req tool.AgentExecRequest) (*WorkerPolicy, er
 			return nil, fmt.Errorf("duplicate worker tool %q", name)
 		}
 	}
-	return &WorkerPolicy{Mode: mode, Definition: config, Tools: names, DisplayOnly: label}, nil
+	return &workerPolicy{mode: mode, definition: config, tools: names}, nil
+}
+
+// Materialize the lazy prompt without copying its sync.Once or retaining its source file.
+func (c *AgentConfig) pinnedDefinition() *AgentConfig {
+	return &AgentConfig{
+		Name: c.Name, Description: c.Description, Color: c.Color, WhenToUse: c.WhenToUse,
+		Model: c.Model, PermissionMode: c.PermissionMode, MaxSteps: c.MaxSteps,
+		AllowTools: slices.Clone(c.AllowTools), DenyTools: slices.Clone(c.DenyTools),
+		Skills: slices.Clone(c.Skills), McpServers: slices.Clone(c.McpServers),
+		SystemPrompt: c.GetSystemPrompt(), Source: c.Source, displayOnly: c.displayOnly,
+	}
 }

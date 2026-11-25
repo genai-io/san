@@ -2,7 +2,6 @@ package subagent
 
 import (
 	"context"
-	"encoding/json"
 	"iter"
 	"os"
 	"path/filepath"
@@ -61,7 +60,7 @@ func TestWorkerToolSelection(t *testing.T) {
 		{"unknown", []string{"not-a-tool"}, nil, true}, {"duplicate", []string{"Read", "Read"}, nil, true}, {"parent-only", []string{"Agent"}, nil, true}, {"outside parent", []string{"Skill"}, nil, true}, {"pattern", []string{"Bash(git *)"}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pin, err := e.PinWorkerPolicy(tool.AgentExecRequest{Tools: tc.tools})
+			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{Tools: tc.tools})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("accepted invalid selection")
@@ -71,42 +70,38 @@ func TestWorkerToolSelection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			slices.Sort(pin.Tools)
+			slices.Sort(pin.tools)
 			slices.Sort(tc.want)
-			if pin.Tools == nil || !slices.Equal(pin.Tools, tc.want) {
-				t.Fatalf("got %#v want %#v", pin.Tools, tc.want)
+			if pin.tools == nil || !slices.Equal(pin.tools, tc.want) {
+				t.Fatalf("got %#v want %#v", pin.tools, tc.want)
 			}
-			if pin.Definition.AllowTools != nil {
+			if pin.definition.AllowTools != nil {
 				t.Fatal("selection became a permission rule")
 			}
 		})
 	}
 }
 
-func TestWorkerPolicyRecovery(t *testing.T) {
+func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 	e := &Executor{}
 	parent := []string{"Read", "Skill"}
 	e.SetParentTools(func() []string { return parent })
 	config := &AgentConfig{Name: "review", AllowTools: ToolList{{Name: "Read"}, {Name: "Skill"}}, SystemPrompt: "original"}
 	req := tool.AgentExecRequest{Tools: []string{"Read"}, ResolvedAgentConfig: config}
-	pin, err := e.PinWorkerPolicy(req)
+	catalogue, pin, err := NewExecutorAdapter(e).PinAgentTools(req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !slices.Equal(catalogue, []string{"Read"}) {
+		t.Fatalf("approval catalogue = %v", catalogue)
+	}
+	catalogue[0] = "Skill"
 	config.SystemPrompt = "changed"
 	config.AllowTools[0].Name = "Write"
 	req.Tools[0] = "Skill"
-	data, err := json.Marshal(pin)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var restored WorkerPolicy
-	if err = json.Unmarshal(data, &restored); err != nil {
-		t.Fatal(err)
-	}
 	for _, p := range [][]string{{"Read", "Skill", "Write"}, {"Skill"}, nil} {
 		parent = p
-		cfg, err := e.prepareRunConfig(context.Background(), tool.AgentExecRequest{ResolvedAgentConfig: &restored})
+		cfg, err := e.prepareRunConfig(context.Background(), tool.AgentExecRequest{ResolvedAgentConfig: pin})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,7 +129,7 @@ func TestFlowFingerprintIncludesArgumentRulesAndMode(t *testing.T) {
 	}
 	a.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
 	req.ResolvedAgentConfig = pin
-	if _, err := a.PinWorkerPolicy(req); err == nil {
+	if _, err := a.pinWorkerPolicy(req); err == nil {
 		t.Fatal("approval survived an inherited permission mode change")
 	}
 }
@@ -148,8 +143,8 @@ func TestWorkerEmptyAllowToolsYAML(t *testing.T) {
 		if def.AllowTools == nil {
 			t.Fatalf("%s inherited tools", src)
 		}
-		pin, err := new(Executor).PinWorkerPolicy(tool.AgentExecRequest{ResolvedAgentConfig: &def})
-		if err != nil || pin.Tools == nil || len(pin.Tools) != 0 {
+		pin, err := new(Executor).pinWorkerPolicy(tool.AgentExecRequest{ResolvedAgentConfig: &def})
+		if err != nil || pin.tools == nil || len(pin.tools) != 0 {
 			t.Fatalf("%s: %+v, %v", src, pin, err)
 		}
 	}

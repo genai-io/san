@@ -11,6 +11,7 @@ import (
 )
 
 type recordingExecutor struct {
+	resumeConfig      tool.AgentConfigInfo
 	selectedAgentName string
 	configOK          bool
 	configModel       string
@@ -173,6 +174,12 @@ func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfig
 		return tool.AgentConfigInfo{}, nil, false
 	}
 	return tool.AgentConfigInfo{Name: name, Model: e.configModel, PermissionMode: "default"}, e.resolvedConfig, true
+}
+func (e *recordingExecutor) PinAgentTools(req tool.AgentExecRequest) ([]string, any, error) {
+	return req.Tools, req.ResolvedAgentConfig, nil
+}
+func (e *recordingExecutor) ContinuationConfig(taskID string) (tool.AgentConfigInfo, error) {
+	return e.resumeConfig, nil
 }
 func (e *recordingExecutor) ParentModelID() string { return "parent-model" }
 

@@ -74,41 +74,9 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		runBackground = true
 	}
 
-	// Resolve the agent definition and carry the exact config into execution so a
-	// registry reload while approval is pending cannot change what was approved.
-	// A continuation is pinned to the original worker policy by the executor.
-	var config tool.AgentConfigInfo
-	if resolver, supported := t.executor.(interface {
-		ContinuationConfig(string) (tool.AgentConfigInfo, error)
-	}); resume.TaskID != "" && supported {
-		config, err = resolver.ContinuationConfig(resume.TaskID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		selected, resolvedConfig, ok := t.executor.ResolveAgentSelection(agentName)
-		if !ok {
-			return nil, fmt.Errorf("unknown or disabled agent: %s", agentName)
-		}
-		config = selected
-		if resume.TaskID == "" {
-			params["_resolvedAgentConfig"] = resolvedConfig
-		} else {
-			config.PermissionMode = resume.PermissionMode
-		}
-	}
-
-	// Production executors bind the effective catalogue before displaying it.
-	// The launch still validates and can lose tools, never gain them.
-	if pin, ok := t.executor.(interface {
-		PinAgentTools(tool.AgentExecRequest) ([]string, any, error)
-	}); ok && resume.TaskID == "" {
-		config.Tools, params["_resolvedAgentConfig"], err = pin.PinAgentTools(tool.AgentExecRequest{Agent: agentName, Tools: selectedTools, ResolvedAgentConfig: params["_resolvedAgentConfig"]})
-		if err != nil {
-			return nil, err
-		}
-	} else if selectedTools != nil && resume.TaskID == "" {
-		config.Tools = selectedTools
+	config, err := t.approvalConfig(agentName, selectedTools, resume, params)
+	if err != nil {
+		return nil, err
 	}
 	// Determine effective model for permission display.
 	effectiveModel := config.Model
@@ -146,6 +114,31 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			Background:     runBackground,
 		},
 	}, nil
+}
+
+// approvalConfig shows the original policy on continuation. For a new worker,
+// execution must receive the same policy the user was asked to approve.
+func (t *AgentTool) approvalConfig(name string, tools []string, resume continuationApproval, params map[string]any) (tool.AgentConfigInfo, error) {
+	policy, ok := t.executor.(interface {
+		ContinuationConfig(string) (tool.AgentConfigInfo, error)
+		PinAgentTools(tool.AgentExecRequest) ([]string, any, error)
+	})
+	if !ok {
+		return tool.AgentConfigInfo{}, fmt.Errorf("executor cannot bind worker policy for approval")
+	}
+	if resume.TaskID != "" {
+		return policy.ContinuationConfig(resume.TaskID)
+	}
+	info, definition, ok := t.executor.ResolveAgentSelection(name)
+	if !ok {
+		return info, fmt.Errorf("unknown or disabled agent: %s", name)
+	}
+	names, pinned, err := policy.PinAgentTools(tool.AgentExecRequest{Agent: name, Tools: tools, ResolvedAgentConfig: definition})
+	if err == nil {
+		info.Tools = names
+		params["_resolvedAgentConfig"] = pinned
+	}
+	return info, err
 }
 
 // Reject removed selectors rather than silently widening an old read-only request.
