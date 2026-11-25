@@ -87,15 +87,15 @@ func (e *Executor) openSession(ctx context.Context, run *preparedRun) error {
 		run.recording, run.history = child, snapshot.ActiveMessages()
 		return nil
 	}
-	var parent *session.ParentLink
-	if parentID != "" {
-		if err := run.parent.Save(ctx); err != nil {
-			return err
-		}
-		parent = &session.ParentLink{Session: parentID, CallID: run.req.ParentToolCallID}
-	}
 	provider, model, mode := run.cfg.provider.Name(), run.cfg.modelID, string(run.cfg.permMode)
-	child, err := run.store.Create(ctx, session.CreateOptions{AgentID: run.req.TaskID, InitialCWD: run.currentCwd(), Parent: parent, Config: &session.EventConfig{Provider: &provider, Model: &model, Mode: &mode}})
+	opts := session.CreateOptions{AgentID: run.req.TaskID, InitialCWD: run.currentCwd(), Config: &session.EventConfig{Provider: &provider, Model: &model, Mode: &mode}}
+	var child *session.Session
+	var err error
+	if run.parent != nil {
+		child, err = run.parent.CreateChild(ctx, run.req.ParentToolCallID, opts)
+	} else {
+		child, err = run.store.Create(ctx, opts)
+	}
 	if err != nil {
 		return err
 	}

@@ -44,16 +44,12 @@ func (s *Session) Save(ctx context.Context) error {
 		return nil
 	}
 	return (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
-		return s.saveLocked(ctx)
+		return s.saveDraftLocked(ctx)
 	})
 }
 
-func (s *Session) saveLocked(ctx context.Context) error {
-	if !s.draft {
-		return nil
-	}
-	p := s.Snapshot()
-	return s.publishDraft(ctx, &p, s.writer.state.validation)
+func (s *Session) saveDraftLocked(ctx context.Context) error {
+	return s.publishDraft(ctx, s.writer.state.projection, s.writer.state.validation)
 }
 
 func (s *Session) publishDraft(ctx context.Context, p *Projection, validation EventValidationContext) error {
@@ -63,10 +59,8 @@ func (s *Session) publishDraft(ctx context.Context, p *Projection, validation Ev
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.publishSession(ctx, opened, func(_ string) error {
-		_, err := opened.commitEventBatch(ctx, prepared)
-		return err
-	}); err != nil {
+	opened, err = s.store.publishBatch(ctx, prepared)
+	if err != nil {
 		return err
 	}
 	s.writer.mu.Lock()

@@ -145,14 +145,20 @@ func (s *Session) PutRequest(ctx context.Context, request StandaloneRequest) (st
 	}
 	var digest string
 	err := (library{root: s.store.projectDir}).withLock(ctx, s.ID(), func() error {
-		if err := s.saveLocked(ctx); err != nil {
-			return err
-		}
 		var err error
-		digest, err = s.requests().PutRequest(request)
+		digest, err = s.putRequestLocked(ctx, request)
 		return err
 	})
 	return digest, err
+}
+
+func (s *Session) putRequestLocked(ctx context.Context, request StandaloneRequest) (string, error) {
+	if s.draft {
+		if err := s.saveDraftLocked(ctx); err != nil {
+			return "", err
+		}
+	}
+	return s.requests().PutRequest(request)
 }
 
 // Request reads and verifies the exact standalone request identified by digest.

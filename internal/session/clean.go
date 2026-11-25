@@ -76,7 +76,7 @@ func (s *Store) clean(ctx context.Context, opts CleanOptions) (CleanResult, erro
 
 	if opts.InactiveAfter > 0 {
 		cutoff := now.Add(-opts.InactiveAfter).UnixMilli()
-		live, err := s.collect(ctx, s.sessionsRoot(), func(string) *Trashed { return nil })
+		live, err := s.collect(ctx, s.sessionsRoot(), nil, false)
 		if err != nil {
 			return res, err
 		}

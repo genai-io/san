@@ -119,7 +119,7 @@ func (s *Store) listOverviews(ctx context.Context, q ListQuery) (ListPage, error
 	lib := library{root: s.projectDir}
 	var items []ListItem
 	if vis != VisibleTrash {
-		live, err := s.collect(ctx, s.sessionsRoot(), func(string) *Trashed { return nil })
+		live, err := s.collect(ctx, s.sessionsRoot(), nil, q.WithMessages)
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -137,7 +137,7 @@ func (s *Store) listOverviews(ctx context.Context, q ListQuery) (ListPage, error
 		gone, err := s.collect(ctx, lib.trashRoot(), func(id string) *Trashed {
 			t := byID[id]
 			return &t
-		})
+		}, q.WithMessages)
 		if err != nil {
 			return ListPage{}, err
 		}
@@ -175,7 +175,7 @@ func (s *Store) listOverviews(ctx context.Context, q ListQuery) (ListPage, error
 
 // collect reads every session directory under root. Names starting with "." are
 // staging. Unreadable sessions come back with Err set.
-func (s *Store) collect(ctx context.Context, root string, trashed func(id string) *Trashed) ([]ListItem, error) {
+func (s *Store) collect(ctx context.Context, root string, trashed func(id string) *Trashed, withMessages bool) ([]ListItem, error) {
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -192,11 +192,15 @@ func (s *Store) collect(ctx context.Context, root string, trashed func(id string
 			continue
 		}
 		id, dir := e.Name(), filepath.Join(root, e.Name())
-		t := trashed(id)
-		item := ListItem{Trashed: t}
-		item.Overview, item.Err = s.overviewAt(ctx, dir, id, t == nil)
+		var item ListItem
+		if trashed != nil {
+			item.Trashed = trashed(id)
+		}
+		item.Overview, item.Err = s.overviewAt(ctx, dir, id, item.Trashed == nil)
 		if item.Err != nil {
 			item.SessionID = id
+		} else if withMessages && item.Messages == 0 {
+			continue
 		}
 		if attrs, err := readAttrs(dir); err == nil {
 			item.Attrs = attrs
@@ -209,9 +213,6 @@ func (s *Store) collect(ctx context.Context, root string, trashed func(id string
 }
 
 func (s *Store) listed(it ListItem, q ListQuery, now time.Time) bool {
-	if q.WithMessages && it.Messages == 0 && it.Workspace != "" {
-		return false // the overview was readable and confirms no messages
-	}
 	if it.Err != nil {
 		return q.Workspace == "" && q.Parent == "" // damaged: cannot be matched, so show unfiltered
 	}

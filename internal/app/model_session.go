@@ -507,11 +507,8 @@ func (m *model) forkSession() (string, error) {
 	if err := m.appendSessionState(); err != nil {
 		return "", err
 	}
-	if err := m.services.Session.Save(context.Background()); err != nil {
-		return "", err
-	}
 	originalID := m.sessionID()
-	opened, err := m.services.SessionStore.Fork(context.Background(), originalID, session.ForkOptions{})
+	opened, err := m.services.Session.Fork(context.Background(), session.ForkOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -534,10 +531,7 @@ func (m *model) renameSession(name, role string) (string, error) {
 		return "", err
 	}
 	if name != "" {
-		if err := opened.Save(context.Background()); err != nil {
-			return "", err
-		}
-		if err := m.services.SessionStore.SetAttrs(context.Background(), opened.ID(), session.AttrsPatch{Title: session.SetField(name)}); err != nil {
+		if err := opened.SetAttrs(context.Background(), session.AttrsPatch{Title: session.SetField(name)}); err != nil {
 			return "", err
 		}
 		m.env.SessionName = name

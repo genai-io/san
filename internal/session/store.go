@@ -85,6 +85,15 @@ func (s *Store) Create(ctx context.Context, opts CreateOptions) (*Session, error
 	return s.create(ctx, opts, false)
 }
 
+// CreateChild publishes the parent if needed and creates a linked session.
+func (s *Session) CreateChild(ctx context.Context, callID string, opts CreateOptions) (*Session, error) {
+	if err := s.Save(ctx); err != nil {
+		return nil, err
+	}
+	opts.Parent = &ParentLink{Session: s.ID(), CallID: callID}
+	return s.store.Create(ctx, opts)
+}
+
 // NewDraft opens a fresh session without a transcript on disk. State and
 // annotations stay in memory until an activity is recorded or Save is called.
 func (s *Store) NewDraft(ctx context.Context, opts CreateOptions) (*Session, error) {
@@ -129,10 +138,11 @@ func (s *Store) create(ctx context.Context, opts CreateOptions, draft bool) (*Se
 		Payload: SessionCreatePayload{ProjectID: s.projectID, Workspace: opts.Workspace,
 			InitialCWD: opts.InitialCWD, AgentID: opts.AgentID, Config: opts.Config, Parent: opts.Parent}}
 	if draft {
-		writer, prepared, err := s.prepareSession(ctx, "create", opts.ID, create, validation)
+		prepared, err := s.prepareSession(ctx, "create", opts.ID, create, validation)
 		if err != nil {
 			return nil, err
 		}
+		writer := prepared.owner
 		writer.state.projection, writer.state.validation = prepared.projection, prepared.validation
 		return &Session{store: s, writer: writer, draft: true}, nil
 	}
@@ -172,6 +182,14 @@ type ForkOptions struct {
 	Seq uint64
 }
 
+// Fork publishes the current session if needed, then copies its committed history.
+func (s *Session) Fork(ctx context.Context, opts ForkOptions) (*Session, error) {
+	if err := s.Save(ctx); err != nil {
+		return nil, err
+	}
+	return s.store.Fork(ctx, s.ID(), opts)
+}
+
 func (s *Store) Fork(ctx context.Context, id string, opts ForkOptions) (*Session, error) {
 	if err := s.checkID(ctx, id); err != nil {
 		return nil, err
@@ -205,6 +223,14 @@ func (s *Store) List(ctx context.Context, query ListQuery) (ListPage, error) {
 		return ListPage{}, err
 	}
 	return s.listOverviews(ctx, query)
+}
+
+// SetAttrs publishes the current session if needed and changes its attributes.
+func (s *Session) SetAttrs(ctx context.Context, patch AttrsPatch) error {
+	if err := s.Save(ctx); err != nil {
+		return err
+	}
+	return s.store.SetAttrs(ctx, s.ID(), patch)
 }
 
 // SetAttrs changes user intent without taking the conversation's writer lock.

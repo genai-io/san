@@ -212,13 +212,18 @@ func (m *model) describeImages(content string, images []core.Attachment) string 
 	if !vision {
 		sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
 	}
+	var imagesDir string
 	for i, img := range images {
 		path := img.Path
 		if path == "" {
-			// Persist clipboard bytes instead of pointing the model at a temp
-			// path that will vanish when this process exits.
-			if owner, err := m.openCurrentSession(); err == nil && owner.Save(context.Background()) == nil {
-				path, _ = image.EnsureFilePath(img, m.services.SessionStore.ImagesDir(owner.ID()))
+			// Keep clipboard bytes available when the transcript is resumed.
+			if imagesDir == "" {
+				if owner, err := m.openCurrentSession(); err == nil {
+					imagesDir, _ = owner.ImagesDir(context.Background())
+				}
+			}
+			if imagesDir != "" {
+				path, _ = image.EnsureFilePath(img, imagesDir)
 			}
 		}
 		if path == "" {
