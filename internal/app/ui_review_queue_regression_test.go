@@ -20,7 +20,7 @@ func TestUIReviewCompactQueueBudgets(t *testing.T) {
 						m.userInput.Queue.Enqueue("你好 selected message with long text", []core.Attachment{{Image: ai.Image{FileName: "image.png"}}})
 					}
 					m.userInput.Queue.SelectIdx = selected
-					row := ansi.Strip(m.renderQueuePreview())
+					row := ansi.Strip(m.renderQueuePreview(m.env.Height))
 					if ansi.StringWidth(row) >= width {
 						t.Fatalf("row width %d >= %d: %q", ansi.StringWidth(row), width, row)
 					}
@@ -43,7 +43,7 @@ func TestQueuePreviewCountsOnlyHiddenMessages(t *testing.T) {
 						m.userInput.Queue.Enqueue(fmt.Sprintf("prompt-%d", i), nil)
 					}
 					m.userInput.Queue.SelectIdx = selected
-					view := ansi.Strip(m.renderQueuePreview())
+					view := ansi.Strip(m.renderQueuePreview(m.env.Height))
 					limit := 1
 					if height == 24 {
 						limit = 5
@@ -75,11 +75,34 @@ func TestQueuePreviewCountsOnlyHiddenMessages(t *testing.T) {
 	}
 }
 
+func TestQueueAndWaitUseOnlyAvailableRows(t *testing.T) {
+	for _, height := range []int{4, 5, 6} {
+		m := fixedComposerModel(40, height)
+		m.conv.Stream.Active, m.conv.Stream.Inferring = true, true
+		for _, queued := range []bool{false, true} {
+			if queued {
+				m.userInput.Queue.Enqueue("queued first", nil)
+				m.userInput.Queue.Enqueue("queued edit", nil)
+				m.userInput.Queue.SelectIdx = 1
+			}
+			view := m.View()
+			plain := ansi.Strip(view.Content)
+			if rowCount(plain) != height || view.Cursor == nil || view.Cursor.Position.Y != height-3 {
+				t.Fatalf("height=%d queued=%v: composer overflowed: cursor=%v\n%s", height, queued, view.Cursor, plain)
+			}
+			if strings.Contains(plain, "queued edit") != (height > 4 && queued) ||
+				strings.Contains(plain, "✦ On it") != (height > 4 && !queued) {
+				t.Fatalf("height=%d queued=%v: wrong activity row:\n%s", height, queued, plain)
+			}
+		}
+	}
+}
+
 func TestUIReviewCompactQueueHintMatchesActualRouting(t *testing.T) {
 	m := fixedComposerModel(40, 12)
 	m.userInput.Queue.Enqueue("first", nil)
 	m.userInput.Queue.Enqueue("second", nil)
-	preview := ansi.Strip(m.renderQueuePreview())
+	preview := ansi.Strip(m.renderQueuePreview(m.env.Height))
 	if !strings.Contains(preview, "first") || strings.Contains(preview, "↑ edit") {
 		t.Fatalf("misleading next-item preview: %q", preview)
 	}

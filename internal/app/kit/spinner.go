@@ -19,6 +19,13 @@ var (
 	dotMid    = AdaptiveColor{Dark: "#8F8F90", Light: "#7F7F80"}
 	dotBreath = [...]AdaptiveColor{dotFaint, dotFaint, dotMid, CurrentTheme.TextBright, CurrentTheme.TextBright, dotMid}
 
+	// The tracker dot has a darker floor against light backgrounds.
+	// Keep the same cadence and dark-mode colors as the transcript dot.
+	taskDotFaint  = AdaptiveColor{Dark: dotFaint.Dark, Light: "#788391"}
+	taskDotMid    = AdaptiveColor{Dark: dotMid.Dark, Light: CurrentTheme.TextDim.Light}
+	taskDotPeak   = AdaptiveColor{Dark: CurrentTheme.TextBright.Dark, Light: CurrentTheme.Primary.Light}
+	taskDotBreath = [...]AdaptiveColor{taskDotFaint, taskDotFaint, taskDotMid, taskDotPeak, taskDotPeak, taskDotMid}
+
 	// The star peaks at body text.
 	starFaint  = AdaptiveColor{Dark: "#3F3F46", Light: "#E4E4E7"}
 	starMid    = AdaptiveColor{Dark: "#6E7480", Light: "#A1A1AA"}
@@ -30,6 +37,11 @@ var (
 // is done, so the color says done and the breathing says waiting.
 func LiveDot(frame int) string {
 	return liveDotMark("●", frame)
+}
+
+// LiveTaskDot renders an executing task's filled counterpart to the pending circle.
+func LiveTaskDot(frame int) string {
+	return lipgloss.NewStyle().Foreground(taskDotBreath[frame%len(taskDotBreath)]).Render("●")
 }
 
 // MemoryMark identifies a memory being read or supplied as context.

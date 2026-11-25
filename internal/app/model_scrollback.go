@@ -325,7 +325,7 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 		return nil
 	}
 	bottom, params := m.frameBottom()
-	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveContent(params)))
+	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveBody(params)))
 	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
 	overflow := len(rows) - keep
 	if overflow <= 0 {
@@ -513,15 +513,14 @@ func (m *model) insertChunkAboveOneRow(id uint64) tea.Cmd {
 // layout implies.
 func (m *model) frameBottom() (string, conv.RenderContext) {
 	trackerView, history := m.renderTrackerList()
-	var bottom string
 	params := m.messageRenderParams()
 	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
-		bottom = "\n\n" + ov.Render()
+		bottom := "\n\n" + ov.Render()
 		params.DockedModalActive = true
-	} else {
-		bottom, _ = m.renderFooter("", history)
+		return m.renderChatIndicators(trackerView, bottom) + bottom, params
 	}
-	return m.renderChatIndicators(trackerView, bottom) + bottom, params
+	bottom, _ := m.renderNormalBottom("", trackerView, history)
+	return bottom, params
 }
 
 // Split at cell boundaries without turning soft wraps into stored newlines.

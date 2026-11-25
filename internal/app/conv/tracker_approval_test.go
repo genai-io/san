@@ -45,7 +45,7 @@ func TestTrackerExplicitApprovalAndMixedPlan(t *testing.T) {
 	a, _ := RenderTrackerList(p)
 	p.Frame = 20
 	b, _ := RenderTrackerList(p)
-	if a != b || !strings.Contains(stripANSI(a), "\n● Worker · Awaiting approval\n") || strings.Contains(stripANSI(a), "Preparing test command") {
+	if a != b || !strings.Contains(stripANSI(a), "\n ○ Worker · Awaiting approval\n") || strings.Contains(stripANSI(a), "Preparing test command") {
 		t.Fatalf("approval should stay still and replace the last activity:\n%s", a)
 	}
 	if !strings.Contains(a, "Plan intent") || !strings.Contains(a, "Background workers") || strings.Contains(a, "Queued") {
@@ -80,9 +80,9 @@ func TestTrackerRunningActivityPrecedesElapsedTime(t *testing.T) {
 		wantStart string
 		wantClock string
 	}{
-		{80, 50 * time.Second, "● Review deploy logs · Reading deploy.log · ", ""},
-		{42, 50 * time.Second, "● Review deploy logs · Reading", ""},
-		{42, 70 * time.Second, "● Review deploy logs · Reading", "1m "},
+		{80, 50 * time.Second, " ● Review deploy logs · Reading deploy.log · ", ""},
+		{42, 50 * time.Second, " ● Review deploy logs · Reading", ""},
+		{42, 70 * time.Second, " ● Review deploy logs · Reading", "1m "},
 		{30, 70 * time.Second, "● Review deploy logs · 1m ", "1m "},
 	} {
 		params.Width = tc.width

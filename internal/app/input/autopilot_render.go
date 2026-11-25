@@ -148,7 +148,7 @@ func apPad(s string, w int) string {
 // ── Styles ──────────────────────────────────────────────────────────────
 
 var (
-	// Title lockup: teal star + accent-bold wordmark + a muted tagline.
+	// Title lockup: focus-colored star + accent-bold wordmark + a muted tagline.
 	apTitleGlyphStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 	apTitleStyle         = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	apBreadcrumbDimStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)

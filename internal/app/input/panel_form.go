@@ -329,7 +329,7 @@ func findEditable(rows []configRow, start, step, fallback int) int {
 
 // ── Styles ──────────────────────────────────────────────────────────────
 
-// Palette: teal (Focus) is the single accent, reserved for "focus / on" — the
+// Palette: Focus is the single accent, reserved for "focus / on" — the
 // cursor caret and a checked box. Everything structural is grayscale
 // (Text → Muted → TextDim → Faint). Error red is the only other hue, kept for
 // the rare validation message.
@@ -362,7 +362,7 @@ var (
 				Foreground(kit.CurrentTheme.Text).
 				Bold(true)
 
-	// Save button — a neutral filled pill; the teal cursor caret marks focus.
+	// Save button — a neutral filled pill; the cursor caret marks focus.
 	// Dimmed when the snapshot fails validation.
 	selflearnSaveButtonStyle = lipgloss.NewStyle().
 					Background(kit.SearchBg).

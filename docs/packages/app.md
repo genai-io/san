@@ -319,17 +319,15 @@ Submitting an idle turn immediately shows the response spinner while waiting
 for the first inference event. This waiting state is display-only; the agent's
 `InferenceStart` creates the actual assistant message. Input during the wait is
 queued, and cancellation or a failed send clears the spinner.
-During an inference, one breathing status row reads `✦ On it · 17s`, including
-while commentary, thinking, or partial tool arguments stream. It is footer
-content, ordered below Tasks/background indicators and queued messages. The
-Tasks heading is flush left; task rows are indented under it. When height permits,
-a blank row separates Tasks from the live status, which stays directly against
-the input's top separator. Queued
-prompts have no heading; `+N more` counts only hidden messages, inline on short
-screens. Approval and
-question panels suppress the standalone row. Genuine silence after 30 seconds
-shows `Waiting for model`; actual retries show their attempt number. Tool-input
-progress tracks liveness internally without displaying byte counts or fake phases.
+During inference and between steps, `✦ On it · 17s` can appear on its own row
+above the composer's top divider, never in the live transcript. It is a fallback: visible
+queued prompts or task indicators make the generic label unnecessary. Genuine
+silence after 30 seconds shows `Waiting for model`; actual retries show their
+attempt number, even when other indicators are visible. Queued prompts stay
+above Tasks and the divider. They have no heading; `+N more` counts only hidden
+messages, inline on short screens. Approval and question panels suppress the
+foreground status. Tool-input progress tracks liveness internally without
+displaying byte counts or fake phases.
 `InferenceEnd` retires generation progress before pending tools run. Failed
 attempts stay in inference diagnostics rather than adding red conversation notices.
 Compaction uses the same breathing footer row: `✦ Summarizing conversation · 12s`.
@@ -402,16 +400,19 @@ content, or accepting late reports for completed/foreign calls. Agent activity
 continues using the separate bounded bridge.
 
 The task tracker above the input shows at most eight task rows and one overflow
-summary. Its `≣ Tasks` heading keeps plan progress and adds a muted running
-count when it fits and no in-progress rows are folded. Stalled rows and workers
-awaiting approval are not counted as running. Narrow terminals drop the optional
-count and then the icon before clipping the title.
+summary. Its `≣ Tasks` heading keeps plan progress but leaves liveness to the
+breathing task dots instead of repeating a running count. The heading icon
+and task markers share a column; their labels align beside it. The whole block
+uses the same one-column left gutter as queued prompts when space permits.
 Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
 exception status. Finished tasks leave the tracker when their completion notice
 appears. Notices and completed tool results settle without waiting for running
-tools, which remain below them.
+tools, which remain below them. A hollow `○` marks work not executing, including
+pending, stalled, and awaiting approval. Executing rows use a breathing `●`
+with the same leading column. On light backgrounds the dimmest frame stays
+visible without changing the cadence.
 Inference output uses a stable message ID; each retry gets a new one.
 Completion notices and output records remain available. Resumed completed
 records whose workers are absent have no live notice to wait for. Announced

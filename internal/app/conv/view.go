@@ -90,9 +90,8 @@ type RenderContext struct {
 	// key no longer reaches it.
 	Interactive bool
 
-	// waitingAtTail keeps transient waiting chrome after settled notices without
-	// moving the owning assistant's reasoning or response text.
-	waitingAtTail bool
+	// Live waiting is rendered separately from the transcript.
+	suppressWaitingRow bool
 }
 
 type toolBlock struct {
@@ -369,14 +368,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingDisplay:      p.ThinkingDisplay,
 		ThinkingDuration:     msg.ThinkingDuration,
 		WaitStartedAt:        p.StreamStartedAt,
-		SuppressWaitingRow:   p.Inferring,
-	}
-	waiting := params
-	waiting.Content = sliceFrom(waiting.Content, waiting.ContentCommittedLen)
-	if p.waitingAtTail && waiting.waitingRow() != "" {
-		// Only suppress the empty response's waiting row. Reasoning remains at
-		// its transcript position, with its original streaming ownership.
-		params.BulletEmitted = true
+		SuppressWaitingRow:   p.Inferring || p.suppressWaitingRow,
 	}
 	base := RenderAssistantMessage(params)
 
@@ -647,66 +639,58 @@ func boundedWorkerRows(rows []string, width int) string {
 	return strings.Join(rows, "\n")
 }
 
-// RenderActiveContent combines the live body and its independent generation
-// status. The app budgets these separately when the terminal needs clipping.
+// RenderActiveContent combines the live transcript and its separate waiting status.
 func RenderActiveContent(p RenderContext) string {
 	content := RenderActiveBody(p)
-	if status := RenderInferenceStatus(p); status != "" {
+	if status, _ := RenderForegroundWait(p); status != "" {
 		if strings.TrimSpace(content) == "" {
 			return status
 		}
-		return strings.TrimRight(content, "\n") + "\n" + status
+		return content + "\n" + status
 	}
 	return content
 }
 
-// RenderActiveBody omits generation status so the app can reserve its row above
-// the composer, even on a short terminal or during a scrollback handoff.
+// RenderActiveBody leaves all foreground waiting feedback to the caller.
 func RenderActiveBody(p RenderContext) string {
 	p.Interactive = true
-	waiting := p.StreamWaiting
-	for i := p.CommittedCount; i < len(p.Messages); i++ {
-		msg := p.Messages[i]
-		if msg.Role != core.ChatAssistant || !p.StreamActive || msg.ID == "" || msg.ID != p.StreamMessageID {
-			continue
-		}
-		params := AssistantParams{
-			StreamActive: true, IsLast: true,
-			Content:       sliceFrom(msg.Content, msg.ContentCommittedLen),
-			BulletEmitted: msg.BulletEmitted, ToolCalls: msg.ToolCalls,
-		}
-		if params.waitingRow() != "" {
-			waiting = true
-			p.waitingAtTail = true
-		}
-	}
-	content := renderActiveMessageRange(p)
-	if p.StreamActive && p.Inferring {
-		return strings.TrimRight(content, "\n")
-	}
-	// A turn between steps (one committed, the next not yet streaming) keeps
-	// its spinner, or the row would vanish and come back.
-	if waiting || p.StreamActive && strings.TrimSpace(content) == "" {
-		content += "\n" + RenderAssistantMessage(AssistantParams{
-			StreamActive: true, IsLast: true, Frame: p.Frame,
-			DockedModalActive: p.DockedModalActive, Width: p.Width,
-			WaitStartedAt: p.StreamStartedAt,
-		})
-	}
-	return content
+	p.suppressWaitingRow = true
+	return strings.TrimRight(renderActiveMessageRange(p), "\n")
 }
 
-// RenderInferenceStatus is one live-only row. It is separate from assistant
-// content so the application can reserve it even when the body is clipped.
-func RenderInferenceStatus(p RenderContext) string {
-	if !p.StreamActive || !p.Inferring || p.DockedModalActive {
-		return ""
+// RenderForegroundWait renders submission, inference, and between-step waits in
+// one slot. Routine waits can yield to other visible activity in the footer.
+func RenderForegroundWait(p RenderContext) (row string, routine bool) {
+	if !p.StreamActive || p.DockedModalActive {
+		return "", false
 	}
-	label := ""
-	if p.InferenceAttempt > 1 {
-		label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
+	label := "On it"
+	if p.Inferring || p.StreamWaiting {
+		switch {
+		case p.InferenceAttempt > 1:
+			label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
+		case modelWaitQuiet(p.StreamStartedAt, p.InferenceLastDataAt):
+			label = "Waiting for model"
+		}
+	} else if !waitingBetweenSteps(p) {
+		return "", false
 	}
-	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label)
+	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label), label == "On it"
+}
+
+func waitingBetweenSteps(p RenderContext) bool {
+	if p.BuildingTool != "" || len(p.PendingCalls) > 0 || len(p.ManagedAgents) > 0 {
+		return false // Tool and worker rows own this activity.
+	}
+	settled := true
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		msg := p.Messages[i]
+		if msg.Role == core.ChatAssistant && msg.ID != "" && msg.ID == p.StreamMessageID {
+			return sliceFrom(msg.Content, msg.ContentCommittedLen) == "" && !msg.BulletEmitted && len(msg.ToolCalls) == 0
+		}
+		settled = settled && settledNotice(msg)
+	}
+	return settled
 }
 
 // RenderPreparationStatus keeps input preparation in the same row as inference.
@@ -715,7 +699,10 @@ func RenderPreparationStatus(p RenderContext, startedAt time.Time, detail string
 		return ""
 	}
 	p.Width = max(1, p.Width-1)
-	row := RenderInferenceStatus(p)
+	var row string
+	if p.Inferring || p.StreamWaiting {
+		row, _ = RenderForegroundWait(p)
+	}
 	if row == "" {
 		row = renderModelWait(p.Frame, p.Width, startedAt, startedAt, "On it")
 	}

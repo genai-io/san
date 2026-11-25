@@ -66,7 +66,7 @@ func TestTaskHistoryAdaptsToWidth(t *testing.T) {
 		m := model{env: env{Width: tc.width}}
 		row := ansi.Strip(m.renderFooterStatus(status, "2 failed · 2 stopped"))
 		suffix, ok := strings.CutPrefix(row, status)
-		if !ok || strings.TrimSpace(suffix) != tc.hint || (suffix != "" && ansi.StringWidth(row) != tc.width-1) {
+		if !ok || strings.TrimSpace(suffix) != tc.hint || suffix != "" && ansi.StringWidth(row) != tc.width-1 {
 			t.Fatalf("width %d: got %q, want status with %q", tc.width, row, tc.hint)
 		}
 	}
@@ -77,7 +77,7 @@ func TestTaskHistoryStaysDiscoverableWhenIdle(t *testing.T) {
 	addPastTasks(m, task.StatusStopped)
 	frame, cursor := m.viewString()
 	rows := strings.Split(ansi.Strip(frame), "\n")
-	if cursor == nil || cursor.Position.Y != 9 || strings.TrimSpace(rows[7]) != "/tasks · 1 stopped" || strings.Contains(frame, "Tasks ·") {
+	if cursor == nil || cursor.Position.Y != 9 || !strings.HasSuffix(rows[7], " /tasks · 1 stopped") || rows[8] != strings.Repeat("─", 79) || strings.Contains(frame, "Tasks ·") {
 		t.Fatalf("idle history not attached to the composer:\n%s", frame)
 	}
 	m.conv.ShowTasks = false
@@ -100,25 +100,20 @@ func TestFooterIntegratedHistoryQueueAndInferenceOrder(t *testing.T) {
 				view := m.View()
 				plain := ansi.Strip(view.Content)
 				lines := strings.Split(plain, "\n")
-				at := -1
-				for i, line := range lines {
-					if strings.Contains(line, "✦ On it") {
-						at = i
-					}
-				}
-				if strings.Count(plain, "✦") != 1 || at < 0 || at+1 >= len(lines) || !strings.HasPrefix(lines[at+1], "─") {
-					t.Fatalf("inference not single and adjacent to input:\n%s", plain)
+				at := height - 5
+				if strings.Contains(plain, "✦") || lines[at+1] != strings.Repeat("─", width-1) {
+					t.Fatalf("visible live task should replace routine inference feedback:\n%s", plain)
 				}
 				wantHint := "/tasks"
 				if width == 100 {
 					wantHint += " · 1 failed · 1 stopped · 1 interrupted"
 				}
 				if !strings.HasSuffix(lines[at], wantHint) || strings.Count(plain, "/tasks") != 1 {
-					t.Fatalf("history must appear once, on the inference row:\n%s", plain)
+					t.Fatalf("history must appear once above the composer divider:\n%s", plain)
 				}
 				for _, label := range []string{"Tasks", "active-footer-worker", "pending-msg"} {
-					if index := strings.Index(plain, label); index >= 0 && index > strings.Index(plain, "✦ On it") {
-						t.Fatalf("%s placed below inference:\n%s", label, plain)
+					if index := strings.Index(plain, label); index >= 0 && index >= strings.Index(plain, lines[at]) {
+						t.Fatalf("%s placed below the composer rule:\n%s", label, plain)
 					}
 					if height == 24 && !strings.Contains(plain, label) {
 						t.Fatalf("roomy integrated footer lost %s:\n%s", label, plain)

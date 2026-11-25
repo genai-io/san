@@ -12,9 +12,9 @@ func TestUpdateNoticeSharesInferenceRow(t *testing.T) {
 		m := modelWithInferenceProgress(24)
 		m.env.Width = width
 		separator := strings.Repeat("─", width-1)
-		before, beforeInput := m.renderFooter(separator, "")
+		before, beforeInput := m.renderNormalBottom(separator, "", "")
 		m.updateInstalled = "1.25.1"
-		footer, inputRow := m.renderFooter(separator, "")
+		footer, inputRow := m.renderNormalBottom(separator, "", "")
 		lines := strings.Split(ansi.Strip(footer), "\n")
 		status := lines[inputRow-2]
 		if !strings.Contains(status, "On it") || lines[inputRow-1] != separator {

@@ -31,11 +31,8 @@ type Theme struct {
 	AI        AdaptiveColor
 	Separator AdaptiveColor
 
-	// Focus is the single vivid brand accent (teal). It is reserved for the
-	// "you are here" affordances — the selected-row bar, the input caret, the
-	// active tab — so focus reads consistently and the brand mark from the
-	// splash carries into the live UI. Everything else stays in the cool-gray
-	// ramp; Focus is the only saturated hue, used sparingly.
+	// Focus is the brand accent for the star, input prompt, and selection
+	// indicators. Keep it separate from semantic status colors.
 	Focus AdaptiveColor
 
 	Text         AdaptiveColor
@@ -73,7 +70,7 @@ var CurrentTheme = Theme{
 	AI:        AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},
 	Separator: AdaptiveColor{Dark: "#30445E", Light: "#CFD8E3"},
 
-	Focus: AdaptiveColor{Dark: "#5EEAD4", Light: "#0F766E"},
+	Focus: AdaptiveColor{Dark: "#80A8F1", Light: "#305C9F"},
 
 	Text:         AdaptiveColor{Dark: "#D8E2F0", Light: "#1F2937"},
 	TextDim:      AdaptiveColor{Dark: "#9AAEC4", Light: "#57606A"},

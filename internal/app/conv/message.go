@@ -60,7 +60,7 @@ var (
 
 	// A settled bullet is the body text color, the same as a tool row's, so
 	// every finished ● in the conversation reads alike. The conversation body
-	// stays monochrome — teal is reserved for the user's "❭" marker.
+	// stays monochrome — the focus color is reserved for the user's "❭" marker.
 	bulletStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Text)
 
@@ -489,13 +489,17 @@ func (p AssistantParams) waitingRow() string {
 
 const quietModelWaitAfter = 30 * time.Second
 
-// The breathing mark is UI liveness, not proof of model progress. Explain a
-// quiet connection only after real model data has stopped arriving.
-func renderModelWait(frame, width int, startedAt, lastDataAt time.Time, label string) string {
+func modelWaitQuiet(startedAt, lastDataAt time.Time) bool {
 	if lastDataAt.IsZero() {
 		lastDataAt = startedAt
 	}
-	if label == "" && !lastDataAt.IsZero() && time.Since(lastDataAt) >= quietModelWaitAfter {
+	return !lastDataAt.IsZero() && time.Since(lastDataAt) >= quietModelWaitAfter
+}
+
+// The breathing mark is UI liveness, not proof of model progress. Explain a
+// quiet connection only after real model data has stopped arriving.
+func renderModelWait(frame, width int, startedAt, lastDataAt time.Time, label string) string {
+	if label == "" && modelWaitQuiet(startedAt, lastDataAt) {
 		label = "Waiting for model"
 	}
 	if label == "" {
