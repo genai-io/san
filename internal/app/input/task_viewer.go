@@ -164,6 +164,7 @@ func (v *TaskViewer) rebuild() {
 	}
 	v.body.SetHeight(max(1, v.height-4-strings.Count(v.hint(), "\n")-1-transcriptFrameMargin))
 	offset := v.body.YOffset()
+	width := max(1, v.width-2)
 	var lines []string
 	if v.detail {
 		item, ok := v.current()
@@ -222,18 +223,25 @@ func (v *TaskViewer) rebuild() {
 	} else {
 		active, history := v.groupedItems()
 		v.rowOffsets = make(map[string]int, len(v.items))
-		rowOffset := 0
-		addLine := func(line string) {
-			lines = append(lines, line)
-			rowOffset += strings.Count(ansi.Wrap(line, max(1, v.width-2), " "), "\n") + 1
+		addWrapped := func(text string) {
+			lines = append(lines, strings.Split(text, "\n")...)
 		}
+		addLine := func(line string) { addWrapped(ansi.Wrap(line, width, " ")) }
 		addItem := func(item TaskViewItem) {
-			v.rowOffsets[item.ID] = rowOffset
+			v.rowOffsets[item.ID] = len(lines)
 			prefix := "  ● "
 			if item.ID == v.selected {
 				prefix = "› ● "
 			}
-			addLine(prefix + taskViewSubject(item) + " [" + taskViewStatus(item) + "]")
+			label := strings.TrimSpace(taskViewSubject(item) + " [" + taskViewStatus(item) + "]")
+			prefixWidth := ansi.StringWidth(prefix)
+			if width-prefixWidth < 2 {
+				addLine(prefix + label)
+				return
+			}
+			// Wrap after reserving the marker gutter so continuation lines start at the subject.
+			wrapped := ansi.Wrap(label, width-prefixWidth, " ")
+			addWrapped(prefix + strings.ReplaceAll(wrapped, "\n", "\n"+strings.Repeat(" ", prefixWidth)))
 		}
 		for _, item := range active {
 			addItem(item)
@@ -256,11 +264,15 @@ func (v *TaskViewer) rebuild() {
 		}
 		if v.selected != "" {
 			if _, ok := v.live(v.selected); !ok {
-				lines = append(lines, "Selected task disappeared. Select a row to continue.")
+				addLine("Selected task disappeared. Select a row to continue.")
 			}
 		}
 	}
-	v.body.SetContent(ansi.Wrap(strings.Join(lines, "\n"), max(1, v.width-2), " "))
+	content := strings.Join(lines, "\n")
+	if v.detail {
+		content = ansi.Wrap(content, width, " ")
+	}
+	v.body.SetContent(content)
 	v.body.SetYOffset(offset)
 	// Preserve deliberate page scrolling unless rebuilding changed selection.
 	if !v.detail && v.selected != previousSelection {

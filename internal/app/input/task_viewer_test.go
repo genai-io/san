@@ -132,6 +132,42 @@ func TestTaskViewerNarrowActionsAndWrappedSelection(t *testing.T) {
 	}
 }
 
+func TestTaskViewerWrappedRowsAlignWithSubject(t *testing.T) {
+	const width = 32
+	var v TaskViewer
+	v.Show([]TaskViewItem{
+		{ID: "active", Subject: strings.Repeat("检查终端任务", 4), Status: task.StatusRunning},
+		{ID: "history", Subject: strings.Repeat("review the logs ", 4), Status: task.StatusCompleted},
+	}, width, 24)
+	v.HandleKeypress(taskKey("h"))
+	for _, selected := range []string{"active", "history"} {
+		rows := strings.Split(ansi.Strip(v.body.View()), "\n")
+		for _, id := range []string{"active", "history"} {
+			start := v.rowOffsets[id]
+			status := "[running]"
+			if id == "history" {
+				status = "[completed]"
+			}
+			prefix := "  ● "
+			if id == selected {
+				prefix = "› ● "
+			}
+			if !strings.HasPrefix(rows[start], prefix) || strings.TrimSpace(strings.TrimPrefix(rows[start], prefix)) == "" {
+				t.Fatalf("row %s at offset %d did not keep its prefix next to the subject: %q", id, start, rows[start])
+			}
+			for i := start + 1; ; i++ {
+				if i == len(rows) || !strings.HasPrefix(rows[i], "    ") || ansi.StringWidth(rows[i]) > width-1 {
+					t.Fatalf("row %s did not keep its continuation and status aligned:\n%s", id, v.body.View())
+				}
+				if strings.Contains(rows[i], status) {
+					break
+				}
+			}
+		}
+		v.HandleKeypress(taskKey("j"))
+	}
+}
+
 func TestTaskViewerSettledDetailsRetainResultsNotProgress(t *testing.T) {
 	for _, status := range []task.TaskStatus{task.StatusCompleted, task.StatusStopped, task.StatusKilled, task.StatusFailed} {
 		var v TaskViewer

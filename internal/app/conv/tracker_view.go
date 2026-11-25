@@ -82,21 +82,23 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 	running := 0
 	lastPlan := false
 	for i, t := range visible {
-		isPlan := todo.BackgroundTaskID(t) == ""
+		id := todo.BackgroundTaskID(t)
+		isPlan := id == ""
 		if plans > 0 && plans < len(items) && (i == 0 || isPlan != lastPlan) {
 			label := "Background workers"
 			if isPlan {
 				label = "Plan"
 			}
-			sb.WriteString(kit.TruncateText("  "+headerStyle.Render(label), max(1, params.Width)) + "\n")
+			sb.WriteString(kit.TruncateText(headerStyle.Render(label), max(1, params.Width)) + "\n")
 		}
 		lastPlan = isPlan
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
-		waiting := t.Status == todo.StatusInProgress && todo.BackgroundTaskID(t) != "" && params.AwaitingApproval[todo.BackgroundTaskID(t)]
-		if waiting && params.WorkerStatus != nil {
-			waiting = params.WorkerStatus(todo.BackgroundTaskID(t)).Status == task.StatusRunning
+		haveWorkerStatus := !isPlan && params.WorkerStatus != nil
+		var info task.TaskInfo
+		if haveWorkerStatus {
+			info = params.WorkerStatus(id)
 		}
-		if waiting {
+		if t.Status == todo.StatusInProgress && params.AwaitingApproval[id] && !isPlan && (!haveWorkerStatus || info.Status == task.StatusRunning) {
 			phase = itemApproval
 		}
 		if phase == itemRunning {
@@ -106,8 +108,7 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 		if phase == itemAborted {
 			progress = todo.BackgroundError(t)
 		}
-		if id := todo.BackgroundTaskID(t); id != "" && params.WorkerStatus != nil {
-			info := params.WorkerStatus(id)
+		if haveWorkerStatus && phase != itemApproval {
 			if phase == itemAborted {
 				// A final reason outranks stale activity (e.g. the last Read call).
 				if info.Error != "" {
@@ -116,7 +117,7 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 				if info.Status != task.StatusFailed && kit.IsRoutineStopReason(progress) {
 					progress = ""
 				}
-			} else if phase != itemFinished {
+			} else if phase == itemRunning {
 				progress = info.Progress
 				if progress == "" {
 					// Structured callers may supply only LiveView.
@@ -126,20 +127,14 @@ func RenderTrackerList(params TrackerListParams) (rows, history string) {
 			if info.OutputError != "" {
 				if phase == itemAborted && progress != "" {
 					progress += " · output log unavailable"
-				} else {
+				} else if progress != "" {
 					progress = "output log unavailable · " + progress
+				} else {
+					progress = "output log unavailable"
 				}
 			}
 		}
-		progress = strings.Join(strings.Fields(progress), " ")
-		// Keep one row per worker. Activity must not double tracker height and
-		// push sibling identities out of a short terminal.
-		suffix := ""
-		if progress != "" {
-			suffix = mutedStyle.Render(kit.TruncateText(" · "+progress, max(1, params.Width/2)))
-		}
-		line := renderItem(t, phase, max(1, params.Width-lipgloss.Width(suffix)), idWidth, params.Blockers, params.Frame, params.AgentColors)
-		sb.WriteString(kit.TruncateText(strings.TrimSuffix(line, "\n")+suffix, max(1, params.Width)) + "\n")
+		sb.WriteString(renderItem(t, phase, max(1, params.Width), idWidth, params.Blockers, params.Frame, params.AgentColors, strings.Join(strings.Fields(progress), " ")))
 	}
 
 	if folded := renderFoldedLine(hidden); folded != "" {
@@ -233,7 +228,7 @@ func renderFoldedLine(hidden [itemFinished + 1]int) string {
 		return ""
 	}
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	return "  " + mutedStyle.Render("…  "+strings.Join(parts, ", ")) + "\n"
+	return mutedStyle.Render("…  "+strings.Join(parts, ", ")) + "\n"
 }
 
 // itemPhase is how an item reads to the user. It collapses the recorded status,
@@ -295,14 +290,19 @@ func activeText(t *todo.Item) string {
 	return text
 }
 
-func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, frame int, agentColors map[string]string) string {
-	indent := "  "
+func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, frame int, agentColors map[string]string, progress string) string {
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	idTag := ""
+	gutter := " "
 	if todo.BackgroundTaskID(t) == "" {
-		idTag = fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
+		gutter += fmt.Sprintf("%-*s ", idWidth, "#"+t.ID)
 	}
 	subject := t.Subject
+	row := func(icon, subject, detail string) string {
+		if progress != "" && width/2 > 3 {
+			detail += mutedStyle.Render(" · " + kit.TruncateText(progress, width/2-3))
+		}
+		return renderItemLine(icon+gutter, subject, detail, width)
+	}
 
 	// A row owned by a background agent wears that agent's color (icon + text),
 	// mirroring its launch line in the flow; a plain todo keeps the status
@@ -318,38 +318,46 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 
 	switch phase {
 	case itemApproval:
-		return renderItemLine(indent, mutedStyle.Render("●"), idTag, activeText(t), mutedStyle.Render("[awaiting approval]"), width)
+		return renderItemLine(tint(mutedStyle).Render("●")+gutter, tint(lipgloss.NewStyle()).Render(activeText(t)), mutedStyle.Render(" · Awaiting approval"), width)
 	case itemAborted:
 		abortedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
 		if detail := todo.BackgroundStatusDetail(t); detail == "stopped" || detail == "killed" || detail == todo.StatusDetailInterrupted {
 			abortedStyle = mutedStyle
 		}
-		detail := mutedStyle.Render("[" + todo.BackgroundStatusDetail(t) + "]")
-		return renderItemLine(indent, abortedStyle.Render("●"), idTag, subject, detail, width)
+		detail := mutedStyle.Render(" [" + todo.BackgroundStatusDetail(t) + "]")
+		return row(abortedStyle.Render("●"), subject, detail)
 
 	case itemFinished:
 		detail := ""
 		if todo.BackgroundTaskID(t) != "" {
-			detail = mutedStyle.Render("[completed]")
+			detail = mutedStyle.Render(" [completed]")
 		}
-		return renderItemLine(indent, tint(trackerCompletedStyle).Render("●"), idTag, tint(lipgloss.NewStyle()).Render(subject), detail, width)
+		return row(tint(trackerCompletedStyle).Render("●"), tint(lipgloss.NewStyle()).Render(subject), detail)
 
 	case itemStalled:
 		// Nothing is executing this item, so draw it at rest. Reaching here
 		// means the status outlived its executor within a live session — the
 		// model marked an item in_progress and moved on without closing it.
 		// Animating would claim work that isn't happening.
-		return renderItemLine(indent, mutedStyle.Render("◌"), idTag, activeText(t), mutedStyle.Render("[stalled]"), width)
+		return row(mutedStyle.Render("◌"), activeText(t), mutedStyle.Render(" [stalled]"))
 
 	case itemRunning:
 		// Breathe on the shared frame tick (a true ~360ms clock; see FrameClock)
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
+		prefix := kit.LiveDot(frame) + gutter
+		subject := tint(lipgloss.NewStyle()).Render(activeText(t))
 		detail := ""
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
-			detail = mutedStyle.Render("· " + elapsed)
+			detail = mutedStyle.Render(" · " + elapsed)
 		}
-		return renderItemLine(indent, kit.LiveDot(frame), idTag, tint(lipgloss.NewStyle()).Render(activeText(t)), detail, width)
+		// Spend spare columns on activity, not the task's identity. When the
+		// clock grows, trim or drop activity without shifting its starting column.
+		room := width - lipgloss.Width(prefix+subject+detail) - lipgloss.Width(" · ")
+		if progress != "" && room >= min(8, lipgloss.Width(progress)) {
+			detail = mutedStyle.Render(" · "+kit.TruncateText(progress, room)) + detail
+		}
+		return renderItemLine(prefix, subject, detail, width)
 
 	default:
 		detail := ""
@@ -360,10 +368,10 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 					blockerRefs[i] = "#" + b
 				}
 				blockedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-				detail = blockedStyle.Render("← " + strings.Join(blockerRefs, ", "))
+				detail = blockedStyle.Render(" ← " + strings.Join(blockerRefs, ", "))
 			}
 		}
-		return renderItemLine(indent, tint(trackerPendingStyle).Render("○"), idTag, tint(lipgloss.NewStyle()).Render(subject), detail, width)
+		return row(tint(trackerPendingStyle).Render("○"), tint(lipgloss.NewStyle()).Render(subject), detail)
 	}
 }
 
@@ -381,15 +389,7 @@ func agentForeground(t *todo.Item, agentColors map[string]string) (kit.AdaptiveC
 	return agentColor(color), true
 }
 
-func renderItemLine(indent, icon, id, subject, detail string, width int) string {
-	prefix := indent + icon + "  "
-	if id != "" {
-		prefix += id + "  "
-	}
-	suffix := ""
-	if detail != "" {
-		suffix = "  " + detail
-	}
+func renderItemLine(prefix, subject, suffix string, width int) string {
 	textWidth := width - lipgloss.Width(prefix+suffix)
 	if textWidth <= 0 {
 		subject = ""
