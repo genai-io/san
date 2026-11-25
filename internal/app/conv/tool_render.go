@@ -656,17 +656,14 @@ func renderAskUserCall(input, icon string, width int) string {
 	}
 	var sb strings.Builder
 	for i, question := range questions {
-		prefix := icon + " "
-		if i > 0 {
-			prefix = "  "
+		prefix := "  "
+		if i == 0 {
+			prefix = questionCallStyle.Render(icon + " ")
 		}
 		if len(questions) > 1 {
 			question = fmt.Sprintf("Q%d: %s", i+1, question)
 		}
-		for line := range strings.SplitSeq(question, "\n") {
-			sb.WriteString(renderGutteredLine(prefix, "  ", questionCallStyle, line, width))
-			prefix = "  "
-		}
+		sb.WriteString(renderGutteredProse(prefix, "  ", questionCallStyle, question, width))
 	}
 	return sb.String()
 }
@@ -917,8 +914,12 @@ func renderAgentLocalBody(body string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
+	return renderAgentLocalLines(strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n"))
+}
+
+func renderAgentLocalLines(lines []string) string {
 	var sb strings.Builder
-	for _, line := range strings.Split(xansi.Hardwrap(body, max(1, width-2), true), "\n") {
+	for _, line := range lines {
 		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
 	}
 	return sb.String()
@@ -964,15 +965,12 @@ func renderAgentResponsePreview(response string, width int, mdRenderer *MDRender
 		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
-	var sb strings.Builder
+	prefix := ""
 	if omitted := len(lines) - previewLines; omitted > 0 {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n")
+		prefix = toolResultStyle.Render(fmt.Sprintf("  … (%d)", omitted)) + "\n"
 		lines = lines[omitted:]
 	}
-	for _, line := range lines {
-		sb.WriteString(toolResultStyle.Render("  "+line) + "\n")
-	}
-	return sb.String()
+	return prefix + renderAgentLocalLines(lines)
 }
 
 func splitByProcessCount(body string, processCount int) (process, response string) {
@@ -1011,40 +1009,17 @@ func formatAgentDefinition(agent agentInput, width int) string {
 
 	if agent.Prompt != "" {
 		sb.WriteString(agentLabelStyle.Render("  ⎿  Prompt:") + "\n")
-		wrapWidth := width - lipgloss.Width(agentContentIndent)
-		for line := range strings.SplitSeq(agent.Prompt, "\n") {
-			for _, wrapped := range wrapLine(line, wrapWidth) {
-				sb.WriteString(toolResultExpandedStyle.Render(agentContentIndent+wrapped) + "\n")
-			}
+		prompt := agent.Prompt
+		if width > 0 {
+			wrapWidth := max(1, width-lipgloss.Width(agentContentIndent)-toolResultExpandedStyle.GetHorizontalFrameSize())
+			prompt = WrapProse(prompt, wrapWidth)
+		}
+		for line := range strings.SplitSeq(prompt, "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render(agentContentIndent+line) + "\n")
 		}
 	}
 
 	return sb.String()
-}
-
-func wrapLine(line string, width int) []string {
-	if width <= 0 || lipgloss.Width(line) <= width {
-		return []string{line}
-	}
-	words := strings.Fields(line)
-	if len(words) == 0 {
-		return []string{""}
-	}
-	var lines []string
-	current := words[0]
-	curWidth := lipgloss.Width(current)
-	for _, w := range words[1:] {
-		ww := lipgloss.Width(w)
-		if curWidth+1+ww > width {
-			lines = append(lines, current)
-			current = w
-			curWidth = ww
-		} else {
-			current += " " + w
-			curWidth += 1 + ww
-		}
-	}
-	return append(lines, current)
 }
 
 func buildDoneStats(toolUses, tokens int, duration, model string) string {
@@ -1497,7 +1472,12 @@ func renderAgentHeading(label string, width int, iconText string, color kit.Adap
 		text += toolResultStyle.Render(": " + desc)
 	}
 	if width > 0 {
-		text = xansi.Hardwrap(text, max(1, width-kit.ToolIconWidth), true)
+		room := max(1, width-kit.ToolIconWidth)
+		if hasDesc {
+			text = WrapProse(text, room)
+		} else {
+			text = xansi.Hardwrap(text, room, true)
+		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, text)
 }

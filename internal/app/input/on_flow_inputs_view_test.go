@@ -55,6 +55,31 @@ func TestFlowInputsViewKeepsValidationAndEditorVisible(t *testing.T) {
 	}
 }
 
+func TestFlowInputsViewWrapsSummaryValues(t *testing.T) {
+	const width = 20
+	const value = "中文SanRenderer，继续\nNext line."
+	var v FlowView
+	v.OpenDraft(flowUIFixture(), "sample", flowUISource, flowUISource, width, 24)
+	v.page, v.keys, v.field = flowPageInputs, []string{"input"}, 1
+	v.inputs = map[string]string{"input": value}
+	v.body.SetContent(v.renderInputSummary())
+	rendered := ansi.Strip(v.Render())
+	rows := strings.Split(rendered, "\n")
+	for i, line := range rows {
+		if strings.HasPrefix(line, "  ") && ansi.StringWidth(line) > width-4 {
+			t.Errorf("indented row exceeds viewport width: %q", line)
+		}
+		rows[i] = strings.TrimRight(line, " ") // Ignore viewport padding.
+	}
+	const want = "  中文\n  SanRenderer，\n  继续\n  Next line."
+	if !strings.Contains(strings.Join(rows, "\n"), want) {
+		t.Fatalf("summary does not contain %q in %q", want, rendered)
+	}
+	if v.inputs["input"] != value {
+		t.Errorf("rendering changed input to %q", v.inputs["input"])
+	}
+}
+
 func TestFlowInputsViewSummary(t *testing.T) {
 	var v FlowView
 	v.OpenDraft(flowUIFixture(), "sample", flowUISource, flowUISource, 40, 24)

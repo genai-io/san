@@ -88,6 +88,12 @@ func paragraphCJK(r rune) bool {
 	return isCJK(r) || unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
+// WrapProse wraps natural language at Unicode line boundaries, preserving
+// explicit line breaks and ANSI styling. Tabs occupy four display columns.
+func WrapProse(text string, width int) string {
+	return wrapParagraph(strings.ReplaceAll(text, "\t", "    "), width)
+}
+
 // wrapParagraph lays out plain-text byte ranges, then copies the styled input
 // once. Display-column slicing is both quadratic and unsafe when the slicing
 // and measuring APIs disagree about an ASCII-start grapheme (such as a keycap).

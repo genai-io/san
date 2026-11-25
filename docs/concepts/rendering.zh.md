@@ -191,7 +191,7 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 ## Markdown 走 MDRenderer
 
 [`internal/app/conv/markdown.go`](../../internal/app/conv/markdown.go)
-包了 [glamour](https://github.com/charmbracelet/glamour)。五处行为是
+包了 [glamour](https://github.com/charmbracelet/glamour)。这些行为是
 有意为之，不是 glamour 默认值：
 
 | 关注点 | 行为 |
@@ -200,6 +200,7 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 | 背景 | 自动检测深色/浅色。每次 `Render` 在内部 `rebuildIfNeeded()`，主题切换就重建。 |
 | 表格 | 在 glamour 看到之前抽出来，用 lipgloss 表格原语渲染，边框可控。 |
 | 软换行 | LLM 在 ~80 列硬换行；把软换行合成段落后再交给 glamour 按真实宽度换行。 |
+| 正文折行 | 中日韩段落、流式正文、思考文本、列表和引用按 Unicode 断行边界折行。Recap、已发送的用户消息、自然语言提问和 Agent 字段共用同一套规则。含引用式链接定义的 Markdown 仍走原有渲染，以保留链接解析。命令和 diff 使用各自的排版规则。 |
 | 内联标记 | 自定义内联 markdown pass 处理 glamour 渲染不好的部分（如嵌套格式里的反引号）。 |
 
 宽度为什么重要：glamour 根据配置宽度算列宽。终端 resize 后，scrollback

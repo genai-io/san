@@ -3,7 +3,7 @@ package input
 import (
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -25,7 +25,7 @@ func (b *approvalBashPreview) render(width int) string {
 	}
 	rows = append(rows, strings.TrimSuffix(kit.RenderCommandBlock(b.bashMeta.Command, width), "\n"))
 	if b.bashMeta.Description != "" {
-		rows = append(rows, ansi.Hardwrap(b.bashMeta.Description, max(1, width), true))
+		rows = append(rows, conv.WrapProse(b.bashMeta.Description, max(1, width)))
 	}
 	return strings.Join(rows, "\n")
 }

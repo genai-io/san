@@ -77,7 +77,7 @@ func renderAgentActivityPreview(activity []string, width, previewLines int) stri
 			continue
 		}
 		text := xansi.Strip(agentStatus([]string{entry}))
-		lines = append(lines, strings.Split(xansi.Hardwrap(text, max(1, width-2), true), "\n")...)
+		lines = append(lines, strings.Split(WrapProse(text, max(1, width-2)), "\n")...)
 	}
 	if len(lines) == 0 {
 		lines = []string{"Starting..."}
@@ -85,7 +85,7 @@ func renderAgentActivityPreview(activity []string, width, previewLines int) stri
 	if len(lines) > previewLines {
 		lines = lines[len(lines)-previewLines:]
 	}
-	return renderAgentLocalBody(strings.Join(lines, "\n"), width)
+	return renderAgentLocalLines(lines)
 }
 
 func renderAgentActivityCompact(activity []string, width int) string {
