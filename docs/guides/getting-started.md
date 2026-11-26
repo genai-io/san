@@ -53,39 +53,12 @@ for Anthropic). Supported providers and the env var each one reads:
 
 You can also set them in `.env` or `~/.san/providers.json`.
 
-A `.env` is read from the directory you launch San in, which is not necessarily
-a directory you wrote. It may therefore supply credentials but not the endpoint
-they are sent to: names ending in `_BASE_URL`, the proxy variables and
-`SSL_CERT_FILE` / `SSL_CERT_DIR` are ignored there, and San names them at
-startup when it skips one. Export the variable in your shell, or set the base
-URL from `/models`, to override an endpoint. For a `.env` tracked by Git, trust
-the workspace and restart San from that directory to load it. An untracked
-(for example gitignored) `.env` or one outside a Git repository loads at startup.
-
-To give a launch directory its own connection, create `~/.san/connections.json`
-(outside the checkout). For example:
-
-```json
-{
-  "projects": {"/absolute/path/to/client-project": "client-jira"},
-  "connections": {
-    "client-jira": {
-      "endpointEnv": "JIRA_BASE_URL",
-      "url": "https://client.atlassian.net",
-      "credentials": {"JIRA_API_TOKEN": "CLIENT_JIRA_TOKEN"}
-    }
-  }
-}
-```
-
-Use the exact directory printed by `pwd -P`. Each credential maps a variable
-expected by your tool to a shell variable holding the value for **that endpoint**.
-Map every authentication field your tool uses (including an email if required).
-San sets these variables together before loading `.env`, overriding inherited
-values for the mapped names only. A missing source stops startup rather than
-falling back to an unrelated token. Other directories keep their normal environment.
-The project `.env` cannot select or edit this binding; remove a redundant
-`*_BASE_URL` there if you no longer want the skipped-entry warning.
+At startup, variables defined in the launch directory's `.env` override inherited
+shell values for San and its child processes. Variables not in the file keep their
+inherited values. This includes endpoints such as `JIRA_BASE_URL`, proxies, and
+certificate settings: check where requests will go before using your credentials.
+For a Git-tracked `.env`, trust the workspace and restart San to load it. An
+untracked (including gitignored) `.env` or one outside Git loads at startup.
 
 Two providers take a subscription instead of a key: **ChatGPT Subscription**
 (OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in
