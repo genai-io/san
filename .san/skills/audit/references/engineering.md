@@ -43,7 +43,7 @@ Say under which conditions the design is reasonable, which specific scenario bre
 
 **Structure.** Look beyond local readability. Can a developer find who owns a behavior and change it within a clear boundary without editing unrelated modules? Check the nearest `AGENTS.md`, package map, design principles, and dependency rules against the actual responsibilities and dependency directions of directories, packages, and files.
 
-Use a concrete change to test the boundaries. Is one rule scattered across several places? Must unrelated features change together? Does a layer add only another hop? File length and directory depth are not problems by themselves. Identify the paths, calls, and maintenance cost. Propose the smallest adjustment that addresses the cause and verify the dependency direction and relevant package tests.
+Trace a concrete change through imports and call sites: which package decides the rule or owns the state, and which packages only consume it? If changing the rule means editing unrelated callers, show where and why. Keep the behavior with its owner; do not add a layer just to make directories look alike. For a proposed move, check the resulting import direction, read the qualified name in a real caller, and identify the owner and caller tests that should still pass.
 
 **Names.** Judge files, types, structs, objects, fields, variables, environment variables, and functions in the context of the project. Consult `docs/reference/file-naming.md`, public contracts, documentation, and major callers. For example, trace an environment variable through its configuration field to the consuming function: do all three express the same concept and unit? Inspect key names only, never environment variable values.
 
