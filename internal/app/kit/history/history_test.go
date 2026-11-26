@@ -1,6 +1,19 @@
 package history
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
+
+func TestLoadContinuesAfterLargePaste(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cwd := t.TempDir()
+	Save(cwd, []string{"first", strings.Repeat("x", 300*1024), "later\nreply"})
+	if got := Load(cwd); !slices.Equal(got, []string{"first", "later\nreply"}) {
+		t.Fatalf("loaded %d entries; want both ordinary prompts", len(got))
+	}
+}
 
 func TestEscapeUnescapeRoundTrip(t *testing.T) {
 	tests := []struct {

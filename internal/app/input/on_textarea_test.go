@@ -17,6 +17,79 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
+func TestQueuePasteSavesExpandedMessage(t *testing.T) {
+	m := Model{Queue: NewQueue(), Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: "draft\nnotes"})
+	m.Queue.Enqueue("queued: ", nil)
+	m.EnterQueueSelection()
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: "first\nsecond"})
+	m.HandleQueueSelectKey(tea.KeyPressMsg{Code: tea.KeyEsc})
+	item, ok := m.Queue.Dequeue()
+	if !ok || item.Content != "queued: first\nsecond" || m.FullValue() != "draft\nnotes" {
+		t.Fatalf("queued = %q, restored draft = %q", item.Content, m.FullValue())
+	}
+}
+
+func TestHistoryKeepsPasteChunksWithTheirDraft(t *testing.T) {
+	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+	entry := "Explain [Pasted text #1 +2 lines]"
+	m.History = HistoryNav{Items: []string{entry}, Index: -1}
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: "draft\nnotes"})
+	collapsed := m.Textarea.Value()
+	m.HistoryUp()
+	if got := m.FullValue(); got != entry {
+		t.Errorf("recalled %q", got)
+	}
+	m.HistoryDown()
+	if m.Textarea.Value() != collapsed || m.FullValue() != "draft\nnotes" {
+		t.Fatal("lost stashed draft")
+	}
+}
+
+func TestComposerPastedMarkerStaysLiteral(t *testing.T) {
+	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+	first := "Copied transcript:\n[Pasted text #2 +2 lines]"
+	second := "extra\nnotes"
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: first})
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: second})
+	marker := PastePlaceholder(2, 2)
+	m.Textarea.InsertString(marker)
+	if got := m.FullValue(); got != first+second+marker {
+		t.Fatalf("expanded text = %q", got)
+	}
+}
+
+func TestComposerInlineMultilinePaste(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+		m.Textarea.SetValue("left右")
+		m.Textarea.SetCursorColumn(4)
+		if replace {
+			m.Textarea.SelectAll()
+		}
+		m.HandleTextareaUpdate(tea.PasteMsg{Content: "first\n  second"})
+		m.HandleTextareaUpdate(tea.KeyPressMsg{Code: '!', Text: "!"})
+		want := "leftfirst\n  second!右"
+		if replace {
+			want = "first\n  second!"
+		}
+		if got := m.FullValue(); got != want || len(m.PastedChunks) != 1 {
+			t.Errorf("replace=%v: expanded %q, visible %q", replace, got, m.Textarea.Value())
+		}
+	}
+}
+
+func TestComposerPastePreservesSurroundingTextAndCursor(t *testing.T) {
+	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(string) []suggest.Suggestion { return nil })}
+	m.Textarea.SetValue("  left right  ")
+	m.Textarea.SetCursorColumn(7)
+	m.HandleTextareaUpdate(tea.PasteMsg{Content: "middle"})
+	m.HandleTextareaUpdate(tea.KeyPressMsg{Code: '!', Text: "!"})
+	if got := m.FullValue(); got != "  left middle!right  " {
+		t.Fatalf("composed text = %q", got)
+	}
+}
+
 func TestSuggestionCompletesInputKeyWithoutAddingSpace(t *testing.T) {
 	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(query string) []suggest.Suggestion {
 		if query == "/flow run demo " {
@@ -353,6 +426,12 @@ func TestProcessImageRefs(t *testing.T) {
 		wantImage int    // expected number of images loaded
 		wantErr   bool
 	}{
+		{
+			name:      "loaded reference does not truncate a missing longer filename",
+			input:     "compare @test.png to @test.png.backup.png",
+			wantText:  "compare  to @test.png.backup.png",
+			wantImage: 1,
+		},
 		{
 			name:      "@-prefixed path loads image and strips text",
 			input:     "describe @" + pngPath,

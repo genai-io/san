@@ -114,7 +114,8 @@ func (q *Queue) adjustSelectionAfterRemove(idx int) {
 	}
 	switch {
 	case len(q.items) == 0:
-		q.ResetSelection()
+		// The editor still needs Stashed to restore the composer on exit.
+		q.SelectIdx = -1
 	case q.SelectIdx > idx:
 		q.SelectIdx--
 	case q.SelectIdx >= len(q.items):
@@ -130,7 +131,12 @@ func (m *Model) HandleQueueSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 
-	m.SaveCurrentQueueEdit()
+	// Commit on navigation or exit, not before a typing key: an empty
+	// textarea can be the intermediate state of replacing the draft.
+	switch msg.String() {
+	case "up", "down", "enter", "esc":
+		m.SaveCurrentQueueEdit()
+	}
 
 	switch msg.String() {
 	case "up":

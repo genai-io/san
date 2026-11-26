@@ -27,9 +27,10 @@ type PastedChunk struct {
 }
 
 type HistoryNav struct {
-	Items   []string
-	Index   int    // -1 = not navigating
-	Stashed string // stashed textarea input while navigating
+	Items         []string
+	Index         int    // -1 = not navigating
+	Stashed       string // stashed textarea input while navigating
+	stashedChunks []PastedChunk
 }
 
 type Model struct {

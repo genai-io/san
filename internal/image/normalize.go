@@ -83,15 +83,16 @@ func normalize(data []byte, expectedType string) ([]byte, string, error) {
 		if err := png.Encode(&limitedWriter{w: &buf, remaining: maxImageSize}, resized); err == nil {
 			return buf.Bytes(), "image/png", nil
 		}
+		// JPEG has no alpha. Flatten transparency onto white only when
+		// falling back from a format that can carry it.
+		opaque := image.NewRGBA(image.Rect(0, 0, w, h))
+		draw.Draw(opaque, opaque.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+		draw.Draw(opaque, opaque.Bounds(), resized, resized.Bounds().Min, draw.Over)
+		resized = opaque
 	}
-	// JPEG has no alpha: composite onto white rather than silently turning
-	// transparent pixels black. This is a last resort for large PNGs/GIFs.
-	opaque := image.NewRGBA(image.Rect(0, 0, w, h))
-	draw.Draw(opaque, opaque.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
-	draw.Draw(opaque, opaque.Bounds(), resized, resized.Bounds().Min, draw.Over)
 	for _, quality := range []int{85, 75, 65} {
 		var buf bytes.Buffer
-		if err := jpeg.Encode(&limitedWriter{w: &buf, remaining: maxImageSize}, opaque, &jpeg.Options{Quality: quality}); err == nil {
+		if err := jpeg.Encode(&limitedWriter{w: &buf, remaining: maxImageSize}, resized, &jpeg.Options{Quality: quality}); err == nil {
 			return buf.Bytes(), "image/jpeg", nil
 		}
 	}

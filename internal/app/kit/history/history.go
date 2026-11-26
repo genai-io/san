@@ -2,6 +2,7 @@ package history
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,14 +48,28 @@ func Load(cwd string) []string {
 	defer f.Close()
 
 	var history []string
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024) // 256KB max line
-	for scanner.Scan() {
-		if entry := unescapeEntry(scanner.Text()); entry != "" {
-			history = append(history, entry)
+	r := bufio.NewReaderSize(f, 256*1024)
+	var oversized bool
+	for {
+		line, err := r.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			oversized = true
+			continue
 		}
+		if err != nil && err != io.EOF {
+			break
+		}
+		if !oversized {
+			text := strings.TrimSuffix(strings.TrimSuffix(string(line), "\n"), "\r")
+			if text != "" {
+				history = append(history, unescapeEntry(text))
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		oversized = false
 	}
-	// Partial history is better than none — ignore scanner errors
 	return truncate(history)
 }
 

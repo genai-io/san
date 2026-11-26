@@ -249,10 +249,12 @@ func (m *Model) HistoryUp() {
 	}
 	if m.History.Index == -1 {
 		m.History.Stashed = m.Textarea.Value()
+		m.History.stashedChunks = m.PastedChunks
 		m.History.Index = len(m.History.Items) - 1
 	} else if m.History.Index > 0 {
 		m.History.Index--
 	}
+	m.ClearPaste()
 	m.Textarea.SetValue(m.History.Items[m.History.Index])
 	m.Textarea.CursorEnd()
 }
@@ -264,12 +266,18 @@ func (m *Model) HistoryDown() {
 	}
 	if m.History.Index < len(m.History.Items)-1 {
 		m.History.Index++
+		m.ClearPaste()
 		m.Textarea.SetValue(m.History.Items[m.History.Index])
 	} else {
 		m.History.Index = -1
-		m.Textarea.SetValue(m.History.Stashed)
+		m.restoreHistoryDraft()
 	}
 	m.Textarea.CursorEnd()
+}
+
+func (m *Model) restoreHistoryDraft() {
+	m.Textarea.SetValue(m.History.Stashed)
+	m.PastedChunks, m.History.stashedChunks = m.History.stashedChunks, nil
 }
 
 // LeadingImagePath returns the first whitespace-delimited token of input when
@@ -327,10 +335,18 @@ func ProcessImageRefs(cwd, input string) (string, []core.Attachment, error) {
 
 	// Step 1: Process @-prefixed image references — remove from text,
 	// abort on load failure.
-	matches := imageRefPattern.FindAllStringSubmatch(content, -1)
-	var loadedRefs []string
+	matches := imageRefPattern.FindAllStringSubmatchIndex(content, -1)
+	var cleaned strings.Builder
+	last := 0
+	survivingText := func() string {
+		if last == 0 {
+			return content
+		}
+		cleaned.WriteString(content[last:])
+		return cleaned.String()
+	}
 	for _, match := range matches {
-		path := match[1]
+		path := content[match[2]:match[3]]
 		absPath := path
 		if !filepath.IsAbs(absPath) {
 			absPath = filepath.Join(cwd, absPath)
@@ -340,12 +356,13 @@ func ProcessImageRefs(cwd, input string) (string, []core.Attachment, error) {
 		}
 		img, err := image.Load(absPath)
 		if err != nil {
-			return strings.TrimSpace(stripRefs(content, loadedRefs)), images, fmt.Errorf("loading image %s: %w", absPath, err)
+			return strings.TrimSpace(survivingText()), images, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
 		images = append(images, img)
-		loadedRefs = append(loadedRefs, match[0])
+		cleaned.WriteString(content[last:match[0]])
+		last = match[1]
 	}
-	content = stripRefs(content, loadedRefs)
+	content = survivingText()
 
 	// Step 2: Process bare image file paths (drag-drop, absolute paths, etc.)
 	// Keep the text in the message, skip silently on load failure, unless
@@ -395,28 +412,31 @@ func stripLeadingPath(content, leadPath string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), leadPath))
 }
 
-// stripRefs drops the @-references that were consumed as images, so the text a
-// caller gets back — on the error path too — is the text that survived.
-func stripRefs(content string, refs []string) string {
-	for _, ref := range refs {
-		content = strings.ReplaceAll(content, ref, "")
-	}
-	return content
-}
-
 // PastePlaceholder returns the placeholder text displayed in the textarea for a pasted chunk.
 func PastePlaceholder(index, lineCount int) string {
 	return fmt.Sprintf("[Pasted text #%d +%d lines]", index, lineCount)
 }
 
+var pasteMarker = regexp.MustCompile(`\[Pasted text #[0-9]+ \+[0-9]+ lines\]`)
+
 // FullValue returns the textarea value with paste placeholders expanded to the original pasted text.
 func (m *Model) FullValue() string {
 	val := m.Textarea.Value()
-	for i, chunk := range m.PastedChunks {
-		placeholder := PastePlaceholder(i+1, chunk.LineCount)
-		val = strings.Replace(val, placeholder, chunk.Text, 1)
+	if len(m.PastedChunks) == 0 {
+		return val
 	}
-	return val
+	pending := make(map[string]string, len(m.PastedChunks))
+	for i, chunk := range m.PastedChunks {
+		pending[PastePlaceholder(i+1, chunk.LineCount)] = chunk.Text
+	}
+	// Only match the visible draft, never text inserted by an earlier expansion.
+	return pasteMarker.ReplaceAllStringFunc(val, func(marker string) string {
+		if text, ok := pending[marker]; ok {
+			delete(pending, marker)
+			return text
+		}
+		return marker
+	})
 }
 
 // ClearPaste resets the pasted chunks state.
@@ -432,6 +452,13 @@ func (m *Model) Reset() {
 }
 
 func (m *Model) HandleCwdChange(newCwd string) {
+	// Leave recall before replacing its entries. Keep an edited recall as the
+	// current draft; an untouched preview still has a draft behind it.
+	if i := m.History.Index; i >= 0 && i < len(m.History.Items) && m.Textarea.Value() == m.History.Items[i] {
+		m.restoreHistoryDraft()
+		m.Textarea.CursorEnd()
+	}
+	m.History = HistoryNav{Items: history.Load(newCwd), Index: -1}
 	m.Suggestions.SetCwd(newCwd)
 	if m.Suggestions.SuggestionType() == suggest.TypeFile {
 		m.Suggestions.Hide()
@@ -442,9 +469,18 @@ func (m *Model) RecordSubmission(cwd, input string) {
 	if input == "" {
 		return
 	}
-	m.History.Items = append(m.History.Items, input)
+	m.AppendSubmission(cwd, input)
 	m.History.Index = -1
 	m.History.Stashed = ""
+	m.History.stashedChunks = nil
+}
+
+// AppendSubmission records a released queue item without interrupting recall in the composer.
+func (m *Model) AppendSubmission(cwd, input string) {
+	if input == "" {
+		return
+	}
+	m.History.Items = append(m.History.Items, input)
 	history.Save(cwd, m.History.Items)
 }
 
@@ -481,34 +517,24 @@ func (m *Model) HandleTextareaUpdate(msg tea.Msg) (tea.Cmd, bool) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
-	_, isPaste := msg.(tea.PasteMsg)
-
 	prevValue := m.Textarea.Value()
-	m.Textarea, cmd = m.Textarea.Update(msg)
-	cmds = append(cmds, cmd)
-
-	if isPaste {
-		newValue := m.Textarea.Value()
-		pastedText := ExtractPastedText(prevValue, newValue)
-		lines := strings.Split(pastedText, "\n")
-		if len(lines) > 1 {
-			chunk := PastedChunk{
-				Text:      pastedText,
-				LineCount: len(lines),
-			}
-			m.PastedChunks = append(m.PastedChunks, chunk)
-			placeholder := PastePlaceholder(len(m.PastedChunks), chunk.LineCount)
-			m.Textarea.SetValue(prevValue)
-			m.Textarea.CursorEnd()
-			m.Textarea.InsertString(placeholder)
-		} else {
-			trimmed := strings.TrimSpace(newValue)
-			if trimmed != newValue {
-				m.Textarea.SetValue(trimmed)
-				m.Textarea.CursorEnd()
-			}
+	// The queue editor saves plain textarea content, not composer markers.
+	editingQueue := m.Queue.SelectIdx >= 0 && m.Queue.SelectIdx < m.Queue.Len()
+	if paste, ok := msg.(tea.PasteMsg); ok && !editingQueue && m.Textarea.Focused() && strings.ContainsAny(paste.Content, "\r\n") {
+		// Normalize just the clipboard payload using the composer's own input
+		// limits and sanitizer. Let the real paste replace the selection or
+		// insert at the caret; diffing whole drafts loses that boundary.
+		buffer := newTextarea(m.Textarea.Width())
+		buffer.SetValue(paste.Content)
+		text := buffer.Value()
+		if lines := strings.Count(text, "\n") + 1; lines > 1 {
+			m.PastedChunks = append(m.PastedChunks, PastedChunk{Text: text, LineCount: lines})
+			paste.Content = PastePlaceholder(len(m.PastedChunks), lines)
+			msg = paste
 		}
 	}
+	m.Textarea, cmd = m.Textarea.Update(msg)
+	cmds = append(cmds, cmd)
 
 	changed := m.Textarea.Value() != prevValue
 	if changed {
@@ -516,15 +542,6 @@ func (m *Model) HandleTextareaUpdate(msg tea.Msg) (tea.Cmd, bool) {
 	}
 
 	return tea.Batch(cmds...), changed
-}
-
-// ExtractPastedText derives the pasted content by comparing the textarea
-// value before and after the paste event.
-func ExtractPastedText(prevValue, newValue string) string {
-	if strings.HasPrefix(newValue, prevValue) {
-		return strings.TrimSpace(newValue[len(prevValue):])
-	}
-	return strings.TrimSpace(newValue)
 }
 
 // HandleSuggestionKey handles keys while the autocomplete suggestion list is visible.

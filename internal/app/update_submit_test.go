@@ -28,6 +28,31 @@ func flowInputModel(manager *task.Manager) *model {
 	return m
 }
 
+func TestReleasedPromptRecall(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _ := compactQueueModel(t)
+	const prompt = "first line\nsecond line"
+	const draft = "unfinished reply"
+	m.conv.Stream.Active = true
+	m.userInput.Textarea.SetValue(prompt)
+	m.handleSubmit()
+	if len(m.userInput.History.Items) != 0 || m.userInput.Queue.Len() != 1 {
+		t.Fatal("editable prompt should still be queued, not in recall history")
+	}
+	m.userInput.Textarea.SetValue(draft)
+	if _, ok := m.releaseQueuedMessage(); !ok {
+		t.Fatal("queued prompt was not released")
+	}
+	m.handleTextareaShortcut(tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := m.userInput.Textarea.Value(); got != prompt || len(m.userInput.History.Items) != 1 {
+		t.Fatalf("Up recalled %q; history = %q", got, m.userInput.History.Items)
+	}
+	m.handleTextareaShortcut(tea.KeyPressMsg{Code: tea.KeyDown})
+	if got := m.userInput.Textarea.Value(); got != draft {
+		t.Fatalf("Down restored %q, want %q", got, draft)
+	}
+}
+
 func TestFlowStopBypassesStreamingInputQueue(t *testing.T) {
 	manager := task.NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
