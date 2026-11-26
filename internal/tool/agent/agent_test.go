@@ -175,7 +175,7 @@ func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfig
 	}
 	return tool.AgentConfigInfo{Name: name, Model: e.configModel, PermissionMode: "default"}, e.resolvedConfig, true
 }
-func (e *recordingExecutor) PinAgentTools(req tool.AgentExecRequest) ([]string, any, error) {
+func (e *recordingExecutor) PrepareAgentTools(req tool.AgentExecRequest) ([]string, any, error) {
 	return req.AllowTools, req.ResolvedAgentConfig, nil
 }
 func (e *recordingExecutor) ContinuationConfig(taskID string) (tool.AgentConfigInfo, error) {

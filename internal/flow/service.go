@@ -69,10 +69,10 @@ type workerBinding struct {
 	policies map[string]string
 }
 
-// PinFlowWorker binds the effective host policy and identifies it for recovery
+// PrepareFlowWorker binds the effective host policy and identifies it for recovery
 // without persisting private agent configuration in the run record.
 type workerPolicyHost interface {
-	PinFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
+	PrepareFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
 }
 
 func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*workerBinding, error) {
@@ -99,7 +99,7 @@ func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*worke
 		if !ok || config == nil {
 			return nil, fmt.Errorf("node %s: executor cannot bind resolved worker policy", n.ID)
 		}
-		config, fingerprint, err := host.PinFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
+		config, fingerprint, err := host.PrepareFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
 		if err != nil {
 			return nil, fmt.Errorf("node %s: fingerprint worker policy: %w", n.ID, err)
 		}

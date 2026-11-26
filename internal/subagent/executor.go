@@ -552,12 +552,12 @@ func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentC
 }
 
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
-	pin, err := e.pinWorkerPolicy(req)
+	resolved, err := e.resolveToolPolicy(req)
 	if err != nil {
 		return nil, err
 	}
-	config := pin.definition
-	permMode := pin.mode
+	config := resolved.definition
+	permMode := resolved.mode
 	displayName := displayAgentName(config.Name)
 
 	maxSteps := config.MaxSteps
@@ -574,7 +574,7 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 	}
 
 	return &runConfig{
-		ceiling:     pin.tools,
+		ceiling:     resolved.tools,
 		config:      config,
 		provider:    provider,
 		modelID:     modelID,

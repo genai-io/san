@@ -60,7 +60,7 @@ func TestWorkerToolSelection(t *testing.T) {
 		{"unknown", []string{"not-a-tool"}, nil, true}, {"duplicate", []string{"Read", "Read"}, nil, true}, {"parent-only", []string{"Agent"}, nil, true}, {"outside parent", []string{"Skill"}, nil, true}, {"pattern", []string{"Bash(git *)"}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{AllowTools: tc.tools})
+			resolved, err := e.resolveToolPolicy(tool.AgentExecRequest{AllowTools: tc.tools})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("accepted invalid selection")
@@ -70,12 +70,12 @@ func TestWorkerToolSelection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			slices.Sort(pin.tools)
+			slices.Sort(resolved.tools)
 			slices.Sort(tc.want)
-			if pin.tools == nil || !slices.Equal(pin.tools, tc.want) {
-				t.Fatalf("got %#v want %#v", pin.tools, tc.want)
+			if resolved.tools == nil || !slices.Equal(resolved.tools, tc.want) {
+				t.Fatalf("got %#v want %#v", resolved.tools, tc.want)
 			}
-			if pin.definition.AllowTools != nil {
+			if resolved.definition.AllowTools != nil {
 				t.Fatal("selection became a permission rule")
 			}
 		})
@@ -100,7 +100,7 @@ func TestWorkerDenyTools(t *testing.T) {
 		{"empty name", nil, []string{""}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{AllowTools: tc.allow, DenyTools: tc.deny})
+			resolved, err := e.resolveToolPolicy(tool.AgentExecRequest{AllowTools: tc.allow, DenyTools: tc.deny})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("expected invalid selection")
@@ -110,8 +110,8 @@ func TestWorkerDenyTools(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if pin.tools == nil || !slices.Equal(pin.tools, tc.want) {
-				t.Fatalf("got %#v want %#v", pin.tools, tc.want)
+			if resolved.tools == nil || !slices.Equal(resolved.tools, tc.want) {
+				t.Fatalf("got %#v want %#v", resolved.tools, tc.want)
 			}
 		})
 	}
@@ -123,7 +123,7 @@ func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 	e.SetParentTools(func() []string { return parent })
 	config := &AgentConfig{Name: "review", AllowTools: ToolList{{Name: "Read"}, {Name: "Skill"}}, SystemPrompt: "original"}
 	req := tool.AgentExecRequest{AllowTools: []string{"Read"}, ResolvedAgentConfig: config}
-	catalogue, pin, err := NewExecutorAdapter(e).PinAgentTools(req)
+	catalogue, resolved, err := NewExecutorAdapter(e).PrepareAgentTools(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 	req.AllowTools[0] = "Skill"
 	for _, p := range [][]string{{"Read", "Skill", "Write"}, {"Skill"}, nil} {
 		parent = p
-		cfg, err := e.prepareRunConfig(context.Background(), tool.AgentExecRequest{ResolvedAgentConfig: pin})
+		cfg, err := e.prepareRunConfig(context.Background(), tool.AgentExecRequest{ResolvedAgentConfig: resolved})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,18 +153,18 @@ func TestFlowFingerprintIncludesArgumentRulesAndMode(t *testing.T) {
 	a := NewExecutorAdapter(&Executor{})
 	def := &AgentConfig{AllowTools: ToolList{{Name: "Bash", Pattern: "git diff*"}}}
 	req := tool.AgentExecRequest{ResolvedAgentConfig: def, AllowTools: []string{"Bash"}}
-	pin, first, err := a.PinFlowWorker(req)
+	resolved, first, err := a.PrepareFlowWorker(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	def.AllowTools[0].Pattern = "git *"
-	_, second, err := a.PinFlowWorker(req)
+	_, second, err := a.PrepareFlowWorker(req)
 	if err != nil || first == second {
 		t.Fatalf("changed Bash rule: %q, %q, %v", first, second, err)
 	}
 	a.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
-	req.ResolvedAgentConfig = pin
-	if _, err := a.pinWorkerPolicy(req); err == nil {
+	req.ResolvedAgentConfig = resolved
+	if _, err := a.resolveToolPolicy(req); err == nil {
 		t.Fatal("approval survived an inherited permission mode change")
 	}
 }
@@ -178,9 +178,9 @@ func TestWorkerEmptyAllowToolsYAML(t *testing.T) {
 		if def.AllowTools == nil {
 			t.Fatalf("%s inherited tools", src)
 		}
-		pin, err := new(Executor).pinWorkerPolicy(tool.AgentExecRequest{ResolvedAgentConfig: &def})
-		if err != nil || pin.tools == nil || len(pin.tools) != 0 {
-			t.Fatalf("%s: %+v, %v", src, pin, err)
+		resolved, err := new(Executor).resolveToolPolicy(tool.AgentExecRequest{ResolvedAgentConfig: &def})
+		if err != nil || resolved.tools == nil || len(resolved.tools) != 0 {
+			t.Fatalf("%s: %+v, %v", src, resolved, err)
 		}
 	}
 }

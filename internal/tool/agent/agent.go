@@ -121,7 +121,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 func (t *AgentTool) approvalConfig(name string, allowTools, denyTools []string, resume continuationApproval, params map[string]any) (tool.AgentConfigInfo, error) {
 	policy, ok := t.executor.(interface {
 		ContinuationConfig(string) (tool.AgentConfigInfo, error)
-		PinAgentTools(tool.AgentExecRequest) ([]string, any, error)
+		PrepareAgentTools(tool.AgentExecRequest) ([]string, any, error)
 	})
 	if !ok {
 		return tool.AgentConfigInfo{}, fmt.Errorf("executor cannot bind worker policy for approval")
@@ -133,7 +133,7 @@ func (t *AgentTool) approvalConfig(name string, allowTools, denyTools []string, 
 	if !ok {
 		return info, fmt.Errorf("unknown or disabled agent: %s", name)
 	}
-	names, pinned, err := policy.PinAgentTools(tool.AgentExecRequest{Agent: name, AllowTools: allowTools, DenyTools: denyTools, ResolvedAgentConfig: definition})
+	names, pinned, err := policy.PrepareAgentTools(tool.AgentExecRequest{Agent: name, AllowTools: allowTools, DenyTools: denyTools, ResolvedAgentConfig: definition})
 	if err == nil {
 		info.Tools = names
 		params["_resolvedAgentConfig"] = pinned

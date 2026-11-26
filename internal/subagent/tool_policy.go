@@ -40,8 +40,8 @@ func (e *Executor) workerSchemas(config *AgentConfig, mode PermissionMode, ceili
 	})
 }
 
-// workerPolicy stays in memory; Flow persists only its fingerprint.
-type workerPolicy struct {
+// toolPolicy stays in memory; Flow persists only its fingerprint.
+type toolPolicy struct {
 	mode       PermissionMode
 	definition *AgentConfig
 	tools      []string
@@ -49,25 +49,25 @@ type workerPolicy struct {
 
 var exactWorkerTool = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-func (e *Executor) pinWorkerPolicy(req tool.AgentExecRequest) (*workerPolicy, error) {
+func (e *Executor) resolveToolPolicy(req tool.AgentExecRequest) (*toolPolicy, error) {
 	var original []string
 	var config *AgentConfig
-	pin, pinned := req.ResolvedAgentConfig.(*workerPolicy)
+	previous, pinned := req.ResolvedAgentConfig.(*toolPolicy)
 	if pinned {
-		if pin == nil || pin.definition == nil || pin.tools == nil {
+		if previous == nil || previous.definition == nil || previous.tools == nil {
 			return nil, fmt.Errorf("incomplete pinned worker policy")
 		}
-		config, original = pin.definition, pin.tools
+		config, original = previous.definition, previous.tools
 	} else {
 		var ok bool
 		config, ok = e.resolveRequestAgentConfig(req)
 		if !ok {
 			return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 		}
-		config = config.pinnedDefinition()
+		config = config.snapshot()
 	}
 	mode := e.requestPermissionMode(config, req)
-	if pinned && pin.mode != mode {
+	if pinned && previous.mode != mode {
 		return nil, fmt.Errorf("worker permission mode changed after policy was pinned")
 	}
 	schemas := e.workerSchemas(config, mode, original)
@@ -99,11 +99,11 @@ func (e *Executor) pinWorkerPolicy(req tool.AgentExecRequest) (*workerPolicy, er
 		denied[name] = true
 	}
 	names = slices.DeleteFunc(names, func(name string) bool { return denied[name] })
-	return &workerPolicy{mode: mode, definition: config, tools: names}, nil
+	return &toolPolicy{mode: mode, definition: config, tools: names}, nil
 }
 
 // Materialize the lazy prompt without copying its sync.Once or retaining its source file.
-func (c *AgentConfig) pinnedDefinition() *AgentConfig {
+func (c *AgentConfig) snapshot() *AgentConfig {
 	return &AgentConfig{
 		Name: c.Name, Description: c.Description, Color: c.Color, WhenToUse: c.WhenToUse,
 		Model: c.Model, PermissionMode: c.PermissionMode, MaxSteps: c.MaxSteps,

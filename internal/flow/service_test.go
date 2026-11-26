@@ -69,7 +69,7 @@ func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigI
 	}
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, "cfg:" + name, true
 }
-func (e *scriptedExecutor) PinFlowWorker(req tool.AgentExecRequest) (any, string, error) {
+func (e *scriptedExecutor) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, error) {
 	return req.ResolvedAgentConfig, req.ResolvedAgentConfig.(string), nil
 }
 func (e *scriptedExecutor) ParentModelID() string { return "parent" }
