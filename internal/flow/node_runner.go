@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -18,6 +19,7 @@ import (
 // Progress goes to the scheduler task's live tail only; the native child task
 // owns the complete transcript.
 type nodeRunner struct {
+	configs        map[string]any
 	blueprint      *Blueprint
 	instructions   map[string]string
 	onInstructions func(*Node, string) error
@@ -94,15 +96,18 @@ func (r *nodeRunner) RunNode(ctx context.Context, c Call) (string, error) {
 				c.OnExecution(Execution{TaskID: identity.ID, SessionID: identity.SessionID})
 			}
 		},
-		Flow:             &tool.FlowOrigin{TaskID: r.task.GetID(), Name: r.name, NodeID: n.ID, WorkerLabel: c.Label},
-		ParentTaskID:     r.task.GetID(),
-		Agent:            n.Config["agent"],
-		Prompt:           c.Prompt,
-		Description:      label,
-		Background:       true,
-		Model:            n.Config["model"],
-		Mode:             n.Config["mode"],
-		ActivityMaxChars: 320,
+		Flow:                &tool.FlowOrigin{TaskID: r.task.GetID(), Name: r.name, NodeID: n.ID, WorkerLabel: c.Label},
+		ParentTaskID:        r.task.GetID(),
+		AllowTools:          slices.Clone(n.AllowTools),
+		DenyTools:           slices.Clone(n.DenyTools),
+		ResolvedAgentConfig: r.configs[n.ID],
+		Agent:               n.Config["agent"],
+		Prompt:              c.Prompt,
+		Description:         label,
+		Background:          true,
+		Model:               n.Config["model"],
+		Mode:                n.Config["mode"],
+		ActivityMaxChars:    320,
 		OnActivity: func(msg string) {
 			r.task.AppendProgress(label + " ▸ " + msg)
 		},

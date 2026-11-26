@@ -3,6 +3,7 @@ package flow
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -63,33 +64,52 @@ func (s *Service) SaveDefinition(name, definition, baseline string) error {
 	return SaveDefinition(name, definition, baseline, s.dirs...)
 }
 
-func (s *Service) preflight(b *Blueprint) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.executor == nil {
-		for _, n := range b.Nodes {
-			if n.Executor != "main" {
-				return errors.New("agent executor not configured")
-			}
-		}
-	}
+type workerBinding struct {
+	configs  map[string]any
+	policies map[string]string
+}
+
+// PrepareFlowWorker binds the effective host policy and identifies it for recovery
+// without persisting private agent configuration in the run record.
+type workerPolicyHost interface {
+	PrepareFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
+}
+
+func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*workerBinding, error) {
 	if s.tasks == nil {
-		return errors.New("task manager not configured")
+		return nil, errors.New("task manager not configured")
 	}
+	workers := &workerBinding{configs: make(map[string]any), policies: make(map[string]string)}
 	for _, n := range b.Nodes {
 		if n.Executor == "main" {
 			continue
 		}
+		if executor == nil {
+			return nil, errors.New("agent executor not configured")
+		}
 		agent := n.Config["agent"]
-		info, _, ok := s.executor.ResolveAgentSelection(agent)
+		info, config, ok := executor.ResolveAgentSelection(agent)
 		if !ok {
-			return fmt.Errorf("node %s: agent %q is disabled", n.ID, agent)
+			return nil, fmt.Errorf("node %s: agent %q is disabled", n.ID, agent)
 		}
 		if agent != "" && info.Source == "" {
-			return fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
+			return nil, fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
 		}
+		host, ok := executor.(workerPolicyHost)
+		if !ok || config == nil {
+			return nil, fmt.Errorf("node %s: executor cannot bind resolved worker policy", n.ID)
+		}
+		config, fingerprint, err := host.PrepareFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
+		if err != nil {
+			return nil, fmt.Errorf("node %s: fingerprint worker policy: %w", n.ID, err)
+		}
+		if config == nil || fingerprint == "" {
+			return nil, fmt.Errorf("node %s: missing worker policy fingerprint", n.ID)
+		}
+		workers.configs[n.ID] = config
+		workers.policies[n.ID] = fingerprint
 	}
-	return nil
+	return workers, nil
 }
 
 func (s *Service) named(name string) (*Blueprint, error) {
@@ -110,15 +130,18 @@ func (s *Service) named(name string) (*Blueprint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("flow %s is invalid:\n%w", name, err)
 	}
-	if err := s.preflight(b); err != nil {
-		return nil, err
-	}
 	return b, nil
 }
 
 func (s *Service) Preview(name string, width int) (string, error) {
 	b, err := s.named(name)
 	if err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	executor := s.executor
+	s.mu.Unlock()
+	if _, err := s.bindWorkers(b, executor); err != nil {
 		return "", err
 	}
 	width = fitWidth(width)

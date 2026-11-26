@@ -23,7 +23,6 @@ type ApprovalModel struct {
 	diffPreview  *approvalDiffPreview
 	bashPreview  *approvalBashPreview
 	skillPreview *approvalSkillPreview
-	agentPreview *approvalAgentPreview
 	width        int
 	selectedIdx  int
 	height       int
@@ -74,12 +73,6 @@ func (p *ApprovalModel) setRequest(req *perm.PermissionRequest, width int) {
 	} else {
 		p.skillPreview = nil
 	}
-
-	if req.AgentMeta != nil {
-		p.agentPreview = newApprovalAgentPreview(req.AgentMeta)
-	} else {
-		p.agentPreview = nil
-	}
 }
 
 // Show displays the permission prompt with the given request.
@@ -100,7 +93,6 @@ func (p *ApprovalModel) Hide() {
 	p.diffPreview = nil
 	p.bashPreview = nil
 	p.skillPreview = nil
-	p.agentPreview = nil
 	p.previewLines = nil
 }
 
@@ -289,8 +281,8 @@ func (p *ApprovalModel) wrappedPreview(width int, compact bool) []string {
 		preview = p.bashPreview.render(width)
 	} else if p.skillPreview != nil {
 		preview = p.skillPreview.render(width)
-	} else if p.agentPreview != nil {
-		preview = p.agentPreview.render(width)
+	} else if p.request != nil && p.request.AgentMeta != nil {
+		preview = renderAgentApproval(p.request.AgentMeta, width)
 	} else {
 		preview = p.request.Description
 	}
@@ -444,19 +436,7 @@ func (p *ApprovalModel) Render() string {
 
 // --- Agent preview ---
 
-type approvalAgentPreview struct {
-	agentMeta *perm.AgentMetadata
-}
-
-func newApprovalAgentPreview(meta *perm.AgentMetadata) *approvalAgentPreview {
-	return &approvalAgentPreview{agentMeta: meta}
-}
-
-func (p *approvalAgentPreview) render(width int) string {
-	if p.agentMeta == nil {
-		return ""
-	}
-
+func renderAgentApproval(agent *perm.AgentMetadata, width int) string {
 	var sb strings.Builder
 
 	nameStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
@@ -465,40 +445,38 @@ func (p *approvalAgentPreview) render(width int) string {
 	modeStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 
 	sb.WriteString("   ")
-	sb.WriteString(nameStyle.Render(p.agentMeta.AgentName))
-	if p.agentMeta.Background {
+	sb.WriteString(nameStyle.Render(agent.AgentName))
+	if agent.Background {
 		sb.WriteString(" ")
 		sb.WriteString(modeStyle.Render("[background]"))
 	}
 	sb.WriteString("\n")
 
-	if p.agentMeta.Description != "" {
+	if agent.Description != "" {
 		sb.WriteString("   ")
-		sb.WriteString(dimStyle.Render(p.agentMeta.Description))
+		sb.WriteString(dimStyle.Render(agent.Description))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
 
-	if p.agentMeta.Model != "" {
+	if agent.Model != "" {
 		sb.WriteString("   ")
 		sb.WriteString(labelStyle.Render("Model: "))
-		sb.WriteString(dimStyle.Render(p.agentMeta.Model))
+		sb.WriteString(dimStyle.Render(agent.Model))
 		sb.WriteString("\n")
 	}
 
 	sb.WriteString("   ")
-	sb.WriteString(labelStyle.Render("Mode: "))
-	modeLabel := approvalFormatPermissionMode(p.agentMeta.PermissionMode)
+	sb.WriteString(labelStyle.Render("Permission mode: "))
+	modeLabel := approvalFormatPermissionMode(agent.PermissionMode)
 	sb.WriteString(dimStyle.Render(modeLabel))
 	sb.WriteString("\n")
 
-	if len(p.agentMeta.Tools) > 0 {
-		sb.WriteString("   ")
-		sb.WriteString(labelStyle.Render("Tools: "))
-		sb.WriteString(dimStyle.Render(strings.Join(p.agentMeta.Tools, ", ")))
-		sb.WriteString("\n")
-	}
+	sb.WriteString("   ")
+	sb.WriteString(labelStyle.Render("Tool selection: "))
+	sb.WriteString(dimStyle.Render(formatAgentTools(agent.Tools)))
+	sb.WriteString("\n")
 
 	sb.WriteString("\n")
 
@@ -521,7 +499,7 @@ func (p *approvalAgentPreview) render(width int) string {
 			}
 		}
 	}
-	prompt := conv.WrapProse(kit.TruncateText(p.agentMeta.Prompt, 500), budget)
+	prompt := conv.WrapProse(kit.TruncateText(agent.Prompt, 500), budget)
 	for _, line := range strings.Split(prompt, "\n") {
 		if line != "" {
 			line = indent + dimStyle.Render(line)

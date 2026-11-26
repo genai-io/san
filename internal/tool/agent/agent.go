@@ -59,6 +59,11 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, err
 	}
 
+	allowTools, denyTools, err := parseAgentTools(params)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if executor is configured
 	if t.executor == nil {
 		return nil, fmt.Errorf("agent executor not configured")
@@ -69,30 +74,10 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		runBackground = true
 	}
 
-	// Resolve the agent definition and carry the exact config into execution so a
-	// registry reload while approval is pending cannot change what was approved.
-	// A continuation is pinned to the original worker policy by the executor.
-	var config tool.AgentConfigInfo
-	if resolver, supported := t.executor.(interface {
-		ContinuationConfig(string) (tool.AgentConfigInfo, error)
-	}); resume.TaskID != "" && supported {
-		config, err = resolver.ContinuationConfig(resume.TaskID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		selected, resolvedConfig, ok := t.executor.ResolveAgentSelection(agentName)
-		if !ok {
-			return nil, fmt.Errorf("unknown or disabled agent: %s", agentName)
-		}
-		config = selected
-		if resume.TaskID == "" {
-			params["_resolvedAgentConfig"] = resolvedConfig
-		} else {
-			config.PermissionMode = resume.PermissionMode
-		}
+	config, err := t.approvalConfig(agentName, allowTools, denyTools, resume, params)
+	if err != nil {
+		return nil, err
 	}
-
 	// Determine effective model for permission display.
 	effectiveModel := config.Model
 	if effectiveModel == "inherit" {
@@ -129,6 +114,31 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			Background:     runBackground,
 		},
 	}, nil
+}
+
+// approvalConfig shows the original policy on continuation. For a new worker,
+// execution must receive the same policy the user was asked to approve.
+func (t *AgentTool) approvalConfig(name string, allowTools, denyTools []string, resume continuationApproval, params map[string]any) (tool.AgentConfigInfo, error) {
+	policy, ok := t.executor.(interface {
+		ContinuationConfig(string) (tool.AgentConfigInfo, error)
+		PrepareAgentTools(tool.AgentExecRequest) ([]string, any, error)
+	})
+	if !ok {
+		return tool.AgentConfigInfo{}, fmt.Errorf("executor cannot bind worker policy for approval")
+	}
+	if resume.TaskID != "" {
+		return policy.ContinuationConfig(resume.TaskID)
+	}
+	info, definition, ok := t.executor.ResolveAgentSelection(name)
+	if !ok {
+		return info, fmt.Errorf("unknown or disabled agent: %s", name)
+	}
+	names, pinned, err := policy.PrepareAgentTools(tool.AgentExecRequest{Agent: name, AllowTools: allowTools, DenyTools: denyTools, ResolvedAgentConfig: definition})
+	if err == nil {
+		info.Tools = names
+		params["_resolvedAgentConfig"] = pinned
+	}
+	return info, err
 }
 
 // Reject removed selectors rather than silently widening an old read-only request.
@@ -173,6 +183,11 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
+	allowTools, denyTools, err := parseAgentTools(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
+
 	var onActivity tool.ActivityFunc
 	if cb, ok := params["_onActivity"].(tool.ActivityFunc); ok {
 		onActivity = cb
@@ -192,6 +207,8 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	resolvedAgentConfig, _ := params["_resolvedAgentConfig"]
 	// New work receives a self-contained brief.
 	req := tool.AgentExecRequest{
+		AllowTools:          allowTools,
+		DenyTools:           denyTools,
 		ParentToolCallID:    core.ToolCallIDFromContext(ctx),
 		Agent:               agentName,
 		ResolvedAgentConfig: resolvedAgentConfig,

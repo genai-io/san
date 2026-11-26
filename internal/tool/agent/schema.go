@@ -52,6 +52,14 @@ var agentToolParameters = map[string]any{
 			"type":        "string",
 			"description": "Optional name for this agent. New names label the task; an existing custom definition supplies its configuration.",
 		},
+		"allow_tools": map[string]any{
+			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
+			"description": "Limit tools by exact name, e.g. [\"Read\", \"mcp__codegraph__codegraph_explore\"], to keep unused tools out of the worker's context. Omit to inherit; [] selects none.",
+		},
+		"deny_tools": map[string]any{
+			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
+			"description": "Exclude tools by exact name. Overrides allow_tools.",
+		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
 			"description": "Defaults to false for new work: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true when you can continue useful independent work without this result; background completion will be notified separately.",

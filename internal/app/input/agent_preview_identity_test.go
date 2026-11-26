@@ -13,7 +13,7 @@ func TestAgentPreviewWrappedIdentityAndProse(t *testing.T) {
 	for _, width := range []int{32, 40} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			meta := &perm.AgentMetadata{AgentName: strings.Repeat("Review工作", 8), Description: strings.Repeat("Detailed描述", 8), Tools: []string{strings.Repeat("LongTool工具", 8)}, Model: "model", PermissionMode: "default", Prompt: strings.Repeat("Inspect carefully 工作 then report findings. ", 6) + "FINAL evidence", Background: true}
-			rendered := ansi.Strip(newApprovalAgentPreview(meta).render(width))
+			rendered := ansi.Strip(renderAgentApproval(meta, width))
 			var joined strings.Builder
 			for _, line := range strings.Split(rendered, "\n") {
 				if ansi.StringWidth(line) > width {

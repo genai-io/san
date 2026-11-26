@@ -133,7 +133,7 @@ func formatAgentPermMode(mode string) string {
 
 func formatAgentTools(tools []string) string {
 	if tools == nil {
-		return "all tools"
+		return "worker defaults"
 	}
 	if len(tools) == 0 {
 		return "none"

@@ -133,9 +133,6 @@ func (s *Service) ResumeRun(id, from string, width int) (string, error) {
 		b, err = Parse(r.Definition)
 	}
 	if err == nil {
-		err = s.preflight(b)
-	}
-	if err == nil {
 		err = validateInputs(b, r.Inputs)
 	}
 	if err == nil && b.hasMain() {
@@ -164,7 +161,7 @@ func (s *Service) ResumeRun(id, from string, width int) (string, error) {
 		release()
 		return "", err
 	}
-	return s.launchRecord(b, *r, "Resume flow "+b.Name, release, width)
+	return s.scheduleRecord(b, *r, "Resume flow "+b.Name, release, width, true)
 }
 
 // start persists a snapshot before launching its background task.
@@ -184,12 +181,28 @@ func (s *Service) startRecord(b *Blueprint, r RunRecord, description string, wid
 }
 
 func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, release func(), width int) (string, error) {
+	return s.scheduleRecord(b, r, description, release, width, false)
+}
+
+func (s *Service) scheduleRecord(b *Blueprint, r RunRecord, description string, release func(), width int, resume bool) (string, error) {
 	st := s.runStore()
 	ctx, cancel := context.WithCancel(context.Background())
 	id := task.NewID()
 	s.mu.Lock()
 	executor, mainExecutor := s.executor, s.mainExecutor
 	s.mu.Unlock()
+	workers, err := s.bindWorkers(b, executor)
+	if err != nil {
+		cancel()
+		release()
+		return "", err
+	}
+	if resume && !maps.Equal(workers.policies, r.WorkerPolicies) {
+		cancel()
+		release()
+		return "", errors.New("worker policy changed or missing from snapshot; review and launch a new flow")
+	}
+	r.WorkerPolicies = workers.policies
 	var main MainRunExecutor
 	if b.hasMain() {
 		fail := func(err error) (string, error) { cancel(); release(); return "", err }
@@ -273,7 +286,7 @@ func (s *Service) launchRecord(b *Blueprint, r RunRecord, description string, re
 				snapshots[n.ID] = c.Instructions
 			}
 		}
-		runner := &nodeRunner{exec: executor, main: main, task: bg, name: b.Name, blueprint: b, instructions: snapshots, onInstructions: func(n *Node, instructions string) error {
+		runner := &nodeRunner{configs: workers.configs, exec: executor, main: main, task: bg, name: b.Name, blueprint: b, instructions: snapshots, onInstructions: func(n *Node, instructions string) error {
 			return update(func(r *RunRecord) {
 				r.Instructions = instructions
 				c := r.Nodes[n.ID]

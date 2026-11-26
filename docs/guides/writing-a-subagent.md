@@ -113,6 +113,11 @@ predefined agents**, using only their names, descriptions, and optional
 `when-to-use` hints. Disabled or persona-hidden definitions are omitted. Full
 prompt bodies are loaded only into the selected worker's system context.
 
+Workers inherit all delegable main-agent tools, including MCP tools, by default.
+`allow_tools` narrows that set; `deny_tools` removes names and wins on overlap.
+`allow_tools: []` gives no tools. Calls and Flow nodes use exact names; only
+definitions accept argument patterns.
+
 Example using a configured definition:
 
 ```json

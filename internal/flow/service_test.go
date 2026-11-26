@@ -69,6 +69,9 @@ func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigI
 	}
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, "cfg:" + name, true
 }
+func (e *scriptedExecutor) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, error) {
+	return req.ResolvedAgentConfig, req.ResolvedAgentConfig.(string), nil
+}
 func (e *scriptedExecutor) ParentModelID() string { return "parent" }
 
 type unfinishedExecutor struct {
@@ -335,7 +338,7 @@ func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
 	wt := NewService(task.Default())
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
 
-	if _, err := startInline(wt, definition, nil, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
+	if _, err := startInline(wt, definition, map[string]string{"base": "main"}, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
 		t.Fatalf("disabled agent err = %v", err)
 	}
 	broken := strings.Replace(definition, "{{diff}}", "{{dif}}", 1)
@@ -515,9 +518,6 @@ func startInline(s *Service, definition string, inputs map[string]string, width 
 	b, err := Parse(definition)
 	if err != nil {
 		return "", fmt.Errorf("invalid flow:\n%w", err)
-	}
-	if err := s.preflight(b); err != nil {
-		return "", err
 	}
 	if err := validateInputs(b, inputs); err != nil {
 		return "", err

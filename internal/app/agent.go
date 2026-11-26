@@ -689,6 +689,7 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
 	executor.SetMCPDependencies(m.services.MCP)
 	executor.SetDisabledTools(m.services.Setting.DisabledTools())
+	executor.SetParentTools(m.services.Agent.ParentToolSource(m.services.Session, m.promptParams().ToolSchemas()))
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }

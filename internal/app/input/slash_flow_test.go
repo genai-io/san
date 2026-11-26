@@ -30,7 +30,10 @@ func (okExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	return tool.AgentConfigInfo{Name: name}, true
 }
 func (okExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
-	return tool.AgentConfigInfo{Name: name, Source: "project"}, nil, true
+	return tool.AgentConfigInfo{Name: name, Source: "project"}, "config", true
+}
+func (okExecutor) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, error) {
+	return req.ResolvedAgentConfig, "policy", nil
 }
 func (okExecutor) ParentModelID() string { return "m" }
 

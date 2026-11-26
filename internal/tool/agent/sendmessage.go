@@ -276,9 +276,8 @@ func init() {
 
 // Keep child transcripts and output out of the parent's approval context.
 type continuationApproval struct {
-	TaskID         string `json:"task_id"`
-	Attempt        int    `json:"attempt"`
-	PermissionMode string `json:"permission_mode"`
+	TaskID  string `json:"task_id"`
+	Attempt int    `json:"attempt"`
 }
 
 // A sealed inbox, or a route removed after terminal publication, can hand off
@@ -319,7 +318,7 @@ func (t *SendMessageTool) continueWorker(ctx context.Context, info task.TaskInfo
 	}
 	// The typed task snapshot cannot be supplied by model JSON. The Agent gate
 	// uses it to preview the original policy and pins approval to this attempt.
-	input := map[string]any{"name": info.AgentName, "prompt": message, "description": info.Description, "run_in_background": true, "_continuation": continuationApproval{TaskID: info.ID, Attempt: info.Attempt, PermissionMode: info.PermissionMode}}
+	input := map[string]any{"name": info.AgentName, "prompt": message, "description": info.Description, "run_in_background": true, "_continuation": continuationApproval{TaskID: info.ID, Attempt: info.Attempt}}
 	if allowed, reason := tool.CheckPermission(ctx, tool.ToolAgent, input); !allowed {
 		return fail(reason)
 	}

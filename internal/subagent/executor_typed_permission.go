@@ -10,6 +10,7 @@ import (
 )
 
 type childPermission struct {
+	available  func(string) bool
 	config     *AgentConfig
 	mode       PermissionMode
 	child      *session.Session
@@ -24,6 +25,9 @@ func (p childPermission) Check(ctx context.Context, name string, input map[strin
 	return result.Decision == "allow", result.Reason
 }
 func (p childPermission) Resolve(ctx context.Context, name string, input map[string]any, forced bool, reason string) perm.Resolution {
+	if p.available != nil && !p.available(name) {
+		return perm.Resolution{Decision: "deny", By: "config", Reason: "tool outside worker ceiling: " + name}
+	}
 	// Local policy may narrow the owner, but never supplies an owner's authority.
 	var prompt perm.PermissionFunc
 	if p.parent != nil {
