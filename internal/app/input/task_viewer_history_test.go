@@ -43,6 +43,23 @@ func TestTaskViewerHistoryCollapsedByDefault(t *testing.T) {
 	}
 }
 
+func TestTaskViewerNavigationHintsNeedVisibleRows(t *testing.T) {
+	var v TaskViewer
+	v.Show(nil, 40, 14)
+	check := func(history, navigation bool) {
+		t.Helper()
+		view := ansi.Strip(v.Render())
+		if !strings.Contains(view, "Esc close") || strings.Contains(view, "h history") != history || strings.Contains(view, "Enter") != navigation || strings.Contains(view, "↑/↓ select") != navigation {
+			t.Errorf("history=%v navigation=%v:\n%s", history, navigation, view)
+		}
+	}
+	check(false, false)
+	v.Refresh([]TaskViewItem{{ID: "done", Status: task.StatusCompleted}})
+	check(true, false)
+	v.HandleKeypress(taskKey("h"))
+	check(true, true)
+}
+
 func TestTaskViewerHistoryExpansionOrderAndActions(t *testing.T) {
 	var v TaskViewer
 	items := []TaskViewItem{

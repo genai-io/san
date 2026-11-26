@@ -48,6 +48,40 @@ func TestTaskViewerSelectionRefreshAndScroll(t *testing.T) {
 		t.Fatal("obsolete selection actionable")
 	}
 }
+func TestTaskViewerBackShowsSelectedRow(t *testing.T) {
+	var v TaskViewer
+	var items []TaskViewItem
+	for i := range 12 {
+		id := fmt.Sprintf("build-%02d", i)
+		items = append(items, TaskViewItem{ID: id, Subject: id, Status: task.StatusRunning})
+	}
+	v.Show(items, 50, 12)
+	for range len(items) - 1 {
+		v.HandleKeypress(taskKey("j"))
+	}
+	v.HandleKeypress(taskKey("enter"))
+	v.HandleKeypress(taskKey("esc"))
+	if view := ansi.Strip(v.Render()); !strings.Contains(view, "› ● build-11") {
+		t.Fatalf("selected task not visible after Back:\n%s", view)
+	}
+}
+
+func TestTaskViewerStoppedDetailHasNoLiveControls(t *testing.T) {
+	var v TaskViewer
+	item := TaskViewItem{ID: "build", Subject: "Check generated reports", Status: task.StatusRunning}
+	v.Show([]TaskViewItem{item}, 64, 24)
+	v.HandleKeypress(taskKey("enter"))
+	if !strings.Contains(v.Render(), "s stop") {
+		t.Fatal("missing stop control on running task")
+	}
+	item.Status = task.StatusStopped
+	v.Refresh([]TaskViewItem{item})
+	view := ansi.Strip(v.Render())
+	if !strings.Contains(view, "Status: stopped") || !strings.Contains(view, "Esc back") || strings.Contains(view, "s stop") || strings.Contains(view, "r approval") {
+		t.Fatalf("incorrect stopped controls: %s", view)
+	}
+}
+
 func TestTaskViewerStopConfirmation(t *testing.T) {
 	var v TaskViewer
 	items := []TaskViewItem{{ID: "a", Status: "running"}, {ID: "b", Status: "running"}}
@@ -102,12 +136,26 @@ func TestTaskViewerActionIdentityAndResume(t *testing.T) {
 	}
 }
 
+func TestTaskViewerApprovalHintFollowsRefresh(t *testing.T) {
+	var v TaskViewer
+	item := TaskViewItem{ID: "worker", Status: task.StatusRunning}
+	v.Show([]TaskViewItem{item}, 40, 14)
+	for _, waiting := range []bool{false, true, false} {
+		item.AwaitingApproval = waiting
+		v.Refresh([]TaskViewItem{item})
+		view := ansi.Strip(v.Render())
+		if strings.Contains(view, "r approval") != waiting || !strings.Contains(view, "s stop") {
+			t.Errorf("waiting=%v: %s", waiting, view)
+		}
+	}
+}
+
 func TestTaskViewerNarrowActionsAndWrappedSelection(t *testing.T) {
 	for _, width := range []int{32, 40} {
 		var v TaskViewer
 		var items []TaskViewItem
 		for i := range 8 {
-			items = append(items, TaskViewItem{ID: fmt.Sprint(i), AgentName: "reviewer", Subject: strings.Repeat("review ", 12), Status: "running"})
+			items = append(items, TaskViewItem{ID: fmt.Sprint(i), AgentName: "reviewer", Subject: strings.Repeat("review ", 12), Status: "running", AwaitingApproval: true})
 		}
 		v.Show(items, width, 12)
 		for range 7 {

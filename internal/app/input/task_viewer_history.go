@@ -31,16 +31,14 @@ func (v *TaskViewer) groupedItems() (active, history []TaskViewItem) {
 	return active, history
 }
 
-func (v *TaskViewer) visibleItems() []TaskViewItem {
-	active, history := v.groupedItems()
+func (v *TaskViewer) visibleItems(active, history []TaskViewItem) []TaskViewItem {
 	if v.historyExpanded {
 		return append(active, history...)
 	}
 	return active
 }
 
-func (v *TaskViewer) selectVisible() {
-	items := v.visibleItems()
+func (v *TaskViewer) selectVisible(items []TaskViewItem) {
 	for _, item := range items {
 		if item.ID == v.selected {
 			return

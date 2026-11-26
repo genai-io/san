@@ -178,10 +178,6 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 		if owner == "" {
 			owner = string(info.Type)
 		}
-		progress := info.Progress
-		if info.OutputError != "" {
-			progress = strings.TrimSpace("Output log unavailable: " + info.OutputError + " · " + progress)
-		}
 		history := make([]string, 0, len(info.Attempts))
 		for _, attempt := range info.Attempts {
 			line := fmt.Sprintf("%d %s", attempt.Attempt, attempt.Status)
@@ -193,7 +189,7 @@ func (m *model) taskSnapshots() []input.TaskViewItem {
 		}
 		items = append(items, input.TaskViewItem{
 			ID: info.ID, AgentName: owner, Description: info.Description,
-			Subject: info.Description, Status: info.Status, Progress: progress,
+			Subject: info.Description, Status: info.Status, Progress: info.Progress, OutputError: info.OutputError,
 			Output: output, Error: info.Error, OutputTruncated: truncated,
 			OutputFile: info.OutputFile, Recorded: recorded[info.ID],
 			CanContinue: canContinueTask(info), Attempt: info.Attempt, SessionID: info.AgentSessionID, Attempts: strings.Join(history, "\n"),
