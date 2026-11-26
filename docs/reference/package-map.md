@@ -40,7 +40,8 @@ Agent, persistence, and orchestration:
 
 | Path | Layer | Responsibility |
 | --- | --- | --- |
-| `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
+| `internal/agent` | `feature` | Agent construction, permission adapter, runtime lifecycle, and the per-conversation [reminder queue](../packages/reminder.md). |
+| `internal/agent/reminder` | `feature` | Shared reminder message block format; no runtime state. |
 | `internal/agent/mail` | `feature` | Routes addressed messages and task completions between agents; independent of the agent runtime. |
 | `internal/autopilot` | `feature` | Mission steering and suggestion prompts: predict the next input or propose an instruction for an active mission. The TUI schedules suggestions through `aside` and displays them. |
 | `internal/aside` | `feature` | Focused model calls outside the main conversation, with request snapshots and session-owned recording. |
@@ -76,7 +77,6 @@ Configuration and supporting capabilities:
 | `internal/setting/trust` | `feature` | Collects cross-feature trust findings for entrypoints; asks settings to trust clean workspaces for the session. |
 | `internal/persona` | `feature` | Persona registry (system-prompt parts, skills, settings overlay), template, paths. |
 | `internal/search` | `feature` | Search provider implementations and factory. |
-| `internal/reminder` | `feature` | Runtime reminder queue and provider integration. |
 | `internal/autopilot/judge` | `feature` | Tool-free model review of gray-zone permissions and interactive Bash prompts. |
 | `internal/image` | `feature` | Image handling + `core.Image` adapter; provisional — see note in `dependency-rules.md`. |
 | `internal/upgrade` | `feature` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |

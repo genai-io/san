@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -29,7 +29,7 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 						return hook.HookOutput{Continue: &allow, StopReason: "policy reason", HookSpecificOutput: &hook.HookSpecificOutput{AdditionalContext: extra}}, nil
 					},
 				})
-				r := reminder.New()
+				r := NewReminderQueue()
 				r.Enqueue("already pending")
 				got, reason := CheckPrompt(t.Context(), "raw prompt", engine, r)
 				if got != blocked || (blocked && reason != "policy reason") || calls != 1 {
@@ -66,7 +66,7 @@ func TestCheckPromptHookBudgetIsNotPromptCancellation(t *testing.T) {
 	promptCtx := t.Context()
 	hookCtx, cancel := context.WithTimeout(promptCtx, time.Millisecond)
 	defer cancel()
-	r := reminder.New()
+	r := NewReminderQueue()
 	if blocked, reason := CheckPrompt(hookCtx, "hello", engine, r); blocked || reason != "" {
 		t.Fatalf("budget expiry blocked prompt: %v %q", blocked, reason)
 	}

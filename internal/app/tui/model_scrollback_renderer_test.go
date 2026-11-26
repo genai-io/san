@@ -18,7 +18,6 @@ import (
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -495,7 +494,7 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
 			initClearSessionTest(t, m.model)
 			m.services.Agent = &agent.Runtime{}
-			m.services.Reminder = reminder.New()
+			m.services.Reminder = agent.NewReminderQueue()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}

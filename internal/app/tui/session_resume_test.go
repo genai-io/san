@@ -19,7 +19,6 @@ import (
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -55,7 +54,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			sessionID: opened.ID(),
 			Setting:   setting.New(setting.NewData()),
-			Tracker:   todo.NewStore(), Reminder: reminder.New(),
+			Tracker:   todo.NewStore(), Reminder: agent.NewReminderQueue(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),

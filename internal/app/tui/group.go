@@ -13,11 +13,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
-	"github.com/genai-io/san/internal/reminder"
 )
 
 // Session groups, the session's side: the /group command, and Source 4 — the

@@ -14,7 +14,6 @@ import (
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -147,7 +146,7 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = reminder.New()
+	m.services.Reminder = agent.NewReminderQueue()
 	m.queueScrollbackPrint("OLD-REPLY", 0)
 	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
 		t.Fatal("clear command was not handled")
@@ -161,7 +160,7 @@ func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = reminder.New()
+	m.services.Reminder = agent.NewReminderQueue()
 	var rows []string
 	for i := 0; i < 19; i++ {
 		rows = append(rows, fmt.Sprintf("OLD-%02d", i))

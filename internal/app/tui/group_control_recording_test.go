@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent"
+
 	"github.com/genai-io/san/internal/group"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -117,7 +118,7 @@ func TestGroupControlRecordingPostEffectFailure(t *testing.T) {
 	defer owner.Close()
 	m := commitTestModel()
 	m.services.Session, m.services.sessionID = owner, owner.ID()
-	m.services.Reminder = reminder.New()
+	m.services.Reminder = agent.NewReminderQueue()
 	m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(aitest.New(aitest.Replies(ai.Response{Content: ai.TextContent(`{"action":"join","arguments":{"group":"team","name":"api"}}`)})), ai.Model{ID: "m"})}
 	_, cmd := m.resolveGroupControl("join team as api")
 	msg := cmd().(groupControlMsg)

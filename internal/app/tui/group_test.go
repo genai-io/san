@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/infra/atomicfile"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
@@ -313,7 +312,7 @@ func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.New()}}
+	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: agent.NewReminderQueue()}}
 	m.releaseGroupOnSwitch()
 	if g, _ := group.Current(); g != "" {
 		t.Fatalf("still in %s after the switch", g)

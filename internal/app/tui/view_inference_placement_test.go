@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -248,7 +249,7 @@ func TestCompactionPlacementAndRecovery(t *testing.T) {
 
 func TestCompactionCompletionIsTopLevel(t *testing.T) {
 	m := modelWithInferenceProgress(24)
-	m.services.Reminder = &reminder.Reminder{}
+	m.services.Reminder = &agent.ReminderQueue{}
 	m.env.CWD = t.TempDir()
 	m.OnCompactStart(83)
 	m.OnCompacted(core.Compacted{Summary: "private summary body", OriginalCount: 83})

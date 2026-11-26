@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -162,7 +162,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
-		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()},
+		services: services{Agent: &agent.Runtime{}, Reminder: agent.NewReminderQueue()},
 		conv:     chat.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
@@ -197,7 +197,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 	defer close(release)
 	<-started
 	m := model{
-		services:          services{Agent: sess, Reminder: reminder.New()},
+		services:          services{Agent: sess, Reminder: agent.NewReminderQueue()},
 		pendingPluginRoot: "retained-plugin",
 	}
 	m.pendingMessages.Hold(nil)
@@ -215,7 +215,7 @@ func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
 }
 
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()}}
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: agent.NewReminderQueue()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()

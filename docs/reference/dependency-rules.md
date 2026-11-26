@@ -12,7 +12,7 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, host dispatch and service wiring. |
 | `app` | Packages beneath `internal/app` (directory only) | `tui` owns the interactive shell, `cli` print execution and `acp` the protocol host. |
-| `feature` | Business-domain packages: agent (including agent/mail), autopilot (including autopilot/judge), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, reminder, image, upgrade | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: agent (including agent/mail and agent/reminder), autopilot (including autopilot/judge), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, image, upgrade | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
 | `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}` | Stateless helpers usable by any layer above. |
 
@@ -70,6 +70,10 @@ not by lower layers importing higher layers.
    read/write APIs; they must not introduce another persistence projector or
    older-format fallback. Generic framing, writer leases and transport recovery
    remain in sdk-go.
+
+10. Code that only handles reminder message blocks imports `internal/agent/reminder`,
+    not the agent runtime. The leaf must not import its parent; provider registration,
+    queueing and input preparation belong to `internal/agent`.
 
 `devtools/layercheck` applies these rules to production, internal-test, and
 external-test imports. It also rejects repository packages that have no entry

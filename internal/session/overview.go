@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/infra/atomicfile"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 

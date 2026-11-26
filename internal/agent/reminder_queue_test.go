@@ -1,34 +1,17 @@
-package reminder
+package agent
 
 import (
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-func TestWrapEmpty(t *testing.T) {
-	if got := Wrap(""); got != "" {
-		t.Errorf("Wrap(\"\") = %q, want \"\"", got)
-	}
-	if got := Wrap("   \n\t "); got != "" {
-		t.Errorf("Wrap whitespace-only = %q, want \"\"", got)
-	}
-}
-
-func TestWrapNonEmpty(t *testing.T) {
-	got := Wrap("hello world")
-	want := "<system-reminder>\nhello world\n</system-reminder>"
-	if got != want {
-		t.Errorf("Wrap mismatch:\n got: %q\nwant: %q", got, want)
-	}
-}
-
 func TestReminderEnqueueAndDrain(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	if !s.Empty() {
 		t.Fatal("new reminder should be empty")
 	}
@@ -53,7 +36,7 @@ func TestReminderEnqueueAndDrain(t *testing.T) {
 }
 
 func TestReminderProviderRegistration(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 
 	rendered := 0
 	s.Register("skills", func() string {
@@ -73,7 +56,7 @@ func TestReminderProviderRegistration(t *testing.T) {
 }
 
 func TestReminderProviderReplaceByID(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	s.Register("skills", func() string { return "old" })
 	s.Register("skills", func() string { return "new" })
 
@@ -88,7 +71,7 @@ func TestReminderProviderReplaceByID(t *testing.T) {
 }
 
 func TestReminderProviderEmptyOutput(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	s.Register("skills", func() string { return "" })
 	s.Register("memory", func() string { return "stuff" })
 
@@ -103,7 +86,7 @@ func TestReminderProviderEmptyOutput(t *testing.T) {
 }
 
 func TestReminderUnregister(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	s.Register("a", func() string { return "alpha" })
 	s.Register("b", func() string { return "beta" })
 
@@ -116,23 +99,6 @@ func TestReminderUnregister(t *testing.T) {
 	}
 }
 
-func TestAppendBlocksPreservesInputAndOrder(t *testing.T) {
-	image := ai.ImageBlock(ai.Image{FileName: "example.png"})
-	content := ai.Content{ai.TextBlock("hello"), image}
-	if got := AppendBlocks(content, ""); !reflect.DeepEqual(got, content) {
-		t.Fatalf("empty additions changed content: %+v", got)
-	}
-	alpha, beta := Wrap("alpha"), Wrap("beta")
-	got := AppendBlocks(content, alpha, "", beta)
-	want := ai.Content{ai.TextBlock("hello"), image, ai.TextBlock("\n\n" + alpha), ai.TextBlock("\n\n" + beta)}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected blocks: %+v", got)
-	}
-	if got.Text() != "hello\n\n"+alpha+"\n\n"+beta {
-		t.Fatalf("text-only fallback lost boundaries: %q", got.Text())
-	}
-}
-
 // TestReminderFullSessionLifecycle simulates the harness flow end-to-end: a
 // session starts, providers (skills + memory) get enqueued, the user types a
 // message, attached reminders ride along; on PostCompact the same providers
@@ -140,7 +106,7 @@ func TestAppendBlocksPreservesInputAndOrder(t *testing.T) {
 // across hooks.go (SessionStart), model.go (PostCompact), and agent.go
 // (sendToAgent).
 func TestReminderFullSessionLifecycle(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 
 	skillsBody := "Use the Skill tool to invoke these capabilities:\n\n- git: Git workflow"
 	memoryBody := "<memory scope=\"user\">\nAlways use tabs.\n</memory>"
@@ -152,7 +118,7 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 	s.RequeueSystemReminders()
 
 	// User submits "hello"; sendToAgent drains and attaches.
-	firstUserMsg := AppendBlocks(ai.TextContent("hello"), s.Drain()...).Text()
+	firstUserMsg := reminder.AppendBlocks(ai.TextContent("hello"), s.Drain()...).Text()
 	if !strings.Contains(firstUserMsg, "hello") {
 		t.Error("first user message should preserve the user's typed content")
 	}
@@ -167,7 +133,7 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 	}
 
 	// User submits "hello again"; queue empty after drain — no reminders.
-	secondUserMsg := AppendBlocks(ai.TextContent("hello again"), s.Drain()...).Text()
+	secondUserMsg := reminder.AppendBlocks(ai.TextContent("hello again"), s.Drain()...).Text()
 	if secondUserMsg != "hello again" {
 		t.Errorf("second message should have no reminders attached, got %q", secondUserMsg)
 	}
@@ -187,7 +153,7 @@ func TestReminderFullSessionLifecycle(t *testing.T) {
 // on every emission, so changes between SessionStart and PostCompact (e.g.
 // the user toggled a skill in the middle) are picked up.
 func TestReminderProviderReflectsLatestState(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	state := "v1"
 	s.Register("skills", func() string { return state })
 
@@ -209,7 +175,7 @@ func TestReminderProviderReflectsLatestState(t *testing.T) {
 // close succession should produce one emission per provider, not three.
 // One-time notices (Enqueue) must survive a re-emission unmolested.
 func TestReminderRequeueSystemRemindersIsIdempotent(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	s.Register("skills-directory", func() string { return "skills body" })
 	s.Register("memory-user", func() string { return "user mem" })
 
@@ -244,7 +210,7 @@ func TestReminderRequeueSystemRemindersIsIdempotent(t *testing.T) {
 }
 
 func TestProviderVersionsAndRemoval(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	state := "v1"
 	s.Register("skills", func() string { return state })
 	s.RequeueSystemReminders()
@@ -263,8 +229,8 @@ func TestProviderVersionsAndRemoval(t *testing.T) {
 	s.Enqueue("first notice")
 	s.Enqueue("second notice")
 	s.RequeueSystemReminders()
-	removed := WrapWithSource(removalBody, "skills")
-	if got := s.Drain(); len(got) != 3 || got[0] != Wrap("first notice") || got[1] != Wrap("second notice") || got[2] != removed {
+	removed := reminder.WrapWithSource(removalBody, "skills")
+	if got := s.Drain(); len(got) != 3 || got[0] != reminder.Wrap("first notice") || got[1] != reminder.Wrap("second notice") || got[2] != removed {
 		t.Fatalf("expected notices in order followed by scoped removal, got %v", got)
 	}
 	s.RequeueSystemReminders()
@@ -274,7 +240,7 @@ func TestProviderVersionsAndRemoval(t *testing.T) {
 
 	state = "v1"
 	s.RequeueSystemReminders()
-	if got := s.Drain(); len(got) != 1 || got[0] != WrapWithSource(state, "skills") {
+	if got := s.Drain(); len(got) != 1 || got[0] != reminder.WrapWithSource(state, "skills") {
 		t.Fatalf("returning provider should emit again: %v", got)
 	}
 	s.Unregister("skills")
@@ -285,7 +251,7 @@ func TestProviderVersionsAndRemoval(t *testing.T) {
 }
 
 func TestReminderConcurrentAccess(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 
 	var wg sync.WaitGroup
 	for i := range 50 {
@@ -305,19 +271,19 @@ func TestReminderConcurrentAccess(t *testing.T) {
 
 // Blocks recovers reminders from flattened text so /context can attribute them.
 func TestBlocksRecoversAttachedReminders(t *testing.T) {
-	s := New()
-	s.Register(ProviderSkillsDirectory, func() string { return "skills body" })
-	s.Register(ProviderMemoryProject, func() string { return "project memory body" })
+	s := NewReminderQueue()
+	s.Register(reminder.ProviderSkillsDirectory, func() string { return "skills body" })
+	s.Register(reminder.ProviderMemoryProject, func() string { return "project memory body" })
 	s.RequeueSystemReminders()
 	s.Enqueue("a one-time notice")
 
-	content := AppendBlocks(ai.TextContent("what the user typed"), s.Drain()...).Text()
+	content := reminder.AppendBlocks(ai.TextContent("what the user typed"), s.Drain()...).Text()
 
-	blocks := Blocks(content)
+	blocks := reminder.Blocks(content)
 	if len(blocks) != 3 {
 		t.Fatalf("expected 3 blocks, got %d from:\n%s", len(blocks), content)
 	}
-	wantSources := []string{ProviderSkillsDirectory, ProviderMemoryProject, ""}
+	wantSources := []string{reminder.ProviderSkillsDirectory, reminder.ProviderMemoryProject, ""}
 	for i, want := range wantSources {
 		if blocks[i].Source != want {
 			t.Errorf("block %d: source = %q, want %q", i, blocks[i].Source, want)
@@ -332,22 +298,10 @@ func TestBlocksRecoversAttachedReminders(t *testing.T) {
 	}
 }
 
-func TestBlocksIgnoresMalformedTags(t *testing.T) {
-	for name, content := range map[string]string{
-		"no reminder at all": "plain user text",
-		"unterminated":       "text <system-reminder>body with no close",
-		"close only":         "text </system-reminder>",
-	} {
-		if got := Blocks(content); len(got) != 0 {
-			t.Errorf("%s: expected no blocks, got %d", name, len(got))
-		}
-	}
-}
-
 // Pending has to leave the queue intact — /context inspects what the next turn
 // will carry, it does not consume it.
 func TestPendingDoesNotDrain(t *testing.T) {
-	s := New()
+	s := NewReminderQueue()
 	s.Enqueue("queued")
 
 	if got := s.Pending(); len(got) != 1 {
@@ -358,12 +312,5 @@ func TestPendingDoesNotDrain(t *testing.T) {
 	}
 	if got := s.Drain(); len(got) != 1 {
 		t.Errorf("Drain after Pending returned %d entries, want 1", len(got))
-	}
-}
-
-func TestWrapEscapesQuotedTag(t *testing.T) {
-	wrapped := Wrap(`const open = "<system-reminder"` + "\n// ends with </system-reminder>")
-	if got := Blocks("prompt\n\n" + wrapped); len(got) != 1 || got[0].Text != wrapped {
-		t.Fatalf("Blocks() = %+v, want the one reminder whole", got)
 	}
 }

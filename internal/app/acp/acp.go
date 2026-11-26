@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/ext"
 	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/command"
@@ -21,7 +22,6 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -106,7 +106,7 @@ type acpSession struct {
 	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
 	runtime            agent.Runtime
 	hooks              *hook.Engine
-	reminders          *reminder.Reminder
+	reminders          *agent.ReminderQueue
 	toolResponses      sync.Map
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
@@ -208,7 +208,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
-	s := &acpSession{reminders: reminder.New(), mcp: servers, models: models}
+	s := &acpSession{reminders: agent.NewReminderQueue(), mcp: servers, models: models}
 	pluginSource := ext.Source{Registry: plugins}
 	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: pluginSource.CommandPaths})
 	s.agents, err = subagent.Load(req.CWD, pluginSource.AgentPaths())

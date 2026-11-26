@@ -30,7 +30,7 @@ External client ── ACP ──────┘
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
-- `internal/reminder`: reminders and their conversation state; TUI retains lifecycle gates.
+- [`agent.ReminderQueue`](../packages/reminder.md): reminders and their conversation state; TUI retains lifecycle gates.
 - `internal/agent.CheckPrompt`: UserPromptSubmit decisions and additional-context
   staging through the existing hook engine and reminder owner. Context stays pending
   even on a block; delivery, not admission, prepares reminders. TUI retains its

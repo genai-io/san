@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent"
+
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -26,7 +27,7 @@ func modelWithPromptHook(t *testing.T, command string) *model {
 	return &model{
 		services: services{
 			Hook:     hook.NewEngine(data, "test-session", t.TempDir(), ""),
-			Reminder: reminder.New(),
+			Reminder: agent.NewReminderQueue(),
 			Setting:  setting.New(data),
 		},
 	}

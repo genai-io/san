@@ -21,7 +21,6 @@ import (
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -494,7 +493,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	}
 	defer stopRuntime(t, m.services.Agent)
 	m.env.LLMProvider = provider
-	m.services.Reminder = reminder.New()
+	m.services.Reminder = agent.NewReminderQueue()
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = m.currentAutoMemory()
@@ -535,7 +534,7 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = reminder.New()
+	m.services.Reminder = agent.NewReminderQueue()
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
 	started, release := make(chan struct{}), make(chan struct{})
 	if err := m.services.Agent.Start(agent.BuildParams{

@@ -12,7 +12,6 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
@@ -96,7 +95,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 			Agent:    sess,
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),
-			Reminder: reminder.New(),
+			Reminder: agent.NewReminderQueue(),
 		},
 		conv: chat.NewModel(80),
 	}, provider
