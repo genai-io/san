@@ -1,9 +1,7 @@
-// Package options defines configuration types shared across app and tui packages.
 package setting
 
-// RunOptions contains all options for running the application.
+// RunOptions configures the interactive host.
 type RunOptions struct {
-	Print     string // non-empty → non-interactive print mode
 	Prompt    string // initial prompt for interactive TUI
 	PluginDir string
 	Persona   string // persona name to activate on startup

@@ -164,10 +164,8 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 		return tea.Batch(append(cmds, m.injectCronPrompt(prompt))...), true
 	}
 
-	if m.asyncHookQueue != nil {
-		if item, ok := m.asyncHookQueue.pop(); ok {
-			return tea.Batch(append(cmds, m.injectAsyncHookContinuation(item))...), true
-		}
+	if item, ok := m.asyncHookQueue.pop(); ok {
+		return tea.Batch(append(cmds, m.injectAsyncHookContinuation(item))...), true
 	}
 
 	return tea.Batch(cmds...), false

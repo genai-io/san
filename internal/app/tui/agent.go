@@ -667,17 +667,7 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetTracker(m.services.Tracker)
 	parentHooks := m.services.Hook
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
-		projection := owner.Snapshot()
-		cwd := projection.Identity().InitialCWD
-		if value := projection.State().ExecutionCWD; value != nil {
-			cwd = *value
-		}
-		child := parentHooks.ForSession(owner.ID(), cwd, owner.Path())
-		bind := func(provider llm.Provider, model string) {
-			apphook.Bind(child, provider, owner, model)
-		}
-		bind(provider, model)
-		return child, bind, child.Shutdown
+		return apphook.BindChild(apphook.ForChild(parentHooks, owner), provider, owner, model)
 	})
 	files := m.env.FileCache
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {

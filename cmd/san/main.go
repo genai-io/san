@@ -106,7 +106,6 @@ Non-interactive mode:
 		prompt := strings.Join(args, " ")
 
 		opts := setting.RunOptions{
-			Print:     printPrompt,
 			Prompt:    prompt,
 			PluginDir: cliOpts.pluginDir,
 			Persona:   cliOpts.persona,
@@ -115,7 +114,7 @@ Non-interactive mode:
 			ResumeID:  resumeID,
 			Version:   version,
 		}
-		if err := run(opts); err != nil {
+		if err := run(printPrompt, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -128,7 +127,7 @@ func warnShellFallback() {
 	}
 }
 
-func run(opts setting.RunOptions) error {
+func run(printPrompt string, opts setting.RunOptions) error {
 	warnShellFallback()
 	if opts.Persona != "" {
 		cwd, _ := os.Getwd()
@@ -137,8 +136,8 @@ func run(opts setting.RunOptions) error {
 			return errors.Join(err, task.Default().Shutdown())
 		}
 	}
-	if opts.Print != "" {
-		return cli.Print(opts.Print, opts.Persona)
+	if printPrompt != "" {
+		return cli.Print(printPrompt, opts.Persona)
 	}
 	return tui.Run(opts)
 }

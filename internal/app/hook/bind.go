@@ -23,6 +23,23 @@ func Bind(engine *hook.Engine, provider llm.Provider, owner *session.Session, mo
 	engine.SetCompletionRecorder(session.NewRecorder(owner, "").RecordHook)
 }
 
+// ForChild derives a hook engine in the child session's execution directory.
+func ForChild(parent *hook.Engine, owner *session.Session) *hook.Engine {
+	projection := owner.Snapshot()
+	cwd := projection.Identity().InitialCWD
+	if saved := projection.State().ExecutionCWD; saved != nil {
+		cwd = *saved
+	}
+	return parent.ForSession(owner.ID(), cwd, owner.Path())
+}
+
+// BindChild supplies the executor's initial binding, model switch and shutdown.
+func BindChild(engine *hook.Engine, provider llm.Provider, owner *session.Session, model string) (hook.Handler, func(llm.Provider, string), func()) {
+	bind := func(p llm.Provider, m string) { Bind(engine, p, owner, m) }
+	bind(provider, model)
+	return engine, bind, engine.Shutdown
+}
+
 // Completer runs hook model calls as recorded completions of owner.
 func Completer(p llm.Provider, owner *session.Session) hook.RecordedLLMCompleter {
 	if p == nil {

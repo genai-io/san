@@ -53,8 +53,7 @@ func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Dat
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		projection := owner.Snapshot()
 		engine := hook.NewEngine(settings, owner.ID(), projection.Identity().InitialCWD, owner.Path())
-		apphook.Bind(engine, provider, owner, model)
-		return engine, func(provider llm.Provider, model string) { apphook.Bind(engine, provider, owner, model) }, engine.Shutdown
+		return apphook.BindChild(engine, provider, owner, model)
 	})
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)
@@ -80,10 +79,18 @@ func (r permissionResolver) Resolve(ctx context.Context, name string, input map[
 	return perm.Resolution{Decision: "deny", By: "config", Reason: "headless agent cannot ask for approval: " + reason}
 }
 
+// Validate checks the required headless options before startup.
+func (opts AgentRunOptions) Validate() error {
+	if opts.Prompt == "" {
+		return errors.New("--prompt is required")
+	}
+	return nil
+}
+
 // RunAgent executes a single agent in headless mode (no TUI).
 func RunAgent(opts AgentRunOptions) (runErr error) {
-	if opts.Prompt == "" {
-		return fmt.Errorf("--prompt is required")
+	if err := opts.Validate(); err != nil {
+		return err
 	}
 
 	// Graceful shutdown: SIGINT/SIGTERM cancels the run's context.

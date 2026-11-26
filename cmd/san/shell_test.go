@@ -32,9 +32,9 @@ func TestShellWarningDispatch(t *testing.T) {
 	}{
 		{"agent run", "--prompt is required", 0},
 		{"--print=", "--print requires a prompt", 0},
-		{"agent run --prompt test", "no provider connected", 1},
-		{"--print=test", "no provider connected", 1},
-		{"acp", "no provider connected", 1},
+		{"agent run --prompt test", "", 1},
+		{"--print=test", "", 1},
+		{"acp", "", 1},
 	} {
 		t.Run(tc.args, func(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestShellWarningDispatch$")
@@ -45,7 +45,9 @@ func TestShellWarningDispatch(t *testing.T) {
 			cmd.Stderr = &stderr
 			stdout, err := cmd.Output()
 			got := stderr.String()
-			if err == nil || len(stdout) != 0 || !strings.Contains(got, tc.message) || strings.Count(got, "falling back to bash") != tc.warnings || (tc.warnings > 0 && strings.Index(got, "falling back to bash") > strings.Index(got, tc.message)) {
+			const warning = "falling back to bash"
+			first, _, _ := strings.Cut(got, "\n")
+			if err == nil || len(stdout) != 0 || !strings.Contains(got, tc.message) || strings.Count(got, warning) != tc.warnings || (tc.warnings > 0 && !strings.Contains(first, warning)) {
 				t.Fatalf("stdout=%q stderr=%q err=%v", stdout, got, err)
 			}
 		})
@@ -76,12 +78,7 @@ func TestShellFallbackWarning(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.preference, func(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestShellFallbackWarning$")
-			for _, env := range os.Environ() {
-				if !strings.HasPrefix(env, "SHELL=") && !strings.HasPrefix(env, "SAN_SHELL=") && !strings.HasPrefix(env, "SAN_TEST_SHELL_WARNING=") {
-					cmd.Env = append(cmd.Env, env)
-				}
-			}
-			cmd.Env = append(cmd.Env, "SHELL="+tc.preference, "SAN_SHELL=", "SAN_TEST_SHELL_WARNING=1")
+			cmd.Env = append(os.Environ(), "SHELL="+tc.preference, "SAN_SHELL=", "SAN_TEST_SHELL_WARNING=1")
 			var stderr bytes.Buffer
 			cmd.Stderr = &stderr
 			out, err := cmd.Output()

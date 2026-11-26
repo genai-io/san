@@ -76,7 +76,7 @@ func (m *model) applyStartupHookOutcome(outcome hook.HookOutcome) {
 	}
 	if m.fileWatcher == nil {
 		m.fileWatcher = newFileWatcher(m.services.Hook, func(outcome hook.HookOutcome) {
-			if m.asyncHookQueue != nil && outcome.InitialUserMessage != "" {
+			if outcome.InitialUserMessage != "" {
 				m.asyncHookQueue.push(asyncHookRewake{Notice: "File watcher hook triggered", Context: []string{outcome.InitialUserMessage}})
 			}
 		})

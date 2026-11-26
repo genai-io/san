@@ -67,17 +67,11 @@ func (s *acpSession) configureAgents() error {
 		return fs.WithFileViews(ctx, s.runtimeBuildParams.FileViews)
 	})
 	e.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
-		projection := owner.Snapshot()
-		cwd := projection.Identity().InitialCWD
-		if saved := projection.State().ExecutionCWD; saved != nil {
-			cwd = *saved
-		}
-		child := s.hooks.ForSession(owner.ID(), cwd, owner.Path())
-		apphook.Bind(child, provider, owner, model)
+		child := apphook.ForChild(s.hooks, owner)
 		child.SetEnvProvider(func(ctx context.Context) []string {
 			return plugin.PluginEnv(plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins))
 		})
-		return child, func(provider llm.Provider, model string) { apphook.Bind(child, provider, owner, model) }, child.Shutdown
+		return apphook.BindChild(child, provider, owner, model)
 	})
 	e.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)

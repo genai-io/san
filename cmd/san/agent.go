@@ -31,9 +31,10 @@ var agentRunCmd = &cobra.Command{
 Example:
   san agent run --prompt "find main.go"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if agentRunOpts.Prompt != "" {
-			warnShellFallback()
+		if err := agentRunOpts.Validate(); err != nil {
+			return err
 		}
+		warnShellFallback()
 		return cli.RunAgent(agentRunOpts)
 	},
 }
