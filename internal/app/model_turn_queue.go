@@ -111,6 +111,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
+	m.userInput.AppendSubmission(m.env.CWD, item.Content)
 	// Process image references (leading image paths, @-references, bare paths)
 	// just like the normal submit path does — the raw queued content hasn't been
 	// through ProcessImageRefs yet. On failure this message still goes out: it

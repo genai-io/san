@@ -1,12 +1,62 @@
 package input
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
 )
+
+func TestQueueEraseThenEdit(t *testing.T) {
+	for _, action := range []string{"delete", "replace"} {
+		t.Run(action, func(t *testing.T) {
+			m := New("", 80, nil, SelectorDeps{})
+			a := m.Queue.Enqueue("A", nil)
+			b := m.Queue.Enqueue("B", nil)
+			m.EnterQueueSelection()
+			m.Textarea.SetValue("")
+			if action == "delete" {
+				m.HandleQueueSelectKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+				if m.Queue.Len() != 1 {
+					t.Fatalf("remaining items = %d, want one", m.Queue.Len())
+				}
+			} else {
+				key := tea.KeyPressMsg{Code: 'x', Text: "x"}
+				if _, handled := m.HandleQueueSelectKey(key); handled {
+					t.Fatal("replacement key intercepted")
+				}
+				m.Textarea, _ = m.Textarea.Update(key)
+				m.HandleQueueSelectKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+				if item, ok := m.Queue.At(1); !ok || item.ID != b || item.Content != "x" {
+					t.Fatalf("replacement item = %+v", item)
+				}
+			}
+			if item, ok := m.Queue.At(0); !ok || item.ID != a || item.Content != "A" {
+				t.Fatalf("unrelated item = %+v", item)
+			}
+		})
+	}
+}
+
+func TestLastQueueRemovalRestoresComposer(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{{Code: 'c', Mod: tea.ModCtrl}, {Code: tea.KeyEscape}} {
+		t.Run(key.String(), func(t *testing.T) {
+			m := New("", 80, nil, SelectorDeps{})
+			m.Textarea.SetValue("unfinished composer")
+			m.Queue.Enqueue("only item", nil)
+			m.EnterQueueSelection()
+			if key.Code == tea.KeyEscape {
+				m.Textarea.SetValue("")
+			}
+			m.HandleQueueSelectKey(key)
+			if m.Queue.Len() != 0 || m.Queue.SelectIdx != -1 || m.Queue.Stashed != "" || m.Textarea.Value() != "unfinished composer" {
+				t.Fatalf("after removal: queue=%+v composer=%q", m.Queue, m.Textarea.Value())
+			}
+		})
+	}
+}
 
 func TestQueueEnqueueDequeue(t *testing.T) {
 	var q Queue
