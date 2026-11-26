@@ -80,6 +80,10 @@ Say under which conditions the design is reasonable, which specific scenario bre
 
 Trace a concrete change through imports and call sites: which package decides the rule or owns the state, and which packages only consume it? If changing the rule means editing unrelated callers, show where and why. Keep the behavior with its owner; do not add a layer just to make directories look alike. For a proposed move, check the resulting import direction, read the qualified name in a real caller, and identify the owner and caller tests that should still pass.
 
+For a layout review, pick two changes a maintainer might make and name the first place they would look. Changing how a live chat displays Markdown should lead to the view; changing what survives a restart should lead to the session store. A shared caller or a common implementation detail is not, by itself, a reason to merge packages. Recommend keeping the layout if both changes already have clear owners.
+
+For a rename-only change, separate moves from edits in the diff. Check the full path and the name as imported, including any alias needed to distinguish two packages. Shorter is not clearer if the caller has to reconstruct what the name means. Verify behavior at a consumer (for a chat view, render a streamed reply or tool result), not just by compiling the renamed package. Check links and embedded assets that the compiler cannot see.
+
 **Names.** Judge files, types, structs, objects, fields, variables, environment variables, and functions in the context of the project. Consult `docs/reference/file-naming.md`, public contracts, documentation, and major callers. For example, trace an environment variable through its configuration field to the consuming function: do all three express the same concept and unit? Inspect key names only, never environment variable values.
 
 Prefer short, concrete names that describe a stable responsibility. Would the name still fit another reasonable caller tomorrow? Avoid both today's call-site details and vague names for imagined future uses. Layers may follow different spelling conventions. Clear local variables do not need a project prefix.
