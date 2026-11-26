@@ -277,6 +277,21 @@ func TestPreviewStepsCountsChineseDisplayColumns(t *testing.T) {
 	}
 }
 
+func TestPreviewStepsBoundsLongStepName(t *testing.T) {
+	const id = "summarize_release_notes"
+	const prompt = "检查仓库与关键路径。"
+	b, err := Parse("```mermaid\nflowchart LR\n" + id + "\n```\n## " + id + "\n" + prompt + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row := b.PreviewSteps(24); ansi.StringWidth(row) > 24 || !strings.HasPrefix(row, "  summarize") {
+		t.Errorf("24-column preview used %d cells: %q", ansi.StringWidth(row), row)
+	}
+	if row := b.PreviewSteps(72); row != "  "+id+" — "+prompt {
+		t.Errorf("wide preview lost text: %q", row)
+	}
+}
+
 func TestCompactFlowViewKeepsConditionalAndLongEdges(t *testing.T) {
 	src := "```mermaid\nflowchart LR\n  a --> b --> c\n  a -->|YES| c\n```\n\n## a\ngo\n\n## b\ngo\n\n## c\ngo\n"
 	w, err := Parse(src)

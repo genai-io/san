@@ -404,8 +404,7 @@ func (b *Blueprint) PreviewSteps(width int) string {
 			continue
 		}
 		prefix := "  " + n.Base + " — "
-		first = ansi.Truncate(first, max(8, width-ansi.StringWidth(prefix)), "…")
-		lines = append(lines, prefix+first)
+		lines = append(lines, ansi.Truncate(prefix+first, width, "…"))
 		if len(lines) == 8 {
 			break
 		}

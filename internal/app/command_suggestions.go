@@ -99,7 +99,12 @@ func flowInputSuggestions(lister interface {
 	var out []suggest.Suggestion
 	for _, key := range keys {
 		if !used[key] && strings.HasPrefix(key, fragment) {
-			out = append(out, suggest.Suggestion{Name: "flow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
+			description := "Value for {{input." + key + "}}"
+			if key == "input" {
+				// Both {{input}} and {{input.input}} use this run argument.
+				description = "Value for run input: input"
+			}
+			out = append(out, suggest.Suggestion{Name: "flow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: description})
 		}
 	}
 	return out

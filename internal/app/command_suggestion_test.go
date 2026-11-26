@@ -37,6 +37,10 @@ func TestFlowStorageDoesNotRequireAProviderOrToolRegistry(t *testing.T) {
 	if got, err := m.services.Flow.Definition("offline"); err != nil || got != source {
 		t.Fatalf("offline definition=%q error=%v", got, err)
 	}
+	match := commandSuggestionMatcher(&command.Registry{}, m.services.Flow)
+	if got := match("/flow run offline "); len(got) != 1 || got[0].Name != "flow run offline input=" || got[0].Description != "Value for run input: input" {
+		t.Fatalf("bare run input suggestion: %+v", got)
+	}
 	if got := (&model{}).slashCommandEnv().Flow; got != nil {
 		t.Fatal("missing service should not become a typed nil interface")
 	}

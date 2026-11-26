@@ -140,12 +140,8 @@ func (s *Service) ResumeRun(id, from string, width int) (string, error) {
 			err = fmt.Errorf("main flow resume requires its original session")
 		}
 		if err == nil && from == "" {
-			for _, n := range b.Nodes {
-				c := r.Nodes[n.ID]
-				if n.Executor == "main" && (c.Status == StatusFailed || c.Status == StatusRunning) {
-					err = fmt.Errorf("main node %s may already have side effects; confirm rerun with explicit from", n.ID)
-					break
-				}
+			if id := b.ExplicitRerunNode(r.Nodes); id != "" {
+				err = fmt.Errorf("main node %s may already have side effects; confirm rerun with explicit from", id)
 			}
 		}
 	}
@@ -162,6 +158,19 @@ func (s *Service) ResumeRun(id, from string, width int) (string, error) {
 		return "", err
 	}
 	return s.scheduleRecord(b, *r, "Resume flow "+b.Name, release, width, true)
+}
+
+// ExplicitRerunNode identifies uncertain main work that blocks implicit resume.
+func (b *Blueprint) ExplicitRerunNode(nodes map[string]Checkpoint) string {
+	if b != nil {
+		for _, n := range b.Nodes {
+			status := nodes[n.ID].Status
+			if n.Executor == "main" && (status == StatusFailed || status == StatusRunning) {
+				return n.ID
+			}
+		}
+	}
+	return ""
 }
 
 // start persists a snapshot before launching its background task.

@@ -137,8 +137,8 @@ func savedFlowList(saved []flow.SavedDefinition) string {
 	var b strings.Builder
 	for _, d := range saved {
 		b.WriteString("\n- " + d.Name)
-		if d.Description != "" {
-			b.WriteString(" — " + d.Description)
+		if description := strings.TrimRight(d.Description, "\r\n"); description != "" {
+			b.WriteString(" — " + description)
 		}
 	}
 	return b.String()

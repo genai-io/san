@@ -87,6 +87,37 @@ func TestFlowHistoricalWorkersUseOriginalExecutions(t *testing.T) {
 	}
 }
 
+func TestFlowWorkerSelectionDuringRefresh(t *testing.T) {
+	s := flowUIFixture()
+	worker := func(i int, id string) flow.WorkerCheckpoint {
+		return flow.WorkerCheckpoint{Index: i, Label: "same", State: flow.Checkpoint{Outcome: flow.Outcome{Execution: flow.Execution{TaskID: id, SessionID: id + "-session"}}, Attempt: 1}}
+	}
+	first, second := worker(0, "first"), worker(1, "selected")
+	c := s.r.Nodes["b"]
+	c.Workers = []flow.WorkerCheckpoint{first, second}
+	s.r.Nodes["b"] = c
+	var v FlowView
+	v.OpenRun(s, "run", 100, 40)
+	v.HandleKeypress(flowKey("enter"))
+	v.HandleKeypress(flowKey("down"))
+	// A worker retry inserts its previous attempt above the pinned worker.
+	retry := worker(0, "retry")
+	retry.State.Attempt = 2
+	retry.State.History = []flow.Attempt{{Outcome: first.State.Outcome, Number: 1}}
+	c.Workers = []flow.WorkerCheckpoint{retry, second}
+	s.r.Nodes = map[string]flow.Checkpoint{"b": c}
+	v.Update(flowTick{v.generation})
+	if msg := v.HandleKeypress(flowKey("enter"))().(FlowOpenTaskMsg); msg.Execution != second.State.Execution {
+		t.Fatalf("worker retry redirected inspection to %+v", msg.Execution)
+	}
+	c.Workers = []flow.WorkerCheckpoint{retry}
+	s.r.Nodes = map[string]flow.Checkpoint{"b": c}
+	v.Update(flowTick{v.generation})
+	if v.page != flowPageRun || v.nodeID() != "b" || v.follow || !strings.Contains(v.message, "unavailable") {
+		t.Fatalf("vanished execution: page=%s node=%s follow=%t message=%q", v.page, v.nodeID(), v.follow, v.message)
+	}
+}
+
 func TestFlowUnavailableExecutionDoesNotLaunch(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView

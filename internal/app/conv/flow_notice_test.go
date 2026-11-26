@@ -24,6 +24,37 @@ func TestSchedulerDiagnosticPrecedesOptionalTitle(t *testing.T) {
 	}
 }
 
+func TestCompactFlowReceiptKeepsMarkerWhenItFits(t *testing.T) {
+	oldProfile, wasDark := lipgloss.Writer.Profile, kit.IsDarkBackground()
+	lipgloss.Writer.Profile = colorprofile.TrueColor
+	t.Cleanup(func() {
+		lipgloss.Writer.Profile = oldProfile
+		if wasDark {
+			kit.InitTheme("dark")
+		} else {
+			kit.InitTheme("light")
+		}
+	})
+	for _, theme := range []string{"dark", "light"} {
+		kit.InitTheme(theme)
+		marker := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Render("● ")
+		for _, tc := range []struct {
+			status, label string
+			color         kit.AdaptiveColor
+		}{{"killed", "Stopped", kit.CurrentTheme.Muted}, {"failed", "Failed", kit.CurrentTheme.Error}} {
+			e := parseAgentEnvelope(`<task-notification scheduler="true" status="` + tc.status + `"></task-notification>`)
+			outcome := lipgloss.NewStyle().Foreground(tc.color).Render(tc.label)
+			for _, prefix := range []string{"", marker} {
+				want := prefix + outcome + "\n"
+				width := ansi.StringWidth(prefix + outcome)
+				if got := e.renderWithIdentity(RenderContext{Width: width}); got != want {
+					t.Errorf("%s width %d: got %q want %q", theme, width, got, want)
+				}
+			}
+		}
+	}
+}
+
 func TestSchedulerNoticeReceipt(t *testing.T) {
 	oldProfile := lipgloss.Writer.Profile
 	lipgloss.Writer.Profile = colorprofile.TrueColor

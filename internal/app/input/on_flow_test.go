@@ -251,6 +251,10 @@ func TestFlowResponsiveInspectAndConfirmations(t *testing.T) {
 	}
 	v.HandleKeypress(flowKey("esc"))
 	v.HandleKeypress(flowKey("s"))
+	warning := strings.Join(strings.Fields(ansi.Strip(v.Render())), " ")
+	if !strings.Contains(warning, "In-flight work may have side effects.") {
+		t.Fatalf("stop warning clipped: %s", warning)
+	}
 	if s.stops != 0 {
 		t.Fatal("stop was not confirmed")
 	}
@@ -272,6 +276,25 @@ func TestFlowResponsiveInspectAndConfirmations(t *testing.T) {
 		t.Fatal("confirmed resume not refreshed")
 	}
 }
+func TestFlowRecoveryWarningAfterResize(t *testing.T) {
+	s := flowUIFixture()
+	s.r.Status = flow.RunFailed
+	var v FlowView
+	v.OpenRun(s, "run", 100, 32)
+	for i := 0; i < 2; i++ {
+		v.HandleKeypress(flowKey("r"))
+		v.Resize(40, 32)
+		screen := strings.Join(strings.Fields(ansi.Strip(v.Render())), " ")
+		if !strings.Contains(screen, "Unknown/in-flight work may already have side effects; retry can duplicate them.") {
+			t.Errorf("clipped recovery preview: %s", screen)
+		}
+		v.HandleKeypress(flowKey("esc"))
+	}
+	if s.resumes != 0 {
+		t.Fatal("preview resumed the run")
+	}
+}
+
 func TestFlowRunRefusesSourceChangedAfterReview(t *testing.T) {
 	s := flowUIFixture()
 	var v FlowView

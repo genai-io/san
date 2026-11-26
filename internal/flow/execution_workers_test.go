@@ -15,22 +15,33 @@ func TestWorkerExecutionUsesPositionNotDuplicateLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	var state Checkpoint
+	var writes int
 	var seq atomic.Int32
 	runner := executionRunner(func(_ context.Context, c Call) (string, error) {
 		if c.Node.ID == "plan" {
 			return `{"tasks":[{"name":"same","prompt":"one"},{"name":"same","prompt":"two"}]}`, nil
 		}
-		c.OnExecution(Execution{TaskID: fmt.Sprintf("child-%d", seq.Add(1)), SessionID: c.Prompt})
+		id := Execution{TaskID: fmt.Sprintf("child-%d", seq.Add(1)), SessionID: c.Prompt}
+		if c.Prompt == "one" {
+			c.OnExecution(Execution{TaskID: id.TaskID}) // launch, before session assignment
+			c.OnExecution(id)
+		}
+		c.OnExecution(id) // completion can repeat, refine, or first report an identity
 		return c.Prompt, nil
 	})
 	res := Run(context.Background(), w, runner, Options{OnCheckpoint: func(n *Node, c Checkpoint) error {
 		if n.ID == "work" {
+			writes++
 			state = c
 		}
 		return nil
 	}})
 	if res.Failed(w) {
 		t.Fatal(res.Failures(w))
+	}
+	// Two worker starts, three distinct identity updates, two finishes, and the node finish.
+	if writes != 8 || state.Output != "## same\none\n\n## same\ntwo" {
+		t.Fatalf("writes=%d output=%q", writes, state.Output)
 	}
 	if len(state.Workers) != 2 || state.Workers[0].State.Execution.SessionID != "one" || state.Workers[1].State.Execution.SessionID != "two" || state.Workers[0].State.Execution.TaskID == state.Workers[1].State.Execution.TaskID {
 		t.Fatalf("worker identities: %+v", state.Workers)

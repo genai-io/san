@@ -224,6 +224,27 @@ func TestFlowReviewKeepsPrimaryActionsVisible(t *testing.T) {
 	}
 }
 
+func TestFlowEditInvalidReviewShowsReason(t *testing.T) {
+	var v FlowView
+	v.OpenDraft(flowUIFixture(), "sample", flowUISource, flowUISource, 96, 32)
+	v.HandleKeypress(flowKey("e"))
+	v.editor.SetValue("No graph yet")
+	v.HandleKeypress(flowKey("esc"))
+	reason := v.message
+	if reason == "" || !strings.Contains(ansi.Strip(v.Render()), reason) {
+		t.Fatalf("missing invalid review reason: %q", reason)
+	}
+	v.HandleKeypress(flowKey("e"))
+	if screen := ansi.Strip(v.Render()); !strings.Contains(screen, reason) {
+		t.Fatalf("editor lost %q: %s", reason, screen)
+	}
+	v.editor.SetValue(flowUISource)
+	v.HandleKeypress(flowKey("ctrl+s"))
+	if v.confirm != flowConfirmSave || strings.Contains(ansi.Strip(v.Render()), reason) {
+		t.Fatal("corrected source did not reach a clean save preview")
+	}
+}
+
 func TestFlowReviewSelectionAfterRemovingSteps(t *testing.T) {
 	for _, action := range []string{"esc", "ctrl+s"} {
 		t.Run(action, func(t *testing.T) {
@@ -248,6 +269,24 @@ func TestFlowReviewSelectionAfterRemovingSteps(t *testing.T) {
 	}
 }
 
+func TestFlowFailedMainRequiresSelectedRerun(t *testing.T) {
+	s := flowUIFixture()
+	s.r.Definition = "```mermaid\nflowchart LR\n answer\n```\n## answer\nexecutor: main\n\nwrite\n"
+	s.r.Status = flow.RunFailed
+	s.r.Nodes = map[string]flow.Checkpoint{"answer": {Outcome: flow.Outcome{Status: flow.StatusFailed}}}
+	var v FlowView
+	v.OpenRun(s, "run", 110, 40)
+	v.HandleKeypress(flowKey("r"))
+	if v.confirm != "" || strings.Contains(ansi.Strip(v.Render()), "r resume") || !strings.Contains(v.message, "use R") {
+		t.Fatalf("implicit resume: confirm=%q screen=%s", v.confirm, ansi.Strip(v.Render()))
+	}
+	v.HandleKeypress(flowKey("R"))
+	v.HandleKeypress(flowKey("y"))
+	if s.from != "answer" {
+		t.Fatalf("explicit rerun from %q", s.from)
+	}
+}
+
 func TestFlowResumeModesAndWorkerPreview(t *testing.T) {
 	s := flowUIFixture()
 	s.r.Status = flow.RunFailed
@@ -265,9 +304,20 @@ func TestFlowResumeModesAndWorkerPreview(t *testing.T) {
 	if v.nodeID() != "d" || v.resumeFrom != "" {
 		t.Fatal("default resume targeted selection")
 	}
-	preview := v.resumePreview()
-	if !strings.Contains(preview, "b: rerun; reuse 1 successful workers if plan unchanged") || !strings.Contains(preview, "a: reuse successful result") {
-		t.Fatal(preview)
+	for _, tc := range []struct {
+		count int
+		want  string
+	}{{1, "1 successful worker if plan unchanged"}, {2, "2 successful workers if plan unchanged"}} {
+		if tc.count == 2 {
+			v.HandleKeypress(flowKey("n"))
+			c.Workers = append(c.Workers, c.Workers[0])
+			v.record.Nodes["b"] = c
+			v.HandleKeypress(flowKey("r"))
+		}
+		preview := ansi.Strip(v.Render())
+		if !strings.Contains(preview, "b: rerun; reuse "+tc.want) || !strings.Contains(preview, "a: reuse successful result") {
+			t.Errorf("%d workers: %s", tc.count, preview)
+		}
 	}
 	v.HandleKeypress(flowKey("y"))
 	if s.from != "" || v.record.Status != flow.RunRunning {

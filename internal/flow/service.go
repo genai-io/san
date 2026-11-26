@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -16,7 +17,7 @@ import (
 // Service schedules reviewed blueprints through the native subagent executor.
 type Service struct {
 	mainExecutor MainExecutor
-	executor     tool.AgentExecutor
+	executor     worker
 	tasks        *task.Manager
 	dirs         []string
 	mu           sync.Mutex
@@ -25,7 +26,7 @@ type Service struct {
 }
 
 func NewService(tasks *task.Manager) *Service { return &Service{tasks: tasks} }
-func (s *Service) SetExecutor(executor tool.AgentExecutor) {
+func (s *Service) SetExecutor(executor worker) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.executor = executor
@@ -71,11 +72,13 @@ type workerBinding struct {
 
 // PrepareFlowWorker binds the effective host policy and identifies it for recovery
 // without persisting private agent configuration in the run record.
-type workerPolicyHost interface {
+type worker interface {
+	Run(context.Context, tool.AgentExecRequest) (*tool.AgentExecResult, error)
+	ResolveAgentSelection(string) (tool.AgentConfigInfo, any, bool)
 	PrepareFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
 }
 
-func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*workerBinding, error) {
+func (s *Service) bindWorkers(b *Blueprint, executor worker) (*workerBinding, error) {
 	if s.tasks == nil {
 		return nil, errors.New("task manager not configured")
 	}
@@ -95,11 +98,10 @@ func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*worke
 		if agent != "" && info.Source == "" {
 			return nil, fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
 		}
-		host, ok := executor.(workerPolicyHost)
-		if !ok || config == nil {
+		if config == nil {
 			return nil, fmt.Errorf("node %s: executor cannot bind resolved worker policy", n.ID)
 		}
-		config, fingerprint, err := host.PrepareFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
+		config, fingerprint, err := executor.PrepareFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
 		if err != nil {
 			return nil, fmt.Errorf("node %s: fingerprint worker policy: %w", n.ID, err)
 		}
@@ -146,7 +148,11 @@ func (s *Service) Preview(name string, width int) (string, error) {
 	}
 	width = fitWidth(width)
 	turns, fanOut := b.Bounds()
-	preview := fmt.Sprintf("Preview only · up to %d turns · max %d parallel\n\n%s", turns, b.MaxParallel, b.CompactProgressView(nil, width))
+	unit := "turns"
+	if turns == 1 {
+		unit = "turn"
+	}
+	preview := fmt.Sprintf("Preview only · up to %d %s · max %d parallel\n\n%s", turns, unit, b.MaxParallel, b.CompactProgressView(nil, width))
 	if b.Description != "" {
 		preview += "\nAbout: " + ansi.Truncate(b.Description, max(8, width-7), "…")
 	}
@@ -183,7 +189,7 @@ func (s *Service) Launch(name string, inputs map[string]string, width int) (stri
 func validateInputs(b *Blueprint, inputs map[string]string) error {
 	var missing []string
 	for _, key := range b.InputNames() {
-		if _, ok := inputs[key]; !ok {
+		if strings.TrimSpace(inputs[key]) == "" {
 			missing = append(missing, key)
 		}
 	}
