@@ -182,6 +182,32 @@ With no running Flow, the existing double Ctrl+C exit remains unchanged.
 A file is parsed when reviewed or run, not at startup: a broken definition
 never blocks the session.
 
+### Run one auto-dev experiment
+
+Use `/audit` to find a concrete problem without editing code, `/gain` to review an existing change, or `/auto-dev` to run a series of experiments. Each is a standalone skill; none requires Flow.
+
+Use the [auto-dev blueprint](../../examples/flows/auto-dev.md) when you want to inspect one experiment step by step. Each worker receives its instructions in full, including both audit guides where needed. The source paths identify the original skills; workers do not need to load them at run time. To install the blueprint without replacing an existing copy:
+
+```sh
+mkdir -p .san/workflows
+cp -n examples/flows/auto-dev.md .san/workflows/auto-dev.md
+```
+
+Start San **in the prepared experiment worktree**, `/flow show auto-dev` to inspect the saved definition, then explicitly `/flow run auto-dev scope=internal/flow run=/absolute/path/to/run-brief.md`. The brief identifies the scope, base SHA, branch, ledger, checks, and trusted quota command and threshold; do not put credentials in it. The owning auto-dev process checks quota before launching. Without an isolated worktree and a reliable quota gate, do not run the edit path.
+
+Read the graph as actions: `audit` proposes one falsifiable issue; `edit` tests it, or makes no change if there is no testable candidate. `gain` owns the verdict, including skipping an unopened candidate. Each node gets a fresh subagent context and only the upstream text referenced by its prompt. The brief and experiment evidence must remain accessible. Updating a skill requires refreshing its embedded body; the integration test checks the actual node prompts against the source texts. Short handoffs are an instruction, not a token limit.
+
+The lifecycle diagram distinguishes the four workers from the outer loop:
+
+```text
+       ┌──────── continue ────────┐
+       ▼                          │
+     audit → edit → gain → next ──┤
+                                  └─ pause
+```
+
+`next` hands the gain verdict back with `continue` or `pause`; a pause reason belongs in the details. The return arrow is driven by the owner, not a scheduler edge. One graph execution represents at most one candidate, not the entire auto-dev loop. Its final text is a recommendation, not a commit. The owner reconciles the ledger, checks quota, and selects the next experiment. Never blindly retry an interrupted edit: check the worktree and pending ledger first. No prompt can enforce an account quota; a strict per-model-call limit requires a host-side gate.
+
 ### Try a full repository audit
 
 [`examples/flows/ponytail-audit.md`](../../examples/flows/ponytail-audit.md)
