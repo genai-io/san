@@ -162,7 +162,10 @@ func TestForegroundWaitWithRunningTask(t *testing.T) {
 		{"Running task only", "", true, false, 1, started},
 		{"No other live indicators", "✦ On it", false, false, 1, started},
 		{"Retrying with a running task", "✦ Retrying", true, true, 2, started},
-		{"Quiet model with a running task", "✦ Waiting for model", true, true, 1, time.Now().Add(-time.Minute)},
+		{"Quiet model with a running task", "", true, false, 1, time.Now().Add(-time.Minute)},
+		{"Quiet model with a running task and queued prompt", "", true, true, 1, time.Now().Add(-time.Minute)},
+		{"Quiet model without task indicators", "✦ Waiting for model", false, false, 1, time.Now().Add(-time.Minute)},
+		{"Quiet model with a queued prompt only", "✦ Waiting for model", false, true, 1, time.Now().Add(-time.Minute)},
 	} {
 		m.userInput.Queue.Clear()
 		if tc.queued {

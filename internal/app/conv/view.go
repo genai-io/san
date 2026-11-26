@@ -658,24 +658,35 @@ func RenderActiveBody(p RenderContext) string {
 	return strings.TrimRight(renderActiveMessageRange(p), "\n")
 }
 
-// RenderForegroundWait renders submission, inference, and between-step waits in
-// one slot. Routine waits can yield to other visible activity in the footer.
-func RenderForegroundWait(p RenderContext) (row string, routine bool) {
+// WaitPriority determines which other indicators can replace a foreground wait.
+type WaitPriority uint8
+
+const (
+	WaitAlways WaitPriority = iota
+	WaitUnlessTasks
+	WaitUnlessBusy
+)
+
+// RenderForegroundWait renders submission, inference, and between-step waits in one slot.
+func RenderForegroundWait(p RenderContext) (row string, priority WaitPriority) {
 	if !p.StreamActive || p.DockedModalActive {
-		return "", false
+		return "", WaitAlways
 	}
 	label := "On it"
+	priority = WaitUnlessBusy
 	if p.Inferring || p.StreamWaiting {
 		switch {
 		case p.InferenceAttempt > 1:
+			priority = WaitAlways
 			label = fmt.Sprintf("Retrying · attempt %d", p.InferenceAttempt)
 		case modelWaitQuiet(p.StreamStartedAt, p.InferenceLastDataAt):
+			priority = WaitUnlessTasks
 			label = "Waiting for model"
 		}
 	} else if !waitingBetweenSteps(p) {
-		return "", false
+		return "", WaitAlways
 	}
-	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label), label == "On it"
+	return renderModelWait(p.Frame, max(1, p.Width), p.StreamStartedAt, p.InferenceLastDataAt, label), priority
 }
 
 func waitingBetweenSteps(p RenderContext) bool {

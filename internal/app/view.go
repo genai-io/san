@@ -142,7 +142,7 @@ func (m *model) renderNormalView(separator, trackerView, history string) (string
 }
 
 func (m *model) renderNormalBottom(separator, trackerView, history string) (string, int) {
-	footer := m.renderFooter(separator)
+	footer := m.renderFooter(separator, trackerView != "")
 	status := footer.status
 	if footer.routineWait {
 		status = "" // Only reserve a row for routine waiting after other indicators have been laid out.
@@ -257,7 +257,7 @@ type composerFooter struct {
 	routineWait   bool
 }
 
-func (m *model) renderFooter(separator string) composerFooter {
+func (m *model) renderFooter(separator string, showingTasks bool) composerFooter {
 	var b strings.Builder
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		// Candidates grow upward so opening them does not move the composer.
@@ -278,7 +278,12 @@ func (m *model) renderFooter(separator string) composerFooter {
 		}
 		status = conv.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
 	default:
-		status, routineWait = conv.RenderForegroundWait(params)
+		var priority conv.WaitPriority
+		status, priority = conv.RenderForegroundWait(params)
+		routineWait = priority == conv.WaitUnlessBusy
+		if showingTasks && priority == conv.WaitUnlessTasks {
+			status = ""
+		}
 	}
 	footer := composerFooter{status: status, routineWait: routineWait}
 	if width := m.env.Width - 1; m.memoryUpdate != nil && m.memoryUpdate.manual && width > 0 {
