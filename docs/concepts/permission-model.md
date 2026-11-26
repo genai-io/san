@@ -183,7 +183,7 @@ whole command, but cannot create an exact allow rule or be pre-approved by a
 hook or existing grant. Outside Autopilot it requires human confirmation
 unless bypass is active.
 
-The judge itself lives in `internal/judge/`.
+The judge itself lives in `internal/autopilot/judge/`.
 
 ## Hooks Can Mutate Permissions
 
@@ -229,7 +229,7 @@ terms — there is no PowerShell parser, so every judgment errs one way:
 - Decision gate: `internal/setting/permission.go` → `HasPermissionToUseTool`.
 - Rule parser + Bash AST: `internal/setting/bash_ast.go`.
 - Approval modal flow: `internal/agent/permission.go` (`PermissionGate`).
-- Gray-zone judge: `internal/judge/`.
+- Gray-zone judge: `internal/autopilot/judge/`.
 - Hook-allow invariant: `internal/setting/permission.go` → `CanApproveByHook`,
   applied in `internal/tool/gate.go`.
 - Subagent permission resolution: `internal/subagent/executor.go`.

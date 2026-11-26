@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/judge"
 )
 
 const continueDecisionTask = `The agent just finished a turn and is about to hand control back to the human. Nobody may be at the keyboard, so decide whether to keep it going toward the mission using the supplied recent session evidence.
@@ -66,10 +66,4 @@ func ParseDecision(content string) (Decision, error) {
 		return d, fmt.Errorf("stop decision included an instruction")
 	}
 	return d, nil
-}
-
-func SuggestionPrompt(steering, mission string) (prompt, details string) {
-	return `<system-reminder>Suggestion mode: propose the SINGLE next instruction to give the agent toward the mission below. You are a separate, one-off note: the main work is not interrupted, and you cannot use tools.
-Reply with ONLY that instruction, a short direct imperative the user can accept and send as-is (a few words to one sentence): no quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.
-</system-reminder>`, "<steering_instructions>\n" + steering + "\n</steering_instructions>\n\nMission:\n" + mission
 }

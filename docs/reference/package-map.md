@@ -42,7 +42,7 @@ Agent, persistence, and orchestration:
 | --- | --- | --- |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
 | `internal/agent/mail` | `feature` | Routes addressed messages and task completions between agents; independent of the agent runtime. |
-| `internal/autopilot` | `feature` | Mission steering: interpret turn outcomes and decide whether to continue, finish, or hand control back. The TUI applies the result to the live session. |
+| `internal/autopilot` | `feature` | Mission steering and suggestion prompts: predict the next input or propose an instruction for an active mission. The TUI schedules suggestions through `aside` and displays them. |
 | `internal/aside` | `feature` | Focused model calls outside the main conversation, with request snapshots and session-owned recording. |
 | `internal/reflect/memory` | `feature` | Repository memory updates, change validation, and note storage. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
@@ -77,7 +77,7 @@ Configuration and supporting capabilities:
 | `internal/persona` | `feature` | Persona registry (system-prompt parts, skills, settings overlay), template, paths. |
 | `internal/search` | `feature` | Search provider implementations and factory. |
 | `internal/reminder` | `feature` | Runtime reminder queue and provider integration. |
-| `internal/judge` | `feature` | LLM judge for gray-zone permissions and bash prompts. |
+| `internal/autopilot/judge` | `feature` | Tool-free model review of gray-zone permissions and interactive Bash prompts. |
 | `internal/image` | `feature` | Image handling + `core.Image` adapter; provisional — see note in `dependency-rules.md`. |
 | `internal/upgrade` | `feature` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |
 

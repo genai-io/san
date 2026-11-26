@@ -318,6 +318,39 @@ func TestPromptSuggestionGatedOnSuggestSteerInEveryMode(t *testing.T) {
 	}
 }
 
+func TestPromptSuggestionMissionVsGeneralInput(t *testing.T) {
+	const mission = "ship the test release"
+	for _, tc := range []struct {
+		name        string
+		mode        setting.OperationMode
+		wantMission bool
+	}{
+		{"mission", setting.ModeAutoPilot, true},
+		{"general", setting.ModeNormal, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newSuggestionModel(t, true, tc.mode)
+			m.env.AutoPilot.Mission = mission
+			m.env.AutoPilot.MissionState = setting.MissionRunning
+			cmd := m.startPromptSuggestion()
+			if cmd == nil {
+				t.Fatal("missing suggestion request")
+			}
+			if msg := cmd().(input.PromptSuggestionMsg); msg.Err != nil {
+				t.Fatal(msg.Err)
+			}
+			var sent strings.Builder
+			for _, msg := range m.env.LLMProvider.(*autopilotStubProvider).lastOptions().Messages {
+				sent.WriteString(msg.Text())
+			}
+			text := sent.String()
+			if strings.Contains(text, "propose the SINGLE next instruction") != tc.wantMission || strings.Contains(text, mission) != tc.wantMission || strings.Contains(text, "predict what the user will type next") == tc.wantMission {
+				t.Errorf("unexpected suggestion input: %q", text)
+			}
+		})
+	}
+}
+
 // Shift+Tab can now land on AutoPilot mid-turn. The opening proposal is ghost
 // text for a textarea the user cannot type into yet, so it must not cost an LLM
 // call — OnTurnEnd re-arms the hint once the turn is over.

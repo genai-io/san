@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 )

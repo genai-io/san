@@ -9,8 +9,8 @@ import (
 
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/aside"
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/infra/log"
-	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 )

@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/genai-io/san/internal/judge"
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"

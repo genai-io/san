@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/genai-io/san/internal/judge"
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"

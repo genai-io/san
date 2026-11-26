@@ -14,13 +14,6 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-const suggestNextInput = `<system-reminder>Suggestion mode: predict what the user will type next in this session. You are a separate, one-off note: the main work is not interrupted, and you cannot use tools.
-Predict what THEY would type, not what you think they should do: would they think "I was just about to type that"? Be specific: "run the tests" beats "continue".
-Never suggest evaluations ("looks good"), questions, your own voice ("Let me…"), new ideas they didn't ask about, or more than one sentence.
-Reply with nothing if the next step isn't obvious, or right after an error or a misunderstanding: let them assess it.
-Reply with ONLY the suggestion, 2-12 words in the user's language and style: no quotes, no explanation.
-</system-reminder>`
-
 // startPromptSuggestion fires the input hint. With Suggest off it never runs,
 // in or out of AutoPilot mode.
 // Under AutoPilot with a mission it proposes the next step toward it;
@@ -35,12 +28,14 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 		m.suggestOwed = true
 		return nil
 	}
-	prompt, details := suggestNextInput, ""
-	if mission := m.drivenMission(); mission != "" {
-		prompt, details = autopilot.SuggestionPrompt(m.autopilotSteeringInstructions(), mission)
+	mission := m.drivenMission()
+	var steering string
+	if mission != "" {
+		steering = m.autopilotSteeringInstructions()
 	} else if m.assistantReplies() < 2 {
 		return nil
 	}
+	prompt, details := autopilot.SuggestionPrompt(steering, mission)
 	req := m.newAsideRequest(session.PurposeSuggest, true, prompt, details)
 	return m.userInput.PromptSuggestion.Start(func(ctx context.Context) (string, error) {
 		resp, err := req.complete(ctx)

@@ -16,7 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/tui/widgets"
-	"github.com/genai-io/san/internal/judge"
+	"github.com/genai-io/san/internal/autopilot/judge"
 	"github.com/genai-io/san/internal/setting"
 )
 
