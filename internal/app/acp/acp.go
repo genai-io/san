@@ -209,7 +209,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
 	s := &acpSession{reminders: reminder.NewQueue(), mcp: servers, models: models}
-	pluginSource := ext.Source{Registry: plugins}
+	pluginSource := ext.Plugin{Registry: plugins}
 	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: pluginSource.CommandPaths})
 	s.agents, err = subagent.Load(req.CWD, pluginSource.AgentPaths())
 	if err != nil {

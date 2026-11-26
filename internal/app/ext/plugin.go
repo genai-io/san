@@ -10,8 +10,8 @@ import (
 	"github.com/genai-io/san/internal/subagent"
 )
 
-// Source adapts plugin registry paths for the extension loaders.
-type Source struct {
+// Plugin exposes registry contributions to the command, skill, agent and MCP loaders.
+type Plugin struct {
 	Registry *plugin.Registry
 }
 
@@ -19,7 +19,7 @@ func isProjectPlugin(scope plugin.Scope) bool {
 	return scope == plugin.ScopeProject || scope == plugin.ScopeLocal
 }
 
-func (src Source) CommandPaths() []command.PluginCommandPath {
+func (src Plugin) CommandPaths() []command.PluginCommandPath {
 	var paths []command.PluginCommandPath
 	for _, p := range src.Registry.CommandPaths() {
 		paths = append(paths, command.PluginCommandPath{Path: p.Path, Namespace: p.Namespace, IsProject: isProjectPlugin(p.Scope)})
@@ -27,7 +27,7 @@ func (src Source) CommandPaths() []command.PluginCommandPath {
 	return paths
 }
 
-func (src Source) SkillPaths() []skill.PluginSkillPath {
+func (src Plugin) SkillPaths() []skill.PluginSkillPath {
 	var paths []skill.PluginSkillPath
 	for _, p := range src.Registry.SkillPaths() {
 		paths = append(paths, skill.PluginSkillPath{Path: p.Path, Namespace: p.Namespace, IsProject: isProjectPlugin(p.Scope)})
@@ -35,7 +35,7 @@ func (src Source) SkillPaths() []skill.PluginSkillPath {
 	return paths
 }
 
-func (src Source) AgentPaths() []subagent.PluginAgentPath {
+func (src Plugin) AgentPaths() []subagent.PluginAgentPath {
 	var paths []subagent.PluginAgentPath
 	for _, p := range src.Registry.AgentPaths() {
 		paths = append(paths, subagent.PluginAgentPath{Path: p.Path, Namespace: p.Namespace})
@@ -43,7 +43,7 @@ func (src Source) AgentPaths() []subagent.PluginAgentPath {
 	return paths
 }
 
-func (src Source) MCPServers() []mcp.PluginServer {
+func (src Plugin) MCPServers() []mcp.PluginServer {
 	var servers []mcp.PluginServer
 	for _, s := range src.Registry.MCPServers() {
 		servers = append(servers, mcp.PluginServer{

@@ -19,7 +19,7 @@ func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supp
 		return nil, nil, nil, err
 	}
 	plugins.MergeHooksIntoSettings(settings)
-	source := ext.Source{Registry: plugins}
+	source := ext.Plugin{Registry: plugins}
 	skills := skill.Load(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	configs, err := acpMCPConfigs(supplied)
 	if err != nil {

@@ -91,7 +91,7 @@ func initExtensions(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
-	source := ext.Source{Registry: plugin.Default()}
+	source := ext.Plugin{Registry: plugin.Default()}
 	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
@@ -129,7 +129,7 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.services.Setting = setting.Default()
 	m.learnedStores.Update(cwd, m.services.Setting)
 
-	source := ext.Source{Registry: plugin.Default()}
+	source := ext.Plugin{Registry: plugin.Default()}
 	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	m.services.Skill = skill.Default()
 
