@@ -40,8 +40,8 @@ func (e *Executor) workerSchemas(config *AgentConfig, mode PermissionMode, ceili
 	})
 }
 
-// toolPolicy stays in memory; Flow persists only its fingerprint.
-type toolPolicy struct {
+// toolSelection stays in memory; Flow persists only its fingerprint.
+type toolSelection struct {
 	mode       PermissionMode
 	definition *AgentConfig
 	tools      []string
@@ -49,10 +49,10 @@ type toolPolicy struct {
 
 var exactWorkerTool = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-func (e *Executor) resolveToolPolicy(req tool.AgentExecRequest) (*toolPolicy, error) {
+func (e *Executor) selectTools(req tool.AgentExecRequest) (*toolSelection, error) {
 	var original []string
 	var config *AgentConfig
-	previous, pinned := req.ResolvedAgentConfig.(*toolPolicy)
+	previous, pinned := req.ResolvedAgentConfig.(*toolSelection)
 	if pinned {
 		if previous == nil || previous.definition == nil || previous.tools == nil {
 			return nil, fmt.Errorf("incomplete pinned worker policy")
@@ -99,7 +99,7 @@ func (e *Executor) resolveToolPolicy(req tool.AgentExecRequest) (*toolPolicy, er
 		denied[name] = true
 	}
 	names = slices.DeleteFunc(names, func(name string) bool { return denied[name] })
-	return &toolPolicy{mode: mode, definition: config, tools: names}, nil
+	return &toolSelection{mode: mode, definition: config, tools: names}, nil
 }
 
 // Materialize the lazy prompt without copying its sync.Once or retaining its source file.

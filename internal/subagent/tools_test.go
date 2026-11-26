@@ -60,7 +60,7 @@ func TestWorkerToolSelection(t *testing.T) {
 		{"unknown", []string{"not-a-tool"}, nil, true}, {"duplicate", []string{"Read", "Read"}, nil, true}, {"parent-only", []string{"Agent"}, nil, true}, {"outside parent", []string{"Skill"}, nil, true}, {"pattern", []string{"Bash(git *)"}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resolved, err := e.resolveToolPolicy(tool.AgentExecRequest{AllowTools: tc.tools})
+			resolved, err := e.selectTools(tool.AgentExecRequest{AllowTools: tc.tools})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("accepted invalid selection")
@@ -100,7 +100,7 @@ func TestWorkerDenyTools(t *testing.T) {
 		{"empty name", nil, []string{""}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resolved, err := e.resolveToolPolicy(tool.AgentExecRequest{AllowTools: tc.allow, DenyTools: tc.deny})
+			resolved, err := e.selectTools(tool.AgentExecRequest{AllowTools: tc.allow, DenyTools: tc.deny})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("expected invalid selection")
@@ -164,7 +164,7 @@ func TestFlowFingerprintIncludesArgumentRulesAndMode(t *testing.T) {
 	}
 	a.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
 	req.ResolvedAgentConfig = resolved
-	if _, err := a.resolveToolPolicy(req); err == nil {
+	if _, err := a.selectTools(req); err == nil {
 		t.Fatal("approval survived an inherited permission mode change")
 	}
 }
@@ -178,7 +178,7 @@ func TestWorkerEmptyAllowToolsYAML(t *testing.T) {
 		if def.AllowTools == nil {
 			t.Fatalf("%s inherited tools", src)
 		}
-		resolved, err := new(Executor).resolveToolPolicy(tool.AgentExecRequest{ResolvedAgentConfig: &def})
+		resolved, err := new(Executor).selectTools(tool.AgentExecRequest{ResolvedAgentConfig: &def})
 		if err != nil || resolved.tools == nil || len(resolved.tools) != 0 {
 			t.Fatalf("%s: %+v, %v", src, resolved, err)
 		}

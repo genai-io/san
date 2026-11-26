@@ -59,7 +59,7 @@ func TestWorkerSelectsOneMCPTool(t *testing.T) {
 		t.Fatalf("MCP server received lookup=%d publish=%d", calls.Load(), forbidden.Load())
 	}
 	e.SetParentTools(func() []string { return []string{sibling} })
-	if _, err := e.resolveToolPolicy(req); err == nil {
+	if _, err := e.selectTools(req); err == nil {
 		t.Fatal("worker selected MCP tool absent from parent")
 	}
 }

@@ -552,7 +552,7 @@ func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentC
 }
 
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
-	resolved, err := e.resolveToolPolicy(req)
+	resolved, err := e.selectTools(req)
 	if err != nil {
 		return nil, err
 	}

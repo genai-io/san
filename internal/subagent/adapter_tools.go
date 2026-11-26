@@ -12,7 +12,7 @@ import (
 // PrepareAgentTools returns both the actual catalogue for approval and the opaque
 // policy the approved call must carry into execution.
 func (a *ExecutorAdapter) PrepareAgentTools(req tool.AgentExecRequest) ([]string, any, error) {
-	resolved, err := a.resolveToolPolicy(req)
+	resolved, err := a.selectTools(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -22,18 +22,18 @@ func (a *ExecutorAdapter) PrepareAgentTools(req tool.AgentExecRequest) ([]string
 // PrepareFlowWorker fingerprints authority, not descriptions, prompt text or the
 // order in which MCP servers happen to advertise their tools.
 func (a *ExecutorAdapter) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, error) {
-	resolved, err := a.resolveToolPolicy(req)
+	resolved, err := a.selectTools(req)
 	if err != nil {
 		return nil, "", err
 	}
 	names := slices.Clone(resolved.tools)
 	slices.Sort(names)
-	policy := struct {
+	constraints := struct {
 		Mode        PermissionMode
 		Tools       []string
 		Allow, Deny ToolList
 	}{resolved.mode, names, resolved.definition.AllowTools, resolved.definition.DenyTools}
-	b, err := json.Marshal(policy)
+	b, err := json.Marshal(constraints)
 	if err != nil {
 		return nil, "", err
 	}
