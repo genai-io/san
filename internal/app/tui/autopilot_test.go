@@ -257,6 +257,34 @@ func TestMissionLifecycleGatesContinuation(t *testing.T) {
 	}
 }
 
+func TestTurnEndHandbackNotice(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		steer, notice bool
+	}{
+		{"spent budget", true, true}, {"steer disabled at cap", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newSuggestionModel(t, true, setting.ModeAutoPilot)
+			m.env.AutoPilot.MissionState = setting.MissionRunning
+			m.env.AutoPilot.Steers.TurnEnd = tc.steer
+			m.env.AutoPilot.MaxContinuations, m.autopilotContinuations = 2, 2
+			n := len(m.conv.Messages)
+			if cmd := m.autopilotContinueCmd(core.Result{StopReason: core.StopEndTurn}); cmd != nil || m.env.AutoPilot.MissionState != setting.MissionPaused {
+				t.Fatal("expected a paused mission and no decision")
+			}
+			added := m.conv.Messages[n:]
+			if tc.notice {
+				if len(added) != 1 || added[0].Content != autopilotHandback("") {
+					t.Fatalf("unexpected notices: %v", added)
+				}
+			} else if len(added) != 0 {
+				t.Fatalf("expected quiet handback, got %v", added)
+			}
+		})
+	}
+}
+
 // Saving the panel owns the settings, not where the run stands: a changed
 // mission starts over as ready, an unchanged one keeps its live state.
 func TestApplyAutopilotConfigMissionState(t *testing.T) {

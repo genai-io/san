@@ -400,11 +400,8 @@ type autopilotDecisionMsg struct {
 	deferrals int
 }
 
-// autopilotBudgetSpent reports whether the auto-continuation budget is used up.
-// An unlimited budget never is.
-func (m *model) autopilotBudgetSpent() bool {
-	ar := m.env.AutoPilot
-	return !ar.ContinuationsUnlimited() && m.autopilotContinuations >= ar.ResolvedMaxContinuations()
+func (m *model) continuationPolicy() autopilot.Continuation {
+	return autopilot.Continuation{Config: m.env.AutoPilot, Engaged: m.autopilotEngaged(), Used: m.autopilotContinuations}
 }
 
 // autopilotContinueCmd asks the copilot whether to auto-continue the finished
@@ -412,18 +409,14 @@ func (m *model) autopilotBudgetSpent() bool {
 // is off, the TurnEnd steer is off, the budget is spent, the model is missing,
 // or the turn ended in a way the copilot must not drive through.
 func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
-	ar := m.env.AutoPilot
-	// Only a running mission is driven. A human's own turn (the mission is then
-	// paused or not started) ends like any other: it waits for them.
-	if ar.MissionState != setting.MissionRunning {
+	action, situation := m.continuationPolicy().TurnEnd(result.StopReason)
+	switch action {
+	case autopilot.Ignore:
 		return nil
-	}
-	resumable, situation := autopilot.StopEvidence(result.StopReason)
-	if !m.autopilotEngaged() || !ar.Steers.TurnEnd || !resumable {
+	case autopilot.Pause:
 		m.pauseMission()
 		return nil
-	}
-	if m.autopilotBudgetSpent() {
+	case autopilot.BudgetHandback:
 		m.pauseMission()
 		m.conv.AddNotice(autopilotHandback("")) // spent the budget; the ⎿ N/N above says why
 		return nil
@@ -440,13 +433,10 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 // precondition is unmet, the human is mid-compose (don't clobber input), or a
 // decision is already in flight (don't stack on a double-press).
 func (m *model) autopilotKickCmd() tea.Cmd {
-	if !m.autopilotEngaged() || m.autopilotDeciding {
+	if !m.continuationPolicy().CanKick() || m.autopilotDeciding {
 		return nil
 	}
 	if m.conv.Stream.Active || strings.TrimSpace(m.userInput.FullValue()) != "" {
-		return nil
-	}
-	if m.autopilotBudgetSpent() {
 		return nil
 	}
 	return m.autopilotDecideCmd(autopilotTrigger{origin: autopilotFromKick})
@@ -641,12 +631,6 @@ type autopilotRecoverMsg struct {
 }
 
 const (
-	// autopilotMaxRecoveries bounds consecutive attempts to revive a run whose
-	// turn died on an error. The continuation budget cannot do this job: it may
-	// be unlimited, and a provider outage would otherwise have the copilot
-	// resubmitting into the same failure forever. Any turn that reaches its end
-	// resets the count.
-	autopilotMaxRecoveries = 3
 	// autopilotRecoveryBackoff is multiplied by the attempt number, so a run
 	// waits out a brief outage (5s, 10s, 15s) instead of burning its attempts in
 	// the same second the provider went down.
@@ -666,12 +650,13 @@ func (m *model) autopilotRecoverCmd(err error) tea.Cmd {
 	if errors.As(err, &admissionErr) || errors.As(err, &recordingErr) {
 		return nil
 	}
-	ar := m.env.AutoPilot
-	if err == nil || !m.autopilotEngaged() || !ar.Steers.TurnEnd || m.autopilotDeciding ||
-		ar.MissionState != setting.MissionRunning {
+	if err == nil || m.autopilotDeciding {
 		return nil
 	}
-	if m.autopilotRecoveries >= autopilotMaxRecoveries || m.autopilotBudgetSpent() {
+	switch m.continuationPolicy().Recovery(m.autopilotRecoveries) {
+	case autopilot.Ignore:
+		return nil
+	case autopilot.Pause:
 		m.pauseMission() // out of attempts: nothing drives it now
 		return nil
 	}
@@ -822,10 +807,8 @@ func (m *model) applyAutopilotConfig(cfg setting.AutoPilotSettings) {
 // startMission accepts the offer: an unstarted mission starts a fresh run, a paused
 // one picks up where it stopped (with a fresh budget only if it ran out).
 func (m *model) startMission() tea.Cmd {
-	resuming := m.env.AutoPilot.MissionState == setting.MissionPaused
-	if !resuming || m.autopilotBudgetSpent() {
-		m.autopilotContinuations = 0
-	}
+	used, resuming := m.continuationPolicy().StartBudget()
+	m.autopilotContinuations = used
 	m.env.AutoPilot.MissionState = setting.MissionRunning
 	m.refreshAutopilotSnapshot()
 	cmd := m.autopilotKickCmd()
