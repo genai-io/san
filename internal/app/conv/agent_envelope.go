@@ -173,6 +173,9 @@ func (e agentEnvelope) renderFlowNotice(p RenderContext) string {
 	outcome := statusStyle.Render(status)
 	// Reserve the outcome before optional title and elapsed detail.
 	if width < ansi.StringWidth("● Flow · ")+ansi.StringWidth(outcome) {
+		if ansi.StringWidth("● ")+ansi.StringWidth(outcome) <= width {
+			outcome = body.Render("● ") + outcome
+		}
 		return ansi.Truncate(outcome, width, "…") + "\n" + e.renderFlowResult(p)
 	}
 	elapsed := ""

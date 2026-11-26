@@ -319,7 +319,9 @@ func (v *FlowView) Resize(w, h int) {
 	v.editor.SetHeight(max(1, h-9))
 	v.body.SetWidth(max(1, w-4))
 	v.body.SetHeight(max(1, h-10))
-	if v.page == flowPageReview && v.confirm == "" {
+	if v.confirm == flowConfirmResume {
+		v.body.SetContent(v.resumePreview())
+	} else if v.page == flowPageReview && v.confirm == "" {
 		v.showReview()
 	} else if v.page == flowPageDetails {
 		v.body.SetHeight(max(1, v.height-6))
@@ -521,6 +523,9 @@ func (v *FlowView) handleReview(key string) tea.Cmd {
 			v.body.GotoTop()
 		}
 	case "e":
+		if v.plan == nil {
+			v.validate() // Show the source diagnostic where it can be fixed.
+		}
 		v.page = flowPageEdit
 		v.Resize(v.width, v.height)
 		v.editor.Placeholder = ""
@@ -645,6 +650,12 @@ func (v *FlowView) handleRun(key string) tea.Cmd {
 			v.message = "Select a node and use R to rerun it"
 			break
 		}
+		if key == "r" {
+			if id := v.plan.ExplicitRerunNode(v.record.Nodes); id != "" {
+				v.message = "Main step " + id + " may already have side effects. Select a step and use R to rerun."
+				break
+			}
+		}
 		v.resumeFrom = ""
 		if key == "R" {
 			v.resumeFrom = v.nodeID()
@@ -758,7 +769,23 @@ func (v *FlowView) refreshRun() bool {
 	if record == nil {
 		return false
 	}
+	var pinned flow.Execution
+	if v.page == flowPageExecutions {
+		if choices := v.executionChoices(); v.cursor < len(choices) {
+			pinned = choices[v.cursor].execution
+		}
+	}
 	v.record = record
+	if v.page == flowPageExecutions {
+		for i, choice := range v.executionChoices() {
+			if choice.execution == pinned {
+				v.cursor = i
+				return true
+			}
+		}
+		v.page = flowPageRun
+		v.TaskUnavailable()
+	}
 	v.focusActive()
 	return true
 }

@@ -24,7 +24,7 @@ type nodeRunner struct {
 	instructions   map[string]string
 	onInstructions func(*Node, string) error
 	main           MainRunExecutor
-	exec           tool.AgentExecutor
+	exec           worker
 	task           *task.AgentTask
 	name           string
 	usageMu        sync.Mutex
@@ -186,7 +186,11 @@ func toolResultSummary(output string, toolErr error) string {
 	if len(output) >= 1024 {
 		size = fmt.Sprintf("%.1f KiB", float64(len(output))/1024)
 	}
-	summary := fmt.Sprintf("%d lines · %s", lines, size)
+	unit := "lines"
+	if lines == 1 {
+		unit = "line"
+	}
+	summary := fmt.Sprintf("%d %s · %s", lines, unit, size)
 	if first != "" {
 		summary += " · " + first
 	}

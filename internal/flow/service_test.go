@@ -53,13 +53,6 @@ func (e *scriptedExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*t
 	}
 	return &tool.AgentExecResult{Success: true, Content: e.outputs[id], StepCount: 1}, nil
 }
-func (e *scriptedExecutor) RunBackground(tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
-	panic("flow nodes run in the foreground of their own goroutine")
-}
-func (e *scriptedExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
-	info, _, ok := e.ResolveAgentSelection(name)
-	return info, ok
-}
 func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	switch {
 	case name != "" && name == e.disabled:
@@ -72,7 +65,6 @@ func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigI
 func (e *scriptedExecutor) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, error) {
 	return req.ResolvedAgentConfig, req.ResolvedAgentConfig.(string), nil
 }
-func (e *scriptedExecutor) ParentModelID() string { return "parent" }
 
 type unfinishedExecutor struct {
 	scriptedExecutor
@@ -278,6 +270,9 @@ func TestNodeRunnerTextResultPreviewWithoutDiscardCallback(t *testing.T) {
 }
 
 func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
+	if got := toolResultSummary(strings.Repeat("x", 161), nil); !strings.HasPrefix(got, "1 line · 161 B · ") {
+		t.Fatalf("long single-line result = %q", got)
+	}
 	if got := toolResultSummary("hello", nil); got != "hello" {
 		t.Fatalf("short result = %q", got)
 	}
@@ -471,6 +466,26 @@ func TestFlowServiceNameErrors(t *testing.T) {
 	}
 }
 
+func TestSavedPreviewTurnCount(t *testing.T) {
+	for _, tc := range []struct{ graph, steps, want string }{
+		{"a", "## a\nWrite notes\n", "up to 1 turn ·"},
+		{"a --> b", "## a\nWrite notes\n## b\nReview notes\n", "up to 2 turns ·"},
+	} {
+		dir := t.TempDir()
+		source := "```mermaid\nflowchart LR\n" + tc.graph + "\n```\n" + tc.steps
+		if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s := NewService(task.Default())
+		s.SetSearchPaths([]string{dir})
+		s.SetExecutor(&scriptedExecutor{})
+		preview, err := s.Preview("notes", 80)
+		if err != nil || !strings.Contains(preview, tc.want) {
+			t.Errorf("want %q in preview %q; err=%v", tc.want, preview, err)
+		}
+	}
+}
+
 func TestFlowBareInputPreflight(t *testing.T) {
 	dir := t.TempDir()
 	body := strings.ReplaceAll(definition, "{{input.base}}", "{{input}}")
@@ -494,6 +509,33 @@ func TestFlowBareInputPreflight(t *testing.T) {
 	info := runToCompletion(t, wt, map[string]any{"name": "review", "inputs": map[string]any{"input": "main"}})
 	if info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s: %s", info.Status, info.Error)
+	}
+}
+
+func TestSavedFlowBlankRequiredInput(t *testing.T) {
+	dir := t.TempDir()
+	source := "```mermaid\nflowchart LR\n  notes\n```\n## notes\nSummarize {{input.topic}}\n"
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(task.Default())
+	s.SetSearchPaths([]string{dir})
+	s.SetExecutor(&scriptedExecutor{})
+	for _, value := range []string{" \t", " agenda "} {
+		id, err := s.Launch("notes", map[string]string{"topic": value}, 80)
+		if id != "" {
+			bg, ok := task.Default().Get(id)
+			if !ok || !bg.WaitForCompletion(5*time.Second) {
+				t.Fatal("scheduled task did not finish")
+			}
+		}
+		if strings.TrimSpace(value) == "" {
+			if id != "" || err == nil || !strings.Contains(err.Error(), "needs input topic") {
+				t.Errorf("blank value: scheduled=%v err=%v", id != "", err)
+			}
+		} else if id == "" || err != nil {
+			t.Fatalf("nonblank value: scheduled=%v err=%v", id != "", err)
+		}
 	}
 }
 

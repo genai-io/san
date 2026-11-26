@@ -3,6 +3,7 @@ package input
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +18,32 @@ func flowEntryPrimary(t *testing.T, v *FlowView, key, label string) {
 	action := ansi.Strip(v.renderPrimaryAction())
 	if len(lines) < 3 || lines[2] != action || !strings.Contains(action, key) || !strings.Contains(action, label) {
 		t.Fatalf("primary action %q %q must be directly below title:\n%s", key, label, v.Render())
+	}
+}
+
+func TestFlowHubIdentifiesSavedBlueprints(t *testing.T) {
+	s := flow.NewService(nil)
+	s.SetSearchPaths([]string{filepath.Join(t.TempDir(), "workflows")})
+	names := []string{"release-notes", "release_notes"}
+	for _, name := range names {
+		if err := s.SaveDefinition(name, flowDraft(name, "write", "## write\nDraft "+name+"\n"), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, name := range names {
+		var v FlowView
+		v.Open(s, 60, 20)
+		for range i + 1 {
+			v.HandleKeypress(flowKey("down"))
+		}
+		v.Update(flowTick{v.generation})
+		if screen := ansi.Strip(v.Render()); !strings.Contains(screen, name) {
+			t.Errorf("cannot identify %s in hub:\n%s", name, screen)
+		}
+		v.HandleKeypress(flowKey("enter"))
+		if v.page != flowPageReview || v.name != name || !strings.Contains(v.source, "Draft "+name) {
+			t.Fatalf("wrong selection for %s: %s %s", name, v.page, v.name)
+		}
 	}
 }
 
@@ -165,6 +192,15 @@ func TestFlowEntryDestructiveConfirmationsRequireY(t *testing.T) {
 			var v FlowView
 			v.OpenRun(s, "run", 80, 24)
 			v.confirm = confirm
+			lines := strings.Split(ansi.Strip(v.Render()), "\n")
+			if footer := lines[len(lines)-1]; !strings.Contains(footer, "Esc cancel") || strings.Contains(footer, "Esc close") {
+				t.Errorf("modal footer: %s", footer)
+			}
+			v.HandleKeypress(flowKey("esc"))
+			if v.confirm != "" || !v.IsActive() || s.stops != 0 || s.resumes != 0 {
+				t.Fatal("Esc did not safely cancel")
+			}
+			v.confirm = confirm
 			action := ansi.Strip(v.renderPrimaryAction())
 			if !strings.Contains(action, "y") || strings.Contains(action, "Enter") {
 				t.Fatalf("destructive action must advertise y: %s", action)
@@ -178,6 +214,43 @@ func TestFlowEntryDestructiveConfirmationsRequireY(t *testing.T) {
 				t.Fatal("y no longer confirms destructive action")
 			}
 		})
+	}
+}
+
+func TestFlowRunFocusControls(t *testing.T) {
+	for _, width := range []int{40, 80} {
+		var v FlowView
+		v.OpenRun(flowUIFixture(), "run", width, 24)
+		check := func(want []string, absent string) {
+			t.Helper()
+			out := ansi.Strip(v.Render())
+			for _, text := range want {
+				if !strings.Contains(out, text) {
+					t.Errorf("width %d missing %q:\n%s", width, text, out)
+				}
+			}
+			if strings.Contains(out, absent) {
+				t.Errorf("unexpected %q:\n%s", absent, out)
+			}
+		}
+		check([]string{"Following", "Esc close", "s stop", "↑↓ pin"}, "f follow")
+		v.HandleKeypress(flowKey("j"))
+		id := v.nodeID()
+		v.Update(flowTick{v.generation})
+		if v.nodeID() != id || v.follow {
+			t.Fatal("poll moved pinned focus")
+		}
+		check([]string{"Pinned", "Esc close", "f follow", "No execution"}, "Enter inspect")
+		v.HandleKeypress(flowKey("f"))
+		if !v.follow || v.nodeID() != "b" {
+			t.Fatal("did not follow running node")
+		}
+		v.record.Status = flow.RunFailed
+		check([]string{"Esc close", "r resume", "R rerun"}, "f follow")
+		v.HandleKeypress(flowKey("r"))
+		if v.confirm != flowConfirmResume {
+			t.Fatal("resume did not open confirmation")
+		}
 	}
 }
 

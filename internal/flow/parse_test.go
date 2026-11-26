@@ -59,6 +59,23 @@ model: opus
 Merge: {{sec}} {{threat}} {{quick}} {{perf}} {{tests}}
 `
 
+func TestParseMaxParallelZero(t *testing.T) {
+	if _, err := Parse(strings.Replace(releaseCheck, "max_parallel: 3", "max_parallel: 0", 1)); err == nil {
+		t.Fatal("accepted max_parallel: 0")
+	}
+}
+
+func TestParseCRLF(t *testing.T) {
+	src := strings.ReplaceAll(releaseCheck, "\n", "\r\n")
+	b, err := Parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Name != "release-check" || b.MaxParallel != 3 || b.Source != src {
+		t.Fatalf("name=%q max_parallel=%d source preserved=%t", b.Name, b.MaxParallel, b.Source == src)
+	}
+}
+
 func TestParseReleaseCheck(t *testing.T) {
 	w, err := Parse(releaseCheck)
 	if err != nil {

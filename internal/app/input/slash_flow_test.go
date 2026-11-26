@@ -139,9 +139,10 @@ func TestFlowNaturalLanguageDoesNotUseRunShorthand(t *testing.T) {
 }
 
 func TestFlowCommandListsSavedFlows(t *testing.T) {
-	c := flowController(t, map[string]string{"review": savedReview})
+	folded := strings.Replace(savedReview, "name: review\ndescription: check the diff", "name: audit\ndescription: >\n  inspect the\n  project\nmax_parallel: 1", 1)
+	c := flowController(t, map[string]string{"audit": folded, "review": savedReview})
 	notice, _, err := c.handleFlowCommand(context.Background(), "list")
-	if err != nil || !strings.Contains(notice, "- review — check the diff") {
+	if err != nil || !strings.Contains(notice, "- audit — inspect the project\n- review — check the diff") {
 		t.Fatalf("notice = %q, err = %v", notice, err)
 	}
 	if !strings.Contains(notice, "/flow show <name>") || !strings.Contains(notice, "/flow run <name>") {

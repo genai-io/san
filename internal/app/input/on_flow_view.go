@@ -20,13 +20,16 @@ func (v *FlowView) Render() string {
 		return ""
 	}
 	title, content, hint := v.renderPage()
+	if v.confirm != "" {
+		hint = "y confirm · n / Esc cancel"
+	}
 	switch v.confirm {
 	case flowConfirmSave:
 		title = "Save · " + flowTitle(v.name)
 		content = v.body.View() + "\nSave this flow in the project? y / n"
 		hint = "y save · n cancel"
 	case flowConfirmStop:
-		content = "Stop this run? In-flight work may have side effects. y / n"
+		content = conv.WrapProse("Stop this run? In-flight work may have side effects. y / n", max(1, v.width-2))
 	case flowConfirmDiscard:
 		content = "Close and discard this unsaved draft? y / n"
 	case flowConfirmResume:
@@ -305,7 +308,7 @@ func (v *FlowView) renderHub() string {
 			if v.cursor == i+1 {
 				selected = len(lines)
 			}
-			lines = append(lines, kit.RenderSelectableRow(flowTitle(definition.Name), v.cursor == i+1))
+			lines = append(lines, kit.RenderSelectableRow(definition.Name, v.cursor == i+1))
 		}
 	}
 	if len(v.runs) > 0 {
@@ -354,7 +357,7 @@ func (v *FlowView) nativeExecutionTarget() string {
 }
 
 func (v *FlowView) renderRun() (title, content, hint string) {
-	title, hint = "Flow", "↑/↓ pin · f follow · Enter inspect · Esc close"
+	title = "Flow"
 	if v.record == nil {
 		return title, "Run unavailable", "Esc close"
 	}
@@ -369,21 +372,36 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 	title = left + strings.Repeat(" ", max(1, v.width-4-lipgloss.Width(left)-len(right))) + right
 	if v.page == flowPageExecutions {
 		content = "Executions · " + v.nodeID() + "\n" + v.renderExecutions()
-		hint = "↑/↓ select · Enter " + v.nativeExecutionTarget() + " · Esc graph"
+		hint = "Esc graph"
+		if v.canInspect() {
+			hint = "Enter " + v.nativeExecutionTarget() + " · " + hint
+		}
+		if len(v.executionChoices()) > 1 {
+			hint = "↑↓ select · " + hint
+		}
 	} else {
 		content = v.renderGraph() + "\n\n" + v.renderDetail()
-		switch v.record.Status {
-		case flow.RunRunning:
+		hint = "Esc close"
+		multiple := v.plan != nil && len(v.plan.Nodes) > 1
+		switch {
+		case v.record.Status == flow.RunRunning:
 			hint = "s stop · " + hint
-		case flow.RunSucceeded:
-			hint = "R rerun selected · " + hint
+			if multiple {
+				mode, controls := "Following", "↑↓ pin"
+				if !v.follow {
+					mode, controls = "Pinned", "↑↓ · f follow"
+				}
+				content = mode + " · " + v.nodeID() + "\n" + content
+				hint = controls + " · " + hint
+			}
+		case v.record.Status == flow.RunSucceeded || v.plan.ExplicitRerunNode(v.record.Nodes) != "":
+			hint = "R rerun · " + hint
 		default:
 			hint = "r resume · R rerun · " + hint
 		}
-	}
-	if !v.canInspect() {
-		hint = strings.Replace(hint, " · Enter inspect", "", 1)
-		hint = strings.Replace(hint, " · Enter "+v.nativeExecutionTarget(), "", 1)
+		if multiple && v.record.Status != flow.RunRunning {
+			hint = "↑↓ · " + hint
+		}
 	}
 	if v.record.Status == flow.RunFailed || v.record.Status == flow.RunStopped || v.record.Status == flow.RunInterrupted {
 		content = "Run " + strings.ToUpper(string(v.record.Status)) + "\n" + content
@@ -574,11 +592,15 @@ func (v *FlowView) resumePreview() string {
 			}
 		}
 		if finished > 0 && state.Status != flow.StatusSucceeded {
-			action += fmt.Sprintf("; reuse %d successful workers if plan unchanged", finished)
+			unit := "workers"
+			if finished == 1 {
+				unit = "worker"
+			}
+			action += fmt.Sprintf("; reuse %d successful %s if plan unchanged", finished, unit)
 		}
 		lines = append(lines, node.ID+": "+action)
 	}
-	return strings.Join(lines, "\n")
+	return conv.WrapProse(strings.Join(lines, "\n"), v.body.Width())
 }
 
 // Coordinates depend only on topology; completion and selection never reorder nodes.

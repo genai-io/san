@@ -137,6 +137,7 @@ func Parse(src string) (*Blueprint, error) {
 }
 
 func (b *Blueprint) parseFrontmatter(src string) (string, error) {
+	src = strings.ReplaceAll(src, "\r\n", "\n")
 	src = strings.TrimLeft(src, "\n")
 	if !strings.HasPrefix(src, "---\n") {
 		return src, nil
@@ -148,17 +149,17 @@ func (b *Blueprint) parseFrontmatter(src string) (string, error) {
 	var fm struct {
 		Name        string `yaml:"name"`
 		Description string `yaml:"description"`
-		MaxParallel int    `yaml:"max_parallel"`
+		MaxParallel *int   `yaml:"max_parallel"`
 	}
 	if err := yaml.Unmarshal([]byte(src[4:4+end]), &fm); err != nil {
 		return "", fmt.Errorf("frontmatter: %w", err)
 	}
 	b.Name, b.Description = fm.Name, fm.Description
-	if fm.MaxParallel < 0 {
-		return "", fmt.Errorf("max_parallel must be at least 1")
-	}
-	if fm.MaxParallel > 0 {
-		b.MaxParallel = fm.MaxParallel
+	if fm.MaxParallel != nil {
+		if *fm.MaxParallel < 1 {
+			return "", fmt.Errorf("max_parallel must be at least 1")
+		}
+		b.MaxParallel = *fm.MaxParallel
 	}
 	rest := src[4+end+4:]
 	return strings.TrimPrefix(rest, "\n"), nil

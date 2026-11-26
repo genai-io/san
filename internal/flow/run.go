@@ -473,6 +473,9 @@ func (b *Blueprint) executeCheckpoint(ctx context.Context, n *Node, scope map[st
 			if worker != nil {
 				target = worker
 			}
+			if target.Execution == execution {
+				return
+			}
 			target.Execution = execution
 			_ = persist()
 		}
