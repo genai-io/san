@@ -223,11 +223,5 @@ func (s *MCPSelector) serverDetails(srv mcpServerItem) string {
 	if srv.Status == coremcp.StatusConnected {
 		return fmt.Sprintf("Tools: %d", srv.ToolCount)
 	}
-	if srv.Error != "" {
-		if len(srv.Error) > 30 {
-			return srv.Error[:27] + "..."
-		}
-		return srv.Error
-	}
-	return ""
+	return kit.TruncateText(srv.Error, 30)
 }

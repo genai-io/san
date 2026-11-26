@@ -295,15 +295,18 @@ func (s *PluginSelector) executeAction() tea.Cmd {
 	switch action.Action {
 	case "enable":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return pluginEnableMsg{PluginName: s.detailPlugin.FullName} }
+			name := s.detailPlugin.FullName
+			return func() tea.Msg { return pluginEnableMsg{PluginName: name} }
 		}
 	case "disable":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return pluginDisableMsg{PluginName: s.detailPlugin.FullName} }
+			name := s.detailPlugin.FullName
+			return func() tea.Msg { return pluginDisableMsg{PluginName: name} }
 		}
 	case "uninstall":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return pluginUninstallMsg{PluginName: s.detailPlugin.FullName} }
+			name := s.detailPlugin.FullName
+			return func() tea.Msg { return pluginUninstallMsg{PluginName: name} }
 		}
 	case "install_user":
 		if s.detailDiscover != nil {
@@ -331,7 +334,8 @@ func (s *PluginSelector) executeAction() tea.Cmd {
 		}
 	case "remove":
 		if s.detailMarketplace != nil {
-			return func() tea.Msg { return pluginMarketplaceRemoveMsg{ID: s.detailMarketplace.ID} }
+			id := s.detailMarketplace.ID
+			return func() tea.Msg { return pluginMarketplaceRemoveMsg{ID: id} }
 		}
 	case "back":
 		s.goBack()

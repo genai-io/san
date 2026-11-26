@@ -91,6 +91,9 @@ func (s *ProviderSelector) HandlePaste(content string) tea.Cmd {
 	case s.customFormActive:
 		s.customFormInputs[s.customFormFocus].SetValue(content)
 		s.customFormInputs[s.customFormFocus].CursorEnd()
+	case s.ollamaFormActive:
+		s.ollamaURLInput.SetValue(content)
+		s.ollamaURLInput.CursorEnd()
 	case s.credForm.active:
 		s.credForm.inputs[s.credForm.focus].SetValue(content)
 		s.credForm.inputs[s.credForm.focus].CursorEnd()
@@ -462,10 +465,11 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		result.Success = true
 		result.NewStatus = llm.StatusConnected
 		result.Models = models
+		count := kit.Plural(len(models), "model")
 		if err != nil {
-			result.Message = fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models))
+			result.Message = "⚠ " + count + " loaded with refresh warning"
 		} else {
-			result.Message = fmt.Sprintf("● %d models", len(models))
+			result.Message = "● " + count
 		}
 		return result
 	}
@@ -671,9 +675,10 @@ func (s *ProviderSelector) ConnectProvider(ctx context.Context, p llm.ProviderID
 		return "", fmt.Errorf("failed to save connection: %w", err)
 	}
 
+	count := kit.Plural(len(models), "model")
 	if listErr != nil {
-		return fmt.Sprintf("Connected to %s via %s (%d models; refresh warning: %v)", meta.DisplayName, authMethod, len(models), listErr), nil
+		return fmt.Sprintf("Connected to %s via %s (%s; refresh warning: %v)", meta.DisplayName, authMethod, count, listErr), nil
 	}
 
-	return fmt.Sprintf("Connected to %s via %s (%d models)", meta.DisplayName, authMethod, len(models)), nil
+	return fmt.Sprintf("Connected to %s via %s (%s)", meta.DisplayName, authMethod, count), nil
 }

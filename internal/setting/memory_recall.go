@@ -46,16 +46,21 @@ func (s *Settings) MemoryRecall() MemoryRecallConfig {
 // MemoryRecallAt reads the raw mode and timeout from a single settings file.
 // An empty value inherits from lower-precedence settings.
 func MemoryRecallAt(cwd string, scope Scope) (MemoryRecallMode, string) {
+	d := memorySettingsAt(cwd, scope)
+	return d.MemoryRecallLookup, d.MemoryRecallTimeout
+}
+
+func memorySettingsAt(cwd string, scope Scope) *Data {
 	l := NewLoaderForCwd(cwd)
 	dir := l.dir(scope)
 	if dir == "" {
-		return "", ""
+		return &Data{}
 	}
 	d, err := l.LoadFile(filepath.Join(dir, "settings.json"))
 	if err != nil {
-		return "", ""
+		return &Data{}
 	}
-	return d.MemoryRecallLookup, d.MemoryRecallTimeout
+	return d
 }
 
 // SaveMemoryRecallMode sets the mode at scope; empty clears the override.

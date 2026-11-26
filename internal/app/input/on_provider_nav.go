@@ -98,7 +98,7 @@ func (s *ProviderSelector) trimModelSearch() {
 	if len(s.searchQuery) == 0 {
 		return
 	}
-	s.searchQuery = s.searchQuery[:len(s.searchQuery)-1]
+	s.searchQuery = withoutLastRune(s.searchQuery)
 	if s.searchQuery == "" {
 		// Empty query means we're no longer typing in the search box, so Space
 		// returns to marking models rather than inserting a literal space.

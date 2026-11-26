@@ -44,8 +44,9 @@ func TestAutoMemoryPanelRecallKeys(t *testing.T) {
 	if p.page != memoryOptionsPage || p.err != nil {
 		t.Fatal("Escape should cancel the edit and return to Options")
 	}
+	popup.HandlePaste("bad") // No editor is open.
 	press(tea.KeyEnter)
-	typeText("750ms")
+	popup.HandlePaste("750ms")
 	press(tea.KeyEnter)
 	if p.page != memoryOptionsPage || p.err != nil || svc.MemoryRecall().Timeout != 750*time.Millisecond {
 		t.Fatalf("timeout edit not saved: config = %+v, error = %v", svc.MemoryRecall(), p.err)
@@ -91,6 +92,68 @@ func TestAutoMemoryPanelPreviewSettings(t *testing.T) {
 	press(tea.KeyEnter)
 	if got := svc.MemoryPreview(); got.Lines != 80 || got.KB != 25 || p.err != nil {
 		t.Fatalf("clearing one override changed another: %+v, %v", got, p.err)
+	}
+}
+
+func TestPreviewOverrideRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		option int
+	}{{"lines", memoryPreviewLines}, {"size", memoryPreviewSize}} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, cwd := t.TempDir(), t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			svc := setting.New(nil)
+			p := &autoMemoryPanel{workspace: func() (string, *setting.Settings) { return cwd, svc }}
+			p.Enter()
+			p.page, p.option = memoryOptionsPage, tc.option
+			press := func(code rune) { p.HandleKey(tea.KeyPressMsg{Code: code}) }
+			for _, step := range []struct {
+				initial, draft string
+				key            rune
+			}{
+				{"", "19", tea.KeyEnter}, {"19", "22", tea.KeyEscape}, {"19", "", tea.KeyEnter},
+				{"", "21", tea.KeyEscape}, {"", "", tea.KeyEnter}, {"", "", tea.KeyEscape},
+			} {
+				press(tea.KeyEnter)
+				if got := p.input.Value(); got != step.initial {
+					t.Errorf("reopened with %q, want %q", got, step.initial)
+				}
+				if step.draft != step.initial || step.key != tea.KeyEnter {
+					p.input.SetValue(step.draft)
+				}
+				press(step.key)
+				if p.err != nil || p.page != memoryOptionsPage {
+					t.Fatalf("finish edit: page %v error %v", p.page, p.err)
+				}
+			}
+		})
+	}
+}
+
+func TestAutoMemoryLongTimeoutRoundTrip(t *testing.T) {
+	home, cwd := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	literal := strings.Repeat("1ms", 22)
+	scope := memorySettingsScope(cwd)
+	if err := setting.SaveMemoryRecallTimeout(cwd, scope, literal); err != nil {
+		t.Fatal(err)
+	}
+	svc := setting.New(nil)
+	p := &autoMemoryPanel{workspace: func() (string, *setting.Settings) { return cwd, svc }}
+	p.Enter()
+	p.page, p.option = memoryOptionsPage, memoryWaitTimeout
+	for _, key := range []rune{tea.KeyEscape, tea.KeyEnter} {
+		p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if got := p.input.Value(); got != literal {
+			t.Errorf("editor duration = %q, want %q", got, literal)
+		}
+		p.HandleKey(tea.KeyPressMsg{Code: key})
+	}
+	if _, raw := setting.MemoryRecallAt(cwd, scope); raw != literal || p.err != nil || svc.MemoryRecall().Timeout != 22*time.Millisecond {
+		t.Fatalf("saved %q, effective %s, error %v", raw, svc.MemoryRecall().Timeout, p.err)
 	}
 }
 

@@ -111,6 +111,12 @@ func (p *autoMemoryPanel) load(svc *setting.Settings) {
 	p.update = svc.MemoryUpdate()
 }
 
+func (p *autoMemoryPanel) HandlePaste(content string) {
+	if p.page == memoryEditPage {
+		p.input, _ = p.input.Update(tea.PasteMsg{Content: content})
+	}
+}
+
 func (p *autoMemoryPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if p.page == memoryEditPage {
 		return p.handleEditKey(msg), false
@@ -204,12 +210,17 @@ func (p *autoMemoryPanel) activateOption() tea.Cmd {
 		return nil
 	}
 	p.input = textinput.New()
-	p.input.CharLimit = 64
 	switch p.option {
-	case memoryPreviewLines:
-		p.input.SetValue(strconv.Itoa(p.preview.Lines))
-	case memoryPreviewSize:
-		p.input.SetValue(strconv.Itoa(p.preview.KB))
+	case memoryPreviewLines, memoryPreviewSize:
+		p.input.CharLimit = 64
+		overrides := setting.MemoryPreviewAt(cwd, scope)
+		value := overrides.Lines
+		if p.option == memoryPreviewSize {
+			value = overrides.KB
+		}
+		if value != 0 {
+			p.input.SetValue(strconv.Itoa(value))
+		}
 	default:
 		_, timeout := setting.MemoryRecallAt(cwd, scope)
 		p.input.Placeholder = "e.g. 5s"

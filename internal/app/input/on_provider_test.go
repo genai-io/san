@@ -308,6 +308,44 @@ func TestSelectHighlightedModelWhenNoExplicitMark(t *testing.T) {
 	}
 }
 
+func TestOllamaFormAcceptsEndpointPaste(t *testing.T) {
+	m := NewProviderSelector()
+	m.openOllamaForm()
+	m.ollamaURLInput.SetValue("http://localhost:11434/v1")
+	const endpoint = "http://localhost:21434/v1"
+	m.HandlePaste(" " + endpoint + "\r\n")
+	if got, err := m.validateOllamaForm(); err != nil || got != endpoint {
+		t.Fatalf("pasted endpoint = %q, err=%v", got, err)
+	}
+	m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m.HandlePaste("ignored")
+	if m.ollamaURLInput.Value() != endpoint {
+		t.Fatal("closed form received paste")
+	}
+}
+
+func TestErasingModelQueryReturnsSpaceToMarking(t *testing.T) {
+	m := NewProviderSelector()
+	m.activeTab = providerTabModels
+	m.connectedProviders = []providerProviderItem{{Provider: "openai"}}
+	m.allModels = []providerModelItem{{ID: "demo", ProviderName: "openai"}}
+	m.HandleKeypress(tea.KeyPressMsg{Code: '界', Text: "界"})
+	m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if m.searchQuery != "" || m.searchFocused {
+		t.Errorf("after Backspace query=%q focused=%v", m.searchQuery, m.searchFocused)
+	}
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemModel {
+			m.selectedIdx = i
+			break
+		}
+	}
+	m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	if !m.allModels[0].IsCurrent || m.searchQuery != "" {
+		t.Fatalf("Space: marked=%v query=%q", m.allModels[0].IsCurrent, m.searchQuery)
+	}
+}
+
 // TestSelectConfirmsMarkedModelRegardlessOfCursor verifies that after marking a
 // model with Space, Enter confirms the marked model even if the cursor has
 // since moved to a different row.
@@ -557,6 +595,12 @@ func TestRefreshAuthMethodReplacesModelsImmediately(t *testing.T) {
 	msg, ok := connectResultFromCmd(cmd)
 	if !ok {
 		t.Fatal("expected providerConnectResultMsg from refreshAuthMethod")
+	}
+	if connected, err := m.ConnectProvider(t.Context(), providerName, llm.AuthAPIKey); err != nil || !strings.HasSuffix(connected, " (1 model)") {
+		t.Errorf("connection receipt = %q, err = %v", connected, err)
+	}
+	if msg.Message != "● 1 model" {
+		t.Errorf("refresh receipt = %q", msg.Message)
 	}
 	if !msg.Success || len(msg.Models) != 1 || msg.Models[0].ID != "live-model" {
 		t.Fatalf("refresh result = %+v, want live model", msg)
