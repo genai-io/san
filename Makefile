@@ -94,7 +94,7 @@ lint-dead: check-lint-tools
 	fi
 
 lint-layers:
-	@go run ./tools/layercheck
+	@go run ./devtools/layercheck
 
 test:
 	go test ./...
@@ -123,7 +123,7 @@ ci: format-check build-all lint test-inspector-ui
 
 .PHONY: test-inspector-ui
 test-inspector-ui:
-	node --test internal/inspector/ui/app.test.cjs
+	node --test internal/app/inspector/ui/app.test.cjs
 
 clean:
 	rm -rf $(BINDIR)

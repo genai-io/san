@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
 	_ "github.com/genai-io/san/internal/tool/fs"
@@ -27,7 +27,7 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 					testutil.ToolCallResponse(tool.ToolBash, "worker-call", `{"command":"touch approved-marker","description":"test approval"}`),
 					testutil.EndTurnResponse("done"),
 				}}, cwd, "fake-model", nil)
-				configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) interaction.PermissionDecision {
+				configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, input map[string]any) ask.PermissionDecision {
 					if _, err := os.Stat(marker); !os.IsNotExist(err) {
 						t.Error("tool ran before approval")
 					}
@@ -41,7 +41,7 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 						t.Errorf("incomplete request: %+v", request)
 					}
 					seen <- source
-					return interaction.PermissionDecision{Approved: approve, Request: request}
+					return ask.PermissionDecision{Approved: approve, Request: request}
 				})
 				req := tool.AgentExecRequest{Prompt: "run command", ParentToolCallID: "parent-call"}
 				var taskID string

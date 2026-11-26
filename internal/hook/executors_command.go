@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/setting"
 )
 

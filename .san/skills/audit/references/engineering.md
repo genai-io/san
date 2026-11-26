@@ -41,9 +41,11 @@ Say under which conditions the design is reasonable, which specific scenario bre
 
 ### Can maintainers locate, change, and test a behavior?
 
-**Structure.** Look beyond local readability. Can a developer find who owns a behavior and change it within a clear boundary without editing unrelated modules? Check the nearest `AGENTS.md`, package map, design principles, and dependency rules against the actual responsibilities and dependency directions of directories, packages, and files.
+**Ownership.** Pick two realistic changes and name the first file a maintainer would open for each. Trace the imports and calls against the package map and dependency rules. Distinguish who decides a rule, who owns the live state, and who applies the result. For example, a continuation limit belongs to AutoPilot; showing a handback notice belongs to the TUI. Test the decision at the exact limit and the visible outcome at the caller. Moving a rule must not silently change who owns a queue or when it resets.
 
-Use a concrete change to test the boundaries. Is one rule scattered across several places? Must unrelated features change together? Does a layer add only another hop? File length and directory depth are not problems by themselves. Identify the paths, calls, and maintenance cost. Propose the smallest adjustment that addresses the cause and verify the dependency direction and relevant package tests.
+**Files or packages?** Start with the current layout. Use files when parts of one capability change together. Suggest a separate package when a real caller needs it independently or it prevents an unwanted dependency. Check both directions: can session code read a reminder block without importing the agent runtime? A shared mechanism, directory symmetry, or a small file count alone justifies neither a merge nor a split. If the current owners are easy to find and the dependencies fit, recommend no move.
+
+**Verify a move.** Separate renames from behavior changes in the diff. Read the new path and qualified name at a real call site, including required aliases. Exercise the owner and a consumer (for chat, render a streamed reply or tool result); check docs links, embedded assets, and build targets that compilation alone cannot verify.
 
 **Names.** Judge files, types, structs, objects, fields, variables, environment variables, and functions in the context of the project. Consult `docs/reference/file-naming.md`, public contracts, documentation, and major callers. For example, trace an environment variable through its configuration field to the consuming function: do all three express the same concept and unit? Inspect key names only, never environment variable values.
 

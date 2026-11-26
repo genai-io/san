@@ -16,8 +16,8 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/infra/confdir"
+	"github.com/genai-io/san/internal/infra/log"
 )
 
 // What San knows about a vendor's models, as opposed to how to reach them.

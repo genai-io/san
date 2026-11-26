@@ -10,7 +10,7 @@ TUI-facing send/permission/outbox plumbing for the single foreground agent.
 
 ## Purpose
 
-`internal/app` runs exactly one foreground agent at a time. This
+`internal/app/tui` runs exactly one foreground agent at a time. This
 package is the seam between that TUI shell and the underlying agent loop in
 [`packages/core.md`](core.md). The shell starts a run, hands user input
 to it, observes its outbox, and routes permission requests back to the user.
@@ -184,7 +184,7 @@ input acceptance, history replacement/replay, or compaction boundaries.
 ## Tests
 
 ```
-internal/app/main_session_test.go — TUI composition, native permission/hook/skill audits,
+internal/app/tui/main_session_test.go — TUI composition, native permission/hook/skill audits,
                                    allow/deny paging and host callback preservation.
 internal/agent/main_session_test.go — production main-session/runtime tool turns, allow/deny, hook audits,
                               transcript-before-terminal ordering, live recall and cancelled review.
@@ -193,13 +193,13 @@ internal/agent/permission_policy_test.go — rule/judge/hook composition, exact 
                                           audit ordering and cancelled verdicts.
 internal/agent/permission_memory_test.go — memory containment and deny precedence.
 internal/agent/compaction_test.go — hook/summary context, failures, replay and reminder reset.
-internal/app/compact_stop_test.go — delayed Stop decisions across manual compaction.
-internal/app/compact_lifetime_test.go — HTTP/hook cancellation, stale request fencing,
+internal/app/tui/compact_stop_test.go — delayed Stop decisions across manual compaction.
+internal/app/tui/compact_lifetime_test.go — HTTP/hook cancellation, stale request fencing,
                                         writer replacement and input precedence.
 internal/agent/completion_test.go — recording/successor order and Stop-hook policy.
-internal/app/completion_test.go — native state-record counts, successor ordering,
+internal/app/tui/completion_test.go — native state-record counts, successor ordering,
                                   changed post-hook state and recording failures.
-internal/app/stop_hook_fence_test.go — delayed outcomes and exact lifetime fencing.
+internal/app/tui/stop_hook_fence_test.go — delayed outcomes and exact lifetime fencing.
 internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
 internal/agent/runtime_interrupt_test.go — inactive cancellation receipt.
@@ -207,9 +207,9 @@ internal/agent/runtime_interrupt_http_test.go — actual HTTP abort and executio
 internal/core/admission_test.go — post-hook admission before dispatch/publication,
                                   fatal failures, stable message IDs and nil defaults.
 internal/core/turn_finalization_test.go — receipt identity, completion and errors.
-internal/app/turn_finalization_test.go — consumer acknowledgment and state-write errors.
+internal/app/tui/turn_finalization_test.go — consumer acknowledgment and state-write errors.
 internal/core/run_interrupt_test.go — repeated cancellation and successor safety.
-internal/app/session_resume_test.go — native error retry, inactive compaction,
+internal/app/tui/session_resume_test.go — native error retry, inactive compaction,
                                       and image-preserving model switches.
 internal/agent/runonce_stream_test.go — headless streams exceeding the default
                                        outbox capacity, with and without text

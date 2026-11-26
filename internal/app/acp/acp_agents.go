@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/host"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -67,17 +67,11 @@ func (s *acpSession) configureAgents() error {
 		return fs.WithFileViews(ctx, s.runtimeBuildParams.FileViews)
 	})
 	e.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
-		projection := owner.Snapshot()
-		cwd := projection.Identity().InitialCWD
-		if saved := projection.State().ExecutionCWD; saved != nil {
-			cwd = *saved
-		}
-		child := s.hooks.ForSession(owner.ID(), cwd, owner.Path())
-		host.BindSessionHooks(child, provider, owner, model)
+		child := apphook.ForChild(s.hooks, owner)
 		child.SetEnvProvider(func(ctx context.Context) []string {
 			return plugin.PluginEnv(plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins))
 		})
-		return child, func(provider llm.Provider, model string) { host.BindSessionHooks(child, provider, owner, model) }, child.Shutdown
+		return apphook.BindChild(child, provider, owner, model)
 	})
 	e.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)

@@ -59,7 +59,7 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
    │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
-   │                  Update → conv.Update → callbacks            │
+   │                  Update → chat.Update → callbacks            │
    │                      │                                       │
    │                      ▼                                       │
    │             CommitMessages → tea.Println → scrollback        │
@@ -214,26 +214,21 @@ handleSubmit → dispatchSubmission
 
 ```
 ┌─ 生产者 ──────────────┬─ 在哪里运行 ────────┬─ 产物落在 ────────────────────┐
-│ Cron 触发             │ trigger.StartCron-  │ m.systemInput.CronQueue       │
-│   （ticker 每分钟检查 │ Ticker（后台         │   []string（排队的 prompts）  │
-│    持久化的 cron 任务，│  goroutine）         │                               │
-│    到点的入队）        │                     │                               │
+│ Cron 触发             │ TUI 轮询调度器      │ m.cronQueue（待处理的提示）   │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ 异步 hook 后续         │ trigger.StartAsync- │ m.systemInput.AsyncHookQueue  │
-│   （hook 脚本的 JSON   │ HookTicker          │   每项带 Notice + Context     │
-│    输出里指定了        │                     │   行 + ContinuationPrompt     │
-│    `nextPrompt: ...`） │                     │                               │
+│ 异步 hook 后续        │ TUI 轮询队列        │ m.asyncHookQueue（通知、      │
+│                       │                     │ 上下文和后续提示）            │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Subagent 完成          │ task.SetLife-       │ broker.Send 到 "main"；主循环  │
+│ Subagent 完成          │ task.SetLife-       │ mail.Send 到 "main"；主循环    │
 │   （后台 Task，由      │ cycleHandler →      │ 的投递函数把它推到             │
-│    Agent 工具拉起）    │ broker.Send         │ m.mainNotices（Go channel）    │
+│    Agent 工具拉起）    │ mail.Send           │ m.mainNotices（Go channel）    │
 │                       │                     │                               │
 └───────────────────────┴─────────────────────┴───────────────────────────────┘
 ```
 
 `m.mainNotices` 承载发给主循环的通知：subagent 完成、中途消息
 （`SendMessage to="main"`）、self-learn 通知。agent 之间的消息走进程级的
-[`broker`](../packages/broker.md)；主循环注册 `broker.Main`，
+[`mail`](../packages/mail.md)；主循环注册 `mail.Main`，
 把收到的转到这个 channel 上。
 
 ### 回合边界排空
@@ -282,11 +277,11 @@ Update                                     update.go
 
 生产者一侧：subagent（或任何后台 task）完成 → `notifyTaskCompleted` →
 `wireTaskLifecycle` 里注册的 lifecycle handler 把完成消息发到 "main" 地址
-→ `broker.Register(broker.Main, …)` 的投递函数推入 `m.mainNotices`。后台
+→ `mail.Register(mail.Main, …)` 的投递函数推入 `m.mainNotices`。后台
 task 是一种生产者；subagent 的中途消息（`SendMessage to="main"`）和
 self-learn 通知是另外几种——都走同一个 channel。
 
-跟 `conv.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
+跟 `chat.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
 Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 没有 tick、idle 时 0 CPU。
 
@@ -329,7 +324,7 @@ message ID；重启时按 ID 去掉待发送消息，不再靠文本内容碰运
    ② notifyTaskCompleted → lifecycle handler（model_lifecycle.go）
        │   taskCompletionMessage 拼出 <task-notification>
        ▼
-   ③ broker.Send(to "main") → Main 投递函数
+   ③ mail.Send(to "main") → Main 投递函数
        ▼
    ④ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑤ awaitMainNotice 解阻塞
                                        → Update → onMainNotice(n)
@@ -382,7 +377,7 @@ tea.Msg（具体是某种 conv.* msg 类型）
    │
    ▼
 Update → routeToSubModel                update.go
-   └─ conv.Update(m, &m.conv, msg)      app/conv/update.go
+   └─ chat.Update(m, &m.conv, msg)            app/tui/chat/update.go
          │
          │ 按事件类型分发。流式流程是：
          │
@@ -574,17 +569,17 @@ prompt 前缀（prompt cache 命中更稳）。
 
 | Path 步骤 | 文件 |
 |---|---|
-| `Update` 派发 | [`internal/app/update.go`](../../internal/app/update.go) |
-| 键盘处理 | [`internal/app/update_keys.go`](../../internal/app/update_keys.go) |
-| Submit + SubmitToAgent | [`internal/app/update_submit.go`](../../internal/app/update_submit.go) |
-| Slash 命令 controller | [`internal/app/input/slash_command.go`](../../internal/app/input/slash_command.go) |
-| Slash 命令 env 装配 | [`internal/app/update_command.go`](../../internal/app/update_command.go) |
-| inject 路径（cron/hook/通知）| [`internal/app/model_turn_queue.go`](../../internal/app/model_turn_queue.go) |
-| Agent 事件回调 | [`internal/app/model_agent_events.go`](../../internal/app/model_agent_events.go) |
-| Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
-| Conv 事件路由 | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
-| `agent.Send` / outbox 轮询 | [`internal/app/agent.go`](../../internal/app/agent.go) |
-| 流式中断处理 | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
+| `Update` 派发 | [`internal/app/tui/update.go`](../../internal/app/tui/update.go) |
+| 键盘处理 | [`internal/app/tui/update_keys.go`](../../internal/app/tui/update_keys.go) |
+| Submit + SubmitToAgent | [`internal/app/tui/update_submit.go`](../../internal/app/tui/update_submit.go) |
+| Slash 命令 controller | [`internal/app/tui/input/slash_command.go`](../../internal/app/tui/input/slash_command.go) |
+| Slash 命令 env 装配 | [`internal/app/tui/update_command.go`](../../internal/app/tui/update_command.go) |
+| inject 路径（cron/hook/通知）| [`internal/app/tui/model_turn_queue.go`](../../internal/app/tui/model_turn_queue.go) |
+| Agent 事件回调 | [`internal/app/tui/model_agent_events.go`](../../internal/app/tui/model_agent_events.go) |
+| Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
+| Conv 事件路由 | [`internal/app/tui/chat/update.go`](../../internal/app/tui/chat/update.go) |
+| `agent.Send` / outbox 轮询 | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
+| 流式中断处理 | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
 | `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
 | `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
-| 底部 UI 组合 | [`internal/app/view.go`](../../internal/app/view.go) |
+| 底部 UI 组合 | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |

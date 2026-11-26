@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/tool"
 
 	// Register the built-in tools so schemas resolve from the live registry —

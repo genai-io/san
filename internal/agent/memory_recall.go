@@ -12,11 +12,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/aside"
-	"github.com/genai-io/san/internal/automemory"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/reflect/memory"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -43,7 +43,7 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 	if ctx.Err() != nil || r.Provider == nil || strings.TrimSpace(query) == "" || store.Off() {
 		return nil, nil, nil
 	}
-	index := automemory.ReadIndex(store, r.IndexLimits)
+	index := memory.ReadIndex(store, r.IndexLimits)
 	preview, more := index.Preview()
 	byID := map[string]system.Memory{}
 	seen := map[string]bool{}
@@ -54,7 +54,7 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 				continue
 			}
 			seen[id] = true
-			note, ok := automemory.RecallNote(store, id)
+			note, ok := memory.RecallNote(store, id)
 			if !ok {
 				continue
 			}
@@ -100,7 +100,7 @@ func (r Recaller) selectNotes(ctx context.Context, store system.MemoryStore, que
 			return nil, scope, nil
 		}
 		var reply struct {
-			automemory.IndexRequest
+			memory.IndexRequest
 			Selected []string `json:"selected_memories"`
 		}
 		if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); len(text) > 16*1024 || i < 0 || j < i || json.Unmarshal([]byte(text[i:j+1]), &reply) != nil {

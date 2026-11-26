@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -43,7 +43,7 @@ func (s *acpSession) handlePermissionRequests(ctx context.Context, turn *acp.Tur
 		}
 		title := req.ToolName
 		if tool.IsShellTool(req.ToolName) {
-			view, prepareErr := interaction.PreparePermission(req, s.runtimeBuildParams.CWD, s.permissions.CurrentMode().PersistenceName(), setting.New(s.permissions.settings), s.permissions.SessionPermissions)
+			view, prepareErr := ask.PreparePermission(req, s.runtimeBuildParams.CWD, s.permissions.CurrentMode().PersistenceName(), setting.New(s.permissions.settings), s.permissions.SessionPermissions)
 			if prepareErr != nil {
 				select {
 				case req.Response <- agent.PermGateResponse{Reason: prepareErr.Error()}:

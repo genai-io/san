@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 )

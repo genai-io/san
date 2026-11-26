@@ -5,7 +5,7 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
@@ -141,7 +141,7 @@ func TestSourcedInboxRejectsInvalidOrClosedStorageWithoutSendAck(t *testing.T) {
 			if len(projection.Events()) != 1 {
 				t.Fatal("invalid input changed persisted recipient")
 			}
-			if broker.Send(broker.Message{To: route, Content: "after close"}) {
+			if mail.Send(mail.Message{To: route, Content: "after close"}) {
 				t.Fatal("route not closed")
 			}
 		})

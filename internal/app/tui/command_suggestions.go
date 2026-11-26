@@ -1,0 +1,111 @@
+package tui
+
+import (
+	"strings"
+	"unicode"
+
+	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/flow"
+)
+
+type flowSuggestionService interface {
+	SavedDefinitions() []flow.SavedDefinition
+	SavedInputNames(string) ([]string, error)
+}
+
+func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionService) func(string) []suggest.Suggestion {
+	return func(query string) []suggest.Suggestion {
+		// Dynamic branches depend on the current group or saved definitions.
+		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
+			switch strings.ToLower(name) {
+			case "group":
+				return groupSuggestions(args)
+			case "flow":
+				if suggestions, handled := flowNameSuggestions(flows, args); handled {
+					return suggestions
+				}
+			}
+		}
+		cmds := cmdSvc.Matching(query)
+		result := make([]suggest.Suggestion, len(cmds))
+		for i, c := range cmds {
+			result[i] = suggest.Suggestion{Name: c.Name, Description: c.Description}
+		}
+		return result
+	}
+}
+
+func flowNameSuggestions(lister flowSuggestionService, args string) ([]suggest.Suggestion, bool) {
+	fields, _ := command.ScanArguments(args)
+	if len(fields) == 0 {
+		return nil, false
+	}
+	verb := strings.ToLower(fields[0].Value)
+	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run" && verb != "edit") {
+		return nil, false
+	}
+	if lister == nil {
+		return nil, true
+	}
+	name := ""
+	if len(fields) > 1 {
+		name = fields[1].Value
+	}
+	if len(fields) > 1 && fields[1].End < len(args) {
+		if verb != "run" {
+			return nil, true
+		}
+		argsAfterName := strings.TrimLeftFunc(args[fields[1].End:], unicode.IsSpace)
+		return flowInputSuggestions(lister, name, argsAfterName), true
+	}
+	var out []suggest.Suggestion
+	for _, definition := range lister.SavedDefinitions() {
+		if strings.HasPrefix(strings.ToLower(definition.Name), strings.ToLower(name)) {
+			out = append(out, suggest.Suggestion{
+				Name: "flow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
+			})
+		}
+	}
+	return out, true
+}
+
+func flowInputSuggestions(lister interface {
+	SavedInputNames(string) ([]string, error)
+}, name, args string) []suggest.Suggestion {
+	keys, err := lister.SavedInputNames(name)
+	if err != nil {
+		return nil
+	}
+	fields, err := command.ScanArguments(args)
+	if err != nil {
+		return nil // still inside a quoted value
+	}
+	prefix, fragment := args, ""
+	if len(fields) > 0 && fields[len(fields)-1].End == len(args) {
+		last := fields[len(fields)-1]
+		prefix, fragment = args[:last.Start], last.Value
+		fields = fields[:len(fields)-1]
+	}
+	if strings.Contains(fragment, "=") {
+		return nil // a value is free-form
+	}
+	used := make(map[string]bool)
+	for _, field := range fields {
+		if key, _, ok := strings.Cut(field.Value, "="); ok {
+			used[key] = true
+		}
+	}
+	var out []suggest.Suggestion
+	for _, key := range keys {
+		if !used[key] && strings.HasPrefix(key, fragment) {
+			description := "Value for {{input." + key + "}}"
+			if key == "input" {
+				// Both {{input}} and {{input.input}} use this run argument.
+				description = "Value for run input: input"
+			}
+			out = append(out, suggest.Suggestion{Name: "flow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: description})
+		}
+	}
+	return out
+}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/san/internal/app/host"
+	"github.com/genai-io/san/internal/app/ext"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
@@ -19,7 +19,7 @@ func acpExtensions(ctx context.Context, cwd string, settings *setting.Data, supp
 		return nil, nil, nil, err
 	}
 	plugins.MergeHooksIntoSettings(settings)
-	source := host.PluginSource{Registry: plugins}
+	source := ext.Plugin{Registry: plugins}
 	skills := skill.Load(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	configs, err := acpMCPConfigs(supplied)
 	if err != nil {

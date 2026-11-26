@@ -10,8 +10,8 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"

@@ -23,14 +23,14 @@ External client ── ACP ──────┘
 ```
 
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
-- `internal/interaction`: request lifecycle and human-permission preparation,
+- `internal/app/ask`: request lifecycle and human-permission preparation,
   scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
 - `internal/session`: typed storage and recording shared by TUI and ACP;
   see [session ownership](../packages/session.md).
 - `internal/agent.InputQueue`: native FIFO delivery, user-only memory recall,
   retry retention, manual-stop holds and consumer-finalization admission fences.
   TUI retains compaction and queue-edit gates; explicit continuation cannot bypass cleanup.
-- `internal/reminder`: reminders and their conversation state; TUI retains lifecycle gates.
+- [`reminder.Queue`](../packages/reminder.md): reminders and their conversation state; TUI retains lifecycle gates.
 - `internal/agent.CheckPrompt`: UserPromptSubmit decisions and additional-context
   staging through the existing hook engine and reminder owner. Context stays pending
   even on a block; delivery, not admission, prepares reminders. TUI retains its

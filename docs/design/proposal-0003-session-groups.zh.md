@@ -511,7 +511,7 @@ flowchart TB
 |---|---|
 | `internal/group` | 磁盘结构：成员文件、inbox、在线判断；Join / Reclaim / Release / Leave / Kick / Disband / SetHold / Send / Inbox；成员列表和 `/group` 的文字 |
 | `internal/proc`（`StartTime`） | 进程启动时间，按平台实现，防止 pid 复用 |
-| `internal/app/group.go` | `/group` 命令、自动命名、Source 4（每秒轮询、`memberMsg`、成员差异、按 hold 开关注入或留在 inbox、`Unattended-Turns`）、会话记录与 finalizer、补全 |
+| `internal/app/tui/group.go` | `/group` 命令、自动命名、Source 4（每秒轮询、`memberMsg`、成员差异、按 hold 开关注入或留在 inbox、`Unattended-Turns`）、会话记录与 finalizer、补全 |
 | `internal/tool/group` | `Group` 工具（仅主 agent） |
 | `internal/tool/agent/sendmessage.go` | 组员地址（仅主 agent），按对方状态返回结果 |
 | 会话记录（`internal/session`） | 保存成员身份（`Group` 字段）；恢复时隐藏附在输入后的 `<group-message>` |

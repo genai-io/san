@@ -35,7 +35,7 @@ specification docs:
    recorded in [`reference/package-map.md`](../reference/package-map.md);
    rules and the layer membership table in
    [`reference/dependency-rules.md`](../reference/dependency-rules.md).
-   Enforced by `tools/layercheck`, wired into `make lint`.
+   Enforced by `devtools/layercheck`, wired into `make lint`.
 
 2. **One `docs/packages/<pkg>.md` page per Go package with a non-trivial
    public surface.** The filename matches the package name with no
@@ -72,7 +72,7 @@ specification docs:
 - **Contract sections** make the seam of each package machine-readable.
   Eventually a doc linter can compare the contract block against
   `go doc -short ./internal/<pkg>` to flag drift.
-- **Mechanical layer enforcement** via `tools/layercheck` runs in CI.
+- **Mechanical layer enforcement** via `devtools/layercheck` runs in CI.
   Caught one real violation immediately: `internal/image` was importing
   `internal/core`.
 - **Reader-goal layout** matches Diátaxis pragmatically without forcing
@@ -92,7 +92,7 @@ specification docs:
   records make the gaps obvious. (Most
   of the initial gaps were filled in the same PR; the rest tracked in
   `notes/tech-debt.md`.)
-- **`tools/layercheck` becomes load-bearing.** Updates to package
+- **`devtools/layercheck` becomes load-bearing.** Updates to package
   layout require updating `package-map.md` and, when layer rules change,
   `dependency-rules.md`. `layercheck` reads `package-map.md` directly so
   the package-to-layer assignment has one source of truth.
@@ -125,7 +125,7 @@ Full road map in `notes/tech-debt.md`.
   — layer rules.
 - [`docs/reference/package-map.md`](../reference/package-map.md) —
   package-to-layer assignment.
-- [`tools/layercheck/main.go`](../../tools/layercheck/main.go) —
+- [`devtools/layercheck/main.go`](../../devtools/layercheck/main.go) —
   mechanical enforcement.
 - OpenAI's "Harness Engineering" post (Feb 2026) — the broader frame
   that motivated this approach.

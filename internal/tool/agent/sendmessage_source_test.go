@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -12,9 +12,9 @@ func TestSendMessageProvenanceComesOnlyFromTrustedContext(t *testing.T) {
 	for _, trusted := range []bool{false, true} {
 		t.Run(map[bool]string{false: "host-origin", true: "native-call"}[trusted], func(t *testing.T) {
 			route := "provenance-receiver"
-			var got broker.Message
-			broker.Register(route, func(m broker.Message) bool { got = m; return true })
-			defer broker.Unregister(route)
+			var got mail.Message
+			mail.Register(route, func(m mail.Message) bool { got = m; return true })
+			defer mail.Unregister(route)
 			ctx := context.Background()
 			if trusted {
 				ctx = tool.WithMessageSource(ctx, "original-session", 42)

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
@@ -19,7 +19,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(task.ResetDefaultTracker)
-	bridge := conv.NewAgentToUI(4)
+	bridge := chat.NewAgentToUI(4)
 	defer bridge.Close()
 	question := testutil.ToolCallResponse(tool.ToolAskUserQuestion, "question-call", `{"question":"Choose an answer","options":["first","second"]}`)
 	provider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
@@ -41,7 +41,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 			t.Error("flow questions did not stop during cleanup")
 		}
 	})
-	requests := make(map[string]*conv.InteractionRequest)
+	requests := make(map[string]*chat.UserPromptRequest)
 	for range 2 {
 		req := pollWorkerInteraction(t, bridge)
 		source := req.Source

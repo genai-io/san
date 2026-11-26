@@ -39,7 +39,7 @@ func (stubProvider) Name() string                                        { retur
 func TestSessionMessagesReturnsLiveChainWithIDs(t *testing.T) {
 	sess := &Runtime{}
 	seed := []core.Message{
-		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/broker")},
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/agent/mail")},
 		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("here is what I found")},
 	}
 	if err := sess.Start(BuildParams{Provider: stubProvider{}, ModelID: "m"}, seed); err != nil {

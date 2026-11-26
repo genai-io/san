@@ -3,7 +3,7 @@ package setting
 import (
 	"testing"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 )
 
 func TestWithDefaultDisabledToolsOverlay(t *testing.T) {

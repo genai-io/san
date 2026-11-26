@@ -1,6 +1,6 @@
 package setting
 
-import "github.com/genai-io/san/internal/secret"
+import "github.com/genai-io/san/internal/infra/secret"
 
 const (
 	DefaultMaxTokens    = 8192

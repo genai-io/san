@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -146,7 +146,7 @@ func (h compactHooks) ExecuteAsync(event hook.EventType, input hook.HookInput) {
 func TestPostCompactReseedsContext(t *testing.T) {
 	for _, trigger := range []string{"manual", "auto", ""} {
 		t.Run(trigger, func(t *testing.T) {
-			r := reminder.New()
+			r := reminder.NewQueue()
 			memory := "old memory"
 			r.Register("memory", func() string { return memory })
 			r.PrepareInput(core.UserMessage("first", nil))

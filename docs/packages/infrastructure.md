@@ -11,7 +11,7 @@ same.
 
 Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../reference/dependency-rules.md)).
 
-## `internal/log`
+## `internal/infra/log`
 
 Process-wide structured logger built on `go.uber.org/zap`.
 
@@ -22,12 +22,12 @@ func Init() error              // initialize from env; idempotent
 func Logger() *zap.Logger      // process-wide logger; never nil
 ```
 
-- `log.Init()` runs once at app startup (from `internal/app/init.go`).
+- `log.Init()` runs once at app startup (from `internal/app/tui/init.go`).
   Output is suppressed by default; `SAN_DEBUG=1` enables zap, appending
   to `~/.san/debug.log` (reset once it passes 50MB).
-- Code: `internal/log/`. No unit tests; behavior exercised end-to-end.
+- Code: `internal/infra/log/`. No unit tests; behavior exercised end-to-end.
 
-## `internal/secret`
+## `internal/infra/secret`
 
 Filesystem-backed key/value store under `~/.san/secrets.json` for API
 keys and tokens.
@@ -49,9 +49,9 @@ func (s *Store) Keys() []string
 - `Set` and `Delete` re-read the file under `secrets.json.lock` and merge,
   so concurrent San processes keep each other's keys (atomic write).
 - Consumer: [`packages/llm.md`](llm.md) for provider API keys.
-- Code: `internal/secret/`.
+- Code: `internal/infra/secret/`.
 
-## `internal/filecache`
+## `internal/infra/filecache`
 
 LRU touch tracking + "file restore" block builder. The cache records
 file paths the agent has read recently; the restore builder produces a
@@ -73,11 +73,11 @@ func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per fi
 - One `*Cache` per session, cleared on `/clear` and `/resume`.
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
-  `internal/app/conv/compact.go` (build on compaction). See also
+  `internal/app/tui/chat/compact.go` (build on compaction). See also
   [`../concepts/harness-channels.md`](../concepts/harness-channels.md).
-- Code: `internal/filecache/`.
+- Code: `internal/infra/filecache/`.
 
-## `internal/markdown`
+## `internal/infra/markdown`
 
 YAML frontmatter parser. The smallest package in the repo: one function,
 zero state.
@@ -97,9 +97,9 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 - Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
   `persona`, [`command.md`](command.md). Every skill / agent /
   persona / command file is parsed through it on `san` startup.
-- Code: `internal/markdown/`.
+- Code: `internal/infra/markdown/`.
 
-## `internal/confdir`
+## `internal/infra/confdir`
 
 One constant and one helper for the repository's configuration directory name.
 It exists so packages that cannot depend on `internal/setting` still resolve
@@ -114,11 +114,11 @@ func Dir(root string) string
 ```
 
 - `Dir(root)` returns `root/.san`.
-- Consumers include `internal/log`, `internal/core/system`, `internal/setting`,
+- Consumers include `internal/infra/log`, `internal/core/system`, `internal/setting`,
   and extension loaders.
-- Code: `internal/confdir/`.
+- Code: `internal/infra/confdir/`.
 
-## `internal/proc`
+## `internal/infra/proc`
 
 Cross-platform process helpers for starting subprocesses in their own process
 group/session and terminating that group where the platform supports it.
@@ -134,9 +134,9 @@ func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
   process cleanup behavior centralized.
 - Windows support is best-effort; callers should not assume descendant cleanup
   is complete on Windows.
-- Code: `internal/proc/`.
+- Code: `internal/infra/proc/`.
 
-## `internal/atomicfile`
+## `internal/infra/atomicfile`
 
 Writes a unique temporary file beside the destination, then replaces the path
 by rename. Failed writes remove the temporary file and retain the old contents.
@@ -154,71 +154,21 @@ by rename. Failed writes remove the temporary file and retain the old contents.
   `ErrLocked` when another handle (in this or another process) holds it, and a
   release func otherwise. Use it for long-lived ownership such as a Flow run;
   the OS releases it if the holder crashes.
-- Tests: `internal/atomicfile/` covers concurrent replacement, process locking,
+- Tests: `internal/infra/atomicfile/` covers concurrent replacement, process locking,
   permissions and path resolution.
 
-## `internal/proc`
+## `internal/infra/proc`
 
-Cross-platform process helpers. `ReadGitStatus(ctx, cwd)` in `internal/proc/git.go`
+Cross-platform process helpers. `ReadGitStatus(ctx, cwd)` in `internal/infra/proc/git.go`
 reads local worktree metadata using NUL-delimited porcelain v2, supporting
 renames, unborn/detached HEAD and linked worktrees. It never fetches, disables
 optional index locks and fsmonitor hooks, and sanitizes repository labels.
 The caller bounds the context; cancellation kills Git and its children, with a
 100 ms pipe backstop. The adapter stores no configuration or global state.
 
-`internal/proc/git_test.go` covers parsing, discovery, worktrees, remote privacy,
+`internal/infra/proc/git_test.go` covers parsing, discovery, worktrees, remote privacy,
 missing Git and cancellation. Consumers should hide read failures, not treat
 failed reads as clean or display raw remote URLs.
-
-## `internal/autoupdate`
-
-Replaces the running `san` binary with a newer GitHub release. The running
-process is never touched: the release is downloaded and extracted beside the
-binary, then swapped in by rename, so the session keeps the version it started
-with and the next launch runs the new one.
-
-```go
-package autoupdate
-
-func InstallDir() string
-func Managed() bool
-func Latest(ctx context.Context) (string, error)
-func Newer(a, b string) bool
-func IsRelease(v string) bool
-func Install(ctx context.Context, version string, progress func(written, total int64)) error
-func ReleasePublicKey() ed25519.PublicKey
-func Sign(priv ed25519.PrivateKey, data []byte) []byte
-func VerifyChecksums(pub ed25519.PublicKey, sums, sig []byte) (map[string]string, error)
-func Cleanup()
-```
-
-- `san update` calls it interactively, wherever the binary lives. The TUI
-  calls it once per launch on a background goroutine — the startup path pays
-  nothing — and only when `Managed()` says the binary is in `InstallDir()`
-  (`~/.local/bin`, or `%LOCALAPPDATA%\san\bin` on Windows), so a Homebrew,
-  `go install`, package-manager, or dev-build binary is never replaced behind
-  its owner's back. Success shows `vX.Y.Z installed · Restart to update` right-aligned
-  above the input, sharing the task-status row without displacing it. A failed
-  install warns at exit with `san update`; an offline check is silent. The session
-  itself is never touched. `SAN_DISABLE_AUTOUPDATE=1` turns the check off;
-  `san update` still works.
-- `Newer` only accepts plain `X.Y.Z`, so a dev build (`git describe` suffix,
-  bare hash) is never replaced and a release never downgrades; `IsRelease`
-  lets the caller skip the network for one. `Install` extracts only the
-  archive entry named `san`/`san.exe`, beside the binary, and fails before any
-  network traffic when that directory is not writable.
-- Nothing is installed that the project did not publish: `Install` first
-  fetches the release's `SHA256SUMS` and `SHA256SUMS.sig`, verifies the
-  ed25519 signature against the public key built into the binary
-  (`verify.go`), then hashes the archive as it downloads and refuses a
-  mismatch. TLS proves who served the bytes; the signature proves who
-  published them. Key setup and rotation: [`../operations/release.md`](../operations/release.md).
-- On POSIX the swap is one atomic rename, so the path always names a whole
-  binary; Windows cannot replace a running executable, so there the old one is
-  moved aside first. `Cleanup`, run in the background at every TUI launch,
-  removes that moved-aside binary and download directories abandoned by a
-  session that quit mid-install.
-- Code: `internal/autoupdate/`.
 
 ## See Also
 

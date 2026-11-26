@@ -11,16 +11,17 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/host"
+	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/app/ext"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
+	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -43,9 +44,8 @@ const acpWriteTimeout = 30 * time.Second
 // Closing input/output must interrupt active I/O; raw blocking standard file
 // descriptors do not satisfy this contract. The CLI supplies pollable streams.
 func Run(ctx context.Context, input io.ReadCloser, output io.WriteCloser, version string) error {
-	host.WarnShellFallback()
 	llm.Initialize()
-	provider, model, err := host.ResolveProvider(ctx)
+	provider, model, err := llm.ResolveProviderModel(ctx)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ type acpSession struct {
 	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
 	runtime            agent.Runtime
 	hooks              *hook.Engine
-	reminders          *reminder.Reminder
+	reminders          *reminder.Queue
 	toolResponses      sync.Map
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
@@ -171,7 +171,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		if saved := history.State().ExecutionCWD; saved != nil {
 			cwd = *saved
 		}
-		if err := host.ValidateResumeDirectory(cwd, req.CWD); err != nil {
+		if err := session.ValidateResumeDirectory(cwd, req.CWD); err != nil {
 			return protocol.NewSessionResponse{}, err
 		}
 	}
@@ -208,10 +208,10 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
-	s := &acpSession{reminders: reminder.New(), mcp: servers, models: models}
-	ext := host.PluginSource{Registry: plugins}
-	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: ext.CommandPaths})
-	s.agents, err = subagent.Load(req.CWD, ext.AgentPaths())
+	s := &acpSession{reminders: reminder.NewQueue(), mcp: servers, models: models}
+	pluginSource := ext.Plugin{Registry: plugins}
+	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: pluginSource.CommandPaths})
+	s.agents, err = subagent.Load(req.CWD, pluginSource.AgentPaths())
 	if err != nil {
 		_ = servers.Close()
 		return protocol.NewSessionResponse{}, err
@@ -227,7 +227,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	tasks := task.NewManager()
 	s.tracker = todo.NewStoreWithTasks(tasks)
 	if home, err := os.UserHomeDir(); err == nil {
-		if err := s.tracker.SetStorageDir(host.SessionTaskDir(home, opened.ID())); err != nil {
+		if err := s.tracker.SetStorageDir(task.SessionDir(home, opened.ID())); err != nil {
 			log.Logger().Warn("task tracker storage unavailable", zap.Error(err))
 		}
 	}
@@ -237,7 +237,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.Path())
-	host.BindSessionHooks(s.hooks, h.provider, opened, modelID)
+	apphook.Bind(s.hooks, h.provider, opened, modelID)
 	skills.SetStateChangeObserver(session.NewRecorder(opened, h.provider.Name()).RecordSkillStateChange)
 	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
 	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings}

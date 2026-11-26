@@ -6,36 +6,36 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/task"
 )
 
 func TestSendMessageRunningRouteFailure(t *testing.T) {
 	for _, route := range []string{"absent", "rejecting", "provenance", "storage", "full", "wrapped full", "stopped during send"} {
 		t.Run(route, func(t *testing.T) {
-			broker.Reset()
-			t.Cleanup(broker.Reset)
+			mail.Reset()
+			t.Cleanup(mail.Reset)
 			id := task.NewID()
 			ctx := task.WithSessionID(context.Background(), "owner")
 			worker := task.Default().CreateAgentTask(id, "worker", "test", ctx, func() {})
 			t.Cleanup(func() { task.Default().Remove(id) })
 			calls := 0
 			if route != "absent" {
-				broker.RegisterAccept(id, func(broker.Message) error {
+				mail.RegisterAccept(id, func(mail.Message) error {
 					calls++
 					switch route {
 					case "provenance":
-						return fmt.Errorf("%w: incomplete message provenance", broker.ErrRejected)
+						return fmt.Errorf("%w: incomplete message provenance", mail.ErrRejected)
 					case "storage":
-						return fmt.Errorf("%w: worker session is not writable", broker.ErrRejected)
+						return fmt.Errorf("%w: worker session is not writable", mail.ErrRejected)
 					case "stopped during send":
 						worker.Complete(context.Canceled)
 					case "full":
-						return broker.ErrInboxFull
+						return mail.ErrInboxFull
 					case "wrapped full":
-						return fmt.Errorf("delivery rejected: %w", broker.ErrInboxFull)
+						return fmt.Errorf("delivery rejected: %w", mail.ErrInboxFull)
 					}
-					return broker.ErrRejected
+					return mail.ErrRejected
 				})
 			}
 			result := NewSendMessageTool().Execute(ctx, map[string]any{"to": id, "message": "new instruction"}, ".")

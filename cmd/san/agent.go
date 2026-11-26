@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/app"
+	"github.com/genai-io/san/internal/app/cli"
 )
 
-var agentRunOpts app.AgentRunOptions
+var agentRunOpts cli.AgentRunOptions
 
 func init() {
 	agentRunCmd.Flags().StringVar(&agentRunOpts.Name, "name", "", "Optional agent name")
@@ -31,6 +31,10 @@ var agentRunCmd = &cobra.Command{
 Example:
   san agent run --prompt "find main.go"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return app.RunAgent(agentRunOpts)
+		if err := agentRunOpts.Validate(); err != nil {
+			return err
+		}
+		warnShellFallback()
+		return cli.RunAgent(agentRunOpts)
 	},
 }

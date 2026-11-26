@@ -1,0 +1,1087 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/app/tui/chat"
+	"github.com/genai-io/san/internal/app/tui/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/ai"
+)
+
+func flushTestModel(msg core.ChatMessage) *model {
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80)}
+	appended := m.conv.Append(msg)
+	m.conv.Stream.MessageID = appended.ID
+	return m
+}
+
+func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "Recent reply stays visible."}}
+	m.CommitMessages()
+	if m.conv.CommittedCount != 1 || len(m.flush.pendingPrints) != 0 {
+		t.Fatal("short reply should settle without a native print")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("committing hid the recent reply")
+	}
+	for _, line := range m.flush.visible {
+		if len(line) > 0 && isPadding(&line[len(line)-1]) {
+			t.Fatal("retained rows carry full-width padding into the live frame")
+		}
+	}
+	resizeTerminal(m, 40, 24, tea.ResizeScrollbackMsg{})
+	if len(m.flush.pendingPrints) != 0 || !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("resize hid or unnecessarily printed the recent reply")
+	}
+
+	// Shrinking height hands only the oldest physical rows to native history.
+	m.queueScrollbackPrint(strings.Repeat("older row\n", 12)+"LATEST-REPLY", 0)
+	resizeTerminal(m, 40, 10, tea.ResizeScrollbackMsg{})
+	footer, _ := m.renderNormalBottom("", "", "")
+	if len(m.flush.visible) > 10-rowCount(footer) || len(m.flush.pendingPrints) == 0 {
+		t.Fatal("resize did not bound the retained rows and print overflow")
+	}
+	drainScrollback(m)
+	if !strings.Contains(ansi.Strip(m.View().Content), "LATEST-REPLY") {
+		t.Fatal("shrinking the terminal hid the latest reply")
+	}
+}
+
+func TestSettledHistoryKeepsParsedRows(t *testing.T) {
+	m := fixedComposerModel(80, 8)
+	m.queueScrollbackPrint("\x1b[31mFIRST\n"+strings.Repeat("older row\n", 20)+"LATEST\x1b[0m", 0)
+	if len(m.flush.pendingPrints) != 1 {
+		t.Fatal("settled history did not overflow")
+	}
+	head := m.flush.pendingPrints[0]
+	if head.remaining != "" || len(head.rows) == 0 || head.width != 80 {
+		t.Fatal("parsed history was serialized for a second parse")
+	}
+	if head.rows[0][0].Style.Fg == nil {
+		t.Fatal("handoff lost cell styling")
+	}
+	m.env.Ready = false
+	if !strings.Contains(ansi.Strip(m.pendingScrollbackView()), "FIRST") {
+		t.Fatal("fallback handoff omitted queued cells")
+	}
+}
+
+func TestResizeSkipsRowsTheTerminalScrolledOff(t *testing.T) {
+	setup := func() (*model, []string) {
+		m := fixedComposerModel(80, 24)
+		var rows []string
+		for i := range 18 {
+			rows = append(rows, fmt.Sprintf("settled row %02d", i))
+		}
+		m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+		return m, strings.Split(m.View().Content, "\n")
+	}
+
+	m, frame := setup()
+	resizeTerminal(m, 80, 14, tea.ResizeScrollbackMsg{Known: true, Lines: frame[:4]})
+	if len(m.flush.pendingPrints) != 1 {
+		t.Fatal("resize left no overflow to commit")
+	}
+	committed := ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows))
+	if strings.Contains(committed, "settled row 03") || !strings.HasPrefix(committed, "settled row 04") {
+		t.Fatalf("commit repeats or skips rows the terminal scrolled off: %q", committed)
+	}
+
+	m, frame = setup()
+	frame[1] = "something else"
+	resizeTerminal(m, 80, 14, tea.ResizeScrollbackMsg{Known: true, Lines: frame[:4]})
+	if committed := ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows)); !strings.HasPrefix(committed, "settled row 00") {
+		t.Fatalf("a report that does not match the frame dropped rows: %q", committed)
+	}
+}
+
+func TestResizeHoldsHistoryUntilReportAndRequeuesUnscrolledRows(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.flush.queueScrollbackPrint("queued row", 0)
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 80, Height: 20})
+	if m.startScrollbackPrint(m.flush.pendingPrints[0].id) != nil {
+		t.Fatal("a print started before the resize was reported")
+	}
+	if m.finishResize(tea.ResizeScrollbackMsg{Unscrolled: []string{"taken back"}}) == nil {
+		t.Fatal("the report did not restart the queue")
+	}
+	content, ok := startChunk(m, m.flush.pendingPrints[0].id)
+	if !ok || !strings.HasPrefix(ansi.Strip(content), "taken back\nqueued row") {
+		t.Fatalf("taken-back rows not printed first: %q", ansi.Strip(content))
+	}
+}
+
+func TestHandoffFrameFitsAfterNarrowing(t *testing.T) {
+	m := fixedComposerModel(90, 26)
+	row := "  " + strings.Repeat("wide row ", 9)
+	m.flush.queueScrollbackPrint(strings.Repeat(row+"\n", 40)+row, 0)
+	if _, ok := startChunk(m, m.flush.pendingPrints[0].id); !ok {
+		t.Fatal("handoff did not start")
+	}
+	m.finishChunkScroll(tea.ScrollUpMsg{Scrolled: true})
+	// The next chunk's scroll was measured for the old size and is refused.
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 70, Height: 20})
+	m.finishChunkScroll(tea.ScrollUpMsg{})
+	frame := m.View().Content
+	if n := len(scrollbackPhysicalLines(frame, 70)); n != 20 {
+		t.Fatalf("handoff frame is %d rows on a 20-row terminal", n)
+	}
+}
+
+func TestClearDiscardsRecentSettledRows(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	initClearSessionTest(t, m)
+	m.services.Agent = &agent.Runtime{}
+	m.services.Reminder = reminder.NewQueue()
+	m.queueScrollbackPrint("OLD-REPLY", 0)
+	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
+		t.Fatal("clear command was not handled")
+	}
+	if len(m.flush.visible) != 0 || strings.Contains(m.View().Content, "OLD-REPLY") {
+		t.Fatal("clear resurrected a retained reply")
+	}
+}
+
+func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	initClearSessionTest(t, m)
+	m.services.Agent = &agent.Runtime{}
+	m.services.Reminder = reminder.NewQueue()
+	var rows []string
+	for i := 0; i < 19; i++ {
+		rows = append(rows, fmt.Sprintf("OLD-%02d", i))
+	}
+	m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if len(m.flush.pendingPrints) == 0 {
+		t.Fatal("suggestions did not displace the retained reply")
+	}
+	oldID := m.flush.pendingPrints[0].id
+	_, wipe, handled := m.executeCommand(context.Background(), "/clear")
+	if !handled || wipe == nil || strings.Contains(m.View().Content, "OLD-") {
+		t.Fatal("clear left queued content in the managed view")
+	}
+	if _, cmd := m.Update(scrollbackPrintReadyMsg{id: oldID}); cmd != nil {
+		t.Fatal("clear allowed a delayed ready message to print old content")
+	}
+	m.queueScrollbackPrint(strings.Repeat("NEW-REPLY\n", 30), 0)
+	newID := m.flush.pendingPrints[0].id
+	if newID <= oldID {
+		t.Fatal("clear reused a print identity")
+	}
+	if _, ok := startChunk(m, newID); !ok {
+		t.Fatal("new conversation did not start printing")
+	}
+	m.Update(scrollbackPrintDoneMsg{id: oldID})
+	if m.flush.pendingPrints[0].id != newID || m.flush.frameForPrint == nil {
+		t.Fatal("old completion changed the new conversation's print")
+	}
+}
+
+func TestSettledReplyReflowsAfterNarrowingAndWidening(t *testing.T) {
+	for _, text := range []string{
+		"LEFT-" + strings.Repeat("x", 60) + "-RIGHT\nsecond hard line",
+		"\x1b[31m" + strings.Repeat("中文🙂 ", 8) + "END\x1b[0m\nsecond hard line",
+	} {
+		m := fixedComposerModel(80, 24)
+		m.queueScrollbackPrint(text, 0)
+		before := m.View().Content
+		resizeTerminal(m, 40, 24, tea.ResizeScrollbackMsg{})
+		if strings.Contains(ansi.Strip(m.View().Content), ansi.Strip(strings.Split(text, "\n")[0])) {
+			t.Fatal("fixture did not wrap at the narrow width")
+		}
+		resizeTerminal(m, 80, 24, tea.ResizeScrollbackMsg{})
+		if got := m.View().Content; got != before {
+			t.Fatalf("80 -> 40 -> 80 changed settled output:\nbefore: %q\nafter: %q", before, got)
+		}
+	}
+}
+
+func TestSettledLineReflowsAfterPartialHistoryHandoff(t *testing.T) {
+	for _, text := range []string{strings.Repeat("0123456789", 30), "\x1b[31mL" + strings.Repeat("中🙂", 80) + "END\x1b[0m"} {
+		m := fixedComposerModel(80, 7)
+		m.queueScrollbackPrint(text, 0)
+		if len(m.flush.pendingPrints) != 1 {
+			t.Fatal("long line did not overflow into history")
+		}
+		printed := strings.ReplaceAll(ansi.Strip(renderScrollbackLines(m.flush.pendingPrints[0].rows)), "\n", "")
+		retained := ansi.Strip(renderScrollbackLines(m.flush.visible))
+		if printed+retained != ansi.Strip(text) || strings.Contains(retained, "\n") {
+			t.Fatalf("partial handoff lost text or stored soft wraps: printed=%q, retained=%q", printed, retained)
+		}
+		resizeTerminal(m, 160, 7, tea.ResizeScrollbackMsg{})
+		drainScrollback(m)
+		if got := ansi.Strip(m.View().Content); !strings.Contains(got, retained) {
+			t.Fatalf("widening did not rejoin the retained suffix: %q", got)
+		}
+	}
+}
+
+func TestLiveOutputMovesCompletedReplyIntoHistory(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.queueScrollbackPrint("SETTLED-REPLY", 0)
+	m.conv.Stream.Active = true
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "```text\n" + strings.Repeat("live output\n", 30)}}
+	m.Update(tea.KeyReleaseMsg{})
+	if len(m.flush.visible) != 0 || len(m.flush.pendingPrints) != 1 ||
+		!strings.Contains(renderScrollbackLines(m.flush.pendingPrints[0].rows), "SETTLED-REPLY") {
+		t.Fatal("growing live output hid settled text without queuing it for history")
+	}
+}
+
+// applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
+// and lands its result, mirroring the real render → handleFlushResult path
+// so tests can assert the committed offsets the landing advances.
+func applyFlush(t *testing.T, m *model, cmds []tea.Cmd) {
+	t.Helper()
+	if len(cmds) == 0 {
+		t.Fatal("expected a flush render Cmd, got none")
+	}
+	msg := cmds[0]()
+	br, ok := msg.(flushResultMsg)
+	if !ok {
+		t.Fatalf("flush Cmd returned %T, want flushResultMsg", msg)
+	}
+	m.handleFlushResult(br)
+}
+
+// trimLinePadding trims the trailing blank cells that ultraviolet's renderer
+// now emits as spaces for full-width rows (charmbracelet/ultraviolet#128
+// flushes trailing empty cells instead of trimming them). Padding is a
+// cosmetic of the full-width buffer, so strip it per row before comparing
+// physical-line content.
+func trimLinePadding(s string) string {
+	rows := []string{}
+	for line := range strings.SplitSeq(s, "\n") {
+		rows = append(rows, strings.TrimRight(line, " "))
+	}
+	return strings.Join(rows, "\n")
+}
+
+// The live welcome banner is visible from launch and tracks the model the user
+// picks after launch — the regression behind #252, where the banner froze "no
+// model selected" because it was committed to scrollback before any selection.
+func TestLiveWelcomeTracksModelSelection(t *testing.T) {
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80), welcomePending: true}
+
+	// At launch, before a model is picked, the splash is already on screen.
+	if got := m.liveWelcome(); !strings.Contains(got, "no model selected") {
+		t.Fatalf("liveWelcome before selection = %q, want it to mention %q", got, "no model selected")
+	}
+
+	// Picking a model updates the live banner — it is not frozen.
+	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "claude-opus-4-8"}
+	got := m.liveWelcome()
+	if strings.Contains(got, "no model selected") {
+		t.Fatalf("liveWelcome after selection still shows %q: %q", "no model selected", got)
+	}
+	if !strings.Contains(got, "claude-opus-4-8") {
+		t.Fatalf("liveWelcome after selection = %q, want it to mention the picked model", got)
+	}
+}
+
+// On the first commit the banner is frozen into scrollback with the selected
+// model, and the live view stops drawing it (no duplicate).
+func TestTakeWelcomeBannerFreezesAndClears(t *testing.T) {
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80), welcomePending: true}
+	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "claude-opus-4-8"}
+
+	banner := m.takeWelcomeBanner()
+	if !strings.Contains(banner, "claude-opus-4-8") {
+		t.Fatalf("frozen banner = %q, want it to mention the selected model", banner)
+	}
+	if m.welcomePending {
+		t.Fatal("welcomePending should be cleared once the banner is frozen")
+	}
+	if got := m.liveWelcome(); got != "" {
+		t.Fatalf("liveWelcome after freeze = %q, want \"\" (no duplicate in live view)", got)
+	}
+	if again := m.takeWelcomeBanner(); again != "" {
+		t.Fatalf("takeWelcomeBanner is once-only, second call = %q", again)
+	}
+}
+
+// A completed thinking paragraph (terminated by a blank line) commits to
+// scrollback mid-stream, before any content arrives — reasoning no longer waits
+// for the whole block to finish. The render runs off-thread; the committed
+// offset advances only once it lands.
+func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:     core.ChatAssistant,
+		Thinking: "first paragraph of reasoning\n\n",
+	})
+
+	applyFlush(t, m, m.FlushStreamingBlocks())
+
+	msg := m.conv.Messages[0]
+	if msg.ThinkingCommittedLen != len(msg.Thinking) {
+		t.Fatalf("ThinkingCommittedLen = %d, want %d", msg.ThinkingCommittedLen, len(msg.Thinking))
+	}
+	if !msg.ThinkingEmitted {
+		t.Fatal("ThinkingEmitted should be set after the first thinking block commits")
+	}
+	if m.flush.rendering {
+		t.Fatal("flush.rendering should clear once the render has landed")
+	}
+	if len(m.flush.pendingPrints) != 1 ||
+		!strings.Contains(m.flush.pendingPrints[0].current+m.flush.pendingPrints[0].remaining, "first paragraph of reasoning") {
+		t.Fatalf("scrollback queue = %#v, want the committed block queued once", m.flush.pendingPrints)
+	}
+}
+
+func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		width   int
+		rows    int
+		plain   string
+	}{
+		{name: "ANSI styling", content: "\x1b[31mred\x1b[0m", width: 4, rows: 1, plain: "red"},
+		{name: "soft wrap", content: "abcde", width: 4, rows: 2, plain: "abcd\ne"},
+		{name: "exact-width wrap", content: "abcdefgh", width: 4, rows: 2, plain: "abcd\nefgh"},
+		{name: "wide graphemes", content: "界界界", width: 4, rows: 2, plain: "界界\n界"},
+		{name: "emoji graphemes", content: "🏳️‍🌈🏳️‍🌈🏳️‍🌈", width: 4, rows: 2, plain: "🏳️‍🌈🏳️‍🌈\n🏳️‍🌈"},
+		{name: "trailing newline", content: "a\n", width: 4, rows: 2, plain: "a\n"},
+		{name: "empty lines", content: "\n\n", width: 0, rows: 3, plain: "\n\n"},
+		{name: "style-only last row", content: "a\n\x1b[31m", width: 0, rows: 2, plain: "a\n"},
+		{name: "CRLF", content: "one\r\ntwo\r\n", width: 4, rows: 3, plain: "one\ntwo\n"},
+		{name: "carriage return overwrite", content: "abc\rd", width: 4, rows: 1, plain: "dbc"},
+		{name: "odd-width CJK", content: "界界界", width: 3, rows: 3, plain: "界\n界\n界"},
+		{name: "combining marks", content: "a\u0301b", width: 1, rows: 2, plain: "a\u0301\nb"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := scrollbackPhysicalLines(tt.content, tt.width)
+			if len(lines) != tt.rows {
+				t.Fatalf("physical rows = %d, want %d", len(lines), tt.rows)
+			}
+			if plain := trimLinePadding(ansi.Strip(renderScrollbackLines(lines))); plain != tt.plain {
+				t.Fatalf("rendered physical lines = %q, want %q", plain, tt.plain)
+			}
+		})
+	}
+}
+
+func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
+	var flush flushState
+	content := "\x1b[31mabcdefghij\x1b[0m\nlast\n"
+	cmd := flush.queueScrollbackPrint(content, 0)
+	if cmd == nil {
+		t.Fatal("the first chunk must start immediately")
+	}
+
+	var chunks []string
+	for cmd != nil {
+		ready := cmd().(scrollbackPrintReadyMsg)
+		content, ok := flush.prepareScrollbackPrint(ready.id, 4, 2)
+		if !ok {
+			t.Fatal("ready chunk has no payload")
+		}
+		chunks = append(chunks, content)
+		cmd = flush.finishScrollbackPrint(ready.id)
+	}
+	if len(flush.pendingPrints) != 0 {
+		t.Fatalf("finished queue length = %d, want 0", len(flush.pendingPrints))
+	}
+
+	plain := trimLinePadding(ansi.Strip(strings.Join(chunks, "\n")))
+	if plain != "abcd\nefgh\nij\nlast\n" {
+		t.Fatalf("chunked content = %q, want all physical rows exactly once", plain)
+	}
+}
+
+func TestScrollbackDrainAllocationsGrowWithRows(t *testing.T) {
+	allocations := func(rows int) float64 {
+		content := strings.Repeat("A settled reply with enough text to look like a normal terminal line.\n", rows-1) + "LAST"
+		return testing.AllocsPerRun(1, func() {
+			var flush flushState
+			flush.queueScrollbackPrint(content, 0)
+			for len(flush.pendingPrints) > 0 {
+				id := flush.pendingPrints[0].id
+				if _, ok := flush.prepareScrollbackPrint(id, 80, 1); !ok {
+					t.Fatal("queued history did not drain")
+				}
+				flush.finishScrollbackPrint(id)
+			}
+		})
+	}
+	small, large := allocations(128), allocations(256)
+	if large > small*2.6 {
+		t.Fatalf("doubling rows grew allocations from %.0f to %.0f; remaining history is being parsed repeatedly", small, large)
+	}
+}
+
+func TestScrollbackRemainingRowsRewrapAfterResize(t *testing.T) {
+	var flush flushState
+	flush.queueScrollbackPrint("\x1b[31mabcdefg\x1b[0m\nlast!", 0)
+	id := flush.pendingPrints[0].id
+	first, ok := flush.prepareScrollbackPrint(id, 4, 1)
+	if !ok {
+		t.Fatal("first chunk did not prepare")
+	}
+	flush.finishScrollbackPrint(id)
+	chunks := []string{first}
+	for len(flush.pendingPrints) > 0 {
+		chunk, ok := flush.prepareScrollbackPrint(id, 2, 1)
+		if !ok {
+			t.Fatal("resized chunk did not prepare")
+		}
+		chunks = append(chunks, chunk)
+		flush.finishScrollbackPrint(id)
+	}
+	if got := ansi.Strip(strings.Join(chunks, "\n")); got != "abcd\nef\ng\nla\nst\n!" {
+		t.Fatalf("resized chunks = %q", got)
+	}
+}
+
+func BenchmarkScrollbackHistoryDrain(b *testing.B) {
+	for _, rows := range []int{512, 2048} {
+		b.Run(fmt.Sprintf("%d_rows", rows), func(b *testing.B) {
+			content := strings.Repeat("A settled reply with enough text to look like a normal terminal line.\n", rows-1) + "LAST"
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				m := fixedComposerModel(80, 24)
+				m.flush.queueScrollbackPrint(content, 0)
+				for len(m.flush.pendingPrints) > 0 {
+					id := m.flush.pendingPrints[0].id
+					if _, ok := startChunk(m, id); !ok {
+						b.Fatal("queued history did not drain")
+					}
+					m.flush.finishScrollbackPrint(id)
+				}
+			}
+		})
+	}
+}
+
+func TestScrollbackFullHeightFrameScrollsChunkOffTheTop(t *testing.T) {
+	for _, scrolled := range []bool{true, false} {
+		m := fixedComposerModel(80, 24)
+		var rows []string
+		for i := range 40 {
+			rows = append(rows, fmt.Sprintf("ROW-%02d", i))
+		}
+		ready := m.flush.queueScrollbackPrint(strings.Join(rows, "\n"), 0)().(scrollbackPrintReadyMsg)
+		if m.startScrollbackPrint(ready.id) == nil || !m.flush.pendingPrints[0].scrolling {
+			t.Fatal("a frame spanning the terminal must scroll the chunk")
+		}
+		frame, _ := m.scrollbackFrameForPrint()
+		lines := strings.Split(ansi.Strip(frame.Content), "\n")
+		chunk := rowCount(m.flush.pendingPrints[0].current)
+		if len(lines) != 24 || strings.TrimSpace(lines[0]) != "ROW-00" ||
+			strings.TrimSpace(lines[chunk-1]) != fmt.Sprintf("ROW-%02d", chunk-1) ||
+			!strings.Contains(strings.Join(lines[chunk:], "\n"), "─") {
+			t.Fatalf("frozen frame must be the chunk above the composer:\n%s", strings.Join(lines, "\n"))
+		}
+		_, cmd := m.Update(tea.ScrollUpMsg{Rows: chunk, Scrolled: scrolled})
+		if scrolled {
+			if next := ansi.Strip(m.flush.pendingPrints[0].current); !m.flush.pendingPrints[0].scrolling || !strings.HasPrefix(next, rows[chunk]+"\n") {
+				t.Fatalf("the next chunk must follow: %q", m.flush.pendingPrints[0].current)
+			}
+			continue
+		}
+		if frame, _ := m.scrollbackFrameForPrint(); frame.Content != minimalScrollbackFrame().Content ||
+			!strings.HasPrefix(ansi.Strip(m.flush.pendingPrints[0].current), "ROW-00\n") || cmd == nil {
+			t.Fatal("a refused scroll must insert the chunk above a one-row frame")
+		}
+	}
+}
+
+// A queued Println must not run while a docked approval prompt owns the
+// managed frame. insertAbove otherwise promotes that temporary prompt into
+// terminal history together with the actual conversation output.
+func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the approval modal is visible")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	if m.flush.frameForPrint != nil {
+		t.Fatal("a deferred print must not freeze the approval frame")
+	}
+
+	m.userInput.Approval.Hide()
+	resume := m.resumeDeferredScrollbackPrint()
+	if resume == nil {
+		t.Fatal("closing the modal must restart the deferred print")
+	}
+	resumed := resume().(scrollbackPrintReadyMsg)
+	if resumed.id != ready.id {
+		t.Fatalf("resumed print id = %d, want %d", resumed.id, ready.id)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(resumed.id, m.env.Width, m.env.Height)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// A permission prompt opened after a print has been queued has the inverse race:
+// the prompt's frame could be captured by insertAbove after it appears. Hold the
+// prompt until the final Println completes, then open it on the clean live frame.
+func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.services.Session = nil
+	m.userInput.Approval.Hide()
+	view := &perm.PermissionRequest{
+		ToolName: "Bash",
+		BashMeta: &perm.BashMetadata{Command: "git status"},
+	}
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
+	m.enqueueUserPrompt(&chat.UserPromptRequest{
+		Permission: &agent.PermGateRequest{ToolName: "Bash"}, PermissionView: view,
+	})
+	if cmd == nil {
+		t.Fatal("the queued print must start")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height); !ok {
+		t.Fatal("the print should prepare before the approval opens")
+	}
+	if m.userInput.Approval.IsActive() {
+		t.Fatal("approval opened before the scrollback handoff completed")
+	}
+	if next := m.finishScrollbackPrint(ready.id); next != nil {
+		t.Fatal("the one-line print should finish in one chunk")
+	}
+	m.advanceUserPrompts()
+	if !m.userInput.Approval.IsActive() {
+		t.Fatal("approval did not open after the scrollback handoff completed")
+	}
+}
+
+func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	firstCmd := m.flush.queueScrollbackPrint("A", 0)
+	if firstCmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	if secondCmd := m.flush.queueScrollbackPrint("B", 0); secondCmd != nil {
+		t.Fatal("a second print must wait until the in-flight head completes")
+	}
+
+	first := firstCmd().(scrollbackPrintReadyMsg)
+	firstContent, ok := startChunk(m, first.id)
+	if !ok || trimLinePadding(firstContent) != "A" {
+		t.Fatalf("first print content = %q, ok=%v, want A", firstContent, ok)
+	}
+	if next := m.finishScrollbackPrint(first.id + 1); next != nil {
+		t.Fatal("an out-of-order done message must not advance the queue")
+	}
+	if len(m.flush.pendingPrints) != 2 {
+		t.Fatalf("out-of-order done changed queue length to %d, want 2", len(m.flush.pendingPrints))
+	}
+
+	secondCmd := m.finishScrollbackPrint(first.id)
+	if secondCmd == nil {
+		t.Fatal("finishing the queue head must start the next print")
+	}
+	second := secondCmd().(scrollbackPrintReadyMsg)
+	secondContent, ok := startChunk(m, second.id)
+	if !ok || trimLinePadding(secondContent) != "B" {
+		t.Fatalf("second print content = %q, ok=%v, want B", secondContent, ok)
+	}
+	if next := m.finishScrollbackPrint(second.id); next != nil {
+		t.Fatal("finishing the final print must leave no command")
+	}
+	if len(m.flush.pendingPrints) != 0 {
+		t.Fatalf("finished queue length = %d, want 0", len(m.flush.pendingPrints))
+	}
+}
+
+func TestToolResultsCommitAsTheyFinish(t *testing.T) {
+	m := fixedComposerModel(100, 30)
+	calls := []core.ToolCall{
+		{ID: "read-1", Name: "Read", Input: `{"file_path":"first.go"}`},
+		{ID: "read-2", Name: "Read", Input: `{"file_path":"second.go"}`},
+		{ID: "read-3", Name: "Read", Input: `{"file_path":"third.go"}`},
+	}
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: calls})
+	m.conv.Stream.Active = true
+	m.conv.Tool.Track(calls)
+	for i, idx := range []int{2, 0, 1} {
+		m.conv.Tool.MarkComplete(calls[idx].ID)
+		m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
+			ToolCallID: calls[idx].ID,
+			ToolName:   "Read",
+			Content:    ai.TextContent(strings.Repeat("file content\n", idx+1)),
+		}})
+		if i == 0 {
+			m.conv.AddNotice("Background task finished")
+		}
+		m.CommitMessages()
+		settled := ansi.Strip(renderScrollbackLines(m.flush.visible))
+		if !strings.Contains(settled, []string{"first.go", "second.go", "third.go"}[idx]) {
+			t.Fatalf("result %s did not settle immediately:\n%s", calls[idx].ID, settled)
+		}
+		if i == 0 && (strings.Contains(settled, "first.go") || strings.Contains(settled, "second.go")) {
+			t.Fatalf("unfinished calls entered the completed area:\n%s", settled)
+		}
+	}
+	if m.conv.CommittedCount != len(m.conv.Messages) {
+		t.Fatalf("finished batch left uncommitted rows: %d of %d", m.conv.CommittedCount, len(m.conv.Messages))
+	}
+	printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
+	last := -1
+	for _, text := range []string{
+		"● Read(third.go)\n  └ 3 lines",
+		"Background task finished",
+		"● Read(first.go)\n  └ 1 line",
+		"● Read(second.go)\n  └ 2 lines",
+	} {
+		at := strings.Index(printed, text)
+		if at <= last || strings.Count(printed, text) != 1 {
+			t.Fatalf("call/result or notice is missing, duplicated, or out of order (%q):\n%s", text, printed)
+		}
+		last = at
+	}
+	if strings.Contains(printed, "Read →") {
+		t.Fatalf("batch should have no standalone results:\n%s", printed)
+	}
+}
+
+func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testing.T) {
+	m := &model{
+		env:       env{Width: 100, Height: 24},
+		conv:      chat.NewModel(100),
+		userInput: input.New("", 100, nil, input.SelectorDeps{}),
+		services: services{
+			Subagent: subagent.NewRegistry(),
+			Tracker:  todo.NewStore(),
+		},
+	}
+
+	bashCall := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"git status"}`}
+	m.conv.Messages = append(m.conv.Messages,
+		core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{bashCall}},
+		core.ChatMessage{Role: core.ChatUser, Expanded: true, ToolResult: &core.ToolResult{
+			ToolCallID: bashCall.ID,
+			ToolName:   "Bash",
+			Content:    ai.TextContent("BASH_RESULT_SENTINEL"),
+		}},
+	)
+	firstCmds := m.CommitMessages()
+	if len(firstCmds) != 1 || firstCmds[0] == nil {
+		t.Fatalf("first commit commands = %#v, want one active print", firstCmds)
+	}
+
+	editCall := core.ToolCall{ID: "edit-1", Name: "Edit", Input: `{"file_path":"main.go","old_string":"old","new_string":"EDIT_RESULT_SENTINEL"}`}
+	m.conv.Messages = append(m.conv.Messages,
+		core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{editCall}},
+		core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
+			ToolCallID: editCall.ID,
+			ToolName:   "Edit",
+			Content:    ai.TextContent("Edited main.go"),
+		}, ToolDetails: toolresult.FileChangeDetails{
+			Path:         "main.go",
+			EditCount:    1,
+			AddedLines:   1,
+			RemovedLines: 1,
+			UnifiedDiff:  "@@ -1 +1 @@\n-old\n+EDIT_RESULT_SENTINEL",
+		}},
+	)
+	secondCmds := m.CommitMessages()
+	if len(secondCmds) != 1 || secondCmds[0] != nil {
+		t.Fatalf("second commit commands = %#v, want one queued nil command", secondCmds)
+	}
+	if len(m.flush.pendingPrints) != 2 {
+		t.Fatalf("queued prints = %d, want 2", len(m.flush.pendingPrints))
+	}
+
+	// A live repaint carries the handoff copy of the print in flight — the head,
+	// and only the head. Holding it is what keeps the frame from shrinking the
+	// moment CommittedCount advances, which is what strands a copy of the live
+	// tail in native history (see pendingScrollbackView). A queued print that
+	// has not started is not drawn: it would be a second copy of content that is
+	// still waiting for its own Println.
+	liveFrame := "LIVE_EDIT_ACTIVITY\n" + strings.Repeat("\n", 12) + "INPUT_SENTINEL\nFOOTER_SENTINEL"
+	managed := m.renderChatSection(liveFrame)
+	if !strings.Contains(managed, "BASH_RESULT_SENTINEL") {
+		t.Fatalf("managed frame lost the in-flight handoff copy: %q", managed)
+	}
+	if strings.Contains(managed, "EDIT_RESULT_SENTINEL") {
+		t.Fatalf("managed frame drew a print that has not started: %q", managed)
+	}
+	for _, live := range []string{"INPUT_SENTINEL", "FOOTER_SENTINEL"} {
+		if !strings.Contains(managed, live) {
+			t.Fatalf("managed frame should retain live marker %q: %q", live, managed)
+		}
+	}
+
+	first := firstCmds[0]().(scrollbackPrintReadyMsg)
+	firstContent, ok := startChunk(m, first.id)
+	if !ok {
+		t.Fatal("Bash print command has no current payload")
+	}
+	secondCmd := m.finishScrollbackPrint(first.id)
+	if secondCmd == nil {
+		t.Fatal("finishing Bash must start the queued Edit print")
+	}
+	second := secondCmd().(scrollbackPrintReadyMsg)
+	secondContent, ok := startChunk(m, second.id)
+	if !ok {
+		t.Fatal("Edit print command has no current payload")
+	}
+	m.finishScrollbackPrint(second.id)
+
+	nativePayloads := firstContent + "\n" + secondContent
+	for _, result := range []string{"BASH_RESULT_SENTINEL", "EDIT_RESULT_SENTINEL"} {
+		if count := strings.Count(nativePayloads, result); count != 1 {
+			t.Fatalf("native payload count for %q = %d, want 1: %q", result, count, nativePayloads)
+		}
+	}
+	if strings.Index(nativePayloads, "BASH_RESULT_SENTINEL") > strings.Index(nativePayloads, "EDIT_RESULT_SENTINEL") {
+		t.Fatalf("native payload order is not Bash then Edit: %q", nativePayloads)
+	}
+	for _, live := range []string{"LIVE_EDIT_ACTIVITY", "INPUT_SENTINEL", "FOOTER_SENTINEL"} {
+		if strings.Contains(nativePayloads, live) {
+			t.Fatalf("native payload contains live-frame marker %q: %q", live, nativePayloads)
+		}
+	}
+	if strings.Contains(nativePayloads, strings.Repeat("\n", 8)) {
+		t.Fatalf("native payload contains live blank repaint space: %q", nativePayloads)
+	}
+}
+
+// The still-streaming trailing paragraph (no terminating blank line) stays in
+// the live view until it completes — exactly like content's trailing block.
+func TestFlushStreamingBlocksHoldsIncompleteThinking(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:     core.ChatAssistant,
+		Thinking: "still streaming this paragraph",
+	})
+
+	if cmds := m.FlushStreamingBlocks(); cmds != nil {
+		t.Fatal("an incomplete thinking paragraph must stay in the live view")
+	}
+	if got := m.conv.Messages[0].ThinkingCommittedLen; got != 0 {
+		t.Fatalf("ThinkingCommittedLen = %d, want 0 (nothing committed)", got)
+	}
+}
+
+// When content starts — the reliable "reasoning done" signal — thinking's
+// trailing paragraph is flushed too, so nothing reasoning-side lingers.
+func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:     core.ChatAssistant,
+		Thinking: "reasoning with no trailing blank line",
+		Content:  "Here",
+	})
+
+	applyFlush(t, m, m.FlushStreamingBlocks())
+
+	msg := m.conv.Messages[0]
+	if msg.ThinkingCommittedLen != len(msg.Thinking) {
+		t.Fatalf("thinking should be fully committed once content starts, got %d/%d",
+			msg.ThinkingCommittedLen, len(msg.Thinking))
+	}
+}
+
+// Responses can return to reasoning after commentary. Earlier text must not
+// make each new thinking delta look like a finished paragraph: that prints
+// individual words as separate scrollback blocks.
+func TestFlushStreamingBlocksHoldsThinkingAfterContent(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{Role: core.ChatAssistant})
+	m.conv.Stream.Active = true
+	m.conv.AppendStream("I'll implement the environment changes.\n\n", "")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	m.conv.AppendStream("", "**Implementing environment changes**\n\n")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	committed := m.conv.Messages[0].ThinkingCommittedLen
+	prints := len(m.flush.pendingPrints)
+
+	for _, delta := range []string{"I'm", " moving", " forward", " with", " the task."} {
+		m.conv.AppendStream("", delta)
+		if cmds := m.FlushStreamingBlocks(); len(cmds) != 0 {
+			t.Fatalf("thinking delta %q must stay live until its paragraph completes", delta)
+		}
+		if got := m.conv.Messages[0].ThinkingCommittedLen; got != committed {
+			t.Fatalf("thinking commit offset advanced mid-paragraph: %d, want %d", got, committed)
+		}
+	}
+
+	// The next text fragment finishes the reasoning paragraph as one block.
+	m.conv.AppendStream("Here is the change.", "")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	if got := len(m.flush.pendingPrints); got != prints+1 {
+		t.Fatalf("queued %d prints, want %d (one complete paragraph)", got, prints+1)
+	}
+	if got := ansi.Strip(queuedScrollbackPayload(m)); !strings.Contains(got, "I'm moving forward with the task.") {
+		t.Fatalf("thinking paragraph should remain on one line at width 80:\n%s", got)
+	}
+}
+
+// Only one block render is in flight at a time: while one is rendering off-
+// thread, a second flush is suppressed so the scrollback Printlns stay ordered.
+func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.ChatAssistant,
+		Content: "first block\n\nsecond block\n\n",
+	})
+
+	if cmds := m.FlushStreamingBlocks(); len(cmds) == 0 {
+		t.Fatal("the first completed block should start a render")
+	}
+	if !m.flush.rendering {
+		t.Fatal("flush.rendering should latch while a render is in flight")
+	}
+	if cmds := m.FlushStreamingBlocks(); cmds != nil {
+		t.Fatal("a second flush must be suppressed while one render is in flight")
+	}
+}
+
+func TestFlushStreamingBlocksWithNoticeAfterAssistant(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "completed paragraph\n\n"})
+	m.conv.Stream.MessageID = owner.ID
+	m.conv.Stream.Active = true
+	m.conv.AddAgentNotice("background task failed")
+	if cmds := m.CommitMessages(); len(cmds) != 0 || m.conv.CommittedCount != 0 {
+		t.Fatal("notice froze the unfinished inference into scrollback")
+	}
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	if got := m.conv.Messages[0].ContentCommittedLen; got != len("completed paragraph\n\n") {
+		t.Fatalf("notice stopped progressive block commits: %d", got)
+	}
+	m.conv.AppendStream("remaining text", "")
+	m.conv.Stream.Stop()
+	m.CommitMessages()
+	if m.conv.CommittedCount != 2 {
+		t.Fatal("finished inference did not commit its notice")
+	}
+}
+
+// A render that lands after its row was already committed whole (turn-end or
+// cancel commits the remainder, in-flight block included) is dropped — no
+// duplicate Println, and flush.rendering still clears.
+func TestHandleFlushResultDiscardsCommittedRow(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.ChatAssistant,
+		Content: "a block\n\n",
+	})
+
+	cmds := m.FlushStreamingBlocks()
+	if len(cmds) == 0 {
+		t.Fatal("expected a render Cmd")
+	}
+	br, ok := cmds[0]().(flushResultMsg)
+	if !ok {
+		t.Fatal("flush Cmd did not return a flushResultMsg")
+	}
+
+	// The row got committed to scrollback before the render landed.
+	m.conv.CommittedCount = 1
+	if cmd := m.handleFlushResult(br); cmd != nil {
+		t.Fatal("a render for an already-committed row must be discarded (no Println)")
+	}
+	if m.flush.rendering {
+		t.Fatal("flush.rendering must clear even when the render is discarded")
+	}
+}
+
+// A render that lands after its row was dropped and replaced by a retry's fresh
+// row (new message ID) is dropped rather than corrupting the new row's offsets.
+func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.ChatAssistant,
+		ID:      "old",
+		Content: "a block\n\n",
+	})
+
+	cmds := m.FlushStreamingBlocks()
+	if len(cmds) == 0 {
+		t.Fatal("expected a render Cmd")
+	}
+	br := cmds[0]().(flushResultMsg)
+
+	// Retry dropped the streaming row and appended a fresh one (new ID).
+	m.conv.Messages[0] = core.ChatMessage{Role: core.ChatAssistant, ID: "new", Content: "retried"}
+	if cmd := m.handleFlushResult(br); cmd != nil {
+		t.Fatal("a render for a replaced row must be discarded")
+	}
+	if got := m.conv.Messages[0].ContentCommittedLen; got != 0 {
+		t.Fatalf("the fresh row's ContentCommittedLen = %d, want 0 (stale render must not advance it)", got)
+	}
+}
+
+// A picker holds the queue like a docked prompt, and closing it has to restart
+// the queue. Wired to the three prompt replies, the resume never fired for one:
+// the head stalled, everything queued behind it, and CommittedCount had already
+// advanced — so the output was in neither the tail nor scrollback.
+func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
+	m := dockedModalModel(t, "about to inspect the repository")
+	m.userInput.Approval.Hide()
+	m.userInput.Settings.Enter(m.env.Width, m.env.Height)
+	if _, active := m.activeOverlay(); !active {
+		t.Fatal("the settings popup did not become the active overlay")
+	}
+
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
+	if cmd == nil {
+		t.Fatal("the first queued print must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, next := m.Update(ready); next != nil {
+		t.Fatal("a print must be deferred while the picker is up")
+	}
+
+	// Esc, routed the way a keypress reaches the panel.
+	if _, resume := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape}); resume == nil {
+		t.Fatal("closing the picker must restart the deferred print")
+	}
+	if _, active := m.activeOverlay(); active {
+		t.Fatal("the picker is still up after Esc")
+	}
+	if len(m.flush.pendingPrints) != 1 || m.flush.pendingPrints[0].current != "" {
+		t.Fatalf("deferred queue = %#v, want one untouched payload", m.flush.pendingPrints)
+	}
+	content, ok := m.flush.prepareScrollbackPrint(
+		m.flush.pendingPrints[0].id, m.env.Width, m.env.Height)
+	if !ok || !strings.Contains(content, "COMMITTED_MARKDOWN_BLOCK") {
+		t.Fatalf("resumed content = %q, ok=%v", content, ok)
+	}
+}
+
+// The room above the frame is what caps a chunk, so the frame has to be counted
+// the way the chunk is: in physical rows. A frame line wider than the terminal
+// occupies more rows than it has newlines, and counting newlines instead
+// overstates the room — insertAbove then scrolls live rows into native history.
+func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
+	wide := strings.Repeat("x", 100)
+	logical := strings.Count(wide, "\n") + 1
+	physical := len(scrollbackPhysicalLines(wide, 40))
+	if physical <= logical {
+		t.Fatalf("physical rows = %d, newline count = %d — the case this guards cannot occur",
+			physical, logical)
+	}
+}
+
+// The handoff copy tracks one print's life: the whole payload stands in for the
+// tail a commit emptied, then only the chunk in flight once printing starts, and
+// nothing between chunks. Without it the frame shrinks the moment CommittedCount
+// advances and the renderer leaves the vacated rows on screen; holding the
+// remainder instead swells it for the next chunk's insertAbove to weld in.
+func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.env.Height = 6
+	cmd := m.flush.queueScrollbackPrint(strings.Join([]string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"}, "\n"), 0)
+	if cmd == nil {
+		t.Fatal("the first queued print must start")
+	}
+	if view := m.pendingScrollbackView(); !strings.Contains(view, "L8") {
+		t.Fatalf("before printing = %q, want the whole payload", view)
+	}
+
+	ready := cmd().(scrollbackPrintReadyMsg)
+	chunk, ok := m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height-2)
+	if !ok {
+		t.Fatal("the print did not prepare")
+	}
+	if len(m.flush.pendingPrints[0].rows) == 0 {
+		t.Fatal("the payload fit in one chunk; this test needs it split")
+	}
+	if view := m.pendingScrollbackView(); view != chunk {
+		t.Fatalf("in flight = %q, want the chunk %q", view, chunk)
+	}
+
+	m.finishScrollbackPrint(ready.id)
+	if view := m.pendingScrollbackView(); view != "" {
+		t.Fatalf("between chunks = %q, want none", view)
+	}
+}
+
+// The rendered block is shorter than the plain tail it replaces, so the copy is
+// padded to what the commit removed — and never trimmed, since a taller copy is
+// the frame growing, which the renderer handles.
+func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.flush.queueScrollbackPrint("ONE\nTWO", 6)
+	ready := printScrollback(m.flush.pendingPrints[0].id)().(scrollbackPrintReadyMsg)
+	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height)
+
+	if rows := rowCount(m.pendingScrollbackView()); rows != 6 {
+		t.Fatalf("handoff rows = %d, want the pre-commit height 6", rows)
+	}
+	m.flush.pendingPrints[0].frameRows = 1
+	if rows := rowCount(m.pendingScrollbackView()); rows != 2 {
+		t.Fatalf("handoff rows = %d, want the block's own 2", rows)
+	}
+}
+
+// Committed rows carry no trailing padding: scrollback is immutable, so a
+// padded row rewraps into two when the window narrows — the second all spaces.
+func TestScrollbackLinesCarryNoTrailingPadding(t *testing.T) {
+	// Real trailing spaces under an open foreground colour — how the markdown
+	// renderer pads a block. They are cells, not gaps, so "is it empty" misses
+	// them; nothing of a foreground shows on a space, only a background would.
+	styled := "\x1b[38;2;24;24;27mshort" + strings.Repeat(" ", 30) + "\nalso short\n"
+	rendered := renderScrollbackLines(scrollbackPhysicalLines(styled, 40))
+
+	for _, line := range strings.Split(rendered, "\n") {
+		if plain := ansi.Strip(line); plain != strings.TrimRight(plain, " ") {
+			t.Errorf("line padded to the buffer width: %q", plain)
+		}
+	}
+	for _, want := range []string{"short", "also short"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered lost %q: %q", want, rendered)
+		}
+	}
+}
+
+// drainScrollback lands every queued print the way the renderer would.
+func drainScrollback(m *model) {
+	for len(m.flush.pendingPrints) > 0 {
+		id := m.flush.pendingPrints[0].id
+		if m.startScrollbackPrint(id) == nil {
+			return
+		}
+		for len(m.flush.pendingPrints) > 0 && m.flush.pendingPrints[0].scrolling {
+			m.finishChunkScroll(tea.ScrollUpMsg{Scrolled: true})
+		}
+		if len(m.flush.pendingPrints) > 0 && m.flush.pendingPrints[0].id == id && m.flush.pendingPrints[0].current != "" {
+			m.finishScrollbackPrint(id)
+		}
+	}
+}
+
+// resizeTerminal resizes m the way the program does: the size, then the
+// renderer's report of what the terminal scrolled off.
+func resizeTerminal(m *model, width, height int, report tea.ResizeScrollbackMsg) tea.Cmd {
+	m.handleWindowResize(tea.WindowSizeMsg{Width: width, Height: height})
+	m.flush.takeResizeScrollback(report)
+	return m.flushVisibleOverflow()
+}
+
+// startChunk starts the queue head's next chunk and returns what it commits.
+func startChunk(m *model, id uint64) (string, bool) {
+	if m.startScrollbackPrint(id) == nil {
+		return "", false
+	}
+	return m.flush.pendingPrints[0].current, true
+}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/san/internal/app/host"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/acp"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
@@ -73,7 +73,7 @@ func (h *acpHost) setConfig(ctx context.Context, request protocol.SetSessionConf
 			return protocol.SetSessionConfigOptionResponse{}, err
 		}
 		s.runtimeBuildParams.ModelID = id
-		host.BindSessionHooks(s.hooks, s.runtimeBuildParams.Provider, s.nativeSession.Session, id)
+		apphook.Bind(s.hooks, s.runtimeBuildParams.Provider, s.nativeSession.Session, id)
 	}
 	return protocol.SetSessionConfigOptionResponse{ConfigOptions: s.configOptions()}, nil
 }

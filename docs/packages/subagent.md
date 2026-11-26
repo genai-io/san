@@ -20,7 +20,7 @@ tool/permission set, starting in the session's working directory. Each run owns
 later cwd changes; they do not change the parent or sibling workers. A foreground subagent blocks the
 spawning turn and returns its result as the tool result; a background
 subagent runs in a goroutine under a `task.AgentTask` and registers its task
-id with the [`broker`](broker.md) for the length of the run — main can
+id with the [`mail`](mail.md) for the length of the run — main can
 `SendMessage` it while it runs, and its completion is routed to the `main`
 address when it finishes.
 
@@ -207,7 +207,7 @@ for later delivery; task logs never write to the event log.
   Final cleanup unregisters the owned route and releases queued messages,
   agent/session references and cancellation callbacks without removing a
   replacement execution's registration. Queued input
-  entering the conversation calls `broker.WakeCompletions` for the same worker,
+  entering the conversation calls `mail.WakeCompletions` for the same worker,
   so retained completion mail arrives while it is still running, with no
   re-registration or polling.
 - `SendMessage` is for actionable instructions, new findings, decision-worthy
@@ -318,9 +318,9 @@ tests/integration/agent/interaction_forwarding_test.go — real tool execution a
 tests/integration/agent/interaction_questions_test.go — YOLO questions, independent cancellation, unavailable UI.
 tests/integration/agent/flow_interaction_origin_test.go — concurrent Flow origins, independent approvals and cancellation.
 tests/integration/agent/flow_interaction_questions_test.go — parallel node attribution and exact answer routing.
-internal/app/interactions_scrollback_test.go — canceled modals resume held history before the next worker prompt.
-internal/app/interactions_renderer_test.go — real TUI keyboard approval/answer routing to workers.
-internal/app/conv/interaction_test.go — original reply endpoints and transport closure.
+internal/app/tui/interactions_scrollback_test.go — canceled modals resume held history before the next worker prompt.
+internal/app/tui/interactions_renderer_test.go — real TUI keyboard approval/answer routing to workers.
+internal/app/tui/chat/interaction_test.go — original reply endpoints and transport closure.
 internal/subagent/executor_test.go      — end-to-end run scenarios.
 internal/subagent/executor_cwd_test.go  — deterministic batch handoffs and cancellation.
 internal/subagent/executor_cwd_isolation_test.go — repeated IDs cannot cross worker/main ownership.
@@ -330,21 +330,21 @@ internal/subagent/lazy_loading_test.go  — config files read on demand.
 internal/subagent/scenarios_test.go     — common invocation shapes.
 tests/integration/agent/agent_test.go    — runtime, permissions, failed transcript projection.
 internal/tool/agent/agent_test.go        — foreground result and error preservation.
-internal/app/conv/update_test.go         — sibling activity survives agent completion.
-internal/app/notify_test.go              — bounded successful and partial failure notices.
-internal/app/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
-internal/app/model_history_test.go       — inspectable background results without state mutation.
-internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
+internal/app/tui/chat/update_test.go         — sibling activity survives agent completion.
+internal/app/tui/notify_test.go              — bounded successful and partial failure notices.
+internal/app/tui/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
+internal/app/tui/model_history_test.go       — inspectable background results without state mutation.
+internal/app/tui/chat/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
 tests/integration/agent/result_view_test.go — real result → adapter → writer → resumed UI.
 internal/flow/service_test.go    — unfinished node output, identity, and parallel usage.
-internal/app/group_test.go                — live and persisted batch context.
+internal/app/tui/group_test.go                — live and persisted batch context.
 tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.
 ```
 
 ## See Also
 
 - Code: `internal/subagent/`
-- Message routing: [`broker`](broker.md)
+- Message routing: [`mail`](mail.md)
 - Parent agent: [`packages/agent.md`](agent.md)
 - Spawning tools: [`packages/tool.md`](tool.md) (Agent, SendMessage)
 - Background tasks: [`packages/task.md`](task.md)

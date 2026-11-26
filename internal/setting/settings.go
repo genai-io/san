@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 // How the model's reasoning is drawn. This is a display preference only: it

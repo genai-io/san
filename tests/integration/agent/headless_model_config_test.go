@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/app"
+	"github.com/genai-io/san/internal/app/cli"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -68,7 +68,7 @@ func TestHeadlessAgentLoadsConfiguredWorkerModel(t *testing.T) {
 			if err := store.SetCurrentModel("parent-model", providerID, llm.AuthAPIKey); err != nil {
 				t.Fatal(err)
 			}
-			if err := app.RunAgent(app.AgentRunOptions{Prompt: "Inspect configuration"}); err != nil {
+			if err := cli.RunAgent(cli.AgentRunOptions{Prompt: "Inspect configuration"}); err != nil {
 				t.Fatal(err)
 			}
 			provider.mu.Lock()

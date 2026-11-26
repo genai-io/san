@@ -8,7 +8,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/catalog"
 	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/internal/infra/secret"
 
 	// The wire protocols San's vendors speak, and the two Vertex deployments of them.
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/anthropic"

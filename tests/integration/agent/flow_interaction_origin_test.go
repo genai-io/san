@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app/ask"
 	"github.com/genai-io/san/internal/flow"
-	"github.com/genai-io/san/internal/interaction"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -46,7 +46,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 		cancelled chan struct{}
 	}
 	pending := make(chan pendingApproval, 4)
-	configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, _ map[string]any) interaction.PermissionDecision {
+	configureIntegrationApprovals(t, executor, func(ctx context.Context, source tool.AgentInteractionSource, request *perm.PermissionRequest, _ map[string]any) ask.PermissionDecision {
 		if source.Flow == nil || request.CallerAgent != source.Label() || !strings.Contains(request.CallerAgent, source.Flow.NodeID) {
 			t.Error("approval preview lost flow/node attribution")
 		}
@@ -54,10 +54,10 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 		pending <- p
 		select {
 		case answer := <-p.reply:
-			return interaction.PermissionDecision{Approved: answer, Request: request}
+			return ask.PermissionDecision{Approved: answer, Request: request}
 		case <-ctx.Done():
 			close(p.cancelled)
-			return interaction.PermissionDecision{Request: request}
+			return ask.PermissionDecision{Request: request}
 		}
 	})
 	flows := flow.NewService(task.Default())

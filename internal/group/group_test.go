@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/atomicfile"
+	"github.com/genai-io/san/internal/infra/proc"
 )
 
 // isolate points the package at a fresh root and leaves no membership behind.

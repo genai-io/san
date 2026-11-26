@@ -14,7 +14,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
-	glog "github.com/genai-io/san/internal/log"
+	glog "github.com/genai-io/san/internal/infra/log"
 )
 
 // One MCP server, and San's business with it: when a connection is made and

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -43,7 +43,7 @@ func newHeldRunInbox(ctx context.Context, taskID string, owner *session.Session)
 func registerRunInbox(ctx context.Context, taskID string, owner *session.Session, accepting bool) *runInbox {
 	inbox := &runInbox{ctx: ctx, taskID: taskID, owner: owner, accepting: accepting}
 	if taskID != "" {
-		inbox.unregister = broker.RegisterAccept(taskID, inbox.deliver)
+		inbox.unregister = mail.RegisterAccept(taskID, inbox.deliver)
 	}
 	inbox.mu.Lock()
 	inbox.stop = context.AfterFunc(ctx, inbox.close)
@@ -51,38 +51,38 @@ func registerRunInbox(ctx context.Context, taskID string, owner *session.Session
 	return inbox
 }
 
-func (inbox *runInbox) deliver(m broker.Message) error {
+func (inbox *runInbox) deliver(m mail.Message) error {
 	inbox.mu.Lock()
 	defer inbox.mu.Unlock()
 	if inbox.closed || inbox.ctx.Err() != nil {
-		return fmt.Errorf("%w: worker execution has stopped", broker.ErrRejected)
+		return fmt.Errorf("%w: worker execution has stopped", mail.ErrRejected)
 	}
 	if inbox.closing {
-		return broker.ErrInboxClosing
+		return mail.ErrInboxClosing
 	}
 	if !inbox.accepting {
-		return fmt.Errorf("%w: worker inbox is not accepting input", broker.ErrRejected)
+		return fmt.Errorf("%w: worker inbox is not accepting input", mail.ErrRejected)
 	}
 	if inbox.owner != nil {
 		if err := inbox.owner.Err(); err != nil {
-			return fmt.Errorf("%w: worker session is not writable: %v", broker.ErrRejected, err)
+			return fmt.Errorf("%w: worker session is not writable: %v", mail.ErrRejected, err)
 		}
 	}
 	if inbox.queuedLocked() >= maxPendingWorkerMessages {
-		return broker.ErrInboxFull
+		return mail.ErrInboxFull
 	}
 	message := core.UserMessage(m.Content, nil)
 	var source *session.EventRef
 	if m.SourceSession != "" || m.SourceSeq != 0 {
 		if inbox.owner == nil || m.SourceSession == "" || m.SourceSeq == 0 {
-			return fmt.Errorf("%w: incomplete message provenance", broker.ErrRejected)
+			return fmt.Errorf("%w: incomplete message provenance", mail.ErrRejected)
 		}
 		source = &session.EventRef{Session: m.SourceSession, Seq: m.SourceSeq}
 	}
 	if inbox.owner != nil {
 		message.ID = core.NewMessageID()
 		if err := inbox.owner.AcceptInput(inbox.ctx, message, source); err != nil {
-			return fmt.Errorf("%w: cannot record message in worker session: %v", broker.ErrRejected, err)
+			return fmt.Errorf("%w: cannot record message in worker session: %v", mail.ErrRejected, err)
 		}
 	}
 	if inbox.agent == nil {
@@ -116,7 +116,7 @@ func (inbox *runInbox) signalCapacity() {
 	hasRoom := inbox.accepting && !inbox.closed && inbox.ctx.Err() == nil && inbox.queuedLocked() < maxPendingWorkerMessages
 	inbox.mu.Unlock()
 	if hasRoom && inbox.taskID != "" {
-		broker.WakeCompletions(inbox.taskID)
+		mail.WakeCompletions(inbox.taskID)
 	}
 }
 

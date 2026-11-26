@@ -38,7 +38,7 @@ jobs:
       - name: Sign checksums
         env:
           SAN_RELEASE_SIGNING_KEY: ${{ secrets.SAN_RELEASE_SIGNING_KEY }}
-        run: go run ./tools/releasekey sign bin/SHA256SUMS
+        run: go run ./devtools/releasekey sign bin/SHA256SUMS
 
       - name: Extract release notes
         env:

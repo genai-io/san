@@ -24,7 +24,7 @@ hidden (`disabled`). This package:
    priority source.
 2. Persists per-skill state in user / project state stores.
 3. Renders the active-skills block consumed by the `skills-directory`
-   reminder provider in `internal/app`.
+   reminder provider in the TUI and ACP hosts.
 
 For the broader extension model see
 [`concepts/extension-model.md`](../concepts/extension-model.md). A

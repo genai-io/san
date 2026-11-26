@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )

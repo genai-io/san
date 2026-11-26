@@ -2,7 +2,7 @@
 
 ## Overview
 
-`san` supports several startup modes controlled by flags. The TUI is only launched in interactive mode; other modes produce plain stdout output.
+`cmd/san` dispatches interactive sessions to `tui.Run` and print mode to `cli.Print`. `san acp` starts the independent `acp.Run` host and reserves stdout for protocol frames; it does not start either terminal host.
 
 | Flag | Behavior |
 |------|----------|

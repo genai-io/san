@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/internal/infra/secret"
 	"github.com/genai-io/san/internal/setting"
 )
 

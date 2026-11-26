@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/interaction"
+	"github.com/genai-io/san/internal/app/ask"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -15,7 +15,7 @@ import (
 )
 
 type integrationApprovalResolver struct {
-	bridge *conv.AgentToUI
+	bridge *chat.AgentToUI
 	source tool.AgentInteractionSource
 }
 
@@ -40,9 +40,9 @@ func (r integrationApprovalResolver) Resolve(ctx context.Context, name string, i
 
 // The factory receives real executor-owned invocation metadata. Human decisions
 // cross the native UI bridge, so audit authority and displayed questions survive.
-func configureIntegrationApprovals(t *testing.T, executor *subagent.Executor, decide func(context.Context, tool.AgentInteractionSource, *perm.PermissionRequest, map[string]any) interaction.PermissionDecision) {
+func configureIntegrationApprovals(t *testing.T, executor *subagent.Executor, decide func(context.Context, tool.AgentInteractionSource, *perm.PermissionRequest, map[string]any) ask.PermissionDecision) {
 	t.Helper()
-	bridge := conv.NewAgentToUI(8)
+	bridge := chat.NewAgentToUI(8)
 	ctx, cancel := context.WithCancel(t.Context())
 	var requests sync.WaitGroup
 	done := make(chan struct{})
@@ -54,15 +54,15 @@ func configureIntegrationApprovals(t *testing.T, executor *subagent.Executor, de
 				return
 			default:
 			}
-			msg, ok := bridge.Check()().(conv.InteractionRequestMsg)
+			msg, ok := bridge.Check()().(chat.UserPromptRequestMsg)
 			if !ok {
 				time.Sleep(time.Millisecond)
 				continue
 			}
 			requests.Add(1)
-			go func(req *conv.InteractionRequest) {
+			go func(req *chat.UserPromptRequest) {
 				defer requests.Done()
-				displayed := interaction.NewPermission(req, bridge, req.PermissionView, func(*perm.PermissionRequest) []string { return []string{"Allow once", "Deny"} })
+				displayed := ask.NewPermission(req, bridge, req.PermissionView, func(*perm.PermissionRequest) []string { return []string{"Allow once", "Deny"} })
 				if displayed == nil {
 					t.Error("native approval was not displayed")
 					return

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/internal/infra/secret"
 )
 
 // The table of everything San can connect to, filled at init by the vendor

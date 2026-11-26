@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -22,7 +22,7 @@ func TestHookRecordingFailureStopsPromptAndStop(t *testing.T) {
 			boom := errors.New("storage failed")
 			e.SetCompletionRecorder(func(context.Context, hook.HookFiredAudit) error { return boom })
 			if event == hook.UserPromptSubmit {
-				r := reminder.New()
+				r := reminder.NewQueue()
 				blocked, reason := CheckPrompt(t.Context(), "go", e, r)
 				if !blocked || reason == "" || len(r.Pending()) != 0 {
 					t.Fatalf("prompt admitted uncommitted hook: blocked=%v reason=%s reminders=%v", blocked, reason, r.Pending())

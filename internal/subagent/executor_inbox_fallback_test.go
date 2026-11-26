@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
@@ -23,7 +23,7 @@ func TestFallbackInboxStaysLiveAcrossHandoff(t *testing.T) {
 	store, parent := continuationSessions(t, "fallback-owner")
 	var workerID string
 	child := namedHookProvider{continuationProvider{aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-		if err := broker.SendErr(broker.Message{To: workerID, Content: "during failure"}); err != nil {
+		if err := mail.SendErr(mail.Message{To: workerID, Content: "during failure"}); err != nil {
 			t.Errorf("mail rejected while the selected model failed: %v", err)
 		}
 		return aitest.Fails(errors.New("model_not_found"))(ctx, req)
@@ -34,14 +34,14 @@ func TestFallbackInboxStaysLiveAcrossHandoff(t *testing.T) {
 	bindContinuationSessions(t, e, store, parent)
 	e.SetChildHooks(func(*session.Session, llm.Provider, string) (hook.Handler, func(llm.Provider, string), func()) {
 		return childStartHooks{dispatch: func(hook.EventType) {}}, func(llm.Provider, string) {
-			if err := broker.SendErr(broker.Message{To: workerID, Content: "during handoff"}); err != nil {
+			if err := mail.SendErr(mail.Message{To: workerID, Content: "during handoff"}); err != nil {
 				t.Errorf("mail rejected between selected and fallback agents: %v", err)
 			}
 		}, func() {}
 	})
 	worker, err := e.RunBackground(tool.AgentExecRequest{AllowTools: []string{"Read"}, Prompt: "original task", Model: "openai/selected-model", OnIdentity: func(identity toolresult.AgentIdentity) {
 		workerID = identity.ID
-		if err := broker.SendErr(broker.Message{To: workerID, Content: "at startup"}); err != nil {
+		if err := mail.SendErr(mail.Message{To: workerID, Content: "at startup"}); err != nil {
 			t.Errorf("startup mail rejected: %v", err)
 		}
 	}})
@@ -95,7 +95,7 @@ func TestFallbackInboxStaysLiveAcrossHandoff(t *testing.T) {
 	if len(starts) == 0 || starts[len(starts)-1].Input.Conversation == nil {
 		t.Fatalf("fallback inference was not reproducible from native history: %+v", starts)
 	}
-	if err := broker.SendErr(broker.Message{To: worker.GetID(), Content: "after completion"}); !errors.Is(err, broker.ErrNoRecipient) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID(), Content: "after completion"}); !errors.Is(err, mail.ErrNoRecipient) {
 		t.Fatalf("completed worker retained its route: %v", err)
 	}
 }
@@ -126,7 +126,7 @@ func TestResumeRejectedBeforeAttemptReleasesInbox(t *testing.T) {
 	if after := worker.GetStatus(); after.Attempt != before.Attempt || after.Status != before.Status {
 		t.Fatalf("rejected continuation changed lifecycle: before=%+v after=%+v", before, after)
 	}
-	if err := broker.SendErr(broker.Message{To: worker.GetID(), Content: "after rejection"}); !errors.Is(err, broker.ErrNoRecipient) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID(), Content: "after rejection"}); !errors.Is(err, mail.ErrNoRecipient) {
 		t.Fatalf("rejected continuation leaked its route: %v", err)
 	}
 	child, err := store.Open(context.Background(), before.AgentSessionID)

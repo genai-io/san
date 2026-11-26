@@ -1,0 +1,240 @@
+package tui
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/genai-io/san/internal/app/tui/chat"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
+)
+
+func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
+	for _, mode := range []string{"head", "nonhead", "no-enter", "queued-during", "direct", "background-only"} {
+		t.Run(mode, func(t *testing.T) {
+			m, provider := compactQueueModel(t)
+			if err := m.services.Agent.Send(core.UserMessage("initial work", nil)); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-provider.requests:
+			case <-time.After(time.Second):
+				t.Fatal("initial inference did not start")
+			}
+			if mode == "no-enter" {
+				m.userInput.Queue.Enqueue("queued head", nil)
+				m.userInput.Queue.Enqueue("queued successor", nil)
+			}
+			completed := make(chan turnFinalizedMsg, 1)
+			go runFinalizationCommands(m.handleStreamCancel(), completed)
+			receipt := m.pendingMessages.Cancelling()
+			if receipt == nil {
+				t.Fatal("cancel did not capture finalization")
+			}
+			m.sendToAgent(pendingMessage{Message: core.UserMessage("held hook", nil)})
+			if mode != "no-enter" && mode != "background-only" {
+				m.userInput.Queue.Enqueue("queued head", nil)
+				m.userInput.Queue.Enqueue("queued successor", nil)
+			}
+			m.cronQueue = []string{"scheduled work"}
+			m.sendPendingMessages()
+			m.sendNextQueuedInputIfIdle()
+			if m.pendingMessages.Len() != 1 || m.pendingMessages.First().FromUser || !m.pendingMessages.Held() {
+				t.Fatal("hook did not remain held")
+			}
+			select {
+			case <-provider.requests:
+				t.Fatal("held hook woke agent before Enter")
+			default:
+			}
+			if mode != "no-enter" && mode != "queued-during" && mode != "background-only" {
+				m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
+				if mode != "nonhead" {
+					m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
+				}
+				m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+			}
+			if mode == "direct" {
+				m.sendToAgent(pendingMessage{Message: core.UserMessage("direct continuation", nil), FromUser: true})
+			}
+			queued := 2
+			if mode == "background-only" {
+				queued = 0
+			}
+			if m.userInput.Queue.Len() != queued {
+				t.Fatal("queue crossed finalization fence")
+			}
+			m.userInput.Textarea.SetValue("unrelated draft")
+			outbox := m.services.Agent.Outbox()
+			events := outbox
+			deadline := time.After(2 * time.Second)
+			var completion turnFinalizedMsg
+			// Native cancellation can settle this exact receipt without emitting a
+			// TurnEnded when admission loses the race. Consume real events while
+			// waiting; never fabricate a terminal event or acknowledge it ourselves.
+		drain:
+			for {
+				select {
+				case ev, ok := <-events:
+					if !ok {
+						events = nil
+						continue
+					}
+					chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: ev})
+				case completion = <-completed:
+					if completion.receipt != receipt || completion.outbox != outbox {
+						t.Fatal("a different turn or runtime settled cancellation")
+					}
+					if completion.err != nil && completion.err != core.ErrTurnCompleted {
+						snapshot := m.services.Session.Snapshot()
+						var start *session.Event
+						for _, event := range snapshot.Events() {
+							if payload, ok := event.Payload.(*session.InferenceStartPayload); ok && payload.Purpose == session.PurposeTurn {
+								copy := event
+								start = &copy
+							}
+						}
+						var finishes []session.Event
+						for _, event := range snapshot.Events() {
+							if start != nil && event.Type == session.EventInferenceFinish && event.Source != nil && event.Source.Session == "" && event.Source.Seq == start.Seq {
+								finishes = append(finishes, event)
+							}
+						}
+						evidence, _ := json.Marshal(struct {
+							Start      *session.Event
+							Finishes   []session.Event
+							Unfinished session.Unfinished
+						}{start, finishes, snapshot.Unfinished()})
+						t.Fatalf("native finalization failed: %v; writer=%v evidence=%s", completion.err, m.services.Session.Err(), evidence)
+					}
+					if err := m.services.Session.Err(); err != nil {
+						t.Fatalf("native writer failed during cancellation: %v", err)
+					}
+					break drain
+				case <-deadline:
+					t.Fatal("captured native finalization did not settle")
+				}
+			}
+			m.dispatch(completion)
+			if m.userInput.Textarea.Value() != "unrelated draft" {
+				t.Fatal("finalization lost the composer draft")
+			}
+			if len(m.cronQueue) != 1 {
+				t.Fatal("cancellation drained scheduled work")
+			}
+			if mode == "background-only" {
+				if !m.pendingMessages.Held() || m.pendingMessages.Len() != 1 {
+					t.Fatal("finalization released background work without user input")
+				}
+				select {
+				case <-provider.requests:
+					t.Fatal("background work independently woke agent")
+				case <-time.After(20 * time.Millisecond):
+				}
+				return
+			}
+			want, remaining := "queued head", 1
+			if mode == "direct" {
+				want, remaining = "direct continuation", 2
+			}
+			for {
+				select {
+				case request := <-provider.requests:
+					count := 0
+					for _, message := range request {
+						if strings.Contains(message.Text(), want) {
+							count++
+						}
+					}
+					if count == 0 {
+						continue
+					}
+					if count != 1 || m.pendingMessages.Held() || m.pendingMessages.Len() != 0 || m.userInput.Queue.Len() != remaining {
+						t.Fatal("continuation not sent exactly once through user submit")
+					}
+					m.dispatch(completion)
+					if m.userInput.Queue.Len() != remaining {
+						t.Fatal("completion replay released successor")
+					}
+					return
+				case <-deadline:
+					t.Fatal("explicit continuation lost behind held hook")
+				}
+			}
+		})
+	}
+}
+
+func TestQueueEnterContinuesCancelledTurn(t *testing.T) {
+	for _, mode := range []string{"after", "during", "escape", "delete", "edit", "reenter", "stale"} {
+		t.Run(mode, func(t *testing.T) {
+			m, provider := compactQueueModel(t)
+			m.pendingMessages.Hold(nil)
+			receipt := &core.TurnFinalization{}
+			if mode != "after" {
+				m.pendingMessages.Hold(receipt)
+			}
+			m.userInput.Queue.Enqueue("resume queued work", nil)
+			m.userInput.Queue.Enqueue("unrelated successor", nil)
+			m.userInput.Textarea.SetValue("draft")
+			m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
+			m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
+			key := tea.KeyEnter
+			if mode == "escape" {
+				key = tea.KeyEscape
+			}
+			m.routeKeypress(tea.KeyPressMsg{Code: key})
+			if mode != "after" {
+				if m.userInput.Queue.Len() != 2 || !m.pendingMessages.Held() {
+					t.Fatal("Enter crossed finalization fence")
+				}
+				m.sendNextQueuedInputIfIdle()
+				if mode == "delete" {
+					m.userInput.Queue.Dequeue()
+				}
+				if mode == "edit" {
+					m.userInput.Queue.UpdateAt(0, "changed", nil)
+				}
+				if mode == "reenter" {
+					m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
+					m.routeKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+				}
+				if mode == "stale" {
+					m.pendingMessages.Hold(&core.TurnFinalization{})
+				}
+				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
+			}
+			wantSend := mode == "after" || mode == "during" || mode == "escape" || mode == "reenter"
+			if wantSend {
+				select {
+				case request := <-provider.requests:
+					if !strings.Contains(request[len(request)-1].Text(), "resume queued work") {
+						t.Fatal("wrong input sent")
+					}
+				case <-time.After(time.Second):
+					t.Fatal("explicit Enter did not resume")
+				}
+				if m.userInput.Queue.Len() != 1 || m.userInput.Textarea.Value() != "draft" {
+					t.Fatal("duplicate submission or lost draft")
+				}
+				m.dispatch(turnFinalizedMsg{receipt: receipt, outbox: m.services.Agent.Outbox()})
+				if m.userInput.Queue.Len() != 1 {
+					t.Fatal("receipt replay released successor")
+				}
+			} else {
+				m.sendNextQueuedInputIfIdle()
+				if !m.pendingMessages.Held() {
+					t.Fatal("automatic path released hold")
+				}
+				select {
+				case <-provider.requests:
+					t.Fatal("unrequested inference")
+				default:
+				}
+			}
+		})
+	}
+}

@@ -555,7 +555,7 @@ flowchart TB
 |---|---|
 | `internal/group` | On-disk layout: member files, inboxes, online check; Join / Reclaim / Release / Leave / Kick / Disband / SetHold / Send / Inbox; the roster and `/group` text |
 | `internal/proc` (`StartTime`) | Process start time per platform, so a reused pid is not mistaken for a member |
-| `internal/app/group.go` | `/group`, automatic naming, Source 4 (the one-second poll, `memberMsg`, roster diff, inject or leave in the inbox per hold setting, `Unattended-Turns`), session record and finalizer, completion |
+| `internal/app/tui/group.go` | `/group`, automatic naming, Source 4 (the one-second poll, `memberMsg`, roster diff, inject or leave in the inbox per hold setting, `Unattended-Turns`), session record and finalizer, completion |
 | `internal/tool/group` | The `Group` tool (main agent only) |
 | `internal/tool/agent/sendmessage.go` | Member addresses (main agent only); result reflects the recipient |
 | Session record (`internal/session`) | Stores the membership (`Group` field); hides a `<group-message>` attached to an input on resume |

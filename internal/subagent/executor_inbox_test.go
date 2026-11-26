@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
@@ -46,7 +46,7 @@ func (a *boundaryAgent) ThinkAct(ctx context.Context) (*core.Result, error) {
 	a.calls++
 	a.messages = append(a.messages, core.AssistantMessage("answer", "", nil))
 	if a.calls == 1 {
-		if !broker.Send(broker.Message{To: a.route, Content: "late accepted input"}) {
+		if !mail.Send(mail.Message{To: a.route, Content: "late accepted input"}) {
 			a.t.Fatal("boundary message rejected")
 		}
 		if a.settled {
@@ -78,7 +78,7 @@ func TestInboxCompletionBoundary(t *testing.T) {
 			if budget == 1 && a.messages[len(a.messages)-1].Text() != "late accepted input" {
 				t.Fatal("unanswered input was not preserved")
 			}
-			if broker.Send(broker.Message{To: a.route, Content: "after close"}) {
+			if mail.Send(mail.Message{To: a.route, Content: "after close"}) {
 				t.Fatal("closed route accepted input")
 			}
 		}
@@ -105,7 +105,7 @@ func TestInboxHandlesActualSDKTurnEndDelivery(t *testing.T) {
 			OnEvent: func(event core.Event) {
 				if _, ok := event.(sdkagent.TurnEnd); ok && !sent {
 					sent = true
-					if !broker.Send(broker.Message{To: route, Content: "input after SDK final settlement"}) {
+					if !mail.Send(mail.Message{To: route, Content: "input after SDK final settlement"}) {
 						t.Error("final-boundary input rejected")
 					}
 				}

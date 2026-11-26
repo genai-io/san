@@ -1,107 +1,20 @@
 ---
-package: github.com/genai-io/san/internal/reminder
+package: github.com/genai-io/san/internal/agent/reminder
 layer: feature
 ---
 
-# reminder
+# Reminders
 
-Manages `<system-reminder>` content the harness attaches to user
-messages. Reminders are cache-friendly: they live in immutable
-conversation history once attached and re-inject once per conversation
-(new session, `/clear`, compaction) without invalidating the system-prompt cache prefix.
+Hosts use `reminder.NewQueue()` to create a `*reminder.Queue` for a conversation. The queue attaches changing context to user messages as `<system-reminder>` blocks, leaving the system-prompt cache prefix unchanged. See [Context management](../reference/context-management.md).
 
-## Purpose
+## Queue and input lifecycle
 
-The system prompt is for things true of *every* San session
-(identity, policy). Reminders are for things that change *during* a
-session and need to surface mid-conversation without busting the prompt
-cache — currently:
+- [`internal/agent/reminder/queue.go`](../../internal/agent/reminder/queue.go) owns provider registration, pending entries and deduplication. Providers register a source ID and a render function. `RequeueSystemReminders` replaces pending snapshots from the same provider; an empty render emits nothing unless previously delivered context needs to be withdrawn. One-time hook or command notices are queued independently.
+- [`internal/agent/reminder/input.go`](../../internal/agent/reminder/input.go) owns conversation preparation, reset and restore. `PrepareInput` renders initial provider context, appends pending blocks and drains the queue. `Prepared()` means prepared, not delivered: the input queue retains the prepared message if delivery is rejected.
+- `/clear` resets preparation. After resume or automatic compaction, active context seeds deduplication so the next input sends only missing or changed provider snapshots. See [Compaction and resume](../reference/context-management.md#compaction-and-resume).
 
-- skills directory (re-emit when a skill is enabled / disabled / activated)
-- memory user / memory project (AGENTS.md; re-emit on memory file change)
-- memory recall (selected note previews attached to eligible main requests)
-- one-time notices (queued from hooks or commands)
+Provider context includes the skills directory, user and project instructions, and selected memory recall. `memory-auto` remains a source ID for older sessions; current `MEMORY.md` previews use [Auto Memory Asides](../concepts/auto-memory.md#index-preview).
 
-`memory-auto` remains a source ID for older sessions. Current `MEMORY.md`
-previews stay in the [Auto Memory Asides](../concepts/auto-memory.md#index-preview).
+## Shared message format
 
-See [Context Management](../reference/context-management.md) for
-why reminders are a separate channel from the system prompt.
-
-## Contract
-
-The harness holds a concrete `*Reminder`. Sources register an ID and render
-closure. An empty body emits nothing unless it removes previously delivered
-context.
-
-```go
-package reminder
-
-// Reminder holds registered providers, pending reminders and conversation state.
-type Reminder struct { /* unexported */ }
-
-func New() *Reminder
-func (s *Reminder) Register(id string, render func() string)
-func (s *Reminder) Unregister(id string)
-func (s *Reminder) Enqueue(body string)
-func (s *Reminder) RequeueSystemReminders()
-func (s *Reminder) Prepared() bool
-func (s *Reminder) PrepareInput(msg core.Message) core.Message
-func (s *Reminder) ResetConversation()
-func (s *Reminder) RestoreHistory(messages []core.Message)
-// ... and drain/peek accessors for the harness
-
-// Standard provider IDs:
-const (
-    ProviderSkillsDirectory = "skills-directory"
-    ProviderMemoryUser      = "memory-user"
-    ProviderMemoryProject   = "memory-project"
-    ProviderMemoryAuto      = "memory-auto"
-    ProviderMemoryRecall    = "memory-recall"
-)
-
-// Wrap a body in the <system-reminder> tag with optional source attribution.
-func Wrap(body string) string
-```
-
-## Internals
-
-- `Reminder` holds `providers []provider`, a `pending []pendingEntry`
-  queue and `prepared`. Mutex-protected, with no singleton or interface layer.
-- `RequeueSystemReminders` is idempotent across repeated calls — it drops
-  prior pending entries from the same provider before re-emitting, so
-  first message → `PostCompact` → `/skills` toggle in close succession
-  produces one emission per provider rather than three.
-- One-time notices (`Enqueue`) persist independently of provider re-emits.
-- `Wrap` adds the `<system-reminder source="...">…</system-reminder>`
-  XML-style tag with optional source attribution.
-
-## Lifecycle
-
-- Construction: `app.newServices` creates the `*Reminder` with `reminder.New()`.
-- Per-message: `PrepareInput` prepares initial provider context once, sets
-  `prepared`, appends each pending reminder as a text block, and drains the queue.
-  `Prepared()` describes preparation, not successful delivery. The input
-  queue retains the prepared message when delivery is rejected.
-- Per-event: skill toggles and plugin, persona, or project-context reloads call
-  `RequeueSystemReminders`. Auto Memory Update doesn't requeue reminders; its
-  successful write produces a display-only notice.
-- Reset after `/clear` or compaction drops pending entries and rearms preparation.
-  Resume and automatic compaction seed deduplication from native active context;
-  the next input renders current providers and sends only missing or changed
-  versions. See [Compaction and resume](../reference/context-management.md#compaction-and-resume).
-
-## Tests
-
-```
-internal/reminder/conversation_test.go — preparation, reset/restore, rejected-input retry.
-internal/reminder/reminder_test.go    — provider re-emission, notice
-                                         queue, idempotence, wrap format.
-```
-
-## See Also
-
-- Code: `internal/reminder/`
-- Concepts: [`concepts/harness-channels.md`](../concepts/harness-channels.md), [`concepts/extension-model.md`](../concepts/extension-model.md)
-- Memory commands: [`reference/slash-commands.md`](../reference/slash-commands.md) (`/memory`)
-- Layer: `feature`
+[`internal/agent/reminder/block.go`](../../internal/agent/reminder/block.go) defines how to wrap, recognize, parse and append reminder blocks, including optional source attribution. Consumers can use these helpers without creating a queue.

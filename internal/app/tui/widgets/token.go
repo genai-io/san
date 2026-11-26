@@ -1,0 +1,91 @@
+package widgets
+
+import (
+	"fmt"
+
+	"github.com/genai-io/san/internal/llm"
+)
+
+// FormatTokenCount formats a token count for display.
+func FormatTokenCount(count int) string {
+	switch {
+	case count >= 1000000:
+		return fmt.Sprintf("%.1fM", float64(count)/1000000)
+	case count >= 1000:
+		return fmt.Sprintf("%.1fk", float64(count)/1000)
+	default:
+		return fmt.Sprintf("%d", count)
+	}
+}
+
+// GetMaxOutput returns the model's max output — a hand-set override, else
+// the cached metadata — falling back to defaultMaxOutput.
+func GetMaxOutput(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultMaxOutput int) int {
+	if limit := getMaxOutput(store, currentModel); limit > 0 {
+		return limit
+	}
+	return defaultMaxOutput
+}
+
+// GetModelLimits returns the cached context window for the current model.
+//
+// The same model ID can be cached under several provider/auth keys with
+// different windows (gpt-5.5: 400k via Direct API, 272k via ChatGPT
+// subscription). Scanning the cache map for the ID picks a random one each
+// render — that is what made the status-bar limit flicker. So we resolve in two
+// deterministic steps:
+//
+//  1. this model's own provider+auth cache — the correct window. Ignores the 24h
+//     TTL, otherwise an expired cache would fall to step 2 and flicker again.
+//  2. else the largest window for the ID across all caches — covers a model an
+//     aggregator serves with no window while its native provider knows the real one.
+func GetModelLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (contextWindow, maxOutput int) {
+	if store == nil || currentModel == nil {
+		return 0, 0
+	}
+	authMethod := store.ResolveAuthMethod(currentModel)
+	if input, output := store.CachedModelLimitsForProvider(currentModel.Provider, authMethod, currentModel.ModelID); input > 0 {
+		return input, output
+	}
+	return store.CachedModelLimits(currentModel.ModelID)
+}
+
+// getMaxOutput returns the output cap: a custom limit if set,
+// otherwise the cached model metadata. The window has its own resolver
+// (llm.Store.EffectiveContextWindow), shared with the agent's compaction check.
+func getMaxOutput(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
+	if currentModel == nil {
+		return 0
+	}
+
+	if store != nil {
+		if _, output, ok := store.ContextLimit(currentModel.ModelID); ok {
+			return output
+		}
+	}
+
+	_, output := GetModelLimits(store, currentModel)
+	return output
+}
+
+// GetContextWindow returns the model's context window, or 0 when it is unknown
+// (no model selected, or a model whose window San cannot size).
+//
+// It delegates to llm.Store.EffectiveContextWindow, the same resolver
+// llm.Client.ContextWindow uses, so the bar can never fill against a different
+// window than the one compaction fires on (issue #338).
+func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
+	if store == nil || currentModel == nil {
+		return 0
+	}
+	auth := store.ResolveAuthMethod(currentModel)
+	return store.EffectiveContextWindow(currentModel.Provider, auth, currentModel.ModelID)
+}
+
+// GetContextLimits returns the model's context window and the prompt size
+// within it at which auto-compaction fires, computed as llm.Client computes
+// it; both 0 when the window is unknown.
+func GetContextLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (window, budget int) {
+	window = GetContextWindow(store, currentModel)
+	return window, llm.ContextBudget(window, getMaxOutput(store, currentModel))
+}

@@ -12,7 +12,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/endpoint"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 )
 
 // Signing in to the two vendors that authenticate a person rather than a

@@ -1,0 +1,596 @@
+package tui
+
+import (
+	"context"
+	"reflect"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/genai-io/san/tests/integration/testutil"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
+	"github.com/genai-io/san/internal/app/tui/chat"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
+)
+
+type failedTurnProvider struct{ restartStubProvider }
+
+func (*failedTurnProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return aitest.Always(aitest.Fails(&ai.Error{Kind: ai.KindAuth, Message: "test authentication failure"})).Client(), nil
+}
+
+func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	cwd := t.TempDir()
+	store := testutil.OpenSessionStore(t, cwd)
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "s"}, messages); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.Open(t.Context(), "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &model{
+		services: services{
+			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
+			sessionID: opened.ID(),
+			Setting:   setting.New(setting.NewData()),
+			Tracker:   todo.NewStore(), Reminder: reminder.NewQueue(),
+			Subagent: subagent.NewRegistry(),
+			Task:     task.NewManager(),
+			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
+		},
+		conv:      chat.NewModel(80),
+		autopilot: new(atomic.Pointer[autopilotRuntime]),
+	}
+	m.env.CWD = cwd
+	m.env.FileCache = filecache.New()
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
+	history := opened.Snapshot()
+	m.services.Agent.SetMessages(history.ActiveMessages())
+	m.conv.Messages = store.ChatRows(history)
+	t.Cleanup(func() {
+		if m.services.Session != nil {
+			_ = m.services.Session.Close()
+		}
+		_ = opened.Close()
+	})
+	t.Cleanup(func() {
+		if err := m.StopAgentRuntime(); err != nil {
+			t.Error(err)
+		}
+	})
+	return m, store
+}
+
+func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
+	m, store := resumedModel(t, parallelResultChain())
+	t.Cleanup(group.Forget)
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, []core.Message{ai.UserMessage("other conversation")}); err != nil {
+		t.Fatal(err)
+	}
+	m.services.Reminder.Enqueue("context belonging to the previous session")
+	if err := m.loadSessionByID("other"); err != nil {
+		t.Fatal(err)
+	}
+	next := m.attachPendingReminders(core.UserMessage("continue", nil))
+	if strings.Contains(next.Text(), "context belonging to the previous session") {
+		t.Fatal("resumed input contains context from the previous session")
+	}
+}
+
+func TestResumeInstructionNotice(t *testing.T) {
+	for _, tc := range []struct {
+		name                                              string
+		persona                                           system.Persona
+		legacy, environmentDrift, useContinue, wantNotice bool
+	}{
+		{name: "selection with changed persona", persona: system.Persona{Rules: "Previous persona rules."}, wantNotice: true},
+		{name: "continue with changed persona", persona: system.Persona{Identity: "Previous persona identity."}, useContinue: true, wantNotice: true},
+		{name: "unchanged"},
+		{name: "environment only", environmentDrift: true},
+		{name: "legacy without catalogue", legacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, store := resumedModel(t, nil)
+			t.Cleanup(group.Forget)
+			m.services.MCP = mcp.NewManagerForTest(nil)
+			m.conv.OnNotice = m.recordNotice
+			target := mustCreateSession(t, store, session.CreateOptions{ID: "other", InitialCWD: m.env.CWD})
+			if !tc.legacy {
+				params := m.promptParams()
+				params.Persona = tc.persona
+				var instructions []session.NamedInstruction
+				for _, section := range params.System().Sections() {
+					text := section.Render()
+					if section.Slot == core.SlotEnvironment && tc.environmentDrift {
+						text = "A different recorded environment."
+					}
+					if text != "" {
+						instructions = append(instructions, session.NamedInstruction{Name: section.Name,
+							InstructionSection: session.InstructionSection{Content: text, Slot: int(section.Slot)}})
+					}
+				}
+				if err := session.NewRecorder(target, "").RecordCatalogues(t.Context(), instructions, nil, nil, "boot"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wantMessages := 0
+			if tc.useContinue {
+				if err := testutil.AppendMessages(target, []core.Message{ai.UserMessage("Previous prompt")}); err != nil {
+					t.Fatal(err)
+				}
+				wantMessages = 1
+				blank := mustCreateSession(t, store, session.CreateOptions{ID: "newer-empty", CreatedAt: time.Now().Add(time.Second)})
+				if err := blank.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := target.Close(); err != nil {
+				t.Fatal(err)
+			}
+			resume := func() error { return m.loadSessionByID("other") }
+			if tc.useContinue {
+				resume = m.applyContinueOption
+			}
+			if err := resume(); err != nil {
+				t.Fatal(err)
+			}
+			if m.sessionID() != "other" {
+				t.Fatalf("resumed %q, want other", m.sessionID())
+			}
+			if tc.wantNotice {
+				if rows := m.conv.Messages; len(rows) != wantMessages+1 || rows[wantMessages].Role != core.ChatNotice || !strings.Contains(rows[wantMessages].Content, "updated model instructions") {
+					t.Fatalf("expected one instruction notice, got %+v", rows)
+				}
+			} else if len(m.conv.Messages) != wantMessages {
+				t.Fatalf("unexpected notices: %+v", m.conv.Messages)
+			}
+			if rows := store.ChatRows(m.services.Session.Snapshot()); len(rows) != wantMessages || len(m.services.Agent.Messages()) != wantMessages {
+				t.Fatal("resume notice leaked into durable history or model context")
+			}
+			if tc.wantNotice && !tc.useContinue {
+				m.services.Skill = skill.NewRegistry()
+				m.services.Tool = tool.Default()
+				m.env.LLMProvider = &testutil.FakeProvider{}
+				if _, err := m.ensureAgentRuntime(); err != nil {
+					t.Fatal(err)
+				}
+				if len(m.conv.Messages) != 1 {
+					t.Fatalf("runtime rebuild added notices: %+v", m.conv.Messages)
+				}
+				if err := resume(); err != nil {
+					t.Fatal(err)
+				}
+				if len(m.conv.Messages) != 0 {
+					t.Fatalf("resume with current catalogue repeated the notice: %+v", m.conv.Messages)
+				}
+			}
+		})
+	}
+}
+
+// Resume replays the whole conversation, whatever the previous one printed.
+func TestResumeReplaysEveryMessage(t *testing.T) {
+	m, store := resumedModel(t, parallelResultChain())
+	t.Cleanup(group.Forget)
+	var messages []core.Message
+	for range 60 {
+		messages = append(messages, ai.UserMessage("prompt"))
+	}
+	if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, messages); err != nil {
+		t.Fatal(err)
+	}
+	m.conv.CommittedCount = len(m.conv.Messages)
+	if err := m.loadSessionByID("other"); err != nil {
+		t.Fatal(err)
+	}
+	if m.conv.CommittedCount != 0 || len(m.conv.Messages) != len(messages) {
+		t.Fatalf("replay starts at %d of %d rows, want 0 of %d", m.conv.CommittedCount, len(m.conv.Messages), len(messages))
+	}
+}
+
+func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
+	for _, action := range []string{"resume", "fork"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, parallelResultChain())
+			t.Cleanup(group.Forget)
+			t.Cleanup(m.closeUserPrompts)
+			previousUI := m.conv.AgentToUI
+			question := userPromptQuestion(m, context.Background(), "previous-question")
+			approval := userPromptApproval(m, context.Background(), "previous-approval")
+			late := userPromptQuestion(m, context.Background(), "late-question")
+			m.enqueueUserPrompt(question)
+			m.enqueueUserPrompt(approval)
+			if action == "resume" {
+				if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, []core.Message{ai.UserMessage("other conversation")}); err != nil {
+					t.Fatal(err)
+				}
+				if err := m.loadSessionByID("other"); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := m.forkSession(); err != nil {
+				t.Fatal(err)
+			}
+			if !previousUI.Closed() || m.validUserPrompt(late) || m.conv.Modal.Question.IsActive() {
+				t.Fatal("previous session still owns the interaction UI")
+			}
+			select {
+			case reply := <-question.Question.Reply:
+				if !reply.Cancelled {
+					t.Fatal("previous question was answered instead of cancelled")
+				}
+			default:
+				t.Fatal("previous question was not cancelled")
+			}
+			select {
+			case reply := <-approval.Permission.Response:
+				if reply.Allow {
+					t.Fatal("queued approval was granted during the session switch")
+				}
+			default:
+				t.Fatal("queued approval was not cancelled")
+			}
+			m.enqueueUserPrompt(late)
+			select {
+			case reply := <-late.Question.Reply:
+				if !reply.Cancelled {
+					t.Fatal("late request from the previous session was answered")
+				}
+			default:
+				t.Fatal("late request from the previous session was accepted")
+			}
+		})
+	}
+}
+
+func TestSessionOpeningFencesReplacementAndPreservesInitialBinding(t *testing.T) {
+	for _, action := range []string{"same-session", "closed-session", "missing-session", "first-open"} {
+		t.Run(action, func(t *testing.T) {
+			m, _ := resumedModel(t, parallelResultChain())
+			t.Cleanup(group.Forget)
+			if action == "closed-session" {
+				if err := m.services.Session.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if action == "first-open" {
+				if err := m.services.Session.Close(); err != nil {
+					t.Fatal(err)
+				}
+				m.services.Session = nil
+				m.services.sessionID = "fresh"
+				m.services.Agent.SetMessages(nil)
+				m.conv.Messages = nil
+			}
+			ui := m.conv.AgentToUI
+			permissions := m.env.SessionPermissions
+			m.services.Reminder.Enqueue("pending context for this identity")
+			var err error
+			switch action {
+			case "same-session", "closed-session":
+				err = m.loadSessionByID("s")
+			case "missing-session":
+				err = m.loadSessionByID("missing")
+			case "first-open":
+				_, err = m.openCurrentSession()
+			}
+			if (err != nil) != (action == "missing-session") {
+				t.Fatalf("session opening error = %v, action = %s", err, action)
+			}
+			retired := action == "closed-session"
+			if retired {
+				if m.conv.AgentToUI == ui || !ui.Closed() || m.env.SessionPermissions == permissions {
+					t.Fatal("reopened writer retained the retired owner's UI or grants")
+				}
+			} else if m.conv.AgentToUI != ui || ui.Closed() {
+				t.Fatal("same/failed/initial binding retired its UI context")
+			}
+			next := m.attachPendingReminders(core.UserMessage("continue", nil))
+			if strings.Contains(next.Text(), "pending context for this identity") == retired {
+				t.Fatal("session opening retained or discarded context against owner lifetime")
+			}
+		})
+	}
+}
+
+func parallelResultChain() []core.Message {
+	return []core.Message{
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("read both files")},
+		{ID: "a1", Role: ai.RoleAssistant, Content: ai.Content{
+			ai.ThinkingBlock("reasoning", "opaque-signature"),
+			ai.ToolCallBlock(ai.ToolCall{ID: "c1", Name: "Read", Input: `{}`}),
+			ai.ToolCallBlock(ai.ToolCall{ID: "c2", Name: "Read", Input: `{}`}),
+		}},
+		{ID: "r1", Role: ai.RoleUser, Content: ai.Content{
+			ai.ToolResultBlock(ai.ToolResult{ToolCallID: "c1", ToolName: "Read", Content: ai.TextContent("one")}),
+			ai.ToolResultBlock(ai.ToolResult{ToolCallID: "c2", ToolName: "Read", Content: ai.TextContent("two")}),
+		}},
+	}
+}
+
+func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
+	history := parallelResultChain()
+	m, store := resumedModel(t, history)
+	w := m.services.Session
+	stopped := make(chan error, 1)
+	params := agent.BuildParams{Provider: &failedTurnProvider{}, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
+		if event, ok := event.(core.AgentStopped); ok {
+			stopped <- event.Err
+		}
+	}}
+	if err := m.services.Agent.Start(params, m.services.Agent.Messages()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.services.Agent.Send(withID("failed", core.UserMessage("continue", nil))); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-stopped:
+		if !ai.IsKind(err, ai.KindAuth) {
+			t.Fatalf("expected provider failure, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runtime did not report its failure")
+	}
+	m.StopAgentRuntime() // waits until execute has retired the failed run
+	seed := m.services.Agent.Messages()
+	if len(seed) != 4 || !reflect.DeepEqual(seed[:3], history) {
+		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
+	}
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.services.Agent.Send(withID("retry", core.UserMessage("retry", nil))); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-provider.requests:
+		if results := request[2].ToolResults(); len(results) != 2 {
+			t.Fatalf("retry inference received %d results, want both", len(results))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("retry never reached inference")
+	}
+	m.StopAgentRuntime()
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || len(loaded.ActiveMessages()) < 5 || !reflect.DeepEqual(loaded.ActiveMessages()[:3], history) {
+		t.Fatalf("retry corrupted the durable history: %+v, %v", loaded, err)
+	}
+}
+
+func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T) {
+	history := parallelResultChain()
+	m, store := resumedModel(t, history)
+	m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("both files read")).Client()}
+	request := m.BuildCompactRequest("", "manual")
+	result := chat.CompactCmd(request)().(chat.CompactResultMsg)
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if !strings.Contains(result.Summary, "both files read") {
+		t.Fatalf("summary output lost: %q", result.Summary)
+	}
+	m.HandleCompactResult(result)
+	seed := m.services.Agent.Messages()
+	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary(result.Summary) {
+		t.Fatalf("inactive compaction retained old inference context: %+v", seed)
+	}
+	if len(m.conv.Messages) != 1 || m.conv.Messages[0].ID != seed[0].ID {
+		t.Fatal("UI and native summary have different identities")
+	}
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || !reflect.DeepEqual(loaded.ActiveMessages(), seed) {
+		t.Fatalf("compaction was not durable: %+v, %v", loaded, err)
+	}
+	w := m.services.Session
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, seed); err != nil {
+		t.Fatal(err)
+	}
+	m.StopAgentRuntime()
+	full, err := store.Read(t.Context(), "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := store.ChatRows(full)
+	if len(rows) != len(session.ChatRows(history))+1 {
+		t.Fatalf("starting after compaction erased browsable history: %+v, %v", rows, err)
+	}
+}
+
+func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
+	history := chainWithImage()
+	m, store := resumedModel(t, history)
+	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
+	m.env.LLMProvider = provider
+	w := m.services.Session
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide}, m.services.Agent.Messages()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-provider.requests:
+		if imageBlocks(request[0]) != 0 {
+			t.Fatal("text-only inference received an image")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("text-only turn never reached inference")
+	}
+	m.StopAgentRuntime()
+	loaded, err := store.Read(t.Context(), "s")
+	if err != nil || len(loaded.ActiveMessages()) < 3 || !reflect.DeepEqual(loaded.ActiveMessages()[:2], history) {
+		t.Fatalf("model switch erased durable image history: %+v, %v", loaded, err)
+	}
+	m.services.Agent.SetMessages(loaded.ActiveMessages())
+	m.env.LLMProvider = &restartStubProvider{}
+	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
+		t.Fatal("vision model could not recover the historical image")
+	}
+}
+
+func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
+	m, store := resumedModel(t, []core.Message{
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("first prompt")},
+		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("first response")},
+	})
+	w := m.services.Session
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	stopped := make(chan error, 1)
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", Recording: w, PermissionRules: (agent.PermissionPolicy{}).Decide, OnEvent: func(event core.Event) {
+		if event, ok := event.(core.AgentStopped); ok {
+			stopped <- event.Err
+		}
+	}}, m.services.Agent.Messages()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.renameSession("renamed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !m.services.Agent.Active() || m.services.Session != w {
+		t.Fatal("renaming retired the live runtime or its writer")
+	}
+	if err := m.services.Agent.Send(withID("after-name", core.UserMessage("continue", nil))); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-provider.requests:
+	case err := <-stopped:
+		t.Fatalf("runtime stopped after rename: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("turn after rename never reached inference")
+	}
+	m.StopAgentRuntime()
+	loaded, err := store.Read(t.Context(), "s")
+	attrs, attrsErr := store.Attrs(t.Context(), "s")
+	if err != nil || attrsErr != nil || attrs.Title != "renamed" || len(loaded.ActiveMessages()) < 3 || loaded.ActiveMessages()[2].ID != "after-name" {
+		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
+	}
+}
+
+func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
+	for _, action := range []string{"clear", "fork"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, parallelResultChain())
+			group.BindSession(m.sessionID)
+			t.Cleanup(group.Forget)
+			if _, err := group.Join("shop", group.Member{Name: "me", Hold: true}); err != nil {
+				t.Fatal(err)
+			}
+			m.reconcileMembership()
+			var err error
+			if action == "clear" {
+				err = m.clearSession()
+			} else {
+				_, err = m.forkSession()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g, self := group.Current(); g != "" {
+				t.Fatalf("new session %s retained group %s under old identity %s before polling", m.sessionID(), g, self.SessionID)
+			}
+			members := group.Members("shop")
+			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
+				t.Fatalf("session switch changed the source membership: %+v", members)
+			}
+			source, err := store.Read(t.Context(), "s")
+			if err != nil || source.State().GroupHint == nil || source.State().GroupHint.GroupID == "" {
+				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
+			}
+			if action == "fork" {
+				forked, err := store.Read(t.Context(), m.sessionID())
+				if err != nil || (forked.State().GroupHint != nil && forked.State().GroupHint.GroupID != "") {
+					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
+				}
+			}
+			if cmd := m.handleMemberMsg(memberMsg{status: group.Joined}); cmd != nil {
+				t.Fatal("delayed group poll produced effects in the new session")
+			}
+		})
+	}
+}
+
+func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
+	m, _ := resumedModel(t, nil)
+	first := withID("pending", core.UserMessage("before", []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n"}}}))
+	m.SubmitToAgent(first)
+	if m.pendingMessages.Len() != 1 {
+		t.Fatal("unconfigured input was discarded")
+	}
+	m.conv.Append(core.ChatMessage{ID: "display-only", Role: core.ChatUser, Content: "must not become history"})
+	added := make(chan core.Message, 2)
+	provider := &restartStubProvider{requests: make(chan []core.Message, 4)}
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
+		if v, ok := e.(sdkagent.MessageAdded); ok && v.Message.Role == ai.RoleUser {
+			added <- v.Message
+		}
+	}}, m.services.Agent.Messages()); err != nil {
+		t.Fatal(err)
+	}
+	m.sendToAgent(pendingMessage{Message: withID("next", core.UserMessage("continue", nil))})
+	for _, want := range []core.Message{first, withID("next", core.UserMessage("continue", nil))} {
+		select {
+		case got := <-added:
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("accepted message = %+v, want %+v", got, want)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("pending input did not reach the agent")
+		}
+	}
+	if m.pendingMessages.Len() != 0 {
+		t.Fatal("accepted input remained pending")
+	}
+}
+
+func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
+	for _, action := range []string{"resume", "clear"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, nil)
+			m.env.AutoPilot.Mission = "previous goal"
+			m.env.AutoPilot.MissionState = setting.MissionRunning
+			m.beforeGoal = new(m.env.AutoPilot)
+			m.pendingMessages.Enqueue(pendingMessage{Message: core.UserMessage("old input", nil)})
+			var err error
+			if action == "clear" {
+				err = m.clearSession()
+			} else {
+				if err := testutil.ImportSession(store, session.CreateOptions{ID: "other"}, nil); err != nil {
+					t.Fatal(err)
+				}
+				err = m.loadSessionByID("other")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.beforeGoal != nil || m.env.AutoPilot.Mission != "" || m.env.AutoPilot.MissionState != "" || m.pendingMessages.Len() != 0 {
+				t.Fatalf("session inherited previous state: %+v", m.env.AutoPilot)
+			}
+		})
+	}
+}

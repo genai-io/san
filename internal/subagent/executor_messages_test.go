@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	agenttools "github.com/genai-io/san/internal/tool/agent"
@@ -114,7 +114,7 @@ func TestRunningAgentProcessesAcceptedMessagesWithinBudget(t *testing.T) {
 				OnTextEnd: func(error) {
 					if !sent {
 						sent = true
-						if !broker.Send(broker.Message{To: route, From: broker.Main, Content: "new input"}) {
+						if !mail.Send(mail.Message{To: route, From: mail.Main, Content: "new input"}) {
 							t.Error("running inbox rejected input")
 						}
 					}
@@ -124,7 +124,7 @@ func TestRunningAgentProcessesAcceptedMessagesWithinBudget(t *testing.T) {
 			if err != nil || result.StepCount != budget || result.Success != (budget == 2) {
 				t.Fatalf("budget or input lost: %+v %v", result, err)
 			}
-			if broker.Send(broker.Message{To: route, From: broker.Main, Content: "late input"}) {
+			if mail.Send(mail.Message{To: route, From: mail.Main, Content: "late input"}) {
 				t.Fatal("closed execution accepted mail")
 			}
 		})

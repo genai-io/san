@@ -96,7 +96,7 @@ controls what happens when a tool call would normally `ask`:
 Subagents cannot spawn subagents. `SendMessage(to="main", ...)` follows the
 normal mode rules.
 
-See [`packages/broker.md`](../packages/broker.md)
+See [`packages/mail.md`](../packages/mail.md)
 for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
 for the full decision pipeline.
 
@@ -173,7 +173,7 @@ A background subagent registers with the broker while running:
 
 ## See Also
 
-- [`packages/broker.md`](../packages/broker.md) —
+- [`packages/mail.md`](../packages/mail.md) —
   how the main conversation and its subagents message each other.
 - [`packages/subagent.md`](../packages/subagent.md) — registry +
   executor design.

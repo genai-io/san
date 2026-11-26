@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -116,7 +116,7 @@ func RecordManualCompaction(opened *session.Session, result CompactResult) (core
 
 // PostCompact refreshes context in native order. refreshMemory updates the
 // caller's instruction cache; the return value is only a presentation count.
-func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Reminder, files *filecache.Cache, refreshMemory func()) int {
+func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Queue, files *filecache.Cache, refreshMemory func()) int {
 	trigger := info.Trigger
 	if trigger == "" {
 		trigger = "auto"
