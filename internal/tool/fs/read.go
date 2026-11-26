@@ -163,7 +163,11 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	resultNote := ""
 	switch {
 	case len(lines) == 0 && lineNo > 0:
-		resultNote = fmt.Sprintf("no lines at offset %d: %s has %d lines", offset, filePath, lineNo)
+		unit := "lines"
+		if lineNo == 1 {
+			unit = "line"
+		}
+		resultNote = fmt.Sprintf("no lines at offset %d: %s has %d %s", offset, filePath, lineNo, unit)
 	case len(lines) == 0:
 		resultNote = "file exists but is empty: " + filePath
 	case truncated:

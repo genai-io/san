@@ -139,11 +139,16 @@ func computeDiffEmphasis(lines []perm.DiffLine) map[int]runeSpan {
 		for i < len(lines) && lines[i].Type == perm.DiffLineRemoved {
 			i++
 		}
+		removedEnd := i
+		// A removed final line can carry EOF bookkeeping before its replacement.
+		if i < len(lines) && lines[i].Type == perm.DiffLineNoNewline {
+			i++
+		}
 		addedStart := i
 		for i < len(lines) && lines[i].Type == perm.DiffLineAdded {
 			i++
 		}
-		pairs := min(addedStart-removedStart, i-addedStart)
+		pairs := min(removedEnd-removedStart, i-addedStart)
 		for k := range pairs {
 			oldSpan, newSpan, ok := changedSpan(lines[removedStart+k].Content, lines[addedStart+k].Content)
 			if ok {

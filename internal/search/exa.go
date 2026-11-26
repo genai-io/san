@@ -182,7 +182,7 @@ func (p *ExaProvider) Search(ctx context.Context, query string, opts SearchOptio
 // Returns the original body unchanged if no `data:` lines are found, so a
 // future server-side switch back to plain JSON would still work.
 func parseSSEMessage(body []byte) ([]byte, error) {
-	if !bytes.Contains(body, []byte("data:")) {
+	if !bytes.HasPrefix(body, []byte("data:")) && !bytes.Contains(body, []byte("\ndata:")) {
 		return body, nil
 	}
 

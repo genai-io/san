@@ -140,12 +140,15 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	}
 
 	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil {
-		if out, handled, err := runWithResponder(ctx, command, cmd, responder); handled {
+		var progress outputProgress
+		if out, handled, err := runWithResponder(ctx, command, cmd, responder, &progress); handled {
 			if cmd.Process == nil {
 				err = diagnoseShellStart(cmd, err)
 			}
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, countLines(out), out, false)
+			lines, byteCount := progress.totals()
+			tail := progress.lastTail()
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, lines, tail, byteCount > int64(len(tail)))
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -273,15 +276,25 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 	subtitle := "Done"
 	if description != "" {
 		subtitle = description
-	} else if truncated {
-		subtitle = fmt.Sprintf("%d+ lines (truncated)", lineCount)
-	} else if lineCount > 1 {
+	} else if truncated || lineCount > 1 {
 		subtitle = fmt.Sprintf("%d lines", lineCount)
-	} else if output != "" {
+		if lineCount == 1 {
+			subtitle = "1 line"
+		}
+		if truncated {
+			subtitle += " (truncated)"
+		}
+	} else if fullOutput != "" {
 		// Show first line preview for single-line output
-		firstLine := strings.TrimSpace(strings.Split(output, "\n")[0])
-		if len(firstLine) > 50 {
-			firstLine = firstLine[:50] + "..."
+		firstLine, _, _ := strings.Cut(fullOutput, "\n")
+		firstLine = strings.TrimSpace(firstLine)
+		chars := 0
+		for i := range firstLine {
+			if chars == 50 {
+				firstLine = firstLine[:i] + "..."
+				break
+			}
+			chars++
 		}
 		if firstLine != "" {
 			subtitle = firstLine

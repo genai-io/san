@@ -130,13 +130,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	duration := time.Since(start)
 
-	// Count lines
-	lineCount := 1
-	for _, c := range content {
-		if c == '\n' {
-			lineCount++
-		}
-	}
+	lineCount := countLines(content)
 
 	// The notes ride the result because models weigh fresh tool results over
 	// schema text: suppress the verify-read reflex, and steer the next
