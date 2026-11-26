@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="site/san-icon.png" width="80" height="80" alt="">
   <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>开销最小，Agent 最强。</strong></p>
   <p>上下文精简，原生性能，从里到外都开放。</p>

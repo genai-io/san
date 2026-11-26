@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="site/san-icon.png" width="80" height="80" alt="">
   <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>Minimal overhead. Maximum agent.</strong></p>
   <p>Lean context, native speed, open all the way down.</p>

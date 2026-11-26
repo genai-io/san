@@ -37,7 +37,7 @@ nav { position: sticky; top: 0; z-index: 50; background: var(--bg); border-botto
 nav .wrap { height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .logo { display: inline-block; font-family: Bangers, Impact, sans-serif; font-size: 38px; font-weight: 400; letter-spacing: .04em; line-height: 1; transform: rotate(-3deg); }
 .logo a { color: var(--bg); -webkit-text-stroke: 1px var(--text); text-shadow: 2px 2px 0 var(--text); text-decoration: none; }
-.logo .spark { color: var(--accent); margin-left: 8px; font: 700 16px var(--sans); -webkit-text-stroke: 0; text-shadow: none; vertical-align: 7px; }
+.logo-icon { margin-left: 8px; vertical-align: 2px; }
 .nav-links { display: flex; align-items: center; gap: 14px; font: 500 14px/1.4 var(--sans); }
 .nav-links > a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 6px; color: var(--text); white-space: nowrap; border-bottom: 2px solid transparent; }
 .nav-links > a:hover, .nav-links > a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); text-decoration: none; }
