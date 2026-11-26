@@ -1,8 +1,9 @@
 package tui
 
 import (
-	tea "charm.land/bubbletea/v2"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 const maxCronQueueSize = 100
