@@ -15,7 +15,7 @@ import (
 // recorded Flow results contain the immutable checkpoint answer, not a transcript.
 type TaskViewItem struct {
 	ID, AgentName, Description, Subject, Progress, Output, Error string
-	OutputFile                                                   string
+	OutputFile, OutputError                                      string
 	Recorded                                                     bool // Persisted entry without a live worker.
 	Status                                                       task.TaskStatus
 	AwaitingApproval, ApprovalQueued, OutputTruncated            bool
@@ -159,8 +159,10 @@ func (v *TaskViewer) rebuild() {
 		return
 	}
 	previousSelection := v.selected
+	var active, history []TaskViewItem
 	if !v.detail {
-		v.selectVisible()
+		active, history = v.groupedItems()
+		v.selectVisible(v.visibleItems(active, history))
 	}
 	v.body.SetHeight(max(1, v.height-4-strings.Count(v.hint(), "\n")-1-transcriptFrameMargin))
 	offset := v.body.YOffset()
@@ -194,6 +196,9 @@ func (v *TaskViewer) rebuild() {
 			if item.OutputFile != "" {
 				lines = append(lines, "Output log: "+item.OutputFile)
 			}
+			if item.OutputError != "" {
+				lines = append(lines, "Output log unavailable: "+item.OutputError)
+			}
 			if item.Status == task.StatusRunning && item.Progress != "" {
 				lines = append(lines, "Progress: "+item.Progress)
 			}
@@ -221,7 +226,6 @@ func (v *TaskViewer) rebuild() {
 			lines = append(lines, "", label, output)
 		}
 	} else {
-		active, history := v.groupedItems()
 		v.rowOffsets = make(map[string]int, len(v.items))
 		addWrapped := func(text string) {
 			lines = append(lines, strings.Split(text, "\n")...)
@@ -346,6 +350,7 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 			v.detail = false
 			v.body.GotoTop()
 			v.rebuild()
+			v.ensureSelectionVisible()
 		} else {
 			viewID := v.viewID
 			v.close()
@@ -393,7 +398,7 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 			}
 			break
 		}
-		items := v.visibleItems()
+		items := v.visibleItems(v.groupedItems())
 		index := -1
 		for i, item := range items {
 			if item.ID == v.selected {
@@ -423,8 +428,15 @@ func (v *TaskViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 }
 func (v *TaskViewer) hint() string {
 	hint := "↑/↓ select · Enter details\ns stop · r approval · Esc close"
-	if _, history := v.groupedItems(); !v.detail && len(history) > 0 {
-		hint = "↑/↓ select · Enter · h history\ns stop · r approval · Esc close"
+	if _, history := v.groupedItems(); !v.detail {
+		if v.selected == "" {
+			hint = "Esc close"
+			if len(history) > 0 {
+				hint = "h history · " + hint
+			}
+		} else if len(history) > 0 {
+			hint = "↑/↓ select · Enter · h history\ns stop · r approval · Esc close"
+		}
 	}
 	if v.detail {
 		hint = "↑/↓ scroll · PgUp/PgDown\ns stop · r approval · Esc back"
@@ -435,9 +447,10 @@ func (v *TaskViewer) hint() string {
 			label = "c continue"
 		}
 		hint = strings.ReplaceAll(hint, "s stop · r approval", label)
-	}
-	if item, ok := v.current(); ok && item.Recorded {
+	} else if !ok || item.Recorded || item.Status != task.StatusRunning {
 		hint = strings.ReplaceAll(hint, "s stop · r approval · ", "")
+	} else if !item.AwaitingApproval {
+		hint = strings.ReplaceAll(hint, "r approval · ", "")
 	}
 	if v.confirm {
 		hint = "←/→ choose · Enter confirm\nEsc back"

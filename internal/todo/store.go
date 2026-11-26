@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,7 @@ const (
 type Store struct {
 	mu         sync.RWMutex
 	items      map[string]*Item
+	persisted  map[string]bool // IDs whose current value was read or written successfully
 	nextID     int
 	storageDir string    // empty = in-memory only
 	lastDirMod time.Time // last known dir mtime, for change detection in ReloadFromDisk
@@ -158,6 +160,7 @@ func (s *Store) loadFromDisk() error {
 	}
 
 	s.items = make(map[string]*Item)
+	s.persisted = make(map[string]bool)
 	s.nextID = 1
 
 	for _, item := range items {
@@ -178,6 +181,9 @@ func (s *Store) loadFromDisk() error {
 
 		normalizeItemSlices(&item)
 		s.items[item.ID] = &item
+		if name == item.ID+".json" && item.Status != StatusDeleted {
+			s.persisted[item.ID] = true
+		}
 		var idNum int
 		if _, err := fmt.Sscanf(item.ID, "%d", &idNum); err == nil && idNum >= s.nextID {
 			s.nextID = idNum + 1
@@ -198,6 +204,9 @@ func (s *Store) persistItem(item *Item) {
 	if err := atomicfile.WriteJSON(path, item, 0o644); err != nil {
 		log.Logger().Error("tracker: persist item",
 			zap.String("item", item.ID), zap.Error(err))
+		delete(s.persisted, item.ID)
+	} else if item.Status != StatusDeleted {
+		s.persisted[item.ID] = true
 	}
 }
 
@@ -322,6 +331,7 @@ func (s *Store) Delete(id string) error {
 	item.Status = StatusDeleted
 	item.UpdatedAt = time.Now()
 	s.removeItemFile(id)
+	delete(s.persisted, id)
 	return nil
 }
 
@@ -365,6 +375,7 @@ func (s *Store) Reset() {
 	}
 
 	s.items = make(map[string]*Item)
+	clear(s.persisted)
 	s.nextID = 1
 }
 
@@ -393,6 +404,7 @@ func (s *Store) Import(items []Item) {
 	defer s.mu.Unlock()
 
 	s.items = make(map[string]*Item, len(items))
+	clear(s.persisted)
 	s.nextID = 1
 	for i := range items {
 		t := items[i]
@@ -435,9 +447,13 @@ func (s *Store) ReloadFromDisk() {
 	}
 
 	changed := false
+	present := 0
 	for _, item := range items {
 		if item.IsDir() || filepath.Ext(item.Name()) != ".json" {
 			continue
+		}
+		if s.persisted[strings.TrimSuffix(item.Name(), ".json")] {
+			present++
 		}
 		info, err := item.Info()
 		if err != nil {
@@ -450,6 +466,19 @@ func (s *Store) ReloadFromDisk() {
 	}
 
 	if !changed && !s.lastDirMod.IsZero() {
+		// A removal leaves no newer file. Drop only confirmed disk items,
+		// not unrelated unsaved work or local deletion records.
+		if present < len(s.persisted) {
+			for id := range s.persisted {
+				i, ok := slices.BinarySearchFunc(items, id+".json", func(entry os.DirEntry, name string) int {
+					return strings.Compare(entry.Name(), name)
+				})
+				if !ok || items[i].IsDir() {
+					delete(s.items, id)
+					delete(s.persisted, id)
+				}
+			}
+		}
 		return
 	}
 

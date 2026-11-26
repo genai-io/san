@@ -32,6 +32,27 @@ func (w *countedSnapshotTask) GetOutput() string {
 	return w.BackgroundTask.GetOutput()
 }
 
+func TestCompletedTaskDetailShowsLogFailure(t *testing.T) {
+	m := interactionModel()
+	worker := task.NewAgentTask("review", "Reviewer", "Review", context.Background(), nil, t.TempDir()) // Directory, not a writable log file.
+	worker.AppendOutput([]byte("REPORT"))
+	worker.Complete(nil)
+	m.services.Task.RegisterTask(worker)
+	v := &m.userInput.Tasks
+	v.Show(m.taskSnapshots(), 80, 36)
+	v.HandleKeypress(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	v.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	view := ansi.Strip(v.Render())
+	for _, want := range []string{"Status: completed", "Output log unavailable:", "REPORT"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q: %s", want, view)
+		}
+	}
+	if strings.Contains(view, "Progress:") {
+		t.Fatalf("terminal detail shows running progress: %s", view)
+	}
+}
+
 func TestTaskRootSnapshotsReadEachWorkerOnce(t *testing.T) {
 	m := interactionModel()
 	m.services.sessionID = "current"
