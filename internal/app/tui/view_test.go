@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/app/tui/widgets"
@@ -493,7 +494,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	}
 	defer stopRuntime(t, m.services.Agent)
 	m.env.LLMProvider = provider
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	m.agentReviewCaps = m.autoSkillCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 	m.autoMemory = m.currentAutoMemory()
@@ -534,7 +535,7 @@ func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
 	started, release := make(chan struct{}), make(chan struct{})
 	if err := m.services.Agent.Start(agent.BuildParams{

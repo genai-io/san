@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
@@ -312,7 +313,7 @@ func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: agent.NewReminderQueue()}}
+	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.NewQueue()}}
 	m.releaseGroupOnSwitch()
 	if g, _ := group.Current(); g != "" {
 		t.Fatalf("still in %s after the switch", g)

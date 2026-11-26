@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/session"
@@ -202,7 +203,7 @@ func TestGroupControlAppliesOnlyOnUIThread(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := newGroupControlModel(t)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	m.services.sessionID = "control-test"
 	group.BindSession(m.sessionID)
 	t.Cleanup(func() { _ = group.Leave() })

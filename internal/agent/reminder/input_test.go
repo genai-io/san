@@ -1,4 +1,4 @@
-package agent_test
+package reminder_test
 
 import (
 	"errors"
@@ -12,12 +12,12 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func prepareText(s *agent.ReminderQueue, text string) string {
+func prepareText(s *reminder.Queue, text string) string {
 	return s.PrepareInput(core.UserMessage(text, nil)).Text()
 }
 
 func TestConversationContextLifecycle(t *testing.T) {
-	s := agent.NewReminderQueue()
+	s := reminder.NewQueue()
 	body := "initial skills"
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return body })
 	s.Enqueue("hook context")
@@ -65,7 +65,7 @@ func TestRestoreConversationContext(t *testing.T) {
 		{"summary carries provider separately", []core.Message{summary}, []string{memory}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := agent.NewReminderQueue()
+			s := reminder.NewQueue()
 			s.Register(skills, func() string { return "fresh skills" })
 			s.Register(memory, func() string { return "fresh memory" })
 			prepareText(s, "previous conversation")
@@ -89,7 +89,7 @@ func TestRestoreConversationContext(t *testing.T) {
 }
 
 func TestRejectedInputRetainsReminders(t *testing.T) {
-	s := agent.NewReminderQueue()
+	s := reminder.NewQueue()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	s.Enqueue("first notice")
 	var q agent.InputQueue
@@ -116,7 +116,7 @@ func TestRejectedInputRetainsReminders(t *testing.T) {
 }
 
 func TestConcurrentInputPreparesContextOnce(t *testing.T) {
-	s := agent.NewReminderQueue()
+	s := reminder.NewQueue()
 	s.Register(reminder.ProviderSkillsDirectory, func() string { return "provider body" })
 	results := make(chan string, 20)
 	var wg sync.WaitGroup

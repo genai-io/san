@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
@@ -146,7 +147,7 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	m.queueScrollbackPrint("OLD-REPLY", 0)
 	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
 		t.Fatal("clear command was not handled")
@@ -160,7 +161,7 @@ func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	initClearSessionTest(t, m)
 	m.services.Agent = &agent.Runtime{}
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	var rows []string
 	for i := 0; i < 19; i++ {
 		rows = append(rows, fmt.Sprintf("OLD-%02d", i))

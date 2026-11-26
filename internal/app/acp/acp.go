@@ -106,7 +106,7 @@ type acpSession struct {
 	runtimeBuildParams agent.BuildParams // retained across runtime rebuilds
 	runtime            agent.Runtime
 	hooks              *hook.Engine
-	reminders          *agent.ReminderQueue
+	reminders          *reminder.Queue
 	toolResponses      sync.Map
 	mcp                *mcp.Manager
 	permissions        *acpPermissions
@@ -208,7 +208,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	ctx = plugin.WithRegistry(ctx, plugins)
-	s := &acpSession{reminders: agent.NewReminderQueue(), mcp: servers, models: models}
+	s := &acpSession{reminders: reminder.NewQueue(), mcp: servers, models: models}
 	pluginSource := ext.Source{Registry: plugins}
 	s.commands = command.NewRegistry(command.Options{CWD: req.CWD, PluginCommandPaths: pluginSource.CommandPaths})
 	s.agents, err = subagent.Load(req.CWD, pluginSource.AgentPaths())

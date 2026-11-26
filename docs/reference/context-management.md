@@ -43,7 +43,7 @@ The full transcript stays intact. Resume loads only the active messages, adds an
 | Where | Responsibility |
 |---|---|
 | `internal/core/system` and `internal/core/run.go` | Assemble and refresh the system prompt. |
-| Hosts and [`agent.ReminderQueue`](../packages/reminder.md) | Hosts register sources; the queue prepares reminder updates for input. |
+| Hosts and [`reminder.Queue`](../packages/reminder.md) | Hosts register sources; the queue prepares reminder updates for input. |
 | `internal/core/compact.go` and `internal/agent/compaction.go` | Trigger compaction and restore context. |
 | `internal/session` | Record requests and reconstruct active messages. |
 

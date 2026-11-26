@@ -71,9 +71,9 @@ not by lower layers importing higher layers.
    older-format fallback. Generic framing, writer leases and transport recovery
    remain in sdk-go.
 
-10. Code that only handles reminder message blocks imports `internal/agent/reminder`,
-    not the agent runtime. The leaf must not import its parent; provider registration,
-    queueing and input preparation belong to `internal/agent`.
+10. Hosts and reminder block consumers import `internal/agent/reminder`. It owns
+    provider registration, queueing, input preparation and the block format,
+    and must not import its parent `internal/agent`.
 
 `devtools/layercheck` applies these rules to production, internal-test, and
 external-test imports. It also rejects repository packages that have no entry

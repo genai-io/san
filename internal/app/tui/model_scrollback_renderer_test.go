@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
@@ -494,7 +495,7 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
 			initClearSessionTest(t, m.model)
 			m.services.Agent = &agent.Runtime{}
-			m.services.Reminder = agent.NewReminderQueue()
+			m.services.Reminder = reminder.NewQueue()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/setting"
 
@@ -31,7 +32,7 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	if err := testutil.AppendMessages(old, history); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: agent.NewReminderQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
+	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.LLM = &llm.Conn{}
 	m.autopilot = new(atomic.Pointer[autopilotRuntime])

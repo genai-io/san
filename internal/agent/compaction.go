@@ -116,7 +116,7 @@ func RecordManualCompaction(opened *session.Session, result CompactResult) (core
 
 // PostCompact refreshes context in native order. refreshMemory updates the
 // caller's instruction cache; the return value is only a presentation count.
-func PostCompact(info core.Compacted, hooks hook.Handler, reminders *ReminderQueue, files *filecache.Cache, refreshMemory func()) int {
+func PostCompact(info core.Compacted, hooks hook.Handler, reminders *reminder.Queue, files *filecache.Cache, refreshMemory func()) int {
 	trigger := info.Trigger
 	if trigger == "" {
 		trigger = "auto"

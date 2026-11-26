@@ -1,10 +1,8 @@
-package agent
+package reminder
 
 import (
 	"slices"
 	"sync"
-
-	"github.com/genai-io/san/internal/agent/reminder"
 )
 
 // provider is a long-lived reminder source: render produces its body on every
@@ -14,7 +12,7 @@ type provider struct {
 	render func() string
 }
 
-// ReminderQueue holds the runtime state for reminders.
+// Queue holds the runtime state for reminders.
 //
 // It tracks conversation context preparation and two reminder collections:
 //
@@ -26,7 +24,7 @@ type provider struct {
 //     provider are one-time notices (see Enqueue).
 //
 // All operations are safe for concurrent use.
-type ReminderQueue struct {
+type Queue struct {
 	mu        sync.Mutex
 	providers []provider
 	pending   []pendingEntry
@@ -43,14 +41,14 @@ type pendingEntry struct {
 	wrapped    string // already wrapped in <system-reminder>
 }
 
-// NewReminderQueue creates an empty ReminderQueue.
-func NewReminderQueue() *ReminderQueue {
-	return &ReminderQueue{}
+// NewQueue creates an empty Queue.
+func NewQueue() *Queue {
+	return &Queue{}
 }
 
 // Register adds a provider whose output RequeueSystemReminders emits.
 // Re-registering an existing id replaces the old provider.
-func (s *ReminderQueue) Register(id string, render func() string) {
+func (s *Queue) Register(id string, render func() string) {
 	p := provider{id: id, render: render}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,7 +63,7 @@ func (s *ReminderQueue) Register(id string, render func() string) {
 
 // Unregister removes the provider with the given ID. Missing IDs are silently
 // ignored.
-func (s *ReminderQueue) Unregister(id string) {
+func (s *Queue) Unregister(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, existing := range s.providers {
@@ -87,13 +85,13 @@ func (s *ReminderQueue) Unregister(id string) {
 //
 // Empty bodies are dropped silently. Notices persist independently of
 // RequeueSystemReminders — the latter only touches provider-emitted entries.
-func (s *ReminderQueue) Enqueue(body string) {
+func (s *Queue) Enqueue(body string) {
 	s.EnqueueWithSource(body, "")
 }
 
 // EnqueueWithSource queues one-time context with a source for inspection.
-func (s *ReminderQueue) EnqueueWithSource(body, source string) {
-	wrapped := reminder.WrapWithSource(body, source)
+func (s *Queue) EnqueueWithSource(body, source string) {
+	wrapped := WrapWithSource(body, source)
 	if wrapped == "" {
 		return
 	}
@@ -106,13 +104,13 @@ func (s *ReminderQueue) EnqueueWithSource(body, source string) {
 // Enqueue (providerID==""). Used by /compact, /clear and /resume: the output
 // that produced these notices is no longer in the conversation the model
 // sees. Provider entries are preserved.
-func (s *ReminderQueue) DiscardPendingNotices() {
+func (s *Queue) DiscardPendingNotices() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.discardPendingNoticesLocked()
 }
 
-func (s *ReminderQueue) discardPendingNoticesLocked() {
+func (s *Queue) discardPendingNoticesLocked() {
 	if len(s.pending) == 0 {
 		return
 	}
@@ -128,13 +126,13 @@ func (s *ReminderQueue) discardPendingNoticesLocked() {
 // RequeueSystemReminders replaces pending provider versions with current
 // renders, skipping exact versions already attached. Notices keep their order.
 // A provider that stops rendering content emits a source-scoped removal once.
-func (s *ReminderQueue) RequeueSystemReminders() {
+func (s *Queue) RequeueSystemReminders() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requeueSystemRemindersLocked()
 }
 
-func (s *ReminderQueue) requeueSystemRemindersLocked() {
+func (s *Queue) requeueSystemRemindersLocked() {
 	if len(s.providers) == 0 {
 		return
 	}
@@ -158,11 +156,11 @@ func (s *ReminderQueue) requeueSystemRemindersLocked() {
 
 const removalBody = "Earlier reminders from this source no longer apply."
 
-func (s *ReminderQueue) queueProviderLocked(id, body string) {
-	wrapped := reminder.WrapWithSource(body, id)
+func (s *Queue) queueProviderLocked(id, body string) {
+	wrapped := WrapWithSource(body, id)
 	last := s.emitted[id]
 	if wrapped == "" && last != "" {
-		wrapped = reminder.WrapWithSource(removalBody, id)
+		wrapped = WrapWithSource(removalBody, id)
 	}
 	if wrapped != "" && wrapped != last {
 		s.pending = append(s.pending, pendingEntry{providerID: id, wrapped: wrapped})
@@ -170,13 +168,13 @@ func (s *ReminderQueue) queueProviderLocked(id, body string) {
 }
 
 // Drain returns all pending reminders (already wrapped) and clears the queue.
-func (s *ReminderQueue) Drain() []string {
+func (s *Queue) Drain() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.drainLocked()
 }
 
-func (s *ReminderQueue) drainLocked() []string {
+func (s *Queue) drainLocked() []string {
 	out := s.wrappedLocked()
 	for _, e := range s.pending {
 		if e.providerID != "" {
@@ -193,7 +191,7 @@ func (s *ReminderQueue) drainLocked() []string {
 // Pending returns the queued reminders (already wrapped) without clearing the
 // queue. Use it to inspect what the next user message will carry; use Drain
 // when you are the one attaching them.
-func (s *ReminderQueue) Pending() []string {
+func (s *Queue) Pending() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.wrappedLocked()
@@ -202,7 +200,7 @@ func (s *ReminderQueue) Pending() []string {
 // wrappedLocked returns the queue's wire strings. Shared by Drain and Pending
 // so the two views of the same queue cannot disagree about what an entry
 // renders as. Caller holds s.mu.
-func (s *ReminderQueue) wrappedLocked() []string {
+func (s *Queue) wrappedLocked() []string {
 	if len(s.pending) == 0 {
 		return nil
 	}
@@ -214,7 +212,7 @@ func (s *ReminderQueue) wrappedLocked() []string {
 }
 
 // Empty reports whether there are no pending reminders.
-func (s *ReminderQueue) Empty() bool {
+func (s *Queue) Empty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.pending) == 0

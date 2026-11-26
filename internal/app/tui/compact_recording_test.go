@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/agent"
-
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
@@ -30,7 +29,7 @@ func recordedCompactModel(t *testing.T, turn aitest.Turn) (*model, *session.Sess
 	}
 	t.Cleanup(func() { _ = owner.Close() })
 	m := newRecapModel(t)
-	m.services.Reminder = agent.NewReminderQueue()
+	m.services.Reminder = reminder.NewQueue()
 	m.env.CWD = t.TempDir()
 	m.services.Session, m.services.SessionStore, m.services.sessionID = owner, store, owner.ID()
 	messages := []core.Message{core.UserMessage("first", nil), core.UserMessage("second", nil), core.UserMessage("third", nil)}

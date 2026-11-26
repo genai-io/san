@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
@@ -54,7 +55,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
 			sessionID: opened.ID(),
 			Setting:   setting.New(setting.NewData()),
-			Tracker:   todo.NewStore(), Reminder: agent.NewReminderQueue(),
+			Tracker:   todo.NewStore(), Reminder: reminder.NewQueue(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),

@@ -40,8 +40,8 @@ Agent, persistence, and orchestration:
 
 | Path | Layer | Responsibility |
 | --- | --- | --- |
-| `internal/agent` | `feature` | Agent construction, permission adapter, runtime lifecycle, and the per-conversation [reminder queue](../packages/reminder.md). |
-| `internal/agent/reminder` | `feature` | Shared reminder message block format; no runtime state. |
+| `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
+| `internal/agent/reminder` | `feature` | Per-conversation [reminder queue](../packages/reminder.md), input preparation, and shared reminder block format. |
 | `internal/agent/mail` | `feature` | Routes addressed messages and task completions between agents; independent of the agent runtime. |
 | `internal/autopilot` | `feature` | Mission steering and suggestion prompts: predict the next input or propose an instruction for an active mission. The TUI schedules suggestions through `aside` and displays them. |
 | `internal/aside` | `feature` | Focused model calls outside the main conversation, with request snapshots and session-owned recording. |

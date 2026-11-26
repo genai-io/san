@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/core"
@@ -44,7 +45,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 			LLM:       &llm.Conn{},
 			Tracker:   todo.NewStore(),
 			Subagent:  subagent.NewRegistry(),
-			Reminder:  agent.NewReminderQueue(),
+			Reminder:  reminder.NewQueue(),
 			sessionID: "sess-1",
 		},
 		conv: chat.NewModel(80),

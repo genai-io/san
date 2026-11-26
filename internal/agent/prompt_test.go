@@ -29,7 +29,7 @@ func TestCheckPromptStagesContextBeforeDecision(t *testing.T) {
 						return hook.HookOutput{Continue: &allow, StopReason: "policy reason", HookSpecificOutput: &hook.HookSpecificOutput{AdditionalContext: extra}}, nil
 					},
 				})
-				r := NewReminderQueue()
+				r := reminder.NewQueue()
 				r.Enqueue("already pending")
 				got, reason := CheckPrompt(t.Context(), "raw prompt", engine, r)
 				if got != blocked || (blocked && reason != "policy reason") || calls != 1 {
@@ -66,7 +66,7 @@ func TestCheckPromptHookBudgetIsNotPromptCancellation(t *testing.T) {
 	promptCtx := t.Context()
 	hookCtx, cancel := context.WithTimeout(promptCtx, time.Millisecond)
 	defer cancel()
-	r := NewReminderQueue()
+	r := reminder.NewQueue()
 	if blocked, reason := CheckPrompt(hookCtx, "hello", engine, r); blocked || reason != "" {
 		t.Fatalf("budget expiry blocked prompt: %v %q", blocked, reason)
 	}

@@ -1,17 +1,15 @@
-package agent
+package reminder
 
 import (
 	"slices"
 	"strings"
-
-	"github.com/genai-io/san/internal/agent/reminder"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // Prepared reports whether this conversation has run initial preparation, not delivery success.
-func (s *ReminderQueue) Prepared() bool {
+func (s *Queue) Prepared() bool {
 	if s == nil {
 		return false
 	}
@@ -21,7 +19,7 @@ func (s *ReminderQueue) Prepared() bool {
 }
 
 // ResetConversation drops obsolete notices and rearms provider context after clear or compaction.
-func (s *ReminderQueue) ResetConversation() {
+func (s *Queue) ResetConversation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pending = nil
@@ -31,7 +29,7 @@ func (s *ReminderQueue) ResetConversation() {
 
 // RestoreHistory primes dedup from the latest block per registered provider in
 // active user messages. Historical text is never queued; PrepareInput rerenders.
-func (s *ReminderQueue) RestoreHistory(messages []core.Message) {
+func (s *Queue) RestoreHistory(messages []core.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prepared = false
@@ -51,7 +49,7 @@ func (s *ReminderQueue) RestoreHistory(messages []core.Message) {
 			if part.Type != ai.BlockText {
 				continue
 			}
-			for _, block := range reminder.Blocks(part.Text) {
+			for _, block := range Blocks(part.Text) {
 				if known[block.Source] {
 					s.emitted[block.Source] = strings.Clone(block.Text)
 				}
@@ -62,13 +60,13 @@ func (s *ReminderQueue) RestoreHistory(messages []core.Message) {
 
 // PrepareInput emits initial context once, then drains notices into separate text blocks.
 // A rejected input must retain the returned message.
-func (s *ReminderQueue) PrepareInput(msg core.Message) core.Message {
+func (s *Queue) PrepareInput(msg core.Message) core.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.prepared {
 		s.requeueSystemRemindersLocked()
 		s.prepared = true
 	}
-	msg.Content = reminder.AppendBlocks(msg.Content, s.drainLocked()...)
+	msg.Content = AppendBlocks(msg.Content, s.drainLocked()...)
 	return msg
 }

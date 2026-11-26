@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/app/tui/input"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/hook"
@@ -48,7 +49,7 @@ func extensionReloadModel(t *testing.T, cwd string) *model {
 	svc := services{
 		Setting: setting.Default(), Skill: skill.Default(), Command: command.Default(),
 		Subagent: subagent.Default(), MCP: mcp.DefaultManager(), Plugin: plugin.Default(), Persona: persona.Default(),
-		Agent: &agent.Runtime{}, Tool: tool.NewRegistry(), Reminder: agent.NewReminderQueue(),
+		Agent: &agent.Runtime{}, Tool: tool.NewRegistry(), Reminder: reminder.NewQueue(),
 		Hook: hook.NewEngine(setting.NewData(), "", cwd, ""),
 	}
 	m := &model{env: env{CWD: cwd}, services: svc, learnedStores: newLearnedStoreContext(cwd, svc.Setting)}

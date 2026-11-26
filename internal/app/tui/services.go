@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/agent/reminder"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/flow"
@@ -44,7 +45,7 @@ type services struct {
 	Plugin       *plugin.Registry
 	Agent        *agent.Runtime
 	Persona      *persona.Registry
-	Reminder     *agent.ReminderQueue
+	Reminder     *reminder.Queue
 
 	// AutoSkill owns the reviewer for the current conversation session.
 	AutoSkill AutoSkillServices
@@ -79,6 +80,6 @@ func newServices() services {
 		Plugin:       plugin.Default(),
 		Agent:        agent.Default(),
 		Persona:      persona.Default(),
-		Reminder:     agent.NewReminderQueue(),
+		Reminder:     reminder.NewQueue(),
 	}
 }
