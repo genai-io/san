@@ -27,7 +27,6 @@ func agentSchema(agentCatalog string) core.ToolSchema {
 		sb.WriteString("\n\nAfter deciding to delegate, use name to select a predefined agent or omit it for the default Agent. Catalog matches describe suitability, not invocation requirements.\n\n")
 	}
 	sb.WriteString("Brief the agent with only task-local context: the goal, relevant paths, constraints, and known findings. Include the validation plan in the brief. Do not retry permission-denied commands; report the failed tool and reason to the parent.\n\n")
-	sb.WriteString("Choose the smallest tool selection that supports both the task and its validation. Use allow_tools: [] for analysis that needs only the brief. Tool selection does not grant permission.\n\n")
 	sb.WriteString("When delegating multiple independent tasks, launch them concurrently. For new work, use foreground execution when you need the result to proceed, and background execution when you can continue independent work. Do not duplicate delegated work. Verify the result before reporting it.\n\n")
 	sb.WriteString("Use SendMessage with the returned Task ID for follow-up; it keeps the original session and policy. Check uncertain side effects before retrying failed work.")
 
@@ -55,11 +54,11 @@ var agentToolParameters = map[string]any{
 		},
 		"allow_tools": map[string]any{
 			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
-			"description": "Select only the tools the brief needs, by exact case-sensitive name (for example [\"Read\"] for file review). Omit to use the worker's configured tools; [] requests no tools. Selection narrows access; it does not grant permission or override restrictions.",
+			"description": "Select needed tools by exact name. Omit to inherit; [] selects none.",
 		},
 		"deny_tools": map[string]any{
 			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
-			"description": "Exclude tools by exact case-sensitive name, even when also listed in allow_tools. Omit or use [] for no additional exclusions.",
+			"description": "Exclude tools by exact name. Overrides allow_tools.",
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
