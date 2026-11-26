@@ -106,7 +106,7 @@ func (m *model) handleSubscriptionUsageTick(msg subscriptionUsageTick) tea.Cmd {
 	return m.refreshSubscriptionUsage(time.Now())
 }
 
-func (m model) subscriptionUsageLabel() string {
+func (m *model) subscriptionUsageLabel() string {
 	if m.usesCopilot() {
 		return m.copilotQuotaLabel()
 	}

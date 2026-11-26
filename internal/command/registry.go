@@ -48,6 +48,7 @@ func builtinCommands() []Info {
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
 		{Name: "plugin", Description: "Manage plugins (list/install/marketplace/enable/disable/info)"},
 		{Name: "reload-plugins", Description: "Reload plugins and refresh plugin-backed skills, agents, MCP, and hooks"},
+		{Name: "quota", Description: "Show the current model's subscription quota"},
 		{Name: "think", Description: "Toggle provider-native thinking effort"},
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
 		{Name: "flow", Description: "Describe a goal to draft a Flow; review, run and recover saved blueprints"},
@@ -158,10 +159,8 @@ func (s *Registry) Get(name string) (Info, bool) {
 		}
 	}
 	// Check custom commands.
-	for _, cmd := range s.loadAllCustomCommands() {
-		if cmd.FullName() == name || cmd.Name == name {
-			return Info{Name: cmd.FullName(), Description: cmd.Description}, true
-		}
+	if cmd, ok := s.IsCustomCommand(name); ok {
+		return Info{Name: cmd.FullName(), Description: cmd.Description}, true
 	}
 	return Info{}, false
 }
@@ -241,8 +240,14 @@ func (s *Registry) Matching(prefix string) []Info {
 }
 
 func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool) {
-	for _, c := range s.loadAllCustomCommands() {
-		if c.FullName() == cmd || c.Name == cmd {
+	commands := s.loadAllCustomCommands()
+	for _, c := range commands {
+		if c.FullName() == cmd {
+			return &c, true
+		}
+	}
+	for _, c := range commands {
+		if c.Name == cmd {
 			return &c, true
 		}
 	}
@@ -401,11 +406,12 @@ func defaultCustomCommand(path, defaultNamespace string) *CustomCommand {
 
 // fuzzyMatch returns true if every character in pattern appears in str in order.
 func fuzzyMatch(str, pattern string) bool {
-	pi := 0
-	for si := 0; si < len(str) && pi < len(pattern); si++ {
-		if str[si] == pattern[pi] {
-			pi++
+	for _, r := range pattern {
+		var found bool
+		_, str, found = strings.Cut(str, string(r))
+		if !found {
+			return false
 		}
 	}
-	return pi == len(pattern)
+	return true
 }

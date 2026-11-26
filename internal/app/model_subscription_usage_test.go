@@ -11,6 +11,16 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
 )
 
+func TestQuotaCommand(t *testing.T) {
+	m := &model{}
+	m.env.CurrentModel = &llm.CurrentModelInfo{Provider: llm.OpenAI, AuthMethod: llm.AuthSubscription}
+	m.subscriptionUsage = subscriptionUsageState{active: true, checked: true, usage: auth.CodexUsage{Windows: []auth.CodexUsageWindow{{Duration: 7 * 24 * time.Hour, UsedPercent: 49}}}}
+	got, cmd, handled := m.executeCommand(t.Context(), "/quota")
+	if !handled || cmd != nil || got != "ChatGPT week 51% left" {
+		t.Fatalf("unexpected quota response: %q, handled=%t", got, handled)
+	}
+}
+
 func TestSubscriptionUsageLifecycle(t *testing.T) {
 	m := &model{}
 	if m.syncSubscriptionUsage() != nil {

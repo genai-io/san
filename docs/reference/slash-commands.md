@@ -6,6 +6,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 
 | Command | Function |
 |---------|----------|
+| `/quota` | Show the current model’s latest subscription quota snapshot (the same reading as the status bar); does not send a model request |
 | `/models` | Select model and manage provider connections |
 | `/persona` | Switch the active persona (alias: `/identity`) |
 | `/clear` | Clear chat history |

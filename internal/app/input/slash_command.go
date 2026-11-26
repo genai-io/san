@@ -78,7 +78,8 @@ type SlashCommandEnv struct {
 	GetGoal func() string
 	// ContextUsage measures what currently occupies the model's context
 	// window. It lives on the model because it reads the live agent session.
-	ContextUsage func() conv.ContextUsage
+	ContextUsage      func() conv.ContextUsage
+	SubscriptionUsage func() string
 
 	// Model-level action callbacks. These compose multiple services or
 	// touch UI state on `m`, so commands invoke them via the model.
@@ -125,16 +126,25 @@ func NewSlashCommandController(env SlashCommandEnv) SlashCommandController {
 
 func builtinCommandHandlers() map[string]slashCommandHandler {
 	return map[string]slashCommandHandler{
-		"models":         (*SlashCommandController).handleModelCommand,
-		"clear":          (*SlashCommandController).handleClearCommand,
-		"fork":           (*SlashCommandController).handleForkCommand,
-		"resume":         (*SlashCommandController).handleResumeCommand,
-		"history":        (*SlashCommandController).handleHistoryCommand,
-		"tasks":          (*SlashCommandController).handleTasksCommand,
-		"help":           (*SlashCommandController).handleHelpCommand,
-		"tools":          (*SlashCommandController).handleToolCommand,
-		"skills":         (*SlashCommandController).handleSkillCommand,
-		"agents":         (*SlashCommandController).handleAgentCommand,
+		"models":  (*SlashCommandController).handleModelCommand,
+		"clear":   (*SlashCommandController).handleClearCommand,
+		"fork":    (*SlashCommandController).handleForkCommand,
+		"resume":  (*SlashCommandController).handleResumeCommand,
+		"history": (*SlashCommandController).handleHistoryCommand,
+		"tasks":   (*SlashCommandController).handleTasksCommand,
+		"help":    (*SlashCommandController).handleHelpCommand,
+		"tools":   (*SlashCommandController).handleToolCommand,
+		"skills":  (*SlashCommandController).handleSkillCommand,
+		"agents":  (*SlashCommandController).handleAgentCommand,
+		"quota": func(c *SlashCommandController, _ context.Context, args string) (string, tea.Cmd, error) {
+			if strings.TrimSpace(args) != "" {
+				return "Usage: /quota", nil, nil
+			}
+			if label := c.env.SubscriptionUsage(); label != "" {
+				return label, nil, nil
+			}
+			return "No subscription quota available for the current model.", nil, nil
+		},
 		"context":        (*SlashCommandController).handleContextCommand,
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
