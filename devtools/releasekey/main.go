@@ -1,5 +1,5 @@
 // Command releasekey creates and uses the release signing key that
-// internal/autoupdate verifies releases against.
+// internal/upgrade verifies releases against.
 //
 //	go run ./devtools/releasekey gen <keyfile>   write a new private key to keyfile (mode 0600) and print its public key
 //	go run ./devtools/releasekey sign <file>     write <file>.sig, signed with $SAN_RELEASE_SIGNING_KEY
@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/genai-io/san/internal/autoupdate"
+	"github.com/genai-io/san/internal/upgrade"
 )
 
 func main() {
@@ -60,8 +60,8 @@ func signFile(path string) error {
 	if err != nil {
 		return err
 	}
-	sig := autoupdate.Sign(priv, data)
-	if _, err := autoupdate.VerifyChecksums(autoupdate.ReleasePublicKey(), data, sig); err != nil {
+	sig := upgrade.Sign(priv, data)
+	if _, err := upgrade.VerifyChecksums(upgrade.ReleasePublicKey(), data, sig); err != nil {
 		return err
 	}
 	return os.WriteFile(path+".sig", sig, 0o644)

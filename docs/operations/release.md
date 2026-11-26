@@ -18,7 +18,7 @@ workflow signs it with the ed25519 key in the `SAN_RELEASE_SIGNING_KEY`
 repository secret and publishes `SHA256SUMS` and `SHA256SUMS.sig` with the
 release. `san update` and the background auto-update refuse an archive unless
 the signature verifies against the public key built into the binary
-(`releasePublicKeyBase64` in `internal/autoupdate/verify.go`) and the archive
+(`releasePublicKeyBase64` in `internal/upgrade/verify.go`) and the archive
 hashes to the listed sum.
 
 `releasekey sign` checks its own signature against that built-in key before

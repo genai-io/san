@@ -1,4 +1,4 @@
-// Package autoupdate replaces the running san binary with a newer GitHub
+// Package upgrade replaces the running san binary with a newer GitHub
 // release. The running process is never touched: the new binary is downloaded
 // beside the old one and swapped in by rename, so a session keeps running on
 // the version it started with and the next launch picks up the new one.
@@ -6,7 +6,7 @@
 // Two callers share it: `san update` (interactive, with a progress bar, works
 // wherever the binary lives) and the TUI's background check at startup
 // (silent, only for a binary in InstallDir, reports through the status line).
-package autoupdate
+package upgrade
 
 import (
 	"archive/tar"

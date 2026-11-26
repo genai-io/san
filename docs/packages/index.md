@@ -13,6 +13,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 | [core](core.md) | Shared agent contracts |
 | [cron](cron.md) | Scheduled and recurring tasks |
 | [hook](hook.md) | Lifecycle hooks |
+| [upgrade](upgrade.md) | Verified release checks and binary replacement |
 | [infrastructure](infrastructure.md) | Logging, secrets, files, and process helpers |
 | [inspector](inspector.md) | Transcript inspection and replay |
 | [llm](llm.md) | Models and providers |

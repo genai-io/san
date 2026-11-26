@@ -7,14 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/genai-io/san/internal/autoupdate"
+	"github.com/genai-io/san/internal/upgrade"
 )
 
 func runUpdate(ctx context.Context) error {
 	current := strings.TrimPrefix(version, "v")
 	fmt.Printf("Current version: v%s\n", current)
 
-	latest, err := autoupdate.Latest(ctx)
+	latest, err := upgrade.Latest(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check for updates: %w", err)
 	}
@@ -35,7 +35,7 @@ func runUpdate(ctx context.Context) error {
 
 	fmt.Printf("Downloading v%s ...\n", latest)
 	bar := &progressBar{}
-	err = autoupdate.Install(ctx, latest, bar.report)
+	err = upgrade.Install(ctx, latest, bar.report)
 	bar.clear()
 	if err != nil {
 		return err

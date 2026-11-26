@@ -1,4 +1,4 @@
-package autoupdate
+package upgrade
 
 import (
 	"archive/tar"

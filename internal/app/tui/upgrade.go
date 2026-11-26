@@ -7,9 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/autoupdate"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/upgrade"
 )
 
 // updateInstalledMsg carries the release the background auto-update swapped in
@@ -41,26 +41,26 @@ func autoUpdate(current string, enabled bool) tea.Cmd {
 				msg = nil
 			}
 		}()
-		autoupdate.Cleanup()
+		upgrade.Cleanup()
 
 		// Everything decidable without the network is decided before it: a
 		// binary outside the installer's dir is never ours to replace, and a
 		// dev build could never pass Newer.
-		if !enabled || setting.Getenv("DISABLE_AUTOUPDATE") != "" || !autoupdate.Managed() || !autoupdate.IsRelease(current) {
+		if !enabled || setting.Getenv("DISABLE_AUTOUPDATE") != "" || !upgrade.Managed() || !upgrade.IsRelease(current) {
 			return nil
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
-		latest, err := autoupdate.Latest(ctx)
+		latest, err := upgrade.Latest(ctx)
 		if err != nil {
 			log.Logger().Debug("background auto-update check failed", zap.Error(err))
 			return nil
 		}
-		if !autoupdate.Newer(latest, current) {
+		if !upgrade.Newer(latest, current) {
 			return nil
 		}
-		if err := autoupdate.Install(ctx, latest, nil); err != nil {
+		if err := upgrade.Install(ctx, latest, nil); err != nil {
 			log.Logger().Warn("background auto-update failed", zap.String("release", latest), zap.Error(err))
 			return updateFailedMsg{version: latest, err: err}
 		}

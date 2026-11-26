@@ -12,9 +12,9 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, host dispatch and service wiring. |
 | `app` | Packages beneath `internal/app` (directory only) | `tui` owns the interactive shell, `cli` print execution and `acp` the protocol host. |
-| `feature` | Business-domain packages: agent (including agent/mail), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: agent (including agent/mail), autopilot, aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, reminder, judge, image, upgrade | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
-| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}`, `internal/autoupdate` | Stateless helpers usable by any layer above. |
+| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}` | Stateless helpers usable by any layer above. |
 
 `internal/image` is provisionally classified as `feature` because it
 currently produces `core.Image` values directly. The pure-infra
@@ -60,7 +60,8 @@ not by lower layers importing higher layers.
 6. Tool implementation packages under `internal/tool/*` should remain adapters.
    Complex behavior belongs in the feature package that owns the capability.
 7. Infrastructure helpers (`log`, `secret`, `markdown`, `filecache`, `proc`,
-   `confdir`, `atomicfile`, `autoupdate`) should not import feature packages.
+   `confdir`, `atomicfile`) should not import feature packages. The low-level
+   `internal/upgrade` feature must not import other feature packages either.
 8. Provider implementations should register with `internal/llm`; product logic
    should not depend directly on concrete provider packages.
 

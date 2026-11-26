@@ -91,9 +91,9 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | --- | --- |
 | `cmd` | `cmd/*` |
 | `app` | Packages beneath `internal/app` (no root package) |
-| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, search, worktree, setting, reminder, aside, reflect/{memory,skill,recap}, image) |
+| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, search, worktree, setting, reminder, aside, reflect/{memory,skill,recap}, image, upgrade) |
 | `core` | `internal/core` |
-| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}`, `internal/autoupdate` |
+| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}` |
 
 Full membership list and allowed-edge rules live in
 [`reference/dependency-rules.md`](../reference/dependency-rules.md) and

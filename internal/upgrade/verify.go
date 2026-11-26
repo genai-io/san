@@ -1,4 +1,4 @@
-package autoupdate
+package upgrade
 
 // A release ships SHA256SUMS — one "<hex>  <asset>" line per archive — and
 // SHA256SUMS.sig, the base64 ed25519 signature over that file that

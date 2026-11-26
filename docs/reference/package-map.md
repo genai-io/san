@@ -42,6 +42,7 @@ Agent, persistence, and orchestration:
 | --- | --- | --- |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
 | `internal/agent/mail` | `feature` | Routes addressed messages and task completions between agents; independent of the agent runtime. |
+| `internal/autopilot` | `feature` | Mission steering: interpret turn outcomes and decide whether to continue, finish, or hand control back. The TUI applies the result to the live session. |
 | `internal/aside` | `feature` | Focused model calls outside the main conversation, with request snapshots and session-owned recording. |
 | `internal/reflect/memory` | `feature` | Repository memory updates, change validation, and note storage. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
@@ -78,6 +79,7 @@ Configuration and supporting capabilities:
 | `internal/reminder` | `feature` | Runtime reminder queue and provider integration. |
 | `internal/judge` | `feature` | LLM judge for gray-zone permissions and bash prompts. |
 | `internal/image` | `feature` | Image handling + `core.Image` adapter; provisional — see note in `dependency-rules.md`. |
+| `internal/upgrade` | `feature` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |
 
 ## Infrastructure Helpers
 
@@ -90,7 +92,6 @@ Configuration and supporting capabilities:
 | `internal/infra/proc` | `infrastructure` | Cross-platform process-group / signal helpers (Unix/Windows variants) and the OS URL launcher. |
 | `internal/infra/confdir` | `infrastructure` | Shared `.san` configuration directory naming, and scanning config folders through symlinks. |
 | `internal/infra/atomicfile` | `infrastructure` | Temp-file-then-rename file replacement, so a reader never sees a half-written file. |
-| `internal/autoupdate` | `infrastructure` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |
 
 ## Ownership Rule
 
