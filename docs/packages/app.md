@@ -322,8 +322,8 @@ queued, and cancellation or a failed send clears the spinner.
 During inference and between steps, `✦ On it · 17s` can appear on its own row
 above the composer's top divider, never in the live transcript. It is a fallback: visible
 queued prompts or task indicators make the generic label unnecessary. Genuine
-silence after 30 seconds shows `Waiting for model`; actual retries show their
-attempt number, even when other indicators are visible. Queued prompts stay
+silence after 30 seconds shows `Waiting for model` only when Tasks is not shown.
+Actual retries show their attempt number even alongside Tasks. Queued prompts stay
 above Tasks and the divider. They have no heading; `+N more` counts only hidden
 messages, inline on short screens. Approval and question panels suppress the
 foreground status. Tool-input progress tracks liveness internally without
