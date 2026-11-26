@@ -67,9 +67,10 @@ func (m *Model) SetAgentIdentitySession(id string) {
 }
 
 type agentIdentityInput struct {
-	Name   string `json:"name"`
-	To     string `json:"to"`
-	TaskID string `json:"task_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	To          string `json:"to"`
+	TaskID      string `json:"task_id"`
 }
 
 func parseAgentIdentityInput(input string) agentIdentityInput {
@@ -98,7 +99,11 @@ func (m *Model) reserveAgentCalls(calls []core.ToolCall) {
 		if call.Name != tool.ToolAgent {
 			continue
 		}
-		s.put(call.ID, AgentDisplay{ID: call.ID, Name: args.Name, ColorKey: s.next})
+		name := strings.TrimSpace(args.Name)
+		if name == "" {
+			name = strings.Join(strings.Fields(args.Description), " ")
+		}
+		s.put(call.ID, AgentDisplay{ID: call.ID, Name: name, ColorKey: s.next})
 		s.next = (s.next + 1) % len(memberPalette)
 	}
 }

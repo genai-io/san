@@ -807,7 +807,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 			identity, identified := params.AgentIdentities[tc.ID]
 			if identified {
 				heading.Description = agentDescription(identity.Name, heading.Description)
-				heading.Prompt = agentDescription(identity.Name, heading.Prompt)
+				if agent.Description != "" {
+					heading.Prompt = ""
+				} else {
+					heading.Prompt = agentDescription(identity.Name, heading.Prompt)
+				}
 				heading.Name = AgentDisplayName(identity, params.AgentIdentities)
 				color = agentIdentityColor(identity, params.AgentColors)
 			}

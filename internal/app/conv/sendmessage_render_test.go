@@ -7,7 +7,26 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
+
+func TestUnnamedAgentMessageUsesLaunchDescription(t *testing.T) {
+	launch := core.ToolCall{ID: "launch", Name: "Agent", Input: `{"description":"Audit blueprint editing workflows","prompt":"Long internal instructions"}`}
+	m := NewModel(100)
+	m.Messages = []core.ChatMessage{
+		{ToolCalls: []core.ToolCall{launch}},
+		{ToolResult: &core.ToolResult{ToolCallID: launch.ID}, ToolDetails: toolresult.AgentDetails{Identity: toolresult.AgentIdentity{ID: "b3dc75f4"}}},
+	}
+	params := ToolCallsParams{Width: 100, ToolCalls: []core.ToolCall{launch}, AgentIdentities: m.AgentDisplaySnapshot()}
+	if got := ansi.Strip(RenderToolCalls(params)); !strings.HasPrefix(got, "● Audit blueprint editing workflows\n") {
+		t.Fatalf("unexpected launch heading: %q", got)
+	}
+	params.ToolCalls = []core.ToolCall{{ID: "mail", Name: tool.ToolSendMessage, Input: `{"to":"b3dc75f4","subject":"Continue across progress checkpoints"}`}}
+	params.ResultMap = map[string]ToolResultData{"mail": {Content: toolresult.SendMessageQueuedPrefix + "task b3dc75f4"}}
+	if got := ansi.Strip(RenderToolCalls(params)); got != "● To Audit blueprint editing workflows: Continue across progress checkpoints · Queued\n" {
+		t.Fatalf("unexpected message heading: %q", got)
+	}
+}
 
 func TestSendMessageBrokerReceiptIsInline(t *testing.T) {
 	call := core.ToolCall{ID: "message", Name: tool.ToolSendMessage, Input: `{"to":"worker-1","subject":"Finalize metadata\nbefore publication"}`}
