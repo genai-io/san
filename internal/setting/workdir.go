@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 )
 
 // isInWorkingDirectory checks if a file path is within any of the allowed

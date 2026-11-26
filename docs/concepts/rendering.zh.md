@@ -97,14 +97,14 @@ Tab 和 Shift-Tab 只移动焦点，绝不立即授权。Esc 在子页面返回�
 页面拒绝。Worker 审批保持 `OnceOnly`；持久授权以精确 `AllowRules` 写入
 `.san/settings.local.json`，不能隐式扩大信任范围。
 
-入口是根 app 的交互路由和 `/tasks` 命令；`internal/app/input` 负责提示框，
-`internal/app/conv` 负责结果渲染。回归覆盖位于相应的 input、task-viewer、
+入口是根 app 的交互路由和 `/tasks` 命令；`internal/app/tui/input` 负责提示框，
+`internal/app/tui/transcript` 负责结果渲染。回归覆盖位于相应的 input、task-viewer、
 interaction 和 conversation-renderer 测试中。根层集成组合这些只读显示组件时
 必须保持上述契约。
 
 ## View() 组合出重绘区
 
-[`internal/app/view.go`](../../internal/app/view.go) 里的
+[`internal/app/tui/view.go`](../../internal/app/tui/view.go) 里的
 `(*model).View()` 每次 `Update` 后都跑一遍，返回重绘区那串字符。
 
 ```go
@@ -118,7 +118,7 @@ func (m *model) View() tea.View {
 
 **没有输入参数**——这是 Bubble Tea 的约定。View 要读的全部状态都来自
 `m` 的字段。它派发的子渲染函数（`RenderActiveContent` 等）接收
-`conv.RenderContext` struct，这个 struct 是 `m.messageRenderParams()`
+`transcript.RenderContext` struct，这个 struct 是 `m.messageRenderParams()`
 每次调用时从 `m` 的字段组装出来的。
 
 View 从四种布局里挑一种，自顶向下：
@@ -132,7 +132,7 @@ View()
   3. 有 modal 活动？           ──► modal.Render() 夹在分隔符之间
                                    （Question modal、Approval modal）
   4. 否则（普通模式）         ──► renderNormalView()
-        ├─ chat section        ── 最近输出 + conv.RenderActiveContent
+        ├─ chat section        ── 最近输出 + transcript.RenderActiveContent
         ├─ 留白                ── 短对话从顶部向下增长，位置稳定
         ├─ 活动状态            ── 任务、压缩和自学习进度
         ├─ 队列预览            ── 流式期间排队的输入
@@ -190,7 +190,7 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 
 ## Markdown 走 MDRenderer
 
-[`internal/app/conv/markdown.go`](../../internal/app/conv/markdown.go)
+[`internal/app/tui/transcript/markdown.go`](../../internal/app/tui/transcript/markdown.go)
 包了 [glamour](https://github.com/charmbracelet/glamour)。这些行为是
 有意为之，不是 glamour 默认值：
 
@@ -209,7 +209,7 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 
 ## 工具调用 + inline 结果
 
-[`internal/app/conv/tool_render.go`](../../internal/app/conv/tool_render.go)
+[`internal/app/tui/transcript/tool_render.go`](../../internal/app/tui/transcript/tool_render.go)
 渲染 assistant 下面的工具调用块：
 
 ```
@@ -291,7 +291,7 @@ CommittedCount:  1   （只有 user 是已 commit）
 
 ```
 View → renderNormalView
-     → conv.RenderActiveContent(ctx)
+     → transcript.RenderActiveContent(ctx)
        ctx.InlinedResults = PrecomputeInlinedResults(Messages)
          = {} （还没有 ToolCalls）
        → RenderMessageRange(ctx, startIdx=1, endIdx=2, includeSpinner=true)
@@ -417,7 +417,7 @@ for i in CommittedCount..len(Messages):    // i = 1, 2
   msg = Messages[i]
   if checkReady && i == StreamMessageIndex() && Stream.Active:
       break                                  // Stream.Active 已经是 false
-  rendered = conv.RenderSingleMessage(ctx, i)
+  rendered = transcript.RenderSingleMessage(ctx, i)
     i=1: RenderMessageAt(ctx, 1, false)      // 不再 streaming → 不画光标
          返回和 Step 4 同样的 assistant + 工具块
     i=2: msg.ToolResult != nil
@@ -444,7 +444,7 @@ CommittedCount = 3                           // 追上
 ## Resize 行为
 
 **已经 commit 到 scrollback 的内容对我们来说是不可变的。**
-[`internal/app/update_resize.go`](../../internal/app/update_resize.go)
+[`internal/app/tui/update_resize.go`](../../internal/app/tui/update_resize.go)
 里的 `handleWindowResize`：更新 `m.env.Width / Height`，丢掉冻结的打印帧
 （否则 `insertAbove` 会在旧几何下把实时行滚进历史），按新宽度重建 markdown
 渲染器，然后交给 Bubble Tea 重画底部条。它**不会**重新打印已 commit 的消息：
@@ -497,13 +497,13 @@ Edit 和 Write 的差异结果遵守查看器的展开状态；原生终端历�
 
 | 关注点 | 文件 |
 | --- | --- |
-| `View()` 组合 | [`internal/app/view.go`](../../internal/app/view.go) |
-| 单消息渲染 + 配对 | [`internal/app/conv/view.go`](../../internal/app/conv/view.go) |
-| User / Assistant / Notice 渲染 | [`internal/app/conv/message.go`](../../internal/app/conv/message.go) |
-| Markdown 渲染 | [`internal/app/conv/markdown.go`](../../internal/app/conv/markdown.go) |
-| 工具调用 / 结果渲染 | [`internal/app/conv/tool_render.go`](../../internal/app/conv/tool_render.go) |
-| Compact / 智能体活动 / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go)、[`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go)、[`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
-| `MDRenderer` 生命周期 | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
-| Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
-| 历史查看 | [`internal/app/model_history.go`](../../internal/app/model_history.go)、[`internal/app/input/transcript_view.go`](../../internal/app/input/transcript_view.go) |
-| Resize | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
+| `View()` 组合 | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |
+| 单消息渲染 + 配对 | [`internal/app/tui/transcript/view.go`](../../internal/app/tui/transcript/view.go) |
+| User / Assistant / Notice 渲染 | [`internal/app/tui/transcript/message.go`](../../internal/app/tui/transcript/message.go) |
+| Markdown 渲染 | [`internal/app/tui/transcript/markdown.go`](../../internal/app/tui/transcript/markdown.go) |
+| 工具调用 / 结果渲染 | [`internal/app/tui/transcript/tool_render.go`](../../internal/app/tui/transcript/tool_render.go) |
+| Compact / 智能体活动 / tracker | [`internal/app/tui/transcript/compact.go`](../../internal/app/tui/transcript/compact.go)、[`agent_to_ui.go`](../../internal/app/tui/transcript/agent_to_ui.go)、[`tracker_view.go`](../../internal/app/tui/transcript/tracker_view.go) |
+| `MDRenderer` 生命周期 | [`internal/app/tui/transcript/model.go`](../../internal/app/tui/transcript/model.go) |
+| Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
+| 历史查看 | [`internal/app/tui/model_history.go`](../../internal/app/tui/model_history.go)、[`internal/app/tui/input/transcript_view.go`](../../internal/app/tui/input/transcript_view.go) |
+| Resize | [`internal/app/tui/update_resize.go`](../../internal/app/tui/update_resize.go) |

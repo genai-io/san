@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -68,9 +68,9 @@ func TestBackgroundAgentShowsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notices := make(chan broker.Message, 1)
-	broker.Register(broker.Main, func(message broker.Message) bool { notices <- message; return true })
-	t.Cleanup(func() { broker.Unregister(broker.Main) })
+	notices := make(chan mail.Message, 1)
+	mail.Register(mail.Main, func(message mail.Message) bool { notices <- message; return true })
+	t.Cleanup(func() { mail.Unregister(mail.Main) })
 	started := make(chan struct{})
 	blocked := func(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
 		return func(yield func(ai.Delta, error) bool) {

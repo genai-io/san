@@ -1,0 +1,303 @@
+// Inbox drain and prompt injection. After every agent turn ends we drain (in
+// priority order) queued user messages, cron-fired prompts, async-hook
+// continuations, and the main-loop notice buffer (broker messages routed to
+// "main"). Each drained item is converted to a notice + optional re-send to the
+// agent. Notice delivery is not limited to the turn boundary — see notify.go
+// for when each seam applies. Also handles the Stop hook result that gates
+// session persistence.
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/infra/log"
+)
+
+func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
+	if msg.pending == nil || msg.pending != m.pendingStopHook {
+		return nil
+	}
+	m.pendingStopHook = nil
+	if msg.pending.session != m.services.Session || msg.pending.outbox != m.AgentOutbox() ||
+		m.conv.Stream.Active || m.pendingMessages.Held() || m.pendingMessages.Len() > 0 || m.userInput.Queue.Len() > 0 {
+		return nil
+	}
+	decision := agent.StopDecision{Blocked: msg.Blocked, Reason: msg.Reason, Err: msg.Err}
+	continuation, err := decision.Finish(m.appendTurnState)
+	if err != nil {
+		if msg.Err != nil {
+			m.conv.AddNotice("Hook outcome was not saved: " + err.Error())
+		}
+		return nil // appendTurnState surfaces its own recording failure.
+	}
+	if continuation != "" {
+		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: continuation}).ToMessage()
+		return m.sendToAgent(pendingMessage{Message: providerMsg})
+	}
+	var cmds []tea.Cmd
+	if cmd := m.startPromptSuggestion(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if cmd := m.prepareRecap(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if msg.Result.StopReason != "" && msg.Result.StopReason != core.StopEndTurn {
+		m.conv.AddNotice(fmt.Sprintf("Agent stopped: %s", msg.Result.StopReason))
+		if msg.Result.StopDetail != "" {
+			m.conv.AddNotice(msg.Result.StopDetail)
+		}
+	}
+	if len(cmds) > 0 {
+		return tea.Batch(cmds...)
+	}
+	return nil
+}
+
+// releaseQueuedMessage hands the next queued user message to the running agent
+// and returns (cmd, true) when one was released, or (nil, false) when the queue
+// is empty or its head is under edit (SelectIdx 0 — dispatching would send
+// pre-edit text and orphan the user's changes). A text-only model receives the
+// queued images' paths inlined into the content instead of the attachments.
+//
+// The message is shown in the conversation now, at release time, so it never
+// vanishes between the queue and the flow; the agent addresses it once it ingests
+// it a step or a turn later, and the agent's echo of it is ignored (see conv.applyAgentEvent).
+// Shared by the step-boundary (OnStepEnd) and turn-boundary
+// (drainTurnQueues) drains.
+func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
+	if m.flowMainBlocksQueue() {
+		return nil, false
+	}
+	if !m.pendingMessages.CanDeliver(false) || m.conv.Compact.Active || m.userInput.Queue.SelectIdx == 0 {
+		return nil, false
+	}
+	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) {
+		if input.IsSideCommand(head.Content) || input.IsFlowStopCommand(head.Content) {
+			// Side commands stay local even when a queued edit turns into one.
+			m.userInput.Queue.Dequeue()
+			text, cmd, _ := m.executeCommand(context.Background(), head.Content)
+			if text != "" {
+				m.conv.AddNotice(text)
+			}
+			next, _ := m.releaseQueuedMessage()
+			return tea.Batch(append(m.CommitMessages(), cmd, next)...), true
+		}
+		// Session-changing commands must wait for the turn to finish, then
+		// use the normal admission and command dispatch instead of the inbox.
+		if m.conv.Stream.Active {
+			return nil, false
+		}
+		return m.sendNextQueuedInputIfIdle(), true
+	}
+	if m.flowMainWriterActive() {
+		return m.releaseFlowMainStepInput()
+	}
+	if head, ok := m.userInput.Queue.At(0); ok && head.NeedsPromptAdmission {
+		if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+			m.pendingMessages.Hold(nil)
+			m.conv.AddNotice("Queued input was blocked: " + reason)
+			return tea.Batch(m.CommitMessages()...), false
+		}
+	}
+	item, ok := m.userInput.Queue.Dequeue()
+	if !ok {
+		return nil, false
+	}
+	m.userInput.AppendSubmission(m.env.CWD, item.Content)
+	// Process image references (leading image paths, @-references, bare paths)
+	// just like the normal submit path does — the raw queued content hasn't been
+	// through ProcessImageRefs yet. On failure this message still goes out: it
+	// runs mid-stream, so there is no textarea to hand it back to (the user is
+	// typing the next one there). Send what resolved.
+	content, fileImages, err := input.ProcessImageRefs(m.env.CWD, item.Content)
+	if err != nil {
+		m.conv.AddNotice("Image error: " + err.Error())
+	}
+	// Keep the images in their original text positions for both display and
+	// the native message. References loaded from disk share this path with
+	// pictures already parked on the queued item.
+	content = strings.TrimSpace(core.InlineImageTokenRe.ReplaceAllString(content, ""))
+	displayContent, images := input.ImageDisplay(m.env.CWD, item.Content, item.Images, fileImages)
+	// Text-only models can't receive image parts; inline each image's path so
+	// the model can decide how to use it (e.g. via an MCP tool).
+	content = m.describeImages(content, images)
+	chat := m.conv.Append(core.ChatMessage{
+		Role:           core.ChatUser,
+		Content:        content,
+		DisplayContent: displayContent,
+		Images:         images,
+	})
+	message, _ := chat.ToMessage()
+	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(pendingMessage{Message: message, FromUser: true}))...), true
+}
+
+func (m *model) drainTurnQueues() (tea.Cmd, bool) {
+	if m.flowMainCapturing() {
+		return nil, true
+	}
+	var cmds []tea.Cmd
+	if head, ok := m.userInput.Queue.At(0); ok && m.isSlashCommand(head.Content) && !m.conv.Stream.Active {
+		cmd, waiting := m.sendQueuedInputs(false)
+		cmds = append(cmds, cmd)
+		if waiting {
+			return tea.Batch(cmds...), true
+		}
+	} else if cmd, released := m.releaseQueuedMessage(); released {
+		// Ordinary messages still drain one per boundary, each with its own response.
+		log.Logger().Sugar().Debugf("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
+		return cmd, true
+	}
+	if m.userInput.Queue.SelectIdx == 0 {
+		log.Logger().Sugar().Debugf("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
+	}
+
+	if len(m.cronQueue) > 0 {
+		prompt := m.cronQueue[0]
+		m.cronQueue = m.cronQueue[1:]
+		return tea.Batch(append(cmds, m.injectCronPrompt(prompt))...), true
+	}
+
+	if m.asyncHookQueue != nil {
+		if item, ok := m.asyncHookQueue.pop(); ok {
+			return tea.Batch(append(cmds, m.injectAsyncHookContinuation(item))...), true
+		}
+	}
+
+	return tea.Batch(cmds...), false
+}
+
+// injectAsNewTurn delivers a notice with no turn running: the line is shown and the
+// body, if any, starts a fresh turn.
+func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
+	message := m.showNoticeLine(n)
+	if n.Content == "" {
+		return tea.Batch(m.CommitMessages()...)
+	}
+	return m.submit(n.input(message))
+}
+
+func (m *model) showNoticeLine(n mainNotice) core.Message {
+	message := core.UserMessage(n.Content, nil)
+	if n.FromAgent && n.Content != "" {
+		// The envelope is already recorded by the agent. Render that same row
+		// live rather than persisting a second notice for resume to repeat.
+		message.ID = m.conv.AppendAgentMessage(n.Content).ID
+	} else if n.FromAgent && n.Display != "" {
+		m.conv.AddAgentNotice(n.Display)
+	} else if n.Display != "" {
+		if n.recorded {
+			m.addRecordedNotice(core.ChatMessage{Content: n.Display})
+		} else {
+			m.conv.AddNotice(n.Display)
+		}
+	}
+	if n.FinishedTaskID != "" {
+		if m.taskCompletionsShown == nil {
+			m.taskCompletionsShown = make(map[string]bool)
+		}
+		m.taskCompletionsShown[taskCompletionKey(n.FinishedTaskID, n.FinishedAttempt)] = true
+	}
+	return message
+}
+
+func taskCompletionKey(id string, attempt int) string {
+	if attempt <= 0 {
+		return id
+	}
+	return fmt.Sprintf("%s#%d", id, attempt)
+}
+
+func (m *model) taskCompletionShown(id string) bool {
+	if id == "" || m.services.Task == nil {
+		return true
+	}
+	// Resumed records whose workers are gone have no live notice to wait for.
+	worker, known := m.services.Task.Get(id)
+	if !known {
+		return true
+	}
+	return m.taskCompletionsShown[taskCompletionKey(id, worker.GetStatus().Attempt)]
+}
+
+// mainNoticeMsg wraps one Source-2 notice for the Update loop.
+// Counterpart to AgentOutboxMsg for the agent outbox chan.
+type mainNoticeMsg struct{ notice mainNotice }
+
+// awaitMainNotice blocks until one notice arrives on the chan, then yields a
+// mainNoticeMsg. onMainNotice re-arms after handling.
+func awaitMainNotice(ch <-chan mainNotice) tea.Cmd {
+	return func() tea.Msg {
+		return mainNoticeMsg{notice: <-ch}
+	}
+}
+
+// onMainNotice delivers an arriving notice (see notify.go). Re-arming is
+// unconditional: after the read the chan is empty, so the next firing waits for
+// the next message.
+func (m *model) onMainNotice(n mainNotice) tea.Cmd {
+	return tea.Batch(m.deliverNotice(n), awaitMainNotice(m.mainNotices))
+}
+
+// deliverNotice shows the notice immediately; its content reaches the running
+// agent at the next step boundary (see notify.go).
+func (m *model) deliverNotice(n mainNotice) tea.Cmd {
+	if n.Destination != nil && n.Destination != m.services.Session {
+		return nil
+	}
+	if n.SessionID != "" && n.SessionID != m.sessionID() {
+		return nil
+	}
+	if n.FinishedTaskID != "" {
+		// A completion can wait in the broker/UI queue while the same logical
+		// task starts a new attempt. Do not wake main with obsolete recovery work.
+		if n.FinishedAttempt > 0 && m.services.Task != nil {
+			if worker, known := m.services.Task.Get(n.FinishedTaskID); known && worker.GetStatus().Attempt > n.FinishedAttempt {
+				return nil
+			}
+		}
+		m.refreshTaskViewer()
+	}
+	if !m.conv.Stream.Active {
+		return m.injectAsNewTurn(n)
+	}
+	var send tea.Cmd
+	message := m.showNoticeLine(n)
+	if n.Content != "" { // display-only notices have nothing for the model to read
+		send = m.sendToAgent(n.input(message))
+	}
+	return tea.Batch(append(m.CommitMessages(), send)...)
+}
+
+// injectCronPrompt fires a scheduled cron prompt as if the user had just
+// typed it, but it does not count as a submitted user turn for Recap.
+func (m *model) injectCronPrompt(prompt string) tea.Cmd {
+	m.conv.AddNotice("Scheduled task fired")
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt}).ToMessage()
+	return m.submit(pendingMessage{Message: msg, FromUser: true, Synthetic: true})
+}
+
+// injectAsyncHookContinuation surfaces an async hook's follow-up: the hook
+// pushed one or more context lines + a continuation prompt. They form one
+// displayed and delivered user turn so an already-running agent receives the
+// hook findings as well as the instruction to continue.
+func (m *model) injectAsyncHookContinuation(item asyncHookRewake) tea.Cmd {
+	if item.Notice != "" {
+		m.conv.AddNotice(item.Notice)
+	}
+	parts := item.Context
+	if item.ContinuationPrompt != "" {
+		parts = append(parts, item.ContinuationPrompt)
+	}
+	if len(parts) == 0 {
+		return tea.Batch(m.CommitMessages()...)
+	}
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: strings.Join(parts, "\n\n")}).ToMessage()
+	return m.submit(pendingMessage{Message: msg})
+}

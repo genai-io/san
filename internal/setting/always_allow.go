@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/atomicfile"
+	"github.com/genai-io/san/internal/infra/confdir"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 

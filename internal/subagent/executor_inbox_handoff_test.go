@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -62,7 +62,7 @@ func TestWorkerInboxSealsUntilTaskRetires(t *testing.T) {
 		t.Fatal("cleanup barrier no longer holds the running execution")
 	}
 	before := child.Snapshot()
-	if err := broker.SendErr(broker.Message{To: worker.GetID(), Content: "late instruction"}); !errors.Is(err, broker.ErrInboxClosing) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID(), Content: "late instruction"}); !errors.Is(err, mail.ErrInboxClosing) {
 		t.Fatalf("running worker lost its closing route: %v", err)
 	}
 	after := child.Snapshot()
@@ -71,7 +71,7 @@ func TestWorkerInboxSealsUntilTaskRetires(t *testing.T) {
 	}
 	unblock()
 	pool.Join()
-	if err := broker.SendErr(broker.Message{To: worker.GetID()}); !errors.Is(err, broker.ErrNoRecipient) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID()}); !errors.Is(err, mail.ErrNoRecipient) {
 		t.Fatalf("retired worker retained its route: %v", err)
 	}
 }
@@ -98,7 +98,7 @@ func TestSendMessageContinuesAfterWorkerCleanup(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not reach cleanup")
 	}
-	if err := broker.SendErr(broker.Message{To: worker.GetID()}); !errors.Is(err, broker.ErrInboxClosing) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID()}); !errors.Is(err, mail.ErrInboxClosing) {
 		t.Fatalf("cleanup route = %v, want closing", err)
 	}
 	sender := agenttools.NewSendMessageTool()
@@ -174,7 +174,7 @@ func TestCompletedWorkerCleanupPreservesReplacementRoute(t *testing.T) {
 	var unregister func()
 	calls := 0
 	task.SetLifecycleHandler(&replacementRouteObserver{completed: func(info task.TaskInfo) {
-		unregister = broker.RegisterAccept(info.ID, func(broker.Message) error {
+		unregister = mail.RegisterAccept(info.ID, func(mail.Message) error {
 			calls++
 			return nil
 		})
@@ -190,7 +190,7 @@ func TestCompletedWorkerCleanupPreservesReplacementRoute(t *testing.T) {
 		t.Fatal("completion did not install the replacement route")
 	}
 	defer unregister()
-	if err := broker.SendErr(broker.Message{To: worker.GetID()}); err != nil || calls != 1 {
+	if err := mail.SendErr(mail.Message{To: worker.GetID()}); err != nil || calls != 1 {
 		t.Fatalf("old cleanup removed replacement route: err=%v calls=%d", err, calls)
 	}
 }
@@ -239,8 +239,8 @@ func TestWorkerBuildFailureSealsBeforeCleanup(t *testing.T) {
 		t.Fatal("fixture did not stop before inference in running cleanup")
 	}
 	before := child.Snapshot()
-	err = broker.SendErr(broker.Message{To: worker.GetID(), Content: "must not persist after failed build"})
-	if !errors.Is(err, broker.ErrRejected) || errors.Is(err, broker.ErrInboxClosing) {
+	err = mail.SendErr(mail.Message{To: worker.GetID(), Content: "must not persist after failed build"})
+	if !errors.Is(err, mail.ErrRejected) || errors.Is(err, mail.ErrInboxClosing) {
 		t.Fatalf("failed-build cleanup rejection = %v, want generic rejection", err)
 	}
 	after := child.Snapshot()
@@ -253,7 +253,7 @@ func TestWorkerBuildFailureSealsBeforeCleanup(t *testing.T) {
 	if info.Status != task.StatusFailed || !strings.Contains(info.Error, "unsupported type: chan struct {}") {
 		t.Fatalf("fixture did not trigger catalogue build failure: %+v", info)
 	}
-	if err := broker.SendErr(broker.Message{To: worker.GetID()}); !errors.Is(err, broker.ErrNoRecipient) {
+	if err := mail.SendErr(mail.Message{To: worker.GetID()}); !errors.Is(err, mail.ErrNoRecipient) {
 		t.Fatalf("failed worker retained its route: %v", err)
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -38,11 +38,11 @@ func TestBackgroundInboxReadyBeforeLaunchReturns(t *testing.T) {
 		Prompt: "original task",
 		OnIdentity: func(identity toolresult.AgentIdentity) {
 			for _, text := range []string{"startup one", "startup two"} {
-				if !broker.Send(broker.Message{To: identity.ID, Content: text, SourceSession: parent.ID(), SourceSeq: seq}) {
+				if !mail.Send(mail.Message{To: identity.ID, Content: text, SourceSession: parent.ID(), SourceSeq: seq}) {
 					t.Errorf("message rejected before launch returned: %s", text)
 				}
 			}
-			if broker.Send(broker.Message{To: identity.ID, Content: "invalid source", SourceSession: parent.ID(), SourceSeq: seq + 1000}) {
+			if mail.Send(mail.Message{To: identity.ID, Content: "invalid source", SourceSession: parent.ID(), SourceSeq: seq + 1000}) {
 				t.Error("startup route accepted invalid provenance")
 			}
 			if driver.Calls() != 0 {
@@ -86,7 +86,7 @@ func TestBackgroundInboxReadyBeforeLaunchReturns(t *testing.T) {
 	if sourced != 2 {
 		t.Fatalf("startup provenance recorded %d times, want 2", sourced)
 	}
-	if broker.Send(broker.Message{To: worker.GetID(), Content: "after completion"}) {
+	if mail.Send(mail.Message{To: worker.GetID(), Content: "after completion"}) {
 		t.Fatal("completed worker retained its route")
 	}
 }
@@ -97,14 +97,14 @@ func TestInboxCancelReleasesStartupState(t *testing.T) {
 	route := task.NewID()
 	inbox := newRunInbox(ctx, route, nil)
 	defer inbox.close()
-	if !broker.Send(broker.Message{To: route, Content: "queued before initialization"}) {
+	if !mail.Send(mail.Message{To: route, Content: "queued before initialization"}) {
 		t.Fatal("startup inbox rejected mail")
 	}
 	staleDelivery := inbox.deliver
 	cancel()
 	inbox.close()
 	inbox.close()
-	if staleDelivery(broker.Message{Content: "stale callback"}) == nil || broker.Send(broker.Message{To: route}) {
+	if staleDelivery(mail.Message{Content: "stale callback"}) == nil || mail.Send(mail.Message{To: route}) {
 		t.Fatal("canceled inbox accepted mail")
 	}
 	inbox.mu.Lock()
@@ -118,7 +118,7 @@ func TestHeldInboxIsNotClosing(t *testing.T) {
 	route := task.NewID()
 	inbox := newHeldRunInbox(context.Background(), route, nil)
 	defer inbox.close()
-	if err := broker.SendErr(broker.Message{To: route}); !errors.Is(err, broker.ErrRejected) || errors.Is(err, broker.ErrInboxClosing) {
+	if err := mail.SendErr(mail.Message{To: route}); !errors.Is(err, mail.ErrRejected) || errors.Is(err, mail.ErrInboxClosing) {
 		t.Fatalf("unpublished continuation rejection = %v", err)
 	}
 	if len(inbox.pending) != 0 {
@@ -128,7 +128,7 @@ func TestHeldInboxIsNotClosing(t *testing.T) {
 	inbox.mu.Lock()
 	inbox.finishLocked(nil, nil)
 	inbox.mu.Unlock()
-	if err := broker.SendErr(broker.Message{To: route}); !errors.Is(err, broker.ErrInboxClosing) {
+	if err := mail.SendErr(mail.Message{To: route}); !errors.Is(err, mail.ErrInboxClosing) {
 		t.Fatalf("sealed execution rejection = %v", err)
 	}
 }
@@ -138,11 +138,11 @@ func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 	inbox := newRunInbox(context.Background(), route, nil)
 	defer inbox.close()
 	for i := range maxPendingWorkerMessages {
-		if !broker.Send(broker.Message{To: route, Content: fmt.Sprintf("startup %d", i)}) {
+		if !mail.Send(mail.Message{To: route, Content: fmt.Sprintf("startup %d", i)}) {
 			t.Fatalf("startup message %d rejected", i)
 		}
 	}
-	if err := broker.SendErr(broker.Message{To: route, Content: "overflow"}); !errors.Is(err, broker.ErrInboxFull) {
+	if err := mail.SendErr(mail.Message{To: route, Content: "overflow"}); !errors.Is(err, mail.ErrInboxFull) {
 		t.Fatalf("overflow error = %v, want ErrInboxFull", err)
 	}
 	driver := aitest.New(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
@@ -154,7 +154,7 @@ func TestInboxPendingLimitRecoversAfterConsumption(t *testing.T) {
 				t.Errorf("startup message %d reordered", i)
 			}
 		}
-		if !broker.Send(broker.Message{To: route, Content: "after consumption"}) {
+		if !mail.Send(mail.Message{To: route, Content: "after consumption"}) {
 			t.Error("inbox stayed full after consumption")
 		}
 		return aitest.Says("first")(ctx, req)
@@ -189,7 +189,7 @@ func TestBackgroundInboxCleanupBeforeExecution(t *testing.T) {
 				})
 			}
 			worker, err := e.RunBackground(tool.AgentExecRequest{Prompt: "work", OnIdentity: func(identity toolresult.AgentIdentity) {
-				if !broker.Send(broker.Message{To: identity.ID, Content: "accepted before execution"}) {
+				if !mail.Send(mail.Message{To: identity.ID, Content: "accepted before execution"}) {
 					t.Error("startup mail rejected")
 				}
 				if cancelLaunch {
@@ -211,7 +211,7 @@ func TestBackgroundInboxCleanupBeforeExecution(t *testing.T) {
 			if worker.IsRunning() || driver.Calls() != 0 {
 				t.Fatal("failed startup executed inference or remained running")
 			}
-			if broker.Send(broker.Message{To: worker.GetID(), Content: "after shutdown"}) {
+			if mail.Send(mail.Message{To: worker.GetID(), Content: "after shutdown"}) {
 				t.Fatal("failed startup leaked its route")
 			}
 			child, err := store.Open(context.Background(), worker.GetStatus().AgentSessionID)

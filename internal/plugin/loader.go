@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 const (

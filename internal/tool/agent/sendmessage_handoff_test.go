@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -17,8 +17,8 @@ import (
 func TestSendMessageMissingRouteAfterRetirement(t *testing.T) {
 	for _, scenario := range []string{"completed", "failed", "running", "denied", "changed attempt", "replaced task", "peer"} {
 		t.Run(scenario, func(t *testing.T) {
-			broker.Reset()
-			t.Cleanup(broker.Reset)
+			mail.Reset()
+			t.Cleanup(mail.Reset)
 			worker := endedContinuationTask(t, task.StatusRunning)
 			ctx := task.WithSessionID(context.Background(), "parent")
 			if scenario == "peer" {
@@ -33,7 +33,7 @@ func TestSendMessageMissingRouteAfterRetirement(t *testing.T) {
 				return scenario != "denied", "denied by policy"
 			})))
 			calls := 0
-			broker.RegisterAccept(worker.GetID(), func(broker.Message) error {
+			mail.RegisterAccept(worker.GetID(), func(mail.Message) error {
 				calls++
 				if scenario != "running" {
 					if scenario == "failed" {
@@ -51,8 +51,8 @@ func TestSendMessageMissingRouteAfterRetirement(t *testing.T) {
 					task.Default().Remove(worker.GetID())
 					task.Default().CreateAgentTask(worker.GetID(), "replacement", "new work", ctx, nil)
 				}
-				broker.Unregister(worker.GetID())
-				return broker.ErrNoRecipient
+				mail.Unregister(worker.GetID())
+				return mail.ErrNoRecipient
 			})
 			input, _ := json.Marshal(map[string]string{"to": worker.GetID(), "message": "follow up"})
 			_, err := adapted.Run(ctx, ai.ToolCall{ID: "retired-route", Name: tool.ToolSendMessage, Input: string(input)})
@@ -82,8 +82,8 @@ func TestSendMessageMissingRouteAfterRetirement(t *testing.T) {
 func TestSendMessageClosingHandoff(t *testing.T) {
 	for _, scenario := range []string{"wait", "canceled", "denied", "changed attempt", "peer", "stopped", "full during completion", "rejected during completion"} {
 		t.Run(scenario, func(t *testing.T) {
-			broker.Reset()
-			t.Cleanup(broker.Reset)
+			mail.Reset()
+			t.Cleanup(mail.Reset)
 			worker := endedContinuationTask(t, task.StatusRunning)
 			ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), "parent"))
 			defer cancel()
@@ -103,7 +103,7 @@ func TestSendMessageClosingHandoff(t *testing.T) {
 			})))
 			entered := make(chan struct{})
 			calls := 0
-			broker.RegisterAccept(worker.GetID(), func(broker.Message) error {
+			mail.RegisterAccept(worker.GetID(), func(mail.Message) error {
 				calls++
 				switch scenario {
 				case "canceled":
@@ -120,12 +120,12 @@ func TestSendMessageClosingHandoff(t *testing.T) {
 				}
 				close(entered)
 				if scenario == "full during completion" {
-					return broker.ErrInboxFull
+					return mail.ErrInboxFull
 				}
 				if scenario == "rejected during completion" {
-					return broker.ErrRejected
+					return mail.ErrRejected
 				}
-				return broker.ErrInboxClosing
+				return mail.ErrInboxClosing
 			})
 			input, _ := json.Marshal(map[string]string{"to": worker.GetID(), "message": "follow up"})
 			done := make(chan error, 1)

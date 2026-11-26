@@ -1,0 +1,170 @@
+package tui
+
+import (
+	"context"
+	"errors"
+	"os"
+	"slices"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/app/tui/input"
+	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session"
+)
+
+type historyLoadedMsg struct {
+	owner      *session.Session
+	generation uint64
+	sessionID  string
+	focusID    string
+	messages   []core.ChatMessage
+	err        error
+}
+
+func (m *model) openHistory() tea.Cmd { return m.openHistoryAt("") }
+
+func (m *model) openHistoryAt(messageID string) tea.Cmd {
+	m.userInput.Transcript.Enter("History · Loading…", nil, m.env.Width, m.env.Height)
+	msg := historyLoadedMsg{owner: m.services.Session, generation: m.userInput.Transcript.Generation(), focusID: messageID, messages: slices.Clone(m.conv.Messages)}
+	var load func(string) ([]core.ChatMessage, error)
+	if m.sessionID() != "" {
+		msg.sessionID = m.sessionID()
+		if store := m.services.SessionStore; store != nil && msg.sessionID != "" {
+			load = func(id string) ([]core.ChatMessage, error) {
+				history, err := store.Read(context.Background(), id)
+				if err != nil {
+					return nil, err
+				}
+				return store.ChatRows(history), nil
+			}
+		}
+	}
+	return func() tea.Msg {
+		if load != nil {
+			messages, err := load(msg.sessionID)
+			if err == nil {
+				msg.messages = messages
+			} else if !errors.Is(err, os.ErrNotExist) {
+				msg.err = err
+			}
+		}
+		return msg
+	}
+}
+
+func (m *model) historyLoaded(msg historyLoadedMsg) {
+	viewer := &m.userInput.Transcript
+	if !viewer.IsActive() || viewer.Generation() != msg.generation {
+		return
+	}
+	if m.sessionID() != msg.sessionID || m.services.Session != msg.owner {
+		return
+	}
+	if msg.err != nil {
+		viewer.Enter("History", []string{"Unable to read session history: " + msg.err.Error()}, m.env.Width, m.env.Height)
+		return
+	}
+	entries := m.historyEntries(msg.messages)
+	if len(entries) == 0 {
+		viewer.Enter("History", []string{"No messages yet."}, m.env.Width, m.env.Height)
+		return
+	}
+	viewer.EnterEntries(entries, m.env.Width, m.env.Height)
+	if msg.focusID != "" && !viewer.FocusMessage(msg.focusID) {
+		viewer.Enter("History", []string{"Selected main turn is unavailable."}, m.env.Width, m.env.Height)
+	}
+}
+
+// historyEntries reuses the conversation renderers with settled, full messages.
+// Each tool gets its own entry so parallel results expand independently.
+func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEntry {
+	params := transcript.RenderContext{
+		Width: m.env.Width, MDRenderer: transcript.NewMDRenderer(m.env.Width),
+		AutoMemoryStore: m.conv.AutoMemoryStore,
+		ThinkingDisplay: m.env.ThinkingDisplay, BashPreviewLines: m.env.BashPreviewLines,
+		AgentPreviewLines: m.env.AgentPreviewLines,
+		AgentIdentities:   m.conv.AgentDisplayHistorySnapshot(messages),
+		AgentColors:       m.agentColors(), MemberColors: m.grp.colors,
+		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
+	}
+	renderer := func(width int) *transcript.MDRenderer {
+		if params.Width != width {
+			params.Width = width
+			params.MDRenderer = transcript.NewMDRenderer(width)
+		}
+		return params.MDRenderer
+	}
+	results := make(map[string]transcript.ToolResultData)
+	owned := make(map[string]bool)
+	for _, msg := range messages {
+		for _, call := range msg.ToolCalls {
+			owned[call.ID] = true
+		}
+		if r := msg.ToolResult; r != nil {
+			results[r.ToolCallID] = transcript.ToolResultData{
+				ToolName: r.ToolName, Content: r.Content.Text(), IsError: r.IsError,
+				Details: msg.ToolDetails, Decision: msg.Decision,
+			}
+		}
+	}
+	var entries []input.TranscriptEntry
+	for _, msg := range messages {
+		if r := msg.ToolResult; r != nil {
+			if !owned[r.ToolCallID] {
+				data := results[r.ToolCallID]
+				entries = append(entries, input.TranscriptEntry{Label: r.ToolName, Tool: true, Render: func(width int, expanded bool) string {
+					data.Width, data.Expanded = width, expanded
+					data.CollapseDiff = !expanded
+					return transcript.RenderToolResultInline(data, renderer(width))
+				}})
+			}
+			continue
+		}
+		calls := msg.ToolCalls
+		msg.ToolCalls = nil
+		msg.ContentCommittedLen, msg.ThinkingCommittedLen = 0, 0
+		msg.BulletEmitted, msg.ThinkingEmitted = false, false
+		if msg.Content != "" || msg.AutoMemoryRecallNotice != nil || msg.Thinking != "" || len(msg.Images) > 0 {
+			agentMessage := msg.Role == core.ChatUser && transcript.IsAgentEnvelope(msg.Content)
+			label := ""
+			if agentMessage {
+				label = "Agent message"
+			}
+			entries = append(entries, input.TranscriptEntry{ID: msg.ID, Label: label, Tool: agentMessage, Render: func(width int, expanded bool) string {
+				p := params
+				msg.Expanded = expanded
+				p.Width, p.MDRenderer = width, renderer(width)
+				p.Messages = []core.ChatMessage{msg}
+				return transcript.RenderSingleMessage(p, 0)
+			}})
+		}
+		for _, call := range calls {
+			data, hasResult := results[call.ID]
+			render := func(width int, expanded bool) string {
+				resultMap := make(map[string]transcript.ToolResultData)
+				if hasResult {
+					data.Expanded = expanded
+					data.CollapseDiff = !expanded
+					resultMap[call.ID] = data
+				}
+				return transcript.RenderToolCalls(transcript.ToolCallsParams{
+					AutoMemoryStore: params.AutoMemoryStore,
+					ToolCalls:       []core.ToolCall{call}, ResultMap: resultMap,
+					Width: width, MDRenderer: renderer(width),
+					AgentPreviewLines: params.AgentPreviewLines,
+					AgentIdentities:   params.AgentIdentities,
+					AgentColors:       params.AgentColors, MemberColors: params.MemberColors,
+					TaskOwnerMap: params.TaskOwnerMap,
+				})
+			}
+			// Tracker-only tools deliberately draw no conversation row.
+			if strings.TrimSpace(render(m.env.Width, false)) != "" {
+				entries = append(entries, input.TranscriptEntry{Label: call.Name, Tool: true, Render: render})
+			}
+		}
+	}
+	return entries
+}

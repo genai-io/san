@@ -7,7 +7,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 |---|---|
 | [agent](agent.md) | Main agent lifecycle |
 | [app](app.md) | Terminal UI and event routing |
-| [broker](broker.md) | Agent messaging |
+| [mail](mail.md) | Agent messaging |
 | [cmd](cmd.md) | CLI entrypoint and wiring |
 | [command](command.md) | Slash commands |
 | [core](core.md) | Shared agent contracts |
@@ -20,7 +20,7 @@ and [dependency rules](../reference/dependency-rules.md) for ownership and layer
 | [plugin](plugin.md) | Extension installation and loading |
 | [reminder](reminder.md) | Context reminders |
 | [search](search.md) | Web search backends |
-| [autoskill](auto-skill.md) | Auto Skill review and validated changes |
+| [reflect/skill](auto-skill.md) | Auto Skill review and validated changes |
 | [session](session.md) | Session persistence, resume, and fork |
 | [setting](setting.md) | Configuration and permission decisions |
 | [skill](skill.md) | Skill loading and visibility |

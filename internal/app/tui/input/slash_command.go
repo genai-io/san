@@ -1,0 +1,856 @@
+package input
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"slices"
+	"sort"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	xansi "github.com/charmbracelet/x/ansi"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/widgets"
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/fs"
+)
+
+// NoProviderMsg is the canonical "no LLM provider" notice used by any
+// input path that needs to bail before reaching the agent.
+const NoProviderMsg = "No provider connected. Use /models to connect."
+
+type slashCommandHandler func(*SlashCommandController, context.Context, string) (string, tea.Cmd, error)
+
+type SlashCommandEnv struct {
+	// UI state: the textarea, conversation render state, tool exec state,
+	// terminal dimensions, current working directory, and the input-token
+	// snapshot for context-percent displays.
+	Input        *Model
+	Conversation *transcript.ConversationModel
+	Tool         *transcript.ToolExecState
+	Width        int
+	Height       int
+	Cwd          string
+
+	// Domain services. Commands read live state from these — never snapshot
+	// at deps construction time, since /something might mutate state that a
+	// later command reads (e.g. /disabled-tools then /tools).
+	Setting      *setting.Settings
+	LLM          *llm.Conn
+	SessionStore *session.Store
+	Session      *session.Session
+	SessionID    func() string
+	Skill        *skill.Registry
+	Plugin       *plugin.Registry
+	MCP          *mcp.Manager
+	Tracker      *todo.Store
+	Cron         *cron.Scheduler
+	ToolSvc      *tool.Registry
+	TaskSvc      *task.Manager
+	Flow         FlowService
+	Command      *command.Registry
+
+	// Env-state callbacks. `m.env` lives in the parent app package and
+	// can't be imported here without a cycle, so its reads/writes are
+	// surfaced as callbacks.
+	GetThinkingEffort func() string
+	SetThinkingEffort func(string)
+	ResetTokens       func()
+	// GetGoal reads the autopilot mission the session is currently driving
+	// toward, so bare /goal can report it. Empty when no goal is set.
+	GetGoal func() string
+	// ContextUsage measures what currently occupies the model's context
+	// window. It lives on the model because it reads the live agent session.
+	ContextUsage      func() transcript.ContextUsage
+	SubscriptionUsage func() string
+
+	// Model-level action callbacks. These compose multiple services or
+	// touch UI state on `m`, so commands invoke them via the model.
+	CommitMessages          func() []tea.Cmd
+	SubmitToAgent           func(core.Message) tea.Cmd
+	HandleSkillInvocation   func() tea.Cmd
+	StartExternalEditor     func(path string) tea.Cmd
+	ReloadAfterPluginChange func() error
+	AppendSessionState      func() error
+	ReconfigureAgentTool    func()
+	StopAgentRuntime        func() error
+	ResetAgentRuntime       func() error
+	ClearSession            func() error
+	ClearScrollback         func(tea.Cmd) tea.Cmd
+	FireSessionEnd          func(reason string)
+	BuildCompactRequest     func(focus, trigger string) agent.CompactRequest
+	BeginCompact            func()
+	SpinnerTickCmd          func() tea.Cmd
+	OpenHistory             func() tea.Cmd
+	OpenTasks               func() tea.Cmd
+	ResetCronQueue          func()
+	ForkSession             func() (originalSessionID string, err error)
+	SetActivePersona        func(name string) error
+	RenameSession           func(name, role string) (string, error)
+	// GroupCommand runs /group: joining a group touches the session's
+	// identity, reminders and lifecycle, all of which live on the model.
+	GroupCommand func(args string) (string, tea.Cmd)
+	// TrustWorkspace runs /trust and reports the outcome.
+	TrustWorkspace func() string
+	// SideQuestion answers /btw without the main agent seeing it.
+	SideQuestion func(question string) tea.Cmd
+	// Recap answers /recap without the main agent seeing it.
+	Recap        func() tea.Cmd
+	UpdateMemory func() (string, tea.Cmd)
+}
+
+type SlashCommandController struct {
+	env SlashCommandEnv
+}
+
+func NewSlashCommandController(env SlashCommandEnv) SlashCommandController {
+	return SlashCommandController{env: env}
+}
+
+func builtinCommandHandlers() map[string]slashCommandHandler {
+	return map[string]slashCommandHandler{
+		"models":  (*SlashCommandController).handleModelCommand,
+		"clear":   (*SlashCommandController).handleClearCommand,
+		"fork":    (*SlashCommandController).handleForkCommand,
+		"resume":  (*SlashCommandController).handleResumeCommand,
+		"history": (*SlashCommandController).handleHistoryCommand,
+		"tasks":   (*SlashCommandController).handleTasksCommand,
+		"help":    (*SlashCommandController).handleHelpCommand,
+		"tools":   (*SlashCommandController).handleToolCommand,
+		"skills":  (*SlashCommandController).handleSkillCommand,
+		"agents":  (*SlashCommandController).handleAgentCommand,
+		"quota": func(c *SlashCommandController, _ context.Context, args string) (string, tea.Cmd, error) {
+			if strings.TrimSpace(args) != "" {
+				return "Usage: /quota", nil, nil
+			}
+			if label := c.env.SubscriptionUsage(); label != "" {
+				return label, nil, nil
+			}
+			return "No subscription quota available for the current model.", nil, nil
+		},
+		"context":        (*SlashCommandController).handleContextCommand,
+		"compact":        (*SlashCommandController).handleCompactCommand,
+		"init":           (*SlashCommandController).handleInitCommand,
+		"memory":         (*SlashCommandController).handleMemoryCommand,
+		"reflect":        (*SlashCommandController).handleReflectCommand,
+		"reflection":     (*SlashCommandController).handleReflectionCommand, // Legacy panel shortcut.
+		"mcp":            (*SlashCommandController).handleMCPCommand,
+		"plugin":         (*SlashCommandController).handlePluginCommand,
+		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
+		"think":          (*SlashCommandController).handleThinkCommand,
+		"loop":           (*SlashCommandController).handleLoopCommand,
+		"flow":           (*SlashCommandController).handleFlowCommand,
+		"search":         (*SlashCommandController).handleSearchCommand,
+		"identity":       (*SlashCommandController).handlePersonaCommand,
+		"persona":        (*SlashCommandController).handlePersonaCommand,
+		"settings":       (*SlashCommandController).handleSettingsCommand,
+		"config":         (*SlashCommandController).handleConfigCommand, // deprecated; kept out of the catalog
+		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
+		"goal":           (*SlashCommandController).handleGoalCommand,
+		"name":           (*SlashCommandController).handleNameCommand,
+		"group":          (*SlashCommandController).handleGroupCommand,
+		"trust":          (*SlashCommandController).handleTrustCommand,
+		"btw":            (*SlashCommandController).handleBtwCommand,
+		"recap":          (*SlashCommandController).handleRecapCommand,
+	}
+}
+
+// IsSideCommand reports requests that run outside the main agent, even mid-turn.
+func IsSideCommand(input string) bool {
+	name, _, ok := command.ParseCommand(input)
+	return ok && (name == "btw" || name == "recap" || name == "group")
+}
+
+func (c *SlashCommandController) handleBtwCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	question := strings.TrimSpace(args)
+	if question == "" {
+		return "Usage: /btw <question>", nil, nil
+	}
+	return "", c.env.SideQuestion(question), nil
+}
+
+func (c *SlashCommandController) handleRecapCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	return "", c.env.Recap(), nil
+}
+
+// handlePersonaCommand switches the active persona. Bare /persona opens the
+// interactive picker; /persona <name> switches directly ("default" or empty
+// clears the override back to San's built-ins).
+func (c *SlashCommandController) handlePersonaCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	name := strings.TrimSpace(args)
+	if name == "" {
+		if err := c.env.Input.Persona.EnterSelect(c.env.Width, c.env.Height); err != nil {
+			return "", nil, err
+		}
+		return "", nil, nil
+	}
+	if c.env.SetActivePersona == nil {
+		return "Persona switching is unavailable.", nil, nil
+	}
+	if err := c.env.SetActivePersona(name); err != nil {
+		return "Failed to switch persona: " + err.Error(), nil, nil
+	}
+	if name == persona.DefaultName {
+		return "Persona cleared (built-in default).", nil, nil
+	}
+	return "Persona set to: " + name, nil, nil
+}
+
+func (c SlashCommandController) Execute(ctx context.Context, inputText string) (string, tea.Cmd, bool) {
+	cmdName, args, isCmd := command.ParseCommand(inputText)
+	if !isCmd {
+		return "", nil, false
+	}
+
+	if result, followUp, handled := c.executeExitCommand(cmdName); handled {
+		return result, followUp, true
+	}
+
+	if result, followUp, handled := c.executeBuiltinCommand(ctx, cmdName, args); handled {
+		return result, followUp, true
+	}
+
+	if sk, ok := lookupSkill(c.env.Skill, cmdName); ok {
+		return c.executeSkillSlashCommand(sk, args), c.env.HandleSkillInvocation(), true
+	}
+
+	if pc, ok := c.env.Command.IsCustomCommand(cmdName); ok {
+		return c.executeCustomCommand(pc, args), c.env.HandleSkillInvocation(), true
+	}
+
+	return unknownCommandResult(cmdName), nil, true
+}
+
+func (c SlashCommandController) HandleSubmit(inputText string) (tea.Cmd, bool) {
+	preserve := shouldPreserveCommandInConversation(inputText)
+	if preserve {
+		c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: inputText})
+	}
+
+	result, cmd, isCmd := c.Execute(context.Background(), inputText)
+	if !isCmd {
+		if preserve {
+			msgs := c.env.Conversation.Messages
+			c.env.Conversation.Messages = msgs[:len(msgs)-1]
+		}
+		return nil, false
+	}
+
+	c.env.Input.Reset()
+
+	if result != "" {
+		c.env.Conversation.AddNotice(result)
+	}
+
+	cmds := c.env.CommitMessages()
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return tea.Batch(cmds...), true
+}
+
+func (c SlashCommandController) executeBuiltinCommand(ctx context.Context, cmdName, args string) (string, tea.Cmd, bool) {
+	handler, ok := builtinCommandHandlers()[cmdName]
+	if !ok {
+		return "", nil, false
+	}
+	result, followUp, err := handler(&c, ctx, args)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err), nil, true
+	}
+	return result, followUp, true
+}
+
+func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.Cmd, bool) {
+	if cmdName != "exit" && cmdName != "quit" {
+		return "", nil, false
+	}
+	if err := c.env.StopAgentRuntime(); err != nil {
+		return "Cannot quit yet: " + err.Error(), nil, true
+	}
+	c.env.Conversation.Stream.Stop()
+	c.env.FireSessionEnd("prompt_input_exit")
+	return "", tea.Quit, true
+}
+
+func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args string) string {
+	if c.env.Skill != nil {
+		c.env.Input.Skill.SetPending(sk.FullName(), c.env.Skill.SkillInvocationPrompt(sk.FullName()))
+	}
+	if c.env.Plugin != nil {
+		c.env.Input.Skill.PendingPluginRoot = plugin.FindPluginRootForPath(sk.SkillDir)
+	}
+	c.env.Input.Skill.PendingArgs = formatSlashInvocation(sk.FullName(), args)
+	return ""
+}
+
+func (c SlashCommandController) executeCustomCommand(pc *command.CustomCommand, args string) string {
+	if instructions := pc.Instructions(); instructions != "" {
+		c.env.Input.Skill.SetPending(pc.FullName(), command.WrapInvocation(pc.FullName(), instructions))
+	}
+	if c.env.Plugin != nil {
+		c.env.Input.Skill.PendingPluginRoot = plugin.FindPluginRootForPath(pc.FilePath)
+	}
+	c.env.Input.Skill.PendingArgs = formatSlashInvocation(pc.FullName(), args)
+	return ""
+}
+
+// formatSlashInvocation renders "/<name>" or "/<name> <args>".
+func formatSlashInvocation(name, args string) string {
+	if args == "" {
+		return "/" + name
+	}
+	return "/" + name + " " + args
+}
+
+func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	var sb strings.Builder
+	sb.WriteString("Available Commands:\n\n")
+	builtins := c.env.Command.BuiltinNames()
+	names := make([]string, 0, len(builtins))
+	for name := range builtins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		info := builtins[name]
+		fmt.Fprintf(&sb, "  /%s - %s\n", info.Name, info.Description)
+	}
+	pluginCmds := c.env.Command.CustomCommands()
+	if len(pluginCmds) > 0 {
+		sb.WriteString("\nCustom Commands:\n\n")
+		for _, cmd := range pluginCmds {
+			desc := cmd.Description
+			if desc == "" {
+				desc = "(no description)"
+			}
+			fmt.Fprintf(&sb, "  /%s - %s\n", cmd.Name, desc)
+		}
+	}
+	return sb.String(), nil, nil
+}
+
+func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if c.env.ClearSession != nil {
+		if err := c.env.ClearSession(); err != nil {
+			return "", nil, err
+		}
+	} else if err := c.env.ResetAgentRuntime(); err != nil {
+		return "", nil, err
+	}
+	c.env.Conversation.Stream.Stop()
+	c.env.Tool.Reset()
+	c.env.Conversation.Clear()
+	c.env.ResetTokens()
+	c.env.Tracker.Reset()
+	c.env.ResetCronQueue()
+	// The cleared conversation no longer contains any Read results, so the
+	// read-before-modify stamps must not survive into the next one.
+	fs.ResetFileViews()
+	// In inline mode the conversation is written to the terminal's native
+	// screen + scrollback; tea.ClearScreen only redraws the managed input frame
+	// (it clears below the cursor, not the transcript above). Physically wipe
+	// the screen (ESC[2J) and scrollback (ESC[3J) and home the cursor, then
+	// ClearScreen to force the renderer to repaint a clean frame. Order matters:
+	// the raw wipe must precede the repaint, or it erases the fresh frame. tmux
+	// keeps its own history, cleared separately.
+	fullClear := xansi.CursorHomePosition + xansi.EraseEntireScreen + xansi.EraseEntireDisplay
+	cmds := []tea.Cmd{tea.Raw(fullClear), tea.ClearScreen}
+	if os.Getenv("TMUX") != "" {
+		cmds = append(cmds, func() tea.Msg {
+			_ = exec.Command("tmux", "clear-history").Run()
+			return nil
+		})
+	}
+	return "", c.env.ClearScrollback(tea.Sequence(cmds...)), nil
+}
+
+func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if len(c.env.Conversation.Messages) == 0 {
+		return "Nothing to fork — no messages in current session.", nil, nil
+	}
+	if err := c.env.AppendSessionState(); err != nil {
+		return "", nil, fmt.Errorf("failed to save session before fork: %w", err)
+	}
+	if c.env.SessionID() == "" {
+		return "No active session to fork.", nil, nil
+	}
+	originalID, err := c.env.ForkSession()
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to fork session: %w", err)
+	}
+	return fmt.Sprintf("Forked conversation. You are now in the fork.\nTo resume the original: san -r %s", originalID), nil, nil
+}
+
+func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	cmd, err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.SessionStore, c.env.Cwd)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
+	}
+	return "", cmd, nil
+}
+
+// handleSettingsCommand opens the /settings popup (Appearance, Permissions
+// and General). Use /reflect for Auto Memory, Auto Skill, and Recap.
+func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
+}
+
+// handleConfigCommand keeps the old /config name working while pointing at
+// its replacement.
+func (c *SlashCommandController) handleConfigCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	_, cmd, err := c.handleSettingsCommand(ctx, args)
+	return "/config is deprecated — use /settings.", cmd, err
+}
+
+// handleHistoryCommand opens the same transcript viewer as idle Ctrl+O.
+func (c *SlashCommandController) handleHistoryCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	return "", c.env.OpenHistory(), nil
+}
+
+func (c *SlashCommandController) handleTasksCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if c.env.OpenTasks == nil {
+		return "Background task viewer is unavailable.", nil, nil
+	}
+	return "", c.env.OpenTasks(), nil
+}
+
+// handleAutopilotCommand opens the /autopilot copilot config popup.
+func (c *SlashCommandController) handleAutopilotCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Autopilot.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
+}
+
+// GoalSetMsg asks the app to drive toward a stated goal: it becomes the
+// autopilot mission and the copilot takes the helm until the goal is met.
+type GoalSetMsg struct{ Goal string }
+
+// GoalClearedMsg asks the app to drop the current goal and stop driving.
+type GoalClearedMsg struct{}
+
+// handleGoalCommand states the goal for the session and hands the wheel to the
+// copilot. It is the one-line form of the /autopilot panel: brief a mission,
+// turn on the driving steers, lift the continuation cap, engage AutoPilot. Bare
+// /goal reports the current goal; /goal clear stands the copilot down.
+func (c *SlashCommandController) handleGoalCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	goal := strings.TrimSpace(args)
+
+	if strings.EqualFold(goal, "clear") {
+		return "", func() tea.Msg { return GoalClearedMsg{} }, nil
+	}
+	if goal == "" {
+		if c.env.GetGoal == nil || c.env.GetGoal() == "" {
+			return "No goal set. /goal <what to achieve> — autopilot drives until it's done.", nil, nil
+		}
+		return "Goal: " + c.env.GetGoal() + " (/goal clear to stand down)", nil, nil
+	}
+	// Hang the acknowledgement under the "❭ /goal" echo, like a continuation's
+	// step mark, instead of a separate notice block. The echo commits before
+	// GoalSetMsg lands, so it has to be marked here.
+	note := "goal set"
+	if c.env.Conversation.Stream.Active {
+		note += " · starts after this turn"
+	}
+	c.env.Conversation.SetLastAutopilotNote(note)
+	return "", func() tea.Msg { return GoalSetMsg{Goal: goal} }, nil
+}
+
+// handleNameCommand sets or changes the name of the current conversation
+// session; in a group it is also the member name, and --role what it owns.
+// Usage: /name [session-name] [--role TEXT]
+func (c *SlashCommandController) handleNameCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	name, role, _ := strings.Cut(args, "--role")
+	name, role = strings.TrimSpace(name), strings.Trim(strings.TrimSpace(role), `"'`)
+	if name == "" && role == "" {
+		return "Usage: /name [session-name] [--role TEXT]\n\nSets or changes the name of the current conversation. In a group it is also\nyour member name, and --role says what this session owns.", nil, nil
+	}
+	if c.env.RenameSession == nil {
+		return "Session renaming is not available.", nil, nil
+	}
+	note, err := c.env.RenameSession(name, role)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to rename session: %w", err)
+	}
+	var out []string
+	if name != "" {
+		out = append(out, "Session renamed to: "+name)
+	}
+	if note != "" {
+		out = append(out, note)
+	}
+	return strings.Join(out, " · "), nil, nil
+}
+
+func (c *SlashCommandController) handleTrustCommand(context.Context, string) (string, tea.Cmd, error) {
+	return c.env.TrustWorkspace(), nil, nil
+}
+
+func (c *SlashCommandController) handleGroupCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	out, cmd := c.env.GroupCommand(args)
+	return out, cmd, nil
+}
+
+func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if err := c.env.Input.Search.Enter(c.env.LLM.Store(), c.env.Width, c.env.Height); err != nil {
+		return "", nil, err
+	}
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleModelCommand(ctx context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Provider.Selector.cwd = c.env.Cwd
+	cmd, err := c.env.Input.Provider.Selector.Enter(ctx, c.env.Width, c.env.Height)
+	if err != nil {
+		return "", nil, err
+	}
+	return "", cmd, nil
+}
+
+func (c *SlashCommandController) handleInitCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	result, err := HandleInitCommand(c.env.Cwd, args)
+	return result, nil, err
+}
+
+func (c *SlashCommandController) handleReflectionCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if strings.TrimSpace(args) != "" {
+		return "Usage: /reflection", nil, nil
+	}
+	c.env.Input.Reflection.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleReflectCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	switch strings.TrimSpace(args) {
+	case "":
+		return c.handleReflectionCommand(ctx, "")
+	case "memory":
+		if c.env.UpdateMemory == nil {
+			return "Auto Memory update is unavailable.", nil, nil
+		}
+		result, cmd := c.env.UpdateMemory()
+		return result, cmd, nil
+	default:
+		return "Usage: /reflect [memory]", nil, nil
+	}
+}
+
+func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Setting, c.env.Cwd, c.env.Width, c.env.Height, args)
+	if err != nil {
+		return "", nil, err
+	}
+	if editPath != "" {
+		c.env.Input.Memory.EditingFile = editPath
+		return result, c.env.StartExternalEditor(editPath), nil
+	}
+	return result, nil, nil
+}
+
+func (c *SlashCommandController) handleMCPCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	result, editInfo, err := HandleMCPCommand(ctx, &c.env.Input.MCP.Selector, c.env.Width, c.env.Height, args)
+	if err != nil {
+		return "", nil, err
+	}
+	if editInfo != nil {
+		c.env.Input.MCP.EditingFile = editInfo.TempFile
+		c.env.Input.MCP.EditingServer = editInfo.ServerName
+		c.env.Input.MCP.EditingScope = editInfo.Scope
+		return result, StartMCPEditor(editInfo.TempFile), nil
+	}
+	if c.env.Input.MCP.Selector.IsActive() {
+		return result, c.env.Input.MCP.Selector.AutoReconnect(), nil
+	}
+	return result, nil, nil
+}
+
+func (c *SlashCommandController) handlePluginCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	result, err := HandlePluginCommand(ctx, &c.env.Input.Plugin, c.env.Cwd, c.env.Width, c.env.Height, args)
+	return result, nil, err
+}
+
+func (c *SlashCommandController) handleReloadPluginsCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	if strings.TrimSpace(args) != "" {
+		return "Usage: /reload-plugins", nil, nil
+	}
+	if err := c.env.Plugin.Load(ctx, c.env.Cwd); err != nil {
+		return "", nil, fmt.Errorf("failed to reload plugin registry: %w", err)
+	}
+	_ = c.env.Plugin.LoadClaudePlugins(ctx)
+	if err := c.env.ReloadAfterPluginChange(); err != nil {
+		return "", nil, err
+	}
+	return "Reloaded plugins and refreshed plugin-backed skills, agents, MCP servers, and hooks.", nil, nil
+}
+
+func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	var mcpTools func() []core.ToolSchema
+	if c.env.MCP != nil {
+		mcpTools = c.env.MCP.ToolSchemas
+	}
+	if err := c.env.Input.Tool.EnterSelect(c.env.Width, c.env.Height, mcpTools); err != nil {
+		return "", nil, err
+	}
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleSkillCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if err := c.env.Input.Skill.Selector.EnterSelect(c.env.Width, c.env.Height); err != nil {
+		return "", nil, err
+	}
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleAgentCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if err := c.env.Input.Agent.EnterSelect(c.env.Width, c.env.Height); err != nil {
+		return "", nil, err
+	}
+	return "", nil, nil
+}
+
+func (c *SlashCommandController) handleThinkCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	currentModel := c.env.LLM.CurrentModel()
+	efforts := llm.ThinkingEffortsForModel(c.env.LLM.Provider(), c.env.LLM.Store(), currentModel)
+	if len(efforts) == 0 {
+		return "Current provider does not support thinking effort.", nil, nil
+	}
+
+	arg := strings.TrimSpace(strings.ToLower(args))
+	var effort string
+	if arg == "" || arg == "toggle" {
+		next, _ := llm.NextThinkingEffortForModel(c.env.LLM.Provider(), c.env.LLM.Store(), currentModel, c.env.GetThinkingEffort())
+		effort = next
+	} else {
+		if arg == "off" && !containsThinkingEffort(efforts, "off") && containsThinkingEffort(efforts, "none") {
+			arg = "none"
+		}
+		for _, allowed := range efforts {
+			if strings.EqualFold(arg, allowed) {
+				effort = allowed
+				break
+			}
+		}
+		if effort == "" {
+			return fmt.Sprintf("Usage: /think [%s]\n\nWithout arguments, cycles to the next effort.", strings.Join(efforts, "|")), nil, nil
+		}
+	}
+
+	c.env.SetThinkingEffort(effort)
+	token := c.env.Input.Provider.SetStatusMessage(fmt.Sprintf("thinking: %s", effort))
+	return "", widgets.StatusTimer(3*time.Second, token), nil
+}
+
+func containsThinkingEffort(efforts []string, effort string) bool {
+	return slices.ContainsFunc(efforts, func(e string) bool { return strings.EqualFold(e, effort) })
+}
+
+func (c *SlashCommandController) handleLoopCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return loopUsage(), nil, nil
+	}
+	if result, handled, err := handleLoopAdminCommand(c.env.Cron, args); handled {
+		return result, nil, err
+	}
+	if strings.HasPrefix(strings.ToLower(args), "once ") {
+		parsed, err := cron.ParseLoopOnceCommand(strings.TrimSpace(args[5:]), time.Now())
+		if err != nil {
+			return loopUsage(), nil, nil
+		}
+		job, err := c.env.Cron.CreateLoop(parsed)
+		if err != nil {
+			return "", nil, err
+		}
+		if c.env.Conversation.Messages == nil {
+			*c.env.Conversation = transcript.NewConversation()
+		}
+		c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled one-shot task %s (%s).%s It will fire once and auto-delete.", job.ID, parsed.Human, parsed.Note))
+		return "", nil, nil
+	}
+	parsed, err := cron.ParseLoopCommand(args, time.Now())
+	if err != nil {
+		return loopUsage(), nil, nil
+	}
+	job, err := c.env.Cron.CreateLoop(parsed)
+	if err != nil {
+		return "", nil, err
+	}
+	if c.env.Conversation.Messages == nil {
+		*c.env.Conversation = transcript.NewConversation()
+	}
+	schedule := parsed.Human
+	if parsed.Cron != "" {
+		schedule += fmt.Sprintf(", cron `%s`", parsed.Cron)
+	}
+	c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled recurring task %s (%s).%s Auto-expires after 7 days. Executing now.", job.ID, schedule, parsed.Note))
+	msg, _ := c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: parsed.Prompt}).ToMessage()
+	return "", c.env.SubmitToAgent(msg), nil
+}
+
+func handleLoopAdminCommand(cronSvc *cron.Scheduler, args string) (string, bool, error) {
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		return "", false, nil
+	}
+	switch strings.ToLower(fields[0]) {
+	case "list", "ls":
+		return renderLoopJobList(cronSvc), true, nil
+	case "delete", "del", "rm", "remove", "cancel":
+		if len(fields) < 2 {
+			return "Usage: /loop delete <job-id>", true, nil
+		}
+		if strings.EqualFold(fields[1], "all") {
+			jobs := cronSvc.List()
+			for _, job := range jobs {
+				if err := cronSvc.Delete(job.ID); err != nil {
+					return "", true, err
+				}
+			}
+			return fmt.Sprintf("Cancelled %d scheduled task(s).", len(jobs)), true, nil
+		}
+		id := strings.TrimSpace(fields[1])
+		if id == "" {
+			return "Usage: /loop delete <job-id>", true, nil
+		}
+		if err := cronSvc.Delete(id); err != nil {
+			return "", true, err
+		}
+		return fmt.Sprintf("Cancelled scheduled task %s.", id), true, nil
+	default:
+		return "", false, nil
+	}
+}
+
+func renderLoopJobList(cronSvc *cron.Scheduler) string {
+	jobs := cronSvc.List()
+	if len(jobs) == 0 {
+		return "No scheduled loop tasks."
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%d scheduled loop task(s):\n\n", len(jobs)))
+	for _, job := range jobs {
+		mode := "recurring"
+		if !job.Recurring {
+			mode = "one-shot"
+		}
+		if job.Durable {
+			mode += ", durable"
+		}
+		sb.WriteString(fmt.Sprintf("%s  %s (%s)\n", job.ID, cron.Describe(job.Cron), mode))
+		sb.WriteString(fmt.Sprintf("  Cron: %s\n", job.Cron))
+		sb.WriteString(fmt.Sprintf("  Prompt: %s\n", job.Prompt))
+		sb.WriteString(fmt.Sprintf("  Next: %s\n\n", job.NextFire.Format("2006-01-02 15:04")))
+	}
+	return sb.String()
+}
+
+func loopUsage() string {
+	return "Usage: /loop [interval] <prompt>\n       /loop once <interval> <prompt>\n       /loop once <prompt> in <interval>\n       /loop list\n       /loop delete <job-id>\n       /loop delete all\nExamples: /loop 5m check the deploy, /loop check the deploy every 20m, /loop once 20m check the deploy"
+}
+
+// handleContextCommand reports what is filling the model's context window,
+// broken down by category. It is the "what" to the status bar's "how much" —
+// the reading you take before deciding whether /compact is worth it.
+func (c *SlashCommandController) handleContextCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if sub, rest, _ := strings.Cut(strings.TrimSpace(args), " "); sub == "limit" {
+		text, changed := setContextLimit(c.env.LLM.Store(), c.env.LLM.CurrentModel(), rest)
+		if changed == nil {
+			return text, nil, nil
+		}
+		changed.Session = c.env.Session
+		return text, func() tea.Msg { return *changed }, nil
+	}
+	return transcript.RenderContextUsage(c.env.ContextUsage()), nil, nil
+}
+
+func (c *SlashCommandController) handleCompactCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if c.env.LLM.Provider() == nil {
+		return NoProviderMsg, nil, nil
+	}
+	if c.env.Conversation.Stream.Active {
+		return "Cannot compact while streaming.", nil, nil
+	}
+	if c.env.Conversation.Compact.Active {
+		return "Compaction is already in progress.", nil, nil
+	}
+	request := c.env.BuildCompactRequest(strings.TrimSpace(args), "manual")
+	if len(request.Messages) == 0 {
+		return "No active LLM session. Send a message first to initialize the client.", nil, nil
+	}
+	if len(request.Messages) < core.MinMessagesToCompact {
+		return "Not enough conversation history to compact.", nil, nil
+	}
+	if c.env.BeginCompact != nil {
+		c.env.BeginCompact()
+	}
+	c.env.Conversation.Compact.Active = true
+	c.env.Conversation.Compact.StartedAt = time.Now()
+	c.env.Conversation.Compact.SummaryFocus = request.SummaryFocus
+	c.env.Conversation.Compact.Phase = transcript.PhaseSummarizing
+	c.env.Conversation.Compact.Count = len(request.Messages)
+	return "", tea.Batch(c.env.SpinnerTickCmd(), transcript.CompactCmd(request)), nil
+}
+
+func lookupSkill(svc *skill.Registry, cmd string) (*skill.Skill, bool) {
+	if svc == nil {
+		return nil, false
+	}
+	sk, ok := svc.Get(cmd)
+	if !ok || !sk.IsEnabled() {
+		return nil, false
+	}
+	return sk, true
+}
+
+func unknownCommandResult(cmd string) string {
+	return fmt.Sprintf("Unknown command: /%s\nType /help for available commands.", cmd)
+}
+
+func SkillCommandInfos() []command.Info {
+	svc := skill.DefaultIfInit()
+	if svc == nil {
+		return nil
+	}
+	enabled := svc.ListEnabled()
+	infos := make([]command.Info, 0, len(enabled))
+	for _, sk := range enabled {
+		description := sk.Description
+		if sk.ArgumentHint != "" {
+			description += " " + sk.ArgumentHint
+		}
+		infos = append(infos, command.Info{Name: sk.FullName(), Description: description})
+	}
+	return infos
+}
+
+func shouldPreserveCommandInConversation(inputText string) bool {
+	name, _, isCmd := command.ParseCommand(inputText)
+	if !isCmd {
+		return false
+	}
+	switch name {
+	// /goal is kept for the same reason as the others: it is the instruction the
+	// rest of the run answers to, so a transcript that drops it reads as the
+	// copilot driving for no stated reason.
+	case "compact", "fork", "resume", "loop", "init", "goal":
+		return true
+	}
+	return false
+}

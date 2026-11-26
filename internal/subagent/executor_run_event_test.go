@@ -9,7 +9,7 @@ import (
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -52,12 +52,12 @@ func TestPreparedRunForwardsCompletedToolResult(t *testing.T) {
 }
 
 func TestPreparedRunErrorsStayWithWorker(t *testing.T) {
-	var notices []broker.Message
-	broker.Register(broker.Main, func(message broker.Message) bool {
+	var notices []mail.Message
+	mail.Register(mail.Main, func(message mail.Message) bool {
 		notices = append(notices, message)
 		return true
 	})
-	t.Cleanup(func() { broker.Unregister(broker.Main) })
+	t.Cleanup(func() { mail.Unregister(mail.Main) })
 	var activity []string
 	var output string
 	var gotErr error
@@ -119,7 +119,7 @@ func TestPreparedRunCancellationStillReachesCallbacks(t *testing.T) {
 }
 
 func TestPreparedRunDeadlineStillReportsErrors(t *testing.T) {
-	broker.Unregister(broker.Main)
+	mail.Unregister(mail.Main)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 	var activity []string

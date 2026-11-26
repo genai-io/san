@@ -182,7 +182,7 @@ Do not compensate by replaying whole messages or heuristically joining rows.
 
 ## Consequences
 
-- The gate is `internal/app/model_scrollback_renderer_test.go`: a vt10x
+- The gate is `internal/app/tui/model_scrollback_renderer_test.go`: a vt10x
   terminal with `RecordHistory` drives the real renderer; a live-frame row,
   or a second copy of a committed row, anywhere in history fails the test.
   Add a case there before changing any of these sites.
@@ -219,9 +219,9 @@ Do not compensate by replaying whole messages or heuristically joining rows.
 
 ## References
 
-- [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go)
+- [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go)
   — the print queue, chunking, and the frozen frame.
-- [`internal/app/model_scrollback_renderer_test.go`](../../internal/app/model_scrollback_renderer_test.go)
+- [`internal/app/tui/model_scrollback_renderer_test.go`](../../internal/app/tui/model_scrollback_renderer_test.go)
   — the native-history gate.
 - `genai-io/bubbletea` branch `san`: the renderer patches on top of upstream.
 - xterm.js `Buffer._reflowSmaller`: the cursor bump per split and the

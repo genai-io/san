@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/tool/toolresult"
 	"github.com/genai-io/sdk-go/pkg/acp/protocol"
 	"github.com/genai-io/sdk-go/pkg/ai"

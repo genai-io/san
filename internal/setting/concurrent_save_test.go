@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 )
 
 func TestConcurrentUserPreferences(t *testing.T) {

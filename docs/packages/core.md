@@ -13,7 +13,7 @@ shares.
 ## Purpose
 
 Everything in `feature` and above depends on this package; nothing here
-depends on anything outside `internal/log`, `context`, and stdlib. Keeping
+depends on anything outside `internal/infra/log`, `context`, and stdlib. Keeping
 the surface small and stable is the whole point.
 
 This is also the only package that gets multiple interfaces on one page —

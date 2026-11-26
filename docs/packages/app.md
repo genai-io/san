@@ -1,49 +1,45 @@
 ---
-package: github.com/genai-io/san/internal/app
+package: github.com/genai-io/san/internal/app/tui
 layer: app
 ---
 
-# ui
+# Application hosts
 
-The Bubble Tea TUI shell. Composes the agent loop, conversation view,
-user input, broker-routed main-loop notices, system triggers (cron / async
+`internal/app` is a directory, not a Go package. `cmd/san` dispatches interactive runs to `internal/app/tui` and print runs to `internal/app/cli`. The Bubble Tea shell composes the agent loop, conversation view,
+user input, mail-routed main-loop notices, system triggers (cron / async
 hook / file watcher), and runtime services into a single `tea.Model`.
 
 ## Purpose
 
-This is the only `app`-layer package: everything user-facing lives here.
-It owns nothing domain-specific — every business behavior comes from a
-`feature`-layer service injected through the `services` struct. The
-package's job is **composition and event routing**, not behavior.
+The TUI owns composition and event routing; feature services own the domain behavior.
 
 ## Contract
 
-There is no single `Service` interface — `app` is the top of the layer
-stack and nothing else imports it. Instead the contract is the
+The contract between the TUI and its sub-models is the
 **sub-model `Runtime` interfaces** that each subpackage exposes upward
 to the root model. The root implements them through adapter methods.
 
 ```go
-package app
+package tui
 
 // model is the Bubble Tea root model. One per process.
 type model struct {
     userInput       input.Model        // Source 1: user keyboard
     mainNotices     chan mainNotice    // Source 2: notices bound for the main loop
-    systemInput     trigger.Model      // Source 3: cron / async hook / file watcher
-    conv            conv.Model         // agent outbox → conversation view
+    // Source 3: the root handles cron, async hooks and file watcher events directly.
+    conv            transcript.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
     services        services           // feature-layer handles
 }
 
-// services stores the concrete feature handles in internal/app/services.go.
+// services stores the concrete feature handles in internal/app/tui/services.go.
 ```
 
-Each sub-model package (`conv/`, `input/`, `trigger/`, `kit/`) defines its
+The transcript and input sub-models each define their
 own narrow `Runtime` interface. Root implements those via adapter methods
 on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
-[`broker`](broker.md), which the root opens as `broker.Main`.
+[`mail`](mail.md), which the root opens as `mail.Main`.
 
 ### Extension reload
 
@@ -52,7 +48,7 @@ triggers, state ownership and failure behavior.
 
 ### Human interactions
 
-`conv.AgentToUI` carries context-bound requests over one session-owned channel.
+`transcript.AgentToUI` carries context-bound requests over one session-owned channel.
 `interactions.go` owns a FIFO and one active request across approvals, questions
 and secret prompts. A modal never replaces another unanswered request; existing
 panels and native-history handoffs finish before the next prompt is shown.
@@ -62,7 +58,7 @@ Each response must match the active request. Cancellation retires only its
 caller; reset and shutdown close the transport logically and reject late delivery.
 Worker permission metadata comes from its backend-prepared context, not the
 parent's cwd or grants. Only once/reject is offered for worker approvals.
-`interaction.PreparePermission` and `Permission` handle preparation and resolution
+`ask.PreparePermission` and `Permission` handle preparation and resolution
 under the [shared contract](../reference/dependency-rules.md#rules). TUI supplies
 option labels, grant/audit callbacks and persistence notices.
 `interactions_renderer_test.go` drives real modal keys and verifies that worker
@@ -71,9 +67,8 @@ tool execution and the next inference receive the decision/answer.
 ### ACP stdio host
 
 `san acp` enters `acp.Run` (`internal/app/acp`), a separate package that never
-imports the TUI root or Bubble Tea. Wiring both hosts need (plugin paths, MCP
-tool reconciliation, resume-directory checks, session hooks, provider
-resolution) lives in `internal/app/host`. Stdout is
+imports the CLI print host, TUI root or Bubble Tea. For shared host helpers and their owners, see
+[Package Map](../reference/package-map.md#application-shell). Stdout is
 reserved for SDK ACP frames; diagnostics use stderr. The SDK owns initialization,
 request admission, session cancellation, transport limits and response barriers.
 `acp.go` composes independent native sessions, settings policies, hooks, reminders
@@ -202,7 +197,7 @@ commands wait until the turn ends and use the normal prompt-admission and comman
 dispatch path. Side commands and workflow stops can still run mid-turn. Local
 commands advance to the next queued item, while overlays pause delivery until
 closed. Leading image paths remain messages, and dispatch preserves the unrelated
-composer draft. Regression coverage lives in `internal/app/queue_slash_test.go`.
+composer draft. Regression coverage lives in `internal/app/tui/queue_slash_test.go`.
 
 ### Image turns
 
@@ -231,18 +226,19 @@ the first frame survives normalization.
 
 ### Return recaps
 
-`recap.go` uses [Recap settings in `/reflect`](../reference/aside.md#recap) to
-schedule preparation while the terminal is unfocused. Showing an automatic
+The TUI schedules preparation while the terminal is unfocused using the
+[Recap settings in `/reflect`](../reference/aside.md#recap). `internal/reflect/recap`
+builds the instructions and handles the model response. Showing an automatic
 recap requires both the away time and the configured number of completed user
 turns (defaults: five minutes and three turns). The same turn threshold applies
 before and after the first recap. The session records the turn count and the last
 displayed recap, so resuming does not recap the same work. If no recap is due at
 blur, no timer starts; turn end still checks for new work completed while away.
-`/recap` bypasses the automatic thresholds. See `internal/app/recap_test.go`.
+`/recap` bypasses the automatic thresholds. See `internal/app/tui/recap_test.go`.
 
 ## Internals
 
-Root files (no business logic; pure glue):
+Files under `internal/app/tui`:
 
 | File | Role |
 |---|---|
@@ -250,7 +246,7 @@ Root files (no business logic; pure glue):
 | `model_lifecycle.go` | Construction + run-option application + task lifecycle wiring + SessionEnd shutdown. |
 | `model_session.go` | Session save/load + per-session task storage + fork. |
 | `model_scrollback.go` | Retain recent settled rows above the composer; print older rows into native scrollback via `tea.Println`. |
-| `model_agent_events.go` | `conv.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
+| `model_agent_events.go` | `transcript.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |
@@ -279,13 +275,13 @@ Sub-model packages:
 
 | Package | Source | Role |
 |---|---|---|
-| `app/input/` | Source 1 (user keyboard) | Textarea, selectors, approval modals, slash command dispatch. Big surface (37 files, `on_*.go` per component). |
-| `app/conv/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
-| [`broker`](broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
-| `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
-| `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
+| `app/tui/input/` | Source 1 (user keyboard) | Textarea, selectors, approval modals, slash command dispatch. Big surface (37 files, `on_*.go` per component). |
+| `app/tui/transcript/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
+| [`mail`](mail.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `mail.Main`. |
+| `app/tui/` | Source 3 (system) | Handles file watcher events, cron dispatch and async hook polling directly. |
+| `app/tui/widgets/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 | `app/acp/` | ACP stdio | The ACP host: sessions, turns, permissions, extensions, workers; no TUI imports. |
-| `app/host/` | shared | Host wiring shared by the TUI, print/headless modes and ACP. |
+| `app/ask/` | TUI and ACP | Request lifetimes and permission resolution, independent of presentation. |
 
 The normal view fills the terminal height and anchors the composer and status
 line to the bottom. Matching neutral rules frame the input area. Short
@@ -336,7 +332,7 @@ When compaction succeeds, the live status gives way to an unindented
 `Conversation compacted` notice in the main conversation. A stopped
 failed turn explicitly marks its output as incomplete. This status is display-only
 and never enters native history or the model conversation. Regression coverage
-includes `conv/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
+includes `tui/transcript/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
 `view_inference_placement_test.go`, and `view_footer_history_test.go`.
 `Session.Send` is nonblocking and runs before the submit handler returns, so an
 Esc cannot be followed by a delayed command sending the cancelled request.
@@ -380,7 +376,7 @@ omitted; expanded notifications retain task IDs and full output.
 Expanded shell calls use the same `$` command block; other expanded parameters
 keep continuation lines aligned with their values.
 
-When foreground workers overflow the live tail, `conv.RenderActiveWorkers`
+When foreground workers overflow the live tail, `transcript.RenderActiveWorkers`
 reserves their identity rows and compact rows for ordinary pending tool siblings
 before sharing recent details. The latest notice also keeps a row. Background
 tracker/workflow indicators spend only the height left after this reservation,
@@ -437,7 +433,7 @@ pending, and completed plan items; rendering leaves task records intact.
   saves the focused preference. `gitBar` defaults off; `input.GitBarSavedMsg`
   reloads the effective setting. See [configuration](../reference/configuration.md).
 - **Flow:** `model_git_bar.go` reads through `proc.ReadGitStatus` in a bounded
-  `tea.Cmd`; `conv.RenderGitBar` draws a plain-text snapshot beneath the normal
+  `tea.Cmd`; `transcript.RenderGitBar` draws a plain-text snapshot beneath the normal
   status line. `renderFooter` accounts for its height and composer cursor.
 - **Lifecycle:** startup, enabling and cwd changes read immediately, then poll
   after three seconds. Disabling or changing cwd cancels the read; generation
@@ -450,7 +446,8 @@ pending, and completed plan items; rendering leaves task records intact.
 
 ## Lifecycle
 
-- `cmd/san` calls `app.Run()` which builds the `tea.Program`,
+- For print mode, `cmd/san` calls `cli.Print`. For interactive runs it calls
+  `tui.Run` to build the `tea.Program`:
   `newServices()` snapshots all `Default()` references, the root model is
   constructed, and `tea.Program.Run()` enters the MVU loop.
 - Per turn: user submits → input subpackage → `sendToAgent()` →
@@ -479,24 +476,24 @@ The root package has focused lifecycle/state tests and broader coverage through
 `tests/integration/`. Sub-model packages keep their own tests:
 
 ```
-internal/app/conv/message_test.go              — message rendering.
-internal/app/conv/markdown_test.go             — markdown renderer.
-internal/app/conv/tracker_view_test.go         — task tracker view.
-internal/app/conv/git_bar_test.go              — Git row content, CJK widths and truncation.
-internal/app/model_git_bar_test.go             — polling, stale events, settings and footer height.
-internal/app/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
-internal/app/view_test.go                     — fixed composer, multiline input and candidates.
-internal/app/view_observability_test.go        — worker identities, modal height, notices and progress.
-internal/app/view_worker_budget_test.go        — mixed tools and competing workflow height budgets.
-internal/app/model_scrollback_test.go          — recent output retention and resize.
-internal/app/model_scrollback_renderer_test.go — native history integrity through the real renderer.
-internal/app/agent_restart_test.go             — message-chain integrity across stop/restart.
-internal/app/input/on_approval_test.go         — approval flow.
-internal/app/input/on_mcp_test.go              — MCP slash command.
-internal/app/input/on_plugin_test.go           — plugin slash command.
-internal/app/input/on_provider_test.go         — provider selector.
-internal/app/input/on_queue_test.go            — input queueing.
-internal/app/input/on_textarea_test.go         — textarea behavior.
+internal/app/tui/transcript/message_test.go              — message rendering.
+internal/app/tui/transcript/markdown_test.go             — markdown renderer.
+internal/app/tui/transcript/tracker_view_test.go         — task tracker view.
+internal/app/tui/transcript/git_bar_test.go              — Git row content, CJK widths and truncation.
+internal/app/tui/model_git_bar_test.go             — polling, stale events, settings and footer height.
+internal/app/tui/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
+internal/app/tui/view_test.go                     — fixed composer, multiline input and candidates.
+internal/app/tui/view_observability_test.go        — worker identities, modal height, notices and progress.
+internal/app/tui/view_worker_budget_test.go        — mixed tools and competing workflow height budgets.
+internal/app/tui/model_scrollback_test.go          — recent output retention and resize.
+internal/app/tui/model_scrollback_renderer_test.go — native history integrity through the real renderer.
+internal/app/tui/agent_restart_test.go             — message-chain integrity across stop/restart.
+internal/app/tui/input/on_approval_test.go         — approval flow.
+internal/app/tui/input/on_mcp_test.go              — MCP slash command.
+internal/app/tui/input/on_plugin_test.go           — plugin slash command.
+internal/app/tui/input/on_provider_test.go         — provider selector.
+internal/app/tui/input/on_queue_test.go            — input queueing.
+internal/app/tui/input/on_textarea_test.go         — textarea behavior.
 ```
 
 ## See Also

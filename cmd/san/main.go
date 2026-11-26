@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,9 +11,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/app"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/app/cli"
+	"github.com/genai-io/san/internal/app/tui"
+	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/infra/proc"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/task"
 )
 
 var version = "1.25.5"
@@ -110,11 +115,32 @@ Non-interactive mode:
 			ResumeID:  resumeID,
 			Version:   version,
 		}
-		if err := app.Run(opts); err != nil {
+		if err := run(opts); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
+}
+
+func warnShellFallback() {
+	if shell, err := proc.DefaultShell(); err == nil && shell.FallbackReason != "" {
+		fmt.Fprintln(os.Stderr, "san: "+shell.FallbackReason)
+	}
+}
+
+func run(opts setting.RunOptions) error {
+	warnShellFallback()
+	if opts.Persona != "" {
+		cwd, _ := os.Getwd()
+		persona.Initialize(cwd)
+		if err := persona.Default().Validate(opts.Persona); err != nil {
+			return errors.Join(err, task.Default().Shutdown())
+		}
+	}
+	if opts.Print != "" {
+		return cli.Print(opts.Print, opts.Persona)
+	}
+	return tui.Run(opts)
 }
 
 // readStdin returns piped stdin data, or empty string if stdin is a terminal.

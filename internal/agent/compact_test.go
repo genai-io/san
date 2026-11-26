@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/filecache"
+	"github.com/genai-io/san/internal/infra/filecache"
 )
 
 func TestPostCompactRemindersFitFilesToBudget(t *testing.T) {

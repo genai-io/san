@@ -13,7 +13,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 )
 
 const (

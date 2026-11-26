@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/spf13/cobra"
 )
@@ -169,7 +169,7 @@ var mcpEditCmd = &cobra.Command{
 			return err
 		}
 
-		editorCmd := kit.EditorCommand(info.TempFile)
+		editorCmd := widgets.EditorCommand(info.TempFile)
 		editorCmd.Stdin = os.Stdin
 		editorCmd.Stdout = os.Stdout
 		editorCmd.Stderr = os.Stderr

@@ -1,0 +1,332 @@
+package tui
+
+import (
+	"iter"
+	"strings"
+
+	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
+
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/infra/filecache"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+)
+
+func stopRuntime(t *testing.T, runtime *agent.Runtime) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := runtime.Stop(ctx); err != nil {
+		t.Errorf("stop runtime: %v", err)
+	}
+}
+
+// restartStubProvider lets the foreground Session run without contacting a
+// backend and exposes the exact message chain received by its next inference.
+type restartStubProvider struct {
+	requests chan []core.Message
+}
+
+func (p *restartStubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	// Announcing each request as it goes out is what lets the test wait for
+	// the restarted agent to reach inference rather than poll for it.
+	return aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		p.requests <- flattenAI(req.Messages)
+		return aitest.Says("ok")(ctx, req)
+	}).Client(), nil
+}
+
+// flattenAI recovers just enough of San's shape for this test's assertion.
+func flattenAI(msgs []ai.Message) []core.Message {
+	out := make([]core.Message, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, core.Message{Role: ai.Role(m.Role), Content: m.Content})
+	}
+	return out
+}
+
+func (*restartStubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
+func (*restartStubProvider) Name() string                                        { return "restart-stub" }
+
+// A stop may happen before the next call to ensureAgentRuntime (for example an
+// agent toggle or a terminal outbox event). The live core chain must survive
+// that gap and win over the UI rendering model when the replacement is seeded.
+func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
+	sess := &agent.Runtime{}
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	inferences := make(chan []string, 1)
+	live := []core.Message{
+		{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("survey internal/agent/mail")},
+		{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("foreground result")},
+	}
+	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, live); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	m := model{
+		services: services{Agent: sess},
+		conv:     transcript.NewModel(80),
+	}
+	if err := m.StopAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	if sess.Active() {
+		t.Fatal("Session remained active after StopAgentRuntime")
+	}
+
+	// A background completion is already represented in the UI when
+	// SubmitToAgent asks for a replacement. It is sent through the inbox after
+	// Start, so it must not displace the preserved seed.
+	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
+	got := m.services.Agent.Messages()
+	if len(got) != len(live) {
+		t.Fatalf("Agent.Messages() len = %d, want %d: %+v", len(got), len(live), got)
+	}
+	for i := range live {
+		if got[i].ID != live[i].ID {
+			t.Fatalf("Agent.Messages()[%d].ID = %q, want %q", i, got[i].ID, live[i].ID)
+		}
+	}
+
+	if err := sess.Start(agent.BuildParams{
+		Provider: provider,
+		ModelID:  "m",
+		OnEvent: func(event core.Event) {
+			if start, ok := event.(sdkagent.InferenceStart); ok && start.Inference != nil {
+				ids := make([]string, 0, len(start.Inference.Messages))
+				for _, m := range start.Inference.Messages {
+					ids = append(ids, m.ID)
+				}
+				inferences <- ids
+			}
+		},
+	}, got); err != nil {
+		t.Fatalf("restart Session: %v", err)
+	}
+	defer stopRuntime(t, sess)
+	restarted := sess.Messages()
+	if len(restarted) != len(live) {
+		t.Fatalf("restarted Messages() len = %d, want %d: %+v", len(restarted), len(live), restarted)
+	}
+	for i := range live {
+		if restarted[i].ID != live[i].ID {
+			t.Fatalf("restarted Messages()[%d].ID = %q, want %q", i, restarted[i].ID, live[i].ID)
+		}
+	}
+
+	if err := sess.Send(core.UserMessage("background result", nil)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	select {
+	case request := <-provider.requests:
+		if len(request) != 3 {
+			t.Fatalf("inference message count = %d, want 3: %+v", len(request), request)
+		}
+		if request[0].Text() != live[0].Text() || request[1].Text() != live[1].Text() {
+			t.Fatalf("inference lost preserved content: %+v", request)
+		}
+		if request[2].Role != ai.RoleUser || request[2].Text() != "background result" {
+			t.Fatalf("inference trailing message = %+v, want background result", request[2])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for restarted inference")
+	}
+
+	select {
+	case ids := <-inferences:
+		if len(ids) != 3 {
+			t.Fatalf("inference message IDs = %v, want three IDs", ids)
+		}
+		if ids[0] != "u1" || ids[1] != "a1" {
+			t.Fatalf("the inference lost preserved IDs: %v", ids)
+		}
+		if ids[2] == "" {
+			t.Fatal("the background result went unnamed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for PreInfer event")
+	}
+}
+
+// Clearing or replacing a conversation must explicitly discard a retained
+// chain; otherwise the next user message would resurrect the old session.
+func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
+	m := model{
+		env:      env{FileCache: filecache.New()},
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()},
+		conv:     transcript.NewModel(80),
+	}
+	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
+	if err := m.ResetAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
+
+	if got := m.services.Agent.Messages(); len(got) != 0 {
+		t.Fatalf("Agent.Messages() after reset = %+v, want no old seed", got)
+	}
+}
+
+// Skills/memory reminders ride on a conversation's first message only;
+// replacing the conversation drops old notices and sends them again.
+func TestResetAgentRuntimeFailurePreservesConversationState(t *testing.T) {
+	sess := &agent.Runtime{}
+	started, release := make(chan struct{}), make(chan struct{})
+	seed := []core.Message{withID("old-user", core.UserMessage("old conversation", nil))}
+	if err := sess.Start(agent.BuildParams{
+		Provider: &restartStubProvider{}, ModelID: "m",
+		OnEvent: func(ev core.Event) {
+			if _, ok := ev.(core.AgentStarted); ok {
+				close(started)
+				<-release
+			}
+		},
+	}, seed); err != nil {
+		t.Fatal(err)
+	}
+	defer stopRuntime(t, sess)
+	defer close(release)
+	<-started
+	m := model{
+		services:          services{Agent: sess, Reminder: reminder.New()},
+		pendingPluginRoot: "retained-plugin",
+	}
+	m.pendingMessages.Hold(nil)
+	m.services.Reminder.PrepareInput(core.UserMessage("first", nil))
+	// Nil reset-only dependencies also catch premature UI/cache teardown.
+	if err := m.ResetAgentRuntime(); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ResetAgentRuntime = %v, want deadline exceeded", err)
+	}
+	if !sess.Active() || len(sess.Messages()) != 1 || sess.Messages()[0].ID != seed[0].ID {
+		t.Fatal("failed reset lost the live conversation")
+	}
+	if m.pendingPluginRoot != "retained-plugin" || !m.services.Reminder.Prepared() || !m.pendingMessages.Held() {
+		t.Fatal("failed reset cleared conversation UI state")
+	}
+}
+
+func TestSystemRemindersOncePerConversation(t *testing.T) {
+	m := model{env: env{FileCache: filecache.New()}, services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()}}
+	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
+	send := func(text string) string {
+		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
+	}
+
+	first := m.attachPendingReminders(core.UserMessage("first", nil))
+	if len(first.Content) != 2 || first.Content[0].Text != "first" || !reminder.HasSystemReminder(first.Content[1].Text) {
+		t.Fatalf("first message should have separate user and reminder blocks: %+v", first.Content)
+	}
+	if got := send("second"); got != "second" {
+		t.Fatalf("second message = %q, want no reminders", got)
+	}
+
+	m.services.Reminder.Enqueue("old hook context")
+	if err := m.ResetAgentRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	got := send("after reset")
+	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
+		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
+	}
+}
+
+// textOnlyStubProvider declares itself unable to accept image input, the way
+// DeepSeek does. Seeding never streams, so Stream is left unimplemented.
+type textOnlyStubProvider struct{ restartStubProvider }
+
+func (*textOnlyStubProvider) Name() string               { return "text-only-stub" }
+func (*textOnlyStubProvider) SupportsImages(string) bool { return false }
+
+func chainWithImage() []core.Message {
+	return []core.Message{
+		withID("u1", core.UserMessage("what is in this screenshot?",
+			[]core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n", FileName: "shot.png"}}})),
+		withID("a1", core.AssistantMessage("a terminal", "", nil)),
+	}
+}
+
+// A conversation that began on a vision-capable model carries its images in the
+// chain. Handing them to a text-only model replays image parts the provider
+// rejects on every later turn. Only inference input should drop them.
+func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
+	original := chainWithImage()
+	m := model{conv: transcript.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
+	m.env.LLMProvider = &textOnlyStubProvider{}
+
+	seeded := m.services.Agent.Messages()
+	if len(seeded) != len(original) {
+		t.Fatalf("Agent.Messages() length = %d, want %d", len(seeded), len(original))
+	}
+	if n := imageBlocks(seeded[0]); n != 1 {
+		t.Errorf("native seed has %d image(s), want one", n)
+	}
+	if seeded[0].Text() != original[0].Text() {
+		t.Errorf("seeded user message content = %q, want %q", seeded[0].Text(), original[0].Text())
+	}
+	// The retained snapshot must survive intact: switching back to a
+	// vision-capable model has to restore the images.
+	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
+		t.Error("stripping mutated the retained restart chain")
+	}
+}
+
+// Vision-capable providers are the common case and must see the chain untouched.
+func TestRuntimeMessagesKeepImagesForVisionModel(t *testing.T) {
+	m := model{conv: transcript.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
+	m.env.LLMProvider = &restartStubProvider{}
+
+	seeded := m.services.Agent.Messages()
+	if imageBlocks(seeded[0]) != 1 {
+		t.Errorf("seeded user message has %d image(s), want the original 1", imageBlocks(seeded[0]))
+	}
+}
+
+func withID(id string, m core.Message) core.Message {
+	m.ID = id
+	return m
+}
+
+func imageBlocks(m core.Message) int {
+	n := 0
+	for _, b := range m.Content {
+		if b.Type == ai.BlockImage {
+			n++
+		}
+	}
+	return n
+}
+
+// A rebuild stops the old agent and starts a new one; the old agent's stop
+// event reaches the UI afterwards. It must not stop its replacement.
+func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
+	sess := &agent.Runtime{}
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer stopRuntime(t, sess)
+
+	m := model{services: services{Agent: sess}, conv: transcript.NewModel(80)}
+	old := make(chan core.Event)
+	close(old)
+	for _, late := range []transcript.AgentOutboxMsg{
+		{Outbox: old, Event: core.AgentStopped{Err: context.Canceled}},
+		{Outbox: old, Closed: true},
+	} {
+		transcript.Update(&m, &m.conv, late)
+	}
+	if !sess.Active() {
+		t.Fatal("the late stop of a replaced agent stopped the running one")
+	}
+}

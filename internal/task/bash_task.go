@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 )
 
 // BashTask represents a background bash command task

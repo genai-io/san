@@ -1,0 +1,103 @@
+// /btw answers a side question in an Aside without interrupting the main turn.
+package tui
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/session"
+)
+
+const btwTimeout = 2 * time.Minute
+
+const btwInstructions = `<system-reminder>This is a side question from the user. Answer it directly in a single response from what this conversation already holds.
+- You are a separate, one-off answer: the main work is not interrupted and continues on its own, and there is no follow-up turn.
+- Answer only this question. Requests earlier in the conversation are the main agent's to carry out, not yours.
+- Do not frame it as an interruption or mention what you were previously doing.
+- You cannot use tools here, and nothing written as a tool call runs. If answering needs reading files, running commands or searching, say it can't be checked from a side question and suggest asking in the main conversation.
+- If you don't know, say so; never promise to look it up.
+</system-reminder>`
+
+// btwAsk is one /btw in flight, drawn live until its answer lands. It keeps
+// the session it was asked in: an answer that outlives a /clear or /resume
+// belongs to the conversation it was asked about, not the one now on screen.
+type btwAsk struct {
+	question  string
+	sessionID string
+}
+
+type btwAnswerMsg struct {
+	ask       btwAsk
+	answer    string
+	owner     *session.Session
+	recording *session.Completion
+}
+
+// sideQuestion starts answering question off the UI goroutine.
+func (m *model) sideQuestion(question string) tea.Cmd {
+	req := m.newAsideRequest(session.PurposeBtw, true, btwInstructions, question)
+	ask := btwAsk{question: strings.Join(strings.Fields(question), " "), sessionID: m.sessionID()}
+	// A running spinner already ticks; a second chain would double its speed.
+	var tick tea.Cmd
+	if !m.needsSpinner() {
+		tick = m.conv.Spinner.Tick
+	}
+	m.btw = append(m.btw, ask)
+	return tea.Batch(tick, func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
+		defer cancel()
+		return btwAnswerMsg{ask: ask, answer: answerBtw(ctx, req), owner: req.owner, recording: req.snapshot.Recording()}
+	})
+}
+
+func (m *model) onBtwAnswer(msg btwAnswerMsg) tea.Cmd {
+	if i := slices.Index(m.btw, msg.ask); i >= 0 {
+		m.btw = slices.Delete(m.btw, i, i+1)
+	}
+	if msg.ask.sessionID != m.sessionID() || msg.owner != m.services.Session {
+		closeAside(msg.recording)
+		return nil
+	}
+	notice := transcript.SideNotice(msg.ask.question, msg.answer)
+	if !finishAside(msg.recording, notice) {
+		return nil
+	}
+	m.conv.AddNotice(notice)
+	return tea.Batch(m.CommitMessages()...)
+}
+
+// btwWaiting reports whether this session has a /btw still waiting.
+func (m *model) btwWaiting() bool {
+	return slices.ContainsFunc(m.btw, func(a btwAsk) bool { return a.sessionID == m.sessionID() })
+}
+
+// btwLive draws this session's questions still waiting on an answer.
+func (m *model) btwLive() string {
+	var rows []string
+	for _, a := range m.btw {
+		if a.sessionID == m.sessionID() {
+			rows = append(rows, transcript.RenderSidePending(a.question, m.conv.Spinner.Frame(), m.env.Width))
+		}
+	}
+	return strings.TrimSuffix(strings.Join(rows, "\n"), "\n")
+}
+
+func answerBtw(ctx context.Context, req asideRequest) string {
+	resp, err := req.complete(ctx)
+	if err != nil {
+		return "Error: " + err.Error()
+	}
+	if text := strings.TrimSpace(resp.Content.Text()); text != "" {
+		return text
+	}
+	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
+		return fmt.Sprintf("(The model tried to call %s instead of answering. Ask in the main conversation.)", calls[0].Name)
+	}
+	return "(No answer.)"
+}

@@ -10,7 +10,7 @@ update the GIFs in the same change.
 - `site/style.css`: shared website styles, including the intro frame and community.
 - `site/intro.html`: one self-contained HTML animation with nine timed scenes.
 - `assets/san-intro.gif` and `assets/san-intro-dark.gif`: light and dark README exports.
-- `tools/site/export-intro.mjs`: Chrome capture and FFmpeg GIF export.
+- `devtools/site/export-intro.mjs`: Chrome capture and FFmpeg GIF export.
 
 The website uses the paper-colored intro by default. `?variant=readme` uses a
 plain GitHub-colored canvas and follows the browser's preferred color scheme.
@@ -39,14 +39,14 @@ and transitions so frame capture is deterministic.
 Install Node.js 24+, Google Chrome and FFmpeg, then run from the repository root:
 
 ```bash
-node tools/site/export-intro.mjs
+node devtools/site/export-intro.mjs
 ```
 
 On macOS the tool uses the normal Google Chrome application path. On other
 systems it uses `google-chrome`. Override that path when needed:
 
 ```bash
-SAN_CHROME=/path/to/chromium node tools/site/export-intro.mjs
+SAN_CHROME=/path/to/chromium node devtools/site/export-intro.mjs
 ```
 
 The exporter starts a temporary localhost server, waits for the comic font,

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -19,11 +19,11 @@ func TestInboxCapacityRecoveryDeliversRetainedCompletion(t *testing.T) {
 	bindContinuationSessions(t, e, store, parent)
 	worker, err := e.RunBackground(tool.AgentExecRequest{Prompt: "work", MaxSteps: 2, OnIdentity: func(identity toolresult.AgentIdentity) {
 		for i := range maxPendingWorkerMessages {
-			if !broker.Send(broker.Message{To: identity.ID, Content: fmt.Sprintf("startup %d", i)}) {
+			if !mail.Send(mail.Message{To: identity.ID, Content: fmt.Sprintf("startup %d", i)}) {
 				t.Errorf("startup message %d rejected", i)
 			}
 		}
-		if !broker.SendCompletion(broker.Message{To: identity.ID, SessionID: parent.ID(), Content: "retained child completion", TaskCompletion: &broker.TaskCompletion{TaskID: task.NewID(), Attempt: 1}}) {
+		if !mail.SendCompletion(mail.Message{To: identity.ID, SessionID: parent.ID(), Content: "retained child completion", TaskCompletion: &mail.TaskCompletion{TaskID: task.NewID(), Attempt: 1}}) {
 			t.Error("completion was not retained")
 		}
 	}})

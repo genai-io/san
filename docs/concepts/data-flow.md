@@ -63,7 +63,7 @@ scrollback) plus `View()` (bottom UI strip).
    │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
-   │                  Update → conv.Update → callbacks            │
+   │                  Update → transcript.Update → callbacks      │
    │                      │                                       │
    │                      ▼                                       │
    │             CommitMessages → tea.Println → scrollback        │
@@ -225,27 +225,22 @@ agent turn ends) drains them.
 
 ```
 ┌─ Producer ────────────┬─ Where it lives ────┬─ Where it parks ──────────────┐
-│ Cron tick             │ trigger.StartCron-  │ m.systemInput.CronQueue       │
-│   (every minute the   │ Ticker (background  │   []string (prompts queued)   │
-│    ticker checks      │ goroutine)          │                               │
-│    durable jobs)      │                     │                               │
+│ Cron tick             │ TUI polls scheduler │ m.cronQueue (deferred prompts)│
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Async hook follow-up  │ trigger.StartAsync- │ m.systemInput.AsyncHookQueue  │
-│   (a hook script's    │ HookTicker          │   each item carries Notice +  │
-│    JSON output said   │                     │   Context lines + Contin-     │
-│    `nextPrompt: ...`) │                     │   uationPrompt                │
+│ Async hook follow-up  │ TUI polls the queue │ m.asyncHookQueue (notice,     │
+│                       │                     │ context, continuation prompt) │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Subagent completes    │ task.SetLife-       │ broker.Send to "main"; the    │
+│ Subagent completes    │ task.SetLife-       │ mail.Send to "main"; the      │
 │   (background Task,   │ cycleHandler →      │ main-loop deliver fn pushes   │
-│    spawned by the     │ broker.Send         │ it onto m.mainNotices         │
+│    spawned by the     │ mail.Send           │ it onto m.mainNotices         │
 │    Agent tool)        │                     │ (a Go channel)                │
 └───────────────────────┴─────────────────────┴───────────────────────────────┘
 ```
 
 `m.mainNotices` carries notices bound for the main loop: subagent completions,
 interim messages (`SendMessage to="main"`), and self-learn notices. Agent
-mail routes through the process-wide [`broker`](../packages/broker.md);
-the main loop opens `broker.Main` and forwards onto this channel.
+mail routes through the process-wide [`mail`](../packages/mail.md);
+the main loop opens `mail.Main` and forwards onto this channel.
 
 ### Drain at turn boundary
 
@@ -300,12 +295,12 @@ worker's next inference.
 The producer side: a subagent (or any background task) finishes →
 `notifyTaskCompleted` → the task-lifecycle handler registered in
 `wireTaskLifecycle` sends the completion to the "main" address → the
-`broker.Register(broker.Main, …)` delivery function pushes onto `m.mainNotices`.
+`mail.Register(mail.Main, …)` delivery function pushes onto `m.mainNotices`.
 Background tasks are one producer; subagents posting interim messages
 (`SendMessage to="main"`) and self-learn notices are others — all arrive on
 the same channel.
 
-Same pattern as `conv.DrainAgentOutbox` reading the agent outbox chan
+Same pattern as `transcript.DrainAgentOutbox` reading the agent outbox chan
 — two Go channels, two blocking-receive cmds, one Update loop. No
 polling, no tick, zero idle CPU.
 
@@ -349,7 +344,7 @@ the main agent's next inference. Three goroutines are involved; each
    ② notifyTaskCompleted → lifecycle handler (model_lifecycle.go)
        │   taskCompletionMessage builds the <task-notification>
        ▼
-   ③ broker.Send(to "main") → Main deliver fn
+   ③ mail.Send(to "main") → Main deliver fn
        ▼
    ④ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑤ awaitMainNotice unblocks
                                        → Update → onMainNotice(n)
@@ -406,7 +401,7 @@ tea.Msg (typed as a conv.* msg)
    │
    ▼
 Update → routeToSubModel                update.go
-   └─ conv.Update(m, &m.conv, msg)      app/conv/update.go
+   └─ transcript.Update(m, &m.conv, msg)      app/tui/transcript/update.go
          │
          │ Routes by event type. The streaming flow is:
          │
@@ -612,17 +607,17 @@ prompt cache behaviour).
 
 | Path step | File |
 |---|---|
-| `Update` dispatch | [`internal/app/update.go`](../../internal/app/update.go) |
-| Keyboard handling | [`internal/app/update_keys.go`](../../internal/app/update_keys.go) |
-| Submit + SubmitToAgent | [`internal/app/update_submit.go`](../../internal/app/update_submit.go) |
-| Slash command controller | [`internal/app/input/slash_command.go`](../../internal/app/input/slash_command.go) |
-| Slash command env builder | [`internal/app/update_command.go`](../../internal/app/update_command.go) |
-| Inject paths (cron/hook/hub) | [`internal/app/model_turn_queue.go`](../../internal/app/model_turn_queue.go) |
-| Agent event callbacks | [`internal/app/model_agent_events.go`](../../internal/app/model_agent_events.go) |
-| Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
-| Conv event router | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
-| `agent.Send` / outbox poll | [`internal/app/agent.go`](../../internal/app/agent.go) |
-| Cancel mid-stream | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
+| `Update` dispatch | [`internal/app/tui/update.go`](../../internal/app/tui/update.go) |
+| Keyboard handling | [`internal/app/tui/update_keys.go`](../../internal/app/tui/update_keys.go) |
+| Submit + SubmitToAgent | [`internal/app/tui/update_submit.go`](../../internal/app/tui/update_submit.go) |
+| Slash command controller | [`internal/app/tui/input/slash_command.go`](../../internal/app/tui/input/slash_command.go) |
+| Slash command env builder | [`internal/app/tui/update_command.go`](../../internal/app/tui/update_command.go) |
+| Inject paths (cron/hook/hub) | [`internal/app/tui/model_turn_queue.go`](../../internal/app/tui/model_turn_queue.go) |
+| Agent event callbacks | [`internal/app/tui/model_agent_events.go`](../../internal/app/tui/model_agent_events.go) |
+| Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
+| Conv event router | [`internal/app/tui/transcript/update.go`](../../internal/app/tui/transcript/update.go) |
+| `agent.Send` / outbox poll | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
+| Cancel mid-stream | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
 | `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
 | `turn` / `Cancel` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
-| Bottom UI compose | [`internal/app/view.go`](../../internal/app/view.go) |
+| Bottom UI compose | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |

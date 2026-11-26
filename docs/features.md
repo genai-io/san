@@ -50,7 +50,7 @@
 
   `Agent call -> separate worker -> foreground result or background task`
 
-- [Agent messaging](packages/broker.md) — Lets agents in one San process exchange messages without sharing a conversation. The broker routes to the main agent or a registered worker task ID. Ordinary messages need a recipient that can accept them; child completions can wait in memory for their owning worker.
+- [Agent messaging](packages/mail.md) — Lets agents in one San process exchange messages without sharing a conversation. The broker routes to the main agent or a registered worker task ID. Ordinary messages need a recipient that can accept them; child completions can wait in memory for their owning worker.
 
   `Addressed message -> in-process broker -> recipient inbox`
 

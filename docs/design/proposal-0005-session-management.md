@@ -502,7 +502,7 @@ Slices 1–2 are gated by #737's tests being ported, not deleted.
 
 Slice 6 moves every consumer to the session directory: `Session.Path` and its
 hook-facing path, discovery/listing, and the inspector (`cmd/san/inspector.go`,
-`internal/inspector`). Each session directory opens as its own sdk-go store with
+`internal/app/inspector`). Each session directory opens as its own sdk-go store with
 fixed ID `events`, keeping SDK batch framing, writer locking and recovery.
 `sessions/`, `trash/` and `cache/` must share a filesystem for atomic renames.
 

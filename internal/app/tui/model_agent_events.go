@@ -1,0 +1,239 @@
+// transcript.Runtime implementation: callbacks the agent's outbox event pump calls
+// on the main bubbletea goroutine — turn start, token accounting, tool
+// results, turn end, and stop. The actual side effects (committing
+// scrollback, draining queues, firing hooks) live in adjacent model_*
+// files; this file is the thin wire between agent events and those
+// effects.
+package tui
+
+import (
+	"context"
+	"errors"
+	"slices"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/sdk-go/pkg/ai"
+)
+
+func (m *model) OnInference(resp *ai.Response) {
+	if resp == nil {
+		return
+	}
+	// PostInfer starts a new step: re-arm the one-per-step queue release that
+	// this step's PostTool events will use (see OnStepEnd).
+	m.drainedThisStep = false
+
+	if m.userInput.Provider.StatusMessage == "compacted" {
+		m.userInput.Provider.StatusMessage = ""
+	}
+
+	// Bottom-right context usage reflects the latest infer call, not a
+	// lifetime sum across the whole session. Use the full prompt size
+	// (fresh + cache read + cache creation) so the ctx readout matches real
+	// context-window occupancy rather than just the uncached delta.
+	m.env.InputTokens = resp.Usage.TotalInput()
+	m.env.OutputTokens = resp.Usage.Output
+	m.env.ContextTokens = resp.Usage.Total()
+
+	if m.env.CurrentModel != nil {
+		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.AuthMethod, m.env.CurrentModel.ModelID, resp.Usage); ok {
+			m.env.ConversationCost = m.env.ConversationCost.Add(cost)
+		}
+	}
+}
+
+// HasRunningTasks gates the progress-hub tick's spinner batching. Like
+// needsSpinner it reads live runtime state, not persisted tracker status.
+func (m *model) HasRunningTasks() bool { return m.services.Task.HasRunning() }
+
+// OnStepEnd releases pending work into a still-running turn at a step
+// boundary (a PostTool, where the turn continues): one queued user message — the
+// cap keeps the queue editable until release. Counterpart to drainTurnQueues,
+// which runs once the turn has ended.
+func (m *model) OnStepEnd() tea.Cmd {
+	if !m.services.Agent.Active() {
+		return nil
+	}
+	admitted := m.confirmFlowMainInput()
+	notices := tea.Batch(admitted, tea.Batch(m.CommitMessages()...))
+	if m.drainedThisStep {
+		return notices
+	}
+	queued, released := m.releaseQueuedMessage()
+	m.drainedThisStep = released
+	return tea.Batch(notices, queued)
+}
+
+func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
+	// Track skill usage for the self-learning trigger: any Skill tool call this
+	// turn (even a failing one — a broken skill is a prime refine/retire
+	// candidate) flips the turn onto the update/delete review path.
+	if tr.ToolName == tool.ToolSkill {
+		m.skillUsedThisTurn = true
+	}
+	// The ReviewSkill tool is the model-decided self-learning trigger: its call
+	// this turn queues a review at turn end.
+	if tr.ToolName == tool.ToolReviewSkill && !tr.IsError {
+		m.skillReviewRequested = true
+	}
+
+	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
+	agent.PostTool(tr, sideEffect, m.services.Hook, agent.WorkspaceCallbacks{
+		ChangeCwd:      m.changeCwd,
+		ReloadPersonas: m.reloadPersonasIfChanged,
+		TouchFile: func(path string) {
+			if m.env.FileCache != nil {
+				m.env.FileCache.Touch(path)
+			}
+		},
+	})
+
+	return &core.ToolResult{
+		ToolCallID: tr.ToolCallID,
+		ToolName:   tr.ToolName,
+		Content:    tr.Content,
+		IsError:    tr.IsError,
+	}
+}
+
+func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
+	if m.agentSession != nil && m.agentSession != m.services.Session {
+		result.Finalization.Acknowledge(errors.New("opened session replaced before turn finalization"))
+		return m.ListenForAgentEvents()
+	}
+	m.pendingStopHook = nil
+	finalizationErr := core.ErrTurnCompleted
+	defer func() {
+		result.Finalization.Acknowledge(finalizationErr)
+		m.finishFlowMain(result, finalizationErr)
+	}()
+	// A dismissed start/resume offer comes back once the turn is over.
+	m.autopilotOfferDismissed = false
+	// Only a list the model closed out is safe to discard. An item left open —
+	// pending, or in_progress with nothing executing it — is unfinished work, so
+	// the list survives the turn and stays on screen.
+	// Completed workers also wait until their completion notice is shown.
+	//
+	// This is the sole automatic reset, so one item the model never closes keeps
+	// the list alive and growing for the rest of the session. That is why the
+	// tracker windows on its newest rows (see maxVisibleTasks) rather than
+	// assuming it renders a single turn's worth.
+	if m.services.Tracker.AllMarkedCompleted() && !slices.ContainsFunc(m.services.Tracker.List(), func(item *todo.Item) bool {
+		return !m.taskCompletionShown(todo.BackgroundTaskID(item))
+	}) {
+		m.services.Tracker.Reset()
+	}
+	// The turn reached its end, so whatever failure the copilot was recovering
+	// from is behind us — give a later failure its full recovery budget again.
+	m.autopilotRecoveries = 0
+	m.services.Agent.SetPluginRoot("")
+	// Review only settled turns that requested Auto Skill.
+	if s := m.services.AutoSkill.session; s != nil {
+		s.reviewer.Observe(result, m.skillUsedThisTurn, m.skillReviewRequested)
+	}
+	m.skillUsedThisTurn = false
+	m.skillReviewRequested = false
+	// Reads and recalls are already shown at their tool steps. Only memory
+	// changes get a turn-end summary, and a read-only turn adds no empty notice.
+	entries := m.conv.TurnMemory(m.turnOpenedBy, nil)
+	m.turnOpenedBy = ""
+	if line := memoryLine(entries, m.env.Width); line != "" {
+		// Here, not via notifyMain: the line belongs above anything this turn
+		// end releases, the next queued message included.
+		m.conv.AddNotice(line)
+	}
+	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
+	commitCmds := m.CommitMessages()
+	if m.flowMainCapturing() || m.flowMainRequest != nil {
+		commitCmds = append(commitCmds, m.confirmFlowMainInput())
+		finalizationErr = m.appendTurnState()
+		return tea.Batch(append(commitCmds, m.ListenForAgentEvents())...)
+	}
+
+	// Cancellation must finish cleanup and persistence before admitting another
+	// turn. turnFinalizedMsg resumes explicitly queued user input after the
+	// receipt settles; it does not drain cron/hook queues or revive autopilot.
+	//
+	// Stop / idle-notification hooks would otherwise fire on every Esc —
+	// confusing for the user and for hooks that template result.Content (which
+	// is empty for a cancelled turn). We still persist so the [Interrupted]
+	// marker and cancelled tool_result rows survive a crash/quit, and
+	// re-arm prompt suggestions for the now-idle textarea.
+	if result.StopReason == core.StopCanceled || m.pendingMessages.Cancelling() == result.Finalization && m.pendingMessages.Cancelling() != nil {
+		log.Logger().Sugar().Debugf("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
+		finalizationErr = m.appendTurnState()
+		if cmd := m.startPromptSuggestion(); cmd != nil {
+			commitCmds = append(commitCmds, cmd)
+		}
+		commitCmds = append(commitCmds, m.ListenForAgentEvents())
+		return tea.Batch(commitCmds...)
+	}
+
+	// Capture this completed turn before draining input into the next one.
+	if cmd := m.updateMemoryAfterTurn(result); cmd != nil {
+		commitCmds = append(commitCmds, cmd)
+	}
+
+	// Normal completion never broadens the cancellation-only receipt contract.
+	_ = agent.EndTurn(agent.TurnCallbacks{
+		RecordState: m.appendTurnState,
+		NextInput: func() bool {
+			cmd, found := m.drainTurnQueues()
+			if cmd != nil {
+				commitCmds = append(commitCmds, cmd)
+			}
+			return found
+		},
+		AutoPilot: func() bool {
+			if cmd := m.autopilotContinueCmd(result); cmd != nil {
+				commitCmds = append(commitCmds, cmd)
+				return true
+			}
+			return false
+		},
+		Idle: func() { commitCmds = append(commitCmds, m.fireIdleHooksCmd(result)) },
+	})
+	commitCmds = append(commitCmds, m.ListenForAgentEvents())
+	return tea.Batch(commitCmds...)
+}
+
+func (m *model) OnAgentStop(err error) tea.Cmd {
+	if m.flowMainRequest != nil {
+		m.pendingMessages.Hold(nil)
+		failure := err
+		if failure == nil {
+			failure = errors.New("main runtime stopped")
+		}
+		m.failFlowMain(failure)
+	}
+	// /clear and manual stop cancel the active agent context; that is expected
+	// shutdown, not an agent failure the user needs to see.
+	failed := err != nil && !errors.Is(err, context.Canceled)
+	if failed {
+		m.conv.AddNotice(transcript.FailedTurnNotice(err))
+		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
+	}
+	m.pruneUserPrompts()
+	commitCmds := m.CommitMessages()
+	if stopErr := m.StopAgentRuntime(); stopErr != nil {
+		m.conv.AddNotice(stopErr.Error())
+		return tea.Batch(append(commitCmds, m.CommitMessages()...)...)
+	}
+	// An unattended run must survive a failed turn: schedule the copilot to look
+	// at the failure and decide whether the mission can resume. No-op outside
+	// AutoPilot, and it still hands back when the error needs a human.
+	if failed {
+		if cmd := m.autopilotRecoverCmd(err); cmd != nil {
+			commitCmds = append(commitCmds, cmd)
+		}
+	}
+	return tea.Batch(commitCmds...)
+}

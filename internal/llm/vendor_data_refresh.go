@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 // Keeping the model data current: models.dev, fetched daily, cut down to the

@@ -1,0 +1,294 @@
+package transcript
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+
+	"charm.land/lipgloss/v2"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/tui/widgets"
+	"github.com/genai-io/san/internal/tool/perm"
+)
+
+// RenderFileDiff renders parsed unified-diff lines in the transcript's diff
+// style: a dim line-number gutter, -/+ markers, red/green row backgrounds
+// spanning the full row, and a stronger background on the span that actually
+// changed when a removed/added pair differs only in part of the line. It is
+// shared by the inline Edit/Write result and the approval preview.
+//
+// maxVisible caps logical diff rows, not wrapped visual rows (0 means no cap).
+// The second return value is how many logical diff rows were hidden by that cap.
+func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) {
+	return renderFileDiffIndented(lines, width, maxVisible, "  ")
+}
+
+// renderFileDiffIndented renders a diff under a caller-provided transcript
+// indent. Inline results and approval previews share the two-column inset,
+// aligned with the result trailer's connector.
+func renderFileDiffIndented(lines []perm.DiffLine, width, maxVisible int, indent string) (string, int) {
+	if len(lines) == 0 {
+		return "", 0
+	}
+
+	width = max(width, 2)
+	indent = ansi.Truncate(indent, max(0, width-2), "")
+	rowWidth := width - lipgloss.Width(indent)
+	gutterWidth := diffGutterWidth(lines)
+	emphasis := computeDiffEmphasis(lines)
+
+	lineNoStyle := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.TextDisabled)
+	contextStyle := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.TextDim)
+	noticeStyle := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.Muted).Italic(true)
+	removedStyle := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.Error).Background(widgets.CurrentTheme.ErrorBg)
+	removedStrongStyle := removedStyle.Background(widgets.CurrentTheme.ErrorBgStrong)
+	addedStyle := lipgloss.NewStyle().Foreground(widgets.CurrentTheme.Success).Background(widgets.CurrentTheme.SuccessBg)
+	addedStrongStyle := addedStyle.Background(widgets.CurrentTheme.SuccessBgStrong)
+
+	var sb strings.Builder
+	rendered, hunksSeen := 0, 0
+	hidden := 0
+	for i, line := range lines {
+		// The no-newline marker is unified-diff bookkeeping, not file
+		// content — under a small-file edit it would trail nearly every row.
+		// Other metadata still renders as a notice.
+		if line.Type == perm.DiffLineNoNewline {
+			continue
+		}
+		if line.Type == perm.DiffLineHunk {
+			hunksSeen++
+			// The first hunk needs no separator; later ones get a dim "⋯" so
+			// the jump between file regions is visible.
+			if hunksSeen > 1 && (maxVisible <= 0 || rendered < maxVisible) {
+				sb.WriteString(indent + noticeStyle.Render("⋯") + "\n")
+			}
+			continue
+		}
+		if maxVisible > 0 && rendered >= maxVisible {
+			hidden++
+			continue
+		}
+		rendered++
+
+		switch line.Type {
+		case perm.DiffLineMetadata:
+			for segment := range strings.SplitSeq(ansi.Hardwrap(diffDisplayText(line.Content), rowWidth, true), "\n") {
+				sb.WriteString(indent + noticeStyle.Render(segment) + "\n")
+			}
+		case perm.DiffLineRemoved:
+			prefix := fmt.Sprintf("%*d - ", gutterWidth, line.OldLineNo)
+			sb.WriteString(indent + strings.ReplaceAll(renderDiffRow(prefix, line.Content, emphasis[i], removedStyle, removedStrongStyle, rowWidth), "\n", "\n"+indent) + "\n")
+		case perm.DiffLineAdded:
+			prefix := fmt.Sprintf("%*d + ", gutterWidth, line.NewLineNo)
+			sb.WriteString(indent + strings.ReplaceAll(renderDiffRow(prefix, line.Content, emphasis[i], addedStyle, addedStrongStyle, rowWidth), "\n", "\n"+indent) + "\n")
+		default:
+			no := line.NewLineNo
+			if no == 0 {
+				no = line.OldLineNo
+			}
+			// The prefix is digits and spaces, so its byte length is its width.
+			prefix := fmt.Sprintf("%*d   ", gutterWidth, no)
+			prefix = ansi.Truncate(prefix, max(0, rowWidth-2), "")
+			for j, text := range strings.Split(ansi.Hardwrap(diffDisplayText(line.Content), rowWidth-len(prefix), true), "\n") {
+				gutter := prefix
+				if j > 0 {
+					gutter = strings.Repeat(" ", len(prefix))
+				}
+				sb.WriteString(indent + lineNoStyle.Render(gutter) + contextStyle.Render(text) + "\n")
+			}
+		}
+	}
+	return sb.String(), hidden
+}
+
+// diffGutterWidth sizes the line-number column to the widest number shown.
+func diffGutterWidth(lines []perm.DiffLine) int {
+	maxNo := 0
+	for _, line := range lines {
+		if line.OldLineNo > maxNo {
+			maxNo = line.OldLineNo
+		}
+		if line.NewLineNo > maxNo {
+			maxNo = line.NewLineNo
+		}
+	}
+	return max(len(strconv.Itoa(maxNo)), 4)
+}
+
+// runeSpan is a [from,to) range in rune positions.
+type runeSpan struct {
+	from, to int
+}
+
+// computeDiffEmphasis pairs each contiguous run of removed lines with the
+// added run that follows it (index-wise, like git's word diff) and, for each
+// pair that still shares a meaningful prefix and suffix, records the changed
+// middle of both lines. Lines without an entry render with the plain row
+// background.
+func computeDiffEmphasis(lines []perm.DiffLine) map[int]runeSpan {
+	emphasis := map[int]runeSpan{}
+	i := 0
+	for i < len(lines) {
+		if lines[i].Type != perm.DiffLineRemoved {
+			i++
+			continue
+		}
+		removedStart := i
+		for i < len(lines) && lines[i].Type == perm.DiffLineRemoved {
+			i++
+		}
+		removedEnd := i
+		// A removed final line can carry EOF bookkeeping before its replacement.
+		if i < len(lines) && lines[i].Type == perm.DiffLineNoNewline {
+			i++
+		}
+		addedStart := i
+		for i < len(lines) && lines[i].Type == perm.DiffLineAdded {
+			i++
+		}
+		pairs := min(removedEnd-removedStart, i-addedStart)
+		for k := range pairs {
+			oldSpan, newSpan, ok := changedSpan(lines[removedStart+k].Content, lines[addedStart+k].Content)
+			if ok {
+				emphasis[removedStart+k] = oldSpan
+				emphasis[addedStart+k] = newSpan
+			}
+		}
+	}
+	return emphasis
+}
+
+// changedSpan locates the differing middle of two similar lines via their
+// common rune prefix and suffix. It reports ok=false when the lines share
+// too little (under a third of the longer line) — a full rewrite reads
+// better as a plainly-colored row than as one giant emphasized span.
+func changedSpan(oldLine, newLine string) (oldSpan, newSpan runeSpan, ok bool) {
+	oldRunes, newRunes := []rune(oldLine), []rune(newLine)
+	prefix := 0
+	for prefix < len(oldRunes) && prefix < len(newRunes) && oldRunes[prefix] == newRunes[prefix] {
+		prefix++
+	}
+	suffix := 0
+	for suffix < len(oldRunes)-prefix && suffix < len(newRunes)-prefix &&
+		oldRunes[len(oldRunes)-1-suffix] == newRunes[len(newRunes)-1-suffix] {
+		suffix++
+	}
+	longer := max(len(oldRunes), len(newRunes))
+	if longer == 0 || (prefix+suffix)*3 < longer {
+		return runeSpan{}, runeSpan{}, false
+	}
+	return runeSpan{from: prefix, to: len(oldRunes) - suffix}, runeSpan{from: prefix, to: len(newRunes) - suffix}, true
+}
+
+// renderDiffRow wraps added/removed content without discarding text. Continuations
+// have a blank gutter; emphasis uses expanded-content rune offsets across wraps.
+func renderDiffRow(prefix, content string, emphasis runeSpan, base, strong lipgloss.Style, rowWidth int) string {
+	prefix = ansi.Truncate(prefix, max(0, rowWidth-2), "")
+	span := runeSpan{}
+	if emphasis.to > emphasis.from {
+		span = expandSpan(content, emphasis)
+	}
+	segments := strings.Split(ansi.Hardwrap(diffDisplayText(content), rowWidth-len(prefix), true), "\n")
+	var sb strings.Builder
+	offset := 0
+	for i, segment := range segments {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		gutter := prefix
+		if i > 0 {
+			gutter = strings.Repeat(" ", len(prefix))
+		}
+		sb.WriteString(base.Render(gutter))
+		runes := []rune(segment)
+		from := max(0, min(len(runes), span.from-offset))
+		to := max(0, min(len(runes), span.to-offset))
+		if to > from {
+			sb.WriteString(base.Render(string(runes[:from])))
+			sb.WriteString(strong.Render(string(runes[from:to])))
+			sb.WriteString(base.Render(string(runes[to:])))
+		} else {
+			sb.WriteString(base.Render(segment))
+		}
+		if pad := rowWidth - len(prefix) - ansi.StringWidth(segment); pad > 0 {
+			sb.WriteString(base.Render(strings.Repeat(" ", pad)))
+		}
+		offset += len(runes)
+	}
+	return sb.String()
+}
+
+// diffTabReplacement stands in for tabs in rendered diff rows: terminals
+// advance tabs to their own stops, which would break background padding.
+const diffTabReplacement = "    "
+
+func diffDisplayText(s string) string {
+	return strings.ReplaceAll(s, "\t", diffTabReplacement)
+}
+
+// expandSpan maps a rune span on raw content to the same span on the
+// tab-expanded content. Spans come from changedSpan over the same content,
+// so they are always in range.
+func expandSpan(content string, span runeSpan) runeSpan {
+	runes := []rune(content)
+	expandedAt := func(pos int) int {
+		expanded := pos
+		for _, r := range runes[:pos] {
+			if r == '\t' {
+				expanded += len(diffTabReplacement) - 1
+			}
+		}
+		return expanded
+	}
+	return runeSpan{from: expandedAt(span.from), to: expandedAt(span.to)}
+}
+
+// storedDiffKey identifies one memoized render of a stored unified diff.
+// darkMode participates because styles resolve against the background mode
+// at render time.
+type storedDiffKey struct {
+	diff       string
+	width      int
+	maxVisible int
+	indent     string
+	darkMode   bool
+}
+
+type storedDiffRender struct {
+	block  string
+	hidden int
+}
+
+var (
+	storedDiffMu    sync.Mutex
+	storedDiffCache = map[storedDiffKey]storedDiffRender{}
+)
+
+// RenderStoredFileDiff parses and renders a stored unified diff, memoized:
+// the live view repaints every frame while a turn runs, and re-parsing a
+// diff per frame per visible result is pure waste — the inputs are
+// immutable. Only live-region results hit the cache, so it stays tiny; it
+// is dropped wholesale when it outgrows that working set.
+func RenderStoredFileDiff(unifiedDiff string, width, maxVisible int) (string, int) {
+	return renderStoredFileDiffIndented(unifiedDiff, width, maxVisible, "  ")
+}
+
+func renderStoredFileDiffIndented(unifiedDiff string, width, maxVisible int, indent string) (string, int) {
+	key := storedDiffKey{diff: unifiedDiff, width: width, maxVisible: maxVisible, indent: indent, darkMode: widgets.IsDarkBackground()}
+	storedDiffMu.Lock()
+	cached, ok := storedDiffCache[key]
+	storedDiffMu.Unlock()
+	if ok {
+		return cached.block, cached.hidden
+	}
+	block, hidden := renderFileDiffIndented(perm.ParseUnifiedDiff(unifiedDiff), width, maxVisible, indent)
+	storedDiffMu.Lock()
+	if len(storedDiffCache) >= 32 {
+		clear(storedDiffCache)
+	}
+	storedDiffCache[key] = storedDiffRender{block: block, hidden: hidden}
+	storedDiffMu.Unlock()
+	return block, hidden
+}

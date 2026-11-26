@@ -9,7 +9,7 @@ import (
 
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/internal/infra/secret"
 )
 
 func isolateCredentials(t *testing.T) {

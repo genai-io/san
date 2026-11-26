@@ -23,7 +23,7 @@ External client ── ACP ──────┘
 ```
 
 - `sdk-go/pkg/acp`: transport, wire types and typed endpoint with ordered admission/cancel.
-- `internal/interaction`: request lifecycle and human-permission preparation,
+- `internal/app/ask`: request lifecycle and human-permission preparation,
   scopes and audit-before-reply; see [dependency rules](../reference/dependency-rules.md#rules).
 - `internal/session`: typed storage and recording shared by TUI and ACP;
   see [session ownership](../packages/session.md).

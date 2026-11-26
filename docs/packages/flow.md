@@ -185,14 +185,14 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   snapshot, not future queued edits. `Outcome.Route` records a pending-amendment
   retry without rewriting the critic's original answer. Main retries are session
   bound and uncertain native turns need explicit rerun confirmation.
-- `internal/app/flow_main.go` — marshals main-step requests onto the native UI
+- `internal/app/tui/flow_main.go` — marshals main-step requests onto the native UI
   admission/event loop. Native input IDs associate results with the correct
   session, request and turn; editable user input waits during review. Native
   final-sink answers are not printed again by the scheduler receipt.
-- `internal/app/flow.go` — runs the one-shot authoring completion, cancellation,
+- `internal/app/tui/flow.go` — runs the one-shot authoring completion, cancellation,
   session/view fences and `PurposeFlow` recording. It reuses `sideRequest` without
   advertising tools or changing the main conversation chain.
-- `internal/app/input/on_flow_command.go` — `/flow` subcommand parsing, list,
+- `internal/app/tui/input/on_flow_command.go` — `/flow` subcommand parsing, list,
   run and stop. `on_flow.go` — the `FlowView` page state machine (`flowPage`,
   `flowConfirm`): authoring, save/input interaction and graph-level
   inspection/recovery. `on_flow_view.go` renders those pages. Review keeps the graph above selected-step data flow; launching
@@ -268,13 +268,13 @@ internal/flow/service_run_test.go — snapshot recovery, unpersisted activity, r
 internal/flow/definitions_test.go — validation, stale saves, filename collisions and project copies.
 internal/flow/authoring_test.go — prompt framing and draft unwrapping.
 internal/flow/engine_imports_test.go — the engine stays San-free.
-internal/app/flow_test.go — one-shot no-tools authoring, recording, cancellation and stale-result fences.
+internal/app/tui/flow_test.go — one-shot no-tools authoring, recording, cancellation and stale-result fences.
 internal/session/flow_completion_test.go — Flow-purpose inference recording without ordinary conversation messages.
-internal/app/input/on_flow_test.go — review/edit/input/run transitions, graph layout and recovery confirmations.
-internal/app/input/on_flow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
-internal/app/input/slash_flow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management, argument parsing and verb-led goals.
-internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
-internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
+internal/app/tui/input/on_flow_test.go — review/edit/input/run transitions, graph layout and recovery confirmations.
+internal/app/tui/input/on_flow_review_test.go — input/output explanations, secondary limits, source diff, retained drafts and recovery modes.
+internal/app/tui/input/slash_flow_test.go — explicit creation, Skill-derived drafts, list/show/run/stop, management, argument parsing and verb-led goals.
+internal/app/tui/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
+internal/app/tui/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
 tests/integration/flow/flow_test.go — real subagent executor with scripted model, fan-out, truncated turns and failed-stream cleanup.
 ```
 

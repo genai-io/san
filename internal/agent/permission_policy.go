@@ -8,9 +8,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/judge"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"

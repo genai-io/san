@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/task"
@@ -98,7 +98,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	from := tool.AgentIDFromContext(ctx)
 	if from == "" {
-		from = broker.Main
+		from = mail.Main
 	}
 	if from == to {
 		return toolresult.NewErrorResult(t.Name(), "cannot send a message to yourself")
@@ -128,7 +128,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	display := brokerSubject(tasks, from, subject)
 	sourceSession, sourceSeq := tool.MessageSourceFromContext(ctx)
-	sendErr := broker.SendErr(broker.Message{
+	sendErr := mail.SendErr(mail.Message{
 		SourceSession: sourceSession,
 		SourceSeq:     sourceSeq,
 		SessionID:     task.SessionIDFromContext(ctx),
@@ -138,10 +138,10 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		Content:       wrapAgentMessage(from, display, message),
 	})
 	if sendErr != nil {
-		if errors.Is(sendErr, broker.ErrInboxClosing) && observedWorker != nil {
+		if errors.Is(sendErr, mail.ErrInboxClosing) && observedWorker != nil {
 			return t.handoffClosingWorker(ctx, observedWorker, observedAttempt, subject, message)
 		}
-		if errors.Is(sendErr, broker.ErrNoRecipient) && observedWorker != nil {
+		if errors.Is(sendErr, mail.ErrNoRecipient) && observedWorker != nil {
 			current, found := tasks.Get(to)
 			info := observedWorker.GetStatus()
 			if found && current == observedWorker && info.Attempt == observedAttempt &&
@@ -195,7 +195,7 @@ func groupQueueStatus(m group.Member) string {
 
 // recipientLabel renders a target id for tool output.
 func recipientLabel(tasks *task.Manager, id string) string {
-	if id == broker.Main {
+	if id == mail.Main {
 		return "the main conversation"
 	}
 	if g, ok := groupMember(tasks, id); ok {
@@ -208,7 +208,7 @@ func recipientLabel(tasks *task.Manager, id string) string {
 // rather than "main" or a task, and which group.
 func groupMember(tasks *task.Manager, to string) (string, bool) {
 	g, _ := group.Current()
-	if g == "" || to == broker.Main {
+	if g == "" || to == mail.Main {
 		return "", false
 	}
 	_, isTask := tasks.Get(to)
@@ -217,7 +217,7 @@ func groupMember(tasks *task.Manager, to string) (string, bool) {
 
 // senderLabel names an agent id for a human-facing notice.
 func senderLabel(tasks *task.Manager, id string) string {
-	if id == broker.Main {
+	if id == mail.Main {
 		return "the main conversation"
 	}
 	if bgTask, found := tasks.Get(id); found {
@@ -231,7 +231,7 @@ func senderLabel(tasks *task.Manager, id string) string {
 // undeliverableReason reports the recipient's stated rejection and observed
 // task lifecycle, never an assumed transport cause or blind retry advice.
 func undeliverableReason(tasks *task.Manager, to string, sendErr error) string {
-	if to == broker.Main {
+	if to == mail.Main {
 		return "the main conversation is not currently reachable"
 	}
 	bgTask, found := tasks.Get(to)
@@ -239,7 +239,7 @@ func undeliverableReason(tasks *task.Manager, to string, sendErr error) string {
 		return fmt.Sprintf("no worker task is known at %q; check the exact task ID returned by Agent and inspect existing results before deciding how to continue", to)
 	}
 	info := bgTask.GetStatus()
-	if info.Status == task.StatusRunning && errors.Is(sendErr, broker.ErrInboxFull) {
+	if info.Status == task.StatusRunning && errors.Is(sendErr, mail.ErrInboxFull) {
 		return fmt.Sprintf("worker %q is running but already has the maximum number of unread messages; this message was not queued and will not be retried automatically. You still own this instruction: do not retry or poll in a loop; once the worker drains its queue, replies, or completes, deliver it only if it is still needed", to)
 	}
 	if info.Status == task.StatusRunning {
@@ -328,7 +328,7 @@ func (t *SendMessageTool) continueWorker(ctx context.Context, info task.TaskInfo
 	sourceSession, sourceSeq := tool.MessageSourceFromContext(ctx)
 	next, err := t.executor.RunBackground(tool.AgentExecRequest{
 		SourceSession: sourceSession, SourceSeq: sourceSeq,
-		ResumeTaskID: info.ID, ResumeAttempt: info.Attempt, Prompt: wrapAgentMessage(broker.Main, subject, message),
+		ResumeTaskID: info.ID, ResumeAttempt: info.Attempt, Prompt: wrapAgentMessage(mail.Main, subject, message),
 		ParentToolCallID: core.ToolCallIDFromContext(ctx), Background: true,
 	})
 	if err != nil {

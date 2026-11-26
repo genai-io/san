@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 )
 
 // copyDisplayAssets copies named display files, separately from immutable

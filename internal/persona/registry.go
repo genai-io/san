@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 var (

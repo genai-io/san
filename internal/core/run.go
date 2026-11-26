@@ -12,7 +12,7 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
-	glog "github.com/genai-io/san/internal/log"
+	glog "github.com/genai-io/san/internal/infra/log"
 )
 
 // agent is the mailbox that waits for work and the exchange it hands each

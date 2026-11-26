@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/infra/atomicfile"
+	"github.com/genai-io/san/internal/infra/log"
 	"go.uber.org/zap"
 )
 

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/task"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -14,10 +14,10 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func inboxCompletion(owner string) broker.Message {
+func inboxCompletion(owner string) mail.Message {
 	id := task.NewID()
-	return broker.Message{To: owner, From: id, SessionID: "launch-session", Content: "background result " + id,
-		TaskCompletion: &broker.TaskCompletion{TaskID: id, Attempt: 1}}
+	return mail.Message{To: owner, From: id, SessionID: "launch-session", Content: "background result " + id,
+		TaskCompletion: &mail.TaskCompletion{TaskID: id, Attempt: 1}}
 }
 
 func assertInboxCompletionCount(t *testing.T, a core.Agent, content string, want int) {
@@ -66,21 +66,21 @@ func completionDriver(t *testing.T, replies []string, want ...[]core.Message) *a
 func sendForeignCompletionSentinels(t *testing.T) {
 	t.Helper()
 	foreign := task.NewID()
-	for _, address := range []string{broker.Main, foreign} {
-		broker.Register(address, func(m broker.Message) bool {
+	for _, address := range []string{mail.Main, foreign} {
+		mail.Register(address, func(m mail.Message) bool {
 			if m.Content != "main sentinel" && m.Content != "foreign sentinel" {
 				t.Errorf("owner completion leaked to %s: %+v", m.To, m)
 			}
 			return true
 		})
-		t.Cleanup(func() { broker.Unregister(address) })
+		t.Cleanup(func() { mail.Unregister(address) })
 	}
-	if !broker.Send(broker.Message{To: broker.Main, Content: "main sentinel"}) {
+	if !mail.Send(mail.Message{To: mail.Main, Content: "main sentinel"}) {
 		t.Fatal("main sentinel was not delivered")
 	}
-	mail := inboxCompletion(foreign)
-	mail.Content = "foreign sentinel"
-	if !broker.SendCompletion(mail) {
+	completionMsg := inboxCompletion(foreign)
+	completionMsg.Content = "foreign sentinel"
+	if !mail.SendCompletion(completionMsg) {
 		t.Fatal("foreign sentinel was not delivered")
 	}
 }
@@ -88,12 +88,12 @@ func sendForeignCompletionSentinels(t *testing.T) {
 func TestInboxConsumesRetainedCompletionBeforeWorkerRun(t *testing.T) {
 	sendForeignCompletionSentinels(t)
 	route := task.NewID()
-	mail := inboxCompletion(route)
-	if !broker.SendCompletion(mail) {
+	completionMsg := inboxCompletion(route)
+	if !mail.SendCompletion(completionMsg) {
 		t.Fatal("completion was not retained")
 	}
 	initial := core.UserMessage("initial worker context", nil)
-	driver := completionDriver(t, []string{"processed completion"}, []core.Message{initial, core.UserMessage(mail.Content, nil)})
+	driver := completionDriver(t, []string{"processed completion"}, []core.Message{initial, core.UserMessage(completionMsg.Content, nil)})
 	a := core.NewAgent(core.Config{
 		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
 		System:    core.NewSystem(), Tools: core.NewTools(), MaxSteps: 1, OutboxBuf: -1,
@@ -103,17 +103,17 @@ func TestInboxConsumesRetainedCompletionBeforeWorkerRun(t *testing.T) {
 	if err != nil || result.Content != "processed completion" || result.Steps != 1 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	assertInboxCompletionCount(t, a, mail.Content, 1)
+	assertInboxCompletionCount(t, a, completionMsg.Content, 1)
 }
 
 func TestInboxDeliversCompletionDuringSDKRun(t *testing.T) {
 	sendForeignCompletionSentinels(t)
 	route := task.NewID()
-	mail := inboxCompletion(route)
+	completionMsg := inboxCompletion(route)
 	initial := core.UserMessage("initial task", nil)
 	driver := completionDriver(t, []string{"first", "processed completion"},
 		[]core.Message{initial},
-		[]core.Message{initial, core.AssistantMessage("first", "", nil), core.UserMessage(mail.Content, nil)})
+		[]core.Message{initial, core.AssistantMessage("first", "", nil), core.UserMessage(completionMsg.Content, nil)})
 	sent := false
 	a := core.NewAgent(core.Config{
 		Inference: core.InferenceConfig{ResolveClient: func([]core.Message) (*ai.Client, error) { return driver.Client(), nil }},
@@ -121,7 +121,7 @@ func TestInboxDeliversCompletionDuringSDKRun(t *testing.T) {
 		OnEvent: func(event core.Event) {
 			if _, ok := event.(sdkagent.TurnEnd); ok && !sent {
 				sent = true
-				if !broker.SendCompletion(mail) {
+				if !mail.SendCompletion(completionMsg) {
 					t.Error("running owner rejected completion")
 				}
 			}
@@ -132,18 +132,18 @@ func TestInboxDeliversCompletionDuringSDKRun(t *testing.T) {
 	if err != nil || !sent || result.Steps != 2 || result.Content != "processed completion" {
 		t.Fatalf("result=%+v sent=%v err=%v", result, sent, err)
 	}
-	assertInboxCompletionCount(t, a, mail.Content, 1)
+	assertInboxCompletionCount(t, a, completionMsg.Content, 1)
 }
 
 // The failure path closes acceptance before settling already accepted input.
 // Send completion during that settlement to exercise a still-registered closed inbox.
 type closedCompletionAgent struct {
 	*boundaryAgent
-	completion broker.Message
+	completion mail.Message
 }
 
 func (a *closedCompletionAgent) ThinkAct(ctx context.Context) (*core.Result, error) {
-	if ctx.Err() != nil && !broker.SendCompletion(a.completion) {
+	if ctx.Err() != nil && !mail.SendCompletion(a.completion) {
 		a.t.Error("closed inbox completion was not retained")
 	}
 	return a.boundaryAgent.ThinkAct(ctx)
@@ -152,10 +152,10 @@ func (a *closedCompletionAgent) ThinkAct(ctx context.Context) (*core.Result, err
 func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	sendForeignCompletionSentinels(t)
 	route := task.NewID()
-	mail := inboxCompletion(route)
+	completionMsg := inboxCompletion(route)
 	a := &closedCompletionAgent{
 		boundaryAgent: &boundaryAgent{t: t, route: route, failure: context.Canceled},
-		completion:    mail,
+		completion:    completionMsg,
 	}
 	initial := core.UserMessage("initial worker context", nil)
 	a.Append(initial)
@@ -163,8 +163,8 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	if err != context.Canceled || a.calls != 1 {
 		t.Fatalf("closed worker restarted: calls=%d err=%v", a.calls, err)
 	}
-	assertInboxCompletionCount(t, a, mail.Content, 0)
-	if broker.Send(broker.Message{To: route, Content: "ordinary after close"}) {
+	assertInboxCompletionCount(t, a, completionMsg.Content, 0)
+	if mail.Send(mail.Message{To: route, Content: "ordinary after close"}) {
 		t.Fatal("closed owner remained registered")
 	}
 
@@ -180,8 +180,8 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	if _, err := runWithInbox(context.Background(), other, task.NewID(), 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	assertInboxCompletionCount(t, other, mail.Content, 0)
-	expected := []core.Message{initial, core.AssistantMessage("answer", "", nil), core.UserMessage("late accepted input", nil), core.UserMessage(mail.Content, nil)}
+	assertInboxCompletionCount(t, other, completionMsg.Content, 0)
+	expected := []core.Message{initial, core.AssistantMessage("answer", "", nil), core.UserMessage("late accepted input", nil), core.UserMessage(completionMsg.Content, nil)}
 	resumed := newWorker(expected)
 	for _, message := range a.Messages() {
 		resumed.Append(message)
@@ -190,7 +190,7 @@ func TestInboxClosedCompletionWaitsForSameOwnerNextRun(t *testing.T) {
 	if err != nil || result.Content != "resumed" {
 		t.Fatalf("resume result=%+v err=%v", result, err)
 	}
-	assertInboxCompletionCount(t, resumed, mail.Content, 1)
+	assertInboxCompletionCount(t, resumed, completionMsg.Content, 1)
 	if a.calls != 1 {
 		t.Fatal("original worker was automatically restarted")
 	}

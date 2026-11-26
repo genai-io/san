@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/inspector"
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/app/inspector"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/session"
 )
 

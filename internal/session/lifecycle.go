@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 )
 
 const (

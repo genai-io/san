@@ -9,7 +9,7 @@ import (
 	"github.com/genai-io/san/internal/hook"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
@@ -72,8 +72,8 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 		t.Fatalf("agent details lost on resume: %+v", store.ChatRows(loaded))
 	}
 	// Rendering receives the resolved preference; zero explicitly hides previews.
-	data := conv.ToolResultData{ToolName: "Agent", Content: store.ChatRows(loaded)[1].ToolResult.Content.Text(), Details: store.ChatRows(loaded)[1].ToolDetails, Width: 100, AgentPreviewLines: setting.NewData().AgentPreviewLineCount()}
-	collapsed := ansi.Strip(conv.RenderToolResultInline(data, nil))
+	data := transcript.ToolResultData{ToolName: "Agent", Content: store.ChatRows(loaded)[1].ToolResult.Content.Text(), Details: store.ChatRows(loaded)[1].ToolDetails, Width: 100, AgentPreviewLines: setting.NewData().AgentPreviewLineCount()}
+	collapsed := ansi.Strip(transcript.RenderToolResultInline(data, nil))
 	if !strings.Contains(collapsed, "Verified finding") {
 		t.Fatalf("resumed UI lost its result: %q", collapsed)
 	}
@@ -83,7 +83,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 		}
 	}
 	data.Expanded = true
-	expanded := ansi.Strip(conv.RenderToolResultInline(data, nil))
+	expanded := ansi.Strip(transcript.RenderToolResultInline(data, nil))
 	for _, want := range []string{"Verified finding", "Transcript:", "125 tokens", "worker-model"} {
 		if !strings.Contains(expanded, want) {
 			t.Fatalf("expanded resumed UI lost %q: %q", want, expanded)

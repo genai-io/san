@@ -30,7 +30,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 	"github.com/genai-io/san/internal/skill"
 )
 

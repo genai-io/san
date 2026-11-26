@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 func projectTestGit(t *testing.T, dir string, args ...string) {

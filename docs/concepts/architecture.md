@@ -28,7 +28,7 @@ For a grouped capability list, see the [feature overview](../features.md).
    [`concepts/extension-model.md`](extension-model.md).
 4. **Sessions** — canonical project identity, typed event persistence, resume,
    fork and native projections (`internal/session`), replayable read-only in the
-   inspector (`internal/inspector`). The
+   inspector (`internal/app/inspector`). The
    [session management design](../design/proposal-0005-session-management.md)
    defines Project → Session → Events, with workspace as a session attribute and
    file-backed committed JSONL batches. All hosts use this backend; older
@@ -65,10 +65,10 @@ events that mutate the TUI model.
                    token tracker, status line)
 ```
 
-- Source 1 routes through `internal/app/input/`.
-- Source 2 (agents → main) routes through `internal/broker/` (the shared message queue).
-- Source 3 routes through `internal/app/trigger/`.
-- Output side renders through `internal/app/conv/`.
+- Source 1 routes through `internal/app/tui/input/`.
+- Source 2 (agents → main) routes through `internal/agent/mail/` (the shared message queue).
+- Source 3 is handled directly by `internal/app/tui/`, which polls cron and async hooks.
+- Output side renders through `internal/app/tui/transcript/`.
 
 The detailed walkthrough (sub-model conventions, runtime adapters, cmd
 chains, directory structure of `internal/app/`) lives in
@@ -90,10 +90,10 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | Layer | Members |
 | --- | --- |
 | `cmd` | `cmd/*` |
-| `app` | `internal/app` and subpackages |
-| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, inspector, search, worktree, setting, reminder, aside, automemory, autoskill, image) |
+| `app` | Packages beneath `internal/app` (no root package) |
+| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, search, worktree, setting, reminder, aside, reflect/{memory,skill,recap}, image) |
 | `core` | `internal/core` |
-| `infrastructure` | `internal/{log,secret,filecache,markdown,proc,confdir}` |
+| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}`, `internal/autoupdate` |
 
 Full membership list and allowed-edge rules live in
 [`reference/dependency-rules.md`](../reference/dependency-rules.md) and

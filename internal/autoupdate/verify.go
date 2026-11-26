@@ -2,7 +2,7 @@ package autoupdate
 
 // A release ships SHA256SUMS — one "<hex>  <asset>" line per archive — and
 // SHA256SUMS.sig, the base64 ed25519 signature over that file that
-// tools/releasekey makes with the project's release key. A client installs an
+// devtools/releasekey makes with the project's release key. A client installs an
 // archive only when the signature verifies against the public key built into
 // this binary and the archive hashes to the listed sum. Key setup and
 // rotation: docs/operations/release.md.

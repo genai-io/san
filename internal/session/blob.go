@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 

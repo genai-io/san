@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/host"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
@@ -86,7 +86,7 @@ func (s *acpSession) prompt(ctx context.Context, turn *acp.Turn, req protocol.Pr
 	s.runtime.SetPluginRoot(pluginRoot)
 	s.runtimeBuildParams.MCPTools = mcp.AsCoreTools(s.mcp.ToolSchemas(), s.mcp)
 	if tools := s.runtime.Tools(); tools != nil {
-		host.ReconcileMCPTools(tools, s.runtimeBuildParams.MCPTools, s.runtimeBuildParams.DisabledTools)
+		mcp.ReconcileTools(tools, s.runtimeBuildParams.MCPTools, s.runtimeBuildParams.DisabledTools)
 	}
 	if !s.runtime.Active() {
 		if err := s.configureAgents(); err != nil {

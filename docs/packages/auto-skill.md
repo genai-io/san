@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/san/internal/autoskill
+package: github.com/genai-io/san/internal/reflect/skill
 layer: feature
 ---
 

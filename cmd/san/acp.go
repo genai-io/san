@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/app/acp"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/infra/log"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +28,7 @@ func init() {
 				return err
 			}
 			defer output.Close()
+			warnShellFallback()
 			return acp.Run(ctx, input, output, version)
 		},
 	})

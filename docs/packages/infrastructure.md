@@ -11,7 +11,7 @@ same.
 
 Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../reference/dependency-rules.md)).
 
-## `internal/log`
+## `internal/infra/log`
 
 Process-wide structured logger built on `go.uber.org/zap`.
 
@@ -22,12 +22,12 @@ func Init() error              // initialize from env; idempotent
 func Logger() *zap.Logger      // process-wide logger; never nil
 ```
 
-- `log.Init()` runs once at app startup (from `internal/app/init.go`).
+- `log.Init()` runs once at app startup (from `internal/app/tui/init.go`).
   Output is suppressed by default; `SAN_DEBUG=1` enables zap, appending
   to `~/.san/debug.log` (reset once it passes 50MB).
-- Code: `internal/log/`. No unit tests; behavior exercised end-to-end.
+- Code: `internal/infra/log/`. No unit tests; behavior exercised end-to-end.
 
-## `internal/secret`
+## `internal/infra/secret`
 
 Filesystem-backed key/value store under `~/.san/secrets.json` for API
 keys and tokens.
@@ -49,9 +49,9 @@ func (s *Store) Keys() []string
 - `Set` and `Delete` re-read the file under `secrets.json.lock` and merge,
   so concurrent San processes keep each other's keys (atomic write).
 - Consumer: [`packages/llm.md`](llm.md) for provider API keys.
-- Code: `internal/secret/`.
+- Code: `internal/infra/secret/`.
 
-## `internal/filecache`
+## `internal/infra/filecache`
 
 LRU touch tracking + "file restore" block builder. The cache records
 file paths the agent has read recently; the restore builder produces a
@@ -73,11 +73,11 @@ func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per fi
 - One `*Cache` per session, cleared on `/clear` and `/resume`.
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
-  `internal/app/conv/compact.go` (build on compaction). See also
+  `internal/app/tui/transcript/compact.go` (build on compaction). See also
   [`../concepts/harness-channels.md`](../concepts/harness-channels.md).
-- Code: `internal/filecache/`.
+- Code: `internal/infra/filecache/`.
 
-## `internal/markdown`
+## `internal/infra/markdown`
 
 YAML frontmatter parser. The smallest package in the repo: one function,
 zero state.
@@ -97,9 +97,9 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 - Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
   `persona`, [`command.md`](command.md). Every skill / agent /
   persona / command file is parsed through it on `san` startup.
-- Code: `internal/markdown/`.
+- Code: `internal/infra/markdown/`.
 
-## `internal/confdir`
+## `internal/infra/confdir`
 
 One constant and one helper for the repository's configuration directory name.
 It exists so packages that cannot depend on `internal/setting` still resolve
@@ -114,11 +114,11 @@ func Dir(root string) string
 ```
 
 - `Dir(root)` returns `root/.san`.
-- Consumers include `internal/log`, `internal/core/system`, `internal/setting`,
+- Consumers include `internal/infra/log`, `internal/core/system`, `internal/setting`,
   and extension loaders.
-- Code: `internal/confdir/`.
+- Code: `internal/infra/confdir/`.
 
-## `internal/proc`
+## `internal/infra/proc`
 
 Cross-platform process helpers for starting subprocesses in their own process
 group/session and terminating that group where the platform supports it.
@@ -134,9 +134,9 @@ func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
   process cleanup behavior centralized.
 - Windows support is best-effort; callers should not assume descendant cleanup
   is complete on Windows.
-- Code: `internal/proc/`.
+- Code: `internal/infra/proc/`.
 
-## `internal/atomicfile`
+## `internal/infra/atomicfile`
 
 Writes a unique temporary file beside the destination, then replaces the path
 by rename. Failed writes remove the temporary file and retain the old contents.
@@ -154,19 +154,19 @@ by rename. Failed writes remove the temporary file and retain the old contents.
   `ErrLocked` when another handle (in this or another process) holds it, and a
   release func otherwise. Use it for long-lived ownership such as a Flow run;
   the OS releases it if the holder crashes.
-- Tests: `internal/atomicfile/` covers concurrent replacement, process locking,
+- Tests: `internal/infra/atomicfile/` covers concurrent replacement, process locking,
   permissions and path resolution.
 
-## `internal/proc`
+## `internal/infra/proc`
 
-Cross-platform process helpers. `ReadGitStatus(ctx, cwd)` in `internal/proc/git.go`
+Cross-platform process helpers. `ReadGitStatus(ctx, cwd)` in `internal/infra/proc/git.go`
 reads local worktree metadata using NUL-delimited porcelain v2, supporting
 renames, unborn/detached HEAD and linked worktrees. It never fetches, disables
 optional index locks and fsmonitor hooks, and sanitizes repository labels.
 The caller bounds the context; cancellation kills Git and its children, with a
 100 ms pipe backstop. The adapter stores no configuration or global state.
 
-`internal/proc/git_test.go` covers parsing, discovery, worktrees, remote privacy,
+`internal/infra/proc/git_test.go` covers parsing, discovery, worktrees, remote privacy,
 missing Git and cancellation. Consumers should hide read failures, not treat
 failed reads as clean or display raw remote URLs.
 

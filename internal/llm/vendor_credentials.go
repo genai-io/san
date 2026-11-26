@@ -10,7 +10,7 @@ import (
 
 	"github.com/genai-io/sdk-go/pkg/ai/auth"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/internal/infra/secret"
 )
 
 // A vendor's credential, where San already keeps it.

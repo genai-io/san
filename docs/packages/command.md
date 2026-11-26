@@ -132,7 +132,7 @@ is busy. Kick and disband always require explicit commands.
 ```
 internal/command/registry_test.go    — name lookup, fuzzy matching,
                                         custom + built-in precedence.
-internal/app/group_control_test.go  — isolated requests, validation, stale results.
+internal/app/tui/group_control_test.go  — isolated requests, validation, stale results.
 internal/command/arguments_test.go   — quoted values, unfinished fields,
                                         Unicode byte ranges, generated argument round trips.
 ```

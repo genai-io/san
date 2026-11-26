@@ -1,6 +1,6 @@
 ---
-package: github.com/genai-io/san/internal/inspector
-layer: feature
+package: github.com/genai-io/san/internal/app/inspector
+layer: app
 ---
 
 # inspector
@@ -82,7 +82,7 @@ not the startup directory's old encoded path.
   diagnostics without splicing unrelated histories.
 - `ui/app.test.cjs`: delayed responses/streams, filters and safe links.
 
-Run `go test -race ./internal/inspector` and `make test-inspector-ui` for focused
+Run `go test -race ./internal/app/inspector` and `make test-inspector-ui` for focused
 checks. Do not decode raw batch payloads into a competing product projector or
 acquire a writer to inspect a running session. Never present bounded unvalidated
 text as accepted history or infer a tool's outcome from a missing finish.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -21,8 +21,8 @@ func TestPreparedInboxPreservesWorkerToolIdentity(t *testing.T) {
 	store, parent := continuationSessions(t, "context-owner")
 	var workerID string
 	var mu sync.Mutex
-	var received []broker.Message
-	cleanup := broker.Register(broker.Main, func(message broker.Message) bool {
+	var received []mail.Message
+	cleanup := mail.Register(mail.Main, func(message mail.Message) bool {
 		mu.Lock()
 		defer mu.Unlock()
 		received = append(received, message)

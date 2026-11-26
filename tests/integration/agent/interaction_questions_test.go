@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -21,11 +21,11 @@ func workerQuestionProvider() *testutil.FakeProvider {
 	}}
 }
 
-func pollWorkerInteraction(t *testing.T, bridge *conv.AgentToUI) *conv.InteractionRequest {
+func pollWorkerInteraction(t *testing.T, bridge *transcript.AgentToUI) *transcript.UserPromptRequest {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if msg, ok := bridge.Check()().(conv.InteractionRequestMsg); ok {
+		if msg, ok := bridge.Check()().(transcript.UserPromptRequestMsg); ok {
 			return msg.Request
 		}
 	}
@@ -34,7 +34,7 @@ func pollWorkerInteraction(t *testing.T, bridge *conv.AgentToUI) *conv.Interacti
 }
 
 func TestBackgroundQuestionCancellationIsIndependent(t *testing.T) {
-	bridge := conv.NewAgentToUI(4)
+	bridge := transcript.NewAgentToUI(4)
 	defer bridge.Close()
 	providers := []*testutil.FakeProvider{workerQuestionProvider(), workerQuestionProvider()}
 	first := newIntegrationExecutor(t, providers[0], t.TempDir(), "fake-model", nil)
@@ -53,7 +53,7 @@ func TestBackgroundQuestionCancellationIsIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Stop()
-	requests := map[string]*conv.InteractionRequest{}
+	requests := map[string]*transcript.UserPromptRequest{}
 	for range 2 {
 		req := pollWorkerInteraction(t, bridge)
 		if req.Question == nil || req.Source.AgentID == "" || req.Source.ToolCallID != "question-call" || req.Source.PermissionMode != string(subagent.PermissionBypass) {
@@ -98,7 +98,7 @@ func TestHeadlessAndClosedUIQuestionsFailPromptly(t *testing.T) {
 			provider := workerQuestionProvider()
 			executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 			if closed {
-				bridge := conv.NewAgentToUI(1)
+				bridge := transcript.NewAgentToUI(1)
 				bridge.Close()
 				executor.SetInteractions(bridge)
 			}

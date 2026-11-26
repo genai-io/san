@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/broker"
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/infra/proc"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -53,12 +53,12 @@ func TestAgentRunningShellErrorsStayWithWorker(t *testing.T) {
 				ID: "tail-source", Name: shell.Kind.ToolName(), Input: input,
 			}), aitest.Says("Review finished"))
 			executor := newIntegrationExecutor(t, driverProvider{&testutil.FakeProvider{}, driver}, cwd, "fake-model", nil)
-			var notices []broker.Message
-			broker.Register(broker.Main, func(message broker.Message) bool {
+			var notices []mail.Message
+			mail.Register(mail.Main, func(message mail.Message) bool {
 				notices = append(notices, message)
 				return true
 			})
-			t.Cleanup(func() { broker.Unregister(broker.Main) })
+			t.Cleanup(func() { mail.Unregister(mail.Main) })
 			var toolErr error
 			var output string
 			var activity []string

@@ -29,7 +29,7 @@ status bar: `ChatGPT 5h 90% left (2h 35m) / week 65% left (3d)`.
 The label hides on narrow terminals and other routes.
 
 `vendor_usage.go` supplies credentials to SDK `auth.FetchCodexUsage`;
-`internal/app/model_subscription_usage.go` fetches immediately on entering the
+`internal/app/tui/model_subscription_usage.go` fetches immediately on entering the
 subscription route, then polls every 60/30/15/5 seconds at <75/≥75/≥90/≥99%
 used, taking the highest usage across reported windows. Each read has a ten-second
 timeout. Pending reads and refresh deadlines prevent duplicate requests; failures

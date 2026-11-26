@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/host"
+	"github.com/genai-io/san/internal/app/hooks"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -73,11 +73,11 @@ func (s *acpSession) configureAgents() error {
 			cwd = *saved
 		}
 		child := s.hooks.ForSession(owner.ID(), cwd, owner.Path())
-		host.BindSessionHooks(child, provider, owner, model)
+		hooks.Bind(child, provider, owner, model)
 		child.SetEnvProvider(func(ctx context.Context) []string {
 			return plugin.PluginEnv(plugin.WithRegistry(ctx, s.runtimeBuildParams.Plugins))
 		})
-		return child, func(provider llm.Provider, model string) { host.BindSessionHooks(child, provider, owner, model) }, child.Shutdown
+		return child, func(provider llm.Provider, model string) { hooks.Bind(child, provider, owner, model) }, child.Shutdown
 	})
 	e.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)

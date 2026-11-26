@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"

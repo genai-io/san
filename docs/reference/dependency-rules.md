@@ -10,11 +10,11 @@ assignment for each package.
 
 | Layer | Members | Role |
 | --- | --- | --- |
-| `cmd` | `cmd/*` | Process entrypoints, flag parsing, service wiring. |
-| `app` | `internal/app` and its subpackages | TUI shell, model composition, event routing. |
-| `feature` | Business-domain packages: interaction, agent, aside, automemory, broker, group, llm, tool, session, task, todo, subagent, flow, cron, autoskill, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
+| `cmd` | `cmd/*` | Process entrypoints, flag parsing, host dispatch and service wiring. |
+| `app` | Packages beneath `internal/app` (directory only) | `tui` owns the interactive shell, `cli` print execution and `acp` the protocol host. |
+| `feature` | Business-domain packages: agent (including agent/mail), aside, reflect/{memory,skill,recap}, group, llm, tool, session, task, todo, subagent, flow, cron, command, skill, plugin, mcp, hook, setting, persona, search, reminder, judge, image | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
-| `infrastructure` | `log`, `secret`, `filecache`, `markdown`, `proc`, `confdir`, `atomicfile`, `autoupdate` | Stateless helpers usable by any layer above. |
+| `infrastructure` | `internal/infra/{atomicfile,confdir,filecache,log,markdown,proc,secret}`, `internal/autoupdate` | Stateless helpers usable by any layer above. |
 
 `internal/image` is provisionally classified as `feature` because it
 currently produces `core.Image` values directly. The pure-infra
@@ -36,15 +36,15 @@ not by lower layers importing higher layers.
 
 ## Rules
 
-1. `cmd/*` may import `internal/app` and package-level services needed for CLI
-   subcommands. Command packages should not own long-running business logic.
-2. `internal/app` may import feature packages because it is the composition
-   layer. App subpackages should expose small runtime interfaces instead of
-   importing the root app package.
+1. `cmd/san` selects the host. Command packages may import host packages and
+   services needed for CLI subcommands, but should not own long-running business logic.
+2. Host packages may import feature packages for composition. Expose small
+   runtime interfaces instead of coupling hosts to one another. In particular, ACP
+   must not import the CLI print host or TUI.
 3. `internal/core` must stay dependency-light. It should not import `app`,
    `session`, `tool` implementations, provider packages, or extension packages.
-4. Feature packages should not import `internal/app`.
-   `internal/interaction` owns request lifetimes and human-permission preparation,
+4. Feature packages should not import packages under `internal/app`.
+   `internal/app/ask` owns request lifetimes and human-permission preparation,
    scopes and audit-before-reply, not execution, transport or presentation. It may
    use agent/tool, settings and native session contracts, but not Bubble Tea or ACP.
    Rule, hook and judge policy stays with its existing owners. Adapters serialize
@@ -53,7 +53,10 @@ not by lower layers importing higher layers.
    background lifetimes. Audit callbacks are best effort, not durability guarantees;
    grant persistence is nontransactional and cancellation does not roll back grants.
 5. Extension packages should own their registries and loaders. Cross-extension
-   composition belongs in `internal/app` or a narrow integration function.
+   composition belongs in host packages or a narrow integration function.
+   `internal/setting` owns workspace trust policy and state. Only entrypoints
+   that need a cross-feature review should use `internal/setting/trust`; feature
+   loaders consult settings directly, not the review collector.
 6. Tool implementation packages under `internal/tool/*` should remain adapters.
    Complex behavior belongs in the feature package that owns the capability.
 7. Infrastructure helpers (`log`, `secret`, `markdown`, `filecache`, `proc`,
@@ -67,7 +70,7 @@ not by lower layers importing higher layers.
    older-format fallback. Generic framing, writer leases and transport recovery
    remain in sdk-go.
 
-`tools/layercheck` applies these rules to production, internal-test, and
+`devtools/layercheck` applies these rules to production, internal-test, and
 external-test imports. It also rejects repository packages that have no entry
 in `package-map.md` within the checker scope (`internal/...` and `cmd/...`).
 

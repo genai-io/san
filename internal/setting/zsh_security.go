@@ -3,7 +3,7 @@ package setting
 import (
 	"strings"
 
-	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/infra/proc"
 	"mvdan.cc/sh/v3/syntax"
 )
 

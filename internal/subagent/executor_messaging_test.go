@@ -9,7 +9,7 @@ import (
 	"time"
 
 	agentruntime "github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
@@ -139,7 +139,7 @@ func TestOwnedExecutorWithoutMessaging(t *testing.T) {
 	worker, err := e.RunBackground(tool.AgentExecRequest{
 		Prompt: "headless task",
 		OnIdentity: func(identity toolresult.AgentIdentity) {
-			if err := broker.SendErr(broker.Message{To: identity.ID}); err != broker.ErrNoRecipient {
+			if err := mail.SendErr(mail.Message{To: identity.ID}); err != mail.ErrNoRecipient {
 				t.Errorf("headless launch published a route: %v", err)
 			}
 		},

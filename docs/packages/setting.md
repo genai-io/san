@@ -94,6 +94,12 @@ func ResetDefaultSettings()              // test-only
   custom agent definitions retain their `model:` configuration. Agent tool
   invocations never need a `model` parameter.
 
+## Workspace trust
+
+[Trust policy and state](../../internal/setting/trust.go) belong to settings.
+Entrypoints use the [workspace review collector](../../internal/setting/trust/workspace.go)
+when they need findings from multiple features. Loaders consult the policy directly.
+
 ## Tests
 
 ```
@@ -104,7 +110,7 @@ internal/setting/bash_ast_test.go        — bash command parsing for
                                             permission patterns.
 internal/setting/workdir_test.go         — cwd resolution.
 internal/setting/security_test.go        — Edit deny rules and sensitive symlink targets.
-internal/app/print_test.go               — effective print-mode tools and permission policy.
+internal/app/cli/print_test.go           — effective print-mode tools and permission policy.
 ```
 
 ## See Also

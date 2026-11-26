@@ -10,20 +10,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/infra/atomicfile"
 	"github.com/genai-io/san/internal/task"
 
-	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/agent/mail"
 	"github.com/genai-io/san/internal/tool"
 )
 
 func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+	mail.Reset()
+	t.Cleanup(mail.Reset)
 
-	var got broker.Message
-	broker.Register("task-1", func(m broker.Message) bool { got = m; return true })
+	var got mail.Message
+	mail.Register("task-1", func(m mail.Message) bool { got = m; return true })
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-1",
@@ -34,7 +34,7 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected delivery to succeed: %s", result.Error)
 	}
-	if got.From != broker.Main || got.To != "task-1" {
+	if got.From != mail.Main || got.To != "task-1" {
 		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
 	}
 	if !strings.Contains(got.Content, "check the auth module too") ||
@@ -44,11 +44,11 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 }
 
 func TestSendMessage_SubagentReportsToMain(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+	mail.Reset()
+	t.Cleanup(mail.Reset)
 
-	var got broker.Message
-	broker.Register(broker.Main, func(m broker.Message) bool { got = m; return true })
+	var got mail.Message
+	mail.Register(mail.Main, func(m mail.Message) bool { got = m; return true })
 
 	ctx := tool.WithAgentID(task.WithSessionID(context.Background(), "parent-session"), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
@@ -60,7 +60,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected report to succeed: %s", result.Error)
 	}
-	if got.From != "task-9" || got.To != broker.Main {
+	if got.From != "task-9" || got.To != mail.Main {
 		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
 	}
 	if got.SessionID != "parent-session" {
@@ -78,8 +78,8 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 }
 
 func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+	mail.Reset()
+	t.Cleanup(mail.Reset)
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-gone",
@@ -96,9 +96,9 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 }
 
 func TestSendMessage_SelfSendRejected(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
-	broker.Register("task-7", func(broker.Message) bool { return true })
+	mail.Reset()
+	t.Cleanup(mail.Reset)
+	mail.Register("task-7", func(mail.Message) bool { return true })
 
 	ctx := tool.WithAgentID(context.Background(), "task-7")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
@@ -116,8 +116,8 @@ func TestSendMessage_SelfSendRejected(t *testing.T) {
 }
 
 func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+	mail.Reset()
+	t.Cleanup(mail.Reset)
 	toolInst := NewSendMessageTool()
 
 	if r := toolInst.Execute(context.Background(), map[string]any{"to": "x"}, "."); r.Success {
@@ -147,8 +147,8 @@ func TestSendMessage_KnownTaskBoundary(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			broker.Reset()
-			t.Cleanup(broker.Reset)
+			mail.Reset()
+			t.Cleanup(mail.Reset)
 			id := task.NewID()
 			owner := task.WithSessionID(context.Background(), tc.owner)
 			if tc.bash {
@@ -174,7 +174,7 @@ func TestSendMessage_KnownTaskBoundary(t *testing.T) {
 			}
 			t.Cleanup(func() { task.Default().Remove(id) })
 			calls := 0
-			broker.Register(id, func(m broker.Message) bool {
+			mail.Register(id, func(m mail.Message) bool {
 				calls++
 				if m.To != id {
 					t.Fatalf("retargeted to %q", m.To)

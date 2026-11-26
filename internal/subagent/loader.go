@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/markdown"
+	"github.com/genai-io/san/internal/infra/confdir"
+	"github.com/genai-io/san/internal/infra/log"
+	"github.com/genai-io/san/internal/infra/markdown"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )

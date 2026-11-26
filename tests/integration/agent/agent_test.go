@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app"
+	"github.com/genai-io/san/internal/app/cli"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -52,7 +52,7 @@ func TestHeadlessAgentPrintsPartialResultBeforeReturningError(t *testing.T) {
 	stdout := os.Stdout
 	os.Stdout = write
 	t.Cleanup(func() { os.Stdout = stdout })
-	runErr := app.RunAgent(app.AgentRunOptions{Prompt: "Investigate"})
+	runErr := cli.RunAgent(cli.AgentRunOptions{Prompt: "Investigate"})
 	os.Stdout = stdout
 	_ = write.Close()
 	output, err := io.ReadAll(read)

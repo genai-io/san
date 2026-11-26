@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/atomicfile"
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/infra/atomicfile"
+	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 // Workspace trust: a folder's own configuration (hooks, MCP servers, plugins,
