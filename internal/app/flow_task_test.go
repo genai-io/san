@@ -198,6 +198,48 @@ func TestFlowRecordedRejectsConflictingLiveIdentity(t *testing.T) {
 	}
 }
 
+func TestFlowOpenTaskUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		execution flow.Execution
+		live      bool
+	}{
+		{"foreign history session", flow.Execution{MessageID: "message", SessionID: "foreign"}, false},
+		{"no completed checkpoint", flow.Execution{TaskID: "child", SessionID: "child-session"}, false},
+		{"viewer refuses pinned identity", flow.Execution{TaskID: "child", SessionID: "child-session"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manager := task.NewManager()
+			m := flowInputModel(manager)
+			m.services.sessionID = "main-session"
+			if tc.live {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				child := manager.CreateForegroundAgentTask("child", "Explore", "Inspect", ctx, cancel)
+				child.SetIdentity("Explore", "child-session")
+				// The viewer snapshot stays pinned to an earlier checkpoint with the same task ID.
+				m.tasks = taskViewerState{sessionID: m.sessionID(), recorded: &input.TaskViewItem{ID: "child", SessionID: "earlier", Recorded: true}}
+			}
+			s := flowTaskService{record: flow.RunRecord{ID: "run", Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
+				Nodes: map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusPending, Execution: tc.execution}}}}}
+			m.userInput.Flow.OpenRun(s, "run", 80, 30)
+			open := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if open == nil {
+				t.Fatal("missing inspection request")
+			}
+			msg := open().(input.FlowOpenTaskMsg)
+			if !m.userInput.Flow.AcceptTaskOpen(msg) {
+				t.Fatal("inspection request did not pass the selection guard")
+			}
+			before := m.tasks
+			_, cmd := m.dispatch(msg)
+			if cmd != nil || m.tasks != before || m.userInput.Tasks.IsActive() || m.userInput.Transcript.IsActive() || !strings.Contains(ansi.Strip(m.userInput.Flow.Render()), "Execution unavailable") {
+				t.Fatal("expected unavailable notice without opening a viewer or scheduling work")
+			}
+		})
+	}
+}
+
 func TestFlowStartArmsTaskAreaClock(t *testing.T) {
 	m := flowInputModel(task.NewManager())
 	if _, cmd := m.dispatch(input.FlowStartedMsg{}); cmd == nil {
