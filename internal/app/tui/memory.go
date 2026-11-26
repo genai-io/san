@@ -5,7 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/setting"
@@ -22,7 +22,7 @@ func (m *model) autoMemoryStore() system.MemoryStore {
 // memoryLine is the turn's memory changes in one quiet line under the answer,
 // grouped by verb. Reads and recalls already appear at their tool steps and
 // must not be repeated here. An unchanged turn gets no footer.
-func memoryLine(entries []transcript.MemoryEntry, width int) string {
+func memoryLine(entries []chat.MemoryEntry, width int) string {
 	var verbs []string
 	items := map[string][]string{}
 	icon := widgets.MemoryMark

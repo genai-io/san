@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 )
 
 func scrollbackReadyMessage(cmd tea.Cmd) (scrollbackPrintReadyMsg, bool) {
@@ -57,9 +57,9 @@ func TestCanceledInteractionResumesHistoryBeforeNextPrompt(t *testing.T) {
 				case "approval":
 					active = userPromptApproval(m, requestContext, "canceled")
 				case "secret":
-					active = &transcript.UserPromptRequest{
+					active = &chat.UserPromptRequest{
 						ID: 1, Context: requestContext, Owner: m.conv.AgentToUI,
-						Secret: &transcript.SecretPromptRequestMsg{Prompt: "secret", Reply: make(chan transcript.SecretPromptResponse, 1)},
+						Secret: &chat.SecretPromptRequestMsg{Prompt: "secret", Reply: make(chan chat.SecretPromptResponse, 1)},
 					}
 				}
 				m.enqueueUserPrompt(active)
@@ -82,7 +82,7 @@ func TestCanceledInteractionResumesHistoryBeforeNextPrompt(t *testing.T) {
 					// cancellation during the same Update and closes the modal.
 					requestContext.checksUntilCancel = 2
 				}
-				_, commands := m.Update(transcript.AgentToUITickMsg{})
+				_, commands := m.Update(chat.AgentToUITickMsg{})
 				resumed, ok := scrollbackReadyMessage(commands)
 				if !ok || resumed.id != ready.id {
 					t.Fatal("canceling the active prompt did not restart its held history print")

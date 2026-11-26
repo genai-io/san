@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/subagent"
@@ -34,7 +34,7 @@ func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
 	if len(p.ManagedAgents) != 1 || p.ManagedAgents[0].ID != "own" || p.ManagedAgents[0].SessionID != "child-session" {
 		t.Fatalf("wrong managed worker projection: %+v", p.ManagedAgents)
 	}
-	if got := ansi.Strip(transcript.RenderActiveBody(p)); !strings.Contains(got, "reviewer: Security review") || !strings.Contains(got, "Read(boundary.go)") || strings.Contains(got, "Foreign review") {
+	if got := ansi.Strip(chat.RenderActiveBody(p)); !strings.Contains(got, "reviewer: Security review") || !strings.Contains(got, "Read(boundary.go)") || strings.Contains(got, "Foreign review") {
 		t.Fatalf("wrong native activity: %s", got)
 	}
 	if len(m.conv.Messages) != 0 || len(m.conv.Tool.PendingCalls) != 0 || m.conv.Stream.Active {
@@ -102,7 +102,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 						t.Fatalf("unsuccessful scheduler presented success: %+v", n)
 					}
 					runCmd(m.deliverNotice(n))
-					rendered := ansi.Strip(transcript.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+					rendered := ansi.Strip(chat.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
 					if status != "completed" && (strings.Contains(rendered, "Flow result") || strings.Contains(rendered, "UNSUCCESSFUL RESULT")) {
 						t.Fatalf("unsuccessful scheduler displayed a success result: %s", rendered)
 					}
@@ -247,7 +247,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				t.Fatalf("terminal receipt lost scheduler identity: %+v", n)
 			}
 			runCmd(m.deliverNotice(n))
-			rendered := ansi.Strip(transcript.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+			rendered := ansi.Strip(chat.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
 			if !strings.Contains(rendered, "Native children") || strings.Contains(rendered, "fourth hidden detail") {
 				t.Fatalf("scheduler notice lost title or leaked intermediate output: %s", rendered)
 			}
@@ -255,7 +255,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 				for _, previewLines := range []int{0, 1, 3, 50} {
 					params := m.messageRenderParams()
 					params.AgentPreviewLines = previewLines
-					got := ansi.Strip(transcript.RenderSingleMessage(params, len(m.conv.Messages)-1))
+					got := ansi.Strip(chat.RenderSingleMessage(params, len(m.conv.Messages)-1))
 					if got != rendered {
 						t.Fatalf("scheduler answer depends on child preview setting %d:\n%s\n%s", previewLines, rendered, got)
 					}
@@ -311,7 +311,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			t.Fatalf("managed children duplicated in footer: %s", view)
 		}
 		params := m.messageRenderParams()
-		live := ansi.Strip(transcript.RenderActiveBody(params))
+		live := ansi.Strip(chat.RenderActiveBody(params))
 		for _, name := range names {
 			if !strings.Contains(live, "Agent: "+name) || !strings.Contains(live, "Thinking...") {
 				t.Fatalf("native worker %s missing from conversation: %s", name, live)
@@ -370,7 +370,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 			if msg.Role != core.ChatNotice || !msg.AgentNotice || !strings.Contains(msg.Content, expected) {
 				t.Fatalf("child result not shown as native notice: %+v", msg)
 			}
-			rendered := ansi.Strip(transcript.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
+			rendered := ansi.Strip(chat.RenderSingleMessage(m.messageRenderParams(), len(m.conv.Messages)-1))
 			if !strings.Contains(rendered, expected) || strings.Contains(rendered, "fourth hidden detail") || !strings.Contains(rendered, "Agent:") {
 				t.Fatalf("wrong native bounded answer preview: %s", rendered)
 			}
@@ -467,8 +467,8 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		if row.Role != core.ChatNotice || !row.AgentNotice || row.Content != m.conv.Messages[i].Content {
 			t.Fatalf("restored native result differs: %+v", row)
 		}
-		got := transcript.RenderSingleMessage(transcript.RenderContext{Messages: restored, Width: 80, AgentPreviewLines: 3}, i)
-		want := transcript.RenderSingleMessage(m.messageRenderParams(), i)
+		got := chat.RenderSingleMessage(chat.RenderContext{Messages: restored, Width: 80, AgentPreviewLines: 3}, i)
+		want := chat.RenderSingleMessage(m.messageRenderParams(), i)
 		if got != want {
 			t.Fatalf("restored rendering differs:\n%s\n%s", got, want)
 		}

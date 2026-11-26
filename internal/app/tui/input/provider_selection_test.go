@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/llm"
 )
 
@@ -20,7 +20,7 @@ func TestProviderSelectionCommitsOnlyInsideSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	current := store.CurrentModel()
-	conversation := transcript.NewModel(80)
+	conversation := chat.NewModel(80)
 	calls, commits, projections := 0, 0, 0
 	deps := OverlayDeps{
 		Conv:            &conversation.ConversationModel,

@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -29,7 +29,7 @@ func (v *FlowView) Render() string {
 		content = v.body.View() + "\nSave this flow in the project? y / n"
 		hint = "y save · n cancel"
 	case flowConfirmStop:
-		content = transcript.WrapProse("Stop this run? In-flight work may have side effects. y / n", max(1, v.width-2))
+		content = chat.WrapProse("Stop this run? In-flight work may have side effects. y / n", max(1, v.width-2))
 	case flowConfirmDiscard:
 		content = "Close and discard this unsaved draft? y / n"
 	case flowConfirmResume:
@@ -205,7 +205,7 @@ func (v *FlowView) renderGeneration() (title, content, hint string) {
 	}
 	if remaining := budget - len(lines); remaining > 0 {
 		width := max(1, min(72, v.width-8))
-		goal := strings.Split(transcript.WrapProse(v.goal, width), "\n")
+		goal := strings.Split(chat.WrapProse(v.goal, width), "\n")
 		count := min(len(goal), min(5, remaining))
 		if count < len(goal) {
 			goal[count-1] = ansi.Truncate(goal[count-1], max(1, width-1), "") + "…"
@@ -295,7 +295,7 @@ func (v *FlowView) renderInputSummary() string {
 
 func wrapFlowProse(text string, width int) string {
 	const indent = "  "
-	wrapped := transcript.WrapProse(text, max(1, width-len(indent)))
+	wrapped := chat.WrapProse(text, max(1, width-len(indent)))
 	return indent + strings.ReplaceAll(wrapped, "\n", "\n"+indent)
 }
 
@@ -415,11 +415,11 @@ func (v *FlowView) renderRun() (title, content, hint string) {
 func (v *FlowView) renderReview() string {
 	width := max(1, v.width-4)
 	if v.plan == nil {
-		return transcript.WrapProse("Press e to fix the source before reviewing its inputs and outputs.", width)
+		return chat.WrapProse("Press e to fix the source before reviewing its inputs and outputs.", width)
 	}
 	node, ok := v.plan.Node(v.nodeID())
 	if !ok {
-		return transcript.WrapProse("Select a step to review its inputs and output.", width)
+		return chat.WrapProse("Select a step to review its inputs and output.", width)
 	}
 	lines := []string{fmt.Sprintf("Step %d/%d · %s", v.selected+1, len(v.plan.Nodes), node.ID), ""}
 	executor := "subagent (default)"
@@ -561,7 +561,7 @@ func (v *FlowView) diffPreview() string {
 	if v.baseline == "" {
 		meta = perm.GeneratePreview(v.name+".md", v.source, true)
 	}
-	out, _ := transcript.RenderFileDiff(meta.Lines, max(1, v.width-4), 0)
+	out, _ := chat.RenderFileDiff(meta.Lines, max(1, v.width-4), 0)
 	return out
 }
 
@@ -600,7 +600,7 @@ func (v *FlowView) resumePreview() string {
 		}
 		lines = append(lines, node.ID+": "+action)
 	}
-	return transcript.WrapProse(strings.Join(lines, "\n"), v.body.Width())
+	return chat.WrapProse(strings.Join(lines, "\n"), v.body.Width())
 }
 
 // Coordinates depend only on topology; completion and selection never reorder nodes.

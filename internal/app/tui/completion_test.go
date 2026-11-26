@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
@@ -130,7 +130,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 						end = e
 						break drain
 					}
-					transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: ev})
+					chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: ev})
 				case <-deadline:
 					t.Fatal("turn end missing")
 				}
@@ -143,7 +143,7 @@ func TestNormalTurnRecordsBeforeQueuedSuccessor(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: end})
+			chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: end})
 			if failed {
 				if m.userInput.Queue.Len() != 1 || m.pendingStopHook != nil {
 					t.Fatal("record failure admitted a successor or idle hooks")

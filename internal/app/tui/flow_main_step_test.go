@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 )
@@ -173,7 +173,7 @@ func TestFlowMainStepAdmissionExactlyOnce(t *testing.T) {
 		select {
 		case event := <-m.AgentOutbox():
 			m.confirmFlowMainInput()
-			transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: event})
+			chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: event})
 		case <-deadline:
 			t.Fatal("safe-step input never admitted")
 		}

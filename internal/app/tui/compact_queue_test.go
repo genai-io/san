@@ -9,8 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -92,7 +92,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 			expectedSummary := ""
 			switch trigger {
 			case "manual", "auto":
-				msg := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+				msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
 				if msg.Err != nil {
 					t.Fatal(msg.Err)
 				}
@@ -129,7 +129,7 @@ func TestCompactionReleasesOneQueuedInput(t *testing.T) {
 				}
 			case "nothing":
 				request.Messages = nil
-				msg := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+				msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
 				if !errors.Is(msg.Err, agent.ErrNothingToCompact) {
 					t.Fatalf("expected short-input rejection: %v", msg.Err)
 				}
@@ -238,7 +238,7 @@ func TestFailedCompactionKeepsQueuedInput(t *testing.T) {
 			m.userInput.Textarea.SetValue("look at [Image #1]")
 			m.userInput.Images.Pending = []input.PendingImage{{ID: 1, Data: chartImage()}}
 			m.handleSubmit()
-			msg := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+			msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
 			if msg.Err == nil {
 				t.Fatal("expected actual summary failure")
 			}

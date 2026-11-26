@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	apphook "github.com/genai-io/san/internal/app/hook"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
@@ -100,7 +100,7 @@ func (m *model) appendSessionState() error {
 func noticeAnnotation(n core.ChatMessage) session.AnnotationAddPayload {
 	p := session.AnnotationAddPayload{Text: n.Content, ByAgent: n.AgentNotice}
 	if n.AutoMemoryRecallNotice != nil {
-		p.Text = transcript.EncodeRecallNotice(n.AutoMemoryRecallNotice)
+		p.Text = chat.EncodeRecallNotice(n.AutoMemoryRecallNotice)
 		p.AfterMessage = n.AutoMemoryRecallNotice.AfterMessageID
 	}
 	return p

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/app/ask"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
@@ -15,7 +15,7 @@ import (
 )
 
 type integrationApprovalResolver struct {
-	bridge *transcript.AgentToUI
+	bridge *chat.AgentToUI
 	source tool.AgentInteractionSource
 }
 
@@ -42,7 +42,7 @@ func (r integrationApprovalResolver) Resolve(ctx context.Context, name string, i
 // cross the native UI bridge, so audit authority and displayed questions survive.
 func configureIntegrationApprovals(t *testing.T, executor *subagent.Executor, decide func(context.Context, tool.AgentInteractionSource, *perm.PermissionRequest, map[string]any) ask.PermissionDecision) {
 	t.Helper()
-	bridge := transcript.NewAgentToUI(8)
+	bridge := chat.NewAgentToUI(8)
 	ctx, cancel := context.WithCancel(t.Context())
 	var requests sync.WaitGroup
 	done := make(chan struct{})
@@ -54,13 +54,13 @@ func configureIntegrationApprovals(t *testing.T, executor *subagent.Executor, de
 				return
 			default:
 			}
-			msg, ok := bridge.Check()().(transcript.UserPromptRequestMsg)
+			msg, ok := bridge.Check()().(chat.UserPromptRequestMsg)
 			if !ok {
 				time.Sleep(time.Millisecond)
 				continue
 			}
 			requests.Add(1)
-			go func(req *transcript.UserPromptRequest) {
+			go func(req *chat.UserPromptRequest) {
 				defer requests.Done()
 				displayed := ask.NewPermission(req, bridge, req.PermissionView, func(*perm.PermissionRequest) []string { return []string{"Allow once", "Deny"} })
 				if displayed == nil {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 )
@@ -83,7 +83,7 @@ func TestQueueEnterWithHeldHookAfterCancellation(t *testing.T) {
 						events = nil
 						continue
 					}
-					transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: outbox, Event: ev})
+					chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: ev})
 				case completion = <-completed:
 					if completion.receipt != receipt || completion.outbox != outbox {
 						t.Fatal("a different turn or runtime settled cancellation")

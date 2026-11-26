@@ -3,14 +3,14 @@ package input
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/llm"
 )
 
 // OverlayDeps holds all dependencies needed by overlay selector handlers.
 type OverlayDeps struct {
 	State *Model
-	Conv  *transcript.ConversationModel
+	Conv  *chat.ConversationModel
 	Cwd   string
 
 	CommitMessages    func() []tea.Cmd

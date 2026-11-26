@@ -18,7 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
@@ -1160,7 +1160,7 @@ func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
 	}
 	m.conv.Modal.Question.Hide()
 	m.conv.AddNotice(autopilotAction("answered for you"))
-	return m.handleQuestionResponse(transcript.QuestionResponseMsg{
+	return m.handleQuestionResponse(chat.QuestionResponseMsg{
 		Request:  msg.req,
 		Response: &tool.QuestionResponse{RequestID: msg.req.ID, Answers: msg.answers},
 	})

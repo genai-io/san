@@ -5,7 +5,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -16,14 +16,14 @@ import (
 type workerResolver struct {
 	settings *setting.Settings
 	grants   *setting.SessionPermissions
-	bridge   *transcript.AgentToUI
+	bridge   *chat.AgentToUI
 	child    *session.Session
 	cwd      string
 	mode     setting.OperationMode
 	source   tool.AgentInteractionSource
 }
 
-func newWorkerResolver(settings *setting.Settings, grants *setting.SessionPermissions, bridge *transcript.AgentToUI, child *session.Session, source tool.AgentInteractionSource) tool.Resolver {
+func newWorkerResolver(settings *setting.Settings, grants *setting.SessionPermissions, bridge *chat.AgentToUI, child *session.Session, source tool.AgentInteractionSource) tool.Resolver {
 	if source.Flow != nil {
 		flow := *source.Flow
 		source.Flow = &flow

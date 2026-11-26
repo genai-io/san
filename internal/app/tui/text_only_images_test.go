@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -48,7 +48,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 			Reminder:  reminder.New(),
 			sessionID: "sess-1",
 		},
-		conv: transcript.NewModel(80),
+		conv: chat.NewModel(80),
 	}
 	m.env.LLMProvider = provider
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "deepseek-chat"}

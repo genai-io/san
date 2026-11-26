@@ -10,8 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -77,9 +77,9 @@ func TestTaskRootPermissionAssociationsAndMixedFIFOCounts(t *testing.T) {
 	expired, cancel := context.WithCancel(context.Background())
 	cancel()
 	foreign := userPromptApproval(m, context.Background(), "foreign")
-	foreign.Owner = transcript.NewAgentToUI(1)
+	foreign.Owner = chat.NewAgentToUI(1)
 	m.userPrompts.active = userPromptApproval(m, context.Background(), "current")
-	m.userPrompts.queue = []*transcript.UserPromptRequest{userPromptQuestion(m, context.Background(), "question"), userPromptApproval(m, context.Background(), "queued"), userPromptApproval(m, expired, "expired"), foreign}
+	m.userPrompts.queue = []*chat.UserPromptRequest{userPromptQuestion(m, context.Background(), "question"), userPromptApproval(m, context.Background(), "queued"), userPromptApproval(m, expired, "expired"), foreign}
 	if n := m.pendingApprovalCount(); n != 2 {
 		t.Fatalf("permission count=%d, want 2", n)
 	}
@@ -176,7 +176,7 @@ func TestTaskRootReviewReturnsSameDetailAfterFIFOQuestion(t *testing.T) {
 				cancel()
 				m.pruneUserPrompts()
 			} else {
-				m.handleQuestionResponse(transcript.QuestionResponseMsg{Request: question.Question.Request, Response: &tool.QuestionResponse{RequestID: "question", Answers: map[int][]string{0: {"first"}}}})
+				m.handleQuestionResponse(chat.QuestionResponseMsg{Request: question.Question.Request, Response: &tool.QuestionResponse{RequestID: "question", Answers: map[int][]string{0: {"first"}}}})
 			}
 			rendered := ansi.Strip(m.userInput.Tasks.Render())
 			if !m.userInput.Tasks.IsActive() || !strings.Contains(rendered, "ID: selected") || strings.Contains(rendered, "ID: first") {
@@ -287,7 +287,7 @@ func TestTaskRootTrackerUsesOnlyLivePermissionAssociation(t *testing.T) {
 		t.Fatal("question marked tracker as awaiting approval")
 	}
 	permissionCtx, expire := context.WithCancel(context.Background())
-	m.userPrompts.queue = []*transcript.UserPromptRequest{userPromptApproval(m, permissionCtx, worker.GetID())}
+	m.userPrompts.queue = []*chat.UserPromptRequest{userPromptApproval(m, permissionCtx, worker.GetID())}
 	if rows, _ := m.renderTrackerList(); !strings.Contains(ansi.Strip(rows), "Awaiting approval") {
 		t.Fatal("queued valid permission not reflected in tracker")
 	}

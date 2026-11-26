@@ -9,7 +9,7 @@
 //	                       lifecycle wiring + SessionEnd shutdown
 //	model_session.go       session save/load + per-session task storage
 //	model_scrollback.go    rendering committed messages to terminal output
-//	model_agent_events.go  transcript.Runtime callbacks invoked by the agent
+//	model_agent_events.go  chat.Runtime callbacks invoked by the agent
 //	                       outbox pump
 //	model_compact.go       conversation compaction (auto + /compact)
 //	model_tool_effects.go  side effects from tool calls (cwd, files, agent
@@ -29,8 +29,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -79,7 +79,7 @@ type model struct {
 	cronQueue         []string
 	asyncHookQueue    *asyncHookQueue
 	fileWatcher       *fileWatcher
-	conv              transcript.Model     // Agent Outbox: conversation + output rendering
+	conv              chat.Model           // Agent Outbox: conversation + output rendering
 	env               env                  // Shared app state: provider, session, permission, plan, config
 	services          services             // Domain service singletons, injected at construction
 	learnedStores     *learnedStoreContext // live cwd/settings source for /memory inventories
@@ -201,7 +201,7 @@ type model struct {
 	grp groupState
 }
 
-var _ transcript.Runtime = (*model)(nil)
+var _ chat.Runtime = (*model)(nil)
 
 // modeHintFor is how long the shift+tab hint stays; the status bar redraws
 // often enough (every few hundred ms) that it goes without a timer of its own.

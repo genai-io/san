@@ -3,12 +3,12 @@ package tui
 import (
 	"testing"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 )
 
 // Before the first message there is no writer; notices wait for it.
 func TestNoticesBeforeTheWriterWaitForIt(t *testing.T) {
-	m := &model{services: services{Session: nil}, conv: transcript.NewModel(80)}
+	m := &model{services: services{Session: nil}, conv: chat.NewModel(80)}
 	m.conv.OnNotice = m.recordNotice
 	m.conv.AddNotice("Joined shop as @api")
 	if len(m.earlyNotices) != 1 {

@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
@@ -25,19 +25,19 @@ func userPromptModel() *model {
 	return m
 }
 
-func userPromptQuestion(m *model, ctx context.Context, id string) *transcript.UserPromptRequest {
-	return &transcript.UserPromptRequest{
+func userPromptQuestion(m *model, ctx context.Context, id string) *chat.UserPromptRequest {
+	return &chat.UserPromptRequest{
 		Context: ctx, Owner: m.conv.AgentToUI,
 		Source: tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id},
-		Question: &transcript.QuestionRequestMsg{
+		Question: &chat.QuestionRequestMsg{
 			Request: &tool.QuestionRequest{ID: id, Questions: []tool.Question{{Header: "Choice", Question: "Pick a value", Options: []tool.QuestionOption{{Label: "first"}}}}},
 			Reply:   make(chan *tool.QuestionResponse, 1),
 		},
 	}
 }
 
-func userPromptApproval(m *model, ctx context.Context, id string) *transcript.UserPromptRequest {
-	return &transcript.UserPromptRequest{
+func userPromptApproval(m *model, ctx context.Context, id string) *chat.UserPromptRequest {
+	return &chat.UserPromptRequest{
 		Context: ctx, Owner: m.conv.AgentToUI,
 		Source:         tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id, PermissionMode: "default", WorkingDirectory: "/worker/cwd", ToolCallID: "worker-call"},
 		Permission:     &agent.PermGateRequest{Context: ctx, ToolName: "Write", RequestID: id, Response: make(chan agent.PermGateResponse, 1)},
@@ -99,7 +99,7 @@ func TestInteractionFIFOAcrossQuestionApprovalAndSecret(t *testing.T) {
 	m := userPromptModel()
 	question := userPromptQuestion(m, context.Background(), "question")
 	approval := userPromptApproval(m, context.Background(), "approval")
-	secret := &transcript.UserPromptRequest{ID: 42, Owner: m.conv.AgentToUI, Context: context.Background(), Secret: &transcript.SecretPromptRequestMsg{Prompt: "password", Reply: make(chan transcript.SecretPromptResponse, 1)}}
+	secret := &chat.UserPromptRequest{ID: 42, Owner: m.conv.AgentToUI, Context: context.Background(), Secret: &chat.SecretPromptRequestMsg{Prompt: "password", Reply: make(chan chat.SecretPromptResponse, 1)}}
 	m.enqueueUserPrompt(question)
 	m.conv.Modal.Question.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
 	m.conv.Modal.Question.HandleKeypress(tea.KeyPressMsg{Code: 'd', Text: "draft"})
@@ -109,7 +109,7 @@ func TestInteractionFIFOAcrossQuestionApprovalAndSecret(t *testing.T) {
 	if m.userPrompts.active != question || m.conv.Modal.Question.Render() != before || !strings.Contains(before, "draft") {
 		t.Fatal("another interaction replaced the question or its partial input")
 	}
-	m.handleQuestionResponse(transcript.QuestionResponseMsg{Request: question.Question.Request, Response: &tool.QuestionResponse{RequestID: "question", Answers: map[int][]string{0: {"first"}}}})
+	m.handleQuestionResponse(chat.QuestionResponseMsg{Request: question.Question.Request, Response: &tool.QuestionResponse{RequestID: "question", Answers: map[int][]string{0: {"first"}}}})
 	if response := <-question.Question.Reply; response.RequestID != "question" {
 		t.Fatal("question response misrouted")
 	}
@@ -153,7 +153,7 @@ func TestInteractionCancellationSkipsQueuedAndProtectsSuccessor(t *testing.T) {
 	m.enqueueUserPrompt(background)
 	cancelQueued()
 	cancel()
-	m.Update(transcript.AgentToUITickMsg{})
+	m.Update(chat.AgentToUITickMsg{})
 	if m.userPrompts.active != background || len(m.userPrompts.queue) != 0 {
 		t.Fatal("foreground cancellation discarded a live background request")
 	}
@@ -163,7 +163,7 @@ func TestInteractionCancellationSkipsQueuedAndProtectsSuccessor(t *testing.T) {
 	if response := <-queued.Permission.Response; response.Allow {
 		t.Fatal("queued cancellation granted permission")
 	}
-	m.handleQuestionResponse(transcript.QuestionResponseMsg{Request: first.Question.Request, Response: &tool.QuestionResponse{RequestID: "foreground"}})
+	m.handleQuestionResponse(chat.QuestionResponseMsg{Request: first.Question.Request, Response: &tool.QuestionResponse{RequestID: "foreground"}})
 	if len(background.Question.Reply) != 0 || m.userPrompts.active != background {
 		t.Fatal("stale answer consumed the background question")
 	}

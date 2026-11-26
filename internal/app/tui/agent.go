@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
 	apphook "github.com/genai-io/san/internal/app/hook"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/flow"
@@ -430,8 +430,8 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 	m.wireAutoSkill(params)
 
 	cmds := []tea.Cmd{
-		transcript.DrainAgentOutbox(m.services.Agent.Outbox()),
-		transcript.PollPermGate(m.services.Agent.PermissionGate()),
+		chat.DrainAgentOutbox(m.services.Agent.Outbox()),
+		chat.PollPermGate(m.services.Agent.PermissionGate()),
 	}
 	return tea.Batch(cmds...), nil
 }
@@ -503,7 +503,7 @@ func (m *model) sendPendingMessagesSince(startedAt time.Time) tea.Cmd {
 			if startedAt.IsZero() {
 				startedAt = time.Now()
 			}
-			m.conv.Stream = transcript.StreamState{Active: true, Waiting: true, StartedAt: startedAt}
+			m.conv.Stream = chat.StreamState{Active: true, Waiting: true, StartedAt: startedAt}
 			cmds = append(cmds, m.conv.Spinner.Tick)
 		}
 	}
@@ -597,12 +597,12 @@ func (m *model) ListenForAgentEvents() tea.Cmd {
 	if outbox == nil {
 		return nil
 	}
-	return transcript.DrainAgentOutbox(outbox)
+	return chat.DrainAgentOutbox(outbox)
 }
 
 func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	if req == nil || (req.Context != nil && req.Context.Err() != nil) {
-		return transcript.PollPermGate(m.services.Agent.PermissionGate())
+		return chat.PollPermGate(m.services.Agent.PermissionGate())
 	}
 	permissionView, err := m.preparePermissionRequest(req)
 	if err != nil {
@@ -613,12 +613,12 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 		case req.Response <- agent.PermGateResponse{Reason: fmt.Sprintf("cannot prepare %s approval: %v", req.ToolName, err)}:
 		default:
 		}
-		return transcript.PollPermGate(m.services.Agent.PermissionGate())
+		return chat.PollPermGate(m.services.Agent.PermissionGate())
 	}
-	return tea.Batch(m.enqueueUserPrompt(&transcript.UserPromptRequest{
+	return tea.Batch(m.enqueueUserPrompt(&chat.UserPromptRequest{
 		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: permissionView,
 		Source: tool.AgentInteractionSource{WorkingDirectory: m.env.CWD, PermissionMode: m.env.SessionMode()},
-	}), transcript.PollPermGate(m.services.Agent.PermissionGate()))
+	}), chat.PollPermGate(m.services.Agent.PermissionGate()))
 }
 
 // ============================================================

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/skill"
@@ -190,7 +190,7 @@ func testFlowMainNativeRuntime(t *testing.T, warm bool) {
 	for {
 		select {
 		case ev := <-m.AgentOutbox():
-			transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: ev})
+			chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: ev})
 		case r := <-reply:
 			if r.err != nil || r.output != "native writer result" {
 				t.Fatalf("result = %+v", r)
@@ -368,7 +368,7 @@ func TestFlowMainBusyStartsAtNativeTurnBoundary(t *testing.T) {
 	if started {
 		t.Fatal("writer interrupted the old main turn")
 	}
-	m.Update(transcript.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: core.TurnEnded{Result: core.Result{StopReason: core.StopEndTurn}}})
+	m.Update(chat.AgentOutboxMsg{Outbox: m.AgentOutbox(), Event: core.TurnEnded{Result: core.Result{StopReason: core.StopEndTurn}}})
 	if !started || m.flowMainRequest == nil || m.flowMainRequest.messageID == "" {
 		t.Fatal("normal native turn boundary did not start the waiting writer")
 	}

@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/setting"
@@ -129,7 +129,7 @@ func TestShiftTabCyclesModeDuringStream(t *testing.T) {
 // Shift+Tab navigates the approval's choices, never grants a broader scope or
 // cycles operation mode: routeKeypress hands it to the foreground overlay.
 func TestShiftTabAtApprovalPromptDoesNotCycleMode(t *testing.T) {
-	m := &model{conv: transcript.NewModel(80)}
+	m := &model{conv: chat.NewModel(80)}
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.conv.Stream.Active = true
 	m.userInput.Approval.Show(&perm.PermissionRequest{ToolName: "Bash"}, 80, 24)
@@ -157,7 +157,7 @@ func TestAltTTogglesTaskPanel(t *testing.T) {
 // Ctrl+C on an idle, empty prompt arms exit; it must never wipe the
 // conversation the way /clear does.
 func TestCtrlCIdleArmsExitWithoutClearing(t *testing.T) {
-	m := &model{conv: transcript.NewModel(80)}
+	m := &model{conv: chat.NewModel(80)}
 	m.conv.AddNotice("earlier turn")
 
 	cmd, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})

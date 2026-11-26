@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -63,8 +63,8 @@ func TestRecapCompletionKeepsStaticRecapMark(t *testing.T) {
 	if got := m.recapLive(); got != "" {
 		t.Fatalf("completion must retire the breathing ※ mark: %q", got)
 	}
-	p := transcript.RenderContext{Width: 80, Messages: m.conv.Messages}
-	render := func() string { return transcript.RenderSingleMessage(p, len(p.Messages)-1) }
+	p := chat.RenderContext{Width: 80, Messages: m.conv.Messages}
+	render := func() string { return chat.RenderSingleMessage(p, len(p.Messages)-1) }
 	before := render()
 	if !strings.HasPrefix(strings.TrimSpace(ansi.Strip(before)), "※ Tests passed.") || strings.Contains(ansi.Strip(before), "↩") {
 		t.Fatalf("completion must keep the same ※ mark instead of a return arrow: %q", before)

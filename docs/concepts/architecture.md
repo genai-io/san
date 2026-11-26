@@ -68,7 +68,7 @@ events that mutate the TUI model.
 - Source 1 routes through `internal/app/tui/input/`.
 - Source 2 (agents → main) routes through `internal/agent/mail/` (the shared message queue).
 - Source 3 is handled directly by `internal/app/tui/`, which polls cron and async hooks.
-- Output side renders through `internal/app/tui/transcript/`.
+- Output side renders through `internal/app/tui/chat/`.
 
 The detailed walkthrough (sub-model conventions, runtime adapters, cmd
 chains, directory structure of `internal/app/`) lives in

@@ -320,7 +320,7 @@ tests/integration/agent/flow_interaction_origin_test.go — concurrent Flow orig
 tests/integration/agent/flow_interaction_questions_test.go — parallel node attribution and exact answer routing.
 internal/app/tui/interactions_scrollback_test.go — canceled modals resume held history before the next worker prompt.
 internal/app/tui/interactions_renderer_test.go — real TUI keyboard approval/answer routing to workers.
-internal/app/tui/transcript/interaction_test.go — original reply endpoints and transport closure.
+internal/app/tui/chat/interaction_test.go — original reply endpoints and transport closure.
 internal/subagent/executor_test.go      — end-to-end run scenarios.
 internal/subagent/executor_cwd_test.go  — deterministic batch handoffs and cancellation.
 internal/subagent/executor_cwd_isolation_test.go — repeated IDs cannot cross worker/main ownership.
@@ -330,11 +330,11 @@ internal/subagent/lazy_loading_test.go  — config files read on demand.
 internal/subagent/scenarios_test.go     — common invocation shapes.
 tests/integration/agent/agent_test.go    — runtime, permissions, failed transcript projection.
 internal/tool/agent/agent_test.go        — foreground result and error preservation.
-internal/app/tui/transcript/update_test.go         — sibling activity survives agent completion.
+internal/app/tui/chat/update_test.go         — sibling activity survives agent completion.
 internal/app/tui/notify_test.go              — bounded successful and partial failure notices.
 internal/app/tui/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
 internal/app/tui/model_history_test.go       — inspectable background results without state mutation.
-internal/app/tui/transcript/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
+internal/app/tui/chat/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
 tests/integration/agent/result_view_test.go — real result → adapter → writer → resumed UI.
 internal/flow/service_test.go    — unfinished node output, identity, and parallel usage.
 internal/app/tui/group_test.go                — live and persisted batch context.

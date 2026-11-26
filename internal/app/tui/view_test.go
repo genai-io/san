@@ -13,8 +13,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
@@ -196,7 +196,7 @@ func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	wf := mgr.CreateSchedulerTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
 	wf.SetLiveView("Flow demo · 0/1 finished\n  ● map")
 	todo.TrackWorker(tracker, wf.GetStatus())
-	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: transcript.NewModel(100)}
+	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: chat.NewModel(100)}
 	m.conv.ShowTasks = true
 	view, _ := m.renderTrackerList()
 	if strings.Contains(view, "Background") || !strings.Contains(view, "Flow demo · 0/1 finished") {
@@ -225,7 +225,7 @@ func TestComposerCursorAlignsWithEveryRow(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &model{
 				env:       env{Width: width, Height: 24, Ready: true},
-				conv:      transcript.NewModel(width),
+				conv:      chat.NewModel(width),
 				userInput: input.New("", width, nil, input.SelectorDeps{}),
 			}
 			m.userInput.Textarea.SetWidth(width - 4 - 2)
@@ -315,7 +315,7 @@ func fixedComposerModel(width, height int) *model {
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
-		conv:      transcript.NewModel(width),
+		conv:      chat.NewModel(width),
 		userInput: input.New("", width, func(string) []suggest.Suggestion {
 			return []suggest.Suggestion{{Name: "help", Description: "Show commands"}, {Name: "history", Description: "Inspect conversation"}}
 		}, input.SelectorDeps{}),
@@ -337,7 +337,7 @@ func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
 			m.services.Agent = &agent.Runtime{}
 			m.welcomePending = true
 			deliver := func(event core.Event) {
-				transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: event})
+				chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: event})
 			}
 			messageRow := func(marker string) int {
 				t.Helper()
@@ -459,7 +459,7 @@ func TestPendingMessagesAboveTasks(t *testing.T) {
 			if cursor == nil || cursor.Position.Y >= len(lines) {
 				t.Fatalf("invalid composer cursor: %v", cursor)
 			}
-			wantInput := transcript.InputPrompt + m.userInput.Textarea.Value()
+			wantInput := chat.InputPrompt + m.userInput.Textarea.Value()
 			if got := strings.TrimRight(lines[cursor.Position.Y], " "); got != wantInput {
 				t.Fatalf("cursor row = %q, want composer %q", got, wantInput)
 			}
@@ -471,7 +471,7 @@ func TestPendingMessagesStayAboveTasksDuringInference(t *testing.T) {
 	m := fixedComposerModel(80, 40)
 	m.services.Tracker.Create("Current task", "", "", nil)
 	m.userInput.Queue.Enqueue("Pending sentinel", nil)
-	m.conv.Stream = transcript.StreamState{Active: true, Waiting: true}
+	m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
 	frame, cursor := m.viewString()
 	plain := ansi.Strip(frame)
 	pendingAt := strings.Index(plain, "Pending sentinel")
@@ -514,7 +514,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 	if m.userInput.Queue.Len() != 1 || len(m.conv.Messages) != 1 {
 		t.Fatal("input during submission waiting should queue until the turn ends")
 	}
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
 	if m.conv.Stream.Waiting || m.conv.Stream.MessageID == "" || len(m.conv.Messages) != 2 {
 		t.Fatal("first inference did not replace the waiting indicator with one assistant message")
 	}
@@ -523,7 +523,7 @@ func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
 func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
-	m.conv.Stream = transcript.StreamState{Active: true, Waiting: true}
+	m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
 	m.dispatch(agentSendFailedMsg{err: agent.ErrRuntimeStopped})
 	frame := ansi.Strip(m.View().Content)
 	if m.conv.Stream.Active || m.conv.Stream.Waiting || strings.Contains(frame, "Thinking...") ||
@@ -716,7 +716,7 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 	const width, height = modalTestWidth, modalTestHeight
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
-		conv:      transcript.NewModel(width),
+		conv:      chat.NewModel(width),
 		userInput: input.New("", width, nil, input.SelectorDeps{}),
 		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(), Setting: &setting.Settings{}},
 	}

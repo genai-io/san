@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent/mail"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/task"
 )
 
@@ -18,7 +18,7 @@ func TestStoppedNotificationKeepsOneConciseDisplayLine(t *testing.T) {
 		msg, _ := taskCompletionMessage(task.TaskInfo{ID: "worker", Type: task.TaskTypeAgent, AgentName: "Agent", Description: "Security review", Status: task.StatusStopped, Error: reason})
 		m := commitTestModel()
 		m.showNoticeLine(fromBrokerMessage(msg))
-		view := ansi.Strip(transcript.RenderSingleMessage(transcript.RenderContext{Messages: m.conv.Messages, Width: 80}, 0))
+		view := ansi.Strip(chat.RenderSingleMessage(chat.RenderContext{Messages: m.conv.Messages, Width: 80}, 0))
 		if strings.TrimSpace(view) != "● Security review · Stopped" {
 			t.Fatalf("stop has redundant type, detail, or completion row: %q", view)
 		}
@@ -36,7 +36,7 @@ func TestTaskFailureSummaryKeepsTerminalReasonAndStatus(t *testing.T) {
 			m := commitTestModel()
 			m.showNoticeLine(fromBrokerMessage(msg))
 			for _, width := range []int{30, 80} {
-				view := ansi.Strip(transcript.RenderSingleMessage(transcript.RenderContext{Messages: m.conv.Messages, Width: width}, 0))
+				view := ansi.Strip(chat.RenderSingleMessage(chat.RenderContext{Messages: m.conv.Messages, Width: width}, 0))
 				wantStatus := map[task.TaskStatus]string{task.StatusFailed: "Failed", task.StatusStopped: "Stopped", task.StatusCompleted: "Completed"}[status]
 				if !strings.Contains(view, wantStatus) || strings.Contains(view, "nested diagnostic") {
 					t.Fatalf("status %s, width %d: summary lost outcome or took a reason from partial output: %q", status, width, view)
@@ -99,9 +99,9 @@ func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
 	if err := xml.Unmarshal([]byte(msg.Content), &decoded); err != nil || decoded.Description != description || decoded.OutputFile != path || decoded.Status != "completed" {
 		t.Fatalf("attribute values broke the notification: decoded=%+v, err=%v", decoded, err)
 	}
-	m := &model{conv: transcript.NewModel(100)}
+	m := &model{conv: chat.NewModel(100)}
 	m.showNoticeLine(fromBrokerMessage(msg))
-	view := transcript.RenderSingleMessage(transcript.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
+	view := chat.RenderSingleMessage(chat.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
 	if !strings.Contains(ansi.Strip(view), description+" · Completed") {
 		t.Fatalf("escaped description did not round-trip through display: %q", view)
 	}

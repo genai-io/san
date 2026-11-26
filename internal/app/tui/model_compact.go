@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
@@ -151,7 +151,7 @@ func (m *model) OnCompactStart(count int) tea.Cmd {
 	m.conv.Compact.Active = true
 	m.conv.Compact.AutoContinue = true
 	m.conv.Compact.StartedAt = time.Now()
-	m.conv.Compact.Phase = transcript.PhaseSummarizing
+	m.conv.Compact.Phase = chat.PhaseSummarizing
 	m.conv.Compact.Count = count
 	return m.conv.Spinner.Tick
 }
@@ -209,7 +209,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 // OnCompacted — the same path auto-compaction takes, with no agent rebuild.
 // Only when there is no active agent does it drive OnCompacted directly so the
 // next session start still seeds the summary.
-func (m *model) HandleCompactResult(msg transcript.CompactResultMsg) tea.Cmd {
+func (m *model) HandleCompactResult(msg chat.CompactResultMsg) tea.Cmd {
 	p := m.pendingCompaction
 	if p == nil || msg.Context != p.ctx || msg.Completion != p.completion || p.ctx.Err() != nil ||
 		p.session != m.services.Session || p.sessionID != m.sessionID() || p.outbox != m.AgentOutbox() {

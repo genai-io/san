@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 )
 
@@ -18,7 +18,7 @@ func runGoal(t *testing.T, current, args string) (string, tea.Msg) {
 	t.Helper()
 	c := NewSlashCommandController(SlashCommandEnv{
 		GetGoal:      func() string { return current },
-		Conversation: new(transcript.NewConversation()),
+		Conversation: new(chat.NewConversation()),
 	})
 	notice, cmd, err := c.handleGoalCommand(context.Background(), args)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestGoalIsKeptInTheTranscript(t *testing.T) {
 // The acknowledgement hangs under the "❭ /goal" echo rather than standing as
 // its own notice block.
 func TestGoalMarksItsEcho(t *testing.T) {
-	cv := new(transcript.NewConversation())
+	cv := new(chat.NewConversation())
 	cv.Append(core.ChatMessage{Role: core.ChatUser, Content: "/goal ship the release"})
 	c := NewSlashCommandController(SlashCommandEnv{Conversation: cv})
 	if _, _, err := c.handleGoalCommand(context.Background(), "ship the release"); err != nil {

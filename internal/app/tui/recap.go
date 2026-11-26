@@ -14,8 +14,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
@@ -189,7 +189,7 @@ func (m *model) recapLive() string {
 	if !m.recap.show {
 		return ""
 	}
-	return transcript.RenderRecap(widgets.LiveRecap(m.conv.Spinner.Frame()), m.recapFacts(), "", m.env.Width)
+	return chat.RenderRecap(widgets.LiveRecap(m.conv.Spinner.Frame()), m.recapFacts(), "", m.env.Width)
 }
 
 func (m *model) writeRecap() tea.Cmd {
@@ -252,7 +252,7 @@ func (m *model) showRecap(r recapReadyMsg) tea.Cmd {
 		closeAside(r.recording)
 		return nil
 	}
-	notice := transcript.RecapNotice(m.recapFacts(), r.text)
+	notice := chat.RecapNotice(m.recapFacts(), r.text)
 	if r.recording != nil && !finishAside(r.recording, notice) {
 		return nil
 	}
@@ -289,7 +289,7 @@ func (m *model) recapFacts() string {
 	if needed := m.waitingOn(); needed != "" {
 		facts = append(facts, needed+" needed")
 	}
-	if done, plans := transcript.PlanProgress(m.services.Tracker.List()); plans > 0 {
+	if done, plans := chat.PlanProgress(m.services.Tracker.List()); plans > 0 {
 		facts = append(facts, "plan "+strconv.Itoa(done)+"/"+strconv.Itoa(plans))
 	}
 	if ap := m.env.AutoPilot; m.drivenMission() != "" {
@@ -319,7 +319,7 @@ func (m *model) waitingOn() string {
 	switch ov.(type) {
 	case *input.ApprovalModel:
 		return "approval"
-	case *transcript.QuestionPrompt:
+	case *chat.QuestionPrompt:
 		return "answer"
 	case *input.SecretPromptModel:
 		return "input"

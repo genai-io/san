@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/judge"
@@ -17,7 +17,7 @@ import (
 
 type bashPromptResponder struct {
 	model     *model
-	bridge    *transcript.AgentToUI
+	bridge    *chat.AgentToUI
 	recording *session.Session
 	sessionID string
 }

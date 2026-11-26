@@ -241,7 +241,7 @@ internal/app/tui/task_recovery_test.go   — attempt-aware notices, manual-stop 
 internal/app/tui/input/task_viewer_history_test.go — collapsed history, visible selection, stable actions, narrow/short views.
 internal/app/tui/input/task_viewer_recorded_test.go — recorded history is always read-only.
 internal/app/tui/model_task_history_test.go — persisted reasons, live precedence, ownership and interrupted history.
-internal/app/tui/transcript/tracker_history_test.go — announcement-aware folding and quiet secondary history.
+internal/app/tui/chat/tracker_history_test.go — announcement-aware folding and quiet secondary history.
 internal/task/hooks_test.go          — lifecycle hook emission.
 internal/task/session_test.go        — ownership across switches and nested launches.
 internal/task/output_observability_test.go — log errors and display-only progress.

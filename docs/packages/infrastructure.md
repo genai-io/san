@@ -73,7 +73,7 @@ func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per fi
 - One `*Cache` per session, cleared on `/clear` and `/resume`.
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
-  `internal/app/tui/transcript/compact.go` (build on compaction). See also
+  `internal/app/tui/chat/compact.go` (build on compaction). See also
   [`../concepts/harness-channels.md`](../concepts/harness-channels.md).
 - Code: `internal/infra/filecache/`.
 

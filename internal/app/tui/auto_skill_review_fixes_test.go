@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
@@ -179,7 +179,7 @@ func TestNotifyAutoSkillOverrideChecksIndividualSkillActions(t *testing.T) {
 	}
 	m := &model{
 		services: services{Setting: settings},
-		conv:     transcript.NewModel(80),
+		conv:     chat.NewModel(80),
 	}
 	m.notifyAutoSkillOverride(input.ConfigSavedMsg{
 		Scope:          setting.ScopeProject,

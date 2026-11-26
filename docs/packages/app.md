@@ -27,7 +27,7 @@ type model struct {
     userInput       input.Model        // Source 1: user keyboard
     mainNotices     chan mainNotice    // Source 2: notices bound for the main loop
     // Source 3: the root handles cron, async hooks and file watcher events directly.
-    conv            transcript.Model         // agent outbox → conversation view
+    conv            chat.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
     services        services           // feature-layer handles
 }
@@ -35,7 +35,7 @@ type model struct {
 // services stores the concrete feature handles in internal/app/tui/services.go.
 ```
 
-The transcript and input sub-models each define their
+The chat and input sub-models each define their
 own narrow `Runtime` interface. Root implements those via adapter methods
 on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
@@ -48,7 +48,7 @@ triggers, state ownership and failure behavior.
 
 ### Human interactions
 
-`transcript.AgentToUI` carries context-bound requests over one session-owned channel.
+`chat.AgentToUI` carries context-bound requests over one session-owned channel.
 `interactions.go` owns a FIFO and one active request across approvals, questions
 and secret prompts. A modal never replaces another unanswered request; existing
 panels and native-history handoffs finish before the next prompt is shown.
@@ -246,7 +246,7 @@ Files under `internal/app/tui`:
 | `model_lifecycle.go` | Construction + run-option application + task lifecycle wiring + SessionEnd shutdown. |
 | `model_session.go` | Session save/load + per-session task storage + fork. |
 | `model_scrollback.go` | Retain recent settled rows above the composer; print older rows into native scrollback via `tea.Println`. |
-| `model_agent_events.go` | `transcript.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
+| `model_agent_events.go` | `chat.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |
@@ -276,7 +276,7 @@ Sub-model packages:
 | Package | Source | Role |
 |---|---|---|
 | `app/tui/input/` | Source 1 (user keyboard) | Textarea, selectors, approval modals, slash command dispatch. Big surface (37 files, `on_*.go` per component). |
-| `app/tui/transcript/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
+| `app/tui/chat/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
 | [`mail`](mail.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `mail.Main`. |
 | `app/tui/` | Source 3 (system) | Handles file watcher events, cron dispatch and async hook polling directly. |
 | `app/tui/widgets/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
@@ -332,7 +332,7 @@ When compaction succeeds, the live status gives way to an unindented
 `Conversation compacted` notice in the main conversation. A stopped
 failed turn explicitly marks its output as incomplete. This status is display-only
 and never enters native history or the model conversation. Regression coverage
-includes `tui/transcript/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
+includes `tui/chat/inference_progress_test.go`, `model_inference_lifecycle_test.go`,
 `view_inference_placement_test.go`, and `view_footer_history_test.go`.
 `Session.Send` is nonblocking and runs before the submit handler returns, so an
 Esc cannot be followed by a delayed command sending the cancelled request.
@@ -376,7 +376,7 @@ omitted; expanded notifications retain task IDs and full output.
 Expanded shell calls use the same `$` command block; other expanded parameters
 keep continuation lines aligned with their values.
 
-When foreground workers overflow the live tail, `transcript.RenderActiveWorkers`
+When foreground workers overflow the live tail, `chat.RenderActiveWorkers`
 reserves their identity rows and compact rows for ordinary pending tool siblings
 before sharing recent details. The latest notice also keeps a row. Background
 tracker/workflow indicators spend only the height left after this reservation,
@@ -433,7 +433,7 @@ pending, and completed plan items; rendering leaves task records intact.
   saves the focused preference. `gitBar` defaults off; `input.GitBarSavedMsg`
   reloads the effective setting. See [configuration](../reference/configuration.md).
 - **Flow:** `model_git_bar.go` reads through `proc.ReadGitStatus` in a bounded
-  `tea.Cmd`; `transcript.RenderGitBar` draws a plain-text snapshot beneath the normal
+  `tea.Cmd`; `chat.RenderGitBar` draws a plain-text snapshot beneath the normal
   status line. `renderFooter` accounts for its height and composer cursor.
 - **Lifecycle:** startup, enabling and cwd changes read immediately, then poll
   after three seconds. Disabling or changing cwd cancels the read; generation
@@ -476,10 +476,10 @@ The root package has focused lifecycle/state tests and broader coverage through
 `tests/integration/`. Sub-model packages keep their own tests:
 
 ```
-internal/app/tui/transcript/message_test.go              — message rendering.
-internal/app/tui/transcript/markdown_test.go             — markdown renderer.
-internal/app/tui/transcript/tracker_view_test.go         — task tracker view.
-internal/app/tui/transcript/git_bar_test.go              — Git row content, CJK widths and truncation.
+internal/app/tui/chat/message_test.go              — message rendering.
+internal/app/tui/chat/markdown_test.go             — markdown renderer.
+internal/app/tui/chat/tracker_view_test.go         — task tracker view.
+internal/app/tui/chat/git_bar_test.go              — Git row content, CJK widths and truncation.
 internal/app/tui/model_git_bar_test.go             — polling, stale events, settings and footer height.
 internal/app/tui/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
 internal/app/tui/view_test.go                     — fixed composer, multiline input and candidates.

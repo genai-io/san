@@ -18,7 +18,7 @@ the assignment changes.
 | Path | Layer | Responsibility |
 | --- | --- | --- |
 | `internal/app/tui` | `app` | Bubble Tea root model, session restore and event routing, including file watcher events, cron dispatch and async hook polling. |
-| `internal/app/tui/transcript` | `app` | Conversation rendering state and agent outbox observation. |
+| `internal/app/tui/chat` | `app` | Conversation rendering state and agent outbox observation. |
 | `internal/app/tui/input` | `app` | Text input, selectors, approvals, user-input flow. |
 | `internal/app/ask` | `app` | User request lifetimes and permission resolution shared by TUI and ACP; no rendering or transport. |
 | `internal/app/tui/widgets` | `app` | Shared terminal widgets, including input history (`widgets/history`) and completions (`widgets/suggest`). |

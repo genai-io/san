@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
@@ -59,7 +59,7 @@ func TestManualCompactionRecordingAcceptance(t *testing.T) {
 			m, owner := recordedCompactModel(t, aitest.Replies(ai.Response{Content: ai.TextContent(text), Usage: ai.Usage{Input: 17, Output: 4}}))
 			before := m.services.Agent.Messages()
 			req := m.BuildCompactRequest("keep the goal", "manual")
-			msg := transcript.CompactCmd(req)().(transcript.CompactResultMsg)
+			msg := chat.CompactCmd(req)().(chat.CompactResultMsg)
 			p := owner.Snapshot()
 			if len(p.Unfinished().Inferences) != 1 && mode != "empty" {
 				t.Fatal("result accepted before UI ownership check")
@@ -160,8 +160,8 @@ func TestManualCompactionRecordingCancellation(t *testing.T) {
 		return aitest.Hangs()(ctx, r)
 	})
 	req := m.BuildCompactRequest("", "manual")
-	done := make(chan transcript.CompactResultMsg, 1)
-	go func() { done <- transcript.CompactCmd(req)().(transcript.CompactResultMsg) }()
+	done := make(chan chat.CompactResultMsg, 1)
+	go func() { done <- chat.CompactCmd(req)().(chat.CompactResultMsg) }()
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -38,7 +38,7 @@ func TestApprovalNewFileUsesSharedDiff(t *testing.T) {
 	for i := range lines {
 		lines[i].Type = perm.DiffLineAdded
 	}
-	block, _ := transcript.RenderFileDiff(lines, 60, 0)
+	block, _ := chat.RenderFileDiff(lines, 60, 0)
 	got := d.render(60)
 	for _, line := range meta.Lines {
 		if line.Type != perm.DiffLineContext {

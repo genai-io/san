@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/aside"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -128,7 +128,7 @@ func TestRecapRecordingAcceptance(t *testing.T) {
 				switch payload := event.Payload.(type) {
 				case *session.AnnotationAddPayload:
 					annotations++
-					if payload.Text != transcript.RecapNotice(m.recapFacts(), ready.text) {
+					if payload.Text != chat.RecapNotice(m.recapFacts(), ready.text) {
 						t.Fatalf("wrong delivered recap: %+v", payload)
 					}
 				case *session.InferenceStartPayload:

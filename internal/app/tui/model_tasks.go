@@ -10,8 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -21,7 +21,7 @@ const taskViewerOutputLimit = 32 * 1024
 type taskViewerState struct {
 	sessionID                string
 	actionID, pollID, stopID uint64
-	review                   *transcript.UserPromptRequest
+	review                   *chat.UserPromptRequest
 	recorded                 *input.TaskViewItem
 }
 
@@ -40,7 +40,7 @@ type taskStopFinishedMsg struct {
 // requests, not task status or a worker's free-form progress text.
 func (m *model) pendingTaskApprovals() map[string]bool {
 	waiting := make(map[string]bool)
-	add := func(request *transcript.UserPromptRequest) {
+	add := func(request *chat.UserPromptRequest) {
 		if m.validUserPrompt(request) && request.Permission != nil && request.Source.TaskID != "" {
 			waiting[request.Source.TaskID] = true
 		}

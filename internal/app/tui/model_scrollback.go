@@ -20,7 +20,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -78,7 +78,7 @@ type flushSnapshot struct {
 	showThinkingIcon bool
 	showBullet       bool
 	width            int
-	md               *transcript.MDRenderer
+	md               *chat.MDRenderer
 	// collapsedThinking is the collapsed mode's rendered "Thought for 3.2s"
 	// line, committed instead of a reasoning body. thinkingSlice is empty in
 	// that case: the body never reaches scrollback in the collapsed and hidden
@@ -91,7 +91,7 @@ type flushSnapshot struct {
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
 	rendering       bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer        *transcript.MDRenderer   // background renderer, off the live-view MDRenderer's mutex
+	renderer        *chat.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
 	width           int                      // width the renderer was built for; rebuild when it changes
 	nextPrintID     uint64                   // monotonic identity for queued scrollback prints
 	pendingPrints   []pendingScrollbackPrint // FIFO queue; only the head may be in flight
@@ -138,7 +138,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	var thinkingSlice, contentSlice, collapsedThinking string
 	thinkingEnd := msg.ThinkingCommittedLen
 	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
-		thinkingEnd = transcript.CompletedBlockBoundary(msg.Thinking)
+		thinkingEnd = chat.CompletedBlockBoundary(msg.Thinking)
 		if reasoningDone {
 			thinkingEnd = len(msg.Thinking)
 		}
@@ -152,10 +152,10 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		// waits for reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
 		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
-			collapsedThinking = transcript.RenderCollapsedThinking(msg.ThinkingDuration)
+			collapsedThinking = chat.RenderCollapsedThinking(msg.ThinkingDuration)
 		}
 	}
-	contentEnd := transcript.CompletedBlockBoundary(msg.Content)
+	contentEnd := chat.CompletedBlockBoundary(msg.Content)
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
@@ -191,14 +191,14 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 			blocks = append(blocks, snap.collapsedThinking)
 			thinkingEmitted = true
 		} else if snap.thinkingSlice != "" {
-			if b := transcript.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
+			if b := chat.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
 				blocks = append(blocks, b)
 				thinkingEmitted = true
 			}
 		}
 		bulletEmitted := false
 		if snap.contentSlice != "" {
-			if b := transcript.RenderCommittedContentBlock(snap.contentSlice, snap.showBullet, snap.md); b != "" {
+			if b := chat.RenderCommittedContentBlock(snap.contentSlice, snap.showBullet, snap.md); b != "" {
 				blocks = append(blocks, b)
 				bulletEmitted = true
 			}
@@ -276,9 +276,9 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 // m.conv.MDRenderer so a slow render can't block the live View on its mutex.
 // Rebuilt on width change; needs no lock since flush.rendering means one render
 // uses it at a time.
-func (f *flushState) mdRenderer(width int) *transcript.MDRenderer {
+func (f *flushState) mdRenderer(width int) *chat.MDRenderer {
 	if f.renderer == nil || f.width != width {
-		f.renderer = transcript.NewMDRenderer(width)
+		f.renderer = chat.NewMDRenderer(width)
 		f.width = width
 	}
 	return f.renderer
@@ -293,7 +293,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	// Once sized, queueScrollbackPrint measures the retained rows itself.
 	preCommitRows := 0
 	if !m.env.Ready || m.env.Height <= 0 {
-		preCommitRows = rowCount(transcript.RenderActiveContent(params))
+		preCommitRows = rowCount(chat.RenderActiveContent(params))
 	}
 
 	parts := m.conv.CommitRows(params, checkReady)
@@ -325,7 +325,7 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 		return nil
 	}
 	bottom, params := m.frameBottom()
-	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(transcript.RenderActiveBody(params)))
+	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(chat.RenderActiveBody(params)))
 	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
 	overflow := len(rows) - keep
 	if overflow <= 0 {
@@ -511,7 +511,7 @@ func (m *model) insertChunkAboveOneRow(id uint64) tea.Cmd {
 // frameBottom is the block anchored under the chat rows — indicators plus the
 // composer, or the docked modal in its place — with the render params that
 // layout implies.
-func (m *model) frameBottom() (string, transcript.RenderContext) {
+func (m *model) frameBottom() (string, chat.RenderContext) {
 	trackerView, history := m.renderTrackerList()
 	params := m.messageRenderParams()
 	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {

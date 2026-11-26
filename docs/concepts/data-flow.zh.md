@@ -59,7 +59,7 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
    │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
-   │                  Update → transcript.Update → callbacks      │
+   │                  Update → chat.Update → callbacks            │
    │                      │                                       │
    │                      ▼                                       │
    │             CommitMessages → tea.Println → scrollback        │
@@ -281,7 +281,7 @@ Update                                     update.go
 task 是一种生产者；subagent 的中途消息（`SendMessage to="main"`）和
 self-learn 通知是另外几种——都走同一个 channel。
 
-跟 `transcript.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
+跟 `chat.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
 Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 没有 tick、idle 时 0 CPU。
 
@@ -377,7 +377,7 @@ tea.Msg（具体是某种 conv.* msg 类型）
    │
    ▼
 Update → routeToSubModel                update.go
-   └─ transcript.Update(m, &m.conv, msg)      app/tui/transcript/update.go
+   └─ chat.Update(m, &m.conv, msg)            app/tui/chat/update.go
          │
          │ 按事件类型分发。流式流程是：
          │
@@ -577,7 +577,7 @@ prompt 前缀（prompt cache 命中更稳）。
 | inject 路径（cron/hook/通知）| [`internal/app/tui/model_turn_queue.go`](../../internal/app/tui/model_turn_queue.go) |
 | Agent 事件回调 | [`internal/app/tui/model_agent_events.go`](../../internal/app/tui/model_agent_events.go) |
 | Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
-| Conv 事件路由 | [`internal/app/tui/transcript/update.go`](../../internal/app/tui/transcript/update.go) |
+| Conv 事件路由 | [`internal/app/tui/chat/update.go`](../../internal/app/tui/chat/update.go) |
 | `agent.Send` / outbox 轮询 | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
 | 流式中断处理 | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
 | `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |

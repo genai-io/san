@@ -9,8 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 )
@@ -81,8 +81,8 @@ func (m *model) historyLoaded(msg historyLoadedMsg) {
 // historyEntries reuses the conversation renderers with settled, full messages.
 // Each tool gets its own entry so parallel results expand independently.
 func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEntry {
-	params := transcript.RenderContext{
-		Width: m.env.Width, MDRenderer: transcript.NewMDRenderer(m.env.Width),
+	params := chat.RenderContext{
+		Width: m.env.Width, MDRenderer: chat.NewMDRenderer(m.env.Width),
 		AutoMemoryStore: m.conv.AutoMemoryStore,
 		ThinkingDisplay: m.env.ThinkingDisplay, BashPreviewLines: m.env.BashPreviewLines,
 		AgentPreviewLines: m.env.AgentPreviewLines,
@@ -90,21 +90,21 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 		AgentColors:       m.agentColors(), MemberColors: m.grp.colors,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 	}
-	renderer := func(width int) *transcript.MDRenderer {
+	renderer := func(width int) *chat.MDRenderer {
 		if params.Width != width {
 			params.Width = width
-			params.MDRenderer = transcript.NewMDRenderer(width)
+			params.MDRenderer = chat.NewMDRenderer(width)
 		}
 		return params.MDRenderer
 	}
-	results := make(map[string]transcript.ToolResultData)
+	results := make(map[string]chat.ToolResultData)
 	owned := make(map[string]bool)
 	for _, msg := range messages {
 		for _, call := range msg.ToolCalls {
 			owned[call.ID] = true
 		}
 		if r := msg.ToolResult; r != nil {
-			results[r.ToolCallID] = transcript.ToolResultData{
+			results[r.ToolCallID] = chat.ToolResultData{
 				ToolName: r.ToolName, Content: r.Content.Text(), IsError: r.IsError,
 				Details: msg.ToolDetails, Decision: msg.Decision,
 			}
@@ -118,7 +118,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 				entries = append(entries, input.TranscriptEntry{Label: r.ToolName, Tool: true, Render: func(width int, expanded bool) string {
 					data.Width, data.Expanded = width, expanded
 					data.CollapseDiff = !expanded
-					return transcript.RenderToolResultInline(data, renderer(width))
+					return chat.RenderToolResultInline(data, renderer(width))
 				}})
 			}
 			continue
@@ -128,7 +128,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 		msg.ContentCommittedLen, msg.ThinkingCommittedLen = 0, 0
 		msg.BulletEmitted, msg.ThinkingEmitted = false, false
 		if msg.Content != "" || msg.AutoMemoryRecallNotice != nil || msg.Thinking != "" || len(msg.Images) > 0 {
-			agentMessage := msg.Role == core.ChatUser && transcript.IsAgentEnvelope(msg.Content)
+			agentMessage := msg.Role == core.ChatUser && chat.IsAgentEnvelope(msg.Content)
 			label := ""
 			if agentMessage {
 				label = "Agent message"
@@ -138,19 +138,19 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 				msg.Expanded = expanded
 				p.Width, p.MDRenderer = width, renderer(width)
 				p.Messages = []core.ChatMessage{msg}
-				return transcript.RenderSingleMessage(p, 0)
+				return chat.RenderSingleMessage(p, 0)
 			}})
 		}
 		for _, call := range calls {
 			data, hasResult := results[call.ID]
 			render := func(width int, expanded bool) string {
-				resultMap := make(map[string]transcript.ToolResultData)
+				resultMap := make(map[string]chat.ToolResultData)
 				if hasResult {
 					data.Expanded = expanded
 					data.CollapseDiff = !expanded
 					resultMap[call.ID] = data
 				}
-				return transcript.RenderToolCalls(transcript.ToolCallsParams{
+				return chat.RenderToolCalls(chat.ToolCallsParams{
 					AutoMemoryStore: params.AutoMemoryStore,
 					ToolCalls:       []core.ToolCall{call}, ResultMap: resultMap,
 					Width: width, MDRenderer: renderer(width),

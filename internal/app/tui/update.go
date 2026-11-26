@@ -22,8 +22,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
@@ -142,7 +142,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, m.sendNextQueuedInputIfIdle())
 	}
 	switch msg.(type) {
-	case transcript.UserPromptRequestMsg, transcript.AgentActivityBatchMsg, transcript.AgentActivityMsg, transcript.AgentToUITickMsg:
+	case chat.UserPromptRequestMsg, chat.AgentActivityBatchMsg, chat.AgentActivityMsg, chat.AgentToUITickMsg:
 		cmd = tea.Batch(cmd, m.conv.AgentToUI.Check())
 	}
 	if m.flush.output != nil && m.flush.frameForPrint == nil {
@@ -163,7 +163,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mcpToolsChangedMsg:
 		m.syncMCPTools()
 		return m, awaitMCPToolsChanged(m.mcpToolsChanged)
-	case transcript.PermGateMsg:
+	case chat.PermGateMsg:
 		if msg.Gate != nil && msg.Gate != m.services.Agent.PermissionGate() {
 			return m, nil
 		}
@@ -600,7 +600,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.finishChunkScroll(msg)
 	case tea.ResizeScrollbackMsg:
 		return m, m.finishResize(msg)
-	case transcript.QuestionResponseMsg:
+	case chat.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
 	case input.SecretPromptResponseMsg:
 		return m, m.handleSecretPromptResponse(msg)
@@ -646,7 +646,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Route frequent transcript events first, before modes, input overlays, and timers.
 func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
-	if cmd, ok := transcript.Update(m, &m.conv, msg); ok {
+	if cmd, ok := chat.Update(m, &m.conv, msg); ok {
 		return cmd, true
 	}
 	if cmd, ok := m.updateMode(msg); ok {

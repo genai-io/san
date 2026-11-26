@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 )
 
@@ -23,7 +23,7 @@ func TestManualCompactionInvalidatesPendingStop(t *testing.T) {
 				}
 				switch outcome {
 				case "failed":
-					m.HandleCompactResult(transcript.CompactResultMsg{Context: m.pendingCompaction.ctx, CompactResult: agent.CompactResult{Err: errors.New("summary failed")}})
+					m.HandleCompactResult(chat.CompactResultMsg{Context: m.pendingCompaction.ctx, CompactResult: agent.CompactResult{Err: errors.New("summary failed")}})
 				case "completed":
 					m.OnCompacted(core.Compacted{Summary: "summary", Trigger: "manual"})
 				}

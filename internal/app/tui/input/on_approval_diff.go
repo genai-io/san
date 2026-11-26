@@ -7,7 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -91,7 +91,7 @@ func (d *approvalDiffPreview) renderNewFilePreview(width int) string {
 			}
 		}
 	}
-	block, hidden := transcript.RenderFileDiff(lines, max(1, width), maxVisible)
+	block, hidden := chat.RenderFileDiff(lines, max(1, width), maxVisible)
 	out := d.renderFileHeader("(new file)") + "\n" + block
 	if hidden > 0 {
 		out += approvalDiffMoreStyle().Render(fmt.Sprintf("... %d more lines (Ctrl+O to expand)", hidden)) + "\n"
@@ -111,7 +111,7 @@ func (d *approvalDiffPreview) renderUnifiedDiff(width int) string {
 	if d.expanded {
 		maxVisible = 0
 	}
-	block, hiddenCount := transcript.RenderFileDiff(d.diffMeta.Lines, width, maxVisible)
+	block, hiddenCount := chat.RenderFileDiff(d.diffMeta.Lines, width, maxVisible)
 	sb.WriteString(block)
 
 	if hiddenCount > 0 {

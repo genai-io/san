@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -115,15 +115,15 @@ func TestResetContextDisplayZeroesContextReadout(t *testing.T) {
 func TestAgentMessageEchoIsIgnored(t *testing.T) {
 	m := &model{
 		userInput: input.Model{Queue: input.NewQueue()},
-		conv:      transcript.NewModel(80),
+		conv:      chat.NewModel(80),
 		services:  services{Tracker: todo.NewStore(), Agent: &agent.Runtime{}},
 	}
 
 	echo := sdkagent.MessageAdded{Message: core.UserMessage("anything", nil)}
-	cmd, handled := transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: echo})
+	cmd, handled := chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: echo})
 
 	if !handled {
-		t.Fatal("transcript.Update did not handle an agent outbox message")
+		t.Fatal("chat.Update did not handle an agent outbox message")
 	}
 	if cmd != nil {
 		t.Fatal("an echoed user message produced work")

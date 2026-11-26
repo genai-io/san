@@ -13,8 +13,8 @@ import (
 	"github.com/genai-io/san/internal/group"
 
 	"github.com/genai-io/san/internal/agent/mail"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -62,7 +62,7 @@ func newBaseModel() model {
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	m := model{
 		userInput:        input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Flow), selectorDeps(svc, learnedStores)),
-		conv:             transcript.NewModel(defaultWidth),
+		conv:             chat.NewModel(defaultWidth),
 		mainNotices:      make(chan mainNotice, 64),
 		flowMain:         newFlowMainBridge(),
 		mcpToolsChanged:  make(chan struct{}, 1),

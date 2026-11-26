@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -21,7 +21,7 @@ func TestCompletionNoticeAboveLiveAgentAcrossCommit(t *testing.T) {
 	m.conv.Tool.PendingCalls = []core.ToolCall{call}
 	check := func(phase string) {
 		t.Helper()
-		out := ansi.Strip(m.renderChatSection(transcript.RenderActiveBody(m.messageRenderParams())))
+		out := ansi.Strip(m.renderChatSection(chat.RenderActiveBody(m.messageRenderParams())))
 		last := -1
 		for _, token := range []string{"prior-answer", "notice-token", "live-worker"} {
 			at := strings.Index(out, token)
@@ -52,7 +52,7 @@ func TestCompletionNoticeStaysAboveLaterEditDiff(t *testing.T) {
 	m.conv.Tool.Track([]core.ToolCall{edit})
 	m.showNoticeLine(mainNotice{FromAgent: true, Content: `<task-notification status="completed" description="review-worker">done</task-notification>`})
 	frame := func() string {
-		return ansi.Strip(m.renderChatSection(transcript.RenderActiveBody(m.messageRenderParams())))
+		return ansi.Strip(m.renderChatSection(chat.RenderActiveBody(m.messageRenderParams())))
 	}
 	check := func(phase, out string, tokens ...string) {
 		t.Helper()

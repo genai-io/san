@@ -13,8 +13,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -77,7 +77,7 @@ func (m *model) viewString() (string, *tea.Cursor) {
 	// separators are the only rows in the live view that ever reach the last
 	// column. The other half of that miscount — the rows a narrowing terminal
 	// rewraps — is corrected in the Bubble Tea replacement pinned in go.mod.
-	separator := transcript.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
+	separator := chat.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
 	trackerView, history := m.renderTrackerList()
 
 	if hasOverlay { // docked modal (Question / Approval)
@@ -119,7 +119,7 @@ func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView st
 // the Question, Approval, and secret-item modals dock.
 func isDockedModal(ov overlayPanel) bool {
 	switch ov.(type) {
-	case *transcript.QuestionPrompt, *input.ApprovalModel, *input.SecretPromptModel:
+	case *chat.QuestionPrompt, *input.ApprovalModel, *input.SecretPromptModel:
 		return true
 	}
 	return false
@@ -180,7 +180,7 @@ func (m *model) renderNormalBottom(separator, trackerView, history string) (stri
 // one. Both layouts anchor to the bottom of the screen, so this is the single
 // place the height budget is decided: the tail is capped to what is left, and
 // its earliest lines are the ones that scroll off.
-func (m *model) chatTailAbove(bottom string, params transcript.RenderContext) string {
+func (m *model) chatTailAbove(bottom string, params chat.RenderContext) string {
 	// A non-positive budget means the bottom block is taller than the screen on
 	// its own. tailLines would drop the tail anyway; bailing here skips the
 	// render that produced it, which is the whole cost on a short terminal.
@@ -188,7 +188,7 @@ func (m *model) chatTailAbove(bottom string, params transcript.RenderContext) st
 	if available <= 0 {
 		return ""
 	}
-	section := m.renderChatSection(transcript.RenderActiveBody(params))
+	section := m.renderChatSection(chat.RenderActiveBody(params))
 	var content string
 	if m.handingOff() {
 		// The oldest row not yet in history stays on top until it scrolls off.
@@ -196,7 +196,7 @@ func (m *model) chatTailAbove(bottom string, params transcript.RenderContext) st
 	} else {
 		content = tailLines(section, available)
 		if strings.Count(section, "\n")+1 > available {
-			if workers, active := transcript.RenderActiveWorkers(params, available); active {
+			if workers, active := chat.RenderActiveWorkers(params, available); active {
 				content = workers
 			}
 		}
@@ -220,7 +220,7 @@ func (m *model) inputCursor(baseRow int) *tea.Cursor {
 	if cursor == nil { // textarea is blurred
 		return nil
 	}
-	cursor.Position.X += lipgloss.Width(transcript.InputPrompt)
+	cursor.Position.X += lipgloss.Width(chat.InputPrompt)
 	cursor.Position.Y += baseRow
 	return cursor
 }
@@ -270,18 +270,18 @@ func (m *model) renderFooter(separator string, showingTasks bool) composerFooter
 	var routineWait bool
 	switch {
 	case m.conv.Compact.Active && !params.DockedModalActive:
-		status = transcript.RenderCompactStatus(m.env.Width, params.Frame, m.conv.Compact)
+		status = chat.RenderCompactStatus(m.env.Width, params.Frame, m.conv.Compact)
 	case m.memoryInput != nil:
 		detail := ""
 		if time.Since(m.memoryInput.startedAt) >= 250*time.Millisecond {
 			detail = "Memory"
 		}
-		status = transcript.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
+		status = chat.RenderPreparationStatus(params, m.memoryInput.startedAt, detail)
 	default:
-		var priority transcript.WaitPriority
-		status, priority = transcript.RenderForegroundWait(params)
-		routineWait = priority == transcript.WaitUnlessBusy
-		if showingTasks && priority == transcript.WaitUnlessTasks {
+		var priority chat.WaitPriority
+		status, priority = chat.RenderForegroundWait(params)
+		routineWait = priority == chat.WaitUnlessBusy
+		if showingTasks && priority == chat.WaitUnlessTasks {
 			status = ""
 		}
 	}
@@ -373,7 +373,7 @@ func (m *model) renderFooterHint(available int, history string) string {
 }
 
 func (m model) renderInputView() string {
-	prompt := transcript.InputPromptStyle.Render(transcript.InputPrompt)
+	prompt := chat.InputPromptStyle.Render(chat.InputPrompt)
 	if m.missionOfferVisible() && !m.userInput.Suggestions.IsVisible() {
 		offer := "Start the mission? enter to start · esc to skip"
 		if m.env.AutoPilot.MissionState == setting.MissionPaused {
@@ -395,7 +395,7 @@ func hangComposerRows(view string) string {
 	if len(lines) < 2 {
 		return view
 	}
-	gutter := strings.Repeat(" ", lipgloss.Width(transcript.InputPrompt))
+	gutter := strings.Repeat(" ", lipgloss.Width(chat.InputPrompt))
 	for i := 1; i < len(lines); i++ {
 		lines[i] = gutter + lines[i]
 	}
@@ -437,7 +437,7 @@ func (m *model) renderChatIndicators(trackerView, bottom string) string {
 	}
 
 	if !m.conv.Compact.Active {
-		if compactView := transcript.RenderCompactStatus(m.env.Width, m.conv.Spinner.Frame(), m.conv.Compact); compactView != "" {
+		if compactView := chat.RenderCompactStatus(m.env.Width, m.conv.Spinner.Frame(), m.conv.Compact); compactView != "" {
 			parts = append(parts, "", compactView, "")
 		}
 	}
@@ -454,7 +454,7 @@ func (m *model) renderChatIndicators(trackerView, bottom string) string {
 		return ""
 	}
 	available := m.env.Height - strings.Count(bottom, "\n") - 1
-	available -= min(max(0, available), transcript.ActiveWorkerRows(m.messageRenderParams()))
+	available -= min(max(0, available), chat.ActiveWorkerRows(m.messageRenderParams()))
 	if available <= 0 {
 		return ""
 	}
@@ -510,7 +510,7 @@ func (m *model) renderTrackerList() (rows, history string) {
 			items = filtered
 		}
 	}
-	view, history := transcript.RenderTrackerList(transcript.TrackerListParams{
+	view, history := chat.RenderTrackerList(chat.TrackerListParams{
 		Items:            items,
 		StreamActive:     m.conv.Stream.Active,
 		Width:            m.env.Width,
@@ -610,7 +610,7 @@ func styleFlowLiveView(live string, frame int) string {
 }
 
 func (m model) renderModeStatus() string {
-	modelName := transcript.ModelStatusLabel(m.env.GetModelDisplayName(), m.env.EffectiveThinkingEffort())
+	modelName := chat.ModelStatusLabel(m.env.GetModelDisplayName(), m.env.EffectiveThinkingEffort())
 	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
 		modelName = status
 	}
@@ -627,7 +627,7 @@ func (m model) renderModeStatus() string {
 		statusMessage = ctrlCExitHint
 	}
 	window, budget := widgets.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
-	return transcript.RenderModeStatus(transcript.OperationModeParams{
+	return chat.RenderModeStatus(chat.OperationModeParams{
 		Mode:              m.env.OperationMode,
 		ContextTokens:     m.env.ContextTokens,
 		ContextWindow:     window,
@@ -653,7 +653,7 @@ func (m model) renderModeStatus() string {
 
 // Decorative grouping yields first as the composer or active workers grow.
 func (m model) footerHasBreathingRoom() bool {
-	reserved := strings.Count(m.renderInputView(), "\n") + transcript.ActiveWorkerRows(m.messageRenderParams())
+	reserved := strings.Count(m.renderInputView(), "\n") + chat.ActiveWorkerRows(m.messageRenderParams())
 	return m.env.Height-reserved >= 18 && !m.userInput.Suggestions.IsVisible()
 }
 
@@ -662,28 +662,28 @@ func (m model) renderQueuePreview(maxRows int) string {
 	if len(rawItems) == 0 || maxRows <= 0 {
 		return ""
 	}
-	previews := make([]transcript.QueuePreviewItem, len(rawItems))
+	previews := make([]chat.QueuePreviewItem, len(rawItems))
 	for i, item := range rawItems {
-		previews[i] = transcript.QueuePreviewItem{
+		previews[i] = chat.QueuePreviewItem{
 			Content:   item.Content,
 			HasImages: len(item.Images) > 0,
 		}
 	}
 
 	if len(previews) == 1 || m.footerHasBreathingRoom() {
-		preview := strings.TrimSuffix(transcript.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
+		preview := strings.TrimSuffix(chat.RenderQueuePreview(previews, m.userInput.Queue.SelectIdx, m.env.Width), "\n")
 		if rowCount(preview) <= maxRows {
 			return preview
 		}
 	}
 	hint := fmt.Sprintf("  +%d more", len(previews)-1)
-	preview := strings.TrimSuffix(transcript.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(hint), 1, false), "\n")
+	preview := strings.TrimSuffix(chat.RenderQueuePreviewLimit(previews, m.userInput.Queue.SelectIdx, m.env.Width-lipgloss.Width(hint), 1, false), "\n")
 	return preview + ghostTextStyle.Italic(true).Render(hint)
 }
 
-func (m model) messageRenderParams() transcript.RenderContext {
+func (m model) messageRenderParams() chat.RenderContext {
 	var activeAgentIDs []string
-	var managedAgents []transcript.AgentView
+	var managedAgents []chat.AgentView
 	waiting := m.pendingTaskApprovals()
 	if m.services.Task != nil {
 		for _, worker := range m.services.Task.List() {
@@ -697,7 +697,7 @@ func (m model) messageRenderParams() transcript.RenderContext {
 			if info.Status == task.StatusRunning || !m.taskCompletionsShown[taskCompletionKey(info.ID, info.Attempt)] {
 				activeAgentIDs = append(activeAgentIDs, info.ID, info.AgentSessionID)
 				if info.ScheduledChild() && info.OwnerAgentID == "" {
-					managedAgents = append(managedAgents, transcript.AgentView{
+					managedAgents = append(managedAgents, chat.AgentView{
 						ID: info.ID, SessionID: info.AgentSessionID, Name: info.AgentName, Description: info.Description,
 						StartedAt: info.StartTime, Duration: info.EndTime.Sub(info.StartTime), Activity: info.Activity,
 						Status: string(info.Status), Output: info.Output, Error: info.Error, AwaitingApproval: waiting[info.ID],
@@ -714,12 +714,12 @@ func (m model) messageRenderParams() transcript.RenderContext {
 		return a.StartedAt.Before(b.StartedAt)
 	})
 	m.conv.SetActiveAgentIdentities(activeAgentIDs)
-	return transcript.RenderContext{
+	return chat.RenderContext{
 		// Conversation state
 		Messages:        m.conv.Messages,
 		AutoMemoryStore: m.conv.AutoMemoryStore,
 		CommittedCount:  m.conv.CommittedCount,
-		InlinedResults:  transcript.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
+		InlinedResults:  chat.PrecomputeInlinedResults(m.conv.Messages, m.conv.CommittedCount, m.conv.Tool.PendingCalls...),
 
 		// Streaming + tool execution
 		StreamActive:        m.conv.Stream.Active,

@@ -11,7 +11,7 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/group"
@@ -60,7 +60,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Task:     task.NewManager(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
 		},
-		conv:      transcript.NewModel(80),
+		conv:      chat.NewModel(80),
 		autopilot: new(atomic.Pointer[autopilotRuntime]),
 	}
 	m.env.CWD = cwd
@@ -386,7 +386,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	m, store := resumedModel(t, history)
 	m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("both files read")).Client()}
 	request := m.BuildCompactRequest("", "manual")
-	result := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+	result := chat.CompactCmd(request)().(chat.CompactResultMsg)
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}

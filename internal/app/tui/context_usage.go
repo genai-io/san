@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
@@ -24,10 +24,10 @@ import (
 //
 // Every category is an estimate — the provider reports one exact prompt size
 // and no breakdown, so the split has to be derived from the text itself.
-func (m *model) contextUsage() transcript.ContextUsage {
+func (m *model) contextUsage() chat.ContextUsage {
 	store, current := m.services.LLM.Store(), m.env.CurrentModel
 	window, budget := widgets.GetContextLimits(store, current)
-	usage := transcript.ContextUsage{
+	usage := chat.ContextUsage{
 		ModelName:     m.env.GetModelDisplayName(),
 		ContextWindow: window,
 		ContextBudget: budget,
@@ -81,7 +81,7 @@ func (m *model) contextUsage() transcript.ContextUsage {
 // the prompt. A new prompt-shaping input added there reaches this measurement
 // without anyone remembering to update it, which a second hand-written literal
 // would not.
-func (m *model) addUnstartedAgentUsage(usage *transcript.ContextUsage) {
+func (m *model) addUnstartedAgentUsage(usage *chat.ContextUsage) {
 	params := m.promptParams()
 
 	usage.SystemPrompt = ai.EstimateTokens(params.System().Prompt())
@@ -98,7 +98,7 @@ func (m *model) addUnstartedAgentUsage(usage *transcript.ContextUsage) {
 // addContextUsage attributes one message's wire text: each <system-reminder>
 // block is credited to the provider that emitted it, and whatever is left over
 // counts as conversation.
-func addContextUsage(usage *transcript.ContextUsage, text string) {
+func addContextUsage(usage *chat.ContextUsage, text string) {
 	conversation := ai.EstimateTokens(text)
 	for _, block := range reminder.Blocks(text) {
 		size := ai.EstimateTokens(block.Text)

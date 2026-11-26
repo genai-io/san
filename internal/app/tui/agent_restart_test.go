@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/llm"
@@ -74,7 +74,7 @@ func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
 
 	m := model{
 		services: services{Agent: sess},
-		conv:     transcript.NewModel(80),
+		conv:     chat.NewModel(80),
 	}
 	if err := m.StopAgentRuntime(); err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		env:      env{FileCache: filecache.New()},
 		services: services{Agent: &agent.Runtime{}, Reminder: reminder.New()},
-		conv:     transcript.NewModel(80),
+		conv:     chat.NewModel(80),
 	}
 	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
 	if err := m.ResetAgentRuntime(); err != nil {
@@ -259,7 +259,7 @@ func chainWithImage() []core.Message {
 // rejects on every later turn. Only inference input should drop them.
 func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
-	m := model{conv: transcript.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m := model{conv: chat.NewModel(80), services: services{Agent: &agent.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
@@ -282,7 +282,7 @@ func TestRuntimeMessagesKeepNativeImagesForTextOnlyModel(t *testing.T) {
 
 // Vision-capable providers are the common case and must see the chain untouched.
 func TestRuntimeMessagesKeepImagesForVisionModel(t *testing.T) {
-	m := model{conv: transcript.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m := model{conv: chat.NewModel(80), services: services{Agent: &agent.Runtime{}}}
 	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
@@ -317,14 +317,14 @@ func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
 	}
 	defer stopRuntime(t, sess)
 
-	m := model{services: services{Agent: sess}, conv: transcript.NewModel(80)}
+	m := model{services: services{Agent: sess}, conv: chat.NewModel(80)}
 	old := make(chan core.Event)
 	close(old)
-	for _, late := range []transcript.AgentOutboxMsg{
+	for _, late := range []chat.AgentOutboxMsg{
 		{Outbox: old, Event: core.AgentStopped{Err: context.Canceled}},
 		{Outbox: old, Closed: true},
 	} {
-		transcript.Update(&m, &m.conv, late)
+		chat.Update(&m, &m.conv, late)
 	}
 	if !sess.Active() {
 		t.Fatal("the late stop of a replaced agent stopped the running one")

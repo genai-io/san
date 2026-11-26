@@ -13,14 +13,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
-	"github.com/genai-io/sdk-go/pkg/ai/driver/openai/chat"
+	openaichat "github.com/genai-io/sdk-go/pkg/ai/driver/openai/chat"
 )
 
 type compactHTTPProvider struct {
@@ -57,15 +57,15 @@ func TestManualCompactionCancelsHTTP(t *testing.T) {
 			}))
 			defer func() { server.CloseClientConnections(); server.Close() }()
 			modelInfo := ai.Model{ID: "m", BaseURL: server.URL + "/"}
-			driver, err := chat.New(ai.Config{Model: modelInfo, HTTPClient: server.Client()})
+			driver, err := openaichat.New(ai.Config{Model: modelInfo, HTTPClient: server.Client()})
 			if err != nil {
 				t.Fatal(err)
 			}
 			m.env.LLMProvider = &compactHTTPProvider{client: ai.NewClientWithDriver(driver, modelInfo)}
 			request := m.BuildCompactRequest("", "manual")
 			m.OnCompactStart(len(request.Messages))
-			result := make(chan transcript.CompactResultMsg, 1)
-			go func() { result <- transcript.CompactCmd(request)().(transcript.CompactResultMsg) }()
+			result := make(chan chat.CompactResultMsg, 1)
+			go func() { result <- chat.CompactCmd(request)().(chat.CompactResultMsg) }()
 			waitCompact(t, entered)
 			switch action {
 			case "escape":
@@ -123,7 +123,7 @@ func TestManualCompactionFencesLateResults(t *testing.T) {
 				}
 				m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(turn).Client()}
 				request := m.BuildCompactRequest("", "manual")
-				msg := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+				msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
 				if (msg.Err != nil) != failed {
 					t.Fatalf("prepared result error=%v failed=%v", msg.Err, failed)
 				}
@@ -227,13 +227,13 @@ func TestManualCompactionCompletedResultOwnership(t *testing.T) {
 			m.env.LLMProvider = &compactHTTPProvider{client: driver.Client()}
 			request := m.BuildCompactRequest("focus snapshot", "manual")
 			m.OnCompactStart(len(request.Messages))
-			result := make(chan transcript.CompactResultMsg, 1)
-			go func() { result <- transcript.CompactCmd(request)().(transcript.CompactResultMsg) }()
+			result := make(chan chat.CompactResultMsg, 1)
+			go func() { result <- chat.CompactCmd(request)().(chat.CompactResultMsg) }()
 			waitCompact(t, entered)
 			// The command must not re-read mutable model/provider selection.
 			m.env.LLMProvider = nil
 			close(release)
-			var msg transcript.CompactResultMsg
+			var msg chat.CompactResultMsg
 			select {
 			case msg = <-result:
 			case <-time.After(5 * time.Second):
@@ -271,7 +271,7 @@ func TestManualCompactionRequestFailureReleasesOwnership(t *testing.T) {
 	m.env.LLMProvider = &failedTurnProvider{}
 	request := m.BuildCompactRequest("", "manual")
 	m.OnCompactStart(len(request.Messages))
-	msg := transcript.CompactCmd(request)().(transcript.CompactResultMsg)
+	msg := chat.CompactCmd(request)().(chat.CompactResultMsg)
 	if msg.Err == nil {
 		t.Fatal("expected provider failure")
 	}
@@ -306,7 +306,7 @@ func TestManualCompactionOpensWriterBeforeReplacingHistory(t *testing.T) {
 			m.env.LLMProvider = &compactHTTPProvider{client: aitest.New(aitest.Says("summary")).Client()}
 			request := m.BuildCompactRequest("", "manual")
 			m.OnCompactStart(len(request.Messages))
-			m.HandleCompactResult(transcript.CompactCmd(request)().(transcript.CompactResultMsg))
+			m.HandleCompactResult(chat.CompactCmd(request)().(chat.CompactResultMsg))
 			if m.pendingCompaction != nil || m.conv.Compact.Active {
 				t.Fatal("result retained request/progress")
 			}

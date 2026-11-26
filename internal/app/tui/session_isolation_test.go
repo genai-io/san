@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/agent/mail"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/session"
@@ -105,10 +105,10 @@ func TestOldOutboxCannotRestartStreamingAfterSwitch(t *testing.T) {
 	t.Cleanup(group.Forget)
 	oldOutbox := make(chan core.Event, 1)
 	oldOutbox <- sdkagent.InferenceStart{}
-	delayed := transcript.DrainAgentOutbox(oldOutbox)()
+	delayed := chat.DrainAgentOutbox(oldOutbox)()
 	switchToOtherSession(t, m, store)
 	before := len(m.conv.Messages)
-	transcript.Update(m, &m.conv, delayed)
+	chat.Update(m, &m.conv, delayed)
 	if m.conv.Stream.Active || len(m.conv.Messages) != before {
 		t.Fatalf("retired outbox changed new session: active=%v rows=%d->%d", m.conv.Stream.Active, before, len(m.conv.Messages))
 	}

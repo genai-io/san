@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -272,7 +272,7 @@ func (p *ApprovalModel) wrappedPreview(width int, compact bool) []string {
 			preview = "Save exact allow rules: " + strings.Join(p.request.AllowRules, ", ") + "\nProject-local .san/settings.local.json"
 		} else {
 			preview = "Allow future calls to " + p.request.ToolName + " for this session, beyond this command. This does not allow all tools. Safety checks and explicit ask rules still apply."
-			preview = transcript.WrapProse(preview, width)
+			preview = chat.WrapProse(preview, width)
 		}
 	} else if p.diffPreview != nil {
 		p.diffPreview.expanded = true
@@ -499,7 +499,7 @@ func renderAgentApproval(agent *perm.AgentMetadata, width int) string {
 			}
 		}
 	}
-	prompt := transcript.WrapProse(widgets.TruncateText(agent.Prompt, 500), budget)
+	prompt := chat.WrapProse(widgets.TruncateText(agent.Prompt, 500), budget)
 	for _, line := range strings.Split(prompt, "\n") {
 		if line != "" {
 			line = indent + dimStyle.Render(line)

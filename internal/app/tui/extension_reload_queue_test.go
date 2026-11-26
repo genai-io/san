@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -77,7 +77,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 					t.Fatal("cancel did not retain the original turn receipt")
 				}
 				m.sendToAgent(pendingMessage{Message: core.UserMessage("queued successor", nil), FromUser: true})
-				transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: outbox, Event: end})
+				chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: end})
 				// Release through cancellation finalization.
 				err := end.Result.Finalization.Wait(t.Context())
 				if err != nil && err != core.ErrTurnCompleted {
@@ -86,7 +86,7 @@ func TestExtensionReloadQueuedTurnBoundary(t *testing.T) {
 				_, cmd = m.Update(turnFinalizedMsg{receipt: end.Result.Finalization, outbox: outbox, err: err})
 			} else {
 				m.userInput.Queue.Enqueue("queued successor", nil)
-				cmd, _ = transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: outbox, Event: end})
+				cmd, _ = chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: end})
 			}
 			if m.pendingMessages.Len() != 1 || m.services.Agent.Tools() != tools {
 				t.Fatal("successor admitted before receipt-safe UI handoff")

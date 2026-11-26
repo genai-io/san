@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/flow"
 	"github.com/genai-io/san/internal/subagent"
@@ -21,7 +21,7 @@ import (
 func flowInputModel(manager *task.Manager) *model {
 	m := &model{
 		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
-		conv:      transcript.NewModel(80),
+		conv:      chat.NewModel(80),
 		userInput: input.New("", 80, nil, input.SelectorDeps{}),
 	}
 	m.env.Width = 80

@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -28,7 +28,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			m.pendingDecisions = &sync.Map{}
 			deliver := func(event core.Event) {
 				t.Helper()
-				if _, handled := transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: event}); !handled {
+				if _, handled := chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: event}); !handled {
 					t.Fatalf("event %T was not handled", event)
 				}
 			}
@@ -46,7 +46,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 			deliver(sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{
 				ToolCallID: "read-1", ToolName: tool.ToolRead, InputBytes: 1024,
 			}}})
-			live := ansi.Strip(transcript.RenderActiveContent(m.messageRenderParams()))
+			live := ansi.Strip(chat.RenderActiveContent(m.messageRenderParams()))
 			if strings.Count(live, "✦") != 1 || strings.Contains(live, "Generating") || strings.Contains(live, "bytes") || m.conv.Stream.GeneratedBytes != 1024 || len(m.conv.Tool.PendingCalls) != 0 {
 				t.Fatalf("generation progress was hidden or started a tool: %q", live)
 			}

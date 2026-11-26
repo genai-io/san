@@ -11,7 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/infra/atomicfile"
@@ -42,7 +42,7 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, messages := range [][]core.ChatMessage{m.conv.Messages, store.ChatRows(history)} {
-		view := ansi.Strip(transcript.RenderSingleMessage(transcript.RenderContext{Messages: messages, Width: 80}, 0))
+		view := ansi.Strip(chat.RenderSingleMessage(chat.RenderContext{Messages: messages, Width: 80}, 0))
 		for _, want := range []string{"From @api: API ready", "(+1 more)", "unattended 2"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("group summary lost %q: %q", want, view)
@@ -226,7 +226,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = group.Leave() })
-	m := &model{services: services{Agent: &agent.Runtime{}}, conv: transcript.NewModel(80)}
+	m := &model{services: services{Agent: &agent.Runtime{}}, conv: chat.NewModel(80)}
 	state := func() group.State { return group.Members("shop")[0].State }
 
 	m.syncGroupState()
@@ -238,7 +238,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 	if got := state(); got != group.Working {
 		t.Errorf("running turn wrote %q", got)
 	}
-	m.userPrompts.active = &transcript.UserPromptRequest{Permission: &agent.PermGateRequest{}}
+	m.userPrompts.active = &chat.UserPromptRequest{Permission: &agent.PermGateRequest{}}
 	m.syncGroupState()
 	if got := state(); got != group.Approval {
 		t.Errorf("parked approval wrote %q", got)
@@ -313,7 +313,7 @@ func TestASessionSwitchSaysItLeftTheGroup(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := &model{conv: transcript.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.New()}}
+	m := &model{conv: chat.NewModel(80), services: services{sessionID: "s-new", Reminder: reminder.New()}}
 	m.releaseGroupOnSwitch()
 	if g, _ := group.Current(); g != "" {
 		t.Fatalf("still in %s after the switch", g)

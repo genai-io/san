@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/infra/proc"
 )
 
@@ -101,7 +101,7 @@ func (m *model) renderGitBar() string {
 		return ""
 	}
 	status := m.gitBar.status
-	return transcript.RenderGitBar(transcript.GitBarParams{
+	return chat.RenderGitBar(chat.GitBarParams{
 		Width:      m.env.Width,
 		Branch:     status.Branch,
 		Repository: status.Repository,

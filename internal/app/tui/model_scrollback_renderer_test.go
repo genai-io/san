@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets/suggest"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
@@ -866,7 +866,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			m.services.Agent = &agent.Runtime{}
 			m.welcomePending = true
 			m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
-			m.conv.Stream = transcript.StreamState{Active: true, Waiting: true}
+			m.conv.Stream = chat.StreamState{Active: true, Waiting: true}
 			terminal := &firstTurnTerminal{terminalHistoryState: newTerminalHistoryState(100, height)}
 			m.flush.output = &terminalOutput{writer: terminal}
 			startup := &rendererStartupModel{Model: m, ready: make(chan struct{})}
@@ -904,7 +904,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			}
 			startup.wait(t)
 			waitFor("❭ hi")
-			program.Send(transcript.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
+			program.Send(chat.AgentOutboxMsg{Event: sdkagent.InferenceStart{}})
 			// Inference status remains live after the first text, not just while
 			// waiting for the first token.
 			deadline := time.Now().Add(3 * time.Second)
@@ -922,10 +922,10 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 			var streamed string
 			for _, delta := range []string{"Hi!", " What", " can I", " help", " you with?"} {
 				streamed += delta
-				program.Send(transcript.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: delta}}}})
+				program.Send(chat.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: delta}}}})
 				waitFor(streamed)
 			}
-			program.Send(transcript.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.TextContent(reply)}}})
+			program.Send(chat.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.TextContent(reply)}}})
 			waitFor("● " + reply)
 			terminal.mu.Lock()
 			defer terminal.mu.Unlock()
@@ -960,7 +960,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
 			m.services.Agent = &agent.Runtime{}
 			msg := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: anchor})
-			m.conv.Stream = transcript.StreamState{Active: true, MessageID: msg.ID}
+			m.conv.Stream = chat.StreamState{Active: true, MessageID: msg.ID}
 			var rows []string
 			for i := 0; i < height-8; i++ {
 				rows = append(rows, fmt.Sprintf("SETTLED-%02d", i))
@@ -1008,7 +1008,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			if synchronized {
 				program.Send(tea.ModeReportMsg{Mode: ansi.ModeSynchronizedOutput, Value: ansi.ModeReset})
 			}
-			program.Send(transcript.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
+			program.Send(chat.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 				Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "\n\n" + continuation},
 			}}})
 			select {

@@ -11,7 +11,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/infra/filecache"
 	"github.com/genai-io/san/internal/reminder"
@@ -32,7 +32,7 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	if err := testutil.AppendMessages(old, history); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.New(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: transcript.NewModel(80)}
+	m := model{services: services{Agent: &agent.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.New(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.LLM = &llm.Conn{}
 	m.autopilot = new(atomic.Pointer[autopilotRuntime])

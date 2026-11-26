@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/llm"
 )
 
@@ -119,7 +119,7 @@ func TestProviderGlobalScopeHandler(t *testing.T) {
 			state.Selector.selectedIdx = 1
 			current := store.CurrentModel()
 			switches, sets, reloads := 0, 0, 0
-			conversation := transcript.NewModel(80)
+			conversation := chat.NewModel(80)
 			deps := OverlayDeps{
 				Conv:           &conversation.ConversationModel,
 				CommitMessages: func() []tea.Cmd { return nil },
@@ -215,7 +215,7 @@ func TestProviderGlobalScopeProjectReadFailure(t *testing.T) {
 			}
 			state := ProviderState{Selector: scopeSelector(store, "openai")}
 			state.Selector.selectedIdx = 1
-			conversation := transcript.NewModel(80)
+			conversation := chat.NewModel(80)
 			deps := OverlayDeps{
 				Conv:           &conversation.ConversationModel,
 				CommitMessages: func() []tea.Cmd { return nil },

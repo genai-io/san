@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
@@ -78,13 +78,13 @@ func (m *model) handleAutopilotModeSettled() tea.Cmd {
 }
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {
-	if msg, ok := msg.(transcript.UserPromptRequestMsg); ok {
+	if msg, ok := msg.(chat.UserPromptRequestMsg); ok {
 		return m.enqueueUserPrompt(msg.Request), true
 	}
 	return nil, false
 }
 
-func (m *model) handleQuestionResponse(msg transcript.QuestionResponseMsg) tea.Cmd {
+func (m *model) handleQuestionResponse(msg chat.QuestionResponseMsg) tea.Cmd {
 	req := m.userPrompts.active
 	if !m.validUserPrompt(req) || req.Question == nil || req.Question.Request != msg.Request {
 		return nil
@@ -110,7 +110,7 @@ func (m *model) handleSecretPromptResponse(msg input.SecretPromptResponseMsg) te
 		return nil
 	}
 	select {
-	case req.Secret.Reply <- transcript.SecretPromptResponse{Value: msg.Value, Cancelled: msg.Cancelled}:
+	case req.Secret.Reply <- chat.SecretPromptResponse{Value: msg.Value, Cancelled: msg.Cancelled}:
 	default:
 	}
 	m.finishUserPrompt()

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/task"
@@ -64,7 +64,7 @@ func TestForegroundWaitStaysInFooterBetweenSteps(t *testing.T) {
 	call := core.ToolCall{ID: "tool-1", Name: "Bash", Input: `{"command":"echo done"}`}
 	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}})
 	m.conv.Tool.Track([]core.ToolCall{call})
-	m.conv.Stream = transcript.StreamState{Active: true, StartedAt: time.Now().Add(-5 * time.Second)}
+	m.conv.Stream = chat.StreamState{Active: true, StartedAt: time.Now().Add(-5 * time.Second)}
 	if frame := ansi.Strip(m.View().Content); !strings.Contains(frame, "echo done") || strings.Contains(frame, "✦ On it") {
 		t.Fatalf("running tool should own its activity:\n%s", frame)
 	}
@@ -101,11 +101,11 @@ func TestTaskTrackerStaysPutAsForegroundWaitChanges(t *testing.T) {
 				var bottomRows int
 				for _, state := range []struct {
 					name   string
-					stream transcript.StreamState
+					stream chat.StreamState
 				}{
 					{name: "idle"},
-					{"submitted", transcript.StreamState{Active: true, Waiting: true, StartedAt: started}},
-					{"inferring", transcript.StreamState{Active: true, Inferring: true, StartedAt: started}},
+					{"submitted", chat.StreamState{Active: true, Waiting: true, StartedAt: started}},
+					{"inferring", chat.StreamState{Active: true, Inferring: true, StartedAt: started}},
 					{name: "cleared"},
 				} {
 					m.conv.Stream = state.stream
@@ -148,7 +148,7 @@ func TestForegroundWaitWithRunningTask(t *testing.T) {
 	worker.info.Description = "Measure targeted Go coverage"
 	todo.TrackWorker(m.services.Tracker, worker.info)
 	started := time.Now().Add(-7 * time.Second)
-	m.conv.Stream = transcript.StreamState{Active: true, Inferring: true, StartedAt: started}
+	m.conv.Stream = chat.StreamState{Active: true, Inferring: true, StartedAt: started}
 
 	for _, tc := range []struct {
 		name, status string
@@ -271,7 +271,7 @@ func TestCompactionCompletionIsTopLevel(t *testing.T) {
 
 func TestInferencePlacementRemovedOnCompletion(t *testing.T) {
 	m := modelWithInferenceProgress(12)
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Response: &ai.Response{Content: ai.TextContent("done")}}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Response: &ai.Response{Content: ai.TextContent("done")}}})
 	if frame := ansi.Strip(m.View().Content); strings.Contains(frame, "✦") {
 		t.Fatalf("completed inference retained status:\n%s", frame)
 	}

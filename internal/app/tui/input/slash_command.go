@@ -14,7 +14,7 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core"
@@ -43,8 +43,8 @@ type SlashCommandEnv struct {
 	// terminal dimensions, current working directory, and the input-token
 	// snapshot for context-percent displays.
 	Input        *Model
-	Conversation *transcript.ConversationModel
-	Tool         *transcript.ToolExecState
+	Conversation *chat.ConversationModel
+	Tool         *chat.ToolExecState
 	Width        int
 	Height       int
 	Cwd          string
@@ -78,7 +78,7 @@ type SlashCommandEnv struct {
 	GetGoal func() string
 	// ContextUsage measures what currently occupies the model's context
 	// window. It lives on the model because it reads the live agent session.
-	ContextUsage      func() transcript.ContextUsage
+	ContextUsage      func() chat.ContextUsage
 	SubscriptionUsage func() string
 
 	// Model-level action callbacks. These compose multiple services or
@@ -679,7 +679,7 @@ func (c *SlashCommandController) handleLoopCommand(_ context.Context, args strin
 			return "", nil, err
 		}
 		if c.env.Conversation.Messages == nil {
-			*c.env.Conversation = transcript.NewConversation()
+			*c.env.Conversation = chat.NewConversation()
 		}
 		c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled one-shot task %s (%s).%s It will fire once and auto-delete.", job.ID, parsed.Human, parsed.Note))
 		return "", nil, nil
@@ -693,7 +693,7 @@ func (c *SlashCommandController) handleLoopCommand(_ context.Context, args strin
 		return "", nil, err
 	}
 	if c.env.Conversation.Messages == nil {
-		*c.env.Conversation = transcript.NewConversation()
+		*c.env.Conversation = chat.NewConversation()
 	}
 	schedule := parsed.Human
 	if parsed.Cron != "" {
@@ -777,7 +777,7 @@ func (c *SlashCommandController) handleContextCommand(_ context.Context, args st
 		changed.Session = c.env.Session
 		return text, func() tea.Msg { return *changed }, nil
 	}
-	return transcript.RenderContextUsage(c.env.ContextUsage()), nil, nil
+	return chat.RenderContextUsage(c.env.ContextUsage()), nil, nil
 }
 
 func (c *SlashCommandController) handleCompactCommand(_ context.Context, args string) (string, tea.Cmd, error) {
@@ -803,9 +803,9 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	c.env.Conversation.Compact.Active = true
 	c.env.Conversation.Compact.StartedAt = time.Now()
 	c.env.Conversation.Compact.SummaryFocus = request.SummaryFocus
-	c.env.Conversation.Compact.Phase = transcript.PhaseSummarizing
+	c.env.Conversation.Compact.Phase = chat.PhaseSummarizing
 	c.env.Conversation.Compact.Count = len(request.Messages)
-	return "", tea.Batch(c.env.SpinnerTickCmd(), transcript.CompactCmd(request)), nil
+	return "", tea.Batch(c.env.SpinnerTickCmd(), chat.CompactCmd(request)), nil
 }
 
 func lookupSkill(svc *skill.Registry, cmd string) (*skill.Skill, bool) {

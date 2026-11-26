@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 )
@@ -20,7 +20,7 @@ func TestAddContextUsageAttributesRemindersOnce(t *testing.T) {
 	memory := reminder.WrapWithSource("project instructions body", reminder.ProviderMemoryProject)
 	turn := reminder.AppendBlocks(ai.TextContent("what the user typed"), skills, memory).Text()
 
-	var usage transcript.ContextUsage
+	var usage chat.ContextUsage
 	addContextUsage(&usage, turn)
 
 	if usage.Skills != ai.EstimateTokens(skills) {
@@ -42,7 +42,7 @@ func TestAddContextUsageAttributesRemindersOnce(t *testing.T) {
 func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
 	turn := reminder.AppendBlocks(ai.TextContent("what the user typed"), reminder.Wrap("a cancel notice")).Text()
 
-	var usage transcript.ContextUsage
+	var usage chat.ContextUsage
 	addContextUsage(&usage, turn)
 
 	if usage.Skills != 0 || usage.MemoryFiles != 0 {

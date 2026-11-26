@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -166,7 +166,7 @@ func TestCancelledTurnFinalizationConsumerAndSession(t *testing.T) {
 			}
 			// The normal single consumer owns cleanup and acknowledges only after the
 			// state append. No returned render/listener commands need to run to settle.
-			transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Outbox: outbox, Event: end})
+			chat.Update(m, &m.conv, chat.AgentOutboxMsg{Outbox: outbox, Event: end})
 			ctx, stop := context.WithTimeout(context.Background(), time.Second)
 			defer stop()
 			err := receipt.Wait(ctx)

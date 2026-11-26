@@ -3,7 +3,7 @@ package input
 import (
 	"strings"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -25,7 +25,7 @@ func (b *approvalBashPreview) render(width int) string {
 	}
 	rows = append(rows, strings.TrimSuffix(widgets.RenderCommandBlock(b.bashMeta.Command, width), "\n"))
 	if b.bashMeta.Description != "" {
-		rows = append(rows, transcript.WrapProse(b.bashMeta.Description, max(1, width)))
+		rows = append(rows, chat.WrapProse(b.bashMeta.Description, max(1, width)))
 	}
 	return strings.Join(rows, "\n")
 }

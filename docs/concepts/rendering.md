@@ -122,7 +122,7 @@ of nested choices and denies at the base prompt. Worker approvals remain
 `.san/settings.local.json`, not broad implicit trust.
 
 Entrypoints are the root app interaction router and `/tasks` command, with
-`internal/app/tui/input` owning prompts and `internal/app/tui/transcript` owning result
+`internal/app/tui/input` owning prompts and `internal/app/tui/chat` owning result
 rendering. Regression coverage lives in the corresponding input, task-viewer,
 interaction, and conversation-renderer tests. Root integration must preserve
 these contracts when composing the display-only components.
@@ -143,7 +143,7 @@ func (m *model) View() tea.View {
 
 **No input parameters** — that's a Bubble Tea contract. Everything
 View reads comes from `m`'s fields. The sub-renderers it calls
-(`RenderActiveContent` etc.) take a `transcript.RenderContext` struct, which
+(`RenderActiveContent` etc.) take a `chat.RenderContext` struct, which
 `m.messageRenderParams()` assembles from `m`'s fields on each call.
 
 View() picks one of four layouts, top-down:
@@ -158,7 +158,7 @@ View()
                                    separator bars
                                    (Question modal, Approval modal)
   4. otherwise (normal mode) ──► renderNormalView()
-        ├─ chat section        ── recent settled rows + transcript.RenderActiveContent
+        ├─ chat section        ── recent settled rows + chat.RenderActiveContent
         ├─ spare space         ── keeps short conversations stable at the top
         ├─ queue preview       ── pending prompts, above Tasks
         ├─ activity indicators ── tracker, compact and self-learning status
@@ -223,7 +223,7 @@ entries to inline. See "Tool calls and inlined results" below.
 
 ## Markdown via MDRenderer
 
-[`internal/app/tui/transcript/markdown.go`](../../internal/app/tui/transcript/markdown.go)
+[`internal/app/tui/chat/markdown.go`](../../internal/app/tui/chat/markdown.go)
 wraps [glamour](https://github.com/charmbracelet/glamour). These
 behaviors are intentional and not glamour defaults:
 
@@ -244,7 +244,7 @@ holds, and committed rows cannot be taken back (see Resize below).
 
 ## Tool calls and inlined results
 
-[`internal/app/tui/transcript/tool_render.go`](../../internal/app/tui/transcript/tool_render.go)
+[`internal/app/tui/chat/tool_render.go`](../../internal/app/tui/chat/tool_render.go)
 renders the tool-calls block under an assistant message:
 
 ```
@@ -334,7 +334,7 @@ View() runs after this Update:
 
 ```
 View → renderNormalView
-     → transcript.RenderActiveContent(ctx)
+     → chat.RenderActiveContent(ctx)
        ctx.InlinedResults = PrecomputeInlinedResults(Messages)
          = {} (no ToolCalls anywhere yet)
        → RenderMessageRange(ctx, startIdx=1, endIdx=2, includeSpinner=true)
@@ -461,7 +461,7 @@ for i in CommittedCount..len(Messages):    // i = 1, 2
   msg = Messages[i]
   if checkReady && i == StreamMessageIndex() && Stream.Active:
       break                                  // but Stream.Active is now false
-  rendered = transcript.RenderSingleMessage(ctx, i)
+  rendered = chat.RenderSingleMessage(ctx, i)
     i=1: RenderMessageAt(ctx, 1, false)      // no longer streaming → no cursor
          returns the same assistant + tool block as before
     i=2: msg.ToolResult != nil
@@ -555,12 +555,12 @@ compaction, persisted full output, resize, stale loads and input preservation.
 | Concern | File |
 | --- | --- |
 | `View()` composition | [`internal/app/tui/view.go`](../../internal/app/tui/view.go) |
-| Per-message rendering + pairing | [`internal/app/tui/transcript/view.go`](../../internal/app/tui/transcript/view.go) |
-| User / assistant / notice rendering | [`internal/app/tui/transcript/message.go`](../../internal/app/tui/transcript/message.go) |
-| Markdown rendering | [`internal/app/tui/transcript/markdown.go`](../../internal/app/tui/transcript/markdown.go) |
-| Tool call / result rendering | [`internal/app/tui/transcript/tool_render.go`](../../internal/app/tui/transcript/tool_render.go) |
-| Compact / agent activity / tracker | [`internal/app/tui/transcript/compact.go`](../../internal/app/tui/transcript/compact.go), [`agent_to_ui.go`](../../internal/app/tui/transcript/agent_to_ui.go), [`tracker_view.go`](../../internal/app/tui/transcript/tracker_view.go) |
-| `MDRenderer` lifecycle | [`internal/app/tui/transcript/model.go`](../../internal/app/tui/transcript/model.go) |
+| Per-message rendering + pairing | [`internal/app/tui/chat/view.go`](../../internal/app/tui/chat/view.go) |
+| User / assistant / notice rendering | [`internal/app/tui/chat/message.go`](../../internal/app/tui/chat/message.go) |
+| Markdown rendering | [`internal/app/tui/chat/markdown.go`](../../internal/app/tui/chat/markdown.go) |
+| Tool call / result rendering | [`internal/app/tui/chat/tool_render.go`](../../internal/app/tui/chat/tool_render.go) |
+| Compact / agent activity / tracker | [`internal/app/tui/chat/compact.go`](../../internal/app/tui/chat/compact.go), [`agent_to_ui.go`](../../internal/app/tui/chat/agent_to_ui.go), [`tracker_view.go`](../../internal/app/tui/chat/tracker_view.go) |
+| `MDRenderer` lifecycle | [`internal/app/tui/chat/model.go`](../../internal/app/tui/chat/model.go) |
 | Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
 | History inspection | [`internal/app/tui/model_history.go`](../../internal/app/tui/model_history.go), [`internal/app/tui/input/transcript_view.go`](../../internal/app/tui/input/transcript_view.go) |
 | Resize | [`internal/app/tui/update_resize.go`](../../internal/app/tui/update_resize.go) |

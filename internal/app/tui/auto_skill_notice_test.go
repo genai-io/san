@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
@@ -33,7 +33,7 @@ func TestAutoSkillNotice(t *testing.T) {
 			m := &model{
 				services:    services{Session: owner, Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 				mainNotices: make(chan mainNotice, 1),
-				conv:        transcript.NewModel(80),
+				conv:        chat.NewModel(80),
 			}
 			m.conv.OnNotice = func(core.ChatMessage) { t.Error("already-recorded notice was saved again") }
 			ctx, cancel := context.WithCancel(context.Background())

@@ -10,7 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -64,7 +64,7 @@ func (m *model) onBtwAnswer(msg btwAnswerMsg) tea.Cmd {
 		closeAside(msg.recording)
 		return nil
 	}
-	notice := transcript.SideNotice(msg.ask.question, msg.answer)
+	notice := chat.SideNotice(msg.ask.question, msg.answer)
 	if !finishAside(msg.recording, notice) {
 		return nil
 	}
@@ -82,7 +82,7 @@ func (m *model) btwLive() string {
 	var rows []string
 	for _, a := range m.btw {
 		if a.sessionID == m.sessionID() {
-			rows = append(rows, transcript.RenderSidePending(a.question, m.conv.Spinner.Frame(), m.env.Width))
+			rows = append(rows, chat.RenderSidePending(a.question, m.conv.Spinner.Frame(), m.env.Width))
 		}
 	}
 	return strings.TrimSuffix(strings.Join(rows, "\n"), "\n")

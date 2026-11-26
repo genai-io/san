@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/reminder"
@@ -50,7 +50,7 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 	m.services.Agent, m.services.Session, m.services.SessionStore = &agent.Runtime{}, rec, store
 	m.conv.OnNotice = m.recordNotice
 	m.conv.Messages = session.ChatRows(messages[:3])
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.MessageAdded{Message: result}})
 	history, err := store.Read(t.Context(), "memory-anchor")
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +65,8 @@ func TestRecallNoticePinsToReceivingResultWhenWriterRunsAhead(t *testing.T) {
 		t.Fatalf("recall attached to the writer's latest row instead of its result: %+v", notices)
 	}
 	rows := store.ChatRows(history)
-	p := transcript.RenderContext{Width: 80, Messages: rows, InlinedResults: transcript.PrecomputeInlinedResults(rows, 0)}
-	out := ansi.Strip(transcript.RenderMessageRange(p, 0, len(rows), false))
+	p := chat.RenderContext{Width: 80, Messages: rows, InlinedResults: chat.PrecomputeInlinedResults(rows, 0)}
+	out := ansi.Strip(chat.RenderMessageRange(p, 0, len(rows), false))
 	at, answer := strings.Index(out, "⟡ Memory · recalled: Release policy"), strings.Index(out, "Final answer")
 	if at < 0 || answer <= at || strings.Count(out, "Release policy") != 1 || strings.Contains(out, "Private release body") {
 		t.Fatalf("resumed recall moved to the footer or leaked its reminder: %q", out)
@@ -101,7 +101,7 @@ func TestMemoryReadsCommitBeforeAnswerWithoutTurnEndFooter(t *testing.T) {
 			m.turnOpenedBy = opened.ID
 			deliver := func(event core.Event) {
 				t.Helper()
-				if _, ok := transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: event}); !ok {
+				if _, ok := chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: event}); !ok {
 					t.Fatalf("event %T was not handled", event)
 				}
 			}

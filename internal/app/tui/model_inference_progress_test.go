@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
@@ -22,11 +22,11 @@ func modelWithInferenceProgress(height int) *model {
 	m.services.Tool = tool.NewRegistry()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.pendingDecisions = &sync.Map{}
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceStart{Attempt: 1}})
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceStart{Attempt: 1}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 		Type: ai.EventBlockDelta, Block: ai.TextBlock("I will write the HTML now."),
 	}}})
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 		Type: ai.EventProgress, Progress: &ai.Progress{ToolCallID: "write-1", ToolName: "Write", InputBytes: 33051},
 	}}})
 	return m
@@ -56,7 +56,7 @@ func TestInferenceProgressKeepsItsRowInShortViewsAndHistoryHandoffs(t *testing.T
 func TestInferenceProgressCannotReviveAfterUserCancellation(t *testing.T) {
 	m := modelWithInferenceProgress(24)
 	m.handleStreamCancel()
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceUpdate{Delta: ai.Event{
 		Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 99000},
 	}}})
 	if m.conv.Stream.Inferring || m.conv.Stream.GeneratedBytes != 0 || len(m.conv.Tool.PendingCalls) != 0 {
@@ -70,8 +70,8 @@ func TestInferenceProgressCannotReviveAfterUserCancellation(t *testing.T) {
 func TestFailedInferenceCommitsAnExplicitIncompleteNotice(t *testing.T) {
 	m := modelWithInferenceProgress(40)
 	err := errors.New("stream stalled")
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Err: err}})
-	transcript.Update(m, &m.conv, transcript.AgentOutboxMsg{Event: core.AgentStopped{Err: err}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: sdkagent.InferenceEnd{Attempt: 1, Err: err}})
+	chat.Update(m, &m.conv, chat.AgentOutboxMsg{Event: core.AgentStopped{Err: err}})
 	printed := ansi.Strip(renderScrollbackLines(m.flush.visible))
 	for _, want := range []string{"I will write the HTML now.", "Turn failed; output is incomplete", "stream stalled"} {
 		if !strings.Contains(printed, want) {

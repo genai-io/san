@@ -9,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/session"
@@ -50,7 +50,7 @@ func (m *model) memoryRecallConfig() setting.MemoryRecallConfig {
 
 func (m *model) needsMemoryInput(head pendingMessage) bool {
 	if !head.FromUser || head.MemoryReady || head.Completion != nil || head.Source != nil || head.Destination != nil ||
-		m.services.Session == nil || strings.TrimSpace(head.Text()) == "" || transcript.IsAgentEnvelope(head.Text()) {
+		m.services.Session == nil || strings.TrimSpace(head.Text()) == "" || chat.IsAgentEnvelope(head.Text()) {
 		return false
 	}
 	return m.memoryRecallConfig().Mode == setting.MemoryRecallWait && m.autoMemory.Store.HasNotes()

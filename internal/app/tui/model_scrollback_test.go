@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
@@ -23,7 +23,7 @@ import (
 )
 
 func flushTestModel(msg core.ChatMessage) *model {
-	m := &model{env: env{Width: 80}, conv: transcript.NewModel(80)}
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80)}
 	appended := m.conv.Append(msg)
 	m.conv.Stream.MessageID = appended.ID
 	return m
@@ -277,7 +277,7 @@ func trimLinePadding(s string) string {
 // picks after launch — the regression behind #252, where the banner froze "no
 // model selected" because it was committed to scrollback before any selection.
 func TestLiveWelcomeTracksModelSelection(t *testing.T) {
-	m := &model{env: env{Width: 80}, conv: transcript.NewModel(80), welcomePending: true}
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80), welcomePending: true}
 
 	// At launch, before a model is picked, the splash is already on screen.
 	if got := m.liveWelcome(); !strings.Contains(got, "no model selected") {
@@ -298,7 +298,7 @@ func TestLiveWelcomeTracksModelSelection(t *testing.T) {
 // On the first commit the banner is frozen into scrollback with the selected
 // model, and the live view stops drawing it (no duplicate).
 func TestTakeWelcomeBannerFreezesAndClears(t *testing.T) {
-	m := &model{env: env{Width: 80}, conv: transcript.NewModel(80), welcomePending: true}
+	m := &model{env: env{Width: 80}, conv: chat.NewModel(80), welcomePending: true}
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "claude-opus-4-8"}
 
 	banner := m.takeWelcomeBanner()
@@ -553,7 +553,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 		BashMeta: &perm.BashMetadata{Command: "git status"},
 	}
 	cmd := m.flush.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
-	m.enqueueUserPrompt(&transcript.UserPromptRequest{
+	m.enqueueUserPrompt(&chat.UserPromptRequest{
 		Permission: &agent.PermGateRequest{ToolName: "Bash"}, PermissionView: view,
 	})
 	if cmd == nil {
@@ -668,7 +668,7 @@ func TestToolResultsCommitAsTheyFinish(t *testing.T) {
 func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testing.T) {
 	m := &model{
 		env:       env{Width: 100, Height: 24},
-		conv:      transcript.NewModel(100),
+		conv:      chat.NewModel(100),
 		userInput: input.New("", 100, nil, input.SelectorDeps{}),
 		services: services{
 			Subagent: subagent.NewRegistry(),

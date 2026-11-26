@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/llm"
 )
 
@@ -30,11 +30,11 @@ func TestCopilotQuotaLabel(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("got %q want %q", got, tc.want)
 			}
-			rendered := transcript.RenderModeStatus(transcript.OperationModeParams{ModelName: "gpt-4.1", SubscriptionUsage: got, Width: 160})
+			rendered := chat.RenderModeStatus(chat.OperationModeParams{ModelName: "gpt-4.1", SubscriptionUsage: got, Width: 160})
 			if !strings.Contains(rendered, got) {
 				t.Fatalf("status lacks quota: %q", rendered)
 			}
-			narrow := transcript.RenderModeStatus(transcript.OperationModeParams{ModelName: "gpt-4.1", SubscriptionUsage: got, Width: 15})
+			narrow := chat.RenderModeStatus(chat.OperationModeParams{ModelName: "gpt-4.1", SubscriptionUsage: got, Width: 15})
 			if strings.Contains(narrow, "Copilot") {
 				t.Fatalf("quota should drop as a whole: %q", narrow)
 			}

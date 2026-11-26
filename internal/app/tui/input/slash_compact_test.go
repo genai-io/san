@@ -6,14 +6,14 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 )
 
 func TestCompactUsesNativeRequestCount(t *testing.T) {
 	for _, count := range []int{0, 1, core.MinMessagesToCompact} {
-		conversation := &transcript.ConversationModel{}
+		conversation := &chat.ConversationModel{}
 		conn := &llm.Conn{}
 		conn.SetProvider(&connectFailProvider{})
 		built, begun := 0, 0

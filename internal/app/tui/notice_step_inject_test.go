@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
@@ -36,7 +36,7 @@ func runCmd(cmd tea.Cmd) {
 func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	store := testutil.OpenSessionStore(t, t.TempDir())
 	rec := mustCreateSession(t, store, session.CreateOptions{ID: "notice-1", AgentID: "main"})
-	m := &model{conv: transcript.NewModel(80)}
+	m := &model{conv: chat.NewModel(80)}
 	m.conv.OnNotice = func(msg core.ChatMessage) {
 		if err := rec.Append(context.Background(), session.Event{Payload: session.AnnotationAddPayload{Text: msg.Content, ByAgent: msg.AgentNotice}}); err != nil {
 			t.Fatal(err)
@@ -55,8 +55,8 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 		if len(messages) != 1 || len(m.conv.Messages) != 1 || messages[0].Content != m.conv.Messages[0].Content {
 			t.Fatalf("completion has separate display and model records: live=%+v, saved=%+v", m.conv.Messages, messages)
 		}
-		p := transcript.RenderContext{Messages: messages, Width: 80}
-		if got, want := transcript.RenderSingleMessage(p, 0), transcript.RenderSingleMessage(transcript.RenderContext{Messages: m.conv.Messages, Width: 80}, 0); got != want {
+		p := chat.RenderContext{Messages: messages, Width: 80}
+		if got, want := chat.RenderSingleMessage(p, 0), chat.RenderSingleMessage(chat.RenderContext{Messages: m.conv.Messages, Width: 80}, 0); got != want {
 			t.Fatalf("live and resumed completion differ: %q != %q", got, want)
 		}
 	}
@@ -98,7 +98,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 			Subagent: subagent.NewRegistry(),
 			Reminder: reminder.New(),
 		},
-		conv: transcript.NewModel(80),
+		conv: chat.NewModel(80),
 	}, provider
 }
 
@@ -115,7 +115,7 @@ func taskNotice() mainNotice {
 func assertNoticeShown(t *testing.T, m *model) {
 	t.Helper()
 	for i := range m.conv.Messages {
-		if strings.Contains(ansi.Strip(transcript.RenderSingleMessage(transcript.RenderContext{Messages: m.conv.Messages, Width: 80}, i)), "research · Completed") {
+		if strings.Contains(ansi.Strip(chat.RenderSingleMessage(chat.RenderContext{Messages: m.conv.Messages, Width: 80}, i)), "research · Completed") {
 			return
 		}
 	}
@@ -177,7 +177,7 @@ func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
 	m.conv.Stream.MessageID = owner.ID
 	m.deliverNotice(taskNotice())
 
-	view := m.renderChatSection(transcript.RenderActiveContent(m.messageRenderParams()))
+	view := m.renderChatSection(chat.RenderActiveContent(m.messageRenderParams()))
 	if !strings.Contains(ansi.Strip(view), "research · Completed") || !hasWaitingRow(view) {
 		t.Fatalf("completion must be visible while inference is still running:\n%s", view)
 	}

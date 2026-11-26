@@ -63,7 +63,7 @@ scrollback) plus `View()` (bottom UI strip).
    │             ListenForAgentEvents tea.Cmd                     │
    │                      │                                       │
    │                      ▼ tea.Msg                               │
-   │                  Update → transcript.Update → callbacks      │
+   │                  Update → chat.Update → callbacks            │
    │                      │                                       │
    │                      ▼                                       │
    │             CommitMessages → tea.Println → scrollback        │
@@ -300,7 +300,7 @@ Background tasks are one producer; subagents posting interim messages
 (`SendMessage to="main"`) and self-learn notices are others — all arrive on
 the same channel.
 
-Same pattern as `transcript.DrainAgentOutbox` reading the agent outbox chan
+Same pattern as `chat.DrainAgentOutbox` reading the agent outbox chan
 — two Go channels, two blocking-receive cmds, one Update loop. No
 polling, no tick, zero idle CPU.
 
@@ -401,7 +401,7 @@ tea.Msg (typed as a conv.* msg)
    │
    ▼
 Update → routeToSubModel                update.go
-   └─ transcript.Update(m, &m.conv, msg)      app/tui/transcript/update.go
+   └─ chat.Update(m, &m.conv, msg)            app/tui/chat/update.go
          │
          │ Routes by event type. The streaming flow is:
          │
@@ -615,7 +615,7 @@ prompt cache behaviour).
 | Inject paths (cron/hook/hub) | [`internal/app/tui/model_turn_queue.go`](../../internal/app/tui/model_turn_queue.go) |
 | Agent event callbacks | [`internal/app/tui/model_agent_events.go`](../../internal/app/tui/model_agent_events.go) |
 | Scrollback commit | [`internal/app/tui/model_scrollback.go`](../../internal/app/tui/model_scrollback.go) |
-| Conv event router | [`internal/app/tui/transcript/update.go`](../../internal/app/tui/transcript/update.go) |
+| Conv event router | [`internal/app/tui/chat/update.go`](../../internal/app/tui/chat/update.go) |
 | `agent.Send` / outbox poll | [`internal/app/tui/agent.go`](../../internal/app/tui/agent.go) |
 | Cancel mid-stream | [`internal/app/tui/update_input_effects.go`](../../internal/app/tui/update_input_effects.go) |
 | `Cancel` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |

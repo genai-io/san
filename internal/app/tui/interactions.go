@@ -8,24 +8,24 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
 type userPromptState struct {
 	queue      ask.Queue
-	active     *transcript.UserPromptRequest
+	active     *chat.UserPromptRequest
 	shown      bool
 	permission *perm.PermissionRequest
 	approval   *ask.Permission
 }
 
-func (m *model) validUserPrompt(req *transcript.UserPromptRequest) bool {
+func (m *model) validUserPrompt(req *chat.UserPromptRequest) bool {
 	return req.Valid(m.conv.AgentToUI)
 }
 
-func (m *model) enqueueUserPrompt(req *transcript.UserPromptRequest) tea.Cmd {
+func (m *model) enqueueUserPrompt(req *chat.UserPromptRequest) tea.Cmd {
 	if !m.userPrompts.queue.Enqueue(req, m.conv.AgentToUI) {
 		return nil
 	}
@@ -33,7 +33,7 @@ func (m *model) enqueueUserPrompt(req *transcript.UserPromptRequest) tea.Cmd {
 	return m.advanceUserPrompts()
 }
 
-func cancelUserPrompt(req *transcript.UserPromptRequest) {
+func cancelUserPrompt(req *chat.UserPromptRequest) {
 	req.Cancel()
 }
 
@@ -83,7 +83,7 @@ func (m *model) syncApprovalToolState() {
 
 // Older adapters may omit the context's call ID. For display only, recover it
 // from an exact, unique tool-name/input match; never guess by title or position.
-func (m *model) unambiguousApprovalCallID(request *transcript.UserPromptRequest) string {
+func (m *model) unambiguousApprovalCallID(request *chat.UserPromptRequest) string {
 	args := make(map[string]any, len(request.Permission.Input))
 	for key, value := range request.Permission.Input {
 		if !strings.HasPrefix(key, "_") {
@@ -206,5 +206,5 @@ func (m *model) closeUserPrompts() {
 
 func (m *model) resetUserPrompts() {
 	m.closeUserPrompts()
-	m.conv.AgentToUI = transcript.NewAgentToUI(100)
+	m.conv.AgentToUI = chat.NewAgentToUI(100)
 }

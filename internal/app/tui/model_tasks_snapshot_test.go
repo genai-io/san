@@ -13,7 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent/mail"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/task"
 )
 
@@ -124,7 +124,7 @@ func TestTaskViewerSnapshotsOnlyOnRefreshBoundaries(t *testing.T) {
 	// Approval changes remain immediate, without waiting for a poll or keypress.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.Update(transcript.UserPromptRequestMsg{Request: userPromptApproval(m, ctx, worker.GetID())})
+	m.Update(chat.UserPromptRequestMsg{Request: userPromptApproval(m, ctx, worker.GetID())})
 	if view := ansi.Strip(m.userInput.Tasks.Render()); !strings.Contains(view, "awaiting approval") {
 		t.Fatalf("queued approval was not refreshed: %s", view)
 	}

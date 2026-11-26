@@ -1,4 +1,4 @@
-// transcript.Runtime implementation: callbacks the agent's outbox event pump calls
+// chat.Runtime implementation: callbacks the agent's outbox event pump calls
 // on the main bubbletea goroutine — turn start, token accounting, tool
 // results, turn end, and stop. The actual side effects (committing
 // scrollback, draining queues, firing hooks) live in adjacent model_*
@@ -14,7 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/infra/log"
 	"github.com/genai-io/san/internal/llm"
@@ -218,7 +218,7 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 	// shutdown, not an agent failure the user needs to see.
 	failed := err != nil && !errors.Is(err, context.Canceled)
 	if failed {
-		m.conv.AddNotice(transcript.FailedTurnNotice(err))
+		m.conv.AddNotice(chat.FailedTurnNotice(err))
 		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
 	}
 	m.pruneUserPrompts()

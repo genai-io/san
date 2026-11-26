@@ -8,7 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
-	"github.com/genai-io/san/internal/app/tui/transcript"
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -41,7 +41,7 @@ func TestWorkerResolverPreservesModeSourceAndOnceOnlyApproval(t *testing.T) {
 	child := workerPermissionOwner(t, "normal")
 	settings := setting.New(setting.NewData())
 	grants := setting.NewSessionPermissions()
-	bridge := transcript.NewAgentToUI(1)
+	bridge := chat.NewAgentToUI(1)
 	defer bridge.Close()
 	origin := tool.FlowOrigin{TaskID: "flow-run", Name: "review-pipeline", NodeID: "review", WorkerLabel: "item-7"}
 	inputSource := tool.AgentInteractionSource{AgentID: "worker-address", TaskID: "executor-task", AgentName: "reviewer", ParentToolCallID: "launch-call", ToolCallID: "previous-call", WorkingDirectory: "/worker", PermissionMode: "normal", Flow: &origin}
@@ -56,7 +56,7 @@ func TestWorkerResolverPreservesModeSourceAndOnceOnlyApproval(t *testing.T) {
 	done := make(chan perm.Resolution, 1)
 	go func() { done <- resolver.Resolve(ctx, "Bash", map[string]any{"command": "go test ./..."}, false, "") }()
 	msg := bridge.Check()()
-	reqMsg, ok := msg.(transcript.UserPromptRequestMsg)
+	reqMsg, ok := msg.(chat.UserPromptRequestMsg)
 	if !ok {
 		t.Fatalf("normal child silently inherited parent YOLO: %T", msg)
 	}

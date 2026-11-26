@@ -1,6 +1,6 @@
 // The reasoning-display preference: "full" draws the body, "collapsed" replaces
 // it with one "Thought for …" line, "hidden" draws nothing. The two sites that
-// can put reasoning on screen are the live view (transcript.RenderAssistantMessage)
+// can put reasoning on screen are the live view (chat.RenderAssistantMessage)
 // and the scrollback flush (FlushStreamingBlocks → renderSnapshotCmd), and both
 // must be gated — reasoning that reaches native scrollback cannot be taken
 // back, so a gate on the live view alone would still leave every token
@@ -14,8 +14,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/app/tui/chat"
 	"github.com/genai-io/san/internal/app/tui/input"
-	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -33,7 +33,7 @@ const reasoningSentinel = "SECRET_REASONING_BODY"
 func commitTestModel(msgs ...core.ChatMessage) *model {
 	m := &model{
 		env:       env{Width: 80, Height: 24},
-		conv:      transcript.NewModel(80),
+		conv:      chat.NewModel(80),
 		userInput: input.New("", 80, nil, input.SelectorDeps{}),
 		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry()},
 	}
