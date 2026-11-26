@@ -2,6 +2,8 @@ package input
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,6 +41,43 @@ func TestSkillPanelCursorSkipsHeaders(t *testing.T) {
 		if !rows[p.form.cursor].editable() {
 			t.Fatalf("up landed on non-editable row %d (%v)", p.form.cursor, rows[p.form.cursor].kind)
 		}
+	}
+}
+
+func TestSkillPanelSaveErrorAndRetry(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	dir := filepath.Join(home, ".san")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, p := newTestSkillPanel()
+	p.form.snap.Strategy = "keep notes concise"
+	for i, row := range p.form.rows {
+		if row.kind == rowSave {
+			p.form.cursor = i
+			break
+		}
+	}
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	c.HandleKeypress(enter)
+	if !c.IsActive() || !p.form.Dirty() || !strings.Contains(c.Render(), "Save failed") {
+		t.Fatalf("failed save not reported: %s", c.Render())
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "{" {
+		t.Fatalf("bad settings overwritten: %q, %v", data, err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.HandleKeypress(enter)
+	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "keep notes concise") || c.IsActive() {
+		t.Fatalf("retry did not save: %q, %v", data, err)
 	}
 }
 

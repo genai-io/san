@@ -30,6 +30,12 @@ func (d *Data) MemoryPreview() MemoryPreviewLimits {
 	return (MemoryPreviewLimits{Lines: d.MemoryPreviewLines, KB: d.MemoryPreviewKB}).Resolve()
 }
 
+// MemoryPreviewAt returns scoped overrides without resolving inherited values.
+func MemoryPreviewAt(cwd string, scope Scope) MemoryPreviewLimits {
+	d := memorySettingsAt(cwd, scope)
+	return MemoryPreviewLimits{Lines: d.MemoryPreviewLines, KB: d.MemoryPreviewKB}
+}
+
 func (s *Settings) MemoryPreview() MemoryPreviewLimits {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

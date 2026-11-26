@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/genai-io/san/internal/app/kit"
 	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
@@ -107,17 +108,17 @@ func pluginWriteSummary(sb *strings.Builder, p *coreplugin.Plugin) {
 func pluginFormatComponentCounts(p *coreplugin.Plugin) []string {
 	var components []string
 	if n := len(p.Components.Skills); n > 0 {
-		components = append(components, fmt.Sprintf("%d skills", n))
+		components = append(components, kit.Plural(n, "skill"))
 	}
 	if n := len(p.Components.Agents); n > 0 {
-		components = append(components, fmt.Sprintf("%d agents", n))
+		components = append(components, kit.Plural(n, "agent"))
 	}
 	if n := len(p.Components.Commands); n > 0 {
-		components = append(components, fmt.Sprintf("%d commands", n))
+		components = append(components, kit.Plural(n, "command"))
 	}
 	if p.Components.Hooks != nil {
 		if n := len(p.Components.Hooks.Hooks); n > 0 {
-			components = append(components, fmt.Sprintf("%d hooks", n))
+			components = append(components, kit.Plural(n, "hook"))
 		}
 	}
 	if n := len(p.Components.MCP); n > 0 {

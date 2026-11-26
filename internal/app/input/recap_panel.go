@@ -102,6 +102,12 @@ func (p *recapPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+func (p *recapPanel) HandlePaste(content string) {
+	if p.editing {
+		p.input, _ = p.input.Update(tea.PasteMsg{Content: content})
+	}
+}
+
 func (p *recapPanel) save() {
 	value, err := strconv.Atoi(strings.TrimSpace(p.input.Value()))
 	if err != nil || (value <= 0 && !(p.cursor == recapAfter && value == -1)) {

@@ -86,6 +86,17 @@ func TestRecapPanelEditAndReopen(t *testing.T) {
 	want.Turns = 11
 	check(want)
 
+	popup.HandlePaste("99") // No editor is open.
+	press(tea.KeyEnter)
+	if got := p.input.Value(); got != "11" {
+		t.Fatalf("list paste changed threshold: %s", got)
+	}
+	replace("")
+	popup.HandlePaste("12")
+	press(tea.KeyEnter)
+	want.Turns = 12
+	check(want)
+
 	press(tea.KeyEscape)
 	svc = setting.New(nil)
 	if err := svc.Reload(cwd); err != nil {

@@ -34,10 +34,12 @@ type skillConfigForm struct {
 	baseline setting.AutoSkillSettings
 	scope    setting.Scope
 
-	cursor int
+	cursor  int
+	saveErr error
 }
 
 func (f *skillConfigForm) Enter() {
+	f.saveErr = nil
 	f.snap = setting.AutoSkillSettings{}
 	if f.workspace != nil {
 		if _, settings := f.workspace(); settings != nil {
@@ -102,7 +104,7 @@ func (f *skillConfigForm) save() (tea.Cmd, bool) {
 	if err := f.snap.Validate(); err != nil {
 		return nil, false
 	}
-	if err := setting.UpdateAutoSkillAt(f.snap, f.scope); err != nil {
+	if f.saveErr = setting.UpdateAutoSkillAt(f.snap, f.scope); f.saveErr != nil {
 		return nil, false
 	}
 	scope := f.scope
@@ -156,6 +158,10 @@ func (f *skillConfigForm) Render(width int) string {
 		b.WriteString("\n")
 	}
 
+	if validationErr == nil && f.saveErr != nil {
+		b.WriteString(selflearnErrorStyle.Render("Save failed: " + f.saveErr.Error()))
+		b.WriteString("\n")
+	}
 	if validationErr != nil {
 		b.WriteString("\n")
 		b.WriteString(selflearnErrorStyle.Render("⚠ " + validationErr.Error()))

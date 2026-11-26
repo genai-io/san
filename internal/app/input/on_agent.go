@@ -183,9 +183,8 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 		}
 	}
 	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.activeScope())
-	return func() tea.Msg {
-		return AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled}
-	}
+	msg := AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled}
+	return func() tea.Msg { return msg }
 }
 
 func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {

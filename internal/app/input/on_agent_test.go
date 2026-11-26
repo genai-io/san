@@ -64,11 +64,12 @@ func TestAgentSelectorToggleWithBuiltinPreviewName(t *testing.T) {
 					if cmd == nil {
 						t.Fatal("configured agent did not produce a toggle command")
 					}
+					// A tab change can be handled before Bubble Tea delivers the command.
+					selector.list.cycleTab(-int(tc.tab))
 					if msg, ok := cmd().(AgentToggleMsg); !ok || msg.AgentName != name || msg.Enabled != enabled {
 						t.Fatalf("toggle message = %+v; want %s enabled=%v", msg, name, enabled)
 					}
 
-					selector.list.cycleTab(-int(tc.tab))
 					for _, preview := range selector.list.filtered {
 						if !preview.BuiltinPreview || !preview.Enabled {
 							t.Fatalf("toggle changed mode preview: %+v", preview)

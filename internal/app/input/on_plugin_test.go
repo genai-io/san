@@ -13,6 +13,16 @@ import (
 	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
+func TestPluginListSummaryComponentCounts(t *testing.T) {
+	var row strings.Builder
+	pluginWriteSummary(&row, &coreplugin.Plugin{Manifest: coreplugin.Manifest{Name: "review"}, Components: coreplugin.Components{
+		Skills: []string{"review"}, Agents: []string{"reader.md"}, Commands: []string{"check.md", "notes.md"},
+	}})
+	if !strings.Contains(row.String(), "[1 skill, 1 agent, 2 commands]") {
+		t.Fatal(row.String())
+	}
+}
+
 func TestCancelClearsTransientPluginSelectorState(t *testing.T) {
 	m := NewPluginSelector(coreplugin.NewRegistry())
 	m.active = true
@@ -61,6 +71,34 @@ func TestCancelClearsTransientPluginSelectorState(t *testing.T) {
 	}
 	if m.lastMessage != "" || m.isError {
 		t.Fatal("Cancel should clear status message")
+	}
+}
+
+func TestPluginMarketplaceKeysAreTabSpecific(t *testing.T) {
+	for _, key := range "ur" {
+		press := tea.KeyPressMsg{Code: key, Text: string(key)}
+		for _, tab := range []pluginTab{pluginTabInstalled, pluginTabDiscover, pluginTabMarketplaces} {
+			s := NewPluginSelector(coreplugin.NewRegistry())
+			s.active, s.activeTab = true, tab
+			s.installedFlatList = []pluginItem{{Name: "alpha"}, {Name: "runner"}}
+			s.discoverPlugins = []pluginDiscoverItem{{Name: "alpha"}, {Name: "runner"}}
+			s.marketplaces = []pluginMarketplaceItem{{ID: "catalog"}}
+			s.updateFilter()
+			if tab == pluginTabMarketplaces {
+				s.MoveDown() // Past the add-marketplace row.
+				cmd := s.HandleKeypress(press)
+				if cmd == nil || s.searchQuery != "" {
+					t.Fatalf("missing marketplace shortcut %c", key)
+				}
+				if key == 'r' && cmd().(pluginMarketplaceRemoveMsg).ID != "catalog" {
+					t.Fatal("wrong removal target")
+				}
+				continue
+			}
+			if cmd := s.HandleKeypress(press); cmd != nil || s.searchQuery != string(key) || len(s.filteredItems) != 1 {
+				t.Errorf("tab %d after %c: query %q, rows %d", tab, key, s.searchQuery, len(s.filteredItems))
+			}
+		}
 	}
 }
 
@@ -139,6 +177,23 @@ func TestSwitchTabResetsDetailStateAndSearch(t *testing.T) {
 	}
 }
 
+func TestPluginBackspaceRemovesCharacter(t *testing.T) {
+	m := NewPluginSelector(coreplugin.NewRegistry())
+	m.HandleKeypress(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m.HandleKeypress(tea.KeyPressMsg{Code: '界', Text: "界"})
+	back := tea.KeyPressMsg{Code: tea.KeyBackspace}
+	m.HandleKeypress(back)
+	if m.searchQuery != "a" {
+		t.Errorf("filter after backspace: %q", m.searchQuery)
+	}
+	m.level = pluginLevelAddMarketplace
+	m.HandlePaste("./café")
+	m.HandleKeypress(back)
+	if m.addMarketplaceInput != "./caf" {
+		t.Errorf("source after backspace: %q", m.addMarketplaceInput)
+	}
+}
+
 func TestToggleSelectedPluginReturnsDisableMsg(t *testing.T) {
 	m := NewPluginSelector(coreplugin.NewRegistry())
 	m.activeTab = pluginTabInstalled
@@ -159,6 +214,17 @@ func TestToggleSelectedPluginReturnsDisableMsg(t *testing.T) {
 	msg := cmd()
 	if disable, ok := msg.(pluginDisableMsg); !ok || disable.PluginName != "demo" {
 		t.Fatalf("unexpected toggle message: %#v", msg)
+	}
+}
+
+func TestPluginDetailCommandSurvivesDismissal(t *testing.T) {
+	m := NewPluginSelector(coreplugin.NewRegistry())
+	m.detailPlugin = &pluginItem{FullName: "demo"}
+	m.actions = []pluginAction{{Action: "disable"}}
+	cmd := m.executeAction()
+	m.Cancel()
+	if msg := cmd(); msg != (pluginDisableMsg{PluginName: "demo"}) {
+		t.Fatalf("queued action lost its target: %#v", msg)
 	}
 }
 

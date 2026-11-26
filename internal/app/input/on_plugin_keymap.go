@@ -2,6 +2,7 @@ package input
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -39,6 +40,11 @@ func (s *PluginSelector) HandlePaste(content string) tea.Cmd {
 	return nil
 }
 
+func withoutLastRune(text string) string {
+	_, size := utf8.DecodeLastRuneInString(text)
+	return text[:len(text)-size]
+}
+
 func (s *PluginSelector) handleAddMarketplaceKeypress(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "esc":
@@ -48,7 +54,7 @@ func (s *PluginSelector) handleAddMarketplaceKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.addMarketplace()
 	case "backspace":
 		if len(s.addMarketplaceInput) > 0 {
-			s.addMarketplaceInput = s.addMarketplaceInput[:len(s.addMarketplaceInput)-1]
+			s.addMarketplaceInput = withoutLastRune(s.addMarketplaceInput)
 			s.clearMessage()
 		}
 		return nil
@@ -145,7 +151,7 @@ func (s *PluginSelector) handleListKeypress(key tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg { return kit.DismissedMsg{} }
 	case "backspace":
 		if len(s.searchQuery) > 0 {
-			s.searchQuery = s.searchQuery[:len(s.searchQuery)-1]
+			s.searchQuery = withoutLastRune(s.searchQuery)
 			s.updateFilter()
 		}
 		return nil
@@ -159,17 +165,17 @@ func (s *PluginSelector) handleListKeypress(key tea.KeyMsg) tea.Cmd {
 
 func (s *PluginSelector) handleListRuneKey(r string) tea.Cmd {
 	if s.searchQuery == "" {
-		switch r {
-		case "l":
+		switch {
+		case r == "l":
 			s.enterDetail()
 			return nil
-		case " ":
+		case r == " ":
 			return s.toggleSelectedPlugin()
-		case "u":
+		case r == "u" && s.activeTab == pluginTabMarketplaces:
 			return s.handleMarketplaceAction(func(m pluginMarketplaceItem) tea.Cmd {
 				return s.syncMarketplace(m.ID)
 			})
-		case "r":
+		case r == "r" && s.activeTab == pluginTabMarketplaces:
 			return s.handleMarketplaceAction(func(m pluginMarketplaceItem) tea.Cmd {
 				return func() tea.Msg { return pluginMarketplaceRemoveMsg{ID: m.ID} }
 			})
