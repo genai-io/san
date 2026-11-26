@@ -54,7 +54,7 @@ var agentToolParameters = map[string]any{
 		},
 		"allow_tools": map[string]any{
 			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
-			"description": "Limit tools by exact name, e.g. [\"Read\", \"mcp__docs__lookup\"], to keep unused tools out of the worker's context. Omit to inherit; [] selects none.",
+			"description": "Limit tools by exact name, e.g. [\"Read\", \"mcp__codegraph__codegraph_explore\"], to keep unused tools out of the worker's context. Omit to inherit; [] selects none.",
 		},
 		"deny_tools": map[string]any{
 			"type": "array", "items": map[string]any{"type": "string", "pattern": exactToolNamePattern}, "uniqueItems": true,
