@@ -19,7 +19,7 @@ func TestACPWorkerReceivesOnlySelectedTools(t *testing.T) {
 		tools      string
 		want       []string
 		background bool
-	}{{`["Read"]`, []string{"Read"}, false}, {`[]`, nil, true}} {
+	}{{`["Read","Write"]`, []string{"Read"}, false}, {`[]`, nil, true}} {
 		t.Run(tc.tools, func(t *testing.T) {
 			observed := make(chan []string, 1)
 			driver := aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
@@ -35,7 +35,7 @@ func TestACPWorkerReceivesOnlySelectedTools(t *testing.T) {
 					// An unadvertised call must not be executable, even with a permissive owner.
 					return aitest.Asks(ai.ToolCall{ID: "unexpected-write", Name: "Write", Input: `{"file_path":"unexpected.txt","content":"no"}`})(ctx, req)
 				}
-				return aitest.Asks(ai.ToolCall{ID: "launch", Name: "Agent", Input: fmt.Sprintf(`{"prompt":"WORKER_BRIEF","description":"limit worker","run_in_background":%t,"tools":%s}`, tc.background, tc.tools)})(ctx, req)
+				return aitest.Asks(ai.ToolCall{ID: "launch", Name: "Agent", Input: fmt.Sprintf(`{"prompt":"WORKER_BRIEF","description":"limit worker","run_in_background":%t,"allow_tools":%s,"deny_tools":["Write"]}`, tc.background, tc.tools)})(ctx, req)
 			})
 			f := newACPFixture(t, driver, func(context.Context, protocol.RequestPermissionRequest) (protocol.RequestPermissionResponse, error) {
 				return acpChoice("allow_once"), nil

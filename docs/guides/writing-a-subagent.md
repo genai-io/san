@@ -113,12 +113,10 @@ predefined agents**, using only their names, descriptions, and optional
 `when-to-use` hints. Disabled or persona-hidden definitions are omitted. Full
 prompt bodies are loaded only into the selected worker's system context.
 
-Use `tools` to narrow a new worker's tool selection. For example, pass
-`"tools": ["Read"]` for a file review, or `"tools": []` for reasoning from
-the brief alone. Omit `tools` to keep the configured selection. Names are
-exact and case-sensitive; `null`, patterns, and duplicate names are invalid.
-Selecting a tool does not enable it or approve its use. Follow-up messages
-keep the original worker's tool restrictions.
+Workers inherit all delegable main-agent tools, including MCP tools, by default.
+`allow_tools` narrows that set; `deny_tools` removes names and wins on overlap.
+`allow_tools: []` gives no tools. Calls and Flow nodes use exact names; only
+definitions accept argument patterns.
 
 Example using a configured definition:
 

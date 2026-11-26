@@ -59,7 +59,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, err
 	}
 
-	selectedTools, err := parseAgentTools(params)
+	allowTools, denyTools, err := parseAgentTools(params)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		runBackground = true
 	}
 
-	config, err := t.approvalConfig(agentName, selectedTools, resume, params)
+	config, err := t.approvalConfig(agentName, allowTools, denyTools, resume, params)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 
 // approvalConfig shows the original policy on continuation. For a new worker,
 // execution must receive the same policy the user was asked to approve.
-func (t *AgentTool) approvalConfig(name string, tools []string, resume continuationApproval, params map[string]any) (tool.AgentConfigInfo, error) {
+func (t *AgentTool) approvalConfig(name string, allowTools, denyTools []string, resume continuationApproval, params map[string]any) (tool.AgentConfigInfo, error) {
 	policy, ok := t.executor.(interface {
 		ContinuationConfig(string) (tool.AgentConfigInfo, error)
 		PinAgentTools(tool.AgentExecRequest) ([]string, any, error)
@@ -133,7 +133,7 @@ func (t *AgentTool) approvalConfig(name string, tools []string, resume continuat
 	if !ok {
 		return info, fmt.Errorf("unknown or disabled agent: %s", name)
 	}
-	names, pinned, err := policy.PinAgentTools(tool.AgentExecRequest{Agent: name, Tools: tools, ResolvedAgentConfig: definition})
+	names, pinned, err := policy.PinAgentTools(tool.AgentExecRequest{Agent: name, AllowTools: allowTools, DenyTools: denyTools, ResolvedAgentConfig: definition})
 	if err == nil {
 		info.Tools = names
 		params["_resolvedAgentConfig"] = pinned
@@ -183,7 +183,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
-	selectedTools, err := parseAgentTools(params)
+	allowTools, denyTools, err := parseAgentTools(params)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -207,7 +207,8 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	resolvedAgentConfig, _ := params["_resolvedAgentConfig"]
 	// New work receives a self-contained brief.
 	req := tool.AgentExecRequest{
-		Tools:               selectedTools,
+		AllowTools:          allowTools,
+		DenyTools:           denyTools,
 		ParentToolCallID:    core.ToolCallIDFromContext(ctx),
 		Agent:               agentName,
 		ResolvedAgentConfig: resolvedAgentConfig,

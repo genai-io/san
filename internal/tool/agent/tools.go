@@ -9,8 +9,20 @@ const exactToolNamePattern = `^[a-zA-Z0-9_-]+$`
 
 var exactToolName = regexp.MustCompile(exactToolNamePattern)
 
-func parseAgentTools(params map[string]any) ([]string, error) {
-	raw, present := params["tools"]
+func parseAgentTools(params map[string]any) (allow, deny []string, err error) {
+	if _, present := params["tools"]; present {
+		return nil, nil, fmt.Errorf("Agent no longer accepts tools; use allow_tools or deny_tools")
+	}
+	allow, err = parseToolList(params, "allow_tools")
+	if err != nil {
+		return nil, nil, err
+	}
+	deny, err = parseToolList(params, "deny_tools")
+	return allow, deny, err
+}
+
+func parseToolList(params map[string]any, field string) ([]string, error) {
+	raw, present := params[field]
 	if !present {
 		return nil, nil
 	}
@@ -26,19 +38,19 @@ func parseAgentTools(params map[string]any) ([]string, error) {
 			for i, item := range list {
 				s, ok := item.(string)
 				if !ok {
-					return nil, fmt.Errorf("tools[%d] must be an exact tool name", i)
+					return nil, fmt.Errorf("%s[%d] must be an exact tool name", field, i)
 				}
 				names[i] = s
 			}
 		}
 	}
 	if names == nil {
-		return nil, fmt.Errorf("tools must be an array of exact tool names; omit it to use the configured tools")
+		return nil, fmt.Errorf("%s must be an array of exact tool names", field)
 	}
 	seen := make(map[string]bool, len(names))
 	for i, s := range names {
 		if !exactToolName.MatchString(s) {
-			return nil, fmt.Errorf("tools[%d] must be an exact tool name", i)
+			return nil, fmt.Errorf("%s[%d] must be an exact tool name", field, i)
 		}
 		if seen[s] {
 			return nil, fmt.Errorf("duplicate tool name %q", s)

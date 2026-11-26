@@ -39,7 +39,7 @@ func TestFallbackInboxStaysLiveAcrossHandoff(t *testing.T) {
 			}
 		}, func() {}
 	})
-	worker, err := e.RunBackground(tool.AgentExecRequest{Tools: []string{"Read"}, Prompt: "original task", Model: "openai/selected-model", OnIdentity: func(identity toolresult.AgentIdentity) {
+	worker, err := e.RunBackground(tool.AgentExecRequest{AllowTools: []string{"Read"}, Prompt: "original task", Model: "openai/selected-model", OnIdentity: func(identity toolresult.AgentIdentity) {
 		workerID = identity.ID
 		if err := broker.SendErr(broker.Message{To: workerID, Content: "at startup"}); err != nil {
 			t.Errorf("startup mail rejected: %v", err)

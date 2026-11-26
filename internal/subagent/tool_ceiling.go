@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 
 	"github.com/genai-io/san/internal/core"
@@ -46,6 +47,8 @@ type workerPolicy struct {
 	tools      []string
 }
 
+var exactWorkerTool = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
 func (e *Executor) pinWorkerPolicy(req tool.AgentExecRequest) (*workerPolicy, error) {
 	var original []string
 	var config *AgentConfig
@@ -68,20 +71,34 @@ func (e *Executor) pinWorkerPolicy(req tool.AgentExecRequest) (*workerPolicy, er
 		return nil, fmt.Errorf("worker permission mode changed after policy was pinned")
 	}
 	schemas := e.workerSchemas(config, mode, original)
+	// A pinned policy already validated the requested names. Re-intersect at
+	// launch: a denied or subsequently revoked tool must stay absent, not turn
+	// a valid worker into an invalid request.
 	names := make([]string, 0, len(schemas))
 	for _, s := range schemas {
-		if within(req.Tools, s.Name) {
+		if within(req.AllowTools, s.Name) {
 			names = append(names, s.Name)
 		}
 	}
-	for i, name := range req.Tools {
-		if !slices.Contains(names, name) {
+	for i, name := range req.AllowTools {
+		if !pinned && !slices.Contains(names, name) {
 			return nil, fmt.Errorf("tool %q is not available to this worker", name)
 		}
-		if slices.Contains(req.Tools[:i], name) {
+		if slices.Contains(req.AllowTools[:i], name) {
 			return nil, fmt.Errorf("duplicate worker tool %q", name)
 		}
 	}
+	denied := make(map[string]bool, len(req.DenyTools))
+	for _, name := range req.DenyTools {
+		if !exactWorkerTool.MatchString(name) {
+			return nil, fmt.Errorf("invalid denied worker tool %q", name)
+		}
+		if denied[name] {
+			return nil, fmt.Errorf("duplicate denied worker tool %q", name)
+		}
+		denied[name] = true
+	}
+	names = slices.DeleteFunc(names, func(name string) bool { return denied[name] })
 	return &workerPolicy{mode: mode, definition: config, tools: names}, nil
 }
 

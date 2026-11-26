@@ -168,9 +168,9 @@ func TestFlow_SectioningThroughRealSubagents(t *testing.T) {
 func TestFlow_ForEachRunsOneSubagentPerPlanItem(t *testing.T) {
 	const definition = "---\nname: split\n---\n" +
 		"```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n" +
-		"## plan\nmode: explore\ntools: []\n\nSplit it, at most 4 tasks\n\n" +
-		"## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\ntools: [Read]\n\nReview {{item.prompt}}\n\n" +
-		"## merge\nmode: explore\ntools: []\n\nMerge:\n{{review}}\n"
+		"## plan\nmode: explore\nallow_tools: []\n\nSplit it, at most 4 tasks\n\n" +
+		"## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\nallow_tools: [Read]\n\nReview {{item.prompt}}\n\n" +
+		"## merge\nmode: explore\nallow_tools: [Read]\ndeny_tools: [Read]\n\nMerge:\n{{review}}\n"
 
 	provider := &scriptedProvider{replies: []reply{
 		{"Split it", `{"tasks":[{"name":"llm","prompt":"error handling"},{"name":"tool","prompt":"permissions"}]}`},

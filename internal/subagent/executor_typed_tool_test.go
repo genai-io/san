@@ -84,7 +84,7 @@ func TestTypedToolContinuationRetainsNativeEvidence(t *testing.T) {
 	}
 	liveTools := []string{"Read", "Skill"}
 	e.SetParentTools(func() []string { return liveTools })
-	a, err := e.RunBackground(tool.AgentExecRequest{Tools: []string{"Read"}, Prompt: "original task", ParentToolCallID: "launch", MaxSteps: 1, OnIdentity: func(id toolresult.AgentIdentity) {
+	a, err := e.RunBackground(tool.AgentExecRequest{AllowTools: []string{"Read"}, Prompt: "original task", ParentToolCallID: "launch", MaxSteps: 1, OnIdentity: func(id toolresult.AgentIdentity) {
 		if id.SessionID != "" {
 			childID = id.SessionID
 		}

@@ -99,7 +99,7 @@ func (s *Service) bindWorkers(b *Blueprint, executor tool.AgentExecutor) (*worke
 		if !ok || config == nil {
 			return nil, fmt.Errorf("node %s: executor cannot bind resolved worker policy", n.ID)
 		}
-		config, fingerprint, err := host.PinFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], Tools: slices.Clone(n.Tools), ResolvedAgentConfig: config})
+		config, fingerprint, err := host.PinFlowWorker(tool.AgentExecRequest{Agent: agent, Mode: n.Config["mode"], Model: n.Config["model"], AllowTools: slices.Clone(n.AllowTools), DenyTools: slices.Clone(n.DenyTools), ResolvedAgentConfig: config})
 		if err != nil {
 			return nil, fmt.Errorf("node %s: fingerprint worker policy: %w", n.ID, err)
 		}

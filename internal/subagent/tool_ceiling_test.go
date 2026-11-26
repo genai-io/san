@@ -35,7 +35,7 @@ func TestRunningWorkerHonorsParentRevocation(t *testing.T) {
 		}
 		return []string{"Write", "Read"}
 	})
-	_, err := e.Run(context.Background(), tool.AgentExecRequest{Prompt: "test", Tools: []string{"Write"}, ResolvedAgentConfig: &AgentConfig{AllowTools: ToolList{{Name: "Write"}}, PermissionMode: PermissionBypass}})
+	_, err := e.Run(context.Background(), tool.AgentExecRequest{Prompt: "test", AllowTools: []string{"Write"}, ResolvedAgentConfig: &AgentConfig{AllowTools: ToolList{{Name: "Write"}}, PermissionMode: PermissionBypass}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestWorkerToolSelection(t *testing.T) {
 		{"unknown", []string{"not-a-tool"}, nil, true}, {"duplicate", []string{"Read", "Read"}, nil, true}, {"parent-only", []string{"Agent"}, nil, true}, {"outside parent", []string{"Skill"}, nil, true}, {"pattern", []string{"Bash(git *)"}, nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{Tools: tc.tools})
+			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{AllowTools: tc.tools})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("accepted invalid selection")
@@ -82,12 +82,47 @@ func TestWorkerToolSelection(t *testing.T) {
 	}
 }
 
+func TestWorkerDenyTools(t *testing.T) {
+	e := &Executor{}
+	e.SetParentTools(func() []string { return []string{"Read"} })
+	for _, tc := range []struct {
+		name              string
+		allow, deny, want []string
+		invalid           bool
+	}{
+		{"deny inherited", nil, []string{"Read"}, []string{}, false},
+		{"empty deny", nil, []string{}, []string{"Read"}, false},
+		{"absent deny", nil, []string{"missing"}, []string{"Read"}, false},
+		{"overlap", []string{"Read"}, []string{"Read"}, []string{}, false},
+		{"invalid allow still rejected", []string{"missing"}, []string{"missing"}, nil, true},
+		{"argument rule", nil, []string{"Bash(git *)"}, nil, true},
+		{"duplicate", nil, []string{"missing", "missing"}, nil, true},
+		{"empty name", nil, []string{""}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pin, err := e.pinWorkerPolicy(tool.AgentExecRequest{AllowTools: tc.allow, DenyTools: tc.deny})
+			if tc.invalid {
+				if err == nil {
+					t.Fatal("expected invalid selection")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pin.tools == nil || !slices.Equal(pin.tools, tc.want) {
+				t.Fatalf("got %#v want %#v", pin.tools, tc.want)
+			}
+		})
+	}
+}
+
 func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 	e := &Executor{}
 	parent := []string{"Read", "Skill"}
 	e.SetParentTools(func() []string { return parent })
 	config := &AgentConfig{Name: "review", AllowTools: ToolList{{Name: "Read"}, {Name: "Skill"}}, SystemPrompt: "original"}
-	req := tool.AgentExecRequest{Tools: []string{"Read"}, ResolvedAgentConfig: config}
+	req := tool.AgentExecRequest{AllowTools: []string{"Read"}, ResolvedAgentConfig: config}
 	catalogue, pin, err := NewExecutorAdapter(e).PinAgentTools(req)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +133,7 @@ func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 	catalogue[0] = "Skill"
 	config.SystemPrompt = "changed"
 	config.AllowTools[0].Name = "Write"
-	req.Tools[0] = "Skill"
+	req.AllowTools[0] = "Skill"
 	for _, p := range [][]string{{"Read", "Skill", "Write"}, {"Skill"}, nil} {
 		parent = p
 		cfg, err := e.prepareRunConfig(context.Background(), tool.AgentExecRequest{ResolvedAgentConfig: pin})
@@ -117,7 +152,7 @@ func TestPinnedWorkerDefinitionAndLiveCeiling(t *testing.T) {
 func TestFlowFingerprintIncludesArgumentRulesAndMode(t *testing.T) {
 	a := NewExecutorAdapter(&Executor{})
 	def := &AgentConfig{AllowTools: ToolList{{Name: "Bash", Pattern: "git diff*"}}}
-	req := tool.AgentExecRequest{ResolvedAgentConfig: def, Tools: []string{"Bash"}}
+	req := tool.AgentExecRequest{ResolvedAgentConfig: def, AllowTools: []string{"Bash"}}
 	pin, first, err := a.PinFlowWorker(req)
 	if err != nil {
 		t.Fatal(err)

@@ -489,7 +489,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 }
 
 func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
-	if req.ResumeTaskID != "" && req.Tools != nil {
+	if req.ResumeTaskID != "" && (req.AllowTools != nil || req.DenyTools != nil) {
 		return fmt.Errorf("cannot replace a continuing worker's pinned tools")
 	}
 	if strings.TrimSpace(req.Prompt) == "" {

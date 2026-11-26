@@ -203,7 +203,8 @@ func (b *Blueprint) unroll() {
 		}
 		for round := 1; round <= l.Rounds; round++ {
 			clone := *n
-			clone.Tools = slices.Clone(n.Tools)
+			clone.AllowTools = slices.Clone(n.AllowTools)
+			clone.DenyTools = slices.Clone(n.DenyTools)
 			clone.ID = instance(n.ID, round)
 			clone.tail = n.ID == l.From
 			nodes = append(nodes, &clone)

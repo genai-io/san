@@ -2,6 +2,7 @@ package agent
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,8 @@ func TestAgentToolSelection(t *testing.T) {
 			a.SetExecutor(executor)
 			params := map[string]any{"prompt": "Review", "run_in_background": bg}
 			if tc.raw != nil {
-				params["tools"] = tc.raw
+				params["allow_tools"] = tc.raw
+				params["deny_tools"] = []any{"Bash"}
 			}
 			approval, err := a.PreparePermission(t.Context(), params, ".")
 			if err != nil {
@@ -26,24 +28,44 @@ func TestAgentToolSelection(t *testing.T) {
 				t.Fatalf("preview tools = %#v, want %#v", approval.AgentMeta.Tools, tc.want)
 			}
 			result := a.ExecuteApproved(t.Context(), params, ".")
-			if !result.Success || !reflect.DeepEqual(executor.runReq.Tools, tc.want) {
-				t.Fatalf("request tools = %#v, want %#v; result %v", executor.runReq.Tools, tc.want, result.Error)
+			var wantDeny []string
+			if tc.raw != nil {
+				wantDeny = []string{"Bash"}
+			}
+			if !result.Success || !reflect.DeepEqual(executor.runReq.AllowTools, tc.want) || !reflect.DeepEqual(executor.runReq.DenyTools, wantDeny) {
+				t.Fatalf("allow=%#v deny=%#v error=%v", executor.runReq.AllowTools, executor.runReq.DenyTools, result.Error)
 			}
 		}
 	}
 }
 
 func TestInvalidAgentTools(t *testing.T) {
-	for _, bad := range []any{nil, []string(nil), "Read", []any{nil}, []any{1}, []any{"Read", ""}, []any{" Read"}, []any{"Read*"}, []any{"Read", "Read"}} {
-		executor := &recordingExecutor{configOK: true}
-		a := NewAgentTool()
-		a.SetExecutor(executor)
-		params := map[string]any{"tools": bad, "prompt": "Inspect"}
-		if _, err := a.PreparePermission(t.Context(), params, "."); err == nil {
-			t.Errorf("preview accepted %#v", bad)
+	for _, field := range []string{"allow_tools", "deny_tools"} {
+		for _, bad := range []any{nil, []string(nil), "Read", []any{nil}, []any{1}, []any{"Read", ""}, []any{" Read"}, []any{"Read*"}, []any{"Read", "Read"}} {
+			executor := &recordingExecutor{configOK: true}
+			a := NewAgentTool()
+			a.SetExecutor(executor)
+			params := map[string]any{field: bad, "prompt": "Inspect"}
+			if _, err := a.PreparePermission(t.Context(), params, "."); err == nil {
+				t.Errorf("preview accepted %s=%#v", field, bad)
+			}
+			if result := a.Execute(t.Context(), params, "."); result.Success || executor.runReq.Prompt != "" {
+				t.Errorf("executed invalid %s=%#v", field, bad)
+			}
 		}
-		if result := a.Execute(t.Context(), params, "."); result.Success || executor.runReq.Prompt != "" {
-			t.Errorf("executed invalid selection %#v", bad)
+	}
+}
+
+func TestAgentRejectsDeprecatedTools(t *testing.T) {
+	executor := &recordingExecutor{configOK: true}
+	a := NewAgentTool()
+	a.SetExecutor(executor)
+	for _, params := range []map[string]any{{"prompt": "Inspect", "tools": []any{}}, {"prompt": "Inspect", "tools": nil, "allow_tools": []any{"Read"}}} {
+		if _, err := a.PreparePermission(t.Context(), params, "."); err == nil || !strings.Contains(err.Error(), "no longer accepts tools") {
+			t.Fatalf("preview error: %v", err)
+		}
+		if result := a.Execute(t.Context(), params, "."); result.Success || !strings.Contains(result.Error, "no longer accepts tools") || executor.runReq.Prompt != "" {
+			t.Fatalf("execution error: %v", result.Error)
 		}
 	}
 }

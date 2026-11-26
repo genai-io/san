@@ -51,7 +51,7 @@ func TestWorkerSelectsOneMCPTool(t *testing.T) {
 	e.SetMCPDependencies(manager)
 	e.SetParentTools(func() []string { return []string{selected, sibling} })
 	e.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
-	req := tool.AgentExecRequest{Prompt: "use docs", Tools: []string{selected}}
+	req := tool.AgentExecRequest{Prompt: "use docs", AllowTools: []string{selected, sibling}, DenyTools: []string{sibling}}
 	if res, err := e.Run(t.Context(), req); err != nil || !res.Success {
 		t.Fatalf("worker: %+v %v", res, err)
 	}
