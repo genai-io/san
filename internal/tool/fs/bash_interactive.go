@@ -42,7 +42,7 @@ const (
 // or unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
 // command working silently keeps running; a cancelled ctx kills the whole process
 // group so descendants holding a fd are reaped too.
-func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, error) {
+func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder, progress *outputProgress) (string, error) {
 	cmd.WaitDelay = 5 * time.Second // backstop for Wait if a child keeps a fd open
 
 	// stdin: a pty slave, so isatty(stdin) is true and prompts fire; we write
@@ -97,6 +97,7 @@ func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responde
 	}()
 
 	var out outputCapture
+	capture := progress.tee(&out)
 	var pending bytes.Buffer
 	answers := 0
 	stoppedAnswering := false
@@ -127,7 +128,7 @@ loop:
 			if !ok {
 				break loop // process finished and closed the pty
 			}
-			_, _ = out.Write(b)
+			_, _ = capture.Write(b)
 			pending.Write(b)
 			trimToLine(&pending)
 			rearm()
@@ -182,7 +183,7 @@ drainLoop:
 			if !ok {
 				break drainLoop
 			}
-			_, _ = out.Write(b)
+			_, _ = capture.Write(b)
 		case <-drainDeadline.C:
 			break drainLoop
 		}
@@ -199,8 +200,8 @@ drainLoop:
 // its prompts through responder, always handling the command. The platform-split
 // partner (bash_interactive_other.go) returns handled=false off unix so bash
 // falls back to its normal execution path.
-func runWithResponder(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, bool, error) {
-	out, err := runInteractive(ctx, command, cmd, responder)
+func runWithResponder(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder, progress *outputProgress) (string, bool, error) {
+	out, err := runInteractive(ctx, command, cmd, responder, progress)
 	return out, true, err
 }
 

@@ -64,14 +64,15 @@ func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 	}
 
 	var oldLineNo, newLineNo int
+	inHunk := false
 
 	for _, line := range diffLines {
 		// A Windows file's lines keep their \r; a renderer would print it
 		// and send the cursor back over the row.
 		line = strings.TrimSuffix(line, "\r")
 
-		// Skip file headers (---, +++)
-		if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") {
+		// Within a hunk, +++ and --- are also valid marked source lines.
+		if !inHunk && (strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++")) {
 			continue
 		}
 
@@ -94,6 +95,7 @@ func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 
 		// Handle hunk headers
 		if matches := hunkHeaderRegex.FindStringSubmatch(line); matches != nil {
+			inHunk = true
 			// Parse starting line numbers from hunk header
 			oldLineNo, _ = strconv.Atoi(matches[1])
 			newLineNo, _ = strconv.Atoi(matches[2])

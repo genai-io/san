@@ -129,6 +129,28 @@ func TestOutputProgress_reportsWhatTheThrottleHeldBack(t *testing.T) {
 
 // Past the 30 KB the model gets, results still count every line and retain the
 // interleaved end on success as well as failure, matching the running preview.
+func TestShellSingleLineSubtitlePreservesUnicode(t *testing.T) {
+	for _, last := range []string{"z", "界"} {
+		prefix := strings.Repeat("a", 49) + last
+		result := bashTool(t).ExecuteApproved(t.Context(), map[string]any{"command": "echo " + prefix + "end"}, t.TempDir())
+		if !result.Success || result.Metadata.Subtitle != prefix+"..." || strings.TrimSpace(result.Output) != prefix+"end" {
+			t.Errorf("last=%q subtitle=%q output=%q", last, result.Metadata.Subtitle, result.Output)
+		}
+	}
+}
+
+func TestShellSingleLineDiagnosticSubtitle(t *testing.T) {
+	for _, tc := range []struct{ command, description, want string }{
+		{"echo diagnostic", "", "diagnostic"}, {"echo diagnostic >&2", "", "diagnostic"},
+		{"echo diagnostic >&2", "Check status", "Check status"}, {"true", "", "Done"},
+	} {
+		result := bashTool(t).ExecuteApproved(t.Context(), map[string]any{"command": tc.command, "description": tc.description}, t.TempDir())
+		if !result.Success || result.Metadata.Subtitle != tc.want {
+			t.Errorf("%s: subtitle %q, want %q; output %q", tc.command, result.Metadata.Subtitle, tc.want, result.Output)
+		}
+	}
+}
+
 func TestBashExecuteApproved_truncatedOutputKeepsCountAndEnd(t *testing.T) {
 	ctx := coretool.ContextWithBashProgress(context.Background(), func(int, int64, string) {})
 	result := bashTool(t).ExecuteApproved(ctx, map[string]any{

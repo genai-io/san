@@ -6,7 +6,9 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/colorprofile"
 	xansi "github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/kit"
 
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -125,6 +127,63 @@ func TestRenderFileDiffHidesNoNewlineMarker(t *testing.T) {
 	}
 	if !strings.Contains(plain, "1 - 123") || !strings.Contains(plain, "1 + 23") {
 		t.Fatalf("diff rows should still render, got:\n%s", plain)
+	}
+}
+
+func TestNoNewlineKeepsDiffEmphasis(t *testing.T) {
+	profile, dark := lipgloss.Writer.Profile, kit.IsDarkBackground()
+	lipgloss.Writer.Profile = colorprofile.TrueColor
+	t.Cleanup(func() {
+		lipgloss.Writer.Profile = profile
+		if dark {
+			kit.InitTheme("dark")
+		} else {
+			kit.InitTheme("light")
+		}
+	})
+	const marker = "\\ No newline at end of file\n"
+	const diff = "@@ -1 +1 @@\n-common old suffix\n" + marker + "+common new suffix\n" + marker
+	for _, theme := range []string{"dark", "light"} {
+		kit.InitTheme(theme)
+		got, _ := RenderFileDiff(perm.ParseUnifiedDiff(diff), 32, 0)
+		want, _ := RenderFileDiff(perm.ParseUnifiedDiff(strings.ReplaceAll(diff, marker, "")), 32, 0)
+		if got != want {
+			t.Errorf("%s: EOF marker changed rendered rows:\n%q\nwant %q", theme, got, want)
+		}
+	}
+}
+
+func TestStoredNewFileDiffKeepsHeaderLikeCode(t *testing.T) {
+	profile, dark := lipgloss.Writer.Profile, kit.IsDarkBackground()
+	lipgloss.Writer.Profile = colorprofile.TrueColor
+	t.Cleanup(func() {
+		lipgloss.Writer.Profile = profile
+		if dark {
+			kit.InitTheme("dark")
+		} else {
+			kit.InitTheme("light")
+		}
+	})
+	for _, theme := range []string{"dark", "light"} {
+		kit.InitTheme(theme)
+		added := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Background(kit.CurrentTheme.SuccessBg)
+		diff := perm.GenerateDiff("sample.c", "", "++index;\n\nabcdefghijklmnop\n")
+		out, hidden := RenderStoredFileDiff(diff.UnifiedDiff, 20, 0)
+		rows := strings.Split(strings.TrimSuffix(xansi.Strip(out), "\n"), "\n")
+		want := []string{"     1 + ++index;", "     2 +", "     3 + abcdefghijk", "         lmnop"}
+		if hidden != 0 || diff.AddedCount != 3 || len(rows) != len(want) || !strings.Contains(out, added.Render("++index;")) {
+			t.Errorf("%s: incorrect added rows: %q", theme, out)
+			continue
+		}
+		for i, row := range rows {
+			if xansi.StringWidth(row) != 20 || strings.TrimRight(row, " ") != want[i] {
+				t.Errorf("%s row %d: %q", theme, i, row)
+			}
+		}
+	}
+	empty := perm.GenerateDiff("empty", "", "")
+	if out, hidden := RenderStoredFileDiff(empty.UnifiedDiff, 20, 0); out != "" || hidden != 0 {
+		t.Errorf("empty file: %q, hidden %d", out, hidden)
 	}
 }
 

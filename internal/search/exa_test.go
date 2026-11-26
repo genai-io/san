@@ -53,6 +53,11 @@ func TestParseSSEMessage(t *testing.T) {
 			want: `{"jsonrpc":"2.0","id":1}`,
 		},
 		{
+			name: "literal data inside plain JSON",
+			in:   `{"title":"Research data: a survey"}`,
+			want: `{"title":"Research data: a survey"}`,
+		},
+		{
 			name: "data line without space after colon",
 			in:   "data:{\"a\":1}\n\n",
 			want: `{"a":1}`,

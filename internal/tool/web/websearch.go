@@ -65,7 +65,11 @@ func (t *WebSearchTool) Execute(ctx context.Context, params map[string]any, cwd 
 	if len(results) == 0 {
 		sb.WriteString("No results found for: " + query)
 	} else {
-		sb.WriteString(fmt.Sprintf("Found %d results for: %s\n\n", len(results), query))
+		unit := "results"
+		if len(results) == 1 {
+			unit = "result"
+		}
+		fmt.Fprintf(&sb, "Found %d %s for: %s\n\n", len(results), unit, query)
 		for _, r := range results {
 			sb.WriteString(fmt.Sprintf("- [%s](%s)\n", r.Title, r.URL))
 			if r.Snippet != "" {

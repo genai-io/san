@@ -68,6 +68,9 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		if data.Nested {
 			return renderNestedReadResultInline(data)
 		}
+		if !data.IsError && data.Expanded {
+			data.Content = visibleReadSource(data.Content)
+		}
 		return renderGenericToolResultInline(data)
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
@@ -92,7 +95,7 @@ func renderNestedReadResultInline(data ToolResultData) string {
 	content := strings.TrimSuffix(data.Content, "\n")
 	var sb strings.Builder
 	if data.Expanded {
-		sb.WriteString(renderNestedToolBody(content, data.Width))
+		sb.WriteString(renderNestedToolBody(visibleReadSource(content), data.Width))
 	}
 	sb.WriteString(renderNestedToolTrailer(formatReadResultSummary(content), toolResultStyle))
 	return sb.String()
@@ -190,8 +193,13 @@ func renderNestedGenericToolResultInline(data ToolResultData) string {
 	if toolName == "" {
 		toolName = "Tool"
 	}
-	sb.WriteString(renderNestedToolTrailer(formatToolResultSize(toolName, content), toolResultStyle))
+	sb.WriteString(renderNestedToolTrailer(formatToolResultSize(toolName, data.Content), toolResultStyle))
 	return sb.String()
+}
+
+// Read strips file line endings; remaining CRs represent source characters.
+func visibleReadSource(content string) string {
+	return strings.ReplaceAll(content, "\r", "␍")
 }
 
 func formatReadResultSummary(content string) string {
@@ -312,10 +320,9 @@ func renderFileChangeInputPreview(input, diagnostic string, width int) string {
 		if preview.text == "" {
 			continue
 		}
+		prefix := "  " + preview.marker + " "
 		for line := range strings.SplitSeq(preview.text, "\n") {
-			for segment := range strings.SplitSeq(xansi.Wrap(line, previewWidth-lipgloss.Width(preview.marker)-1, " "), "\n") {
-				sb.WriteString(toolResultStyle.Render("  "+preview.marker+" "+segment) + "\n")
-			}
+			sb.WriteString(renderGutteredLine(prefix, prefix, toolResultStyle, line, width))
 		}
 	}
 	return sb.String()
@@ -1171,10 +1178,12 @@ func extractToolArgs(input string) string {
 
 func formatToolResultSize(toolName, content string) string {
 	switch toolName {
+	case tool.ToolRead:
+		return formatReadResultSummary(content)
 	case "WebFetch":
 		return toolresult.FormatSize(int64(len(content)))
 	case "Write", "Edit":
-		return extractParenContent(content, "completed")
+		return extractTrailingParenContent(content, "completed")
 	case tool.ToolSendMessage:
 		// The first clause is the outcome, e.g. "Sent · reading now".
 		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
@@ -1183,27 +1192,6 @@ func formatToolResultSize(toolName, content string) string {
 	default:
 		return formatLineCount(content)
 	}
-}
-
-func extractParenContent(s, fallback string) string {
-	start := strings.IndexByte(s, '(')
-	if start == -1 {
-		return fallback
-	}
-
-	depth := 0
-	for i := start; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 {
-				return s[start+1 : i]
-			}
-		}
-	}
-	return fallback
 }
 
 func formatLineCount(content string) string {

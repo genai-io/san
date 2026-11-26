@@ -101,6 +101,20 @@ func TestRead_LineLimit_LargeFile(t *testing.T) {
 	})
 }
 
+func TestReadPastEndReportsFileLength(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notes.txt")
+	for text, length := range map[string]string{"one": "1 line", "one\ntwo\n": "2 lines"} {
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		result := (&ReadTool{}).Execute(t.Context(), map[string]any{"file_path": path, "offset": float64(3)}, dir)
+		if !result.Success || len(result.Lines) != 0 || result.Output != "no lines at offset 3: "+path+" has "+length {
+			t.Errorf("%s file: %q", length, result.Output)
+		}
+	}
+}
+
 func TestReadCapsTotalOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "huge.txt")

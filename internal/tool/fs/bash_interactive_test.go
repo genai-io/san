@@ -11,6 +11,7 @@ import (
 	"time"
 
 	coretool "github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 type fakeResponder struct {
@@ -40,7 +41,7 @@ func runScript(t *testing.T, script string, r BashPromptResponder) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.Command("bash", "-c", script)
-	out, _ := runInteractive(ctx, script, cmd, r)
+	out, _ := runInteractive(ctx, script, cmd, r, &outputProgress{})
 	return out
 }
 
@@ -131,7 +132,7 @@ func Test_runInteractive_timeoutReapsChildHoldingPTY(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = runInteractive(ctx, "sleep", cmd, &fakeResponder{})
+		_, _ = runInteractive(ctx, "sleep", cmd, &fakeResponder{}, &outputProgress{})
 		close(done)
 	}()
 
@@ -154,7 +155,7 @@ func Test_runInteractive_stdinIsTTYButStdoutIsPipe(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	cmd := exec.Command("bash", "-c", script)
-	out, err := runInteractive(ctx, script, cmd, r)
+	out, err := runInteractive(ctx, script, cmd, r, &outputProgress{})
 	if err != nil {
 		t.Fatalf("runInteractive errored (a hang would surface as a timeout here): %v (out=%q)", err, out)
 	}
@@ -196,6 +197,25 @@ func TestRunInteractiveCapsOutputAndStillAnswersLaterPrompt(t *testing.T) {
 	out := runScript(t, `yes audit | head -c 2097152; read -p "Continue? " a; [ "$a" = yes ]`, r)
 	if len(out) > maxShellOutputBytes+1 || r.answerCalls != 1 {
 		t.Fatalf("retained = %d, prompts = %d", len(out), r.answerCalls)
+	}
+}
+
+func TestLargeOutputCountAndTailWithResponder(t *testing.T) {
+	r := &fakeResponder{}
+	interactive := coretool.ContextWithBashPromptResponderProvider(t.Context(), func(context.Context) coretool.BashPromptResponder { return r })
+	for _, ctx := range []context.Context{t.Context(), interactive} {
+		result := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "seq 1 8000"}, t.TempDir())
+		if result.Metadata.Subtitle != "8000 lines (truncated)" {
+			t.Errorf("multiline subtitle %q", result.Metadata.Subtitle)
+		}
+		longLine := bashTool(t).ExecuteApproved(ctx, map[string]any{"command": "printf '%040000d' 1"}, t.TempDir())
+		if !longLine.Success || longLine.Metadata.Subtitle != "1 line (truncated)" {
+			t.Errorf("single-line subtitle %q", longLine.Metadata.Subtitle)
+		}
+		d, ok := result.Details.(toolresult.BashDetails)
+		if !result.Success || !ok || d.LineCount != 8000 || !strings.HasSuffix(d.Tail, "7999\n8000\n") || !d.TailTruncated || !strings.HasSuffix(result.Output, "(output truncated)") || r.answerCalls+r.secretCalls != 0 {
+			t.Errorf("success=%v lines=%d tail=%q", result.Success, d.LineCount, d.Tail)
+		}
 	}
 }
 
