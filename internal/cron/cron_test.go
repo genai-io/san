@@ -18,6 +18,9 @@ func Test_parse(t *testing.T) {
 		{"0 */2 * * *", false},
 		{"* * * * *", false},
 		{"0 0 */3 * *", false},
+		{"0 9 * janfeb *", true},
+		{"0 9 * JAN,feb *", false},
+		{"0 9 * Jan-Mar/2 Mon-Fri", false},
 		{"bad", true},
 		{"1 2 3 4 5 6", true},
 	}
@@ -50,6 +53,48 @@ func TestNextAfter(t *testing.T) { //nolint:revive // test name matches method
 	}
 }
 
+func TestNextAfterLeapDay(t *testing.T) {
+	for _, tc := range []struct {
+		schedule string
+		from     int
+		want     time.Time
+	}{
+		{"0 0 29 2 *", 2028, time.Date(2032, 2, 29, 0, 0, 0, 0, time.UTC)},
+		{"0 0 29 2 *", 2096, time.Date(2104, 2, 29, 0, 0, 0, 0, time.UTC)},
+		{"0 0 30 2 *", 2028, time.Time{}},
+	} {
+		expr, err := parse(tc.schedule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after := time.Date(tc.from, 2, 29, 0, 0, 0, 0, time.UTC)
+		if got := expr.nextAfter(after); !got.Equal(tc.want) {
+			t.Errorf("%q after %v: got %v, want %v", tc.schedule, after, got, tc.want)
+		}
+	}
+}
+
+func TestDayFields(t *testing.T) {
+	for _, tc := range []struct {
+		expr       string
+		from, want int // April 2026
+	}{
+		{"0 0 13 4 fri", 1, 3},   // weekday only
+		{"0 0 13 4 fri", 10, 13}, // month day only
+		{"0 0 */2 4 fri", 3, 17}, // wildcard step filters Fridays
+		{"0 0 13 4 *", 1, 13},
+	} {
+		e, err := parse(tc.expr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		date := func(day int) time.Time { return time.Date(2026, 4, day, 0, 0, 0, 0, time.UTC) }
+		if got := e.nextAfter(date(tc.from)); !got.Equal(date(tc.want)) {
+			t.Errorf("%s after %v: got %v, want %v", tc.expr, date(tc.from), got, date(tc.want))
+		}
+	}
+}
+
 func TestDescribe(t *testing.T) {
 	tests := []struct {
 		expr string
@@ -59,13 +104,37 @@ func TestDescribe(t *testing.T) {
 		{"*/1 * * * *", "every minute"},
 		{"* * * * *", "every minute"},
 		{"0 */2 * * *", "every 2 hours at :0"},
-		{"0 0 */3 * *", "every 3 days at 0:0"},
+		{"0 0 */2 * *", "every 2 days starting on day 1 of each month at 0:0"},
+		{"0 0 */3 * *", "every 3 days starting on day 1 of each month at 0:0"},
 	}
 
 	for _, tt := range tests {
 		got := Describe(tt.expr)
 		if got != tt.want {
 			t.Errorf("Describe(%q) = %q, want %q", tt.expr, got, tt.want)
+		}
+	}
+}
+
+func TestDescribeStepRollover(t *testing.T) {
+	for _, tc := range []struct {
+		spec, description string
+		hour, minute      int
+		gap               time.Duration
+	}{
+		{"*/7 * * * *", "every 7 minutes starting at minute 0 of each hour", 23, 56, 4 * time.Minute},
+		{"0 */5 * * *", "every 5 hours starting at 0:0 each day", 20, 0, 4 * time.Hour},
+	} {
+		e, err := parse(tc.spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := time.Date(2026, 11, 25, tc.hour, tc.minute, 0, 0, time.UTC)
+		if first := e.nextAfter(last.Add(-time.Minute)); !first.Equal(last) || e.nextAfter(first).Sub(first) != tc.gap {
+			t.Fatalf("unexpected rollover for %s", tc.spec)
+		}
+		if got := Describe(tc.spec); got != tc.description {
+			t.Errorf("%s: rollover gap %v, description %q", tc.spec, tc.gap, got)
 		}
 	}
 }

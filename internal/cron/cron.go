@@ -17,12 +17,13 @@ type field struct {
 // expression represents a parsed 5-field cron expression:
 // minute hour day-of-month month day-of-week
 type expression struct {
-	Raw    string
-	Minute field
-	Hour   field
-	DOM    field // day of month
-	Month  field
-	DOW    field // day of week (0=Sunday)
+	EitherDay bool // both day fields start with a restriction rather than '*'
+	Raw       string
+	Minute    field
+	Hour      field
+	DOM       field // day of month
+	Month     field
+	DOW       field // day of week (0=Sunday)
 }
 
 // fieldSpec defines the range for a cron field.
@@ -56,12 +57,13 @@ func parse(expr string) (*expression, error) {
 	}
 
 	return &expression{
-		Raw:    expr,
-		Minute: parsed[0],
-		Hour:   parsed[1],
-		DOM:    parsed[2],
-		Month:  parsed[3],
-		DOW:    parsed[4],
+		EitherDay: !strings.HasPrefix(fields[2], "*") && !strings.HasPrefix(fields[4], "*"),
+		Raw:       expr,
+		Minute:    parsed[0],
+		Hour:      parsed[1],
+		DOM:       parsed[2],
+		Month:     parsed[3],
+		DOW:       parsed[4],
 	}, nil
 }
 
@@ -77,14 +79,14 @@ func parseField(raw string, spec fieldSpec) (field, error) {
 	return f, nil
 }
 
-func parsePart(part string, spec fieldSpec, values map[int]bool) error {
-	// Replace name aliases
-	lower := strings.ToLower(part)
-	for name, val := range spec.names {
-		lower = strings.ReplaceAll(lower, name, strconv.Itoa(val))
+func (s fieldSpec) value(token string) (int, error) {
+	if n, ok := s.names[strings.ToLower(token)]; ok {
+		return n, nil
 	}
-	part = lower
+	return strconv.Atoi(token)
+}
 
+func parsePart(part string, spec fieldSpec, values map[int]bool) error {
 	// Handle step: */2, 1-10/3
 	step := 1
 	if idx := strings.Index(part, "/"); idx >= 0 {
@@ -106,11 +108,11 @@ func parsePart(part string, spec fieldSpec, values map[int]bool) error {
 
 	// Handle range: 1-5
 	if idx := strings.Index(part, "-"); idx >= 0 {
-		lo, err := strconv.Atoi(part[:idx])
+		lo, err := spec.value(part[:idx])
 		if err != nil {
 			return fmt.Errorf("invalid range start: %q", part)
 		}
-		hi, err := strconv.Atoi(part[idx+1:])
+		hi, err := spec.value(part[idx+1:])
 		if err != nil {
 			return fmt.Errorf("invalid range end: %q", part)
 		}
@@ -124,7 +126,7 @@ func parsePart(part string, spec fieldSpec, values map[int]bool) error {
 	}
 
 	// Single value
-	v, err := strconv.Atoi(part)
+	v, err := spec.value(part)
 	if err != nil {
 		return fmt.Errorf("invalid value: %q", part)
 	}
@@ -136,11 +138,16 @@ func parsePart(part string, spec fieldSpec, values map[int]bool) error {
 }
 
 // nextAfter returns the next time the expression fires after the given time.
-// It searches up to 4 years ahead to avoid infinite loops.
+// The search is bounded so impossible dates return a zero time.
 func (e *expression) nextAfter(after time.Time) time.Time {
 	// Start from the next minute
 	t := after.Truncate(time.Minute).Add(time.Minute)
 	deadline := after.Add(4 * 365 * 24 * time.Hour)
+	if e.Month.values[int(time.February)] && e.DOM.values[29] {
+		// Across a non-leap century, leap days are eight calendar years apart.
+		// Include the anniversary itself in the exclusive search window.
+		deadline = after.AddDate(8, 0, 1)
+	}
 
 	for t.Before(deadline) {
 		if !e.Month.values[int(t.Month())] {
@@ -148,7 +155,12 @@ func (e *expression) nextAfter(after time.Time) time.Time {
 			t = advanceMonth(t)
 			continue
 		}
-		if !e.DOM.values[t.Day()] || !e.DOW.values[int(t.Weekday())] {
+		dom, dow := e.DOM.values[t.Day()], e.DOW.values[int(t.Weekday())]
+		matches := dom && dow
+		if e.EitherDay {
+			matches = dom || dow
+		}
+		if !matches {
 			next := time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, t.Location())
 			// A nonexistent midnight can normalize back into the previous day.
 			if !next.After(t) {
@@ -192,6 +204,9 @@ func Describe(expr string) string {
 		if n == "1" {
 			return "every minute"
 		}
+		if step, err := strconv.Atoi(n); err == nil && step > 0 && 60%step != 0 {
+			return "every " + n + " minutes starting at minute 0 of each hour"
+		}
 		return "every " + n + " minutes"
 	case hour == "*" && dom == "*" && mon == "*" && dow == "*":
 		return "at minute " + min + " of every hour"
@@ -200,12 +215,18 @@ func Describe(expr string) string {
 		if n == "1" {
 			return "every hour at :" + min
 		}
+		if step, err := strconv.Atoi(n); err == nil && step > 0 && 24%step != 0 {
+			if _, err := strconv.Atoi(min); err != nil {
+				return expr // Multiple minute matches are not one interval in hours.
+			}
+			return "every " + n + " hours starting at 0:" + min + " each day"
+		}
 		return "every " + n + " hours at :" + min
 	case dom == "*" && mon == "*" && dow == "*":
 		return "daily at " + hour + ":" + min
 	case strings.HasPrefix(dom, "*/") && mon == "*" && dow == "*":
 		n := strings.TrimPrefix(dom, "*/")
-		return "every " + n + " days at " + hour + ":" + min
+		return "every " + n + " days starting on day 1 of each month at " + hour + ":" + min
 	default:
 		return expr
 	}
