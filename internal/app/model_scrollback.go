@@ -443,7 +443,7 @@ func (m *model) startScrollbackPrint(id uint64) tea.Cmd {
 		return nil
 	}
 	frame := m.View()
-	if len(scrollbackPhysicalLines(frame.Content, m.env.Width)) != m.env.Height {
+	if _, height := scrollbackSize(frame.Content, m.env.Width); height != m.env.Height {
 		// A row wider than the terminal makes the frame taller than it, and the
 		// renderer drops rows off its top, so the chunk is not on the top row.
 		return m.insertChunk(id, content, minimalScrollbackFrame())
@@ -731,11 +731,23 @@ func (*scrollbackBuffer) WidthMethod() uv.WidthMethod { return ansi.GraphemeWidt
 // retain their terminal width, soft wraps consume rows, and a trailing newline
 // creates a final blank row.
 func scrollbackPhysicalLines(content string, width int) []uv.Line {
-	if content == "" {
+	bufferWidth, height := scrollbackSize(content, width)
+	if height == 0 {
 		return nil
 	}
-	height := strings.Count(content, "\n") + 1
-	bufferWidth := width
+	buffer := &scrollbackBuffer{Buffer: uv.NewBuffer(bufferWidth, height)}
+	styled := uv.NewStyledString(content)
+	styled.Wrap = true
+	styled.Draw(buffer, buffer.Bounds())
+	return buffer.Lines
+}
+
+func scrollbackSize(content string, width int) (bufferWidth, height int) {
+	if content == "" {
+		return 0, 0
+	}
+	height = strings.Count(content, "\n") + 1
+	bufferWidth = width
 	if bufferWidth <= 0 {
 		bufferWidth = 1
 	}
@@ -751,12 +763,7 @@ func scrollbackPhysicalLines(content string, width int) []uv.Line {
 			bufferWidth = max(bufferWidth, lineWidth)
 		}
 	}
-
-	buffer := &scrollbackBuffer{Buffer: uv.NewBuffer(bufferWidth, height)}
-	styled := uv.NewStyledString(content)
-	styled.Wrap = true
-	styled.Draw(buffer, buffer.Bounds())
-	return buffer.Lines
+	return bufferWidth, height
 }
 
 func renderScrollbackLines(lines []uv.Line) string {

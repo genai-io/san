@@ -91,13 +91,13 @@ func readFileForRestore(filePath string) (content string, lines int, tokens int)
 	charCount := 0
 
 	for scanner.Scan() {
-		lineCount++
 		line := scanner.Text()
 		charCount += len(line) + 1
 		estimatedTokens := charCount / 4
 		if estimatedTokens > restoreMaxPerFile {
 			break
 		}
+		lineCount++
 		if lineCount > 1 {
 			sb.WriteString("\n")
 		}

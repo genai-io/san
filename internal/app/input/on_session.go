@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/session"
@@ -49,10 +50,10 @@ func NewSessionSelector() SessionSelector {
 
 func calculateSessionMaxVisible(height int) int {
 	const (
-		fixedLines      = 7
+		fixedLines      = 9 // title, filter, both scroll indicators, footer and spacing
 		linesPerSession = 3
 	)
-	return max(3, min((height-fixedLines)/linesPerSession, 20))
+	return max(1, min((height-fixedLines)/linesPerSession, 20))
 }
 
 func calculateSessionPreviewLength(width int) int {
@@ -169,7 +170,7 @@ func (s *SessionSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 }
 
 func sessionFormatCompactMetadata(sess session.ListItem) string {
-	return fmt.Sprintf("%d msgs · %s", sess.Messages, sessionFormatRelativeTime(time.UnixMilli(sess.LastActive)))
+	return kit.Plural(sess.Messages, "msg") + " · " + sessionFormatRelativeTime(time.UnixMilli(sess.LastActive))
 }
 
 func sessionTruncateToFirstLine(content string, maxLen int) string {
@@ -220,13 +221,21 @@ func (s *SessionSelector) Render() string {
 
 	var sb strings.Builder
 
-	title := fmt.Sprintf("Resume Session - %s (%d/%d)", filepath.Base(s.cwd), len(s.filtered), len(s.sessions))
+	count := fmt.Sprintf(" (%d/%d)", len(s.filtered), len(s.sessions))
+	title := "Resume Session - " + filepath.Base(s.cwd)
+	if s.width > 0 {
+		title = ansi.Truncate(title, max(0, s.width-len(count)), "…")
+	}
+	title += count
 	sb.WriteString(kit.SelectorTitleStyle().Render(title) + "\n")
 
 	searchLine := "Type to filter..."
 	searchStyle := kit.SelectorHintStyle()
 	if s.nav.Search != "" {
 		searchLine = s.nav.Search + "▏"
+		if excess := ansi.StringWidth(searchLine) - s.width; s.width > 0 && excess > 0 {
+			searchLine = ansi.TruncateLeft(searchLine, excess, "")
+		}
 		searchStyle = kit.SelectorBreadcrumbStyle()
 	}
 	sb.WriteString(searchStyle.Render(searchLine) + "\n\n")
@@ -250,13 +259,23 @@ func (s *SessionSelector) Render() string {
 		s.renderScrollIndicator(&sb, endIdx < len(s.filtered), "↓ more below")
 	}
 
-	sb.WriteString("\n" + kit.SelectorHintStyle().Render("↑/↓ navigate · Enter select · Esc clear/cancel"))
+	hint := "Esc cancel"
+	if s.nav.Search != "" {
+		hint = "Esc clear"
+	}
+	if !s.loading && len(s.filtered) > 0 {
+		hint = "Enter select · " + hint
+		if len(s.filtered) > 1 {
+			hint = "↑/↓ navigate · " + hint
+		}
+	}
+	sb.WriteString("\n" + kit.SelectorHintStyle().Render(hint))
 	return sb.String()
 }
 
 func (s *SessionSelector) renderScrollIndicator(sb *strings.Builder, show bool, text string) {
 	if show {
-		sb.WriteString(kit.SelectorHintStyle().Render("  "+text) + "\n")
+		sb.WriteString(kit.DimStyle().Render("  "+text) + "\n")
 	}
 }
 

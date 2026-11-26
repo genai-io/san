@@ -37,10 +37,12 @@ func truncateTitle(s string) string {
 	if utf8.RuneCountInString(s) <= maxTitleLen {
 		return s
 	}
-	runes := []rune(s)
-	truncated := string(runes[:maxTitleLen])
-	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxTitleLen/2 {
-		truncated = truncated[:lastSpace]
+	runes := []rune(s)[:maxTitleLen]
+	for i := maxTitleLen - 1; i > maxTitleLen/2; i-- {
+		if runes[i] == ' ' {
+			runes = runes[:i]
+			break
+		}
 	}
-	return strings.TrimSpace(truncated) + "..."
+	return strings.TrimSpace(string(runes)) + "..."
 }
