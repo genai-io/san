@@ -62,6 +62,31 @@ URL from `/models`, to override an endpoint. For a `.env` tracked by Git, trust
 the workspace and restart San from that directory to load it. An untracked
 (for example gitignored) `.env` or one outside a Git repository loads at startup.
 
+To give a launch directory its own connection, create `~/.san/connections.json`
+(outside the checkout). For example:
+
+```json
+{
+  "projects": {"/absolute/path/to/client-project": "client-jira"},
+  "connections": {
+    "client-jira": {
+      "endpointEnv": "JIRA_BASE_URL",
+      "url": "https://client.atlassian.net",
+      "credentials": {"JIRA_API_TOKEN": "CLIENT_JIRA_TOKEN"}
+    }
+  }
+}
+```
+
+Use the exact directory printed by `pwd -P`. Each credential maps a variable
+expected by your tool to a shell variable holding the value for **that endpoint**.
+Map every authentication field your tool uses (including an email if required).
+San sets these variables together before loading `.env`, overriding inherited
+values for the mapped names only. A missing source stops startup rather than
+falling back to an unrelated token. Other directories keep their normal environment.
+The project `.env` cannot select or edit this binding; remove a redundant
+`*_BASE_URL` there if you no longer want the skipped-entry warning.
+
 Two providers take a subscription instead of a key: **ChatGPT Subscription**
 (OpenAI) and **Copilot Subscription** (GitHub Copilot). Pick either in
 `/models` and San opens the browser to sign in — Copilot shows an

@@ -35,11 +35,6 @@ var cliOpts struct {
 }
 
 func init() {
-	// Load ./.env, minus the entries that decide where credentials are sent.
-	warnRefusedEnv(loadWorkingDirEnv())
-	// Initialize logging (enabled via SAN_DEBUG=1)
-	_ = log.Init()
-
 	// Register flags
 	rootCmd.Flags().StringVarP(&cliOpts.print, "print", "p", "", "Non-interactive print mode with prompt")
 	rootCmd.Flags().BoolVarP(&cliOpts.cont, "continue", "c", false, "Resume the most recent session")
@@ -59,6 +54,19 @@ func init() {
 }
 
 func main() {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		var cwd string
+		if cwd, err = os.Getwd(); err == nil {
+			err = applyProjectConnection(home, cwd)
+		}
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "san:", err)
+		os.Exit(1)
+	}
+	warnRefusedEnv(loadWorkingDirEnv())
+	_ = log.Init()
 	defer func() { _ = log.Sync() }()
 
 	if err := rootCmd.Execute(); err != nil {
