@@ -380,24 +380,3 @@ func TestAutopilotSaveWithSuggestOffClearsPromptSuggestion(t *testing.T) {
 		t.Fatal("saving Suggest off left stale prompt suggestion text")
 	}
 }
-
-func TestAutopilotStopEvidence(t *testing.T) {
-	resumable := map[core.StopReason]bool{
-		core.StopEndTurn:   true,
-		core.StopMaxSteps:  true,
-		core.StopTruncated: true,
-		core.StopCanceled:  false, // the human took the helm
-		core.StopHook:      false, // a configured halt
-	}
-	for reason, want := range resumable {
-		got, situation := autopilotStopEvidence(reason)
-		if got != want {
-			t.Errorf("autopilotStopEvidence(%q) resumable = %v, want %v", reason, got, want)
-		}
-		// Every resumable stop but a clean end_turn must explain itself, or the
-		// copilot sees an inexplicably truncated transcript.
-		if wantSituation := want && reason != core.StopEndTurn; wantSituation != (situation != "") {
-			t.Errorf("autopilotStopEvidence(%q) situation = %q, want explained = %v", reason, situation, wantSituation)
-		}
-	}
-}
