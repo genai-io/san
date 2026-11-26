@@ -13,13 +13,14 @@ import (
 )
 
 func FuzzyMatch(str, pattern string) bool {
-	pi := 0
-	for si := 0; si < len(str) && pi < len(pattern); si++ {
-		if str[si] == pattern[pi] {
-			pi++
+	for _, r := range pattern {
+		var found bool
+		_, str, found = strings.Cut(str, string(r))
+		if !found {
+			return false
 		}
 	}
-	return pi == len(pattern)
+	return true
 }
 
 func CalculateToolBoxWidth(screenWidth int) int {

@@ -426,7 +426,7 @@ func (m *model) renderChatSection(activeContent string) string {
 }
 
 // Activity uses only the rows left by the composer or docked modal.
-func (m model) renderChatIndicators(trackerView, bottom string) string {
+func (m *model) renderChatIndicators(trackerView, bottom string) string {
 	var parts []string
 
 	if trackerView != "" {

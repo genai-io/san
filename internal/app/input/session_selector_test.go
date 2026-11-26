@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -27,6 +28,98 @@ func appendSelectorInput(t *testing.T, opened *session.Session) {
 	t.Helper()
 	if err := opened.AcceptInput(t.Context(), ai.Message{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("Hello")}, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestResumeViewportKeepsSelectedSessionAndActionsVisible(t *testing.T) {
+	for _, height := range []int{12, 24} {
+		s := NewSessionSelector()
+		s.active = true
+		s.Resize(80, height)
+		for i := range 12 {
+			id := fmt.Sprintf("notes-%02d", i)
+			s.sessions = append(s.sessions, session.ListItem{Overview: session.Overview{SessionID: id, Title: id, LastPrompt: "Review the notes"}})
+		}
+		s.updateFilter()
+		for range 6 {
+			s.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+		}
+		view := s.Render()
+		if lines := strings.Count(view, "\n") + 1; lines > height || !strings.Contains(view, "notes-06") || !strings.Contains(view, "Enter select") || !strings.Contains(view, "Review the notes") {
+			t.Fatalf("height %d rendered %d lines:\n%s", height, lines, view)
+		}
+		if got := s.Select()().(sessionSelectedMsg).SessionID; got != "notes-06" {
+			t.Fatalf("selected %s", got)
+		}
+	}
+}
+
+func TestResumeProjectTitleKeepsMatchCount(t *testing.T) {
+	s := NewSessionSelector()
+	s.active = true
+	s.cwd = "/workspace/" + strings.Repeat("项目", 9)
+	s.sessions = []session.ListItem{{Overview: session.Overview{Title: "first"}}, {Overview: session.Overview{Title: "second"}}}
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'f', Text: "first"})
+	for _, width := range []int{40, 100} {
+		s.Resize(width, 24)
+		title := strings.Split(ansi.Strip(s.Render()), "\n")[0]
+		if ansi.StringWidth(title) > width || !strings.HasPrefix(title, "Resume Session") || !strings.HasSuffix(title, " (1/2)") || (width == 100 && !strings.Contains(title, strings.Repeat("项目", 9))) {
+			t.Errorf("width %d: %s", width, title)
+		}
+	}
+}
+
+func TestResumeFilterKeepsCursorOnRow(t *testing.T) {
+	s := NewSessionSelector()
+	s.active = true
+	s.Resize(40, 24)
+	query := "project-" + strings.Repeat("界", 20) + "notes"
+	s.sessions = []session.ListItem{{Overview: session.Overview{SessionID: "wanted", Title: query}}, {Overview: session.Overview{SessionID: "other", Title: "notes"}}}
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'p', Text: query})
+	line := strings.Split(ansi.Strip(s.Render()), "\n")[1]
+	if !strings.HasSuffix(line, "notes▏") || ansi.StringWidth(line) > 40 {
+		t.Fatalf("filter row width %d: %q", ansi.StringWidth(line), line)
+	}
+	s.Resize(80, 24)
+	if !strings.Contains(ansi.Strip(s.Render()), query+"▏") || len(s.filtered) != 1 || s.filtered[0].SessionID != "wanted" {
+		t.Fatal("render truncation changed the filter")
+	}
+}
+
+func TestResumeNoMatchActions(t *testing.T) {
+	s := NewSessionSelector()
+	s.active = true
+	s.Resize(40, 24)
+	s.sessions = []session.ListItem{{Overview: session.Overview{SessionID: "one", Title: "notes"}}}
+	s.updateFilter()
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'z', Text: "z"})
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	if got := s.Render(); strings.Contains(got, "Enter select") || strings.Contains(got, "navigate") || !strings.Contains(got, "Esc clear") || s.HandleKeypress(enter) != nil {
+		t.Fatalf("empty filter actions: %q", got)
+	}
+	s.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEsc})
+	if !strings.Contains(s.Render(), "Enter select") {
+		t.Fatal("selection hint not restored")
+	}
+	cmd := s.HandleKeypress(enter)
+	if cmd == nil || cmd().(sessionSelectedMsg).SessionID != "one" {
+		t.Fatal("session not selected")
+	}
+}
+
+func TestResumeUnicodeFilterSelectsMatchingSession(t *testing.T) {
+	s := NewSessionSelector()
+	s.sessions = []session.ListItem{
+		{Overview: session.Overview{SessionID: "other", Title: "crème © notes"}},
+		{Overview: session.Overview{SessionID: "wanted", Title: "résumé notes"}},
+	}
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'é', Text: "én"})
+	cmd := s.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("ordered fuzzy query selected no session")
+	}
+	if msg := cmd().(sessionSelectedMsg); msg.SessionID != "wanted" {
+		t.Fatalf("selected %q, want wanted", msg.SessionID)
 	}
 }
 
@@ -52,11 +145,14 @@ func TestSessionSelectorLoadsOffLoopAndKeepsTypedFilter(t *testing.T) {
 		t.Fatal("loading discarded the user's filter")
 	}
 	state.Selector.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := state.Selector.Render(); !strings.Contains(got, "1 msg ·") {
+		t.Fatalf("single-message row: %q", got)
+	}
 	if !state.Selector.IsActive() || state.Selector.Select() == nil {
 		t.Fatal("clearing the filter must restore selection")
 	}
 	state.Selector.Resize(50, 12)
-	if state.Selector.nav.MaxVisible != 3 || state.Selector.width != 50 {
+	if state.Selector.nav.MaxVisible != 1 || state.Selector.width != 50 {
 		t.Fatal("selector retained its opening dimensions")
 	}
 }

@@ -98,7 +98,13 @@ async function loadSessions(index = 0, cursor = '') {
     if (!response.ok) throw new Error(response.statusText);
     const page = await response.json();
     sessionPages.items = new Map(page.items.map(item => [item.id, item]));
-    if (sessionPages.items.has(state.currentSession)) displaySession(state.currentSession);
+    const selected = sessionPages.items.get(state.currentSession);
+    if (selected) {
+      // A page can omit a preview to stay within its read budget. Only a
+      // populated title supersedes the open session's cached summary.
+      if (selected.title && state.sessionSummary) state.sessionSummary.title = selected.title;
+      displaySession(state.currentSession);
+    }
     const nodes = page.items.map(item => {
       const node = textElement('li', '');
       node.dataset.session = item.id;

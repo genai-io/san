@@ -115,6 +115,21 @@ test('session pages load only on navigation or refresh and prevent overlapping r
   assert.equal(status.textContent,'Page 1');
 });
 
+test('refresh keeps the selected header and reordered session row in sync',async()=>{
+  let title='Initial notes';
+  const v=await viewer(()=>({items:[...(title==='Initial notes'?[]:[{id:'other'}]),{id:'notes',title}]}),
+    'http://localhost/?session=notes',()=>({ok:true,json:async()=>({title,subagent:true,parent:'parent'})}));
+  const stream=v.state.eventSource;
+  title='Release notes';
+  v.element('#sessions-refresh').listeners.click();await new Promise(setImmediate);
+  const selected=v.element('#session-list').children[1];
+  assert.equal(selected.classList.contains('active'),true);
+  assert.match(selected.textContent,/Release notes/);
+  assert.equal(v.element('#session-meta').textContent,'Subagent · Release notes');
+  assert.equal(v.element('#session-parent').href,'?session=parent');
+  assert.equal(v.state.eventSource,stream);
+});
+
 test('session row keeps metadata inside the clickable button and supports a direct link',async()=>{
   const v=await viewer(()=>({items:[{id:'fresh',title:'New session',updatedAt:'2026-11-21T00:25:32Z'}]}), 'http://localhost/?session=fresh');
   assert.equal(v.state.currentSession,'fresh');
