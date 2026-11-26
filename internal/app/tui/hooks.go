@@ -10,7 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -106,7 +106,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
 	m.services.LLM.SetProvider(p)
-	hooks.Bind(m.services.Hook, p, m.services.Session, m.env.GetModelID())
+	apphook.Bind(m.services.Hook, p, m.services.Session, m.env.GetModelID())
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {

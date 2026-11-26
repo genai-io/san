@@ -12,7 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ext"
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -237,7 +237,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		return protocol.NewSessionResponse{}, err
 	}
 	s.hooks = hook.NewEngine(settings, opened.ID(), req.CWD, opened.Path())
-	hooks.Bind(s.hooks, h.provider, opened, modelID)
+	apphook.Bind(s.hooks, h.provider, opened, modelID)
 	skills.SetStateChangeObserver(session.NewRecorder(opened, h.provider.Name()).RecordSkillStateChange)
 	s.hooks.SetEnvProvider(func(ctx context.Context) []string { return plugin.PluginEnv(plugin.WithRegistry(ctx, plugins)) })
 	s.permissions = &acpPermissions{SessionPermissions: setting.NewSessionPermissions(), settings: settings}

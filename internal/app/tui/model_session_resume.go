@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
@@ -50,7 +50,7 @@ func (m *model) loadSessionByID(id string) error {
 		next := oldHooks.ForSession(opened.ID(), m.env.CWD, opened.Path())
 		oldHooks.Shutdown()
 		m.services.Hook = next
-		hooks.Bind(next, m.env.LLMProvider, opened, m.env.GetModelID())
+		apphook.Bind(next, m.env.LLMProvider, opened, m.env.GetModelID())
 		m.configureAsyncHookCallback()
 		m.wireTaskLifecycle(next)
 		history = opened.Snapshot()
@@ -167,7 +167,7 @@ func (m *model) restoreHistory(history session.Projection) error {
 		m.services.LLM.SetProvider(provider)
 		m.services.LLM.SetCurrentModel(info)
 	}
-	hooks.Bind(m.services.Hook, provider, m.services.Session, info.ModelID)
+	apphook.Bind(m.services.Hook, provider, m.services.Session, info.ModelID)
 	m.resetRecap()
 	m.conv.Messages = m.services.SessionStore.ChatRows(history)
 	m.earlyNotices = nil

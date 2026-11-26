@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/app/tui/widgets"
 	"github.com/genai-io/san/internal/core"
@@ -162,7 +162,7 @@ func (m *model) replaceSession(opened *session.Session) error {
 		m.bindMainBroker(opened)
 	}
 	group.BindSession(opened.ID)
-	hooks.Bind(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
+	apphook.Bind(m.services.Hook, m.env.LLMProvider, opened, m.env.GetModelID())
 	if changed && m.services.Hook != nil {
 		m.configureAsyncHookCallback()
 		m.wireTaskLifecycle(m.services.Hook)

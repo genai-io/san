@@ -25,7 +25,7 @@ the assignment changes.
 | `internal/app/acp` | `app` | ACP stdio host: native sessions, turns, permissions, extensions and workers, without the TUI. |
 | `internal/app/ext` | `app` | Exposes plugin-provided extensions to hosts. |
 | `internal/app/inspector` | `app` | Transcript inspector server, replay, stream, embedded UI. |
-| `internal/app/hooks` | `app` | Binds hooks to sessions. |
+| `internal/app/hook` | `app` | Binds hooks to sessions. |
 | `internal/app/cli` | `app` | `cli.Print` and `cli.RunAgent` execute one-shot runs. CLI and ACP share provider/model selection in `internal/llm`; `cmd/san` emits startup diagnostics. |
 
 ## Core Contracts

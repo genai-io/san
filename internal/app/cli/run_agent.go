@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -53,8 +53,8 @@ func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Dat
 	executor.SetChildHooks(func(owner *session.Session, provider llm.Provider, model string) (hook.Handler, func(llm.Provider, string), func()) {
 		projection := owner.Snapshot()
 		engine := hook.NewEngine(settings, owner.ID(), projection.Identity().InitialCWD, owner.Path())
-		hooks.Bind(engine, provider, owner, model)
-		return engine, func(provider llm.Provider, model string) { hooks.Bind(engine, provider, owner, model) }, engine.Shutdown
+		apphook.Bind(engine, provider, owner, model)
+		return engine, func(provider llm.Provider, model string) { apphook.Bind(engine, provider, owner, model) }, engine.Shutdown
 	})
 	executor.SetPostTool(func(handler hook.Handler, result core.ToolResult, effect any) error {
 		engine, _ := handler.(*hook.Engine)

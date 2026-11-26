@@ -16,7 +16,7 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/ask"
-	"github.com/genai-io/san/internal/app/hooks"
+	apphook "github.com/genai-io/san/internal/app/hook"
 	"github.com/genai-io/san/internal/app/tui/transcript"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
@@ -199,7 +199,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	recorder := session.NewRecorder(rec, providerName)
 	if engine := m.services.Hook; engine != nil {
 		engine.SetSession(rec.ID(), rec.Path())
-		hooks.Bind(engine, params.Provider, rec, params.ModelID)
+		apphook.Bind(engine, params.Provider, rec, params.ModelID)
 		params.HookEngine = engine
 	}
 	if skills := m.services.Skill; skills != nil {
@@ -674,7 +674,7 @@ func (m *model) ReconfigureAgentTool() {
 		}
 		child := parentHooks.ForSession(owner.ID(), cwd, owner.Path())
 		bind := func(provider llm.Provider, model string) {
-			hooks.Bind(child, provider, owner, model)
+			apphook.Bind(child, provider, owner, model)
 		}
 		bind(provider, model)
 		return child, bind, child.Shutdown
