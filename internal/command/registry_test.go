@@ -6,6 +6,40 @@ import (
 	"testing"
 )
 
+func TestCustomPaletteNamesResolveToAdvertisedCommand(t *testing.T) {
+	r := &Registry{cachedCustomCommands: []CustomCommand{
+		{Name: "review", Namespace: "ci", Description: "plugin review"},
+		{Name: "review", Description: "project review"},
+	}}
+	matches := r.Matching("/review")
+	if len(matches) != 2 {
+		t.Fatalf("matches = %+v", matches)
+	}
+	for _, entry := range matches {
+		name, _, _ := ParseCommand("/" + entry.Name)
+		got, ok := r.IsCustomCommand(name)
+		if !ok || got.FullName() != entry.Name {
+			t.Errorf("dispatch /%s = %+v", entry.Name, got)
+		}
+		if info, ok := r.Get(name); !ok || info != entry {
+			t.Errorf("metadata /%s = %+v", entry.Name, info)
+		}
+	}
+	r.cachedCustomCommands = r.cachedCustomCommands[:1]
+	if got, ok := r.IsCustomCommand("review"); !ok || got.FullName() != "ci:review" {
+		t.Fatal("lost short alias")
+	}
+}
+
+func TestFuzzyMatchCharacters(t *testing.T) {
+	if fuzzyMatch("crème-Ω", "é") {
+		t.Error("matched an absent character")
+	}
+	if !fuzzyMatch("résumé", "éé") {
+		t.Error("missed an ordered character match")
+	}
+}
+
 // saveAndRestore saves current singleton state and restores it on cleanup.
 func saveAndRestore(t *testing.T) {
 	t.Helper()

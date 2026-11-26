@@ -130,6 +130,7 @@ func readStdin() (string, error) {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version and build information",
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 
@@ -197,7 +198,7 @@ Usage:
 
 Print Mode (non-interactive):
   san -p "your prompt"       Print response and exit
-  echo "data" | san -p "analyze"  Pipe stdin with prompt
+  echo "data" | san -p ""    Use piped stdin as the prompt
 
 Interactive Mode:
   san                        Start chat
@@ -221,7 +222,8 @@ Keybindings:
   Alt+Enter    Insert newline
   Up/Down      Navigate input history
   Esc          Stop AI response
-  Ctrl+T       Toggle task list display
+  Ctrl+T       Cycle thinking effort
+  Alt+T        Toggle task list display
   Ctrl+C       Clear input / Quit
 
 Slash Commands:

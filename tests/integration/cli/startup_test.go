@@ -101,6 +101,10 @@ func TestVersionCommand(t *testing.T) {
 func TestVersionCommandJSON(t *testing.T) {
 	bin := buildBinary(t)
 
+	if out, err := exec.Command(bin, "version", "json").Output(); err == nil || len(out) != 0 {
+		t.Errorf("version json: expected an argument error without stdout, got %q (%v)", out, err)
+	}
+
 	cmd := exec.Command(bin, "version", "--json")
 	out, err := cmd.Output()
 	if err != nil {
@@ -138,7 +142,7 @@ func TestHelpCommand(t *testing.T) {
 	}
 
 	output := string(out)
-	for _, expected := range []string{"-p", "--continue", "--resume", "san -r <session-id>", "--plugin-dir", "--persona", "version"} {
+	for _, expected := range []string{"-p", `| san -p ""`, "Ctrl+T       Cycle thinking effort", "Alt+T        Toggle task list display", "--continue", "--resume", "san -r <session-id>", "--plugin-dir", "--persona", "version"} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("help output missing %q\nfull output:\n%s", expected, output)
 		}

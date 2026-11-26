@@ -33,6 +33,18 @@ func writeMember(t *testing.T, g string, m Member) {
 	}
 }
 
+func TestListingColumns(t *testing.T) {
+	isolate(t)
+	writeMember(t, "shop", Member{Name: "林", SessionID: "s-other"})
+	if _, err := Join("shop", Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	got := Listing()
+	if !strings.Contains(got, "* @api  idle") || !strings.Contains(got, "  @林   offline") {
+		t.Fatalf("misaligned states:\n%s", got)
+	}
+}
+
 func TestANameIsClaimedOnce(t *testing.T) {
 	isolate(t)
 	writeMember(t, "shop", Member{Name: "web", SessionID: "s-other"})

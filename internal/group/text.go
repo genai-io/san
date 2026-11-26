@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/rivo/uniseg"
 )
 
 // Roster is what the model is told about its group: who it is, who else is
@@ -84,7 +86,7 @@ func Listing() string {
 	fmt.Fprintf(&b, "%s · %s", g, MemberCount(len(members)))
 	width := 0
 	for _, m := range members {
-		width = max(width, len(m.Name))
+		width = max(width, uniseg.StringWidth(m.Name))
 	}
 	row := func(mark string, m Member) {
 		state := cmp.Or(string(m.State), string(Idle))
@@ -95,7 +97,8 @@ func Listing() string {
 		if m.Hold {
 			hold = "hold"
 		}
-		fmt.Fprintf(&b, "\n%s @%-*s  %-8s  %-4s  %s", mark, width, m.Name, state, hold, m.Role)
+		pad := strings.Repeat(" ", width-uniseg.StringWidth(m.Name))
+		fmt.Fprintf(&b, "\n%s @%s%s  %-8s  %-4s  %s", mark, m.Name, pad, state, hold, m.Role)
 	}
 	for _, m := range members {
 		if m.SessionID == self.SessionID {

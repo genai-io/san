@@ -47,6 +47,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ResetTokens:       m.env.ResetTokens,
 		GetGoal:           func() string { return strings.TrimSpace(m.env.AutoPilot.Mission) },
 		ContextUsage:      m.contextUsage,
+		SubscriptionUsage: m.subscriptionUsageLabel,
 
 		// Model actions
 		CommitMessages:          m.CommitMessages,
