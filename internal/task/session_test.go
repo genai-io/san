@@ -37,7 +37,7 @@ func TestBashOwnerCapturedBeforeRegistration(t *testing.T) {
 		t.Cleanup(func() { _ = cmd.Wait() })
 		return cmd
 	}
-	m := NewSupervisor()
+	m := NewRunSet()
 	m.SetSessionID("other-conversation")
 	ctx := WithOwnerAgentID(WithSessionID(context.Background(), "launch-conversation"), "launch-child")
 	child := m.CreateBashTask(ctx, command(), "echo", "", func() {})
@@ -59,7 +59,7 @@ func TestBashOwnerCapturedBeforeRegistration(t *testing.T) {
 }
 
 func TestWorkersKeepTheirLaunchingSession(t *testing.T) {
-	m := NewSupervisor()
+	m := NewRunSet()
 	m.SetSessionID("first")
 	ctx, cancel := context.WithCancel(WithSessionID(context.Background(), "first"))
 	defer cancel()
@@ -69,7 +69,7 @@ func TestWorkersKeepTheirLaunchingSession(t *testing.T) {
 	current := m.CreateAgentTask("second-worker", "", "", context.Background(), cancel)
 	for _, task := range []*AgentTask{first, nested} {
 		if task.GetStatus().ParentSessionID != "first" {
-			t.Fatal("worker followed the supervisor into another session")
+			t.Fatal("worker followed the run set into another session")
 		}
 	}
 	if current.GetStatus().ParentSessionID != "second" {

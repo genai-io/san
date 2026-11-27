@@ -23,7 +23,7 @@ func TestAgentIdentityRunningBackgroundSurvivesCompaction(t *testing.T) {
 	for _, nativeSessionOnly := range []bool{false, true} {
 		t.Run(fmt.Sprintf("native-session-only=%t", nativeSessionOnly), func(t *testing.T) {
 			m := fixedComposerModel(80, 24)
-			m.services.Task = task.NewSupervisor()
+			m.services.Task = task.NewRunSet()
 			worker := m.services.Task.CreateAgentTask("running-task", "reviewer", "Review", context.Background(), nil)
 			worker.SetIdentity("reviewer", "native-session")
 			t.Cleanup(func() { worker.Complete(nil) })
@@ -83,7 +83,7 @@ func TestAgentIdentityRunningBackgroundSurvivesCompaction(t *testing.T) {
 
 func TestAgentIdentityCompletionRetainsRecentAliases(t *testing.T) {
 	m := fixedComposerModel(80, 24)
-	m.services.Task = task.NewSupervisor()
+	m.services.Task = task.NewRunSet()
 	worker := m.services.Task.CreateAgentTask("recent-task", "reviewer", "Review", context.Background(), nil)
 	worker.SetIdentity("reviewer", "recent-session")
 	t.Cleanup(func() { worker.Complete(nil) })

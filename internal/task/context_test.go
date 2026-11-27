@@ -6,7 +6,7 @@ import (
 )
 
 func TestIdleIncludesWorkerCleanup(t *testing.T) {
-	pool := NewSupervisor()
+	pool := NewRunSet()
 	if !pool.Idle() {
 		t.Fatal("new pool is busy")
 	}

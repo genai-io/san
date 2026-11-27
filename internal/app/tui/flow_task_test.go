@@ -62,7 +62,7 @@ func TestFlowMainStepOpensNativeHistoryAndReturns(t *testing.T) {
 }
 
 func TestFlowChildUsesNativeTaskOverlayAndReturns(t *testing.T) {
-	manager := task.NewSupervisor()
+	manager := task.NewRunSet()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	child := manager.CreateForegroundAgentTask("child", "Explore", "Inspect package", ctx, cancel)
@@ -102,7 +102,7 @@ func TestFlowRecordedCheckpointInspection(t *testing.T) {
 	current := flow.Execution{TaskID: "child", SessionID: "child-session"}
 	for _, historical := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed", true: "historical-fanout"}[historical], func(t *testing.T) {
-			manager := task.NewSupervisor()
+			manager := task.NewRunSet()
 			m := flowInputModel(manager)
 			m.env.Height = 35
 			answer := "checkpoint answer " + strings.Repeat("full answer\n", 4000)
@@ -179,7 +179,7 @@ func TestFlowRecordedCheckpointInspection(t *testing.T) {
 
 func TestFlowRecordedRejectsConflictingLiveIdentity(t *testing.T) {
 	{
-		manager := task.NewSupervisor()
+		manager := task.NewRunSet()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		child := manager.CreateForegroundAgentTask("child", "Explore", "Inspect", ctx, cancel)
@@ -209,7 +209,7 @@ func TestFlowOpenTaskUnavailable(t *testing.T) {
 		{"viewer refuses pinned identity", flow.Execution{TaskID: "child", SessionID: "child-session"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			manager := task.NewSupervisor()
+			manager := task.NewRunSet()
 			m := flowInputModel(manager)
 			m.services.sessionID = "main-session"
 			if tc.live {
@@ -241,7 +241,7 @@ func TestFlowOpenTaskUnavailable(t *testing.T) {
 }
 
 func TestFlowStartArmsTaskAreaClock(t *testing.T) {
-	m := flowInputModel(task.NewSupervisor())
+	m := flowInputModel(task.NewRunSet())
 	if _, cmd := m.dispatch(input.FlowStartedMsg{}); cmd == nil {
 		t.Fatal("Flow launch needs a frame clock without opening an overlay")
 	}

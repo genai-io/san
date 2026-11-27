@@ -26,19 +26,19 @@ func SessionIDFromContext(ctx context.Context) string {
 }
 
 // SetSessionID selects the owner for work launched outside an agent, such as /flow.
-func (m *Supervisor) SetSessionID(id string) {
+func (m *RunSet) SetSessionID(id string) {
 	m.mu.Lock()
 	m.sessionID = id
 	m.mu.Unlock()
 }
 
-func (m *Supervisor) SessionID() string {
+func (m *RunSet) SessionID() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessionID
 }
 
-func (m *Supervisor) ownerSession(ctx context.Context) string {
+func (m *RunSet) ownerSession(ctx context.Context) string {
 	if id, ok := ctx.Value(sessionKey{}).(string); ok {
 		return id
 	}

@@ -36,7 +36,7 @@ func (c *handoffWaitContext) Deadline() (time.Time, bool) {
 
 func TestWorkerInboxSealsUntilTaskRetires(t *testing.T) {
 	store, parent := continuationSessions(t, "closing-owner")
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("done"))}, t.TempDir(), "aitest", nil)
 	e.ConfigureOwner(pool, Default(), nil, nil)
 	bindContinuationSessions(t, e, store, parent)
@@ -167,7 +167,7 @@ func (o *replacementRouteObserver) TaskCompleted(info task.TaskInfo) {
 
 func TestCompletedWorkerCleanupPreservesReplacementRoute(t *testing.T) {
 	store, parent := continuationSessions(t, "replacement-owner")
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	e := NewExecutor(continuationProvider{aitest.New(aitest.Says("done"))}, t.TempDir(), "aitest", nil)
 	e.ConfigureOwner(pool, Default(), nil, nil)
 	bindContinuationSessions(t, e, store, parent)
@@ -212,7 +212,7 @@ func TestWorkerBuildFailureSealsBeforeCleanup(t *testing.T) {
 	t.Cleanup(func() { tool.Register(original) })
 
 	store, parent := continuationSessions(t, "build-failure-owner")
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	driver := aitest.New(aitest.Says("must not run"))
 	e := NewExecutor(continuationProvider{driver}, t.TempDir(), "aitest", nil)
 	e.ConfigureOwner(pool, Default(), nil, nil)

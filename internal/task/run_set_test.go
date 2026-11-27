@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestSupervisor_CreateAndGet(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_CreateAndGet(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -30,8 +30,8 @@ func TestSupervisor_CreateAndGet(t *testing.T) {
 	}
 }
 
-func TestSupervisor_GetNotFound(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_GetNotFound(t *testing.T) {
+	m := NewRunSet()
 
 	_, ok := m.Get("nonexistent")
 	if ok {
@@ -39,8 +39,8 @@ func TestSupervisor_GetNotFound(t *testing.T) {
 	}
 }
 
-func TestSupervisor_List(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_List(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -58,8 +58,8 @@ func TestSupervisor_List(t *testing.T) {
 	}
 }
 
-func TestSupervisor_ListRunning(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_ListRunning(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,8 +82,8 @@ func TestSupervisor_ListRunning(t *testing.T) {
 	}
 }
 
-func TestSupervisor_Remove(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_Remove(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -102,8 +102,8 @@ func TestSupervisor_Remove(t *testing.T) {
 	}
 }
 
-func TestSupervisor_GenerateUniqueIDs(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_GenerateUniqueIDs(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -122,8 +122,8 @@ func TestSupervisor_GenerateUniqueIDs(t *testing.T) {
 	}
 }
 
-func TestSupervisor_RegisterTask(t *testing.T) {
-	m := NewSupervisor()
+func TestRunSet_RegisterTask(t *testing.T) {
+	m := NewRunSet()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

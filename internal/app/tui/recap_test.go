@@ -18,7 +18,7 @@ import (
 
 func newRecapModel(t *testing.T) *model {
 	m := fixedComposerModel(80, 40)
-	m.services.Agent, m.services.Task = &runtime.Runtime{}, task.NewSupervisor()
+	m.services.Agent, m.services.Task = &runtime.Runtime{}, task.NewRunSet()
 	m.services.MCP = mcp.NewManagerForTest(nil)
 	m.env.LLMProvider = &autopilotStubProvider{}
 	m.env.SessionPermissions = setting.NewSessionPermissions()

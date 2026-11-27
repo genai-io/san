@@ -48,7 +48,7 @@ func TestLiveFlowGraphAppearsWithTasks(t *testing.T) {
 func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mgr := task.NewSupervisor()
+	mgr := task.NewRunSet()
 	tracker := todo.NewStore()
 	worker := mgr.CreateAgentTask("review-1", "Reviewer", "Audit", ctx, cancel)
 	worker.SetLiveView("Read(main.go) failed: file missing\n" + strings.Repeat("diagnostics", 1000))
@@ -166,7 +166,7 @@ func TestLiveFlowSpacingKeepsPendingAndComposerVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := fixedComposerModel(80, 24)
-	m.services.Task = task.NewSupervisor()
+	m.services.Task = task.NewRunSet()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	wf := m.services.Task.CreateSchedulerTask("loop-spacing", "flow", "write", ctx, cancel)
@@ -191,7 +191,7 @@ func TestLiveFlowSpacingKeepsPendingAndComposerVisible(t *testing.T) {
 func TestLiveFlowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mgr := task.NewSupervisor()
+	mgr := task.NewRunSet()
 	tracker := todo.NewStore()
 	wf := mgr.CreateSchedulerTask("wf-tracker", "flow", "/flow demo", ctx, cancel)
 	wf.SetLiveView("Flow demo · 0/1 finished\n  ● map")
@@ -617,7 +617,7 @@ func addTallFlowActivity(t *testing.T, m *model) {
 	wf := task.NewAgentTask("flow-height", "flow", "review", ctx, cancel, "")
 	wf.MarkScheduler()
 	wf.SetLiveView(w.CompactProgressView(nil, m.env.Width))
-	m.services.Task = task.NewSupervisor()
+	m.services.Task = task.NewRunSet()
 	m.services.Task.RegisterTask(wf)
 }
 

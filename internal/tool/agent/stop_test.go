@@ -114,7 +114,7 @@ func TestAgentStopRejectsBashTask(t *testing.T) {
 func TestAgentStopUsesSessionTaskPool(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	worker := pool.CreateAgentTask("task-stop-pool", "Explore Worker", "Long task", ctx, cancel)
 	go func() {
 		<-ctx.Done()
@@ -123,7 +123,7 @@ func TestAgentStopUsesSessionTaskPool(t *testing.T) {
 	if _, found := task.Default().Get("task-stop-pool"); found {
 		t.Fatal("session task leaked into the default pool")
 	}
-	result := NewAgentStopTool().Execute(task.WithSupervisor(context.Background(), pool), map[string]any{"task_id": "task-stop-pool"}, ".")
+	result := NewAgentStopTool().Execute(task.WithRunSet(context.Background(), pool), map[string]any{"task_id": "task-stop-pool"}, ".")
 	if !result.Success || worker.IsRunning() {
 		t.Fatalf("stop ignored the session pool: %+v", result)
 	}

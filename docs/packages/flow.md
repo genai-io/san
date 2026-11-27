@@ -46,7 +46,7 @@ input queue while its display-only result passes through the app's held-notice q
 package flow
 
 // The app injects the native task manager and executor into the direct service.
-func NewService(tasks *task.Supervisor) *Service
+func NewService(tasks *task.RunSet) *Service
 // Launch runs a saved, reviewed definition and returns the scheduler task ID.
 // GetRun, ResumeRun and StopRun accept a run ID or that task ID. GetRun and
 // Runs reconcile a record still "running" with no lock holder to "interrupted".

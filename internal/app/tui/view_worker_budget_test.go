@@ -13,7 +13,7 @@ import (
 
 func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 	for _, mixed := range []bool{false, true} {
-		mgr := task.NewSupervisor()
+		mgr := task.NewRunSet()
 		tracker := todo.NewStore()
 		ctx := context.Background()
 		flow := mgr.CreateSchedulerTask("footer-flow", "flow", "DUPLICATE_SCHEDULER", ctx, nil)

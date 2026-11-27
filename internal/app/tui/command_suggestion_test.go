@@ -13,7 +13,7 @@ import (
 )
 
 func TestFlowServiceIsWiredDirectlyToSlashCommands(t *testing.T) {
-	manager := task.NewSupervisor()
+	manager := task.NewRunSet()
 	svc := services{Task: manager, Flow: flow.NewService(manager)}
 	if svc.Flow == nil {
 		t.Fatal("app services must construct a direct Flow service")
@@ -26,7 +26,7 @@ func TestFlowServiceIsWiredDirectlyToSlashCommands(t *testing.T) {
 
 func TestFlowStorageDoesNotRequireAProviderOrToolRegistry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	manager := task.NewSupervisor()
+	manager := task.NewRunSet()
 	m := &model{services: services{Task: manager, Flow: flow.NewService(manager)}}
 	m.env.CWD = t.TempDir()
 	m.ReconfigureAgentTool()
@@ -51,7 +51,7 @@ func TestFlowSuggestionsWalkCommandsThenSavedNames(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "demo.md"), []byte("---\nname: demo\ndescription: Example flow\n---\n```mermaid\nflowchart LR\n  a\n```\n\n## a\nUse {{input.topic}} and {{input.style}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	flows := flow.NewService(task.NewSupervisor())
+	flows := flow.NewService(task.NewRunSet())
 	flows.SetSearchPaths([]string{dir})
 	match := commandSuggestionMatcher(&command.Registry{}, flows)
 	names := func(query string) []string {
@@ -121,7 +121,7 @@ func TestFlowSuggestionsQuoteSavedNames(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	flows := flow.NewService(task.NewSupervisor())
+	flows := flow.NewService(task.NewRunSet())
 	flows.SetSearchPaths([]string{dir})
 	match := commandSuggestionMatcher(&command.Registry{}, flows)
 	for _, tc := range []struct {

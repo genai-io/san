@@ -19,14 +19,14 @@ import (
 // deadline.
 const gracefulStopTimeout = 2 * time.Second
 
-// Supervisor tracks background bash and subagent tasks.
+// RunSet tracks background bash and subagent tasks.
 //
 // Nothing prunes tasks: they are kept for the life of the process, because
 // TaskOutput resolves a task ID through this map and has no fallback to the
 // output file on disk, so forgetting one would mean answering "task not
 // found" for work the model ran minutes ago. What each task holds is bounded
 // instead, by appendCapped.
-type Supervisor struct {
+type RunSet struct {
 	work      sync.WaitGroup
 	active    atomic.Int64
 	mu        sync.RWMutex
@@ -35,15 +35,15 @@ type Supervisor struct {
 	sessionID string
 }
 
-// NewSupervisor creates a new *Supervisor.
-func NewSupervisor() *Supervisor {
-	return &Supervisor{
+// NewRunSet creates a new *RunSet.
+func NewRunSet() *RunSet {
+	return &RunSet{
 		tasks: make(map[string]BackgroundTask),
 	}
 }
 
 // CreateBashTask creates and registers a new bash task
-func (m *Supervisor) CreateBashTask(ctx context.Context, cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
+func (m *RunSet) CreateBashTask(ctx context.Context, cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
 	id := NewID()
 	task := NewBashTask(id, command, description, cmd, cancel, m.outputPath(id))
 	task.parentSessionID = m.ownerSession(ctx)
@@ -53,8 +53,8 @@ func (m *Supervisor) CreateBashTask(ctx context.Context, cmd *exec.Cmd, command,
 }
 
 // CreateAgentTask creates and registers an agent-backed background task using
-// this supervisor's output store.
-func (m *Supervisor) CreateAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+// this run set's output store.
+func (m *RunSet) CreateAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
 	task := NewAgentTask(id, agentName, description, ctx, cancel, m.outputPath(id))
 	task.parentSessionID = m.ownerSession(ctx)
 	m.RegisterTask(task)
@@ -62,7 +62,7 @@ func (m *Supervisor) CreateAgentTask(id, agentName, description string, ctx cont
 }
 
 // CreateChildAgentTask registers a managed child with ownership set before publication.
-func (m *Supervisor) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+func (m *RunSet) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
 	task := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
 	task.parentSessionID = m.ownerSession(ctx)
 	task.parentTaskID = parentID
@@ -71,7 +71,7 @@ func (m *Supervisor) CreateChildAgentTask(id, parentID, name, description string
 }
 
 // CreateSchedulerTask registers a task that schedules child agent tasks.
-func (m *Supervisor) CreateSchedulerTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+func (m *RunSet) CreateSchedulerTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
 	task := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
 	task.parentSessionID = m.ownerSession(ctx)
 	task.MarkScheduler()
@@ -79,9 +79,9 @@ func (m *Supervisor) CreateSchedulerTask(id, name, description string, ctx conte
 	return task
 }
 
-// SetOutputDir changes only this supervisor's output store. Multiple supervisors can
+// SetOutputDir changes only this run set's output store. Multiple run sets can
 // therefore coexist without redirecting one another's task logs.
-func (m *Supervisor) SetOutputDir(dir string) error {
+func (m *RunSet) SetOutputDir(dir string) error {
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -95,7 +95,7 @@ func (m *Supervisor) SetOutputDir(dir string) error {
 
 // outputPath is where a task's log lives, or "" when output is not persisted.
 // The task creates the file itself, outside the registry lock.
-func (m *Supervisor) outputPath(taskID string) string {
+func (m *RunSet) outputPath(taskID string) string {
 	m.mu.RLock()
 	dir := m.outputDir
 	m.mu.RUnlock()
@@ -106,7 +106,7 @@ func (m *Supervisor) outputPath(taskID string) string {
 }
 
 // RegisterTask registers an existing task
-func (m *Supervisor) RegisterTask(task BackgroundTask) {
+func (m *RunSet) RegisterTask(task BackgroundTask) {
 	m.mu.Lock()
 	m.tasks[task.GetID()] = task
 	m.mu.Unlock()
@@ -115,7 +115,7 @@ func (m *Supervisor) RegisterTask(task BackgroundTask) {
 }
 
 // NewID mints a short random task ID. Exported because callers that create
-// a task through this supervisor need the id before the task exists.
+// a task through this run set need the id before the task exists.
 func NewID() string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
@@ -125,7 +125,7 @@ func NewID() string {
 }
 
 // Get retrieves a task by ID
-func (m *Supervisor) Get(id string) (BackgroundTask, bool) {
+func (m *RunSet) Get(id string) (BackgroundTask, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	task, ok := m.tasks[id]
@@ -133,7 +133,7 @@ func (m *Supervisor) Get(id string) (BackgroundTask, bool) {
 }
 
 // List returns all tasks
-func (m *Supervisor) List() []BackgroundTask {
+func (m *RunSet) List() []BackgroundTask {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -145,7 +145,7 @@ func (m *Supervisor) List() []BackgroundTask {
 }
 
 // ListRunning returns all running tasks
-func (m *Supervisor) ListRunning() []BackgroundTask {
+func (m *RunSet) ListRunning() []BackgroundTask {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -161,7 +161,7 @@ func (m *Supervisor) ListRunning() []BackgroundTask {
 // HasRunning reports whether any task is running. Callers that only need the
 // answer should prefer it over len(ListRunning()), which allocates a slice of
 // every running task to be measured and thrown away.
-func (m *Supervisor) HasRunning() bool {
+func (m *RunSet) HasRunning() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -174,22 +174,22 @@ func (m *Supervisor) HasRunning() bool {
 }
 
 // IsRunning reports whether the task with this ID exists and is running.
-func (m *Supervisor) IsRunning(id string) bool {
+func (m *RunSet) IsRunning(id string) bool {
 	t, ok := m.Get(id)
 	return ok && t.IsRunning()
 }
 
-// Remove drops a task from the supervisor. Production code never calls it — see
-// Supervisor for why tasks are otherwise kept forever. It exists so that tests
-// sharing the process-global supervisor can put it back as they found it.
-func (m *Supervisor) Remove(id string) {
+// Remove drops a task from the run set. Production code never calls it — see
+// RunSet for why tasks are otherwise kept forever. It exists so that tests
+// sharing the process-global run set can put it back as they found it.
+func (m *RunSet) Remove(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.tasks, id)
 }
 
 // Kill terminates a task by ID
-func (m *Supervisor) Kill(id string) error {
+func (m *RunSet) Kill(id string) error {
 	m.mu.RLock()
 	task, ok := m.tasks[id]
 	m.mu.RUnlock()
@@ -232,7 +232,7 @@ func (m *Supervisor) Kill(id string) error {
 }
 
 // CreateForegroundAgentTask retains a session without background lifecycle notices.
-func (m *Supervisor) CreateForegroundAgentTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+func (m *RunSet) CreateForegroundAgentTask(id, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
 	t := NewAgentTask(id, name, description, ctx, cancel, m.outputPath(id))
 	t.parentSessionID = m.ownerSession(ctx)
 	t.foreground = true

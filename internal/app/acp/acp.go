@@ -220,7 +220,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		}
 	}
 	s.nativeSession = agentruntime.MainSession{Session: opened, Store: store}
-	tasks := task.NewSupervisor()
+	tasks := task.NewRunSet()
 	s.tracker = todo.NewStoreWithTasks(tasks)
 	if home, err := os.UserHomeDir(); err == nil {
 		if err := s.tracker.SetStorageDir(task.ListDir(home, opened.ID())); err != nil {

@@ -28,22 +28,22 @@ func TestRecoveryBudgetStopsRepeatedFailureChain(t *testing.T) {
 	}
 }
 
-func TestSupervisorStopRemainsPinnedToSelectedAttempt(t *testing.T) {
-	supervisor := NewSupervisor()
+func TestRunSetStopRemainsPinnedToSelectedAttempt(t *testing.T) {
+	runs := NewRunSet()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	worker := supervisor.CreateAgentTask("stable", "worker", "task", ctx, cancel)
+	worker := runs.CreateAgentTask("stable", "worker", "task", ctx, cancel)
 	worker.Complete(errors.New("first failure"))
 	next, stop := context.WithCancel(context.Background())
 	defer stop()
 	if _, err := worker.BeginAttempt("", next, stop); err != nil {
 		t.Fatal(err)
 	}
-	if err := supervisor.KillAttempt(worker.GetID(), 1); err == nil {
-		t.Fatal("stale supervisor stop accepted")
+	if err := runs.KillAttempt(worker.GetID(), 1); err == nil {
+		t.Fatal("stale run set stop accepted")
 	}
 	if next.Err() != nil || !worker.IsRunning() {
-		t.Fatal("stale supervisor stop canceled the successor")
+		t.Fatal("stale run set stop canceled the successor")
 	}
 	worker.CompleteAttempt(2, nil)
 }

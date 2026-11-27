@@ -139,7 +139,7 @@ func TestMainMalformedVerdictDoesNotReview(t *testing.T) {
 }
 
 func TestMainServiceSinkIdentityAndSessionSafety(t *testing.T) {
-	tasks := task.NewSupervisor()
+	tasks := task.NewRunSet()
 	tasks.SetSessionID("native-session")
 	s := NewService(tasks)
 	s.store = newRunStore(t.TempDir())

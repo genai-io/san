@@ -9,7 +9,7 @@ func TestManagedChildLifecycleOwnership(t *testing.T) {
 	observer := &testTaskObserver{}
 	SetLifecycleHandler(observer)
 	defer SetLifecycleHandler(nil)
-	m := NewSupervisor()
+	m := NewRunSet()
 	ctx, cancel := context.WithCancel(WithSessionID(context.Background(), "session"))
 	defer cancel()
 	child := m.CreateChildAgentTask("child", "scheduler", "reviewer", "review", ctx, cancel)

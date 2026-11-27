@@ -10,15 +10,15 @@ import (
 
 func TestAgentTaskInitializesStableOutputFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	supervisor := NewSupervisor()
-	if err := supervisor.SetOutputDir(tmpDir); err != nil {
+	runs := NewRunSet()
+	if err := runs.SetOutputDir(tmpDir); err != nil {
 		t.Fatalf("SetOutputDir() error: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	task := supervisor.CreateAgentTask("task-output-1", "Explore", "Inspect code", ctx, cancel)
+	task := runs.CreateAgentTask("task-output-1", "Explore", "Inspect code", ctx, cancel)
 	if task.OutputFile == "" {
 		t.Fatal("expected output file path to be assigned")
 	}
@@ -29,15 +29,15 @@ func TestAgentTaskInitializesStableOutputFile(t *testing.T) {
 
 func TestAgentTaskAppendOutputWritesToOutputFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	supervisor := NewSupervisor()
-	if err := supervisor.SetOutputDir(tmpDir); err != nil {
+	runs := NewRunSet()
+	if err := runs.SetOutputDir(tmpDir); err != nil {
 		t.Fatalf("SetOutputDir() error: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	task := supervisor.CreateAgentTask("task-output-2", "Explore", "Inspect code", ctx, cancel)
+	task := runs.CreateAgentTask("task-output-2", "Explore", "Inspect code", ctx, cancel)
 	task.AppendOutput([]byte("first line\n"))
 	task.AppendProgress("Read(main.go)")
 
@@ -53,11 +53,11 @@ func TestAgentTaskAppendOutputWritesToOutputFile(t *testing.T) {
 	}
 }
 
-func TestSupervisorsKeepOutputDirectoriesIndependent(t *testing.T) {
+func TestRunSetsKeepOutputDirectoriesIndependent(t *testing.T) {
 	firstDir := t.TempDir()
 	secondDir := t.TempDir()
-	first := NewSupervisor()
-	second := NewSupervisor()
+	first := NewRunSet()
+	second := NewRunSet()
 	if err := first.SetOutputDir(firstDir); err != nil {
 		t.Fatalf("first SetOutputDir: %v", err)
 	}

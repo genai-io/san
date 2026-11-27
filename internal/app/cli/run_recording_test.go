@@ -31,7 +31,7 @@ func TestPrintRecordsNativeConversationAndFinalState(t *testing.T) {
 	params.AutoMemory = runtime.AutoMemoryConfig{}
 	params.Provider = staticTestProvider{aitest.New(aitest.Says("recorded print")).Client()}
 	params.ModelID = "test"
-	params.Tasks = task.NewSupervisor()
+	params.Tasks = task.NewRunSet()
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage("print question", nil), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestPrintMemoryLanguageReachesMain(t *testing.T) {
 	const prompt = "remember: Prefer table tests."
 	const answer = "main response"
 	driver := aitest.New(aitest.Says(answer))
-	params := runtime.BuildParams{CWD: t.TempDir(), AutoMemory: runtime.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewSupervisor(), PermissionRules: (runtime.PermissionPolicy{}).Decide}
+	params := runtime.BuildParams{CWD: t.TempDir(), AutoMemory: runtime.AutoMemoryConfig{Store: system.MemoryStore(t.TempDir())}, Provider: staticTestProvider{driver.Client()}, ModelID: "test", MaxTokens: 64, Tasks: task.NewRunSet(), PermissionRules: (runtime.PermissionPolicy{}).Decide}
 	var displayed strings.Builder
 	result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), func(text string) { displayed.WriteString(text) })
 	if err != nil || result == nil || result.StopReason != core.StopEndTurn || displayed.String() != answer || driver.Calls() != 1 {
@@ -101,7 +101,7 @@ func TestPrintUpdatesProjectInstructionsWithoutMemoryUpdate(t *testing.T) {
 	policy := runtime.PermissionPolicy{Settings: setting.NewData(), Session: &setting.SessionPermissions{Mode: setting.ModeAutoAccept, ShouldAvoidPrompts: true}}
 	params.PermissionRules = policy.Decide
 	params.AutoMemory = runtime.AutoMemoryConfig{Store: system.MemoryStore(notes)}
-	params.Provider, params.ModelID, params.Tasks = staticTestProvider{driver.Client()}, "test", task.NewSupervisor()
+	params.Provider, params.ModelID, params.Tasks = staticTestProvider{driver.Client()}, "test", task.NewRunSet()
 	const prompt = "请记住：以后用 ninja 构建，更新项目的 AGENTS.md。"
 	if result, err := runRecordedPrint(t.Context(), params, core.UserMessage(prompt, nil), nil); err != nil || result == nil || result.StopReason != core.StopEndTurn {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -143,7 +143,7 @@ func TestPrintRecallsBeforeInferenceWithoutTools(t *testing.T) {
 		Recall: setting.MemoryRecallConfig{Mode: setting.MemoryRecallWait},
 	}
 	params.Provider, params.ModelID, params.MaxTokens = staticTestProvider{driver.Client()}, "test", 64
-	params.Tasks = task.NewSupervisor()
+	params.Tasks = task.NewRunSet()
 	for _, schema := range params.Schemas() {
 		params.DisabledTools[schema.Name] = true
 	}
@@ -197,7 +197,7 @@ func TestHeadlessAgentRecordsTopLevelNativeSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	defer func() { pool.Cancel(); pool.Join() }()
 	registry, err := subagent.Load(cwd, nil)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestHeadlessAgentClosedStorePreventsModelInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	driver := aitest.New(aitest.Says("must not run"))
-	executor, err := newExecutor(staticTestProvider{driver.Client()}, cwd, "test", setting.NewData(), store, registry, task.NewSupervisor())
+	executor, err := newExecutor(staticTestProvider{driver.Client()}, cwd, "test", setting.NewData(), store, registry, task.NewRunSet())
 	if err == nil {
 		_, err = executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "fail closed"})
 	}

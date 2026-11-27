@@ -12,7 +12,7 @@ import (
 )
 
 // Tools exposes only this pool; hosts must enforce permissions and disabled tools.
-func (m *Supervisor) Tools() []core.Tool {
+func (m *RunSet) Tools() []core.Tool {
 	return []core.Tool{
 		sdkagent.ToolFunc("TaskOutput", "Read background task status and collected output. Omit task_id to list this session's tasks. Tasks live only for this connection.", func(ctx context.Context, input struct {
 			TaskID string `json:"task_id,omitempty"`

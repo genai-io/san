@@ -8,7 +8,7 @@ import (
 // StopServices stops session-owned services with the normal graceful-stop and
 // force-kill fallback. An empty sessionID selects all sessions for application
 // shutdown. It must not be called merely because the active session changes.
-func (m *Supervisor) StopServices(sessionID string) error {
+func (m *RunSet) StopServices(sessionID string) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error

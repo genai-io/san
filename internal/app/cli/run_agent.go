@@ -35,7 +35,7 @@ type AgentRunOptions struct {
 
 // newExecutor installs native persistence and the current headless
 // policy before any worker can be admitted. A nil parent is a top-level run.
-func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Data, store *session.Store, registry *subagent.Registry, tasks *task.Supervisor) (*subagent.Executor, error) {
+func newExecutor(provider llm.Provider, cwd, model string, settings *setting.Data, store *session.Store, registry *subagent.Registry, tasks *task.RunSet) (*subagent.Executor, error) {
 	executor := subagent.NewExecutor(provider, cwd, model, nil)
 	executor.SetMessaging(false)
 	if err := executor.SetSessions(store, nil); err != nil {
@@ -144,7 +144,7 @@ func RunAgent(opts AgentRunOptions) (runErr error) {
 	// Run through the full subagent pipeline so headless invocations get the
 	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
 	// as TUI-spawned subagents.
-	pool := task.NewSupervisor()
+	pool := task.NewRunSet()
 	defer func() { runErr = errors.Join(runErr, pool.StopServices("")); pool.Cancel(); pool.Join() }()
 	executor, err := newExecutor(provider, cwd, modelID, workerSettings, store, subagent.Default(), pool)
 	if err != nil {

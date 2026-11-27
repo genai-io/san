@@ -61,7 +61,7 @@ type Executor struct {
 	mcpManager                 *mcp.Manager        // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
-	tasks                      *task.Supervisor
+	tasks                      *task.RunSet
 	tracker                    *todo.Store // nil leaves the task-tracker tools unavailable
 	messaging                  bool
 	permissionResolver         func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver
@@ -103,7 +103,7 @@ func (e *Executor) SetTracker(tracker *todo.Store) {
 // ConfigureOwner binds a host's worker resources before launching any runs.
 // Permission must enforce the parent policy even for child bypass/allow rules.
 // Background policies must never retain a prompt-scoped transport receiver.
-func (e *Executor) ConfigureOwner(tasks *task.Supervisor, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
+func (e *Executor) ConfigureOwner(tasks *task.RunSet, registry *Registry, permission func(*session.Session, bool, tool.AgentInteractionSource) tool.Resolver, toolContext func(context.Context, string) context.Context) {
 	e.tasks, e.registry, e.permissionResolver, e.toolContext = tasks, registry, permission, toolContext
 }
 
@@ -122,7 +122,7 @@ func (e *Executor) SetPostTool(post func(hook.Handler, core.ToolResult, any) err
 	e.postTool = post
 }
 
-func (e *Executor) taskPool() *task.Supervisor {
+func (e *Executor) taskPool() *task.RunSet {
 	if e.tasks != nil {
 		return e.tasks
 	}
@@ -638,7 +638,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 			return "", fmt.Errorf("worker execution directory was not authorized")
 		}),
 		tool.WithToolContext(func(ctx context.Context) context.Context {
-			ctx = task.WithSupervisor(task.WithSessionID(ctx, run.parentID()), e.taskPool())
+			ctx = task.WithRunSet(task.WithSessionID(ctx, run.parentID()), e.taskPool())
 			if e.tracker != nil {
 				ctx = todo.WithStore(ctx, e.tracker)
 			}

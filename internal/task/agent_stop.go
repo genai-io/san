@@ -5,7 +5,7 @@ import "fmt"
 // KillAttempt stops exactly the agent execution selected by a caller. Graceful
 // waiting and force-kill escalation remain pinned to that generation even if
 // another execution finishes or starts while the caller is waiting.
-func (m *Supervisor) KillAttempt(id string, attempt int) error {
+func (m *RunSet) KillAttempt(id string, attempt int) error {
 	worker, exists := m.Get(id)
 	if !exists {
 		return fmt.Errorf("task not found: %s", id)

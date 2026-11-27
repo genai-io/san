@@ -63,7 +63,7 @@ type SlashCommandEnv struct {
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
 	ToolSvc      *tool.Registry
-	TaskSvc      *task.Supervisor
+	TaskSvc      *task.RunSet
 	Flow         FlowService
 	Command      *command.Registry
 

@@ -38,7 +38,7 @@ func TestWorkerToolMetadata(t *testing.T) {
 }
 
 func TestResumeRejectsMissingOrChangedWorkerPolicy(t *testing.T) {
-	s := NewService(task.NewSupervisor())
+	s := NewService(task.NewRunSet())
 	s.SetExecutor(&scriptedExecutor{})
 	s.store = newRunStore(t.TempDir())
 	for _, policies := range []map[string]string{nil, {"a": "old"}} {
