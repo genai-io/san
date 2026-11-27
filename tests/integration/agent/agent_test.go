@@ -88,7 +88,7 @@ func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
 				options.OutputDir = t.TempDir()
 			}
 			task.Initialize(options)
-			t.Cleanup(task.ResetDefaultManager)
+			t.Cleanup(task.ResetDefault)
 			store, parent := integrationSessions(t)
 			executor := newIntegrationExecutor(t, &testutil.FakeProvider{
 				ErrorAt: 1, ErrorValue: errors.New("invalid API credentials"),
@@ -378,7 +378,7 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 
 func TestAgent_BackgroundExecution(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultManager)
+	t.Cleanup(task.ResetDefault)
 
 	mp := &testutil.FakeProvider{
 		Responses: []llm.CompletionResponse{

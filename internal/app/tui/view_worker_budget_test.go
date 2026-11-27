@@ -13,7 +13,7 @@ import (
 
 func TestFlowFooterSuppressesOnlyGraphManagedTrackerRows(t *testing.T) {
 	for _, mixed := range []bool{false, true} {
-		mgr := task.NewManager()
+		mgr := task.NewSupervisor()
 		tracker := todo.NewStore()
 		ctx := context.Background()
 		flow := mgr.CreateSchedulerTask("footer-flow", "flow", "DUPLICATE_SCHEDULER", ctx, nil)
@@ -79,10 +79,10 @@ func TestWorkerOverflowPreservesOrdinaryToolSibling(t *testing.T) {
 }
 
 func TestFlowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
-	task.ResetDefaultManager()
-	t.Cleanup(task.ResetDefaultManager)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	for _, height := range []int{10, 24} {
-		task.ResetDefaultManager()
+		task.ResetDefault()
 		m := fixedComposerModel(80, height)
 		m.services.Task = task.Default()
 		flow := task.NewAgentTask("live-flow", "flow", "Run flow", context.Background(), nil, "")

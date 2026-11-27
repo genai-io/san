@@ -56,7 +56,7 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := noticeDeliveryModel(t)
 			m.env.Width = 80
-			m.services.Task = task.NewManager()
+			m.services.Task = task.NewSupervisor()
 			m.mainNotices = make(chan mainNotice, 1)
 			m.wireTaskLifecycle(nil)
 			mail.Register(mail.Main, func(msg mail.Message) bool { return m.notifyMain(fromBrokerMessage(msg)) })
@@ -106,7 +106,7 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	attachTurnSession(t, m)
 	m.services.Hook = hook.NewEngine(setting.NewData(), "", t.TempDir(), "")
 	m.env.Width = 80
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	m.wireTaskLifecycle(nil)
 	t.Cleanup(func() { task.SetLifecycleHandler(nil) })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -134,7 +134,7 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 }
 
 func TestResumedCompletedWorkerDoesNotWaitForLiveNotice(t *testing.T) {
-	m := flowInputModel(task.NewManager())
+	m := flowInputModel(task.NewSupervisor())
 	worker := m.services.Tracker.Create("Already finished", "", "", map[string]any{"background_task_id": "previous-process"})
 	if err := m.services.Tracker.Update(worker.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
 		t.Fatal(err)

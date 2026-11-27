@@ -4,7 +4,7 @@ import "bytes"
 
 // maxOutputBufferSize caps what a task keeps in memory. The full output is
 // always on disk in OutputFile, so this buffer only has to serve TaskOutput's
-// inline preview — and nothing prunes tasks (see Manager), so without a cap it
+// inline preview — and nothing prunes tasks (see Supervisor), so without a cap it
 // would be held for as long as the process runs.
 const maxOutputBufferSize = 512 * 1024
 

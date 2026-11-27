@@ -166,7 +166,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 }
 
 // brokerSubject is the line the receiving side shows for a message.
-func brokerSubject(tasks *task.Manager, from, subject string) string {
+func brokerSubject(tasks *task.Supervisor, from, subject string) string {
 	if subject == "" {
 		return "Message from " + senderLabel(tasks, from)
 	}
@@ -194,7 +194,7 @@ func groupQueueStatus(m group.Member) string {
 }
 
 // recipientLabel renders a target id for tool output.
-func recipientLabel(tasks *task.Manager, id string) string {
+func recipientLabel(tasks *task.Supervisor, id string) string {
 	if id == mail.Main {
 		return "the main conversation"
 	}
@@ -206,7 +206,7 @@ func recipientLabel(tasks *task.Manager, id string) string {
 
 // groupMember reports whether to names a member of this session's group
 // rather than "main" or a task, and which group.
-func groupMember(tasks *task.Manager, to string) (string, bool) {
+func groupMember(tasks *task.Supervisor, to string) (string, bool) {
 	g, _ := group.Current()
 	if g == "" || to == mail.Main {
 		return "", false
@@ -216,7 +216,7 @@ func groupMember(tasks *task.Manager, to string) (string, bool) {
 }
 
 // senderLabel names an agent id for a human-facing notice.
-func senderLabel(tasks *task.Manager, id string) string {
+func senderLabel(tasks *task.Supervisor, id string) string {
 	if id == mail.Main {
 		return "the main conversation"
 	}
@@ -230,7 +230,7 @@ func senderLabel(tasks *task.Manager, id string) string {
 
 // undeliverableReason reports the recipient's stated rejection and observed
 // task lifecycle, never an assumed transport cause or blind retry advice.
-func undeliverableReason(tasks *task.Manager, to string, sendErr error) string {
+func undeliverableReason(tasks *task.Supervisor, to string, sendErr error) string {
 	if to == mail.Main {
 		return "the main conversation is not currently reachable"
 	}

@@ -97,8 +97,8 @@ func TestWorkerOverflowKeepsLatestErrorNotice(t *testing.T) {
 }
 
 func TestBackgroundWorkerProgressIsLiveAndDisplayOnly(t *testing.T) {
-	task.ResetDefaultManager()
-	t.Cleanup(task.ResetDefaultManager)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	m := fixedComposerModel(80, 24)
 	m.services.Task = task.Default()
 	worker := task.NewAgentTask("background-worker", "reviewer", "Review source", context.Background(), nil, "")
@@ -117,8 +117,8 @@ func TestBackgroundWorkerProgressIsLiveAndDisplayOnly(t *testing.T) {
 }
 
 func TestFourBackgroundWorkerRowsStayVisible(t *testing.T) {
-	task.ResetDefaultManager()
-	t.Cleanup(task.ResetDefaultManager)
+	task.ResetDefault()
+	t.Cleanup(task.ResetDefault)
 	m := fixedComposerModel(80, 10)
 	m.services.Task = task.Default()
 	for i := range 4 {

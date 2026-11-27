@@ -112,7 +112,7 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 		t.Skip("Windows does not provide Bash process-group control")
 	}
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultManager)
+	t.Cleanup(task.ResetDefault)
 	t.Cleanup(func() {
 		for _, bgTask := range task.Default().ListRunning() {
 			_ = task.Default().Kill(bgTask.GetID())

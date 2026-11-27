@@ -22,7 +22,7 @@ import (
 func TestManagedAgentViewsFollowSessionAndCompletion(t *testing.T) {
 	m := fixedComposerModel(80, 24)
 	m.env.AgentPreviewLines = 3
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	task.SetLifecycleHandler(nil)
 	own := m.services.Task.CreateChildAgentTask("own", "scheduler", "reviewer", "Security review", task.WithSessionID(context.Background(), m.sessionID()), nil)
 	own.SetIdentity("reviewer", "child-session")
@@ -56,7 +56,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/busy=%t", status, busy), func(t *testing.T) {
 				m, provider := noticeDeliveryModel(t)
 				attachTurnSession(t, m)
-				m.services.Task = task.NewManager()
+				m.services.Task = task.NewSupervisor()
 				m.services.Task.SetSessionID(m.sessionID())
 				m.mainNotices = make(chan mainNotice, 8)
 				m.conv.OnNotice = m.recordNotice
@@ -141,7 +141,7 @@ func TestFlowSchedulerTerminalReceiptsDoNotEnterModel(t *testing.T) {
 func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 	m, mainProvider := noticeDeliveryModel(t)
 	attachTurnSession(t, m)
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	m.services.Task.SetSessionID(m.sessionID())
 	m.mainNotices = make(chan mainNotice, 8)
 	m.env.Width, m.env.AgentPreviewLines = 80, 3

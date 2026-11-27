@@ -5,7 +5,7 @@ layer: feature
 
 # task
 
-Background task manager. Long-running shell commands and subagent runs
+Background task supervisor. Long-running shell commands and subagent runs
 are tracked here so the user can observe progress, kill them, and read
 their output asynchronously.
 
@@ -21,36 +21,36 @@ terminate it directly.
 
 ## Contract
 
-Background task manager. Tracks bash and subagent tasks for the TUI panel and
-`AgentStop`. The package exposes `*Manager` directly — no Service interface.
+Background task supervisor. Tracks bash and subagent tasks for the TUI panel and
+`AgentStop`. The package exposes `*Supervisor` directly — no Service interface.
 
 ```go
 package task
 
-type Manager struct { /* internal fields */ }
+type Supervisor struct { /* internal fields */ }
 
-func (m *Manager) CreateBashTask(...) *BashTask
-func (m *Manager) CreateAgentTask(...) *AgentTask
-func (m *Manager) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask
-func (m *Manager) RegisterTask(t BackgroundTask)
-func (m *Manager) Get(id string) (BackgroundTask, bool)
-func (m *Manager) List() []BackgroundTask
-func (m *Manager) ListRunning() []BackgroundTask
-func (m *Manager) Kill(id string) error
-func (m *Manager) Remove(id string)
-func (m *Manager) SetOutputDir(dir string) error
+func (m *Supervisor) CreateBashTask(...) *BashTask
+func (m *Supervisor) CreateAgentTask(...) *AgentTask
+func (m *Supervisor) CreateChildAgentTask(id, parentID, name, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask
+func (m *Supervisor) RegisterTask(t BackgroundTask)
+func (m *Supervisor) Get(id string) (BackgroundTask, bool)
+func (m *Supervisor) List() []BackgroundTask
+func (m *Supervisor) ListRunning() []BackgroundTask
+func (m *Supervisor) Kill(id string) error
+func (m *Supervisor) Remove(id string)
+func (m *Supervisor) SetOutputDir(dir string) error
 
 // Package-level access
 func Initialize(opts Options) error
-func Default() *Manager
-func ResetDefaultManager() // test-only
+func Default() *Supervisor
+func ResetDefault() // test-only
 ```
 
 
 ## Internals
 
-- `Manager` (`manager.go`) — tracks active and completed tasks and owns its
-  output directory. Multiple managers cannot redirect one another's files.
+- `Supervisor` (`supervisor.go`) — tracks active and completed tasks and owns its
+  output directory. Multiple supervisors cannot redirect one another's files.
 - `BackgroundTask` (`types.go`) — interface implemented by `BashTask` and
   `AgentTask`.
 - `BashTask` (`bash_task.go`) — wraps `*exec.Cmd`, streams stdout/stderr
@@ -92,13 +92,13 @@ func ResetDefaultManager() // test-only
 
 - Construction: `Initialize(Options{OutputDir})` at app start.
 - Per-task: `CreateBashTask(...)` and `CreateAgentTask(...)` return tasks
-  already registered with that manager. `Kill(id)` cancels the context;
+  already registered with that supervisor. `Kill(id)` cancels the context;
   `Remove(id)` evicts the record after completion.
 - Concurrency: registry is mutex-protected; per-task streams use their
   own buffers.
 - Every managed task keeps its launching `ParentSessionID`. Agent contexts pass
   that identity into nested workers and background shells; launches outside an
-  agent use the manager's selected session. Switching sessions does not transfer
+  agent use the supervisor's selected session. Switching sessions does not transfer
   old workers' notices or lifecycle updates into the new conversation. The task
   registry and output logs remain available for inspection.
 - Background Bash also captures `OwnerAgentID` before registration. Child results
@@ -127,12 +127,12 @@ func ResetDefaultManager() // test-only
 
 ## Connection-owned execution
 
-`BuildParams.Tasks` installs a session pool via `task.WithManager`;
-`task.FromContext` falls back to the native default. `Manager.Tools` provides
+`BuildParams.Tasks` installs a session pool via `task.WithSupervisor`;
+`task.FromContext` falls back to the native default. `Supervisor.Tools` provides
 opt-in TaskOutput/TaskStop tools; hosts must enforce permission and disabled-tool
 rules. The TUI toolset is unchanged.
 
-`Manager.Run` tracks shell execution through reaping and output drain. Stop new
+`Supervisor.Run` tracks shell execution through reaping and output drain. Stop new
 launches, then `Cancel` and `Join` before closing resources; `IsRunning` and
 `WaitForCompletion` do not prove cleanup. Subagent runners need separate lifecycle
 tracking. Protocol tests: `internal/app/acp/acp_tasks_test.go`.
@@ -230,7 +230,7 @@ safe restart and readiness, and rerun affected validation explicitly.
 ## Tests
 
 ```
-internal/task/manager_test.go        — register / get / list / kill.
+internal/task/supervisor_test.go        — register / get / list / kill.
 internal/task/bash_task_test.go      — output streaming and cancel.
 internal/task/bash_service_test.go   — deadline/signal evidence and service stop semantics.
 internal/task/agent_attempt_test.go  — same task identity, immutable attempts, stale completion fencing.

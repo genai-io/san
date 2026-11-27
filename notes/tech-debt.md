@@ -23,7 +23,7 @@ This file tracks structural follow-ups that are not tied to a single feature.
   ~~`tool` (6 methods)~~ — `*tool.Registry` direct.
   ~~`cron` (10 methods)~~ — `*cron.Scheduler` direct (renamed from
   `*Store`; methods schedule, persistence is a detail).
-  ~~`task` (8 methods)~~ — `*task.Manager` direct (tracks background
+  ~~`task` (8 methods)~~ — `*task.Supervisor` direct (tracks background
   bash/subagent tasks).
   ~~`command` (7 methods)~~ — `*command.Registry` direct.
   ~~`llm` (8 methods)~~ — `*llm.Conn` direct (active provider/model/Store

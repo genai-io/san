@@ -57,7 +57,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Setting:   setting.New(setting.NewData()),
 			Tracker:   todo.NewStore(), Reminder: reminder.NewQueue(),
 			Subagent: subagent.NewRegistry(),
-			Task:     task.NewManager(),
+			Task:     task.NewSupervisor(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
 		},
 		conv:      chat.NewModel(80),

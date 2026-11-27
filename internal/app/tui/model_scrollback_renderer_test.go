@@ -736,7 +736,7 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 			if managed {
 				// Create a real managed child before launching Bubble Tea: the app must
 				// project it into native conversation activity, not just a footer row.
-				m.services.Task = task.NewManager()
+				m.services.Task = task.NewSupervisor()
 				child := m.services.Task.CreateChildAgentTask("native-child", "scheduler", "reviewer", "CHILD-LIVE", task.WithSessionID(context.Background(), m.sessionID()), nil)
 				child.AppendProgress("Read(CHILD-ACTIVITY-LIVE.go)")
 				t.Cleanup(func() { child.Complete(nil) })

@@ -28,7 +28,7 @@ func TestWriterCriticExampleRevisionScope(t *testing.T) {
 		"writer#1": "rough draft", "critic#1": "Verdict: REVISE\nadd examples", "decision#1": "REVISE",
 		"writer#2": "revised article", "critic#2": "Verdict: PASS\ncomplete", "decision#2": "PASS", "result": "revised article",
 	}}
-	tasks := task.NewManager()
+	tasks := task.NewSupervisor()
 	s := NewService(tasks)
 	s.store = newRunStore(t.TempDir())
 	s.SetExecutor(exec)
@@ -88,7 +88,7 @@ func TestEarlierCriticResumeUsesItsWriterInstructions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tasks := task.NewManager()
+	tasks := task.NewSupervisor()
 	tasks.SetSessionID("native-session")
 	s := NewService(tasks)
 	s.store = newRunStore(t.TempDir())
@@ -134,7 +134,7 @@ func TestMainResumeWithoutIdentityRequiresExplicitFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, status := range []Status{StatusFailed, StatusRunning} {
-		tasks := task.NewManager()
+		tasks := task.NewSupervisor()
 		tasks.SetSessionID("native-session")
 		s := NewService(tasks)
 		s.store = newRunStore(t.TempDir())
@@ -164,7 +164,7 @@ func TestAcceptedInstructionsFrozenBeforeCheckpointAndCritic(t *testing.T) {
 	}
 	lease := &amendmentMain{instructions: "accepted: include everyday examples"}
 	exec := &scriptedExecutor{outputs: map[string]string{"critic#1": "review", "decision#1": "PASS", "done": "answer"}}
-	tasks := task.NewManager()
+	tasks := task.NewSupervisor()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	bg := tasks.CreateSchedulerTask(task.NewID(), "test", "test", ctx, cancel)

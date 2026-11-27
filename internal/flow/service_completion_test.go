@@ -13,7 +13,7 @@ func TestFlowCompletionWaitsForLeaseRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tasks := task.NewManager()
+	tasks := task.NewSupervisor()
 	s := NewService(tasks)
 	s.store = newRunStore(t.TempDir())
 	s.SetExecutor(&scriptedExecutor{outputs: map[string]string{"only": "done"}})

@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestManager_CreateAndGet(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_CreateAndGet(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -30,8 +30,8 @@ func TestManager_CreateAndGet(t *testing.T) {
 	}
 }
 
-func TestManager_GetNotFound(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_GetNotFound(t *testing.T) {
+	m := NewSupervisor()
 
 	_, ok := m.Get("nonexistent")
 	if ok {
@@ -39,8 +39,8 @@ func TestManager_GetNotFound(t *testing.T) {
 	}
 }
 
-func TestManager_List(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_List(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -58,8 +58,8 @@ func TestManager_List(t *testing.T) {
 	}
 }
 
-func TestManager_ListRunning(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_ListRunning(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -82,8 +82,8 @@ func TestManager_ListRunning(t *testing.T) {
 	}
 }
 
-func TestManager_Remove(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_Remove(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -102,8 +102,8 @@ func TestManager_Remove(t *testing.T) {
 	}
 }
 
-func TestManager_GenerateUniqueIDs(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_GenerateUniqueIDs(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -122,8 +122,8 @@ func TestManager_GenerateUniqueIDs(t *testing.T) {
 	}
 }
 
-func TestManager_RegisterTask(t *testing.T) {
-	m := NewManager()
+func TestSupervisor_RegisterTask(t *testing.T) {
+	m := NewSupervisor()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -18,7 +18,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(task.ResetDefaultManager)
+	t.Cleanup(task.ResetDefault)
 	bridge := chat.NewAgentToUI(4)
 	defer bridge.Close()
 	question := testutil.ToolCallResponse(tool.ToolAskUserQuestion, "question-call", `{"question":"Choose an answer","options":["first","second"]}`)

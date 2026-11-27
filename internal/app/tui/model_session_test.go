@@ -32,7 +32,7 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	if err := testutil.AppendMessages(old, history); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Agent: &agentruntime.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
+	m := model{services: services{Agent: &agentruntime.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewSupervisor(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.LLM = &llm.Conn{}
 	m.autopilot = new(atomic.Pointer[autopilotSnapshot])
@@ -86,7 +86,7 @@ func initClearSessionTest(t *testing.T, m *model) {
 	m.services.Session = nil
 	m.services.sessionID = "before-clear"
 	m.services.Hook = hook.NewEngine(nil, "before-clear", "", "")
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	m.env.FileCache = filecache.New()
 }
 

@@ -18,7 +18,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-func flowInputModel(manager *task.Manager) *model {
+func flowInputModel(manager *task.Supervisor) *model {
 	m := &model{
 		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      chat.NewModel(80),
@@ -54,7 +54,7 @@ func TestReleasedPromptRecall(t *testing.T) {
 }
 
 func TestFlowStopBypassesStreamingInputQueue(t *testing.T) {
-	manager := task.NewManager()
+	manager := task.NewSupervisor()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := manager.CreateSchedulerTask("flow-stop-now", "flow", "/flow run audit", ctx, cancel)
@@ -84,7 +84,7 @@ func TestFlowStopPreservesStreamingAssistant(t *testing.T) {
 		{"error", "/flow stop missing", "Error: running flow missing not found", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			manager := task.NewManager()
+			manager := task.NewSupervisor()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			wf := manager.CreateSchedulerTask("flow-stream", "flow", "audit", ctx, cancel)
@@ -123,7 +123,7 @@ func TestFlowStopPreservesStreamingAssistant(t *testing.T) {
 }
 
 func TestCtrlCStopsSoleIdleFlow(t *testing.T) {
-	manager := task.NewManager()
+	manager := task.NewSupervisor()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := manager.CreateSchedulerTask("flow-ctrl-c", "flow", "/flow run audit", ctx, cancel)
@@ -148,7 +148,7 @@ func TestCtrlCStopsSoleIdleFlow(t *testing.T) {
 }
 
 func TestCtrlCDoesNotGuessBetweenMultipleFlows(t *testing.T) {
-	manager := task.NewManager()
+	manager := task.NewSupervisor()
 	ctxA, cancelA := context.WithCancel(context.Background())
 	ctxB, cancelB := context.WithCancel(context.Background())
 	defer cancelA()
@@ -174,7 +174,7 @@ func TestCtrlCDoesNotGuessBetweenMultipleFlows(t *testing.T) {
 }
 
 func TestCtrlCStopsForegroundBeforeBackgroundFlow(t *testing.T) {
-	manager := task.NewManager()
+	manager := task.NewSupervisor()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wf := manager.CreateSchedulerTask("flow-in-background", "flow", "audit", ctx, cancel)

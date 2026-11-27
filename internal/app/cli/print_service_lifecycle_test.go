@@ -38,7 +38,7 @@ func TestPrintStopsServicesOnExit(t *testing.T) {
 			if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = task.Default().StopServices(""); task.ResetDefaultManager() })
+			t.Cleanup(func() { _ = task.Default().StopServices(""); task.ResetDefault() })
 
 			boom := errors.New("print lifecycle agent failure")
 			p := &printLifecycleProvider{t: t, fail: fail, boom: boom}

@@ -143,7 +143,7 @@ func TestTaskTrackerStaysPutAsForegroundWaitChanges(t *testing.T) {
 func TestForegroundWaitWithRunningTask(t *testing.T) {
 	const width, height = 64, 12
 	m := fixedComposerModel(width, height)
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	worker := viewerWorker(m, "coverage", "", time.Now().Add(-41*time.Second))
 	worker.info.Description = "Measure targeted Go coverage"
 	todo.TrackWorker(m.services.Tracker, worker.info)

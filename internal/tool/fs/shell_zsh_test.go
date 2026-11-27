@@ -72,9 +72,9 @@ func TestZshSkipsUserStartupAndPreservesEnvironment(t *testing.T) {
 
 func TestBackgroundZshUsesSelectedInterpreter(t *testing.T) {
 	shell := zshTool(t)
-	manager := task.NewManager()
+	manager := task.NewSupervisor()
 	t.Cleanup(func() { manager.Cancel(); manager.Join() })
-	ctx := task.WithManager(context.Background(), manager)
+	ctx := task.WithSupervisor(context.Background(), manager)
 	result := shell.ExecuteApproved(ctx, map[string]any{
 		"command":        `[[ -n $ZSH_VERSION ]] || exit 99; printf 'zsh-background\n'`,
 		"execution_mode": shellBackgroundJob,

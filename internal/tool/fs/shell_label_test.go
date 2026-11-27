@@ -40,9 +40,9 @@ func TestShellLabelExecutionMetadata(t *testing.T) {
 				{"background", map[string]any{"command": "true", "execution_mode": shellBackgroundJob}, true},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					manager := task.NewManager()
+					manager := task.NewSupervisor()
 					defer func() { manager.Cancel(); manager.Join() }()
-					result := sh.ExecuteApproved(task.WithManager(context.Background(), manager), tc.params, cwd)
+					result := sh.ExecuteApproved(task.WithSupervisor(context.Background(), manager), tc.params, cwd)
 					details, ok := result.Details.(toolresult.BashDetails)
 					if result.Success != tc.success || !ok || details.ShellLabel != makeTool.name || result.Metadata.Title != tool.ToolBash {
 						t.Fatalf("result=%+v details=%+v", result, details)

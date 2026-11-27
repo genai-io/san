@@ -37,7 +37,7 @@ type services struct {
 	Skill        *skill.Registry
 	Subagent     *subagent.Registry
 	Command      *command.Registry
-	Task         *task.Manager
+	Task         *task.Supervisor
 	Flow         *flow.Service
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler

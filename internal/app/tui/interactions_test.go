@@ -20,7 +20,7 @@ import (
 func userPromptModel() *model {
 	m := fixedComposerModel(80, 24)
 	m.services.Session = nil
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	return m
 }

@@ -29,7 +29,7 @@ func TestFlowInteractionOriginAndRoutingIsolation(t *testing.T) {
 				t.Errorf("flow %s did not stop during cleanup", bg.GetID())
 			}
 		}
-		task.ResetDefaultManager()
+		task.ResetDefault()
 	})
 	responses := make([]llm.CompletionResponse, 0, 8)
 	for range 4 {

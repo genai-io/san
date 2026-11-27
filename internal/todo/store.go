@@ -49,7 +49,7 @@ const (
 //
 // Deliberately absent: a "has in-progress work" query. Status records what the
 // model intended and outlives whatever was executing it; resolve liveness
-// against the executor (the stream, or task.Manager.ListRunning).
+// against the executor (the stream, or task.Supervisor.ListRunning).
 type Store struct {
 	mu           sync.RWMutex
 	items        map[string]*Item
@@ -57,7 +57,7 @@ type Store struct {
 	nextID       int
 	storageDir   string    // empty = in-memory only
 	lastReloadAt time.Time // wall-clock cutoff for item file mtimes on the next reload
-	tasks        *task.Manager
+	tasks        *task.Supervisor
 }
 
 // NewStore creates a new in-memory Store with no background workers.
@@ -66,7 +66,7 @@ func NewStore() *Store {
 }
 
 // NewStoreWithTasks creates a Store whose worker items are checked against tasks.
-func NewStoreWithTasks(tasks *task.Manager) *Store {
+func NewStoreWithTasks(tasks *task.Supervisor) *Store {
 	return &Store{
 		items:  make(map[string]*Item),
 		nextID: 1,

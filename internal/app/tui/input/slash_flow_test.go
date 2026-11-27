@@ -46,7 +46,7 @@ func flowController(t *testing.T, saved map[string]string) *SlashCommandControll
 			t.Fatal(err)
 		}
 	}
-	tasks := task.NewManager()
+	tasks := task.NewSupervisor()
 	svc := flow.NewService(tasks)
 	svc.SetExecutor(okExecutor{})
 	svc.SetSearchPaths([]string{dir})
@@ -339,7 +339,7 @@ func TestFlowCommandFromSkillReferencesOriginalWithoutChangingIt(t *testing.T) {
 }
 
 func TestFlowStopTargetsOnlyFlowTasks(t *testing.T) {
-	mgr := task.NewManager()
+	mgr := task.NewSupervisor()
 	c := NewSlashCommandController(SlashCommandEnv{TaskSvc: mgr})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

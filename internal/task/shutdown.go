@@ -5,7 +5,7 @@ import (
 )
 
 // Shutdown stops background services before canceling and joining their tasks.
-func (tasks *Manager) Shutdown() error {
+func (tasks *Supervisor) Shutdown() error {
 	if tasks == nil {
 		return nil
 	}

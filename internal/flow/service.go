@@ -18,14 +18,14 @@ import (
 type Service struct {
 	mainExecutor MainExecutor
 	executor     worker
-	tasks        *task.Manager
+	tasks        *task.Supervisor
 	dirs         []string
 	mu           sync.Mutex
 	store        *runStore
 	live         map[string]*task.AgentTask
 }
 
-func NewService(tasks *task.Manager) *Service { return &Service{tasks: tasks} }
+func NewService(tasks *task.Supervisor) *Service { return &Service{tasks: tasks} }
 func (s *Service) SetExecutor(executor worker) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

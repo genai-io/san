@@ -38,7 +38,7 @@ func TestTaskHistorySharesInferenceRow(t *testing.T) {
 
 func addPastTasks(m *model, statuses ...task.TaskStatus) {
 	m.conv.ShowTasks = true
-	m.services.Task = task.NewManager()
+	m.services.Task = task.NewSupervisor()
 	m.taskCompletionsShown = make(map[string]bool)
 	for i, status := range statuses {
 		worker := viewerWorker(m, fmt.Sprintf("old-%d", i), "", time.Now())
