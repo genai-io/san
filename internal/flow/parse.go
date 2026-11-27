@@ -4,8 +4,8 @@
 //
 // The graph engine — parse.go, expand.go, run.go, view.go and authoring.go —
 // imports nothing from San: nodes execute through the NodeRunner seam, so the
-// engine can move to sdk-go once the schema settles. service.go,
-// service_run.go, node_runner.go and store.go bind it to San's executor,
+// engine can move to sdk-go once the schema settles. scheduler.go,
+// scheduler_run.go, node_runner.go and store.go bind it to San's executor,
 // tasks and run storage.
 package flow
 

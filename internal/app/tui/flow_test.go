@@ -121,7 +121,7 @@ func TestFlowDraftOneShotReviewAndRecording(t *testing.T) {
 			if out := events[2].Payload.(*session.InferenceFinishPayload).Output; out == nil || out.Text != source {
 				t.Fatalf("missing draft response: %+v", out)
 			}
-			// nil FlowService would panic if the host attempted automatic save or run.
+			// nil FlowWorkspace would panic if the host attempted automatic save or run.
 		})
 	}
 }

@@ -22,7 +22,7 @@ func flowEntryPrimary(t *testing.T, v *FlowView, key, label string) {
 }
 
 func TestFlowHubIdentifiesSavedBlueprints(t *testing.T) {
-	s := flow.NewService(nil)
+	s := flow.NewScheduler(nil)
 	s.SetSearchPaths([]string{filepath.Join(t.TempDir(), "workflows")})
 	names := []string{"release-notes", "release_notes"}
 	for _, name := range names {

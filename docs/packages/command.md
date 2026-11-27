@@ -52,8 +52,7 @@ func ResetDefaultRegistry()          // test-only
 
 ## Internals
 
-- `service` (`service.go`) — concrete implementation, holds cwd, dynamic
-  provider functions, and a plugin-command-path callback.
+- `default_registry.go` — constructs a registry with its providers and installs the package default.
 - `registry.go` — combines three sources at query time:
   - **Built-ins** registered from `builtin/` subpackage at init.
   - **Dynamic** — `DynamicProviders` callbacks returning `Info` slices

@@ -14,8 +14,8 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// Service schedules reviewed blueprints through the native subagent executor.
-type Service struct {
+// Scheduler schedules reviewed blueprints through the native subagent executor.
+type Scheduler struct {
 	mainExecutor MainExecutor
 	executor     worker
 	tasks        *task.RunSet
@@ -25,8 +25,8 @@ type Service struct {
 	live         map[string]*task.AgentTask
 }
 
-func NewService(tasks *task.RunSet) *Service { return &Service{tasks: tasks} }
-func (s *Service) SetExecutor(executor worker) {
+func NewScheduler(tasks *task.RunSet) *Scheduler { return &Scheduler{tasks: tasks} }
+func (s *Scheduler) SetExecutor(executor worker) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.executor = executor
@@ -35,7 +35,7 @@ func (s *Service) SetExecutor(executor worker) {
 // SetSearchPaths sets the definition directories in priority order. Run
 // records live beside the first one; the store is replaced only when that
 // location changes, so live runs and new lookups share one store.
-func (s *Service) SetSearchPaths(dirs []string) {
+func (s *Scheduler) SetSearchPaths(dirs []string) {
 	s.dirs = append([]string(nil), dirs...)
 	dir := ""
 	if len(dirs) > 0 {
@@ -48,9 +48,9 @@ func (s *Service) SetSearchPaths(dirs []string) {
 	}
 }
 
-func (s *Service) SavedDefinitions() []SavedDefinition { return ListDefinitions(s.dirs...) }
+func (s *Scheduler) SavedDefinitions() []SavedDefinition { return ListDefinitions(s.dirs...) }
 
-func (s *Service) SavedInputNames(name string) ([]string, error) {
+func (s *Scheduler) SavedInputNames(name string) ([]string, error) {
 	b, err := FindDefinition(name, s.dirs...)
 	if err != nil {
 		return nil, err
@@ -58,10 +58,10 @@ func (s *Service) SavedInputNames(name string) ([]string, error) {
 	return b.InputNames(), nil
 }
 
-func (s *Service) Definition(name string) (string, error) { return ReadDefinition(name, s.dirs...) }
+func (s *Scheduler) Definition(name string) (string, error) { return ReadDefinition(name, s.dirs...) }
 
 // SaveDefinition preserves source-conflict checking for reviewed project copies.
-func (s *Service) SaveDefinition(name, definition, baseline string) error {
+func (s *Scheduler) SaveDefinition(name, definition, baseline string) error {
 	return SaveDefinition(name, definition, baseline, s.dirs...)
 }
 
@@ -78,7 +78,7 @@ type worker interface {
 	PrepareFlowWorker(tool.AgentExecRequest) (resolved any, fingerprint string, err error)
 }
 
-func (s *Service) bindWorkers(b *Blueprint, executor worker) (*workerBinding, error) {
+func (s *Scheduler) bindWorkers(b *Blueprint, executor worker) (*workerBinding, error) {
 	if s.tasks == nil {
 		return nil, errors.New("task manager not configured")
 	}
@@ -114,7 +114,7 @@ func (s *Service) bindWorkers(b *Blueprint, executor worker) (*workerBinding, er
 	return workers, nil
 }
 
-func (s *Service) named(name string) (*Blueprint, error) {
+func (s *Scheduler) named(name string) (*Blueprint, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("flow name is required")
 	}
@@ -135,7 +135,7 @@ func (s *Service) named(name string) (*Blueprint, error) {
 	return b, nil
 }
 
-func (s *Service) Preview(name string, width int) (string, error) {
+func (s *Scheduler) Preview(name string, width int) (string, error) {
 	b, err := s.named(name)
 	if err != nil {
 		return "", err
@@ -175,7 +175,7 @@ func (s *Service) Preview(name string, width int) (string, error) {
 
 // Launch validates and schedules a named, reviewed definition and returns the
 // scheduler task ID.
-func (s *Service) Launch(name string, inputs map[string]string, width int) (string, error) {
+func (s *Scheduler) Launch(name string, inputs map[string]string, width int) (string, error) {
 	b, err := s.named(name)
 	if err != nil {
 		return "", err

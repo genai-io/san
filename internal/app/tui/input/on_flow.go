@@ -14,8 +14,8 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-// FlowService is the UI's project-scoped flow boundary.
-type FlowService interface {
+// FlowWorkspace is the UI's project-scoped flow boundary.
+type FlowWorkspace interface {
 	Launch(name string, inputs map[string]string, width int) (taskID string, err error)
 	Runs() ([]flow.RunRecord, error)
 	GetRun(id string) (*flow.RunRecord, error)
@@ -58,7 +58,7 @@ const (
 // FlowView owns command entrypoints, navigation and interaction.
 // Rendering lives in on_flow_view.go.
 type FlowView struct {
-	service       FlowService
+	workspace     FlowWorkspace
 	ownerSession  string
 	active        bool
 	width, height int
@@ -225,15 +225,15 @@ func (v *FlowView) handleExecutions(key string) tea.Cmd {
 
 func (v *FlowView) IsActive() bool { return v.active }
 
-func (v *FlowView) init(s FlowService, w, h int) {
+func (v *FlowView) init(s FlowWorkspace, w, h int) {
 	generation := v.generation + 1
-	*v = FlowView{active: true, service: s, generation: generation, follow: true, inputs: map[string]string{}}
+	*v = FlowView{active: true, workspace: s, generation: generation, follow: true, inputs: map[string]string{}}
 	v.editor = newChromelessTextarea()
 	v.body = viewport.New()
 	v.Resize(w, h)
 }
 
-func (v *FlowView) Open(s FlowService, w, h int) tea.Cmd {
+func (v *FlowView) Open(s FlowWorkspace, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.page = flowPageHub
 	v.definitions = s.SavedDefinitions()
@@ -252,7 +252,7 @@ func (v *FlowView) openGoal() tea.Cmd {
 	return v.editor.Focus()
 }
 
-func (v *FlowView) OpenGeneration(s FlowService, goal string, w, h int) tea.Cmd {
+func (v *FlowView) OpenGeneration(s FlowWorkspace, goal string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.page, v.goal = flowPageGenerate, goal
 	v.draftAt = time.Now()
@@ -287,11 +287,11 @@ func (v *FlowView) DraftReady(generation uint64, source string, err error) bool 
 	if plan, parseErr := flow.Parse(source); parseErr == nil && plan.Name != "" {
 		name = plan.Name
 	}
-	v.OpenDraft(v.service, name, source, "", v.width, v.height)
+	v.OpenDraft(v.workspace, name, source, "", v.width, v.height)
 	return true
 }
 
-func (v *FlowView) OpenDraft(s FlowService, name, definition, baseline string, w, h int) tea.Cmd {
+func (v *FlowView) OpenDraft(s FlowWorkspace, name, definition, baseline string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.name, v.source, v.baseline = name, definition, baseline
 	v.saved = baseline != "" && baseline == definition
@@ -300,7 +300,7 @@ func (v *FlowView) OpenDraft(s FlowService, name, definition, baseline string, w
 	return nil
 }
 
-func (v *FlowView) OpenRun(s FlowService, id string, w, h int) tea.Cmd {
+func (v *FlowView) OpenRun(s FlowWorkspace, id string, w, h int) tea.Cmd {
 	v.init(s, w, h)
 	v.page = flowPageRun
 	var err error
@@ -398,7 +398,7 @@ func (v *FlowView) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 				v.message = "Describe a goal to continue"
 				return nil
 			}
-			return v.OpenGeneration(v.service, goal, v.width, v.height)
+			return v.OpenGeneration(v.workspace, goal, v.width, v.height)
 		case "shift+enter", "alt+enter", "ctrl+j":
 			v.editor.InsertString("\n")
 			return nil
@@ -481,15 +481,15 @@ func (v *FlowView) handleHub(key string) tea.Cmd {
 		}
 		if v.cursor <= len(v.definitions) {
 			name := v.definitions[v.cursor-1].Name
-			source, err := v.service.Definition(name)
+			source, err := v.workspace.Definition(name)
 			if err != nil {
 				v.setError(err)
 				return nil
 			}
-			return v.OpenDraft(v.service, name, source, source, v.width, v.height)
+			return v.OpenDraft(v.workspace, name, source, source, v.width, v.height)
 		}
 		if i := v.cursor - len(v.definitions) - 1; i >= 0 && i < len(v.runs) {
-			return v.OpenRun(v.service, v.runs[i].ID, v.width, v.height)
+			return v.OpenRun(v.workspace, v.runs[i].ID, v.width, v.height)
 		}
 	}
 	return nil
@@ -554,7 +554,7 @@ func (v *FlowView) previewSave() {
 
 // OpenRunInputs opens the run form for a saved definition, keeping the
 // inputs already supplied on the command line.
-func (v *FlowView) OpenRunInputs(s FlowService, name, definition string, inputs map[string]string, w, h int) tea.Cmd {
+func (v *FlowView) OpenRunInputs(s FlowWorkspace, name, definition string, inputs map[string]string, w, h int) tea.Cmd {
 	v.OpenDraft(s, name, definition, definition, w, h)
 	v.inputs = maps.Clone(inputs)
 	return v.openInputs()
@@ -596,7 +596,7 @@ func (v *FlowView) keepInput() {
 }
 
 func (v *FlowView) submitInput() tea.Cmd {
-	current, err := v.service.Definition(v.name)
+	current, err := v.workspace.Definition(v.name)
 	if err != nil || current != v.source {
 		v.saved = false
 		v.showReview()
@@ -604,7 +604,7 @@ func (v *FlowView) submitInput() tea.Cmd {
 		v.setError(err)
 		return nil
 	}
-	_, err = v.service.Launch(v.name, v.inputs, v.width)
+	_, err = v.workspace.Launch(v.name, v.inputs, v.width)
 	v.setError(err)
 	if err != nil {
 		return nil
@@ -677,17 +677,17 @@ func (v *FlowView) handleConfirm(key string) tea.Cmd {
 		switch v.confirm {
 		case flowConfirmSave:
 			if v.validate() {
-				err := v.service.SaveDefinition(v.name, v.source, v.baseline)
+				err := v.workspace.SaveDefinition(v.name, v.source, v.baseline)
 				v.setError(err)
 				if err == nil {
 					v.baseline, v.saved, v.page = v.source, true, flowPageReview
 				}
 			}
 		case flowConfirmStop:
-			v.setError(v.service.StopRun(v.record.ID))
+			v.setError(v.workspace.StopRun(v.record.ID))
 			v.refreshRun()
 		case flowConfirmResume:
-			_, err := v.service.ResumeRun(v.record.ID, v.resumeFrom, v.width)
+			_, err := v.workspace.ResumeRun(v.record.ID, v.resumeFrom, v.width)
 			v.setError(err)
 			if err == nil {
 				started = func() tea.Msg { return FlowStartedMsg{} }
@@ -764,7 +764,7 @@ func (v *FlowView) refreshRun() bool {
 	if v.record == nil {
 		return false
 	}
-	record, err := v.service.GetRun(v.record.ID)
+	record, err := v.workspace.GetRun(v.record.ID)
 	v.setError(err)
 	if record == nil {
 		return false

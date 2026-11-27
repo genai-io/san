@@ -13,7 +13,7 @@ const editable = "---\nname: review\n---\n```mermaid\nflowchart LR\n  work\n```\
 
 func TestDefinitionSaveRequiresValidReviewedSource(t *testing.T) {
 	dir := t.TempDir()
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	if err := wt.SaveDefinition("review", editable, ""); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestDefinitionEditPreservesSourceFilename(t *testing.T) {
 	if err := os.WriteFile(path, []byte(editable), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	changed := editable + " carefully"
 	if err := wt.SaveDefinition("review", changed, editable); err != nil {
@@ -71,7 +71,7 @@ func TestDefinitionSaveMakesProjectCopyWithoutChangingUserSource(t *testing.T) {
 	if err := os.WriteFile(path, []byte(editable), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{project, user})
 	changed := editable + " carefully"
 	if err := wt.SaveDefinition("review", changed, editable); err != nil {
@@ -91,7 +91,7 @@ func TestDefinitionSaveDoesNotOverwriteDifferentNamedFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(other), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{dir})
 	if err := wt.SaveDefinition("review", editable, ""); err == nil {
 		t.Fatal("save overwrote a different flow sharing the destination filename")

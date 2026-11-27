@@ -52,7 +52,7 @@ func TestFlowDraftSlashUpdateRoute(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			m := draftTestModel(t)
 			originalOwner := m.services.Session
-			m.services.Flow = flow.NewService(m.services.Task)
+			m.services.Flow = flow.NewScheduler(m.services.Task)
 			m.env.CWD = t.TempDir()
 			m.conv.Messages = nil
 			var calls atomic.Int32

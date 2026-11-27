@@ -44,7 +44,7 @@ func TestMainLeaseRetiresWithOutcome(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			tasks := task.NewRunSet()
 			tasks.SetSessionID("native-session")
-			s := NewService(tasks)
+			s := NewScheduler(tasks)
 			s.store = newRunStore(t.TempDir())
 			lease := &retiringMain{closed: make(chan error, 1)}
 			source := "```mermaid\nflowchart LR\n answer\n```\n## answer\nexecutor: main\n\nwrite\n"

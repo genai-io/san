@@ -38,7 +38,7 @@ type services struct {
 	Subagent     *subagent.Registry
 	Command      *command.Registry
 	Task         *task.RunSet
-	Flow         *flow.Service
+	Flow         *flow.Scheduler
 	Tracker      *todo.Store
 	Cron         *cron.Scheduler
 	MCP          *mcp.ServerSet
@@ -48,10 +48,10 @@ type services struct {
 	Reminder     *reminder.Queue
 
 	// AutoSkill owns the reviewer for the current conversation session.
-	AutoSkill AutoSkillServices
+	AutoSkill autoSkillReviewState
 }
 
-type AutoSkillServices struct {
+type autoSkillReviewState struct {
 	session *autoSkillSession
 }
 
@@ -73,7 +73,7 @@ func newServices() services {
 		Subagent:     subagent.Default(),
 		Command:      command.Default(),
 		Task:         tasks,
-		Flow:         flow.NewService(tasks),
+		Flow:         flow.NewScheduler(tasks),
 		Tracker:      todo.NewStoreWithTasks(tasks),
 		Cron:         cron.Default(),
 		MCP:          mcp.Default(),

@@ -37,7 +37,7 @@ func (okExecutor) PrepareFlowWorker(req tool.AgentExecRequest) (any, string, err
 }
 func (okExecutor) ParentModelID() string { return "m" }
 
-// flowController wires /flow directly to a service with saved definitions.
+// flowController wires /flow directly to a workspace with saved definitions.
 func flowController(t *testing.T, saved map[string]string) *SlashCommandController {
 	t.Helper()
 	dir := t.TempDir()
@@ -47,7 +47,7 @@ func flowController(t *testing.T, saved map[string]string) *SlashCommandControll
 		}
 	}
 	tasks := task.NewRunSet()
-	svc := flow.NewService(tasks)
+	svc := flow.NewScheduler(tasks)
 	svc.SetExecutor(okExecutor{})
 	svc.SetSearchPaths([]string{dir})
 	c := NewSlashCommandController(SlashCommandEnv{Flow: svc, TaskSvc: tasks, Width: 120})
@@ -99,7 +99,7 @@ func TestFlowCommandHasNoLegacyAlias(t *testing.T) {
 	if !handled || notice != "" || !v.IsActive() || v.plan == nil || v.plan.Name != "example" || v.saved {
 		t.Fatalf("draft dispatch: handled=%v notice=%q view=%+v", handled, notice, v)
 	}
-	if len(v.service.SavedDefinitions()) != 0 {
+	if len(v.workspace.SavedDefinitions()) != 0 {
 		t.Fatal("draft command saved a definition before review")
 	}
 }
@@ -302,7 +302,7 @@ func TestFlowCommandOpensManagementWithoutAModelTurn(t *testing.T) {
 	if len(v.plan.Nodes) != 1 || v.plan.Nodes[0].ID != "work" || !strings.Contains(v.source, "{{input}}") || strings.Contains(v.source, "## review") {
 		t.Fatal("new flow should not invent a review stage")
 	}
-	if len(v.service.SavedDefinitions()) != 1 {
+	if len(v.workspace.SavedDefinitions()) != 1 {
 		t.Fatal("creating a draft wrote a runnable definition before review")
 	}
 	if _, _, err := c.handleFlowCommand(context.Background(), "edit review"); err != nil {
@@ -329,7 +329,7 @@ func TestFlowCommandFromSkillReferencesOriginalWithoutChangingIt(t *testing.T) {
 	if !strings.Contains(v.source, `"team:audit"`) || !strings.Contains(v.source, "live skill") {
 		t.Fatalf("skill dependency is not explicit:\n%s", v.source)
 	}
-	if sk.State != skill.StateEnable || sk.SkillDir != "/skills/audit" || len(v.service.SavedDefinitions()) != 0 {
+	if sk.State != skill.StateEnable || sk.SkillDir != "/skills/audit" || len(v.workspace.SavedDefinitions()) != 0 {
 		t.Fatal("conversion changed the skill or saved a flow without review")
 	}
 	sk.State = skill.StateDisable

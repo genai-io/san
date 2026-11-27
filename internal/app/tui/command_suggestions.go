@@ -9,12 +9,12 @@ import (
 	"github.com/genai-io/san/internal/flow"
 )
 
-type flowSuggestionService interface {
+type flowCompletionSource interface {
 	SavedDefinitions() []flow.SavedDefinition
 	SavedInputNames(string) ([]string, error)
 }
 
-func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionService) func(string) []suggest.Suggestion {
+func commandSuggestionMatcher(commands *command.Registry, flows flowCompletionSource) func(string) []suggest.Suggestion {
 	return func(query string) []suggest.Suggestion {
 		// Dynamic branches depend on the current group or saved definitions.
 		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
@@ -27,7 +27,7 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionServ
 				}
 			}
 		}
-		cmds := cmdSvc.Matching(query)
+		cmds := commands.Matching(query)
 		result := make([]suggest.Suggestion, len(cmds))
 		for i, c := range cmds {
 			result[i] = suggest.Suggestion{Name: c.Name, Description: c.Description}
@@ -36,7 +36,7 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, flows flowSuggestionServ
 	}
 }
 
-func flowNameSuggestions(lister flowSuggestionService, args string) ([]suggest.Suggestion, bool) {
+func flowNameSuggestions(lister flowCompletionSource, args string) ([]suggest.Suggestion, bool) {
 	fields, _ := command.ScanArguments(args)
 	if len(fields) == 0 {
 		return nil, false

@@ -73,7 +73,7 @@ func Initialize(opts Options) {
 //
 // This is the only seam for callers that need the full *Engine surface
 // (the app composition root). All other consumers should depend on
-// Dispatcher (or Status) instead.
+// Handler for event dispatch.
 func DefaultEngine() *Engine {
 	return defaultEngine
 }

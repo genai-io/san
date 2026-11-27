@@ -27,7 +27,7 @@ func TestFlowQuestionsKeepNodeOriginAndAnswers(t *testing.T) {
 	}}
 	executor := newIntegrationExecutor(t, provider, t.TempDir(), "fake-model", nil)
 	executor.SetInteractions(bridge)
-	flows := flow.NewService(task.Default())
+	flows := flow.NewScheduler(task.Default())
 	flows.SetExecutor(subagent.NewExecutorAdapter(executor))
 	definition := "---\nname: questions\n---\n```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nAsk first\n\n## second\nAsk second\n"
 	runID := testutil.LaunchFlow(t, flows, definition, nil)

@@ -84,7 +84,7 @@ func TestFlowPreservesUnfinishedResultsAndUsage(t *testing.T) {
 			Content: "verified partial findings", Error: "step budget exhausted", AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
 			StepCount: 2, TotalInputTokens: 100, TotalOutputTokens: 25,
 		}, err: runErr}
-		wt := NewService(task.Default())
+		wt := NewScheduler(task.Default())
 		wt.SetExecutor(exec)
 		info := runToCompletion(t, wt, map[string]any{"definition": "```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nReview\n\n## second\nReview\n"})
 		if info.Status != task.StatusFailed || info.StepCount != 4 || info.TokenUsage != 250 {
@@ -130,9 +130,9 @@ func TestNodeRunnerFlowOrigin(t *testing.T) {
 	}
 }
 
-func TestFlowServiceRunsNodesThroughTheExecutor(t *testing.T) {
+func TestFlowSchedulerRunsNodesThroughTheExecutor(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	params := map[string]any{"definition": definition, "inputs": map[string]any{"base": "main"}}
 
@@ -166,12 +166,12 @@ func TestFlowServiceRunsNodesThroughTheExecutor(t *testing.T) {
 	}
 }
 
-func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
+func TestFlowSchedulerPublishesLiveNodeGraph(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	releaseNode := sync.OnceFunc(func() { close(release) })
 	defer releaseNode()
 	exec := &scriptedExecutor{outputs: map[string]string{"only": "done"}, started: started, release: release, toolResult: "package main\nfunc main() {}\n"}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	src := "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"
 	id, err := startInline(wt, src, nil, 120)
@@ -199,7 +199,7 @@ func TestFlowServicePublishesLiveNodeGraph(t *testing.T) {
 	}
 }
 
-func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
+func TestFlowSchedulerPairsParallelResultsWithTheirCalls(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	releaseNode := sync.OnceFunc(func() { close(release) })
 	defer releaseNode()
@@ -223,7 +223,7 @@ func TestFlowServicePairsParallelResultsWithTheirCalls(t *testing.T) {
 	if got := scheduler.GetStatus().Progress; got != "only ▸ ✓ Bash(cat first.go) · first result" {
 		t.Fatalf("latest result lost its call: %q", got)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	id, err := startInline(wt, "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n", nil, 120)
 	if err != nil {
@@ -269,7 +269,7 @@ func TestNodeRunnerTextResultPreviewWithoutDiscardCallback(t *testing.T) {
 	}
 }
 
-func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
+func TestFlowSchedulerResultSummaryStaysSmallAndReadable(t *testing.T) {
 	if got := toolResultSummary(strings.Repeat("x", 161), nil); !strings.HasPrefix(got, "1 line · 161 B · ") {
 		t.Fatalf("long single-line result = %q", got)
 	}
@@ -288,7 +288,7 @@ func TestFlowServiceResultSummaryStaysSmallAndReadable(t *testing.T) {
 	}
 }
 
-func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
+func TestFlowSchedulerParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	firstStreaming, secondStreaming, firstDiscarded := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
 		emit := func(text string) {
@@ -315,7 +315,7 @@ func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 			textEnd(req, nil)
 		}
 	}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	const definition = "```mermaid\nflowchart LR\n  a\n  b\n```\n\n## a\ngo\n\n## b\ngo\n"
 	info := runToCompletion(t, wt, map[string]any{"definition": definition})
@@ -329,8 +329,8 @@ func TestFlowServiceParallelStreamsStayOutOfParentGraph(t *testing.T) {
 	}
 }
 
-func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
-	wt := NewService(task.Default())
+func TestFlowSchedulerRejectsBeforeRunning(t *testing.T) {
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
 
 	if _, err := startInline(wt, definition, map[string]string{"base": "main"}, 120); err == nil || !strings.Contains(err.Error(), `node diff: agent "explorer" is disabled`) {
@@ -342,8 +342,8 @@ func TestFlowServiceRejectsBeforeRunning(t *testing.T) {
 	}
 }
 
-func TestFlowServiceRejectsATypoedAgentName(t *testing.T) {
-	wt := NewService(task.Default())
+func TestFlowSchedulerRejectsATypoedAgentName(t *testing.T) {
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
 	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
 
@@ -356,8 +356,8 @@ func TestFlowServiceRejectsATypoedAgentName(t *testing.T) {
 	}
 }
 
-func TestFlowServiceAcceptsANodeWithNoAgent(t *testing.T) {
-	wt := NewService(task.Default())
+func TestFlowSchedulerAcceptsANodeWithNoAgent(t *testing.T) {
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	src := strings.Replace(definition, "agent: explorer\n", "", 1)
 
@@ -366,18 +366,18 @@ func TestFlowServiceAcceptsANodeWithNoAgent(t *testing.T) {
 	}
 }
 
-const serviceOrchestrator = "---\nname: split\n---\n```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n## plan\nSplit it up\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n## merge\nMerge {{review}}\n"
+const schedulerOrchestrator = "---\nname: split\n---\n```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n## plan\nSplit it up\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n## merge\nMerge {{review}}\n"
 
-func TestFlowServiceFansOutOverAPlan(t *testing.T) {
+func TestFlowSchedulerFansOutOverAPlan(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{
 		"plan":        `{"tasks":[{"name":"llm","prompt":"errors"},{"name":"tool","prompt":"perms"}]}`,
 		"review·llm":  "L",
 		"review·tool": "T",
 		"merge":       "done",
 	}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": serviceOrchestrator}
+	params := map[string]any{"definition": schedulerOrchestrator}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusCompleted {
@@ -406,7 +406,7 @@ func TestFlowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
 	runID, err := wt.Launch("review", map[string]string{"base": "main"}, 100)
@@ -427,13 +427,13 @@ func TestFlowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
 	}
 }
 
-func TestFlowServiceRunsASavedFlow(t *testing.T) {
+func TestFlowSchedulerRunsASavedFlow(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
 	wt.SetSearchPaths([]string{dir})
 
@@ -448,12 +448,12 @@ func TestFlowServiceRunsASavedFlow(t *testing.T) {
 	}
 }
 
-func TestFlowServiceNameErrors(t *testing.T) {
+func TestFlowSchedulerNameErrors(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 
@@ -476,7 +476,7 @@ func TestSavedPreviewTurnCount(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(source), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		s := NewService(task.Default())
+		s := NewScheduler(task.Default())
 		s.SetSearchPaths([]string{dir})
 		s.SetExecutor(&scriptedExecutor{})
 		preview, err := s.Preview("notes", 80)
@@ -492,7 +492,7 @@ func TestFlowBareInputPreflight(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 	names, err := wt.SavedInputNames("review")
@@ -518,7 +518,7 @@ func TestSavedFlowBlankRequiredInput(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s := NewService(task.Default())
+	s := NewScheduler(task.Default())
 	s.SetSearchPaths([]string{dir})
 	s.SetExecutor(&scriptedExecutor{})
 	for _, value := range []string{" \t", " agenda "} {
@@ -539,13 +539,13 @@ func TestSavedFlowBlankRequiredInput(t *testing.T) {
 	}
 }
 
-func TestFlowServiceMissingInputQuotesSavedName(t *testing.T) {
+func TestFlowSchedulerMissingInputQuotesSavedName(t *testing.T) {
 	dir := t.TempDir()
 	body := strings.Replace(definition, "name: review", "name: release review", 1)
 	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	wt.SetSearchPaths([]string{dir})
 	_, err := wt.Launch("release review", nil, 100)
@@ -556,7 +556,7 @@ func TestFlowServiceMissingInputQuotesSavedName(t *testing.T) {
 
 // startInline validates and schedules an unsaved blueprint, bypassing the
 // saved-definition lookup that users go through.
-func startInline(s *Service, definition string, inputs map[string]string, width int) (string, error) {
+func startInline(s *Scheduler, definition string, inputs map[string]string, width int) (string, error) {
 	b, err := Parse(definition)
 	if err != nil {
 		return "", fmt.Errorf("invalid flow:\n%w", err)
@@ -567,8 +567,8 @@ func startInline(s *Service, definition string, inputs map[string]string, width 
 	return s.start(b, inputs, "/flow run "+b.Name, width)
 }
 
-// startServiceParams adapts legacy test fixtures to the typed service API.
-func startServiceParams(wt *Service, params map[string]any) (string, error) {
+// startSchedulerParams adapts legacy test fixtures to the typed scheduler API.
+func startSchedulerParams(wt *Scheduler, params map[string]any) (string, error) {
 	inputs := map[string]string{}
 	if values, ok := params["inputs"].(map[string]any); ok {
 		for key, value := range values {
@@ -582,10 +582,10 @@ func startServiceParams(wt *Service, params map[string]any) (string, error) {
 	return startInline(wt, source, inputs, 120)
 }
 
-// runToCompletion starts a service run and waits for its background task.
-func runToCompletion(t *testing.T, wt *Service, params map[string]any) task.TaskInfo {
+// runToCompletion starts a scheduler run and waits for its background task.
+func runToCompletion(t *testing.T, wt *Scheduler, params map[string]any) task.TaskInfo {
 	t.Helper()
-	id, err := startServiceParams(wt, params)
+	id, err := startSchedulerParams(wt, params)
 	if err != nil {
 		t.Fatalf("start flow: %v", err)
 	}
@@ -611,7 +611,7 @@ func TestFlowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
 	t.Cleanup(task.ResetDefault)
 	task.Default().SetSessionID("first")
 	first, second := &scriptedExecutor{}, &scriptedExecutor{}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(first)
 	// Switch after registration, before the background goroutine can start.
 	task.SetLifecycleHandler(switchExecutorOnLaunch(func() {
@@ -625,17 +625,17 @@ func TestFlowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
 	}
 }
 
-const serviceOptimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
+const schedulerOptimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
 
-func TestFlowServiceRetriesUntilReviewPasses(t *testing.T) {
+func TestFlowSchedulerRetriesUntilReviewPasses(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{
 		"draft#1": "v1", "review#1": "FAIL",
 		"draft#2": "v2", "review#2": "PASS",
 		"ship": "shipped",
 	}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": serviceOptimizer}
+	params := map[string]any{"definition": schedulerOptimizer}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusCompleted {
@@ -658,7 +658,7 @@ func TestFlowServiceRetriesUntilReviewPasses(t *testing.T) {
 	}
 }
 
-func TestFlowServiceFailsTheTaskWhenALoopRunsOut(t *testing.T) {
+func TestFlowSchedulerFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 	// How a failed flow reaches the conversation: a failed task whose
 	// error names the node, so the notification says what went wrong.
 	exec := &scriptedExecutor{outputs: map[string]string{
@@ -666,9 +666,9 @@ func TestFlowServiceFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 		"draft#2": "v2", "review#2": "FAIL",
 		"draft#3": "v3", "review#3": "FAIL",
 	}}
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(exec)
-	params := map[string]any{"definition": serviceOptimizer}
+	params := map[string]any{"definition": schedulerOptimizer}
 	info := runToCompletion(t, wt, params)
 
 	if info.Status != task.StatusFailed {

@@ -20,7 +20,7 @@ import (
 
 func flowInputModel(manager *task.RunSet) *model {
 	m := &model{
-		services:  services{Task: manager, Flow: flow.NewService(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
+		services:  services{Task: manager, Flow: flow.NewScheduler(manager), Subagent: subagent.NewRegistry(), Tracker: todo.NewStore()},
 		conv:      chat.NewModel(80),
 		userInput: input.New("", 80, nil, input.SelectorServices{}),
 	}

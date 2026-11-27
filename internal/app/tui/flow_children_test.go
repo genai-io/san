@@ -199,7 +199,7 @@ func TestFlowChildrenNativeVisibilityAndDisplayOnlyCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	executor.ConfigureOwner(m.services.Task, nil, nil, nil)
-	svc := flow.NewService(m.services.Task)
+	svc := flow.NewScheduler(m.services.Task)
 	svc.SetSearchPaths([]string{t.TempDir()})
 	svc.SetExecutor(subagent.NewExecutorAdapter(executor))
 	m.services.Flow = svc

@@ -14,12 +14,12 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-type flowTaskService struct {
-	input.FlowService
+type flowRunStub struct {
+	input.FlowWorkspace
 	record flow.RunRecord
 }
 
-func (s flowTaskService) GetRun(string) (*flow.RunRecord, error) {
+func (s flowRunStub) GetRun(string) (*flow.RunRecord, error) {
 	return &s.record, nil
 }
 
@@ -29,7 +29,7 @@ func TestFlowMainStepOpensNativeHistoryAndReturns(t *testing.T) {
 	m.env.Height = 30
 	m.conv.Append(core.ChatMessage{ID: "writer-input", Role: core.ChatUser, Content: "WRITER_NATIVE_INPUT"})
 	m.conv.Append(core.ChatMessage{ID: "writer-answer", Role: core.ChatAssistant, Content: "WRITER_NATIVE_ANSWER"})
-	s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
+	s := flowRunStub{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
 		Definition: "```mermaid\nflowchart LR\n writer\n```\n## writer\nexecutor: main\n\nWrite\n",
 		Nodes: map[string]flow.Checkpoint{"writer": {Outcome: flow.Outcome{Status: flow.StatusSucceeded,
 			Execution: flow.Execution{SessionID: "main-session", MessageID: "writer-input"}}}}}}
@@ -70,7 +70,7 @@ func TestFlowChildUsesNativeTaskOverlayAndReturns(t *testing.T) {
 	child.Complete(nil)
 	m := flowInputModel(manager)
 	m.env.Height = 30
-	s := flowTaskService{record: flow.RunRecord{
+	s := flowRunStub{record: flow.RunRecord{
 		ID: "run", Status: flow.RunSucceeded,
 		Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
 		Nodes:      map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Execution: flow.Execution{TaskID: "child", SessionID: "child-session"}}}},
@@ -112,7 +112,7 @@ func TestFlowRecordedCheckpointInspection(t *testing.T) {
 				state = flow.Checkpoint{Outcome: flow.Outcome{Status: flow.StatusPending}, History: []flow.Attempt{{Outcome: flow.Outcome{Workers: []flow.WorkerCheckpoint{{State: flow.Checkpoint{Outcome: flow.Outcome{Execution: old, Status: flow.StatusFailed, Output: answer, Error: "old failure"}, Attempt: 1}}}}, Number: 2}}}
 				want = old
 			}
-			s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
+			s := flowRunStub{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
 				Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n", Nodes: map[string]flow.Checkpoint{"a": state}}}
 			m.userInput.Flow.OpenRun(s, "run", 80, 35)
 			cmd := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -186,7 +186,7 @@ func TestFlowRecordedRejectsConflictingLiveIdentity(t *testing.T) {
 		child.SetIdentity("Explore", "wrong-session")
 		child.Complete(nil)
 		m := flowInputModel(manager)
-		s := flowTaskService{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
+		s := flowRunStub{record: flow.RunRecord{ID: "run", Status: flow.RunSucceeded,
 			Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
 			Nodes:      map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusSucceeded, Output: "saved", Execution: flow.Execution{TaskID: "child", SessionID: "saved-session"}}}}}}
 		m.userInput.Flow.OpenRun(s, "run", 80, 30)
@@ -220,7 +220,7 @@ func TestFlowOpenTaskUnavailable(t *testing.T) {
 				// The viewer snapshot stays pinned to an earlier checkpoint with the same task ID.
 				m.tasks = taskViewerState{sessionID: m.sessionID(), recorded: &input.TaskViewItem{ID: "child", SessionID: "earlier", Recorded: true}}
 			}
-			s := flowTaskService{record: flow.RunRecord{ID: "run", Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
+			s := flowRunStub{record: flow.RunRecord{ID: "run", Definition: "```mermaid\nflowchart LR\n a\n```\n## a\nInspect\n",
 				Nodes: map[string]flow.Checkpoint{"a": {Outcome: flow.Outcome{Status: flow.StatusPending, Execution: tc.execution}}}}}
 			m.userInput.Flow.OpenRun(s, "run", 80, 30)
 			open := m.userInput.Flow.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})

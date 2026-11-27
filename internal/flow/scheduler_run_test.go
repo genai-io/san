@@ -16,7 +16,7 @@ import (
 )
 
 func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{outputs: map[string]string{"a": " final answer \n"}, toolEvents: func(req tool.AgentExecRequest) {
 		req.OnToolStart("read-1", "Read(example.go)")
 		req.OnToolResult("read-1", "Read(example.go)", "package main", nil)
@@ -39,7 +39,7 @@ func TestPersistedRunSharesLiveTaskWithoutCopyingActivity(t *testing.T) {
 }
 
 func TestResumeRetainsSavedFilenameName(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetExecutor(&scriptedExecutor{})
 	definition := "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n"
 	if err := wt.runStore().Put(RunRecord{ID: "named", WorkerPolicies: map[string]string{"a": "cfg:"}, Name: "filename-name", Definition: definition}); err != nil {
@@ -80,7 +80,7 @@ func (e *activityExecutor) Run(ctx context.Context, req tool.AgentExecRequest) (
 	return nil, ctx.Err()
 }
 func TestRunActualActivityAndStop(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	e := &activityExecutor{ready: make(chan struct{})}
 	wt.SetExecutor(e)
 	_, err := startInline(wt, "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)
@@ -131,7 +131,7 @@ func TestFlowRetainsHistoricalRunDirectoryAndLockExclusion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{filepath.Join(root, ".san", "workflows")})
 	r, err := wt.GetRun("existing")
 	if err != nil || r.Status != RunRunning {
@@ -143,7 +143,7 @@ func TestFlowRetainsHistoricalRunDirectoryAndLockExclusion(t *testing.T) {
 }
 
 func TestRunInterruptionRequiresAbsentOwner(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	wt.SetSearchPaths([]string{filepath.Join(t.TempDir(), ".san", "workflows")})
 	s := wt.runStore()
 	if err := s.Put(RunRecord{ID: "run", Status: RunRunning}); err != nil {
@@ -164,7 +164,7 @@ func TestRunInterruptionRequiresAbsentOwner(t *testing.T) {
 	}
 }
 func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	paths := []string{filepath.Join(t.TempDir(), ".san", "workflows")}
 	wt.SetSearchPaths(paths)
 	if err := os.MkdirAll(paths[0], 0700); err != nil {
@@ -188,7 +188,7 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	if err := wt.runStore().Put(r); err != nil {
 		t.Fatal(err)
 	}
-	wt = NewService(task.Default())
+	wt = NewScheduler(task.Default())
 	wt.SetSearchPaths(paths)
 	wt.SetExecutor(exec)
 	_, err := wt.ResumeRun("retry", "", 120)
@@ -214,7 +214,7 @@ func TestResumeSnapshotReusesSuccessfulBranch(t *testing.T) {
 	t.Fatal("resume timeout")
 }
 func TestLaunchRefusesInitialStoreFailure(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	exec := &scriptedExecutor{}
 	wt.SetExecutor(exec)
 	p := t.TempDir()
@@ -235,7 +235,7 @@ func TestLaunchRefusesInitialStoreFailure(t *testing.T) {
 }
 
 func TestInspectAndStopAcceptTaskID(t *testing.T) {
-	wt := NewService(task.Default())
+	wt := NewScheduler(task.Default())
 	e := &activityExecutor{ready: make(chan struct{})}
 	wt.SetExecutor(e)
 	taskID, err := startInline(wt, "```mermaid\nflowchart LR\n a\n```\n## a\nwork\n", nil, 120)

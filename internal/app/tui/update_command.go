@@ -12,7 +12,7 @@ import (
 )
 
 func (m *model) slashCommandEnv() input.SlashCommandEnv {
-	var flows input.FlowService
+	var flows input.FlowWorkspace
 	if m.services.Flow != nil {
 		flows = m.services.Flow
 	}

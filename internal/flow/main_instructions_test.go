@@ -29,7 +29,7 @@ func TestWriterCriticExampleRevisionScope(t *testing.T) {
 		"writer#2": "revised article", "critic#2": "Verdict: PASS\ncomplete", "decision#2": "PASS", "result": "revised article",
 	}}
 	tasks := task.NewRunSet()
-	s := NewService(tasks)
+	s := NewScheduler(tasks)
 	s.store = newRunStore(t.TempDir())
 	s.SetExecutor(exec)
 	id, err := s.start(b, map[string]string{"input": "write about everyday kindness"}, "example", 100)
@@ -90,7 +90,7 @@ func TestEarlierCriticResumeUsesItsWriterInstructions(t *testing.T) {
 	}
 	tasks := task.NewRunSet()
 	tasks.SetSessionID("native-session")
-	s := NewService(tasks)
+	s := NewScheduler(tasks)
 	s.store = newRunStore(t.TempDir())
 	lease := &revisionMain{}
 	s.SetMainExecutor(lease)
@@ -136,7 +136,7 @@ func TestMainResumeWithoutIdentityRequiresExplicitFrom(t *testing.T) {
 	for _, status := range []Status{StatusFailed, StatusRunning} {
 		tasks := task.NewRunSet()
 		tasks.SetSessionID("native-session")
-		s := NewService(tasks)
+		s := NewScheduler(tasks)
 		s.store = newRunStore(t.TempDir())
 		s.SetExecutor(&scriptedExecutor{})
 		s.SetMainExecutor(&scriptedMain{})
