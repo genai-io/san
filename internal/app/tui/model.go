@@ -9,7 +9,7 @@
 //	                       lifecycle wiring + SessionEnd shutdown
 //	model_session.go       session save/load + per-session task storage
 //	model_scrollback.go    rendering committed messages to terminal output
-//	model_agent_events.go  chat.UpdateDeps callbacks for agent events
+//	model_agent_events.go  chat.UI callbacks for agent events
 //	                       outbox pump
 //	model_compact.go       conversation compaction (auto + /compact)
 //	model_tool_effects.go  side effects from tool calls (cwd, files, agent
@@ -201,7 +201,7 @@ type model struct {
 	grp groupState
 }
 
-var _ chat.UpdateDeps = (*model)(nil)
+var _ chat.UI = (*model)(nil)
 
 // modeHintFor is how long the shift+tab hint stays; the status bar redraws
 // often enough (every few hundred ms) that it goes without a timer of its own.

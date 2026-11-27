@@ -9,7 +9,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-// UpdateDeps supplies the callbacks and services Update needs from the root model.
+// UI supplies the callbacks and services Update needs from the root model.
 //
 // The prefix says where a member comes from:
 //
@@ -18,7 +18,7 @@ import (
 //   - Handle* — a system message arrived: a background command's result, a
 //     timer, a side channel. No place on that timeline; it can land any time.
 //   - a verb  — not a callback at all, but a service Update calls on the root model.
-type UpdateDeps interface {
+type UI interface {
 	// ── On*: agent lifecycle ────────────────────────────────────
 	OnInference(resp *ai.Response) // PostInfer
 	// OnToolResult hands back the result message the model is told; the

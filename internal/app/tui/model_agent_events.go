@@ -1,4 +1,4 @@
-// chat.UpdateDeps implementation: callbacks the agent's outbox event pump calls
+// chat.UI implementation: callbacks the agent's outbox event pump calls
 // on the main bubbletea goroutine — turn start, token accounting, tool
 // results, turn end, and stop. The actual side effects (committing
 // scrollback, draining queues, firing hooks) live in adjacent model_*

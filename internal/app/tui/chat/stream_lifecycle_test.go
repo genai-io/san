@@ -10,7 +10,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-type streamStub struct{ UpdateDeps }
+type streamStub struct{ UI }
 
 func (*streamStub) CommitMessages() []tea.Cmd       { return nil }
 func (*streamStub) FlushStreamingBlocks() []tea.Cmd { return nil }

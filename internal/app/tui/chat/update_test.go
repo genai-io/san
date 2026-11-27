@@ -42,7 +42,7 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 }
 
 type postToolUpdateDeps struct {
-	UpdateDeps
+	UI
 	drainCalls int
 }
 
