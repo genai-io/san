@@ -20,9 +20,9 @@ const (
 	eventsFileName  = eventsID + ".jsonl"
 )
 
-func (s *Store) sessionsRoot() string { return filepath.Join(s.projectDir, sessionsDirName) }
+func (s *Store) sessionsRoot() string { return (library{root: s.projectDir}).sessionsRoot() }
 func (s *Store) sessionDir(id string) string {
-	return filepath.Join(s.sessionsRoot(), id)
+	return (library{root: s.projectDir}).sessionDir(id)
 }
 func (s *Store) eventsPath(id string) string { return filepath.Join(s.sessionDir(id), eventsFileName) }
 

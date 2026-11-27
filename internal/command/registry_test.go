@@ -17,7 +17,7 @@ func TestCustomPaletteNamesResolveToAdvertisedCommand(t *testing.T) {
 	}
 	for _, entry := range matches {
 		name, _, _ := ParseCommand("/" + entry.Name)
-		got, ok := r.IsCustomCommand(name)
+		got, ok := r.LookupPromptCommand(name)
 		if !ok || got.FullName() != entry.Name {
 			t.Errorf("dispatch /%s = %+v", entry.Name, got)
 		}
@@ -26,7 +26,7 @@ func TestCustomPaletteNamesResolveToAdvertisedCommand(t *testing.T) {
 		}
 	}
 	r.cachedCustomCommands = r.cachedCustomCommands[:1]
-	if got, ok := r.IsCustomCommand("review"); !ok || got.FullName() != "ci:review" {
+	if got, ok := r.LookupPromptCommand("review"); !ok || got.FullName() != "ci:review" {
 		t.Fatal("lost short alias")
 	}
 }
@@ -195,7 +195,7 @@ func setupPluginCommandPaths(t *testing.T) (string, func() []PluginCommandPath) 
 	return tmpDir, provider
 }
 
-func TestIsCustomCommand_MatchesCustomCommands(t *testing.T) {
+func TestLookupPromptCommand_MatchesCustomCommands(t *testing.T) {
 	saveAndRestore(t)
 
 	_, provider := setupPluginCommandPaths(t)
@@ -203,7 +203,7 @@ func TestIsCustomCommand_MatchesCustomCommands(t *testing.T) {
 
 	svc := Default()
 
-	pc, ok := svc.IsCustomCommand("myplugin:greet")
+	pc, ok := svc.LookupPromptCommand("myplugin:greet")
 	if !ok {
 		cmds := svc.CustomCommands()
 		t.Logf("available plugin commands: %+v", cmds)
@@ -213,12 +213,12 @@ func TestIsCustomCommand_MatchesCustomCommands(t *testing.T) {
 		t.Errorf("description = %q, want %q", pc.Description, "Say hello")
 	}
 
-	_, ok = svc.IsCustomCommand("greet")
+	_, ok = svc.LookupPromptCommand("greet")
 	if !ok {
 		t.Fatal("expected short name 'greet' to match plugin command")
 	}
 
-	_, ok = svc.IsCustomCommand("nonexistent")
+	_, ok = svc.LookupPromptCommand("nonexistent")
 	if ok {
 		t.Fatal("nonexistent command should not match")
 	}
@@ -350,7 +350,7 @@ func TestUserCommandWithoutNamespace(t *testing.T) {
 	}
 }
 
-func TestIsCustomCommand_MatchesUserAndProjectCommands(t *testing.T) {
+func TestLookupPromptCommand_MatchesUserAndProjectCommands(t *testing.T) {
 	saveAndRestore(t)
 
 	root := t.TempDir()
@@ -371,7 +371,7 @@ func TestIsCustomCommand_MatchesUserAndProjectCommands(t *testing.T) {
 	t.Cleanup(func() { os.Setenv("HOME", origHome) })
 
 	svc := Default()
-	pc, ok := svc.IsCustomCommand("format")
+	pc, ok := svc.LookupPromptCommand("format")
 	if !ok {
 		t.Fatal("expected project-level 'format' command to be found")
 	}
@@ -394,7 +394,7 @@ func TestPluginCommandScope(t *testing.T) {
 	t.Cleanup(func() { os.Setenv("HOME", origHome) })
 
 	svc := Default()
-	pc, ok := svc.IsCustomCommand("myplugin:greet")
+	pc, ok := svc.LookupPromptCommand("myplugin:greet")
 	if !ok {
 		t.Fatal("expected plugin command to be found")
 	}

@@ -94,7 +94,7 @@ func TestMainSessionRuntimePermissionPagingAndRecording(t *testing.T) {
 			params := BuildParams{Provider: headlessProvider{driver}, ModelID: "fake", CWD: t.TempDir(), MCPTools: []core.Tool{fixture},
 				SessionID: mainSession.Session.ID(), Recording: mainSession.Session,
 				HookEngine: hooks, PermissionRules: policy.Decide, CanApproveByHook: policy.CanApproveByHook,
-				ResultFilter: ResultPager{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter,
+				ResultFilter: ResultPreview{Store: mainSession.Store, SessionID: mainSession.Session.ID()}.Filter,
 			}
 			runtime := &Runtime{}
 			if err := runtime.Start(params, nil); err != nil {
@@ -178,7 +178,7 @@ func TestMainSessionPagingKeepsOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := mainSession.Session.ID()
-	params := BuildParams{ResultFilter: ResultPager{Store: mainSession.Store, SessionID: owner}.Filter}
+	params := BuildParams{ResultFilter: ResultPreview{Store: mainSession.Store, SessionID: owner}.Filter}
 	mainSession.Session = mainSessionFixture(t).Session
 	out, err := params.ResultFilter(context.Background(), sdkagent.PostToolContext{
 		Call: ai.ToolCall{ID: "call-paged"}, Result: sdkagent.TextResult(strings.Repeat("x", 100_001)),

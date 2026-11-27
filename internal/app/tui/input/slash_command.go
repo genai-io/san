@@ -231,7 +231,7 @@ func (c SlashCommandController) Execute(ctx context.Context, inputText string) (
 		return c.executeSkillSlashCommand(sk, args), c.env.HandleSkillInvocation(), true
 	}
 
-	if pc, ok := c.env.Command.IsCustomCommand(cmdName); ok {
+	if pc, ok := c.env.Command.LookupPromptCommand(cmdName); ok {
 		return c.executeCustomCommand(pc, args), c.env.HandleSkillInvocation(), true
 	}
 

@@ -246,7 +246,7 @@ Files under `internal/app/tui`:
 | `model_lifecycle.go` | Construction + run-option application + task lifecycle wiring + SessionEnd shutdown. |
 | `model_session.go` | Session save/load + per-session task storage + fork. |
 | `model_scrollback.go` | Retain recent settled rows above the composer; print older rows into native scrollback via `tea.Println`. |
-| `model_agent_events.go` | `chat.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
+| `model_agent_events.go` | `chat.UpdateDeps` callbacks (turn start, tokens, tool results, turn end, stop). |
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |

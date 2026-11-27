@@ -35,7 +35,7 @@ func TestClearStartsAFreshDraft(t *testing.T) {
 	m := model{services: services{Agent: &agentruntime.Runtime{}, Session: old, SessionStore: store, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewQueue(), Hook: hook.NewEngine(nil, "old", "", old.Path())}, conv: chat.NewModel(80)}
 	m.services.Setting = setting.New(setting.NewData())
 	m.services.LLM = &llm.Conn{}
-	m.autopilot = new(atomic.Pointer[autopilotRuntime])
+	m.autopilot = new(atomic.Pointer[autopilotSnapshot])
 	m.services.Agent.SetMessages(history)
 	m.env.CWD = cwd
 	m.env.SessionName = "old title"

@@ -11,7 +11,7 @@ import (
 
 func TestAgentStopCancelsRunningAgent(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -46,7 +46,7 @@ func TestAgentStopCancelsRunningAgent(t *testing.T) {
 
 func TestAgentStopClosesCompletedAgent(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -84,7 +84,7 @@ func TestAgentStopRequiresTaskID(t *testing.T) {
 
 func TestAgentStopRejectsBashTask(t *testing.T) {
 	task.Initialize(task.Options{})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 
 	cmd := exec.Command("bash", "-c", "sleep 60")
 	if err := cmd.Start(); err != nil {

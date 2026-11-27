@@ -169,7 +169,7 @@ The graph engine (`parse.go`, `expand.go`, `run.go`, `view.go`,
   exclusive executor ownership. Listing reads only frontmatter; `FindDefinition` does the
   full parse. Search paths come from the caller. `store_unix.go` /
   `store_windows.go` contain only platform-specific owner checks. An empty run
-  directory uses memory for embedded callers and tests. Each `Store` owns its
+  directory uses memory for embedded callers and tests. Each run store owns its
   mutex and memory-mode locks; `SetSearchPaths` keeps one store per run
   directory so live runs and lookups share it.
 - `service.go` — typed service configuration, executor preflight, launch,

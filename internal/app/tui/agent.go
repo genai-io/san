@@ -221,7 +221,7 @@ func (m *model) buildAgentParams() (agentruntime.BuildParams, error) {
 			Judge: rt.judge.Permission, Observe: m.recordDecision, Recording: rec,
 		})
 	}
-	params.ResultFilter = agentruntime.ResultPager{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
+	params.ResultFilter = agentruntime.ResultPreview{Store: owner.Store, SessionID: owner.Session.ID()}.Filter
 	return params, nil
 }
 
@@ -304,7 +304,7 @@ func (m *model) recordDecision(ctx context.Context, approved bool, reason string
 // TakeJudgeDecision consumes the decision stashed for a tool call (load + delete),
 // so it stamps exactly one rendered result and the handoff map holds only
 // in-flight calls. Returns nil when the call was not judged. Mirrors the
-// tool side-effect handoff (Tool.PopSideEffect), consumed at the same point in
+// tool side-effect handoff (tool.PopSideEffect), consumed at the same point in
 // OnToolResult.
 func (m *model) TakeJudgeDecision(callID string) *core.JudgeDecision {
 	// No empty-callID guard: recordDecision never stores under an empty key, so

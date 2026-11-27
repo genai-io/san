@@ -43,8 +43,7 @@ func (m *Manager) SetOutputDir(dir string) error
 // Package-level access
 func Initialize(opts Options) error
 func Default() *Manager
-func SetDefaultTracker(m *Manager) // test-only
-func ResetDefaultTracker()         // test-only
+func ResetDefaultManager() // test-only
 ```
 
 

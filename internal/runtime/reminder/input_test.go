@@ -126,8 +126,9 @@ func TestConcurrentInputPreparesContextOnce(t *testing.T) {
 	wg.Wait()
 	close(results)
 	count := 0
+	want := reminder.WrapWithSource("provider body", reminder.ProviderSkillsDirectory)
 	for text := range results {
-		if reminder.HasSystemReminder(text) {
+		if strings.Contains(text, want) {
 			count++
 		}
 	}

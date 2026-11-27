@@ -1,4 +1,4 @@
-// chat.Runtime implementation: callbacks the agent's outbox event pump calls
+// chat.UpdateDeps implementation: callbacks the agent's outbox event pump calls
 // on the main bubbletea goroutine — turn start, token accounting, tool
 // results, turn end, and stop. The actual side effects (committing
 // scrollback, draining queues, firing hooks) live in adjacent model_*
@@ -85,7 +85,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 		m.skillReviewRequested = true
 	}
 
-	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
+	sideEffect := tool.PopSideEffect(tr.ToolCallID)
 	agentruntime.PostTool(tr, sideEffect, m.services.Hook, agentruntime.WorkspaceCallbacks{
 		ChangeCwd:      m.changeCwd,
 		ReloadPersonas: m.reloadPersonasIfChanged,

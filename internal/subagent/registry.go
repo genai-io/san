@@ -12,8 +12,8 @@ import (
 type Registry struct {
 	mu           sync.RWMutex
 	agents       map[string]*AgentConfig
-	userStore    *AgentStore     // User-level enabled/disabled states
-	projectStore *AgentStore     // Project-level enabled/disabled states
+	userStore    *disabledStore  // User-level enabled/disabled states
+	projectStore *disabledStore  // Project-level enabled/disabled states
 	personaAllow map[string]bool // active persona's visible-agent allow-list (nil = no restriction)
 	cwd          string          // Current working directory
 }
@@ -82,8 +82,8 @@ func (r *Registry) InitStores(cwd string) error {
 	defer r.mu.Unlock()
 
 	r.cwd = cwd
-	r.userStore = NewUserAgentStore()
-	r.projectStore = NewProjectAgentStore(cwd)
+	r.userStore = newUserDisabledStore()
+	r.projectStore = newProjectDisabledStore(cwd)
 	return nil
 }
 
@@ -136,7 +136,7 @@ func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool {
 }
 
 // store is the agents store for scope; nil before InitStores.
-func (r *Registry) store(scope setting.Scope) *AgentStore {
+func (r *Registry) store(scope setting.Scope) *disabledStore {
 	if scope == setting.ScopeUser {
 		return r.userStore
 	}

@@ -96,11 +96,11 @@ func (m *model) uiHookBudget() time.Duration {
 	return defaultUIHookBudget
 }
 
-func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, string) {
+func (m *model) runPromptSubmitHook(ctx context.Context, prompt string) (bool, string) {
 	ctx, cancel := context.WithTimeout(ctx, m.uiHookBudget())
 	defer cancel()
 
-	return runtime.CheckPrompt(ctx, prompt, m.services.Hook, m.services.Reminder)
+	return runtime.RunPromptSubmitHook(ctx, prompt, m.services.Hook, m.services.Reminder)
 }
 
 func (m *model) switchProvider(p llm.Provider) {

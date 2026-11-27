@@ -339,26 +339,6 @@ func TestExistingMemoryFiles(t *testing.T) {
 	}
 }
 
-func TestFormatFileSize(t *testing.T) {
-	tests := []struct {
-		size     int64
-		expected string
-	}{
-		{500, "500B"},
-		{1024, "1.0KB"},
-		{2048, "2.0KB"},
-		{1024 * 1024, "1.0MB"},
-		{1536 * 1024, "1.5MB"},
-	}
-
-	for _, tc := range tests {
-		result := FormatFileSize(tc.size)
-		if result != tc.expected {
-			t.Errorf("FormatFileSize(%d) = %s, expected %s", tc.size, result, tc.expected)
-		}
-	}
-}
-
 func TestResolveImportsNested(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "san-test-nested")
 	if err != nil {

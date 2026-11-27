@@ -21,7 +21,7 @@ type Service struct {
 	tasks        *task.Manager
 	dirs         []string
 	mu           sync.Mutex
-	store        *Store
+	store        *runStore
 	live         map[string]*task.AgentTask
 }
 
@@ -44,7 +44,7 @@ func (s *Service) SetSearchPaths(dirs []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.store == nil || len(dirs) > 0 && s.store.dir != dir {
-		s.store = NewStore(dir)
+		s.store = newRunStore(dir)
 	}
 }
 

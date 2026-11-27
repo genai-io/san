@@ -237,18 +237,18 @@ const maxFinishedRuns = 50
 var ErrRunActive = errors.New("run already active in another executor")
 var validRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
-// Store persists immutable-definition run snapshots. An empty directory uses
+// runStore persists immutable-definition run snapshots. An empty directory uses
 // memory. mu serializes record read-modify-writes in this process; Acquire's
 // file lock excludes executors in other processes.
-type Store struct {
+type runStore struct {
 	dir     string
 	mu      sync.Mutex
 	records map[string]RunRecord
 	locks   map[string]bool // memory-mode run locks
 }
 
-func NewStore(dir string) *Store {
-	return &Store{dir: dir, records: map[string]RunRecord{}, locks: map[string]bool{}}
+func newRunStore(dir string) *runStore {
+	return &runStore{dir: dir, records: map[string]RunRecord{}, locks: map[string]bool{}}
 }
 func checkID(id string) error {
 	if !validRunID.MatchString(id) {
@@ -262,7 +262,7 @@ func cloneRecord(r RunRecord) RunRecord {
 	_ = json.Unmarshal(b, &c)
 	return c
 }
-func (s *Store) get(id string) (*RunRecord, error) {
+func (s *runStore) get(id string) (*RunRecord, error) {
 	if err := checkID(id); err != nil {
 		return nil, err
 	}
@@ -284,7 +284,7 @@ func (s *Store) get(id string) (*RunRecord, error) {
 	}
 	return &r, nil
 }
-func (s *Store) put(r RunRecord) error {
+func (s *runStore) put(r RunRecord) error {
 	if err := checkID(r.ID); err != nil {
 		return err
 	}
@@ -294,13 +294,13 @@ func (s *Store) put(r RunRecord) error {
 	}
 	return atomicfile.WriteJSON(filepath.Join(s.dir, r.ID+".json"), r, 0600)
 }
-func (s *Store) Put(r RunRecord) error { s.mu.Lock(); defer s.mu.Unlock(); return s.put(r) }
-func (s *Store) Get(id string) (*RunRecord, error) {
+func (s *runStore) Put(r RunRecord) error { s.mu.Lock(); defer s.mu.Unlock(); return s.put(r) }
+func (s *runStore) Get(id string) (*RunRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.get(id)
 }
-func (s *Store) Update(id string, fn func(*RunRecord)) error {
+func (s *runStore) Update(id string, fn func(*RunRecord)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, err := s.get(id)
@@ -314,13 +314,13 @@ func (s *Store) Update(id string, fn func(*RunRecord)) error {
 
 // List returns readable records, newest first. A corrupt or foreign file is
 // skipped and logged so one bad record cannot hide the rest of the history.
-func (s *Store) List() ([]RunRecord, error) {
+func (s *runStore) List() ([]RunRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.list()
 }
 
-func (s *Store) list() ([]RunRecord, error) {
+func (s *runStore) list() ([]RunRecord, error) {
 	out := []RunRecord{}
 	if s.dir == "" {
 		for _, r := range s.records {
@@ -352,7 +352,7 @@ func (s *Store) list() ([]RunRecord, error) {
 }
 
 // FindByTask returns the run whose latest execution is the given task.
-func (s *Store) FindByTask(taskID string) (*RunRecord, error) {
+func (s *runStore) FindByTask(taskID string) (*RunRecord, error) {
 	records, err := s.List()
 	if err != nil {
 		return nil, err
@@ -367,7 +367,7 @@ func (s *Store) FindByTask(taskID string) (*RunRecord, error) {
 
 // Prune deletes the oldest finished runs beyond keep. A run is deleted only
 // while its lock is held, so an active or resuming run is never removed.
-func (s *Store) Prune(keep int) error {
+func (s *runStore) Prune(keep int) error {
 	records, err := s.List()
 	if err != nil {
 		return err
@@ -409,7 +409,7 @@ func (s *Store) Prune(keep int) error {
 // Acquire excludes concurrent executors, including other processes. The lock
 // is an operating-system file lock, released automatically when its holder
 // exits, so a crashed owner never blocks recovery.
-func (s *Store) Acquire(id string) (func(), error) {
+func (s *runStore) Acquire(id string) (func(), error) {
 	if err := checkID(id); err != nil {
 		return nil, err
 	}

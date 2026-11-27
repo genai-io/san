@@ -222,7 +222,8 @@ func TestSystemRemindersOncePerConversation(t *testing.T) {
 	}
 
 	first := m.attachPendingReminders(core.UserMessage("first", nil))
-	if len(first.Content) != 2 || first.Content[0].Text != "first" || !reminder.HasSystemReminder(first.Content[1].Text) {
+	want := reminder.WrapWithSource("skills", reminder.ProviderSkillsDirectory)
+	if len(first.Content) != 2 || first.Content[0].Text != "first" || !strings.Contains(first.Content[1].Text, want) {
 		t.Fatalf("first message should have separate user and reminder blocks: %+v", first.Content)
 	}
 	if got := send("second"); got != "second" {
@@ -234,7 +235,7 @@ func TestSystemRemindersOncePerConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := send("after reset")
-	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
+	if !strings.Contains(got, want) || strings.Contains(got, "old hook context") {
 		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
 	}
 }

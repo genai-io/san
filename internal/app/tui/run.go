@@ -137,10 +137,7 @@ func printExitMessage(m *model) {
 			if cwd, _ := os.Getwd(); cwd == "" {
 				saved = history.Identity().InitialCWD
 			} else if _, err := resumeDirectory(history, cwd); err != nil {
-				saved = history.Identity().InitialCWD
-				if last := history.State().ExecutionCWD; last != nil {
-					saved = *last
-				}
+				saved = history.ExecutionCWD()
 			}
 			command = resumeCommandForSession(owner.ID(), owner.Path(), saved)
 		}

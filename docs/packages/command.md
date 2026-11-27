@@ -33,7 +33,7 @@ func (s *Registry) Get(name string) (Info, bool)
 func (s *Registry) List() []Info
 func (s *Registry) ListCustom() []CustomCommand
 func (s *Registry) Matching(prefix string) []Info
-func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool)
+func (s *Registry) LookupPromptCommand(cmd string) (*CustomCommand, bool)
 func (s *Registry) BuiltinNames() map[string]Info
 func (s *Registry) CustomCommands() []Info
 

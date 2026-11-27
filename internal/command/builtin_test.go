@@ -34,7 +34,7 @@ func TestReflectionAndMemoryCatalog(t *testing.T) {
 func TestSimplifyShipsAsBuiltinPromptCommand(t *testing.T) {
 	reg := &Registry{cwd: t.TempDir()}
 
-	pc, ok := reg.IsCustomCommand("simplify")
+	pc, ok := reg.LookupPromptCommand("simplify")
 	if !ok {
 		t.Fatal("/simplify should resolve as a builtin prompt command")
 	}
@@ -75,7 +75,7 @@ func TestDiskCommandShadowsBuiltinPromptCommand(t *testing.T) {
 	}
 
 	reg := &Registry{cwd: root}
-	pc, ok := reg.IsCustomCommand("simplify")
+	pc, ok := reg.LookupPromptCommand("simplify")
 	if !ok {
 		t.Fatal("/simplify should still resolve")
 	}

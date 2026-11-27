@@ -9,16 +9,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-type AgentOutboxMsg struct {
-	Event  core.Event
-	Batch  []core.Event // set when multiple events were drained at once
-	Closed bool
-	Outbox <-chan core.Event // the outbox it was read from
-}
-
-// Runtime defines what the conv event handlers need from the root model. Each
-// method represents a coherent operation (not a fine-grained primitive),
-// keeping the interface small and each implementation substantial.
+// UpdateDeps supplies the callbacks and services Update needs from the root model.
 //
 // The prefix says where a member comes from:
 //
@@ -26,8 +17,8 @@ type AgentOutboxMsg struct {
 //     in the outbox's order, so they have a fixed place on the turn's timeline.
 //   - Handle* — a system message arrived: a background command's result, a
 //     timer, a side channel. No place on that timeline; it can land any time.
-//   - a verb  — not a callback at all, but a service conv calls on the host.
-type Runtime interface {
+//   - a verb  — not a callback at all, but a service Update calls on the root model.
+type UpdateDeps interface {
 	// ── On*: agent lifecycle ────────────────────────────────────
 	OnInference(resp *ai.Response) // PostInfer
 	// OnToolResult hands back the result message the model is told; the
@@ -47,7 +38,7 @@ type Runtime interface {
 	HandlePermGate(req *runtime.PermGateRequest) tea.Cmd
 	HandleCompactResult(msg CompactResultMsg) tea.Cmd
 
-	// ── Services conv calls on the host ─────────────────────────
+	// ── Services provided by the root model ─────────────────────────
 	CommitMessages() []tea.Cmd
 	FlushStreamingBlocks() []tea.Cmd
 	// TakeJudgeDecision consumes the judge decision stashed for a tool
@@ -59,56 +50,7 @@ type Runtime interface {
 
 	// ── Transport lifetime ──────────────────────────────────────
 	// ListenForAgentEvents waits for the next batch of agent events.
-	// conv re-arms after ordinary events; OnTurnEnd and OnCompacted re-arm
+	// Update re-arms after ordinary events; OnTurnEnd and OnCompacted re-arm
 	// at their boundaries. OnAgentStop leaves the listener stopped.
 	ListenForAgentEvents() tea.Cmd
-}
-
-// DrainAgentOutbox blocks until at least one event is available, then greedily
-// drains additional ready events to reduce Update+View cycles. Stops at
-// terminal events (OnTurn/OnStop/OnCompact) so turn boundaries aren't crossed.
-func DrainAgentOutbox(outbox <-chan core.Event) tea.Cmd {
-	return func() tea.Msg {
-		msg := drainOutbox(outbox)
-		msg.Outbox = outbox
-		return msg
-	}
-}
-
-func drainOutbox(outbox <-chan core.Event) AgentOutboxMsg {
-	ev, ok := <-outbox
-	if !ok {
-		return AgentOutboxMsg{Closed: true}
-	}
-	if isTerminalEvent(ev) {
-		return AgentOutboxMsg{Event: ev}
-	}
-	batch := []core.Event{ev}
-	for {
-		select {
-		case next, ok := <-outbox:
-			if !ok {
-				return AgentOutboxMsg{Batch: batch, Closed: true}
-			}
-			batch = append(batch, next)
-			if isTerminalEvent(next) {
-				return AgentOutboxMsg{Batch: batch}
-			}
-		default:
-			if len(batch) == 1 {
-				return AgentOutboxMsg{Event: batch[0]}
-			}
-			return AgentOutboxMsg{Batch: batch}
-		}
-	}
-}
-
-// isTerminalEvent says a batch should be flushed to the UI now rather than
-// waiting for more.
-func isTerminalEvent(ev core.Event) bool {
-	switch ev.(type) {
-	case core.TurnEnded, core.AgentStopped, core.Compacted:
-		return true
-	}
-	return false
 }

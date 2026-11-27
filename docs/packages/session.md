@@ -142,7 +142,7 @@ its baseline, so resuming does not count the same turns twice. Older sessions
 without this field start counting with the next completed user turn.
 
 `PersistToolResult` writes the complete output beneath the selected session;
-ResultPager's marker remains `blobs/tool-result/<sid>/<call-id>`. Forked native
+ResultPreview's marker remains `blobs/tool-result/<sid>/<call-id>`. Forked native
 messages retain that marker, but hydration reads only the selected session's own
 copied assets. `ImagesDir` exposes its named image directory. Named assets are
 separate from digest-addressed request blobs and are not blob-GC candidates.

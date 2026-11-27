@@ -15,11 +15,11 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func (s *Service) runStore() *Store {
+func (s *Service) runStore() *runStore {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.store == nil {
-		s.store = NewStore("")
+		s.store = newRunStore("")
 	}
 	return s.store
 }

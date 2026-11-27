@@ -90,7 +90,7 @@ func TrackWorker(svc *Store, info task.TaskInfo) {
 		metaError:        "",
 	}
 
-	if existing := svc.FindByMetadata(metaTaskID, info.ID); existing != nil {
+	if existing := svc.FindByBackgroundTaskID(info.ID); existing != nil {
 		_ = svc.Update(existing.ID,
 			WithSubject(workerSubject(info)),
 			WithDescription(info.Description),
@@ -110,7 +110,7 @@ func TrackWorker(svc *Store, info task.TaskInfo) {
 
 // CompleteWorker marks a tracker item as completed.
 func CompleteWorker(svc *Store, info task.TaskInfo) {
-	item := svc.FindByMetadata(metaTaskID, info.ID)
+	item := svc.FindByBackgroundTaskID(info.ID)
 	if item == nil {
 		return
 	}

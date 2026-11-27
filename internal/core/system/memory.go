@@ -170,19 +170,18 @@ func FormatInstructions(files []MemoryFile) (user, project string) {
 // local override. Files closer to cwd are injected last so their instructions
 // win, mirroring the AGENTS.md convention shared by Codex and Cursor.
 func LoadMemoryFiles(cwd string) []MemoryFile {
-	homeDir, _ := os.UserHomeDir()
+	paths := GetAllMemoryPaths(cwd)
 	l := &loader{seen: make(map[string]bool), remaining: instructionsByteCap}
 
-	userDir := confdir.Dir(homeDir)
-	l.add(filepath.Join(userDir, InstructionFile), "global")
-	l.addRulesDirectory(filepath.Join(userDir, "rules"), "global")
+	l.add(paths.Global, "global")
+	l.addRulesDirectory(paths.GlobalRules, "global")
 
-	for _, path := range ProjectInstructionChain(cwd) {
+	for _, path := range paths.Project {
 		l.add(path, "project")
 	}
-	l.addRulesDirectory(filepath.Join(confdir.Dir(cwd), "rules"), "project")
+	l.addRulesDirectory(paths.ProjectRules, "project")
 
-	l.add(filepath.Join(ProjectRoot(cwd), LocalInstructionFile), "local")
+	l.add(paths.Local, "local")
 
 	return l.files
 }
@@ -397,24 +396,4 @@ func ListRulesFiles(rulesDir string) []string {
 	}
 	sort.Strings(files)
 	return files
-}
-
-// GetFileSize returns the size of a file in bytes, or 0 if not found.
-func GetFileSize(path string) int64 {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return info.Size()
-}
-
-// FormatFileSize formats a file size for display.
-func FormatFileSize(size int64) string {
-	if size >= 1024*1024 {
-		return fmt.Sprintf("%.1fMB", float64(size)/(1024*1024))
-	}
-	if size >= 1024 {
-		return fmt.Sprintf("%.1fKB", float64(size)/1024)
-	}
-	return fmt.Sprintf("%dB", size)
 }

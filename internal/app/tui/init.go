@@ -88,9 +88,11 @@ func initInfrastructure() error {
 }
 
 func initExtensions(cwd string) {
-	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
-		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
-	}
+	discoverPlugins(cwd)
+	initProjectRegistries(cwd)
+}
+
+func initProjectRegistries(cwd string) {
 	source := ext.Plugin{Registry: plugin.Default()}
 	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
 	persona.Initialize(cwd)
@@ -129,28 +131,11 @@ func (m *model) reloadProjectServices(cwd string) {
 	m.services.Setting = setting.Default()
 	m.learnedStores.Update(cwd, m.services.Setting)
 
-	source := ext.Plugin{Registry: plugin.Default()}
-	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: source.SkillPaths})
+	initProjectRegistries(cwd)
 	m.services.Skill = skill.Default()
-
-	command.Initialize(command.Options{
-		CWD:                cwd,
-		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
-		PluginCommandPaths: source.CommandPaths,
-	})
 	m.services.Command = command.Default()
-
-	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: source.AgentPaths}); err != nil {
-		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
-	}
 	m.services.Subagent = subagent.Default()
-
-	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: source.MCPServers}); err != nil {
-		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
-	}
 	m.services.MCP = mcp.DefaultManager()
-
-	persona.Initialize(cwd)
 	m.services.Persona = persona.Default()
 	m.userInput.SetSelectorDeps(selectorDeps(m.services, m.learnedStores))
 	m.userInput.Suggestions = suggest.NewState(commandSuggestionMatcher(m.services.Command, m.services.Flow))

@@ -24,7 +24,7 @@ type flowMainInput struct {
 // checkpoint/admission failure leaves the queued amendments untouched. Only
 // accepted amendments enter the lease snapshot used by the next critic.
 func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func() tea.Cmd, error) {
-	if blocked, reason := m.checkPromptHook(context.Background(), prompt); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), prompt); blocked {
 		return core.Message{}, nil, nil, fmt.Errorf("Flow writer prompt blocked: %s", reason)
 	}
 	if m.userInput.Queue.SelectIdx == 0 {
@@ -42,7 +42,7 @@ func (m *model) flowMainWriterInput(prompt string) (core.Message, tea.Cmd, func(
 	var prepared []input.QueueItem
 	var attachments []core.Attachment
 	for _, item := range m.flowMainAmendments() {
-		if blocked, reason := m.checkPromptHook(context.Background(), item.Content); blocked {
+		if blocked, reason := m.runPromptSubmitHook(context.Background(), item.Content); blocked {
 			return core.Message{}, nil, nil, fmt.Errorf("queued writer input blocked: %s", reason)
 		}
 		m.userInput.RestoreQueuedImages(item.Content, item.Images)
@@ -143,7 +143,7 @@ func (m *model) releaseFlowMainStepInput() (tea.Cmd, bool) {
 		return nil, false
 	}
 	head.Images = slices.Clone(head.Images)
-	if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), head.Content); blocked {
 		m.pendingMessages.Hold(nil)
 		m.conv.AddNotice("Queued Flow input was blocked: " + reason)
 		return tea.Batch(m.CommitMessages()...), false

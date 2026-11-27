@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/infra/atomicfile"
-	"github.com/genai-io/san/internal/infra/confdir"
 )
 
 // Installer handles plugin installation and management.
@@ -64,12 +63,10 @@ func (i *Installer) LoadMarketplaces() error {
 		i.marketplaces[id] = source
 	}
 
-	homeDir, _ := os.UserHomeDir()
-
 	// Also load legacy format for backward compatibility
 	paths := []string{
-		filepath.Join(confdir.Dir(homeDir), "plugins", "known_marketplaces.json"),
-		filepath.Join(confdir.Dir(i.cwd), "plugins", "known_marketplaces.json"),
+		filepath.Join(scopeDir(i.cwd, ScopeUser), "known_marketplaces.json"),
+		filepath.Join(scopeDir(i.cwd, ScopeProject), "known_marketplaces.json"),
 	}
 
 	for _, path := range paths {
@@ -274,17 +271,11 @@ func (i *Installer) Update(ctx context.Context, name string, scope Scope) error 
 
 // getInstallDir returns the installation directory for a scope.
 func (i *Installer) getInstallDir(scope Scope) string {
-	homeDir, _ := os.UserHomeDir()
-
 	switch scope {
-	case ScopeUser:
-		return filepath.Join(confdir.Dir(homeDir), "plugins", "cache")
-	case ScopeProject:
-		return filepath.Join(confdir.Dir(i.cwd), "plugins")
-	case ScopeLocal:
-		return filepath.Join(confdir.Dir(i.cwd), "plugins-local")
+	case ScopeProject, ScopeLocal:
+		return scopeDir(i.cwd, scope)
 	default:
-		return filepath.Join(confdir.Dir(homeDir), "plugins", "cache")
+		return filepath.Join(scopeDir(i.cwd, ScopeUser), "cache")
 	}
 }
 

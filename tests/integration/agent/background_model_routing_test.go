@@ -38,7 +38,7 @@ func TestConfiguredBackgroundModelsKeepRoutingAndCancellationSeparate(t *testing
 	if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 	llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek"})
 	type startedRun struct{ prompt, model string }
 	started := make(chan startedRun, 3)

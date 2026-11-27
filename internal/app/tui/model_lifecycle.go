@@ -73,7 +73,7 @@ func newBaseModel() model {
 		judgeApprovals:   new(atomic.Int64),
 		judgeEscalations: new(atomic.Int64),
 		pendingDecisions: new(sync.Map),
-		autopilot:        new(atomic.Pointer[autopilotRuntime]),
+		autopilot:        new(atomic.Pointer[autopilotSnapshot]),
 	}
 	m.bindMCPTools()
 	return m
@@ -309,7 +309,7 @@ func (m *model) FireSessionEnd(reason string) {
 	m.cancelGroupControl()
 	m.discardPendingMessages()
 	m.closeUserPrompts()
-	// Bounded for the same reason as checkPromptHook: this runs on the
+	// Bounded for the same reason as runPromptSubmitHook: this runs on the
 	// bubbletea goroutine while the user is quitting, and a SessionEnd hook
 	// that blocks makes the quit itself look hung.
 	ctx, cancel := context.WithTimeout(context.Background(), m.uiHookBudget())

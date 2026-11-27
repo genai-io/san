@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"time"
@@ -87,7 +86,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, id string)
 		}
 		return true
 	}
-	path := filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl")
+	path := s.transcriptPath(id)
 	var stamp streamStamp
 	// Retain only the checked tail chain. Do not emit anything new until
 	// the entire previously sent prefix has been matched.

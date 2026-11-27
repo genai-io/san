@@ -79,10 +79,10 @@ func TestWorkerOverflowPreservesOrdinaryToolSibling(t *testing.T) {
 }
 
 func TestFlowIndicatorsCannotHideAllForegroundWorkers(t *testing.T) {
-	task.ResetDefaultTracker()
-	t.Cleanup(task.ResetDefaultTracker)
+	task.ResetDefaultManager()
+	t.Cleanup(task.ResetDefaultManager)
 	for _, height := range []int{10, 24} {
-		task.ResetDefaultTracker()
+		task.ResetDefaultManager()
 		m := fixedComposerModel(80, height)
 		m.services.Task = task.Default()
 		flow := task.NewAgentTask("live-flow", "flow", "Run flow", context.Background(), nil, "")

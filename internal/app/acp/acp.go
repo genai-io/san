@@ -167,11 +167,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		}
 		snapshot := opened.Snapshot()
 		history = &snapshot
-		cwd := history.Identity().InitialCWD
-		if saved := history.State().ExecutionCWD; saved != nil {
-			cwd = *saved
-		}
-		if err := session.ValidateResumeDirectory(cwd, req.CWD); err != nil {
+		if err := session.ValidateResumeDirectory(history.ExecutionCWD(), req.CWD); err != nil {
 			return protocol.NewSessionResponse{}, err
 		}
 	}
@@ -227,7 +223,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 	tasks := task.NewManager()
 	s.tracker = todo.NewStoreWithTasks(tasks)
 	if home, err := os.UserHomeDir(); err == nil {
-		if err := s.tracker.SetStorageDir(task.SessionDir(home, opened.ID())); err != nil {
+		if err := s.tracker.SetStorageDir(task.ListDir(home, opened.ID())); err != nil {
 			log.Logger().Warn("task tracker storage unavailable", zap.Error(err))
 		}
 	}
@@ -261,7 +257,7 @@ func (h *acpHost) open(ctx context.Context, req protocol.NewSessionRequest, resu
 		PermissionRules:  policy.Decide,
 		CanApproveByHook: policy.CanApproveByHook,
 		HookEngine:       s.hooks, Recording: opened,
-		ResultFilter: agentruntime.ResultPager{Store: store, SessionID: opened.ID()}.Filter,
+		ResultFilter: agentruntime.ResultPreview{Store: store, SessionID: opened.ID()}.Filter,
 		AutoMemory:   agentruntime.AutoMemoryConfig{Store: memory, Recall: settings.MemoryRecall(), IndexLimits: settings.MemoryPreview()},
 		FileCache:    filecache.New(),
 	}

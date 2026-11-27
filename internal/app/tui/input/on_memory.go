@@ -130,9 +130,27 @@ func instructionItem(label, level string, searchPaths []string, cwd string) memo
 	}
 	value := "not created"
 	if exists {
-		value = system.FormatFileSize(system.GetFileSize(path))
+		value = formatFileSize(fileSize(path))
 	}
 	return memoryItem{Label: label, Desc: desc, Value: value, Path: path, Exists: exists, Level: level}
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func formatFileSize(size int64) string {
+	if size >= 1024*1024 {
+		return fmt.Sprintf("%.1fMB", float64(size)/(1024*1024))
+	}
+	if size >= 1024 {
+		return fmt.Sprintf("%.1fKB", float64(size)/1024)
+	}
+	return fmt.Sprintf("%dB", size)
 }
 
 // autoMemoryItem describes the repository's agent-written store.
@@ -631,7 +649,7 @@ func handleMemoryList(cwd string, settings *setting.Settings) (string, error) {
 	sb.WriteString("╰────────────────────────────────────────────────────╯\n")
 
 	if state.totalFiles > 0 {
-		fmt.Fprintf(&sb, "  Instructions: %d file(s) loaded (%s)\n", state.totalFiles, system.FormatFileSize(state.totalSize))
+		fmt.Fprintf(&sb, "  Instructions: %d file(s) loaded (%s)\n", state.totalFiles, formatFileSize(state.totalSize))
 	} else {
 		sb.WriteString("  No instruction files loaded. Create with /init\n")
 	}
@@ -672,13 +690,13 @@ func (s *memoryListState) writeMemoryLocalSection(sb *strings.Builder, localPath
 }
 
 func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, isProject bool) {
-	size := system.GetFileSize(path)
+	size := fileSize(path)
 	s.totalFiles++
 	s.totalSize += size
 
 	displayPath := memoryShortenPathForDisplay(path, s.cwd, isProject)
 	displayPath = memoryTruncatePathKeepFilename(displayPath, memoryMaxPath)
-	sizeStr := fmt.Sprintf("(%s)", system.FormatFileSize(size))
+	sizeStr := fmt.Sprintf("(%s)", formatFileSize(size))
 	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", padRight(displayPath, memoryMaxPath), sizeStr)))
 }
 

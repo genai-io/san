@@ -115,12 +115,12 @@ func (m *model) cancelAutopilot() {
 	m.autopilotDeciding = false
 }
 
-// autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
+// autopilotSnapshot is the immutable snapshot the agent goroutine reads: the live
 // judge, resolved config, and coherent workspace facts. All publishers run on
 // the UI goroutine; readers never access the mutable environment's workspace.
 // rebuildAutopilotJudge swaps it as one unit so the judge and steer gates
 // can never skew.
-type autopilotRuntime struct {
+type autopilotSnapshot struct {
 	sessionID string
 	judge     *judge.Judge
 	cfg       setting.AutoPilotSettings
@@ -143,7 +143,7 @@ func (m *model) rebuildAutopilotJudge() {
 	// Publish the judge and the config it resolved from as one snapshot so the
 	// agent goroutine (steer gates + judge) never sees a judge/config skew;
 	// Clone keeps the snapshot independent of later UI-goroutine edits.
-	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotSnapshot{sessionID: m.sessionID(), judge: rev, cfg: ar.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // refreshAutopilotSnapshot republishes the runtime snapshot with the live config
@@ -157,7 +157,7 @@ func (m *model) refreshAutopilotSnapshot() {
 	if rt == nil {
 		return
 	}
-	m.autopilot.Store(&autopilotRuntime{sessionID: m.sessionID(), judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
+	m.autopilot.Store(&autopilotSnapshot{sessionID: m.sessionID(), judge: rt.judge, cfg: m.env.AutoPilot.Clone(), cwd: m.env.CWD, underGit: m.env.IsGit})
 }
 
 // autopilotSteeringInstructions resolves the customizable "how it drives" portion of

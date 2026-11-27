@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -86,7 +85,7 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			result.Error = err.Error()
 			// Diagnostics are explicitly unvalidated, bounded text, never streamed as events.
-			if f, e := os.Open(filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl")); e == nil {
+			if f, e := os.Open(s.transcriptPath(id)); e == nil {
 				raw, _ := io.ReadAll(io.LimitReader(f, 1<<20))
 				f.Close()
 				result.Unvalidated = string(raw)

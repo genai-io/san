@@ -20,13 +20,13 @@ import (
 
 // Update routes all output-path messages: agent outbox, permission gate,
 // compaction results, and activity updates.
-func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
+func Update(deps UpdateDeps, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case AgentOutboxMsg:
 		// A rebuild stops one agent and starts the next; whatever the old
 		// outbox still delivers belongs to an agent that is gone, and applying
 		// it (its stop above all) would act on the new one.
-		if msg.Outbox != nil && msg.Outbox != rt.AgentOutbox() {
+		if msg.Outbox != nil && msg.Outbox != deps.AgentOutbox() {
 			for _, ev := range append(msg.Batch, msg.Event) {
 				if end, ok := ev.(core.TurnEnded); ok {
 					end.Result.Finalization.Acknowledge(errors.New("agent outbox replaced before terminal handling"))
@@ -36,26 +36,26 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		}
 		if msg.Closed && len(msg.Batch) == 0 {
 			m.Stream.Stop()
-			return rt.OnAgentStop(nil), true
+			return deps.OnAgentStop(nil), true
 		}
 		if len(msg.Batch) > 0 {
-			return handleAgentEventBatch(rt, m, msg.Batch, msg.Closed), true
+			return handleAgentEventBatch(deps, m, msg.Batch, msg.Closed), true
 		}
-		return handleAgentEvent(rt, m, msg.Event), true
+		return handleAgentEvent(deps, m, msg.Event), true
 	case PermGateMsg:
-		return rt.HandlePermGate(msg.Request), true
+		return deps.HandlePermGate(msg.Request), true
 	case CompactResultMsg:
-		return rt.HandleCompactResult(msg), true
+		return deps.HandleCompactResult(msg), true
 	case AgentActivityBatchMsg:
 		for _, activity := range msg {
 			m.applyActivity(activity)
 		}
-		return m.HandleActivityTick(rt.HasRunningTasks() || m.Stream.Active), true
+		return m.HandleActivityTick(deps.HasRunningTasks() || m.Stream.Active), true
 	case AgentActivityMsg:
 		m.applyActivity(msg)
-		return m.HandleActivityTick(rt.HasRunningTasks() || m.Stream.Active), true
+		return m.HandleActivityTick(deps.HasRunningTasks() || m.Stream.Active), true
 	case AgentToUITickMsg:
-		return m.HandleActivityTick(rt.HasRunningTasks()), true
+		return m.HandleActivityTick(deps.HasRunningTasks()), true
 	default:
 		return nil, false
 	}
@@ -63,32 +63,32 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 
 // --- Agent event dispatch ---
 
-func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
+func handleAgentEvent(deps UpdateDeps, m *Model, ev core.Event) tea.Cmd {
 	log.Logger().Sugar().Debugf("handleAgentEvent: %T", ev)
 	switch e := ev.(type) {
 	case core.TurnEnded:
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		return rt.OnTurnEnd(e.Result)
+		return deps.OnTurnEnd(e.Result)
 	case core.AgentStopped:
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		return rt.OnAgentStop(e.Err)
+		return deps.OnAgentStop(e.Err)
 	case core.Compacted:
-		return rt.OnCompacted(e)
+		return deps.OnCompacted(e)
 	default:
 		// A single event emits at most one scrollback write (extra), and
 		// ListenForAgentEvents never writes scrollback, so there's nothing to order —
 		// tea.Batch is safe here (unlike the multi-effect batch handler, which
 		// sequences). See handleAgentEventBatch.
-		if extra := applyAgentEvent(rt, m, ev); extra != nil {
-			return tea.Batch(extra, rt.ListenForAgentEvents())
+		if extra := applyAgentEvent(deps, m, ev); extra != nil {
+			return tea.Batch(extra, deps.ListenForAgentEvents())
 		}
-		return rt.ListenForAgentEvents()
+		return deps.ListenForAgentEvents()
 	}
 }
 
-func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed bool) tea.Cmd {
+func handleAgentEventBatch(deps UpdateDeps, m *Model, events []core.Event, closed bool) tea.Cmd {
 	var effects []tea.Cmd
 	needsContinue := true
 
@@ -98,18 +98,18 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 		case core.TurnEnded:
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			effects = append(effects, rt.OnTurnEnd(e.Result))
+			effects = append(effects, deps.OnTurnEnd(e.Result))
 			needsContinue = false
 		case core.AgentStopped:
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			effects = append(effects, rt.OnAgentStop(e.Err))
+			effects = append(effects, deps.OnAgentStop(e.Err))
 			needsContinue = false
 		case core.Compacted:
-			effects = append(effects, rt.OnCompacted(e))
+			effects = append(effects, deps.OnCompacted(e))
 			needsContinue = false
 		default:
-			if extra := applyAgentEvent(rt, m, ev); extra != nil {
+			if extra := applyAgentEvent(deps, m, ev); extra != nil {
 				effects = append(effects, extra)
 			}
 			continue
@@ -120,7 +120,7 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 	if closed {
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		effects = append(effects, rt.OnAgentStop(nil))
+		effects = append(effects, deps.OnAgentStop(nil))
 		needsContinue = false
 	}
 
@@ -140,14 +140,14 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 		return ordered
 	}
 	if ordered == nil {
-		return rt.ListenForAgentEvents()
+		return deps.ListenForAgentEvents()
 	}
-	return tea.Batch(ordered, rt.ListenForAgentEvents())
+	return tea.Batch(ordered, deps.ListenForAgentEvents())
 }
 
 // --- Event side-effect handlers (no ListenForAgentEvents) ---
 
-func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
+func applyAgentEvent(deps UpdateDeps, m *Model, ev core.Event) tea.Cmd {
 	switch e := ev.(type) {
 	case runtime.MemoryRecalled:
 		if len(e.NoteIDs) > 0 {
@@ -165,9 +165,9 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		}
 		return nil
 	case sdkagent.CompactionStart:
-		return rt.OnCompactStart(len(e.Messages))
+		return deps.OnCompactStart(len(e.Messages))
 	case sdkagent.CompactionEnd:
-		return rt.OnCompactEnd(e)
+		return deps.OnCompactEnd(e)
 	case sdkagent.InferenceStart:
 		// A retry announces itself by the attempt number, not by an event of
 		// its own: what was drawn for the previous attempt is void, and the
@@ -176,23 +176,23 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			m.DropStreamingAssistant()
 			m.Stream.Stop()
 		}
-		cmd := applyPreInfer(rt, m)
+		cmd := applyPreInfer(deps, m)
 		m.Stream.Attempt = max(1, e.Attempt)
 		return cmd
 	case sdkagent.InferenceUpdate:
-		return applyChunk(rt, m, e.Delta)
+		return applyChunk(deps, m, e.Delta)
 	case sdkagent.InferenceEnd:
 		m.Stream.EndInference()
 		if e.Err != nil {
-			rt.OnInference(e.Response)
+			deps.OnInference(e.Response)
 			if !errors.Is(e.Err, context.Canceled) {
 				// Attempt failures remain in inference diagnostics; only a failed
 				// turn warrants a persistent error in the conversation.
 				log.Logger().Sugar().Debugf("Inference attempt %d failed: %v", e.Attempt, e.Err)
 			}
-			return tea.Batch(rt.CommitMessages()...)
+			return tea.Batch(deps.CommitMessages()...)
 		}
-		return applyPostInfer(rt, m, e.Response)
+		return applyPostInfer(deps, m, e.Response)
 	case sdkagent.ToolUpdate:
 		if details, ok := e.Partial.Details.(toolresult.AgentDetails); ok {
 			i := m.Tool.IndexOf(e.ID)
@@ -221,7 +221,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		applyToolRunning(m, e.ID, e.Name)
 		return nil
 	case sdkagent.ToolEnd:
-		return applyPostTool(rt, m, core.ToolResult{
+		return applyPostTool(deps, m, core.ToolResult{
 			ToolCallID: e.ID,
 			ToolName:   e.Name,
 			Content:    sdkagent.ResultContent(e.Result, e.Err),
@@ -236,7 +236,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	}
 }
 
-func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
+func applyPreInfer(deps UpdateDeps, m *Model) tea.Cmd {
 	// A new inference means any auto-compaction is over: a successful one already
 	// cleared this in OnCompacted, but a failed compaction falls straight through
 	// to here, so clear the in-progress indicator either way.
@@ -248,14 +248,14 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 		started = time.Now()
 	}
 	m.Stream.Stop()
-	commitCmds := rt.CommitMessages()
+	commitCmds := deps.CommitMessages()
 	msg := m.Append(core.ChatMessage{Role: core.ChatAssistant})
 	m.Stream = StreamState{Active: true, Inferring: true, MessageID: msg.ID, StartedAt: started, LastDataAt: started}
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
 
-func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
+func applyChunk(deps UpdateDeps, m *Model, chunk ai.Event) tea.Cmd {
 	// Late chunks after handleStreamCancel has flipped Stream off and
 	// appended the [Interrupted] marker would otherwise call AppendStream
 	// and bleed text past the marker. RenderAssistantMessage's suffix
@@ -296,24 +296,24 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 		// InferenceEnd still needs the identity to attach final metadata.
 		m.Stream.Active = false
 		m.Stream.ThinkingActive = false
-		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
+		if commitCmds := deps.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)
 		}
 		return nil
 	}
 	// Mid-stream: flush any blocks that just completed (thinking once text
 	// starts, content at each fence-close / blank-line boundary) to scrollback.
-	if flushCmds := rt.FlushStreamingBlocks(); len(flushCmds) > 0 {
+	if flushCmds := deps.FlushStreamingBlocks(); len(flushCmds) > 0 {
 		return tea.Batch(flushCmds...)
 	}
 	return nil
 }
 
-func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
+func applyPostInfer(deps UpdateDeps, m *Model, resp *ai.Response) tea.Cmd {
 	if resp == nil {
 		return nil
 	}
-	rt.OnInference(resp)
+	deps.OnInference(resp)
 	m.Compact.WarningSuppressed = false
 	// Done closes text streaming before InferenceEnd attaches metadata; cancellation
 	// clears the identity instead, so late metadata cannot revive a cancelled call.
@@ -332,7 +332,7 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	m.Stream.MessageID = ""
 	m.Stream.BuildingTool = ""
 	if len(calls) > 0 {
-		return tea.Batch(rt.CommitMessages()...)
+		return tea.Batch(deps.CommitMessages()...)
 	}
 	return nil
 }
@@ -346,7 +346,7 @@ func applyToolRunning(m *Model, id, name string) {
 	m.Tool.MarkStarted(id)
 }
 
-func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
+func applyPostTool(deps UpdateDeps, m *Model, tr core.ToolResult, details any) tea.Cmd {
 	m.Stream.BuildingTool = ""
 	m.AgentDisplaySnapshot()
 	if d, ok := details.(toolresult.AgentDetails); ok {
@@ -360,7 +360,7 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cm
 	// PostToolEvent still buffered in the outbox when handleStreamCancel
 	// runs — cancelPendingToolCalls then writes a cancelled-result row for
 	// the same ToolCallID. When the buffered event finally drains we'd
-	// double-append. Skip if conv already carries a result for this call.
+	// double-append. Skip if the conversation already carries a result for this call.
 	if tr.ToolCallID != "" {
 		for i := range m.Messages {
 			if existing := m.Messages[i].ToolResult; existing != nil && existing.ToolCallID == tr.ToolCallID {
@@ -370,21 +370,21 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cm
 	}
 	m.Append(core.ChatMessage{
 		Role:        core.ChatUser,
-		ToolResult:  rt.OnToolResult(tr),
+		ToolResult:  deps.OnToolResult(tr),
 		ToolDetails: details,
 		// Stamp the judge decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed
 		// here — the handoff map keeps only in-flight calls.
-		Decision: rt.TakeJudgeDecision(tr.ToolCallID),
+		Decision: deps.TakeJudgeDecision(tr.ToolCallID),
 	})
 	// Release queued input only after every tool call in this response has
 	// completed. Releasing after the first result inserts the user's pending
 	// message between sibling tool rows; waiting preserves the visible order:
 	// complete tool output first, then the pending message.
 	if batchComplete {
-		return rt.OnStepEnd()
+		return deps.OnStepEnd()
 	}
-	return tea.Batch(rt.CommitMessages()...)
+	return tea.Batch(deps.CommitMessages()...)
 }
 
 // --- Activity handling (operates on output Model directly) ---

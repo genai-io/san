@@ -51,13 +51,13 @@ const (
 // model intended and outlives whatever was executing it; resolve liveness
 // against the executor (the stream, or task.Manager.ListRunning).
 type Store struct {
-	mu         sync.RWMutex
-	items      map[string]*Item
-	persisted  map[string]bool // IDs whose current value was read or written successfully
-	nextID     int
-	storageDir string    // empty = in-memory only
-	lastDirMod time.Time // last known dir mtime, for change detection in ReloadFromDisk
-	tasks      *task.Manager
+	mu           sync.RWMutex
+	items        map[string]*Item
+	persisted    map[string]bool // IDs whose current value was read or written successfully
+	nextID       int
+	storageDir   string    // empty = in-memory only
+	lastReloadAt time.Time // wall-clock cutoff for item file mtimes on the next reload
+	tasks        *task.Manager
 }
 
 // NewStore creates a new in-memory Store with no background workers.
@@ -426,9 +426,8 @@ func (s *Store) StorageDir() string {
 	return s.storageDir
 }
 
-// ReloadFromDisk re-reads all item files from the storage directory.
-// This picks up changes made by other processes (e.g., background agents).
-// No-op if no storage directory is configured or if directory hasn't been modified.
+// ReloadFromDisk checks for item files written or removed by other processes.
+// A newer file triggers a full reload; removals alone drop confirmed disk items.
 func (s *Store) ReloadFromDisk() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -459,13 +458,13 @@ func (s *Store) ReloadFromDisk() {
 		if err != nil {
 			continue
 		}
-		if info.ModTime().After(s.lastDirMod) {
+		if info.ModTime().After(s.lastReloadAt) {
 			changed = true
 			break
 		}
 	}
 
-	if !changed && !s.lastDirMod.IsZero() {
+	if !changed && !s.lastReloadAt.IsZero() {
 		// A removal leaves no newer file. Drop only confirmed disk items,
 		// not unrelated unsaved work or local deletion records.
 		if present < len(s.persisted) {
@@ -482,7 +481,7 @@ func (s *Store) ReloadFromDisk() {
 		return
 	}
 
-	s.lastDirMod = time.Now()
+	s.lastReloadAt = time.Now()
 	_ = s.loadFromDisk()
 }
 
@@ -567,27 +566,19 @@ func normalizeItemSlices(t *Item) {
 	}
 }
 
-// FindByMetadata returns a copy of the first non-deleted item whose metadata[key] equals want.
-// Returns nil if no match is found.
-func (s *Store) FindByMetadata(key, want string) *Item {
-	if want == "" {
+// FindByBackgroundTaskID returns a copy of the live tracker item mirroring id,
+// or nil if no item tracks that background task.
+func (s *Store) FindByBackgroundTaskID(id string) *Item {
+	if id == "" {
 		return nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, t := range s.items {
-		if t.Status == StatusDeleted {
-			continue
-		}
-		if t.Metadata == nil {
-			continue
-		}
-		if v, ok := t.Metadata[key]; ok {
-			if str, ok := v.(string); ok && str == want {
-				cp := *t
-				return &cp
-			}
+		if t.Status != StatusDeleted && BackgroundTaskID(t) == id {
+			cp := *t
+			return &cp
 		}
 	}
 	return nil

@@ -77,6 +77,15 @@ func (p *Projection) Config() EventConfig            { return eventCopy(p.data.C
 func (p *Projection) State() EventState              { return eventCopy(p.data.State) }
 func (p *Projection) Skills() map[string]string      { return maps.Clone(p.data.Skills) }
 
+// ExecutionCWD returns the last saved execution directory, or the initial one
+// when no directory change was recorded.
+func (p *Projection) ExecutionCWD() string {
+	if saved := p.data.State.ExecutionCWD; saved != nil {
+		return *saved
+	}
+	return p.data.Identity.InitialCWD
+}
+
 // ToolCallSource identifies the committed native message carrying a tool call.
 // Session is explicit so the reference stays foreign when delivered elsewhere.
 func (p *Projection) ToolCallSource(callID string) (EventRef, bool) {

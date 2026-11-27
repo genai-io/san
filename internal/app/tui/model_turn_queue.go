@@ -100,7 +100,7 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 		return m.releaseFlowMainStepInput()
 	}
 	if head, ok := m.userInput.Queue.At(0); ok && head.NeedsPromptAdmission {
-		if blocked, reason := m.checkPromptHook(context.Background(), head.Content); blocked {
+		if blocked, reason := m.runPromptSubmitHook(context.Background(), head.Content); blocked {
 			m.pendingMessages.Hold(nil)
 			m.conv.AddNotice("Queued input was blocked: " + reason)
 			return tea.Batch(m.CommitMessages()...), false

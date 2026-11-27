@@ -57,12 +57,6 @@ func Wrap(body string) string {
 	return WrapWithSource(body, "")
 }
 
-// HasSystemReminder reports whether text carries a provider-emitted reminder
-// (one stamped with a source). One-time notices are unsourced.
-func HasSystemReminder(text string) bool {
-	return strings.Contains(text, tagOpen+" "+sourceAttrName+"=")
-}
-
 // WrapWithSource is like Wrap but stamps a source attribute on the opening
 // tag so downstream consumers (transcript parser, viewer) know which
 // provider produced the reminder. source="" matches Wrap output exactly to

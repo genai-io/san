@@ -61,7 +61,7 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 			Hook:     hook.NewEngine(nil, "s", "", opened.Path()),
 		},
 		conv:      chat.NewModel(80),
-		autopilot: new(atomic.Pointer[autopilotRuntime]),
+		autopilot: new(atomic.Pointer[autopilotSnapshot]),
 	}
 	m.env.CWD = cwd
 	m.env.FileCache = filecache.New()

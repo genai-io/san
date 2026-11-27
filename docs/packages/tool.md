@@ -33,7 +33,9 @@ func (r *Registry) Register(t Tool)
 func (r *Registry) Get(name string) (Tool, bool)
 func (r *Registry) List() []string
 func (r *Registry) Execute(ctx context.Context, name string, params map[string]any, cwd string) toolresult.ToolResult
-func (r *Registry) PopSideEffect(toolCallID string) any
+
+// Adapter side-effect handoff, keyed by tool call ID.
+func PopSideEffect(toolCallID string) any
 
 // Package-level access
 func Initialize(opts Options)

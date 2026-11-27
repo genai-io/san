@@ -219,7 +219,7 @@ func (e vendorEntry) resolveVendor() (catalog.Vendor, error) {
 
 // providerName is San's provider identity for a registration, "vendor:auth".
 func providerName(meta Meta) string {
-	return string(meta.Provider) + ":" + string(meta.AuthMethod)
+	return providerKey(meta.Provider, meta.AuthMethod)
 }
 
 // ---------------------------------------------------------------------------

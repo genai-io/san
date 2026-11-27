@@ -245,7 +245,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	}
 	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
-		dir := task.SessionDir(homeDir, taskListID)
+		dir := task.ListDir(homeDir, taskListID)
 		m.setTrackerStorageDir(dir)
 		m.setTaskOutputDir(dir)
 		return
@@ -253,7 +253,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	dir := task.SessionDir(homeDir, sessionID)
+	dir := task.ListDir(homeDir, sessionID)
 	m.setTrackerStorageDir(dir)
 	m.setTaskOutputDir(dir)
 }

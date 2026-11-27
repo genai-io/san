@@ -7,6 +7,26 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
+func TestFormatFileSize(t *testing.T) {
+	tests := []struct {
+		size     int64
+		expected string
+	}{
+		{500, "500B"},
+		{1024, "1.0KB"},
+		{2048, "2.0KB"},
+		{1024 * 1024, "1.0MB"},
+		{1536 * 1024, "1.5MB"},
+	}
+
+	for _, tc := range tests {
+		result := formatFileSize(tc.size)
+		if result != tc.expected {
+			t.Errorf("formatFileSize(%d) = %s, expected %s", tc.size, result, tc.expected)
+		}
+	}
+}
+
 func TestSetAutoMemoryScopes(t *testing.T) {
 	t.Setenv("SAN_TRUST_WORKSPACE", "1") // project settings apply in a trusted folder
 	home := t.TempDir()

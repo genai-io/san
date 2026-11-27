@@ -75,11 +75,11 @@ func (r *Registry) Reload() {
 func (r *Registry) reload() {
 	// Real persona directories are authoritative.
 	items := []*Persona{DefaultPersona()}
-	if home, err := os.UserHomeDir(); err == nil {
-		items = append(items, loadDir(filepath.Join(confdir.Dir(home), "personas"), ScopeUser)...)
+	if root, err := UserDir(); err == nil {
+		items = append(items, loadDir(root, ScopeUser)...)
 	}
 	if r.cwd != "" {
-		items = append(items, loadDir(filepath.Join(confdir.Dir(r.cwd), "personas"), ScopeProject)...)
+		items = append(items, loadDir(personasDir(r.cwd), ScopeProject)...)
 	}
 	byName := dedupeByScope(items)
 

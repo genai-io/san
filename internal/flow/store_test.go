@@ -92,13 +92,13 @@ func TestDefinitionConcurrentEditors(t *testing.T) {
 
 func TestStoreDurabilityAndIsolation(t *testing.T) {
 	dir := t.TempDir()
-	s := NewStore(dir)
+	s := newRunStore(dir)
 	r := RunRecord{ID: "run-1", Definition: "exact\n", Inputs: map[string]string{"a": "original"}, Nodes: map[string]Checkpoint{"n": {Outcome: Outcome{Output: "kept"}}}}
 	if err := s.Put(r); err != nil {
 		t.Fatal(err)
 	}
 	r.Inputs["a"] = "changed"
-	got, err := NewStore(dir).Get(r.ID)
+	got, err := newRunStore(dir).Get(r.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestStoreDurabilityAndIsolation(t *testing.T) {
 	}
 }
 func TestStoreTraversalAndWriteErrors(t *testing.T) {
-	s := NewStore(t.TempDir())
+	s := newRunStore(t.TempDir())
 	for _, id := range []string{"../outside", "a/b", "", ".."} {
 		if s.Put(RunRecord{ID: id}) == nil {
 			t.Errorf("accepted %q", id)
@@ -127,13 +127,13 @@ func TestStoreTraversalAndWriteErrors(t *testing.T) {
 	if err := os.WriteFile(p, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if NewStore(p).Put(RunRecord{ID: "run"}) == nil {
+	if newRunStore(p).Put(RunRecord{ID: "run"}) == nil {
 		t.Fatal("expected write error")
 	}
 }
 func TestStoreLockExclusion(t *testing.T) {
 	dir := t.TempDir()
-	a, b := NewStore(dir), NewStore(dir)
+	a, b := newRunStore(dir), newRunStore(dir)
 	release, err := a.Acquire("run")
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestStoreLockExclusion(t *testing.T) {
 }
 func TestStoreProcessLock(t *testing.T) {
 	if dir := os.Getenv("SAN_WORKFLOW_LOCK_HELPER"); dir != "" {
-		release, err := NewStore(dir).Acquire("process")
+		release, err := newRunStore(dir).Acquire("process")
 		if os.Getenv("SAN_WORKFLOW_LOCK_EXPECT_BUSY") == "1" {
 			if !errors.Is(err, ErrRunActive) {
 				t.Fatalf("expected active, got %v", err)
@@ -164,7 +164,7 @@ func TestStoreProcessLock(t *testing.T) {
 		return
 	}
 	dir := t.TempDir()
-	s := NewStore(dir)
+	s := newRunStore(dir)
 	release, err := s.Acquire("process")
 	if err != nil {
 		t.Fatal(err)
@@ -193,7 +193,7 @@ func TestStoreProcessLock(t *testing.T) {
 
 func TestStoreListSkipsUnreadableRecords(t *testing.T) {
 	dir := t.TempDir()
-	s := NewStore(dir)
+	s := newRunStore(dir)
 	if err := s.Put(RunRecord{ID: "good", Status: RunSucceeded}); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestStoreListSkipsUnreadableRecords(t *testing.T) {
 
 func TestStorePruneKeepsNewestFinishedAndActiveRuns(t *testing.T) {
 	dir := t.TempDir()
-	s := NewStore(dir)
+	s := newRunStore(dir)
 	base := time.Now()
 	for i, status := range []RunStatus{RunSucceeded, RunFailed, RunRunning, RunStopped, RunSucceeded} {
 		id := fmt.Sprintf("run-%d", i)
@@ -244,7 +244,7 @@ func TestStorePruneKeepsNewestFinishedAndActiveRuns(t *testing.T) {
 }
 
 func TestStoreMemoryDeepCopy(t *testing.T) {
-	s := NewStore("")
+	s := newRunStore("")
 	if err := s.Put(RunRecord{ID: "a", Inputs: map[string]string{"a": "b"}}); err != nil {
 		t.Fatal(err)
 	}

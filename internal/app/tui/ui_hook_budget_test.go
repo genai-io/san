@@ -40,7 +40,7 @@ func TestPromptHookCannotFreezeTheUI(t *testing.T) {
 	m := modelWithPromptHook(t, "sleep 30")
 
 	start := time.Now()
-	blocked, _ := m.checkPromptHook(t.Context(), "hello")
+	blocked, _ := m.runPromptSubmitHook(t.Context(), "hello")
 	elapsed := time.Since(start)
 
 	if elapsed > defaultUIHookBudget+2*time.Second {
@@ -56,7 +56,7 @@ func TestPromptHookCannotFreezeTheUI(t *testing.T) {
 func TestPromptHookStillBlocksWhenItSaysSo(t *testing.T) {
 	m := modelWithPromptHook(t, "echo 'nope' >&2; exit 2")
 
-	blocked, reason := m.checkPromptHook(t.Context(), "hello")
+	blocked, reason := m.runPromptSubmitHook(t.Context(), "hello")
 
 	if !blocked {
 		t.Fatal("a hook exiting 2 should block the prompt")
@@ -70,7 +70,7 @@ func TestPromptHookStillBlocksWhenItSaysSo(t *testing.T) {
 func TestPromptHookAllowsAFastPermit(t *testing.T) {
 	m := modelWithPromptHook(t, "exit 0")
 
-	if blocked, _ := m.checkPromptHook(t.Context(), "hello"); blocked {
+	if blocked, _ := m.runPromptSubmitHook(t.Context(), "hello"); blocked {
 		t.Error("a successful hook blocked the prompt")
 	}
 }

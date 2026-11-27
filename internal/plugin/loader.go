@@ -261,29 +261,25 @@ func isValidSemver(v string) bool {
 	return true
 }
 
-// GetPluginDirs returns the standard plugin directories for each scope.
-// Note: cache directory is NOT included here - it's only accessed via installed_plugins.json
-func GetPluginDirs(cwd string) map[Scope][]string {
-	homeDir, _ := os.UserHomeDir()
-
-	return map[Scope][]string{
-		ScopeUser: {
-			filepath.Join(confdir.Dir(homeDir), "plugins"),
-		},
-		ScopeProject: {
-			filepath.Join(confdir.Dir(cwd), "plugins"),
-		},
-		ScopeLocal: {
-			filepath.Join(confdir.Dir(cwd), "plugins-local"),
-		},
+// scopeDir is the native discovery and manifest root, not the user install cache.
+func scopeDir(cwd string, scope Scope) string {
+	switch scope {
+	case ScopeUser:
+		home, _ := os.UserHomeDir()
+		return filepath.Join(confdir.Dir(home), "plugins")
+	case ScopeProject:
+		return filepath.Join(confdir.Dir(cwd), "plugins")
+	case ScopeLocal:
+		return filepath.Join(confdir.Dir(cwd), "plugins-local")
+	default:
+		return ""
 	}
 }
 
 // GetInstalledPluginsFile returns the path to installed_plugins.json for a scope.
 func GetInstalledPluginsFile(cwd string, scope Scope) string {
-	dirs := GetPluginDirs(cwd)
-	if paths, ok := dirs[scope]; ok && len(paths) > 0 {
-		return filepath.Join(paths[0], "installed_plugins.json")
+	if dir := scopeDir(cwd, scope); dir != "" {
+		return filepath.Join(dir, "installed_plugins.json")
 	}
 	return ""
 }

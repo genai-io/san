@@ -8,10 +8,10 @@ import (
 	"github.com/genai-io/san/internal/runtime/reminder"
 )
 
-// CheckPrompt applies UserPromptSubmit policy and stages context for later delivery.
+// RunPromptSubmitHook applies UserPromptSubmit policy and stages context for later delivery.
 // Call only at prompt admission, not when delivering already-admitted or background input.
 // The caller supplies the hook budget; engine errors fail open, not as prompt cancellation.
-func CheckPrompt(ctx context.Context, prompt string, hooks *hook.Engine, reminders *reminder.Queue) (blocked bool, reason string) {
+func RunPromptSubmitHook(ctx context.Context, prompt string, hooks *hook.Engine, reminders *reminder.Queue) (blocked bool, reason string) {
 	outcome := hooks.Execute(ctx, hook.UserPromptSubmit, hook.HookInput{Prompt: prompt})
 	var recording *hook.RecordingError
 	if errors.As(outcome.Error, &recording) {

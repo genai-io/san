@@ -78,7 +78,7 @@ func (e *unfinishedExecutor) Run(context.Context, tool.AgentExecRequest) (*tool.
 
 func TestFlowPreservesUnfinishedResultsAndUsage(t *testing.T) {
 	task.Initialize(task.Options{OutputDir: t.TempDir()})
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 	for _, runErr := range []error{errors.New("provider unavailable"), context.Canceled, nil} {
 		exec := &unfinishedExecutor{result: &tool.AgentExecResult{
 			Content: "verified partial findings", Error: "step budget exhausted", AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
@@ -608,7 +608,7 @@ func TestFlowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
 	if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(task.ResetDefaultTracker)
+	t.Cleanup(task.ResetDefaultManager)
 	task.Default().SetSessionID("first")
 	first, second := &scriptedExecutor{}, &scriptedExecutor{}
 	wt := NewService(task.Default())

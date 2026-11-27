@@ -23,7 +23,7 @@ func inferenceView(m *Model, width int) string {
 }
 
 func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
 	m.Stream.StartedAt = time.Now().Add(-112 * time.Second)
 	m.Stream.LastDataAt = m.Stream.StartedAt
@@ -63,7 +63,7 @@ func TestInferenceProgressRemainsVisibleAfterTextAndNotices(t *testing.T) {
 }
 
 func TestInferenceProgressClearsAtFailureRetryAndCancellation(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	progress := ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 1024}}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
 	applyChunk(rt, &m, progress)
@@ -88,7 +88,7 @@ func TestInferenceProgressClearsAtFailureRetryAndCancellation(t *testing.T) {
 }
 
 func TestInferenceProgressStopsBeforeToolExecution(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
 	applyChunk(rt, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
 	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Response: &ai.Response{Content: ai.Content{

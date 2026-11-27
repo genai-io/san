@@ -180,7 +180,7 @@ func (s *Store) ImagesDir(id string) string {
 	return filepath.Join(s.sessionDir(id), "blobs", "images")
 }
 
-// PersistToolResult saves the complete body referenced by a ResultPager preview.
+// PersistToolResult saves the complete body referenced by a tool result preview.
 func (s *Store) PersistToolResult(sessionID, callID, content string) error {
 	if err := s.checkID(context.Background(), sessionID); err != nil {
 		return err

@@ -10,16 +10,16 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
-type streamRuntime struct{ Runtime }
+type streamUpdateDeps struct{ UpdateDeps }
 
-func (*streamRuntime) CommitMessages() []tea.Cmd       { return nil }
-func (*streamRuntime) FlushStreamingBlocks() []tea.Cmd { return nil }
-func (*streamRuntime) OnInference(*ai.Response)        {}
+func (*streamUpdateDeps) CommitMessages() []tea.Cmd       { return nil }
+func (*streamUpdateDeps) FlushStreamingBlocks() []tea.Cmd { return nil }
+func (*streamUpdateDeps) OnInference(*ai.Response)        {}
 
 func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
 	// sdk-go consumes EventDone internally. This covers defensive handling;
 	// app/model_inference_lifecycle_test.go exercises the normal terminal path.
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
 	owner := m.Stream.MessageID
 	m.AddAgentNotice("background completed")
@@ -40,7 +40,7 @@ func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
 }
 
 func TestFailedInferencePreservesIdentityForRetry(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
 	owner := m.Stream.MessageID
 	applyAgentEvent(rt, &m, sdkagent.InferenceEnd{Attempt: 1, Err: errors.New("provider unavailable"), Response: &ai.Response{Content: ai.Content{{
@@ -56,7 +56,7 @@ func TestFailedInferencePreservesIdentityForRetry(t *testing.T) {
 }
 
 func TestCanceledInferenceCannotReviveTools(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
 	m.Stream.Stop()
 	m.AddNotice("cancelled")
@@ -69,7 +69,7 @@ func TestCanceledInferenceCannotReviveTools(t *testing.T) {
 }
 
 func TestInferenceRetryPreservesNoticeAndRebindsIdentity(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	applyAgentEvent(rt, &m, sdkagent.InferenceStart{})
 	old := m.Stream.MessageID
 	m.AppendStream("partial reply", "")
@@ -84,7 +84,7 @@ func TestInferenceRetryPreservesNoticeAndRebindsIdentity(t *testing.T) {
 // A batch is announced whole (ToolStart each) and then run a call at a time; a
 // queued call must not be timed or marked current until its run begins.
 func TestQueuedToolCallIsTimedFromItsRun(t *testing.T) {
-	m, rt := NewModel(80), &streamRuntime{}
+	m, rt := NewModel(80), &streamUpdateDeps{}
 	m.Tool.Track([]core.ToolCall{{ID: "first", Name: "Bash"}, {ID: "second", Name: "Read"}})
 	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "first", Name: "Bash"})
 	applyAgentEvent(rt, &m, sdkagent.ToolStart{ID: "second", Name: "Read"})

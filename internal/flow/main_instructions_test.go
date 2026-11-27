@@ -30,7 +30,7 @@ func TestWriterCriticExampleRevisionScope(t *testing.T) {
 	}}
 	tasks := task.NewManager()
 	s := NewService(tasks)
-	s.store = NewStore(t.TempDir())
+	s.store = newRunStore(t.TempDir())
 	s.SetExecutor(exec)
 	id, err := s.start(b, map[string]string{"input": "write about everyday kindness"}, "example", 100)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestEarlierCriticResumeUsesItsWriterInstructions(t *testing.T) {
 	tasks := task.NewManager()
 	tasks.SetSessionID("native-session")
 	s := NewService(tasks)
-	s.store = NewStore(t.TempDir())
+	s.store = newRunStore(t.TempDir())
 	lease := &revisionMain{}
 	s.SetMainExecutor(lease)
 	exec := &scriptedExecutor{outputs: map[string]string{"critic#1": "revise", "decision#1": "REVISE", "critic#2": "pass", "decision#2": "PASS", "done": "answer"}}
@@ -137,7 +137,7 @@ func TestMainResumeWithoutIdentityRequiresExplicitFrom(t *testing.T) {
 		tasks := task.NewManager()
 		tasks.SetSessionID("native-session")
 		s := NewService(tasks)
-		s.store = NewStore(t.TempDir())
+		s.store = newRunStore(t.TempDir())
 		s.SetExecutor(&scriptedExecutor{})
 		s.SetMainExecutor(&scriptedMain{})
 		r := RunRecord{ID: "unknown-admission", Definition: b.Source, SessionID: "native-session", Status: RunFailed, Nodes: map[string]Checkpoint{"writer#1": {Outcome: Outcome{Status: status}}}}

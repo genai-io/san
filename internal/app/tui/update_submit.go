@@ -124,7 +124,7 @@ func (m *model) dispatchSubmissionScoped(raw string, completion *session.Complet
 		m.autopilotContinuing = false
 	}
 
-	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {
+	if blocked, reason := m.runPromptSubmitHook(context.Background(), raw); blocked {
 		m.conv.AddNotice("Prompt blocked: " + reason)
 		m.userInput.Reset()
 		return tea.Batch(m.CommitMessages()...)

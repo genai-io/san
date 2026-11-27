@@ -43,7 +43,7 @@ func TestInferenceSilenceClockOnlyTracksRealData(t *testing.T) {
 		{"block boundary", ai.Event{Type: ai.EventBlockStart, Block: ai.TextBlock("")}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m, rt := NewModel(80), &streamRuntime{}
+			m, rt := NewModel(80), &streamUpdateDeps{}
 			applyAgentEvent(rt, &m, sdkagent.InferenceStart{Attempt: 1})
 			applyChunk(rt, &m, ai.Event{Type: ai.EventProgress, Progress: &ai.Progress{ToolName: "Write", InputBytes: 100}})
 			old := time.Now().Add(-time.Minute)

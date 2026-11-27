@@ -21,7 +21,7 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 		m.TaskActivity = map[int][]string{0: {"Read(first.go)"}, 1: {"Read(second.go)"}}
 		sibling := 1 - first
 		want := m.TaskActivity[sibling][0]
-		rt := &postToolRuntime{}
+		rt := &postToolUpdateDeps{}
 		applyPostTool(rt, &m, core.ToolResult{ToolCallID: calls[first].ID, ToolName: "Agent"}, nil)
 		if _, ok := m.TaskActivity[first]; ok {
 			t.Fatalf("completed agent %d retained live activity", first)
@@ -41,17 +41,17 @@ func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
 	}
 }
 
-type postToolRuntime struct {
-	Runtime
+type postToolUpdateDeps struct {
+	UpdateDeps
 	drainCalls int
 }
 
-func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult {
+func (r *postToolUpdateDeps) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	return &tr
 }
-func (r *postToolRuntime) TakeJudgeDecision(string) *core.JudgeDecision { return nil }
-func (r *postToolRuntime) CommitMessages() []tea.Cmd                    { return nil }
-func (r *postToolRuntime) OnStepEnd() tea.Cmd {
+func (r *postToolUpdateDeps) TakeJudgeDecision(string) *core.JudgeDecision { return nil }
+func (r *postToolUpdateDeps) CommitMessages() []tea.Cmd                    { return nil }
+func (r *postToolUpdateDeps) OnStepEnd() tea.Cmd {
 	r.drainCalls++
 	return nil
 }
@@ -59,7 +59,7 @@ func (r *postToolRuntime) OnStepEnd() tea.Cmd {
 func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 	m := NewModel(80)
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Bash"}})
-	rt := &postToolRuntime{}
+	rt := &postToolUpdateDeps{}
 
 	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}, nil)
 	if rt.drainCalls != 0 {
@@ -74,7 +74,7 @@ func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 func TestPostToolDrainsQueuedInputAfterOutOfOrderToolBatch(t *testing.T) {
 	m := NewModel(80)
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Read"}, {ID: "tc-3", Name: "Read"}})
-	rt := &postToolRuntime{}
+	rt := &postToolUpdateDeps{}
 	for i, id := range []string{"tc-3", "tc-3", "tc-1", "tc-2"} {
 		applyPostTool(rt, &m, core.ToolResult{ToolCallID: id, ToolName: "Read"}, nil)
 		wantDrains := 0

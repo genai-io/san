@@ -50,9 +50,17 @@ func compareSessions(a, b sessionListItem) int {
 	return strings.Compare(a.ID, b.ID)
 }
 
-func readSessionPage(ctx context.Context, root string, cursor sessionListItem, keep int) ([]sessionListItem, error) {
+func (s *Server) sessionsDir() string {
+	return filepath.Join(s.store.ProjectDir(), "sessions")
+}
+
+func (s *Server) transcriptPath(id string) string {
+	return filepath.Join(s.sessionsDir(), id, "events.jsonl")
+}
+
+func (s *Server) readSessionPage(ctx context.Context, cursor sessionListItem, keep int) ([]sessionListItem, error) {
 	items := make([]sessionListItem, 0, keep+1)
-	dir, err := os.Open(root)
+	dir, err := os.Open(s.sessionsDir())
 	if os.IsNotExist(err) {
 		return items, nil
 	}
@@ -73,7 +81,7 @@ func readSessionPage(ctx context.Context, root string, cursor sessionListItem, k
 			if !entry.IsDir() || strings.HasPrefix(id, ".") || session.ValidateStorageID(id) != nil {
 				continue
 			}
-			info, err := os.Stat(filepath.Join(root, id, "events.jsonl"))
+			info, err := os.Stat(s.transcriptPath(id))
 			if err != nil {
 				continue
 			}
@@ -124,9 +132,8 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	root := filepath.Join(s.store.ProjectDir(), "sessions")
 	cursor := sessionListItem{ID: after.ID, UpdatedAt: after.UpdatedAt}
-	items, err := readSessionPage(ctx, root, cursor, limit+1)
+	items, err := s.readSessionPage(ctx, cursor, limit+1)
 	if ctx.Err() != nil {
 		return
 	}
@@ -183,7 +190,7 @@ func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request, id
 		http.NotFound(w, r)
 		return
 	}
-	info, err := os.Stat(filepath.Join(s.store.ProjectDir(), "sessions", id, "events.jsonl"))
+	info, err := os.Stat(s.transcriptPath(id))
 	if err != nil {
 		http.NotFound(w, r)
 		return

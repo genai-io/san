@@ -122,7 +122,7 @@ func TestRunActualActivityAndStop(t *testing.T) {
 
 func TestFlowRetainsHistoricalRunDirectoryAndLockExclusion(t *testing.T) {
 	root := t.TempDir()
-	historical := NewStore(filepath.Join(root, ".san", "workflow-runs"))
+	historical := newRunStore(filepath.Join(root, ".san", "workflow-runs"))
 	if err := historical.Put(RunRecord{ID: "existing", Status: RunRunning}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestLaunchRefusesInitialStoreFailure(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(p, "blocked.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	wt.store = NewStore(p)
+	wt.store = newRunStore(p)
 	w, err := Parse(definition)
 	if err != nil {
 		t.Fatal(err)

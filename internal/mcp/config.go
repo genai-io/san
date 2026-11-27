@@ -84,14 +84,14 @@ func (s configSource) needsTrust() bool {
 // sources lists the MCP files in priority order, lowest first.
 func (l *ConfigLoader) sources() []configSource {
 	sources := []configSource{
-		{filepath.Join(l.userDir, "mcp.json"), ScopeUser},
-		{filepath.Join(l.projectDir, "mcp.json"), ScopeProject},
-		{filepath.Join(l.projectDir, "mcp.local.json"), ScopeLocal},
+		{l.FilePath(ScopeUser), ScopeUser},
+		{l.FilePath(ScopeProject), ScopeProject},
 	}
-	if l.localDir != l.projectDir { // a worktree: the main checkout's, which wins
-		sources = append(sources, configSource{filepath.Join(l.localDir, "mcp.local.json"), ScopeLocal})
+	if l.localDir != l.projectDir {
+		// Read the worktree's local file before the main checkout's writable one.
+		sources = append(sources, configSource{filepath.Join(l.projectDir, "mcp.local.json"), ScopeLocal})
 	}
-	return sources
+	return append(sources, configSource{l.FilePath(ScopeLocal), ScopeLocal})
 }
 
 // loadFile loads MCP configuration from a single file

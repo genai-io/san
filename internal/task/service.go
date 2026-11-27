@@ -26,9 +26,9 @@ func Default() *Manager {
 	return defaultManager
 }
 
-// ResetDefaultTracker restores a fresh empty *Manager. Intended for
+// ResetDefaultManager restores a fresh empty *Manager. Intended for
 // tests.
-func ResetDefaultTracker() {
+func ResetDefaultManager() {
 	defaultManager = NewManager()
 }
 

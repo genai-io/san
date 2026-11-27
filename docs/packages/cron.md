@@ -25,7 +25,6 @@ package cron
 // Scheduler is the opaque handle. Type exported; fields unexported.
 type Scheduler struct { /* internal fields */ }
 
-func (s *Scheduler) Add(job Job) error
 func (s *Scheduler) Remove(id string) bool
 func (s *Scheduler) Create(cronExpr, prompt string, recurring, durable bool) (*Job, error)
 func (s *Scheduler) Delete(id string) error

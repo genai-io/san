@@ -314,7 +314,7 @@ func TestPendingToolCallsFollowTheConversation(t *testing.T) {
 func fixedComposerModel(width, height int) *model {
 	m := &model{
 		env:       env{Width: width, Height: height, Ready: true},
-		autopilot: new(atomic.Pointer[autopilotRuntime]),
+		autopilot: new(atomic.Pointer[autopilotSnapshot]),
 		conv:      chat.NewModel(width),
 		userInput: input.New("", width, func(string) []suggest.Suggestion {
 			return []suggest.Suggestion{{Name: "help", Description: "Show commands"}, {Name: "history", Description: "Inspect conversation"}}
