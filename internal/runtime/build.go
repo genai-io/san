@@ -51,10 +51,10 @@ type BuildParams struct {
 
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
-	NativeTools   []core.Tool     // host-owned tools, subject to the same permission gate
-	Tasks         *task.Supervisor   // nil retains the native default
-	Tracker       *todo.Store     // nil leaves the task-tracker tools unavailable
-	Skills        *skill.Registry // nil retains the native default
+	NativeTools   []core.Tool      // host-owned tools, subject to the same permission gate
+	Tasks         *task.Supervisor // nil retains the native default
+	Tracker       *todo.Store      // nil leaves the task-tracker tools unavailable
+	Skills        *skill.Registry  // nil retains the native default
 	Plugins       *plugin.Registry
 	PluginRoot    func() string // optional session-owned invocation scope
 
